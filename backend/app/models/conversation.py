@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -15,9 +15,9 @@ class Conversation(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False
     )
 
     agent: Mapped[Agent] = relationship(back_populates="conversations")
@@ -37,9 +37,6 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     tool_calls: Mapped[dict | None] = mapped_column(JSON)
     tool_call_id: Mapped[str | None] = mapped_column(String(100))
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
-
-
-from app.models.agent import Agent  # noqa: E402

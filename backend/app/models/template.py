@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
@@ -20,4 +20,4 @@ class Template(Base):
     recommended_tools: Mapped[dict | None] = mapped_column(JSON)
     recommended_model_id: Mapped[uuid.UUID | None] = mapped_column()
     usage_example: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,9 +21,9 @@ class Agent(Base):
     model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"))
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False
     )
 
     user: Mapped[User] = relationship(back_populates="agents")
@@ -32,9 +32,3 @@ class Agent(Base):
     conversations: Mapped[list[Conversation]] = relationship(
         back_populates="agent", cascade="all, delete-orphan"
     )
-
-
-from app.models.conversation import Conversation  # noqa: E402
-from app.models.model import Model  # noqa: E402
-from app.models.tool import Tool  # noqa: E402
-from app.models.user import User  # noqa: E402

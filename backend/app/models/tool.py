@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 
 from sqlalchemy import Column, ForeignKey, JSON, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -26,7 +26,7 @@ class MCPServer(Base):
     auth_type: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
     auth_config: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
 
     tools: Mapped[list[Tool]] = relationship(back_populates="mcp_server", cascade="all, delete-orphan")
 
@@ -45,6 +45,6 @@ class Tool(Base):
     http_method: Mapped[str | None] = mapped_column(String(10))
     auth_type: Mapped[str | None] = mapped_column(String(20))
     auth_config: Mapped[dict | None] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
 
     mcp_server: Mapped[MCPServer | None] = relationship(back_populates="tools")

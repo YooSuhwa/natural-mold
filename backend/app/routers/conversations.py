@@ -76,22 +76,17 @@ async def send_message(
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    # Save user message
     await chat_service.save_message(db, conversation_id, "user", data.content)
 
-    # Get agent config
     agent = await chat_service.get_agent_with_tools(db, conv.agent_id, user.id)
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Get message history
     messages = await chat_service.list_messages(db, conversation_id)
     messages_history = [{"role": m.role, "content": m.content} for m in messages]
 
-    # Build tools config from agent's tools
-    tools_config = []
-    for tool in agent.tools:
-        tools_config.append({
+    tools_config = [
+        {
             "type": tool.type,
             "name": tool.name,
             "description": tool.description,
@@ -100,9 +95,13 @@ async def send_message(
             "parameters_schema": tool.parameters_schema,
             "auth_type": tool.auth_type,
             "auth_config": tool.auth_config,
-        })
+        }
+        for tool in agent.tools
+    ]
 
     async def generate():
+        import json
+
         full_content = ""
         async for chunk in execute_agent_stream(
             provider=agent.model.provider,
@@ -115,17 +114,14 @@ async def send_message(
             thread_id=str(conversation_id),
         ):
             yield chunk
-            # Extract content from message_end for saving
             if "message_end" in chunk:
-                import json
                 try:
                     data_line = chunk.split("data: ", 1)[1].strip()
                     end_data = json.loads(data_line)
                     full_content = end_data.get("content", "")
-                except Exception:
+                except (IndexError, json.JSONDecodeError):
                     pass
 
-        # Save assistant message after streaming
         if full_content:
             await chat_service.save_message(db, conversation_id, "assistant", full_content)
 

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain_core.messages import HumanMessage, AIMessage
-from langchain_core.language_models import BaseChatModel
-
+from app.agent_runtime.message_utils import convert_to_langchain_messages, extract_json_from_markdown
 from app.agent_runtime.model_factory import create_chat_model
 
 CREATION_SYSTEM_PROMPT = """당신은 AI 에이전트 빌더 'Moldy'의 에이전트 설계 전문가입니다.
@@ -55,39 +53,18 @@ async def run_creation_conversation(
     if available_models:
         system_content += f"\n\n## 사용 가능한 모델\n{', '.join(available_models)}"
 
-    messages = [{"role": "system", "content": system_content}]
-
-    for msg in conversation_history:
-        messages.append(msg)
-
+    messages: list[dict[str, str]] = [{"role": "system", "content": system_content}]
+    messages.extend(conversation_history)
     messages.append({"role": "user", "content": user_message})
 
-    # Convert to LangChain messages
-    lc_messages = []
-    for msg in messages:
-        if msg["role"] == "user":
-            lc_messages.append(HumanMessage(content=msg["content"]))
-        elif msg["role"] == "assistant":
-            lc_messages.append(AIMessage(content=msg["content"]))
-        elif msg["role"] == "system":
-            from langchain_core.messages import SystemMessage
-            lc_messages.append(SystemMessage(content=msg["content"]))
-
+    lc_messages = convert_to_langchain_messages(messages)
     response = await model.ainvoke(lc_messages)
     content = response.content
 
-    # Try to extract draft_config from JSON block
     draft_config = None
-    import json
-    import re
-    json_match = re.search(r'```json\s*(\{[\s\S]*?\})\s*```', content)
-    if json_match:
-        try:
-            parsed = json.loads(json_match.group(1))
-            if "draft_config" in parsed:
-                draft_config = parsed["draft_config"]
-        except json.JSONDecodeError:
-            pass
+    parsed = extract_json_from_markdown(content)
+    if parsed and "draft_config" in parsed:
+        draft_config = parsed["draft_config"]
 
     return {
         "role": "assistant",

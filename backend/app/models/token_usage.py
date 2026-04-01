@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, UTC
 from decimal import Decimal
 
 from sqlalchemy import ForeignKey, Integer, Numeric, String
@@ -21,4 +21,4 @@ class TokenUsage(Base):
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     total_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
     estimated_cost: Mapped[Decimal | None] = mapped_column(Numeric(10, 6))
-    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)

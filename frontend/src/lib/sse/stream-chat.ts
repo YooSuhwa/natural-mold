@@ -29,25 +29,29 @@ export async function* streamChat(
   let buffer = ""
   let currentEvent: SSEEventType = "content_delta"
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split("\n")
-    buffer = lines.pop() || ""
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split("\n")
+      buffer = lines.pop() || ""
 
-    for (const line of lines) {
-      if (line.startsWith("event: ")) {
-        currentEvent = line.slice(7).trim() as SSEEventType
-      } else if (line.startsWith("data: ")) {
-        try {
-          const data = JSON.parse(line.slice(6))
-          yield { event: currentEvent, data }
-        } catch {
-          // Skip malformed data
+      for (const line of lines) {
+        if (line.startsWith("event: ")) {
+          currentEvent = line.slice(7).trim() as SSEEventType
+        } else if (line.startsWith("data: ")) {
+          try {
+            const data = JSON.parse(line.slice(6))
+            yield { event: currentEvent, data }
+          } catch {
+            // Skip malformed JSON lines
+          }
         }
       }
     }
+  } finally {
+    reader.cancel()
   }
 }

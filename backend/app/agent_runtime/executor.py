@@ -3,13 +3,13 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool
 from langchain_core.language_models import BaseChatModel
 from langgraph.prebuilt import create_react_agent
 
+from app.agent_runtime.message_utils import convert_to_langchain_messages
 from app.agent_runtime.model_factory import create_chat_model
-from app.agent_runtime.streaming import format_sse, stream_agent_response
+from app.agent_runtime.streaming import stream_agent_response
 from app.agent_runtime.tool_factory import create_tool_from_db
 
 
@@ -35,10 +35,8 @@ async def execute_agent_stream(
     messages_history: list[dict[str, str]],
     thread_id: str,
 ) -> AsyncGenerator[str, None]:
-    # Build model
     model = create_chat_model(provider, model_name, api_key, base_url)
 
-    # Build tools from config
     langchain_tools: list[BaseTool] = []
     for tc in tools_config:
         if tc.get("type") == "custom" and tc.get("api_url"):
@@ -53,17 +51,9 @@ async def execute_agent_stream(
             )
             langchain_tools.append(tool)
 
-    # Build agent
     agent = build_agent(model, langchain_tools, system_prompt)
-
-    # Convert message history to LangChain format
-    lc_messages = []
-    for msg in messages_history:
-        if msg["role"] == "user":
-            lc_messages.append(HumanMessage(content=msg["content"]))
-
+    lc_messages = convert_to_langchain_messages(messages_history)
     config = {"configurable": {"thread_id": thread_id}}
 
-    # Stream response
     async for chunk in stream_agent_response(agent, lc_messages, config):
         yield chunk

@@ -43,14 +43,15 @@ async def get_conversation(
 
 
 async def list_messages(
-    db: AsyncSession, conversation_id: uuid.UUID
+    db: AsyncSession, conversation_id: uuid.UUID, limit: int = 100
 ) -> list[Message]:
     result = await db.execute(
         select(Message)
         .where(Message.conversation_id == conversation_id)
-        .order_by(Message.created_at)
+        .order_by(Message.created_at.desc())
+        .limit(limit)
     )
-    return list(result.scalars().all())
+    return list(reversed(result.scalars().all()))
 
 
 async def save_message(
