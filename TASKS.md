@@ -21,25 +21,26 @@
 
 ## Phase 2: Backend — 채팅 엔진 (LangChain/LangGraph)
 
-- [ ] agent_runtime/model_factory.py
-- [ ] agent_runtime/tool_factory.py
-- [ ] agent_runtime/executor.py (create_agent + astream)
-- [ ] agent_runtime/streaming.py (LangGraph → SSE)
-- [ ] agent_runtime/token_tracker.py
-- [ ] Conversation API (4 endpoints) + LangGraph PostgresSaver
+- [x] agent_runtime/model_factory.py
+- [x] agent_runtime/tool_factory.py
+- [x] agent_runtime/executor.py (create_agent + astream)
+- [x] agent_runtime/streaming.py (LangGraph → SSE)
+- [x] agent_runtime/token_tracker.py
+- [x] Conversation API (4 endpoints) + LangGraph PostgresSaver
 - [ ] 채팅 엔진 통합 테스트
 
 ## Phase 3: Backend — MCP + 대화형 생성 + 사용량
 
-- [ ] agent_runtime/mcp_client.py + MCP 연결 테스트 endpoint
-- [ ] agent_runtime/creation_agent.py (대화형 생성 메타 에이전트)
-- [ ] Agent creation session API (4 endpoints) + 테스트
-- [ ] Usage API (2 endpoints) + 테스트
+- [x] agent_runtime/mcp_client.py + MCP 연결 테스트 endpoint
+- [x] agent_runtime/creation_agent.py (대화형 생성 메타 에이전트)
+- [x] Agent creation session API (4 endpoints) + 테스트
+- [x] Usage API (2 endpoints) + 테스트
 
 ## Phase 4: Frontend — 레이아웃 + 대시보드 + CRUD 화면
 
-- [ ] 공통 레이아웃 (사이드바, 헤더)
-- [ ] TypeScript 타입 + API 클라이언트 + TanStack Query hooks
+- [x] TypeScript 타입 + API 클라이언트 + TanStack Query hooks
+- [x] SSE 스트리밍 클라이언트 + Jotai stores
+- [ ] 공통 레이아웃 (사이드바, 헤더)  ← current (building all pages)
 - [ ] 대시보드 (에이전트 카드 그리드 + 사용량 요약)
 - [ ] 에이전트 설정 페이지
 - [ ] 도구 관리 페이지 (MCP/Custom 등록 모달)
@@ -48,7 +49,6 @@
 
 ## Phase 5: Frontend — 채팅 + 에이전트 생성
 
-- [ ] SSE 스트리밍 클라이언트 + use-chat-stream 훅
 - [ ] 에이전트 채팅 페이지
 - [ ] 대화형 에이전트 생성 페이지
 - [ ] 템플릿 선택 페이지
