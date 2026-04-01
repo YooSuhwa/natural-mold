@@ -38,6 +38,27 @@ async def register_mcp_server(
     return await tool_service.register_mcp_server(db, data, user.id)
 
 
+@router.post("/mcp-server/{server_id}/test")
+async def test_mcp_connection(
+    server_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    from app.agent_runtime.mcp_client import test_mcp_connection as mcp_test
+    from app.models.tool import MCPServer
+    from sqlalchemy import select
+
+    result = await db.execute(
+        select(MCPServer).where(MCPServer.id == server_id, MCPServer.user_id == user.id)
+    )
+    server = result.scalar_one_or_none()
+    if not server:
+        raise HTTPException(status_code=404, detail="MCP server not found")
+
+    test_result = await mcp_test(server.url, server.auth_config)
+    return test_result
+
+
 @router.delete("/{tool_id}", status_code=204)
 async def delete_tool(
     tool_id: uuid.UUID,

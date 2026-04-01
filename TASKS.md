@@ -10,14 +10,14 @@
 
 ## Phase 1: Backend — DB + 기본 CRUD
 
-- [ ] SQLAlchemy 모델 11개 테이블
-- [ ] Alembic 초기 마이그레이션
-- [ ] Mock user dependency + Pydantic 스키마
-- [ ] 시드 데이터 (기본 모델, 템플릿 4개)
-- [ ] Agent CRUD API (5 endpoints) + 테스트
-- [ ] Template API (2 endpoints) + 테스트
-- [ ] Model API (3 endpoints) + 테스트
-- [ ] Tool API (5 endpoints) + 테스트
+- [x] SQLAlchemy 모델 11개 테이블
+- [x] Alembic 초기 마이그레이션
+- [x] Mock user dependency + Pydantic 스키마
+- [x] 시드 데이터 (기본 모델, 템플릿 4개)
+- [x] Agent CRUD API (5 endpoints) + 테스트
+- [x] Template API (2 endpoints) + 테스트
+- [x] Model API (3 endpoints) + 테스트
+- [x] Tool API (5 endpoints) + 테스트
 
 ## Phase 2: Backend — 채팅 엔진 (LangChain/LangGraph)
 
