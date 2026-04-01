@@ -40,22 +40,22 @@
 
 - [x] TypeScript 타입 + API 클라이언트 + TanStack Query hooks
 - [x] SSE 스트리밍 클라이언트 + Jotai stores
-- [ ] 공통 레이아웃 (사이드바, 헤더)  ← current (building all pages)
-- [ ] 대시보드 (에이전트 카드 그리드 + 사용량 요약)
-- [ ] 에이전트 설정 페이지
-- [ ] 도구 관리 페이지 (MCP/Custom 등록 모달)
-- [ ] 모델 관리 페이지
-- [ ] 사용량 대시보드
+- [x] 공통 레이아웃 (사이드바, 헤더)
+- [x] 대시보드 (에이전트 카드 그리드 + 사용량 요약)
+- [x] 에이전트 설정 페이지
+- [x] 도구 관리 페이지 (MCP/Custom 등록 모달)
+- [x] 모델 관리 페이지
+- [x] 사용량 대시보드
 
 ## Phase 5: Frontend — 채팅 + 에이전트 생성
 
-- [ ] 에이전트 채팅 페이지
-- [ ] 대화형 에이전트 생성 페이지
-- [ ] 템플릿 선택 페이지
+- [x] 에이전트 채팅 페이지
+- [x] 대화형 에이전트 생성 페이지
+- [x] 템플릿 선택 페이지
 
 ## Phase 6: 통합 + 폴리시
 
 - [ ] E2E 시나리오 검증 (PRD 섹션 4)
-- [ ] 에러 핸들링, loading skeleton, empty state
-- [ ] Docker Compose 전체 구동 검증
+- [x] 에러 핸들링, loading skeleton, empty state
+- [x] Docker Compose 전체 구동 설정 (Dockerfile + docker-compose.yml)
 - [ ] 접근성, 키보드 네비게이션, 성능 검증
