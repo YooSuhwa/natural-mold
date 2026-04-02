@@ -17,6 +17,7 @@ import { toast } from "sonner"
 import { useAgent, useUpdateAgent, useDeleteAgent } from "@/lib/hooks/use-agents"
 import { useModels } from "@/lib/hooks/use-models"
 import { useTools } from "@/lib/hooks/use-tools"
+import { useSkills } from "@/lib/hooks/use-skills"
 import {
   useTriggers,
   useCreateTrigger,
@@ -60,6 +61,7 @@ export default function AgentSettingsPage({
   const { data: agent, isLoading: agentLoading } = useAgent(agentId)
   const { data: models } = useModels()
   const { data: tools } = useTools()
+  const { data: skills } = useSkills()
   const updateAgent = useUpdateAgent(agentId)
   const deleteAgent = useDeleteAgent()
   const { data: triggers } = useTriggers(agentId)
@@ -72,6 +74,7 @@ export default function AgentSettingsPage({
   const [systemPrompt, setSystemPrompt] = useState("")
   const [modelId, setModelId] = useState("")
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
+  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set())
   const [temperature, setTemperature] = useState(0.7)
   const [topP, setTopP] = useState(1.0)
   const [maxTokens, setMaxTokens] = useState(4096)
@@ -86,6 +89,7 @@ export default function AgentSettingsPage({
       setSystemPrompt(agent.system_prompt)
       setModelId(agent.model.id)
       setSelectedToolIds(new Set(agent.tools.map((t) => t.id)))
+      setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
       setTemperature(agent.model_params?.temperature ?? 0.7)
       setTopP(agent.model_params?.top_p ?? 1.0)
       setMaxTokens(agent.model_params?.max_tokens ?? 4096)
@@ -100,6 +104,7 @@ export default function AgentSettingsPage({
         system_prompt: systemPrompt,
         model_id: modelId,
         tool_ids: Array.from(selectedToolIds),
+        skill_ids: Array.from(selectedSkillIds),
         model_params: { temperature, top_p: topP, max_tokens: maxTokens },
       })
       toast.success("저장되었습니다")
@@ -304,6 +309,53 @@ export default function AgentSettingsPage({
                 등록된 도구가 없습니다.{" "}
                 <Link href="/tools" className="text-primary hover:underline">
                   도구 관리
+                </Link>
+                에서 추가해주세요.
+              </p>
+            )
+          ) : (
+            <Skeleton className="h-16 w-full" />
+          )}
+        </div>
+
+        {/* Skills */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">연결된 스킬</label>
+          {skills ? (
+            skills.length > 0 ? (
+              <div className="space-y-2 rounded-lg border p-3">
+                {skills.map((skill) => (
+                  <label
+                    key={skill.id}
+                    className="flex items-center gap-3 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSkillIds.has(skill.id)}
+                      onChange={() => {
+                        setSelectedSkillIds((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(skill.id)) next.delete(skill.id)
+                          else next.add(skill.id)
+                          return next
+                        })
+                      }}
+                      className="size-4 rounded border-input"
+                    />
+                    <span>{skill.name}</span>
+                    {skill.description && (
+                      <span className="text-xs text-muted-foreground">
+                        - {skill.description}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                등록된 스킬이 없습니다.{" "}
+                <Link href="/skills" className="text-primary hover:underline">
+                  스킬 관리
                 </Link>
                 에서 추가해주세요.
               </p>

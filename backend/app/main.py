@@ -128,7 +128,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    from app.routers import agent_creation, agents, conversations, fix_agent, models, templates, tools, triggers, usage
+    from app.routers import agent_creation, agents, conversations, fix_agent, models, skills, templates, tools, triggers, usage
 
     app.include_router(agents.router)
     app.include_router(agent_creation.router)
@@ -136,6 +136,7 @@ def create_app() -> FastAPI:
     app.include_router(conversations.router)
     app.include_router(models.router)
     app.include_router(templates.router)
+    app.include_router(skills.router)
     app.include_router(tools.router)
     app.include_router(triggers.router)
     app.include_router(usage.router)

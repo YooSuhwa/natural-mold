@@ -7,6 +7,7 @@ import {
   WrenchIcon,
   CpuIcon,
   BarChart3Icon,
+  BookOpenIcon,
   PlusIcon,
   BotIcon,
   UserIcon,
@@ -45,6 +46,7 @@ import {
 const navItems = [
   { label: "홈", href: "/", icon: HomeIcon },
   { label: "도구", href: "/tools", icon: WrenchIcon },
+  { label: "스킬", href: "/skills", icon: BookOpenIcon },
   { label: "모델", href: "/models", icon: CpuIcon },
   { label: "사용량", href: "/usage", icon: BarChart3Icon },
 ]

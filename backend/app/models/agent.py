@@ -9,6 +9,7 @@ from sqlalchemy import ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.skill import AgentSkillLink, Skill
 from app.models.tool import AgentToolLink
 
 
@@ -33,6 +34,9 @@ class Agent(Base):
     user: Mapped[User] = relationship(back_populates="agents")
     model: Mapped[Model] = relationship()
     tool_links: Mapped[list[AgentToolLink]] = relationship(
+        cascade="all, delete-orphan",
+    )
+    skill_links: Mapped[list[AgentSkillLink]] = relationship(
         cascade="all, delete-orphan",
     )
     conversations: Mapped[list[Conversation]] = relationship(

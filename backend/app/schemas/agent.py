@@ -32,6 +32,7 @@ class AgentUpdate(BaseModel):
     model_id: uuid.UUID | None = None
     tool_ids: list[uuid.UUID] | None = None
     tool_configs: list[ToolConfigEntry] | None = None
+    skill_ids: list[uuid.UUID] | None = None
     is_favorite: bool | None = None
     model_params: dict[str, Any] | None = None
 
@@ -51,6 +52,13 @@ class ToolBrief(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SkillBrief(BaseModel):
+    id: uuid.UUID
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
 class AgentResponse(BaseModel):
     id: uuid.UUID
     name: str
@@ -58,6 +66,7 @@ class AgentResponse(BaseModel):
     system_prompt: str
     model: ModelBrief
     tools: list[ToolBrief]
+    skills: list[SkillBrief] = []
     status: str
     is_favorite: bool = False
     model_params: dict[str, Any] | None = None

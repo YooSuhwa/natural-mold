@@ -6,6 +6,7 @@ export interface Agent {
   system_prompt: string
   model: ModelBrief
   tools: ToolBrief[]
+  skills: SkillBrief[]
   status: string
   is_favorite: boolean
   model_params: ModelParams | null
@@ -46,6 +47,7 @@ export interface AgentUpdateRequest {
   system_prompt?: string
   model_id?: string
   tool_ids?: string[]
+  skill_ids?: string[]
   is_favorite?: boolean
   model_params?: ModelParams
 }
@@ -205,6 +207,33 @@ export interface DraftConfig {
   recommended_tool_names?: string[]
   recommended_model?: string
   is_ready?: boolean
+}
+
+// Skill
+export interface Skill {
+  id: string
+  name: string
+  description: string | null
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SkillCreateRequest {
+  name: string
+  description?: string
+  content: string
+}
+
+export interface SkillUpdateRequest {
+  name?: string
+  description?: string
+  content?: string
+}
+
+export interface SkillBrief {
+  id: string
+  name: string
 }
 
 // Trigger

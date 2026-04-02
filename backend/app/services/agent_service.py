@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
+from app.models.skill import AgentSkillLink
 from app.models.template import Template
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.agent import AgentCreate, AgentUpdate
@@ -15,7 +16,11 @@ from app.schemas.agent import AgentCreate, AgentUpdate
 
 def _selectin_agent() -> list:
     """Standard eager-loading options for Agent queries."""
-    return [selectinload(Agent.model), selectinload(Agent.tool_links).selectinload(AgentToolLink.tool)]
+    return [
+        selectinload(Agent.model),
+        selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
+        selectinload(Agent.skill_links),
+    ]
 
 
 async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
@@ -94,7 +99,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
 
     db.add(agent)
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links"])
+    await db.refresh(agent, ["model", "tool_links", "skill_links"])
     return agent
 
 
@@ -127,8 +132,12 @@ async def update_agent(
         for link in agent.tool_links:
             if link.tool_id in config_map:
                 link.config = config_map[link.tool_id]
+    if data.skill_ids is not None:
+        agent.skill_links.clear()
+        await db.flush()
+        agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links"])
+    await db.refresh(agent, ["model", "tool_links", "skill_links"])
     return agent
 
 
