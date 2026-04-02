@@ -77,6 +77,7 @@ async def execute_trigger(trigger_id: str) -> None:
                 tools_config=tools_config,
                 messages_history=messages_history,
                 thread_id=str(conv.id),
+                model_params=agent.model_params,
             ):
                 # Parse SSE events to extract content
                 for line in chunk.strip().split("\n"):

@@ -48,6 +48,13 @@ def _build_tool_links(
     ]
 
 
+async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
+    agent.is_favorite = not agent.is_favorite
+    await db.commit()
+    await db.refresh(agent, ["model", "tool_links"])
+    return agent
+
+
 async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) -> Agent:
     agent = Agent(
         user_id=user_id,
@@ -55,6 +62,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         description=data.description,
         system_prompt=data.system_prompt,
         model_id=data.model_id,
+        model_params=data.model_params,
         template_id=data.template_id,
     )
 
@@ -101,6 +109,10 @@ async def update_agent(
         agent.system_prompt = data.system_prompt
     if data.model_id is not None:
         agent.model_id = data.model_id
+    if data.is_favorite is not None:
+        agent.is_favorite = data.is_favorite
+    if data.model_params is not None:
+        agent.model_params = data.model_params
     if data.tool_ids is not None:
         config_map: dict[uuid.UUID, dict[str, Any]] = {}
         if data.tool_configs:

@@ -22,6 +22,7 @@ class AgentCreate(BaseModel):
     tool_ids: list[uuid.UUID] = []
     tool_configs: list[ToolConfigEntry] = []
     template_id: uuid.UUID | None = None
+    model_params: dict[str, Any] | None = None
 
 
 class AgentUpdate(BaseModel):
@@ -31,6 +32,8 @@ class AgentUpdate(BaseModel):
     model_id: uuid.UUID | None = None
     tool_ids: list[uuid.UUID] | None = None
     tool_configs: list[ToolConfigEntry] | None = None
+    is_favorite: bool | None = None
+    model_params: dict[str, Any] | None = None
 
 
 class ModelBrief(BaseModel):
@@ -56,6 +59,8 @@ class AgentResponse(BaseModel):
     model: ModelBrief
     tools: list[ToolBrief]
     status: str
+    is_favorite: bool = False
+    model_params: dict[str, Any] | None = None
     template_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime

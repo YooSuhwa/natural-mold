@@ -56,6 +56,7 @@ class Tool(Base):
     http_method: Mapped[str | None] = mapped_column(String(10))
     auth_type: Mapped[str | None] = mapped_column(String(20))
     auth_config: Mapped[dict | None] = mapped_column(JSON)
+    tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
 
     mcp_server: Mapped[MCPServer | None] = relationship(back_populates="tools")

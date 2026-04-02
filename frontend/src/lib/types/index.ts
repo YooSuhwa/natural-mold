@@ -7,9 +7,17 @@ export interface Agent {
   model: ModelBrief
   tools: ToolBrief[]
   status: string
+  is_favorite: boolean
+  model_params: ModelParams | null
   template_id: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ModelParams {
+  temperature?: number
+  top_p?: number
+  max_tokens?: number
 }
 
 export interface ModelBrief {
@@ -29,6 +37,7 @@ export interface AgentCreateRequest {
   model_id: string
   tool_ids?: string[]
   template_id?: string
+  model_params?: ModelParams
 }
 
 export interface AgentUpdateRequest {
@@ -37,6 +46,8 @@ export interface AgentUpdateRequest {
   system_prompt?: string
   model_id?: string
   tool_ids?: string[]
+  is_favorite?: boolean
+  model_params?: ModelParams
 }
 
 // Model
@@ -76,7 +87,9 @@ export interface Tool {
   http_method: string | null
   auth_type: string | null
   auth_config: Record<string, unknown> | null
+  tags: string[] | null
   server_key_available: boolean
+  agent_count: number
   created_at: string
 }
 

@@ -10,4 +10,6 @@ export const agentsApi = {
     apiFetch<Agent>(`/api/agents/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   delete: (id: string) =>
     apiFetch<void>(`/api/agents/${id}`, { method: "DELETE" }),
+  toggleFavorite: (id: string) =>
+    apiFetch<Agent>(`/api/agents/${id}/favorite`, { method: "PATCH" }),
 }

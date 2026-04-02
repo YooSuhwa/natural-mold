@@ -13,7 +13,11 @@ import {
   SettingsIcon,
   LogOutIcon,
   ChevronsUpDownIcon,
+  SunIcon,
+  MoonIcon,
+  MonitorIcon,
 } from "lucide-react"
+import { useTheme } from "next-themes"
 
 import { useAgents } from "@/lib/hooks/use-agents"
 import {
@@ -48,6 +52,7 @@ const navItems = [
 export function AppSidebar() {
   const pathname = usePathname()
   const { data: agents, isLoading } = useAgents()
+  const { setTheme, theme } = useTheme()
 
   const recentAgents = agents
     ?.slice()
@@ -182,6 +187,22 @@ export function AppSidebar() {
                 align="start"
                 className="w-[--anchor-width]"
               >
+                <DropdownMenuItem onClick={() => setTheme("light")}>
+                  <SunIcon />
+                  라이트 모드
+                  {theme === "light" && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme("dark")}>
+                  <MoonIcon />
+                  다크 모드
+                  {theme === "dark" && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setTheme("system")}>
+                  <MonitorIcon />
+                  시스템
+                  {theme === "system" && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem>
                   <SettingsIcon />
                   환경설정

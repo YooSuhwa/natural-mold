@@ -3,7 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, UTC
 
-from sqlalchemy import ForeignKey, String, Text
+from typing import Any
+
+from sqlalchemy import ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -20,6 +22,8 @@ class Agent(Base):
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+    is_favorite: Mapped[bool] = mapped_column(default=False, nullable=False)
+    model_params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"))
     created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(

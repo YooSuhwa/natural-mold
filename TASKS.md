@@ -151,3 +151,38 @@
 - [x] 에러 핸들링, loading skeleton, empty state
 - [x] Docker Compose 전체 구동 설정 (Dockerfile + docker-compose.yml)
 - [ ] 접근성, 키보드 네비게이션, 성능 검증
+
+## Phase 12: UX 개선 — Deep Agent Builder 벤치마킹
+
+### Backend
+- [ ] Agent 모델에 is_favorite, model_params 필드 추가  ← current
+- [ ] Tool 모델에 tags 필드 추가
+- [ ] Alembic 마이그레이션 (통합)
+- [ ] Agent 즐겨찾기 토글 API (PATCH)
+- [ ] Agent 스키마에 is_favorite, model_params 추가
+- [ ] Tool 스키마에 tags, agent_count 추가
+- [ ] tool_service — agent_count 계산 로직
+- [ ] default_tools.py — 시스템 도구 태그 추가
+- [ ] executor/model_factory — model_params 전달
+- [ ] 테스트
+
+### Frontend — 다크 모드
+- [ ] next-themes 설치 + ThemeProvider 추가
+- [ ] 사이드바 테마 전환 버튼
+
+### Frontend — 대시보드 검색/정렬/즐겨찾기
+- [ ] 대시보드 검색/정렬 UI
+- [ ] 에이전트 카드 즐겨찾기 별 토글
+- [ ] API 클라이언트 + hooks (toggleFavorite)
+
+### Frontend — 도구 카탈로그 UX
+- [ ] 태그 칩 필터
+- [ ] 도구 상세 Sheet
+
+### Frontend — 모델 파라미터
+- [ ] 에이전트 설정 페이지 모델 파라미터 섹션 (temperature/top_p/max_tokens)
+
+### Frontend — 채팅 UX 강화
+- [ ] 도구 호출 상세 접기/펼치기 + 소요시간
+- [ ] 메시지 토큰/비용 표시 + 복사 버튼
+- [ ] 스트리밍 "생각 중..." 애니메이션

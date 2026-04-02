@@ -25,6 +25,8 @@ def _agent_to_response(agent) -> AgentResponse:
             for link in agent.tool_links
         ],
         status=agent.status,
+        is_favorite=agent.is_favorite,
+        model_params=agent.model_params,
         template_id=agent.template_id,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
@@ -73,6 +75,19 @@ async def update_agent(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     updated = await agent_service.update_agent(db, agent, data)
+    return _agent_to_response(updated)
+
+
+@router.patch("/{agent_id}/favorite", response_model=AgentResponse)
+async def toggle_favorite(
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    agent = await agent_service.get_agent(db, agent_id, user.id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    updated = await agent_service.toggle_favorite(db, agent)
     return _agent_to_response(updated)
 
 

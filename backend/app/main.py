@@ -88,8 +88,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             existing = existing_tools_map.get(tool_data["name"])
             if not existing:
                 db.add(Tool(**tool_data))
-            elif existing.type != tool_data["type"]:
-                existing.type = tool_data["type"]
+            else:
+                if existing.type != tool_data["type"]:
+                    existing.type = tool_data["type"]
+                if tool_data.get("tags") and existing.tags != tool_data["tags"]:
+                    existing.tags = tool_data["tags"]
 
         await db.commit()
 

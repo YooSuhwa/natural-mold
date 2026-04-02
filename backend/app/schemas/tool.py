@@ -60,7 +60,9 @@ class ToolResponse(BaseModel):
     http_method: str | None
     auth_type: str | None
     auth_config: dict[str, Any] | None = None
+    tags: list[str] | None = None
     server_key_available: bool = False
+    agent_count: int = 0
     created_at: datetime
 
     model_config = {"from_attributes": True}
