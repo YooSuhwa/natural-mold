@@ -89,6 +89,7 @@ export default function ChatPage({
               name: (sseEvent.data.name ?? "tool") as string,
               status: "calling",
               params: sseEvent.data.args as Record<string, unknown> | undefined,
+              startedAt: Date.now(),
             }
             toolCalls.push(tc)
             setStreamingToolCalls([...toolCalls])
@@ -99,6 +100,7 @@ export default function ChatPage({
             if (lastTc) {
               lastTc.status = "completed"
               lastTc.result = (sseEvent.data.result ?? "") as string
+              lastTc.completedAt = Date.now()
               setStreamingToolCalls([...toolCalls])
             }
             break
