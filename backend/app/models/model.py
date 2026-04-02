@@ -22,4 +22,4 @@ class Model(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     cost_per_input_token: Mapped[Decimal | None] = mapped_column(Numeric(12, 8))
     cost_per_output_token: Mapped[Decimal | None] = mapped_column(Numeric(12, 8))
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
