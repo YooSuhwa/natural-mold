@@ -1,30 +1,22 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, NamedTuple
 from zoneinfo import ZoneInfo
 
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
 
 from app.config import settings
+from app.agent_runtime.google_tools import build_google_search_tool
+from app.agent_runtime.google_workspace_tools import build_google_chat_webhook_tool
+from app.agent_runtime.naver_tools import build_naver_search_tool
 
 
 # ---------------------------------------------------------------------------
-# Builtin tools — no API keys required, shipped with Moldy
+# Builtin tool implementations — no API key required
 # ---------------------------------------------------------------------------
-
-def create_builtin_tool(name: str) -> BaseTool:
-    """Create a LangChain tool for a builtin tool by name."""
-    builders: dict[str, Any] = {
-        "Web Search": _build_web_search_tool,
-        "Web Scraper": _build_web_scraper_tool,
-        "Current DateTime": _build_current_datetime_tool,
-    }
-    builder = builders.get(name)
-    if not builder:
-        raise ValueError(f"Unknown builtin tool: {name}")
-    return builder()
 
 
 def _build_web_search_tool() -> BaseTool:
@@ -145,3 +137,70 @@ def create_tool_from_db(
         description=description or f"Call {name}",
         args_schema=None,  # LangChain will infer from function signature
     )
+
+
+# ---------------------------------------------------------------------------
+# Public API — builtin (no key) and prebuilt (API key required)
+# ---------------------------------------------------------------------------
+
+_BUILTIN_BUILDERS: dict[str, Callable[[], BaseTool]] = {
+    "Web Search": _build_web_search_tool,
+    "Web Scraper": _build_web_scraper_tool,
+    "Current DateTime": _build_current_datetime_tool,
+}
+
+
+def create_builtin_tool(name: str) -> BaseTool:
+    """Create a LangChain tool for a builtin tool (no API key required)."""
+    builder = _BUILTIN_BUILDERS.get(name)
+    if not builder:
+        raise ValueError(f"Unknown builtin tool: {name}")
+    return builder()
+
+
+class _PrebuiltEntry(NamedTuple):
+    provider: str
+    search_type: str
+    tool_name: str
+    description: str
+
+
+_PREBUILT_REGISTRY: dict[str, _PrebuiltEntry] = {
+    "Naver Blog Search": _PrebuiltEntry("naver", "blog", "naver_blog_search",
+        "네이버 블로그에서 키워드를 검색합니다. 블로그 포스트, 리뷰, 개인 의견 등을 찾을 때 사용하세요."),
+    "Naver News Search": _PrebuiltEntry("naver", "news", "naver_news_search",
+        "네이버 뉴스에서 키워드를 검색합니다. 최신 뉴스, 기사, 보도 내용을 찾을 때 사용하세요."),
+    "Naver Image Search": _PrebuiltEntry("naver", "image", "naver_image_search",
+        "네이버에서 이미지를 검색합니다. 사진, 일러스트, 인포그래픽 등을 찾을 때 사용하세요."),
+    "Naver Shopping Search": _PrebuiltEntry("naver", "shop", "naver_shopping_search",
+        "네이버 쇼핑에서 상품을 검색합니다. 가격 비교, 상품 정보 조회에 사용하세요."),
+    "Naver Local Search": _PrebuiltEntry("naver", "local", "naver_local_search",
+        "네이버에서 지역 업체를 검색합니다. 맛집, 카페, 병원 등 주변 업체를 찾을 때 사용하세요."),
+    "Google Search": _PrebuiltEntry("google", "web", "google_search",
+        "구글에서 웹 페이지를 검색합니다. 영문 검색, 글로벌 정보 검색에 특히 유용합니다."),
+    "Google News Search": _PrebuiltEntry("google", "news", "google_news_search",
+        "구글 뉴스에서 키워드를 검색합니다. 글로벌 뉴스, 영문 기사를 찾을 때 사용하세요."),
+    "Google Image Search": _PrebuiltEntry("google", "image", "google_image_search",
+        "구글에서 이미지를 검색합니다. 글로벌 이미지, 영문 키워드 검색에 유용합니다."),
+    "Google Chat Send": _PrebuiltEntry("google_workspace", "chat_send", "google_chat_send",
+        "Google Chat 채널에 메시지를 전송합니다. 알림, 보고, 요약 결과 공유 등에 사용하세요."),
+}
+
+
+def create_prebuilt_tool(name: str, auth_config: dict[str, Any] | None = None) -> BaseTool:
+    """Create a LangChain tool for a prebuilt API tool (API key required)."""
+    entry = _PREBUILT_REGISTRY.get(name)
+    if not entry:
+        raise ValueError(f"Unknown prebuilt tool: {name}")
+
+    provider, search_type, tool_name, description = entry
+    if provider == "naver":
+        return build_naver_search_tool(search_type, tool_name, description, auth_config)
+    elif provider == "google":
+        return build_google_search_tool(search_type, tool_name, description, auth_config)
+    elif provider == "google_workspace":
+        if search_type == "chat_send":
+            return build_google_chat_webhook_tool(auth_config)
+        raise ValueError(f"Unknown google_workspace tool: {search_type}")
+    else:
+        raise ValueError(f"Unknown prebuilt provider: {provider}")

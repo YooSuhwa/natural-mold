@@ -85,7 +85,49 @@
 - [x] TypeScript 타입 + API 클라이언트 + hooks (triggers)
 - [x] 도구 관리 페이지 — 시스템 도구 표시
 - [x] 에이전트 설정 — 트리거 설정 섹션
-- [x] 대시보드 — 에이전트 카드에 도구명 표시  ← current
+- [x] 대시보드 — 에이전트 카드에 도구명 표시
+
+## Phase 9: Backend — 빌트인 도구 확장 (네이버/Google)
+
+- [x] config.py — 네이버/Google API 키 설정 추가
+- [x] naver_tools.py — 네이버 검색 API 제네릭 빌더 (Blog, News, Image, Shopping, Local)
+- [x] google_tools.py — Google Custom Search API 빌더 (Web, News, Image)
+- [x] tool_factory.py — 8개 새 도구 등록 + auth_config 지원
+- [x] executor.py — auth_config 전달
+- [x] default_tools.py — 8개 시드 데이터 추가
+- [x] default_templates.py — 3개 템플릿 추가 (뉴스 모니터, 쇼핑 비교, 맛집 탐색)
+- [x] main.py — 시드 로직 upsert 방식으로 개선
+- [x] 테스트 (15개 통과)
+
+## Phase 10A: Backend — Google Chat Webhook 도구 (P1)
+
+- [x] google_workspace_tools.py — Google Chat Webhook send 구현
+- [x] config.py — google_chat_webhook_url 설정 추가
+- [x] tool_factory.py — prebuilt 레지스트리 등록
+- [x] default_tools.py — 시드 데이터 추가
+- [x] 테스트 (20개 통과)
+
+## Phase 10B: Backend — Google OAuth2 인프라 + Gmail 도구 (P2)
+
+- [ ] google-auth, google-api-python-client 의존성 추가
+- [ ] config.py — OAuth2 설정 (client_id, client_secret, refresh_token)
+- [ ] google_auth.py — OAuth2 토큰 관리 헬퍼 (자동 갱신)
+- [ ] scripts/google_oauth_setup.py — 1회성 refresh_token 발급 스크립트
+- [ ] google_workspace_tools.py — Gmail Read (목록 조회 + 본문 읽기)
+- [ ] google_workspace_tools.py — Gmail Send (이메일 전송)
+- [ ] tool_factory.py — Gmail 도구 2개 등록
+- [ ] default_tools.py — Gmail 시드 데이터 추가
+- [ ] 테스트
+
+## Phase 10C: Backend — Google Calendar 도구 (P3)
+
+- [ ] google_workspace_tools.py — Calendar List Events (일정 조회)
+- [ ] google_workspace_tools.py — Calendar Create Event (일정 생성)
+- [ ] google_workspace_tools.py — Calendar Update Event (일정 수정)
+- [ ] tool_factory.py — Calendar 도구 3개 등록
+- [ ] default_tools.py — Calendar 시드 데이터 추가
+- [ ] default_templates.py — "이메일 어시스턴트", "Daily Brief" 템플릿 업데이트
+- [ ] 테스트
 
 ## Phase 6: 통합 + 폴리시
 

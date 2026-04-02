@@ -13,6 +13,16 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     google_api_key: str = ""
 
+    # Naver Open API
+    naver_client_id: str = ""
+    naver_client_secret: str = ""
+
+    # Google Custom Search
+    google_cse_id: str = ""
+
+    # Google Chat Webhook
+    google_chat_webhook_url: str = ""
+
     # Mock user (PoC: no auth)
     mock_user_id: str = "00000000-0000-0000-0000-000000000001"
     mock_user_email: str = "demo@moldy.dev"
