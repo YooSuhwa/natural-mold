@@ -45,6 +45,7 @@ dependencies = [
 
     # Scheduler
     "apscheduler>=3.10,<4.0",
+    "psycopg2-binary>=2.9",
 
     # Encryption (API keys)
     "cryptography>=43.0",
