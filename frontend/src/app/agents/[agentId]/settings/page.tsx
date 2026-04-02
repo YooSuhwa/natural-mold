@@ -71,6 +71,9 @@ export default function AgentSettingsPage({
   const [systemPrompt, setSystemPrompt] = useState("")
   const [modelId, setModelId] = useState("")
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
+  const [temperature, setTemperature] = useState(0.7)
+  const [topP, setTopP] = useState(1.0)
+  const [maxTokens, setMaxTokens] = useState(4096)
   const [showTriggerForm, setShowTriggerForm] = useState(false)
   const [triggerMinutes, setTriggerMinutes] = useState("10")
   const [triggerMessage, setTriggerMessage] = useState("")
@@ -82,6 +85,9 @@ export default function AgentSettingsPage({
       setSystemPrompt(agent.system_prompt)
       setModelId(agent.model.id)
       setSelectedToolIds(new Set(agent.tools.map((t) => t.id)))
+      setTemperature(agent.model_params?.temperature ?? 0.7)
+      setTopP(agent.model_params?.top_p ?? 1.0)
+      setMaxTokens(agent.model_params?.max_tokens ?? 4096)
     }
   }, [agent])
 
@@ -93,6 +99,7 @@ export default function AgentSettingsPage({
         system_prompt: systemPrompt,
         model_id: modelId,
         tool_ids: Array.from(selectedToolIds),
+        model_params: { temperature, top_p: topP, max_tokens: maxTokens },
       })
       toast.success("저장되었습니다")
     } catch {
@@ -192,6 +199,74 @@ export default function AgentSettingsPage({
           ) : (
             <Skeleton className="h-8 w-full" />
           )}
+        </div>
+
+        {/* Model Parameters */}
+        <div className="space-y-4 rounded-lg border p-4">
+          <label className="text-sm font-medium">모델 파라미터</label>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Temperature</span>
+              <span className="font-mono text-xs tabular-nums">{temperature.toFixed(1)}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.1"
+              value={temperature}
+              onChange={(e) => setTemperature(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>정확</span>
+              <span>창의적</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Top P</span>
+              <span className="font-mono text-xs tabular-nums">{topP.toFixed(1)}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={topP}
+              onChange={(e) => setTopP(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Max Tokens</span>
+            </div>
+            <Input
+              type="number"
+              min="256"
+              max="32768"
+              step="256"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(Number(e.target.value) || 4096)}
+            />
+          </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground"
+            onClick={() => {
+              setTemperature(0.7)
+              setTopP(1.0)
+              setMaxTokens(4096)
+            }}
+          >
+            기본값으로 리셋
+          </Button>
         </div>
 
         {/* Tools */}
