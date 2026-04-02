@@ -15,9 +15,9 @@ class Conversation(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False
+        default=lambda: datetime.now(UTC).replace(tzinfo=None), onupdate=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False
     )
 
     agent: Mapped[Agent] = relationship(back_populates="conversations")
@@ -37,6 +37,6 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     tool_calls: Mapped[dict | None] = mapped_column(JSON)
     tool_call_id: Mapped[str | None] = mapped_column(String(100))
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")

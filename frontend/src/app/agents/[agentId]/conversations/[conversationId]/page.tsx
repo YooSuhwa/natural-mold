@@ -119,9 +119,12 @@ export default function ChatPage({
       setIsStreaming(false)
       setStreamingMessage(null)
       setStreamingToolCalls([])
-      // Refresh messages
+      // Refresh messages and conversation list (title may have changed)
       queryClient.invalidateQueries({
         queryKey: ["conversations", conversationId, "messages"],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["agents", agentId, "conversations"],
       })
     }
   }
@@ -129,7 +132,7 @@ export default function ChatPage({
   return (
     <div className="flex flex-1 overflow-hidden">
       {/* Conversation sidebar */}
-      <div className="hidden w-60 shrink-0 border-r md:block">
+      <div className="hidden w-72 shrink-0 border-r md:block">
         <ConversationList agentId={agentId} />
       </div>
 
@@ -143,14 +146,12 @@ export default function ChatPage({
             </h1>
           </div>
           <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              render={<Link href={`/agents/${agentId}/settings`} />}
-            >
-              <Settings2Icon className="size-4" />
-              <span className="sr-only">설정</span>
-            </Button>
+            <Link href={`/agents/${agentId}/settings`}>
+              <Button variant="ghost" size="icon-sm">
+                <Settings2Icon className="size-4" />
+                <span className="sr-only">설정</span>
+              </Button>
+            </Link>
             <Button
               variant="ghost"
               size="sm"

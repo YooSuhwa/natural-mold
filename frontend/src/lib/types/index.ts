@@ -66,7 +66,7 @@ export interface ModelCreateRequest {
 // Tool
 export interface Tool {
   id: string
-  type: "mcp" | "custom" | "builtin"
+  type: "mcp" | "custom" | "builtin" | "prebuilt"
   is_system: boolean
   mcp_server_id: string | null
   name: string
@@ -75,6 +75,8 @@ export interface Tool {
   api_url: string | null
   http_method: string | null
   auth_type: string | null
+  auth_config: Record<string, unknown> | null
+  server_key_available: boolean
   created_at: string
 }
 

@@ -24,6 +24,15 @@ export function useRegisterMCPServer() {
   })
 }
 
+export function useUpdateToolAuthConfig() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, authConfig }: { id: string; authConfig: Record<string, unknown> }) =>
+      toolsApi.updateAuthConfig(id, authConfig),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tools"] }),
+  })
+}
+
 export function useDeleteTool() {
   const qc = useQueryClient()
   return useMutation({

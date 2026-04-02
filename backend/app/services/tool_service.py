@@ -65,6 +65,22 @@ async def get_mcp_servers(db: AsyncSession, user_id: uuid.UUID) -> list[MCPServe
     return list(result.scalars().all())
 
 
+async def update_tool_auth_config(
+    db: AsyncSession, tool_id: uuid.UUID, auth_config: dict,
+) -> Tool | None:
+    """Update auth_config for a prebuilt tool."""
+    result = await db.execute(select(Tool).where(Tool.id == tool_id))
+    tool = result.scalar_one_or_none()
+    if not tool:
+        return None
+    if tool.type != "prebuilt":
+        return None
+    tool.auth_config = auth_config
+    await db.commit()
+    await db.refresh(tool)
+    return tool
+
+
 async def delete_tool(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     result = await db.execute(
         select(Tool).where(Tool.id == tool_id)

@@ -8,6 +8,7 @@ import {
   isStreamingAtom,
 } from "@/lib/stores/chat-store"
 import { ToolCallDisplay } from "@/components/chat/tool-call-display"
+import { MarkdownContent } from "@/components/chat/markdown-content"
 
 export function StreamingMessage() {
   const streamingMessage = useAtomValue(streamingMessageAtom)
@@ -35,8 +36,8 @@ export function StreamingMessage() {
           </div>
         )}
         {streamingMessage?.content ? (
-          <div className="rounded-2xl bg-muted px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
-            {streamingMessage.content}
+          <div className="rounded-2xl bg-muted px-4 py-2.5 text-sm leading-relaxed">
+            <MarkdownContent content={streamingMessage.content} />
             <span className="inline-block w-1 animate-pulse bg-foreground/40 ml-0.5">
               &nbsp;
             </span>

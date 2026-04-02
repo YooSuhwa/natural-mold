@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.schemas.tool import MCPServerCreate, MCPServerResponse, ToolCustomCreate, ToolResponse
+from app.schemas.tool import MCPServerCreate, MCPServerResponse, ToolAuthConfigUpdate, ToolCustomCreate, ToolResponse
 from app.services import tool_service
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
@@ -57,6 +57,19 @@ async def test_mcp_connection(
 
     test_result = await mcp_test(server.url, server.auth_config)
     return test_result
+
+
+@router.patch("/{tool_id}/auth-config", response_model=ToolResponse)
+async def update_tool_auth_config(
+    tool_id: uuid.UUID,
+    data: ToolAuthConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    tool = await tool_service.update_tool_auth_config(db, tool_id, data.auth_config)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Prebuilt tool not found")
+    return tool
 
 
 @router.delete("/{tool_id}", status_code=204)

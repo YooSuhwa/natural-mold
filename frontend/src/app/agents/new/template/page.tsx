@@ -56,7 +56,7 @@ export default function TemplateSelectionPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
+    <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader title="템플릿으로 만들기" />
 
       <Tabs

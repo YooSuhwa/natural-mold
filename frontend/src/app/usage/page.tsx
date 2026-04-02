@@ -25,7 +25,7 @@ export default function UsagePage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
         <PageHeader title="토큰 사용량" />
         <div className="grid gap-4 sm:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -39,7 +39,7 @@ export default function UsagePage() {
 
   if (!usage || usage.total_tokens === 0) {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
         <PageHeader title="토큰 사용량" />
         <EmptyState
           icon={<BarChart3Icon className="size-6" />}
@@ -51,7 +51,7 @@ export default function UsagePage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
+    <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader title="토큰 사용량" />
 
       {/* Summary cards */}

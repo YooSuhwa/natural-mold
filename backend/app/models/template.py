@@ -20,4 +20,4 @@ class Template(Base):
     recommended_tools: Mapped[dict | None] = mapped_column(JSON)
     recommended_model_id: Mapped[uuid.UUID | None] = mapped_column()
     usage_example: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
