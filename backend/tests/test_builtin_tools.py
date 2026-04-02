@@ -19,6 +19,8 @@ ALL_PREBUILT_NAMES = [
     "Google News Search",
     "Google Image Search",
     "Google Chat Send",
+    "Gmail Read",
+    "Gmail Send",
 ]
 
 
@@ -331,15 +333,87 @@ async def test_google_chat_webhook_success(monkeypatch: pytest.MonkeyPatch):
 
 
 # ---------------------------------------------------------------------------
+# Gmail tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_gmail_read_no_credentials(monkeypatch: pytest.MonkeyPatch):
+    """Gmail Read returns error when OAuth2 credentials are not set."""
+    from app.config import settings
+    from app.agent_runtime.google_workspace_tools import build_gmail_read_tool
+
+    monkeypatch.setattr(settings, "google_oauth_client_id", "")
+    monkeypatch.setattr(settings, "google_oauth_client_secret", "")
+    monkeypatch.setattr(settings, "google_oauth_refresh_token", "")
+
+    tool = build_gmail_read_tool(auth_config=None)
+    result = await tool.ainvoke({"query": "is:unread"})
+    assert "Error" in result
+    assert "OAuth2" in result
+
+
+@pytest.mark.asyncio
+async def test_gmail_send_no_credentials(monkeypatch: pytest.MonkeyPatch):
+    """Gmail Send returns error when OAuth2 credentials are not set."""
+    from app.config import settings
+    from app.agent_runtime.google_workspace_tools import build_gmail_send_tool
+
+    monkeypatch.setattr(settings, "google_oauth_client_id", "")
+    monkeypatch.setattr(settings, "google_oauth_client_secret", "")
+    monkeypatch.setattr(settings, "google_oauth_refresh_token", "")
+
+    tool = build_gmail_send_tool(auth_config=None)
+    result = await tool.ainvoke({"to": "test@example.com", "subject": "Test", "body": "Hello"})
+    assert "Error" in result
+    assert "OAuth2" in result
+
+
+@pytest.mark.asyncio
+async def test_gmail_read_tool_creation():
+    """Gmail Read tool can be created with auth_config."""
+    from app.agent_runtime.google_workspace_tools import build_gmail_read_tool
+
+    tool = build_gmail_read_tool(auth_config={"google_oauth_client_id": "test"})
+    assert tool is not None
+    assert tool.name == "gmail_read"
+    assert "Gmail" in tool.description
+
+
+@pytest.mark.asyncio
+async def test_gmail_send_tool_creation():
+    """Gmail Send tool can be created with auth_config."""
+    from app.agent_runtime.google_workspace_tools import build_gmail_send_tool
+
+    tool = build_gmail_send_tool(auth_config={"google_oauth_client_id": "test"})
+    assert tool is not None
+    assert tool.name == "gmail_send"
+    assert "Gmail" in tool.description
+
+
+def test_google_auth_no_credentials(monkeypatch: pytest.MonkeyPatch):
+    """Google auth returns None when credentials are missing."""
+    from app.config import settings
+    from app.agent_runtime.google_auth import get_google_credentials
+
+    monkeypatch.setattr(settings, "google_oauth_client_id", "")
+    monkeypatch.setattr(settings, "google_oauth_client_secret", "")
+    monkeypatch.setattr(settings, "google_oauth_refresh_token", "")
+
+    creds = get_google_credentials(auth_config=None)
+    assert creds is None
+
+
+# ---------------------------------------------------------------------------
 # Seed data test
 # ---------------------------------------------------------------------------
 
 
 def test_default_tools_count():
-    """All 12 default tools are defined in seed data."""
+    """All 14 default tools are defined in seed data."""
     from app.seed.default_tools import DEFAULT_TOOLS
 
-    assert len(DEFAULT_TOOLS) == 12
+    assert len(DEFAULT_TOOLS) == 14
     names = [t["name"] for t in DEFAULT_TOOLS]
     for expected in ALL_BUILTIN_NAMES + ALL_PREBUILT_NAMES:
         assert expected in names, f"Missing tool in seed data: {expected}"

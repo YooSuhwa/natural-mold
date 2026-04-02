@@ -49,6 +49,11 @@ dependencies = [
 
     # Encryption (API keys)
     "cryptography>=43.0",
+
+    # Google Workspace API
+    "google-auth>=2.0",
+    "google-auth-oauthlib>=1.0",
+    "google-api-python-client>=2.0",
 ]
 
 [project.optional-dependencies]

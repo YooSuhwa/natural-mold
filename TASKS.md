@@ -109,15 +109,15 @@
 
 ## Phase 10B: Backend — Google OAuth2 인프라 + Gmail 도구 (P2)
 
-- [ ] google-auth, google-api-python-client 의존성 추가
-- [ ] config.py — OAuth2 설정 (client_id, client_secret, refresh_token)
-- [ ] google_auth.py — OAuth2 토큰 관리 헬퍼 (자동 갱신)
-- [ ] scripts/google_oauth_setup.py — 1회성 refresh_token 발급 스크립트
-- [ ] google_workspace_tools.py — Gmail Read (목록 조회 + 본문 읽기)
-- [ ] google_workspace_tools.py — Gmail Send (이메일 전송)
-- [ ] tool_factory.py — Gmail 도구 2개 등록
-- [ ] default_tools.py — Gmail 시드 데이터 추가
-- [ ] 테스트
+- [x] google-auth, google-api-python-client 의존성 추가
+- [x] config.py — OAuth2 설정 (client_id, client_secret, refresh_token)
+- [x] google_auth.py — OAuth2 토큰 관리 헬퍼 (자동 갱신)
+- [x] scripts/google_oauth_setup.py — 1회성 refresh_token 발급 스크립트
+- [x] google_workspace_tools.py — Gmail Read (목록 조회 + 본문 읽기)
+- [x] google_workspace_tools.py — Gmail Send (이메일 전송)
+- [x] tool_factory.py — Gmail 도구 2개 등록
+- [x] default_tools.py — Gmail 시드 데이터 추가
+- [x] 테스트 (25개 통과)
 
 ## Phase 10C: Backend — Google Calendar 도구 (P3)
 

@@ -10,7 +10,11 @@ from langchain_core.tools import BaseTool, StructuredTool
 
 from app.config import settings
 from app.agent_runtime.google_tools import build_google_search_tool
-from app.agent_runtime.google_workspace_tools import build_google_chat_webhook_tool
+from app.agent_runtime.google_workspace_tools import (
+    build_google_chat_webhook_tool,
+    build_gmail_read_tool,
+    build_gmail_send_tool,
+)
 from app.agent_runtime.naver_tools import build_naver_search_tool
 
 
@@ -184,6 +188,10 @@ _PREBUILT_REGISTRY: dict[str, _PrebuiltEntry] = {
         "구글에서 이미지를 검색합니다. 글로벌 이미지, 영문 키워드 검색에 유용합니다."),
     "Google Chat Send": _PrebuiltEntry("google_workspace", "chat_send", "google_chat_send",
         "Google Chat 채널에 메시지를 전송합니다. 알림, 보고, 요약 결과 공유 등에 사용하세요."),
+    "Gmail Read": _PrebuiltEntry("google_workspace", "gmail_read", "gmail_read",
+        "Gmail에서 이메일을 검색하고 읽습니다. 검색 쿼리로 필터링할 수 있습니다."),
+    "Gmail Send": _PrebuiltEntry("google_workspace", "gmail_send", "gmail_send",
+        "Gmail로 이메일을 전송합니다. 수신자, 제목, 본문을 지정하여 이메일을 보냅니다."),
 }
 
 
@@ -201,6 +209,10 @@ def create_prebuilt_tool(name: str, auth_config: dict[str, Any] | None = None) -
     elif provider == "google_workspace":
         if search_type == "chat_send":
             return build_google_chat_webhook_tool(auth_config)
+        elif search_type == "gmail_read":
+            return build_gmail_read_tool(auth_config)
+        elif search_type == "gmail_send":
+            return build_gmail_send_tool(auth_config)
         raise ValueError(f"Unknown google_workspace tool: {search_type}")
     else:
         raise ValueError(f"Unknown prebuilt provider: {provider}")

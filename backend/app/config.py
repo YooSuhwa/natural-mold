@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     # Google Chat Webhook
     google_chat_webhook_url: str = ""
 
+    # Google Workspace OAuth2 (Gmail, Calendar)
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    google_oauth_refresh_token: str = ""
+
     # Mock user (PoC: no auth)
     mock_user_id: str = "00000000-0000-0000-0000-000000000001"
     mock_user_email: str = "demo@moldy.dev"

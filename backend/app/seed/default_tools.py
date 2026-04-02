@@ -179,4 +179,40 @@ DEFAULT_TOOLS = [
             "required": ["text"],
         },
     },
+    {
+        "name": "Gmail Read",
+        "type": "prebuilt",
+        "is_system": True,
+        "description": "Gmail에서 이메일을 검색하고 읽습니다. 검색 쿼리로 필터링할 수 있습니다.",
+        "parameters_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Gmail 검색 쿼리 (예: 'is:unread', 'from:boss@company.com')",
+                    "default": "is:inbox",
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "가져올 이메일 수 (1-20, 기본 5)",
+                    "default": 5,
+                },
+            },
+        },
+    },
+    {
+        "name": "Gmail Send",
+        "type": "prebuilt",
+        "is_system": True,
+        "description": "Gmail로 이메일을 전송합니다. 수신자, 제목, 본문을 지정하여 이메일을 보냅니다.",
+        "parameters_schema": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "수신자 이메일 주소"},
+                "subject": {"type": "string", "description": "이메일 제목"},
+                "body": {"type": "string", "description": "이메일 본문 (텍스트)"},
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
 ]
