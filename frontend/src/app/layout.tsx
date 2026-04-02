@@ -32,7 +32,16 @@ export default function RootLayout({
     >
       <body className="h-full bg-background font-sans text-foreground">
         <AppLayout>{children}</AppLayout>
-        <Toaster position="bottom-right" richColors />
+        <Toaster
+          position="top-center"
+          richColors
+          toastOptions={{
+            style: {
+              fontSize: "15px",
+              padding: "16px 24px",
+            },
+          }}
+        />
       </body>
     </html>
   )
