@@ -1,17 +1,32 @@
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
+load_dotenv()  # .env → OS 환경 변수 (LangSmith 등 외부 SDK용)
+
 import os
 import ssl
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-# 사내 프록시 SSL 인증서 — Python 기본 SSL 컨텍스트에 로드
+# 사내 프록시 SSL 인증서 — certifi CA + HC_SSL.pem 결합 번들 생성
 _hc_cert = os.path.expanduser("~/.ssl/HC_SSL.pem")
 if os.path.exists(_hc_cert):
-    os.environ["SSL_CERT_FILE"] = _hc_cert
-    os.environ["REQUESTS_CA_BUNDLE"] = _hc_cert
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.load_verify_locations(_hc_cert)
+    import certifi
+    import tempfile
+
+    # certifi 기본 CA + 사내 CA를 합친 임시 번들 생성
+    _combined = tempfile.NamedTemporaryFile(suffix=".pem", delete=False)
+    with open(certifi.where(), "rb") as f:
+        _combined.write(f.read())
+    with open(_hc_cert, "rb") as f:
+        _combined.write(b"\n")
+        _combined.write(f.read())
+    _combined.close()
+
+    os.environ["SSL_CERT_FILE"] = _combined.name
+    os.environ["REQUESTS_CA_BUNDLE"] = _combined.name
+    ssl_ctx = ssl.create_default_context(cafile=_combined.name)
     ssl._create_default_https_context = lambda: ssl_ctx
 
 from fastapi import FastAPI
@@ -56,17 +71,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             for model_data in DEFAULT_MODELS:
                 db.add(Model(**model_data))
 
-        # Seed default templates
-        result = await db.execute(select(Template).limit(1))
-        if not result.scalar_one_or_none():
-            for tmpl_data in DEFAULT_TEMPLATES:
+        # Seed default templates (upsert by name)
+        existing_tmpl = await db.execute(select(Template.name))
+        existing_tmpl_names = {r[0] for r in existing_tmpl.all()}
+        for tmpl_data in DEFAULT_TEMPLATES:
+            if tmpl_data["name"] not in existing_tmpl_names:
                 db.add(Template(**tmpl_data))
 
-        # Seed system tools (builtin)
-        result = await db.execute(select(Tool).where(Tool.is_system.is_(True)).limit(1))
-        if not result.scalar_one_or_none():
-            for tool_data in DEFAULT_TOOLS:
+        # Seed system tools — upsert by name + sync type field
+        existing_tools_result = await db.execute(
+            select(Tool).where(Tool.is_system.is_(True))
+        )
+        existing_tools_map = {t.name: t for t in existing_tools_result.scalars().all()}
+
+        for tool_data in DEFAULT_TOOLS:
+            existing = existing_tools_map.get(tool_data["name"])
+            if not existing:
                 db.add(Tool(**tool_data))
+            elif existing.type != tool_data["type"]:
+                existing.type = tool_data["type"]
 
         await db.commit()
 
