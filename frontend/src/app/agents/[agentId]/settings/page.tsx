@@ -48,6 +48,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PageHeader } from "@/components/shared/page-header"
+import { FixAgentDialog } from "@/components/agent/fix-agent-dialog"
 
 export default function AgentSettingsPage({
   params,
@@ -148,9 +149,12 @@ export default function AgentSettingsPage({
         <span className="text-sm text-muted-foreground">채팅으로 돌아가기</span>
       </div>
 
-      <PageHeader
-        title={`에이전트 설정: ${agent?.name ?? ""}`}
-      />
+      <div className="flex items-center justify-between">
+        <PageHeader
+          title={`에이전트 설정: ${agent?.name ?? ""}`}
+        />
+        {agent && <FixAgentDialog agentId={agentId} agentName={agent.name} />}
+      </div>
 
       <div className="mx-auto w-full max-w-2xl space-y-6">
         {/* Name */}
