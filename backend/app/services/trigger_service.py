@@ -28,9 +28,7 @@ async def create_trigger(
     return trigger
 
 
-async def list_triggers(
-    db: AsyncSession, agent_id: uuid.UUID
-) -> list[AgentTrigger]:
+async def list_triggers(db: AsyncSession, agent_id: uuid.UUID) -> list[AgentTrigger]:
     result = await db.execute(
         select(AgentTrigger)
         .where(AgentTrigger.agent_id == agent_id)

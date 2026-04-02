@@ -15,7 +15,6 @@ from app.models.token_usage import TokenUsage
 from app.models.user import User
 from tests.conftest import TEST_USER_ID, TestSession
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

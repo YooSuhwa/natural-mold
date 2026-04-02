@@ -46,7 +46,9 @@ async def get_usage_summary(
             func.coalesce(func.sum(TokenUsage.prompt_tokens), 0).label("prompt_tokens"),
             func.coalesce(func.sum(TokenUsage.completion_tokens), 0).label("completion_tokens"),
             func.coalesce(func.sum(TokenUsage.total_tokens), 0).label("total_tokens"),
-            func.coalesce(func.sum(TokenUsage.estimated_cost), Decimal("0")).label("estimated_cost"),
+            func.coalesce(func.sum(TokenUsage.estimated_cost), Decimal("0")).label(
+                "estimated_cost"
+            ),
         )
         .join(Agent, TokenUsage.agent_id == Agent.id)
         .where(Agent.user_id == user_id)
@@ -60,7 +62,9 @@ async def get_usage_summary(
             TokenUsage.agent_id,
             Agent.name.label("agent_name"),
             func.coalesce(func.sum(TokenUsage.total_tokens), 0).label("total_tokens"),
-            func.coalesce(func.sum(TokenUsage.estimated_cost), Decimal("0")).label("estimated_cost"),
+            func.coalesce(func.sum(TokenUsage.estimated_cost), Decimal("0")).label(
+                "estimated_cost"
+            ),
         )
         .join(Agent, TokenUsage.agent_id == Agent.id)
         .where(Agent.user_id == user_id)

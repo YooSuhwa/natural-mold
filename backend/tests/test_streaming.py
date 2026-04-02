@@ -10,7 +10,6 @@ import pytest
 
 from app.agent_runtime.streaming import format_sse, stream_agent_response
 
-
 # ---------------------------------------------------------------------------
 # format_sse
 # ---------------------------------------------------------------------------

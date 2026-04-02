@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.executor import execute_agent_stream
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.schemas.conversation import (
     ConversationCreate,
@@ -14,7 +15,6 @@ from app.schemas.conversation import (
     MessageResponse,
 )
 from app.services import chat_service
-from app.agent_runtime.executor import execute_agent_stream
 
 router = APIRouter(tags=["conversations"])
 
@@ -90,16 +90,18 @@ async def send_message(
         tool = link.tool
         # Merge: tool-level auth_config + agent-level config override
         merged_auth = {**(tool.auth_config or {}), **(link.config or {})}
-        tools_config.append({
-            "type": tool.type,
-            "name": tool.name,
-            "description": tool.description,
-            "api_url": tool.api_url,
-            "http_method": tool.http_method,
-            "parameters_schema": tool.parameters_schema,
-            "auth_type": tool.auth_type,
-            "auth_config": merged_auth or None,
-        })
+        tools_config.append(
+            {
+                "type": tool.type,
+                "name": tool.name,
+                "description": tool.description,
+                "api_url": tool.api_url,
+                "http_method": tool.http_method,
+                "parameters_schema": tool.parameters_schema,
+                "auth_type": tool.auth_type,
+                "auth_config": merged_auth or None,
+            }
+        )
 
     async def generate():
         import json

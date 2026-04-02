@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw"
+import { http, HttpResponse } from 'msw'
 import {
   mockAgentList,
   mockAgent,
@@ -17,9 +17,9 @@ import {
   mockUsageSummary,
   mockCreationSession,
   mockCreationMessageResult,
-} from "./fixtures"
+} from './fixtures'
 
-const API_BASE = "http://localhost:8001"
+const API_BASE = 'http://localhost:8001'
 
 export const handlers = [
   // ── Agents ─────────────────────────────────────────────────────
@@ -28,8 +28,8 @@ export const handlers = [
   }),
 
   http.get(`${API_BASE}/api/agents/:id`, ({ params }) => {
-    if (params.id === "not-found") {
-      return HttpResponse.json({ detail: "Agent not found" }, { status: 404 })
+    if (params.id === 'not-found') {
+      return HttpResponse.json({ detail: 'Agent not found' }, { status: 404 })
     }
     return HttpResponse.json({ ...mockAgent, id: params.id })
   }),
@@ -38,7 +38,7 @@ export const handlers = [
     const body = (await request.json()) as Record<string, unknown>
     return HttpResponse.json({
       ...mockAgent,
-      id: "agent-new",
+      id: 'agent-new',
       name: body.name,
       description: body.description ?? null,
       system_prompt: body.system_prompt,
@@ -67,7 +67,7 @@ export const handlers = [
     const body = (await request.json()) as Record<string, unknown>
     return HttpResponse.json({
       ...mockModel,
-      id: "model-new",
+      id: 'model-new',
       provider: body.provider,
       model_name: body.model_name,
       display_name: body.display_name,
@@ -87,8 +87,8 @@ export const handlers = [
     const body = (await request.json()) as Record<string, unknown>
     return HttpResponse.json({
       ...mockTool,
-      id: "tool-new",
-      type: "custom",
+      id: 'tool-new',
+      type: 'custom',
       is_system: false,
       name: body.name,
       api_url: body.api_url,
@@ -99,21 +99,21 @@ export const handlers = [
     const body = (await request.json()) as Record<string, unknown>
     return HttpResponse.json({
       ...mockMCPServer,
-      id: "mcp-new",
+      id: 'mcp-new',
       name: body.name,
       url: body.url,
     })
   }),
 
   http.post(`${API_BASE}/api/tools/mcp-server/:serverId/test`, () => {
-    return HttpResponse.json({ success: true, tools: [{ name: "test_tool" }] })
+    return HttpResponse.json({ success: true, tools: [{ name: 'test_tool' }] })
   }),
 
   http.patch(`${API_BASE}/api/tools/:id/auth-config`, async ({ params }) => {
     return HttpResponse.json({
       ...mockTool,
       id: params.id,
-      auth_config: { api_key: "***" },
+      auth_config: { api_key: '***' },
     })
   }),
 
@@ -139,7 +139,7 @@ export const handlers = [
     const body = (await request.json()) as Record<string, unknown>
     return HttpResponse.json({
       ...mockConversation,
-      id: "conv-new",
+      id: 'conv-new',
       agent_id: params.agentId,
       title: body.title ?? null,
     })
@@ -158,7 +158,7 @@ export const handlers = [
     const body = (await request.json()) as Record<string, unknown>
     return HttpResponse.json({
       ...mockTrigger,
-      id: "trigger-new",
+      id: 'trigger-new',
       agent_id: params.agentId,
       trigger_type: body.trigger_type,
       schedule_config: body.schedule_config,
@@ -203,6 +203,6 @@ export const handlers = [
   }),
 
   http.post(`${API_BASE}/api/agents/create-session/:id/confirm`, () => {
-    return HttpResponse.json({ ...mockAgent, id: "agent-from-session" })
+    return HttpResponse.json({ ...mockAgent, id: 'agent-from-session' })
   }),
 ]

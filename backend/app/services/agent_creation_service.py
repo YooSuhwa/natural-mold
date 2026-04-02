@@ -5,11 +5,11 @@ import uuid
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.creation_agent import run_creation_conversation
 from app.models.agent import Agent
 from app.models.agent_creation_session import AgentCreationSession
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
-from app.agent_runtime.creation_agent import run_creation_conversation
 
 
 async def create_session(db: AsyncSession, user_id: uuid.UUID) -> AgentCreationSession:
@@ -35,14 +35,10 @@ async def get_session(
     return result.scalar_one_or_none()
 
 
-async def send_message(
-    db: AsyncSession, session: AgentCreationSession, content: str
-) -> dict:
+async def send_message(db: AsyncSession, session: AgentCreationSession, content: str) -> dict:
     # Get available tools and models for context (include system tools)
     tools_result = await db.execute(
-        select(Tool.name).where(
-            or_(Tool.user_id == session.user_id, Tool.is_system.is_(True))
-        )
+        select(Tool.name).where(or_(Tool.user_id == session.user_id, Tool.is_system.is_(True)))
     )
     available_tools = [r[0] for r in tools_result.all()]
 
@@ -72,9 +68,7 @@ async def send_message(
     return response
 
 
-async def confirm_creation(
-    db: AsyncSession, session: AgentCreationSession
-) -> Agent | None:
+async def confirm_creation(db: AsyncSession, session: AgentCreationSession) -> Agent | None:
     if not session.draft_config:
         return None
 
@@ -86,7 +80,7 @@ async def confirm_creation(
     )
     model = model_result.scalar_one_or_none()
     if not model:
-        model_result = await db.execute(select(Model).where(Model.is_default == True))
+        model_result = await db.execute(select(Model).where(Model.is_default.is_(True)))
         model = model_result.scalar_one_or_none()
 
     if not model:

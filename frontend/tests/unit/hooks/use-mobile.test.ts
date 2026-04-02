@@ -1,7 +1,7 @@
-import { renderHook, act } from "@testing-library/react"
-import { useIsMobile } from "@/hooks/use-mobile"
+import { renderHook, act } from '@testing-library/react'
+import { useIsMobile } from '@/hooks/use-mobile'
 
-describe("useIsMobile", () => {
+describe('useIsMobile', () => {
   const originalInnerWidth = window.innerWidth
   const listeners: Array<() => void> = []
 
@@ -23,14 +23,14 @@ describe("useIsMobile", () => {
   })
 
   afterEach(() => {
-    Object.defineProperty(window, "innerWidth", {
+    Object.defineProperty(window, 'innerWidth', {
       value: originalInnerWidth,
       writable: true,
     })
   })
 
-  it("returns false on desktop width", () => {
-    Object.defineProperty(window, "innerWidth", {
+  it('returns false on desktop width', () => {
+    Object.defineProperty(window, 'innerWidth', {
       value: 1024,
       writable: true,
     })
@@ -38,8 +38,8 @@ describe("useIsMobile", () => {
     expect(result.current).toBe(false)
   })
 
-  it("returns true on mobile width", () => {
-    Object.defineProperty(window, "innerWidth", {
+  it('returns true on mobile width', () => {
+    Object.defineProperty(window, 'innerWidth', {
       value: 400,
       writable: true,
     })
@@ -47,8 +47,8 @@ describe("useIsMobile", () => {
     expect(result.current).toBe(true)
   })
 
-  it("updates when window resizes", () => {
-    Object.defineProperty(window, "innerWidth", {
+  it('updates when window resizes', () => {
+    Object.defineProperty(window, 'innerWidth', {
       value: 1024,
       writable: true,
     })
@@ -56,7 +56,7 @@ describe("useIsMobile", () => {
     expect(result.current).toBe(false)
 
     act(() => {
-      Object.defineProperty(window, "innerWidth", {
+      Object.defineProperty(window, 'innerWidth', {
         value: 400,
         writable: true,
       })

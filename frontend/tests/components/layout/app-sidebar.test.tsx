@@ -1,8 +1,8 @@
-import { render, screen } from "../../test-utils"
-import { AppSidebar } from "@/components/layout/app-sidebar"
-import { mockAgentList } from "../../mocks/fixtures"
+import { render, screen } from '../../test-utils'
+import { AppSidebar } from '@/components/layout/app-sidebar'
+import { mockAgentList } from '../../mocks/fixtures'
 
-vi.mock("next/link", () => ({
+vi.mock('next/link', () => ({
   default: ({
     children,
     href,
@@ -18,18 +18,18 @@ vi.mock("next/link", () => ({
   ),
 }))
 
-vi.mock("next/navigation", () => ({
-  usePathname: () => "/",
+vi.mock('next/navigation', () => ({
+  usePathname: () => '/',
 }))
 
 const mockUseAgents = vi.fn()
 
-vi.mock("@/lib/hooks/use-agents", () => ({
+vi.mock('@/lib/hooks/use-agents', () => ({
   useAgents: () => mockUseAgents(),
 }))
 
 // Mock the sidebar UI components to avoid base-ui complexity
-vi.mock("@/components/ui/sidebar", () => ({
+vi.mock('@/components/ui/sidebar', () => ({
   Sidebar: ({ children, ...props }: { children: React.ReactNode }) => (
     <aside data-testid="sidebar" {...props}>
       {children}
@@ -41,21 +41,13 @@ vi.mock("@/components/ui/sidebar", () => ({
   SidebarFooter: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="sidebar-footer">{children}</div>
   ),
-  SidebarGroup: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  SidebarGroupContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  SidebarGroupLabel: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
+  SidebarGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SidebarGroupContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  SidebarGroupLabel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   SidebarHeader: ({ children, ...props }: { children: React.ReactNode }) => (
     <div {...props}>{children}</div>
   ),
-  SidebarMenu: ({ children }: { children: React.ReactNode }) => (
-    <ul>{children}</ul>
-  ),
+  SidebarMenu: ({ children }: { children: React.ReactNode }) => <ul>{children}</ul>,
   SidebarMenuButton: ({
     children,
     render: renderProp,
@@ -65,7 +57,7 @@ vi.mock("@/components/ui/sidebar", () => ({
     render?: React.ReactElement
     [key: string]: unknown
   }) => {
-    if (renderProp && typeof renderProp === "object" && "props" in renderProp) {
+    if (renderProp && typeof renderProp === 'object' && 'props' in renderProp) {
       const linkProps = renderProp.props as Record<string, unknown>
       return (
         <a href={linkProps.href as string} {...props}>
@@ -75,22 +67,18 @@ vi.mock("@/components/ui/sidebar", () => ({
     }
     return <button {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}>{children}</button>
   },
-  SidebarMenuItem: ({ children }: { children: React.ReactNode }) => (
-    <li>{children}</li>
-  ),
+  SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
   SidebarSeparator: () => <hr />,
 }))
 
-vi.mock("@/components/ui/skeleton", () => ({
+vi.mock('@/components/ui/skeleton', () => ({
   Skeleton: ({ className }: { className?: string }) => (
     <div data-slot="skeleton" className={className} />
   ),
 }))
 
-vi.mock("@/components/ui/dropdown-menu", () => ({
-  DropdownMenu: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
+vi.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuTrigger: ({
     children,
     render: renderProp,
@@ -98,65 +86,61 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
     children: React.ReactNode
     render?: React.ReactElement
   }) => <div>{renderProp || children}</div>,
-  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  DropdownMenuItem: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuSeparator: () => <hr />,
 }))
 
-describe("AppSidebar", () => {
+describe('AppSidebar', () => {
   beforeEach(() => {
     mockUseAgents.mockReturnValue({ data: undefined, isLoading: false })
   })
 
-  it("renders sidebar with brand", () => {
+  it('renders sidebar with brand', () => {
     render(<AppSidebar />)
-    expect(screen.getByText("Moldy")).toBeInTheDocument()
-    expect(screen.getByText("M")).toBeInTheDocument()
+    expect(screen.getByText('Moldy')).toBeInTheDocument()
+    expect(screen.getByText('M')).toBeInTheDocument()
   })
 
-  it("renders navigation items", () => {
+  it('renders navigation items', () => {
     render(<AppSidebar />)
-    expect(screen.getByText("홈")).toBeInTheDocument()
-    expect(screen.getByText("도구")).toBeInTheDocument()
-    expect(screen.getByText("모델")).toBeInTheDocument()
-    expect(screen.getByText("사용량")).toBeInTheDocument()
+    expect(screen.getByText('홈')).toBeInTheDocument()
+    expect(screen.getByText('도구')).toBeInTheDocument()
+    expect(screen.getByText('모델')).toBeInTheDocument()
+    expect(screen.getByText('사용량')).toBeInTheDocument()
   })
 
-  it("renders new agent button", () => {
+  it('renders new agent button', () => {
     render(<AppSidebar />)
-    expect(screen.getByText("새 에이전트")).toBeInTheDocument()
+    expect(screen.getByText('새 에이전트')).toBeInTheDocument()
   })
 
-  it("shows recent agents when loaded", () => {
+  it('shows recent agents when loaded', () => {
     mockUseAgents.mockReturnValue({
       data: mockAgentList,
       isLoading: false,
     })
     render(<AppSidebar />)
-    expect(screen.getByText("최근 에이전트")).toBeInTheDocument()
-    expect(screen.getByText("Test Agent")).toBeInTheDocument()
-    expect(screen.getByText("Second Agent")).toBeInTheDocument()
+    expect(screen.getByText('최근 에이전트')).toBeInTheDocument()
+    expect(screen.getByText('Test Agent')).toBeInTheDocument()
+    expect(screen.getByText('Second Agent')).toBeInTheDocument()
   })
 
-  it("shows loading skeletons for recent agents", () => {
+  it('shows loading skeletons for recent agents', () => {
     mockUseAgents.mockReturnValue({ data: undefined, isLoading: true })
     const { container } = render(<AppSidebar />)
     const skeletons = container.querySelectorAll("[data-slot='skeleton']")
     expect(skeletons.length).toBeGreaterThan(0)
   })
 
-  it("renders footer section", () => {
+  it('renders footer section', () => {
     render(<AppSidebar />)
-    expect(screen.getByTestId("sidebar-footer")).toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-footer')).toBeInTheDocument()
   })
 
-  it("does not show recent agents section when empty", () => {
+  it('does not show recent agents section when empty', () => {
     mockUseAgents.mockReturnValue({ data: [], isLoading: false })
     render(<AppSidebar />)
-    expect(screen.queryByText("최근 에이전트")).not.toBeInTheDocument()
+    expect(screen.queryByText('최근 에이전트')).not.toBeInTheDocument()
   })
 })

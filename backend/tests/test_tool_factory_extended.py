@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -13,7 +13,6 @@ from app.agent_runtime.tool_factory import (
     create_prebuilt_tool,
     create_tool_from_db,
 )
-
 
 # ---------------------------------------------------------------------------
 # create_builtin_tool — individual tools

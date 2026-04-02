@@ -29,12 +29,8 @@ class TestTokenTrackingCallback:
 
     async def test_accumulation_across_multiple_calls(self):
         cb = TokenTrackingCallback()
-        r1 = _make_llm_result(
-            {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
-        )
-        r2 = _make_llm_result(
-            {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
-        )
+        r1 = _make_llm_result({"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15})
+        r2 = _make_llm_result({"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30})
         await cb.on_llm_end(r1)
         await cb.on_llm_end(r2)
 

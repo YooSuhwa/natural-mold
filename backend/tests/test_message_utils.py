@@ -29,21 +29,25 @@ class TestConvertToLangchainMessages:
         assert msgs[0].content == "Hi there"
 
     def test_mixed_roles(self):
-        msgs = convert_to_langchain_messages([
-            {"role": "system", "content": "sys"},
-            {"role": "user", "content": "usr"},
-            {"role": "assistant", "content": "asst"},
-        ])
+        msgs = convert_to_langchain_messages(
+            [
+                {"role": "system", "content": "sys"},
+                {"role": "user", "content": "usr"},
+                {"role": "assistant", "content": "asst"},
+            ]
+        )
         assert len(msgs) == 3
         assert isinstance(msgs[0], SystemMessage)
         assert isinstance(msgs[1], HumanMessage)
         assert isinstance(msgs[2], AIMessage)
 
     def test_unknown_role_skipped(self):
-        msgs = convert_to_langchain_messages([
-            {"role": "unknown", "content": "???"},
-            {"role": "user", "content": "Hello"},
-        ])
+        msgs = convert_to_langchain_messages(
+            [
+                {"role": "unknown", "content": "???"},
+                {"role": "user", "content": "Hello"},
+            ]
+        )
         assert len(msgs) == 1
         assert isinstance(msgs[0], HumanMessage)
 
@@ -59,24 +63,17 @@ class TestExtractJsonFromMarkdown:
         assert result == {"name": "Agent", "model": "gpt-4o"}
 
     def test_multiple_json_blocks_merged(self):
-        content = (
-            '```json\n{"name": "Agent"}\n```\n'
-            'Some text\n'
-            '```json\n{"model": "gpt-4o"}\n```'
-        )
+        content = '```json\n{"name": "Agent"}\n```\nSome text\n```json\n{"model": "gpt-4o"}\n```'
         result = extract_json_from_markdown(content)
         assert result == {"name": "Agent", "model": "gpt-4o"}
 
     def test_invalid_json_skipped(self):
-        content = (
-            '```json\n{invalid json}\n```\n'
-            '```json\n{"valid": true}\n```'
-        )
+        content = '```json\n{invalid json}\n```\n```json\n{"valid": true}\n```'
         result = extract_json_from_markdown(content)
         assert result == {"valid": True}
 
     def test_all_invalid_json_returns_none(self):
-        content = '```json\n{broken\n```'
+        content = "```json\n{broken\n```"
         result = extract_json_from_markdown(content)
         assert result is None
 
@@ -97,11 +94,7 @@ class TestStripJsonBlocks:
         assert result == "Before\n\nAfter"
 
     def test_removes_multiple_blocks(self):
-        content = (
-            'Start\n```json\n{"a": 1}\n```\n'
-            'Middle\n```json\n{"b": 2}\n```\n'
-            'End'
-        )
+        content = 'Start\n```json\n{"a": 1}\n```\nMiddle\n```json\n{"b": 2}\n```\nEnd'
         result = strip_json_blocks(content)
         assert "json" not in result
         assert "Start" in result

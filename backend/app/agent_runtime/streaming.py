@@ -29,12 +29,11 @@ async def stream_agent_response(
             stream_mode="messages",
         ):
             msg, metadata = chunk
-            if hasattr(msg, "content") and msg.content:
-                if msg.type in ("ai", "AIMessageChunk"):
-                    delta = msg.content
-                    if isinstance(delta, str):
-                        full_content += delta
-                        yield format_sse("content_delta", {"delta": delta})
+            if hasattr(msg, "content") and msg.content and msg.type in ("ai", "AIMessageChunk"):
+                delta = msg.content
+                if isinstance(delta, str):
+                    full_content += delta
+                    yield format_sse("content_delta", {"delta": delta})
 
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tc in msg.tool_calls:

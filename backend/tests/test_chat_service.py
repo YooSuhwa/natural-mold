@@ -8,7 +8,6 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
-from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User

@@ -1,8 +1,8 @@
-import { atom } from "jotai"
+import { atom } from 'jotai'
 
 export interface StreamingToolCall {
   name: string
-  status: "calling" | "completed"
+  status: 'calling' | 'completed'
   params?: Record<string, unknown>
   result?: string
 }

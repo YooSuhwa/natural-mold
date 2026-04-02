@@ -6,9 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
+from app.scheduler import add_trigger_job, pause_trigger_job, remove_trigger_job
 from app.schemas.trigger import TriggerCreate, TriggerResponse, TriggerUpdate
 from app.services import trigger_service
-from app.scheduler import add_trigger_job, remove_trigger_job, pause_trigger_job
 
 router = APIRouter(prefix="/api/agents/{agent_id}/triggers", tags=["triggers"])
 

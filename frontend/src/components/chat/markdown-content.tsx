@@ -1,25 +1,19 @@
-"use client"
+'use client'
 
-import type { Components } from "react-markdown"
-import Markdown from "react-markdown"
-import { cn } from "@/lib/utils"
+import type { Components } from 'react-markdown'
+import Markdown from 'react-markdown'
+import { cn } from '@/lib/utils'
 
 const markdownComponents: Components = {
   p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-  strong: ({ children }) => (
-    <strong className="font-semibold">{children}</strong>
-  ),
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
   em: ({ children }) => <em className="italic">{children}</em>,
-  ul: ({ children }) => (
-    <ul className="mb-2 ml-4 list-disc space-y-0.5 last:mb-0">{children}</ul>
-  ),
+  ul: ({ children }) => <ul className="mb-2 ml-4 list-disc space-y-0.5 last:mb-0">{children}</ul>,
   ol: ({ children }) => (
-    <ol className="mb-2 ml-4 list-decimal space-y-0.5 last:mb-0">
-      {children}
-    </ol>
+    <ol className="mb-2 ml-4 list-decimal space-y-0.5 last:mb-0">{children}</ol>
   ),
   code: ({ children, className: codeClassName }) => {
-    if (codeClassName?.includes("language-")) {
+    if (codeClassName?.includes('language-')) {
       return (
         <code className="block overflow-x-auto rounded-md bg-foreground/5 p-2.5 text-xs font-mono">
           {children}
@@ -27,9 +21,7 @@ const markdownComponents: Components = {
       )
     }
     return (
-      <code className="rounded bg-foreground/10 px-1 py-0.5 text-xs font-mono">
-        {children}
-      </code>
+      <code className="rounded bg-foreground/10 px-1 py-0.5 text-xs font-mono">{children}</code>
     )
   },
   pre: ({ children }) => <pre className="mb-2 last:mb-0">{children}</pre>,
@@ -48,15 +40,9 @@ const markdownComponents: Components = {
       {children}
     </a>
   ),
-  h1: ({ children }) => (
-    <p className="mb-2 text-base font-bold last:mb-0">{children}</p>
-  ),
-  h2: ({ children }) => (
-    <p className="mb-2 text-base font-bold last:mb-0">{children}</p>
-  ),
-  h3: ({ children }) => (
-    <p className="mb-1.5 font-semibold last:mb-0">{children}</p>
-  ),
+  h1: ({ children }) => <p className="mb-2 text-base font-bold last:mb-0">{children}</p>,
+  h2: ({ children }) => <p className="mb-2 text-base font-bold last:mb-0">{children}</p>,
+  h3: ({ children }) => <p className="mb-1.5 font-semibold last:mb-0">{children}</p>,
   hr: () => <hr className="my-3 border-foreground/10" />,
 }
 
@@ -67,7 +53,7 @@ interface MarkdownContentProps {
 
 export function MarkdownContent({ content, className }: MarkdownContentProps) {
   return (
-    <div className={cn("prose-chat", className)}>
+    <div className={cn('prose-chat', className)}>
       <Markdown components={markdownComponents}>{content}</Markdown>
     </div>
   )

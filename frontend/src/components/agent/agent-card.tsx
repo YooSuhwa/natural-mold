@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import Link from "next/link"
-import { WrenchIcon, TimerIcon } from "lucide-react"
+import Link from 'next/link'
+import { WrenchIcon } from 'lucide-react'
 import {
   Card,
   CardHeader,
@@ -9,9 +9,9 @@ import {
   CardDescription,
   CardContent,
   CardFooter,
-} from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import type { Agent } from "@/lib/types"
+} from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import type { Agent } from '@/lib/types'
 
 interface AgentCardProps {
   agent: Agent
@@ -19,18 +19,14 @@ interface AgentCardProps {
 
 export function AgentCard({ agent }: AgentCardProps) {
   const statusColor =
-    agent.status === "active"
-      ? "bg-emerald-500"
-      : agent.status === "error"
-        ? "bg-red-500"
-        : "bg-yellow-500"
+    agent.status === 'active'
+      ? 'bg-emerald-500'
+      : agent.status === 'error'
+        ? 'bg-red-500'
+        : 'bg-yellow-500'
 
   const statusLabel =
-    agent.status === "active"
-      ? "활성"
-      : agent.status === "error"
-        ? "오류"
-        : "비활성"
+    agent.status === 'active' ? '활성' : agent.status === 'error' ? '오류' : '비활성'
 
   return (
     <Link
@@ -49,9 +45,7 @@ export function AgentCard({ agent }: AgentCardProps) {
             </Badge>
           </div>
           {agent.description && (
-            <CardDescription className="line-clamp-2">
-              {agent.description}
-            </CardDescription>
+            <CardDescription className="line-clamp-2">{agent.description}</CardDescription>
           )}
         </CardHeader>
         <CardContent>
@@ -63,15 +57,13 @@ export function AgentCard({ agent }: AgentCardProps) {
             {agent.tools.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <WrenchIcon className="size-3.5" />
-                <span>
-                  {agent.tools.map((t) => t.name).join(", ")}
-                </span>
+                <span>{agent.tools.map((t) => t.name).join(', ')}</span>
               </div>
             )}
           </div>
         </CardContent>
         <CardFooter className="text-xs text-muted-foreground">
-          {new Date(agent.created_at).toLocaleDateString("ko-KR")} 생성
+          {new Date(agent.created_at).toLocaleDateString('ko-KR')} 생성
         </CardFooter>
       </Card>
     </Link>

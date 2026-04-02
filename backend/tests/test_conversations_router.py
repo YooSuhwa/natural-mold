@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
@@ -15,7 +14,6 @@ from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
 from tests.conftest import TEST_USER_ID, TestSession
-
 
 # ---------------------------------------------------------------------------
 # Helpers

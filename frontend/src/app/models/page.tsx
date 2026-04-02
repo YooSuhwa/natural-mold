@@ -1,26 +1,20 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import {
-  PlusIcon,
-  CpuIcon,
-  Trash2Icon,
-  Loader2Icon,
-  StarIcon,
-} from "lucide-react"
-import { useModels, useCreateModel, useDeleteModel } from "@/lib/hooks/use-models"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Input } from "@/components/ui/input"
+import { useState } from 'react'
+import { PlusIcon, CpuIcon, Trash2Icon, Loader2Icon, StarIcon } from 'lucide-react'
+import { useModels, useCreateModel, useDeleteModel } from '@/lib/hooks/use-models'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from "@/components/ui/select"
+} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -29,15 +23,15 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { EmptyState } from "@/components/shared/empty-state"
-import { PageHeader } from "@/components/shared/page-header"
+} from '@/components/ui/dialog'
+import { EmptyState } from '@/components/shared/empty-state'
+import { PageHeader } from '@/components/shared/page-header'
 
 const providers = [
-  { value: "openai", label: "OpenAI" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "google", label: "Google" },
-  { value: "custom", label: "기타" },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'google', label: 'Google' },
+  { value: 'custom', label: '기타' },
 ]
 
 export default function ModelsPage() {
@@ -46,18 +40,18 @@ export default function ModelsPage() {
   const deleteModel = useDeleteModel()
 
   const [open, setOpen] = useState(false)
-  const [provider, setProvider] = useState("openai")
-  const [modelName, setModelName] = useState("")
-  const [displayName, setDisplayName] = useState("")
-  const [baseUrl, setBaseUrl] = useState("")
-  const [apiKey, setApiKey] = useState("")
+  const [provider, setProvider] = useState('openai')
+  const [modelName, setModelName] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
+  const [apiKey, setApiKey] = useState('')
 
   function resetForm() {
-    setProvider("openai")
-    setModelName("")
-    setDisplayName("")
-    setBaseUrl("")
-    setApiKey("")
+    setProvider('openai')
+    setModelName('')
+    setDisplayName('')
+    setBaseUrl('')
+    setApiKey('')
   }
 
   async function handleCreate() {
@@ -74,14 +68,14 @@ export default function ModelsPage() {
 
   function getProviderIcon(p: string) {
     switch (p) {
-      case "openai":
-        return "OAI"
-      case "anthropic":
-        return "ANT"
-      case "google":
-        return "GGL"
+      case 'openai':
+        return 'OAI'
+      case 'anthropic':
+        return 'ANT'
+      case 'google':
+        return 'GGL'
       default:
-        return "AI"
+        return 'AI'
     }
   }
 
@@ -102,15 +96,18 @@ export default function ModelsPage() {
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
                 <DialogTitle>모델 추가</DialogTitle>
-                <DialogDescription>
-                  새 LLM 모델을 등록합니다.
-                </DialogDescription>
+                <DialogDescription>새 LLM 모델을 등록합니다.</DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">제공자</label>
-                  <Select value={provider} onValueChange={(val) => { if (val) setProvider(val) }}>
+                  <Select
+                    value={provider}
+                    onValueChange={(val) => {
+                      if (val) setProvider(val)
+                    }}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="제공자 선택" />
                     </SelectTrigger>
@@ -169,9 +166,7 @@ export default function ModelsPage() {
                   onClick={handleCreate}
                   disabled={!modelName.trim() || createModel.isPending}
                 >
-                  {createModel.isPending && (
-                    <Loader2Icon className="mr-1 size-4 animate-spin" />
-                  )}
+                  {createModel.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
                   등록
                 </Button>
               </DialogFooter>
@@ -197,9 +192,7 @@ export default function ModelsPage() {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">
-                        {model.display_name}
-                      </span>
+                      <span className="text-sm font-medium">{model.display_name}</span>
                       <Badge variant="outline">{model.provider}</Badge>
                       {model.is_default && (
                         <Badge variant="secondary">
@@ -208,9 +201,7 @@ export default function ModelsPage() {
                         </Badge>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {model.model_name}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{model.model_name}</p>
                   </div>
                 </div>
                 <Button

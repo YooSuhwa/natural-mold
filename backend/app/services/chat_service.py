@@ -13,9 +13,7 @@ from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink
 
 
-async def list_conversations(
-    db: AsyncSession, agent_id: uuid.UUID
-) -> list[Conversation]:
+async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conversation]:
     result = await db.execute(
         select(Conversation)
         .where(Conversation.agent_id == agent_id)
@@ -34,12 +32,8 @@ async def create_conversation(
     return conv
 
 
-async def get_conversation(
-    db: AsyncSession, conversation_id: uuid.UUID
-) -> Conversation | None:
-    result = await db.execute(
-        select(Conversation).where(Conversation.id == conversation_id)
-    )
+async def get_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> Conversation | None:
+    result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
     return result.scalar_one_or_none()
 
 

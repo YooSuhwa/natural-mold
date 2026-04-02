@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.agent_runtime.message_utils import convert_to_langchain_messages, extract_json_from_markdown, strip_json_blocks
+from app.agent_runtime.message_utils import (
+    convert_to_langchain_messages,
+    extract_json_from_markdown,
+    strip_json_blocks,
+)
 from app.agent_runtime.model_factory import create_chat_model
 
 CREATION_SYSTEM_PROMPT = """당신은 AI 에이전트 빌더 'Moldy'의 에이전트 설계 전문가입니다.

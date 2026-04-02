@@ -16,12 +16,12 @@ def _mock_response(status_code: int = 200, json_data: dict | None = None):
 
 class TestMcpConnection:
     async def test_success(self):
-        init_resp = _mock_response(200, {
-            "result": {"serverInfo": {"name": "test-server", "version": "1.0"}}
-        })
-        tools_resp = _mock_response(200, {
-            "result": {"tools": [{"name": "tool1"}, {"name": "tool2"}]}
-        })
+        init_resp = _mock_response(
+            200, {"result": {"serverInfo": {"name": "test-server", "version": "1.0"}}}
+        )
+        tools_resp = _mock_response(
+            200, {"result": {"tools": [{"name": "tool1"}, {"name": "tool2"}]}}
+        )
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=[init_resp, tools_resp])
@@ -50,9 +50,7 @@ class TestMcpConnection:
 
     async def test_connection_error(self):
         mock_client = AsyncMock()
-        mock_client.post = AsyncMock(
-            side_effect=httpx.ConnectError("Connection refused")
-        )
+        mock_client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 

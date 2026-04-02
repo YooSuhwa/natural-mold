@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
@@ -16,7 +15,6 @@ from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
 from tests.conftest import TEST_USER_ID, TestSession
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -87,12 +85,15 @@ async def test_execute_trigger_success():
         yield 'event: content_delta\ndata: {"delta": "결과입니다"}\n\n'
         yield 'event: message_end\ndata: {"content": "뉴스 결과입니다", "usage": {}}\n\n'
 
-    with patch(
-        "app.agent_runtime.trigger_executor.execute_agent_stream",
-        side_effect=mock_stream,
-    ), patch(
-        "app.agent_runtime.trigger_executor.async_session",
-        TestSession,
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
     ):
         from app.agent_runtime.trigger_executor import execute_trigger
 
@@ -185,12 +186,15 @@ async def test_execute_trigger_execution_error():
         # Make it an async generator that raises
         yield  # pragma: no cover
 
-    with patch(
-        "app.agent_runtime.trigger_executor.execute_agent_stream",
-        side_effect=mock_stream,
-    ), patch(
-        "app.agent_runtime.trigger_executor.async_session",
-        TestSession,
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
     ):
         from app.agent_runtime.trigger_executor import execute_trigger
 
@@ -210,12 +214,15 @@ async def test_execute_trigger_run_count_incremented():
     async def mock_stream(*args, **kwargs):
         yield 'event: message_end\ndata: {"content": "done", "usage": {}}\n\n'
 
-    with patch(
-        "app.agent_runtime.trigger_executor.execute_agent_stream",
-        side_effect=mock_stream,
-    ), patch(
-        "app.agent_runtime.trigger_executor.async_session",
-        TestSession,
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
     ):
         from app.agent_runtime.trigger_executor import execute_trigger
 
@@ -236,12 +243,15 @@ async def test_execute_trigger_content_parsing():
         yield 'event: content_delta\ndata: {"delta": "Part2"}\n\n'
         yield 'event: message_end\ndata: {"content": "Part1 Part2", "usage": {}}\n\n'
 
-    with patch(
-        "app.agent_runtime.trigger_executor.execute_agent_stream",
-        side_effect=mock_stream,
-    ), patch(
-        "app.agent_runtime.trigger_executor.async_session",
-        TestSession,
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
     ):
         from app.agent_runtime.trigger_executor import execute_trigger
 
@@ -249,9 +259,7 @@ async def test_execute_trigger_content_parsing():
 
     # Find the assistant message saved
     async with TestSession() as db:
-        result = await db.execute(
-            select(Message).where(Message.role == "assistant")
-        )
+        result = await db.execute(select(Message).where(Message.role == "assistant"))
         msgs = result.scalars().all()
         assert len(msgs) == 1
         assert "Part1" in msgs[0].content
@@ -265,21 +273,22 @@ async def test_execute_trigger_creates_conversation():
     async def mock_stream(*args, **kwargs):
         yield 'event: message_end\ndata: {"content": "ok", "usage": {}}\n\n'
 
-    with patch(
-        "app.agent_runtime.trigger_executor.execute_agent_stream",
-        side_effect=mock_stream,
-    ), patch(
-        "app.agent_runtime.trigger_executor.async_session",
-        TestSession,
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
     ):
         from app.agent_runtime.trigger_executor import execute_trigger
 
         await execute_trigger(str(trigger_id))
 
     async with TestSession() as db:
-        result = await db.execute(
-            select(Conversation).where(Conversation.agent_id == agent_id)
-        )
+        result = await db.execute(select(Conversation).where(Conversation.agent_id == agent_id))
         convs = result.scalars().all()
         assert len(convs) == 1
         assert "자동 실행" in convs[0].title
@@ -296,12 +305,15 @@ async def test_execute_trigger_with_tools_config():
         captured_kwargs.update(kwargs)
         yield 'event: message_end\ndata: {"content": "ok", "usage": {}}\n\n'
 
-    with patch(
-        "app.agent_runtime.trigger_executor.execute_agent_stream",
-        side_effect=mock_stream,
-    ), patch(
-        "app.agent_runtime.trigger_executor.async_session",
-        TestSession,
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
     ):
         from app.agent_runtime.trigger_executor import execute_trigger
 
@@ -322,21 +334,22 @@ async def test_execute_trigger_saves_user_message():
     async def mock_stream(*args, **kwargs):
         yield 'event: message_end\ndata: {"content": "ok", "usage": {}}\n\n'
 
-    with patch(
-        "app.agent_runtime.trigger_executor.execute_agent_stream",
-        side_effect=mock_stream,
-    ), patch(
-        "app.agent_runtime.trigger_executor.async_session",
-        TestSession,
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
     ):
         from app.agent_runtime.trigger_executor import execute_trigger
 
         await execute_trigger(str(trigger_id))
 
     async with TestSession() as db:
-        result = await db.execute(
-            select(Message).where(Message.role == "user")
-        )
+        result = await db.execute(select(Message).where(Message.role == "user"))
         msgs = result.scalars().all()
         assert len(msgs) == 1
         assert msgs[0].content == "뉴스 검색해줘"

@@ -12,7 +12,6 @@ from app.models.tool import MCPServer, Tool
 from app.models.user import User
 from tests.conftest import TEST_USER_ID, TestSession
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

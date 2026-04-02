@@ -9,14 +9,12 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.agent import Agent
 from app.models.agent_creation_session import AgentCreationSession
 from app.models.model import Model
 from app.models.tool import Tool
 from app.models.user import User
 from app.services import agent_creation_service
 from tests.conftest import TEST_USER_ID, TestSession
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -305,9 +303,7 @@ async def test_service_send_message_updates_draft_config(db: AsyncSession):
 async def test_service_confirm_finds_model_by_name(db: AsyncSession):
     user = User(id=TEST_USER_ID, email="test@test.com", name="Test")
     db.add(user)
-    model = Model(
-        provider="openai", model_name="gpt-4o", display_name="GPT-4o", is_default=False
-    )
+    model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o", is_default=False)
     db.add(model)
     await db.flush()
 
@@ -382,9 +378,7 @@ async def test_service_confirm_no_model_returns_none(db: AsyncSession):
 async def test_service_confirm_links_tools_by_name(db: AsyncSession):
     user = User(id=TEST_USER_ID, email="test@test.com", name="Test")
     db.add(user)
-    model = Model(
-        provider="openai", model_name="gpt-4o", display_name="GPT-4o", is_default=True
-    )
+    model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o", is_default=True)
     db.add(model)
     await db.flush()
 
@@ -414,9 +408,7 @@ async def test_service_confirm_links_tools_by_name(db: AsyncSession):
 async def test_service_confirm_sets_completed_status(db: AsyncSession):
     user = User(id=TEST_USER_ID, email="test@test.com", name="Test")
     db.add(user)
-    model = Model(
-        provider="openai", model_name="gpt-4o", display_name="GPT-4o", is_default=True
-    )
+    model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o", is_default=True)
     db.add(model)
     await db.flush()
 

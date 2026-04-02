@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # build_agent
@@ -155,9 +154,7 @@ async def test_execute_stream_prebuilt_tool(
     mock_stream.return_value = fake_stream()
 
     auth = {"naver_client_id": "id"}
-    tools_config = [
-        {"type": "prebuilt", "name": "Naver Blog Search", "auth_config": auth}
-    ]
+    tools_config = [{"type": "prebuilt", "name": "Naver Blog Search", "auth_config": auth}]
 
     async for _ in execute_agent_stream(
         provider="openai",
