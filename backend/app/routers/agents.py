@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
+from app.exceptions import NotFoundError
 from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate, ToolBrief
 from app.services import agent_service
 
@@ -58,7 +59,7 @@ async def get_agent(
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     return _agent_to_response(agent)
 
 
@@ -71,7 +72,7 @@ async def update_agent(
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     updated = await agent_service.update_agent(db, agent, data)
     return _agent_to_response(updated)
 
@@ -84,5 +85,5 @@ async def delete_agent(
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     await agent_service.delete_agent(db, agent)

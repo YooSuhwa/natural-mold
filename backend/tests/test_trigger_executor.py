@@ -102,6 +102,7 @@ async def test_execute_trigger_success():
     # Verify trigger state updated
     async with TestSession() as db:
         trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
         assert trigger.run_count == 1
         assert trigger.last_run_at is not None
 
@@ -137,6 +138,7 @@ async def test_execute_trigger_inactive():
     # run_count should still be 0
     async with TestSession() as db:
         trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
         assert trigger.run_count == 0
 
 
@@ -173,6 +175,7 @@ async def test_execute_trigger_agent_not_found():
 
     async with TestSession() as db:
         trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
         assert trigger.status == "error"
 
 
@@ -202,6 +205,7 @@ async def test_execute_trigger_execution_error():
 
     async with TestSession() as db:
         trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
         assert trigger.run_count == 1
         assert trigger.last_run_at is not None
 
@@ -230,6 +234,7 @@ async def test_execute_trigger_run_count_incremented():
 
     async with TestSession() as db:
         trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
         assert trigger.run_count == 1
 
 
@@ -291,6 +296,7 @@ async def test_execute_trigger_creates_conversation():
         result = await db.execute(select(Conversation).where(Conversation.agent_id == agent_id))
         convs = result.scalars().all()
         assert len(convs) == 1
+        assert convs[0].title is not None
         assert "자동 실행" in convs[0].title
 
 

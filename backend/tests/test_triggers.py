@@ -86,7 +86,8 @@ async def test_trigger_validation(client: AsyncClient):
             "input_message": "test",
         },
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_TRIGGER_TYPE"
 
     # Interval without minutes
     resp = await client.post(
@@ -97,7 +98,8 @@ async def test_trigger_validation(client: AsyncClient):
             "input_message": "test",
         },
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_SCHEDULE_CONFIG"
 
 
 @pytest.mark.asyncio

@@ -18,7 +18,7 @@ def test_build_agent_calls_langgraph(mock_create: MagicMock):
     mock_model = MagicMock()
     mock_tools = [MagicMock(), MagicMock()]
 
-    build_agent(mock_model, mock_tools, "You are helpful.")
+    build_agent(mock_model, mock_tools, "You are helpful.")  # type: ignore[arg-type]
 
     mock_create.assert_called_once_with(
         model=mock_model,

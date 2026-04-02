@@ -135,7 +135,7 @@ JSON question: "한글과컴퓨터와 관련해 어떤 주제를 집중적으로
 
 
 async def run_creation_conversation(
-    conversation_history: list[dict[str, str]],
+    conversation_history: list[dict[str, Any]],
     user_message: str,
     available_tools: list[str] | None = None,
     available_models: list[str] | None = None,
@@ -154,7 +154,7 @@ async def run_creation_conversation(
 
     lc_messages = convert_to_langchain_messages(messages)
     response = await model.ainvoke(lc_messages)
-    content = response.content
+    content: str = response.content  # type: ignore[assignment]  # always str for text models
 
     draft_config = None
     suggested_replies: dict[str, Any] | None = None

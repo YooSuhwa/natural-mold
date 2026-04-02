@@ -20,5 +20,9 @@ class User(Base):
         nullable=False,
     )
 
-    agents: Mapped[list[Agent]] = relationship(back_populates="user", cascade="all, delete-orphan")
-    creation_sessions: Mapped[list[AgentCreationSession]] = relationship(back_populates="user")
+    agents: Mapped[list[Agent]] = relationship(  # type: ignore[name-defined]
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    creation_sessions: Mapped[list[AgentCreationSession]] = relationship(  # type: ignore[name-defined]
+        back_populates="user"
+    )

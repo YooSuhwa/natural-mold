@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
 import { Settings2Icon, PlusIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useMessages, useCreateConversation } from '@/lib/hooks/use-conversations'
 import { useQueryClient } from '@tanstack/react-query'
@@ -15,7 +16,6 @@ import {
   isStreamingAtom,
 } from '@/lib/stores/chat-store'
 import type { StreamingToolCall } from '@/lib/stores/chat-store'
-import type { SSEEvent } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/chat/conversation-list'
 import { MessageBubble } from '@/components/chat/message-bubble'
@@ -71,10 +71,9 @@ export default function ChatPage({
       const toolCalls: StreamingToolCall[] = []
 
       for await (const event of stream) {
-        const sseEvent = event as SSEEvent
-        switch (sseEvent.event) {
+        switch (event.event) {
           case 'content_delta': {
-            const delta = (sseEvent.data.content ?? sseEvent.data.delta ?? '') as string
+            const delta = event.data.content ?? event.data.delta ?? ''
             accumulated += delta
             setStreamingMessage({ id: '', content: accumulated })
             scrollToBottom()
@@ -82,9 +81,9 @@ export default function ChatPage({
           }
           case 'tool_call_start': {
             const tc: StreamingToolCall = {
-              name: (sseEvent.data.name ?? 'tool') as string,
+              name: event.data.name ?? 'tool',
               status: 'calling',
-              params: sseEvent.data.args as Record<string, unknown> | undefined,
+              params: event.data.args,
             }
             toolCalls.push(tc)
             setStreamingToolCalls([...toolCalls])
@@ -94,7 +93,7 @@ export default function ChatPage({
             const lastTc = toolCalls[toolCalls.length - 1]
             if (lastTc) {
               lastTc.status = 'completed'
-              lastTc.result = (sseEvent.data.result ?? '') as string
+              lastTc.result = event.data.result ?? ''
               setStreamingToolCalls([...toolCalls])
             }
             break
@@ -103,6 +102,7 @@ export default function ChatPage({
             break
           }
           case 'error': {
+            toast.error(event.data.message ?? '에이전트 실행 중 오류가 발생했습니다')
             break
           }
         }

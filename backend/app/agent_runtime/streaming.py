@@ -12,7 +12,7 @@ def format_sse(event: str, data: dict[str, Any]) -> str:
 
 async def stream_agent_response(
     agent: Any,
-    messages: list[dict[str, str]],
+    messages: list[Any],
     config: dict[str, Any],
 ) -> AsyncGenerator[str, None]:
     msg_id = str(uuid.uuid4())
