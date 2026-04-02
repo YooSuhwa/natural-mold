@@ -7,7 +7,7 @@ from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.tool import agent_tools
+from app.models.tool import AgentToolLink
 
 
 class Agent(Base):
@@ -21,14 +21,21 @@ class Agent(Base):
     model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"))
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC), nullable=False
+        default=lambda: datetime.now(UTC).replace(tzinfo=None), onupdate=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False
     )
 
     user: Mapped[User] = relationship(back_populates="agents")
     model: Mapped[Model] = relationship()
-    tools: Mapped[list[Tool]] = relationship(secondary=agent_tools)
+    tool_links: Mapped[list[AgentToolLink]] = relationship(
+        cascade="all, delete-orphan",
+    )
     conversations: Mapped[list[Conversation]] = relationship(
         back_populates="agent", cascade="all, delete-orphan"
     )
+
+    @property
+    def tools(self) -> list[Tool]:
+        """Convenience property: list of Tool objects (backward compat)."""
+        return [link.tool for link in self.tool_links]

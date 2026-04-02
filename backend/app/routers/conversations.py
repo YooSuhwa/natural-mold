@@ -85,8 +85,12 @@ async def send_message(
     messages = await chat_service.list_messages(db, conversation_id)
     messages_history = [{"role": m.role, "content": m.content} for m in messages]
 
-    tools_config = [
-        {
+    tools_config = []
+    for link in agent.tool_links:
+        tool = link.tool
+        # Merge: tool-level auth_config + agent-level config override
+        merged_auth = {**(tool.auth_config or {}), **(link.config or {})}
+        tools_config.append({
             "type": tool.type,
             "name": tool.name,
             "description": tool.description,
@@ -94,10 +98,8 @@ async def send_message(
             "http_method": tool.http_method,
             "parameters_schema": tool.parameters_schema,
             "auth_type": tool.auth_type,
-            "auth_config": tool.auth_config,
-        }
-        for tool in agent.tools
-    ]
+            "auth_config": merged_auth or None,
+        })
 
     async def generate():
         import json

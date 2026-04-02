@@ -1,7 +1,7 @@
 from app.models.user import User
 from app.models.model import Model
 from app.models.template import Template
-from app.models.tool import MCPServer, Tool, agent_tools
+from app.models.tool import AgentToolLink, MCPServer, Tool
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
 from app.models.token_usage import TokenUsage
@@ -12,9 +12,9 @@ __all__ = [
     "User",
     "Model",
     "Template",
+    "AgentToolLink",
     "MCPServer",
     "Tool",
-    "agent_tools",
     "Agent",
     "Conversation",
     "Message",

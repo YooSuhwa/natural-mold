@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.agent import Agent
 from app.models.agent_creation_session import AgentCreationSession
 from app.models.model import Model
-from app.models.tool import Tool
+from app.models.tool import AgentToolLink, Tool
 from app.agent_runtime.creation_agent import run_creation_conversation
 
 
@@ -60,7 +60,7 @@ async def send_message(
     # Update session
     history = list(session.conversation_history)
     history.append({"role": "user", "content": content})
-    history.append({"role": "assistant", "content": response["content"]})
+    history.append({"role": "assistant", "content": response["raw_content"]})
     session.conversation_history = history
 
     if response.get("draft_config"):
@@ -112,11 +112,11 @@ async def confirm_creation(
         system_prompt=config.get("system_prompt", ""),
         model_id=model.id,
     )
-    agent.tools = tools_to_link
+    agent.tool_links = [AgentToolLink(tool_id=t.id) for t in tools_to_link]
     db.add(agent)
 
     session.status = "completed"
 
     await db.commit()
-    await db.refresh(agent, ["model", "tools"])
+    await db.refresh(agent, ["model", "tool_links"])
     return agent

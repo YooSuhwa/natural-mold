@@ -3,13 +3,14 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
 from app.models.token_usage import TokenUsage
+from app.models.tool import AgentToolLink
 
 
 async def list_conversations(
@@ -72,6 +73,19 @@ async def save_message(
     db.add(msg)
     await db.commit()
     await db.refresh(msg)
+
+    # Auto-generate title from first user message (single UPDATE, no extra SELECT)
+    if role == "user":
+        title = content.strip().replace("\n", " ")
+        if len(title) > 40:
+            title = title[:37] + "..."
+        await db.execute(
+            update(Conversation)
+            .where(Conversation.id == conversation_id, Conversation.title == "새 대화")
+            .values(title=title)
+        )
+        await db.commit()
+
     return msg
 
 
@@ -105,6 +119,9 @@ async def get_agent_with_tools(
     result = await db.execute(
         select(Agent)
         .where(Agent.id == agent_id, Agent.user_id == user_id)
-        .options(selectinload(Agent.model), selectinload(Agent.tools))
+        .options(
+            selectinload(Agent.model),
+            selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
+        )
     )
     return result.scalar_one_or_none()

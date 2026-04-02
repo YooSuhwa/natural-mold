@@ -129,6 +129,16 @@
 - [x] default_templates.py — "이메일 어시스턴트", "Daily Brief" 템플릿 업데이트
 - [x] 테스트 (29개 통과)
 
+## Phase 10D: Backend — 에이전트별 도구 설정 (agent_tools.config)
+
+- [x] agent_tools 테이블에 config(JSON) 컬럼 추가 + Alembic 마이그레이션
+- [x] AgentToolLink 모델 (association object 패턴) + Agent.tool_links 관계
+- [x] tools_config 빌드 시 agent_tool.config → tool.auth_config에 merge
+- [x] AgentCreate/Update 스키마에 tool_configs 필드 추가
+- [x] agent_service — 도구 연결 시 config 저장
+- [x] conversations.py + trigger_executor.py — merge 로직 적용
+- [x] 테스트 (48개 전체 통과)
+
 ## Phase 6: 통합 + 폴리시
 
 - [ ] E2E 시나리오 검증 (PRD 섹션 4)

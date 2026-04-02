@@ -2,18 +2,28 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, UTC
+from typing import Any
 
-from sqlalchemy import Column, ForeignKey, JSON, String, Table, Text
+from sqlalchemy import ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-agent_tools = Table(
-    "agent_tools",
-    Base.metadata,
-    Column("agent_id", ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True),
-    Column("tool_id", ForeignKey("tools.id", ondelete="CASCADE"), primary_key=True),
-)
+
+class AgentToolLink(Base):
+    """Association object: agent <-> tool with per-agent config override."""
+
+    __tablename__ = "agent_tools"
+
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True,
+    )
+    tool_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tools.id", ondelete="CASCADE"), primary_key=True,
+    )
+    config: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+
+    tool: Mapped[Tool] = relationship(lazy="joined")
 
 
 class MCPServer(Base):
