@@ -21,12 +21,23 @@ def convert_to_langchain_messages(messages: list[dict[str, str]]) -> list[BaseMe
     return lc_messages
 
 
+_JSON_BLOCK_RE = re.compile(r"```json\s*([\s\S]*?)\s*```")
+
+
 def extract_json_from_markdown(content: str) -> dict[str, Any] | None:
-    """Extract first JSON object from a markdown code block."""
-    match = re.search(r"```json\s*(\{[\s\S]*?\})\s*```", content)
-    if not match:
+    """Extract and merge all JSON objects from markdown code blocks."""
+    matches = _JSON_BLOCK_RE.findall(content)
+    if not matches:
         return None
-    try:
-        return json.loads(match.group(1))
-    except json.JSONDecodeError:
-        return None
+    merged: dict[str, Any] = {}
+    for raw in matches:
+        try:
+            merged.update(json.loads(raw))
+        except json.JSONDecodeError:
+            continue
+    return merged if merged else None
+
+
+def strip_json_blocks(content: str) -> str:
+    """Remove JSON code blocks from displayed message content."""
+    return _JSON_BLOCK_RE.sub("", content).strip()
