@@ -14,6 +14,9 @@ from app.agent_runtime.google_workspace_tools import (
     build_google_chat_webhook_tool,
     build_gmail_read_tool,
     build_gmail_send_tool,
+    build_calendar_list_events_tool,
+    build_calendar_create_event_tool,
+    build_calendar_update_event_tool,
 )
 from app.agent_runtime.naver_tools import build_naver_search_tool
 
@@ -192,6 +195,12 @@ _PREBUILT_REGISTRY: dict[str, _PrebuiltEntry] = {
         "Gmail에서 이메일을 검색하고 읽습니다. 검색 쿼리로 필터링할 수 있습니다."),
     "Gmail Send": _PrebuiltEntry("google_workspace", "gmail_send", "gmail_send",
         "Gmail로 이메일을 전송합니다. 수신자, 제목, 본문을 지정하여 이메일을 보냅니다."),
+    "Calendar List Events": _PrebuiltEntry("google_workspace", "calendar_list", "calendar_list_events",
+        "Google Calendar에서 일정을 조회합니다. 오늘 또는 며칠간의 일정을 확인할 수 있습니다."),
+    "Calendar Create Event": _PrebuiltEntry("google_workspace", "calendar_create", "calendar_create_event",
+        "Google Calendar에 새 일정을 생성합니다. 제목, 시작/종료 시간, 설명, 장소를 지정할 수 있습니다."),
+    "Calendar Update Event": _PrebuiltEntry("google_workspace", "calendar_update", "calendar_update_event",
+        "Google Calendar의 기존 일정을 수정합니다. 일정 ID와 변경할 필드를 지정합니다."),
 }
 
 
@@ -213,6 +222,12 @@ def create_prebuilt_tool(name: str, auth_config: dict[str, Any] | None = None) -
             return build_gmail_read_tool(auth_config)
         elif search_type == "gmail_send":
             return build_gmail_send_tool(auth_config)
+        elif search_type == "calendar_list":
+            return build_calendar_list_events_tool(auth_config)
+        elif search_type == "calendar_create":
+            return build_calendar_create_event_tool(auth_config)
+        elif search_type == "calendar_update":
+            return build_calendar_update_event_tool(auth_config)
         raise ValueError(f"Unknown google_workspace tool: {search_type}")
     else:
         raise ValueError(f"Unknown prebuilt provider: {provider}")

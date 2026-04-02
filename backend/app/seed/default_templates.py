@@ -13,7 +13,7 @@ DEFAULT_TEMPLATES = [
             "- 보통: 팀원, 일반 업무 메일\n"
             "- 낮음: 뉴스레터, 마케팅 메일"
         ),
-        "recommended_tools": ["Gmail"],
+        "recommended_tools": ["Gmail Read", "Gmail Send"],
         "usage_example": "오늘 받은 이메일을 분류해줘",
     },
     {
@@ -28,7 +28,7 @@ DEFAULT_TEMPLATES = [
             "- 중요도 표시\n"
             "- 준비 사항 알림"
         ),
-        "recommended_tools": ["Calendar"],
+        "recommended_tools": ["Calendar List Events"],
         "usage_example": "오늘 일정 알려줘",
     },
     {
@@ -60,5 +60,53 @@ DEFAULT_TEMPLATES = [
         ),
         "recommended_tools": ["Web Scraper"],
         "usage_example": "경쟁사 가격 정보를 수집해줘",
+    },
+    {
+        "name": "네이버 뉴스 모니터",
+        "description": "네이버에서 특정 키워드 관련 최신 뉴스를 검색하고 요약",
+        "category": "데이터",
+        "system_prompt": (
+            "당신은 뉴스 모니터링 전문가입니다.\n"
+            "사용자가 요청한 키워드로 네이버 뉴스를 검색하고, "
+            "핵심 내용을 정리하여 브리핑 형태로 제공해주세요.\n"
+            "- 주요 뉴스 3-5건 요약\n"
+            "- 각 뉴스의 핵심 포인트\n"
+            "- 출처 링크 포함\n"
+            "- 필요 시 관련 블로그 포스트도 추가 검색"
+        ),
+        "recommended_tools": ["Naver News Search", "Web Scraper"],
+        "usage_example": "오늘 AI 관련 뉴스를 정리해줘",
+    },
+    {
+        "name": "쇼핑 가격 비교",
+        "description": "네이버 쇼핑에서 제품을 검색하고 가격을 비교",
+        "category": "생산성",
+        "system_prompt": (
+            "당신은 쇼핑 비교 전문가입니다.\n"
+            "사용자가 요청한 제품을 네이버 쇼핑에서 검색하고, "
+            "가격과 판매처를 비교하여 정리해주세요.\n"
+            "- 최저가부터 정렬\n"
+            "- 판매처(쇼핑몰) 정보 포함\n"
+            "- 가격 범위 요약\n"
+            "- 구매 링크 제공"
+        ),
+        "recommended_tools": ["Naver Shopping Search"],
+        "usage_example": "아이폰 16 가격 비교해줘",
+    },
+    {
+        "name": "맛집 탐색기",
+        "description": "네이버 지역 검색으로 주변 맛집과 업체를 찾아 정리",
+        "category": "생활",
+        "system_prompt": (
+            "당신은 지역 맛집/업체 추천 전문가입니다.\n"
+            "사용자가 요청한 지역과 조건으로 업체를 검색하고, "
+            "추천 목록을 정리해주세요.\n"
+            "- 업체명, 카테고리, 주소\n"
+            "- 전화번호 (있는 경우)\n"
+            "- 간단한 설명\n"
+            "- 필요 시 블로그 리뷰도 추가 검색"
+        ),
+        "recommended_tools": ["Naver Local Search", "Naver Blog Search"],
+        "usage_example": "강남역 근처 맛집 추천해줘",
     },
 ]

@@ -21,6 +21,9 @@ ALL_PREBUILT_NAMES = [
     "Google Chat Send",
     "Gmail Read",
     "Gmail Send",
+    "Calendar List Events",
+    "Calendar Create Event",
+    "Calendar Update Event",
 ]
 
 
@@ -391,6 +394,82 @@ async def test_gmail_send_tool_creation():
     assert "Gmail" in tool.description
 
 
+# ---------------------------------------------------------------------------
+# Calendar tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_calendar_list_events_no_credentials(monkeypatch: pytest.MonkeyPatch):
+    """Calendar List Events returns error when OAuth2 credentials are not set."""
+    from app.config import settings
+    from app.agent_runtime.google_workspace_tools import build_calendar_list_events_tool
+
+    monkeypatch.setattr(settings, "google_oauth_client_id", "")
+    monkeypatch.setattr(settings, "google_oauth_client_secret", "")
+    monkeypatch.setattr(settings, "google_oauth_refresh_token", "")
+
+    tool = build_calendar_list_events_tool(auth_config=None)
+    result = await tool.ainvoke({"days": 1})
+    assert "Error" in result
+    assert "OAuth2" in result
+
+
+@pytest.mark.asyncio
+async def test_calendar_create_event_no_credentials(monkeypatch: pytest.MonkeyPatch):
+    """Calendar Create Event returns error when OAuth2 credentials are not set."""
+    from app.config import settings
+    from app.agent_runtime.google_workspace_tools import build_calendar_create_event_tool
+
+    monkeypatch.setattr(settings, "google_oauth_client_id", "")
+    monkeypatch.setattr(settings, "google_oauth_client_secret", "")
+    monkeypatch.setattr(settings, "google_oauth_refresh_token", "")
+
+    tool = build_calendar_create_event_tool(auth_config=None)
+    result = await tool.ainvoke({
+        "summary": "테스트 미팅",
+        "start_datetime": "2026-04-05T10:00:00+09:00",
+        "end_datetime": "2026-04-05T11:00:00+09:00",
+    })
+    assert "Error" in result
+    assert "OAuth2" in result
+
+
+@pytest.mark.asyncio
+async def test_calendar_update_event_no_credentials(monkeypatch: pytest.MonkeyPatch):
+    """Calendar Update Event returns error when OAuth2 credentials are not set."""
+    from app.config import settings
+    from app.agent_runtime.google_workspace_tools import build_calendar_update_event_tool
+
+    monkeypatch.setattr(settings, "google_oauth_client_id", "")
+    monkeypatch.setattr(settings, "google_oauth_client_secret", "")
+    monkeypatch.setattr(settings, "google_oauth_refresh_token", "")
+
+    tool = build_calendar_update_event_tool(auth_config=None)
+    result = await tool.ainvoke({"event_id": "test123"})
+    assert "Error" in result
+    assert "OAuth2" in result
+
+
+@pytest.mark.asyncio
+async def test_calendar_tool_creation():
+    """All Calendar tools can be created with auth_config."""
+    from app.agent_runtime.google_workspace_tools import (
+        build_calendar_list_events_tool,
+        build_calendar_create_event_tool,
+        build_calendar_update_event_tool,
+    )
+
+    list_tool = build_calendar_list_events_tool(auth_config={"google_oauth_client_id": "test"})
+    assert list_tool.name == "calendar_list_events"
+
+    create_tool = build_calendar_create_event_tool(auth_config={"google_oauth_client_id": "test"})
+    assert create_tool.name == "calendar_create_event"
+
+    update_tool = build_calendar_update_event_tool(auth_config={"google_oauth_client_id": "test"})
+    assert update_tool.name == "calendar_update_event"
+
+
 def test_google_auth_no_credentials(monkeypatch: pytest.MonkeyPatch):
     """Google auth returns None when credentials are missing."""
     from app.config import settings
@@ -410,10 +489,10 @@ def test_google_auth_no_credentials(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_default_tools_count():
-    """All 14 default tools are defined in seed data."""
+    """All 17 default tools are defined in seed data."""
     from app.seed.default_tools import DEFAULT_TOOLS
 
-    assert len(DEFAULT_TOOLS) == 14
+    assert len(DEFAULT_TOOLS) == 17
     names = [t["name"] for t in DEFAULT_TOOLS]
     for expected in ALL_BUILTIN_NAMES + ALL_PREBUILT_NAMES:
         assert expected in names, f"Missing tool in seed data: {expected}"

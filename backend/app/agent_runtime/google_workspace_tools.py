@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from functools import partial
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
@@ -216,4 +218,293 @@ def build_gmail_send_tool(
             "수신자, 제목, 본문을 지정하여 이메일을 보냅니다."
         ),
         args_schema=GmailSendArgs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Helper: build Calendar service (sync, run in thread)
+# ---------------------------------------------------------------------------
+
+def _build_calendar_service(auth_config: dict[str, Any] | None = None) -> tuple[Any, str | None]:
+    """Build a Google Calendar API service object. Returns (service, error_msg)."""
+    from app.agent_runtime.google_auth import get_google_credentials
+    from googleapiclient.discovery import build
+
+    creds = get_google_credentials(auth_config)
+    if creds is None:
+        return None, (
+            "Error: Google OAuth2 인증 정보가 설정되지 않았습니다. "
+            ".env 파일에 GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, "
+            "GOOGLE_OAUTH_REFRESH_TOKEN을 설정하세요."
+        )
+
+    service = build("calendar", "v3", credentials=creds)
+    return service, None
+
+
+# ---------------------------------------------------------------------------
+# Calendar List Events
+# ---------------------------------------------------------------------------
+
+class CalendarListEventsArgs(BaseModel):
+    days: int = Field(
+        default=1,
+        description="오늘부터 며칠간의 일정을 조회할지 (기본 1 = 오늘만)",
+        ge=1,
+        le=30,
+    )
+    max_results: int = Field(
+        default=10,
+        description="가져올 일정 수 (1-50)",
+        ge=1,
+        le=50,
+    )
+    calendar_id: str = Field(
+        default="primary",
+        description="캘린더 ID (기본: primary = 기본 캘린더)",
+    )
+
+
+def build_calendar_list_events_tool(
+    auth_config: dict[str, Any] | None = None,
+) -> BaseTool:
+    """Build a LangChain tool that lists Google Calendar events."""
+
+    async def list_events(
+        days: int = 1, max_results: int = 10, calendar_id: str = "primary",
+    ) -> str:
+        service, err = await asyncio.to_thread(
+            partial(_build_calendar_service, auth_config)
+        )
+        if err:
+            return err
+
+        tz = ZoneInfo("Asia/Seoul")
+        now = datetime.now(tz)
+        time_min = now.isoformat()
+        time_max = (now + timedelta(days=days)).replace(
+            hour=23, minute=59, second=59,
+        ).isoformat()
+
+        try:
+            result = await asyncio.to_thread(
+                lambda: service.events().list(
+                    calendarId=calendar_id,
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=max_results,
+                    singleEvents=True,
+                    orderBy="startTime",
+                ).execute()
+            )
+        except Exception as e:
+            return f"Error: 캘린더 일정 조회 실패 — {e}"
+
+        events = result.get("items", [])
+        if not events:
+            return f"향후 {days}일간 예정된 일정이 없습니다."
+
+        output_parts: list[str] = []
+        for i, event in enumerate(events, 1):
+            parts = [f"[{i}]"]
+            summary = event.get("summary", "(제목 없음)")
+            parts.append(f"제목: {summary}")
+
+            start = event.get("start", {})
+            end = event.get("end", {})
+            if "dateTime" in start:
+                parts.append(f"시작: {start['dateTime']}")
+                parts.append(f"종료: {end.get('dateTime', '')}")
+            elif "date" in start:
+                parts.append(f"날짜: {start['date']} (종일)")
+
+            if event.get("location"):
+                parts.append(f"장소: {event['location']}")
+            if event.get("description"):
+                desc = event["description"][:100]
+                parts.append(f"설명: {desc}")
+            if event.get("hangoutLink"):
+                parts.append(f"화상회의: {event['hangoutLink']}")
+
+            status = event.get("status", "")
+            if status == "cancelled":
+                parts.append("상태: 취소됨")
+
+            output_parts.append("\n".join(parts))
+
+        header = f"향후 {days}일간 일정 {len(output_parts)}건\n"
+        return header + "\n\n".join(output_parts)
+
+    return StructuredTool.from_function(
+        coroutine=list_events,
+        name="calendar_list_events",
+        description=(
+            "Google Calendar에서 일정을 조회합니다. "
+            "오늘 또는 며칠간의 일정을 확인할 수 있습니다."
+        ),
+        args_schema=CalendarListEventsArgs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Calendar Create Event
+# ---------------------------------------------------------------------------
+
+class CalendarCreateEventArgs(BaseModel):
+    summary: str = Field(description="일정 제목")
+    start_datetime: str = Field(
+        description="시작 일시 (ISO 8601 형식, 예: '2026-04-05T10:00:00+09:00')",
+    )
+    end_datetime: str = Field(
+        description="종료 일시 (ISO 8601 형식, 예: '2026-04-05T11:00:00+09:00')",
+    )
+    description: str = Field(default="", description="일정 설명 (선택)")
+    location: str = Field(default="", description="장소 (선택)")
+    calendar_id: str = Field(default="primary", description="캘린더 ID")
+
+
+def build_calendar_create_event_tool(
+    auth_config: dict[str, Any] | None = None,
+) -> BaseTool:
+    """Build a LangChain tool that creates a Google Calendar event."""
+
+    async def create_event(
+        summary: str,
+        start_datetime: str,
+        end_datetime: str,
+        description: str = "",
+        location: str = "",
+        calendar_id: str = "primary",
+    ) -> str:
+        service, err = await asyncio.to_thread(
+            partial(_build_calendar_service, auth_config)
+        )
+        if err:
+            return err
+
+        event_body: dict[str, Any] = {
+            "summary": summary,
+            "start": {"dateTime": start_datetime, "timeZone": "Asia/Seoul"},
+            "end": {"dateTime": end_datetime, "timeZone": "Asia/Seoul"},
+        }
+        if description:
+            event_body["description"] = description
+        if location:
+            event_body["location"] = location
+
+        try:
+            created = await asyncio.to_thread(
+                lambda: service.events().insert(
+                    calendarId=calendar_id, body=event_body,
+                ).execute()
+            )
+        except Exception as e:
+            return f"Error: 일정 생성 실패 — {e}"
+
+        link = created.get("htmlLink", "")
+        return (
+            f"일정이 생성되었습니다.\n"
+            f"제목: {summary}\n"
+            f"시작: {start_datetime}\n"
+            f"종료: {end_datetime}\n"
+            f"링크: {link}"
+        )
+
+    return StructuredTool.from_function(
+        coroutine=create_event,
+        name="calendar_create_event",
+        description=(
+            "Google Calendar에 새 일정을 생성합니다. "
+            "제목, 시작/종료 시간, 설명, 장소를 지정할 수 있습니다."
+        ),
+        args_schema=CalendarCreateEventArgs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Calendar Update Event
+# ---------------------------------------------------------------------------
+
+class CalendarUpdateEventArgs(BaseModel):
+    event_id: str = Field(description="수정할 일정의 ID")
+    summary: str = Field(default="", description="새 일정 제목 (빈 문자열이면 변경 안 함)")
+    start_datetime: str = Field(
+        default="",
+        description="새 시작 일시 (ISO 8601, 빈 문자열이면 변경 안 함)",
+    )
+    end_datetime: str = Field(
+        default="",
+        description="새 종료 일시 (ISO 8601, 빈 문자열이면 변경 안 함)",
+    )
+    description: str = Field(default="", description="새 설명 (빈 문자열이면 변경 안 함)")
+    location: str = Field(default="", description="새 장소 (빈 문자열이면 변경 안 함)")
+    calendar_id: str = Field(default="primary", description="캘린더 ID")
+
+
+def build_calendar_update_event_tool(
+    auth_config: dict[str, Any] | None = None,
+) -> BaseTool:
+    """Build a LangChain tool that updates a Google Calendar event."""
+
+    async def update_event(
+        event_id: str,
+        summary: str = "",
+        start_datetime: str = "",
+        end_datetime: str = "",
+        description: str = "",
+        location: str = "",
+        calendar_id: str = "primary",
+    ) -> str:
+        service, err = await asyncio.to_thread(
+            partial(_build_calendar_service, auth_config)
+        )
+        if err:
+            return err
+
+        # Fetch existing event first
+        try:
+            existing = await asyncio.to_thread(
+                lambda: service.events().get(
+                    calendarId=calendar_id, eventId=event_id,
+                ).execute()
+            )
+        except Exception as e:
+            return f"Error: 일정을 찾을 수 없습니다 — {e}"
+
+        # Apply changes
+        if summary:
+            existing["summary"] = summary
+        if start_datetime:
+            existing["start"] = {"dateTime": start_datetime, "timeZone": "Asia/Seoul"}
+        if end_datetime:
+            existing["end"] = {"dateTime": end_datetime, "timeZone": "Asia/Seoul"}
+        if description:
+            existing["description"] = description
+        if location:
+            existing["location"] = location
+
+        try:
+            updated = await asyncio.to_thread(
+                lambda: service.events().update(
+                    calendarId=calendar_id, eventId=event_id, body=existing,
+                ).execute()
+            )
+        except Exception as e:
+            return f"Error: 일정 수정 실패 — {e}"
+
+        return (
+            f"일정이 수정되었습니다.\n"
+            f"제목: {updated.get('summary', '')}\n"
+            f"시작: {updated.get('start', {}).get('dateTime', '')}\n"
+            f"종료: {updated.get('end', {}).get('dateTime', '')}"
+        )
+
+    return StructuredTool.from_function(
+        coroutine=update_event,
+        name="calendar_update_event",
+        description=(
+            "Google Calendar의 기존 일정을 수정합니다. "
+            "일정 ID와 변경할 필드를 지정합니다."
+        ),
+        args_schema=CalendarUpdateEventArgs,
     )

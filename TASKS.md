@@ -121,13 +121,13 @@
 
 ## Phase 10C: Backend — Google Calendar 도구 (P3)
 
-- [ ] google_workspace_tools.py — Calendar List Events (일정 조회)
-- [ ] google_workspace_tools.py — Calendar Create Event (일정 생성)
-- [ ] google_workspace_tools.py — Calendar Update Event (일정 수정)
-- [ ] tool_factory.py — Calendar 도구 3개 등록
-- [ ] default_tools.py — Calendar 시드 데이터 추가
-- [ ] default_templates.py — "이메일 어시스턴트", "Daily Brief" 템플릿 업데이트
-- [ ] 테스트
+- [x] google_workspace_tools.py — Calendar List Events (일정 조회)
+- [x] google_workspace_tools.py — Calendar Create Event (일정 생성)
+- [x] google_workspace_tools.py — Calendar Update Event (일정 수정)
+- [x] tool_factory.py — Calendar 도구 3개 등록
+- [x] default_tools.py — Calendar 시드 데이터 추가
+- [x] default_templates.py — "이메일 어시스턴트", "Daily Brief" 템플릿 업데이트
+- [x] 테스트 (29개 통과)
 
 ## Phase 6: 통합 + 폴리시
 

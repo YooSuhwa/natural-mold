@@ -215,4 +215,60 @@ DEFAULT_TOOLS = [
             "required": ["to", "subject", "body"],
         },
     },
+    {
+        "name": "Calendar List Events",
+        "type": "prebuilt",
+        "is_system": True,
+        "description": "Google Calendar에서 일정을 조회합니다. 오늘 또는 며칠간의 일정을 확인할 수 있습니다.",
+        "parameters_schema": {
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "integer",
+                    "description": "오늘부터 며칠간의 일정을 조회할지 (1-30, 기본 1)",
+                    "default": 1,
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "가져올 일정 수 (1-50, 기본 10)",
+                    "default": 10,
+                },
+            },
+        },
+    },
+    {
+        "name": "Calendar Create Event",
+        "type": "prebuilt",
+        "is_system": True,
+        "description": "Google Calendar에 새 일정을 생성합니다. 제목, 시작/종료 시간, 설명, 장소를 지정할 수 있습니다.",
+        "parameters_schema": {
+            "type": "object",
+            "properties": {
+                "summary": {"type": "string", "description": "일정 제목"},
+                "start_datetime": {"type": "string", "description": "시작 일시 (ISO 8601)"},
+                "end_datetime": {"type": "string", "description": "종료 일시 (ISO 8601)"},
+                "description": {"type": "string", "description": "일정 설명 (선택)"},
+                "location": {"type": "string", "description": "장소 (선택)"},
+            },
+            "required": ["summary", "start_datetime", "end_datetime"],
+        },
+    },
+    {
+        "name": "Calendar Update Event",
+        "type": "prebuilt",
+        "is_system": True,
+        "description": "Google Calendar의 기존 일정을 수정합니다. 일정 ID와 변경할 필드를 지정합니다.",
+        "parameters_schema": {
+            "type": "object",
+            "properties": {
+                "event_id": {"type": "string", "description": "수정할 일정의 ID"},
+                "summary": {"type": "string", "description": "새 일정 제목"},
+                "start_datetime": {"type": "string", "description": "새 시작 일시 (ISO 8601)"},
+                "end_datetime": {"type": "string", "description": "새 종료 일시 (ISO 8601)"},
+                "description": {"type": "string", "description": "새 설명"},
+                "location": {"type": "string", "description": "새 장소"},
+            },
+            "required": ["event_id"],
+        },
+    },
 ]
