@@ -86,7 +86,7 @@ export default function ModelsPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
+    <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
         title="모델 관리"
         action={

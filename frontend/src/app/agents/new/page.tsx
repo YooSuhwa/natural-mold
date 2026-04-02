@@ -14,7 +14,7 @@ import { PageHeader } from "@/components/shared/page-header"
 
 export default function AgentNewPage() {
   return (
-    <div className="flex flex-1 flex-col gap-8 p-6">
+    <div className="flex flex-1 flex-col gap-8 overflow-auto p-6">
       <PageHeader title="새 에이전트 만들기" />
 
       <div className="mx-auto grid w-full max-w-3xl gap-6 sm:grid-cols-2">
@@ -29,9 +29,9 @@ export default function AgentNewPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <Button render={<Link href="/agents/new/conversational" />}>
-              시작하기
-            </Button>
+            <Link href="/agents/new/conversational">
+              <Button>시작하기</Button>
+            </Link>
           </CardContent>
         </Card>
 
@@ -46,12 +46,9 @@ export default function AgentNewPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <Button
-              variant="outline"
-              render={<Link href="/agents/new/template" />}
-            >
-              둘러보기
-            </Button>
+            <Link href="/agents/new/template">
+              <Button variant="outline">둘러보기</Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
