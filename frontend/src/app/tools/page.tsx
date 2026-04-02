@@ -79,6 +79,7 @@ export default function ToolsPage() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        aria-label={`${tool.name} 삭제`}
                         onClick={() => deleteTool.mutate(tool.id)}
                         disabled={deleteTool.isPending}
                       >
@@ -135,6 +136,7 @@ export default function ToolsPage() {
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        aria-label={`${tool.name} 삭제`}
                         onClick={() => deleteTool.mutate(tool.id)}
                         disabled={deleteTool.isPending}
                       >

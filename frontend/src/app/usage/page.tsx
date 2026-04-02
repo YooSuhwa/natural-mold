@@ -58,7 +58,7 @@ export default function UsagePage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-foreground/70">
               총 토큰
             </CardTitle>
           </CardHeader>
@@ -71,7 +71,7 @@ export default function UsagePage() {
 
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-foreground/70">
               추정 비용
             </CardTitle>
           </CardHeader>
@@ -84,7 +84,7 @@ export default function UsagePage() {
 
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-foreground/70">
               입력 토큰
             </CardTitle>
           </CardHeader>
@@ -97,7 +97,7 @@ export default function UsagePage() {
 
         <Card>
           <CardHeader className="pb-1">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-foreground/70">
               출력 토큰
             </CardTitle>
           </CardHeader>

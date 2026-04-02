@@ -216,6 +216,7 @@ export default function ModelsPage() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  aria-label={`${model.display_name} 삭제`}
                   onClick={() => deleteModel.mutate(model.id)}
                   disabled={deleteModel.isPending}
                 >

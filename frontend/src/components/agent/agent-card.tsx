@@ -33,8 +33,11 @@ export function AgentCard({ agent }: AgentCardProps) {
         : "비활성"
 
   return (
-    <Link href={`/agents/${agent.id}`} className="group">
-      <Card className="h-full transition-all hover:ring-2 hover:ring-primary/20 hover:shadow-md">
+    <Link
+      href={`/agents/${agent.id}`}
+      className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-xl"
+    >
+      <Card className="h-full transition-colors hover:border-primary/40">
         <CardHeader>
           <div className="flex items-start justify-between">
             <CardTitle className="group-hover:text-primary transition-colors">
@@ -54,7 +57,7 @@ export function AgentCard({ agent }: AgentCardProps) {
         <CardContent>
           <div className="flex flex-col gap-2 text-sm text-muted-foreground">
             <div className="flex items-center gap-1.5">
-              <span className="font-medium text-foreground/70">모델:</span>
+              <span className="font-medium text-foreground">모델:</span>
               <span>{agent.model.display_name}</span>
             </div>
             {agent.tools.length > 0 && (

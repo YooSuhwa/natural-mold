@@ -52,7 +52,7 @@ export function ConversationList({ agentId }: ConversationListProps) {
                 key={conv.id}
                 href={`/agents/${agentId}/conversations/${conv.id}`}
                 className={cn(
-                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted",
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   params.conversationId === conv.id &&
                     "bg-muted font-medium"
                 )}

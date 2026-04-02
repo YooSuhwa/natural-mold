@@ -18,7 +18,7 @@ export default function AgentNewPage() {
       <PageHeader title="새 에이전트 만들기" />
 
       <div className="mx-auto grid w-full max-w-3xl gap-6 sm:grid-cols-2">
-        <Card className="transition-all hover:ring-2 hover:ring-primary/20 hover:shadow-md">
+        <Card className="cursor-pointer transition-colors hover:border-primary/40">
           <CardHeader className="text-center">
             <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
               <MessageSquareIcon className="size-6" />
@@ -35,7 +35,7 @@ export default function AgentNewPage() {
           </CardContent>
         </Card>
 
-        <Card className="transition-all hover:ring-2 hover:ring-primary/20 hover:shadow-md">
+        <Card className="cursor-pointer transition-colors hover:border-primary/40">
           <CardHeader className="text-center">
             <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
               <LayoutTemplateIcon className="size-6" />
