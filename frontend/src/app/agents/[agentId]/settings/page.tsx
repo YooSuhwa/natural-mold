@@ -13,6 +13,7 @@ import {
   PauseIcon,
   PlusIcon,
 } from "lucide-react"
+import { toast } from "sonner"
 import { useAgent, useUpdateAgent, useDeleteAgent } from "@/lib/hooks/use-agents"
 import { useModels } from "@/lib/hooks/use-models"
 import { useTools } from "@/lib/hooks/use-tools"
@@ -85,13 +86,18 @@ export default function AgentSettingsPage({
   }, [agent])
 
   async function handleSave() {
-    await updateAgent.mutateAsync({
-      name,
-      description: description || undefined,
-      system_prompt: systemPrompt,
-      model_id: modelId,
-      tool_ids: Array.from(selectedToolIds),
-    })
+    try {
+      await updateAgent.mutateAsync({
+        name,
+        description: description || undefined,
+        system_prompt: systemPrompt,
+        model_id: modelId,
+        tool_ids: Array.from(selectedToolIds),
+      })
+      toast.success("저장되었습니다")
+    } catch {
+      toast.error("저장에 실패했습니다")
+    }
   }
 
   async function handleDelete() {
@@ -113,7 +119,7 @@ export default function AgentSettingsPage({
 
   if (agentLoading) {
     return (
-      <div className="flex flex-1 flex-col gap-6 p-6">
+      <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
         <Skeleton className="h-6 w-40" />
         <div className="space-y-4">
           <Skeleton className="h-8 w-full" />
@@ -125,7 +131,7 @@ export default function AgentSettingsPage({
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
+    <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <div className="flex items-center gap-2">
         <Link href={`/agents/${agentId}`}>
           <Button variant="ghost" size="icon-sm">

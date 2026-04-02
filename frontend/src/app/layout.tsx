@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
+import { Toaster } from "sonner"
 import "./globals.css"
 import { AppLayout } from "@/components/layout/app-layout"
 
@@ -29,8 +30,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-full bg-background font-sans text-foreground">
+      <body className="h-full bg-background font-sans text-foreground">
         <AppLayout>{children}</AppLayout>
+        <Toaster position="bottom-right" richColors />
       </body>
     </html>
   )
