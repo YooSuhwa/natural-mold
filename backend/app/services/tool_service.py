@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,7 +12,9 @@ from app.schemas.tool import MCPServerCreate, ToolCustomCreate
 
 async def list_tools(db: AsyncSession, user_id: uuid.UUID) -> list[Tool]:
     result = await db.execute(
-        select(Tool).where(Tool.user_id == user_id).order_by(Tool.created_at.desc())
+        select(Tool)
+        .where(or_(Tool.user_id == user_id, Tool.is_system.is_(True)))
+        .order_by(Tool.is_system.desc(), Tool.created_at.desc())
     )
     return list(result.scalars().all())
 
@@ -65,10 +67,14 @@ async def get_mcp_servers(db: AsyncSession, user_id: uuid.UUID) -> list[MCPServe
 
 async def delete_tool(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     result = await db.execute(
-        select(Tool).where(Tool.id == tool_id, Tool.user_id == user_id)
+        select(Tool).where(Tool.id == tool_id)
     )
     tool = result.scalar_one_or_none()
     if not tool:
+        return False
+    if tool.is_system:
+        return False  # System tools cannot be deleted
+    if tool.user_id != user_id:
         return False
     await db.delete(tool)
     await db.commit()

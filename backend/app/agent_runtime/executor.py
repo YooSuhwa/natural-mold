@@ -10,7 +10,7 @@ from langgraph.prebuilt import create_react_agent
 from app.agent_runtime.message_utils import convert_to_langchain_messages
 from app.agent_runtime.model_factory import create_chat_model
 from app.agent_runtime.streaming import stream_agent_response
-from app.agent_runtime.tool_factory import create_tool_from_db
+from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_from_db
 
 
 def build_agent(
@@ -39,7 +39,10 @@ async def execute_agent_stream(
 
     langchain_tools: list[BaseTool] = []
     for tc in tools_config:
-        if tc.get("type") == "custom" and tc.get("api_url"):
+        if tc.get("type") == "builtin":
+            tool = create_builtin_tool(tc["name"])
+            langchain_tools.append(tool)
+        elif tc.get("type") == "custom" and tc.get("api_url"):
             tool = create_tool_from_db(
                 name=tc["name"],
                 description=tc.get("description"),

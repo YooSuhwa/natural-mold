@@ -6,6 +6,7 @@ from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
 from app.models.token_usage import TokenUsage
 from app.models.agent_creation_session import AgentCreationSession
+from app.models.agent_trigger import AgentTrigger
 
 __all__ = [
     "User",
@@ -19,4 +20,5 @@ __all__ = [
     "Message",
     "TokenUsage",
     "AgentCreationSession",
+    "AgentTrigger",
 ]

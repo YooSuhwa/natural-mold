@@ -12,6 +12,7 @@ class AgentCreate(BaseModel):
     system_prompt: str
     model_id: uuid.UUID
     tool_ids: list[uuid.UUID] = []
+    template_id: uuid.UUID | None = None
 
 
 class AgentUpdate(BaseModel):

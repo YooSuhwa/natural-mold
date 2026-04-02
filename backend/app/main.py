@@ -1,19 +1,34 @@
 from __future__ import annotations
 
+import os
+import ssl
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+
+# 사내 프록시 SSL 인증서 — Python 기본 SSL 컨텍스트에 로드
+_hc_cert = os.path.expanduser("~/.ssl/HC_SSL.pem")
+if os.path.exists(_hc_cert):
+    os.environ["SSL_CERT_FILE"] = _hc_cert
+    os.environ["REQUESTS_CA_BUNDLE"] = _hc_cert
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.load_verify_locations(_hc_cert)
+    ssl._create_default_https_context = lambda: ssl_ctx
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
-from app.database import async_session, Base, engine
+from app.database import async_session
 from app.models.model import Model
 from app.models.template import Template
+from app.models.tool import Tool
+from app.models.agent_trigger import AgentTrigger
 from app.models.user import User
 from app.config import settings
+from app.scheduler import get_scheduler, add_trigger_job
 from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_templates import DEFAULT_TEMPLATES
+from app.seed.default_tools import DEFAULT_TOOLS
 
 import uuid
 
@@ -47,10 +62,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             for tmpl_data in DEFAULT_TEMPLATES:
                 db.add(Template(**tmpl_data))
 
+        # Seed system tools (builtin)
+        result = await db.execute(select(Tool).where(Tool.is_system.is_(True)).limit(1))
+        if not result.scalar_one_or_none():
+            for tool_data in DEFAULT_TOOLS:
+                db.add(Tool(**tool_data))
+
         await db.commit()
+
+    # Start scheduler and reload active triggers
+    scheduler = get_scheduler()
+    scheduler.start()
+
+    async with async_session() as db:
+        result = await db.execute(
+            select(AgentTrigger).where(AgentTrigger.status == "active")
+        )
+        for trigger in result.scalars():
+            add_trigger_job(trigger.id, trigger.trigger_type, trigger.schedule_config)
 
     yield
     # Shutdown
+    scheduler.shutdown(wait=False)
 
 
 def create_app() -> FastAPI:
@@ -63,13 +96,13 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],
+        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    from app.routers import agent_creation, agents, conversations, models, templates, tools, usage
+    from app.routers import agent_creation, agents, conversations, models, templates, tools, triggers, usage
 
     app.include_router(agents.router)
     app.include_router(agent_creation.router)
@@ -77,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router)
     app.include_router(templates.router)
     app.include_router(tools.router)
+    app.include_router(triggers.router)
     app.include_router(usage.router)
 
     @app.get("/api/health")

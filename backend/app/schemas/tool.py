@@ -27,6 +27,7 @@ class MCPServerCreate(BaseModel):
 class ToolResponse(BaseModel):
     id: uuid.UUID
     type: str
+    is_system: bool
     mcp_server_id: uuid.UUID | None
     name: str
     description: str | None

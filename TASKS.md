@@ -53,6 +53,40 @@
 - [x] 대화형 에이전트 생성 페이지
 - [x] 템플릿 선택 페이지
 
+## Phase 7A: Backend — 프리빌트 도구 카탈로그
+
+- [x] Tool 모델 스키마 변경 (user_id nullable, is_system 플래그) + 마이그레이션
+- [x] 빌트인 도구 구현 (Web Search, Web Scraper, Current DateTime) in tool_factory.py
+- [x] 시드 데이터 (default_tools.py) + main.py 시딩
+- [x] 서비스 레이어 수정 (list_tools 시스템 도구 포함, 삭제 방지)
+- [x] Executor builtin 타입 처리
+- [x] 스키마/타입 업데이트 (is_system)
+- [x] 테스트
+
+## Phase 7B: Backend — 에이전트 생성 시 도구 자동 연결
+
+- [x] confirm_creation()에서 recommended_tool_names 이름 매칭 → 자동 링크
+- [x] send_message()에서 시스템 도구 컨텍스트 제공
+- [x] 템플릿 생성 시 도구 자동 연결
+- [x] 테스트
+
+## Phase 7C: Backend — 트리거/스케줄러 시스템
+
+- [x] AgentTrigger 모델 + 마이그레이션
+- [x] 트리거 스키마 (Pydantic)
+- [x] 트리거 서비스 (CRUD)
+- [x] 트리거 실행기 (trigger_executor.py)
+- [x] APScheduler 통합 (scheduler.py + main.py)
+- [x] 트리거 API (4 endpoints)
+- [x] 테스트
+
+## Phase 8: Frontend — 도구/트리거 UI
+
+- [x] TypeScript 타입 + API 클라이언트 + hooks (triggers)
+- [x] 도구 관리 페이지 — 시스템 도구 표시
+- [x] 에이전트 설정 — 트리거 설정 섹션
+- [x] 대시보드 — 에이전트 카드에 도구명 표시  ← current
+
 ## Phase 6: 통합 + 폴리시
 
 - [ ] E2E 시나리오 검증 (PRD 섹션 4)

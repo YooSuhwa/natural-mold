@@ -7,6 +7,7 @@ import {
   GlobeIcon,
   Trash2Icon,
   Loader2Icon,
+  SparklesIcon,
 } from "lucide-react"
 import { useTools, useDeleteTool } from "@/lib/hooks/use-tools"
 import { Button } from "@/components/ui/button"
@@ -21,8 +22,9 @@ export default function ToolsPage() {
   const { data: tools, isLoading } = useTools()
   const deleteTool = useDeleteTool()
 
-  const mcpTools = tools?.filter((t) => t.type === "mcp") ?? []
-  const customTools = tools?.filter((t) => t.type === "custom") ?? []
+  const builtinTools = tools?.filter((t) => t.is_system) ?? []
+  const mcpTools = tools?.filter((t) => t.type === "mcp" && !t.is_system) ?? []
+  const customTools = tools?.filter((t) => t.type === "custom" && !t.is_system) ?? []
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
@@ -48,6 +50,43 @@ export default function ToolsPage() {
         </div>
       ) : tools && tools.length > 0 ? (
         <div className="space-y-8">
+          {builtinTools.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <SparklesIcon className="size-4" />
+                기본 제공 도구
+              </h2>
+              <div className="space-y-2">
+                {builtinTools.map((tool) => (
+                  <Card key={tool.id}>
+                    <CardContent className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-9 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600">
+                          <SparklesIcon className="size-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">
+                              {tool.name}
+                            </span>
+                            <Badge className="bg-violet-100 text-violet-700 hover:bg-violet-100">
+                              System
+                            </Badge>
+                          </div>
+                          {tool.description && (
+                            <p className="text-xs text-muted-foreground">
+                              {tool.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
           {mcpTools.length > 0 && (
             <div className="space-y-3">
               <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">

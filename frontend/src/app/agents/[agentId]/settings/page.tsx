@@ -8,10 +8,22 @@ import {
   Loader2Icon,
   Trash2Icon,
   SaveIcon,
+  TimerIcon,
+  PlayIcon,
+  PauseIcon,
+  PlusIcon,
 } from "lucide-react"
 import { useAgent, useUpdateAgent, useDeleteAgent } from "@/lib/hooks/use-agents"
 import { useModels } from "@/lib/hooks/use-models"
 import { useTools } from "@/lib/hooks/use-tools"
+import {
+  useTriggers,
+  useCreateTrigger,
+  useUpdateTrigger,
+  useDeleteTrigger,
+} from "@/lib/hooks/use-triggers"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -48,12 +60,19 @@ export default function AgentSettingsPage({
   const { data: tools } = useTools()
   const updateAgent = useUpdateAgent(agentId)
   const deleteAgent = useDeleteAgent()
+  const { data: triggers } = useTriggers(agentId)
+  const createTrigger = useCreateTrigger(agentId)
+  const updateTrigger = useUpdateTrigger(agentId)
+  const deleteTrigger = useDeleteTrigger(agentId)
 
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [systemPrompt, setSystemPrompt] = useState("")
   const [modelId, setModelId] = useState("")
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
+  const [showTriggerForm, setShowTriggerForm] = useState(false)
+  const [triggerMinutes, setTriggerMinutes] = useState("10")
+  const [triggerMessage, setTriggerMessage] = useState("")
 
   useEffect(() => {
     if (agent) {
@@ -108,13 +127,11 @@ export default function AgentSettingsPage({
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
       <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          render={<Link href={`/agents/${agentId}`} />}
-        >
-          <ArrowLeftIcon className="size-4" />
-        </Button>
+        <Link href={`/agents/${agentId}`}>
+          <Button variant="ghost" size="icon-sm">
+            <ArrowLeftIcon className="size-4" />
+          </Button>
+        </Link>
         <span className="text-sm text-muted-foreground">채팅으로 돌아가기</span>
       </div>
 
@@ -208,6 +225,130 @@ export default function AgentSettingsPage({
             )
           ) : (
             <Skeleton className="h-16 w-full" />
+          )}
+        </div>
+
+        {/* Triggers */}
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <TimerIcon className="size-4" />
+            자동 실행 (트리거)
+          </label>
+
+          {triggers && triggers.length > 0 ? (
+            <div className="space-y-2">
+              {triggers.map((trigger) => (
+                <Card key={trigger.id}>
+                  <CardContent className="flex items-center justify-between py-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={trigger.status === "active" ? "default" : "secondary"}>
+                          {trigger.status === "active" ? "활성" : "일시정지"}
+                        </Badge>
+                        <span className="text-sm">
+                          매 {trigger.schedule_config.interval_minutes}분
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate max-w-md">
+                        &quot;{trigger.input_message}&quot;
+                      </p>
+                      <div className="flex gap-3 text-xs text-muted-foreground">
+                        {trigger.last_run_at && (
+                          <span>마지막 실행: {new Date(trigger.last_run_at).toLocaleString("ko-KR")}</span>
+                        )}
+                        <span>실행 횟수: {trigger.run_count}회</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={trigger.status === "active" ? "일시정지" : "재개"}
+                        onClick={() =>
+                          updateTrigger.mutate({
+                            triggerId: trigger.id,
+                            data: { status: trigger.status === "active" ? "paused" : "active" },
+                          })
+                        }
+                      >
+                        {trigger.status === "active" ? (
+                          <PauseIcon className="size-4" />
+                        ) : (
+                          <PlayIcon className="size-4" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="트리거 삭제"
+                        onClick={() => deleteTrigger.mutate(trigger.id)}
+                      >
+                        <Trash2Icon className="size-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : null}
+
+          {showTriggerForm ? (
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="space-y-2">
+                <label className="text-xs font-medium">실행 간격 (분)</label>
+                <Input
+                  type="number"
+                  min="1"
+                  value={triggerMinutes}
+                  onChange={(e) => setTriggerMinutes(e.target.value)}
+                  placeholder="10"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-medium">실행 시 보낼 메시지</label>
+                <Textarea
+                  value={triggerMessage}
+                  onChange={(e) => setTriggerMessage(e.target.value)}
+                  placeholder="예: 한글과컴퓨터 최신 뉴스를 검색하고 요약해줘"
+                  rows={2}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  disabled={createTrigger.isPending || !triggerMessage.trim()}
+                  onClick={async () => {
+                    await createTrigger.mutateAsync({
+                      trigger_type: "interval",
+                      schedule_config: { interval_minutes: Number(triggerMinutes) || 10 },
+                      input_message: triggerMessage.trim(),
+                    })
+                    setShowTriggerForm(false)
+                    setTriggerMessage("")
+                    setTriggerMinutes("10")
+                  }}
+                >
+                  {createTrigger.isPending && <Loader2Icon className="mr-1 size-3 animate-spin" />}
+                  트리거 추가
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowTriggerForm(false)}
+                >
+                  취소
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowTriggerForm(true)}
+            >
+              <PlusIcon className="size-4" data-icon="inline-start" />
+              자동 실행 추가
+            </Button>
           )}
         </div>
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
@@ -38,9 +38,11 @@ async def get_session(
 async def send_message(
     db: AsyncSession, session: AgentCreationSession, content: str
 ) -> dict:
-    # Get available tools and models for context
+    # Get available tools and models for context (include system tools)
     tools_result = await db.execute(
-        select(Tool.name).where(Tool.user_id == session.user_id)
+        select(Tool.name).where(
+            or_(Tool.user_id == session.user_id, Tool.is_system.is_(True))
+        )
     )
     available_tools = [r[0] for r in tools_result.all()]
 
@@ -98,6 +100,19 @@ async def confirm_creation(
         model_id=model.id,
     )
     db.add(agent)
+    await db.flush()  # Get agent.id before linking tools
+
+    # Auto-link recommended tools by name
+    recommended_names = config.get("recommended_tool_names", [])
+    if recommended_names:
+        lower_names = [n.lower() for n in recommended_names]
+        tools_result = await db.execute(
+            select(Tool).where(
+                or_(Tool.user_id == session.user_id, Tool.is_system.is_(True)),
+                func.lower(Tool.name).in_(lower_names),
+            )
+        )
+        agent.tools = list(tools_result.scalars().all())
 
     session.status = "completed"
 

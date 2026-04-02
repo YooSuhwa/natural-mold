@@ -28,6 +28,7 @@ export interface AgentCreateRequest {
   system_prompt: string
   model_id: string
   tool_ids?: string[]
+  template_id?: string
 }
 
 export interface AgentUpdateRequest {
@@ -65,7 +66,8 @@ export interface ModelCreateRequest {
 // Tool
 export interface Tool {
   id: string
-  type: "mcp" | "custom"
+  type: "mcp" | "custom" | "builtin"
+  is_system: boolean
   mcp_server_id: string | null
   name: string
   description: string | null
@@ -188,4 +190,32 @@ export interface DraftConfig {
   recommended_tool_names?: string[]
   recommended_model?: string
   is_ready?: boolean
+}
+
+// Trigger
+export interface AgentTrigger {
+  id: string
+  agent_id: string
+  trigger_type: "interval" | "cron"
+  schedule_config: { interval_minutes?: number; cron_expression?: string }
+  input_message: string
+  status: "active" | "paused" | "error"
+  last_run_at: string | null
+  next_run_at: string | null
+  run_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TriggerCreateRequest {
+  trigger_type: "interval" | "cron"
+  schedule_config: Record<string, unknown>
+  input_message: string
+}
+
+export interface TriggerUpdateRequest {
+  trigger_type?: string
+  schedule_config?: Record<string, unknown>
+  input_message?: string
+  status?: string
 }

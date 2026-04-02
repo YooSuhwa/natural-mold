@@ -26,7 +26,7 @@ class MCPServer(Base):
     auth_type: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
     auth_config: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
 
     tools: Mapped[list[Tool]] = relationship(back_populates="mcp_server", cascade="all, delete-orphan")
 
@@ -35,8 +35,9 @@ class Tool(Base):
     __tablename__ = "tools"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     type: Mapped[str] = mapped_column(String(20), nullable=False)
+    is_system: Mapped[bool] = mapped_column(default=False, nullable=False)
     mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("mcp_servers.id"))
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
@@ -45,6 +46,6 @@ class Tool(Base):
     http_method: Mapped[str | None] = mapped_column(String(10))
     auth_type: Mapped[str | None] = mapped_column(String(20))
     auth_config: Mapped[dict | None] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
 
     mcp_server: Mapped[MCPServer | None] = relationship(back_populates="tools")

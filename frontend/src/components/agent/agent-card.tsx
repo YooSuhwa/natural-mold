@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { WrenchIcon } from "lucide-react"
+import { WrenchIcon, TimerIcon } from "lucide-react"
 import {
   Card,
   CardHeader,
@@ -63,7 +63,9 @@ export function AgentCard({ agent }: AgentCardProps) {
             {agent.tools.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <WrenchIcon className="size-3.5" />
-                <span>도구 {agent.tools.length}개</span>
+                <span>
+                  {agent.tools.map((t) => t.name).join(", ")}
+                </span>
               </div>
             )}
           </div>
