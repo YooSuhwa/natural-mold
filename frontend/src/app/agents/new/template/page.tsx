@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Loader2Icon, LayoutTemplateIcon } from "lucide-react"
 import { useTemplates } from "@/lib/hooks/use-templates"
 import { useCreateAgent } from "@/lib/hooks/use-agents"
+import { useModels } from "@/lib/hooks/use-models"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -32,8 +33,11 @@ export default function TemplateSelectionPage() {
   const { data: templates, isLoading } = useTemplates(
     selectedCategory || undefined
   )
+  const { data: models } = useModels()
   const createAgent = useCreateAgent()
   const [creatingId, setCreatingId] = useState<string | null>(null)
+
+  const defaultModelId = models?.find((m) => m.is_default)?.id ?? models?.[0]?.id ?? ""
 
   async function handleCreateFromTemplate(template: Template) {
     setCreatingId(template.id)
@@ -42,8 +46,8 @@ export default function TemplateSelectionPage() {
         name: template.name,
         description: template.description ?? undefined,
         system_prompt: template.system_prompt,
-        model_id: template.recommended_model_id ?? "",
-        tool_ids: [],
+        model_id: template.recommended_model_id ?? defaultModelId,
+        template_id: template.id,
       })
       router.push(`/agents/${agent.id}`)
     } catch {
