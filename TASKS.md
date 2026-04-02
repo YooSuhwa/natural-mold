@@ -139,6 +139,12 @@
 - [x] conversations.py + trigger_executor.py — merge 로직 적용
 - [x] 테스트 (48개 전체 통과)
 
+## Phase 11: Pre-built 도구 서버 키 상태 표시
+
+- [x] Backend — ToolResponse에 server_key_available computed 필드 추가
+- [x] Frontend — 도구 카드 3-state UI (키 미설정 / 서버 설정 / 설정 완료)
+- [x] 테스트 (62개 전체 통과)
+
 ## Phase 6: 통합 + 폴리시
 
 - [ ] E2E 시나리오 검증 (PRD 섹션 4)
