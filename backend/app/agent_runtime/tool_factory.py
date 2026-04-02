@@ -28,11 +28,17 @@ def create_builtin_tool(name: str) -> BaseTool:
 
 
 def _build_web_search_tool() -> BaseTool:
-    from langchain_community.tools import DuckDuckGoSearchRun
+    from langchain_community.tools import DuckDuckGoSearchResults
 
-    return DuckDuckGoSearchRun(
+    return DuckDuckGoSearchResults(
         name="web_search",
-        description="웹에서 키워드를 검색하여 관련 정보를 찾습니다. 뉴스, 기사, 정보 검색에 사용하세요.",
+        description=(
+            "웹에서 키워드를 검색하여 최신 뉴스와 정보를 찾습니다. "
+            "각 결과에 title, snippet, link(URL), date, source가 포함됩니다. "
+            "반드시 결과의 link를 출처로 사용하세요. URL을 직접 만들지 마세요."
+        ),
+        num_results=5,
+        backend="news",
     )
 
 
