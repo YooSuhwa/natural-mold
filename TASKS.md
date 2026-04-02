@@ -190,23 +190,23 @@
 ## Phase 13: Tier 2 — Fix Agent + Skill 시스템
 
 ### Fix Agent — Backend
-- [ ] fix_agent.py — 대화로 에이전트 수정하는 메타 에이전트  ← current
-- [ ] fix_agent 스키마 (요청/응답)
-- [ ] fix_agent API (POST /api/agents/:id/fix)
-- [ ] 테스트
+- [x] fix_agent.py — 대화로 에이전트 수정하는 메타 에이전트
+- [x] fix_agent 스키마 (요청/응답)
+- [x] fix_agent API (POST /api/agents/:id/fix)
+- [x] 테스트 (62개 통과)
 
 ### Fix Agent — Frontend
-- [ ] Fix Agent 대화 UI 컴포넌트
-- [ ] 에이전트 설정 페이지에 "AI로 수정하기" 버튼
+- [x] Fix Agent 대화 UI 컴포넌트 (FixAgentDialog)
+- [x] 에이전트 설정 페이지에 "AI로 수정하기" 버튼
 
 ### Skill 시스템 — Backend
-- [ ] Skill 모델 + agent_skills 연결 테이블
-- [ ] Alembic 마이그레이션
-- [ ] Skill CRUD API (5 endpoints)
-- [ ] Executor에서 스킬 content를 system_prompt에 주입
-- [ ] 테스트
+- [x] Skill 모델 + agent_skills 연결 테이블
+- [x] Alembic 마이그레이션
+- [x] Skill CRUD API (5 endpoints)
+- [x] Executor에서 스킬 content를 system_prompt에 주입
+- [x] 테스트 (62개 통과)
 
 ### Skill 시스템 — Frontend
-- [ ] 사이드바에 "스킬" 메뉴 추가
-- [ ] 스킬 관리 페이지 (CRUD)
-- [ ] 에이전트 설정에서 스킬 연결/해제
+- [x] 사이드바에 "스킬" 메뉴 추가
+- [x] 스킬 관리 페이지 (CRUD)
+- [x] 에이전트 설정에서 스킬 연결/해제
