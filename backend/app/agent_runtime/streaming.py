@@ -30,7 +30,7 @@ async def stream_agent_response(
         ):
             msg, metadata = chunk
             if hasattr(msg, "content") and msg.content:
-                if msg.type == "ai":
+                if msg.type in ("ai", "AIMessageChunk"):
                     delta = msg.content
                     if isinstance(delta, str):
                         full_content += delta
