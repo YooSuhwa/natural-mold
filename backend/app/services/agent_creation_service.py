@@ -92,17 +92,8 @@ async def confirm_creation(
     if not model:
         return None
 
-    agent = Agent(
-        user_id=session.user_id,
-        name=config.get("name", "새 에이전트"),
-        description=config.get("description"),
-        system_prompt=config.get("system_prompt", ""),
-        model_id=model.id,
-    )
-    db.add(agent)
-    await db.flush()  # Get agent.id before linking tools
-
-    # Auto-link recommended tools by name
+    # Auto-link recommended tools by name (before db.add to avoid lazy loading)
+    tools_to_link: list[Tool] = []
     recommended_names = config.get("recommended_tool_names", [])
     if recommended_names:
         lower_names = [n.lower() for n in recommended_names]
@@ -112,7 +103,17 @@ async def confirm_creation(
                 func.lower(Tool.name).in_(lower_names),
             )
         )
-        agent.tools = list(tools_result.scalars().all())
+        tools_to_link = list(tools_result.scalars().all())
+
+    agent = Agent(
+        user_id=session.user_id,
+        name=config.get("name", "새 에이전트"),
+        description=config.get("description"),
+        system_prompt=config.get("system_prompt", ""),
+        model_id=model.id,
+    )
+    agent.tools = tools_to_link
+    db.add(agent)
 
     session.status = "completed"
 
