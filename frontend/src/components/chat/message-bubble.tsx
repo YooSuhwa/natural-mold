@@ -3,6 +3,7 @@
 import { BotIcon, UserIcon } from "lucide-react"
 import type { Message } from "@/lib/types"
 import { ToolCallDisplay } from "@/components/chat/tool-call-display"
+import { MarkdownContent } from "@/components/chat/markdown-content"
 
 interface MessageBubbleProps {
   message: Message
@@ -40,13 +41,17 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         )}
         {message.content && (
           <div
-            className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
+            className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
               isUser
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted"
             }`}
           >
-            {message.content}
+            {isUser ? (
+              message.content
+            ) : (
+              <MarkdownContent content={message.content} />
+            )}
           </div>
         )}
       </div>
