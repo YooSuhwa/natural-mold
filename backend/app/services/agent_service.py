@@ -105,6 +105,9 @@ async def update_agent(
         config_map: dict[uuid.UUID, dict[str, Any]] = {}
         if data.tool_configs:
             config_map = {tc.tool_id: tc.config for tc in data.tool_configs if tc.config}
+        # Clear existing links first to avoid PK conflict, then add new ones
+        agent.tool_links.clear()
+        await db.flush()
         agent.tool_links = _build_tool_links(data.tool_ids, config_map)
     elif data.tool_configs is not None:
         # Update configs only (no tool_ids change)
