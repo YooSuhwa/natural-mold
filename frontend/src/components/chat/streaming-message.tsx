@@ -30,7 +30,6 @@ export function StreamingMessage() {
 
   const hasContent = streamingMessage?.content
   const hasToolCalls = streamingToolCalls.length > 0
-  const isThinking = !hasContent && !hasToolCalls
 
   return (
     <div className="flex gap-3">
@@ -60,11 +59,7 @@ export function StreamingMessage() {
           </div>
         ) : (
           <div className="rounded-2xl bg-muted px-4 py-3">
-            {isThinking ? (
-              <ThinkingDots />
-            ) : (
-              <ThinkingDots />
-            )}
+            <ThinkingDots />
           </div>
         )}
       </div>

@@ -44,17 +44,18 @@ export function ToolCallDisplay({
         <span className="text-muted-foreground">
           {status === "calling" ? "호출 중..." : "완료"}
         </span>
+        <span className="ml-auto" />
         {elapsedMs != null && status === "completed" && (
-          <span className="ml-auto flex items-center gap-0.5 text-muted-foreground">
+          <span className="flex items-center gap-0.5 text-muted-foreground">
             <ClockIcon className="size-3" />
             {elapsedMs < 1000 ? `${elapsedMs}ms` : `${(elapsedMs / 1000).toFixed(1)}s`}
           </span>
         )}
         {(hasArgs || result) && (
           expanded ? (
-            <ChevronUpIcon className="size-3.5 text-muted-foreground ml-auto shrink-0" />
+            <ChevronUpIcon className="size-3.5 text-muted-foreground shrink-0" />
           ) : (
-            <ChevronDownIcon className="size-3.5 text-muted-foreground ml-auto shrink-0" />
+            <ChevronDownIcon className="size-3.5 text-muted-foreground shrink-0" />
           )
         )}
       </button>

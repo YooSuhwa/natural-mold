@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
+from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink
 
@@ -122,20 +123,14 @@ async def get_agent_with_tools(
         .options(
             selectinload(Agent.model),
             selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
-            selectinload(Agent.skill_links),
+            selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
         )
     )
     return result.scalar_one_or_none()
 
 
-async def get_agent_skill_contents(db: AsyncSession, agent: Agent) -> list[str]:
-    """Get skill contents for an agent's linked skills."""
-    from app.models.skill import Skill
-
+def get_agent_skill_contents(agent: Agent) -> list[str]:
+    """Get skill contents from an agent's eagerly-loaded skill links."""
     if not agent.skill_links:
         return []
-    skill_ids = [link.skill_id for link in agent.skill_links]
-    result = await db.execute(
-        select(Skill.content).where(Skill.id.in_(skill_ids))
-    )
-    return [r[0] for r in result.all()]
+    return [link.skill.content for link in agent.skill_links if link.skill]

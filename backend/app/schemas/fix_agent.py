@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
+
+FixAction = Literal["preview", "apply", "ask"]
 
 
 class FixAgentMessageRequest(BaseModel):
@@ -23,7 +25,7 @@ class FixAgentChanges(BaseModel):
 class FixAgentResponse(BaseModel):
     role: str = "assistant"
     content: str
-    action: str  # "preview" | "apply" | "ask"
+    action: FixAction
     changes: FixAgentChanges | None = None
     summary: str | None = None
     question: str | None = None

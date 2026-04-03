@@ -85,8 +85,7 @@ async def send_message(
     messages = await chat_service.list_messages(db, conversation_id)
     messages_history = [{"role": m.role, "content": m.content} for m in messages]
 
-    # Inject skill contents into system prompt
-    skill_contents = await chat_service.get_agent_skill_contents(db, agent)
+    skill_contents = chat_service.get_agent_skill_contents(agent)
     effective_prompt = agent.system_prompt
     if skill_contents:
         skills_text = "\n\n---\n\n".join(skill_contents)

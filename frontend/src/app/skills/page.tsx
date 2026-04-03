@@ -134,6 +134,15 @@ export default function SkillsPage() {
   const createSkill = useCreateSkill()
   const deleteSkill = useDeleteSkill()
 
+  async function handleCreate(data: { name: string; description: string; content: string }) {
+    try {
+      await createSkill.mutateAsync(data)
+      toast.success("스킬이 생성되었습니다")
+    } catch {
+      toast.error("스킬 생성에 실패했습니다")
+    }
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
@@ -147,14 +156,7 @@ export default function SkillsPage() {
                 스킬 추가
               </Button>
             }
-            onSubmit={async (data) => {
-              try {
-                await createSkill.mutateAsync(data)
-                toast.success("스킬이 생성되었습니다")
-              } catch {
-                toast.error("스킬 생성에 실패했습니다")
-              }
-            }}
+            onSubmit={handleCreate}
             isPending={createSkill.isPending}
           />
         }

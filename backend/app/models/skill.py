@@ -21,6 +21,8 @@ class AgentSkillLink(Base):
         ForeignKey("skills.id", ondelete="CASCADE"), primary_key=True,
     )
 
+    skill: Mapped[Skill] = relationship(lazy="joined")
+
 
 class Skill(Base):
     __tablename__ = "skills"

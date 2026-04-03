@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate, SkillBrief, ToolBrief
+from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate, ToolBrief
+from app.schemas.skill import SkillBrief
 from app.services import agent_service
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -25,7 +26,7 @@ def _agent_to_response(agent) -> AgentResponse:
             for link in agent.tool_links
         ],
         skills=[
-            SkillBrief(id=link.skill_id, name="", description=None)
+            SkillBrief(id=link.skill_id, name=link.skill.name, description=link.skill.description)
             for link in agent.skill_links
         ],
         status=agent.status,

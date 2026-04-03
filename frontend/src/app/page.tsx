@@ -44,6 +44,12 @@ const quickActions = [
 
 type SortKey = "latest" | "name" | "favorite"
 
+const SORT_LABELS: Record<SortKey, string> = {
+  latest: "최신순",
+  name: "이름순",
+  favorite: "즐겨찾기",
+}
+
 export default function DashboardPage() {
   const { data: agents, isLoading: agentsLoading } = useAgents()
   const { data: usage } = useUsageSummary()
@@ -81,12 +87,6 @@ export default function DashboardPage() {
 
     return result
   }, [agents, search, sortBy, showFavoritesOnly])
-
-  const sortLabel: Record<SortKey, string> = {
-    latest: "최신순",
-    name: "이름순",
-    favorite: "즐겨찾기",
-  }
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
@@ -175,7 +175,7 @@ export default function DashboardPage() {
                   }
                 >
                   <ArrowUpDownIcon className="size-3.5" />
-                  <span className="text-xs">{sortLabel[sortBy]}</span>
+                  <span className="text-xs">{SORT_LABELS[sortBy]}</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => setSortBy("latest")}>

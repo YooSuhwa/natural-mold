@@ -19,7 +19,7 @@ def _selectin_agent() -> list:
     return [
         selectinload(Agent.model),
         selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
-        selectinload(Agent.skill_links),
+        selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
     ]
 
 
@@ -56,7 +56,7 @@ def _build_tool_links(
 async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
     agent.is_favorite = not agent.is_favorite
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links"])
+    await db.refresh(agent, ["model", "tool_links", "skill_links"])
     return agent
 
 

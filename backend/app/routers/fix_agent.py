@@ -8,8 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.agent_runtime.fix_agent import run_fix_conversation
+from app.models.agent import Agent
 from app.models.model import Model
 from app.models.tool import Tool
+from app.schemas.agent import AgentUpdate
 from app.schemas.fix_agent import FixAgentChanges, FixAgentMessageRequest, FixAgentResponse
 from app.services import agent_service
 
@@ -27,17 +29,14 @@ async def fix_agent(
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # Gather available tools
     result = await db.execute(
         select(Tool.name).where(or_(Tool.user_id == user.id, Tool.is_system.is_(True)))
     )
     available_tools = [r[0] for r in result.all()]
 
-    # Gather available models
     result = await db.execute(select(Model.display_name))
     available_models = [r[0] for r in result.all()]
 
-    # Build agent info
     params = agent.model_params or {}
     agent_info = {
         "name": agent.name,
@@ -58,12 +57,10 @@ async def fix_agent(
         available_models=available_models,
     )
 
-    # Build updated conversation history
     updated_history = [*data.conversation_history]
     updated_history.append({"role": "user", "content": data.content})
     updated_history.append({"role": "assistant", "content": response["raw_content"]})
 
-    # If action is "apply", actually apply the changes to the agent
     changes_model: FixAgentChanges | None = None
     if response.get("changes"):
         changes_model = FixAgentChanges(**response["changes"])
@@ -83,14 +80,10 @@ async def fix_agent(
 
 async def _apply_changes(
     db: AsyncSession,
-    agent: object,
+    agent: Agent,
     changes: FixAgentChanges,
     user_id: uuid.UUID,
 ) -> None:
-    """Apply Fix Agent changes to the agent."""
-    from app.models.tool import Tool
-    from app.schemas.agent import AgentUpdate
-
     update_data: dict = {}
 
     if changes.system_prompt is not None:
@@ -102,7 +95,6 @@ async def _apply_changes(
     if changes.model_params is not None:
         update_data["model_params"] = changes.model_params
 
-    # Model change
     if changes.model_name:
         result = await db.execute(
             select(Model).where(
@@ -113,34 +105,31 @@ async def _apply_changes(
         if model:
             update_data["model_id"] = model.id
 
-    # Tool changes
-    current_tool_ids = [link.tool_id for link in agent.tool_links]  # type: ignore[attr-defined]
+    current_tool_ids = [link.tool_id for link in agent.tool_links]
 
+    # Batch resolve tool names → IDs in a single query
     if changes.add_tools:
-        for tool_name in changes.add_tools:
-            result = await db.execute(
-                select(Tool.id).where(
-                    or_(Tool.user_id == user_id, Tool.is_system.is_(True)),
-                    func.lower(Tool.name) == tool_name.lower(),
-                )
+        result = await db.execute(
+            select(Tool.id).where(
+                or_(Tool.user_id == user_id, Tool.is_system.is_(True)),
+                func.lower(Tool.name).in_([n.lower() for n in changes.add_tools]),
             )
-            row = result.first()
-            if row and row[0] not in current_tool_ids:
+        )
+        for row in result.all():
+            if row[0] not in current_tool_ids:
                 current_tool_ids.append(row[0])
 
     if changes.remove_tools:
-        for tool_name in changes.remove_tools:
-            result = await db.execute(
-                select(Tool.id).where(
-                    func.lower(Tool.name) == tool_name.lower(),
-                )
+        result = await db.execute(
+            select(Tool.id).where(
+                func.lower(Tool.name).in_([n.lower() for n in changes.remove_tools]),
             )
-            row = result.first()
-            if row and row[0] in current_tool_ids:
-                current_tool_ids.remove(row[0])
+        )
+        ids_to_remove = {row[0] for row in result.all()}
+        current_tool_ids = [tid for tid in current_tool_ids if tid not in ids_to_remove]
 
     if changes.add_tools or changes.remove_tools:
         update_data["tool_ids"] = current_tool_ids
 
     if update_data:
-        await agent_service.update_agent(db, agent, AgentUpdate(**update_data))  # type: ignore[arg-type]
+        await agent_service.update_agent(db, agent, AgentUpdate(**update_data))
