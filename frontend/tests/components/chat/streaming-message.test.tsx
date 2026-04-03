@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { NextIntlClientProvider } from 'next-intl'
 import { Provider, createStore } from 'jotai'
 import { StreamingMessage } from '@/components/chat/streaming-message'
 import {
@@ -6,6 +7,7 @@ import {
   streamingToolCallsAtom,
   isStreamingAtom,
 } from '@/lib/stores/chat-store'
+import messages from '../../../messages/ko.json'
 
 function renderWithJotai(initialValues?: {
   isStreaming?: boolean
@@ -23,9 +25,11 @@ function renderWithJotai(initialValues?: {
   store.set(streamingToolCallsAtom, initialValues?.toolCalls ?? [])
 
   return render(
-    <Provider store={store}>
-      <StreamingMessage />
-    </Provider>,
+    <NextIntlClientProvider locale="ko" messages={messages}>
+      <Provider store={store}>
+        <StreamingMessage />
+      </Provider>
+    </NextIntlClientProvider>,
   )
 }
 

@@ -19,6 +19,7 @@ import {
   MonitorIcon,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
+import { useTranslations } from 'next-intl'
 
 import { useAgents } from '@/lib/hooks/use-agents'
 import {
@@ -43,18 +44,19 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 
-const navItems = [
-  { label: '홈', href: '/', icon: HomeIcon },
-  { label: '도구', href: '/tools', icon: WrenchIcon },
-  { label: '스킬', href: '/skills', icon: BookOpenIcon },
-  { label: '모델', href: '/models', icon: CpuIcon },
-  { label: '사용량', href: '/usage', icon: BarChart3Icon },
-]
-
 export function AppSidebar() {
   const pathname = usePathname()
   const { data: agents, isLoading } = useAgents()
   const { setTheme, theme } = useTheme()
+  const t = useTranslations('sidebar')
+
+  const navItems = [
+    { label: t('nav.home'), href: '/', icon: HomeIcon },
+    { label: t('nav.tools'), href: '/tools', icon: WrenchIcon },
+    { label: t('nav.skills'), href: '/skills', icon: BookOpenIcon },
+    { label: t('nav.models'), href: '/models', icon: CpuIcon },
+    { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
+  ]
 
   const recentAgents = agents
     ?.slice()
@@ -68,7 +70,7 @@ export function AppSidebar() {
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
             M
           </div>
-          <span className="text-lg font-bold tracking-tight">Moldy</span>
+          <span className="text-lg font-bold tracking-tight">{t('brand')}</span>
         </Link>
       </SidebarHeader>
 
@@ -80,11 +82,11 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   variant="outline"
-                  tooltip="새 에이전트"
+                  tooltip={t('newAgent')}
                   render={<Link href="/agents/new" />}
                 >
                   <PlusIcon className="size-4" />
-                  <span>새 에이전트</span>
+                  <span>{t('newAgent')}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
@@ -122,7 +124,7 @@ export function AppSidebar() {
           <>
             <SidebarSeparator />
             <SidebarGroup>
-              <SidebarGroupLabel>최근 에이전트</SidebarGroupLabel>
+              <SidebarGroupLabel>{t('recentAgents')}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {isLoading
@@ -175,29 +177,29 @@ export function AppSidebar() {
                   <UserIcon className="size-4 text-sidebar-accent-foreground" />
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">수화</span>
-                  <span className="truncate text-xs text-muted-foreground">suhwa@moldy.ai</span>
+                  <span className="truncate font-medium">{t('user.name')}</span>
+                  <span className="truncate text-xs text-muted-foreground">{t('user.email')}</span>
                 </div>
                 <ChevronsUpDownIcon className="ml-auto size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-[--anchor-width]">
                 <DropdownMenuItem onClick={() => setTheme('light')}>
                   <SunIcon />
-                  라이트 모드
+                  {t('theme.light')}
                   {theme === 'light' && (
                     <span className="ml-auto text-xs text-muted-foreground">✓</span>
                   )}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setTheme('dark')}>
                   <MoonIcon />
-                  다크 모드
+                  {t('theme.dark')}
                   {theme === 'dark' && (
                     <span className="ml-auto text-xs text-muted-foreground">✓</span>
                   )}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setTheme('system')}>
                   <MonitorIcon />
-                  시스템
+                  {t('theme.system')}
                   {theme === 'system' && (
                     <span className="ml-auto text-xs text-muted-foreground">✓</span>
                   )}
@@ -205,12 +207,12 @@ export function AppSidebar() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>
                   <SettingsIcon />
-                  환경설정
+                  {t('settings')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>
                   <LogOutIcon />
-                  로그아웃
+                  {t('logout')}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

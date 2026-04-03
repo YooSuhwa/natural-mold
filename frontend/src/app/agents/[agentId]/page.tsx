@@ -3,11 +3,13 @@
 import { use, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2Icon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { conversationsApi } from '@/lib/api/conversations'
 
 export default function AgentPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params)
   const router = useRouter()
+  const t = useTranslations('agent.detail')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export default function AgentPage({ params }: { params: Promise<{ agentId: strin
         }
       } catch {
         if (!cancelled) {
-          setError('대화를 불러오는 데 실패했습니다.')
+          setError(t('loadFailed'))
         }
       }
     }
@@ -34,7 +36,7 @@ export default function AgentPage({ params }: { params: Promise<{ agentId: strin
     return () => {
       cancelled = true
     }
-  }, [agentId, router])
+  }, [agentId, router, t])
 
   if (error) {
     return (

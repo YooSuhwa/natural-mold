@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useTranslations, useFormatter } from 'next-intl'
 import { WrenchIcon, StarIcon } from 'lucide-react'
 import {
   Card,
@@ -20,6 +21,8 @@ interface AgentCardProps {
 
 export function AgentCard({ agent }: AgentCardProps) {
   const { mutate: toggleFavorite } = useToggleFavorite()
+  const t = useTranslations('agent.card')
+  const format = useFormatter()
 
   const statusColor =
     agent.status === 'active'
@@ -29,7 +32,11 @@ export function AgentCard({ agent }: AgentCardProps) {
         : 'bg-yellow-500'
 
   const statusLabel =
-    agent.status === 'active' ? '활성' : agent.status === 'error' ? '오류' : '비활성'
+    agent.status === 'active'
+      ? t('status.active')
+      : agent.status === 'error'
+        ? t('status.error')
+        : t('status.inactive')
 
   return (
     <Link
@@ -51,7 +58,7 @@ export function AgentCard({ agent }: AgentCardProps) {
                   toggleFavorite(agent.id)
                 }}
                 className="rounded-md p-1 hover:bg-accent transition-colors"
-                aria-label={agent.is_favorite ? '즐겨찾기 해제' : '즐겨찾기'}
+                aria-label={agent.is_favorite ? t('favoriteRemove') : t('favoriteAdd')}
               >
                 <StarIcon
                   className={`size-4 transition-colors ${
@@ -74,7 +81,7 @@ export function AgentCard({ agent }: AgentCardProps) {
         <CardContent>
           <div className="flex flex-col gap-2 text-sm text-muted-foreground">
             <div className="flex items-center gap-1.5">
-              <span className="font-medium text-foreground">모델:</span>
+              <span className="font-medium text-foreground">{t('modelLabel')}</span>
               <span>{agent.model.display_name}</span>
             </div>
             {agent.tools.length > 0 && (
@@ -86,7 +93,9 @@ export function AgentCard({ agent }: AgentCardProps) {
           </div>
         </CardContent>
         <CardFooter className="text-xs text-muted-foreground">
-          {new Date(agent.created_at).toLocaleDateString('ko-KR')} 생성
+          {t('createdAt', {
+            date: format.dateTime(new Date(agent.created_at), { dateStyle: 'medium' }),
+          })}
         </CardFooter>
       </Card>
     </Link>

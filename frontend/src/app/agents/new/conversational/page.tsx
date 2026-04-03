@@ -13,19 +13,13 @@ import {
   WrenchIcon,
   XIcon,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { cn } from '@/lib/utils'
 import { creationSessionApi, type CreationMessageResult } from '@/lib/api/creation-session'
 import type { DraftConfig } from '@/lib/types'
-
-const PHASES = [
-  { id: 1, label: '프로젝트 초기화', description: '요청 분석' },
-  { id: 2, label: '사용자 의도 분석', description: '의도 수집' },
-  { id: 3, label: '도구 추천', description: '도구 선택' },
-  { id: 4, label: '에이전트 생성', description: '최종 구성' },
-] as const
 
 type SuggestedReplies = NonNullable<CreationMessageResult['suggested_replies']>
 type RecommendedTool = CreationMessageResult['recommended_tools'][number]
@@ -36,9 +30,16 @@ interface PhaseLog {
 
 // --- Phase Timeline ---
 function PhaseTimeline({ currentPhase }: { currentPhase: number }) {
+  const t = useTranslations('agent.creation')
+  const PHASES = [
+    { id: 1, label: t('phase1.label'), description: t('phase1.description') },
+    { id: 2, label: t('phase2.label'), description: t('phase2.description') },
+    { id: 3, label: t('phase3.label'), description: t('phase3.description') },
+    { id: 4, label: t('phase4.label'), description: t('phase4.description') },
+  ]
   return (
     <div className="rounded-xl border bg-muted/30 p-4">
-      <h3 className="mb-3 text-sm font-medium text-muted-foreground">진행 상황</h3>
+      <h3 className="mb-3 text-sm font-medium text-muted-foreground">{t('progress')}</h3>
       <div className="space-y-0">
         {PHASES.map((phase, idx) => {
           const status =
@@ -95,7 +96,11 @@ function PhaseTimeline({ currentPhase }: { currentPhase: number }) {
                         : 'bg-muted text-muted-foreground',
                   )}
                 >
-                  {status === 'completed' ? '완료' : status === 'active' ? '진행중' : '대기중'}
+                  {status === 'completed'
+                    ? t('status.completed')
+                    : status === 'active'
+                      ? t('status.active')
+                      : t('status.pending')}
                 </span>
               </div>
             </div>
@@ -163,6 +168,7 @@ function ToolCard({ tool }: { tool: RecommendedTool }) {
 // --- Main Page ---
 export default function ConversationalCreationPage() {
   const router = useRouter()
+  const t = useTranslations('agent.creation')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [currentPhase, setCurrentPhase] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
@@ -216,14 +222,14 @@ export default function ConversationalCreationPage() {
         if (cancelled) return
         setSessionId(session.id)
       } catch {
-        setQuestion('세션을 시작하는 데 문제가 발생했습니다. 페이지를 새로고침해주세요.')
+        setQuestion(t('error.sessionFailed'))
       }
     }
     startSession()
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [t])
 
   // Focus initial textarea
   useEffect(() => {
@@ -279,7 +285,7 @@ export default function ConversationalCreationPage() {
       const response = await creationSessionApi.sendMessage(sessionId, text)
       applyResponse(response)
     } catch {
-      setQuestion('오류가 발생했습니다. 다시 시도해주세요.')
+      setQuestion(t('error.generic'))
       setSuggestions(null)
     } finally {
       setIsLoading(false)
@@ -287,7 +293,7 @@ export default function ConversationalCreationPage() {
   }
 
   function handleOptionClick(option: string) {
-    if (option === '직접 입력') {
+    if (option === t('customInputOption')) {
       setShowCustomInput(true)
       setSelectedOptions(new Set())
       return
@@ -323,13 +329,13 @@ export default function ConversationalCreationPage() {
 
   // Phase 3: Approve tools
   function handleApproveTools() {
-    handleSubmit('승인')
+    handleSubmit(t('approve'))
   }
 
   function handleRequestModification() {
     const text = modificationInput.trim()
     if (!text) return
-    handleSubmit(`수정 요청: ${text}`)
+    handleSubmit(t('modificationRequest', { text }))
   }
 
   // Phase 4: Confirm creation
@@ -348,7 +354,7 @@ export default function ConversationalCreationPage() {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="border-b px-6 py-3">
-        <h1 className="text-lg font-semibold">에이전트 만들기</h1>
+        <h1 className="text-lg font-semibold">{t('header')}</h1>
       </div>
 
       {/* Scrollable content */}
@@ -360,9 +366,7 @@ export default function ConversationalCreationPage() {
               <div className="rounded-xl border bg-background p-5">
                 <div className="flex items-start gap-2.5">
                   <MessageCircleIcon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-                  <p className="text-base font-semibold leading-relaxed">
-                    어떤 에이전트를 만들고 싶으세요?
-                  </p>
+                  <p className="text-base font-semibold leading-relaxed">{t('initialQuestion')}</p>
                 </div>
               </div>
               <textarea
@@ -376,7 +380,7 @@ export default function ConversationalCreationPage() {
                   }
                 }}
                 {...compositionProps}
-                placeholder='예: "한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트"'
+                placeholder={t('initialPlaceholder')}
                 rows={3}
                 className={cn(
                   'min-h-[80px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-3 text-sm leading-relaxed outline-none transition-colors',
@@ -391,7 +395,7 @@ export default function ConversationalCreationPage() {
                   size="lg"
                 >
                   <SendIcon className="mr-1.5 size-4" />
-                  시작
+                  {t('startButton')}
                 </Button>
               </div>
             </div>
@@ -403,7 +407,7 @@ export default function ConversationalCreationPage() {
               {phaseLogs.map((log, i) => (
                 <div key={i} className="rounded-xl border bg-muted/20 px-4 py-3">
                   <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                    [Phase {log.phase} 완료]
+                    {t('phaseLogCompleted', { phase: log.phase })}
                   </p>
                   <p className="mt-1 text-sm">{log.result}</p>
                 </div>
@@ -443,14 +447,16 @@ export default function ConversationalCreationPage() {
               {suggestions && suggestions.options.length > 0 && (
                 <div className="space-y-2">
                   {suggestions.multi_select && (
-                    <p className="text-xs text-muted-foreground">여러 개 선택할 수 있어요</p>
+                    <p className="text-xs text-muted-foreground">{t('multiSelectHint')}</p>
                   )}
                   {suggestions.options.map((option) => (
                     <OptionCard
                       key={option}
                       label={option}
                       selected={
-                        option === '직접 입력' ? showCustomInput : selectedOptions.has(option)
+                        option === t('customInputOption')
+                          ? showCustomInput
+                          : selectedOptions.has(option)
                       }
                       multiSelect={suggestions.multi_select}
                       onClick={() => handleOptionClick(option)}
@@ -472,7 +478,7 @@ export default function ConversationalCreationPage() {
                     }
                   }}
                   {...compositionProps}
-                  placeholder="원하는 내용을 자유롭게 작성하세요..."
+                  placeholder={t('customInputPlaceholder')}
                   rows={2}
                   className={cn(
                     'min-h-[60px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors',
@@ -494,7 +500,7 @@ export default function ConversationalCreationPage() {
                     }
                   }}
                   {...compositionProps}
-                  placeholder="답변을 입력하세요..."
+                  placeholder={t('fallbackPlaceholder')}
                   rows={2}
                   className={cn(
                     'min-h-[60px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors',
@@ -521,7 +527,7 @@ export default function ConversationalCreationPage() {
                     size="lg"
                   >
                     <SendIcon className="mr-1.5 size-4" />
-                    제출
+                    {t('submitButton')}
                   </Button>
                 </div>
               )}
@@ -538,7 +544,7 @@ export default function ConversationalCreationPage() {
               {recommendedTools.length > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">도구 추천</CardTitle>
+                    <CardTitle className="text-base">{t('toolRecommendation')}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {recommendedTools.map((tool) => (
@@ -564,7 +570,7 @@ export default function ConversationalCreationPage() {
                   }
                 }}
                 {...compositionProps}
-                placeholder="수정 의견을 입력하세요..."
+                placeholder={t('modificationPlaceholder')}
                 rows={2}
                 className={cn(
                   'min-h-[60px] max-h-[120px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors',
@@ -576,12 +582,12 @@ export default function ConversationalCreationPage() {
                 {modificationInput.trim() && (
                   <Button variant="outline" onClick={handleRequestModification} size="lg">
                     <XIcon className="mr-1.5 size-4" />
-                    수정요청
+                    {t('modificationButton')}
                   </Button>
                 )}
                 <Button onClick={handleApproveTools} size="lg">
                   <CheckIcon className="mr-1.5 size-4" />
-                  승인
+                  {t('approveButton')}
                 </Button>
               </div>
             </div>
@@ -593,7 +599,7 @@ export default function ConversationalCreationPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <SparklesIcon className="size-4 text-primary" />
-                  에이전트 구성 완료
+                  {t('configComplete')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -606,18 +612,20 @@ export default function ConversationalCreationPage() {
                 {/* Agent info */}
                 <div className="space-y-2.5 rounded-lg bg-muted/50 p-4 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">이름</span>
+                    <span className="text-muted-foreground">{t('draftName')}</span>
                     <span className="font-medium">{draftConfig.name ?? '-'}</span>
                   </div>
                   {draftConfig.description && (
                     <div className="flex justify-between gap-4">
-                      <span className="shrink-0 text-muted-foreground">설명</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {t('draftDescription')}
+                      </span>
                       <span className="text-right">{draftConfig.description}</span>
                     </div>
                   )}
                   {draftConfig.recommended_model && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">모델</span>
+                      <span className="text-muted-foreground">{t('draftModel')}</span>
                       <span>{draftConfig.recommended_model}</span>
                     </div>
                   )}
@@ -628,8 +636,7 @@ export default function ConversationalCreationPage() {
                   draftConfig.recommended_tool_names.length > 0 && (
                     <div className="space-y-2">
                       <h4 className="text-sm font-medium">
-                        포함된 도구 ({draftConfig.recommended_tool_names.length}
-                        개)
+                        {t('includedTools', { count: draftConfig.recommended_tool_names.length })}
                       </h4>
                       <div className="space-y-1.5">
                         {draftConfig.recommended_tool_names.map((name) => (
@@ -649,7 +656,7 @@ export default function ConversationalCreationPage() {
                 {draftConfig.system_prompt && (
                   <details>
                     <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
-                      시스템 프롬프트 보기
+                      {t('viewSystemPrompt')}
                     </summary>
                     <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-muted p-3 text-xs whitespace-pre-wrap">
                       {draftConfig.system_prompt}
@@ -664,7 +671,7 @@ export default function ConversationalCreationPage() {
                   size="lg"
                 >
                   {isConfirming && <Loader2Icon className="mr-1.5 size-4 animate-spin" />}
-                  에이전트 생성
+                  {t('createAgent')}
                 </Button>
               </CardContent>
             </Card>

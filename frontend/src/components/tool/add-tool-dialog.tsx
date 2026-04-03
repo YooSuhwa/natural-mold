@@ -11,6 +11,7 @@ import {
   DialogFooter,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { useTranslations } from 'next-intl'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,6 +23,8 @@ interface AddToolDialogProps {
 }
 
 export function AddToolDialog({ trigger }: AddToolDialogProps) {
+  const t = useTranslations('tool.addDialog')
+  const tc = useTranslations('common')
   const [open, setOpen] = useState(false)
 
   // MCP form state
@@ -95,47 +98,45 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
       <DialogTrigger render={trigger as React.ReactElement} />
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>도구 추가</DialogTitle>
-          <DialogDescription>
-            MCP 서버를 등록하거나 커스텀 도구를 직접 정의하세요.
-          </DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="mcp">
           <TabsList className="w-full">
             <TabsTrigger value="mcp" className="flex-1">
-              MCP 서버
+              {t('tab.mcp')}
             </TabsTrigger>
             <TabsTrigger value="custom" className="flex-1">
-              직접 정의
+              {t('tab.custom')}
             </TabsTrigger>
           </TabsList>
 
           {/* MCP Server Tab */}
           <TabsContent value="mcp" className="space-y-4 pt-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">서버 이름</label>
+              <label className="text-sm font-medium">{t('mcp.serverName')}</label>
               <Input
                 value={mcpName}
                 onChange={(e) => setMcpName(e.target.value)}
-                placeholder="Google Workspace MCP"
+                placeholder={t('mcp.serverNamePlaceholder')}
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">서버 URL</label>
+              <label className="text-sm font-medium">{t('mcp.serverUrl')}</label>
               <Input
                 value={mcpUrl}
                 onChange={(e) => setMcpUrl(e.target.value)}
-                placeholder="https://mcp.example.com"
+                placeholder={t('mcp.serverUrlPlaceholder')}
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">인증</label>
+              <label className="text-sm font-medium">{t('auth.label')}</label>
               <div className="flex gap-4 text-sm">
                 {[
-                  { value: 'none', label: '없음' },
-                  { value: 'api_key', label: 'API Key' },
-                  { value: 'oauth', label: 'OAuth' },
+                  { value: 'none', label: t('auth.none') },
+                  { value: 'api_key', label: t('auth.apiKey') },
+                  { value: 'oauth', label: t('auth.oauth') },
                 ].map((opt) => (
                   <label key={opt.value} className="flex items-center gap-1.5">
                     <input
@@ -152,12 +153,12 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
             </div>
             {mcpAuthType !== 'none' && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">API Key</label>
+                <label className="text-sm font-medium">{t('auth.apiKey')}</label>
                 <Input
                   value={mcpApiKey}
                   onChange={(e) => setMcpApiKey(e.target.value)}
                   type="password"
-                  placeholder="sk-xxxxxxxxxxxx"
+                  placeholder={t('auth.apiKeyPlaceholder')}
                 />
               </div>
             )}
@@ -167,7 +168,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                 disabled={!mcpName.trim() || !mcpUrl.trim() || registerMCP.isPending}
               >
                 {registerMCP.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
-                등록
+                {tc('register')}
               </Button>
             </DialogFooter>
           </TabsContent>
@@ -176,34 +177,34 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
           <TabsContent value="custom" className="space-y-4 pt-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                도구 이름 <span className="text-destructive">*</span>
+                {t('custom.name')} <span className="text-destructive">{tc('required')}</span>
               </label>
               <Input
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
-                placeholder="날씨 조회"
+                placeholder={t('custom.namePlaceholder')}
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">설명</label>
+              <label className="text-sm font-medium">{t('custom.description')}</label>
               <Input
                 value={customDescription}
                 onChange={(e) => setCustomDescription(e.target.value)}
-                placeholder="도시의 현재 날씨를 조회합니다"
+                placeholder={t('custom.descriptionPlaceholder')}
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                API URL <span className="text-destructive">*</span>
+                {t('custom.apiUrl')} <span className="text-destructive">{tc('required')}</span>
               </label>
               <Input
                 value={customApiUrl}
                 onChange={(e) => setCustomApiUrl(e.target.value)}
-                placeholder="https://api.example.com/weather"
+                placeholder={t('custom.apiUrlPlaceholder')}
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">HTTP 메서드</label>
+              <label className="text-sm font-medium">{t('custom.httpMethod')}</label>
               <div className="flex gap-4 text-sm">
                 {['GET', 'POST', 'PUT'].map((m) => (
                   <label key={m} className="flex items-center gap-1.5">
@@ -220,7 +221,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">파라미터 (JSON Schema)</label>
+              <label className="text-sm font-medium">{t('custom.params')}</label>
               <Textarea
                 value={customParams}
                 onChange={(e) => setCustomParams(e.target.value)}
@@ -230,12 +231,12 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">인증</label>
+              <label className="text-sm font-medium">{t('custom.auth')}</label>
               <div className="flex gap-4 text-sm">
                 {[
-                  { value: 'none', label: '없음' },
-                  { value: 'api_key', label: 'API Key' },
-                  { value: 'bearer', label: 'Bearer' },
+                  { value: 'none', label: t('auth.none') },
+                  { value: 'api_key', label: t('auth.apiKey') },
+                  { value: 'bearer', label: t('auth.bearer') },
                 ].map((opt) => (
                   <label key={opt.value} className="flex items-center gap-1.5">
                     <input
@@ -252,12 +253,12 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
             </div>
             {customAuthType !== 'none' && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">API Key</label>
+                <label className="text-sm font-medium">{t('auth.apiKey')}</label>
                 <Input
                   value={customApiKey}
                   onChange={(e) => setCustomApiKey(e.target.value)}
                   type="password"
-                  placeholder="sk-xxxxxxxxxxxx"
+                  placeholder={t('auth.apiKeyPlaceholder')}
                 />
               </div>
             )}
@@ -267,7 +268,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                 disabled={!customName.trim() || !customApiUrl.trim() || createCustomTool.isPending}
               >
                 {createCustomTool.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
-                등록
+                {tc('register')}
               </Button>
             </DialogFooter>
           </TabsContent>

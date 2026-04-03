@@ -11,6 +11,7 @@ import {
   AlertCircleIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { apiFetch } from '@/lib/api/client'
@@ -49,6 +50,7 @@ interface FixResponse {
 }
 
 export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
+  const t = useTranslations('agent.fix')
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<FixMessage[]>([])
   const [input, setInput] = useState('')
@@ -102,16 +104,13 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
       ])
 
       if (resp.action === 'apply') {
-        toast.success(resp.summary ?? '변경사항이 적용되었습니다')
+        toast.success(resp.summary ?? t('toast.applied'))
         qc.invalidateQueries({ queryKey: ['agents'] })
         qc.invalidateQueries({ queryKey: ['agents', agentId] })
       }
     } catch {
-      toast.error('Fix Agent 호출에 실패했습니다')
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: '오류가 발생했습니다. 다시 시도해주세요.' },
-      ])
+      toast.error(t('toast.failed'))
+      setMessages((prev) => [...prev, { role: 'assistant', content: t('error.generic') }])
     } finally {
       setIsLoading(false)
     }
@@ -130,7 +129,7 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
         render={
           <Button variant="outline" size="sm" className="gap-1.5">
             <SparklesIcon className="size-4" />
-            AI로 수정하기
+            {t('triggerButton')}
           </Button>
         }
       />
@@ -138,12 +137,9 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
         <DialogHeader className="px-6 pt-6 pb-2">
           <DialogTitle className="flex items-center gap-2">
             <SparklesIcon className="size-5 text-primary" />
-            Fix Agent
+            {t('title')}
           </DialogTitle>
-          <DialogDescription>
-            대화로 &quot;{agentName}&quot; 에이전트를 수정합니다. 프롬프트, 도구, 모델을 자유롭게
-            변경해보세요.
-          </DialogDescription>
+          <DialogDescription>{t('description', { agentName })}</DialogDescription>
         </DialogHeader>
 
         {/* Messages */}
@@ -151,13 +147,13 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
               <SparklesIcon className="size-8 mb-3 text-primary/40" />
-              <p className="text-sm font-medium">어떻게 수정할까요?</p>
+              <p className="text-sm font-medium">{t('emptyState')}</p>
               <div className="mt-3 flex flex-wrap justify-center gap-2">
                 {[
-                  '존댓말로 바꿔줘',
-                  '더 간결하게 답변하도록',
-                  '비용을 줄여줘',
-                  '검색 도구를 추가해줘',
+                  t('suggestion.polite'),
+                  t('suggestion.concise'),
+                  t('suggestion.cost'),
+                  t('suggestion.addSearch'),
                 ].map((suggestion) => (
                   <button
                     key={suggestion}
@@ -195,7 +191,7 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
                   <div className="flex items-center gap-1.5">
                     <Badge variant="outline" className="text-xs gap-1">
                       <AlertCircleIcon className="size-3" />
-                      미리보기
+                      {t('badge.preview')}
                     </Badge>
                     {msg.summary && (
                       <span className="text-xs text-muted-foreground">{msg.summary}</span>
@@ -206,7 +202,7 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
                   <div className="flex items-center gap-1.5">
                     <Badge className="text-xs gap-1 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/10">
                       <CheckCircle2Icon className="size-3" />
-                      적용 완료
+                      {t('badge.applied')}
                     </Badge>
                     {msg.summary && (
                       <span className="text-xs text-muted-foreground">{msg.summary}</span>
@@ -241,7 +237,7 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="수정 요청을 입력하세요..."
+              placeholder={t('inputPlaceholder')}
               rows={1}
               className="min-h-[40px] max-h-[120px] resize-none text-sm"
             />

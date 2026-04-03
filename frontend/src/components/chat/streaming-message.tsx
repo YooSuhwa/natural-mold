@@ -2,6 +2,7 @@
 
 import { useAtomValue } from 'jotai'
 import { BotIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import {
   streamingMessageAtom,
   streamingToolCallsAtom,
@@ -11,12 +12,14 @@ import { ToolCallDisplay } from '@/components/chat/tool-call-display'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 
 function ThinkingDots() {
+  const t = useTranslations('chat.streaming')
+
   return (
     <div className="flex items-center gap-1 px-1">
       <span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
       <span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
       <span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
-      <span className="ml-2 text-xs text-muted-foreground">생각 중...</span>
+      <span className="ml-2 text-xs text-muted-foreground">{t('thinking')}</span>
     </div>
   )
 }

@@ -9,6 +9,7 @@ import {
   ChevronUpIcon,
   ClockIcon,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import type { ToolCallInfo } from '@/lib/types'
 
 interface ToolCallDisplayProps {
@@ -20,6 +21,7 @@ interface ToolCallDisplayProps {
 
 export function ToolCallDisplay({ toolCall, status, result, elapsedMs }: ToolCallDisplayProps) {
   const [expanded, setExpanded] = useState(false)
+  const t = useTranslations('chat.toolCall')
   const hasArgs = toolCall.args && Object.keys(toolCall.args).length > 0
 
   return (
@@ -37,7 +39,7 @@ export function ToolCallDisplay({ toolCall, status, result, elapsedMs }: ToolCal
         <WrenchIcon className="size-3 text-muted-foreground shrink-0" />
         <span className="font-medium">{toolCall.name}</span>
         <span className="text-muted-foreground">
-          {status === 'calling' ? '호출 중...' : '완료'}
+          {status === 'calling' ? t('calling') : t('completed')}
         </span>
         <span className="ml-auto" />
         {elapsedMs != null && status === 'completed' && (
@@ -63,7 +65,7 @@ export function ToolCallDisplay({ toolCall, status, result, elapsedMs }: ToolCal
           {hasArgs && (
             <div className="rounded bg-background p-2">
               <div className="mb-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                파라미터
+                {t('parameters')}
               </div>
               <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
                 {JSON.stringify(toolCall.args, null, 2)}
@@ -73,7 +75,7 @@ export function ToolCallDisplay({ toolCall, status, result, elapsedMs }: ToolCal
           {result && (
             <div className="rounded bg-background p-2">
               <div className="mb-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                결과
+                {t('results')}
               </div>
               <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80 max-h-60 overflow-auto">
                 {result}

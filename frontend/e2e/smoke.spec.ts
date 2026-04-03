@@ -7,7 +7,7 @@ import { test, expect } from './fixtures'
 test.describe('Smoke Test - Static Pages', () => {
   test('/ - dashboard loads without errors', async ({ page, errors }) => {
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     const main = page.getByRole('main')
 
@@ -25,7 +25,7 @@ test.describe('Smoke Test - Static Pages', () => {
 
   test('/agents/new - creation chooser loads', async ({ page, errors }) => {
     await page.goto('/agents/new')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     await expect(page.getByText('새 에이전트 만들기')).toBeVisible()
     await expect(page.getByRole('main').getByText('대화로 만들기')).toBeVisible()
@@ -40,7 +40,7 @@ test.describe('Smoke Test - Static Pages', () => {
 
   test('/agents/new/template - template selection loads', async ({ page, errors }) => {
     await page.goto('/agents/new/template')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     await expect(page.getByRole('main').getByText('템플릿으로 만들기')).toBeVisible()
     // Category tabs
@@ -52,7 +52,7 @@ test.describe('Smoke Test - Static Pages', () => {
 
   test('/tools - tools page loads', async ({ page, errors }) => {
     await page.goto('/tools')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     await expect(page.getByRole('heading', { name: '도구 관리' })).toBeVisible()
     // "도구 추가" button
@@ -66,7 +66,7 @@ test.describe('Smoke Test - Static Pages', () => {
 
   test('/models - models page loads', async ({ page, errors }) => {
     await page.goto('/models')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     await expect(page.getByRole('heading', { name: '모델 관리' })).toBeVisible()
     // "모델 추가" button
@@ -78,7 +78,7 @@ test.describe('Smoke Test - Static Pages', () => {
 
   test('/usage - usage page loads', async ({ page, errors }) => {
     await page.goto('/usage')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     await expect(page.getByRole('heading', { name: '토큰 사용량' })).toBeVisible()
 
@@ -133,7 +133,7 @@ test.describe('Smoke Test - Dynamic Pages', () => {
 
   test('/agents/[id]/conversations/[cid] - chat page loads', async ({ page, errors }) => {
     await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     const main = page.getByRole('main')
 
@@ -152,7 +152,7 @@ test.describe('Smoke Test - Dynamic Pages', () => {
 
   test('/agents/[id]/settings - settings page loads', async ({ page, errors }) => {
     await page.goto(`/agents/${agentId}/settings`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     const main = page.getByRole('main')
 
@@ -175,7 +175,7 @@ test.describe('Smoke Test - Dynamic Pages', () => {
     await page.goto(`/agents/${agentId}`)
     // Should redirect to a conversation URL
     await page.waitForURL(`**/agents/${agentId}/conversations/**`, { timeout: 10_000 })
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     // Verify we landed on the chat page (use heading to avoid sidebar ambiguity)
     await expect(
@@ -216,7 +216,7 @@ test.describe('Smoke Test - Dialogs', () => {
 
   test('models page - "모델 추가" dialog opens', async ({ page, errors }) => {
     await page.goto('/models')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     await page.getByRole('button', { name: '모델 추가' }).click()
     // Verify dialog content
@@ -232,7 +232,7 @@ test.describe('Smoke Test - Dialogs', () => {
 
   test('tools page - "도구 추가" dialog opens', async ({ page, errors }) => {
     await page.goto('/tools')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     await page.getByRole('button', { name: '도구 추가' }).first().click()
     // Verify dialog content
@@ -253,7 +253,7 @@ test.describe('Smoke Test - Dialogs', () => {
 
   test('tools page - prebuilt auth dialog opens', async ({ page, errors }) => {
     await page.goto('/tools')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     // Find a prebuilt tool with a key config button.
     const authButton = page
@@ -311,7 +311,7 @@ test.describe('Smoke Test - Dialogs', () => {
 
   test('settings page - "AI로 수정하기" dialog opens', async ({ page, errors }) => {
     await page.goto(`/agents/${agentId}/settings`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     await page.getByRole('button', { name: 'AI로 수정하기' }).click()
     // Verify dialog content
@@ -329,7 +329,7 @@ test.describe('Smoke Test - Dialogs', () => {
 
   test('settings page - "에이전트 삭제" confirmation dialog opens', async ({ page, errors }) => {
     await page.goto(`/agents/${agentId}/settings`)
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     await page.getByRole('button', { name: '에이전트 삭제' }).click()
     // Verify alert dialog content
@@ -376,7 +376,7 @@ test.describe('Smoke Test - Conversational Creation', () => {
     })
 
     await page.goto('/agents/new/conversational')
-    await page.waitForLoadState('networkidle')
+    await page.waitForLoadState('domcontentloaded')
 
     // Header
     await expect(page.getByRole('heading', { name: '에이전트 만들기' })).toBeVisible()

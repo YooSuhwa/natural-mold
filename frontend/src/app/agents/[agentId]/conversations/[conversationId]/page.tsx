@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
 import { Settings2Icon, PlusIcon } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useMessages, useCreateConversation } from '@/lib/hooks/use-conversations'
 import { useQueryClient } from '@tanstack/react-query'
@@ -34,6 +35,7 @@ export default function ChatPage({
   const { data: agent } = useAgent(agentId)
   const { data: messages, isLoading: messagesLoading } = useMessages(conversationId)
   const createConversation = useCreateConversation(agentId)
+  const t = useTranslations('chat.page')
 
   const setStreamingMessage = useSetAtom(streamingMessageAtom)
   const setStreamingToolCalls = useSetAtom(streamingToolCallsAtom)
@@ -104,7 +106,7 @@ export default function ChatPage({
             break
           }
           case 'error': {
-            toast.error(event.data.message ?? '에이전트 실행 중 오류가 발생했습니다')
+            toast.error(event.data.message ?? t('error'))
             break
           }
         }
@@ -147,7 +149,7 @@ export default function ChatPage({
             <Link href={`/agents/${agentId}/settings`}>
               <Button variant="ghost" size="icon-sm">
                 <Settings2Icon className="size-4" />
-                <span className="sr-only">설정</span>
+                <span className="sr-only">{t('settings')}</span>
               </Button>
             </Link>
             <Button
@@ -156,7 +158,8 @@ export default function ChatPage({
               onClick={handleNewConversation}
               disabled={createConversation.isPending}
             >
-              <PlusIcon className="size-4" data-icon="inline-start" />새 대화
+              <PlusIcon className="size-4" data-icon="inline-start" />
+              {t('newConversation')}
             </Button>
           </div>
         </div>
@@ -177,7 +180,7 @@ export default function ChatPage({
               messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <p className="text-sm text-muted-foreground">대화를 시작해보세요.</p>
+                <p className="text-sm text-muted-foreground">{t('emptyState')}</p>
               </div>
             )}
             <StreamingMessage />
