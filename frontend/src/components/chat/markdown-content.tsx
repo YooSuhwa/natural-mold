@@ -1,8 +1,14 @@
 'use client'
 
 import type { Components } from 'react-markdown'
-import Markdown from 'react-markdown'
+import Markdown, { defaultUrlTransform } from 'react-markdown'
 import { cn } from '@/lib/utils'
+
+/** Allow sandbox: and file: URLs that LLMs prepend, then delegate to default. */
+function urlTransform(url: string): string {
+  const cleaned = url.replace(/^(sandbox|file):/, '')
+  return defaultUrlTransform(cleaned)
+}
 
 const markdownComponents: Components = {
   p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
@@ -33,10 +39,8 @@ const markdownComponents: Components = {
   img: ({ src, alt }) => {
     if (!src || typeof src !== 'string') return null
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'
-    // Strip sandbox: or other prefixes LLMs may add, then resolve /api/ paths
-    const cleaned = src.replace(/^(sandbox|file):/, '')
-    const apiMatch = cleaned.match(/\/api\/skills\/[^)"\s]+/)
-    const resolvedSrc = apiMatch ? `${API_BASE}${apiMatch[0]}` : cleaned
+    // urlTransform already strips sandbox:/file: prefixes; resolve /api/ paths to backend
+    const resolvedSrc = src.startsWith('/api/') ? `${API_BASE}${src}` : src
     return (
       <img
         src={resolvedSrc}
@@ -70,7 +74,9 @@ interface MarkdownContentProps {
 export function MarkdownContent({ content, className }: MarkdownContentProps) {
   return (
     <div className={cn('prose-chat', className)}>
-      <Markdown components={markdownComponents}>{content}</Markdown>
+      <Markdown components={markdownComponents} urlTransform={urlTransform}>
+        {content}
+      </Markdown>
     </div>
   )
 }
