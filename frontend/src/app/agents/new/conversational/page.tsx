@@ -11,6 +11,7 @@ import {
   SparklesIcon,
   MessageCircleIcon,
   WrenchIcon,
+  BookOpenIcon,
   XIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -23,6 +24,7 @@ import type { DraftConfig } from '@/lib/types'
 
 type SuggestedReplies = NonNullable<CreationMessageResult['suggested_replies']>
 type RecommendedTool = CreationMessageResult['recommended_tools'][number]
+type RecommendedSkill = CreationMessageResult['recommended_skills'][number]
 interface PhaseLog {
   phase: number
   result: string
@@ -165,6 +167,21 @@ function ToolCard({ tool }: { tool: RecommendedTool }) {
   )
 }
 
+// --- Skill Card ---
+function SkillCard({ skill }: { skill: RecommendedSkill }) {
+  return (
+    <div className="flex gap-3 rounded-xl border bg-background p-4">
+      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+        <BookOpenIcon className="size-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold">{skill.name}</p>
+        <p className="mt-0.5 text-sm text-muted-foreground leading-relaxed">{skill.description}</p>
+      </div>
+    </div>
+  )
+}
+
 // --- Main Page ---
 export default function ConversationalCreationPage() {
   const router = useRouter()
@@ -185,8 +202,9 @@ export default function ConversationalCreationPage() {
   const [showCustomInput, setShowCustomInput] = useState(false)
   const [customInput, setCustomInput] = useState('')
 
-  // Phase 3: Tool recommendation
+  // Phase 3: Tool & Skill recommendation
   const [recommendedTools, setRecommendedTools] = useState<RecommendedTool[]>([])
+  const [recommendedSkills, setRecommendedSkills] = useState<RecommendedSkill[]>([])
   const [modificationInput, setModificationInput] = useState('')
 
   // Phase 4: Final
@@ -263,6 +281,12 @@ export default function ConversationalCreationPage() {
       setRecommendedTools(response.recommended_tools)
     } else {
       setRecommendedTools([])
+    }
+
+    if (response.recommended_skills?.length > 0) {
+      setRecommendedSkills(response.recommended_skills)
+    } else {
+      setRecommendedSkills([])
     }
 
     if (response.draft_config) {
@@ -549,6 +573,19 @@ export default function ConversationalCreationPage() {
                   <CardContent className="space-y-3">
                     {recommendedTools.map((tool) => (
                       <ToolCard key={tool.name} tool={tool} />
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {recommendedSkills.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">{t('skillRecommendation')}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {recommendedSkills.map((skill) => (
+                      <SkillCard key={skill.name} skill={skill} />
                     ))}
                   </CardContent>
                 </Card>

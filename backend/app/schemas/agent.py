@@ -23,6 +23,7 @@ class AgentCreate(BaseModel):
     model_id: uuid.UUID
     tool_ids: list[uuid.UUID] = []
     tool_configs: list[ToolConfigEntry] = []
+    skill_ids: list[uuid.UUID] = []
     template_id: uuid.UUID | None = None
     model_params: dict[str, Any] | None = None
 

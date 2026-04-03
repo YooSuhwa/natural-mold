@@ -117,6 +117,7 @@
       "submitButton": "제출",
       "phaseLogCompleted": "[Phase {phase} 완료]",
       "toolRecommendation": "도구 추천",
+      "skillRecommendation": "스킬 추천",
       "modificationPlaceholder": "수정 의견을 입력하세요...",
       "modificationButton": "수정요청",
       "approveButton": "승인",
