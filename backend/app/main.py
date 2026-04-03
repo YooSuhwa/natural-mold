@@ -92,8 +92,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             existing = existing_tools_map.get(tool_data["name"])
             if not existing:
                 db.add(Tool(**tool_data))
-            elif existing.type != tool_data["type"]:
-                existing.type = tool_data["type"]
+            else:
+                if existing.type != tool_data["type"]:
+                    existing.type = tool_data["type"]
+                if tool_data.get("tags") and existing.tags != tool_data["tags"]:
+                    existing.tags = tool_data["tags"]
 
         await db.commit()
 
@@ -131,7 +134,9 @@ def create_app() -> FastAPI:
         agent_creation,
         agents,
         conversations,
+        fix_agent,
         models,
+        skills,
         templates,
         tools,
         triggers,
@@ -140,9 +145,11 @@ def create_app() -> FastAPI:
 
     app.include_router(agents.router)
     app.include_router(agent_creation.router)
+    app.include_router(fix_agent.router)
     app.include_router(conversations.router)
     app.include_router(models.router)
     app.include_router(templates.router)
+    app.include_router(skills.router)
     app.include_router(tools.router)
     app.include_router(triggers.router)
     app.include_router(usage.router)

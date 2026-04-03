@@ -83,7 +83,8 @@ export default function ChatPage({
             const tc: StreamingToolCall = {
               name: event.data.name ?? 'tool',
               status: 'calling',
-              params: event.data.args,
+              params: event.data.args as Record<string, unknown> | undefined,
+              startedAt: Date.now(),
             }
             toolCalls.push(tc)
             setStreamingToolCalls([...toolCalls])
@@ -93,7 +94,8 @@ export default function ChatPage({
             const lastTc = toolCalls[toolCalls.length - 1]
             if (lastTc) {
               lastTc.status = 'completed'
-              lastTc.result = event.data.result ?? ''
+              lastTc.result = (event.data.result ?? '') as string
+              lastTc.completedAt = Date.now()
               setStreamingToolCalls([...toolCalls])
             }
             break

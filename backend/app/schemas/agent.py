@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from app.schemas.skill import SkillBrief as SkillBrief  # noqa: F401 — used in AgentResponse
+
 
 class ToolConfigEntry(BaseModel):
     """Per-agent tool configuration (e.g. webhook_url for Google Chat)."""
@@ -22,6 +24,7 @@ class AgentCreate(BaseModel):
     tool_ids: list[uuid.UUID] = []
     tool_configs: list[ToolConfigEntry] = []
     template_id: uuid.UUID | None = None
+    model_params: dict[str, Any] | None = None
 
 
 class AgentUpdate(BaseModel):
@@ -31,6 +34,9 @@ class AgentUpdate(BaseModel):
     model_id: uuid.UUID | None = None
     tool_ids: list[uuid.UUID] | None = None
     tool_configs: list[ToolConfigEntry] | None = None
+    skill_ids: list[uuid.UUID] | None = None
+    is_favorite: bool | None = None
+    model_params: dict[str, Any] | None = None
 
 
 class ModelBrief(BaseModel):
@@ -55,7 +61,10 @@ class AgentResponse(BaseModel):
     system_prompt: str
     model: ModelBrief
     tools: list[ToolBrief]
+    skills: list[SkillBrief] = []
     status: str
+    is_favorite: bool = False
+    model_params: dict[str, Any] | None = None
     template_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime

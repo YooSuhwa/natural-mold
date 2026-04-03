@@ -86,6 +86,12 @@ async def send_message(
     messages = await chat_service.list_messages(db, conversation_id)
     messages_history = [{"role": m.role, "content": m.content} for m in messages]
 
+    skill_contents = chat_service.get_agent_skill_contents(agent)
+    effective_prompt = agent.system_prompt
+    if skill_contents:
+        skills_text = "\n\n---\n\n".join(skill_contents)
+        effective_prompt = f"{agent.system_prompt}\n\n## 연결된 스킬\n\n{skills_text}"
+
     tools_config = []
     for link in agent.tool_links:
         tool = link.tool
@@ -113,10 +119,11 @@ async def send_message(
             model_name=agent.model.model_name,
             api_key=agent.model.api_key_encrypted,
             base_url=agent.model.base_url,
-            system_prompt=agent.system_prompt,
+            system_prompt=effective_prompt,
             tools_config=tools_config,
             messages_history=messages_history,
             thread_id=str(conversation_id),
+            model_params=agent.model_params,
         ):
             yield chunk
             if "message_end" in chunk:

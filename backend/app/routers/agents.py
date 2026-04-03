@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.exceptions import NotFoundError
 from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate, ToolBrief
+from app.schemas.skill import SkillBrief
 from app.services import agent_service
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -25,7 +26,13 @@ def _agent_to_response(agent) -> AgentResponse:
             ToolBrief(id=link.tool.id, name=link.tool.name, agent_config=link.config)
             for link in agent.tool_links
         ],
+        skills=[
+            SkillBrief(id=link.skill_id, name=link.skill.name, description=link.skill.description)
+            for link in agent.skill_links
+        ],
         status=agent.status,
+        is_favorite=agent.is_favorite,
+        model_params=agent.model_params,
         template_id=agent.template_id,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
@@ -74,6 +81,19 @@ async def update_agent(
     if not agent:
         raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     updated = await agent_service.update_agent(db, agent, data)
+    return _agent_to_response(updated)
+
+
+@router.patch("/{agent_id}/favorite", response_model=AgentResponse)
+async def toggle_favorite(
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    agent = await agent_service.get_agent(db, agent_id, user.id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    updated = await agent_service.toggle_favorite(db, agent)
     return _agent_to_response(updated)
 
 

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.tool import MCPServer, Tool
+from app.models.tool import AgentToolLink, MCPServer, Tool
 from app.schemas.tool import MCPServerCreate, ToolCustomCreate
 
 
@@ -17,6 +17,18 @@ async def list_tools(db: AsyncSession, user_id: uuid.UUID) -> list[Tool]:
         .order_by(Tool.is_system.desc(), Tool.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+async def get_tool_agent_counts(db: AsyncSession, tool_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """Get the number of agents using each tool."""
+    if not tool_ids:
+        return {}
+    result = await db.execute(
+        select(AgentToolLink.tool_id, func.count(AgentToolLink.agent_id))
+        .where(AgentToolLink.tool_id.in_(tool_ids))
+        .group_by(AgentToolLink.tool_id)
+    )
+    return {row[0]: row[1] for row in result.all()}
 
 
 async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: uuid.UUID) -> Tool:

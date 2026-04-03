@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { WrenchIcon } from 'lucide-react'
+import { WrenchIcon, StarIcon } from 'lucide-react'
 import {
   Card,
   CardHeader,
@@ -11,6 +11,7 @@ import {
   CardFooter,
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { useToggleFavorite } from '@/lib/hooks/use-agents'
 import type { Agent } from '@/lib/types'
 
 interface AgentCardProps {
@@ -18,6 +19,8 @@ interface AgentCardProps {
 }
 
 export function AgentCard({ agent }: AgentCardProps) {
+  const { mutate: toggleFavorite } = useToggleFavorite()
+
   const statusColor =
     agent.status === 'active'
       ? 'bg-emerald-500'
@@ -39,10 +42,30 @@ export function AgentCard({ agent }: AgentCardProps) {
             <CardTitle className="group-hover:text-primary transition-colors">
               {agent.name}
             </CardTitle>
-            <Badge variant="secondary" className="shrink-0">
-              <span className={`mr-1 inline-block size-1.5 rounded-full ${statusColor}`} />
-              {statusLabel}
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  toggleFavorite(agent.id)
+                }}
+                className="rounded-md p-1 hover:bg-accent transition-colors"
+                aria-label={agent.is_favorite ? '즐겨찾기 해제' : '즐겨찾기'}
+              >
+                <StarIcon
+                  className={`size-4 transition-colors ${
+                    agent.is_favorite
+                      ? 'fill-yellow-400 text-yellow-400'
+                      : 'text-muted-foreground hover:text-yellow-400'
+                  }`}
+                />
+              </button>
+              <Badge variant="secondary" className="shrink-0">
+                <span className={`mr-1 inline-block size-1.5 rounded-full ${statusColor}`} />
+                {statusLabel}
+              </Badge>
+            </div>
           </div>
           {agent.description && (
             <CardDescription className="line-clamp-2">{agent.description}</CardDescription>

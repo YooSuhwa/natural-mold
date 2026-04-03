@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
+from app.models.skill import AgentSkillLink
 from app.models.template import Template
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.agent import AgentCreate, AgentUpdate
@@ -18,6 +19,7 @@ def _selectin_agent() -> list:
     return [
         selectinload(Agent.model),
         selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
+        selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
     ]
 
 
@@ -48,6 +50,13 @@ def _build_tool_links(
     return [AgentToolLink(tool_id=tid, config=config_map.get(tid)) for tid in tool_ids]
 
 
+async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
+    agent.is_favorite = not agent.is_favorite
+    await db.commit()
+    await db.refresh(agent, ["model", "tool_links", "skill_links"])
+    return agent
+
+
 async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) -> Agent:
     agent = Agent(
         user_id=user_id,
@@ -55,6 +64,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         description=data.description,
         system_prompt=data.system_prompt,
         model_id=data.model_id,
+        model_params=data.model_params,
         template_id=data.template_id,
     )
 
@@ -86,7 +96,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
 
     db.add(agent)
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links"])
+    await db.refresh(agent, ["model", "tool_links", "skill_links"])
     return agent
 
 
@@ -99,6 +109,10 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
         agent.system_prompt = data.system_prompt
     if data.model_id is not None:
         agent.model_id = data.model_id
+    if data.is_favorite is not None:
+        agent.is_favorite = data.is_favorite
+    if data.model_params is not None:
+        agent.model_params = data.model_params
     if data.tool_ids is not None:
         config_map: dict[uuid.UUID, dict[str, Any]] = {}
         if data.tool_configs:
@@ -113,8 +127,12 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
         for link in agent.tool_links:
             if link.tool_id in config_map:
                 link.config = config_map[link.tool_id]
+    if data.skill_ids is not None:
+        agent.skill_links.clear()
+        await db.flush()
+        agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links"])
+    await db.refresh(agent, ["model", "tool_links", "skill_links"])
     return agent
 
 

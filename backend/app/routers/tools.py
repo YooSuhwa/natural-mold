@@ -24,7 +24,15 @@ async def list_tools(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    return await tool_service.list_tools(db, user.id)
+    tools = await tool_service.list_tools(db, user.id)
+    tool_ids = [t.id for t in tools]
+    counts = await tool_service.get_tool_agent_counts(db, tool_ids)
+    responses = []
+    for t in tools:
+        resp = ToolResponse.model_validate(t)
+        resp.agent_count = counts.get(t.id, 0)
+        responses.append(resp)
+    return responses
 
 
 @router.post("/custom", response_model=ToolResponse, status_code=201)

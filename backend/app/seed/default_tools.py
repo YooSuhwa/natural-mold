@@ -7,6 +7,7 @@ DEFAULT_TOOLS = [
         "type": "builtin",
         "is_system": True,
         "description": "웹에서 키워드를 검색하여 관련 정보를 찾습니다. 뉴스, 기사, 정보 검색에 사용하세요.",
+        "tags": ["search", "web", "free"],
         "parameters_schema": {
             "type": "object",
             "properties": {"query": {"type": "string", "description": "검색 키워드"}},
@@ -18,6 +19,7 @@ DEFAULT_TOOLS = [
         "type": "builtin",
         "is_system": True,
         "description": "웹 페이지의 텍스트 내용을 가져옵니다. URL을 입력하면 해당 페이지의 주요 텍스트를 추출합니다.",
+        "tags": ["web", "scraping", "free"],
         "parameters_schema": {
             "type": "object",
             "properties": {"url": {"type": "string", "description": "스크래핑할 URL"}},
@@ -29,6 +31,7 @@ DEFAULT_TOOLS = [
         "type": "builtin",
         "is_system": True,
         "description": "현재 날짜와 시간을 반환합니다. 오늘 날짜, 현재 시간, 요일을 알려줍니다.",
+        "tags": ["utility", "free"],
         "parameters_schema": {
             "type": "object",
             "properties": {},
@@ -42,6 +45,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "네이버 블로그에서 키워드를 검색합니다. 블로그 포스트, 리뷰, 개인 의견 등을 찾을 때 사용하세요.",
+        "tags": ["search", "naver", "korean"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -71,6 +75,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "네이버 뉴스에서 키워드를 검색합니다. 최신 뉴스, 기사, 보도 내용을 찾을 때 사용하세요.",
+        "tags": ["search", "naver", "korean", "news"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -100,6 +105,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "네이버에서 이미지를 검색합니다. 사진, 일러스트, 인포그래픽 등을 찾을 때 사용하세요.",
+        "tags": ["search", "naver", "korean", "image"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -135,6 +141,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "네이버 쇼핑에서 상품을 검색합니다. 가격 비교, 상품 정보 조회에 사용하세요.",
+        "tags": ["search", "naver", "korean", "shopping"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -164,6 +171,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "네이버에서 지역 업체를 검색합니다. 맛집, 카페, 병원 등 주변 업체를 찾을 때 사용하세요.",
+        "tags": ["search", "naver", "korean", "local"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -192,6 +200,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "구글에서 웹 페이지를 검색합니다. 영문 검색, 글로벌 정보 검색에 특히 유용합니다.",
+        "tags": ["search", "google", "web"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -206,6 +215,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "구글 뉴스에서 키워드를 검색합니다. 글로벌 뉴스, 영문 기사를 찾을 때 사용하세요.",
+        "tags": ["search", "google", "news"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -220,6 +230,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "구글에서 이미지를 검색합니다. 글로벌 이미지, 영문 키워드 검색에 유용합니다.",
+        "tags": ["search", "google", "image"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -237,6 +248,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "Google Chat 채널에 메시지를 전송합니다. 알림, 보고, 요약 결과 공유 등에 사용하세요.",
+        "tags": ["communication", "google"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -250,6 +262,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "Gmail에서 이메일을 검색하고 읽습니다. 검색 쿼리로 필터링할 수 있습니다.",
+        "tags": ["email", "google", "communication"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -271,6 +284,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "Gmail로 이메일을 전송합니다. 수신자, 제목, 본문을 지정하여 이메일을 보냅니다.",
+        "tags": ["email", "google", "communication"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -286,6 +300,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "Google Calendar에서 일정을 조회합니다. 오늘 또는 며칠간의 일정을 확인할 수 있습니다.",
+        "tags": ["calendar", "google", "productivity"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -307,6 +322,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "Google Calendar에 새 일정을 생성합니다. 제목, 시작/종료 시간, 설명, 장소를 지정할 수 있습니다.",
+        "tags": ["calendar", "google", "productivity"],
         "parameters_schema": {
             "type": "object",
             "properties": {
@@ -324,6 +340,7 @@ DEFAULT_TOOLS = [
         "type": "prebuilt",
         "is_system": True,
         "description": "Google Calendar의 기존 일정을 수정합니다. 일정 ID와 변경할 필드를 지정합니다.",
+        "tags": ["calendar", "google", "productivity"],
         "parameters_schema": {
             "type": "object",
             "properties": {

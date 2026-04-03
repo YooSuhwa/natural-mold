@@ -38,3 +38,11 @@ export function useDeleteAgent() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['agents'] }),
   })
 }
+
+export function useToggleFavorite() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => agentsApi.toggleFavorite(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["agents"] }),
+  })
+}

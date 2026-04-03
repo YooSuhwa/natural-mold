@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useTools, useDeleteTool } from '@/lib/hooks/use-tools'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
@@ -26,9 +26,23 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddToolDialog } from '@/components/tool/add-tool-dialog'
 import { PrebuiltAuthDialog } from '@/components/tool/prebuilt-auth-dialog'
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from '@/components/ui/sheet'
 import type { Tool } from '@/lib/types'
 
 type ToolFilter = 'all' | 'builtin' | 'prebuilt' | 'mcp' | 'custom'
+
+const ALL_TAGS = [
+  'search', 'web', 'email', 'calendar', 'communication',
+  'google', 'naver', 'korean', 'news', 'image',
+  'shopping', 'local', 'productivity', 'scraping',
+  'utility', 'free',
+] as const
 
 const FILTER_OPTIONS: { value: ToolFilter; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -125,10 +139,12 @@ function ToolCard({
   tool,
   onDelete,
   isDeleting,
+  onShowDetail,
 }: {
   tool: Tool
   onDelete: (id: string) => void
   isDeleting: boolean
+  onShowDetail: (tool: Tool) => void
 }) {
   const meta = TOOL_META[tool.type] ?? TOOL_META.custom
   const Icon = meta.icon
@@ -138,7 +154,7 @@ function ToolCard({
   const isDeletable = !tool.is_system
 
   return (
-    <Card className="group h-full flex flex-col transition-colors hover:border-primary/40">
+    <Card className="group h-full flex flex-col transition-colors hover:border-primary/40 cursor-pointer" onClick={() => onShowDetail(tool)}>
       <CardHeader className="flex-1">
         <div className="flex items-start justify-between">
           <div
@@ -148,16 +164,30 @@ function ToolCard({
           >
             {pStyle ? <pStyle.icon className="size-4" /> : <Icon className="size-4" />}
           </div>
-          <Badge
-            className={pStyle ? pStyle.badgeClass : meta.badgeClass}
-            variant={pStyle || meta.badgeClass ? undefined : 'secondary'}
-          >
-            {pStyle ? pStyle.badge : meta.badge}
-          </Badge>
+          <div className="flex items-center gap-1.5">
+            {tool.agent_count > 0 && (
+              <span className="text-[10px] text-muted-foreground">{tool.agent_count}개 에이전트</span>
+            )}
+            <Badge
+              className={pStyle ? pStyle.badgeClass : meta.badgeClass}
+              variant={pStyle || meta.badgeClass ? undefined : 'secondary'}
+            >
+              {pStyle ? pStyle.badge : meta.badge}
+            </Badge>
+          </div>
         </div>
         <CardTitle className="mt-2 text-sm">{tool.name}</CardTitle>
         {tool.description && (
           <CardDescription className="line-clamp-2 text-xs">{tool.description}</CardDescription>
+        )}
+        {tool.tags && tool.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {tool.tags.map((tag) => (
+              <span key={tag} className="inline-block rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                {tag}
+              </span>
+            ))}
+          </div>
         )}
       </CardHeader>
 
@@ -203,6 +233,26 @@ export default function ToolsPage() {
   const deleteTool = useDeleteTool()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<ToolFilter>('all')
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
+  const [detailTool, setDetailTool] = useState<Tool | null>(null)
+
+  const availableTags = useMemo(() => {
+    if (!tools) return []
+    const tagSet = new Set<string>()
+    for (const t of tools) {
+      if (t.tags) t.tags.forEach((tag) => tagSet.add(tag))
+    }
+    return ALL_TAGS.filter((tag) => tagSet.has(tag))
+  }, [tools])
+
+  function toggleTag(tag: string) {
+    setSelectedTags((prev) => {
+      const next = new Set(prev)
+      if (next.has(tag)) next.delete(tag)
+      else next.add(tag)
+      return next
+    })
+  }
 
   const filteredTools = useMemo(() => {
     if (!tools) return []
@@ -214,9 +264,12 @@ export default function ToolsPage() {
         const descMatch = t.description?.toLowerCase().includes(q) ?? false
         if (!nameMatch && !descMatch) return false
       }
+      if (selectedTags.size > 0) {
+        if (!t.tags || !Array.from(selectedTags).some((tag) => t.tags!.includes(tag))) return false
+      }
       return true
     })
-  }, [tools, filter, search])
+  }, [tools, filter, search, selectedTags])
 
   const counts = useMemo(() => {
     if (!tools) return { all: 0, builtin: 0, prebuilt: 0, mcp: 0, custom: 0 }
@@ -277,6 +330,33 @@ export default function ToolsPage() {
         </div>
       </div>
 
+      {/* Tag Filter */}
+      {availableTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground mr-1">태그:</span>
+          {availableTags.map((tag) => (
+            <Badge
+              key={tag}
+              variant={selectedTags.has(tag) ? 'default' : 'outline'}
+              className="cursor-pointer text-xs"
+              onClick={() => toggleTag(tag)}
+            >
+              {tag}
+            </Badge>
+          ))}
+          {selectedTags.size > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-xs text-muted-foreground"
+              onClick={() => setSelectedTags(new Set())}
+            >
+              초기화
+            </Button>
+          )}
+        </div>
+      )}
+
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
@@ -291,6 +371,7 @@ export default function ToolsPage() {
               tool={tool}
               onDelete={(id) => deleteTool.mutate(id)}
               isDeleting={deleteTool.isPending}
+              onShowDetail={setDetailTool}
             />
           ))}
         </div>
@@ -332,6 +413,89 @@ export default function ToolsPage() {
           }
         />
       )}
+
+      {/* Tool Detail Sheet */}
+      <Sheet open={!!detailTool} onOpenChange={(open) => { if (!open) setDetailTool(null) }}>
+        <SheetContent className="sm:max-w-lg overflow-auto">
+          {detailTool && (
+            <>
+              <SheetHeader>
+                <SheetTitle>{detailTool.name}</SheetTitle>
+                <SheetDescription>{detailTool.description}</SheetDescription>
+              </SheetHeader>
+
+              <div className="mt-6 space-y-5">
+                {/* Meta */}
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary">{detailTool.type}</Badge>
+                  {detailTool.tags?.map((tag) => (
+                    <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                  ))}
+                </div>
+
+                {/* Stats */}
+                <div className="flex gap-4 text-sm text-muted-foreground">
+                  <span>{detailTool.agent_count}개 에이전트에서 사용 중</span>
+                  {detailTool.is_system && <span>시스템 도구</span>}
+                </div>
+
+                {/* Auth Info */}
+                {detailTool.auth_type && (
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-medium">인증 방식</h4>
+                    <p className="text-sm text-muted-foreground">{detailTool.auth_type}</p>
+                  </div>
+                )}
+
+                {/* Parameters Schema */}
+                {detailTool.parameters_schema && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium">파라미터</h4>
+                    <div className="rounded-lg border">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b bg-muted/50">
+                            <th className="px-3 py-2 text-left font-medium">이름</th>
+                            <th className="px-3 py-2 text-left font-medium">타입</th>
+                            <th className="px-3 py-2 text-left font-medium">설명</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detailTool.parameters_schema.properties ?
+                            Object.entries(detailTool.parameters_schema.properties as Record<string, Record<string, unknown>>).map(([key, val]) => {
+                              const required = Array.isArray(detailTool.parameters_schema?.required)
+                                && (detailTool.parameters_schema.required as string[]).includes(key)
+                              return (
+                                <tr key={key} className="border-b last:border-0">
+                                  <td className="px-3 py-2 font-mono">
+                                    {key}
+                                    {required && <span className="ml-0.5 text-destructive">*</span>}
+                                  </td>
+                                  <td className="px-3 py-2 text-muted-foreground">{String(val.type ?? '')}</td>
+                                  <td className="px-3 py-2 text-muted-foreground">{String(val.description ?? '')}</td>
+                                </tr>
+                              )
+                            }) : null}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* API URL */}
+                {detailTool.api_url && (
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-medium">API URL</h4>
+                    <p className="rounded bg-muted px-2 py-1 font-mono text-xs break-all">
+                      {detailTool.http_method} {detailTool.api_url}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

@@ -21,7 +21,10 @@ export const mockAgent: Agent = {
   system_prompt: 'You are a helpful assistant.',
   model: { id: 'model-1', display_name: 'GPT-4o' },
   tools: [{ id: 'tool-1', name: 'Web Search' }],
+  skills: [],
   status: 'active',
+  is_favorite: false,
+  model_params: null,
   template_id: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -77,7 +80,9 @@ export const mockTool: Tool = {
   http_method: null,
   auth_type: null,
   auth_config: null,
+  tags: ['search', 'web', 'free'],
   server_key_available: true,
+  agent_count: 1,
   created_at: '2026-01-01T00:00:00Z',
 }
 

@@ -5,6 +5,8 @@ export interface StreamingToolCall {
   status: 'calling' | 'completed'
   params?: Record<string, unknown>
   result?: string
+  startedAt?: number
+  completedAt?: number
 }
 
 export const streamingMessageAtom = atom<{ id: string; content: string } | null>(null)

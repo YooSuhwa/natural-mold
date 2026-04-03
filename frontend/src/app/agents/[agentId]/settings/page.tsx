@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
+import { useSkills } from '@/lib/hooks/use-skills'
 import {
   useTriggers,
   useCreateTrigger,
@@ -48,6 +49,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/shared/page-header'
+import { FixAgentDialog } from '@/components/agent/fix-agent-dialog'
 
 export default function AgentSettingsPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params)
@@ -55,6 +57,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const { data: agent, isLoading: agentLoading } = useAgent(agentId)
   const { data: models } = useModels()
   const { data: tools } = useTools()
+  const { data: skills } = useSkills()
   const updateAgent = useUpdateAgent(agentId)
   const deleteAgent = useDeleteAgent()
   const { data: triggers } = useTriggers(agentId)
@@ -67,6 +70,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const [systemPrompt, setSystemPrompt] = useState('')
   const [modelId, setModelId] = useState('')
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
+  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set())
+  const [temperature, setTemperature] = useState(0.7)
+  const [topP, setTopP] = useState(1.0)
+  const [maxTokens, setMaxTokens] = useState(4096)
   const [showTriggerForm, setShowTriggerForm] = useState(false)
   const [triggerMinutes, setTriggerMinutes] = useState('10')
   const [triggerMessage, setTriggerMessage] = useState('')
@@ -80,6 +87,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       setSystemPrompt(agent.system_prompt)
       setModelId(agent.model.id)
       setSelectedToolIds(new Set(agent.tools.map((t) => t.id)))
+      setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
+      setTemperature(agent.model_params?.temperature ?? 0.7)
+      setTopP(agent.model_params?.top_p ?? 1.0)
+      setMaxTokens(agent.model_params?.max_tokens ?? 4096)
     }
   }, [agent])
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -92,6 +103,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         system_prompt: systemPrompt,
         model_id: modelId,
         tool_ids: Array.from(selectedToolIds),
+        skill_ids: Array.from(selectedSkillIds),
+        model_params: { temperature, top_p: topP, max_tokens: maxTokens },
       })
       toast.success('저장되었습니다')
     } catch {
@@ -140,7 +153,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         <span className="text-sm text-muted-foreground">채팅으로 돌아가기</span>
       </div>
 
-      <PageHeader title={`에이전트 설정: ${agent?.name ?? ''}`} />
+      <div className="flex items-center justify-between">
+        <PageHeader title={`에이전트 설정: ${agent?.name ?? ''}`} />
+        {agent && <FixAgentDialog agentId={agentId} agentName={agent.name} />}
+      </div>
 
       <div className="mx-auto w-full max-w-2xl space-y-6">
         {/* Name */}
@@ -196,6 +212,74 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
           )}
         </div>
 
+        {/* Model Parameters */}
+        <div className="space-y-4 rounded-lg border p-4">
+          <label className="text-sm font-medium">모델 파라미터</label>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Temperature</span>
+              <span className="font-mono text-xs tabular-nums">{temperature.toFixed(1)}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.1"
+              value={temperature}
+              onChange={(e) => setTemperature(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>정확</span>
+              <span>창의적</span>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Top P</span>
+              <span className="font-mono text-xs tabular-nums">{topP.toFixed(1)}</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.1"
+              value={topP}
+              onChange={(e) => setTopP(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Max Tokens</span>
+            </div>
+            <Input
+              type="number"
+              min="256"
+              max="32768"
+              step="256"
+              value={maxTokens}
+              onChange={(e) => setMaxTokens(Number(e.target.value) || 4096)}
+            />
+          </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground"
+            onClick={() => {
+              setTemperature(0.7)
+              setTopP(1.0)
+              setMaxTokens(4096)
+            }}
+          >
+            기본값으로 리셋
+          </Button>
+        </div>
+
         {/* Tools */}
         <div className="space-y-2">
           <label className="text-sm font-medium">연결된 도구</label>
@@ -222,6 +306,53 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                 등록된 도구가 없습니다.{' '}
                 <Link href="/tools" className="text-primary hover:underline">
                   도구 관리
+                </Link>
+                에서 추가해주세요.
+              </p>
+            )
+          ) : (
+            <Skeleton className="h-16 w-full" />
+          )}
+        </div>
+
+        {/* Skills */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">연결된 스킬</label>
+          {skills ? (
+            skills.length > 0 ? (
+              <div className="space-y-2 rounded-lg border p-3">
+                {skills.map((skill) => (
+                  <label
+                    key={skill.id}
+                    className="flex items-center gap-3 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedSkillIds.has(skill.id)}
+                      onChange={() => {
+                        setSelectedSkillIds((prev) => {
+                          const next = new Set(prev)
+                          if (next.has(skill.id)) next.delete(skill.id)
+                          else next.add(skill.id)
+                          return next
+                        })
+                      }}
+                      className="size-4 rounded border-input"
+                    />
+                    <span>{skill.name}</span>
+                    {skill.description && (
+                      <span className="text-xs text-muted-foreground">
+                        - {skill.description}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                등록된 스킬이 없습니다.{' '}
+                <Link href="/skills" className="text-primary hover:underline">
+                  스킬 관리
                 </Link>
                 에서 추가해주세요.
               </p>

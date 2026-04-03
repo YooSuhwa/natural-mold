@@ -151,3 +151,62 @@
 - [x] 에러 핸들링, loading skeleton, empty state
 - [x] Docker Compose 전체 구동 설정 (Dockerfile + docker-compose.yml)
 - [ ] 접근성, 키보드 네비게이션, 성능 검증
+
+## Phase 12: UX 개선 — Deep Agent Builder 벤치마킹
+
+### Backend
+- [x] Agent 모델에 is_favorite, model_params 필드 추가
+- [x] Tool 모델에 tags 필드 추가
+- [x] Alembic 마이그레이션 (통합)
+- [x] Agent 즐겨찾기 토글 API (PATCH)
+- [x] Agent 스키마에 is_favorite, model_params 추가
+- [x] Tool 스키마에 tags, agent_count 추가
+- [x] tool_service — agent_count 계산 로직
+- [x] default_tools.py — 시스템 도구 태그 추가
+- [x] executor/model_factory — model_params 전달
+- [x] 테스트 (62개 통과)
+
+### Frontend — 다크 모드
+- [x] next-themes 설치 + ThemeProvider 추가
+- [x] 사이드바 테마 전환 버튼
+
+### Frontend — 대시보드 검색/정렬/즐겨찾기
+- [x] 대시보드 검색/정렬 UI
+- [x] 에이전트 카드 즐겨찾기 별 토글
+- [x] API 클라이언트 + hooks (toggleFavorite)
+
+### Frontend — 도구 카탈로그 UX
+- [x] 태그 칩 필터
+- [x] 도구 상세 Sheet
+
+### Frontend — 모델 파라미터
+- [x] 에이전트 설정 페이지 모델 파라미터 섹션 (temperature/top_p/max_tokens)
+
+### Frontend — 채팅 UX 강화
+- [x] 도구 호출 상세 접기/펼치기 + 소요시간
+- [x] 메시지 토큰/비용 표시 + 복사 버튼
+- [x] 스트리밍 "생각 중..." 애니메이션
+
+## Phase 13: Tier 2 — Fix Agent + Skill 시스템
+
+### Fix Agent — Backend
+- [x] fix_agent.py — 대화로 에이전트 수정하는 메타 에이전트
+- [x] fix_agent 스키마 (요청/응답)
+- [x] fix_agent API (POST /api/agents/:id/fix)
+- [x] 테스트 (62개 통과)
+
+### Fix Agent — Frontend
+- [x] Fix Agent 대화 UI 컴포넌트 (FixAgentDialog)
+- [x] 에이전트 설정 페이지에 "AI로 수정하기" 버튼
+
+### Skill 시스템 — Backend
+- [x] Skill 모델 + agent_skills 연결 테이블
+- [x] Alembic 마이그레이션
+- [x] Skill CRUD API (5 endpoints)
+- [x] Executor에서 스킬 content를 system_prompt에 주입
+- [x] 테스트 (62개 통과)
+
+### Skill 시스템 — Frontend
+- [x] 사이드바에 "스킬" 메뉴 추가
+- [x] 스킬 관리 페이지 (CRUD)
+- [x] 에이전트 설정에서 스킬 연결/해제

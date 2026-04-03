@@ -6,10 +6,19 @@ export interface Agent {
   system_prompt: string
   model: ModelBrief
   tools: ToolBrief[]
+  skills: SkillBrief[]
   status: string
+  is_favorite: boolean
+  model_params: ModelParams | null
   template_id: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ModelParams {
+  temperature?: number
+  top_p?: number
+  max_tokens?: number
 }
 
 export interface ModelBrief {
@@ -29,6 +38,7 @@ export interface AgentCreateRequest {
   model_id: string
   tool_ids?: string[]
   template_id?: string
+  model_params?: ModelParams
 }
 
 export interface AgentUpdateRequest {
@@ -37,6 +47,9 @@ export interface AgentUpdateRequest {
   system_prompt?: string
   model_id?: string
   tool_ids?: string[]
+  skill_ids?: string[]
+  is_favorite?: boolean
+  model_params?: ModelParams
 }
 
 // Model
@@ -76,7 +89,9 @@ export interface Tool {
   http_method: string | null
   auth_type: string | null
   auth_config: Record<string, unknown> | null
+  tags: string[] | null
   server_key_available: boolean
+  agent_count: number
   created_at: string
 }
 
@@ -195,6 +210,33 @@ export interface DraftConfig {
   recommended_tool_names?: string[]
   recommended_model?: string
   is_ready?: boolean
+}
+
+// Skill
+export interface Skill {
+  id: string
+  name: string
+  description: string | null
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SkillCreateRequest {
+  name: string
+  description?: string
+  content: string
+}
+
+export interface SkillUpdateRequest {
+  name?: string
+  description?: string
+  content?: string
+}
+
+export interface SkillBrief {
+  id: string
+  name: string
 }
 
 // Trigger

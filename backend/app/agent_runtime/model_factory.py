@@ -38,6 +38,7 @@ def create_chat_model(
     model_name: str,
     api_key: str | None = None,
     base_url: str | None = None,
+    **extra: object,
 ) -> BaseChatModel:
     cls = PROVIDER_MAP.get(provider, ChatOpenAI)
 
@@ -49,6 +50,11 @@ def create_chat_model(
         kwargs["api_key"] = resolved_key
     if base_url:
         kwargs["base_url"] = base_url
+
+    # Model parameters (temperature, top_p, max_tokens, etc.)
+    for param in ("temperature", "top_p", "max_tokens"):
+        if param in extra and extra[param] is not None:
+            kwargs[param] = extra[param]
 
     if _ssl_ctx and cls in (ChatOpenAI,):
         kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
