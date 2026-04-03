@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { PlusIcon, CpuIcon, Trash2Icon, Loader2Icon, StarIcon } from 'lucide-react'
+import { PlusIcon, CpuIcon, Trash2Icon, PencilIcon, Loader2Icon, StarIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useModels, useCreateModel, useDeleteModel } from '@/lib/hooks/use-models'
+import { useModels, useCreateModel, useUpdateModel, useDeleteModel } from '@/lib/hooks/use-models'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -27,10 +27,12 @@ import {
 } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
+import type { Model } from '@/lib/types'
 
 export default function ModelsPage() {
   const { data: models, isLoading } = useModels()
   const createModel = useCreateModel()
+  const updateModel = useUpdateModel()
   const deleteModel = useDeleteModel()
   const t = useTranslations('model')
   const tc = useTranslations('common')
@@ -43,6 +45,7 @@ export default function ModelsPage() {
   ]
 
   const [open, setOpen] = useState(false)
+  const [editingModel, setEditingModel] = useState<Model | null>(null)
   const [provider, setProvider] = useState('openai')
   const [modelName, setModelName] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -55,16 +58,32 @@ export default function ModelsPage() {
     setDisplayName('')
     setBaseUrl('')
     setApiKey('')
+    setEditingModel(null)
   }
 
-  async function handleCreate() {
-    await createModel.mutateAsync({
+  function openEditDialog(model: Model) {
+    setEditingModel(model)
+    setProvider(model.provider)
+    setModelName(model.model_name)
+    setDisplayName(model.display_name)
+    setBaseUrl(model.base_url ?? '')
+    setApiKey('')
+    setOpen(true)
+  }
+
+  async function handleSubmit() {
+    const payload = {
       provider,
       model_name: modelName,
       display_name: displayName || modelName,
       base_url: baseUrl || undefined,
       api_key: apiKey || undefined,
-    })
+    }
+    if (editingModel) {
+      await updateModel.mutateAsync({ id: editingModel.id, data: payload })
+    } else {
+      await createModel.mutateAsync(payload)
+    }
     resetForm()
     setOpen(false)
   }
@@ -82,12 +101,20 @@ export default function ModelsPage() {
     }
   }
 
+  const isSubmitting = editingModel ? updateModel.isPending : createModel.isPending
+
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
         title={t('pageTitle')}
         action={
-          <Dialog open={open} onOpenChange={setOpen}>
+          <Dialog
+            open={open}
+            onOpenChange={(v) => {
+              setOpen(v)
+              if (!v) resetForm()
+            }}
+          >
             <DialogTrigger
               render={
                 <Button>
@@ -98,8 +125,12 @@ export default function ModelsPage() {
             />
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>{t('dialogTitle')}</DialogTitle>
-                <DialogDescription>{t('dialogDescription')}</DialogDescription>
+                <DialogTitle>
+                  {editingModel ? t('dialogTitle.edit') : t('dialogTitle.new')}
+                </DialogTitle>
+                <DialogDescription>
+                  {editingModel ? t('dialogDescription.edit') : t('dialogDescription.new')}
+                </DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4">
@@ -165,12 +196,9 @@ export default function ModelsPage() {
               </div>
 
               <DialogFooter>
-                <Button
-                  onClick={handleCreate}
-                  disabled={!modelName.trim() || createModel.isPending}
-                >
-                  {createModel.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
-                  {tc('register')}
+                <Button onClick={handleSubmit} disabled={!modelName.trim() || isSubmitting}>
+                  {isSubmitting && <Loader2Icon className="mr-1 size-4 animate-spin" />}
+                  {editingModel ? tc('save') : tc('register')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -207,19 +235,29 @@ export default function ModelsPage() {
                     <p className="text-xs text-muted-foreground">{model.model_name}</p>
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t('deleteLabel', { name: model.display_name })}
-                  onClick={() => deleteModel.mutate(model.id)}
-                  disabled={deleteModel.isPending}
-                >
-                  {deleteModel.isPending ? (
-                    <Loader2Icon className="size-4 animate-spin" />
-                  ) : (
-                    <Trash2Icon className="size-4 text-muted-foreground" />
-                  )}
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('editLabel', { name: model.display_name })}
+                    onClick={() => openEditDialog(model)}
+                  >
+                    <PencilIcon className="size-4 text-muted-foreground" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('deleteLabel', { name: model.display_name })}
+                    onClick={() => deleteModel.mutate(model.id)}
+                    disabled={deleteModel.isPending}
+                  >
+                    {deleteModel.isPending ? (
+                      <Loader2Icon className="size-4 animate-spin" />
+                    ) : (
+                      <Trash2Icon className="size-4 text-muted-foreground" />
+                    )}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}

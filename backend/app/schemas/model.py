@@ -18,6 +18,17 @@ class ModelCreate(BaseModel):
     cost_per_output_token: Decimal | None = None
 
 
+class ModelUpdate(BaseModel):
+    provider: str | None = None
+    model_name: str | None = None
+    display_name: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    is_default: bool | None = None
+    cost_per_input_token: Decimal | None = None
+    cost_per_output_token: Decimal | None = None
+
+
 class ModelResponse(BaseModel):
     id: uuid.UUID
     provider: str
