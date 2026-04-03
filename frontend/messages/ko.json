@@ -444,12 +444,18 @@
       "title": "아직 스킬이 없습니다",
       "description": "자주 사용하는 작업 패턴을 스킬로 저장하고 에이전트에 연결하세요."
     },
+    "uploadSkill": ".skill 업로드",
+    "packageBadge": "패키지",
+    "hasScripts": "스크립트 포함",
+    "readOnly": "패키지 스킬은 수정할 수 없습니다",
     "toast": {
       "created": "스킬이 생성되었습니다",
       "createFailed": "스킬 생성에 실패했습니다",
       "updated": "스킬이 수정되었습니다",
       "updateFailed": "수정에 실패했습니다",
-      "deleted": "스킬이 삭제되었습니다"
+      "deleted": "스킬이 삭제되었습니다",
+      "uploaded": "스킬 패키지가 업로드되었습니다",
+      "uploadFailed": ".skill 업로드에 실패했습니다"
     }
   },
   "model": {

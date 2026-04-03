@@ -30,6 +30,22 @@ const markdownComponents: Components = {
       {children}
     </blockquote>
   ),
+  img: ({ src, alt }) => {
+    if (!src || typeof src !== 'string') return null
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'
+    // Strip sandbox: or other prefixes LLMs may add, then resolve /api/ paths
+    const cleaned = src.replace(/^(sandbox|file):/, '')
+    const apiMatch = cleaned.match(/\/api\/skills\/[^)"\s]+/)
+    const resolvedSrc = apiMatch ? `${API_BASE}${apiMatch[0]}` : cleaned
+    return (
+      <img
+        src={resolvedSrc}
+        alt={alt ?? ''}
+        className="rounded-lg max-w-full my-2"
+        loading="lazy"
+      />
+    )
+  },
   a: ({ href, children }) => (
     <a
       href={href}

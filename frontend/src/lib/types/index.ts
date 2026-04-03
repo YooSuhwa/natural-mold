@@ -218,6 +218,8 @@ export interface Skill {
   name: string
   description: string | null
   content: string
+  type: 'text' | 'package'
+  has_scripts: boolean
   created_at: string
   updated_at: string
 }

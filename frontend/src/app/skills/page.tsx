@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   PlusIcon,
   Loader2Icon,
@@ -9,10 +9,18 @@ import {
   BookOpenIcon,
   SaveIcon,
   XIcon,
+  UploadIcon,
+  PackageIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations, useFormatter } from 'next-intl'
-import { useSkills, useCreateSkill, useUpdateSkill, useDeleteSkill } from '@/lib/hooks/use-skills'
+import {
+  useSkills,
+  useCreateSkill,
+  useUpdateSkill,
+  useDeleteSkill,
+  useUploadSkill,
+} from '@/lib/hooks/use-skills'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -22,6 +30,7 @@ import {
   CardContent,
   CardFooter,
 } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -138,7 +147,9 @@ export default function SkillsPage() {
   const { data: skills, isLoading } = useSkills()
   const createSkill = useCreateSkill()
   const deleteSkill = useDeleteSkill()
+  const uploadSkill = useUploadSkill()
   const t = useTranslations('skill')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   async function handleCreate(data: { name: string; description: string; content: string }) {
     try {
@@ -149,22 +160,50 @@ export default function SkillsPage() {
     }
   }
 
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      await uploadSkill.mutateAsync(file)
+      toast.success(t('toast.uploaded'))
+    } catch {
+      toast.error(t('toast.uploadFailed'))
+    }
+    // reset input so same file can be re-selected
+    e.target.value = ''
+  }
+
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
         title={t('pageTitle')}
         action={
-          <SkillFormDialog
-            title={t('dialogTitle.new')}
-            trigger={
-              <Button>
-                <PlusIcon className="size-4" data-icon="inline-start" />
-                {t('addSkill')}
-              </Button>
-            }
-            onSubmit={handleCreate}
-            isPending={createSkill.isPending}
-          />
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadSkill.isPending}
+            >
+              {uploadSkill.isPending ? (
+                <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
+              ) : (
+                <UploadIcon className="size-4" data-icon="inline-start" />
+              )}
+              {t('uploadSkill')}
+            </Button>
+            <input ref={fileInputRef} type="file" accept=".skill" onChange={handleUpload} hidden />
+            <SkillFormDialog
+              title={t('dialogTitle.new')}
+              trigger={
+                <Button>
+                  <PlusIcon className="size-4" data-icon="inline-start" />
+                  {t('addSkill')}
+                </Button>
+              }
+              onSubmit={handleCreate}
+              isPending={createSkill.isPending}
+            />
+          </div>
         }
       />
 
@@ -238,6 +277,8 @@ function SkillCard({
     name: string
     description: string | null
     content: string
+    type: 'text' | 'package'
+    has_scripts: boolean
     updated_at: string
   }
   onDelete: () => void
@@ -246,11 +287,20 @@ function SkillCard({
   const updateSkill = useUpdateSkill(skill.id)
   const t = useTranslations('skill')
   const format = useFormatter()
+  const isPackage = skill.type === 'package'
 
   return (
     <Card className="flex flex-col">
       <CardHeader>
-        <CardTitle className="text-sm">{skill.name}</CardTitle>
+        <div className="flex items-center gap-2">
+          <CardTitle className="text-sm">{skill.name}</CardTitle>
+          {isPackage && (
+            <Badge variant="secondary" className="text-[10px] gap-1">
+              <PackageIcon className="size-3" />
+              {t('packageBadge')}
+            </Badge>
+          )}
+        </div>
         {skill.description && (
           <CardDescription className="line-clamp-2 text-xs">{skill.description}</CardDescription>
         )}
@@ -267,28 +317,30 @@ function SkillCard({
           })}
         </span>
         <div className="flex gap-1">
-          <SkillFormDialog
-            title={t('dialogTitle.edit')}
-            initialData={{
-              name: skill.name,
-              description: skill.description ?? '',
-              content: skill.content,
-            }}
-            trigger={
-              <Button variant="ghost" size="icon-sm">
-                <PencilIcon className="size-3.5" />
-              </Button>
-            }
-            onSubmit={async (data) => {
-              try {
-                await updateSkill.mutateAsync(data)
-                toast.success(t('toast.updated'))
-              } catch {
-                toast.error(t('toast.updateFailed'))
+          {!isPackage && (
+            <SkillFormDialog
+              title={t('dialogTitle.edit')}
+              initialData={{
+                name: skill.name,
+                description: skill.description ?? '',
+                content: skill.content,
+              }}
+              trigger={
+                <Button variant="ghost" size="icon-sm">
+                  <PencilIcon className="size-3.5" />
+                </Button>
               }
-            }}
-            isPending={updateSkill.isPending}
-          />
+              onSubmit={async (data) => {
+                try {
+                  await updateSkill.mutateAsync(data)
+                  toast.success(t('toast.updated'))
+                } catch {
+                  toast.error(t('toast.updateFailed'))
+                }
+              }}
+              isPending={updateSkill.isPending}
+            />
+          )}
           <Button
             variant="ghost"
             size="icon-sm"

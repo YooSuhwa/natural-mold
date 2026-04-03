@@ -42,3 +42,7 @@ class Skill(Base):
         onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,
     )
+    type: Mapped[str] = mapped_column(
+        String(20), default="text", server_default="text", nullable=False
+    )
+    storage_path: Mapped[str | None] = mapped_column(String(500), nullable=True)

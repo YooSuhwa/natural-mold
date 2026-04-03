@@ -38,3 +38,11 @@ export function useDeleteSkill() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
   })
 }
+
+export function useUploadSkill() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (file: File) => skillsApi.upload(file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
+  })
+}
