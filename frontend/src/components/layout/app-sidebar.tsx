@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import {
   HomeIcon,
   WrenchIcon,
@@ -13,9 +13,9 @@ import {
   SettingsIcon,
   LogOutIcon,
   ChevronsUpDownIcon,
-} from "lucide-react"
+} from 'lucide-react'
 
-import { useAgents } from "@/lib/hooks/use-agents"
+import { useAgents } from '@/lib/hooks/use-agents'
 import {
   Sidebar,
   SidebarContent,
@@ -28,21 +28,21 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
-} from "@/components/ui/sidebar"
-import { Skeleton } from "@/components/ui/skeleton"
+} from '@/components/ui/sidebar'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu"
+} from '@/components/ui/dropdown-menu'
 
 const navItems = [
-  { label: "홈", href: "/", icon: HomeIcon },
-  { label: "도구", href: "/tools", icon: WrenchIcon },
-  { label: "모델", href: "/models", icon: CpuIcon },
-  { label: "사용량", href: "/usage", icon: BarChart3Icon },
+  { label: '홈', href: '/', icon: HomeIcon },
+  { label: '도구', href: '/tools', icon: WrenchIcon },
+  { label: '모델', href: '/models', icon: CpuIcon },
+  { label: '사용량', href: '/usage', icon: BarChart3Icon },
 ]
 
 export function AppSidebar() {
@@ -92,9 +92,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {navItems.map((item) => {
                 const isActive =
-                  item.href === "/"
-                    ? pathname === "/"
-                    : pathname.startsWith(item.href)
+                  item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
@@ -120,30 +118,30 @@ export function AppSidebar() {
               <SidebarGroupLabel>최근 에이전트</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {isLoading ? (
-                    Array.from({ length: 3 }).map((_, i) => (
-                      <li key={i} className="flex h-8 items-center gap-2 rounded-md px-2">
-                        <Skeleton className="size-4 rounded-md" />
-                        <Skeleton className="h-4 flex-1" />
-                      </li>
-                    ))
-                  ) : (
-                    recentAgents?.map((agent) => {
-                      const isActive = pathname === `/agents/${agent.id}` || pathname.startsWith(`/agents/${agent.id}/`)
-                      return (
-                        <SidebarMenuItem key={agent.id}>
-                          <SidebarMenuButton
-                            isActive={isActive}
-                            tooltip={agent.name}
-                            render={<Link href={`/agents/${agent.id}`} />}
-                          >
-                            <BotIcon className="size-4" />
-                            <span>{agent.name}</span>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      )
-                    })
-                  )}
+                  {isLoading
+                    ? Array.from({ length: 3 }).map((_, i) => (
+                        <li key={i} className="flex h-8 items-center gap-2 rounded-md px-2">
+                          <Skeleton className="size-4 rounded-md" />
+                          <Skeleton className="h-4 flex-1" />
+                        </li>
+                      ))
+                    : recentAgents?.map((agent) => {
+                        const isActive =
+                          pathname === `/agents/${agent.id}` ||
+                          pathname.startsWith(`/agents/${agent.id}/`)
+                        return (
+                          <SidebarMenuItem key={agent.id}>
+                            <SidebarMenuButton
+                              isActive={isActive}
+                              tooltip={agent.name}
+                              render={<Link href={`/agents/${agent.id}`} />}
+                            >
+                              <BotIcon className="size-4" />
+                              <span>{agent.name}</span>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        )
+                      })}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -171,17 +169,11 @@ export function AppSidebar() {
                 </div>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">수화</span>
-                  <span className="truncate text-xs text-muted-foreground">
-                    suhwa@moldy.ai
-                  </span>
+                  <span className="truncate text-xs text-muted-foreground">suhwa@moldy.ai</span>
                 </div>
                 <ChevronsUpDownIcon className="ml-auto size-4" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                side="top"
-                align="start"
-                className="w-[--anchor-width]"
-              >
+              <DropdownMenuContent side="top" align="start" className="w-[--anchor-width]">
                 <DropdownMenuItem>
                   <SettingsIcon />
                   환경설정

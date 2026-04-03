@@ -8,18 +8,17 @@ from zoneinfo import ZoneInfo
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
 
-from app.config import settings
 from app.agent_runtime.google_tools import build_google_search_tool
 from app.agent_runtime.google_workspace_tools import (
-    build_google_chat_webhook_tool,
+    build_calendar_create_event_tool,
+    build_calendar_list_events_tool,
+    build_calendar_update_event_tool,
     build_gmail_read_tool,
     build_gmail_send_tool,
-    build_calendar_list_events_tool,
-    build_calendar_create_event_tool,
-    build_calendar_update_event_tool,
+    build_google_chat_webhook_tool,
 )
 from app.agent_runtime.naver_tools import build_naver_search_tool
-
+from app.config import settings
 
 # ---------------------------------------------------------------------------
 # Builtin tool implementations — no API key required
@@ -72,7 +71,10 @@ def _build_web_scraper_tool() -> BaseTool:
     return StructuredTool.from_function(
         coroutine=scrape_url,
         name="web_scraper",
-        description="웹 페이지의 텍스트 내용을 가져옵니다. URL을 입력하면 해당 페이지의 주요 텍스트를 추출합니다.",
+        description=(
+            "웹 페이지의 텍스트 내용을 가져옵니다. "
+            "URL을 입력하면 해당 페이지의 주요 텍스트를 추출합니다."
+        ),
     )
 
 
@@ -92,6 +94,7 @@ def _build_current_datetime_tool() -> BaseTool:
 # ---------------------------------------------------------------------------
 # HTTP-based custom tools — user-defined via UI
 # ---------------------------------------------------------------------------
+
 
 def _build_http_tool_func(
     api_url: str,
@@ -173,34 +176,92 @@ class _PrebuiltEntry(NamedTuple):
 
 
 _PREBUILT_REGISTRY: dict[str, _PrebuiltEntry] = {
-    "Naver Blog Search": _PrebuiltEntry("naver", "blog", "naver_blog_search",
-        "네이버 블로그에서 키워드를 검색합니다. 블로그 포스트, 리뷰, 개인 의견 등을 찾을 때 사용하세요."),
-    "Naver News Search": _PrebuiltEntry("naver", "news", "naver_news_search",
-        "네이버 뉴스에서 키워드를 검색합니다. 최신 뉴스, 기사, 보도 내용을 찾을 때 사용하세요."),
-    "Naver Image Search": _PrebuiltEntry("naver", "image", "naver_image_search",
-        "네이버에서 이미지를 검색합니다. 사진, 일러스트, 인포그래픽 등을 찾을 때 사용하세요."),
-    "Naver Shopping Search": _PrebuiltEntry("naver", "shop", "naver_shopping_search",
-        "네이버 쇼핑에서 상품을 검색합니다. 가격 비교, 상품 정보 조회에 사용하세요."),
-    "Naver Local Search": _PrebuiltEntry("naver", "local", "naver_local_search",
-        "네이버에서 지역 업체를 검색합니다. 맛집, 카페, 병원 등 주변 업체를 찾을 때 사용하세요."),
-    "Google Search": _PrebuiltEntry("google", "web", "google_search",
-        "구글에서 웹 페이지를 검색합니다. 영문 검색, 글로벌 정보 검색에 특히 유용합니다."),
-    "Google News Search": _PrebuiltEntry("google", "news", "google_news_search",
-        "구글 뉴스에서 키워드를 검색합니다. 글로벌 뉴스, 영문 기사를 찾을 때 사용하세요."),
-    "Google Image Search": _PrebuiltEntry("google", "image", "google_image_search",
-        "구글에서 이미지를 검색합니다. 글로벌 이미지, 영문 키워드 검색에 유용합니다."),
-    "Google Chat Send": _PrebuiltEntry("google_workspace", "chat_send", "google_chat_send",
-        "Google Chat 채널에 메시지를 전송합니다. 알림, 보고, 요약 결과 공유 등에 사용하세요."),
-    "Gmail Read": _PrebuiltEntry("google_workspace", "gmail_read", "gmail_read",
-        "Gmail에서 이메일을 검색하고 읽습니다. 검색 쿼리로 필터링할 수 있습니다."),
-    "Gmail Send": _PrebuiltEntry("google_workspace", "gmail_send", "gmail_send",
-        "Gmail로 이메일을 전송합니다. 수신자, 제목, 본문을 지정하여 이메일을 보냅니다."),
-    "Calendar List Events": _PrebuiltEntry("google_workspace", "calendar_list", "calendar_list_events",
-        "Google Calendar에서 일정을 조회합니다. 오늘 또는 며칠간의 일정을 확인할 수 있습니다."),
-    "Calendar Create Event": _PrebuiltEntry("google_workspace", "calendar_create", "calendar_create_event",
-        "Google Calendar에 새 일정을 생성합니다. 제목, 시작/종료 시간, 설명, 장소를 지정할 수 있습니다."),
-    "Calendar Update Event": _PrebuiltEntry("google_workspace", "calendar_update", "calendar_update_event",
-        "Google Calendar의 기존 일정을 수정합니다. 일정 ID와 변경할 필드를 지정합니다."),
+    "Naver Blog Search": _PrebuiltEntry(
+        "naver",
+        "blog",
+        "naver_blog_search",
+        "네이버 블로그에서 키워드를 검색합니다. "
+        "블로그 포스트, 리뷰, 개인 의견 등을 찾을 때 사용하세요.",
+    ),
+    "Naver News Search": _PrebuiltEntry(
+        "naver",
+        "news",
+        "naver_news_search",
+        "네이버 뉴스에서 키워드를 검색합니다. 최신 뉴스, 기사, 보도 내용을 찾을 때 사용하세요.",
+    ),
+    "Naver Image Search": _PrebuiltEntry(
+        "naver",
+        "image",
+        "naver_image_search",
+        "네이버에서 이미지를 검색합니다. 사진, 일러스트, 인포그래픽 등을 찾을 때 사용하세요.",
+    ),
+    "Naver Shopping Search": _PrebuiltEntry(
+        "naver",
+        "shop",
+        "naver_shopping_search",
+        "네이버 쇼핑에서 상품을 검색합니다. 가격 비교, 상품 정보 조회에 사용하세요.",
+    ),
+    "Naver Local Search": _PrebuiltEntry(
+        "naver",
+        "local",
+        "naver_local_search",
+        "네이버에서 지역 업체를 검색합니다. 맛집, 카페, 병원 등 주변 업체를 찾을 때 사용하세요.",
+    ),
+    "Google Search": _PrebuiltEntry(
+        "google",
+        "web",
+        "google_search",
+        "구글에서 웹 페이지를 검색합니다. 영문 검색, 글로벌 정보 검색에 특히 유용합니다.",
+    ),
+    "Google News Search": _PrebuiltEntry(
+        "google",
+        "news",
+        "google_news_search",
+        "구글 뉴스에서 키워드를 검색합니다. 글로벌 뉴스, 영문 기사를 찾을 때 사용하세요.",
+    ),
+    "Google Image Search": _PrebuiltEntry(
+        "google",
+        "image",
+        "google_image_search",
+        "구글에서 이미지를 검색합니다. 글로벌 이미지, 영문 키워드 검색에 유용합니다.",
+    ),
+    "Google Chat Send": _PrebuiltEntry(
+        "google_workspace",
+        "chat_send",
+        "google_chat_send",
+        "Google Chat 채널에 메시지를 전송합니다. 알림, 보고, 요약 결과 공유 등에 사용하세요.",
+    ),
+    "Gmail Read": _PrebuiltEntry(
+        "google_workspace",
+        "gmail_read",
+        "gmail_read",
+        "Gmail에서 이메일을 검색하고 읽습니다. 검색 쿼리로 필터링할 수 있습니다.",
+    ),
+    "Gmail Send": _PrebuiltEntry(
+        "google_workspace",
+        "gmail_send",
+        "gmail_send",
+        "Gmail로 이메일을 전송합니다. 수신자, 제목, 본문을 지정하여 이메일을 보냅니다.",
+    ),
+    "Calendar List Events": _PrebuiltEntry(
+        "google_workspace",
+        "calendar_list",
+        "calendar_list_events",
+        "Google Calendar에서 일정을 조회합니다. 오늘 또는 며칠간의 일정을 확인할 수 있습니다.",
+    ),
+    "Calendar Create Event": _PrebuiltEntry(
+        "google_workspace",
+        "calendar_create",
+        "calendar_create_event",
+        "Google Calendar에 새 일정을 생성합니다. "
+        "제목, 시작/종료 시간, 설명, 장소를 지정할 수 있습니다.",
+    ),
+    "Calendar Update Event": _PrebuiltEntry(
+        "google_workspace",
+        "calendar_update",
+        "calendar_update_event",
+        "Google Calendar의 기존 일정을 수정합니다. 일정 ID와 변경할 필드를 지정합니다.",
+    ),
 }
 
 

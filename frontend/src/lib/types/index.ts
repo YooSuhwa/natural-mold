@@ -66,7 +66,7 @@ export interface ModelCreateRequest {
 // Tool
 export interface Tool {
   id: string
-  type: "mcp" | "custom" | "builtin" | "prebuilt"
+  type: 'mcp' | 'custom' | 'builtin' | 'prebuilt'
   is_system: boolean
   mcp_server_id: string | null
   name: string
@@ -132,7 +132,7 @@ export interface Conversation {
 export interface Message {
   id: string
   conversation_id: string
-  role: "user" | "assistant" | "tool"
+  role: 'user' | 'assistant' | 'tool'
   content: string
   tool_calls: ToolCallInfo[] | null
   tool_call_id: string | null
@@ -146,12 +146,12 @@ export interface ToolCallInfo {
 
 // SSE Events
 export type SSEEventType =
-  | "message_start"
-  | "content_delta"
-  | "tool_call_start"
-  | "tool_call_result"
-  | "message_end"
-  | "error"
+  | 'message_start'
+  | 'content_delta'
+  | 'tool_call_start'
+  | 'tool_call_result'
+  | 'message_end'
+  | 'error'
 
 export interface SSEEvent {
   event: SSEEventType
@@ -198,10 +198,10 @@ export interface DraftConfig {
 export interface AgentTrigger {
   id: string
   agent_id: string
-  trigger_type: "interval" | "cron"
+  trigger_type: 'interval' | 'cron'
   schedule_config: { interval_minutes?: number; cron_expression?: string }
   input_message: string
-  status: "active" | "paused" | "error"
+  status: 'active' | 'paused' | 'error'
   last_run_at: string | null
   next_run_at: string | null
   run_count: number
@@ -210,7 +210,7 @@ export interface AgentTrigger {
 }
 
 export interface TriggerCreateRequest {
-  trigger_type: "interval" | "cron"
+  trigger_type: 'interval' | 'cron'
   schedule_config: Record<string, unknown>
   input_message: string
 }

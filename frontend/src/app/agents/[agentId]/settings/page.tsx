@@ -1,8 +1,8 @@
-"use client"
+'use client'
 
-import { use, useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
+import { use, useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   ArrowLeftIcon,
   Loader2Icon,
@@ -12,29 +12,29 @@ import {
   PlayIcon,
   PauseIcon,
   PlusIcon,
-} from "lucide-react"
-import { toast } from "sonner"
-import { useAgent, useUpdateAgent, useDeleteAgent } from "@/lib/hooks/use-agents"
-import { useModels } from "@/lib/hooks/use-models"
-import { useTools } from "@/lib/hooks/use-tools"
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents'
+import { useModels } from '@/lib/hooks/use-models'
+import { useTools } from '@/lib/hooks/use-tools'
 import {
   useTriggers,
   useCreateTrigger,
   useUpdateTrigger,
   useDeleteTrigger,
-} from "@/lib/hooks/use-triggers"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+} from '@/lib/hooks/use-triggers'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from "@/components/ui/select"
+} from '@/components/ui/select'
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -45,15 +45,11 @@ import {
   AlertDialogFooter,
   AlertDialogAction,
   AlertDialogCancel,
-} from "@/components/ui/alert-dialog"
-import { Skeleton } from "@/components/ui/skeleton"
-import { PageHeader } from "@/components/shared/page-header"
+} from '@/components/ui/alert-dialog'
+import { Skeleton } from '@/components/ui/skeleton'
+import { PageHeader } from '@/components/shared/page-header'
 
-export default function AgentSettingsPage({
-  params,
-}: {
-  params: Promise<{ agentId: string }>
-}) {
+export default function AgentSettingsPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params)
   const router = useRouter()
   const { data: agent, isLoading: agentLoading } = useAgent(agentId)
@@ -66,24 +62,27 @@ export default function AgentSettingsPage({
   const updateTrigger = useUpdateTrigger(agentId)
   const deleteTrigger = useDeleteTrigger(agentId)
 
-  const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
-  const [systemPrompt, setSystemPrompt] = useState("")
-  const [modelId, setModelId] = useState("")
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [systemPrompt, setSystemPrompt] = useState('')
+  const [modelId, setModelId] = useState('')
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
   const [showTriggerForm, setShowTriggerForm] = useState(false)
-  const [triggerMinutes, setTriggerMinutes] = useState("10")
-  const [triggerMessage, setTriggerMessage] = useState("")
+  const [triggerMinutes, setTriggerMinutes] = useState('10')
+  const [triggerMessage, setTriggerMessage] = useState('')
 
+  // Sync form state when agent data loads from server.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (agent) {
       setName(agent.name)
-      setDescription(agent.description ?? "")
+      setDescription(agent.description ?? '')
       setSystemPrompt(agent.system_prompt)
       setModelId(agent.model.id)
       setSelectedToolIds(new Set(agent.tools.map((t) => t.id)))
     }
   }, [agent])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function handleSave() {
     try {
@@ -94,15 +93,15 @@ export default function AgentSettingsPage({
         model_id: modelId,
         tool_ids: Array.from(selectedToolIds),
       })
-      toast.success("저장되었습니다")
+      toast.success('저장되었습니다')
     } catch {
-      toast.error("저장에 실패했습니다")
+      toast.error('저장에 실패했습니다')
     }
   }
 
   async function handleDelete() {
     await deleteAgent.mutateAsync(agentId)
-    router.push("/")
+    router.push('/')
   }
 
   function toggleTool(toolId: string) {
@@ -141,9 +140,7 @@ export default function AgentSettingsPage({
         <span className="text-sm text-muted-foreground">채팅으로 돌아가기</span>
       </div>
 
-      <PageHeader
-        title={`에이전트 설정: ${agent?.name ?? ""}`}
-      />
+      <PageHeader title={`에이전트 설정: ${agent?.name ?? ''}`} />
 
       <div className="mx-auto w-full max-w-2xl space-y-6">
         {/* Name */}
@@ -177,7 +174,12 @@ export default function AgentSettingsPage({
         <div className="space-y-2">
           <label className="text-sm font-medium">모델</label>
           {models ? (
-            <Select value={modelId} onValueChange={(val) => { if (val) setModelId(val) }}>
+            <Select
+              value={modelId}
+              onValueChange={(val) => {
+                if (val) setModelId(val)
+              }}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="모델 선택" />
               </SelectTrigger>
@@ -201,10 +203,7 @@ export default function AgentSettingsPage({
             tools.length > 0 ? (
               <div className="space-y-2 rounded-lg border p-3">
                 {tools.map((tool) => (
-                  <label
-                    key={tool.id}
-                    className="flex items-center gap-3 text-sm"
-                  >
+                  <label key={tool.id} className="flex items-center gap-3 text-sm">
                     <input
                       type="checkbox"
                       checked={selectedToolIds.has(tool.id)}
@@ -213,16 +212,14 @@ export default function AgentSettingsPage({
                     />
                     <span>{tool.name}</span>
                     {tool.description && (
-                      <span className="text-xs text-muted-foreground">
-                        - {tool.description}
-                      </span>
+                      <span className="text-xs text-muted-foreground">- {tool.description}</span>
                     )}
                   </label>
                 ))}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                등록된 도구가 없습니다.{" "}
+                등록된 도구가 없습니다.{' '}
                 <Link href="/tools" className="text-primary hover:underline">
                   도구 관리
                 </Link>
@@ -248,8 +245,8 @@ export default function AgentSettingsPage({
                   <CardContent className="flex items-center justify-between py-3">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <Badge variant={trigger.status === "active" ? "default" : "secondary"}>
-                          {trigger.status === "active" ? "활성" : "일시정지"}
+                        <Badge variant={trigger.status === 'active' ? 'default' : 'secondary'}>
+                          {trigger.status === 'active' ? '활성' : '일시정지'}
                         </Badge>
                         <span className="text-sm">
                           매 {trigger.schedule_config.interval_minutes}분
@@ -260,7 +257,9 @@ export default function AgentSettingsPage({
                       </p>
                       <div className="flex gap-3 text-xs text-muted-foreground">
                         {trigger.last_run_at && (
-                          <span>마지막 실행: {new Date(trigger.last_run_at).toLocaleString("ko-KR")}</span>
+                          <span>
+                            마지막 실행: {new Date(trigger.last_run_at).toLocaleString('ko-KR')}
+                          </span>
                         )}
                         <span>실행 횟수: {trigger.run_count}회</span>
                       </div>
@@ -269,15 +268,15 @@ export default function AgentSettingsPage({
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={trigger.status === "active" ? "일시정지" : "재개"}
+                        aria-label={trigger.status === 'active' ? '일시정지' : '재개'}
                         onClick={() =>
                           updateTrigger.mutate({
                             triggerId: trigger.id,
-                            data: { status: trigger.status === "active" ? "paused" : "active" },
+                            data: { status: trigger.status === 'active' ? 'paused' : 'active' },
                           })
                         }
                       >
-                        {trigger.status === "active" ? (
+                        {trigger.status === 'active' ? (
                           <PauseIcon className="size-4" />
                         ) : (
                           <PlayIcon className="size-4" />
@@ -325,33 +324,25 @@ export default function AgentSettingsPage({
                   disabled={createTrigger.isPending || !triggerMessage.trim()}
                   onClick={async () => {
                     await createTrigger.mutateAsync({
-                      trigger_type: "interval",
+                      trigger_type: 'interval',
                       schedule_config: { interval_minutes: Number(triggerMinutes) || 10 },
                       input_message: triggerMessage.trim(),
                     })
                     setShowTriggerForm(false)
-                    setTriggerMessage("")
-                    setTriggerMinutes("10")
+                    setTriggerMessage('')
+                    setTriggerMinutes('10')
                   }}
                 >
                   {createTrigger.isPending && <Loader2Icon className="mr-1 size-3 animate-spin" />}
                   트리거 추가
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowTriggerForm(false)}
-                >
+                <Button variant="ghost" size="sm" onClick={() => setShowTriggerForm(false)}>
                   취소
                 </Button>
               </div>
             </div>
           ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowTriggerForm(true)}
-            >
+            <Button variant="outline" size="sm" onClick={() => setShowTriggerForm(true)}>
               <PlusIcon className="size-4" data-icon="inline-start" />
               자동 실행 추가
             </Button>
@@ -360,10 +351,7 @@ export default function AgentSettingsPage({
 
         {/* Actions */}
         <div className="flex items-center justify-between pt-4">
-          <Button
-            onClick={handleSave}
-            disabled={updateAgent.isPending}
-          >
+          <Button onClick={handleSave} disabled={updateAgent.isPending}>
             {updateAgent.isPending ? (
               <Loader2Icon className="mr-1 size-4 animate-spin" />
             ) : (
@@ -385,8 +373,7 @@ export default function AgentSettingsPage({
               <AlertDialogHeader>
                 <AlertDialogTitle>에이전트를 삭제하시겠습니까?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  이 작업은 되돌릴 수 없습니다. 에이전트와 관련된 모든 대화가
-                  삭제됩니다.
+                  이 작업은 되돌릴 수 없습니다. 에이전트와 관련된 모든 대화가 삭제됩니다.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

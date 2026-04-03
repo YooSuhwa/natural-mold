@@ -63,6 +63,7 @@ def _parse_naver_response(data: dict[str, Any]) -> str:
 # Pydantic args schemas for each Naver search type
 # ---------------------------------------------------------------------------
 
+
 class _NaverSearchArgsBase(BaseModel):
     query: str = Field(description="검색 키워드")
     display: int = Field(default=10, description="결과 수 (1-100)", ge=1, le=100)
@@ -75,7 +76,10 @@ class NaverImageSearchArgs(_NaverSearchArgsBase):
 
 
 class NaverShoppingSearchArgs(_NaverSearchArgsBase):
-    sort: str = Field(default="sim", description="정렬: sim(정확도순), asc(가격낮은순), dsc(가격높은순)")
+    sort: str = Field(
+        default="sim",
+        description="정렬: sim(정확도순), asc(가격낮은순), dsc(가격높은순)",
+    )
 
 
 class NaverLocalSearchArgs(_NaverSearchArgsBase):
@@ -97,6 +101,7 @@ _ARGS_SCHEMAS: dict[str, type[BaseModel]] = {
 # Generic Naver Search tool builder
 # ---------------------------------------------------------------------------
 
+
 def build_naver_search_tool(
     search_type: str,
     tool_name: str,
@@ -108,10 +113,15 @@ def build_naver_search_tool(
 
     async def _search(**kwargs: Any) -> str:
         client_id = (auth_config or {}).get("naver_client_id") or settings.naver_client_id
-        client_secret = (auth_config or {}).get("naver_client_secret") or settings.naver_client_secret
+        client_secret = (auth_config or {}).get(
+            "naver_client_secret"
+        ) or settings.naver_client_secret
 
         if not client_id or not client_secret:
-            return "Error: NAVER_CLIENT_ID/SECRET이 설정되지 않았습니다. .env 파일에 설정하거나 도구의 auth_config에 추가하세요."
+            return (
+                "Error: NAVER_CLIENT_ID/SECRET이 설정되지 않았습니다. "
+                ".env 파일에 설정하거나 도구의 auth_config에 추가하세요."
+            )
 
         headers = {
             "X-Naver-Client-Id": client_id,
@@ -129,7 +139,9 @@ def build_naver_search_tool(
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
                 return "Error: 네이버 API 일일 호출 한도(25,000건)를 초과했습니다."
-            return f"Error: 네이버 API 호출 실패 — {e.response.status_code}: {e.response.text[:200]}"
+            return (
+                f"Error: 네이버 API 호출 실패 — {e.response.status_code}: {e.response.text[:200]}"
+            )
         except httpx.HTTPError as e:
             return f"Error: 네이버 API에 연결할 수 없습니다 — {e}"
 

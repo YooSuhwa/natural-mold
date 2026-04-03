@@ -43,6 +43,7 @@ def _parse_google_response(data: dict[str, Any]) -> str:
 # Pydantic args schemas
 # ---------------------------------------------------------------------------
 
+
 class GoogleSearchArgs(BaseModel):
     query: str = Field(description="검색 키워드")
     num: int = Field(default=5, description="결과 수 (1-10)", ge=1, le=10)
@@ -59,6 +60,7 @@ _ARGS_SCHEMAS: dict[str, type[BaseModel]] = {
 # Generic Google Search tool builder
 # ---------------------------------------------------------------------------
 
+
 def build_google_search_tool(
     variant: str,
     tool_name: str,
@@ -73,7 +75,10 @@ def build_google_search_tool(
         cse_id = (auth_config or {}).get("google_cse_id") or settings.google_cse_id
 
         if not api_key or not cse_id:
-            return "Error: GOOGLE_API_KEY/GOOGLE_CSE_ID가 설정되지 않았습니다. .env 파일에 설정하거나 도구의 auth_config에 추가하세요."
+            return (
+                "Error: GOOGLE_API_KEY/GOOGLE_CSE_ID가 설정되지 않았습니다. "
+                ".env 파일에 설정하거나 도구의 auth_config에 추가하세요."
+            )
 
         params: dict[str, Any] = {
             "key": api_key,
@@ -93,7 +98,9 @@ def build_google_search_tool(
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 403:
                 return "Error: Google API 할당량을 초과했거나 API 키가 유효하지 않습니다."
-            return f"Error: Google API 호출 실패 — {e.response.status_code}: {e.response.text[:200]}"
+            return (
+                f"Error: Google API 호출 실패 — {e.response.status_code}: {e.response.text[:200]}"
+            )
         except httpx.HTTPError as e:
             return f"Error: Google API에 연결할 수 없습니다 — {e}"
 

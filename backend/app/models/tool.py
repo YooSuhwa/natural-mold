@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import ForeignKey, JSON, String, Text
+from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,10 +16,12 @@ class AgentToolLink(Base):
     __tablename__ = "agent_tools"
 
     agent_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True,
+        ForeignKey("agents.id", ondelete="CASCADE"),
+        primary_key=True,
     )
     tool_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("tools.id", ondelete="CASCADE"), primary_key=True,
+        ForeignKey("tools.id", ondelete="CASCADE"),
+        primary_key=True,
     )
     config: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
@@ -36,9 +38,14 @@ class MCPServer(Base):
     auth_type: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
     auth_config: Mapped[dict | None] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        nullable=False,
+    )
 
-    tools: Mapped[list[Tool]] = relationship(back_populates="mcp_server", cascade="all, delete-orphan")
+    tools: Mapped[list[Tool]] = relationship(
+        back_populates="mcp_server", cascade="all, delete-orphan"
+    )
 
 
 class Tool(Base):
@@ -56,6 +63,9 @@ class Tool(Base):
     http_method: Mapped[str | None] = mapped_column(String(10))
     auth_type: Mapped[str | None] = mapped_column(String(20))
     auth_config: Mapped[dict | None] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        nullable=False,
+    )
 
     mcp_server: Mapped[MCPServer | None] = relationship(back_populates="tools")

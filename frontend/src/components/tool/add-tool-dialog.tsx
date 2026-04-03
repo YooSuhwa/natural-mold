@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import { Loader2Icon } from "lucide-react"
+import { useState } from 'react'
+import { Loader2Icon } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -10,12 +10,12 @@ import {
   DialogDescription,
   DialogFooter,
   DialogTrigger,
-} from "@/components/ui/dialog"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { useRegisterMCPServer, useCreateCustomTool } from "@/lib/hooks/use-tools"
+} from '@/components/ui/dialog'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { useRegisterMCPServer, useCreateCustomTool } from '@/lib/hooks/use-tools'
 
 interface AddToolDialogProps {
   trigger: React.ReactNode
@@ -25,43 +25,42 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   const [open, setOpen] = useState(false)
 
   // MCP form state
-  const [mcpName, setMcpName] = useState("")
-  const [mcpUrl, setMcpUrl] = useState("")
-  const [mcpAuthType, setMcpAuthType] = useState("none")
-  const [mcpApiKey, setMcpApiKey] = useState("")
+  const [mcpName, setMcpName] = useState('')
+  const [mcpUrl, setMcpUrl] = useState('')
+  const [mcpAuthType, setMcpAuthType] = useState('none')
+  const [mcpApiKey, setMcpApiKey] = useState('')
   const registerMCP = useRegisterMCPServer()
 
   // Custom tool form state
-  const [customName, setCustomName] = useState("")
-  const [customDescription, setCustomDescription] = useState("")
-  const [customApiUrl, setCustomApiUrl] = useState("")
-  const [customMethod, setCustomMethod] = useState("GET")
-  const [customParams, setCustomParams] = useState("")
-  const [customAuthType, setCustomAuthType] = useState("none")
-  const [customApiKey, setCustomApiKey] = useState("")
+  const [customName, setCustomName] = useState('')
+  const [customDescription, setCustomDescription] = useState('')
+  const [customApiUrl, setCustomApiUrl] = useState('')
+  const [customMethod, setCustomMethod] = useState('GET')
+  const [customParams, setCustomParams] = useState('')
+  const [customAuthType, setCustomAuthType] = useState('none')
+  const [customApiKey, setCustomApiKey] = useState('')
   const createCustomTool = useCreateCustomTool()
 
   function resetForms() {
-    setMcpName("")
-    setMcpUrl("")
-    setMcpAuthType("none")
-    setMcpApiKey("")
-    setCustomName("")
-    setCustomDescription("")
-    setCustomApiUrl("")
-    setCustomMethod("GET")
-    setCustomParams("")
-    setCustomAuthType("none")
-    setCustomApiKey("")
+    setMcpName('')
+    setMcpUrl('')
+    setMcpAuthType('none')
+    setMcpApiKey('')
+    setCustomName('')
+    setCustomDescription('')
+    setCustomApiUrl('')
+    setCustomMethod('GET')
+    setCustomParams('')
+    setCustomAuthType('none')
+    setCustomApiKey('')
   }
 
   async function handleMCPSubmit() {
-    const authConfig =
-      mcpAuthType !== "none" ? { api_key: mcpApiKey } : undefined
+    const authConfig = mcpAuthType !== 'none' ? { api_key: mcpApiKey } : undefined
     await registerMCP.mutateAsync({
       name: mcpName,
       url: mcpUrl,
-      auth_type: mcpAuthType !== "none" ? mcpAuthType : undefined,
+      auth_type: mcpAuthType !== 'none' ? mcpAuthType : undefined,
       auth_config: authConfig,
     })
     resetForms()
@@ -77,15 +76,14 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
         return // Invalid JSON
       }
     }
-    const authConfig =
-      customAuthType !== "none" ? { api_key: customApiKey } : undefined
+    const authConfig = customAuthType !== 'none' ? { api_key: customApiKey } : undefined
     await createCustomTool.mutateAsync({
       name: customName,
       description: customDescription || undefined,
       api_url: customApiUrl,
       http_method: customMethod,
       parameters_schema: parsedParams,
-      auth_type: customAuthType !== "none" ? customAuthType : undefined,
+      auth_type: customAuthType !== 'none' ? customAuthType : undefined,
       auth_config: authConfig,
     })
     resetForms()
@@ -135,9 +133,9 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
               <label className="text-sm font-medium">인증</label>
               <div className="flex gap-4 text-sm">
                 {[
-                  { value: "none", label: "없음" },
-                  { value: "api_key", label: "API Key" },
-                  { value: "oauth", label: "OAuth" },
+                  { value: 'none', label: '없음' },
+                  { value: 'api_key', label: 'API Key' },
+                  { value: 'oauth', label: 'OAuth' },
                 ].map((opt) => (
                   <label key={opt.value} className="flex items-center gap-1.5">
                     <input
@@ -152,7 +150,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                 ))}
               </div>
             </div>
-            {mcpAuthType !== "none" && (
+            {mcpAuthType !== 'none' && (
               <div className="space-y-2">
                 <label className="text-sm font-medium">API Key</label>
                 <Input
@@ -166,15 +164,9 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
             <DialogFooter>
               <Button
                 onClick={handleMCPSubmit}
-                disabled={
-                  !mcpName.trim() ||
-                  !mcpUrl.trim() ||
-                  registerMCP.isPending
-                }
+                disabled={!mcpName.trim() || !mcpUrl.trim() || registerMCP.isPending}
               >
-                {registerMCP.isPending && (
-                  <Loader2Icon className="mr-1 size-4 animate-spin" />
-                )}
+                {registerMCP.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
                 등록
               </Button>
             </DialogFooter>
@@ -213,7 +205,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
             <div className="space-y-2">
               <label className="text-sm font-medium">HTTP 메서드</label>
               <div className="flex gap-4 text-sm">
-                {["GET", "POST", "PUT"].map((m) => (
+                {['GET', 'POST', 'PUT'].map((m) => (
                   <label key={m} className="flex items-center gap-1.5">
                     <input
                       type="radio"
@@ -228,9 +220,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
               </div>
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">
-                파라미터 (JSON Schema)
-              </label>
+              <label className="text-sm font-medium">파라미터 (JSON Schema)</label>
               <Textarea
                 value={customParams}
                 onChange={(e) => setCustomParams(e.target.value)}
@@ -243,9 +233,9 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
               <label className="text-sm font-medium">인증</label>
               <div className="flex gap-4 text-sm">
                 {[
-                  { value: "none", label: "없음" },
-                  { value: "api_key", label: "API Key" },
-                  { value: "bearer", label: "Bearer" },
+                  { value: 'none', label: '없음' },
+                  { value: 'api_key', label: 'API Key' },
+                  { value: 'bearer', label: 'Bearer' },
                 ].map((opt) => (
                   <label key={opt.value} className="flex items-center gap-1.5">
                     <input
@@ -260,7 +250,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                 ))}
               </div>
             </div>
-            {customAuthType !== "none" && (
+            {customAuthType !== 'none' && (
               <div className="space-y-2">
                 <label className="text-sm font-medium">API Key</label>
                 <Input
@@ -274,15 +264,9 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
             <DialogFooter>
               <Button
                 onClick={handleCustomSubmit}
-                disabled={
-                  !customName.trim() ||
-                  !customApiUrl.trim() ||
-                  createCustomTool.isPending
-                }
+                disabled={!customName.trim() || !customApiUrl.trim() || createCustomTool.isPending}
               >
-                {createCustomTool.isPending && (
-                  <Loader2Icon className="mr-1 size-4 animate-spin" />
-                )}
+                {createCustomTool.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
                 등록
               </Button>
             </DialogFooter>

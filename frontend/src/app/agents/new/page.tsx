@@ -1,16 +1,10 @@
-"use client"
+'use client'
 
-import Link from "next/link"
-import { MessageSquareIcon, LayoutTemplateIcon } from "lucide-react"
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { PageHeader } from "@/components/shared/page-header"
+import Link from 'next/link'
+import { MessageSquareIcon, LayoutTemplateIcon } from 'lucide-react'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/shared/page-header'
 
 export default function AgentNewPage() {
   return (
@@ -24,9 +18,7 @@ export default function AgentNewPage() {
               <MessageSquareIcon className="size-6" />
             </div>
             <CardTitle>대화로 만들기</CardTitle>
-            <CardDescription>
-              AI와 대화하며 에이전트를 구성합니다
-            </CardDescription>
+            <CardDescription>AI와 대화하며 에이전트를 구성합니다</CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
             <Link href="/agents/new/conversational">
@@ -41,9 +33,7 @@ export default function AgentNewPage() {
               <LayoutTemplateIcon className="size-6" />
             </div>
             <CardTitle>템플릿으로 만들기</CardTitle>
-            <CardDescription>
-              준비된 템플릿에서 골라 바로 시작합니다
-            </CardDescription>
+            <CardDescription>준비된 템플릿에서 골라 바로 시작합니다</CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
             <Link href="/agents/new/template">

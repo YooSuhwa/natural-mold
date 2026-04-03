@@ -1,12 +1,11 @@
-import { apiFetch } from "./client"
-import type { Conversation, Message } from "@/lib/types"
+import { apiFetch } from './client'
+import type { Conversation, Message } from '@/lib/types'
 
 export const conversationsApi = {
-  list: (agentId: string) =>
-    apiFetch<Conversation[]>(`/api/agents/${agentId}/conversations`),
+  list: (agentId: string) => apiFetch<Conversation[]>(`/api/agents/${agentId}/conversations`),
   create: (agentId: string, title?: string) =>
     apiFetch<Conversation>(`/api/agents/${agentId}/conversations`, {
-      method: "POST",
+      method: 'POST',
       body: JSON.stringify({ title }),
     }),
   messages: (conversationId: string) =>

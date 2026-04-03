@@ -103,7 +103,6 @@ async def test_trigger_validation(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_system_tool_not_deletable(client: AsyncClient):
     """System tools created via seed should not be deletable."""
-    from sqlalchemy import select
     from app.models.tool import Tool
     from tests.conftest import TestSession
 
@@ -135,7 +134,7 @@ async def test_system_tool_not_deletable(client: AsyncClient):
 async def test_list_tools_includes_system(client: AsyncClient):
     """list_tools should return both user tools and system tools."""
     from app.models.tool import Tool
-    from tests.conftest import TestSession, TEST_USER_ID
+    from tests.conftest import TEST_USER_ID, TestSession
 
     async with TestSession() as db:
         # Create a system tool

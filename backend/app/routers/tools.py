@@ -6,7 +6,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.schemas.tool import MCPServerCreate, MCPServerResponse, ToolAuthConfigUpdate, ToolCustomCreate, ToolResponse
+from app.schemas.tool import (
+    MCPServerCreate,
+    MCPServerResponse,
+    ToolAuthConfigUpdate,
+    ToolCustomCreate,
+    ToolResponse,
+)
 from app.services import tool_service
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
@@ -44,9 +50,10 @@ async def test_mcp_connection(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
+    from sqlalchemy import select
+
     from app.agent_runtime.mcp_client import test_mcp_connection as mcp_test
     from app.models.tool import MCPServer
-    from sqlalchemy import select
 
     result = await db.execute(
         select(MCPServer).where(MCPServer.id == server_id, MCPServer.user_id == user.id)
