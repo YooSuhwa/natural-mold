@@ -37,6 +37,7 @@ export interface AgentCreateRequest {
   system_prompt: string
   model_id: string
   tool_ids?: string[]
+  skill_ids?: string[]
   template_id?: string
   model_params?: ModelParams
 }

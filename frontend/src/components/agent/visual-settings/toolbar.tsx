@@ -6,13 +6,14 @@ import { ArrowLeftIcon, MessageSquareIcon, Undo2Icon, Redo2Icon } from 'lucide-r
 import { Button } from '@/components/ui/button'
 
 interface ToolbarProps {
-  agentId: string
+  agentId?: string
   agentName: string
   onSave: () => void
   isSaving: boolean
+  mode?: 'create' | 'edit'
 }
 
-export function Toolbar({ agentId, agentName, onSave, isSaving }: ToolbarProps) {
+export function Toolbar({ agentId, agentName, onSave, isSaving, mode = 'edit' }: ToolbarProps) {
   const router = useRouter()
   const t = useTranslations('agent.visualSettings')
   const tc = useTranslations('common')
@@ -28,7 +29,9 @@ export function Toolbar({ agentId, agentName, onSave, isSaving }: ToolbarProps) 
               document.referrer && new URL(document.referrer).origin === window.location.origin
             if (hasAppHistory) {
               router.back()
-            } else {
+            } else if (mode === 'create') {
+              router.push('/agents/new')
+            } else if (agentId) {
               router.push(`/agents/${agentId}`)
             }
           }}
@@ -51,7 +54,7 @@ export function Toolbar({ agentId, agentName, onSave, isSaving }: ToolbarProps) 
         </Button>
         <div className="mx-1 h-4 w-px bg-border" />
         <Button size="sm" onClick={onSave} disabled={isSaving}>
-          {tc('save')}
+          {mode === 'create' ? tc('create') : tc('save')}
         </Button>
       </div>
     </div>

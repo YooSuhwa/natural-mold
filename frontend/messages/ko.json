@@ -5,6 +5,7 @@
   },
   "common": {
     "save": "저장",
+    "create": "생성",
     "cancel": "취소",
     "delete": "삭제",
     "register": "등록",
@@ -19,7 +20,8 @@
       "tools": "도구",
       "skills": "스킬",
       "models": "모델",
-      "usage": "사용량"
+      "usage": "사용량",
+      "templates": "에이전트 템플릿"
     },
     "newAgent": "새 에이전트",
     "recentAgents": "최근 에이전트",
@@ -44,6 +46,10 @@
       "conversational": {
         "label": "대화로 만들기",
         "description": "AI와 대화하며 에이전트를 구성합니다"
+      },
+      "manual": {
+        "label": "직접 만들기",
+        "description": "프롬프트, 모델, 도구를 직접 설정합니다"
       },
       "template": {
         "label": "템플릿으로 만들기",
@@ -72,15 +78,18 @@
   "agent": {
     "new": {
       "pageTitle": "새 에이전트 만들기",
-      "conversational": {
-        "title": "대화로 만들기",
-        "description": "AI와 대화하며 에이전트를 구성합니다",
-        "startButton": "시작하기"
+      "hero": {
+        "title": "생성하려는 에이전트에 대해 알려주세요",
+        "subtitle": "원하는 에이전트가 무엇을 하길 원하는지 설명해 주시면, 단계별로 안내해 드리겠습니다"
+      },
+      "chatPlaceholder": "구축하려는 에이전트에 대해 설명해 주세요",
+      "manual": {
+        "title": "에이전트 직접 만들기",
+        "description": "프롬프트, 모델, 도구를 직접 설정합니다"
       },
       "template": {
         "title": "템플릿으로 만들기",
-        "description": "준비된 템플릿에서 골라 바로 시작합니다",
-        "browseButton": "둘러보기"
+        "description": "준비된 템플릿에서 골라 바로 시작합니다"
       }
     },
     "template": {
@@ -261,6 +270,7 @@
         "undo": "실행 취소",
         "redo": "다시 실행"
       },
+      "defaultName": "새 에이전트",
       "canvas": {
         "hint": "노드를 드래그하여 이동할 수 있습니다"
       },
