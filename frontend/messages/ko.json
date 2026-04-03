@@ -142,6 +142,7 @@
       },
       "favoriteRemove": "즐겨찾기 해제",
       "favoriteAdd": "즐겨찾기",
+      "settings": "설정",
       "modelLabel": "모델:",
       "createdAt": "{date} 생성"
     },
@@ -149,7 +150,7 @@
       "loadFailed": "대화를 불러오는 데 실패했습니다."
     },
     "settings": {
-      "backToChat": "채팅으로 돌아가기",
+      "back": "돌아가기",
       "title": "에이전트 설정: {name}",
       "name": "이름",
       "description": "설명",

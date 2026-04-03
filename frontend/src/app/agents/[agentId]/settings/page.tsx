@@ -152,12 +152,22 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <div className="flex items-center gap-2">
-        <Link href={`/agents/${agentId}`}>
-          <Button variant="ghost" size="icon-sm">
-            <ArrowLeftIcon className="size-4" />
-          </Button>
-        </Link>
-        <span className="text-sm text-muted-foreground">{t('backToChat')}</span>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => {
+            const hasAppHistory =
+              document.referrer && new URL(document.referrer).origin === window.location.origin
+            if (hasAppHistory) {
+              router.back()
+            } else {
+              router.push(`/agents/${agentId}`)
+            }
+          }}
+        >
+          <ArrowLeftIcon className="size-4" />
+        </Button>
+        <span className="text-sm text-muted-foreground">{t('back')}</span>
       </div>
 
       <div className="flex items-center justify-between">
