@@ -19,7 +19,9 @@ async def list_tools(db: AsyncSession, user_id: uuid.UUID) -> list[Tool]:
     return list(result.scalars().all())
 
 
-async def get_tool_agent_counts(db: AsyncSession, tool_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+async def get_tool_agent_counts(
+    db: AsyncSession, tool_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
     """Get the number of agents using each tool."""
     if not tool_ids:
         return {}

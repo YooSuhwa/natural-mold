@@ -1,6 +1,6 @@
-"use client"
+'use client'
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect } from 'react'
 import {
   SparklesIcon,
   SendIcon,
@@ -9,14 +9,14 @@ import {
   UserIcon,
   CheckCircle2Icon,
   AlertCircleIcon,
-} from "lucide-react"
-import { toast } from "sonner"
-import { useQueryClient } from "@tanstack/react-query"
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 
-import { apiFetch } from "@/lib/api/client"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
+import { apiFetch } from '@/lib/api/client'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
   DialogContent,
@@ -24,7 +24,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from '@/components/ui/dialog'
 
 interface FixAgentDialogProps {
   agentId: string
@@ -32,7 +32,7 @@ interface FixAgentDialogProps {
 }
 
 interface FixMessage {
-  role: "user" | "assistant"
+  role: 'user' | 'assistant'
   content: string
   action?: string
   summary?: string
@@ -51,7 +51,7 @@ interface FixResponse {
 export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<FixMessage[]>([])
-  const [input, setInput] = useState("")
+  const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [history, setHistory] = useState<Array<{ role: string; content: string }>>([])
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -67,7 +67,7 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
     setOpen(isOpen)
     if (!isOpen) {
       setMessages([])
-      setInput("")
+      setInput('')
       setHistory([])
     }
   }
@@ -76,13 +76,13 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
     const text = input.trim()
     if (!text || isLoading) return
 
-    setInput("")
-    setMessages((prev) => [...prev, { role: "user", content: text }])
+    setInput('')
+    setMessages((prev) => [...prev, { role: 'user', content: text }])
     setIsLoading(true)
 
     try {
       const resp = await apiFetch<FixResponse>(`/api/agents/${agentId}/fix`, {
-        method: "POST",
+        method: 'POST',
         body: JSON.stringify({
           content: text,
           conversation_history: history,
@@ -93,7 +93,7 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
       setMessages((prev) => [
         ...prev,
         {
-          role: "assistant",
+          role: 'assistant',
           content: resp.content,
           action: resp.action,
           summary: resp.summary,
@@ -101,16 +101,16 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
         },
       ])
 
-      if (resp.action === "apply") {
-        toast.success(resp.summary ?? "변경사항이 적용되었습니다")
-        qc.invalidateQueries({ queryKey: ["agents"] })
-        qc.invalidateQueries({ queryKey: ["agents", agentId] })
+      if (resp.action === 'apply') {
+        toast.success(resp.summary ?? '변경사항이 적용되었습니다')
+        qc.invalidateQueries({ queryKey: ['agents'] })
+        qc.invalidateQueries({ queryKey: ['agents', agentId] })
       }
     } catch {
-      toast.error("Fix Agent 호출에 실패했습니다")
+      toast.error('Fix Agent 호출에 실패했습니다')
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "오류가 발생했습니다. 다시 시도해주세요." },
+        { role: 'assistant', content: '오류가 발생했습니다. 다시 시도해주세요.' },
       ])
     } finally {
       setIsLoading(false)
@@ -118,7 +118,7 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
@@ -141,8 +141,8 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
             Fix Agent
           </DialogTitle>
           <DialogDescription>
-            대화로 &quot;{agentName}&quot; 에이전트를 수정합니다.
-            프롬프트, 도구, 모델을 자유롭게 변경해보세요.
+            대화로 &quot;{agentName}&quot; 에이전트를 수정합니다. 프롬프트, 도구, 모델을 자유롭게
+            변경해보세요.
           </DialogDescription>
         </DialogHeader>
 
@@ -154,10 +154,10 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
               <p className="text-sm font-medium">어떻게 수정할까요?</p>
               <div className="mt-3 flex flex-wrap justify-center gap-2">
                 {[
-                  "존댓말로 바꿔줘",
-                  "더 간결하게 답변하도록",
-                  "비용을 줄여줘",
-                  "검색 도구를 추가해줘",
+                  '존댓말로 바꿔줘',
+                  '더 간결하게 답변하도록',
+                  '비용을 줄여줘',
+                  '검색 도구를 추가해줘',
                 ].map((suggestion) => (
                   <button
                     key={suggestion}
@@ -175,25 +175,23 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
           )}
 
           {messages.map((msg, i) => (
-            <div key={i} className={`flex gap-2.5 ${msg.role === "user" ? "justify-end" : ""}`}>
-              {msg.role === "assistant" && (
+            <div key={i} className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : ''}`}>
+              {msg.role === 'assistant' && (
                 <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
                   <BotIcon className="size-3.5 text-primary" />
                 </div>
               )}
-              <div className={`max-w-[85%] space-y-2 ${msg.role === "user" ? "text-right" : ""}`}>
+              <div className={`max-w-[85%] space-y-2 ${msg.role === 'user' ? 'text-right' : ''}`}>
                 <div
                   className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
+                    msg.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
                   }`}
                 >
                   {msg.content}
                 </div>
 
                 {/* Action badge */}
-                {msg.action === "preview" && (
+                {msg.action === 'preview' && (
                   <div className="flex items-center gap-1.5">
                     <Badge variant="outline" className="text-xs gap-1">
                       <AlertCircleIcon className="size-3" />
@@ -204,7 +202,7 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
                     )}
                   </div>
                 )}
-                {msg.action === "apply" && (
+                {msg.action === 'apply' && (
                   <div className="flex items-center gap-1.5">
                     <Badge className="text-xs gap-1 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/10">
                       <CheckCircle2Icon className="size-3" />
@@ -216,7 +214,7 @@ export function FixAgentDialog({ agentId, agentName }: FixAgentDialogProps) {
                   </div>
                 )}
               </div>
-              {msg.role === "user" && (
+              {msg.role === 'user' && (
                 <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted">
                   <UserIcon className="size-3.5" />
                 </div>

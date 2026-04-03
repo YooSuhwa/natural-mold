@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -15,10 +15,12 @@ class AgentSkillLink(Base):
     __tablename__ = "agent_skills"
 
     agent_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agents.id", ondelete="CASCADE"), primary_key=True,
+        ForeignKey("agents.id", ondelete="CASCADE"),
+        primary_key=True,
     )
     skill_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("skills.id", ondelete="CASCADE"), primary_key=True,
+        ForeignKey("skills.id", ondelete="CASCADE"),
+        primary_key=True,
     )
 
     skill: Mapped[Skill] = relationship(lazy="joined")

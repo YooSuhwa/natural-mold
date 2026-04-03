@@ -1,6 +1,6 @@
-"use client"
+'use client'
 
-import { useState } from "react"
+import { useState } from 'react'
 import {
   PlusIcon,
   Loader2Icon,
@@ -9,16 +9,23 @@ import {
   BookOpenIcon,
   SaveIcon,
   XIcon,
-} from "lucide-react"
-import { toast } from "sonner"
-import { useSkills, useCreateSkill, useUpdateSkill, useDeleteSkill } from "@/lib/hooks/use-skills"
-import { Button } from "@/components/ui/button"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Skeleton } from "@/components/ui/skeleton"
-import { EmptyState } from "@/components/shared/empty-state"
-import { PageHeader } from "@/components/shared/page-header"
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { useSkills, useCreateSkill, useUpdateSkill, useDeleteSkill } from '@/lib/hooks/use-skills'
+import { Button } from '@/components/ui/button'
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+} from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/shared/empty-state'
+import { PageHeader } from '@/components/shared/page-header'
 import {
   Dialog,
   DialogContent,
@@ -26,7 +33,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from '@/components/ui/dialog'
 
 function SkillFormDialog({
   trigger,
@@ -42,9 +49,9 @@ function SkillFormDialog({
   title: string
 }) {
   const [open, setOpen] = useState(false)
-  const [name, setName] = useState(initialData?.name ?? "")
-  const [description, setDescription] = useState(initialData?.description ?? "")
-  const [content, setContent] = useState(initialData?.content ?? "")
+  const [name, setName] = useState(initialData?.name ?? '')
+  const [description, setDescription] = useState(initialData?.description ?? '')
+  const [content, setContent] = useState(initialData?.content ?? '')
 
   function handleOpen(isOpen: boolean) {
     setOpen(isOpen)
@@ -53,9 +60,9 @@ function SkillFormDialog({
       setDescription(initialData.description)
       setContent(initialData.content)
     } else if (isOpen) {
-      setName("")
-      setDescription("")
-      setContent("")
+      setName('')
+      setDescription('')
+      setContent('')
     }
   }
 
@@ -111,10 +118,7 @@ function SkillFormDialog({
               <XIcon className="size-4" data-icon="inline-start" />
               취소
             </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={isPending || !name.trim() || !content.trim()}
-            >
+            <Button onClick={handleSubmit} disabled={isPending || !name.trim() || !content.trim()}>
               {isPending ? (
                 <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
               ) : (
@@ -137,9 +141,9 @@ export default function SkillsPage() {
   async function handleCreate(data: { name: string; description: string; content: string }) {
     try {
       await createSkill.mutateAsync(data)
-      toast.success("스킬이 생성되었습니다")
+      toast.success('스킬이 생성되었습니다')
     } catch {
-      toast.error("스킬 생성에 실패했습니다")
+      toast.error('스킬 생성에 실패했습니다')
     }
   }
 
@@ -184,7 +188,7 @@ export default function SkillsPage() {
               skill={skill}
               onDelete={() => {
                 deleteSkill.mutate(skill.id, {
-                  onSuccess: () => toast.success("스킬이 삭제되었습니다"),
+                  onSuccess: () => toast.success('스킬이 삭제되었습니다'),
                 })
               }}
               isDeleting={deleteSkill.isPending}
@@ -201,16 +205,15 @@ export default function SkillsPage() {
               title="새 스킬"
               trigger={
                 <Button>
-                  <PlusIcon className="size-4" data-icon="inline-start" />
-                  첫 스킬 만들기
+                  <PlusIcon className="size-4" data-icon="inline-start" />첫 스킬 만들기
                 </Button>
               }
               onSubmit={async (data) => {
                 try {
                   await createSkill.mutateAsync(data)
-                  toast.success("스킬이 생성되었습니다")
+                  toast.success('스킬이 생성되었습니다')
                 } catch {
-                  toast.error("스킬 생성에 실패했습니다")
+                  toast.error('스킬 생성에 실패했습니다')
                 }
               }}
               isPending={createSkill.isPending}
@@ -227,7 +230,13 @@ function SkillCard({
   onDelete,
   isDeleting,
 }: {
-  skill: { id: string; name: string; description: string | null; content: string; updated_at: string }
+  skill: {
+    id: string
+    name: string
+    description: string | null
+    content: string
+    updated_at: string
+  }
   onDelete: () => void
   isDeleting: boolean
 }) {
@@ -238,9 +247,7 @@ function SkillCard({
       <CardHeader>
         <CardTitle className="text-sm">{skill.name}</CardTitle>
         {skill.description && (
-          <CardDescription className="line-clamp-2 text-xs">
-            {skill.description}
-          </CardDescription>
+          <CardDescription className="line-clamp-2 text-xs">{skill.description}</CardDescription>
         )}
       </CardHeader>
       <CardContent className="flex-1">
@@ -250,14 +257,14 @@ function SkillCard({
       </CardContent>
       <CardFooter className="justify-between">
         <span className="text-[10px] text-muted-foreground">
-          {new Date(skill.updated_at).toLocaleDateString("ko-KR")} 수정
+          {new Date(skill.updated_at).toLocaleDateString('ko-KR')} 수정
         </span>
         <div className="flex gap-1">
           <SkillFormDialog
             title="스킬 수정"
             initialData={{
               name: skill.name,
-              description: skill.description ?? "",
+              description: skill.description ?? '',
               content: skill.content,
             }}
             trigger={
@@ -268,9 +275,9 @@ function SkillCard({
             onSubmit={async (data) => {
               try {
                 await updateSkill.mutateAsync(data)
-                toast.success("스킬이 수정되었습니다")
+                toast.success('스킬이 수정되었습니다')
               } catch {
-                toast.error("수정에 실패했습니다")
+                toast.error('수정에 실패했습니다')
               }
             }}
             isPending={updateSkill.isPending}

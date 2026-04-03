@@ -1,7 +1,11 @@
 {
   "private": true,
   "scripts": {
-    "prepare": "husky"
+    "prepare": "husky",
+    "check": "pnpm run check:be && pnpm run check:fe",
+    "check:be": "cd backend && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run pytest -q",
+    "check:fe": "cd frontend && pnpm lint && pnpm format:check && pnpm test --run",
+    "check:e2e": "cd frontend && pnpm test:e2e"
   },
   "devDependencies": {
     "husky": "^9.1.7",

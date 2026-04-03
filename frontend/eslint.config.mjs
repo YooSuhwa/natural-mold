@@ -13,6 +13,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // E2E tests (Playwright) and coverage
+    "e2e/**",
+    "coverage/**",
   ]),
   // Disable ESLint formatting rules that conflict with Prettier.
   prettier,

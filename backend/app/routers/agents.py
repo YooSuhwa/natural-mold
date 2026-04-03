@@ -92,7 +92,7 @@ async def toggle_favorite(
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     updated = await agent_service.toggle_favorite(db, agent)
     return _agent_to_response(updated)
 

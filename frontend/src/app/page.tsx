@@ -67,7 +67,7 @@ export default function DashboardPage() {
       result = result.filter(
         (a) =>
           a.name.toLowerCase().includes(q) ||
-          (a.description && a.description.toLowerCase().includes(q))
+          (a.description && a.description.toLowerCase().includes(q)),
       )
     }
 
@@ -163,9 +163,7 @@ export default function DashboardPage() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  render={
-                    <Button variant="outline" size="sm" className="h-9 gap-1.5" />
-                  }
+                  render={<Button variant="outline" size="sm" className="h-9 gap-1.5" />}
                 >
                   <ArrowUpDownIcon className="size-3.5" />
                   <span className="text-xs">{SORT_LABELS[sortBy]}</span>
@@ -197,9 +195,7 @@ export default function DashboardPage() {
           ) : (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
               <SearchIcon className="mb-2 size-6 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                검색 결과가 없습니다.
-              </p>
+              <p className="text-sm text-muted-foreground">검색 결과가 없습니다.</p>
             </div>
           )}
         </div>

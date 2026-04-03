@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-
 from typing import Any
 
-from sqlalchemy import ForeignKey, JSON, String, Text
+from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.models.skill import AgentSkillLink, Skill
+from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink
 
 
