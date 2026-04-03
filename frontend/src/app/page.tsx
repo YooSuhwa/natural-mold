@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import { useMemo, useState } from "react"
-import Link from "next/link"
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   PlusIcon,
   SparklesIcon,
@@ -10,51 +10,51 @@ import {
   SearchIcon,
   StarIcon,
   ArrowUpDownIcon,
-} from "lucide-react"
-import { useAgents } from "@/lib/hooks/use-agents"
-import { useUsageSummary } from "@/lib/hooks/use-usage"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+} from 'lucide-react'
+import { useAgents } from '@/lib/hooks/use-agents'
+import { useUsageSummary } from '@/lib/hooks/use-usage'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from "@/components/ui/dropdown-menu"
-import { AgentCard } from "@/components/agent/agent-card"
-import { AgentCardSkeleton } from "@/components/agent/agent-card-skeleton"
-import { EmptyState } from "@/components/shared/empty-state"
-import type { Agent } from "@/lib/types"
+} from '@/components/ui/dropdown-menu'
+import { AgentCard } from '@/components/agent/agent-card'
+import { AgentCardSkeleton } from '@/components/agent/agent-card-skeleton'
+import { EmptyState } from '@/components/shared/empty-state'
+import type { Agent } from '@/lib/types'
 
 const quickActions = [
   {
-    label: "대화로 만들기",
-    description: "AI와 대화하며 에이전트를 구성합니다",
-    href: "/agents/new/conversational",
+    label: '대화로 만들기',
+    description: 'AI와 대화하며 에이전트를 구성합니다',
+    href: '/agents/new/conversational',
     icon: MessageSquareIcon,
   },
   {
-    label: "템플릿으로 만들기",
-    description: "준비된 템플릿에서 골라 바로 시작합니다",
-    href: "/agents/new/template",
+    label: '템플릿으로 만들기',
+    description: '준비된 템플릿에서 골라 바로 시작합니다',
+    href: '/agents/new/template',
     icon: LayoutTemplateIcon,
   },
 ]
 
-type SortKey = "latest" | "name" | "favorite"
+type SortKey = 'latest' | 'name' | 'favorite'
 
 const SORT_LABELS: Record<SortKey, string> = {
-  latest: "최신순",
-  name: "이름순",
-  favorite: "즐겨찾기",
+  latest: '최신순',
+  name: '이름순',
+  favorite: '즐겨찾기',
 }
 
 export default function DashboardPage() {
   const { data: agents, isLoading: agentsLoading } = useAgents()
   const { data: usage } = useUsageSummary()
-  const [search, setSearch] = useState("")
-  const [sortBy, setSortBy] = useState<SortKey>("latest")
+  const [search, setSearch] = useState('')
+  const [sortBy, setSortBy] = useState<SortKey>('latest')
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
 
   const filteredAgents = useMemo(() => {
@@ -78,8 +78,8 @@ export default function DashboardPage() {
 
     // Sort
     result = [...result].sort((a, b) => {
-      if (sortBy === "name") return a.name.localeCompare(b.name, "ko")
-      if (sortBy === "favorite") {
+      if (sortBy === 'name') return a.name.localeCompare(b.name, 'ko')
+      if (sortBy === 'favorite') {
         if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1
       }
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
@@ -100,8 +100,7 @@ export default function DashboardPage() {
         </div>
         <Link href="/agents/new">
           <Button>
-            <PlusIcon className="size-4" data-icon="inline-start" />
-            새 에이전트
+            <PlusIcon className="size-4" data-icon="inline-start" />새 에이전트
           </Button>
         </Link>
       </div>
@@ -119,9 +118,7 @@ export default function DashboardPage() {
                   <p className="text-sm font-medium group-hover:text-primary transition-colors">
                     {action.label}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    {action.description}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{action.description}</p>
                 </div>
               </CardContent>
             </Card>
@@ -132,9 +129,7 @@ export default function DashboardPage() {
       {/* Agent Grid */}
       {agentsLoading ? (
         <div>
-          <h2 className="mb-4 text-lg font-semibold tracking-tight">
-            내 에이전트
-          </h2>
+          <h2 className="mb-4 text-lg font-semibold tracking-tight">내 에이전트</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <AgentCardSkeleton key={i} />
@@ -145,9 +140,7 @@ export default function DashboardPage() {
         <div>
           {/* Search / Sort / Filter Bar */}
           <div className="mb-4 flex flex-wrap items-center gap-3">
-            <h2 className="text-lg font-semibold tracking-tight">
-              내 에이전트
-            </h2>
+            <h2 className="text-lg font-semibold tracking-tight">내 에이전트</h2>
             <div className="ml-auto flex items-center gap-2">
               <div className="relative">
                 <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -160,12 +153,12 @@ export default function DashboardPage() {
               </div>
 
               <Button
-                variant={showFavoritesOnly ? "default" : "outline"}
+                variant={showFavoritesOnly ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
                 className="h-9"
               >
-                <StarIcon className={`size-4 ${showFavoritesOnly ? "fill-current" : ""}`} />
+                <StarIcon className={`size-4 ${showFavoritesOnly ? 'fill-current' : ''}`} />
               </Button>
 
               <DropdownMenu>
@@ -178,17 +171,17 @@ export default function DashboardPage() {
                   <span className="text-xs">{SORT_LABELS[sortBy]}</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setSortBy("latest")}>
+                  <DropdownMenuItem onClick={() => setSortBy('latest')}>
                     최신순
-                    {sortBy === "latest" && <span className="ml-auto text-xs">✓</span>}
+                    {sortBy === 'latest' && <span className="ml-auto text-xs">✓</span>}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortBy("name")}>
+                  <DropdownMenuItem onClick={() => setSortBy('name')}>
                     이름순
-                    {sortBy === "name" && <span className="ml-auto text-xs">✓</span>}
+                    {sortBy === 'name' && <span className="ml-auto text-xs">✓</span>}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setSortBy("favorite")}>
+                  <DropdownMenuItem onClick={() => setSortBy('favorite')}>
                     즐겨찾기 우선
-                    {sortBy === "favorite" && <span className="ml-auto text-xs">✓</span>}
+                    {sortBy === 'favorite' && <span className="ml-auto text-xs">✓</span>}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -221,21 +214,15 @@ export default function DashboardPage() {
       {/* Usage Summary */}
       {usage && usage.total_tokens > 0 && (
         <div className="rounded-xl border bg-muted/30 p-4">
-          <h2 className="mb-2 text-sm font-medium text-muted-foreground">
-            이번 달 사용량
-          </h2>
+          <h2 className="mb-2 text-sm font-medium text-muted-foreground">이번 달 사용량</h2>
           <div className="flex items-center gap-6 text-sm">
             <div>
               <span className="text-muted-foreground">총 토큰: </span>
-              <span className="font-medium">
-                {usage.total_tokens.toLocaleString()}
-              </span>
+              <span className="font-medium">{usage.total_tokens.toLocaleString()}</span>
             </div>
             <div>
               <span className="text-muted-foreground">추정 비용: </span>
-              <span className="font-medium">
-                ${usage.estimated_cost_usd.toFixed(2)}
-              </span>
+              <span className="font-medium">${usage.estimated_cost_usd.toFixed(2)}</span>
             </div>
           </div>
         </div>

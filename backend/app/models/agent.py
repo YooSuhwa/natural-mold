@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from typing import Any
 
@@ -26,24 +26,29 @@ class Agent(Base):
     is_favorite: Mapped[bool] = mapped_column(default=False, nullable=False)
     model_params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"))
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        nullable=False,
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        default=lambda: datetime.now(UTC).replace(tzinfo=None), onupdate=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
+        nullable=False,
     )
 
-    user: Mapped[User] = relationship(back_populates="agents")
-    model: Mapped[Model] = relationship()
+    user: Mapped[User] = relationship(back_populates="agents")  # type: ignore[name-defined]
+    model: Mapped[Model] = relationship()  # type: ignore[name-defined]
     tool_links: Mapped[list[AgentToolLink]] = relationship(
         cascade="all, delete-orphan",
     )
     skill_links: Mapped[list[AgentSkillLink]] = relationship(
         cascade="all, delete-orphan",
     )
-    conversations: Mapped[list[Conversation]] = relationship(
+    conversations: Mapped[list[Conversation]] = relationship(  # type: ignore[name-defined]
         back_populates="agent", cascade="all, delete-orphan"
     )
 
     @property
-    def tools(self) -> list[Tool]:
+    def tools(self) -> list[Tool]:  # type: ignore[name-defined]
         """Convenience property: list of Tool objects (backward compat)."""
         return [link.tool for link in self.tool_links]

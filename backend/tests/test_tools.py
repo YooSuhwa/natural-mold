@@ -7,7 +7,6 @@ from httpx import AsyncClient
 
 from app.schemas.tool import _check_server_key_available
 
-
 # ---------------------------------------------------------------------------
 # _check_server_key_available unit tests
 # ---------------------------------------------------------------------------
@@ -16,13 +15,17 @@ from app.schemas.tool import _check_server_key_available
 def _patch_settings(**overrides):
     """Patch app.config.settings attributes for testing."""
     defaults = {
-        "naver_client_id": "", "naver_client_secret": "",
-        "google_api_key": "", "google_cse_id": "",
+        "naver_client_id": "",
+        "naver_client_secret": "",
+        "google_api_key": "",
+        "google_cse_id": "",
         "google_chat_webhook_url": "",
-        "google_oauth_client_id": "", "google_oauth_client_secret": "", "google_oauth_refresh_token": "",
+        "google_oauth_client_id": "",
+        "google_oauth_client_secret": "",
+        "google_oauth_refresh_token": "",
     }
     defaults.update(overrides)
-    return patch.multiple("app.config.settings", **defaults)
+    return patch.multiple("app.config.settings", **defaults)  # type: ignore[call-overload]
 
 
 class TestServerKeyAvailable:

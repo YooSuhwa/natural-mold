@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.executor import execute_agent_stream
 from app.dependencies import CurrentUser, get_current_user, get_db
+from app.exceptions import NotFoundError
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationResponse,
@@ -14,7 +16,6 @@ from app.schemas.conversation import (
     MessageResponse,
 )
 from app.services import chat_service
-from app.agent_runtime.executor import execute_agent_stream
 
 router = APIRouter(tags=["conversations"])
 
@@ -30,7 +31,7 @@ async def list_conversations(
 ):
     agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     return await chat_service.list_conversations(db, agent_id)
 
 
@@ -47,7 +48,7 @@ async def create_conversation(
 ):
     agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     return await chat_service.create_conversation(db, agent_id, data.title)
 
 
@@ -61,7 +62,7 @@ async def list_messages(
 ):
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
     return await chat_service.list_messages(db, conversation_id)
 
 
@@ -74,13 +75,13 @@ async def send_message(
 ):
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
 
     await chat_service.save_message(db, conversation_id, "user", data.content)
 
     agent = await chat_service.get_agent_with_tools(db, conv.agent_id, user.id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
 
     messages = await chat_service.list_messages(db, conversation_id)
     messages_history = [{"role": m.role, "content": m.content} for m in messages]
@@ -96,16 +97,18 @@ async def send_message(
         tool = link.tool
         # Merge: tool-level auth_config + agent-level config override
         merged_auth = {**(tool.auth_config or {}), **(link.config or {})}
-        tools_config.append({
-            "type": tool.type,
-            "name": tool.name,
-            "description": tool.description,
-            "api_url": tool.api_url,
-            "http_method": tool.http_method,
-            "parameters_schema": tool.parameters_schema,
-            "auth_type": tool.auth_type,
-            "auth_config": merged_auth or None,
-        })
+        tools_config.append(
+            {
+                "type": tool.type,
+                "name": tool.name,
+                "description": tool.description,
+                "api_url": tool.api_url,
+                "http_method": tool.http_method,
+                "parameters_schema": tool.parameters_schema,
+                "auth_type": tool.auth_type,
+                "auth_config": merged_auth or None,
+            }
+        )
 
     async def generate():
         import json

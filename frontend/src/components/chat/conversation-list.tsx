@@ -1,13 +1,13 @@
-"use client"
+'use client'
 
-import Link from "next/link"
-import { useParams } from "next/navigation"
-import { PlusIcon, MessageSquareIcon } from "lucide-react"
-import { useConversations, useCreateConversation } from "@/lib/hooks/use-conversations"
-import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
-import { cn } from "@/lib/utils"
-import { useRouter } from "next/navigation"
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import { PlusIcon, MessageSquareIcon } from 'lucide-react'
+import { useConversations, useCreateConversation } from '@/lib/hooks/use-conversations'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
 
 interface ConversationListProps {
   agentId: string
@@ -52,28 +52,23 @@ export function ConversationList({ agentId }: ConversationListProps) {
                 key={conv.id}
                 href={`/agents/${agentId}/conversations/${conv.id}`}
                 className={cn(
-                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  params.conversationId === conv.id &&
-                    "bg-muted font-medium"
+                  'flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  params.conversationId === conv.id && 'bg-muted font-medium',
                 )}
               >
                 <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate">
-                  {conv.title ?? "새 대화"}
-                </span>
+                <span className="truncate">{conv.title ?? '새 대화'}</span>
                 <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-                  {new Date(conv.updated_at).toLocaleDateString("ko-KR", {
-                    month: "numeric",
-                    day: "numeric",
+                  {new Date(conv.updated_at).toLocaleDateString('ko-KR', {
+                    month: 'numeric',
+                    day: 'numeric',
                   })}
                 </span>
               </Link>
             ))}
           </div>
         ) : (
-          <div className="p-4 text-center text-xs text-muted-foreground">
-            대화가 없습니다
-          </div>
+          <div className="p-4 text-center text-xs text-muted-foreground">대화가 없습니다</div>
         )}
       </div>
     </div>

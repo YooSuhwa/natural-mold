@@ -31,9 +31,7 @@ async def get_tool_agent_counts(db: AsyncSession, tool_ids: list[uuid.UUID]) -> 
     return {row[0]: row[1] for row in result.all()}
 
 
-async def create_custom_tool(
-    db: AsyncSession, data: ToolCustomCreate, user_id: uuid.UUID
-) -> Tool:
+async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: uuid.UUID) -> Tool:
     tool = Tool(
         user_id=user_id,
         type="custom",
@@ -78,7 +76,9 @@ async def get_mcp_servers(db: AsyncSession, user_id: uuid.UUID) -> list[MCPServe
 
 
 async def update_tool_auth_config(
-    db: AsyncSession, tool_id: uuid.UUID, auth_config: dict,
+    db: AsyncSession,
+    tool_id: uuid.UUID,
+    auth_config: dict,
 ) -> Tool | None:
     """Update auth_config for a prebuilt tool."""
     result = await db.execute(select(Tool).where(Tool.id == tool_id))
@@ -94,9 +94,7 @@ async def update_tool_auth_config(
 
 
 async def delete_tool(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -> bool:
-    result = await db.execute(
-        select(Tool).where(Tool.id == tool_id)
-    )
+    result = await db.execute(select(Tool).where(Tool.id == tool_id))
     tool = result.scalar_one_or_none()
     if not tool:
         return False

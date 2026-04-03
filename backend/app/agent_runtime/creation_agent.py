@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.agent_runtime.message_utils import convert_to_langchain_messages, extract_json_from_markdown, strip_json_blocks
+from app.agent_runtime.message_utils import (
+    convert_to_langchain_messages,
+    extract_json_from_markdown,
+    strip_json_blocks,
+)
 from app.agent_runtime.model_factory import create_chat_model
 
 CREATION_SYSTEM_PROMPT = """당신은 AI 에이전트 빌더 'Moldy'의 에이전트 설계 전문가입니다.
@@ -131,7 +135,7 @@ JSON question: "한글과컴퓨터와 관련해 어떤 주제를 집중적으로
 
 
 async def run_creation_conversation(
-    conversation_history: list[dict[str, str]],
+    conversation_history: list[dict[str, Any]],
     user_message: str,
     available_tools: list[str] | None = None,
     available_models: list[str] | None = None,
@@ -150,7 +154,7 @@ async def run_creation_conversation(
 
     lc_messages = convert_to_langchain_messages(messages)
     response = await model.ainvoke(lc_messages)
-    content = response.content
+    content: str = response.content  # type: ignore[assignment]  # always str for text models
 
     draft_config = None
     suggested_replies: dict[str, Any] | None = None

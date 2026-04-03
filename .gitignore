@@ -9,6 +9,10 @@ dist/
 .venv/
 venv/
 
+# Python tools
+.ruff_cache/
+.mypy_cache/
+
 # uv
 .uv/
 
@@ -16,11 +20,18 @@ venv/
 node_modules/
 .next/
 out/
+package-lock.json
 
 # Environment
 .env
 .env.local
 .env.*.local
+
+# Credentials/Secrets
+token.json
+credentials.json
+*.key
+*.pem
 
 # IDE
 .vscode/
@@ -39,6 +50,7 @@ docker-compose.override.yml
 .coverage
 htmlcov/
 .pytest_cache/
+coverage/
 
 # Build
 build/

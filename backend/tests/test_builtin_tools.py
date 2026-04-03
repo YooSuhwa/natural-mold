@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-
 ALL_BUILTIN_NAMES = [
     "Web Search",
     "Web Scraper",
@@ -254,8 +253,8 @@ def test_parse_google_response_image():
 @pytest.mark.asyncio
 async def test_naver_blog_search_no_key(monkeypatch: pytest.MonkeyPatch):
     """Naver tool returns error when API keys are not set."""
-    from app.config import settings
     from app.agent_runtime.naver_tools import build_naver_search_tool
+    from app.config import settings
 
     monkeypatch.setattr(settings, "naver_client_id", "")
     monkeypatch.setattr(settings, "naver_client_secret", "")
@@ -269,8 +268,8 @@ async def test_naver_blog_search_no_key(monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.asyncio
 async def test_google_search_no_key(monkeypatch: pytest.MonkeyPatch):
     """Google tool returns error when API keys are not set."""
-    from app.config import settings
     from app.agent_runtime.google_tools import build_google_search_tool
+    from app.config import settings
 
     monkeypatch.setattr(settings, "google_api_key", "")
     monkeypatch.setattr(settings, "google_cse_id", "")
@@ -289,8 +288,8 @@ async def test_google_search_no_key(monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.asyncio
 async def test_google_chat_webhook_no_url(monkeypatch: pytest.MonkeyPatch):
     """Google Chat Webhook returns error when URL is not set."""
-    from app.config import settings
     from app.agent_runtime.google_workspace_tools import build_google_chat_webhook_tool
+    from app.config import settings
 
     monkeypatch.setattr(settings, "google_chat_webhook_url", "")
 
@@ -317,6 +316,7 @@ async def test_google_chat_webhook_with_auth_config():
 async def test_google_chat_webhook_success(monkeypatch: pytest.MonkeyPatch):
     """Google Chat Webhook sends message successfully (mocked)."""
     import httpx
+
     from app.agent_runtime.google_workspace_tools import build_google_chat_webhook_tool
 
     async def mock_post(self, url, **kwargs):
@@ -343,8 +343,8 @@ async def test_google_chat_webhook_success(monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.asyncio
 async def test_gmail_read_no_credentials(monkeypatch: pytest.MonkeyPatch):
     """Gmail Read returns error when OAuth2 credentials are not set."""
-    from app.config import settings
     from app.agent_runtime.google_workspace_tools import build_gmail_read_tool
+    from app.config import settings
 
     monkeypatch.setattr(settings, "google_oauth_client_id", "")
     monkeypatch.setattr(settings, "google_oauth_client_secret", "")
@@ -359,8 +359,8 @@ async def test_gmail_read_no_credentials(monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.asyncio
 async def test_gmail_send_no_credentials(monkeypatch: pytest.MonkeyPatch):
     """Gmail Send returns error when OAuth2 credentials are not set."""
-    from app.config import settings
     from app.agent_runtime.google_workspace_tools import build_gmail_send_tool
+    from app.config import settings
 
     monkeypatch.setattr(settings, "google_oauth_client_id", "")
     monkeypatch.setattr(settings, "google_oauth_client_secret", "")
@@ -402,8 +402,8 @@ async def test_gmail_send_tool_creation():
 @pytest.mark.asyncio
 async def test_calendar_list_events_no_credentials(monkeypatch: pytest.MonkeyPatch):
     """Calendar List Events returns error when OAuth2 credentials are not set."""
-    from app.config import settings
     from app.agent_runtime.google_workspace_tools import build_calendar_list_events_tool
+    from app.config import settings
 
     monkeypatch.setattr(settings, "google_oauth_client_id", "")
     monkeypatch.setattr(settings, "google_oauth_client_secret", "")
@@ -418,19 +418,21 @@ async def test_calendar_list_events_no_credentials(monkeypatch: pytest.MonkeyPat
 @pytest.mark.asyncio
 async def test_calendar_create_event_no_credentials(monkeypatch: pytest.MonkeyPatch):
     """Calendar Create Event returns error when OAuth2 credentials are not set."""
-    from app.config import settings
     from app.agent_runtime.google_workspace_tools import build_calendar_create_event_tool
+    from app.config import settings
 
     monkeypatch.setattr(settings, "google_oauth_client_id", "")
     monkeypatch.setattr(settings, "google_oauth_client_secret", "")
     monkeypatch.setattr(settings, "google_oauth_refresh_token", "")
 
     tool = build_calendar_create_event_tool(auth_config=None)
-    result = await tool.ainvoke({
-        "summary": "테스트 미팅",
-        "start_datetime": "2026-04-05T10:00:00+09:00",
-        "end_datetime": "2026-04-05T11:00:00+09:00",
-    })
+    result = await tool.ainvoke(
+        {
+            "summary": "테스트 미팅",
+            "start_datetime": "2026-04-05T10:00:00+09:00",
+            "end_datetime": "2026-04-05T11:00:00+09:00",
+        }
+    )
     assert "Error" in result
     assert "OAuth2" in result
 
@@ -438,8 +440,8 @@ async def test_calendar_create_event_no_credentials(monkeypatch: pytest.MonkeyPa
 @pytest.mark.asyncio
 async def test_calendar_update_event_no_credentials(monkeypatch: pytest.MonkeyPatch):
     """Calendar Update Event returns error when OAuth2 credentials are not set."""
-    from app.config import settings
     from app.agent_runtime.google_workspace_tools import build_calendar_update_event_tool
+    from app.config import settings
 
     monkeypatch.setattr(settings, "google_oauth_client_id", "")
     monkeypatch.setattr(settings, "google_oauth_client_secret", "")
@@ -455,8 +457,8 @@ async def test_calendar_update_event_no_credentials(monkeypatch: pytest.MonkeyPa
 async def test_calendar_tool_creation():
     """All Calendar tools can be created with auth_config."""
     from app.agent_runtime.google_workspace_tools import (
-        build_calendar_list_events_tool,
         build_calendar_create_event_tool,
+        build_calendar_list_events_tool,
         build_calendar_update_event_tool,
     )
 
@@ -472,8 +474,8 @@ async def test_calendar_tool_creation():
 
 def test_google_auth_no_credentials(monkeypatch: pytest.MonkeyPatch):
     """Google auth returns None when credentials are missing."""
-    from app.config import settings
     from app.agent_runtime.google_auth import get_google_credentials
+    from app.config import settings
 
     monkeypatch.setattr(settings, "google_oauth_client_id", "")
     monkeypatch.setattr(settings, "google_oauth_client_secret", "")

@@ -1,30 +1,27 @@
-"use client"
+'use client'
 
-import { use, useEffect, useRef, useCallback } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { useSetAtom } from "jotai"
-import { Settings2Icon, PlusIcon } from "lucide-react"
-import { useAgent } from "@/lib/hooks/use-agents"
-import {
-  useMessages,
-  useCreateConversation,
-} from "@/lib/hooks/use-conversations"
-import { useQueryClient } from "@tanstack/react-query"
-import { streamChat } from "@/lib/sse/stream-chat"
+import { use, useEffect, useRef, useCallback } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useSetAtom } from 'jotai'
+import { Settings2Icon, PlusIcon } from 'lucide-react'
+import { toast } from 'sonner'
+import { useAgent } from '@/lib/hooks/use-agents'
+import { useMessages, useCreateConversation } from '@/lib/hooks/use-conversations'
+import { useQueryClient } from '@tanstack/react-query'
+import { streamChat } from '@/lib/sse/stream-chat'
 import {
   streamingMessageAtom,
   streamingToolCallsAtom,
   isStreamingAtom,
-} from "@/lib/stores/chat-store"
-import type { StreamingToolCall } from "@/lib/stores/chat-store"
-import type { SSEEvent } from "@/lib/types"
-import { Button } from "@/components/ui/button"
-import { ConversationList } from "@/components/chat/conversation-list"
-import { MessageBubble } from "@/components/chat/message-bubble"
-import { StreamingMessage } from "@/components/chat/streaming-message"
-import { ChatInput } from "@/components/chat/chat-input"
-import { Skeleton } from "@/components/ui/skeleton"
+} from '@/lib/stores/chat-store'
+import type { StreamingToolCall } from '@/lib/stores/chat-store'
+import { Button } from '@/components/ui/button'
+import { ConversationList } from '@/components/chat/conversation-list'
+import { MessageBubble } from '@/components/chat/message-bubble'
+import { StreamingMessage } from '@/components/chat/streaming-message'
+import { ChatInput } from '@/components/chat/chat-input'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export default function ChatPage({
   params,
@@ -35,8 +32,7 @@ export default function ChatPage({
   const router = useRouter()
   const queryClient = useQueryClient()
   const { data: agent } = useAgent(agentId)
-  const { data: messages, isLoading: messagesLoading } =
-    useMessages(conversationId)
+  const { data: messages, isLoading: messagesLoading } = useMessages(conversationId)
   const createConversation = useCreateConversation(agentId)
 
   const setStreamingMessage = useSetAtom(streamingMessageAtom)
@@ -46,7 +42,7 @@ export default function ChatPage({
   const abortRef = useRef<AbortController | null>(null)
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
 
   useEffect(() => {
@@ -65,56 +61,56 @@ export default function ChatPage({
     abortRef.current = controller
 
     setIsStreaming(true)
-    setStreamingMessage({ id: "", content: "" })
+    setStreamingMessage({ id: '', content: '' })
     setStreamingToolCalls([])
     scrollToBottom()
 
     try {
       const stream = streamChat(conversationId, content, controller.signal)
-      let accumulated = ""
+      let accumulated = ''
       const toolCalls: StreamingToolCall[] = []
 
       for await (const event of stream) {
-        const sseEvent = event as SSEEvent
-        switch (sseEvent.event) {
-          case "content_delta": {
-            const delta = (sseEvent.data.content ?? sseEvent.data.delta ?? "") as string
+        switch (event.event) {
+          case 'content_delta': {
+            const delta = event.data.content ?? event.data.delta ?? ''
             accumulated += delta
-            setStreamingMessage({ id: "", content: accumulated })
+            setStreamingMessage({ id: '', content: accumulated })
             scrollToBottom()
             break
           }
-          case "tool_call_start": {
+          case 'tool_call_start': {
             const tc: StreamingToolCall = {
-              name: (sseEvent.data.name ?? "tool") as string,
-              status: "calling",
-              params: sseEvent.data.args as Record<string, unknown> | undefined,
+              name: event.data.name ?? 'tool',
+              status: 'calling',
+              params: event.data.args as Record<string, unknown> | undefined,
               startedAt: Date.now(),
             }
             toolCalls.push(tc)
             setStreamingToolCalls([...toolCalls])
             break
           }
-          case "tool_call_result": {
+          case 'tool_call_result': {
             const lastTc = toolCalls[toolCalls.length - 1]
             if (lastTc) {
-              lastTc.status = "completed"
-              lastTc.result = (sseEvent.data.result ?? "") as string
+              lastTc.status = 'completed'
+              lastTc.result = (event.data.result ?? '') as string
               lastTc.completedAt = Date.now()
               setStreamingToolCalls([...toolCalls])
             }
             break
           }
-          case "message_end": {
+          case 'message_end': {
             break
           }
-          case "error": {
+          case 'error': {
+            toast.error(event.data.message ?? '에이전트 실행 중 오류가 발생했습니다')
             break
           }
         }
       }
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
+      if (err instanceof DOMException && err.name === 'AbortError') {
         // User aborted
       }
     } finally {
@@ -123,10 +119,10 @@ export default function ChatPage({
       setStreamingToolCalls([])
       // Refresh messages and conversation list (title may have changed)
       queryClient.invalidateQueries({
-        queryKey: ["conversations", conversationId, "messages"],
+        queryKey: ['conversations', conversationId, 'messages'],
       })
       queryClient.invalidateQueries({
-        queryKey: ["agents", agentId, "conversations"],
+        queryKey: ['agents', agentId, 'conversations'],
       })
     }
   }
@@ -160,8 +156,7 @@ export default function ChatPage({
               onClick={handleNewConversation}
               disabled={createConversation.isPending}
             >
-              <PlusIcon className="size-4" data-icon="inline-start" />
-              새 대화
+              <PlusIcon className="size-4" data-icon="inline-start" />새 대화
             </Button>
           </div>
         </div>
@@ -179,14 +174,10 @@ export default function ChatPage({
                 ))}
               </div>
             ) : messages && messages.length > 0 ? (
-              messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
-              ))
+              messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-center">
-                <p className="text-sm text-muted-foreground">
-                  대화를 시작해보세요.
-                </p>
+                <p className="text-sm text-muted-foreground">대화를 시작해보세요.</p>
               </div>
             )}
             <StreamingMessage />

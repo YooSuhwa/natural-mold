@@ -79,7 +79,38 @@ testpaths = ["tests"]
 target-version = "py312"
 line-length = 100
 
+[tool.ruff.lint]
+select = [
+  "E", "F", "W",   # pycodestyle + pyflakes
+  "I",              # isort (import sorting)
+  "UP",             # pyupgrade (modern Python syntax)
+  "B",              # bugbear (common bug patterns)
+  "SIM",            # simplify (unnecessary complexity)
+  "ASYNC",          # async anti-patterns
+]
+ignore = [
+  "B008",           # Depends() in function defaults — idiomatic FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/main.py" = ["E402", "SIM115"]                # load_dotenv + SSL setup before imports
+"app/models/*.py" = ["F821"]                      # SQLAlchemy forward refs with __future__ annotations
+"app/agent_runtime/creation_agent.py" = ["E501"]  # long lines in prompt templates
+"app/seed/default_tools.py" = ["E501"]            # long lines in JSON seed data
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
+
 [dependency-groups]
 dev = [
     "aiosqlite>=0.22.1",
+    "pyright>=1.1",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
 ]

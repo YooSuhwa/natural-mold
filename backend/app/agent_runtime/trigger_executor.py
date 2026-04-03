@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
+from app.agent_runtime.executor import execute_agent_stream
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
 from app.services import chat_service
-from app.agent_runtime.executor import execute_agent_stream
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +28,7 @@ async def execute_trigger(trigger_id: str) -> None:
             return
 
         # Load agent with tools
-        agent = await chat_service.get_agent_with_tools(
-            db, trigger.agent_id, trigger.user_id
-        )
+        agent = await chat_service.get_agent_with_tools(db, trigger.agent_id, trigger.user_id)
         if not agent:
             logger.warning("Trigger %s: agent not found", trigger_id)
             trigger.status = "error"
@@ -39,9 +37,7 @@ async def execute_trigger(trigger_id: str) -> None:
 
         # Create a new conversation for this trigger run
         now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
-        conv = await chat_service.create_conversation(
-            db, agent.id, title=f"자동 실행: {now_str}"
-        )
+        conv = await chat_service.create_conversation(db, agent.id, title=f"자동 실행: {now_str}")
 
         # Save trigger input as user message
         await chat_service.save_message(db, conv.id, "user", trigger.input_message)
@@ -51,16 +47,18 @@ async def execute_trigger(trigger_id: str) -> None:
         for link in agent.tool_links:
             tool = link.tool
             merged_auth = {**(tool.auth_config or {}), **(link.config or {})}
-            tools_config.append({
-                "type": tool.type,
-                "name": tool.name,
-                "description": tool.description,
-                "api_url": tool.api_url,
-                "http_method": tool.http_method,
-                "parameters_schema": tool.parameters_schema,
-                "auth_type": tool.auth_type,
-                "auth_config": merged_auth or None,
-            })
+            tools_config.append(
+                {
+                    "type": tool.type,
+                    "name": tool.name,
+                    "description": tool.description,
+                    "api_url": tool.api_url,
+                    "http_method": tool.http_method,
+                    "parameters_schema": tool.parameters_schema,
+                    "auth_type": tool.auth_type,
+                    "auth_config": merged_auth or None,
+                }
+            )
 
         # Build messages history
         messages_history = [{"role": "user", "content": trigger.input_message}]

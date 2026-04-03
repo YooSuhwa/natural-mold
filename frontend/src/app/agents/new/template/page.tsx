@@ -1,43 +1,35 @@
-"use client"
+'use client'
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Loader2Icon, LayoutTemplateIcon } from "lucide-react"
-import { useTemplates } from "@/lib/hooks/use-templates"
-import { useCreateAgent } from "@/lib/hooks/use-agents"
-import { useModels } from "@/lib/hooks/use-models"
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Skeleton } from "@/components/ui/skeleton"
-import { EmptyState } from "@/components/shared/empty-state"
-import { PageHeader } from "@/components/shared/page-header"
-import type { Template } from "@/lib/types"
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Loader2Icon, LayoutTemplateIcon } from 'lucide-react'
+import { useTemplates } from '@/lib/hooks/use-templates'
+import { useCreateAgent } from '@/lib/hooks/use-agents'
+import { useModels } from '@/lib/hooks/use-models'
+import { Button } from '@/components/ui/button'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from '@/components/shared/empty-state'
+import { PageHeader } from '@/components/shared/page-header'
+import type { Template } from '@/lib/types'
 
 const categories = [
-  { value: "", label: "전체" },
-  { value: "생산성", label: "생산성" },
-  { value: "커뮤니케이션", label: "커뮤니케이션" },
-  { value: "데이터", label: "데이터" },
+  { value: '', label: '전체' },
+  { value: '생산성', label: '생산성' },
+  { value: '커뮤니케이션', label: '커뮤니케이션' },
+  { value: '데이터', label: '데이터' },
 ]
 
 export default function TemplateSelectionPage() {
   const router = useRouter()
-  const [selectedCategory, setSelectedCategory] = useState("")
-  const { data: templates, isLoading } = useTemplates(
-    selectedCategory || undefined
-  )
+  const [selectedCategory, setSelectedCategory] = useState('')
+  const { data: templates, isLoading } = useTemplates(selectedCategory || undefined)
   const { data: models } = useModels()
   const createAgent = useCreateAgent()
   const [creatingId, setCreatingId] = useState<string | null>(null)
 
-  const defaultModelId = models?.find((m) => m.is_default)?.id ?? models?.[0]?.id ?? ""
+  const defaultModelId = models?.find((m) => m.is_default)?.id ?? models?.[0]?.id ?? ''
 
   async function handleCreateFromTemplate(template: Template) {
     setCreatingId(template.id)
@@ -59,10 +51,7 @@ export default function TemplateSelectionPage() {
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader title="템플릿으로 만들기" />
 
-      <Tabs
-        defaultValue=""
-        onValueChange={(val) => setSelectedCategory(val as string)}
-      >
+      <Tabs defaultValue="" onValueChange={(val) => setSelectedCategory(val as string)}>
         <TabsList>
           {categories.map((cat) => (
             <TabsTrigger key={cat.value} value={cat.value}>
@@ -100,12 +89,11 @@ export default function TemplateSelectionPage() {
                       )}
                     </CardHeader>
                     <CardContent className="mt-auto space-y-3">
-                      {template.recommended_tools &&
-                        template.recommended_tools.length > 0 && (
-                          <p className="text-xs text-muted-foreground">
-                            도구: {template.recommended_tools.join(", ")}
-                          </p>
-                        )}
+                      {template.recommended_tools && template.recommended_tools.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          도구: {template.recommended_tools.join(', ')}
+                        </p>
+                      )}
                       <Button
                         className="w-full"
                         variant="outline"

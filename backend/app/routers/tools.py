@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.schemas.tool import MCPServerCreate, MCPServerResponse, ToolAuthConfigUpdate, ToolCustomCreate, ToolResponse
+from app.exceptions import NotFoundError
+from app.schemas.tool import (
+    MCPServerCreate,
+    MCPServerResponse,
+    ToolAuthConfigUpdate,
+    ToolCustomCreate,
+    ToolResponse,
+)
 from app.services import tool_service
 
 router = APIRouter(prefix="/api/tools", tags=["tools"])
@@ -52,16 +59,17 @@ async def test_mcp_connection(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
+    from sqlalchemy import select
+
     from app.agent_runtime.mcp_client import test_mcp_connection as mcp_test
     from app.models.tool import MCPServer
-    from sqlalchemy import select
 
     result = await db.execute(
         select(MCPServer).where(MCPServer.id == server_id, MCPServer.user_id == user.id)
     )
     server = result.scalar_one_or_none()
     if not server:
-        raise HTTPException(status_code=404, detail="MCP server not found")
+        raise NotFoundError("MCP_SERVER_NOT_FOUND", "MCP 서버를 찾을 수 없습니다")
 
     test_result = await mcp_test(server.url, server.auth_config)
     return test_result
@@ -76,7 +84,7 @@ async def update_tool_auth_config(
 ):
     tool = await tool_service.update_tool_auth_config(db, tool_id, data.auth_config)
     if not tool:
-        raise HTTPException(status_code=404, detail="Prebuilt tool not found")
+        raise NotFoundError("TOOL_NOT_FOUND", "도구를 찾을 수 없습니다")
     return tool
 
 
@@ -88,4 +96,4 @@ async def delete_tool(
 ):
     deleted = await tool_service.delete_tool(db, tool_id, user.id)
     if not deleted:
-        raise HTTPException(status_code=404, detail="Tool not found")
+        raise NotFoundError("TOOL_NOT_FOUND", "도구를 찾을 수 없습니다")

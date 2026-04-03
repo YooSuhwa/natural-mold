@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import { useState, useRef, useEffect, useCallback } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   SendIcon,
   Loader2Icon,
@@ -12,26 +12,23 @@ import {
   MessageCircleIcon,
   WrenchIcon,
   XIcon,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { MarkdownContent } from "@/components/chat/markdown-content"
-import { cn } from "@/lib/utils"
-import {
-  creationSessionApi,
-  type CreationMessageResult,
-} from "@/lib/api/creation-session"
-import type { DraftConfig } from "@/lib/types"
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { MarkdownContent } from '@/components/chat/markdown-content'
+import { cn } from '@/lib/utils'
+import { creationSessionApi, type CreationMessageResult } from '@/lib/api/creation-session'
+import type { DraftConfig } from '@/lib/types'
 
 const PHASES = [
-  { id: 1, label: "프로젝트 초기화", description: "요청 분석" },
-  { id: 2, label: "사용자 의도 분석", description: "의도 수집" },
-  { id: 3, label: "도구 추천", description: "도구 선택" },
-  { id: 4, label: "에이전트 생성", description: "최종 구성" },
+  { id: 1, label: '프로젝트 초기화', description: '요청 분석' },
+  { id: 2, label: '사용자 의도 분석', description: '의도 수집' },
+  { id: 3, label: '도구 추천', description: '도구 선택' },
+  { id: 4, label: '에이전트 생성', description: '최종 구성' },
 ] as const
 
-type SuggestedReplies = NonNullable<CreationMessageResult["suggested_replies"]>
-type RecommendedTool = CreationMessageResult["recommended_tools"][number]
+type SuggestedReplies = NonNullable<CreationMessageResult['suggested_replies']>
+type RecommendedTool = CreationMessageResult['recommended_tools'][number]
 interface PhaseLog {
   phase: number
   result: string
@@ -41,26 +38,20 @@ interface PhaseLog {
 function PhaseTimeline({ currentPhase }: { currentPhase: number }) {
   return (
     <div className="rounded-xl border bg-muted/30 p-4">
-      <h3 className="mb-3 text-sm font-medium text-muted-foreground">
-        진행 상황
-      </h3>
+      <h3 className="mb-3 text-sm font-medium text-muted-foreground">진행 상황</h3>
       <div className="space-y-0">
         {PHASES.map((phase, idx) => {
           const status =
-            phase.id < currentPhase
-              ? "completed"
-              : phase.id === currentPhase
-                ? "active"
-                : "pending"
+            phase.id < currentPhase ? 'completed' : phase.id === currentPhase ? 'active' : 'pending'
           const isLast = idx === PHASES.length - 1
           return (
             <div key={phase.id} className="flex gap-3">
               <div className="flex flex-col items-center">
-                {status === "completed" ? (
+                {status === 'completed' ? (
                   <div className="flex size-6 items-center justify-center rounded-full bg-emerald-500 text-white">
                     <CheckIcon className="size-3.5" />
                   </div>
-                ) : status === "active" ? (
+                ) : status === 'active' ? (
                   <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
                     <CircleDotIcon className="size-3.5" />
                   </div>
@@ -72,10 +63,8 @@ function PhaseTimeline({ currentPhase }: { currentPhase: number }) {
                 {!isLast && (
                   <div
                     className={cn(
-                      "w-0.5 min-h-4 flex-1",
-                      status === "completed"
-                        ? "bg-emerald-500"
-                        : "bg-muted-foreground/20",
+                      'w-0.5 min-h-4 flex-1',
+                      status === 'completed' ? 'bg-emerald-500' : 'bg-muted-foreground/20',
                     )}
                   />
                 )}
@@ -83,12 +72,12 @@ function PhaseTimeline({ currentPhase }: { currentPhase: number }) {
               <div className="flex flex-1 items-start justify-between pb-4">
                 <p
                   className={cn(
-                    "text-sm leading-6",
-                    status === "active"
-                      ? "font-semibold text-foreground"
-                      : status === "completed"
-                        ? "font-medium text-foreground"
-                        : "text-muted-foreground",
+                    'text-sm leading-6',
+                    status === 'active'
+                      ? 'font-semibold text-foreground'
+                      : status === 'completed'
+                        ? 'font-medium text-foreground'
+                        : 'text-muted-foreground',
                   )}
                 >
                   Phase {phase.id}: {phase.label}
@@ -98,19 +87,15 @@ function PhaseTimeline({ currentPhase }: { currentPhase: number }) {
                 </p>
                 <span
                   className={cn(
-                    "shrink-0 rounded-md px-2 py-0.5 text-xs font-medium",
-                    status === "completed"
-                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
-                      : status === "active"
-                        ? "bg-primary/10 text-primary"
-                        : "bg-muted text-muted-foreground",
+                    'shrink-0 rounded-md px-2 py-0.5 text-xs font-medium',
+                    status === 'completed'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
+                      : status === 'active'
+                        ? 'bg-primary/10 text-primary'
+                        : 'bg-muted text-muted-foreground',
                   )}
                 >
-                  {status === "completed"
-                    ? "완료"
-                    : status === "active"
-                      ? "진행중"
-                      : "대기중"}
+                  {status === 'completed' ? '완료' : status === 'active' ? '진행중' : '대기중'}
                 </span>
               </div>
             </div>
@@ -138,24 +123,24 @@ function OptionCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-sm transition-all active:scale-[0.99]",
+        'flex w-full cursor-pointer items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-sm transition-all active:scale-[0.99]',
         selected
-          ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-          : "border-border bg-background hover:border-primary/30 hover:bg-muted/50",
+          ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+          : 'border-border bg-background hover:border-primary/30 hover:bg-muted/50',
       )}
     >
       <div
         className={cn(
-          "flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
+          'flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
           selected
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-muted-foreground/40",
-          multiSelect && "rounded-md",
+            ? 'border-primary bg-primary text-primary-foreground'
+            : 'border-muted-foreground/40',
+          multiSelect && 'rounded-md',
         )}
       >
         {selected && <CheckIcon className="size-3" />}
       </div>
-      <span className={cn("flex-1", selected && "font-medium")}>{label}</span>
+      <span className={cn('flex-1', selected && 'font-medium')}>{label}</span>
     </button>
   )
 }
@@ -169,9 +154,7 @@ function ToolCard({ tool }: { tool: RecommendedTool }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">{tool.name}</p>
-        <p className="mt-0.5 text-sm text-muted-foreground leading-relaxed">
-          {tool.description}
-        </p>
+        <p className="mt-0.5 text-sm text-muted-foreground leading-relaxed">{tool.description}</p>
       </div>
     </div>
   )
@@ -186,21 +169,19 @@ export default function ConversationalCreationPage() {
   const [isConfirming, setIsConfirming] = useState(false)
 
   // Phase 1: Initial request
-  const [initialInput, setInitialInput] = useState("")
+  const [initialInput, setInitialInput] = useState('')
 
   // Phase 2: Question flow
-  const [question, setQuestion] = useState("")
-  const [contextText, setContextText] = useState("")
+  const [question, setQuestion] = useState('')
+  const [contextText, setContextText] = useState('')
   const [suggestions, setSuggestions] = useState<SuggestedReplies | null>(null)
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set())
   const [showCustomInput, setShowCustomInput] = useState(false)
-  const [customInput, setCustomInput] = useState("")
+  const [customInput, setCustomInput] = useState('')
 
   // Phase 3: Tool recommendation
-  const [recommendedTools, setRecommendedTools] = useState<RecommendedTool[]>(
-    [],
-  )
-  const [modificationInput, setModificationInput] = useState("")
+  const [recommendedTools, setRecommendedTools] = useState<RecommendedTool[]>([])
+  const [modificationInput, setModificationInput] = useState('')
 
   // Phase 4: Final
   const [draftConfig, setDraftConfig] = useState<DraftConfig | null>(null)
@@ -214,12 +195,16 @@ export default function ConversationalCreationPage() {
   const isComposingRef = useRef(false)
 
   const compositionProps = {
-    onCompositionStart: () => { isComposingRef.current = true },
-    onCompositionEnd: () => { isComposingRef.current = false },
+    onCompositionStart: () => {
+      isComposingRef.current = true
+    },
+    onCompositionEnd: () => {
+      isComposingRef.current = false
+    },
   } as const
 
   const scrollToTop = useCallback(() => {
-    contentRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+    contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
 
   // Start session on mount
@@ -231,9 +216,7 @@ export default function ConversationalCreationPage() {
         if (cancelled) return
         setSessionId(session.id)
       } catch {
-        setQuestion(
-          "세션을 시작하는 데 문제가 발생했습니다. 페이지를 새로고침해주세요.",
-        )
+        setQuestion('세션을 시작하는 데 문제가 발생했습니다. 페이지를 새로고침해주세요.')
       }
     }
     startSession()
@@ -251,7 +234,7 @@ export default function ConversationalCreationPage() {
 
   function applyResponse(response: CreationMessageResult) {
     setCurrentPhase(response.current_phase)
-    setQuestion(response.question ?? "")
+    setQuestion(response.question ?? '')
     setContextText(response.content)
 
     if (response.phase_result) {
@@ -264,10 +247,7 @@ export default function ConversationalCreationPage() {
       ])
     }
 
-    if (
-      response.suggested_replies &&
-      response.suggested_replies.options.length > 0
-    ) {
+    if (response.suggested_replies && response.suggested_replies.options.length > 0) {
       setSuggestions(response.suggested_replies)
     } else {
       setSuggestions(null)
@@ -285,8 +265,8 @@ export default function ConversationalCreationPage() {
 
     setSelectedOptions(new Set())
     setShowCustomInput(false)
-    setCustomInput("")
-    setModificationInput("")
+    setCustomInput('')
+    setModificationInput('')
     scrollToTop()
   }
 
@@ -299,7 +279,7 @@ export default function ConversationalCreationPage() {
       const response = await creationSessionApi.sendMessage(sessionId, text)
       applyResponse(response)
     } catch {
-      setQuestion("오류가 발생했습니다. 다시 시도해주세요.")
+      setQuestion('오류가 발생했습니다. 다시 시도해주세요.')
       setSuggestions(null)
     } finally {
       setIsLoading(false)
@@ -307,7 +287,7 @@ export default function ConversationalCreationPage() {
   }
 
   function handleOptionClick(option: string) {
-    if (option === "직접 입력") {
+    if (option === '직접 입력') {
       setShowCustomInput(true)
       setSelectedOptions(new Set())
       return
@@ -332,7 +312,7 @@ export default function ConversationalCreationPage() {
 
   function handleSelectionSubmit() {
     if (selectedOptions.size === 0) return
-    handleSubmit(Array.from(selectedOptions).join(", "))
+    handleSubmit(Array.from(selectedOptions).join(', '))
   }
 
   function handleCustomSubmit() {
@@ -343,7 +323,7 @@ export default function ConversationalCreationPage() {
 
   // Phase 3: Approve tools
   function handleApproveTools() {
-    handleSubmit("승인")
+    handleSubmit('승인')
   }
 
   function handleRequestModification() {
@@ -390,7 +370,7 @@ export default function ConversationalCreationPage() {
                 value={initialInput}
                 onChange={(e) => setInitialInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
+                  if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
                     e.preventDefault()
                     handleSubmit(initialInput.trim())
                   }
@@ -399,9 +379,9 @@ export default function ConversationalCreationPage() {
                 placeholder='예: "한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트"'
                 rows={3}
                 className={cn(
-                  "min-h-[80px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-3 text-sm leading-relaxed outline-none transition-colors",
-                  "placeholder:text-muted-foreground",
-                  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  'min-h-[80px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-3 text-sm leading-relaxed outline-none transition-colors',
+                  'placeholder:text-muted-foreground',
+                  'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
                 )}
               />
               <div className="flex justify-end">
@@ -421,10 +401,7 @@ export default function ConversationalCreationPage() {
           {phaseLogs.length > 0 && (
             <div className="space-y-3">
               {phaseLogs.map((log, i) => (
-                <div
-                  key={i}
-                  className="rounded-xl border bg-muted/20 px-4 py-3"
-                >
+                <div key={i} className="rounded-xl border bg-muted/20 px-4 py-3">
                   <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
                     [Phase {log.phase} 완료]
                   </p>
@@ -449,9 +426,7 @@ export default function ConversationalCreationPage() {
             <div className="space-y-4">
               {/* Context text (outside the question card, muted) */}
               {contextText && (
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  {contextText}
-                </p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{contextText}</p>
               )}
 
               {/* Question card */}
@@ -459,9 +434,7 @@ export default function ConversationalCreationPage() {
                 <div className="rounded-xl border bg-background p-5">
                   <div className="flex items-start gap-2.5">
                     <MessageCircleIcon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-                    <p className="text-base font-semibold leading-relaxed">
-                      {question}
-                    </p>
+                    <p className="text-base font-semibold leading-relaxed">{question}</p>
                   </div>
                 </div>
               )}
@@ -470,18 +443,14 @@ export default function ConversationalCreationPage() {
               {suggestions && suggestions.options.length > 0 && (
                 <div className="space-y-2">
                   {suggestions.multi_select && (
-                    <p className="text-xs text-muted-foreground">
-                      여러 개 선택할 수 있어요
-                    </p>
+                    <p className="text-xs text-muted-foreground">여러 개 선택할 수 있어요</p>
                   )}
                   {suggestions.options.map((option) => (
                     <OptionCard
                       key={option}
                       label={option}
                       selected={
-                        option === "직접 입력"
-                          ? showCustomInput
-                          : selectedOptions.has(option)
+                        option === '직접 입력' ? showCustomInput : selectedOptions.has(option)
                       }
                       multiSelect={suggestions.multi_select}
                       onClick={() => handleOptionClick(option)}
@@ -497,7 +466,7 @@ export default function ConversationalCreationPage() {
                   value={customInput}
                   onChange={(e) => setCustomInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
+                    if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
                       e.preventDefault()
                       handleCustomSubmit()
                     }
@@ -506,9 +475,9 @@ export default function ConversationalCreationPage() {
                   placeholder="원하는 내용을 자유롭게 작성하세요..."
                   rows={2}
                   className={cn(
-                    "min-h-[60px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors",
-                    "placeholder:text-muted-foreground",
-                    "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                    'min-h-[60px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors',
+                    'placeholder:text-muted-foreground',
+                    'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
                   )}
                 />
               )}
@@ -519,7 +488,7 @@ export default function ConversationalCreationPage() {
                   value={customInput}
                   onChange={(e) => setCustomInput(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current) {
+                    if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
                       e.preventDefault()
                       handleCustomSubmit()
                     }
@@ -528,19 +497,27 @@ export default function ConversationalCreationPage() {
                   placeholder="답변을 입력하세요..."
                   rows={2}
                   className={cn(
-                    "min-h-[60px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors",
-                    "placeholder:text-muted-foreground",
-                    "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                    'min-h-[60px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors',
+                    'placeholder:text-muted-foreground',
+                    'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
                   )}
                 />
               )}
 
               {/* Submit button — inline below options */}
-              {(selectedOptions.size > 0 || showCustomInput || (!suggestions && customInput.trim())) && (
+              {(selectedOptions.size > 0 ||
+                showCustomInput ||
+                (!suggestions && customInput.trim())) && (
                 <div className="flex justify-end">
                   <Button
-                    onClick={showCustomInput || !suggestions ? handleCustomSubmit : handleSelectionSubmit}
-                    disabled={showCustomInput || !suggestions ? !customInput.trim() : selectedOptions.size === 0}
+                    onClick={
+                      showCustomInput || !suggestions ? handleCustomSubmit : handleSelectionSubmit
+                    }
+                    disabled={
+                      showCustomInput || !suggestions
+                        ? !customInput.trim()
+                        : selectedOptions.size === 0
+                    }
                     size="lg"
                   >
                     <SendIcon className="mr-1.5 size-4" />
@@ -576,7 +553,12 @@ export default function ConversationalCreationPage() {
                 value={modificationInput}
                 onChange={(e) => setModificationInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !isComposingRef.current && modificationInput.trim()) {
+                  if (
+                    e.key === 'Enter' &&
+                    !e.shiftKey &&
+                    !isComposingRef.current &&
+                    modificationInput.trim()
+                  ) {
                     e.preventDefault()
                     handleRequestModification()
                   }
@@ -585,18 +567,14 @@ export default function ConversationalCreationPage() {
                 placeholder="수정 의견을 입력하세요..."
                 rows={2}
                 className={cn(
-                  "min-h-[60px] max-h-[120px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors",
-                  "placeholder:text-muted-foreground",
-                  "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  'min-h-[60px] max-h-[120px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors',
+                  'placeholder:text-muted-foreground',
+                  'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
                 )}
               />
               <div className="flex justify-end gap-2">
                 {modificationInput.trim() && (
-                  <Button
-                    variant="outline"
-                    onClick={handleRequestModification}
-                    size="lg"
-                  >
+                  <Button variant="outline" onClick={handleRequestModification} size="lg">
                     <XIcon className="mr-1.5 size-4" />
                     수정요청
                   </Button>
@@ -629,18 +607,12 @@ export default function ConversationalCreationPage() {
                 <div className="space-y-2.5 rounded-lg bg-muted/50 p-4 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">이름</span>
-                    <span className="font-medium">
-                      {draftConfig.name ?? "-"}
-                    </span>
+                    <span className="font-medium">{draftConfig.name ?? '-'}</span>
                   </div>
                   {draftConfig.description && (
                     <div className="flex justify-between gap-4">
-                      <span className="shrink-0 text-muted-foreground">
-                        설명
-                      </span>
-                      <span className="text-right">
-                        {draftConfig.description}
-                      </span>
+                      <span className="shrink-0 text-muted-foreground">설명</span>
+                      <span className="text-right">{draftConfig.description}</span>
                     </div>
                   )}
                   {draftConfig.recommended_model && (
@@ -691,9 +663,7 @@ export default function ConversationalCreationPage() {
                   className="w-full"
                   size="lg"
                 >
-                  {isConfirming && (
-                    <Loader2Icon className="mr-1.5 size-4 animate-spin" />
-                  )}
+                  {isConfirming && <Loader2Icon className="mr-1.5 size-4 animate-spin" />}
                   에이전트 생성
                 </Button>
               </CardContent>

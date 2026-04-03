@@ -24,6 +24,7 @@ def get_scheduler() -> AsyncIOScheduler:
         except Exception:
             # Fallback to memory jobstore (e.g., in test environment)
             from apscheduler.jobstores.memory import MemoryJobStore
+
             jobstores["default"] = MemoryJobStore()
         _scheduler = AsyncIOScheduler(jobstores=jobstores)
     return _scheduler

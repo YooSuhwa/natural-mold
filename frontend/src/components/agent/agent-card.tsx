@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import Link from "next/link"
-import { WrenchIcon, StarIcon } from "lucide-react"
+import Link from 'next/link'
+import { WrenchIcon, StarIcon } from 'lucide-react'
 import {
   Card,
   CardHeader,
@@ -9,10 +9,10 @@ import {
   CardDescription,
   CardContent,
   CardFooter,
-} from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { useToggleFavorite } from "@/lib/hooks/use-agents"
-import type { Agent } from "@/lib/types"
+} from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { useToggleFavorite } from '@/lib/hooks/use-agents'
+import type { Agent } from '@/lib/types'
 
 interface AgentCardProps {
   agent: Agent
@@ -22,18 +22,14 @@ export function AgentCard({ agent }: AgentCardProps) {
   const { mutate: toggleFavorite } = useToggleFavorite()
 
   const statusColor =
-    agent.status === "active"
-      ? "bg-emerald-500"
-      : agent.status === "error"
-        ? "bg-red-500"
-        : "bg-yellow-500"
+    agent.status === 'active'
+      ? 'bg-emerald-500'
+      : agent.status === 'error'
+        ? 'bg-red-500'
+        : 'bg-yellow-500'
 
   const statusLabel =
-    agent.status === "active"
-      ? "활성"
-      : agent.status === "error"
-        ? "오류"
-        : "비활성"
+    agent.status === 'active' ? '활성' : agent.status === 'error' ? '오류' : '비활성'
 
   return (
     <Link
@@ -55,13 +51,13 @@ export function AgentCard({ agent }: AgentCardProps) {
                   toggleFavorite(agent.id)
                 }}
                 className="rounded-md p-1 hover:bg-accent transition-colors"
-                aria-label={agent.is_favorite ? "즐겨찾기 해제" : "즐겨찾기"}
+                aria-label={agent.is_favorite ? '즐겨찾기 해제' : '즐겨찾기'}
               >
                 <StarIcon
                   className={`size-4 transition-colors ${
                     agent.is_favorite
-                      ? "fill-yellow-400 text-yellow-400"
-                      : "text-muted-foreground hover:text-yellow-400"
+                      ? 'fill-yellow-400 text-yellow-400'
+                      : 'text-muted-foreground hover:text-yellow-400'
                   }`}
                 />
               </button>
@@ -72,9 +68,7 @@ export function AgentCard({ agent }: AgentCardProps) {
             </div>
           </div>
           {agent.description && (
-            <CardDescription className="line-clamp-2">
-              {agent.description}
-            </CardDescription>
+            <CardDescription className="line-clamp-2">{agent.description}</CardDescription>
           )}
         </CardHeader>
         <CardContent>
@@ -86,15 +80,13 @@ export function AgentCard({ agent }: AgentCardProps) {
             {agent.tools.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <WrenchIcon className="size-3.5" />
-                <span>
-                  {agent.tools.map((t) => t.name).join(", ")}
-                </span>
+                <span>{agent.tools.map((t) => t.name).join(', ')}</span>
               </div>
             )}
           </div>
         </CardContent>
         <CardFooter className="text-xs text-muted-foreground">
-          {new Date(agent.created_at).toLocaleDateString("ko-KR")} 생성
+          {new Date(agent.created_at).toLocaleDateString('ko-KR')} 생성
         </CardFooter>
       </Card>
     </Link>

@@ -14,10 +14,10 @@ from pydantic import BaseModel, Field
 
 from app.config import settings
 
-
 # ---------------------------------------------------------------------------
 # Google Chat Webhook
 # ---------------------------------------------------------------------------
+
 
 class GoogleChatSendArgs(BaseModel):
     text: str = Field(description="전송할 메시지 텍스트")
@@ -47,7 +47,10 @@ def build_google_chat_webhook_tool(
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 403:
                 return "Error: Webhook URL이 유효하지 않거나 권한이 없습니다."
-            return f"Error: Google Chat 메시지 전송 실패 — {e.response.status_code}: {e.response.text[:200]}"
+            return (
+                f"Error: Google Chat 메시지 전송 실패 — "
+                f"{e.response.status_code}: {e.response.text[:200]}"
+            )
         except httpx.HTTPError as e:
             return f"Error: Google Chat에 연결할 수 없습니다 — {e}"
 
@@ -57,8 +60,7 @@ def build_google_chat_webhook_tool(
         coroutine=send_message,
         name="google_chat_send",
         description=(
-            "Google Chat 채널에 메시지를 전송합니다. "
-            "알림, 보고, 요약 결과 공유 등에 사용하세요."
+            "Google Chat 채널에 메시지를 전송합니다. 알림, 보고, 요약 결과 공유 등에 사용하세요."
         ),
         args_schema=GoogleChatSendArgs,
     )
@@ -68,10 +70,12 @@ def build_google_chat_webhook_tool(
 # Helper: build Gmail service (sync, run in thread)
 # ---------------------------------------------------------------------------
 
+
 def _build_gmail_service(auth_config: dict[str, Any] | None = None) -> Any:
     """Build a Gmail API service object. Returns (service, error_msg)."""
-    from app.agent_runtime.google_auth import get_google_credentials
     from googleapiclient.discovery import build
+
+    from app.agent_runtime.google_auth import get_google_credentials
 
     creds = get_google_credentials(auth_config)
     if creds is None:
@@ -88,6 +92,7 @@ def _build_gmail_service(auth_config: dict[str, Any] | None = None) -> Any:
 # ---------------------------------------------------------------------------
 # Gmail Read (list + get)
 # ---------------------------------------------------------------------------
+
 
 class GmailReadArgs(BaseModel):
     query: str = Field(
@@ -108,18 +113,23 @@ def build_gmail_read_tool(
     """Build a LangChain tool that reads emails from Gmail."""
 
     async def read_emails(query: str = "is:inbox", max_results: int = 5) -> str:
-        service, err = await asyncio.to_thread(
-            partial(_build_gmail_service, auth_config)
-        )
+        service, err = await asyncio.to_thread(partial(_build_gmail_service, auth_config))
         if err:
             return err
 
         try:
             # List messages
             result = await asyncio.to_thread(
-                lambda: service.users().messages().list(
-                    userId="me", q=query, maxResults=max_results,
-                ).execute()
+                lambda: (
+                    service.users()
+                    .messages()
+                    .list(
+                        userId="me",
+                        q=query,
+                        maxResults=max_results,
+                    )
+                    .execute()
+                )
             )
         except Exception as e:
             return f"Error: Gmail 메시지 목록 조회 실패 — {e}"
@@ -132,10 +142,17 @@ def build_gmail_read_tool(
         for i, msg_ref in enumerate(messages, 1):
             try:
                 msg = await asyncio.to_thread(
-                    lambda mid=msg_ref["id"]: service.users().messages().get(
-                        userId="me", id=mid, format="metadata",
-                        metadataHeaders=["From", "To", "Subject", "Date"],
-                    ).execute()
+                    lambda mid=msg_ref["id"]: (
+                        service.users()
+                        .messages()
+                        .get(
+                            userId="me",
+                            id=mid,
+                            format="metadata",
+                            metadataHeaders=["From", "To", "Subject", "Date"],
+                        )
+                        .execute()
+                    )
                 )
             except Exception:
                 continue
@@ -176,6 +193,7 @@ def build_gmail_read_tool(
 # Gmail Send
 # ---------------------------------------------------------------------------
 
+
 class GmailSendArgs(BaseModel):
     to: str = Field(description="수신자 이메일 주소")
     subject: str = Field(description="이메일 제목")
@@ -188,9 +206,7 @@ def build_gmail_send_tool(
     """Build a LangChain tool that sends emails via Gmail."""
 
     async def send_email(to: str, subject: str, body: str) -> str:
-        service, err = await asyncio.to_thread(
-            partial(_build_gmail_service, auth_config)
-        )
+        service, err = await asyncio.to_thread(partial(_build_gmail_service, auth_config))
         if err:
             return err
 
@@ -201,9 +217,15 @@ def build_gmail_send_tool(
 
         try:
             sent = await asyncio.to_thread(
-                lambda: service.users().messages().send(
-                    userId="me", body={"raw": raw},
-                ).execute()
+                lambda: (
+                    service.users()
+                    .messages()
+                    .send(
+                        userId="me",
+                        body={"raw": raw},
+                    )
+                    .execute()
+                )
             )
         except Exception as e:
             return f"Error: 이메일 전송 실패 — {e}"
@@ -214,8 +236,7 @@ def build_gmail_send_tool(
         coroutine=send_email,
         name="gmail_send",
         description=(
-            "Gmail로 이메일을 전송합니다. "
-            "수신자, 제목, 본문을 지정하여 이메일을 보냅니다."
+            "Gmail로 이메일을 전송합니다. 수신자, 제목, 본문을 지정하여 이메일을 보냅니다."
         ),
         args_schema=GmailSendArgs,
     )
@@ -225,10 +246,12 @@ def build_gmail_send_tool(
 # Helper: build Calendar service (sync, run in thread)
 # ---------------------------------------------------------------------------
 
+
 def _build_calendar_service(auth_config: dict[str, Any] | None = None) -> tuple[Any, str | None]:
     """Build a Google Calendar API service object. Returns (service, error_msg)."""
-    from app.agent_runtime.google_auth import get_google_credentials
     from googleapiclient.discovery import build
+
+    from app.agent_runtime.google_auth import get_google_credentials
 
     creds = get_google_credentials(auth_config)
     if creds is None:
@@ -245,6 +268,7 @@ def _build_calendar_service(auth_config: dict[str, Any] | None = None) -> tuple[
 # ---------------------------------------------------------------------------
 # Calendar List Events
 # ---------------------------------------------------------------------------
+
 
 class CalendarListEventsArgs(BaseModel):
     days: int = Field(
@@ -271,31 +295,41 @@ def build_calendar_list_events_tool(
     """Build a LangChain tool that lists Google Calendar events."""
 
     async def list_events(
-        days: int = 1, max_results: int = 10, calendar_id: str = "primary",
+        days: int = 1,
+        max_results: int = 10,
+        calendar_id: str = "primary",
     ) -> str:
-        service, err = await asyncio.to_thread(
-            partial(_build_calendar_service, auth_config)
-        )
+        service, err = await asyncio.to_thread(partial(_build_calendar_service, auth_config))
         if err:
             return err
 
         tz = ZoneInfo("Asia/Seoul")
         now = datetime.now(tz)
         time_min = now.isoformat()
-        time_max = (now + timedelta(days=days)).replace(
-            hour=23, minute=59, second=59,
-        ).isoformat()
+        time_max = (
+            (now + timedelta(days=days))
+            .replace(
+                hour=23,
+                minute=59,
+                second=59,
+            )
+            .isoformat()
+        )
 
         try:
             result = await asyncio.to_thread(
-                lambda: service.events().list(
-                    calendarId=calendar_id,
-                    timeMin=time_min,
-                    timeMax=time_max,
-                    maxResults=max_results,
-                    singleEvents=True,
-                    orderBy="startTime",
-                ).execute()
+                lambda: (
+                    service.events()
+                    .list(
+                        calendarId=calendar_id,
+                        timeMin=time_min,
+                        timeMax=time_max,
+                        maxResults=max_results,
+                        singleEvents=True,
+                        orderBy="startTime",
+                    )
+                    .execute()
+                )
             )
         except Exception as e:
             return f"Error: 캘린더 일정 조회 실패 — {e}"
@@ -339,8 +373,7 @@ def build_calendar_list_events_tool(
         coroutine=list_events,
         name="calendar_list_events",
         description=(
-            "Google Calendar에서 일정을 조회합니다. "
-            "오늘 또는 며칠간의 일정을 확인할 수 있습니다."
+            "Google Calendar에서 일정을 조회합니다. 오늘 또는 며칠간의 일정을 확인할 수 있습니다."
         ),
         args_schema=CalendarListEventsArgs,
     )
@@ -349,6 +382,7 @@ def build_calendar_list_events_tool(
 # ---------------------------------------------------------------------------
 # Calendar Create Event
 # ---------------------------------------------------------------------------
+
 
 class CalendarCreateEventArgs(BaseModel):
     summary: str = Field(description="일정 제목")
@@ -376,9 +410,7 @@ def build_calendar_create_event_tool(
         location: str = "",
         calendar_id: str = "primary",
     ) -> str:
-        service, err = await asyncio.to_thread(
-            partial(_build_calendar_service, auth_config)
-        )
+        service, err = await asyncio.to_thread(partial(_build_calendar_service, auth_config))
         if err:
             return err
 
@@ -394,9 +426,14 @@ def build_calendar_create_event_tool(
 
         try:
             created = await asyncio.to_thread(
-                lambda: service.events().insert(
-                    calendarId=calendar_id, body=event_body,
-                ).execute()
+                lambda: (
+                    service.events()
+                    .insert(
+                        calendarId=calendar_id,
+                        body=event_body,
+                    )
+                    .execute()
+                )
             )
         except Exception as e:
             return f"Error: 일정 생성 실패 — {e}"
@@ -424,6 +461,7 @@ def build_calendar_create_event_tool(
 # ---------------------------------------------------------------------------
 # Calendar Update Event
 # ---------------------------------------------------------------------------
+
 
 class CalendarUpdateEventArgs(BaseModel):
     event_id: str = Field(description="수정할 일정의 ID")
@@ -455,18 +493,21 @@ def build_calendar_update_event_tool(
         location: str = "",
         calendar_id: str = "primary",
     ) -> str:
-        service, err = await asyncio.to_thread(
-            partial(_build_calendar_service, auth_config)
-        )
+        service, err = await asyncio.to_thread(partial(_build_calendar_service, auth_config))
         if err:
             return err
 
         # Fetch existing event first
         try:
             existing = await asyncio.to_thread(
-                lambda: service.events().get(
-                    calendarId=calendar_id, eventId=event_id,
-                ).execute()
+                lambda: (
+                    service.events()
+                    .get(
+                        calendarId=calendar_id,
+                        eventId=event_id,
+                    )
+                    .execute()
+                )
             )
         except Exception as e:
             return f"Error: 일정을 찾을 수 없습니다 — {e}"
@@ -485,9 +526,15 @@ def build_calendar_update_event_tool(
 
         try:
             updated = await asyncio.to_thread(
-                lambda: service.events().update(
-                    calendarId=calendar_id, eventId=event_id, body=existing,
-                ).execute()
+                lambda: (
+                    service.events()
+                    .update(
+                        calendarId=calendar_id,
+                        eventId=event_id,
+                        body=existing,
+                    )
+                    .execute()
+                )
             )
         except Exception as e:
             return f"Error: 일정 수정 실패 — {e}"
@@ -503,8 +550,7 @@ def build_calendar_update_event_tool(
         coroutine=update_event,
         name="calendar_update_event",
         description=(
-            "Google Calendar의 기존 일정을 수정합니다. "
-            "일정 ID와 변경할 필드를 지정합니다."
+            "Google Calendar의 기존 일정을 수정합니다. 일정 ID와 변경할 필드를 지정합니다."
         ),
         args_schema=CalendarUpdateEventArgs,
     )

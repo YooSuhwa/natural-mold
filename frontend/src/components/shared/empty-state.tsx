@@ -1,5 +1,5 @@
-import type { ReactNode } from "react"
-import { cn } from "@/lib/utils"
+import type { ReactNode } from 'react'
+import { cn } from '@/lib/utils'
 
 interface EmptyStateProps {
   icon?: ReactNode
@@ -9,18 +9,12 @@ interface EmptyStateProps {
   className?: string
 }
 
-export function EmptyState({
-  icon,
-  title,
-  description,
-  action,
-  className,
-}: EmptyStateProps) {
+export function EmptyState({ icon, title, description, action, className }: EmptyStateProps) {
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed p-12 text-center",
-        className
+        'flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed p-12 text-center',
+        className,
       )}
     >
       {icon && (
@@ -30,9 +24,7 @@ export function EmptyState({
       )}
       <div className="space-y-1">
         <p className="text-sm font-medium text-foreground">{title}</p>
-        {description && (
-          <p className="text-sm text-muted-foreground">{description}</p>
-        )}
+        {description && <p className="text-sm text-muted-foreground">{description}</p>}
       </div>
       {action}
     </div>

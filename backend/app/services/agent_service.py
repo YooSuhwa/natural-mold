@@ -47,10 +47,7 @@ def _build_tool_links(
     config_map: dict[uuid.UUID, dict[str, Any]],
 ) -> list[AgentToolLink]:
     """Create AgentToolLink objects with optional per-tool config."""
-    return [
-        AgentToolLink(tool_id=tid, config=config_map.get(tid))
-        for tid in tool_ids
-    ]
+    return [AgentToolLink(tool_id=tid, config=config_map.get(tid)) for tid in tool_ids]
 
 
 async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
@@ -103,9 +100,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
     return agent
 
 
-async def update_agent(
-    db: AsyncSession, agent: Agent, data: AgentUpdate
-) -> Agent:
+async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Agent:
     if data.name is not None:
         agent.name = data.name
     if data.description is not None:
