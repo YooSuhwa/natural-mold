@@ -37,9 +37,8 @@ describe('StreamingMessage', () => {
 
   it('shows loading spinner when streaming with no content', () => {
     renderWithJotai({ isStreaming: true, message: null })
-    // The loader icon should be present (animate-spin class)
-    const { container } = renderWithJotai({ isStreaming: true, message: null })
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument()
+    // The thinking dots should be present with "생각 중..." text
+    expect(screen.getByText('생각 중...')).toBeInTheDocument()
   })
 
   it('renders streaming message content', () => {

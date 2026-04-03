@@ -43,6 +43,6 @@ export function useToggleFavorite() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => agentsApi.toggleFavorite(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["agents"] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['agents'] }),
   })
 }

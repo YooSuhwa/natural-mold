@@ -184,17 +184,23 @@ export function AppSidebar() {
                 <DropdownMenuItem onClick={() => setTheme('light')}>
                   <SunIcon />
                   라이트 모드
-                  {theme === 'light' && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                  {theme === 'light' && (
+                    <span className="ml-auto text-xs text-muted-foreground">✓</span>
+                  )}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setTheme('dark')}>
                   <MoonIcon />
                   다크 모드
-                  {theme === 'dark' && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                  {theme === 'dark' && (
+                    <span className="ml-auto text-xs text-muted-foreground">✓</span>
+                  )}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => setTheme('system')}>
                   <MonitorIcon />
                   시스템
-                  {theme === 'system' && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                  {theme === 'system' && (
+                    <span className="ml-auto text-xs text-muted-foreground">✓</span>
+                  )}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>

@@ -128,7 +128,7 @@ async def run_fix_conversation(
 
     lc_messages = convert_to_langchain_messages(messages)
     response = await model.ainvoke(lc_messages)
-    content = response.content
+    content = response.content if isinstance(response.content, str) else str(response.content)
 
     action: str = "ask"
     changes: dict[str, Any] | None = None

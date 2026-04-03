@@ -45,7 +45,9 @@ export function StreamingMessage() {
                 toolCall={{ name: tc.name, args: tc.params ?? {} }}
                 status={tc.status}
                 result={tc.result}
-                elapsedMs={tc.startedAt && tc.completedAt ? tc.completedAt - tc.startedAt : undefined}
+                elapsedMs={
+                  tc.startedAt && tc.completedAt ? tc.completedAt - tc.startedAt : undefined
+                }
               />
             ))}
           </div>

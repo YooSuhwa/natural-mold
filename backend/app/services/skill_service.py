@@ -11,17 +11,13 @@ from app.schemas.skill import SkillCreate, SkillUpdate
 
 async def list_skills(db: AsyncSession, user_id: uuid.UUID) -> list[Skill]:
     result = await db.execute(
-        select(Skill)
-        .where(Skill.user_id == user_id)
-        .order_by(Skill.updated_at.desc())
+        select(Skill).where(Skill.user_id == user_id).order_by(Skill.updated_at.desc())
     )
     return list(result.scalars().all())
 
 
 async def get_skill(db: AsyncSession, skill_id: uuid.UUID, user_id: uuid.UUID) -> Skill | None:
-    result = await db.execute(
-        select(Skill).where(Skill.id == skill_id, Skill.user_id == user_id)
-    )
+    result = await db.execute(select(Skill).where(Skill.id == skill_id, Skill.user_id == user_id))
     return result.scalar_one_or_none()
 
 

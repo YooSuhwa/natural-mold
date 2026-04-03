@@ -40,9 +40,7 @@ async def execute_agent_stream(
     thread_id: str,
     model_params: dict[str, Any] | None = None,
 ) -> AsyncGenerator[str, None]:
-    model = create_chat_model(
-        provider, model_name, api_key, base_url, **(model_params or {})
-    )
+    model = create_chat_model(provider, model_name, api_key, base_url, **(model_params or {}))
 
     langchain_tools: list[BaseTool] = []
     for tc in tools_config:

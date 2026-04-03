@@ -20,9 +20,11 @@ vi.mock('next/link', () => ({
 
 const mockUseAgents = vi.fn()
 const mockUseUsageSummary = vi.fn()
+const mockToggleFavorite = vi.fn()
 
 vi.mock('@/lib/hooks/use-agents', () => ({
   useAgents: () => mockUseAgents(),
+  useToggleFavorite: () => ({ mutate: mockToggleFavorite }),
 }))
 
 vi.mock('@/lib/hooks/use-usage', () => ({

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useTools, useDeleteTool } from '@/lib/hooks/use-tools'
 import { Button } from '@/components/ui/button'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card'
+import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
@@ -38,10 +38,22 @@ import type { Tool } from '@/lib/types'
 type ToolFilter = 'all' | 'builtin' | 'prebuilt' | 'mcp' | 'custom'
 
 const ALL_TAGS = [
-  'search', 'web', 'email', 'calendar', 'communication',
-  'google', 'naver', 'korean', 'news', 'image',
-  'shopping', 'local', 'productivity', 'scraping',
-  'utility', 'free',
+  'search',
+  'web',
+  'email',
+  'calendar',
+  'communication',
+  'google',
+  'naver',
+  'korean',
+  'news',
+  'image',
+  'shopping',
+  'local',
+  'productivity',
+  'scraping',
+  'utility',
+  'free',
 ] as const
 
 const FILTER_OPTIONS: { value: ToolFilter; label: string }[] = [
@@ -154,7 +166,10 @@ function ToolCard({
   const isDeletable = !tool.is_system
 
   return (
-    <Card className="group h-full flex flex-col transition-colors hover:border-primary/40 cursor-pointer" onClick={() => onShowDetail(tool)}>
+    <Card
+      className="group h-full flex flex-col transition-colors hover:border-primary/40 cursor-pointer"
+      onClick={() => onShowDetail(tool)}
+    >
       <CardHeader className="flex-1">
         <div className="flex items-start justify-between">
           <div
@@ -166,7 +181,9 @@ function ToolCard({
           </div>
           <div className="flex items-center gap-1.5">
             {tool.agent_count > 0 && (
-              <span className="text-[10px] text-muted-foreground">{tool.agent_count}개 에이전트</span>
+              <span className="text-[10px] text-muted-foreground">
+                {tool.agent_count}개 에이전트
+              </span>
             )}
             <Badge
               className={pStyle ? pStyle.badgeClass : meta.badgeClass}
@@ -183,7 +200,10 @@ function ToolCard({
         {tool.tags && tool.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
             {tool.tags.map((tag) => (
-              <span key={tag} className="inline-block rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              <span
+                key={tag}
+                className="inline-block rounded-sm bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+              >
                 {tag}
               </span>
             ))}
@@ -415,7 +435,12 @@ export default function ToolsPage() {
       )}
 
       {/* Tool Detail Sheet */}
-      <Sheet open={!!detailTool} onOpenChange={(open) => { if (!open) setDetailTool(null) }}>
+      <Sheet
+        open={!!detailTool}
+        onOpenChange={(open) => {
+          if (!open) setDetailTool(null)
+        }}
+      >
         <SheetContent className="sm:max-w-lg overflow-auto">
           {detailTool && (
             <>
@@ -429,7 +454,9 @@ export default function ToolsPage() {
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="secondary">{detailTool.type}</Badge>
                   {detailTool.tags?.map((tag) => (
-                    <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                    <Badge key={tag} variant="outline" className="text-xs">
+                      {tag}
+                    </Badge>
                   ))}
                 </div>
 
@@ -461,21 +488,34 @@ export default function ToolsPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {detailTool.parameters_schema.properties ?
-                            Object.entries(detailTool.parameters_schema.properties as Record<string, Record<string, unknown>>).map(([key, val]) => {
-                              const required = Array.isArray(detailTool.parameters_schema?.required)
-                                && (detailTool.parameters_schema.required as string[]).includes(key)
-                              return (
-                                <tr key={key} className="border-b last:border-0">
-                                  <td className="px-3 py-2 font-mono">
-                                    {key}
-                                    {required && <span className="ml-0.5 text-destructive">*</span>}
-                                  </td>
-                                  <td className="px-3 py-2 text-muted-foreground">{String(val.type ?? '')}</td>
-                                  <td className="px-3 py-2 text-muted-foreground">{String(val.description ?? '')}</td>
-                                </tr>
-                              )
-                            }) : null}
+                          {detailTool.parameters_schema.properties
+                            ? Object.entries(
+                                detailTool.parameters_schema.properties as Record<
+                                  string,
+                                  Record<string, unknown>
+                                >,
+                              ).map(([key, val]) => {
+                                const required =
+                                  Array.isArray(detailTool.parameters_schema?.required) &&
+                                  (detailTool.parameters_schema.required as string[]).includes(key)
+                                return (
+                                  <tr key={key} className="border-b last:border-0">
+                                    <td className="px-3 py-2 font-mono">
+                                      {key}
+                                      {required && (
+                                        <span className="ml-0.5 text-destructive">*</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2 text-muted-foreground">
+                                      {String(val.type ?? '')}
+                                    </td>
+                                    <td className="px-3 py-2 text-muted-foreground">
+                                      {String(val.description ?? '')}
+                                    </td>
+                                  </tr>
+                                )
+                              })
+                            : null}
                         </tbody>
                       </table>
                     </div>

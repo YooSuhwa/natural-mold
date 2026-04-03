@@ -32,18 +32,23 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="h-full bg-background font-sans text-foreground">
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-        <AppLayout>{children}</AppLayout>
-        <Toaster
-          position="top-center"
-          richColors
-          toastOptions={{
-            style: {
-              fontSize: '15px',
-              padding: '16px 24px',
-            },
-          }}
-        />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <AppLayout>{children}</AppLayout>
+          <Toaster
+            position="top-center"
+            richColors
+            toastOptions={{
+              style: {
+                fontSize: '15px',
+                padding: '16px 24px',
+              },
+            }}
+          />
         </ThemeProvider>
       </body>
     </html>

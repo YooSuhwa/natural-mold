@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
 from app.agent_runtime.fix_agent import run_fix_conversation
+from app.dependencies import CurrentUser, get_current_user, get_db
 from app.models.agent import Agent
 from app.models.model import Model
 from app.models.tool import Tool
@@ -97,9 +97,7 @@ async def _apply_changes(
 
     if changes.model_name:
         result = await db.execute(
-            select(Model).where(
-                func.lower(Model.display_name) == changes.model_name.lower()
-            )
+            select(Model).where(func.lower(Model.display_name) == changes.model_name.lower())
         )
         model = result.scalar_one_or_none()
         if model:

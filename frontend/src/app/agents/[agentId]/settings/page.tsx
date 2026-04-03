@@ -322,10 +322,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             skills.length > 0 ? (
               <div className="space-y-2 rounded-lg border p-3">
                 {skills.map((skill) => (
-                  <label
-                    key={skill.id}
-                    className="flex items-center gap-3 text-sm"
-                  >
+                  <label key={skill.id} className="flex items-center gap-3 text-sm">
                     <input
                       type="checkbox"
                       checked={selectedSkillIds.has(skill.id)}
@@ -341,9 +338,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                     />
                     <span>{skill.name}</span>
                     {skill.description && (
-                      <span className="text-xs text-muted-foreground">
-                        - {skill.description}
-                      </span>
+                      <span className="text-xs text-muted-foreground">- {skill.description}</span>
                     )}
                   </label>
                 ))}
