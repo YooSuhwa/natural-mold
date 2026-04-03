@@ -7,6 +7,7 @@ import {
   SparklesIcon,
   MessageSquareIcon,
   LayoutTemplateIcon,
+  PenLineIcon,
   SearchIcon,
   StarIcon,
   ArrowUpDownIcon,
@@ -42,8 +43,14 @@ export default function DashboardPage() {
     {
       label: t('quickAction.conversational.label'),
       description: t('quickAction.conversational.description'),
-      href: '/agents/new/conversational',
+      href: '/agents/new',
       icon: MessageSquareIcon,
+    },
+    {
+      label: t('quickAction.manual.label'),
+      description: t('quickAction.manual.description'),
+      href: '/agents/new/manual',
+      icon: PenLineIcon,
     },
     {
       label: t('quickAction.template.label'),
@@ -107,7 +114,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick Action Cards */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         {quickActions.map((action) => (
           <Link key={action.href} href={action.href} className="group">
             <Card className="cursor-pointer transition-colors hover:border-primary/40">

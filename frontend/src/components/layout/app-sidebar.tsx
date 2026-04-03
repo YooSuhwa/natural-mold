@@ -8,6 +8,7 @@ import {
   CpuIcon,
   BarChart3Icon,
   BookOpenIcon,
+  LayoutTemplateIcon,
   PlusIcon,
   BotIcon,
   UserIcon,
@@ -56,6 +57,7 @@ export function AppSidebar() {
     { label: t('nav.skills'), href: '/skills', icon: BookOpenIcon },
     { label: t('nav.models'), href: '/models', icon: CpuIcon },
     { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
+    { label: t('nav.templates'), href: '/agents/new/template', icon: LayoutTemplateIcon },
   ]
 
   const recentAgents = agents

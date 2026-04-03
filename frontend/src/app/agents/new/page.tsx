@@ -1,49 +1,93 @@
 'use client'
 
+import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { MessageSquareIcon, LayoutTemplateIcon } from 'lucide-react'
+import { SendIcon, PenLineIcon, LayoutTemplateIcon, SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { PageHeader } from '@/components/shared/page-header'
+import { Card, CardContent } from '@/components/ui/card'
 
 export default function AgentNewPage() {
   const t = useTranslations('agent.new')
+  const router = useRouter()
+  const [input, setInput] = useState('')
+  const isComposingRef = useRef(false)
+
+  function handleChatSubmit() {
+    const text = input.trim()
+    if (!text) return
+    router.push(`/agents/new/conversational?initialMessage=${encodeURIComponent(text)}`)
+  }
 
   return (
-    <div className="flex flex-1 flex-col gap-8 overflow-auto p-6">
-      <PageHeader title={t('pageTitle')} />
+    <div className="flex flex-1 flex-col items-center justify-center overflow-auto p-6">
+      <div className="flex w-full max-w-2xl flex-col items-center gap-8">
+        {/* Hero */}
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10">
+            <SparklesIcon className="size-8 text-primary" />
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight">{t('hero.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('hero.subtitle')}</p>
+        </div>
 
-      <div className="mx-auto grid w-full max-w-3xl gap-6 sm:grid-cols-2">
-        <Card className="cursor-pointer transition-colors hover:border-primary/40">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <MessageSquareIcon className="size-6" />
+        {/* Chat Input */}
+        <div className="relative w-full">
+          <div className="rounded-xl border bg-background shadow-sm">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
+                  e.preventDefault()
+                  handleChatSubmit()
+                }
+              }}
+              onCompositionStart={() => {
+                isComposingRef.current = true
+              }}
+              onCompositionEnd={() => {
+                isComposingRef.current = false
+              }}
+              placeholder={t('chatPlaceholder')}
+              rows={3}
+              className="w-full resize-none rounded-xl bg-transparent px-4 py-3 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
+            />
+            <div className="flex justify-end px-3 pb-3">
+              <Button
+                size="icon"
+                variant="ghost"
+                className="size-8 rounded-full"
+                onClick={handleChatSubmit}
+                disabled={!input.trim()}
+              >
+                <SendIcon className="size-4" />
+              </Button>
             </div>
-            <CardTitle>{t('conversational.title')}</CardTitle>
-            <CardDescription>{t('conversational.description')}</CardDescription>
-          </CardHeader>
-          <CardContent className="flex justify-center">
-            <Link href="/agents/new/conversational">
-              <Button>{t('conversational.startButton')}</Button>
-            </Link>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="cursor-pointer transition-colors hover:border-primary/40">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <LayoutTemplateIcon className="size-6" />
-            </div>
-            <CardTitle>{t('template.title')}</CardTitle>
-            <CardDescription>{t('template.description')}</CardDescription>
-          </CardHeader>
-          <CardContent className="flex justify-center">
-            <Link href="/agents/new/template">
-              <Button variant="outline">{t('template.browseButton')}</Button>
-            </Link>
-          </CardContent>
-        </Card>
+        {/* Action Cards */}
+        <div className="grid w-full gap-4 sm:grid-cols-2">
+          <Link href="/agents/new/manual" className="group">
+            <Card className="cursor-pointer transition-colors hover:border-primary/40">
+              <CardContent className="flex flex-col items-center gap-2 p-6">
+                <PenLineIcon className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                <span className="text-sm font-medium">{t('manual.title')}</span>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/agents/new/template" className="group">
+            <Card className="cursor-pointer transition-colors hover:border-primary/40">
+              <CardContent className="flex flex-col items-center gap-2 p-6">
+                <LayoutTemplateIcon className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                <span className="text-sm font-medium">{t('template.title')}</span>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
       </div>
     </div>
   )

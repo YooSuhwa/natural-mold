@@ -42,6 +42,7 @@ const markdownComponents: Components = {
     // urlTransform already strips sandbox:/file: prefixes; resolve /api/ paths to backend
     const resolvedSrc = src.startsWith('/api/') ? `${API_BASE}${src}` : src
     return (
+      // eslint-disable-next-line @next/next/no-img-element -- LLM 응답의 동적 외부 URL이므로 next/image 최적화 불가
       <img
         src={resolvedSrc}
         alt={alt ?? ''}

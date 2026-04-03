@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, use } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   SendIcon,
@@ -183,7 +183,12 @@ function SkillCard({ skill }: { skill: RecommendedSkill }) {
 }
 
 // --- Main Page ---
-export default function ConversationalCreationPage() {
+export default function ConversationalCreationPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ initialMessage?: string }>
+}) {
+  const { initialMessage } = use(searchParams)
   const router = useRouter()
   const t = useTranslations('agent.creation')
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -217,6 +222,7 @@ export default function ConversationalCreationPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const initialTextareaRef = useRef<HTMLTextAreaElement>(null)
   const isComposingRef = useRef(false)
+  const hasAutoSubmitted = useRef(false)
 
   const compositionProps = {
     onCompositionStart: () => {
@@ -249,12 +255,23 @@ export default function ConversationalCreationPage() {
     }
   }, [t])
 
+  // Auto-submit initial message from search params
+  useEffect(() => {
+    if (sessionId && initialMessage && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true
+      setInitialInput(initialMessage)
+      handleSubmit(initialMessage)
+      router.replace('/agents/new/conversational')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, initialMessage])
+
   // Focus initial textarea
   useEffect(() => {
-    if (sessionId && currentPhase === 1) {
+    if (sessionId && currentPhase === 1 && !initialMessage) {
       initialTextareaRef.current?.focus()
     }
-  }, [sessionId, currentPhase])
+  }, [sessionId, currentPhase, initialMessage])
 
   function applyResponse(response: CreationMessageResult) {
     setCurrentPhase(response.current_phase)

@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { ReactFlow, useNodesState, useEdgesState, Panel } from '@xyflow/react'
 import type { Node, Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
-import { useUpdateAgent } from '@/lib/hooks/use-agents'
+import { useUpdateAgent, useCreateAgent } from '@/lib/hooks/use-agents'
 import type { Agent, Model, Tool, Skill, AgentTrigger } from '@/lib/types'
 import { Toolbar } from './toolbar'
 import { AgentNode } from './nodes/agent-node'
@@ -17,12 +18,13 @@ import { SkillsNode } from './nodes/skills-node'
 import { ScheduleNode } from './nodes/schedule-node'
 
 interface VisualSettingsFlowProps {
-  agent: Agent
-  agentId: string
+  agent?: Agent
+  agentId?: string
   models: Model[]
   tools: Tool[]
   skills: Skill[]
-  triggers: AgentTrigger[]
+  triggers?: AgentTrigger[]
+  mode?: 'create' | 'edit'
 }
 
 export function VisualSettingsFlow({
@@ -31,26 +33,31 @@ export function VisualSettingsFlow({
   models,
   tools,
   skills,
-  triggers,
+  triggers = [],
+  mode = 'edit',
 }: VisualSettingsFlowProps) {
+  const router = useRouter()
   const t = useTranslations('agent.visualSettings')
-  const updateAgent = useUpdateAgent(agentId)
+  const updateAgent = useUpdateAgent(agentId ?? '')
+  const createAgent = useCreateAgent()
 
-  const [name, setName] = useState(agent.name)
-  const [description, setDescription] = useState(agent.description ?? '')
-  const [systemPrompt, setSystemPrompt] = useState(agent.system_prompt)
-  const [modelId, setModelId] = useState(agent.model.id)
-  const [temperature, setTemperature] = useState(agent.model_params?.temperature ?? 0.7)
-  const [topP, setTopP] = useState(agent.model_params?.top_p ?? 1.0)
-  const [maxTokens, setMaxTokens] = useState(agent.model_params?.max_tokens ?? 4096)
+  const [name, setName] = useState(agent?.name ?? '')
+  const [description, setDescription] = useState(agent?.description ?? '')
+  const [systemPrompt, setSystemPrompt] = useState(agent?.system_prompt ?? '')
+  const [modelId, setModelId] = useState(agent?.model.id ?? models[0]?.id ?? '')
+  const [temperature, setTemperature] = useState(agent?.model_params?.temperature ?? 0.7)
+  const [topP, setTopP] = useState(agent?.model_params?.top_p ?? 1.0)
+  const [maxTokens, setMaxTokens] = useState(agent?.model_params?.max_tokens ?? 4096)
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(
-    () => new Set(agent.tools.map((tl) => tl.id)),
+    () => new Set(agent?.tools.map((tl) => tl.id) ?? []),
   )
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(
-    () => new Set(agent.skills?.map((s) => s.id) ?? []),
+    () => new Set(agent?.skills?.map((s) => s.id) ?? []),
   )
 
+  // Sync state from agent prop (edit mode only)
   useEffect(() => {
+    if (mode !== 'edit' || !agent) return
     setName(agent.name)
     setDescription(agent.description ?? '')
     setSystemPrompt(agent.system_prompt)
@@ -60,7 +67,14 @@ export function VisualSettingsFlow({
     setMaxTokens(agent.model_params?.max_tokens ?? 4096)
     setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
     setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
-  }, [agent])
+  }, [agent, mode])
+
+  // Set default model when models load in create mode
+  useEffect(() => {
+    if (mode === 'create' && !modelId && models.length > 0) {
+      setModelId(models[0].id)
+    }
+  }, [mode, modelId, models])
 
   const toggleTool = useCallback((toolId: string) => {
     setSelectedToolIds((prev) => {
@@ -81,8 +95,10 @@ export function VisualSettingsFlow({
   }, [])
 
   const currentModelName = useMemo(() => {
-    return models.find((m) => m.id === modelId)?.display_name ?? agent.model.display_name
-  }, [models, modelId, agent.model.display_name])
+    const found = models.find((m) => m.id === modelId)?.display_name
+    if (found) return found
+    return agent?.model.display_name ?? ''
+  }, [models, modelId, agent?.model.display_name])
 
   const handleAgentNodeUpdate = useCallback(
     (data: {
@@ -106,21 +122,31 @@ export function VisualSettingsFlow({
   )
 
   async function handleSave() {
+    const payload = {
+      name: name || (mode === 'create' ? t('defaultName') : name),
+      description: description || undefined,
+      system_prompt: systemPrompt,
+      model_id: modelId,
+      tool_ids: Array.from(selectedToolIds),
+      skill_ids: Array.from(selectedSkillIds),
+      model_params: { temperature, top_p: topP, max_tokens: maxTokens },
+    }
+
     try {
-      await updateAgent.mutateAsync({
-        name,
-        description: description || undefined,
-        system_prompt: systemPrompt,
-        model_id: modelId,
-        tool_ids: Array.from(selectedToolIds),
-        skill_ids: Array.from(selectedSkillIds),
-        model_params: { temperature, top_p: topP, max_tokens: maxTokens },
-      })
-      toast.success(t('toast.saved'))
+      if (mode === 'create') {
+        const created = await createAgent.mutateAsync(payload)
+        toast.success(t('toast.saved'))
+        router.push(`/agents/${created.id}`)
+      } else {
+        await updateAgent.mutateAsync(payload)
+        toast.success(t('toast.saved'))
+      }
     } catch {
       toast.error(t('toast.saveFailed'))
     }
   }
+
+  const isSaving = mode === 'create' ? createAgent.isPending : updateAgent.isPending
 
   const nodeTypes = useMemo(
     () => ({
@@ -303,7 +329,8 @@ export function VisualSettingsFlow({
         agentId={agentId}
         agentName={name}
         onSave={handleSave}
-        isSaving={updateAgent.isPending}
+        isSaving={isSaving}
+        mode={mode}
       />
       <div className="flex-1">
         <ReactFlow
