@@ -40,5 +40,11 @@ class Settings(BaseSettings):
     mcp_connection_timeout: int = 10
     tool_call_timeout: int = 30
 
+    # Skills (package)
+    skill_storage_dir: str = "./data/skills"
+    skill_script_timeout: int = 30
+    skill_max_output_bytes: int = 102400
+    skill_max_package_bytes: int = 52428800
+
 
 settings = Settings()

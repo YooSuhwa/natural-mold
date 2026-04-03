@@ -61,6 +61,14 @@ async def execute_agent_stream(
                 auth_config=tc.get("auth_config"),
             )
             langchain_tools.append(tool)
+        elif tc.get("type") == "skill_package":
+            from app.agent_runtime.skill_tool_factory import create_skill_tools
+
+            skill_tools = create_skill_tools(
+                skill_id=tc["skill_id"],
+                skill_dir=tc["skill_dir"],
+            )
+            langchain_tools.extend(skill_tools)
 
     agent = build_agent(model, langchain_tools, system_prompt)
     lc_messages = convert_to_langchain_messages(messages_history)

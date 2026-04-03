@@ -86,29 +86,8 @@ async def send_message(
     messages = await chat_service.list_messages(db, conversation_id)
     messages_history = [{"role": m.role, "content": m.content} for m in messages]
 
-    skill_contents = chat_service.get_agent_skill_contents(agent)
-    effective_prompt = agent.system_prompt
-    if skill_contents:
-        skills_text = "\n\n---\n\n".join(skill_contents)
-        effective_prompt = f"{agent.system_prompt}\n\n## 연결된 스킬\n\n{skills_text}"
-
-    tools_config = []
-    for link in agent.tool_links:
-        tool = link.tool
-        # Merge: tool-level auth_config + agent-level config override
-        merged_auth = {**(tool.auth_config or {}), **(link.config or {})}
-        tools_config.append(
-            {
-                "type": tool.type,
-                "name": tool.name,
-                "description": tool.description,
-                "api_url": tool.api_url,
-                "http_method": tool.http_method,
-                "parameters_schema": tool.parameters_schema,
-                "auth_type": tool.auth_type,
-                "auth_config": merged_auth or None,
-            }
-        )
+    effective_prompt = chat_service.build_effective_prompt(agent)
+    tools_config = chat_service.build_tools_config(agent)
 
     async def generate():
         import json

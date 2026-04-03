@@ -127,4 +127,61 @@ def get_agent_skill_contents(agent: Agent) -> list[str]:
     """Get skill contents from an agent's eagerly-loaded skill links."""
     if not agent.skill_links:
         return []
-    return [link.skill.content for link in agent.skill_links if link.skill]
+    contents: list[str] = []
+    for link in agent.skill_links:
+        skill = link.skill
+        if not skill:
+            continue
+        if skill.type == "package" and skill.storage_path:
+            base_url = f"/api/skills/{skill.id}/files"
+            header = f"Base directory for this skill: {base_url}\n\n"
+            body = skill.content or ""
+            body = body.replace("${SKILL_DIR}", base_url)
+            body = body.replace("${CLAUDE_SKILL_DIR}", base_url)
+            contents.append(header + body)
+        else:
+            contents.append(skill.content)
+    return contents
+
+
+def build_effective_prompt(agent: Agent) -> str:
+    """Build system prompt with skill contents injected."""
+    skill_contents = get_agent_skill_contents(agent)
+    if not skill_contents:
+        return agent.system_prompt
+    skills_text = "\n\n---\n\n".join(skill_contents)
+    return f"{agent.system_prompt}\n\n## 연결된 스킬\n\n{skills_text}"
+
+
+def build_tools_config(agent: Agent) -> list[dict[str, Any]]:
+    """Build tools_config list from agent's tool and skill links."""
+    tools_config: list[dict[str, Any]] = []
+
+    for link in agent.tool_links:
+        tool = link.tool
+        merged_auth = {**(tool.auth_config or {}), **(link.config or {})}
+        tools_config.append(
+            {
+                "type": tool.type,
+                "name": tool.name,
+                "description": tool.description,
+                "api_url": tool.api_url,
+                "http_method": tool.http_method,
+                "parameters_schema": tool.parameters_schema,
+                "auth_type": tool.auth_type,
+                "auth_config": merged_auth or None,
+            }
+        )
+
+    for link in agent.skill_links:
+        skill = link.skill
+        if skill and skill.type == "package" and skill.storage_path:
+            tools_config.append(
+                {
+                    "type": "skill_package",
+                    "skill_id": str(skill.id),
+                    "skill_dir": skill.storage_path,
+                }
+            )
+
+    return tools_config

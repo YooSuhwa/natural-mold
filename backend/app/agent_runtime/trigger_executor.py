@@ -42,23 +42,9 @@ async def execute_trigger(trigger_id: str) -> None:
         # Save trigger input as user message
         await chat_service.save_message(db, conv.id, "user", trigger.input_message)
 
-        # Build tools config from agent's linked tools (with per-agent config merge)
-        tools_config = []
-        for link in agent.tool_links:
-            tool = link.tool
-            merged_auth = {**(tool.auth_config or {}), **(link.config or {})}
-            tools_config.append(
-                {
-                    "type": tool.type,
-                    "name": tool.name,
-                    "description": tool.description,
-                    "api_url": tool.api_url,
-                    "http_method": tool.http_method,
-                    "parameters_schema": tool.parameters_schema,
-                    "auth_type": tool.auth_type,
-                    "auth_config": merged_auth or None,
-                }
-            )
+        # Build prompt (with skill contents) and tools config via shared helpers
+        effective_prompt = chat_service.build_effective_prompt(agent)
+        tools_config = chat_service.build_tools_config(agent)
 
         # Build messages history
         messages_history = [{"role": "user", "content": trigger.input_message}]
@@ -71,7 +57,7 @@ async def execute_trigger(trigger_id: str) -> None:
                 model_name=agent.model.model_name,
                 api_key=agent.model.api_key_encrypted,
                 base_url=agent.model.base_url,
-                system_prompt=agent.system_prompt,
+                system_prompt=effective_prompt,
                 tools_config=tools_config,
                 messages_history=messages_history,
                 thread_id=str(conv.id),
