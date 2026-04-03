@@ -18,7 +18,7 @@ from app.scheduler import (
 
 
 @pytest.fixture
-async def running_scheduler() -> AsyncIOScheduler:
+async def running_scheduler():  # type: ignore[misc]
     """Create a scheduler with MemoryJobStore that is running (async context)."""
     sched = AsyncIOScheduler(jobstores={"default": MemoryJobStore()})
     sched.start(paused=True)  # needs an event loop; async fixture provides one
@@ -75,6 +75,7 @@ async def test_add_trigger_replaces_existing(running_scheduler: AsyncIOScheduler
     add_trigger_job(trigger_id, "interval", {"interval_minutes": 15})
 
     job = running_scheduler.get_job(f"trigger_{trigger_id}")
+    assert job is not None
     assert job.trigger.interval.total_seconds() == 15 * 60
 
 
@@ -153,10 +154,12 @@ async def test_resume_job(running_scheduler: AsyncIOScheduler):
 
     pause_trigger_job(trigger_id)
     job = running_scheduler.get_job(f"trigger_{trigger_id}")
+    assert job is not None
     assert job.next_run_time is None
 
     resume_trigger_job(trigger_id)
     job = running_scheduler.get_job(f"trigger_{trigger_id}")
+    assert job is not None
     assert job.next_run_time is not None
 
 

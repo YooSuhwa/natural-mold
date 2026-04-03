@@ -25,7 +25,7 @@ class Conversation(Base):
         nullable=False,
     )
 
-    agent: Mapped[Agent] = relationship(back_populates="conversations")
+    agent: Mapped[Agent] = relationship(back_populates="conversations")  # type: ignore[name-defined]
     messages: Mapped[list[Message]] = relationship(
         back_populates="conversation", cascade="all, delete-orphan"
     )

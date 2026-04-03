@@ -65,6 +65,11 @@ vi.mock('@/lib/sse/stream-chat', () => ({
   streamChat: (...args: unknown[]) => mockStreamChat(...args),
 }))
 
+const mockToastError = vi.fn()
+vi.mock('sonner', () => ({
+  toast: { error: (...args: unknown[]) => mockToastError(...args), success: vi.fn() },
+}))
+
 vi.mock('jotai', async () => {
   const actual = await vi.importActual('jotai')
   return {
@@ -82,6 +87,7 @@ describe('ChatPage', () => {
       isLoading: false,
     })
     mockStreamChat.mockClear()
+    mockToastError.mockClear()
   })
 
   it('renders chat input area', () => {
@@ -275,7 +281,7 @@ describe('ChatPage', () => {
     expect(mockStreamChat).toHaveBeenCalled()
   })
 
-  it('handles stream error gracefully', async () => {
+  it('handles stream error gracefully and shows toast', async () => {
     const { default: userEvent } = await import('@testing-library/user-event')
     const user = userEvent.setup()
 
@@ -309,8 +315,46 @@ describe('ChatPage', () => {
     const sendButton = screen.getByRole('button', { name: /전송/ })
     await user.click(sendButton)
 
-    // Should not crash
     expect(mockStreamChat).toHaveBeenCalled()
+    expect(mockToastError).toHaveBeenCalledWith('Something went wrong')
+  })
+
+  it('shows default error message when error event has no message', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+
+    mockStreamChat.mockReturnValue(
+      (async function* () {
+        yield {
+          event: 'error',
+          data: {},
+        }
+      })(),
+    )
+
+    mockUseMessages.mockReturnValue({ data: [], isLoading: false })
+
+    render(
+      <ChatPage
+        params={
+          {
+            agentId: 'agent-1',
+            conversationId: 'conv-1',
+          } as unknown as Promise<{
+            agentId: string
+            conversationId: string
+          }>
+        }
+      />,
+    )
+
+    const textarea = screen.getByPlaceholderText('메시지 입력...')
+    await user.type(textarea, 'Test')
+    const sendButton = screen.getByRole('button', { name: /전송/ })
+    await user.click(sendButton)
+
+    expect(mockStreamChat).toHaveBeenCalled()
+    expect(mockToastError).toHaveBeenCalledWith('에이전트 실행 중 오류가 발생했습니다')
   })
 
   it('shows settings link and new conversation button', () => {

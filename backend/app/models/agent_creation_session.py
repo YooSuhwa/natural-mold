@@ -14,8 +14,10 @@ class AgentCreationSession(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
-    conversation_history: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
-    draft_config: Mapped[dict | None] = mapped_column(JSON)
+    conversation_history: Mapped[list[dict]] = mapped_column(  # type: ignore[type-arg]
+        JSON, nullable=False, default=list
+    )
+    draft_config: Mapped[dict | None] = mapped_column(JSON)  # type: ignore[type-arg]
     status: Mapped[str] = mapped_column(String(20), default="in_progress")
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
@@ -27,4 +29,4 @@ class AgentCreationSession(Base):
         nullable=False,
     )
 
-    user: Mapped[User] = relationship(back_populates="creation_sessions")
+    user: Mapped[User] = relationship(back_populates="creation_sessions")  # type: ignore[name-defined]

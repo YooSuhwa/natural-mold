@@ -41,7 +41,7 @@ export async function* streamChat(
         } else if (line.startsWith('data: ')) {
           try {
             const data = JSON.parse(line.slice(6))
-            yield { event: currentEvent, data }
+            yield { event: currentEvent, data } as SSEEvent
           } catch {
             // Skip malformed JSON lines
           }

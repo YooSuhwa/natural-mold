@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
+from app.exceptions import NotFoundError
 from app.schemas.model import ModelCreate, ModelResponse
 from app.services import model_service
 
@@ -26,4 +27,4 @@ async def create_model(data: ModelCreate, db: AsyncSession = Depends(get_db)):
 async def delete_model(model_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     deleted = await model_service.delete_model(db, model_id)
     if not deleted:
-        raise HTTPException(status_code=404, detail="Model not found")
+        raise NotFoundError("MODEL_NOT_FOUND", "모델을 찾을 수 없습니다")

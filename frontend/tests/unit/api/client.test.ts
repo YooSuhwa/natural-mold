@@ -28,7 +28,7 @@ describe('apiFetch', () => {
     expect(result).toBeUndefined()
   })
 
-  it('throws ApiError with detail on 400', async () => {
+  it('throws ApiError with detail on 400 (old format)', async () => {
     server.use(
       http.post(`${API_BASE}/api/test`, () => {
         return HttpResponse.json({ detail: 'Validation failed' }, { status: 400 })
@@ -39,7 +39,29 @@ describe('apiFetch', () => {
     await expect(apiFetch('/api/test', { method: 'POST' })).rejects.toThrow('Validation failed')
   })
 
-  it('throws ApiError on 404', async () => {
+  it('throws ApiError with code on 400 (new format)', async () => {
+    server.use(
+      http.post(`${API_BASE}/api/test`, () => {
+        return HttpResponse.json(
+          { error: { code: 'VALIDATION_ERROR', message: 'Invalid input' } },
+          { status: 400 },
+        )
+      }),
+    )
+
+    try {
+      await apiFetch('/api/test', { method: 'POST' })
+      expect.unreachable('Should have thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError)
+      const apiErr = error as ApiError
+      expect(apiErr.status).toBe(400)
+      expect(apiErr.code).toBe('VALIDATION_ERROR')
+      expect(apiErr.message).toBe('Invalid input')
+    }
+  })
+
+  it('throws ApiError on 404 (old format)', async () => {
     server.use(
       http.get(`${API_BASE}/api/missing`, () => {
         return HttpResponse.json({ detail: 'Not found' }, { status: 404 })
@@ -51,8 +73,10 @@ describe('apiFetch', () => {
       expect.unreachable('Should have thrown')
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError)
-      expect((error as ApiError).status).toBe(404)
-      expect((error as ApiError).message).toBe('Not found')
+      const apiErr = error as ApiError
+      expect(apiErr.status).toBe(404)
+      expect(apiErr.code).toBe('UNKNOWN_ERROR')
+      expect(apiErr.message).toBe('Not found')
     }
   })
 
@@ -68,8 +92,26 @@ describe('apiFetch', () => {
       expect.unreachable('Should have thrown')
     } catch (error) {
       expect(error).toBeInstanceOf(ApiError)
-      expect((error as ApiError).status).toBe(500)
-      expect((error as ApiError).message).toBe('Unknown error')
+      const apiErr = error as ApiError
+      expect(apiErr.status).toBe(500)
+      expect(apiErr.code).toBe('UNKNOWN_ERROR')
+      expect(apiErr.message).toBe('Unknown error')
+    }
+  })
+
+  it('has name set to ApiError', async () => {
+    server.use(
+      http.get(`${API_BASE}/api/name-test`, () => {
+        return HttpResponse.json({}, { status: 500 })
+      }),
+    )
+
+    try {
+      await apiFetch('/api/name-test')
+      expect.unreachable('Should have thrown')
+    } catch (error) {
+      expect(error).toBeInstanceOf(ApiError)
+      expect((error as ApiError).name).toBe('ApiError')
     }
   })
 

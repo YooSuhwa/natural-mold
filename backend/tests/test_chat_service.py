@@ -169,6 +169,7 @@ async def test_save_message_user_generates_title(db: AsyncSession):
     await save_message(db, conv.id, "user", "오늘 날씨 어때?")
 
     updated = await get_conversation(db, conv.id)
+    assert updated is not None
     assert updated.title == "오늘 날씨 어때?"
 
 
@@ -183,6 +184,8 @@ async def test_save_message_user_long_title_truncated(db: AsyncSession):
     await save_message(db, conv.id, "user", long_msg)
 
     updated = await get_conversation(db, conv.id)
+    assert updated is not None
+    assert updated.title is not None
     assert len(updated.title) == 40
     assert updated.title.endswith("...")
 
@@ -197,6 +200,7 @@ async def test_save_message_assistant_no_title_change(db: AsyncSession):
     await save_message(db, conv.id, "assistant", "안녕하세요!")
 
     updated = await get_conversation(db, conv.id)
+    assert updated is not None
     assert updated.title == "새 대화"  # unchanged
 
 

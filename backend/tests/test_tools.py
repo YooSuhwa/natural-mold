@@ -25,7 +25,7 @@ def _patch_settings(**overrides):
         "google_oauth_refresh_token": "",
     }
     defaults.update(overrides)
-    return patch.multiple("app.config.settings", **defaults)
+    return patch.multiple("app.config.settings", **defaults)  # type: ignore[call-overload]
 
 
 class TestServerKeyAvailable:

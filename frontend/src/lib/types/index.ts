@@ -153,10 +153,13 @@ export type SSEEventType =
   | 'message_end'
   | 'error'
 
-export interface SSEEvent {
-  event: SSEEventType
-  data: Record<string, unknown>
-}
+export type SSEEvent =
+  | { event: 'message_start'; data: { id: string; role: string } }
+  | { event: 'content_delta'; data: { delta?: string; content?: string } }
+  | { event: 'tool_call_start'; data: { name: string; args: Record<string, unknown> } }
+  | { event: 'tool_call_result'; data: { result: string } }
+  | { event: 'message_end'; data: { content: string; usage: Record<string, number> } }
+  | { event: 'error'; data: { message: string } }
 
 // Usage
 export interface UsageSummary {

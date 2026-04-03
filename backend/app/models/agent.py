@@ -31,16 +31,16 @@ class Agent(Base):
         nullable=False,
     )
 
-    user: Mapped[User] = relationship(back_populates="agents")
-    model: Mapped[Model] = relationship()
+    user: Mapped[User] = relationship(back_populates="agents")  # type: ignore[name-defined]
+    model: Mapped[Model] = relationship()  # type: ignore[name-defined]
     tool_links: Mapped[list[AgentToolLink]] = relationship(
         cascade="all, delete-orphan",
     )
-    conversations: Mapped[list[Conversation]] = relationship(
+    conversations: Mapped[list[Conversation]] = relationship(  # type: ignore[name-defined]
         back_populates="agent", cascade="all, delete-orphan"
     )
 
     @property
-    def tools(self) -> list[Tool]:
+    def tools(self) -> list[Tool]:  # type: ignore[name-defined]
         """Convenience property: list of Tool objects (backward compat)."""
         return [link.tool for link in self.tool_links]

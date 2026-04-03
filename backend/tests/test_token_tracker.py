@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from app.agent_runtime.token_tracker import TokenTrackingCallback
 
 
-def _make_llm_result(token_usage: dict | None = None, llm_output: dict | None = ...):
+def _make_llm_result(token_usage: dict | None = None, llm_output: object = ...):
     """Build a mock LLMResult with the given token_usage."""
     result = MagicMock()
     if llm_output is ...:

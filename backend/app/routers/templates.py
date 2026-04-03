@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
+from app.exceptions import NotFoundError
 from app.schemas.template import TemplateResponse
 from app.services import template_service
 
@@ -24,5 +25,5 @@ async def list_templates(
 async def get_template(template_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     template = await template_service.get_template(db, template_id)
     if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+        raise NotFoundError("TEMPLATE_NOT_FOUND", "템플릿을 찾을 수 없습니다")
     return template

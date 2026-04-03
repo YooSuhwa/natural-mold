@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
+from app.exceptions import AppError, NotFoundError, ValidationError
 from app.schemas.agent import AgentResponse
 from app.schemas.agent_creation import (
     CreationMessageRequest,
@@ -33,7 +34,7 @@ async def get_session(
 ):
     session = await agent_creation_service.get_session(db, session_id, user.id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise NotFoundError("SESSION_NOT_FOUND", "세션을 찾을 수 없습니다")
     return session
 
 
@@ -46,9 +47,9 @@ async def send_creation_message(
 ):
     session = await agent_creation_service.get_session(db, session_id, user.id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise NotFoundError("SESSION_NOT_FOUND", "세션을 찾을 수 없습니다")
     if session.status != "in_progress":
-        raise HTTPException(status_code=400, detail="Session is not in progress")
+        raise ValidationError("SESSION_NOT_IN_PROGRESS", "세션이 진행 중이 아닙니다")
 
     return await agent_creation_service.send_message(db, session, data.content)
 
@@ -61,11 +62,13 @@ async def confirm_creation(
 ):
     session = await agent_creation_service.get_session(db, session_id, user.id)
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise NotFoundError("SESSION_NOT_FOUND", "세션을 찾을 수 없습니다")
     if not session.draft_config:
-        raise HTTPException(status_code=400, detail="No draft config available")
+        raise ValidationError("NO_DRAFT_CONFIG", "드래프트 설정이 없습니다")
 
     agent = await agent_creation_service.confirm_creation(db, session)
     if not agent:
-        raise HTTPException(status_code=400, detail="Could not create agent from config")
+        raise AppError(
+            "AGENT_CREATION_FAILED", "설정으로 에이전트를 생성할 수 없습니다", status=500
+        )
     return agent

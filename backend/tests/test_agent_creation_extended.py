@@ -146,8 +146,8 @@ async def test_send_message_session_completed(client: AsyncClient):
         f"/api/agents/create-session/{session_id}/message",
         json={"content": "test"},
     )
-    assert resp.status_code == 400
-    assert "not in progress" in resp.json()["detail"]
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "SESSION_NOT_IN_PROGRESS"
 
 
 @pytest.mark.asyncio
@@ -177,8 +177,8 @@ async def test_confirm_creation_no_draft_config(client: AsyncClient):
     session_id = await _seed_session(draft_config=None)
 
     resp = await client.post(f"/api/agents/create-session/{session_id}/confirm")
-    assert resp.status_code == 400
-    assert "No draft config" in resp.json()["detail"]
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "NO_DRAFT_CONFIG"
 
 
 @pytest.mark.asyncio
@@ -193,8 +193,8 @@ async def test_confirm_creation_no_model_returns_400(client: AsyncClient):
     session_id = await _seed_session(draft_config=draft)
 
     resp = await client.post(f"/api/agents/create-session/{session_id}/confirm")
-    assert resp.status_code == 400
-    assert "Could not create" in resp.json()["detail"]
+    assert resp.status_code == 500
+    assert resp.json()["error"]["code"] == "AGENT_CREATION_FAILED"
 
 
 # ===========================================================================

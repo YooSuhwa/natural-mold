@@ -30,11 +30,18 @@ if os.path.exists(_hc_cert):
     ssl_ctx = ssl.create_default_context(cafile=_combined.name)
     ssl._create_default_https_context = lambda: ssl_ctx
 
+import logging
 import uuid
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
+
+from app.exceptions import AppError
+
+logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.database import async_session
@@ -139,6 +146,43 @@ def create_app() -> FastAPI:
     app.include_router(tools.router)
     app.include_router(triggers.router)
     app.include_router(usage.router)
+
+    # ---- Exception handlers ----
+
+    @app.exception_handler(AppError)
+    async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status,
+            content={"error": {"code": exc.code, "message": exc.message}},
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "입력값 검증에 실패했습니다",
+                    "details": exc.errors(),
+                }
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def generic_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception("Unhandled exception: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "INTERNAL_ERROR",
+                    "message": "서버 오류가 발생했습니다",
+                }
+            },
+        )
 
     @app.get("/api/health")
     async def health_check():

@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.executor import execute_agent_stream
 from app.dependencies import CurrentUser, get_current_user, get_db
+from app.exceptions import NotFoundError
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationResponse,
@@ -30,7 +31,7 @@ async def list_conversations(
 ):
     agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     return await chat_service.list_conversations(db, agent_id)
 
 
@@ -47,7 +48,7 @@ async def create_conversation(
 ):
     agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     return await chat_service.create_conversation(db, agent_id, data.title)
 
 
@@ -61,7 +62,7 @@ async def list_messages(
 ):
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
     return await chat_service.list_messages(db, conversation_id)
 
 
@@ -74,13 +75,13 @@ async def send_message(
 ):
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
 
     await chat_service.save_message(db, conversation_id, "user", data.content)
 
     agent = await chat_service.get_agent_with_tools(db, conv.agent_id, user.id)
     if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
 
     messages = await chat_service.list_messages(db, conversation_id)
     messages_history = [{"role": m.role, "content": m.content} for m in messages]

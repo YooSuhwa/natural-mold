@@ -101,7 +101,16 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "basic"
+venvPath = "."
+venv = ".venv"
+
 [dependency-groups]
 dev = [
     "aiosqlite>=0.22.1",
+    "pyright>=1.1",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
 ]
