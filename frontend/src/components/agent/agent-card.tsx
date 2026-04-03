@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useTranslations, useFormatter } from 'next-intl'
-import { WrenchIcon, StarIcon } from 'lucide-react'
+import { WrenchIcon, StarIcon, Settings2Icon } from 'lucide-react'
 import {
   Card,
   CardHeader,
@@ -20,6 +21,7 @@ interface AgentCardProps {
 }
 
 export function AgentCard({ agent }: AgentCardProps) {
+  const router = useRouter()
   const { mutate: toggleFavorite } = useToggleFavorite()
   const t = useTranslations('agent.card')
   const format = useFormatter()
@@ -50,6 +52,18 @@ export function AgentCard({ agent }: AgentCardProps) {
               {agent.name}
             </CardTitle>
             <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  router.push(`/agents/${agent.id}/settings`)
+                }}
+                className="rounded-md p-1 hover:bg-accent transition-colors"
+                aria-label={t('settings')}
+              >
+                <Settings2Icon className="size-4 text-muted-foreground hover:text-foreground transition-colors" />
+              </button>
               <button
                 type="button"
                 onClick={(e) => {
