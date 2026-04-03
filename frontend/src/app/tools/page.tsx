@@ -16,6 +16,7 @@ import {
   ShieldCheckIcon,
   ServerIcon,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useTools, useDeleteTool } from '@/lib/hooks/use-tools'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
@@ -56,40 +57,28 @@ const ALL_TAGS = [
   'free',
 ] as const
 
-const FILTER_OPTIONS: { value: ToolFilter; label: string }[] = [
-  { value: 'all', label: 'All' },
-  { value: 'builtin', label: 'Built-in' },
-  { value: 'prebuilt', label: 'Pre-built' },
-  { value: 'custom', label: 'Custom' },
-  { value: 'mcp', label: 'MCP' },
-]
-
-const TOOL_META: Record<
+const TOOL_TYPE_STYLES: Record<
   string,
-  { icon: typeof SparklesIcon; color: string; badge: string; badgeClass: string }
+  { icon: typeof SparklesIcon; color: string; badgeClass: string }
 > = {
   builtin: {
     icon: SparklesIcon,
     color: 'bg-violet-500/10 text-violet-600',
-    badge: 'Built-in',
     badgeClass: 'bg-violet-100 text-violet-700 hover:bg-violet-100',
   },
   prebuilt: {
     icon: PlugIcon,
     color: 'bg-sky-500/10 text-sky-600',
-    badge: 'Pre-built',
     badgeClass: 'bg-sky-100 text-sky-700 hover:bg-sky-100',
   },
   mcp: {
     icon: LinkIcon,
     color: 'bg-primary/10 text-primary',
-    badge: 'MCP',
     badgeClass: '',
   },
   custom: {
     icon: GlobeIcon,
     color: 'bg-muted text-muted-foreground',
-    badge: 'Custom',
     badgeClass: '',
   },
 }
@@ -105,30 +94,24 @@ function getPrebuiltStatus(tool: Tool): PrebuiltStatus {
   return 'not_configured'
 }
 
-const PREBUILT_STYLES: Record<
+const PREBUILT_STATUS_STYLES: Record<
   PrebuiltStatus,
-  { color: string; badgeClass: string; badge: string; icon: typeof KeyIcon; buttonLabel: string }
+  { color: string; badgeClass: string; icon: typeof KeyIcon }
 > = {
   not_configured: {
     color: 'bg-amber-500/10 text-amber-600',
     badgeClass: 'bg-amber-100 text-amber-700 hover:bg-amber-100',
-    badge: '키 미설정',
     icon: KeyIcon,
-    buttonLabel: '키 설정',
   },
   server_key: {
     color: 'bg-sky-500/10 text-sky-600',
     badgeClass: 'bg-sky-100 text-sky-700 hover:bg-sky-100',
-    badge: '서버 설정',
     icon: ServerIcon,
-    buttonLabel: '개별 키 설정',
   },
   configured: {
     color: 'bg-emerald-500/10 text-emerald-600',
     badgeClass: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100',
-    badge: '설정 완료',
     icon: CheckCircleIcon,
-    buttonLabel: '키 변경',
   },
 }
 
@@ -158,12 +141,28 @@ function ToolCard({
   isDeleting: boolean
   onShowDetail: (tool: Tool) => void
 }) {
-  const meta = TOOL_META[tool.type] ?? TOOL_META.custom
+  const t = useTranslations('tool.page')
+  const meta = TOOL_TYPE_STYLES[tool.type] ?? TOOL_TYPE_STYLES.custom
   const Icon = meta.icon
   const isPrebuilt = tool.type === 'prebuilt'
   const prebuiltStatus = isPrebuilt ? getPrebuiltStatus(tool) : null
-  const pStyle = prebuiltStatus ? PREBUILT_STYLES[prebuiltStatus] : null
+  const pStyle = prebuiltStatus ? PREBUILT_STATUS_STYLES[prebuiltStatus] : null
   const isDeletable = !tool.is_system
+
+  const badgeTexts: Record<string, string> = {
+    builtin: t('badge.builtin'),
+    prebuilt: t('badge.prebuilt'),
+    mcp: t('badge.mcp'),
+    custom: t('badge.custom'),
+  }
+
+  const prebuiltTexts: Record<PrebuiltStatus, { badge: string; buttonLabel: string }> = {
+    not_configured: { badge: t('prebuilt.notConfigured'), buttonLabel: t('prebuilt.setKey') },
+    server_key: { badge: t('prebuilt.serverKey'), buttonLabel: t('prebuilt.setIndividualKey') },
+    configured: { badge: t('prebuilt.configured'), buttonLabel: t('prebuilt.changeKey') },
+  }
+
+  const pText = prebuiltStatus ? prebuiltTexts[prebuiltStatus] : null
 
   return (
     <Card
@@ -182,14 +181,14 @@ function ToolCard({
           <div className="flex items-center gap-1.5">
             {tool.agent_count > 0 && (
               <span className="text-[10px] text-muted-foreground">
-                {tool.agent_count}개 에이전트
+                {t('agentCount', { count: tool.agent_count })}
               </span>
             )}
             <Badge
               className={pStyle ? pStyle.badgeClass : meta.badgeClass}
               variant={pStyle || meta.badgeClass ? undefined : 'secondary'}
             >
-              {pStyle ? pStyle.badge : meta.badge}
+              {pText ? pText.badge : (badgeTexts[tool.type] ?? badgeTexts.custom)}
             </Badge>
           </div>
         </div>
@@ -212,13 +211,13 @@ function ToolCard({
       </CardHeader>
 
       <CardFooter className="gap-2">
-        {isPrebuilt && pStyle ? (
+        {isPrebuilt && pText ? (
           <PrebuiltAuthDialog
             tool={tool}
             trigger={
               <Button variant="outline" size="sm" className="w-full cursor-pointer">
                 <KeyIcon className="size-3.5" data-icon="inline-start" />
-                {pStyle.buttonLabel}
+                {pText.buttonLabel}
               </Button>
             }
           />
@@ -235,12 +234,12 @@ function ToolCard({
             ) : (
               <Trash2Icon className="size-3.5" data-icon="inline-start" />
             )}
-            삭제
+            {t('deleteButton')}
           </Button>
         ) : (
           <div className="flex w-full items-center justify-center gap-1.5 text-xs text-muted-foreground">
             <ShieldCheckIcon className="size-3.5" />
-            <span>시스템 도구</span>
+            <span>{t('systemTool')}</span>
           </div>
         )}
       </CardFooter>
@@ -251,16 +250,25 @@ function ToolCard({
 export default function ToolsPage() {
   const { data: tools, isLoading } = useTools()
   const deleteTool = useDeleteTool()
+  const t = useTranslations('tool.page')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<ToolFilter>('all')
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [detailTool, setDetailTool] = useState<Tool | null>(null)
 
+  const filterOptions: { value: ToolFilter; label: string }[] = [
+    { value: 'all', label: t('filter.all') },
+    { value: 'builtin', label: t('filter.builtin') },
+    { value: 'prebuilt', label: t('filter.prebuilt') },
+    { value: 'custom', label: t('filter.custom') },
+    { value: 'mcp', label: t('filter.mcp') },
+  ]
+
   const availableTags = useMemo(() => {
     if (!tools) return []
     const tagSet = new Set<string>()
-    for (const t of tools) {
-      if (t.tags) t.tags.forEach((tag) => tagSet.add(tag))
+    for (const tl of tools) {
+      if (tl.tags) tl.tags.forEach((tag) => tagSet.add(tag))
     }
     return ALL_TAGS.filter((tag) => tagSet.has(tag))
   }, [tools])
@@ -276,16 +284,17 @@ export default function ToolsPage() {
 
   const filteredTools = useMemo(() => {
     if (!tools) return []
-    return tools.filter((t) => {
-      if (filter !== 'all' && t.type !== filter) return false
+    return tools.filter((tl) => {
+      if (filter !== 'all' && tl.type !== filter) return false
       if (search) {
         const q = search.toLowerCase()
-        const nameMatch = t.name.toLowerCase().includes(q)
-        const descMatch = t.description?.toLowerCase().includes(q) ?? false
+        const nameMatch = tl.name.toLowerCase().includes(q)
+        const descMatch = tl.description?.toLowerCase().includes(q) ?? false
         if (!nameMatch && !descMatch) return false
       }
       if (selectedTags.size > 0) {
-        if (!t.tags || !Array.from(selectedTags).some((tag) => t.tags!.includes(tag))) return false
+        if (!tl.tags || !Array.from(selectedTags).some((tag) => tl.tags!.includes(tag)))
+          return false
       }
       return true
     })
@@ -295,23 +304,23 @@ export default function ToolsPage() {
     if (!tools) return { all: 0, builtin: 0, prebuilt: 0, mcp: 0, custom: 0 }
     return {
       all: tools.length,
-      builtin: tools.filter((t) => t.type === 'builtin').length,
-      prebuilt: tools.filter((t) => t.type === 'prebuilt').length,
-      mcp: tools.filter((t) => t.type === 'mcp' && !t.is_system).length,
-      custom: tools.filter((t) => t.type === 'custom' && !t.is_system).length,
+      builtin: tools.filter((tl) => tl.type === 'builtin').length,
+      prebuilt: tools.filter((tl) => tl.type === 'prebuilt').length,
+      mcp: tools.filter((tl) => tl.type === 'mcp' && !tl.is_system).length,
+      custom: tools.filter((tl) => tl.type === 'custom' && !tl.is_system).length,
     }
   }, [tools])
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
-        title="도구 관리"
+        title={t('title')}
         action={
           <AddToolDialog
             trigger={
               <Button>
                 <PlusIcon className="size-4" data-icon="inline-start" />
-                도구 추가
+                {t('addTool')}
               </Button>
             }
           />
@@ -320,7 +329,7 @@ export default function ToolsPage() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-1.5 flex-wrap">
-          {FILTER_OPTIONS.map((opt) => (
+          {filterOptions.map((opt) => (
             <Button
               key={opt.value}
               variant={filter === opt.value ? 'default' : 'outline'}
@@ -342,7 +351,7 @@ export default function ToolsPage() {
         <div className="relative w-full sm:w-64">
           <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="도구 검색..."
+            placeholder={t('searchPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -353,7 +362,7 @@ export default function ToolsPage() {
       {/* Tag Filter */}
       {availableTags.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-muted-foreground mr-1">태그:</span>
+          <span className="text-xs text-muted-foreground mr-1">{t('tagLabel')}</span>
           {availableTags.map((tag) => (
             <Badge
               key={tag}
@@ -371,7 +380,7 @@ export default function ToolsPage() {
               className="h-6 text-xs text-muted-foreground"
               onClick={() => setSelectedTags(new Set())}
             >
-              초기화
+              {t('resetFilter')}
             </Button>
           )}
         </div>
@@ -398,12 +407,8 @@ export default function ToolsPage() {
       ) : search || filter !== 'all' ? (
         <EmptyState
           icon={<SearchIcon className="size-6" />}
-          title="검색 결과가 없습니다."
-          description={
-            search
-              ? `"${search}"에 해당하는 도구를 찾을 수 없습니다.`
-              : '선택한 필터에 해당하는 도구가 없습니다.'
-          }
+          title={t('noSearchResults')}
+          description={search ? t('noResultsForQuery', { query: search }) : t('noFilterResults')}
           action={
             <Button
               variant="outline"
@@ -412,21 +417,21 @@ export default function ToolsPage() {
                 setFilter('all')
               }}
             >
-              필터 초기화
+              {t('resetFilters')}
             </Button>
           }
         />
       ) : (
         <EmptyState
           icon={<WrenchIcon className="size-6" />}
-          title="등록된 도구가 없습니다."
-          description="도구를 추가하여 에이전트에 연결하세요."
+          title={t('empty.title')}
+          description={t('empty.description')}
           action={
             <AddToolDialog
               trigger={
                 <Button>
                   <PlusIcon className="size-4" data-icon="inline-start" />
-                  도구 추가
+                  {t('addTool')}
                 </Button>
               }
             />
@@ -462,14 +467,14 @@ export default function ToolsPage() {
 
                 {/* Stats */}
                 <div className="flex gap-4 text-sm text-muted-foreground">
-                  <span>{detailTool.agent_count}개 에이전트에서 사용 중</span>
-                  {detailTool.is_system && <span>시스템 도구</span>}
+                  <span>{t('detail.agentUsage', { count: detailTool.agent_count })}</span>
+                  {detailTool.is_system && <span>{t('detail.systemTool')}</span>}
                 </div>
 
                 {/* Auth Info */}
                 {detailTool.auth_type && (
                   <div className="space-y-1">
-                    <h4 className="text-sm font-medium">인증 방식</h4>
+                    <h4 className="text-sm font-medium">{t('detail.authMethod')}</h4>
                     <p className="text-sm text-muted-foreground">{detailTool.auth_type}</p>
                   </div>
                 )}
@@ -477,14 +482,20 @@ export default function ToolsPage() {
                 {/* Parameters Schema */}
                 {detailTool.parameters_schema && (
                   <div className="space-y-2">
-                    <h4 className="text-sm font-medium">파라미터</h4>
+                    <h4 className="text-sm font-medium">{t('detail.parameters')}</h4>
                     <div className="rounded-lg border">
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b bg-muted/50">
-                            <th className="px-3 py-2 text-left font-medium">이름</th>
-                            <th className="px-3 py-2 text-left font-medium">타입</th>
-                            <th className="px-3 py-2 text-left font-medium">설명</th>
+                            <th className="px-3 py-2 text-left font-medium">
+                              {t('detail.paramName')}
+                            </th>
+                            <th className="px-3 py-2 text-left font-medium">
+                              {t('detail.paramType')}
+                            </th>
+                            <th className="px-3 py-2 text-left font-medium">
+                              {t('detail.paramDescription')}
+                            </th>
                           </tr>
                         </thead>
                         <tbody>

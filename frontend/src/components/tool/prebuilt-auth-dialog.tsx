@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { KeyIcon, CheckCircleIcon, Loader2Icon } from 'lucide-react'
 import {
   Dialog,
@@ -54,13 +55,6 @@ const PROVIDER_FIELDS: Record<string, FieldDef[]> = {
   ],
 }
 
-const PROVIDER_DESCRIPTIONS: Record<string, string> = {
-  naver: ' 네이버 개발자센터에서 발급받을 수 있습니다.',
-  google_search: ' Google Cloud Console에서 API Key와 검색 엔진 ID를 발급받을 수 있습니다.',
-  google_chat: ' Google Chat 스페이스 설정에서 Webhook URL을 복사하세요.',
-  google_workspace: ' Google Cloud Console에서 OAuth2 인증 정보를 발급받을 수 있습니다.',
-}
-
 function detectProvider(toolName: string): string {
   const lower = toolName.toLowerCase()
   if (lower.startsWith('naver')) return 'naver'
@@ -71,10 +65,20 @@ function detectProvider(toolName: string): string {
 }
 
 export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
+  const t = useTranslations('tool.authDialog')
+  const tc = useTranslations('common')
   const [open, setOpen] = useState(false)
   const updateAuth = useUpdateToolAuthConfig()
   const provider = detectProvider(tool.name)
   const fields = PROVIDER_FIELDS[provider] ?? []
+  const providerKey = (
+    {
+      naver: 'naver',
+      google_search: 'googleSearch',
+      google_chat: 'googleChat',
+      google_workspace: 'googleWorkspace',
+    } as Record<string, string>
+  )[provider]
 
   const existingConfig = (tool.auth_config ?? {}) as Record<string, string>
   const [values, setValues] = useState<Record<string, string>>(() => {
@@ -114,11 +118,11 @@ export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyIcon className="size-4" />
-            {tool.name} API 키 설정
+            {t('title', { toolName: tool.name })}
           </DialogTitle>
           <DialogDescription>
-            이 도구를 사용하려면 API 키를 설정하세요.
-            {PROVIDER_DESCRIPTIONS[provider] ?? ''}
+            {t('description')}
+            {providerKey && t(`provider.${providerKey}`)}
           </DialogDescription>
         </DialogHeader>
 
@@ -141,20 +145,20 @@ export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
           {hasConfig && (
             <div className="flex items-center gap-2 text-xs text-emerald-600">
               <CheckCircleIcon className="size-3.5" />
-              API 키가 설정되어 있습니다
+              {t('configured')}
             </div>
           )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            취소
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSave} disabled={updateAuth.isPending}>
             {updateAuth.isPending && (
               <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
             )}
-            저장
+            {tc('save')}
           </Button>
         </DialogFooter>
       </DialogContent>

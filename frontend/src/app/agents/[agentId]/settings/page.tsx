@@ -14,6 +14,7 @@ import {
   PlusIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslations, useFormatter } from 'next-intl'
 import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
@@ -54,6 +55,9 @@ import { FixAgentDialog } from '@/components/agent/fix-agent-dialog'
 export default function AgentSettingsPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params)
   const router = useRouter()
+  const t = useTranslations('agent.settings')
+  const tc = useTranslations('common')
+  const format = useFormatter()
   const { data: agent, isLoading: agentLoading } = useAgent(agentId)
   const { data: models } = useModels()
   const { data: tools } = useTools()
@@ -78,6 +82,9 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const [triggerMinutes, setTriggerMinutes] = useState('10')
   const [triggerMessage, setTriggerMessage] = useState('')
 
+  const noToolsParts = String(t.raw('noTools')).split('{link}')
+  const noSkillsParts = String(t.raw('noSkills')).split('{link}')
+
   // Sync form state when agent data loads from server.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -86,7 +93,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       setDescription(agent.description ?? '')
       setSystemPrompt(agent.system_prompt)
       setModelId(agent.model.id)
-      setSelectedToolIds(new Set(agent.tools.map((t) => t.id)))
+      setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
       setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
       setTemperature(agent.model_params?.temperature ?? 0.7)
       setTopP(agent.model_params?.top_p ?? 1.0)
@@ -106,9 +113,9 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         skill_ids: Array.from(selectedSkillIds),
         model_params: { temperature, top_p: topP, max_tokens: maxTokens },
       })
-      toast.success('저장되었습니다')
+      toast.success(t('toast.saved'))
     } catch {
-      toast.error('저장에 실패했습니다')
+      toast.error(t('toast.saveFailed'))
     }
   }
 
@@ -150,34 +157,34 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             <ArrowLeftIcon className="size-4" />
           </Button>
         </Link>
-        <span className="text-sm text-muted-foreground">채팅으로 돌아가기</span>
+        <span className="text-sm text-muted-foreground">{t('backToChat')}</span>
       </div>
 
       <div className="flex items-center justify-between">
-        <PageHeader title={`에이전트 설정: ${agent?.name ?? ''}`} />
+        <PageHeader title={t('title', { name: agent?.name ?? '' })} />
         {agent && <FixAgentDialog agentId={agentId} agentName={agent.name} />}
       </div>
 
       <div className="mx-auto w-full max-w-2xl space-y-6">
         {/* Name */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">이름</label>
+          <label className="text-sm font-medium">{t('name')}</label>
           <Input value={name} onChange={(e) => setName(e.target.value)} />
         </div>
 
         {/* Description */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">설명</label>
+          <label className="text-sm font-medium">{t('description')}</label>
           <Input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="에이전트에 대한 간단한 설명"
+            placeholder={t('descriptionPlaceholder')}
           />
         </div>
 
         {/* System prompt */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">시스템 프롬프트</label>
+          <label className="text-sm font-medium">{t('systemPrompt')}</label>
           <Textarea
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
@@ -188,7 +195,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
 
         {/* Model */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">모델</label>
+          <label className="text-sm font-medium">{t('model')}</label>
           {models ? (
             <Select
               value={modelId}
@@ -197,7 +204,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
               }}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="모델 선택" />
+                <SelectValue placeholder={t('modelPlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {models.map((model) => (
@@ -214,7 +221,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
 
         {/* Model Parameters */}
         <div className="space-y-4 rounded-lg border p-4">
-          <label className="text-sm font-medium">모델 파라미터</label>
+          <label className="text-sm font-medium">{t('modelParams')}</label>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
@@ -231,8 +238,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
               className="w-full accent-primary"
             />
             <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>정확</span>
-              <span>창의적</span>
+              <span>{t('temperature.accurate')}</span>
+              <span>{t('temperature.creative')}</span>
             </div>
           </div>
 
@@ -276,13 +283,13 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
               setMaxTokens(4096)
             }}
           >
-            기본값으로 리셋
+            {t('resetToDefault')}
           </Button>
         </div>
 
         {/* Tools */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">연결된 도구</label>
+          <label className="text-sm font-medium">{t('tools')}</label>
           {tools ? (
             tools.length > 0 ? (
               <div className="space-y-2 rounded-lg border p-3">
@@ -303,11 +310,11 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                등록된 도구가 없습니다.{' '}
+                {noToolsParts[0]}
                 <Link href="/tools" className="text-primary hover:underline">
-                  도구 관리
+                  {t('toolsLink')}
                 </Link>
-                에서 추가해주세요.
+                {noToolsParts[1]}
               </p>
             )
           ) : (
@@ -317,7 +324,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
 
         {/* Skills */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">연결된 스킬</label>
+          <label className="text-sm font-medium">{t('skills')}</label>
           {skills ? (
             skills.length > 0 ? (
               <div className="space-y-2 rounded-lg border p-3">
@@ -345,11 +352,11 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                등록된 스킬이 없습니다.{' '}
+                {noSkillsParts[0]}
                 <Link href="/skills" className="text-primary hover:underline">
-                  스킬 관리
+                  {t('skillsLink')}
                 </Link>
-                에서 추가해주세요.
+                {noSkillsParts[1]}
               </p>
             )
           ) : (
@@ -361,7 +368,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         <div className="space-y-3">
           <label className="flex items-center gap-2 text-sm font-medium">
             <TimerIcon className="size-4" />
-            자동 실행 (트리거)
+            {t('trigger.title')}
           </label>
 
           {triggers && triggers.length > 0 ? (
@@ -372,10 +379,12 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <Badge variant={trigger.status === 'active' ? 'default' : 'secondary'}>
-                          {trigger.status === 'active' ? '활성' : '일시정지'}
+                          {trigger.status === 'active' ? t('trigger.active') : t('trigger.paused')}
                         </Badge>
                         <span className="text-sm">
-                          매 {trigger.schedule_config.interval_minutes}분
+                          {t('trigger.interval', {
+                            minutes: trigger.schedule_config.interval_minutes ?? 10,
+                          })}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground truncate max-w-md">
@@ -384,21 +393,30 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                       <div className="flex gap-3 text-xs text-muted-foreground">
                         {trigger.last_run_at && (
                           <span>
-                            마지막 실행: {new Date(trigger.last_run_at).toLocaleString('ko-KR')}
+                            {t('trigger.lastRun', {
+                              date: format.dateTime(new Date(trigger.last_run_at), {
+                                dateStyle: 'medium',
+                                timeStyle: 'short',
+                              }),
+                            })}
                           </span>
                         )}
-                        <span>실행 횟수: {trigger.run_count}회</span>
+                        <span>{t('trigger.runCount', { count: trigger.run_count })}</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={trigger.status === 'active' ? '일시정지' : '재개'}
+                        aria-label={
+                          trigger.status === 'active' ? t('trigger.pause') : t('trigger.resume')
+                        }
                         onClick={() =>
                           updateTrigger.mutate({
                             triggerId: trigger.id,
-                            data: { status: trigger.status === 'active' ? 'paused' : 'active' },
+                            data: {
+                              status: trigger.status === 'active' ? 'paused' : 'active',
+                            },
                           })
                         }
                       >
@@ -411,7 +429,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label="트리거 삭제"
+                        aria-label={t('trigger.delete')}
                         onClick={() => deleteTrigger.mutate(trigger.id)}
                       >
                         <Trash2Icon className="size-4 text-muted-foreground" />
@@ -426,7 +444,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
           {showTriggerForm ? (
             <div className="space-y-3 rounded-lg border p-4">
               <div className="space-y-2">
-                <label className="text-xs font-medium">실행 간격 (분)</label>
+                <label className="text-xs font-medium">{t('trigger.intervalLabel')}</label>
                 <Input
                   type="number"
                   min="1"
@@ -436,11 +454,11 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-medium">실행 시 보낼 메시지</label>
+                <label className="text-xs font-medium">{t('trigger.messageLabel')}</label>
                 <Textarea
                   value={triggerMessage}
                   onChange={(e) => setTriggerMessage(e.target.value)}
-                  placeholder="예: 한글과컴퓨터 최신 뉴스를 검색하고 요약해줘"
+                  placeholder={t('trigger.messagePlaceholder')}
                   rows={2}
                 />
               </div>
@@ -460,17 +478,17 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                   }}
                 >
                   {createTrigger.isPending && <Loader2Icon className="mr-1 size-3 animate-spin" />}
-                  트리거 추가
+                  {t('trigger.addButton')}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setShowTriggerForm(false)}>
-                  취소
+                  {tc('cancel')}
                 </Button>
               </div>
             </div>
           ) : (
             <Button variant="outline" size="sm" onClick={() => setShowTriggerForm(true)}>
               <PlusIcon className="size-4" data-icon="inline-start" />
-              자동 실행 추가
+              {t('trigger.addNew')}
             </Button>
           )}
         </div>
@@ -483,7 +501,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             ) : (
               <SaveIcon className="size-4" data-icon="inline-start" />
             )}
-            저장
+            {t('save')}
           </Button>
 
           <AlertDialog>
@@ -491,19 +509,17 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
               render={
                 <Button variant="destructive">
                   <Trash2Icon className="size-4" data-icon="inline-start" />
-                  에이전트 삭제
+                  {t('deleteAgent')}
                 </Button>
               }
             />
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>에이전트를 삭제하시겠습니까?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  이 작업은 되돌릴 수 없습니다. 에이전트와 관련된 모든 대화가 삭제됩니다.
-                </AlertDialogDescription>
+                <AlertDialogTitle>{t('deleteDialog.title')}</AlertDialogTitle>
+                <AlertDialogDescription>{t('deleteDialog.description')}</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>취소</AlertDialogCancel>
+                <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDelete}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/80"
@@ -511,7 +527,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                   {deleteAgent.isPending ? (
                     <Loader2Icon className="mr-1 size-4 animate-spin" />
                   ) : null}
-                  삭제
+                  {tc('delete')}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

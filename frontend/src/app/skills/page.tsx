@@ -11,6 +11,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useTranslations, useFormatter } from 'next-intl'
 import { useSkills, useCreateSkill, useUpdateSkill, useDeleteSkill } from '@/lib/hooks/use-skills'
 import { Button } from '@/components/ui/button'
 import {
@@ -48,6 +49,8 @@ function SkillFormDialog({
   isPending: boolean
   title: string
 }) {
+  const t = useTranslations('skill')
+  const tc = useTranslations('common')
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(initialData?.name ?? '')
   const [description, setDescription] = useState(initialData?.description ?? '')
@@ -78,36 +81,34 @@ function SkillFormDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            스킬은 에이전트에 연결하면 시스템 프롬프트에 자동 주입됩니다.
-          </DialogDescription>
+          <DialogDescription>{t('dialogDescription')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium">이름 *</label>
+            <label className="text-sm font-medium">{t('form.name')}</label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="예: 광고 카피 작성 스킬"
+              placeholder={t('form.namePlaceholder')}
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">설명</label>
+            <label className="text-sm font-medium">{t('form.description')}</label>
             <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="이 스킬이 하는 일을 간단히 설명"
+              placeholder={t('form.descriptionPlaceholder')}
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">내용 * (마크다운 지원)</label>
+            <label className="text-sm font-medium">{t('form.content')}</label>
             <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder={`# 스킬명\n\n## 목표\n이 스킬의 목표를 설명합니다.\n\n## 단계\n1. 첫 번째 단계\n2. 두 번째 단계\n\n## 예시\n입력: ...\n출력: ...`}
+              placeholder={t('form.contentPlaceholder')}
               rows={10}
               className="font-mono text-xs"
             />
@@ -116,7 +117,7 @@ function SkillFormDialog({
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
               <XIcon className="size-4" data-icon="inline-start" />
-              취소
+              {tc('cancel')}
             </Button>
             <Button onClick={handleSubmit} disabled={isPending || !name.trim() || !content.trim()}>
               {isPending ? (
@@ -124,7 +125,7 @@ function SkillFormDialog({
               ) : (
                 <SaveIcon className="size-4" data-icon="inline-start" />
               )}
-              저장
+              {tc('save')}
             </Button>
           </div>
         </div>
@@ -137,27 +138,28 @@ export default function SkillsPage() {
   const { data: skills, isLoading } = useSkills()
   const createSkill = useCreateSkill()
   const deleteSkill = useDeleteSkill()
+  const t = useTranslations('skill')
 
   async function handleCreate(data: { name: string; description: string; content: string }) {
     try {
       await createSkill.mutateAsync(data)
-      toast.success('스킬이 생성되었습니다')
+      toast.success(t('toast.created'))
     } catch {
-      toast.error('스킬 생성에 실패했습니다')
+      toast.error(t('toast.createFailed'))
     }
   }
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
-        title="스킬 관리"
+        title={t('pageTitle')}
         action={
           <SkillFormDialog
-            title="새 스킬"
+            title={t('dialogTitle.new')}
             trigger={
               <Button>
                 <PlusIcon className="size-4" data-icon="inline-start" />
-                스킬 추가
+                {t('addSkill')}
               </Button>
             }
             onSubmit={handleCreate}
@@ -188,7 +190,7 @@ export default function SkillsPage() {
               skill={skill}
               onDelete={() => {
                 deleteSkill.mutate(skill.id, {
-                  onSuccess: () => toast.success('스킬이 삭제되었습니다'),
+                  onSuccess: () => toast.success(t('toast.deleted')),
                 })
               }}
               isDeleting={deleteSkill.isPending}
@@ -198,22 +200,23 @@ export default function SkillsPage() {
       ) : (
         <EmptyState
           icon={<BookOpenIcon className="size-6" />}
-          title="아직 스킬이 없습니다"
-          description="자주 사용하는 작업 패턴을 스킬로 저장하고 에이전트에 연결하세요."
+          title={t('empty.title')}
+          description={t('empty.description')}
           action={
             <SkillFormDialog
-              title="새 스킬"
+              title={t('dialogTitle.new')}
               trigger={
                 <Button>
-                  <PlusIcon className="size-4" data-icon="inline-start" />첫 스킬 만들기
+                  <PlusIcon className="size-4" data-icon="inline-start" />
+                  {t('firstSkill')}
                 </Button>
               }
               onSubmit={async (data) => {
                 try {
                   await createSkill.mutateAsync(data)
-                  toast.success('스킬이 생성되었습니다')
+                  toast.success(t('toast.created'))
                 } catch {
-                  toast.error('스킬 생성에 실패했습니다')
+                  toast.error(t('toast.createFailed'))
                 }
               }}
               isPending={createSkill.isPending}
@@ -241,6 +244,8 @@ function SkillCard({
   isDeleting: boolean
 }) {
   const updateSkill = useUpdateSkill(skill.id)
+  const t = useTranslations('skill')
+  const format = useFormatter()
 
   return (
     <Card className="flex flex-col">
@@ -257,11 +262,13 @@ function SkillCard({
       </CardContent>
       <CardFooter className="justify-between">
         <span className="text-[10px] text-muted-foreground">
-          {new Date(skill.updated_at).toLocaleDateString('ko-KR')} 수정
+          {t('modified', {
+            date: format.dateTime(new Date(skill.updated_at), { dateStyle: 'medium' }),
+          })}
         </span>
         <div className="flex gap-1">
           <SkillFormDialog
-            title="스킬 수정"
+            title={t('dialogTitle.edit')}
             initialData={{
               name: skill.name,
               description: skill.description ?? '',
@@ -275,9 +282,9 @@ function SkillCard({
             onSubmit={async (data) => {
               try {
                 await updateSkill.mutateAsync(data)
-                toast.success('스킬이 수정되었습니다')
+                toast.success(t('toast.updated'))
               } catch {
-                toast.error('수정에 실패했습니다')
+                toast.error(t('toast.updateFailed'))
               }
             }}
             isPending={updateSkill.isPending}

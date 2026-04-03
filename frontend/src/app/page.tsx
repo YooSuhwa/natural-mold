@@ -11,6 +11,7 @@ import {
   StarIcon,
   ArrowUpDownIcon,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useAgents } from '@/lib/hooks/use-agents'
 import { useUsageSummary } from '@/lib/hooks/use-usage'
 import { Button } from '@/components/ui/button'
@@ -27,35 +28,36 @@ import { AgentCardSkeleton } from '@/components/agent/agent-card-skeleton'
 import { EmptyState } from '@/components/shared/empty-state'
 import type { Agent } from '@/lib/types'
 
-const quickActions = [
-  {
-    label: '대화로 만들기',
-    description: 'AI와 대화하며 에이전트를 구성합니다',
-    href: '/agents/new/conversational',
-    icon: MessageSquareIcon,
-  },
-  {
-    label: '템플릿으로 만들기',
-    description: '준비된 템플릿에서 골라 바로 시작합니다',
-    href: '/agents/new/template',
-    icon: LayoutTemplateIcon,
-  },
-]
-
 type SortKey = 'latest' | 'name' | 'favorite'
 
-const SORT_LABELS: Record<SortKey, string> = {
-  latest: '최신순',
-  name: '이름순',
-  favorite: '즐겨찾기',
-}
-
 export default function DashboardPage() {
+  const t = useTranslations('dashboard')
   const { data: agents, isLoading: agentsLoading } = useAgents()
   const { data: usage } = useUsageSummary()
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortKey>('latest')
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
+
+  const quickActions = [
+    {
+      label: t('quickAction.conversational.label'),
+      description: t('quickAction.conversational.description'),
+      href: '/agents/new/conversational',
+      icon: MessageSquareIcon,
+    },
+    {
+      label: t('quickAction.template.label'),
+      description: t('quickAction.template.description'),
+      href: '/agents/new/template',
+      icon: LayoutTemplateIcon,
+    },
+  ]
+
+  const SORT_LABELS: Record<SortKey, string> = {
+    latest: t('sort.latest'),
+    name: t('sort.name'),
+    favorite: t('sort.favorite'),
+  }
 
   const filteredAgents = useMemo(() => {
     if (!agents) return []
@@ -93,14 +95,13 @@ export default function DashboardPage() {
       {/* Hero Section */}
       <div className="flex items-start justify-between rounded-xl bg-muted/30 p-6">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight">안녕하세요!</h1>
-          <p className="text-sm text-muted-foreground">
-            AI 에이전트를 만들어 반복 업무를 자동화하세요.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('greeting')}</h1>
+          <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
         </div>
         <Link href="/agents/new">
           <Button>
-            <PlusIcon className="size-4" data-icon="inline-start" />새 에이전트
+            <PlusIcon className="size-4" data-icon="inline-start" />
+            {t('newAgent')}
           </Button>
         </Link>
       </div>
@@ -129,7 +130,7 @@ export default function DashboardPage() {
       {/* Agent Grid */}
       {agentsLoading ? (
         <div>
-          <h2 className="mb-4 text-lg font-semibold tracking-tight">내 에이전트</h2>
+          <h2 className="mb-4 text-lg font-semibold tracking-tight">{t('myAgents')}</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 3 }).map((_, i) => (
               <AgentCardSkeleton key={i} />
@@ -140,12 +141,12 @@ export default function DashboardPage() {
         <div>
           {/* Search / Sort / Filter Bar */}
           <div className="mb-4 flex flex-wrap items-center gap-3">
-            <h2 className="text-lg font-semibold tracking-tight">내 에이전트</h2>
+            <h2 className="text-lg font-semibold tracking-tight">{t('myAgents')}</h2>
             <div className="ml-auto flex items-center gap-2">
               <div className="relative">
                 <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
-                  placeholder="에이전트 검색..."
+                  placeholder={t('searchPlaceholder')}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="h-9 w-48 pl-8 text-sm"
@@ -170,15 +171,15 @@ export default function DashboardPage() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => setSortBy('latest')}>
-                    최신순
+                    {t('sort.latest')}
                     {sortBy === 'latest' && <span className="ml-auto text-xs">✓</span>}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setSortBy('name')}>
-                    이름순
+                    {t('sort.name')}
                     {sortBy === 'name' && <span className="ml-auto text-xs">✓</span>}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setSortBy('favorite')}>
-                    즐겨찾기 우선
+                    {t('sort.favoriteFirst')}
                     {sortBy === 'favorite' && <span className="ml-auto text-xs">✓</span>}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -195,29 +196,31 @@ export default function DashboardPage() {
           ) : (
             <div className="flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
               <SearchIcon className="mb-2 size-6 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">검색 결과가 없습니다.</p>
+              <p className="text-sm text-muted-foreground">{t('noSearchResults')}</p>
             </div>
           )}
         </div>
       ) : (
         <EmptyState
           icon={<SparklesIcon className="size-6" />}
-          title="첫 에이전트를 만들어보세요"
-          description="위 카드에서 원하는 방식을 선택하세요."
+          title={t('empty.title')}
+          description={t('empty.description')}
         />
       )}
 
       {/* Usage Summary */}
       {usage && usage.total_tokens > 0 && (
         <div className="rounded-xl border bg-muted/30 p-4">
-          <h2 className="mb-2 text-sm font-medium text-muted-foreground">이번 달 사용량</h2>
+          <h2 className="mb-2 text-sm font-medium text-muted-foreground">
+            {t('usageSummary.title')}
+          </h2>
           <div className="flex items-center gap-6 text-sm">
             <div>
-              <span className="text-muted-foreground">총 토큰: </span>
+              <span className="text-muted-foreground">{t('usageSummary.totalTokens')}</span>
               <span className="font-medium">{usage.total_tokens.toLocaleString()}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">추정 비용: </span>
+              <span className="text-muted-foreground">{t('usageSummary.estimatedCost')}</span>
               <span className="font-medium">${usage.estimated_cost_usd.toFixed(2)}</span>
             </div>
           </div>

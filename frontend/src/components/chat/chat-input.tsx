@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { SendIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -11,7 +12,8 @@ interface ChatInputProps {
   placeholder?: string
 }
 
-export function ChatInput({ onSend, disabled, placeholder = '메시지 입력...' }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
+  const t = useTranslations('chat.input')
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isComposingRef = useRef(false)
@@ -53,7 +55,7 @@ export function ChatInput({ onSend, disabled, placeholder = '메시지 입력...
         onCompositionEnd={() => {
           isComposingRef.current = false
         }}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t('placeholder')}
         disabled={disabled}
         rows={1}
         className={cn(
@@ -72,7 +74,7 @@ export function ChatInput({ onSend, disabled, placeholder = '메시지 입력...
         className="shrink-0"
       >
         <SendIcon className="size-4" />
-        <span className="sr-only">전송</span>
+        <span className="sr-only">{t('sendButton')}</span>
       </Button>
     </div>
   )

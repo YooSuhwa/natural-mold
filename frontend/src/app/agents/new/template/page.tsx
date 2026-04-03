@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2Icon, LayoutTemplateIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useTemplates } from '@/lib/hooks/use-templates'
 import { useCreateAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
@@ -14,16 +15,17 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Template } from '@/lib/types'
 
-const categories = [
-  { value: '', label: '전체' },
-  { value: '생산성', label: '생산성' },
-  { value: '커뮤니케이션', label: '커뮤니케이션' },
-  { value: '데이터', label: '데이터' },
-]
-
 export default function TemplateSelectionPage() {
   const router = useRouter()
+  const t = useTranslations('agent.template')
   const [selectedCategory, setSelectedCategory] = useState('')
+
+  const categories = [
+    { value: '', label: t('category.all') },
+    { value: '생산성', label: t('category.productivity') },
+    { value: '커뮤니케이션', label: t('category.communication') },
+    { value: '데이터', label: t('category.data') },
+  ]
   const { data: templates, isLoading } = useTemplates(selectedCategory || undefined)
   const { data: models } = useModels()
   const createAgent = useCreateAgent()
@@ -49,7 +51,7 @@ export default function TemplateSelectionPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
-      <PageHeader title="템플릿으로 만들기" />
+      <PageHeader title={t('pageTitle')} />
 
       <Tabs defaultValue="" onValueChange={(val) => setSelectedCategory(val as string)}>
         <TabsList>
@@ -91,7 +93,7 @@ export default function TemplateSelectionPage() {
                     <CardContent className="mt-auto space-y-3">
                       {template.recommended_tools && template.recommended_tools.length > 0 && (
                         <p className="text-xs text-muted-foreground">
-                          도구: {template.recommended_tools.join(', ')}
+                          {t('tools', { toolNames: template.recommended_tools.join(', ') })}
                         </p>
                       )}
                       <Button
@@ -103,7 +105,7 @@ export default function TemplateSelectionPage() {
                         {creatingId === template.id ? (
                           <Loader2Icon className="mr-1 size-4 animate-spin" />
                         ) : null}
-                        이 템플릿으로 생성
+                        {t('createFromTemplate')}
                       </Button>
                     </CardContent>
                   </Card>
@@ -112,7 +114,7 @@ export default function TemplateSelectionPage() {
             ) : (
               <EmptyState
                 icon={<LayoutTemplateIcon className="size-6" />}
-                title="이 카테고리에 템플릿이 없습니다."
+                title={t('emptyCategory')}
               />
             )}
           </TabsContent>

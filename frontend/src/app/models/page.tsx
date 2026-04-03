@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { PlusIcon, CpuIcon, Trash2Icon, Loader2Icon, StarIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useModels, useCreateModel, useDeleteModel } from '@/lib/hooks/use-models'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -27,17 +28,19 @@ import {
 import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 
-const providers = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'google', label: 'Google' },
-  { value: 'custom', label: '기타' },
-]
-
 export default function ModelsPage() {
   const { data: models, isLoading } = useModels()
   const createModel = useCreateModel()
   const deleteModel = useDeleteModel()
+  const t = useTranslations('model')
+  const tc = useTranslations('common')
+
+  const providers = [
+    { value: 'openai', label: t('providers.openai') },
+    { value: 'anthropic', label: t('providers.anthropic') },
+    { value: 'google', label: t('providers.google') },
+    { value: 'custom', label: t('providers.custom') },
+  ]
 
   const [open, setOpen] = useState(false)
   const [provider, setProvider] = useState('openai')
@@ -82,26 +85,26 @@ export default function ModelsPage() {
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
-        title="모델 관리"
+        title={t('pageTitle')}
         action={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger
               render={
                 <Button>
                   <PlusIcon className="size-4" data-icon="inline-start" />
-                  모델 추가
+                  {t('addModel')}
                 </Button>
               }
             />
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
-                <DialogTitle>모델 추가</DialogTitle>
-                <DialogDescription>새 LLM 모델을 등록합니다.</DialogDescription>
+                <DialogTitle>{t('dialogTitle')}</DialogTitle>
+                <DialogDescription>{t('dialogDescription')}</DialogDescription>
               </DialogHeader>
 
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">제공자</label>
+                  <label className="text-sm font-medium">{t('provider')}</label>
                   <Select
                     value={provider}
                     onValueChange={(val) => {
@@ -109,7 +112,7 @@ export default function ModelsPage() {
                     }}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="제공자 선택" />
+                      <SelectValue placeholder={t('providerPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
                       {providers.map((p) => (
@@ -123,7 +126,7 @@ export default function ModelsPage() {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">
-                    모델명 <span className="text-destructive">*</span>
+                    {t('modelName')} <span className="text-destructive">{tc('required')}</span>
                   </label>
                   <Input
                     value={modelName}
@@ -133,7 +136,7 @@ export default function ModelsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">표시 이름</label>
+                  <label className="text-sm font-medium">{t('displayName')}</label>
                   <Input
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
@@ -142,7 +145,7 @@ export default function ModelsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Base URL</label>
+                  <label className="text-sm font-medium">{t('baseUrl')}</label>
                   <Input
                     value={baseUrl}
                     onChange={(e) => setBaseUrl(e.target.value)}
@@ -151,7 +154,7 @@ export default function ModelsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">API Key</label>
+                  <label className="text-sm font-medium">{t('apiKey')}</label>
                   <Input
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
@@ -167,7 +170,7 @@ export default function ModelsPage() {
                   disabled={!modelName.trim() || createModel.isPending}
                 >
                   {createModel.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
-                  등록
+                  {tc('register')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -197,7 +200,7 @@ export default function ModelsPage() {
                       {model.is_default && (
                         <Badge variant="secondary">
                           <StarIcon className="mr-0.5 size-3" />
-                          기본
+                          {t('defaultBadge')}
                         </Badge>
                       )}
                     </div>
@@ -207,7 +210,7 @@ export default function ModelsPage() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label={`${model.display_name} 삭제`}
+                  aria-label={t('deleteLabel', { name: model.display_name })}
                   onClick={() => deleteModel.mutate(model.id)}
                   disabled={deleteModel.isPending}
                 >
@@ -224,8 +227,8 @@ export default function ModelsPage() {
       ) : (
         <EmptyState
           icon={<CpuIcon className="size-6" />}
-          title="등록된 모델이 없습니다."
-          description="모델을 추가하여 에이전트에서 사용하세요."
+          title={t('empty.title')}
+          description={t('empty.description')}
         />
       )}
     </div>
