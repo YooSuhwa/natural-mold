@@ -94,6 +94,9 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
     if tool_ids_to_link:
         agent.tool_links = _build_tool_links(tool_ids_to_link, config_map)
 
+    if data.skill_ids:
+        agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
+
     db.add(agent)
     await db.commit()
     await db.refresh(agent, ["model", "tool_links", "skill_links"])

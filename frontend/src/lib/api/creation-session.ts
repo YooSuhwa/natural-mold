@@ -10,6 +10,7 @@ export interface CreationMessageResult {
   draft_config: DraftConfig | null
   suggested_replies: { options: string[]; multi_select: boolean } | null
   recommended_tools: { name: string; description: string }[]
+  recommended_skills: { name: string; description: string }[]
 }
 
 export const creationSessionApi = {

@@ -9,6 +9,7 @@ from app.agent_runtime.creation_agent import run_creation_conversation
 from app.models.agent import Agent
 from app.models.agent_creation_session import AgentCreationSession
 from app.models.model import Model
+from app.models.skill import AgentSkillLink, Skill
 from app.models.tool import AgentToolLink, Tool
 
 
@@ -36,11 +37,14 @@ async def get_session(
 
 
 async def send_message(db: AsyncSession, session: AgentCreationSession, content: str) -> dict:
-    # Get available tools and models for context (include system tools)
+    # Get available tools, skills, and models for context
     tools_result = await db.execute(
         select(Tool.name).where(or_(Tool.user_id == session.user_id, Tool.is_system.is_(True)))
     )
     available_tools = [r[0] for r in tools_result.all()]
+
+    skills_result = await db.execute(select(Skill.name).where(Skill.user_id == session.user_id))
+    available_skills = [r[0] for r in skills_result.all()]
 
     models_result = await db.execute(select(Model.display_name))
     available_models = [r[0] for r in models_result.all()]
@@ -50,6 +54,7 @@ async def send_message(db: AsyncSession, session: AgentCreationSession, content:
         conversation_history=session.conversation_history,
         user_message=content,
         available_tools=available_tools,
+        available_skills=available_skills,
         available_models=available_models,
     )
 
@@ -99,6 +104,19 @@ async def confirm_creation(db: AsyncSession, session: AgentCreationSession) -> A
         )
         tools_to_link = list(tools_result.scalars().all())
 
+    # Auto-link recommended skills by name
+    skills_to_link: list[Skill] = []
+    recommended_skill_names = config.get("recommended_skill_names", [])
+    if recommended_skill_names:
+        lower_skill_names = [n.lower() for n in recommended_skill_names]
+        skills_result = await db.execute(
+            select(Skill).where(
+                Skill.user_id == session.user_id,
+                func.lower(Skill.name).in_(lower_skill_names),
+            )
+        )
+        skills_to_link = list(skills_result.scalars().all())
+
     agent = Agent(
         user_id=session.user_id,
         name=config.get("name", "새 에이전트"),
@@ -107,10 +125,11 @@ async def confirm_creation(db: AsyncSession, session: AgentCreationSession) -> A
         model_id=model.id,
     )
     agent.tool_links = [AgentToolLink(tool_id=t.id) for t in tools_to_link]
+    agent.skill_links = [AgentSkillLink(skill_id=s.id) for s in skills_to_link]
     db.add(agent)
 
     session.status = "completed"
 
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links"])
+    await db.refresh(agent, ["model", "tool_links", "skill_links"])
     return agent

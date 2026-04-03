@@ -16,6 +16,7 @@ class DraftConfig(BaseModel):
     description: str | None = None
     system_prompt: str | None = None
     recommended_tool_names: list[str] = []
+    recommended_skill_names: list[str] = []
     recommended_model: str | None = None
     is_ready: bool = False
 
@@ -41,6 +42,11 @@ class RecommendedTool(BaseModel):
     description: str
 
 
+class RecommendedSkill(BaseModel):
+    name: str
+    description: str
+
+
 class CreationMessageResponse(BaseModel):
     role: str
     content: str
@@ -50,3 +56,4 @@ class CreationMessageResponse(BaseModel):
     draft_config: DraftConfig | None = None
     suggested_replies: SuggestedReplies | None = None
     recommended_tools: list[RecommendedTool] = []
+    recommended_skills: list[RecommendedSkill] = []
