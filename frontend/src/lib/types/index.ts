@@ -77,6 +77,17 @@ export interface ModelCreateRequest {
   cost_per_output_token?: number
 }
 
+export interface ModelUpdateRequest {
+  provider?: string
+  model_name?: string
+  display_name?: string
+  base_url?: string
+  api_key?: string
+  is_default?: boolean
+  cost_per_input_token?: number
+  cost_per_output_token?: number
+}
+
 // Tool
 export interface Tool {
   id: string

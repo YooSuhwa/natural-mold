@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.model import Model
-from app.schemas.model import ModelCreate
+from app.schemas.model import ModelCreate, ModelUpdate
 
 
 async def list_models(db: AsyncSession) -> list[Model]:
@@ -31,6 +31,20 @@ async def create_model(db: AsyncSession, data: ModelCreate) -> Model:
         cost_per_output_token=data.cost_per_output_token,
     )
     db.add(model)
+    await db.commit()
+    await db.refresh(model)
+    return model
+
+
+async def update_model(db: AsyncSession, model_id: uuid.UUID, data: ModelUpdate) -> Model | None:
+    model = await get_model(db, model_id)
+    if not model:
+        return None
+    update_data = data.model_dump(exclude_unset=True)
+    if "api_key" in update_data:
+        update_data["api_key_encrypted"] = update_data.pop("api_key")
+    for key, value in update_data.items():
+        setattr(model, key, value)
     await db.commit()
     await db.refresh(model)
     return model

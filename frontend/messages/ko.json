@@ -472,8 +472,14 @@
   "model": {
     "pageTitle": "모델 관리",
     "addModel": "모델 추가",
-    "dialogTitle": "모델 추가",
-    "dialogDescription": "새 LLM 모델을 등록합니다.",
+    "dialogTitle": {
+      "new": "모델 추가",
+      "edit": "모델 수정"
+    },
+    "dialogDescription": {
+      "new": "새 LLM 모델을 등록합니다.",
+      "edit": "모델 정보를 수정합니다."
+    },
     "provider": "제공자",
     "providerPlaceholder": "제공자 선택",
     "providers": {
@@ -487,6 +493,7 @@
     "baseUrl": "Base URL",
     "apiKey": "API Key",
     "defaultBadge": "기본",
+    "editLabel": "{name} 수정",
     "deleteLabel": "{name} 삭제",
     "empty": {
       "title": "등록된 모델이 없습니다.",
