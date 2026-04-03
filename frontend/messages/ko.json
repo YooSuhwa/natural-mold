@@ -142,6 +142,7 @@
       },
       "favoriteRemove": "즐겨찾기 해제",
       "favoriteAdd": "즐겨찾기",
+      "visualSettings": "비주얼 설정",
       "settings": "설정",
       "modelLabel": "모델:",
       "createdAt": "{date} 생성"
@@ -191,6 +192,76 @@
       "deleteDialog": {
         "title": "에이전트를 삭제하시겠습니까?",
         "description": "이 작업은 되돌릴 수 없습니다. 에이전트와 관련된 모든 대화가 삭제됩니다."
+      },
+      "toast": {
+        "saved": "저장되었습니다",
+        "saveFailed": "저장에 실패했습니다"
+      }
+    },
+    "visualSettings": {
+      "nodes": {
+        "agent": "Agent",
+        "channels": "Channels",
+        "subagents": "Sub-agents",
+        "toolbox": "Toolbox",
+        "skills": "Skills",
+        "schedule": "Schedule"
+      },
+      "editDialog": {
+        "title": "에이전트 편집",
+        "done": "완료",
+        "searchModels": "모델 검색..."
+      },
+      "channels": {
+        "count": "{count}개 채널",
+        "hint": "채널을 설정하려면 에이전트 ID를 먼저 구성하세요.",
+        "setIdentity": "ID 설정"
+      },
+      "subagents": {
+        "empty": "구성된 서브 에이전트 없음"
+      },
+      "comingSoon": "Coming soon",
+      "toolbox": {
+        "add": "추가",
+        "mcp": "MCP",
+        "empty": "연결된 도구 없음",
+        "remove": "도구 제거"
+      },
+      "skills": {
+        "add": "추가",
+        "create": "만들기",
+        "empty": "연결된 스킬 없음",
+        "remove": "스킬 제거"
+      },
+      "addToolsDialog": {
+        "title": "워크스페이스 도구 추가",
+        "description": "에이전트 도구함에 추가할 도구를 선택하세요.",
+        "searchPlaceholder": "도구 검색...",
+        "noResults": "검색 결과 없음",
+        "manageTools": "도구 관리",
+        "selectToPreview": "미리보기할 도구를 선택하세요",
+        "parameters": "파라미터",
+        "add": "추가",
+        "addCount": "추가 ({count})"
+      },
+      "addSkillsDialog": {
+        "title": "워크스페이스 스킬 추가",
+        "description": "에이전트에 추가할 스킬을 선택하세요.",
+        "searchPlaceholder": "스킬 검색...",
+        "noResults": "검색 결과 없음",
+        "manageSkills": "스킬 관리",
+        "selectToPreview": "미리보기할 스킬을 선택하세요",
+        "content": "내용",
+        "add": "추가",
+        "addCount": "추가 ({count})"
+      },
+      "toolbar": {
+        "hideChat": "채팅 숨기기",
+        "undo": "실행 취소",
+        "redo": "다시 실행"
+      },
+      "canvas": {
+        "hint": "노드를 드래그하여 이동할 수 있습니다"
       },
       "toast": {
         "saved": "저장되었습니다",
