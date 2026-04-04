@@ -27,6 +27,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddToolDialog } from '@/components/tool/add-tool-dialog'
 import { PrebuiltAuthDialog } from '@/components/tool/prebuilt-auth-dialog'
+import { MCPAuthDialog } from '@/components/tool/mcp-auth-dialog'
 import {
   Sheet,
   SheetContent,
@@ -145,6 +146,7 @@ function ToolCard({
   const meta = TOOL_TYPE_STYLES[tool.type] ?? TOOL_TYPE_STYLES.custom
   const Icon = meta.icon
   const isPrebuilt = tool.type === 'prebuilt'
+  const isMCP = tool.type === 'mcp'
   const prebuiltStatus = isPrebuilt ? getPrebuiltStatus(tool) : null
   const pStyle = prebuiltStatus ? PREBUILT_STATUS_STYLES[prebuiltStatus] : null
   const isDeletable = !tool.is_system
@@ -218,6 +220,16 @@ function ToolCard({
               <Button variant="outline" size="sm" className="w-full cursor-pointer">
                 <KeyIcon className="size-3.5" data-icon="inline-start" />
                 {pText.buttonLabel}
+              </Button>
+            }
+          />
+        ) : isMCP ? (
+          <MCPAuthDialog
+            tool={tool}
+            trigger={
+              <Button variant="outline" size="sm" className="w-full cursor-pointer">
+                <KeyIcon className="size-3.5" data-icon="inline-start" />
+                {t('mcp.setKey')}
               </Button>
             }
           />

@@ -11,7 +11,8 @@
     "register": "등록",
     "description": "설명",
     "name": "이름",
-    "required": "*"
+    "required": "*",
+    "confirm": "확인"
   },
   "sidebar": {
     "brand": "Moldy",
@@ -380,6 +381,9 @@
         "setIndividualKey": "개별 키 설정",
         "changeKey": "키 변경"
       },
+      "mcp": {
+        "setKey": "API 키 설정"
+      },
       "searchPlaceholder": "도구 검색...",
       "tagLabel": "태그:",
       "resetFilter": "초기화",
@@ -415,7 +419,10 @@
         "serverName": "서버 이름",
         "serverNamePlaceholder": "Google Workspace MCP",
         "serverUrl": "서버 URL",
-        "serverUrlPlaceholder": "https://mcp.example.com"
+        "serverUrlPlaceholder": "https://mcp.example.com",
+        "discoveredTools": "{count}개 도구 발견",
+        "noToolsFound": "도구를 발견하지 못했습니다",
+        "registrationComplete": "서버가 등록되었습니다"
       },
       "auth": {
         "label": "인증",
@@ -447,6 +454,13 @@
         "googleChat": " Google Chat 스페이스 설정에서 Webhook URL을 복사하세요.",
         "googleWorkspace": " Google Cloud Console에서 OAuth2 인증 정보를 발급받을 수 있습니다."
       },
+      "configured": "API 키가 설정되어 있습니다"
+    },
+    "mcpAuth": {
+      "title": "{toolName} — API 키 설정",
+      "description": "MCP 도구에 사용할 API 키를 입력하세요.",
+      "apiKeyLabel": "API Key",
+      "apiKeyPlaceholder": "API 키를 입력하세요",
       "configured": "API 키가 설정되어 있습니다"
     }
   },
