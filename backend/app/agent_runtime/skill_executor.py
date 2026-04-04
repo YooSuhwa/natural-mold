@@ -21,6 +21,7 @@ async def execute_skill_script(
     skill_dir: str,
     command: str,
     script_timeout: int | None = None,
+    output_dir: str | None = None,
 ) -> SkillScriptResult:
     """Run a python command inside a skill directory with restricted env."""
     timeout = script_timeout or settings.skill_script_timeout
@@ -35,13 +36,17 @@ async def execute_skill_script(
     parts[0] = sys.executable
 
     skill_path = Path(skill_dir).resolve()
-    outputs_dir = skill_path / "_outputs"
-    # Clear previous outputs so we only collect files from this run
-    if outputs_dir.is_dir():
-        for old in outputs_dir.iterdir():
-            if old.is_file():
-                old.unlink()
-    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    if output_dir:
+        outputs_dir = Path(output_dir).resolve()
+        outputs_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        outputs_dir = skill_path / "_outputs"
+        if outputs_dir.is_dir():
+            for old in outputs_dir.iterdir():
+                if old.is_file():
+                    old.unlink()
+        outputs_dir.mkdir(parents=True, exist_ok=True)
 
     env = {
         "PATH": "/usr/bin:/usr/local/bin",

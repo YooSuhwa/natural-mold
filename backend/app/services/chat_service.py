@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.models.agent import Agent
 from app.models.conversation import Conversation, Message
 from app.models.skill import AgentSkillLink
@@ -153,7 +155,7 @@ def build_effective_prompt(agent: Agent) -> str:
     return f"{agent.system_prompt}\n\n## 연결된 스킬\n\n{skills_text}"
 
 
-def build_tools_config(agent: Agent) -> list[dict[str, Any]]:
+def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list[dict[str, Any]]:
     """Build tools_config list from agent's tool and skill links."""
     tools_config: list[dict[str, Any]] = []
 
@@ -176,11 +178,16 @@ def build_tools_config(agent: Agent) -> list[dict[str, Any]]:
     for link in agent.skill_links:
         skill = link.skill
         if skill and skill.type == "package" and skill.storage_path:
+            output_dir = None
+            if conversation_id:
+                output_dir = str(Path(settings.conversation_output_dir) / conversation_id)
             tools_config.append(
                 {
                     "type": "skill_package",
                     "skill_id": str(skill.id),
                     "skill_dir": skill.storage_path,
+                    "conversation_id": conversation_id,
+                    "output_dir": output_dir,
                 }
             )
 

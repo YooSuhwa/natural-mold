@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.executor import execute_agent_stream
+from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.exceptions import NotFoundError
 from app.schemas.conversation import (
@@ -87,7 +89,7 @@ async def send_message(
     messages_history = [{"role": m.role, "content": m.content} for m in messages]
 
     effective_prompt = chat_service.build_effective_prompt(agent)
-    tools_config = chat_service.build_tools_config(agent)
+    tools_config = chat_service.build_tools_config(agent, conversation_id=str(conversation_id))
 
     async def generate():
         import json
@@ -125,3 +127,21 @@ async def send_message(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/api/conversations/{conversation_id}/files/{file_path:path}")
+async def get_conversation_file(
+    conversation_id: uuid.UUID,
+    file_path: str,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    conv = await chat_service.get_conversation(db, conversation_id)
+    if not conv:
+        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
+
+    base = Path(settings.conversation_output_dir) / str(conversation_id)
+    target = (base / file_path).resolve()
+    if not target.is_relative_to(base.resolve()) or not target.is_file():
+        raise NotFoundError("FILE_NOT_FOUND", "파일을 찾을 수 없습니다")
+    return FileResponse(target)
