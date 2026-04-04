@@ -336,7 +336,8 @@
       "newConversation": "새 대화",
       "fallbackTitle": "새 대화",
       "empty": "대화가 없습니다",
-      "pinned": "고정됨",
+      "pinned": "즐겨찾기",
+      "recent": "최근 항목",
       "menu": {
         "rename": "이름 변경",
         "pin": "고정",

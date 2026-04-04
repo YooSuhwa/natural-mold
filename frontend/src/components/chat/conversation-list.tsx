@@ -187,12 +187,17 @@ export function ConversationList({ agentId }: ConversationListProps) {
         ) : conversations && conversations.length > 0 ? (
           <div className="space-y-0.5 p-2">
             {pinned.length > 0 && (
-              <>
-                <p className="px-3 pt-1 pb-0.5 text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">
+              <div className="mb-2">
+                <p className="px-3 pt-1 pb-0.5 text-[0.65rem] font-medium tracking-wider text-muted-foreground">
                   {t('pinned')}
                 </p>
                 {pinned.map(renderItem)}
-              </>
+              </div>
+            )}
+            {unpinned.length > 0 && pinned.length > 0 && (
+              <p className="px-3 pt-1 pb-0.5 text-[0.65rem] font-medium tracking-wider text-muted-foreground">
+                {t('recent')}
+              </p>
             )}
             {unpinned.map(renderItem)}
           </div>
