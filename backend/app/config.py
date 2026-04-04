@@ -46,5 +46,8 @@ class Settings(BaseSettings):
     skill_max_output_bytes: int = 102400
     skill_max_package_bytes: int = 52428800
 
+    # Conversation outputs
+    conversation_output_dir: str = "./data/conversations"
+
 
 settings = Settings()

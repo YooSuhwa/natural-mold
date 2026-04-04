@@ -67,6 +67,8 @@ async def execute_agent_stream(
             skill_tools = create_skill_tools(
                 skill_id=tc["skill_id"],
                 skill_dir=tc["skill_dir"],
+                conversation_id=tc.get("conversation_id"),
+                output_dir=tc.get("output_dir"),
             )
             langchain_tools.extend(skill_tools)
 

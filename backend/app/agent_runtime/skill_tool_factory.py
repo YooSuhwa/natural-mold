@@ -12,16 +12,27 @@ def create_skill_tools(
     skill_id: str,
     skill_dir: str,
     timeout: int = 30,
+    conversation_id: str | None = None,
+    output_dir: str | None = None,
 ) -> list[StructuredTool]:
     """Create LangChain tools for a package skill (run_command + read_skill_file)."""
     suffix = skill_id[:8]
-    base_url = f"/api/skills/{skill_id}/files"
     skill_path = Path(skill_dir).resolve()
+
+    if conversation_id:
+        file_base_url = f"/api/conversations/{conversation_id}/files"
+    else:
+        file_base_url = f"/api/skills/{skill_id}/files/_outputs"
 
     async def run_command(command: str) -> str:
         """Run a python command inside the skill directory."""
         try:
-            result = await execute_skill_script(skill_dir, command, script_timeout=timeout)
+            result = await execute_skill_script(
+                skill_dir,
+                command,
+                script_timeout=timeout,
+                output_dir=output_dir,
+            )
         except ValueError as exc:
             return f"Error: {exc}"
         lines: list[str] = []
@@ -33,7 +44,7 @@ def create_skill_tools(
             lines.append(f"[exit code: {result.return_code}]")
         # Convert output file paths to serving URLs (markdown-ready)
         for fname in result.output_files:
-            url = f"{base_url}/_outputs/{fname}"
+            url = f"{file_base_url}/{fname}"
             lines.append(f"[output file] {url}")
             lines.append(f"![{fname}]({url})")
         return "\n".join(lines) or "(no output)"
