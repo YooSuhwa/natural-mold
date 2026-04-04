@@ -54,6 +54,15 @@ async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: 
 async def register_mcp_server(
     db: AsyncSession, data: MCPServerCreate, user_id: uuid.UUID
 ) -> MCPServer:
+    # Discover tools BEFORE opening the DB transaction to avoid holding
+    # a connection while waiting on an external HTTP call.
+    from app.agent_runtime.mcp_client import list_mcp_tools
+
+    try:
+        mcp_tools = await list_mcp_tools(data.url)
+    except Exception:
+        mcp_tools = []
+
     server = MCPServer(
         user_id=user_id,
         name=data.name,
@@ -62,6 +71,21 @@ async def register_mcp_server(
         auth_config=data.auth_config,
     )
     db.add(server)
+    await db.flush()
+
+    for mt in mcp_tools:
+        tool = Tool(
+            user_id=user_id,
+            type="mcp",
+            mcp_server_id=server.id,
+            name=mt["name"],
+            description=mt.get("description"),
+            parameters_schema=mt.get("inputSchema"),
+            auth_type=data.auth_type,
+            auth_config=data.auth_config,
+        )
+        db.add(tool)
+
     await db.commit()
     await db.refresh(server, ["tools"])
     return server
@@ -87,7 +111,7 @@ async def update_tool_auth_config(
     tool = result.scalar_one_or_none()
     if not tool:
         return None
-    if tool.type != "prebuilt":
+    if tool.type not in ("prebuilt", "mcp"):
         return None
     tool.auth_config = auth_config
     await db.commit()

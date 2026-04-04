@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import httpx
+from mcp.client.session import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
 
 from app.config import settings
 
@@ -69,3 +71,50 @@ async def test_mcp_connection(url: str, auth_config: dict | None = None) -> dict
         return {"success": False, "error": "Cannot connect to server", "tools": []}
     except Exception as e:
         return {"success": False, "error": str(e), "tools": []}
+
+
+def _extract_text(content: list) -> str:
+    """CallToolResult.content에서 TextContent 블록의 text를 추출."""
+    parts = []
+    for block in content:
+        if hasattr(block, "text"):
+            parts.append(block.text)
+    return "\n".join(parts) if parts else str(content)
+
+
+async def list_mcp_tools(url: str) -> list[dict]:
+    """MCP 서버에서 도구 목록 발견."""
+    try:
+        async with (
+            streamablehttp_client(url) as (read, write, _),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            result = await session.list_tools()
+            return [
+                {
+                    "name": t.name,
+                    "description": t.description or "",
+                    "inputSchema": t.inputSchema,
+                }
+                for t in result.tools
+            ]
+    except Exception:
+        return []
+
+
+async def call_mcp_tool(url: str, tool_name: str, arguments: dict) -> str:
+    """MCP 서버에서 도구 실행. 에러 시 에러 문자열 반환."""
+    try:
+        async with (
+            streamablehttp_client(url) as (read, write, _),
+            ClientSession(read, write) as session,
+        ):
+            await session.initialize()
+            result = await session.call_tool(tool_name, arguments)
+            text = _extract_text(result.content)
+            if result.isError:
+                return f"Error: {text}"
+            return text
+    except Exception as e:
+        return f"MCP tool call failed: {e}"

@@ -292,3 +292,28 @@ def create_prebuilt_tool(name: str, auth_config: dict[str, Any] | None = None) -
         raise ValueError(f"Unknown google_workspace tool: {search_type}")
     else:
         raise ValueError(f"Unknown prebuilt provider: {provider}")
+
+
+def create_mcp_tool(
+    name: str,
+    description: str | None,
+    mcp_server_url: str,
+    mcp_tool_name: str,
+    auth_config: dict[str, Any] | None,
+) -> StructuredTool:
+    """MCP 서버 도구를 LangChain StructuredTool로 래핑."""
+    from app.agent_runtime.mcp_client import call_mcp_tool
+
+    inject_params: dict[str, str] = {}
+    if auth_config and auth_config.get("api_key"):
+        inject_params["api_key"] = auth_config["api_key"]
+
+    async def _call(**kwargs: Any) -> str:
+        merged = {**kwargs, **inject_params}
+        return await call_mcp_tool(mcp_server_url, mcp_tool_name, merged)
+
+    return StructuredTool.from_function(
+        coroutine=_call,
+        name=name,
+        description=description or f"MCP tool: {mcp_tool_name}",
+    )

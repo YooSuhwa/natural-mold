@@ -61,6 +61,17 @@ async def execute_agent_stream(
                 auth_config=tc.get("auth_config"),
             )
             langchain_tools.append(tool)
+        elif tc.get("type") == "mcp" and tc.get("mcp_server_url"):
+            from app.agent_runtime.tool_factory import create_mcp_tool
+
+            tool = create_mcp_tool(
+                name=tc["name"],
+                description=tc.get("description"),
+                mcp_server_url=tc["mcp_server_url"],
+                mcp_tool_name=tc.get("mcp_tool_name", tc["name"]),
+                auth_config=tc.get("auth_config"),
+            )
+            langchain_tools.append(tool)
         elif tc.get("type") == "skill_package":
             from app.agent_runtime.skill_tool_factory import create_skill_tools
 
