@@ -262,3 +262,100 @@ async def test_send_message_with_tools_merges_auth_config(client: AsyncClient):
     # merged: tool.auth_config {"server_key": "val"} + link.config {"extra": "cfg"}
     assert auth["server_key"] == "val"
     assert auth["extra"] == "cfg"
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/conversations/{conversation_id}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_conversation_rename(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+
+    resp = await client.patch(
+        f"/api/conversations/{conv_id}",
+        json={"title": "New Name"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["title"] == "New Name"
+
+
+@pytest.mark.asyncio
+async def test_update_conversation_pin(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+
+    resp = await client.patch(
+        f"/api/conversations/{conv_id}",
+        json={"is_pinned": True},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["is_pinned"] is True
+
+
+@pytest.mark.asyncio
+async def test_update_conversation_not_found(client: AsyncClient):
+    fake_id = "00000000-0000-0000-0000-000000000099"
+    resp = await client.patch(
+        f"/api/conversations/{fake_id}",
+        json={"title": "Ghost"},
+    )
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/conversations/{conversation_id}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+
+    resp = await client.delete(f"/api/conversations/{conv_id}")
+    assert resp.status_code == 204
+
+    # Verify conversation no longer appears in listing
+    resp = await client.get(f"/api/agents/{agent_id}/conversations")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_delete_conversation_not_found(client: AsyncClient):
+    fake_id = "00000000-0000-0000-0000-000000000099"
+    resp = await client.delete(f"/api/conversations/{fake_id}")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /api/agents/{agent_id}/conversations — pinned sort order
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_conversations_pinned_first(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    await _seed_conversation(agent_id)  # conv A (unpinned)
+    conv_b = await _seed_conversation(agent_id)  # conv B — will pin
+    await _seed_conversation(agent_id)  # conv C (unpinned)
+
+    # Pin conv B
+    resp = await client.patch(
+        f"/api/conversations/{conv_b}",
+        json={"is_pinned": True},
+    )
+    assert resp.status_code == 200
+
+    # List should return pinned conversation first
+    resp = await client.get(f"/api/agents/{agent_id}/conversations")
+    assert resp.status_code == 200
+    convs = resp.json()
+    assert len(convs) == 3
+    assert convs[0]["id"] == str(conv_b)
+    assert convs[0]["is_pinned"] is True

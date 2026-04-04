@@ -335,7 +335,24 @@
       "title": "대화 목록",
       "newConversation": "새 대화",
       "fallbackTitle": "새 대화",
-      "empty": "대화가 없습니다"
+      "empty": "대화가 없습니다",
+      "pinned": "즐겨찾기",
+      "recent": "최근 항목",
+      "menu": {
+        "rename": "이름 변경",
+        "pin": "고정",
+        "unpin": "고정 해제",
+        "delete": "삭제"
+      },
+      "renameDialog": {
+        "title": "대화 이름 변경",
+        "placeholder": "대화 제목 입력",
+        "save": "저장"
+      },
+      "deleteDialog": {
+        "title": "대화를 삭제하시겠습니까?",
+        "description": "이 작업은 되돌릴 수 없습니다. 대화의 모든 메시지가 삭제됩니다."
+      }
     }
   },
   "tool": {
