@@ -430,7 +430,9 @@
         "apiKey": "API Key",
         "oauth": "OAuth",
         "bearer": "Bearer",
-        "apiKeyPlaceholder": "sk-xxxxxxxxxxxx"
+        "apiKeyPlaceholder": "sk-xxxxxxxxxxxx",
+        "keyName": "파라미터 이름",
+        "keyValue": "값"
       },
       "custom": {
         "name": "도구 이름",
@@ -457,11 +459,12 @@
       "configured": "API 키가 설정되어 있습니다"
     },
     "mcpAuth": {
-      "title": "{toolName} — API 키 설정",
-      "description": "MCP 도구에 사용할 API 키를 입력하세요.",
-      "apiKeyLabel": "API Key",
-      "apiKeyPlaceholder": "API 키를 입력하세요",
-      "configured": "API 키가 설정되어 있습니다"
+      "title": "{toolName} — 인증 설정",
+      "description": "MCP 도구에 전달할 인증 파라미터를 설정하세요.",
+      "keyNameLabel": "파라미터 이름",
+      "keyValueLabel": "값",
+      "keyValuePlaceholder": "인증 값을 입력하세요",
+      "configured": "인증이 설정되어 있습니다"
     }
   },
   "skill": {

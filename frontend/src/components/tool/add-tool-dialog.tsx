@@ -32,7 +32,8 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   const [mcpName, setMcpName] = useState('')
   const [mcpUrl, setMcpUrl] = useState('')
   const [mcpAuthType, setMcpAuthType] = useState('none')
-  const [mcpApiKey, setMcpApiKey] = useState('')
+  const [mcpAuthKeyName, setMcpAuthKeyName] = useState('api_key')
+  const [mcpAuthKeyValue, setMcpAuthKeyValue] = useState('')
   const [discoveredTools, setDiscoveredTools] = useState<Tool[] | null>(null)
   const registerMCP = useRegisterMCPServer()
 
@@ -50,7 +51,8 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     setMcpName('')
     setMcpUrl('')
     setMcpAuthType('none')
-    setMcpApiKey('')
+    setMcpAuthKeyName('api_key')
+    setMcpAuthKeyValue('')
     setDiscoveredTools(null)
     setCustomName('')
     setCustomDescription('')
@@ -67,7 +69,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   }
 
   async function handleMCPSubmit() {
-    const authConfig = mcpAuthType !== 'none' ? { api_key: mcpApiKey } : undefined
+    const authConfig = mcpAuthType !== 'none' ? { [mcpAuthKeyName]: mcpAuthKeyValue } : undefined
     const result = await registerMCP.mutateAsync({
       name: mcpName,
       url: mcpUrl,
@@ -203,15 +205,25 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                   </div>
                 </div>
                 {mcpAuthType !== 'none' && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">{t('auth.apiKey')}</label>
-                    <Input
-                      value={mcpApiKey}
-                      onChange={(e) => setMcpApiKey(e.target.value)}
-                      type="password"
-                      placeholder={t('auth.apiKeyPlaceholder')}
-                    />
-                  </div>
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">{t('auth.keyName')}</label>
+                      <Input
+                        value={mcpAuthKeyName}
+                        onChange={(e) => setMcpAuthKeyName(e.target.value)}
+                        placeholder="api_key"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">{t('auth.keyValue')}</label>
+                      <Input
+                        value={mcpAuthKeyValue}
+                        onChange={(e) => setMcpAuthKeyValue(e.target.value)}
+                        type="password"
+                        placeholder={t('auth.apiKeyPlaceholder')}
+                      />
+                    </div>
+                  </>
                 )}
                 <DialogFooter>
                   <Button
