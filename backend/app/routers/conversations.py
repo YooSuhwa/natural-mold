@@ -14,6 +14,7 @@ from app.exceptions import NotFoundError
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationResponse,
+    ConversationUpdate,
     MessageCreate,
     MessageResponse,
 )
@@ -52,6 +53,32 @@ async def create_conversation(
     if not agent:
         raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     return await chat_service.create_conversation(db, agent_id, data.title)
+
+
+@router.patch(
+    "/api/conversations/{conversation_id}",
+    response_model=ConversationResponse,
+)
+async def update_conversation(
+    conversation_id: uuid.UUID,
+    data: ConversationUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    conv = await chat_service.get_conversation(db, conversation_id)
+    if not conv:
+        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
+    return await chat_service.update_conversation(db, conv, data)
+
+
+@router.delete("/api/conversations/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    conv = await chat_service.get_conversation(db, conversation_id)
+    if not conv:
+        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
+    await chat_service.delete_conversation(db, conv)
 
 
 @router.get(

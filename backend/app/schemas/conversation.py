@@ -11,10 +11,16 @@ class ConversationCreate(BaseModel):
     title: str | None = None
 
 
+class ConversationUpdate(BaseModel):
+    title: str | None = None
+    is_pinned: bool | None = None
+
+
 class ConversationResponse(BaseModel):
     id: uuid.UUID
     agent_id: uuid.UUID
     title: str | None
+    is_pinned: bool
     created_at: datetime
     updated_at: datetime
 

@@ -14,13 +14,14 @@ from app.models.conversation import Conversation, Message
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink
+from app.schemas.conversation import ConversationUpdate
 
 
 async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conversation]:
     result = await db.execute(
         select(Conversation)
         .where(Conversation.agent_id == agent_id)
-        .order_by(Conversation.updated_at.desc())
+        .order_by(Conversation.is_pinned.desc(), Conversation.updated_at.desc())
     )
     return list(result.scalars().all())
 
@@ -38,6 +39,23 @@ async def create_conversation(
 async def get_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> Conversation | None:
     result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
     return result.scalar_one_or_none()
+
+
+async def update_conversation(
+    db: AsyncSession, conv: Conversation, data: ConversationUpdate
+) -> Conversation:
+    if data.title is not None:
+        conv.title = data.title
+    if data.is_pinned is not None:
+        conv.is_pinned = data.is_pinned
+    await db.commit()
+    await db.refresh(conv)
+    return conv
+
+
+async def delete_conversation(db: AsyncSession, conv: Conversation) -> None:
+    await db.delete(conv)
+    await db.commit()
 
 
 async def list_messages(
