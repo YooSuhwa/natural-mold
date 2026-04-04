@@ -22,18 +22,30 @@ interface MCPAuthDialogProps {
   trigger: React.ReactNode
 }
 
+function getAuthEntry(authConfig: Record<string, unknown> | null): {
+  keyName: string
+  keyValue: string
+} {
+  if (!authConfig) return { keyName: 'api_key', keyValue: '' }
+  const entries = Object.entries(authConfig)
+  if (entries.length === 0) return { keyName: 'api_key', keyValue: '' }
+  const [keyName, keyValue] = entries[0]
+  return { keyName, keyValue: typeof keyValue === 'string' ? keyValue : '' }
+}
+
 export function MCPAuthDialog({ tool, trigger }: MCPAuthDialogProps) {
   const t = useTranslations('tool.mcpAuth')
   const tc = useTranslations('common')
   const [open, setOpen] = useState(false)
   const updateAuth = useUpdateToolAuthConfig()
 
-  const existingKey = ((tool.auth_config ?? {}) as Record<string, string>).api_key ?? ''
-  const [apiKey, setApiKey] = useState(existingKey)
+  const existing = getAuthEntry(tool.auth_config)
+  const [keyName, setKeyName] = useState(existing.keyName)
+  const [keyValue, setKeyValue] = useState(existing.keyValue)
 
   const handleSave = () => {
     updateAuth.mutate(
-      { id: tool.id, authConfig: { api_key: apiKey } },
+      { id: tool.id, authConfig: { [keyName]: keyValue } },
       { onSuccess: () => setOpen(false) },
     )
   }
@@ -44,7 +56,9 @@ export function MCPAuthDialog({ tool, trigger }: MCPAuthDialogProps) {
       onOpenChange={(v) => {
         setOpen(v)
         if (v) {
-          setApiKey(existingKey)
+          const entry = getAuthEntry(tool.auth_config)
+          setKeyName(entry.keyName)
+          setKeyValue(entry.keyValue)
         }
       }}
     >
@@ -60,19 +74,30 @@ export function MCPAuthDialog({ tool, trigger }: MCPAuthDialogProps) {
 
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <label htmlFor="mcp-api-key" className="text-sm font-medium">
-              {t('apiKeyLabel')}
+            <label htmlFor="mcp-key-name" className="text-sm font-medium">
+              {t('keyNameLabel')}
             </label>
             <Input
-              id="mcp-api-key"
+              id="mcp-key-name"
+              placeholder="api_key"
+              value={keyName}
+              onChange={(e) => setKeyName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="mcp-key-value" className="text-sm font-medium">
+              {t('keyValueLabel')}
+            </label>
+            <Input
+              id="mcp-key-value"
               type="password"
-              placeholder={t('apiKeyPlaceholder')}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={t('keyValuePlaceholder')}
+              value={keyValue}
+              onChange={(e) => setKeyValue(e.target.value)}
             />
           </div>
 
-          {existingKey && (
+          {existing.keyValue && (
             <div className="flex items-center gap-2 text-xs text-emerald-600">
               <CheckCircleIcon className="size-3.5" />
               {t('configured')}

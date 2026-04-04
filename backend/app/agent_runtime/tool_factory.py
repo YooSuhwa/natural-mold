@@ -304,9 +304,7 @@ def create_mcp_tool(
     """MCP 서버 도구를 LangChain StructuredTool로 래핑."""
     from app.agent_runtime.mcp_client import call_mcp_tool
 
-    inject_params: dict[str, str] = {}
-    if auth_config and auth_config.get("api_key"):
-        inject_params["api_key"] = auth_config["api_key"]
+    inject_params = dict(auth_config) if auth_config else {}
 
     async def _call(**kwargs: Any) -> str:
         merged = {**kwargs, **inject_params}
