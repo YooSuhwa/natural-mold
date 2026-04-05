@@ -69,5 +69,92 @@
   - test_skill_package.py 6건: skill_tool_factory 도구 이름 변경 후 테스트 미수정 (commit 1760bc0)
 - 결론: M1 변경으로 인한 regression 없음
 
+## M2 삭제 분석 결과 (2026-04-06) — Bezos
+
+### 핵심 발견
+- save_message() 안에 auto-title 로직(L92-102)이 숨어 있음. 단순 삭제 불가 → 별도 함수로 추출 필요.
+- token_usages.message_id FK가 messages 테이블에 의존 → messages DROP 전에 FK 변경 필수 (순서 위반 시 마이그레이션 실패)
+- trigger_executor.py가 save_message 2곳 호출 — M4 scope(deep agent invoke 교체)이지만 M2 save_message 제거 시 동시 수정 필요
+- Message 모델은 테스트 5개 파일에서 참조 (test_conversations_router, test_trigger_executor, test_usage_service, test_usage_router, test_chat_service). 테스트 수정 범위 넓음.
+- 프론트엔드 Message 타입(frontend/src/lib/types/index.ts:168)은 백엔드 MessageResponse와 1:1 대응. 백엔드 응답 형태를 최대한 유지해야 프론트엔드 변경 최소화 가능.
+- Conversation.messages relationship은 코드에서 직접 접근 없음 (cascade 설정만). 안전 삭제 가능.
+
+### 삭제 순서 제약
+1. auto-title 추출 → 2. token_usages FK 변경 → 3. router/trigger 수정 → 4. service 정리 → 5. Message 모델 제거 → 6. messages 테이블 DROP
+
+## S2 아키텍처 설계 결과 (2026-04-06) — Pichai
+
+### Checkpointer 초기화 패턴
+- 모듈-레벨 싱글턴: `agent_runtime/checkpointer.py` (init/shutdown/get/delete_thread)
+- psycopg_pool.AsyncConnectionPool + AsyncPostgresSaver
+- main.py lifespan에서 초기화/정리
+- Connection string: `database_url.replace("+asyncpg", "")` (psycopg v3 형식)
+- 의존성: `langgraph-checkpoint-postgres` 추가 필요
+
+### 메시지 변환 패턴
+- checkpointer.aget_tuple() → checkpoint["channel_values"]["messages"] → list[BaseMessage]
+- message_utils.py에 `langchain_messages_to_response()` 추가 (기존 convert 함수와 대칭)
+- created_at: 합성 타임스탬프 (conversation.created_at + idx ms) — 프론트엔드 변경 제로
+
+### 핵심 흐름 변경
+- messages_history: 전체 히스토리 → 새 메시지만 (checkpointer가 히스토리 자동 관리)
+- save_message() 호출 불필요 (checkpointer 자동 저장)
+- list_messages() 호출 불필요 (checkpointer 자동 복원)
+- auto-title: save_message()에서 분리 → maybe_set_auto_title() 독립 함수
+
+### 대화 삭제 패턴
+- delete_thread(): checkpointer의 pool로 직접 SQL 삭제 (checkpoints, checkpoint_blobs, checkpoint_writes)
+- 순서: checkpoint 삭제 → conversations 테이블 삭제
+
+### DB 마이그레이션
+- messages 테이블 제거
+- token_usages: message_id FK → conversation_id FK
+- Alembic 순서: conversation_id 추가 → message_id 제거 → messages DROP
+
+### 주의사항
+- build_agent()는 매 요청마다 호출됨 — 에이전트 캐싱은 향후 최적화 대상
+- aget_tuple()의 내부 구조(channel_values)는 LangGraph 버전에 따라 변경 가능 — message_utils.py로 캡슐화
+- trigger_executor.py도 save_message 호출 중 — M4 scope지만 M2 save_message 제거 시 동시 수정 필요 (S1 분석 결과)
+
+## M2-S3 완료 (2026-04-06) — Jensen
+- checkpointer.py: AsyncPostgresSaver 싱글턴 (init/shutdown/get/delete_thread)
+- main.py lifespan: checkpointer 초기화(시드 후) + 종료(스케줄러 후)
+- executor.py: build_agent()에 checkpointer=get_checkpointer() 전달
+- langgraph-checkpoint-postgres는 이미 pyproject.toml에 존재 (M1에서 추가됨)
+- conn string 변환: database_url.replace("+asyncpg", "") — psycopg v3 형식
+
+## M2-S4 완료 (2026-04-06) — Jensen
+- message_utils.py: langchain_messages_to_response() 추가 (BaseMessage → MessageResponse 변환)
+- chat_service.py: save_message()/list_messages() 삭제, maybe_set_auto_title() 추가
+- conversations.py: GET messages → checkpointer.aget_tuple(), POST messages → 새 메시지만 전달 + auto-title, DELETE → delete_thread() 추가
+- trigger_executor.py: save_message 호출 2곳 제거 (checkpointer 자동 저장)
+- trigger_executor는 title="자동 실행: ..." 으로 생성하므로 maybe_set_auto_title 불필요
+- save_token_usage의 message_id → conversation_id 변경은 S5에서 모델 변경과 함께 처리
+
+## M2-S5 완료 (2026-04-06) — Jensen
+- Message 클래스 제거 (conversation.py), Conversation.messages relationship 제거
+- TokenUsage: message_id FK → conversation_id FK 변경
+- models/__init__.py: Message 제거
+- schemas/conversation.py: MessageResponse에서 from_attributes 제거 (더 이상 ORM 아님)
+- chat_service.save_token_usage: message_id → conversation_id 파라미터 변경
+- Alembic 마이그레이션: conversation_id 추가 → 데이터 마이그레이션 → message_id 삭제 → messages DROP
+- checkpointer.py: psycopg lazy import (TYPE_CHECKING 패턴) — 테스트 환경(aiosqlite)에서 psycopg 미설치 문제 해결
+- main.py, executor.py, conversations.py: checkpointer import를 함수 내부로 이동 (lazy)
+- 테스트 5개 파일 수정: Message 참조 제거, checkpointer mock 사용, conversation_id FK 반영
+- 결과: ruff 통과, 321 passed (기존 대비 regression 없음)
+
+## Gotchas (M2)
+- psycopg 라이브러리는 테스트 환경에서 사용 불가 (libpq 미설치). checkpointer 관련 import는 반드시 lazy로.
+- patch 경로: lazy import 시 `app.agent_runtime.checkpointer.get_checkpointer`로 패치해야 함 (모듈 원본)
+
+## M2-S6 통합 검증 결과 (2026-04-06) — Bezos
+- ruff check: 전체 통과
+- pytest: 321 passed, 0 failed (M1 대비 321 → 321, 기존 pre-existing 9건 수정됨)
+- S1 삭제 분석 체크리스트 12/12 항목 전부 PASS
+- Message ORM 참조 0건, save_message 참조 0건, list_messages 참조 0건, message_id 참조(app/) 0건
+- 신규 코드 4개 함수 존재 확인: init/shutdown/get_checkpointer, delete_thread, langchain_messages_to_response, maybe_set_auto_title
+- Alembic 마이그레이션: 올바른 순서 (conv_id 추가 → 데이터 마이그레이션 → message_id 삭제 → messages DROP → NOT NULL)
+- 결론: M2 regression 없음, 게이트 통과
+
 ## 실패 교훈
 (아직 없음)

@@ -206,12 +206,15 @@ async def execute_agent_stream(
     middleware = build_middleware_instances(middleware_configs or [])
     middleware += get_provider_middleware(provider)
 
-    # 4. 에이전트 빌드 — create_deep_agent
+    # 4. 에이전트 빌드 — create_deep_agent + checkpointer
+    from app.agent_runtime.checkpointer import get_checkpointer
+
     agent = build_agent(
         model,
         langchain_tools,
         system_prompt,
         middleware=middleware or None,
+        checkpointer=get_checkpointer(),
         name=f"agent_{thread_id[:8]}",
     )
 

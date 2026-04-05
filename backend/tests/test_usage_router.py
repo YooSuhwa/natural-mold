@@ -9,7 +9,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.models.agent import Agent
-from app.models.conversation import Conversation, Message
+from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.token_usage import TokenUsage
 from app.models.user import User
@@ -42,12 +42,8 @@ async def _seed_agent_with_usage() -> uuid.UUID:
         db.add(conv)
         await db.flush()
 
-        msg = Message(conversation_id=conv.id, role="assistant", content="Response")
-        db.add(msg)
-        await db.flush()
-
         usage = TokenUsage(
-            message_id=msg.id,
+            conversation_id=conv.id,
             agent_id=agent.id,
             model_name="gpt-4o",
             prompt_tokens=100,

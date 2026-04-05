@@ -16,8 +16,7 @@ from app.services.chat_service import (
     get_agent_with_tools,
     get_conversation,
     list_conversations,
-    list_messages,
-    save_message,
+    maybe_set_auto_title,
     save_token_usage,
 )
 from tests.conftest import TEST_USER_ID
@@ -118,55 +117,19 @@ async def test_get_conversation_not_found(db: AsyncSession):
 
 
 # ---------------------------------------------------------------------------
-# list_messages
+# maybe_set_auto_title
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_list_messages_ordering(db: AsyncSession):
-    agent_id = await _seed(db)
-    await db.commit()
-    conv = await create_conversation(db, agent_id)
-
-    await save_message(db, conv.id, "user", "Hello")
-    await save_message(db, conv.id, "assistant", "Hi there!")
-    await save_message(db, conv.id, "user", "How are you?")
-
-    msgs = await list_messages(db, conv.id)
-    assert len(msgs) == 3
-    # Chronological order (oldest first)
-    assert msgs[0].content == "Hello"
-    assert msgs[1].content == "Hi there!"
-    assert msgs[2].content == "How are you?"
-
-
-@pytest.mark.asyncio
-async def test_list_messages_limit(db: AsyncSession):
-    agent_id = await _seed(db)
-    await db.commit()
-    conv = await create_conversation(db, agent_id)
-
-    for i in range(5):
-        await save_message(db, conv.id, "user", f"Message {i}")
-
-    msgs = await list_messages(db, conv.id, limit=3)
-    assert len(msgs) == 3
-
-
-# ---------------------------------------------------------------------------
-# save_message — title auto-generation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_save_message_user_generates_title(db: AsyncSession):
+async def test_auto_title_from_first_user_message(db: AsyncSession):
     """First user message auto-generates conversation title from '새 대화'."""
     agent_id = await _seed(db)
     await db.commit()
     conv = await create_conversation(db, agent_id)  # title="새 대화"
     assert conv.title == "새 대화"
 
-    await save_message(db, conv.id, "user", "오늘 날씨 어때?")
+    await maybe_set_auto_title(db, conv.id, "오늘 날씨 어때?")
 
     updated = await get_conversation(db, conv.id)
     assert updated is not None
@@ -174,14 +137,13 @@ async def test_save_message_user_generates_title(db: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_save_message_user_long_title_truncated(db: AsyncSession):
-    """Long user messages are truncated to 37 chars + '...'."""
+async def test_auto_title_long_content_truncated(db: AsyncSession):
+    """Long content is truncated to 37 chars + '...'."""
     agent_id = await _seed(db)
     await db.commit()
     conv = await create_conversation(db, agent_id)
 
-    long_msg = "a" * 60
-    await save_message(db, conv.id, "user", long_msg)
+    await maybe_set_auto_title(db, conv.id, "a" * 60)
 
     updated = await get_conversation(db, conv.id)
     assert updated is not None
@@ -191,17 +153,17 @@ async def test_save_message_user_long_title_truncated(db: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_save_message_assistant_no_title_change(db: AsyncSession):
-    """Assistant messages should NOT trigger title change."""
+async def test_auto_title_no_change_when_already_set(db: AsyncSession):
+    """Title is not overwritten if already set (not '새 대화')."""
     agent_id = await _seed(db)
     await db.commit()
-    conv = await create_conversation(db, agent_id)
+    conv = await create_conversation(db, agent_id, title="Custom Title")
 
-    await save_message(db, conv.id, "assistant", "안녕하세요!")
+    await maybe_set_auto_title(db, conv.id, "새로운 내용")
 
     updated = await get_conversation(db, conv.id)
     assert updated is not None
-    assert updated.title == "새 대화"  # unchanged
+    assert updated.title == "Custom Title"  # unchanged
 
 
 # ---------------------------------------------------------------------------
@@ -214,11 +176,10 @@ async def test_save_token_usage(db: AsyncSession):
     agent_id = await _seed(db)
     await db.commit()
     conv = await create_conversation(db, agent_id)
-    msg = await save_message(db, conv.id, "assistant", "Hello!")
 
     usage = await save_token_usage(
         db,
-        message_id=msg.id,
+        conversation_id=conv.id,
         agent_id=agent_id,
         model_name="gpt-4o",
         prompt_tokens=100,

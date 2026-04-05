@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.agent import Agent
-from app.models.conversation import Conversation, Message
+from app.models.conversation import Conversation
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
@@ -54,59 +55,55 @@ async def update_conversation(
 
 
 async def delete_conversation(db: AsyncSession, conv: Conversation) -> None:
+    from app.agent_runtime.checkpointer import delete_thread
+
+    await delete_thread(str(conv.id))
     await db.delete(conv)
     await db.commit()
 
 
-async def list_messages(
-    db: AsyncSession, conversation_id: uuid.UUID, limit: int = 100
-) -> list[Message]:
-    result = await db.execute(
-        select(Message)
-        .where(Message.conversation_id == conversation_id)
-        .order_by(Message.created_at.desc())
-        .limit(limit)
-    )
-    return list(reversed(result.scalars().all()))
+async def list_messages_from_checkpointer(
+    conversation_id: uuid.UUID,
+    base_timestamp: datetime | None = None,
+) -> list:
+    """Checkpointer에서 대화 메시지를 조회하여 MessageResponse 리스트로 반환."""
+    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.message_utils import langchain_messages_to_response
+
+    checkpointer = get_checkpointer()
+    config = {"configurable": {"thread_id": str(conversation_id)}}
+    checkpoint_tuple = await checkpointer.aget_tuple(config)
+
+    if not checkpoint_tuple:
+        return []
+
+    messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
+    return langchain_messages_to_response(messages, conversation_id, base_timestamp)
 
 
-async def save_message(
+async def maybe_set_auto_title(
     db: AsyncSession,
     conversation_id: uuid.UUID,
-    role: str,
     content: str,
-    tool_calls: list[dict[str, Any]] | None = None,
-    tool_call_id: str | None = None,
-) -> Message:
-    msg = Message(
-        conversation_id=conversation_id,
-        role=role,
-        content=content,
-        tool_calls=tool_calls,
-        tool_call_id=tool_call_id,
+) -> None:
+    """첫 사용자 메시지일 때 대화 제목을 자동 설정.
+
+    Conversation.title이 기본값('새 대화')인 경우에만 UPDATE 실행.
+    """
+    title = content.strip().replace("\n", " ")
+    if len(title) > 40:
+        title = title[:37] + "..."
+    await db.execute(
+        update(Conversation)
+        .where(Conversation.id == conversation_id, Conversation.title == "새 대화")
+        .values(title=title)
     )
-    db.add(msg)
     await db.commit()
-    await db.refresh(msg)
-
-    # Auto-generate title from first user message (single UPDATE, no extra SELECT)
-    if role == "user":
-        title = content.strip().replace("\n", " ")
-        if len(title) > 40:
-            title = title[:37] + "..."
-        await db.execute(
-            update(Conversation)
-            .where(Conversation.id == conversation_id, Conversation.title == "새 대화")
-            .values(title=title)
-        )
-        await db.commit()
-
-    return msg
 
 
 async def save_token_usage(
     db: AsyncSession,
-    message_id: uuid.UUID,
+    conversation_id: uuid.UUID,
     agent_id: uuid.UUID,
     model_name: str,
     prompt_tokens: int,
@@ -115,7 +112,7 @@ async def save_token_usage(
     estimated_cost: float | None = None,
 ) -> TokenUsage:
     usage = TokenUsage(
-        message_id=message_id,
+        conversation_id=conversation_id,
         agent_id=agent_id,
         model_name=model_name,
         prompt_tokens=prompt_tokens,

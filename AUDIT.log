@@ -1,0 +1,22 @@
+[2026-04-05T00:00] satya PROJECT_START "M1: Deep Agent 엔진 교체"
+[2026-04-05T00:00] satya MILESTONE_CREATED S0,S1,S2,S3,S4,S5
+[2026-04-05T00:01] bezos MILESTONE_DONE S1 삭제 분석 보고서 완료 — 7개 삭제 대상, 안전도 높음
+[2026-04-05T00:02] pichai MILESTONE_DONE S0 docs/ARCHITECTURE.md + design-docs/index.md 생성
+[2026-04-05T00:03] pichai MILESTONE_DONE S2 ADR-001 작성 — SPEC 대비 API 차이 3건 발견 (skills/memory 파라미터 없음, middleware 호환)
+[2026-04-05T00:04] satya MILESTONE_START S3+S4 젠슨 스폰
+[2026-04-05T00:05] jensen MILESTONE_DONE S3 executor.py 교체 — create_deep_agent + MultiServerMCPClient, ruff PASS
+[2026-04-05T00:06] jensen MILESTONE_DONE S4 코드 정리 — 7개 함수/로직 제거, ruff PASS, 참조 0건
+[2026-04-05T00:07] satya MILESTONE_START S5 베조스 통합 검증
+[2026-04-05T00:08] bezos VERIFICATION_PASS S5 ruff PASS, pytest 314/323 (9 pre-existing), M1 regression 없음
+[2026-04-05T00:09] satya PROJECT_DONE "M1: Deep Agent 엔진 교체" — 6/6 스토리 1회 통과
+[2026-04-05T01:00] satya PROJECT_START "M2: Checkpointer 전환"
+[2026-04-05T01:00] satya MILESTONE_CREATED S1,S2,S3,S4,S5,S6
+[2026-04-05T01:01] bezos MILESTONE_DONE S1 삭제 분석 완료 — 4건 즉시 삭제, 6건 수정 필요, 1건 이동, 19개 테스트 영향
+[2026-04-06T00:00] pichai MILESTONE_DONE S2 ADR-002 작성 — 4개 설계 항목 문서화, ARCHITECTURE.md 업데이트, S3-S5 언블록
+[2026-04-06T00:01] satya MILESTONE_START S3+S4+S5 젠슨 스폰
+[2026-04-06T00:02] jensen MILESTONE_DONE S3 checkpointer.py 생성 + main.py lifespan + executor.py 연결, ruff PASS
+[2026-04-06T00:03] jensen MILESTONE_DONE S4 router/service/trigger 전환 — save_message/list_messages 제거, auto-title 분리, ruff PASS
+[2026-04-06T00:04] jensen MILESTONE_DONE S5 Alembic 마이그레이션 + Message 모델 제거 + 테스트 5파일 수정 — 321 passed, 0 failed
+[2026-04-06T00:04] satya MILESTONE_START S6 베조스 통합 검증
+[2026-04-06T00:05] bezos VERIFICATION_PASS S6 ruff PASS, pytest 321/321 (0 failed), S1 체크리스트 12/12 PASS, Alembic 마이그레이션 정합성 확인
+[2026-04-06T00:06] satya PROJECT_DONE "M2: Checkpointer 전환" — 6/6 스토리 전부 1회 통과

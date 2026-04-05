@@ -36,8 +36,6 @@ class MessageResponse(BaseModel):
     conversation_id: uuid.UUID
     role: str
     content: str
-    tool_calls: list[dict[str, Any]] | None
-    tool_call_id: str | None
+    tool_calls: list[dict[str, Any]] | None = None
+    tool_call_id: str | None = None
     created_at: datetime
-
-    model_config = {"from_attributes": True}
