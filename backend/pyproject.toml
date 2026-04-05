@@ -94,8 +94,6 @@ ignore = [
 "app/seed/default_tools.py" = ["E501"]            # long lines in JSON seed data
 "app/routers/skills.py" = ["ASYNC240"]            # sync pathlib for file serving (trivial I/O)
 "app/services/skill_service.py" = ["ASYNC240"]    # sync pathlib for ZIP extraction (bounded I/O)
-"app/agent_runtime/skill_executor.py" = ["ASYNC240"]   # sync pathlib for subprocess I/O
-"app/agent_runtime/skill_tool_factory.py" = ["ASYNC240"]  # sync pathlib for file reads
 
 [tool.ruff.format]
 quote-style = "double"

@@ -42,6 +42,7 @@ async def execute_trigger(trigger_id: str) -> None:
         # Build prompt (with skill contents) and tools config via shared helpers
         effective_prompt = chat_service.build_effective_prompt(agent)
         tools_config = chat_service.build_tools_config(agent)
+        agent_skills = chat_service.build_agent_skills(agent)
 
         # Build messages history
         messages_history = [{"role": "user", "content": trigger.input_message}]
@@ -60,6 +61,8 @@ async def execute_trigger(trigger_id: str) -> None:
                 thread_id=str(conv.id),
                 model_params=agent.model_params,
                 middleware_configs=agent.middleware_configs,
+                agent_skills=agent_skills or None,
+                agent_id=str(agent.id),
             ):
                 # Parse SSE events to extract content
                 for line in chunk.strip().split("\n"):

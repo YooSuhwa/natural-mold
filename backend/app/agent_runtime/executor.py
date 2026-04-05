@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import shlex
+import sys
 from collections.abc import AsyncGenerator
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 from deepagents import create_deep_agent
+from deepagents.backends import FilesystemBackend
 from langchain_core.language_models import BaseChatModel
-from langchain_core.tools import BaseTool
+from langchain_core.tools import BaseTool, StructuredTool
 
 from app.agent_runtime.message_utils import convert_to_langchain_messages
 from app.agent_runtime.middleware_registry import (
@@ -24,6 +29,79 @@ from app.agent_runtime.tool_factory import (
 
 logger = logging.getLogger(__name__)
 
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+
+
+def _create_skill_execute_tool(output_dir: Path) -> BaseTool:
+    """스킬 디렉토리에서 Python 스크립트를 실행하는 도구를 생성."""
+
+    async def execute_in_skill(skill_directory: str, command: str) -> str:
+        """스킬 디렉토리에서 Python 스크립트를 실행합니다.
+
+        Args:
+            skill_directory: 스킬 디렉토리의 가상 경로 (예: /skills/146ecc62.../)
+            command: 실행할 명령어 (예: python scripts/mark_seat.py search 이상윤)
+        """
+        resolved = (_DATA_DIR / skill_directory.strip("/")).resolve()
+        if not resolved.is_relative_to(_DATA_DIR.resolve()) or not resolved.is_dir():
+            return f"Error: invalid skill directory: {skill_directory}"
+
+        args = shlex.split(command)
+        if not args or args[0] != "python":
+            return "Error: only python commands are allowed."
+        args[0] = sys.executable
+
+        await asyncio.to_thread(output_dir.mkdir, parents=True, exist_ok=True)
+        out = str(output_dir)
+        env = {
+            "PATH": "/usr/bin:/usr/local/bin",
+            "PYTHONPATH": str(resolved),
+            "HOME": str(resolved),
+            "SKILL_OUTPUT_DIR": out,
+            "OUTPUTS_DIR": out,
+        }
+
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            cwd=str(resolved),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            return "Error: script execution timed out (30s)."
+
+        result = stdout.decode("utf-8", errors="replace")
+        if proc.returncode != 0:
+            err = stderr.decode("utf-8", errors="replace")
+            result += f"\nSTDERR: {err}"
+
+        # 출력 파일 수집
+        def _collect_outputs() -> list[str]:
+            if output_dir.exists():
+                return [f.name for f in output_dir.iterdir() if f.is_file()]
+            return []
+
+        files = await asyncio.to_thread(_collect_outputs)
+        if files:
+            result += "\n\nOUTPUT_FILES: " + ", ".join(files)
+
+        return result
+
+    return StructuredTool.from_function(
+        coroutine=execute_in_skill,
+        name="execute_in_skill",
+        description=(
+            "Execute a Python script inside a skill directory. "
+            "Use this when SKILL.md instructs you to run a script. "
+            "Output files (images etc.) will be in OUTPUT_FILES."
+        ),
+    )
+
 
 def build_agent(
     model: BaseChatModel,
@@ -34,6 +112,8 @@ def build_agent(
     checkpointer: Any | None = None,
     store: Any | None = None,
     backend: Any | None = None,
+    skills: list[str] | None = None,
+    memory: list[str] | None = None,
     name: str | None = None,
 ) -> Any:
     """Build a deep agent. Returns CompiledStateGraph."""
@@ -45,6 +125,8 @@ def build_agent(
         checkpointer=checkpointer,
         store=store,
         backend=backend,
+        skills=skills,
+        memory=memory,
         name=name,
     )
 
@@ -157,6 +239,8 @@ async def execute_agent_stream(
     thread_id: str,
     model_params: dict[str, Any] | None = None,
     middleware_configs: list[dict[str, Any]] | None = None,
+    agent_skills: list[dict] | None = None,
+    agent_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     model = create_chat_model(provider, model_name, api_key, base_url, **(model_params or {}))
 
@@ -186,17 +270,6 @@ async def execute_agent_stream(
             )
         elif tool_type == "mcp" and tc.get("mcp_server_url"):
             mcp_configs.append(tc)
-        elif tool_type == "skill_package":
-            from app.agent_runtime.skill_tool_factory import create_skill_tools
-
-            langchain_tools.extend(
-                create_skill_tools(
-                    skill_id=tc["skill_id"],
-                    skill_dir=tc["skill_dir"],
-                    conversation_id=tc.get("conversation_id"),
-                    output_dir=tc.get("output_dir"),
-                )
-            )
 
     # 2. MCP 도구 — langchain-mcp-adapters 사용
     mcp_tools = await _build_mcp_tools(mcp_configs)
@@ -206,7 +279,32 @@ async def execute_agent_stream(
     middleware = build_middleware_instances(middleware_configs or [])
     middleware += get_provider_middleware(provider)
 
-    # 4. 에이전트 빌드 — create_deep_agent + checkpointer
+    # 4. Backend + Skills + Memory 구성
+    backend = FilesystemBackend(root_dir=str(_DATA_DIR), virtual_mode=True)
+
+    skills_sources: list[str] | None = None
+    if agent_skills:
+        skills_sources = ["/skills/"]
+        # 스킬 스크립트 실행 도구 추가 — 출력은 대화 세션 폴더에 저장 (절대경로)
+        conv_output_dir = (_DATA_DIR / "conversations" / thread_id).resolve()
+        langchain_tools.append(_create_skill_execute_tool(conv_output_dir))
+        system_prompt += (
+            "\n\n## 스킬 사용 규칙\n"
+            "스킬을 사용할 때는 반드시 read_file 도구로 SKILL.md를 먼저 읽고 "
+            "그 안의 지시를 직접 따르세요. "
+            "스크립트 실행이 필요하면 execute_in_skill 도구를 사용하세요. "
+            "task 도구의 subagent_type에 스킬 이름을 넣지 마세요. "
+            "유일하게 허용된 subagent_type은 'general-purpose'입니다.\n"
+            "스크립트 실행 후 OUTPUT_FILES에 이미지가 있으면 "
+            "![image](/api/conversations/" + thread_id + "/files/<파일명>) 형식으로 표시하세요."
+        )
+
+    memory_sources: list[str] | None = None
+    if agent_id:
+        (_DATA_DIR / "agents" / agent_id).mkdir(parents=True, exist_ok=True)
+        memory_sources = [f"/agents/{agent_id}/AGENTS.md"]
+
+    # 5. 에이전트 빌드 — create_deep_agent + checkpointer
     from app.agent_runtime.checkpointer import get_checkpointer
 
     agent = build_agent(
@@ -215,10 +313,13 @@ async def execute_agent_stream(
         system_prompt,
         middleware=middleware or None,
         checkpointer=get_checkpointer(),
+        backend=backend,
+        skills=skills_sources,
+        memory=memory_sources,
         name=f"agent_{thread_id[:8]}",
     )
 
-    # 5. 스트리밍
+    # 6. 스트리밍
     lc_messages = convert_to_langchain_messages(messages_history)
     config = {"configurable": {"thread_id": thread_id}}
 

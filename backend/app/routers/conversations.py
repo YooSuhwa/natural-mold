@@ -114,6 +114,7 @@ async def send_message(
 
     effective_prompt = chat_service.build_effective_prompt(agent)
     tools_config = chat_service.build_tools_config(agent, conversation_id=str(conversation_id))
+    agent_skills = chat_service.build_agent_skills(agent)
 
     async def generate():
         async for chunk in execute_agent_stream(
@@ -127,6 +128,8 @@ async def send_message(
             thread_id=str(conversation_id),
             model_params=agent.model_params,
             middleware_configs=agent.middleware_configs,
+            agent_skills=agent_skills or None,
+            agent_id=str(agent.id),
         ):
             yield chunk
 

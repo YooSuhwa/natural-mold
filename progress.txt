@@ -156,5 +156,89 @@
 - Alembic 마이그레이션: 올바른 순서 (conv_id 추가 → 데이터 마이그레이션 → message_id 삭제 → messages DROP → NOT NULL)
 - 결론: M2 regression 없음, 게이트 통과
 
+## M3 삭제 분석 결과 (2026-04-06) — Bezos
+
+### 핵심 발견
+- skill_tool_factory.py + skill_executor.py → 전체 삭제 가능 (외부 참조: executor.py lazy import 1건만)
+- chat_service.py: get_agent_skill_contents() 삭제, build_effective_prompt() 단순화, build_tools_config() skill_package 블록 제거
+- executor.py: skill_package elif 분기(L189-199) 제거
+- config.py: skill_script_timeout, skill_max_output_bytes 제거 가능. skill_storage_dir/skill_max_package_bytes/conversation_output_dir는 유지 필수
+- AgentSkillLink/skill_links는 유지 필수 (S3에서 skills 경로 매핑에 사용)
+- 테스트 영향: test_skill_package.py의 TestSkillExecutor(7건)/TestSkillToolFactory(6건) 삭제, TestPromptInjection 수정
+
+### 삭제 순서 제약
+1. executor.py skill_package 분기 제거 → 2. chat_service.py 3개 함수 정리 → 3. skill_tool_factory.py 삭제 → 4. skill_executor.py 삭제 → 5. config/pyproject.toml/테스트 정리
+
+## M3-S2 아키텍처 설계 결과 (2026-04-06) — Pichai
+
+### Backend 선택: FilesystemBackend
+- root_dir="./data", virtual_mode=True
+- CompositeBackend 불필요 (스크래치패드 미사용)
+- StoreBackend 불필요 (PoC에서 cross-thread 메모리 불필요)
+- 심볼릭 링크 불가: FilesystemBackend는 O_NOFOLLOW로 symlink 차단
+
+### Skills 경로 매핑
+- skills=["/skills/"] → _list_skills가 data/skills/ 하위 서브디렉토리 자동 탐색
+- _list_skills 동작: ls_info(source_path) → is_dir 필터 → {dir}/SKILL.md 다운로드 → frontmatter 파싱
+- **주의**: source_path는 **스킬 컬렉션 디렉토리** (부모). 개별 스킬 디렉토리 직접 전달 불가
+- Per-agent 필터링 없음 (PoC). 모든 에이전트가 /skills/ 전체 탐색. 프로그레시브 디스클로저로 보완.
+
+### Memory 경로 패턴
+- memory=["/agents/{agent_id}/AGENTS.md"]
+- MemoryMiddleware: download_files() → file_not_found 시 무시 (에러 없음)
+- data/agents/{agent_id}/ 디렉토리는 에이전트 생성 시 생성
+
+### Text 스킬 처리
+- text 스킬은 DB content 필드에만 존재 → 디스크에 SKILL.md로 물질화 필요
+- skill_service에서 생성/수정 시 _materialize_skill_to_disk() 호출
+- DB content = source of truth, SKILL.md = 파생물
+
+### build_agent() 변경
+- skills: list[str] | None, memory: list[str] | None 파라미터 추가
+- create_deep_agent에 그대로 전달
+- create_deep_agent 내부: SkillsMiddleware(backend, sources), MemoryMiddleware(backend, sources) 자동 생성
+
+### 제거 대상 확인 (S4용)
+- skill_tool_factory.py, skill_executor.py 전체 삭제
+- build_effective_prompt() 스킬 주입 로직
+- build_tools_config() skill_package 블록
+- executor.py skill_package elif 분기
+
+## M3-S3 완료 (2026-04-06) — Jensen
+- executor.py: build_agent()에 skills/memory 파라미터 추가, create_deep_agent에 전달
+- executor.py: execute_agent_stream()에 agent_skills/agent_id 파라미터 추가
+- executor.py: FilesystemBackend(root_dir=_DATA_DIR, virtual_mode=True) 생성
+- executor.py: skills_sources=["/skills/"] (agent_skills 있을 때), memory_sources=["/agents/{id}/AGENTS.md"] (agent_id 있을 때)
+- executor.py: skill_package elif 분기 제거 (L189-199)
+- executor.py: agent_id 전달 시 data/agents/{agent_id}/ 디렉토리 lazy 생성
+- conversations.py: agent_skills 구성 (skill_links에서 storage_path 있는 것만) + execute_agent_stream에 전달
+- trigger_executor.py: 동일하게 agent_skills + agent_id 전달
+- test_executor.py: build_agent skills/memory 테스트 추가, execute_agent_stream skills/memory 전달 테스트 2건 추가
+- _DATA_DIR 모듈 레벨 상수: ruff ASYNC240 (async 함수 내 Path.resolve) 회피
+- 결과: ruff 통과, 14 passed (기존 12 + 신규 2)
+
+## M3-S4 완료 (2026-04-06) — Jensen
+- skill_tool_factory.py 삭제 (124줄)
+- skill_executor.py 삭제 (93줄)
+- chat_service.py: get_agent_skill_contents() 삭제, build_effective_prompt() → return agent.system_prompt, build_tools_config() skill_package 블록 제거, Path/settings import 제거
+- config.py: skill_script_timeout, skill_max_output_bytes 제거
+- pyproject.toml: ruff per-file-ignores 2줄 제거
+- test_skill_package.py: TestSkillExecutor(7건)/TestSkillToolFactory(6건) 삭제, TestPromptInjection 수정 (7건→3건)
+- grep 검증: "skill_package"(도구 타입), skill_tool_factory, skill_executor, create_skill_tools, execute_skill_script, SkillScriptResult, get_agent_skill_contents, skill_script_timeout, skill_max_output_bytes → 전부 0건
+- 결과: ruff 통과, 29 passed (executor 14 + skill_package 15)
+
+## Gotchas (M3)
+- FilesystemBackend import는 lazy (함수 내부) — psycopg 패턴과 동일하지만, deepagents는 테스트 환경에서 설치 가능하므로 문제 없음
+- ruff ASYNC240: async 함수 내에서 Path.resolve() 사용 금지 → 모듈 레벨 상수로 이동
+
+## M3-S5 통합 검증 결과 (2026-04-06) — Bezos
+- ruff check: 전체 통과
+- pytest: 308 passed, 0 failed (M2 321 → M3 308, 감소분 13건은 삭제된 테스트: TestSkillExecutor 7 + TestSkillToolFactory 6)
+- 삭제 체크리스트: 18/18 PASS
+  - skill_package grep 2건은 upload_skill_package 함수명 (유지 대상) — false positive, 정상
+- 유지 항목: 전부 PASS (AgentSkillLink 13refs, skill_links 14refs, skill_service.py/skills.py 존재, config 설정 유지)
+- 신규 코드: PASS (executor.py skills/memory 파라미터, FilesystemBackend, conversations.py/trigger_executor.py agent_skills/agent_id 전달)
+- 결론: M3 regression 없음, 게이트 통과
+
 ## 실패 교훈
 (아직 없음)
