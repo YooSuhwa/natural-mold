@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.skill import AgentSkillLink
@@ -142,38 +140,22 @@ async def get_agent_with_tools(
     return result.scalar_one_or_none()
 
 
-def get_agent_skill_contents(agent: Agent) -> list[str]:
-    """Get skill contents from an agent's eagerly-loaded skill links."""
-    if not agent.skill_links:
-        return []
-    contents: list[str] = []
-    for link in agent.skill_links:
-        skill = link.skill
-        if not skill:
-            continue
-        if skill.type == "package" and skill.storage_path:
-            base_url = f"/api/skills/{skill.id}/files"
-            header = f"Base directory for this skill: {base_url}\n\n"
-            body = skill.content or ""
-            body = body.replace("${SKILL_DIR}", base_url)
-            body = body.replace("${CLAUDE_SKILL_DIR}", base_url)
-            contents.append(header + body)
-        else:
-            contents.append(skill.content)
-    return contents
-
-
 def build_effective_prompt(agent: Agent) -> str:
-    """Build system prompt with skill contents injected."""
-    skill_contents = get_agent_skill_contents(agent)
-    if not skill_contents:
-        return agent.system_prompt
-    skills_text = "\n\n---\n\n".join(skill_contents)
-    return f"{agent.system_prompt}\n\n## 연결된 스킬\n\n{skills_text}"
+    """Build system prompt (skill injection handled by deepagents SkillsMiddleware)."""
+    return agent.system_prompt
+
+
+def build_agent_skills(agent: Agent) -> list[dict[str, Any]]:
+    """Build agent_skills list from agent's skill links (package skills with storage_path)."""
+    return [
+        {"skill_id": str(link.skill.id), "storage_path": link.skill.storage_path}
+        for link in agent.skill_links
+        if link.skill and link.skill.storage_path
+    ]
 
 
 def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list[dict[str, Any]]:
-    """Build tools_config list from agent's tool and skill links."""
+    """Build tools_config list from agent's tool links."""
     tools_config: list[dict[str, Any]] = []
 
     for link in agent.tool_links:
@@ -193,21 +175,5 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
             config_entry["mcp_server_url"] = tool.mcp_server.url
             config_entry["mcp_tool_name"] = tool.name
         tools_config.append(config_entry)
-
-    for link in agent.skill_links:
-        skill = link.skill
-        if skill and skill.type == "package" and skill.storage_path:
-            output_dir = None
-            if conversation_id:
-                output_dir = str(Path(settings.conversation_output_dir) / conversation_id)
-            tools_config.append(
-                {
-                    "type": "skill_package",
-                    "skill_id": str(skill.id),
-                    "skill_dir": skill.storage_path,
-                    "conversation_id": conversation_id,
-                    "output_dir": output_dir,
-                }
-            )
 
     return tools_config

@@ -28,8 +28,32 @@ def test_build_agent_calls_deep_agent(mock_create: MagicMock):
         checkpointer=None,
         store=None,
         backend=None,
+        skills=None,
+        memory=None,
         name=None,
     )
+
+
+@patch("app.agent_runtime.executor.create_deep_agent")
+def test_build_agent_passes_skills_and_memory(mock_create: MagicMock):
+    from app.agent_runtime.executor import build_agent
+
+    mock_model = MagicMock()
+    mock_backend = MagicMock()
+
+    build_agent(
+        mock_model,
+        [],
+        "prompt",
+        backend=mock_backend,
+        skills=["/skills/"],
+        memory=["/agents/abc/AGENTS.md"],
+    )
+
+    call_kwargs = mock_create.call_args[1]
+    assert call_kwargs["skills"] == ["/skills/"]
+    assert call_kwargs["memory"] == ["/agents/abc/AGENTS.md"]
+    assert call_kwargs["backend"] is mock_backend
 
 
 @patch("app.agent_runtime.executor.create_deep_agent")
@@ -472,3 +496,104 @@ async def test_execute_stream_yields_chunks(
         chunks.append(chunk)
 
     assert chunks == ["chunk-1", "chunk-2", "chunk-3"]
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.executor.FilesystemBackend")
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+async def test_execute_stream_passes_skills_and_memory(
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+    mock_fs_backend_cls: MagicMock,
+    tmp_path,
+):
+    """Skills and memory params are forwarded to build_agent when provided."""
+    from app.agent_runtime.executor import execute_agent_stream
+
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = []
+    mock_build.return_value = MagicMock()
+
+    async def fake_stream(*args, **kwargs):
+        yield "done"
+
+    mock_stream.return_value = fake_stream()
+
+    agent_skills = [{"skill_id": "s1", "storage_path": "/data/skills/s1"}]
+
+    mock_data_dir = tmp_path / "data"
+    mock_data_dir.mkdir(exist_ok=True)
+
+    with patch("app.agent_runtime.executor._DATA_DIR", mock_data_dir):
+        async for _ in execute_agent_stream(
+            provider="openai",
+            model_name="gpt-4o",
+            api_key=None,
+            base_url=None,
+            system_prompt="Hi",
+            tools_config=[],
+            messages_history=[],
+            thread_id="t-1",
+            agent_skills=agent_skills,
+            agent_id="agent-123",
+        ):
+            pass
+
+    build_kwargs = mock_build.call_args[1]
+    assert build_kwargs["skills"] == ["/skills/"]
+    assert build_kwargs["memory"] == ["/agents/agent-123/AGENTS.md"]
+    assert build_kwargs["backend"] is mock_fs_backend_cls.return_value
+
+    # Verify agent directory was created
+    assert (mock_data_dir / "agents" / "agent-123").exists()
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.executor.FilesystemBackend")
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+async def test_execute_stream_no_skills_no_memory_when_not_provided(
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+    mock_fs_backend_cls: MagicMock,
+):
+    """When agent_skills and agent_id are not provided, skills/memory should be None."""
+    from app.agent_runtime.executor import execute_agent_stream
+
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = []
+    mock_build.return_value = MagicMock()
+
+    async def fake_stream(*args, **kwargs):
+        yield "done"
+
+    mock_stream.return_value = fake_stream()
+
+    async for _ in execute_agent_stream(
+        provider="openai",
+        model_name="gpt-4o",
+        api_key=None,
+        base_url=None,
+        system_prompt="Hi",
+        tools_config=[],
+        messages_history=[],
+        thread_id="t-1",
+    ):
+        pass
+
+    build_kwargs = mock_build.call_args[1]
+    assert build_kwargs["skills"] is None
+    assert build_kwargs["memory"] is None

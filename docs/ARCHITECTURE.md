@@ -232,16 +232,19 @@ Message ───────┬── role: user | assistant | tool
 
 ## 기술 스택 요약
 
-| 레이어 | 현재 | M1 이후 | M2 이후 |
-|--------|------|---------|---------|
-| 에이전트 생성 | `create_agent` + `create_react_agent` 폴백 | `create_deep_agent` | 동일 |
-| MCP 도구 | httpx 직접 구현 (`mcp_client.call_mcp_tool`) | `langchain-mcp-adapters` (`MultiServerMCPClient`) | 동일 |
-| 대화 상태 | DB `messages` 테이블 | 동일 | LangGraph `AsyncPostgresSaver` checkpointer |
-| 미들웨어 | `langchain.agents.middleware.*` | 동일 (create_deep_agent `middleware` 파라미터) | 동일 |
-| LLM 모델 | `ChatOpenAI`, `ChatAnthropic`, `ChatGoogleGenerativeAI` | 동일 | 동일 |
-| 스트리밍 | `CompiledStateGraph.astream()` → SSE | 동일 (반환 타입 동일) | 동일 |
-| DB/ORM | SQLAlchemy 2.0 async + Alembic | 동일 | 동일 (`messages` 테이블 제거) |
-| 스케줄러 | APScheduler 3.x | 동일 | 동일 |
+| 레이어 | 현재 | M1 이후 | M2 이후 | M3 이후 |
+|--------|------|---------|---------|---------|
+| 에이전트 생성 | `create_agent` + `create_react_agent` 폴백 | `create_deep_agent` | 동일 | 동일 |
+| MCP 도구 | httpx 직접 구현 (`mcp_client.call_mcp_tool`) | `langchain-mcp-adapters` (`MultiServerMCPClient`) | 동일 | 동일 |
+| 대화 상태 | DB `messages` 테이블 | 동일 | LangGraph `AsyncPostgresSaver` checkpointer | 동일 |
+| 스킬 | `skill_tool_factory` 도구 + 시스템 프롬프트 주입 | 동일 | 동일 | deepagents `SkillsMiddleware` (프로그레시브 디스클로저) |
+| 메모리 | 없음 | 없음 | 없음 | deepagents `MemoryMiddleware` (AGENTS.md) |
+| 백엔드 | 없음 | 없음 | 없음 | `FilesystemBackend` (data/, virtual_mode) |
+| 미들웨어 | `langchain.agents.middleware.*` | 동일 (create_deep_agent `middleware` 파라미터) | 동일 | 동일 + SkillsMiddleware + MemoryMiddleware |
+| LLM 모델 | `ChatOpenAI`, `ChatAnthropic`, `ChatGoogleGenerativeAI` | 동일 | 동일 | 동일 |
+| 스트리밍 | `CompiledStateGraph.astream()` → SSE | 동일 (반환 타입 동일) | 동일 | 동일 |
+| DB/ORM | SQLAlchemy 2.0 async + Alembic | 동일 | 동일 (`messages` 테이블 제거) | 동일 |
+| 스케줄러 | APScheduler 3.x | 동일 | 동일 | 동일 |
 
 ---
 
@@ -351,4 +354,108 @@ Conversation ──┬── title, is_pinned (메타데이터)
                └──▶ (N) TokenUsage (conversation_id FK)
 
 [messages 테이블 제거 — checkpointer의 checkpoints 테이블이 대체]
+```
+
+---
+
+## M3 변경 영역 (스킬 + 메모리 전환)
+
+> 상세 설계: [ADR-003: 스킬 + 메모리 전환](design-docs/adr-003-skills-memory.md)
+
+### 아키텍처 변경 개요
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Backend (FastAPI)                        │
+│                                                             │
+│  ┌──────────┐   ┌──────────┐   ┌────────────────────┐      │
+│  │ Routers  │──▶│ Services │──▶│  Agent Runtime  ⚡  │      │
+│  └──────────┘   └──────────┘   └────────────────────┘      │
+│                      │               │                      │
+│                      │               ▼                      │
+│               materialize      ┌──────────────────┐        │
+│               SKILL.md         │ create_deep_agent │        │
+│                  │             │  + skills=[...]   │        │
+│                  ▼             │  + memory=[...]   │        │
+│            ┌───────────┐      │  + backend=FS     │        │
+│            │ data/     │◀─────│                    │        │
+│            │ ├─skills/ │      └──────────────────┘        │
+│            │ │ └─{id}/ │           │         │             │
+│            │ │   └─SKILL.md        │         │             │
+│            │ └─agents/ │           │         │             │
+│            │   └─{id}/ │     SkillsMW   MemoryMW          │
+│            │     └─AGENTS.md │         │                   │
+│            └───────────┘     ▼         ▼                   │
+│                         시스템 프롬프트에 주입              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 핵심 데이터 흐름 변경: 채팅
+
+```
+POST /api/conversations/{id}/messages
+│
+├─ 1. maybe_set_auto_title(content)
+├─ 2. get_agent_with_tools(agent_id)  [skill_links 포함]
+├─ 3. system_prompt = agent.system_prompt  ← build_effective_prompt 제거
+├─ 4. build_tools_config(agent)  ← skill_package 분기 제거
+├─ 5. agent_skills = [linked skill storage_paths]
+│
+├─ 6. execute_agent_stream(
+│       ..., agent_skills=agent_skills, agent_id=str(agent.id))
+│    │
+│    ├─ 6a. create_chat_model()
+│    ├─ 6b. create tools (builtin/prebuilt/custom/mcp)
+│    ├─ 6c. FilesystemBackend(root_dir=data/, virtual_mode=True)
+│    ├─ 6d. build_agent(skills=["/skills/"], memory=["/agents/{id}/AGENTS.md"],
+│    │       backend=backend, checkpointer=saver)
+│    │    └─ create_deep_agent(skills, memory, backend, ...)
+│    │         ├─ SkillsMiddleware → _list_skills("/skills/")
+│    │         │   → 서브디렉토리 스캔 → SKILL.md 파싱
+│    │         │   → 프로그레시브 디스클로저 (에이전트가 필요 시 로드)
+│    │         └─ MemoryMiddleware → download AGENTS.md
+│    │             → 시스템 프롬프트에 메모리 콘텐츠 주입
+│    └─ 6e. stream_agent_response()
+│
+└─ 7. StreamingResponse → Frontend (SSE)
+```
+
+**M2 대비 변경점:**
+- `build_effective_prompt()` 스킬 주입 → `SkillsMiddleware` 프로그레시브 디스클로저
+- `skill_tool_factory.py` 도구 생성 → `skills` 파라미터로 대체
+- `FilesystemBackend` 신규 도입 (data/ 루트)
+- `MemoryMiddleware`로 에이전트 메모리 (AGENTS.md) 지원
+
+### 변경되는 파일
+
+| 파일 | 변경 내용 |
+|------|-----------|
+| `executor.py` | `build_agent()`에 `skills`, `memory` 파라미터 추가. `execute_agent_stream()`에 `FilesystemBackend` 생성 + skills/memory 소스 구성. `skill_package` 분기 제거 |
+| `services/chat_service.py` | `build_effective_prompt()` 스킬 주입 로직 제거. `build_tools_config()` skill_package 로직 제거 |
+| `services/skill_service.py` | `_materialize_skill_to_disk()` 추가 (text 스킬 → SKILL.md 물질화) |
+| `routers/conversations.py` | `execute_agent_stream()` 호출에 `agent_skills`, `agent_id` 전달 |
+
+### 제거되는 파일
+
+| 파일 | 이유 |
+|------|------|
+| `skill_tool_factory.py` | SkillsMiddleware가 대체 |
+| `skill_executor.py` | 스크립트 실행은 에이전트 빌트인 도구로 대체 |
+
+### 디렉토리 구조 변경
+
+```
+data/
+├── skills/                  # 기존 유지 — 모든 스킬의 SKILL.md 저장소
+│   └── {skill_id}/
+│       ├── SKILL.md
+│       ├── scripts/
+│       ├── references/
+│       └── _outputs/
+│
+├── agents/                  # ← M3 신규 — 에이전트별 메모리
+│   └── {agent_id}/
+│       └── AGENTS.md
+│
+└── conversations/           # 기존 유지
 ```

@@ -20,3 +20,15 @@
 [2026-04-06T00:04] satya MILESTONE_START S6 베조스 통합 검증
 [2026-04-06T00:05] bezos VERIFICATION_PASS S6 ruff PASS, pytest 321/321 (0 failed), S1 체크리스트 12/12 PASS, Alembic 마이그레이션 정합성 확인
 [2026-04-06T00:06] satya PROJECT_DONE "M2: Checkpointer 전환" — 6/6 스토리 전부 1회 통과
+[2026-04-06T15:00] satya PROJECT_START "M3: 스킬+메모리 전환"
+[2026-04-06T15:00] satya TEAM_FORMED pichai+jensen+bezos (백엔드 전용)
+[2026-04-06T15:00] satya MILESTONE_CREATED S1(삭제분석)+S2(아키텍처)+S3(구현)+S4(정리)+S5(검증)
+[2026-04-06T15:30] bezos MILESTONE_DONE S1 삭제 분석 완료 — 2파일 전체삭제, 3함수 제거, 18항목 체크리스트
+[2026-04-06T15:30] pichai MILESTONE_DONE S2 ADR-003 작성 — FilesystemBackend 선택, skills/memory 경로 매핑, text 스킬 물질화, S3+S4 언블록
+[2026-04-06T15:31] satya MILESTONE_START S3 젠슨 스폰
+[2026-04-06T15:45] jensen MILESTONE_DONE S3 executor/conversations/trigger 수정 — skills/memory 전달, FilesystemBackend, skill_package 제거, ruff+pytest PASS
+[2026-04-06T15:45] satya MILESTONE_START S4 젠슨에게 코드 정리 전달
+[2026-04-06T16:00] jensen MILESTONE_DONE S4 코드 정리 — 2파일 삭제, chat_service 단순화, config/pyproject/테스트 정리, ruff+pytest PASS
+[2026-04-06T16:00] satya MILESTONE_START S5 베조스 통합 검증
+[2026-04-06T16:15] bezos VERIFICATION_PASS S5 ruff PASS, pytest 308/308 (0 failed), 체크리스트 18/18 PASS, regression 없음
+[2026-04-06T16:15] satya PROJECT_DONE "M3: 스킬+메모리 전환" — 5/5 스토리 전부 1회 통과
