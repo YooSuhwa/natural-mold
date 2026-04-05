@@ -11,7 +11,7 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-@patch("deepagents.create_deep_agent")
+@patch("app.agent_runtime.executor.create_deep_agent")
 def test_build_agent_calls_deep_agent(mock_create: MagicMock):
     from app.agent_runtime.executor import build_agent
 
@@ -24,12 +24,15 @@ def test_build_agent_calls_deep_agent(mock_create: MagicMock):
         model=mock_model,
         tools=mock_tools,
         system_prompt="You are helpful.",
-        middleware=[],
+        middleware=(),
         checkpointer=None,
+        store=None,
+        backend=None,
+        name=None,
     )
 
 
-@patch("deepagents.create_deep_agent")
+@patch("app.agent_runtime.executor.create_deep_agent")
 def test_build_agent_returns_agent(mock_create: MagicMock):
     from app.agent_runtime.executor import build_agent
 

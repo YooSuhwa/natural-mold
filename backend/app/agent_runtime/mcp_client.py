@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 from mcp.client.session import ClientSession
-from mcp.client.streamable_http import streamable_http_client
+from mcp.client.streamable_http import streamablehttp_client
 
 from app.config import settings
 
@@ -77,7 +77,7 @@ async def list_mcp_tools(url: str) -> list[dict]:
     """MCP 서버에서 도구 목록 발견."""
     try:
         async with (
-            streamable_http_client(url) as (read, write, _),
+            streamablehttp_client(url) as (read, write, _),
             ClientSession(read, write) as session,
         ):
             await session.initialize()
@@ -92,5 +92,3 @@ async def list_mcp_tools(url: str) -> list[dict]:
             ]
     except Exception:
         return []
-
-

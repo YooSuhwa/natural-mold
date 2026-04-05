@@ -193,7 +193,6 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
             "auth_config": merged_auth or None,
         }
         if tool.type == "mcp" and tool.mcp_server:
-            config_entry["name"] = tool.name
             config_entry["mcp_server_url"] = tool.mcp_server.url
             config_entry["mcp_tool_name"] = tool.name
         tools_config.append(config_entry)

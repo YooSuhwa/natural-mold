@@ -292,5 +292,3 @@ def create_prebuilt_tool(name: str, auth_config: dict[str, Any] | None = None) -
         raise ValueError(f"Unknown google_workspace tool: {search_type}")
     else:
         raise ValueError(f"Unknown prebuilt provider: {provider}")
-
-
