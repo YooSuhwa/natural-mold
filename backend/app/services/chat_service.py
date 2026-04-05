@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import uuid
 from pathlib import Path
 from typing import Any
@@ -194,11 +193,25 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
             "auth_config": merged_auth or None,
         }
         if tool.type == "mcp" and tool.mcp_server:
-            safe = re.sub(r"[^a-zA-Z0-9_]", "_", f"{tool.mcp_server.name}_{tool.name}")
-            config_entry["name"] = safe
+            config_entry["name"] = tool.name
             config_entry["mcp_server_url"] = tool.mcp_server.url
             config_entry["mcp_tool_name"] = tool.name
         tools_config.append(config_entry)
+
+    # Disambiguate duplicate MCP tool names by adding server prefix
+    name_counts: dict[str, int] = {}
+    for tc in tools_config:
+        if tc.get("type") == "mcp":
+            name_counts[tc["name"]] = name_counts.get(tc["name"], 0) + 1
+
+    if any(c > 1 for c in name_counts.values()):
+        for tc in tools_config:
+            if tc.get("type") == "mcp" and name_counts.get(tc["name"], 0) > 1:
+                # Only prefix duplicates — use server URL host as disambiguator
+                from urllib.parse import urlparse
+
+                host = urlparse(tc["mcp_server_url"]).netloc.replace(".", "_").replace(":", "_")
+                tc["name"] = f"{host}_{tc['name']}"
 
     for link in agent.skill_links:
         skill = link.skill
