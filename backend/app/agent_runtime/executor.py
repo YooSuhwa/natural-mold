@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlparse
 
+from deepagents import create_deep_agent
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
-from langgraph.types import Checkpointer
 
 from app.agent_runtime.message_utils import convert_to_langchain_messages
 from app.agent_runtime.middleware_registry import (
@@ -25,62 +25,125 @@ from app.agent_runtime.tool_factory import (
 logger = logging.getLogger(__name__)
 
 
+def build_agent(
+    model: BaseChatModel,
+    tools: list[BaseTool],
+    system_prompt: str,
+    *,
+    middleware: list | None = None,
+    checkpointer: Any | None = None,
+    store: Any | None = None,
+    backend: Any | None = None,
+    name: str | None = None,
+) -> Any:
+    """Build a deep agent. Returns CompiledStateGraph."""
+    return create_deep_agent(
+        model=model,
+        tools=tools,
+        system_prompt=system_prompt,
+        middleware=middleware or (),
+        checkpointer=checkpointer,
+        store=store,
+        backend=backend,
+        name=name,
+    )
+
+
+# ---------------------------------------------------------------------------
+# MCP tool helpers — langchain-mcp-adapters
+# ---------------------------------------------------------------------------
+
+
 def _auth_config_to_headers(auth_config: dict | None) -> dict[str, str]:
     """auth_config를 HTTP 헤더로 변환."""
     if not auth_config:
         return {}
     if "headers" in auth_config:
         return auth_config["headers"]
-    token = auth_config.get("api_key") or auth_config.get("jwt_token")
+    token = auth_config.get("jwt_token") or auth_config.get("api_key")
     if token:
-        return {"Authorization": f"Bearer {token}"}
+        header_name = auth_config.get("header_name", "Authorization")
+        if auth_config.get("jwt_token"):
+            return {"Authorization": f"Bearer {token}"}
+        return {header_name: token}
     return {}
 
 
 def _url_to_server_key(url: str) -> str:
     """MCP 서버 URL을 고유 키로 변환 (호스트 + 경로 포함)."""
-    from urllib.parse import urlparse
-
     parsed = urlparse(url)
-    key = parsed.netloc + parsed.path
-    return key.replace(".", "_").replace(":", "_").replace("/", "_").strip("_")
+    key = parsed.netloc + parsed.path.rstrip("/")
+    return key.replace(".", "_").replace(":", "_").replace("/", "_")
 
 
-@asynccontextmanager
-async def _mcp_context(
-    mcp_servers: dict, langchain_tools: list, allowed_names: set[str]
-):
-    """MCP 서버가 있으면 연결을 열고 허용된 도구만 로딩, 없으면 no-op."""
-    if mcp_servers:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
+def _create_mcp_error_stub(name: str) -> BaseTool:
+    """MCP 서버 연결 실패 시 에러를 반환하는 stub 도구."""
+    from langchain_core.tools import StructuredTool
 
-        async with MultiServerMCPClient(mcp_servers, tool_name_prefix=True) as client:
-            all_tools = await client.get_tools()
-            langchain_tools.extend(
-                t for t in all_tools if t.name in allowed_names
-            )
-            yield
-    else:
-        yield
+    async def _call(**kwargs: Any) -> str:
+        return f"MCP tool '{name}' is temporarily unavailable. Please try again later."
 
-
-def build_agent(
-    model: BaseChatModel,
-    tools: list[BaseTool],
-    system_prompt: str,
-    middleware: list | None = None,
-    checkpointer: Checkpointer | None = None,
-) -> Any:
-    """Build an agent using create_deep_agent."""
-    from deepagents import create_deep_agent
-
-    return create_deep_agent(
-        model=model,
-        tools=tools,
-        system_prompt=system_prompt,
-        middleware=middleware or [],
-        checkpointer=checkpointer,
+    return StructuredTool.from_function(
+        coroutine=_call,
+        name=name,
+        description=f"MCP tool (currently unavailable): {name}",
     )
+
+
+async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
+    """MCP 도구를 langchain-mcp-adapters로 생성."""
+    if not mcp_configs:
+        return []
+
+    from langchain_mcp_adapters.client import MultiServerMCPClient
+
+    # 1. MCP 서버 URL별로 그룹화 — 서버 키 기준으로 도구 필터링
+    servers: dict[str, dict] = {}
+    tool_filter: dict[str, set[str]] = {}  # server_key → {tool_names}
+
+    for tc in mcp_configs:
+        url = tc["mcp_server_url"]
+        tool_name = tc.get("mcp_tool_name", tc["name"])
+        key = _url_to_server_key(url)
+
+        if key not in servers:
+            headers = _auth_config_to_headers(tc.get("auth_config"))
+            servers[key] = {
+                "transport": "streamable_http",
+                "url": url,
+                "headers": headers or None,
+            }
+            tool_filter[key] = set()
+
+        tool_filter[key].add(tool_name)
+
+    # 2. 서버별로 도구 로딩 + 필터링 — (tool, origin) 쌍으로 추적
+    collected: list[tuple[BaseTool, str]] = []
+
+    for key, config in servers.items():
+        try:
+            client = MultiServerMCPClient({key: config})
+            server_tools = await client.get_tools()
+            needed = tool_filter[key]
+            for t in server_tools:
+                if t.name in needed:
+                    collected.append((t, key))
+        except Exception:
+            logger.warning("MCP tool loading failed for %s", key, exc_info=True)
+            for tool_name in tool_filter[key]:
+                collected.append((_create_mcp_error_stub(tool_name), key))
+
+    # 3. 중복 이름 disambiguation — 서버 키를 prefix로 추가
+    name_counts: dict[str, int] = {}
+    for tool, _ in collected:
+        name_counts[tool.name] = name_counts.get(tool.name, 0) + 1
+
+    if any(c > 1 for c in name_counts.values()):
+        for tool, origin in collected:
+            if name_counts.get(tool.name, 0) > 1:
+                tool.name = f"{origin}_{tool.name}"
+
+    return [tool for tool, _ in collected]
 
 
 async def execute_agent_stream(
@@ -97,9 +160,9 @@ async def execute_agent_stream(
 ) -> AsyncGenerator[str, None]:
     model = create_chat_model(provider, model_name, api_key, base_url, **(model_params or {}))
 
+    # 1. 도구 생성 — builtin/prebuilt/custom은 기존 방식 유지
     langchain_tools: list[BaseTool] = []
-    mcp_servers: dict[str, dict] = {}
-    mcp_allowed_names: set[str] = set()
+    mcp_configs: list[dict] = []
 
     for tc in tools_config:
         tool_type = tc.get("type")
@@ -122,15 +185,7 @@ async def execute_agent_stream(
                 )
             )
         elif tool_type == "mcp" and tc.get("mcp_server_url"):
-            server_key = _url_to_server_key(tc["mcp_server_url"])
-            mcp_servers[server_key] = {
-                "transport": "streamable_http",
-                "url": tc["mcp_server_url"],
-                "headers": _auth_config_to_headers(tc.get("auth_config")),
-            }
-            # tool_name_prefix 적용 후 이름: "{server_key}_{tool_name}"
-            mcp_tool_name = tc.get("mcp_tool_name", tc["name"])
-            mcp_allowed_names.add(f"{server_key}_{mcp_tool_name}")
+            mcp_configs.append(tc)
         elif tool_type == "skill_package":
             from app.agent_runtime.skill_tool_factory import create_skill_tools
 
@@ -143,15 +198,26 @@ async def execute_agent_stream(
                 )
             )
 
-    # Build middleware instances from agent config + provider auto-additions
+    # 2. MCP 도구 — langchain-mcp-adapters 사용
+    mcp_tools = await _build_mcp_tools(mcp_configs)
+    langchain_tools.extend(mcp_tools)
+
+    # 3. 미들웨어 — 기존 방식 유지
     middleware = build_middleware_instances(middleware_configs or [])
     middleware += get_provider_middleware(provider)
 
-    async with _mcp_context(mcp_servers, langchain_tools, mcp_allowed_names):
-        agent = build_agent(
-            model, langchain_tools, system_prompt, middleware=middleware or None
-        )
-        lc_messages = convert_to_langchain_messages(messages_history)
-        config = {"configurable": {"thread_id": thread_id}}
-        async for chunk in stream_agent_response(agent, lc_messages, config):
-            yield chunk
+    # 4. 에이전트 빌드 — create_deep_agent
+    agent = build_agent(
+        model,
+        langchain_tools,
+        system_prompt,
+        middleware=middleware or None,
+        name=f"agent_{thread_id[:8]}",
+    )
+
+    # 5. 스트리밍
+    lc_messages = convert_to_langchain_messages(messages_history)
+    config = {"configurable": {"thread_id": thread_id}}
+
+    async for chunk in stream_agent_response(agent, lc_messages, config):
+        yield chunk

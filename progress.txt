@@ -1,0 +1,73 @@
+## Codebase Patterns
+- Backend: FastAPI + SQLAlchemy async + Alembic
+- AI Runtime: LangChain 1.x + LangGraph 1.x, executor.py에서 create_react_agent 사용 중
+- 도구 타입: builtin, prebuilt, custom, mcp, skill_package
+- MCP: httpx 직접 구현 (mcp_client.py), StructuredTool 수동 래핑 (tool_factory.py)
+- 패키지 매니저: uv (backend), pnpm (frontend)
+- 린트: ruff (line-length=100, target=py312)
+- 테스트: pytest + aiosqlite in-memory
+- DB: PostgreSQL 16 (docker-compose)
+
+## M1 목표
+- create_react_agent → create_deep_agent (deepagents 패키지)
+- MCP 직접 구현 → langchain-mcp-adapters
+- SPEC.md 참조
+
+## Gotchas
+- executor.py build_agent()에 create_agent + create_react_agent 폴백 패턴 있음
+- tool_factory.py에 MCP + builtin + prebuilt + custom 도구 생성 함수 혼재
+- mcp_client.py에 test_mcp_connection()/list_mcp_tools()는 유지해야 함 (UI에서 사용)
+- chat_service.py build_tools_config()에 MCP 이름 가공 로직 있음
+
+## M1 삭제 분석 결과 (2026-04-05)
+- create_mcp_tool, _build_args_schema, call_mcp_tool, _extract_text는 외부 참조가 executor.py lazy import뿐. 테스트 직접 참조 없음 → 안전 삭제 가능
+- MCP 이름 가공 로직(chat_service.py:201-214)은 외부 테스트 없음 → 안전 삭제 가능
+- build_agent() 재작성 시 test_executor.py 2개 테스트도 재작성 필요
+- TokenTrackingCallback는 프로덕션 코드에서 미사용 (테스트만 존재) → M4 판단
+- skill_tool_factory.py, skill_executor.py는 M3 scope → M1에서 건드리지 않음
+
+## S2 아키텍처 리서치 결과 (2026-04-05)
+
+### SPEC 대비 실제 API 차이점
+- `create_deep_agent(skills=[...])` → skills 파라미터 없음. backend=CompositeBackend(routes={"/skills/": FilesystemBackend(...)}) 사용
+- `create_deep_agent(memory=[...])` → memory 파라미터 없음. backend CompositeBackend + store=PostgresStore(...) 조합
+- `middleware` 파라미터는 확인됨: `middleware: Sequence[AgentMiddleware] = ()`
+- 반환 타입 CompiledStateGraph — 기존 astream() 호환
+
+### MCP 어댑터 패턴
+- MultiServerMCPClient가 주 인터페이스: {"server_name": {"transport": "http", "url": "...", "headers": {...}}}
+- get_tools() → list[BaseTool] 직접 반환 (수동 래핑 불필요)
+- auth_config → HTTP headers 변환 필요 (api_key → Authorization, jwt_token → Bearer)
+
+### ADR-001 핵심 설계
+- build_agent() → create_deep_agent 단일 호출 (폴백 제거)
+- MCP 도구: 서버 URL별 그룹화 → MultiServerMCPClient → get_tools() → 이름 필터링
+- builtin/prebuilt/custom 도구 생성은 기존 tool_factory.py 유지
+- streaming.py는 변경 없음 (astream API 동일)
+
+## S3 완료 (2026-04-05) — Jensen
+- executor.py: create_react_agent → create_deep_agent (deepagents 0.4.12)
+- MCP 도구: create_mcp_tool → langchain-mcp-adapters (MultiServerMCPClient)
+- ADR 대비 차이: transport는 "streamable_http" (ADR에서는 "http"로 기술됨)
+- create_deep_agent에 skills/memory 파라미터 존재 (ADR 리서치 시점과 달리 0.4.x에서 추가됨)
+- MultiServerMCPClient.get_tools()는 async context manager 없이 호출 가능 (매 tool call마다 새 세션)
+
+## S4 완료 (2026-04-05) — Jensen
+- tool_factory.py: _build_args_schema(), create_mcp_tool() 제거 (51줄 감소)
+- mcp_client.py: _extract_text(), call_mcp_tool() 제거 (17줄 감소)
+- chat_service.py: MCP 이름 중복 감지/리네이밍 로직 제거
+- test_executor.py: build_agent 테스트 2개를 create_deep_agent mock으로 수정
+- ruff + grep 검증 통과: 제거된 함수 참조 0건
+
+## S5 통합 검증 결과 (2026-04-05) — Bezos
+- ruff check: 통과 (All checks passed)
+- pytest: 314 passed, 9 failed
+- M1 관련 테스트 109개: 전부 통과
+- 제거된 함수 참조 grep: 0건 (clean)
+- 9개 실패는 모두 pre-existing (main에서도 동일하게 실패, git stash로 확인):
+  - test_streaming.py 3건: 미들웨어 JSON 필터(character-by-character 스트리밍) 도입 후 테스트 미수정 (commit 1760bc0)
+  - test_skill_package.py 6건: skill_tool_factory 도구 이름 변경 후 테스트 미수정 (commit 1760bc0)
+- 결론: M1 변경으로 인한 regression 없음
+
+## 실패 교훈
+(아직 없음)
