@@ -49,6 +49,7 @@ def test_build_agent_returns_agent(mock_create: MagicMock):
 
 
 @pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
@@ -58,6 +59,7 @@ async def test_execute_stream_no_tools(
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
 ):
     from app.agent_runtime.executor import execute_agent_stream
 
@@ -90,6 +92,7 @@ async def test_execute_stream_no_tools(
 
 
 @pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
@@ -101,6 +104,7 @@ async def test_execute_stream_builtin_tool(
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
 ):
     from app.agent_runtime.executor import execute_agent_stream
 
@@ -134,6 +138,7 @@ async def test_execute_stream_builtin_tool(
 
 
 @pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
@@ -145,6 +150,7 @@ async def test_execute_stream_prebuilt_tool(
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
 ):
     from app.agent_runtime.executor import execute_agent_stream
 
@@ -177,6 +183,7 @@ async def test_execute_stream_prebuilt_tool(
 
 
 @pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
@@ -188,6 +195,7 @@ async def test_execute_stream_custom_tool(
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
 ):
     from app.agent_runtime.executor import execute_agent_stream
 
@@ -238,6 +246,7 @@ async def test_execute_stream_custom_tool(
 
 
 @pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
@@ -251,6 +260,7 @@ async def test_execute_stream_mixed_tools(
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
 ):
     from app.agent_runtime.executor import execute_agent_stream
 
@@ -290,6 +300,7 @@ async def test_execute_stream_mixed_tools(
 
 
 @pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
@@ -299,6 +310,7 @@ async def test_execute_stream_skips_custom_without_api_url(
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
 ):
     """Custom tool without api_url should be silently skipped."""
     from app.agent_runtime.executor import execute_agent_stream
@@ -333,6 +345,7 @@ async def test_execute_stream_skips_custom_without_api_url(
 
 
 @pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
@@ -342,6 +355,7 @@ async def test_execute_stream_passes_thread_id_in_config(
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
 ):
     from app.agent_runtime.executor import execute_agent_stream
 
@@ -373,6 +387,7 @@ async def test_execute_stream_passes_thread_id_in_config(
 
 
 @pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
@@ -382,6 +397,7 @@ async def test_execute_stream_skips_unknown_tool_type(
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
 ):
     """Unknown tool types should be silently ignored."""
     from app.agent_runtime.executor import execute_agent_stream
@@ -416,6 +432,7 @@ async def test_execute_stream_skips_unknown_tool_type(
 
 
 @pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
@@ -425,6 +442,7 @@ async def test_execute_stream_yields_chunks(
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
 ):
     """Verify that all chunks from stream_agent_response are yielded."""
     from app.agent_runtime.executor import execute_agent_stream

@@ -232,12 +232,123 @@ Message ───────┬── role: user | assistant | tool
 
 ## 기술 스택 요약
 
-| 레이어 | 현재 | M1 이후 |
-|--------|------|---------|
-| 에이전트 생성 | `create_agent` + `create_react_agent` 폴백 | `create_deep_agent` |
-| MCP 도구 | httpx 직접 구현 (`mcp_client.call_mcp_tool`) | `langchain-mcp-adapters` (`MultiServerMCPClient`) |
-| 미들웨어 | `langchain.agents.middleware.*` | 동일 (create_deep_agent `middleware` 파라미터) |
-| LLM 모델 | `ChatOpenAI`, `ChatAnthropic`, `ChatGoogleGenerativeAI` | 동일 |
-| 스트리밍 | `CompiledStateGraph.astream()` → SSE | 동일 (반환 타입 동일) |
-| DB/ORM | SQLAlchemy 2.0 async + Alembic | 동일 |
-| 스케줄러 | APScheduler 3.x | 동일 |
+| 레이어 | 현재 | M1 이후 | M2 이후 |
+|--------|------|---------|---------|
+| 에이전트 생성 | `create_agent` + `create_react_agent` 폴백 | `create_deep_agent` | 동일 |
+| MCP 도구 | httpx 직접 구현 (`mcp_client.call_mcp_tool`) | `langchain-mcp-adapters` (`MultiServerMCPClient`) | 동일 |
+| 대화 상태 | DB `messages` 테이블 | 동일 | LangGraph `AsyncPostgresSaver` checkpointer |
+| 미들웨어 | `langchain.agents.middleware.*` | 동일 (create_deep_agent `middleware` 파라미터) | 동일 |
+| LLM 모델 | `ChatOpenAI`, `ChatAnthropic`, `ChatGoogleGenerativeAI` | 동일 | 동일 |
+| 스트리밍 | `CompiledStateGraph.astream()` → SSE | 동일 (반환 타입 동일) | 동일 |
+| DB/ORM | SQLAlchemy 2.0 async + Alembic | 동일 | 동일 (`messages` 테이블 제거) |
+| 스케줄러 | APScheduler 3.x | 동일 | 동일 |
+
+---
+
+## M2 변경 영역 (Checkpointer 전환)
+
+> 상세 설계: [ADR-002: Checkpointer 기반 대화 관리](design-docs/adr-002-checkpointer.md)
+
+### 아키텍처 변경 개요
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Backend (FastAPI)                        │
+│                                                             │
+│  main.py lifespan                                           │
+│    ├─ init_checkpointer()  ──▶  AsyncPostgresSaver          │
+│    └─ shutdown_checkpointer()                               │
+│                                                             │
+│  ┌──────────┐   ┌──────────┐   ┌────────────────────┐      │
+│  │ Routers  │──▶│ Services │──▶│  Agent Runtime  ⚡  │      │
+│  └──────────┘   └──────────┘   └────────────────────┘      │
+│       │                              │                      │
+│       │  GET /messages ──────────────┤                      │
+│       │  → checkpointer.aget_tuple() │                      │
+│       │  → message_utils 변환        │                      │
+│       │                              ▼                      │
+│       │                         ┌──────────────────┐        │
+│       │                         │  Checkpointer    │        │
+│       │                         │  (PostgreSQL)    │        │
+│       │                         │  ┌────────────┐  │        │
+│       │                         │  │ checkpoints│  │        │
+│       │                         │  │ blobs      │  │        │
+│       │                         │  │ writes     │  │        │
+│       │                         │  └────────────┘  │        │
+│       ▼                         └──────────────────┘        │
+│  ┌──────────┐   ┌──────────┐                                │
+│  │ Schemas  │   │ Models   │──▶ PostgreSQL 16               │
+│  │(Pydantic)│   │  (ORM)   │   (conversations, token_usages)│
+│  └──────────┘   └──────────┘   (messages 테이블 제거)        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 핵심 데이터 흐름 변경: 채팅
+
+```
+POST /api/conversations/{id}/messages
+│
+├─ 1. maybe_set_auto_title(content)                [chat_service → DB]
+├─ 2. get_agent_with_tools(agent_id)               [chat_service → DB]
+├─ 3. build_effective_prompt(agent)                 [chat_service]
+├─ 4. build_tools_config(agent, conversation_id)    [chat_service]
+│
+├─ 5. execute_agent_stream(                         [executor.py]
+│       ...,
+│       messages_history=[{role: "user", content}],  ← 새 메시지만
+│       thread_id=str(conversation_id),
+│       ...)
+│    │
+│    ├─ 5a. create_chat_model()                     [model_factory]
+│    ├─ 5b. create_*_tool() × N                     [tool_factory]
+│    ├─ 5c. build_middleware_instances()             [middleware_registry]
+│    ├─ 5d. build_agent(checkpointer=saver)         [executor → deep agent]
+│    ├─ 5e. checkpointer auto-loads 이전 히스토리
+│    └─ 5f. stream_agent_response()                 [streaming → SSE]
+│           → checkpointer auto-saves 새 상태
+│
+└─ 6. StreamingResponse → Frontend (SSE)
+```
+
+**M1 대비 변경점:**
+- `save_message(user)` 제거 → checkpointer 자동 저장
+- `list_messages()` 제거 → checkpointer 자동 복원
+- `save_message(assistant)` 제거 → checkpointer 자동 저장
+- `maybe_set_auto_title()` 신규 → auto-title 로직 분리
+
+### 변경되는 파일
+
+| 파일 | 변경 내용 |
+|------|-----------|
+| `agent_runtime/checkpointer.py` | **신규** — AsyncPostgresSaver 싱글턴 + 초기화/정리 + thread 삭제 |
+| `main.py` | lifespan에서 checkpointer 초기화/정리 추가 |
+| `executor.py` | `build_agent()` 호출에 `checkpointer=get_checkpointer()` 전달 |
+| `routers/conversations.py` | GET/messages → checkpointer 조회, POST → save_message 제거, DELETE → delete_thread |
+| `services/chat_service.py` | `save_message()`, `list_messages()` 삭제. `maybe_set_auto_title()` 추가 |
+| `agent_runtime/message_utils.py` | `langchain_messages_to_response()` 추가 |
+| `models/conversation.py` | `Message` 클래스 제거 |
+| `models/token_usage.py` | `message_id` FK → `conversation_id` FK |
+
+### DB 스키마 변경
+
+| 변경 | 상세 |
+|------|------|
+| `messages` 테이블 | **제거** (checkpointer가 대체) |
+| `token_usages.message_id` | **제거** → `conversation_id` FK 추가 |
+| `checkpoints`, `checkpoint_blobs`, `checkpoint_writes` | **자동 생성** (AsyncPostgresSaver.setup()) |
+
+### 데이터 모델 관계 (M2 이후)
+
+```
+Agent (1) ─────┬──▶ (1) Model
+               ├──▶ (N) AgentToolLink ──▶ (1) Tool
+               ├──▶ (N) AgentSkillLink ──▶ (1) Skill
+               ├──▶ (N) Conversation ──▶ (checkpointer: thread_id)
+               ├──▶ (N) AgentTrigger
+               └──▶ (1) Template (optional)
+
+Conversation ──┬── title, is_pinned (메타데이터)
+               └──▶ (N) TokenUsage (conversation_id FK)
+
+[messages 테이블 제거 — checkpointer의 checkpoints 테이블이 대체]
+```

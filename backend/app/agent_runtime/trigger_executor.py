@@ -39,9 +39,6 @@ async def execute_trigger(trigger_id: str) -> None:
         now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
         conv = await chat_service.create_conversation(db, agent.id, title=f"자동 실행: {now_str}")
 
-        # Save trigger input as user message
-        await chat_service.save_message(db, conv.id, "user", trigger.input_message)
-
         # Build prompt (with skill contents) and tools config via shared helpers
         effective_prompt = chat_service.build_effective_prompt(agent)
         tools_config = chat_service.build_tools_config(agent)
@@ -78,10 +75,6 @@ async def execute_trigger(trigger_id: str) -> None:
         except Exception:
             logger.exception("Trigger %s: agent execution failed", trigger_id)
             full_content = "트리거 실행 중 오류가 발생했습니다."
-
-        # Save assistant response
-        if full_content:
-            await chat_service.save_message(db, conv.id, "assistant", full_content)
 
         # Update trigger state
         trigger.last_run_at = datetime.now(UTC).replace(tzinfo=None)

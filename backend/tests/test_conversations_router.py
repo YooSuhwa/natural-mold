@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 
 from app.models.agent import Agent
-from app.models.conversation import Conversation, Message
+from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
@@ -63,14 +63,6 @@ async def _seed_conversation(agent_id: uuid.UUID) -> uuid.UUID:
         db.add(conv)
         await db.commit()
         return conv.id
-
-
-async def _seed_message(conv_id: uuid.UUID, role: str, content: str) -> uuid.UUID:
-    async with TestSession() as db:
-        msg = Message(conversation_id=conv_id, role=role, content=content)
-        db.add(msg)
-        await db.commit()
-        return msg.id
 
 
 # ---------------------------------------------------------------------------
@@ -150,19 +142,35 @@ async def test_list_messages_empty(client: AsyncClient):
     agent_id, _ = await _seed_agent()
     conv_id = await _seed_conversation(agent_id)
 
-    resp = await client.get(f"/api/conversations/{conv_id}/messages")
+    with patch("app.agent_runtime.checkpointer.get_checkpointer") as mock_cp:
+        mock_cp.return_value.aget_tuple = AsyncMock(return_value=None)
+        resp = await client.get(f"/api/conversations/{conv_id}/messages")
+
     assert resp.status_code == 200
     assert resp.json() == []
 
 
 @pytest.mark.asyncio
 async def test_list_messages_with_data(client: AsyncClient):
+    from langchain_core.messages import AIMessage, HumanMessage
+
     agent_id, _ = await _seed_agent()
     conv_id = await _seed_conversation(agent_id)
-    await _seed_message(conv_id, "user", "Hello")
-    await _seed_message(conv_id, "assistant", "Hi!")
 
-    resp = await client.get(f"/api/conversations/{conv_id}/messages")
+    mock_checkpoint = {
+        "channel_values": {
+            "messages": [
+                HumanMessage(content="Hello", id=str(uuid.uuid4())),
+                AIMessage(content="Hi!", id=str(uuid.uuid4())),
+            ]
+        }
+    }
+    mock_tuple = type("CT", (), {"checkpoint": mock_checkpoint})()
+
+    with patch("app.agent_runtime.checkpointer.get_checkpointer") as mock_cp:
+        mock_cp.return_value.aget_tuple = AsyncMock(return_value=mock_tuple)
+        resp = await client.get(f"/api/conversations/{conv_id}/messages")
+
     assert resp.status_code == 200
     msgs = resp.json()
     assert len(msgs) == 2
@@ -207,9 +215,16 @@ async def test_send_message_streaming(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_send_message_saves_user_message(client: AsyncClient):
+async def test_send_message_sets_auto_title(client: AsyncClient):
+    """send_message should set auto-title from user content."""
     agent_id, _ = await _seed_agent()
-    conv_id = await _seed_conversation(agent_id)
+
+    # Create conversation with default title "새 대화"
+    async with TestSession() as db:
+        conv = Conversation(agent_id=agent_id, title="새 대화")
+        db.add(conv)
+        await db.commit()
+        conv_id = conv.id
 
     async def mock_stream(*args, **kwargs):
         yield 'event: message_end\ndata: {"content": "Reply", "usage": {}}\n\n'
@@ -220,10 +235,13 @@ async def test_send_message_saves_user_message(client: AsyncClient):
             json={"content": "User says hello"},
         )
 
-    # Verify user message was saved
-    resp = await client.get(f"/api/conversations/{conv_id}/messages")
-    msgs = resp.json()
-    assert any(m["role"] == "user" and m["content"] == "User says hello" for m in msgs)
+    # Verify auto-title was applied
+    async with TestSession() as db:
+        from sqlalchemy import select
+
+        result = await db.execute(select(Conversation).where(Conversation.id == conv_id))
+        conv = result.scalar_one()
+        assert conv.title == "User says hello"
 
 
 @pytest.mark.asyncio
@@ -317,7 +335,8 @@ async def test_delete_conversation(client: AsyncClient):
     agent_id, _ = await _seed_agent()
     conv_id = await _seed_conversation(agent_id)
 
-    resp = await client.delete(f"/api/conversations/{conv_id}")
+    with patch("app.agent_runtime.checkpointer.delete_thread", new_callable=AsyncMock):
+        resp = await client.delete(f"/api/conversations/{conv_id}")
     assert resp.status_code == 204
 
     # Verify conversation no longer appears in listing

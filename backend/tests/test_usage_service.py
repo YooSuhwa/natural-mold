@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
-from app.models.conversation import Conversation, Message
+from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.token_usage import TokenUsage
 from app.models.user import User
@@ -52,17 +52,13 @@ async def _seed_usage(
     completion: int,
     cost: float,
 ) -> None:
-    """Create a Conversation + Message + TokenUsage record."""
+    """Create a Conversation + TokenUsage record."""
     conv = Conversation(agent_id=agent_id, title="c")
     db.add(conv)
     await db.flush()
 
-    msg = Message(conversation_id=conv.id, role="assistant", content="hi")
-    db.add(msg)
-    await db.flush()
-
     usage = TokenUsage(
-        message_id=msg.id,
+        conversation_id=conv.id,
         agent_id=agent_id,
         model_name="gpt-4o",
         prompt_tokens=prompt,

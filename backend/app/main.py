@@ -100,6 +100,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         await db.commit()
 
+    # Checkpointer 초기화 — psycopg v3 호환 URL 사용
+    from app.agent_runtime.checkpointer import init_checkpointer
+
+    await init_checkpointer(settings.database_url_sync)
+
     # Start scheduler and reload active triggers
     scheduler = get_scheduler()
     scheduler.start()
@@ -112,6 +117,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
     # Shutdown
     scheduler.shutdown(wait=False)
+
+    from app.agent_runtime.checkpointer import shutdown_checkpointer
+
+    await shutdown_checkpointer()
 
 
 def create_app() -> FastAPI:

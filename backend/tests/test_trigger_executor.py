@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
-from app.models.conversation import Conversation, Message
+from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
@@ -243,7 +243,10 @@ async def test_execute_trigger_content_parsing():
     """SSE delta chunks should be accumulated into full content."""
     trigger_id, _ = await _seed_full_setup()
 
+    captured_kwargs: dict = {}
+
     async def mock_stream(*args, **kwargs):
+        captured_kwargs.update(kwargs)
         yield 'event: content_delta\ndata: {"delta": "Part1 "}\n\n'
         yield 'event: content_delta\ndata: {"delta": "Part2"}\n\n'
         yield 'event: message_end\ndata: {"content": "Part1 Part2", "usage": {}}\n\n'
@@ -262,12 +265,8 @@ async def test_execute_trigger_content_parsing():
 
         await execute_trigger(str(trigger_id))
 
-    # Find the assistant message saved
-    async with TestSession() as db:
-        result = await db.execute(select(Message).where(Message.role == "assistant"))
-        msgs = result.scalars().all()
-        assert len(msgs) == 1
-        assert "Part1" in msgs[0].content
+    # Verify the user message was passed to the agent stream
+    assert captured_kwargs["messages_history"] == [{"role": "user", "content": "뉴스 검색해줘"}]
 
 
 @pytest.mark.asyncio
@@ -333,11 +332,14 @@ async def test_execute_trigger_with_tools_config():
 
 
 @pytest.mark.asyncio
-async def test_execute_trigger_saves_user_message():
-    """The trigger's input_message should be saved as a user message."""
+async def test_execute_trigger_passes_user_message():
+    """The trigger's input_message should be passed as messages_history to agent."""
     trigger_id, _ = await _seed_full_setup()
 
+    captured_kwargs: dict = {}
+
     async def mock_stream(*args, **kwargs):
+        captured_kwargs.update(kwargs)
         yield 'event: message_end\ndata: {"content": "ok", "usage": {}}\n\n'
 
     with (
@@ -354,8 +356,4 @@ async def test_execute_trigger_saves_user_message():
 
         await execute_trigger(str(trigger_id))
 
-    async with TestSession() as db:
-        result = await db.execute(select(Message).where(Message.role == "user"))
-        msgs = result.scalars().all()
-        assert len(msgs) == 1
-        assert msgs[0].content == "뉴스 검색해줘"
+    assert captured_kwargs["messages_history"] == [{"role": "user", "content": "뉴스 검색해줘"}]
