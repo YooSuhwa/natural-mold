@@ -464,6 +464,22 @@ class TestSkillExecutor:
 # ===========================================================================
 
 
+def _find_run_tool(tools):
+    """Find the run_* tool (not the read_*_file tool)."""
+    return next(
+        t for t in tools
+        if t.name.startswith("run_") and not t.name.endswith("_file")
+    )
+
+
+def _find_read_tool(tools):
+    """Find the read_*_file tool."""
+    return next(
+        t for t in tools
+        if t.name.startswith("read_") and t.name.endswith("_file")
+    )
+
+
 class TestSkillToolFactory:
     """create_skill_tools() 테스트."""
 
@@ -476,8 +492,8 @@ class TestSkillToolFactory:
         )
         assert len(tools) == 2
         names = {t.name for t in tools}
-        assert "run_command_abcdef12" in names
-        assert "read_skill_file_abcdef12" in names
+        assert "run_abcdef12" in names
+        assert "read_abcdef12_file" in names
 
     @pytest.mark.asyncio
     async def test_read_skill_file(self, tmp_path: Path):
@@ -491,7 +507,7 @@ class TestSkillToolFactory:
             skill_id="abcdef12-0000-0000-0000-000000000000",
             skill_dir=str(tmp_path),
         )
-        read_tool = next(t for t in tools if "read_skill_file" in t.name)
+        read_tool = _find_read_tool(tools)
         result = await read_tool.ainvoke({"file_path": "references/data.md"})
         assert "# Reference Data" in result
 
@@ -503,7 +519,7 @@ class TestSkillToolFactory:
             skill_id="abcdef12-0000-0000-0000-000000000000",
             skill_dir=str(tmp_path),
         )
-        read_tool = next(t for t in tools if "read_skill_file" in t.name)
+        read_tool = _find_read_tool(tools)
         result = await read_tool.ainvoke({"file_path": "../../../etc/passwd"})
         assert "Error" in result
 
@@ -515,7 +531,7 @@ class TestSkillToolFactory:
             skill_id="abcdef12-0000-0000-0000-000000000000",
             skill_dir=str(tmp_path),
         )
-        read_tool = next(t for t in tools if "read_skill_file" in t.name)
+        read_tool = _find_read_tool(tools)
         result = await read_tool.ainvoke({"file_path": "nonexistent.txt"})
         assert "not found" in result
 
@@ -531,7 +547,7 @@ class TestSkillToolFactory:
             skill_id="abcdef12-0000-0000-0000-000000000000",
             skill_dir=str(tmp_path),
         )
-        run_tool = next(t for t in tools if "run_command" in t.name)
+        run_tool = _find_run_tool(tools)
         result = await run_tool.ainvoke({"command": "python scripts/hi.py"})
         assert "hi from tool" in result
 
@@ -543,7 +559,7 @@ class TestSkillToolFactory:
             skill_id="abcdef12-0000-0000-0000-000000000000",
             skill_dir=str(tmp_path),
         )
-        run_tool = next(t for t in tools if "run_command" in t.name)
+        run_tool = _find_run_tool(tools)
         # ValueError는 도구 내부에서 catch되어 에러 문자열로 반환될 수 있음
         result = await run_tool.ainvoke({"command": "bash evil.sh"})
         assert "error" in result.lower() or "only" in result.lower()

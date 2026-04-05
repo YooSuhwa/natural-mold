@@ -1,0 +1,243 @@
+# Moldy Architecture Map
+
+> M1 마일스톤 기준. `create_agent` → `create_deep_agent` 엔진 교체 대상 표시.
+
+---
+
+## 시스템 개요
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Frontend (Next.js 16)                 │
+│   App Router + React 19 + TanStack Query + Jotai        │
+│   SSE Client ←─────────────────────────────────────┐    │
+└─────────────┬───────────────────────────────────────┘    │
+              │ HTTP / SSE                                 │
+              ▼                                            │
+┌─────────────────────────────────────────────────────────┐│
+│                  Backend (FastAPI)                       ││
+│                                                         ││
+│  ┌──────────┐   ┌──────────┐   ┌────────────────────┐  ││
+│  │ Routers  │──▶│ Services │──▶│  Agent Runtime  ⚡  │  ││
+│  │ (HTTP)   │   │ (Biz)    │   │  (LLM Execution)   │──┘│
+│  └──────────┘   └──────────┘   └────────────────────┘   │
+│       │              │              │                    │
+│       ▼              ▼              ▼                    │
+│  ┌──────────┐   ┌──────────┐   ┌──────────────────┐    │
+│  │ Schemas  │   │ Models   │──▶│  PostgreSQL 16   │    │
+│  │(Pydantic)│   │  (ORM)   │   │  + APScheduler   │    │
+│  └──────────┘   └──────────┘   └──────────────────┘    │
+└─────────────────────────────────────────────────────────┘
+```
+
+⚡ = M1 변경 대상 (Agent Runtime 레이어)
+
+---
+
+## 모듈 맵
+
+### Backend (`backend/app/`)
+
+```
+app/
+├── main.py                 # App factory + lifespan (시드, 스케줄러)
+├── config.py               # pydantic-settings (.env)
+├── database.py             # async engine + session
+├── dependencies.py         # get_db, get_current_user (mock)
+├── exceptions.py           # AppError + HTTP error handlers
+├── scheduler.py            # APScheduler 싱글턴
+│
+├── routers/                # HTTP 엔드포인트
+│   ├── agents.py           #   에이전트 CRUD + 미들웨어 레지스트리
+│   ├── conversations.py    #   채팅/메시지 스트리밍 (핵심 진입점)
+│   ├── tools.py            #   도구 CRUD + MCP 디스커버리
+│   ├── skills.py           #   스킬 CRUD + 파일 서빙
+│   ├── models.py           #   LLM 모델 CRUD
+│   ├── templates.py        #   템플릿 CRUD
+│   ├── agent_creation.py   #   대화형 에이전트 생성
+│   ├── fix_agent.py        #   코드 수정 에이전트
+│   ├── triggers.py         #   스케줄 트리거
+│   └── usage.py            #   토큰 사용량 통계
+│
+├── services/               # 비즈니스 로직
+│   ├── agent_service.py    #   에이전트 CRUD + 도구/스킬 연결
+│   ├── chat_service.py     #   대화 관리 + 도구 구성 빌드
+│   ├── tool_service.py     #   도구 CRUD
+│   ├── skill_service.py    #   스킬 CRUD
+│   ├── model_service.py    #   모델 CRUD
+│   ├── template_service.py #   템플릿 CRUD
+│   ├── agent_creation_service.py
+│   ├── trigger_service.py  #   트리거 CRUD
+│   └── usage_service.py    #   토큰 사용량 쿼리
+│
+├── agent_runtime/          # ⚡ AI 실행 엔진 (M1 핵심 변경)
+│   ├── executor.py         #   ⚡ build_agent + execute_agent_stream
+│   ├── model_factory.py    #     create_chat_model (provider별)
+│   ├── tool_factory.py     #   ⚡ 도구 생성 (builtin/prebuilt/custom/mcp)
+│   ├── mcp_client.py       #   ⚡ MCP 프로토콜 직접 구현
+│   ├── middleware_registry.py #   22종 미들웨어 레지스트리
+│   ├── streaming.py        #     LangGraph → SSE 변환
+│   ├── message_utils.py    #     메시지 포맷 변환
+│   ├── token_tracker.py    #     토큰 사용량 추적
+│   ├── skill_executor.py   #     스킬 실행
+│   ├── skill_tool_factory.py #   스킬 패키지 → 도구 변환
+│   ├── creation_agent.py   #     에이전트 생성 메타 에이전트
+│   ├── fix_agent.py        #     코드 수정 워크플로우
+│   ├── trigger_executor.py #     스케줄 트리거 실행
+│   ├── google_auth.py      #     Google OAuth2
+│   ├── google_tools.py     #     Google 검색 도구
+│   ├── google_workspace_tools.py # Gmail, Calendar, Chat
+│   └── naver_tools.py      #     네이버 검색 도구
+│
+├── models/                 # SQLAlchemy ORM
+│   ├── user.py             #   User
+│   ├── agent.py            #   Agent
+│   ├── conversation.py     #   Conversation + Message
+│   ├── tool.py             #   Tool + AgentToolLink + MCPServer
+│   ├── skill.py            #   Skill + AgentSkillLink
+│   ├── model.py            #   Model (LLM 설정)
+│   ├── template.py         #   Template
+│   ├── token_usage.py      #   TokenUsage
+│   ├── agent_creation_session.py
+│   └── agent_trigger.py    #   AgentTrigger
+│
+├── schemas/                # Pydantic 입출력
+│   ├── agent.py, conversation.py, tool.py, skill.py
+│   ├── model.py, template.py, trigger.py
+│   ├── token_usage.py, fix_agent.py, agent_creation.py
+│   └── (models/ 테이블과 1:1 대응)
+│
+└── seed/                   # 시드 데이터
+    ├── default_models.py   #   OpenAI, Anthropic, Google 모델
+    ├── default_tools.py    #   시스템 도구 (builtin + prebuilt)
+    └── default_templates.py #  에이전트 템플릿
+```
+
+---
+
+## 의존성 방향
+
+```
+routers/ ──▶ services/ ──▶ models/
+    │            │
+    │            ▼
+    │        schemas/
+    │
+    └──▶ agent_runtime/
+              │
+              ├──▶ model_factory   (LLM 생성)
+              ├──▶ tool_factory    (도구 생성)
+              ├──▶ mcp_client      (MCP 호출)
+              ├──▶ middleware_registry (미들웨어)
+              ├──▶ streaming       (SSE 포맷)
+              └──▶ message_utils   (메시지 변환)
+
+dependencies.py ◀── routers/ (DI: get_db, get_current_user)
+config.py       ◀── agent_runtime/, services/, main.py
+database.py     ◀── dependencies.py, main.py
+```
+
+**단방향 규칙:**
+- `routers/` → `services/` → `models/` (역방향 없음)
+- `agent_runtime/`은 `models/`, `services/`를 직접 참조하지 않음
+- `services/`가 `agent_runtime/`용 config를 조립하여 `routers/`에 전달
+- `routers/conversations.py`가 `executor.execute_agent_stream()`을 직접 호출 (유일한 예외)
+
+---
+
+## 핵심 데이터 흐름: 채팅
+
+```
+POST /api/conversations/{id}/messages
+│
+├─ 1. save_message(user)                          [chat_service → DB]
+├─ 2. get_agent_with_tools(agent_id)              [chat_service → DB, eager-load]
+├─ 3. build_effective_prompt(agent)               [chat_service, 스킬 주입]
+├─ 4. build_tools_config(agent, conversation_id)  [chat_service, auth merge + 중복 해소]
+│
+├─ 5. execute_agent_stream(                       [executor.py]
+│       provider, model_name, api_key,
+│       system_prompt, tools_config,
+│       messages_history, thread_id,
+│       model_params, middleware_configs)
+│    │
+│    ├─ 5a. create_chat_model()                   [model_factory]
+│    ├─ 5b. create_*_tool() × N                   [tool_factory] ⚡
+│    ├─ 5c. build_middleware_instances()           [middleware_registry]
+│    ├─ 5d. build_agent(model, tools, prompt, mw) [executor] ⚡
+│    └─ 5e. stream_agent_response()               [streaming → SSE]
+│
+├─ 6. StreamingResponse → Frontend (SSE)
+└─ 7. save_message(assistant) + save_token_usage  [chat_service → DB]
+```
+
+---
+
+## M1 변경 영역 (Deep Agent 엔진 교체)
+
+### 변경되는 파일
+
+| 파일 | 변경 내용 |
+|------|-----------|
+| `executor.py` | `build_agent()` → `create_deep_agent()` 호출로 교체. `create_react_agent` 폴백 제거 |
+| `tool_factory.py` | `create_mcp_tool()`, `_build_args_schema()` 제거 |
+| `mcp_client.py` | `call_mcp_tool()`, `_extract_text()` 제거. `test_mcp_connection()`, `list_mcp_tools()` 유지 |
+| `chat_service.py` | MCP 도구 이름 가공/중복 감지 로직 제거 |
+
+### 유지되는 파일
+
+| 파일 | 이유 |
+|------|------|
+| `streaming.py` | SSE 포맷 변환 — `create_deep_agent`도 `CompiledStateGraph` 반환 |
+| `model_factory.py` | LLM 인스턴스 생성 — 엔진 독립적 |
+| `tool_factory.py` (부분) | builtin/prebuilt/custom 도구 생성 — MCP 외 유지 |
+| `mcp_client.py` (부분) | `test_mcp_connection()`, `list_mcp_tools()` — UI용 |
+| `middleware_registry.py` | 미들웨어 — `create_deep_agent`의 `middleware` 파라미터로 전달 |
+| `trigger_executor.py` | `execute_agent_stream()` 호출 — 시그니처 유지 시 변경 불필요 |
+
+### 새로 도입
+
+| 컴포넌트 | 용도 |
+|----------|------|
+| `deepagents.create_deep_agent()` | 에이전트 생성 (model, tools, system_prompt, middleware, checkpointer) |
+| `langchain_mcp_adapters.MultiServerMCPClient` | MCP 서버 연결 + `get_tools()` → LangChain 도구 변환 |
+
+---
+
+## 데이터 모델 관계
+
+```
+User (1) ──────┬──▶ (N) Agent
+               ├──▶ (N) Tool (user-created)
+               ├──▶ (N) Skill
+               └──▶ (N) MCPServer
+
+Agent (1) ─────┬──▶ (1) Model
+               ├──▶ (N) AgentToolLink ──▶ (1) Tool
+               ├──▶ (N) AgentSkillLink ──▶ (1) Skill
+               ├──▶ (N) Conversation ──▶ (N) Message
+               ├──▶ (N) AgentTrigger
+               └──▶ (1) Template (optional)
+
+Tool ──────────┬── type: builtin | prebuilt | custom | mcp
+               ├── is_system: bool (시드 데이터)
+               ├── auth_config: dict (도구 레벨 인증)
+               └──▶ (1) MCPServer (type=mcp일 때)
+
+Message ───────┬── role: user | assistant | tool
+               └──▶ (1) TokenUsage
+```
+
+---
+
+## 기술 스택 요약
+
+| 레이어 | 현재 | M1 이후 |
+|--------|------|---------|
+| 에이전트 생성 | `create_agent` + `create_react_agent` 폴백 | `create_deep_agent` |
+| MCP 도구 | httpx 직접 구현 (`mcp_client.call_mcp_tool`) | `langchain-mcp-adapters` (`MultiServerMCPClient`) |
+| 미들웨어 | `langchain.agents.middleware.*` | 동일 (create_deep_agent `middleware` 파라미터) |
+| LLM 모델 | `ChatOpenAI`, `ChatAnthropic`, `ChatGoogleGenerativeAI` | 동일 |
+| 스트리밍 | `CompiledStateGraph.astream()` → SSE | 동일 (반환 타입 동일) |
+| DB/ORM | SQLAlchemy 2.0 async + Alembic | 동일 |
+| 스케줄러 | APScheduler 3.x | 동일 |

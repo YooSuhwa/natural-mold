@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import contextlib
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any, NamedTuple
@@ -295,52 +294,3 @@ def create_prebuilt_tool(name: str, auth_config: dict[str, Any] | None = None) -
         raise ValueError(f"Unknown prebuilt provider: {provider}")
 
 
-def _build_args_schema(name: str, parameters_schema: dict[str, Any]) -> type:
-    """Build a Pydantic model from a JSON Schema for use as args_schema."""
-    from pydantic import create_model
-
-    fields: dict[str, Any] = {}
-    props = parameters_schema.get("properties", {})
-    required = set(parameters_schema.get("required", []))
-
-    type_map = {"string": str, "integer": int, "number": float, "boolean": bool}
-
-    for field_name, field_schema in props.items():
-        py_type = type_map.get(field_schema.get("type", "string"), str)
-        if field_name in required:
-            fields[field_name] = (py_type, ...)
-        else:
-            default = field_schema.get("default")
-            fields[field_name] = (py_type | None, default)
-
-    return create_model(f"{name}_schema", **fields)
-
-
-def create_mcp_tool(
-    name: str,
-    description: str | None,
-    mcp_server_url: str,
-    mcp_tool_name: str,
-    auth_config: dict[str, Any] | None,
-    parameters_schema: dict[str, Any] | None = None,
-) -> StructuredTool:
-    """MCP 서버 도구를 LangChain StructuredTool로 래핑."""
-    from app.agent_runtime.mcp_client import call_mcp_tool
-
-    inject_params = dict(auth_config) if auth_config else {}
-
-    async def _call(**kwargs: Any) -> str:
-        merged = {**kwargs, **inject_params}
-        return await call_mcp_tool(mcp_server_url, mcp_tool_name, merged)
-
-    args_schema = None
-    if parameters_schema:
-        with contextlib.suppress(Exception):
-            args_schema = _build_args_schema(name, parameters_schema)
-
-    return StructuredTool.from_function(
-        coroutine=_call,
-        name=name,
-        description=description or f"MCP tool: {mcp_tool_name}",
-        args_schema=args_schema,
-    )

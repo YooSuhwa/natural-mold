@@ -11,8 +11,8 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-@patch("app.agent_runtime.executor.create_react_agent")
-def test_build_agent_calls_langgraph(mock_create: MagicMock):
+@patch("deepagents.create_deep_agent")
+def test_build_agent_calls_deep_agent(mock_create: MagicMock):
     from app.agent_runtime.executor import build_agent
 
     mock_model = MagicMock()
@@ -23,11 +23,13 @@ def test_build_agent_calls_langgraph(mock_create: MagicMock):
     mock_create.assert_called_once_with(
         model=mock_model,
         tools=mock_tools,
-        prompt="You are helpful.",
+        system_prompt="You are helpful.",
+        middleware=[],
+        checkpointer=None,
     )
 
 
-@patch("app.agent_runtime.executor.create_react_agent")
+@patch("deepagents.create_deep_agent")
 def test_build_agent_returns_agent(mock_create: MagicMock):
     from app.agent_runtime.executor import build_agent
 
