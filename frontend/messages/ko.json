@@ -182,6 +182,9 @@
       "skills": "연결된 스킬",
       "noSkills": "등록된 스킬이 없습니다. {link}에서 추가해주세요.",
       "skillsLink": "스킬 관리",
+      "middlewares": "미들웨어",
+      "noMiddlewares": "사용 가능한 미들웨어가 없습니다.",
+      "middlewaresLoading": "미들웨어 목록을 불러오는 중...",
       "trigger": {
         "title": "자동 실행 (트리거)",
         "active": "활성",
@@ -216,6 +219,7 @@
         "subagents": "Sub-agents",
         "toolbox": "Toolbox",
         "skills": "Skills",
+        "middlewares": "Middlewares",
         "schedule": "Schedule"
       },
       "editDialog": {
@@ -244,6 +248,11 @@
         "empty": "연결된 스킬 없음",
         "remove": "스킬 제거"
       },
+      "middlewares": {
+        "add": "추가",
+        "empty": "연결된 미들웨어 없음",
+        "remove": "미들웨어 제거"
+      },
       "addToolsDialog": {
         "title": "워크스페이스 도구 추가",
         "description": "에이전트 도구함에 추가할 도구를 선택하세요.",
@@ -265,6 +274,25 @@
         "content": "내용",
         "add": "추가",
         "addCount": "추가 ({count})"
+      },
+      "addMiddlewaresDialog": {
+        "title": "미들웨어 추가",
+        "description": "에이전트에 적용할 미들웨어를 선택하세요.",
+        "searchPlaceholder": "미들웨어 검색...",
+        "noResults": "검색 결과 없음",
+        "selectToPreview": "미리보기할 미들웨어를 선택하세요",
+        "configSchema": "설정 스키마",
+        "providerOnly": "{provider} 전용",
+        "add": "추가",
+        "addCount": "추가 ({count})",
+        "categories": {
+          "all": "전체",
+          "context": "컨텍스트",
+          "planning": "계획",
+          "safety": "안전",
+          "reliability": "안정성",
+          "provider": "프로바이더"
+        }
       },
       "toolbar": {
         "hideChat": "채팅 숨기기",

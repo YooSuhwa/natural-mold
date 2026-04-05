@@ -65,6 +65,9 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         system_prompt=data.system_prompt,
         model_id=data.model_id,
         model_params=data.model_params,
+        middleware_configs=[mc.model_dump() for mc in data.middleware_configs]
+        if data.middleware_configs
+        else None,
         template_id=data.template_id,
     )
 
@@ -116,6 +119,8 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
         agent.is_favorite = data.is_favorite
     if data.model_params is not None:
         agent.model_params = data.model_params
+    if data.middleware_configs is not None:
+        agent.middleware_configs = [mc.model_dump() for mc in data.middleware_configs]
     if data.tool_ids is not None:
         config_map: dict[uuid.UUID, dict[str, Any]] = {}
         if data.tool_configs:

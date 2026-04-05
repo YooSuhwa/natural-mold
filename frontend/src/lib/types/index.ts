@@ -10,6 +10,7 @@ export interface Agent {
   status: string
   is_favorite: boolean
   model_params: ModelParams | null
+  middleware_configs: MiddlewareConfigEntry[]
   template_id: string | null
   created_at: string
   updated_at: string
@@ -40,6 +41,7 @@ export interface AgentCreateRequest {
   skill_ids?: string[]
   template_id?: string
   model_params?: ModelParams
+  middleware_configs?: MiddlewareConfigEntry[]
 }
 
 export interface AgentUpdateRequest {
@@ -51,6 +53,7 @@ export interface AgentUpdateRequest {
   skill_ids?: string[]
   is_favorite?: boolean
   model_params?: ModelParams
+  middleware_configs?: MiddlewareConfigEntry[]
 }
 
 // Model
@@ -257,6 +260,22 @@ export interface SkillUpdateRequest {
 export interface SkillBrief {
   id: string
   name: string
+}
+
+// Middleware
+export interface MiddlewareConfigEntry {
+  type: string
+  params: Record<string, unknown>
+}
+
+export interface MiddlewareRegistryItem {
+  type: string
+  name: string
+  display_name: string
+  description: string
+  category: 'context' | 'planning' | 'safety' | 'reliability' | 'provider'
+  config_schema: Record<string, unknown>
+  provider_specific: string | null
 }
 
 // Trigger

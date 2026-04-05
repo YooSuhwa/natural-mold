@@ -132,6 +132,7 @@ async def send_message(
             messages_history=messages_history,
             thread_id=str(conversation_id),
             model_params=agent.model_params,
+            middleware_configs=agent.middleware_configs,
         ):
             yield chunk
             if "message_end" in chunk:

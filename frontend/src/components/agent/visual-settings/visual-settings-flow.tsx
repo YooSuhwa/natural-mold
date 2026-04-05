@@ -8,13 +8,23 @@ import '@xyflow/react/dist/style.css'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useUpdateAgent, useCreateAgent } from '@/lib/hooks/use-agents'
-import type { Agent, Model, Tool, Skill, AgentTrigger } from '@/lib/types'
+import { toggleSetItem } from '@/lib/utils'
+import type {
+  Agent,
+  Model,
+  Tool,
+  Skill,
+  AgentTrigger,
+  MiddlewareConfigEntry,
+  MiddlewareRegistryItem,
+} from '@/lib/types'
 import { Toolbar } from './toolbar'
 import { AgentNode } from './nodes/agent-node'
 import { ChannelsNode } from './nodes/channels-node'
 import { SubagentsNode } from './nodes/subagents-node'
 import { ToolboxNode } from './nodes/toolbox-node'
 import { SkillsNode } from './nodes/skills-node'
+import { MiddlewaresNode } from './nodes/middlewares-node'
 import { ScheduleNode } from './nodes/schedule-node'
 
 interface VisualSettingsFlowProps {
@@ -23,6 +33,7 @@ interface VisualSettingsFlowProps {
   models: Model[]
   tools: Tool[]
   skills: Skill[]
+  middlewares?: MiddlewareRegistryItem[]
   triggers?: AgentTrigger[]
   mode?: 'create' | 'edit'
 }
@@ -33,6 +44,7 @@ export function VisualSettingsFlow({
   models,
   tools,
   skills,
+  middlewares = [],
   triggers = [],
   mode = 'edit',
 }: VisualSettingsFlowProps) {
@@ -54,6 +66,9 @@ export function VisualSettingsFlow({
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(
     () => new Set(agent?.skills?.map((s) => s.id) ?? []),
   )
+  const [selectedMiddlewareTypes, setSelectedMiddlewareTypes] = useState<Set<string>>(
+    () => new Set(agent?.middleware_configs?.map((mc) => mc.type) ?? []),
+  )
 
   // Sync state from agent prop (edit mode only)
   useEffect(() => {
@@ -67,6 +82,7 @@ export function VisualSettingsFlow({
     setMaxTokens(agent.model_params?.max_tokens ?? 4096)
     setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
     setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
+    setSelectedMiddlewareTypes(new Set(agent.middleware_configs?.map((mc) => mc.type) ?? []))
   }, [agent, mode])
 
   // Set default model when models load in create mode
@@ -77,21 +93,15 @@ export function VisualSettingsFlow({
   }, [mode, modelId, models])
 
   const toggleTool = useCallback((toolId: string) => {
-    setSelectedToolIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(toolId)) next.delete(toolId)
-      else next.add(toolId)
-      return next
-    })
+    setSelectedToolIds((prev) => toggleSetItem(prev, toolId))
   }, [])
 
   const toggleSkill = useCallback((skillId: string) => {
-    setSelectedSkillIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(skillId)) next.delete(skillId)
-      else next.add(skillId)
-      return next
-    })
+    setSelectedSkillIds((prev) => toggleSetItem(prev, skillId))
+  }, [])
+
+  const toggleMiddleware = useCallback((type: string) => {
+    setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type))
   }, [])
 
   const currentModelName = useMemo(() => {
@@ -129,6 +139,10 @@ export function VisualSettingsFlow({
       model_id: modelId,
       tool_ids: Array.from(selectedToolIds),
       skill_ids: Array.from(selectedSkillIds),
+      middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
+        type,
+        params: {},
+      })),
       model_params: { temperature, top_p: topP, max_tokens: maxTokens },
     }
 
@@ -155,6 +169,7 @@ export function VisualSettingsFlow({
       subagents: SubagentsNode,
       toolbox: ToolboxNode,
       skills: SkillsNode,
+      middlewares: MiddlewaresNode,
       schedule: ScheduleNode,
     }),
     [],
@@ -209,6 +224,16 @@ export function VisualSettingsFlow({
         position: { x: 210, y: 365 },
         data: { allSkills: skills, selectedSkillIds, onToggleSkill: toggleSkill },
       },
+      {
+        id: 'middlewares',
+        type: 'middlewares',
+        position: { x: 210, y: 540 },
+        data: {
+          allMiddlewares: middlewares,
+          selectedTypes: selectedMiddlewareTypes,
+          onToggleMiddleware: toggleMiddleware,
+        },
+      },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -217,6 +242,7 @@ export function VisualSettingsFlow({
   const hasSchedules = triggers.length > 0
   const hasTools = selectedToolIds.size > 0
   const hasSkills = selectedSkillIds.size > 0
+  const hasMiddlewares = selectedMiddlewareTypes.size > 0
 
   const computedEdges: Edge[] = useMemo(
     () => [
@@ -259,8 +285,17 @@ export function VisualSettingsFlow({
           ? { stroke: '#10b981', strokeWidth: 2 }
           : { stroke: '#10b981', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
       },
+      {
+        id: 'agent-middlewares',
+        source: 'agent',
+        target: 'middlewares',
+        animated: hasMiddlewares,
+        style: hasMiddlewares
+          ? { stroke: '#f59e0b', strokeWidth: 2 }
+          : { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
+      },
     ],
-    [hasSchedules, hasTools, hasSkills],
+    [hasSchedules, hasTools, hasSkills, hasMiddlewares],
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -300,6 +335,16 @@ export function VisualSettingsFlow({
             data: { allSkills: skills, selectedSkillIds, onToggleSkill: toggleSkill },
           }
         }
+        if (node.id === 'middlewares') {
+          return {
+            ...node,
+            data: {
+              allMiddlewares: middlewares,
+              selectedTypes: selectedMiddlewareTypes,
+              onToggleMiddleware: toggleMiddleware,
+            },
+          }
+        }
         return node
       }),
     )
@@ -316,10 +361,13 @@ export function VisualSettingsFlow({
     handleAgentNodeUpdate,
     tools,
     skills,
+    middlewares,
     selectedToolIds,
     selectedSkillIds,
+    selectedMiddlewareTypes,
     toggleTool,
     toggleSkill,
+    toggleMiddleware,
     setNodes,
   ])
 

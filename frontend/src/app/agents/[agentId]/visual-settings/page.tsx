@@ -6,6 +6,7 @@ import { useAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
+import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import { useTriggers } from '@/lib/hooks/use-triggers'
 import { Skeleton } from '@/components/ui/skeleton'
 import { VisualSettingsFlow } from '@/components/agent/visual-settings/visual-settings-flow'
@@ -16,6 +17,7 @@ export default function VisualSettingsPage({ params }: { params: Promise<{ agent
   const { data: models } = useModels()
   const { data: tools } = useTools()
   const { data: skills } = useSkills()
+  const { data: middlewares } = useMiddlewares()
   const { data: triggers } = useTriggers(agentId)
 
   if (agentLoading || !agent) {
@@ -36,6 +38,7 @@ export default function VisualSettingsPage({ params }: { params: Promise<{ agent
           models={models ?? []}
           tools={tools ?? []}
           skills={skills ?? []}
+          middlewares={middlewares ?? []}
           triggers={triggers ?? []}
         />
       </ReactFlowProvider>

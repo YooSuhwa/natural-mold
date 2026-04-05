@@ -19,6 +19,8 @@ import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents
 import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
+import { useMiddlewares } from '@/lib/hooks/use-middlewares'
+import { toggleSetItem } from '@/lib/utils'
 import {
   useTriggers,
   useCreateTrigger,
@@ -62,6 +64,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const { data: models } = useModels()
   const { data: tools } = useTools()
   const { data: skills } = useSkills()
+  const { data: middlewares } = useMiddlewares()
   const updateAgent = useUpdateAgent(agentId)
   const deleteAgent = useDeleteAgent()
   const { data: triggers } = useTriggers(agentId)
@@ -78,6 +81,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const [temperature, setTemperature] = useState(0.7)
   const [topP, setTopP] = useState(1.0)
   const [maxTokens, setMaxTokens] = useState(4096)
+  const [selectedMiddlewareTypes, setSelectedMiddlewareTypes] = useState<Set<string>>(new Set())
   const [showTriggerForm, setShowTriggerForm] = useState(false)
   const [triggerMinutes, setTriggerMinutes] = useState('10')
   const [triggerMessage, setTriggerMessage] = useState('')
@@ -95,6 +99,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       setModelId(agent.model.id)
       setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
       setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
+      setSelectedMiddlewareTypes(new Set(agent.middleware_configs?.map((mc) => mc.type) ?? []))
       setTemperature(agent.model_params?.temperature ?? 0.7)
       setTopP(agent.model_params?.top_p ?? 1.0)
       setMaxTokens(agent.model_params?.max_tokens ?? 4096)
@@ -111,6 +116,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         model_id: modelId,
         tool_ids: Array.from(selectedToolIds),
         skill_ids: Array.from(selectedSkillIds),
+        middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
+          type,
+          params: {},
+        })),
         model_params: { temperature, top_p: topP, max_tokens: maxTokens },
       })
       toast.success(t('toast.saved'))
@@ -368,6 +377,37 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                 </Link>
                 {noSkillsParts[1]}
               </p>
+            )
+          ) : (
+            <Skeleton className="h-16 w-full" />
+          )}
+        </div>
+
+        {/* Middlewares */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">{t('middlewares')}</label>
+          {middlewares ? (
+            middlewares.length > 0 ? (
+              <div className="space-y-2 rounded-lg border p-3">
+                {middlewares.map((mw) => (
+                  <label key={mw.type} className="flex items-center gap-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={selectedMiddlewareTypes.has(mw.type)}
+                      onChange={() => {
+                        setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, mw.type))
+                      }}
+                      className="size-4 rounded border-input"
+                    />
+                    <span>{mw.display_name}</span>
+                    {mw.description && (
+                      <span className="text-xs text-muted-foreground">- {mw.description}</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">{t('noMiddlewares')}</p>
             )
           ) : (
             <Skeleton className="h-16 w-full" />
