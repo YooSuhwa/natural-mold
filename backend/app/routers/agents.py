@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.exceptions import NotFoundError
 from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate, ToolBrief
@@ -12,6 +13,7 @@ from app.schemas.skill import SkillBrief
 from app.services import agent_service
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+middleware_router = APIRouter(tags=["middlewares"])
 
 
 def _agent_to_response(agent) -> AgentResponse:
@@ -30,6 +32,7 @@ def _agent_to_response(agent) -> AgentResponse:
             SkillBrief(id=link.skill_id, name=link.skill.name, description=link.skill.description)
             for link in agent.skill_links
         ],
+        middleware_configs=agent.middleware_configs or [],
         status=agent.status,
         is_favorite=agent.is_favorite,
         model_params=agent.model_params,
@@ -107,3 +110,9 @@ async def delete_agent(
     if not agent:
         raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     await agent_service.delete_agent(db, agent)
+
+
+@middleware_router.get("/api/middlewares")
+async def list_middlewares():
+    """Return the available middleware catalog."""
+    return get_middleware_registry()

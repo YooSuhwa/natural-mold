@@ -210,3 +210,28 @@
 - [x] 사이드바에 "스킬" 메뉴 추가
 - [x] 스킬 관리 페이지 (CRUD)
 - [x] 에이전트 설정에서 스킬 연결/해제
+
+## Phase 14: 미들웨어 시스템 (create_agent + 미들웨어 전환)
+
+### Backend — 런타임 전환 + 데이터 레이어 (Phase A+B) ✅
+- [x] executor.py: create_react_agent → create_agent + middleware (fallback 포함)
+- [x] middleware_registry.py: 22종 미들웨어 레지스트리 + 인스턴스 빌더
+- [x] Agent 모델: middleware_configs JSON 컬럼 + Alembic 마이그레이션
+- [x] API 스키마: MiddlewareConfigEntry, AgentCreate/Update/Response 확장
+- [x] agent_service: middleware_configs 처리
+- [x] GET /api/middlewares 엔드포인트
+- [x] conversations.py: middleware_configs를 런타임에 전달
+
+### Frontend — 미들웨어 UI (Phase C) ✅
+- [x] TypeScript 타입 (MiddlewareConfigEntry, MiddlewareRegistryItem)
+- [x] API 클라이언트 + TanStack Query 훅
+- [x] 미들웨어 선택 다이얼로그 (AddMiddlewaresDialog)
+- [x] Visual Settings Flow 미들웨어 노드 (MiddlewaresNode)
+- [x] 에이전트 설정 페이지 미들웨어 섹션
+- [x] i18n 메시지 추가
+
+### 미들웨어 UX 개선 (Phase D) — 선택적, 필요 시 진행
+- [ ] 미들웨어 프리셋 원클릭 적용 ("기본"/"스마트"/"고급")
+- [ ] 미들웨어 실행 순서 드래그 앤 드롭 (LangChain middleware 리스트 순서 = 실행 순서)
+- [ ] Provider 자동 감지 UI (모델 선택 시 Anthropic/OpenAI 전용 미들웨어 추천)
+- [ ] HumanInTheLoopMiddleware 인터럽트 → 프론트엔드 승인 UI (SSE 양방향)

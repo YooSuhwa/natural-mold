@@ -24,6 +24,9 @@ class Agent(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     is_favorite: Mapped[bool] = mapped_column(default=False, nullable=False)
     model_params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    middleware_configs: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True, default=list
+    )
     template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"))
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
