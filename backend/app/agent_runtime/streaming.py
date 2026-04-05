@@ -10,6 +10,23 @@ def format_sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _is_tool_selector_json(text: str) -> bool:
+    """Check if text is LLMToolSelectorMiddleware output like {"tools":[...]}.
+
+    Strict: only matches when "tools" is the sole key to avoid
+    false positives on legitimate agent JSON output.
+    """
+    try:
+        parsed = json.loads(text)
+        return (
+            isinstance(parsed, dict)
+            and set(parsed.keys()) == {"tools"}
+            and isinstance(parsed["tools"], list)
+        )
+    except (json.JSONDecodeError, ValueError):
+        return False
+
+
 async def stream_agent_response(
     agent: Any,
     messages: list[Any],
@@ -21,6 +38,9 @@ async def stream_agent_response(
 
     full_content = ""
     usage_data: dict[str, int] = {}
+    # Buffer to detect and strip middleware JSON like {"tools":[...]}
+    _buf = ""
+    _brace_depth = 0
 
     try:
         async for chunk in agent.astream(
@@ -32,8 +52,28 @@ async def stream_agent_response(
             if hasattr(msg, "content") and msg.content and msg.type in ("ai", "AIMessageChunk"):
                 delta = msg.content
                 if isinstance(delta, str):
-                    full_content += delta
-                    yield format_sse("content_delta", {"delta": delta})
+                    for ch in delta:
+                        if ch == "{" and _brace_depth == 0:
+                            # Start buffering potential middleware JSON
+                            _brace_depth = 1
+                            _buf = ch
+                        elif _brace_depth > 0:
+                            _buf += ch
+                            if ch == "{":
+                                _brace_depth += 1
+                            elif ch == "}":
+                                _brace_depth -= 1
+                                if _brace_depth == 0:
+                                    # Outermost brace closed — check if middleware output
+                                    if _is_tool_selector_json(_buf):
+                                        _buf = ""
+                                    else:
+                                        full_content += _buf
+                                        yield format_sse("content_delta", {"delta": _buf})
+                                        _buf = ""
+                        else:
+                            full_content += ch
+                            yield format_sse("content_delta", {"delta": ch})
 
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tc in msg.tool_calls:
@@ -62,5 +102,9 @@ async def stream_agent_response(
 
     except Exception as e:
         yield format_sse("error", {"message": str(e)})
+
+    # Flush any remaining buffer (incomplete JSON = not middleware output)
+    if _buf:
+        full_content += _buf
 
     yield format_sse("message_end", {"usage": usage_data, "content": full_content})

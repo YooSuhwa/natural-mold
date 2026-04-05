@@ -266,11 +266,47 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
 _CLASS_MAP: dict[str, str] = {k: v["name"] for k, v in MIDDLEWARE_REGISTRY.items()}
 
 
+def _patched_llm_tool_selector_class() -> type | None:
+    """Return a patched LLMToolSelectorMiddleware that normalizes response format.
+
+    GPT-4o sometimes returns {"const": "tool_name"} objects instead of plain
+    "tool_name" strings when using structured output with const schemas.
+    This subclass normalizes both formats before processing.
+    """
+    try:
+        from langchain.agents.middleware import LLMToolSelectorMiddleware
+    except (ImportError, ModuleNotFoundError):
+        return None
+
+    class PatchedLLMToolSelectorMiddleware(LLMToolSelectorMiddleware):
+        def _process_selection_response(self, response, available_tools, valid_tool_names, request):
+            # Normalize {"const": "name"} objects to plain "name" strings
+            if "tools" in response:
+                normalized = []
+                for item in response["tools"]:
+                    if isinstance(item, dict) and "const" in item:
+                        normalized.append(item["const"])
+                    elif isinstance(item, str):
+                        normalized.append(item)
+                    else:
+                        normalized.append(str(item))
+                response = {**response, "tools": normalized}
+            return super()._process_selection_response(
+                response, available_tools, valid_tool_names, request
+            )
+
+    return PatchedLLMToolSelectorMiddleware
+
+
 def _resolve_middleware_class(middleware_type: str) -> type | None:
     """Attempt to import a middleware class from langchain.agents.middleware.
 
     Returns None if the package is not installed or the class is unavailable.
     """
+    # Use patched version for llm_tool_selector
+    if middleware_type == "llm_tool_selector":
+        return _patched_llm_tool_selector_class()
+
     class_name = _CLASS_MAP.get(middleware_type)
     if not class_name:
         return None

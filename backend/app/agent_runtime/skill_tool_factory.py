@@ -8,6 +8,27 @@ from app.agent_runtime.skill_executor import execute_skill_script
 from app.config import settings
 
 
+def _load_skill_metadata(skill_dir: str) -> tuple[str, str]:
+    """Load skill name and description from SKILL.md frontmatter."""
+    skill_md = Path(skill_dir) / "SKILL.md"
+    if not skill_md.is_file():
+        return "", ""
+
+    name = ""
+    description = ""
+    content = skill_md.read_text(encoding="utf-8", errors="replace")
+    # Parse YAML frontmatter between --- markers
+    if content.startswith("---"):
+        parts = content.split("---", 2)
+        if len(parts) >= 3:
+            for line in parts[1].strip().splitlines():
+                if line.startswith("name:"):
+                    name = line.split(":", 1)[1].strip().strip('"')
+                elif line.startswith("description:"):
+                    description = line.split(":", 1)[1].strip().strip('"')
+    return name, description
+
+
 def create_skill_tools(
     skill_id: str,
     skill_dir: str,
@@ -18,6 +39,7 @@ def create_skill_tools(
     """Create LangChain tools for a package skill (run_command + read_skill_file)."""
     suffix = skill_id[:8]
     skill_path = Path(skill_dir).resolve()
+    skill_name, skill_description = _load_skill_metadata(skill_dir)
 
     if conversation_id:
         file_base_url = f"/api/conversations/{conversation_id}/files"
@@ -62,22 +84,40 @@ def create_skill_tools(
             return f"Error: file too large ({size} bytes, max {max_bytes})"
         return target.read_text(encoding="utf-8", errors="replace")
 
+    # Build descriptions using skill metadata from SKILL.md
+    if skill_description:
+        run_desc = (
+            f"[{skill_name}] {skill_description}\n"
+            f"Run a python command for this skill. "
+            f"Only 'python ...' commands are allowed. "
+            f"Output files are saved to _outputs/ and returned as URLs."
+        )
+        read_desc = (
+            f"[{skill_name}] Read a reference or data file for this skill. "
+            f"Provide a relative path (e.g. 'scripts/main.py', 'references/data.md')."
+        )
+    else:
+        run_desc = (
+            "Run a python command in the skill directory. "
+            "Only 'python ...' commands are allowed. "
+            "Output files are saved to _outputs/ and returned as URLs."
+        )
+        read_desc = (
+            "Read a text file from the skill package. "
+            "Provide a relative path (e.g. 'scripts/main.py', 'references/data.md')."
+        )
+
+    tool_name = skill_name.replace("-", "_") if skill_name else suffix
+
     return [
         StructuredTool.from_function(
             coroutine=run_command,
-            name=f"run_command_{suffix}",
-            description=(
-                "Run a python command in the skill directory. "
-                "Only 'python ...' commands are allowed. "
-                "Output files are saved to _outputs/ and returned as URLs."
-            ),
+            name=f"run_{tool_name}",
+            description=run_desc,
         ),
         StructuredTool.from_function(
             coroutine=read_skill_file,
-            name=f"read_skill_file_{suffix}",
-            description=(
-                "Read a text file from the skill package. "
-                "Provide a relative path (e.g. 'scripts/main.py', 'references/data.md')."
-            ),
+            name=f"read_{tool_name}_file",
+            description=read_desc,
         ),
     ]
