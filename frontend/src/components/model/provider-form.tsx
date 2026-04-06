@@ -227,15 +227,24 @@ function ProviderFormContent({
         )}
 
         {showTestResult && testProvider.isSuccess && (
-          <div className="flex items-center gap-2 rounded-md bg-green-50 p-2 text-sm text-green-700 dark:bg-green-950 dark:text-green-300">
-            <CheckCircleIcon className="size-4" />
-            {testProvider.data.message}
+          <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+            <CheckCircleIcon className="size-5 shrink-0" />
+            <div>
+              <p className="font-medium">{t('testSuccess')}</p>
+              {testProvider.data.models_count != null && (
+                <p className="text-xs opacity-80">
+                  {testProvider.data.models_count} models discovered
+                </p>
+              )}
+            </div>
           </div>
         )}
         {showTestResult && testProvider.isError && (
-          <div className="flex items-center gap-2 rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-            <XCircleIcon className="size-4" />
-            {t('testFailed')}
+          <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+            <XCircleIcon className="size-5 shrink-0" />
+            <div>
+              <p className="font-medium">{t('testFailed')}</p>
+            </div>
           </div>
         )}
       </div>

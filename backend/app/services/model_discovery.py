@@ -76,6 +76,10 @@ async def _discover_openai(
                     output_modalities=enriched.get("output_modalities"),
                     cost_per_input_token=enriched.get("cost_per_input_token"),
                     cost_per_output_token=enriched.get("cost_per_output_token"),
+                    max_output_tokens=enriched.get("max_output_tokens"),
+                    supports_vision=enriched.get("supports_vision"),
+                    supports_function_calling=enriched.get("supports_function_calling"),
+                    supports_reasoning=enriched.get("supports_reasoning"),
                 )
             )
     return sorted(models, key=lambda m: m.model_name)
@@ -118,6 +122,10 @@ async def _discover_anthropic(
                 output_modalities=enriched.get("output_modalities"),
                 cost_per_input_token=enriched.get("cost_per_input_token"),
                 cost_per_output_token=enriched.get("cost_per_output_token"),
+                max_output_tokens=enriched.get("max_output_tokens"),
+                supports_vision=enriched.get("supports_vision"),
+                supports_function_calling=enriched.get("supports_function_calling"),
+                supports_reasoning=enriched.get("supports_reasoning"),
             )
         )
     return models
@@ -152,6 +160,10 @@ async def _discover_google(
                 output_modalities=enriched.get("output_modalities"),
                 cost_per_input_token=enriched.get("cost_per_input_token"),
                 cost_per_output_token=enriched.get("cost_per_output_token"),
+                max_output_tokens=enriched.get("max_output_tokens"),
+                supports_vision=enriched.get("supports_vision"),
+                supports_function_calling=enriched.get("supports_function_calling"),
+                supports_reasoning=enriched.get("supports_reasoning"),
             )
         )
     return sorted(models, key=lambda m: m.model_name)

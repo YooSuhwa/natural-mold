@@ -17,7 +17,7 @@ import type { Provider } from '@/lib/types'
 interface ProviderCardProps {
   provider: Provider
   onEdit: (provider: Provider) => void
-  onDelete: (id: string) => void
+  onDelete: () => void
   isDeleting: boolean
   deletingId?: string
 }
@@ -75,11 +75,7 @@ export function ProviderCard({
             variant="ghost"
             size="icon-sm"
             aria-label={t('deleteLabel', { name: provider.name })}
-            onClick={() => {
-              if (window.confirm(t('deleteConfirm'))) {
-                onDelete(provider.id)
-              }
-            }}
+            onClick={onDelete}
             disabled={isDeleting && deletingId === provider.id}
           >
             {isDeleting && deletingId === provider.id ? (

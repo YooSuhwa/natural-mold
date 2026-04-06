@@ -49,3 +49,7 @@ class DiscoveredModel(BaseModel):
     output_modalities: list[str] | None = None
     cost_per_input_token: Decimal | None = None
     cost_per_output_token: Decimal | None = None
+    max_output_tokens: int | None = None
+    supports_vision: bool | None = None
+    supports_function_calling: bool | None = None
+    supports_reasoning: bool | None = None

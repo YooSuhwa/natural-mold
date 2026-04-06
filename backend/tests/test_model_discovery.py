@@ -60,7 +60,7 @@ async def test_discover_anthropic_returns_static_list():
 
     names = [m.model_name for m in result]
     assert "claude-sonnet-4-20250514" in names
-    assert len(result) == 3
+    assert len(result) >= 3  # JSON catalog contains all Anthropic models
 
 
 @pytest.mark.asyncio
@@ -87,7 +87,7 @@ async def test_connection_success():
         success, message, count = await test_connection(mock_provider)
 
     assert success is True
-    assert count == 3
+    assert count >= 3  # JSON catalog contains all Anthropic models
     assert "모델 검색 성공" in message
 
 

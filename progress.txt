@@ -437,5 +437,30 @@
 - ProviderType 유니온 도입 시 PROVIDER_TYPES(as const)와 Select onValueChange(string) 간 타입 불일치. handleTypeChange를 ProviderType 파라미터로 변경, Select callback에서 as ProviderType 캐스팅.
 - provider-card에서 isDeleting 개별화: deletingId prop 추가 + deleteProvider.variables로 전달.
 
+## M6 메타데이터 강화 (2026-04-06) — Jensen
+
+### Task1 Backend 완료
+- model_metadata.py: 수동 MODEL_METADATA dict → litellm_model_catalog.json 기반 lazy 로딩
+- enrich_model() 시그니처/반환 유지, 새 필드 매핑 추가 (max_output_tokens, supports_vision, supports_function_calling, supports_reasoning)
+- ANTHROPIC_MODELS: 하드코딩 3개 → JSON catalog에서 provider=="anthropic" 필터 (18개)
+- schemas: DiscoveredModel + ModelResponse에 4개 capability 필드 추가, ModelResponse에 agent_count 추가
+- model_service.py: list_models() Agent LEFT JOIN으로 agent_count 집계 + enrich_model() 보강
+- model_discovery.py: openai/anthropic/google discover에서 새 필드도 DiscoveredModel에 전달
+- 결과: ruff 통과, 329 passed (regression 없음)
+
+### Gotchas (M6)
+- ANTHROPIC_MODELS가 JSON 기반이 되면서 3→18개로 확장됨. 기존 테스트에서 `== 3` 하드코딩은 `>= 3`으로 수정 필요.
+- enrich_model import를 _model_to_response 함수 내부에서 lazy로 수행 (circular import 방지)
+
+## M6 Frontend UI 개선 완료 (2026-04-06) — Zuckerberg
+- types/index.ts: Model에 max_output_tokens, supports_vision/function_calling/reasoning, agent_count 추가. DiscoveredModel에 동일 (agent_count 제외). ModelBulkCreateRequest에도 새 필드 반영.
+- model-detail-modal.tsx (신규): 4섹션 Dialog — Overview, Token & Pricing, Capabilities (색상 Badge), Modalities
+- models/page.tsx: Capability 필터 Select 추가 (vision/function_calling/reasoning). 모델 카드에 capability 아이콘 (Eye/Wrench/Brain + Tooltip), agent_count 배지, InfoIcon → 상세 모달, 삭제 보호 (agent_count > 0 → disabled + Tooltip). window.confirm → AlertDialog 전환 (모델/Provider 양쪽).
+- provider-card.tsx: onDelete 시그니처 () => void로 변경, window.confirm 제거 (부모에서 AlertDialog 처리)
+- provider-form.tsx: 테스트 결과 UI 개선 (border + 아이콘 크기 + models_count 표시)
+- model-add-dialog.tsx: bulkCreate 시 새 필드 전달 (max_output_tokens, supports_*)
+- ko.json: model 네임스페이스에 i18n 키 16개 추가
+- 검증: pnpm build PASS + pnpm lint PASS
+
 ## 실패 교훈
 - S1 삭제 분석에서 streaming.py 필터를 "삭제 가능"으로 판단했으나 S2 심층 조사에서 "유지 필요"로 수정됨. 표면적 분석(미들웨어 구조만 확인)보다 실제 소스코드(PatchToolCallsMiddleware가 before_agent만 구현)를 확인해야 정확한 판단 가능. 삭제 분석 시 방어 코드의 필요성은 실행 경로까지 추적할 것.

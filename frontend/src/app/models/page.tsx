@@ -10,6 +10,10 @@ import {
   StarIcon,
   SearchIcon,
   ServerIcon,
+  InfoIcon,
+  EyeIcon,
+  WrenchIcon,
+  BrainIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useModels, useUpdateModel, useDeleteModel } from '@/lib/hooks/use-models'
@@ -28,6 +32,16 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
+import {
   Select,
   SelectTrigger,
   SelectValue,
@@ -35,11 +49,13 @@ import {
   SelectItem,
 } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 import { ProviderCard } from '@/components/model/provider-card'
 import { ProviderForm } from '@/components/model/provider-form'
 import { ModelAddDialog } from '@/components/model/model-add-dialog'
+import { ModelDetailModal } from '@/components/model/model-detail-modal'
 import { getProviderIcon, formatContextWindow } from '@/lib/utils/provider'
 import type { Model, Provider } from '@/lib/types'
 
@@ -68,12 +84,27 @@ export default function ModelsPage() {
   // Model search & filter
   const [modelSearch, setModelSearch] = useState('')
   const [providerFilter, setProviderFilter] = useState('all')
+  const [capabilityFilter, setCapabilityFilter] = useState('all')
+
+  // Model detail modal state
+  const [detailModel, setDetailModel] = useState<Model | null>(null)
+
+  // Model delete confirm dialog state
+  const [deletingModelTarget, setDeletingModelTarget] = useState<Model | null>(null)
 
   const filteredModels = useMemo(() => {
     if (!models) return []
     let result = models
     if (providerFilter !== 'all') {
       result = result.filter((m) => m.provider_id === providerFilter)
+    }
+    if (capabilityFilter !== 'all') {
+      result = result.filter((m) => {
+        if (capabilityFilter === 'vision') return m.supports_vision
+        if (capabilityFilter === 'function_calling') return m.supports_function_calling
+        if (capabilityFilter === 'reasoning') return m.supports_reasoning
+        return true
+      })
     }
     const q = modelSearch.toLowerCase()
     if (q) {
@@ -85,7 +116,10 @@ export default function ModelsPage() {
       )
     }
     return result
-  }, [models, modelSearch, providerFilter])
+  }, [models, modelSearch, providerFilter, capabilityFilter])
+
+  // Provider delete confirm dialog state
+  const [deletingProviderTarget, setDeletingProviderTarget] = useState<Provider | null>(null)
 
   function openEditProvider(provider: Provider) {
     setEditingProvider(provider)
@@ -146,7 +180,7 @@ export default function ModelsPage() {
                     key={provider.id}
                     provider={provider}
                     onEdit={openEditProvider}
-                    onDelete={(id) => deleteProvider.mutate(id)}
+                    onDelete={() => setDeletingProviderTarget(provider)}
                     isDeleting={deleteProvider.isPending}
                     deletingId={deleteProvider.variables}
                   />
@@ -193,6 +227,22 @@ export default function ModelsPage() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select
+                value={capabilityFilter}
+                onValueChange={(val) => {
+                  if (val) setCapabilityFilter(val)
+                }}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder={t('allCapabilities')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('allCapabilities')}</SelectItem>
+                  <SelectItem value="vision">{t('vision')}</SelectItem>
+                  <SelectItem value="function_calling">{t('functionCalling')}</SelectItem>
+                  <SelectItem value="reasoning">{t('reasoning')}</SelectItem>
+                </SelectContent>
+              </Select>
               <Button onClick={() => setModelAddOpen(true)}>
                 <PlusIcon className="size-4" data-icon="inline-start" />
                 {t('addModel')}
@@ -223,11 +273,35 @@ export default function ModelsPage() {
                                 {formatContextWindow(model.context_window)}
                               </Badge>
                             )}
-                            {model.input_modalities?.map((m) => (
-                              <Badge key={m} variant="ghost" className="text-[10px]">
-                                {m}
+                            {model.supports_vision && (
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <EyeIcon className="size-3.5 text-blue-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>{t('vision')}</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {model.supports_function_calling && (
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <WrenchIcon className="size-3.5 text-green-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>{t('functionCalling')}</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {model.supports_reasoning && (
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <BrainIcon className="size-3.5 text-purple-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>{t('reasoning')}</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {model.agent_count > 0 && (
+                              <Badge className="border-blue-200 bg-blue-50 text-blue-700 text-[10px] dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                                {t('agentCount', { count: model.agent_count })}
                               </Badge>
-                            ))}
+                            )}
                             {model.is_default && (
                               <Badge variant="secondary">
                                 <StarIcon className="mr-0.5 size-3" />
@@ -242,28 +316,49 @@ export default function ModelsPage() {
                         <Button
                           variant="ghost"
                           size="icon-sm"
+                          aria-label={t('modelDetail')}
+                          onClick={() => setDetailModel(model)}
+                        >
+                          <InfoIcon className="size-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
                           aria-label={t('editLabel', { name: model.display_name })}
                           onClick={() => openEditModel(model)}
                         >
                           <PencilIcon className="size-4 text-muted-foreground" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t('deleteLabel', { name: model.display_name })}
-                          onClick={() => {
-                            if (window.confirm(t('deleteConfirm'))) {
-                              deleteModel.mutate(model.id)
-                            }
-                          }}
-                          disabled={deleteModel.isPending && deleteModel.variables === model.id}
-                        >
-                          {deleteModel.isPending && deleteModel.variables === model.id ? (
-                            <Loader2Icon className="size-4 animate-spin" />
-                          ) : (
-                            <Trash2Icon className="size-4 text-muted-foreground" />
-                          )}
-                        </Button>
+                        {model.agent_count > 0 ? (
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t('deleteLabel', { name: model.display_name })}
+                                disabled
+                                render={<span />}
+                              >
+                                <Trash2Icon className="size-4 text-muted-foreground/40" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{t('cannotDeleteInUse')}</TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t('deleteLabel', { name: model.display_name })}
+                            onClick={() => setDeletingModelTarget(model)}
+                            disabled={deleteModel.isPending && deleteModel.variables === model.id}
+                          >
+                            {deleteModel.isPending && deleteModel.variables === model.id ? (
+                              <Loader2Icon className="size-4 animate-spin" />
+                            ) : (
+                              <Trash2Icon className="size-4 text-muted-foreground" />
+                            )}
+                          </Button>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -321,6 +416,71 @@ export default function ModelsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Model Detail Modal */}
+      {detailModel && (
+        <ModelDetailModal
+          model={detailModel}
+          open={!!detailModel}
+          onClose={() => setDetailModel(null)}
+        />
+      )}
+
+      {/* Model Delete Confirm */}
+      <AlertDialog
+        open={!!deletingModelTarget}
+        onOpenChange={(v) => !v && setDeletingModelTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteConfirm')}</AlertDialogTitle>
+            <AlertDialogDescription>{deletingModelTarget?.display_name}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deletingModelTarget) {
+                  deleteModel.mutate(deletingModelTarget.id)
+                  setDeletingModelTarget(null)
+                }
+              }}
+            >
+              {tc('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Provider Delete Confirm */}
+      <AlertDialog
+        open={!!deletingProviderTarget}
+        onOpenChange={(v) => !v && setDeletingProviderTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{tp('deleteConfirm')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteProviderWarning', { count: deletingProviderTarget?.model_count ?? 0 })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deletingProviderTarget) {
+                  deleteProvider.mutate(deletingProviderTarget.id)
+                  setDeletingProviderTarget(null)
+                }
+              }}
+            >
+              {tc('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

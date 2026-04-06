@@ -95,10 +95,14 @@ export function ModelAddDialog({ open, onOpenChange, providers }: ModelAddDialog
           model_name: m.model_name,
           display_name: m.display_name,
           context_window: m.context_window,
+          max_output_tokens: m.max_output_tokens,
           input_modalities: m.input_modalities,
           output_modalities: m.output_modalities,
           cost_per_input_token: m.cost_per_input_token,
           cost_per_output_token: m.cost_per_output_token,
+          supports_vision: m.supports_vision,
+          supports_function_calling: m.supports_function_calling,
+          supports_reasoning: m.supports_reasoning,
         }))
       await bulkCreate.mutateAsync({ provider_id: selectedProviderId, models })
       handleOpenChange(false)

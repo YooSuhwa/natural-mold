@@ -94,10 +94,14 @@ export interface DiscoveredModel {
   model_name: string
   display_name: string
   context_window: number | null
+  max_output_tokens: number | null
   input_modalities: string[] | null
   output_modalities: string[] | null
   cost_per_input_token: number | null
   cost_per_output_token: number | null
+  supports_vision: boolean | null
+  supports_function_calling: boolean | null
+  supports_reasoning: boolean | null
 }
 
 // Model
@@ -111,10 +115,15 @@ export interface Model {
   base_url: string | null
   is_default: boolean
   context_window: number | null
+  max_output_tokens: number | null
   input_modalities: string[] | null
   output_modalities: string[] | null
   cost_per_input_token: number | null
   cost_per_output_token: number | null
+  supports_vision: boolean | null
+  supports_function_calling: boolean | null
+  supports_reasoning: boolean | null
+  agent_count: number
   created_at: string
 }
 
@@ -147,10 +156,14 @@ export interface ModelBulkCreateRequest {
     model_name: string
     display_name: string
     context_window?: number | null
+    max_output_tokens?: number | null
     input_modalities?: string[] | null
     output_modalities?: string[] | null
     cost_per_input_token?: number | null
     cost_per_output_token?: number | null
+    supports_vision?: boolean | null
+    supports_function_calling?: boolean | null
+    supports_reasoning?: boolean | null
   }[]
 }
 

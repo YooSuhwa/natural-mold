@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.agent import Agent
 from app.models.llm_provider import LLMProvider
 from app.models.model import Model
 from app.schemas.model import ModelBulkCreate, ModelCreate, ModelUpdate
@@ -14,12 +15,14 @@ from app.services.encryption import encrypt_api_key
 
 async def list_models(db: AsyncSession) -> list[dict]:
     result = await db.execute(
-        select(Model)
+        select(Model, func.count(Agent.id).label("agent_count"))
+        .outerjoin(Agent, Agent.model_id == Model.id)
         .options(selectinload(Model.llm_provider))
+        .group_by(Model.id)
         .order_by(Model.is_default.desc(), Model.display_name)
     )
-    models = result.scalars().all()
-    return [_model_to_response(m) for m in models]
+    rows = result.all()
+    return [_model_to_response(row[0], agent_count=row[1]) for row in rows]
 
 
 async def get_model(db: AsyncSession, model_id: uuid.UUID) -> Model | None:
@@ -147,8 +150,11 @@ async def bulk_create_models(db: AsyncSession, data: ModelBulkCreate) -> list[di
     return [_model_to_response(m) for m in models]
 
 
-def _model_to_response(model: Model) -> dict:
-    """Convert Model ORM instance to response dict with provider_name."""
+def _model_to_response(model: Model, agent_count: int = 0) -> dict:
+    """Convert Model ORM instance to response dict with provider_name and enriched metadata."""
+    from app.services.model_metadata import enrich_model
+
+    enriched = enrich_model(model.model_name)
     return {
         "id": model.id,
         "provider": model.provider,
@@ -160,8 +166,13 @@ def _model_to_response(model: Model) -> dict:
         "cost_per_output_token": model.cost_per_output_token,
         "provider_id": model.provider_id,
         "provider_name": model.llm_provider.name if model.llm_provider else None,
-        "context_window": model.context_window,
-        "input_modalities": model.input_modalities,
-        "output_modalities": model.output_modalities,
+        "context_window": model.context_window or enriched.get("context_window"),
+        "input_modalities": model.input_modalities or enriched.get("input_modalities"),
+        "output_modalities": model.output_modalities or enriched.get("output_modalities"),
+        "max_output_tokens": enriched.get("max_output_tokens"),
+        "supports_vision": enriched.get("supports_vision"),
+        "supports_function_calling": enriched.get("supports_function_calling"),
+        "supports_reasoning": enriched.get("supports_reasoning"),
+        "agent_count": agent_count,
         "created_at": model.created_at,
     }

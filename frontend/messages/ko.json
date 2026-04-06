@@ -622,7 +622,22 @@
     "tab": {
       "providers": "Providers",
       "models": "Models"
-    }
+    },
+    "modelDetail": "모델 상세",
+    "maxInputTokens": "최대 입력 토큰",
+    "maxOutputTokens": "최대 출력 토큰",
+    "inputCost": "입력 비용",
+    "outputCost": "출력 비용",
+    "perMillionTokens": "/ 1M 토큰",
+    "capabilities": "기능",
+    "vision": "비전",
+    "functionCalling": "함수 호출",
+    "reasoning": "추론",
+    "modalities": "모달리티",
+    "allCapabilities": "전체 기능",
+    "agentCount": "{count}개 에이전트 사용 중",
+    "cannotDeleteInUse": "사용 중인 모델은 삭제할 수 없습니다",
+    "deleteProviderWarning": "이 Provider를 삭제하면 연결된 {count}개 모델의 API 키 참조가 끊어집니다."
   },
   "usage": {
     "pageTitle": "토큰 사용량",
