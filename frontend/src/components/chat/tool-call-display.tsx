@@ -21,9 +21,12 @@ export function ToolCallDisplay({ toolCall, status, result, elapsedMs }: ToolCal
   const hasArgs = toolCall.args && Object.keys(toolCall.args).length > 0
 
   useEffect(() => {
-    if (contentRef.current) {
-      setContentHeight(contentRef.current.scrollHeight)
-    }
+    // Use rAF to ensure DOM has updated before measuring height
+    requestAnimationFrame(() => {
+      if (contentRef.current) {
+        setContentHeight(contentRef.current.scrollHeight)
+      }
+    })
   }, [expanded, result])
 
   return (

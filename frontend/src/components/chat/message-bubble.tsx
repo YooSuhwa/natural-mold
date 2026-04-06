@@ -26,7 +26,16 @@ function parseToolContent(raw: string): string {
     // Not valid JSON — try Python dict (single quotes)
   }
 
-  // Python dict: replace single quotes with double quotes carefully
+  // Regex extraction: safer than blanket quote replacement because
+  // text values may contain apostrophes (e.g. "it's sunny")
+  const textMatch = trimmed.match(/['"]text['"]\s*:\s*['"]([\s\S]+?)['"]\s*[,})\]]/)
+  if (textMatch) {
+    return normalizeContent(textMatch[1])
+  }
+
+  // Last resort: blanket single→double quote replacement for Python dicts.
+  // May break on text values containing apostrophes, but the regex above
+  // should have already handled the common case.
   try {
     const jsonified = trimmed
       .replace(/'/g, '"')
@@ -36,13 +45,7 @@ function parseToolContent(raw: string): string {
     const parsed = JSON.parse(jsonified)
     return extractTextFromParsed(parsed)
   } catch {
-    // Still can't parse — try regex extraction as last resort
-  }
-
-  // Regex fallback: extract text field value from Python dict string
-  const textMatch = trimmed.match(/['"]text['"]\s*:\s*['"]([\s\S]+?)['"]\s*[,})\]]/)
-  if (textMatch) {
-    return normalizeContent(textMatch[1])
+    // All parsing failed — return normalized original
   }
 
   return normalizeContent(trimmed)
@@ -67,7 +70,12 @@ function extractTextFromParsed(parsed: unknown): string {
   return normalizeContent(JSON.stringify(parsed, null, 2))
 }
 
-/** Normalize control characters: \xa0 → space, collapse excessive newlines */
+/**
+ * Normalize control characters in tool result text:
+ * - `\\xa0` (literal escaped) and `\xa0` (actual non-breaking space) → regular space
+ * - `\\n` (literal escaped newline from Python repr) → actual newline
+ * - Collapse 4+ consecutive newlines → max 3
+ */
 function normalizeContent(text: string): string {
   return text
     .replace(/\\xa0/g, ' ')

@@ -107,10 +107,12 @@ export default function ChatPage({
             break
           }
           case 'message_end': {
+            // Backend sends { prompt_tokens, completion_tokens } in usage.
+            // estimated_cost is not yet provided by the backend — defaults to 0.
             const usage = event.data.usage
             if (usage) {
-              const input = usage.input_tokens ?? usage.prompt_tokens ?? 0
-              const output = usage.output_tokens ?? usage.completion_tokens ?? 0
+              const input = usage.prompt_tokens ?? usage.input_tokens ?? 0
+              const output = usage.completion_tokens ?? usage.output_tokens ?? 0
               const cost = usage.estimated_cost ?? 0
               const msgTokens = { inputTokens: input, outputTokens: output, cost }
               setLastMessageTokens(msgTokens)

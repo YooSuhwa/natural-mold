@@ -110,6 +110,7 @@ export function ChatInput({ onSend, disabled, placeholder, modelName }: ChatInpu
           <input
             ref={fileInputRef}
             type="file"
+            accept="image/*,.pdf,.md,.txt,.csv"
             className="hidden"
             tabIndex={-1}
             aria-hidden="true"
