@@ -98,9 +98,14 @@ export function MessageBubble({ message, tokenInfo, previousRole }: MessageBubbl
 
   // Spacing: same role = tight, role change = wider
   const isSameRole = previousRole != null && previousRole === message.role
-  // tool messages following assistant are also "same group"
-  const isSameGroup = isSameRole || (message.role === 'tool' && previousRole === 'assistant')
+  // tool messages following assistant, or assistant following tool = same turn group
+  const isSameGroup =
+    isSameRole ||
+    (message.role === 'tool' && previousRole === 'assistant') ||
+    (message.role === 'assistant' && previousRole === 'tool')
   const gapClass = previousRole == null ? '' : isSameGroup ? 'mt-1.5' : 'mt-5'
+  // Hide bot icon when continuing the same assistant turn (after tool results)
+  const showBotIcon = !isSameGroup || previousRole == null
 
   async function handleCopy() {
     try {
@@ -131,11 +136,14 @@ export function MessageBubble({ message, tokenInfo, previousRole }: MessageBubbl
 
   return (
     <div className={`group flex gap-3 ${gapClass} ${isUser ? 'justify-end' : ''}`}>
-      {!isUser && (
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <BotIcon className="size-4" />
-        </div>
-      )}
+      {!isUser &&
+        (showBotIcon ? (
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <BotIcon className="size-4" />
+          </div>
+        ) : (
+          <div className="w-8 shrink-0" />
+        ))}
       <div className="max-w-[80%] space-y-2">
         {message.tool_calls && message.tool_calls.length > 0 && (
           <div className="space-y-1">
