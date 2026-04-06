@@ -33,7 +33,7 @@ export function getProviderLabel(providerType: string): string {
 }
 
 export function formatContextWindow(tokens: number | null | undefined): string | null {
-  if (!tokens) return null
+  if (tokens == null || tokens === 0) return null
   if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(0)}M`
   if (tokens >= 1000) return `${(tokens / 1000).toFixed(0)}K`
   return `${tokens}`

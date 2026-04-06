@@ -18,8 +18,17 @@ def _get_catalog() -> dict:
     return _catalog
 
 
-# Anthropic static model list (no /models endpoint)
-ANTHROPIC_MODELS = [k for k, v in _get_catalog().items() if v.get("provider") == "anthropic"]
+_anthropic_models: list[str] | None = None
+
+
+def get_anthropic_models() -> list[str]:
+    """Anthropic static model list (no /models endpoint). Lazy loaded."""
+    global _anthropic_models
+    if _anthropic_models is None:
+        _anthropic_models = [
+            k for k, v in _get_catalog().items() if v.get("provider") == "anthropic"
+        ]
+    return _anthropic_models
 
 
 def enrich_model(model_name: str, base: dict | None = None) -> dict:

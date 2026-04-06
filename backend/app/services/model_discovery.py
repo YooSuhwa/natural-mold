@@ -9,7 +9,7 @@ import httpx
 from app.models.llm_provider import LLMProvider
 from app.schemas.llm_provider import DiscoveredModel
 from app.services.encryption import decrypt_api_key
-from app.services.model_metadata import ANTHROPIC_MODELS, enrich_model
+from app.services.model_metadata import enrich_model, get_anthropic_models
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,8 @@ async def _discover_openai(
 async def _discover_anthropic(
     api_key: str | None = None, base_url: str | None = None
 ) -> list[DiscoveredModel]:
-    # Anthropic has no /models endpoint — use static list + verify key
+    # Anthropic has no /models endpoint — use static list + verify key.
+    # NOTE: Key verification calls the actual API with max_tokens=1, which may incur minimal cost.
     if api_key:
         url = (base_url or "https://api.anthropic.com").rstrip("/") + "/v1/messages"
         headers = {
@@ -111,7 +112,7 @@ async def _discover_anthropic(
                 resp.raise_for_status()
 
     models = []
-    for mid in ANTHROPIC_MODELS:
+    for mid in get_anthropic_models():
         enriched = enrich_model(mid)
         models.append(
             DiscoveredModel(
@@ -182,15 +183,24 @@ async def _discover_openrouter(
     for m in data:
         mid = m.get("id", "")
         pricing = m.get("pricing", {})
+        arch = m.get("architecture", {})
+        top = m.get("top_provider", {})
+        supported = m.get("supported_parameters", [])
+        input_mod = arch.get("input_modalities")
+        output_mod = arch.get("output_modalities")
         models.append(
             DiscoveredModel(
                 model_name=mid,
                 display_name=m.get("name", mid),
                 context_window=m.get("context_length"),
-                input_modalities=None,
-                output_modalities=None,
+                input_modalities=input_mod,
+                output_modalities=output_mod,
                 cost_per_input_token=pricing.get("prompt") if pricing else None,
                 cost_per_output_token=pricing.get("completion") if pricing else None,
+                max_output_tokens=top.get("max_completion_tokens"),
+                supports_vision="image" in (input_mod or []),
+                supports_function_calling="tools" in supported,
+                supports_reasoning="reasoning" in supported,
             )
         )
     return sorted(models, key=lambda m: m.model_name)

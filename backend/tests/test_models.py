@@ -94,3 +94,52 @@ async def test_create_model_with_provider_id(client: AsyncClient):
     model = resp.json()
     assert model["provider_id"] == provider_id
     assert model["provider_name"] == "LinkedProvider"
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_skips_duplicates(client: AsyncClient):
+    """Bulk create should skip models that already exist for same provider."""
+    resp = await client.post(
+        "/api/providers",
+        json={"name": "DupProvider", "provider_type": "openai"},
+    )
+    provider_id = resp.json()["id"]
+
+    data = {
+        "provider_id": provider_id,
+        "models": [{"model_name": "gpt-4o", "display_name": "GPT-4o"}],
+    }
+    resp = await client.post("/api/models/bulk", json=data)
+    assert resp.status_code == 201
+    assert len(resp.json()) == 1
+
+    # Same model again — should be skipped
+    resp = await client.post("/api/models/bulk", json=data)
+    assert resp.status_code == 201
+    assert len(resp.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_enrich_model_unknown_model():
+    """enrich_model returns base dict with display_name for unknown models."""
+    from app.services.model_metadata import enrich_model
+
+    result = enrich_model("totally-unknown-model-xyz")
+    assert result["display_name"] == "totally-unknown-model-xyz"
+    assert result.get("context_window") is None
+
+
+@pytest.mark.asyncio
+async def test_model_response_includes_agent_count(client: AsyncClient):
+    """Models API should return agent_count field."""
+    resp = await client.post(
+        "/api/models",
+        json={"provider": "openai", "model_name": "gpt-test", "display_name": "Test"},
+    )
+    assert resp.status_code == 201
+
+    resp = await client.get("/api/models")
+    models = resp.json()
+    assert len(models) > 0
+    assert "agent_count" in models[0]
+    assert models[0]["agent_count"] == 0

@@ -335,20 +335,20 @@ function DiscoveredModelRow({
       ) : (
         <span className="size-3.5 shrink-0 rounded border border-muted-foreground/30" />
       )}
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="truncate text-xs font-medium">{model.display_name}</span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+        <span className="mr-1 truncate text-xs font-medium">{model.display_name}</span>
         {registeredLabel && (
-          <Badge variant="outline" className="shrink-0 text-[10px]">
+          <Badge variant="outline" className="text-[10px]">
             {registeredLabel}
           </Badge>
         )}
         {model.context_window && (
-          <Badge variant="outline" className="shrink-0 text-[10px]">
+          <Badge variant="outline" className="text-[10px]">
             {formatContextWindow(model.context_window)}
           </Badge>
         )}
         {model.input_modalities?.map((m) => (
-          <Badge key={m} variant="secondary" className="shrink-0 text-[10px]">
+          <Badge key={m} variant="secondary" className="text-[10px]">
             {m}
           </Badge>
         ))}

@@ -562,6 +562,7 @@
     "modelCount": "{count}개 모델",
     "deleteConfirm": "이 Provider를 삭제하시겠습니까? 연결된 모델도 함께 삭제됩니다.",
     "deleteLabel": "{name} 삭제",
+    "createSuccess": "Provider가 생성되었습니다",
     "createError": "Provider 생성에 실패했습니다",
     "updateError": "Provider 수정에 실패했습니다",
     "empty": {

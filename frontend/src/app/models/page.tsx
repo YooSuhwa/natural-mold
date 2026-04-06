@@ -331,17 +331,14 @@ export default function ModelsPage() {
                         </Button>
                         {model.agent_count > 0 ? (
                           <Tooltip>
-                            <TooltipTrigger>
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={t('deleteLabel', { name: model.display_name })}
-                                disabled
-                                render={<span />}
-                              >
-                                <Trash2Icon className="size-4 text-muted-foreground/40" />
-                              </Button>
-                            </TooltipTrigger>
+                            <TooltipTrigger
+                              render={
+                                <span className="inline-flex size-8 items-center justify-center rounded-md opacity-40">
+                                  <Trash2Icon className="size-4 text-muted-foreground" />
+                                </span>
+                              }
+                              aria-label={t('cannotDeleteInUse')}
+                            />
                             <TooltipContent>{t('cannotDeleteInUse')}</TooltipContent>
                           </Tooltip>
                         ) : (

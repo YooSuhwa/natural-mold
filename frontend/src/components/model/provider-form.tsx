@@ -115,6 +115,7 @@ function ProviderFormContent({
         base_url: baseUrl || undefined,
         api_key: apiKey || undefined,
       })
+      toast.success(t('createSuccess'))
       setCreatedProviderId(created.id)
       testProvider.mutate(created.id)
     } catch {
