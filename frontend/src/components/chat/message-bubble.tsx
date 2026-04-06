@@ -154,7 +154,7 @@ export function MessageBubble({ message, tokenInfo, previousRole }: MessageBubbl
 
             {/* Action bar — assistant only, appears on hover */}
             {!isUser && (
-              <div className="absolute -bottom-7 right-0 flex items-center gap-0.5 rounded-lg border bg-background px-1 py-0.5 shadow-sm opacity-0 transition-opacity group-hover:opacity-100">
+              <div className="absolute -bottom-7 left-0 flex items-center gap-0.5 rounded-lg border bg-background px-1 py-0.5 shadow-sm opacity-0 transition-opacity group-hover:opacity-100">
                 <button
                   type="button"
                   onClick={handleCopy}
