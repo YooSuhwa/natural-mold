@@ -1,0 +1,108 @@
+/* Markdown content styles for chat messages */
+
+.prose-chat {
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+/* Tables (GFM) */
+.prose-chat table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  font-size: 0.8125rem;
+}
+
+.prose-chat thead th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.375rem 0.75rem;
+  border-bottom: 2px solid var(--border);
+  background: var(--muted);
+}
+
+.prose-chat tbody td {
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.prose-chat tbody tr:nth-child(even) {
+  background: color-mix(in oklch, var(--muted) 50%, transparent);
+}
+
+/* Code block wrapper */
+.code-block-wrapper {
+  position: relative;
+  margin: 0.5rem 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.code-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Image in chat */
+.chat-image {
+  max-width: 28rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  object-fit: contain;
+}
+
+.chat-image:hover {
+  opacity: 0.9;
+}
+
+.chat-image-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  max-width: 28rem;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+/* Blockquote */
+.prose-chat blockquote {
+  border-left: 2px solid color-mix(in oklch, var(--foreground) 20%, transparent);
+  padding-left: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+/* Lists */
+.prose-chat ul {
+  list-style-type: disc;
+  margin-left: 1rem;
+}
+
+.prose-chat ol {
+  list-style-type: decimal;
+  margin-left: 1rem;
+}
+
+/* KaTeX overrides */
+.prose-chat .katex-display {
+  margin: 0.5rem 0;
+  overflow-x: auto;
+}
+
+.prose-chat .katex {
+  font-size: 1em;
+}

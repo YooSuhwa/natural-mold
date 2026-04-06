@@ -58,6 +58,9 @@ def create_chat_model(
         if param in extra and extra[param] is not None:
             kwargs[param] = extra[param]
 
+    # Enable usage metadata in streaming responses
+    kwargs["stream_usage"] = True
+
     if _ssl_ctx and cls in (ChatOpenAI,):
         kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
         kwargs["http_client"] = httpx.Client(verify=_ssl_ctx)

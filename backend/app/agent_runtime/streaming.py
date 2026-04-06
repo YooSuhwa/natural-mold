@@ -34,6 +34,9 @@ async def stream_agent_response(
     agent: Any,
     messages: list[Any],
     config: dict[str, Any],
+    *,
+    cost_per_input_token: float | None = None,
+    cost_per_output_token: float | None = None,
 ) -> AsyncGenerator[str, None]:
     msg_id = str(uuid.uuid4())
 
@@ -110,5 +113,12 @@ async def stream_agent_response(
     # Flush any remaining buffer (incomplete JSON = not middleware output)
     if _buf:
         full_content += _buf
+
+    # Calculate estimated cost from model pricing if available
+    if usage_data and (cost_per_input_token or cost_per_output_token):
+        prompt = usage_data.get("prompt_tokens", 0)
+        completion = usage_data.get("completion_tokens", 0)
+        cost = (prompt * (cost_per_input_token or 0)) + (completion * (cost_per_output_token or 0))
+        usage_data["estimated_cost"] = round(cost, 8)
 
     yield format_sse("message_end", {"usage": usage_data, "content": full_content})

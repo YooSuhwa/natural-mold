@@ -387,6 +387,8 @@ async def execute_agent_stream(
     middleware_configs: list[dict[str, Any]] | None = None,
     agent_skills: list[dict] | None = None,
     agent_id: str | None = None,
+    cost_per_input_token: float | None = None,
+    cost_per_output_token: float | None = None,
 ) -> AsyncGenerator[str, None]:
     """스트리밍 실행 (채팅용)."""
     agent, lc_messages, config = await _prepare_agent(
@@ -404,7 +406,13 @@ async def execute_agent_stream(
         agent_id,
     )
 
-    async for chunk in stream_agent_response(agent, lc_messages, config):
+    async for chunk in stream_agent_response(
+        agent,
+        lc_messages,
+        config,
+        cost_per_input_token=cost_per_input_token,
+        cost_per_output_token=cost_per_output_token,
+    ):
         yield chunk
 
 

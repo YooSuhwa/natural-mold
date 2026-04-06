@@ -1,48 +1,21 @@
 [2026-04-05T00:00] satya PROJECT_START "M1: Deep Agent 엔진 교체"
-[2026-04-05T00:00] satya MILESTONE_CREATED S0,S1,S2,S3,S4,S5
-[2026-04-05T00:01] bezos MILESTONE_DONE S1 삭제 분석 보고서 완료 — 7개 삭제 대상, 안전도 높음
-[2026-04-05T00:02] pichai MILESTONE_DONE S0 docs/ARCHITECTURE.md + design-docs/index.md 생성
-[2026-04-05T00:03] pichai MILESTONE_DONE S2 ADR-001 작성 — SPEC 대비 API 차이 3건 발견 (skills/memory 파라미터 없음, middleware 호환)
-[2026-04-05T00:04] satya MILESTONE_START S3+S4 젠슨 스폰
-[2026-04-05T00:05] jensen MILESTONE_DONE S3 executor.py 교체 — create_deep_agent + MultiServerMCPClient, ruff PASS
-[2026-04-05T00:06] jensen MILESTONE_DONE S4 코드 정리 — 7개 함수/로직 제거, ruff PASS, 참조 0건
-[2026-04-05T00:07] satya MILESTONE_START S5 베조스 통합 검증
-[2026-04-05T00:08] bezos VERIFICATION_PASS S5 ruff PASS, pytest 314/323 (9 pre-existing), M1 regression 없음
 [2026-04-05T00:09] satya PROJECT_DONE "M1: Deep Agent 엔진 교체" — 6/6 스토리 1회 통과
 [2026-04-05T01:00] satya PROJECT_START "M2: Checkpointer 전환"
-[2026-04-05T01:00] satya MILESTONE_CREATED S1,S2,S3,S4,S5,S6
-[2026-04-05T01:01] bezos MILESTONE_DONE S1 삭제 분석 완료 — 4건 즉시 삭제, 6건 수정 필요, 1건 이동, 19개 테스트 영향
-[2026-04-06T00:00] pichai MILESTONE_DONE S2 ADR-002 작성 — 4개 설계 항목 문서화, ARCHITECTURE.md 업데이트, S3-S5 언블록
-[2026-04-06T00:01] satya MILESTONE_START S3+S4+S5 젠슨 스폰
-[2026-04-06T00:02] jensen MILESTONE_DONE S3 checkpointer.py 생성 + main.py lifespan + executor.py 연결, ruff PASS
-[2026-04-06T00:03] jensen MILESTONE_DONE S4 router/service/trigger 전환 — save_message/list_messages 제거, auto-title 분리, ruff PASS
-[2026-04-06T00:04] jensen MILESTONE_DONE S5 Alembic 마이그레이션 + Message 모델 제거 + 테스트 5파일 수정 — 321 passed, 0 failed
-[2026-04-06T00:04] satya MILESTONE_START S6 베조스 통합 검증
-[2026-04-06T00:05] bezos VERIFICATION_PASS S6 ruff PASS, pytest 321/321 (0 failed), S1 체크리스트 12/12 PASS, Alembic 마이그레이션 정합성 확인
 [2026-04-06T00:06] satya PROJECT_DONE "M2: Checkpointer 전환" — 6/6 스토리 전부 1회 통과
 [2026-04-06T15:00] satya PROJECT_START "M3: 스킬+메모리 전환"
-[2026-04-06T15:00] satya TEAM_FORMED pichai+jensen+bezos (백엔드 전용)
-[2026-04-06T15:00] satya MILESTONE_CREATED S1(삭제분석)+S2(아키텍처)+S3(구현)+S4(정리)+S5(검증)
-[2026-04-06T15:30] bezos MILESTONE_DONE S1 삭제 분석 완료 — 2파일 전체삭제, 3함수 제거, 18항목 체크리스트
-[2026-04-06T15:30] pichai MILESTONE_DONE S2 ADR-003 작성 — FilesystemBackend 선택, skills/memory 경로 매핑, text 스킬 물질화, S3+S4 언블록
-[2026-04-06T15:31] satya MILESTONE_START S3 젠슨 스폰
-[2026-04-06T15:45] jensen MILESTONE_DONE S3 executor/conversations/trigger 수정 — skills/memory 전달, FilesystemBackend, skill_package 제거, ruff+pytest PASS
-[2026-04-06T15:45] satya MILESTONE_START S4 젠슨에게 코드 정리 전달
-[2026-04-06T16:00] jensen MILESTONE_DONE S4 코드 정리 — 2파일 삭제, chat_service 단순화, config/pyproject/테스트 정리, ruff+pytest PASS
-[2026-04-06T16:00] satya MILESTONE_START S5 베조스 통합 검증
-[2026-04-06T16:15] bezos VERIFICATION_PASS S5 ruff PASS, pytest 308/308 (0 failed), 체크리스트 18/18 PASS, regression 없음
 [2026-04-06T16:15] satya PROJECT_DONE "M3: 스킬+메모리 전환" — 5/5 스토리 전부 1회 통과
 [2026-04-06T21:00] satya PROJECT_START "M4: 정리 + Creation Agent"
-[2026-04-06T21:00] satya MILESTONE_CREATED S1(삭제분석)+S2(아키텍처)+S3(trigger)+S4(creation)+S5(streaming)+S6(정리)+S7(검증)
-[2026-04-06T21:00] satya TEAM_FORMED pichai+jensen+bezos (백엔드 전용)
-[2026-04-06T21:30] bezos MILESTONE_DONE S1 삭제 분석 완료 — 4즉시삭제, 4교체, 8유지, streaming필터삭제가능, middleware패치유지, 시드정합, dead code 1건(token_tracker)
-[2026-04-06T22:00] pichai MILESTONE_DONE S2 ADR-004 작성 — 3개 설계 결정 문서화. S1 streaming 필터 판단 수정(유지). ARCHITECTURE.md M4 섹션 추가. S3+S4+S5 언블록
-[2026-04-06T23:00] bezos VERIFICATION_PASS S7 ruff PASS, pytest 302/302 (0 failed), 삭제 체크리스트 18/18 PASS (S2 수정사항 반영), M1-M3 regression 0건, 신규 코드 확인 완료
 [2026-04-06T23:30] satya PROJECT_DONE "M4: 정리 + Creation Agent" — 7/7 스토리 전부 1회 통과
 [2026-04-06T19:10] satya PROJECT_START "LLM 모델 관리 시스템 전면 개편"
-[2026-04-06T19:10] satya MILESTONE_CREATED M1(Backend Provider),M2(Backend Models),M3(Frontend),M4(통합검증)
-[2026-04-06T19:10] satya TEAM_FORMED pichai+jensen+tim-cook+zuckerberg+bezos (풀스택)
-[2026-04-06T20:00] jensen MILESTONE_DONE M1-Task1 Backend 인프라 — encryption+ORM+migration+Provider CRUD+discovery, ruff PASS, 315 passed
-[2026-04-06T20:30] jensen MILESTONE_DONE M2-Task2 Models API+model_factory — schemas/service/router 확장, llm_provider 우선 api_key, ruff PASS, 315 passed
-[2026-04-06T21:30] zuckerberg MILESTONE_DONE M3-Task3 Frontend 전면 재구성 — types/api/hooks/components/pages 전체, pnpm build+lint PASS
-[2026-04-06T22:00] bezos VERIFICATION_PASS M4 ruff PASS, pytest 327/327 (0 failed, 신규 12건 추가), pnpm build PASS, 신규 파일 18/18 존재, regression 없음
+[2026-04-06T22:00] satya PROJECT_DONE "LLM 모델 관리 시스템 전면 개편" — M1-M4 전부 통과
+[2026-04-06T22:30] satya PROJECT_START "채팅 UI 개선"
+[2026-04-06T22:30] satya TEAM_FORMED tim-cook+zuckerberg+bezos (프론트엔드 전용)
+[2026-04-06T22:30] satya MILESTONE_CREATED M1(P0수정),M2(마크다운),M3(입력+토큰),M4(디자인),M5(검증)
+[2026-04-06T22:45] zuckerberg MILESTONE_DONE M1+M2 도구 결과 파싱 + 이미지 개선 + 마크다운 강화 완료, pnpm build PASS
+[2026-04-06T23:05] zuckerberg MILESTONE_DONE M3 디자인 다듬기 완료 — 봇 아이콘, 복사 버튼, 간격 통일, 빈 화면, 그라데이션 페이드, pnpm build PASS
+[2026-04-06T23:05] satya AGENT_SHUTDOWN zuckerberg — M1+M3 완료, 대기 작업 없음
+[2026-04-06T23:10] tim-cook MILESTONE_DONE M2 입력 리디자인 + 토큰 표시 완료 — chat-input, streaming-message, tool-call-display, chat-store, page.tsx, pnpm build PASS
+[2026-04-06T23:10] satya AGENT_SHUTDOWN tim-cook — M2 완료
+[2026-04-06T23:10] satya MILESTONE_START M4 통합 검증 — pnpm build PASS 확인, agent-browser E2E 시작
+[2026-04-06T23:15] satya VERIFICATION_PASS M4 pnpm build PASS, pytest 332 passed, agent-browser 시각 검증 완료
+[2026-04-06T23:15] satya PROJECT_DONE "채팅 UI 개선" — M1~M4 전부 통과
