@@ -19,6 +19,7 @@ from app.schemas.conversation import (
     MessageResponse,
 )
 from app.services import chat_service
+from app.services.encryption import decrypt_api_key
 
 router = APIRouter(tags=["conversations"])
 
@@ -116,12 +117,21 @@ async def send_message(
     tools_config = chat_service.build_tools_config(agent, conversation_id=str(conversation_id))
     agent_skills = chat_service.build_agent_skills(agent)
 
+    # Resolve API key: prefer llm_provider, fallback to model-level key
+    lp = agent.model.llm_provider
+    api_key = (
+        decrypt_api_key(lp.api_key_encrypted)
+        if lp and lp.api_key_encrypted
+        else agent.model.api_key_encrypted
+    )
+    base_url = lp.base_url if lp and lp.base_url else agent.model.base_url
+
     async def generate():
         async for chunk in execute_agent_stream(
             provider=agent.model.provider,
             model_name=agent.model.model_name,
-            api_key=agent.model.api_key_encrypted,
-            base_url=agent.model.base_url,
+            api_key=api_key,
+            base_url=base_url,
             system_prompt=effective_prompt,
             tools_config=tools_config,
             messages_history=[{"role": "user", "content": data.content}],

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
 from app.exceptions import NotFoundError
-from app.schemas.model import ModelCreate, ModelResponse, ModelUpdate
+from app.schemas.model import ModelBulkCreate, ModelCreate, ModelResponse, ModelUpdate
 from app.services import model_service
 
 router = APIRouter(prefix="/api/models", tags=["models"])
@@ -21,6 +21,11 @@ async def list_models(db: AsyncSession = Depends(get_db)):
 @router.post("", response_model=ModelResponse, status_code=201)
 async def create_model(data: ModelCreate, db: AsyncSession = Depends(get_db)):
     return await model_service.create_model(db, data)
+
+
+@router.post("/bulk", response_model=list[ModelResponse], status_code=201)
+async def bulk_create_models(data: ModelBulkCreate, db: AsyncSession = Depends(get_db)):
+    return await model_service.bulk_create_models(db, data)
 
 
 @router.put("/{model_id}", response_model=ModelResponse)

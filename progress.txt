@@ -344,5 +344,67 @@
 - 신규 코드: _prepare_agent(), execute_agent_invoke() (executor.py), build_agent(tools=[]) (creation_agent.py) 확인
 - 결론: M4 regression 없음, 게이트 통과
 
+## M5 Provider 시스템 구현 (2026-04-06) — Jensen
+
+### M5-Task1 (M1-S1): Backend 인프라 완료
+- encryption.py: Fernet 기반 encrypt/decrypt, encryption_key 없으면 평문 패스스루
+- LLMProvider ORM: llm_providers 테이블 (id, name, provider_type, base_url, api_key_encrypted, is_active, timestamps)
+- models 테이블: provider_id FK, context_window, input_modalities, output_modalities 추가, model_name/display_name 200자로 확장
+- Alembic migration: llm_providers 생성 + 기존 models → llm_providers 데이터 마이그레이션
+- Provider CRUD API: GET/POST/PUT/DELETE /api/providers, POST /test, GET /discover-models
+- model_discovery.py: OpenAI/Anthropic(정적)/Google/OpenRouter/OpenAI-compatible 지원
+- model_metadata.py: 정적 메타 정보 (context_window, modalities, cost)
+- default_providers seed: OpenAI, Anthropic, Google (API 키 없이)
+- 테스트: 13건 신규 (providers 8 + encryption 2 + discovery 3)
+
+### M5-Task2 (M2-S2): Models API + model_factory 완료
+- schemas/model.py: provider_id, context_window, modalities, ModelBulkCreate 추가
+- model_service.py: list_models/create_model → dict 반환 (provider_name 포함), bulk_create_models 추가
+- model_factory.py: PROVIDER_MAP에 openrouter/openai_compatible 추가 (ChatOpenAI 사용)
+- conversations.py: api_key를 llm_provider에서 decrypt하여 전달 (폴백: model-level key)
+- trigger_executor.py: 동일하게 llm_provider 우선
+- chat_service.py: selectinload(Agent.model).selectinload(Model.llm_provider) 추가
+- models.py 라우터: /api/models/bulk POST 추가
+- 결과: 315 passed, 0 failed (기존 302 + 신규 13)
+
+### M5-Task3 (M3-S3): Frontend 전면 재구성 완료 — Zuckerberg
+- types/index.ts: Provider/DiscoveredModel 타입 추가, Model에 provider_id/context_window/modalities 추가, ModelBulkCreateRequest 추가
+- api/providers.ts (신규): Provider CRUD + test + discover API 클라이언트
+- api/models.ts: bulkCreate 엔드포인트 추가
+- hooks/use-providers.ts (신규): TanStack Query hooks 6개
+- hooks/use-models.ts: useBulkCreateModels 추가
+- components/model/provider-card.tsx (신규): Provider 카드 + getProviderIcon
+- components/model/provider-form.tsx (신규): Provider 추가/수정 Dialog (inner component 패턴)
+- components/model/model-add-dialog.tsx (신규): 3단계 모델 추가 (provider→discover→register/manual)
+- components/model/model-select.tsx (신규): 검색 가능한 모델 선택기 + formatContextWindow
+- app/models/page.tsx: 전면 재작성 (Tabs: Providers|Models)
+- agents/[agentId]/settings/page.tsx: Select → ModelSelect 교체
+- agent-node.tsx: provider 아이콘 + context_window 배지 추가
+- messages/ko.json: provider 섹션 추가, model 섹션 확장
+- 검증: pnpm build PASS + pnpm lint PASS
+
+### Gotchas (M5)
+- model_service에서 list_models/create_model 반환 타입이 ORM → dict로 변경됨. from_attributes=True 기반 테스트가 dict와도 호환됨 (Pydantic이 dict도 처리)
+- provider_service.list_providers는 JOIN + group_by로 model_count 집계. SQLite (테스트)에서도 정상 동작.
+- Alembic migration의 데이터 마이그레이션은 gen_random_uuid() 사용 (PostgreSQL 전용). SQLite에서는 실행 안 됨 (테스트에서는 create_all로 테이블 직접 생성).
+- @base-ui/react Select onValueChange 시그니처: (string|null, eventDetails). setState 직접 전달 불가 → `(val) => { if (val) setState(val) }` 래핑 필요.
+- React 19 lint: useEffect 내 동기 setState 금지. Dialog 폼 초기화는 inner component 패턴으로 해결.
+- IS NOT DISTINCT FROM 구문은 PostgreSQL 전용. NULL 비교 안전 처리.
+
+## M5 통합 검증 결과 (2026-04-06) — Bezos
+- ruff check: 전체 통과
+- pytest: 327 passed, 0 failed (M4 302 + M5 신규 13 + 검증 보강 12 = 327)
+- pnpm build: 전체 통과 (타입 에러 0)
+- 신규 파일 18/18 전부 존재 확인
+- 테스트 보강:
+  - test_providers.py: +5건 (/test, /discover-models, 404, model_count)
+  - test_model_discovery.py: +5건 (test_connection success/auth/connect, google, openai_compatible)
+  - test_models.py: +2건 (bulk_create, provider_id 연결)
+- Alembic Migration 2 (models.api_key_encrypted/base_url DROP) 보류:
+  - conversations.py에서 model-level api_key 폴백 사용 중 (L: llm_provider 우선, model key 폴백)
+  - 폴백 코드 제거 없이 컬럼 DROP하면 기존 model-level key 설정이 깨짐
+  - 완전 전환 후 DROP 권장
+- 결론: M5 regression 없음, 게이트 통과
+
 ## 실패 교훈
 - S1 삭제 분석에서 streaming.py 필터를 "삭제 가능"으로 판단했으나 S2 심층 조사에서 "유지 필요"로 수정됨. 표면적 분석(미들웨어 구조만 확인)보다 실제 소스코드(PatchToolCallsMiddleware가 before_agent만 구현)를 확인해야 정확한 판단 가능. 삭제 분석 시 방어 코드의 필요성은 실행 경로까지 추적할 것.

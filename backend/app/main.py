@@ -46,12 +46,14 @@ logger = logging.getLogger(__name__)
 from app.config import settings
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
+from app.models.llm_provider import LLMProvider
 from app.models.model import Model
 from app.models.template import Template
 from app.models.tool import Tool
 from app.models.user import User
 from app.scheduler import add_trigger_job, get_scheduler
 from app.seed.default_models import DEFAULT_MODELS
+from app.seed.default_providers import DEFAULT_PROVIDERS
 from app.seed.default_templates import DEFAULT_TEMPLATES
 from app.seed.default_tools import DEFAULT_TOOLS
 
@@ -70,6 +72,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     name=settings.mock_user_name,
                 )
             )
+
+        # Seed default providers (upsert by provider_type)
+        existing_providers = await db.execute(select(LLMProvider.provider_type))
+        existing_provider_types = {r[0] for r in existing_providers.all()}
+        for prov_data in DEFAULT_PROVIDERS:
+            if prov_data["provider_type"] not in existing_provider_types:
+                db.add(LLMProvider(**prov_data))
 
         # Seed default models
         result = await db.execute(select(Model).limit(1))
@@ -145,6 +154,7 @@ def create_app() -> FastAPI:
         conversations,
         fix_agent,
         models,
+        providers,
         skills,
         templates,
         tools,
@@ -157,6 +167,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_creation.router)
     app.include_router(fix_agent.router)
     app.include_router(conversations.router)
+    app.include_router(providers.router)
     app.include_router(models.router)
     app.include_router(templates.router)
     app.include_router(skills.router)

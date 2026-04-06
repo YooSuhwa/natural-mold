@@ -39,3 +39,10 @@
 [2026-04-06T22:00] pichai MILESTONE_DONE S2 ADR-004 작성 — 3개 설계 결정 문서화. S1 streaming 필터 판단 수정(유지). ARCHITECTURE.md M4 섹션 추가. S3+S4+S5 언블록
 [2026-04-06T23:00] bezos VERIFICATION_PASS S7 ruff PASS, pytest 302/302 (0 failed), 삭제 체크리스트 18/18 PASS (S2 수정사항 반영), M1-M3 regression 0건, 신규 코드 확인 완료
 [2026-04-06T23:30] satya PROJECT_DONE "M4: 정리 + Creation Agent" — 7/7 스토리 전부 1회 통과
+[2026-04-06T19:10] satya PROJECT_START "LLM 모델 관리 시스템 전면 개편"
+[2026-04-06T19:10] satya MILESTONE_CREATED M1(Backend Provider),M2(Backend Models),M3(Frontend),M4(통합검증)
+[2026-04-06T19:10] satya TEAM_FORMED pichai+jensen+tim-cook+zuckerberg+bezos (풀스택)
+[2026-04-06T20:00] jensen MILESTONE_DONE M1-Task1 Backend 인프라 — encryption+ORM+migration+Provider CRUD+discovery, ruff PASS, 315 passed
+[2026-04-06T20:30] jensen MILESTONE_DONE M2-Task2 Models API+model_factory — schemas/service/router 확장, llm_provider 우선 api_key, ruff PASS, 315 passed
+[2026-04-06T21:30] zuckerberg MILESTONE_DONE M3-Task3 Frontend 전면 재구성 — types/api/hooks/components/pages 전체, pnpm build+lint PASS
+[2026-04-06T22:00] bezos VERIFICATION_PASS M4 ruff PASS, pytest 327/327 (0 failed, 신규 12건 추가), pnpm build PASS, 신규 파일 18/18 존재, regression 없음

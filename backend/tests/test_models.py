@@ -43,3 +43,54 @@ async def test_create_and_list_model(client: AsyncClient):
 async def test_delete_nonexistent_model(client: AsyncClient):
     resp = await client.delete("/api/models/00000000-0000-0000-0000-000000000099")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_bulk_create_models(client: AsyncClient):
+    """POST /api/models/bulk — create multiple models at once."""
+    # Create a provider first
+    resp = await client.post(
+        "/api/providers",
+        json={"name": "BulkProvider", "provider_type": "openai"},
+    )
+    provider_id = resp.json()["id"]
+
+    data = {
+        "provider_id": provider_id,
+        "models": [
+            {"model_name": "gpt-4o", "display_name": "GPT-4o", "context_window": 128000},
+            {"model_name": "gpt-4o-mini", "display_name": "GPT-4o Mini", "context_window": 128000},
+        ],
+    }
+    resp = await client.post("/api/models/bulk", json=data)
+    assert resp.status_code == 201
+    models = resp.json()
+    assert len(models) == 2
+    names = {m["model_name"] for m in models}
+    assert names == {"gpt-4o", "gpt-4o-mini"}
+    assert all(m["provider"] == "openai" for m in models)
+    assert all(m["provider_id"] == provider_id for m in models)
+
+
+@pytest.mark.asyncio
+async def test_create_model_with_provider_id(client: AsyncClient):
+    """Creating a model with provider_id links it to the provider."""
+    resp = await client.post(
+        "/api/providers",
+        json={"name": "LinkedProvider", "provider_type": "anthropic"},
+    )
+    provider_id = resp.json()["id"]
+
+    resp = await client.post(
+        "/api/models",
+        json={
+            "provider": "anthropic",
+            "model_name": "claude-sonnet-4-20250514",
+            "display_name": "Claude Sonnet 4",
+            "provider_id": provider_id,
+        },
+    )
+    assert resp.status_code == 201
+    model = resp.json()
+    assert model["provider_id"] == provider_id
+    assert model["provider_name"] == "LinkedProvider"

@@ -7,11 +7,29 @@ import { PencilIcon, CheckIcon, ChevronDownIcon, ExternalLinkIcon, SearchIcon } 
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-// Select no longer needed — model list is inline
 import { Dialog, DialogTrigger, DialogContent } from '@/components/ui/dialog'
+import { formatContextWindow } from '@/components/model/model-select'
 import type { Model } from '@/lib/types'
+
+function getProviderIcon(provider: string) {
+  switch (provider) {
+    case 'openai':
+      return 'OAI'
+    case 'anthropic':
+      return 'ANT'
+    case 'google':
+      return 'GGL'
+    case 'openrouter':
+      return 'ORT'
+    case 'openai_compatible':
+      return 'LCL'
+    default:
+      return 'AI'
+  }
+}
 
 interface AgentNodeData {
   name: string
@@ -139,7 +157,17 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                         ) : (
                           <span className="size-3.5 shrink-0" />
                         )}
-                        <span className="text-xs font-medium truncate">{model.display_name}</span>
+                        <div className="flex size-5 items-center justify-center rounded bg-muted text-[8px] font-bold text-muted-foreground">
+                          {getProviderIcon(model.provider)}
+                        </div>
+                        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                          <span className="text-xs font-medium truncate">{model.display_name}</span>
+                          {model.context_window && (
+                            <Badge variant="outline" className="shrink-0 text-[8px] px-1 py-0">
+                              {formatContextWindow(model.context_window)}
+                            </Badge>
+                          )}
+                        </div>
                       </button>
                     ))}
                   </div>

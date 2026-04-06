@@ -531,6 +531,38 @@
       "uploadFailed": ".skill 업로드에 실패했습니다"
     }
   },
+  "provider": {
+    "pageTitle": "Provider 관리",
+    "addProvider": "Provider 추가",
+    "editProvider": "Provider 수정",
+    "dialogDescription": {
+      "new": "LLM 제공자를 등록합니다.",
+      "edit": "제공자 정보를 수정합니다."
+    },
+    "providerType": "Provider 타입",
+    "types": {
+      "openai": "OpenAI",
+      "anthropic": "Anthropic",
+      "google": "Google (Gemini)",
+      "openrouter": "OpenRouter",
+      "openai_compatible": "OpenAI Compatible (Ollama, vLLM)"
+    },
+    "name": "이름",
+    "baseUrl": "Base URL",
+    "apiKey": "API Key",
+    "testConnection": "연결 테스트",
+    "testing": "테스트 중...",
+    "testSuccess": "연결 성공",
+    "testFailed": "연결 실패",
+    "connected": "연결됨",
+    "noKey": "키 미설정",
+    "modelCount": "{count}개 모델",
+    "deleteConfirm": "이 Provider를 삭제하시겠습니까? 연결된 모델도 함께 삭제됩니다.",
+    "empty": {
+      "title": "등록된 Provider가 없습니다.",
+      "description": "Provider를 추가하여 모델을 등록하세요."
+    }
+  },
   "model": {
     "pageTitle": "모델 관리",
     "addModel": "모델 추가",
@@ -548,6 +580,8 @@
       "openai": "OpenAI",
       "anthropic": "Anthropic",
       "google": "Google",
+      "openrouter": "OpenRouter",
+      "openai_compatible": "Custom",
       "custom": "기타"
     },
     "modelName": "모델명",
@@ -557,9 +591,27 @@
     "defaultBadge": "기본",
     "editLabel": "{name} 수정",
     "deleteLabel": "{name} 삭제",
+    "contextWindow": "컨텍스트 윈도우",
+    "inputModalities": "입력",
+    "outputModalities": "출력",
+    "discoverModels": "모델 가져오기",
+    "discovering": "모델 검색 중...",
+    "discoverEmpty": "검색된 모델이 없습니다.",
+    "selectModels": "등록할 모델 선택",
+    "registerSelected": "{count}개 등록",
+    "searchModels": "모델 검색...",
+    "manualAdd": "수동으로 추가",
+    "selectProvider": "Provider 선택",
+    "stepProvider": "Provider 선택",
+    "stepDiscover": "모델 선택",
+    "stepRegister": "등록",
     "empty": {
       "title": "등록된 모델이 없습니다.",
       "description": "모델을 추가하여 에이전트에서 사용하세요."
+    },
+    "tab": {
+      "providers": "Providers",
+      "models": "Models"
     }
   },
   "usage": {

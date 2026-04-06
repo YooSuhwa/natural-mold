@@ -56,21 +56,69 @@ export interface AgentUpdateRequest {
   middleware_configs?: MiddlewareConfigEntry[]
 }
 
+// Provider
+export interface Provider {
+  id: string
+  name: string
+  provider_type: string
+  base_url: string | null
+  is_active: boolean
+  has_api_key: boolean
+  model_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ProviderCreateRequest {
+  name: string
+  provider_type: string
+  base_url?: string
+  api_key?: string
+}
+
+export interface ProviderUpdateRequest {
+  name?: string
+  base_url?: string
+  api_key?: string
+}
+
+export interface ProviderTestResponse {
+  success: boolean
+  message: string
+  models_count: number | null
+}
+
+export interface DiscoveredModel {
+  model_name: string
+  display_name: string
+  context_window: number | null
+  input_modalities: string[] | null
+  output_modalities: string[] | null
+  cost_per_input_token: number | null
+  cost_per_output_token: number | null
+}
+
 // Model
 export interface Model {
   id: string
+  provider_id: string
   provider: string
+  provider_name: string
   model_name: string
   display_name: string
   base_url: string | null
   is_default: boolean
+  context_window: number | null
+  input_modalities: string[] | null
+  output_modalities: string[] | null
   cost_per_input_token: number | null
   cost_per_output_token: number | null
   created_at: string
 }
 
 export interface ModelCreateRequest {
-  provider: string
+  provider_id: string
+  provider?: string
   model_name: string
   display_name: string
   base_url?: string
@@ -89,6 +137,19 @@ export interface ModelUpdateRequest {
   is_default?: boolean
   cost_per_input_token?: number
   cost_per_output_token?: number
+}
+
+export interface ModelBulkCreateRequest {
+  provider_id: string
+  models: {
+    model_name: string
+    display_name: string
+    context_window?: number | null
+    input_modalities?: string[] | null
+    output_modalities?: string[] | null
+    cost_per_input_token?: number | null
+    cost_per_output_token?: number | null
+  }[]
 }
 
 // Tool
