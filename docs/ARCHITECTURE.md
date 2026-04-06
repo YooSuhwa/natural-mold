@@ -459,3 +459,103 @@ data/
 │
 └── conversations/           # 기존 유지
 ```
+
+---
+
+## M4 변경 영역 (최종 정리 + Creation Agent)
+
+> 상세 설계: [ADR-004: M4 정리 — Creation Agent + Trigger + Streaming](design-docs/adr-004-m4-cleanup.md)
+
+### 아키텍처 변경 개요
+
+M4는 구조적 아키텍처 변경이 아닌 **코드 통합 정리**이다. 핵심 변경:
+
+1. **creation_agent → create_deep_agent**: 마지막 비표준 LLM 호출 경로를 통합
+2. **trigger_executor → direct invoke**: SSE 왕복 제거, `ainvoke()` 직접 호출
+3. **executor.py 리팩터**: `_prepare_agent()` 추출로 stream/invoke 코드 공유
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Backend (FastAPI)                        │
+│                                                             │
+│  agent_runtime/executor.py                                  │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │           _prepare_agent() ← 공용 빌드             │    │
+│  │   ┌───────────────────┬────────────────────┐        │    │
+│  │   │ execute_agent_    │ execute_agent_      │        │    │
+│  │   │ stream()          │ invoke()            │        │    │
+│  │   │ (채팅 SSE)        │ (트리거 직접 실행)  │        │    │
+│  │   └───────────────────┴────────────────────┘        │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  agent_runtime/creation_agent.py                            │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │ build_agent(tools=[]) → agent.ainvoke()             │    │
+│  │ (checkpointer 미사용 — DB JSON 히스토리)            │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  streaming.py  → 미들웨어 JSON 필터 유지                    │
+│  middleware_registry.py → PatchedLLMToolSelector 유지        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 핵심 데이터 흐름 변경: 트리거 실행
+
+```
+APScheduler → execute_trigger(trigger_id)
+│
+├─ 1. get_agent_with_tools(agent_id)
+├─ 2. build_effective_prompt(agent)
+├─ 3. build_tools_config(agent)
+│
+├─ 4. execute_agent_invoke(            ← NEW (execute_agent_stream 대체)
+│       provider, model_name, ...,
+│       messages_history=[{user: input_message}],
+│       thread_id=str(conv.id))
+│    │
+│    ├─ 4a. _prepare_agent()            ← NEW (공용 빌드)
+│    │    ├─ create_chat_model()
+│    │    ├─ create tools
+│    │    ├─ build middleware
+│    │    ├─ FilesystemBackend
+│    │    └─ build_agent(checkpointer=saver)
+│    │
+│    └─ 4b. agent.ainvoke()             ← SSE 우회, 직접 실행
+│         → checkpointer auto-saves
+│         → return final content str
+│
+└─ 5. Update trigger state (last_run_at, run_count)
+```
+
+**M3 대비 변경점:**
+- `execute_agent_stream()` → `execute_agent_invoke()` (트리거 전용)
+- SSE 인코딩/디코딩 왕복 제거
+- `_prepare_agent()` 공용 함수로 에이전트 빌드 로직 단일화
+- `creation_agent.py`가 `build_agent(tools=[])` + `ainvoke()` 사용
+
+### 변경되는 파일
+
+| 파일 | 변경 내용 |
+|------|-----------|
+| `executor.py` | `_prepare_agent()` 추출, `execute_agent_invoke()` 추가 |
+| `trigger_executor.py` | `execute_agent_stream()` → `execute_agent_invoke()` 호출. SSE 파싱 제거 |
+| `creation_agent.py` | `model.ainvoke()` → `build_agent(tools=[])` + `agent.ainvoke()` |
+| `streaming.py` | 유지 사유 주석 추가 (코드 로직 변경 없음) |
+| `middleware_registry.py` | 유지 사유 주석 추가 (코드 로직 변경 없음) |
+
+### 유지되는 파일 (조사 후 판단)
+
+| 파일 | 유지 대상 | 조사 결과 |
+|------|-----------|----------|
+| `streaming.py` | `_is_tool_selector_json()` + 버퍼링 | PatchToolCallsMiddleware가 스트림 미필터링 |
+| `middleware_registry.py` | `PatchedLLMToolSelectorMiddleware` | GPT-4o `{"const"}` 이슈 deepagents 미처리 |
+
+### 기술 스택 요약 (M4 이후 최종)
+
+| 레이어 | M3 | M4 이후 |
+|--------|-----|---------|
+| 에이전트 생성 | `create_deep_agent` | 동일 (creation_agent도 통합) |
+| 실행 경로 | `astream()` only | `astream()` (채팅) + `ainvoke()` (트리거) |
+| SSE | 채팅 + 트리거 | 채팅만 |
+| Creation Agent | `model.ainvoke()` 직접 | `create_deep_agent(tools=[])` + `ainvoke()` |
+| 스트리밍 필터 | 미들웨어 JSON 필터 유지 | 동일 (유지 판단 완료) |

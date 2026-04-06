@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.agent_runtime.executor import build_agent
 from app.agent_runtime.message_utils import (
     convert_to_langchain_messages,
     extract_json_from_markdown,
@@ -158,13 +159,17 @@ async def run_creation_conversation(
     if available_models:
         system_content += f"\n\n## 사용 가능한 모델\n{', '.join(available_models)}"
 
-    messages: list[dict[str, str]] = [{"role": "system", "content": system_content}]
+    agent = build_agent(model, tools=[], system_prompt=system_content)
+
+    # system 메시지는 build_agent에 전달되므로 messages에서 제외
+    messages: list[dict[str, str]] = []
     messages.extend(conversation_history)
     messages.append({"role": "user", "content": user_message})
 
     lc_messages = convert_to_langchain_messages(messages)
-    response = await model.ainvoke(lc_messages)
-    content: str = response.content  # type: ignore[assignment]  # always str for text models
+    result = await agent.ainvoke({"messages": lc_messages})
+    resp_messages = result.get("messages", [])
+    content: str = resp_messages[-1].content if resp_messages else ""
 
     draft_config = None
     suggested_replies: dict[str, Any] | None = None

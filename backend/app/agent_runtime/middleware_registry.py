@@ -269,6 +269,9 @@ _CLASS_MAP: dict[str, str] = {k: v["name"] for k, v in MIDDLEWARE_REGISTRY.items
 def _patched_llm_tool_selector_class() -> type | None:
     """Return a patched LLMToolSelectorMiddleware that normalizes response format.
 
+    ADR-004: deepagents가 {"const": "name"} 정규화를 내부 처리하지 않음.
+    GPT-4o + llm_tool_selector 조합 시 패치 없으면 깨짐. 유지 필요.
+
     GPT-4o sometimes returns {"const": "tool_name"} objects instead of plain
     "tool_name" strings when using structured output with const schemas.
     This subclass normalizes both formats before processing.
