@@ -9,15 +9,7 @@ import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useUpdateAgent, useCreateAgent } from '@/lib/hooks/use-agents'
 import { toggleSetItem } from '@/lib/utils'
-import type {
-  Agent,
-  Model,
-  Tool,
-  Skill,
-  AgentTrigger,
-  MiddlewareConfigEntry,
-  MiddlewareRegistryItem,
-} from '@/lib/types'
+import type { Agent, Model, Tool, Skill, AgentTrigger, MiddlewareRegistryItem } from '@/lib/types'
 import { Toolbar } from './toolbar'
 import { AgentNode } from './nodes/agent-node'
 import { ChannelsNode } from './nodes/channels-node'

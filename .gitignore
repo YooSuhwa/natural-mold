@@ -58,8 +58,8 @@ build/
 # Alembic
 *.pyc
 
-# Skill package storage (uploaded runtime data)
-backend/data/skills/
+# Runtime data (conversations, skills, uploads)
+backend/data/
 
 # Claude
 .claude/plans/
