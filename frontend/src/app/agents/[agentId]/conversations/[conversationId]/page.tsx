@@ -263,7 +263,7 @@ export default function ChatPage({
         </div>
 
         {/* Input */}
-        <div className="border-t p-4">
+        <div className="p-4">
           <div className="mx-auto max-w-3xl">
             <ChatInput onSend={handleSend} modelName={agent?.model?.display_name} />
           </div>
