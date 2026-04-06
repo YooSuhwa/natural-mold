@@ -142,6 +142,12 @@ async def send_message(
             middleware_configs=agent.middleware_configs,
             agent_skills=agent_skills or None,
             agent_id=str(agent.id),
+            cost_per_input_token=float(agent.model.cost_per_input_token)
+            if agent.model.cost_per_input_token
+            else None,
+            cost_per_output_token=float(agent.model.cost_per_output_token)
+            if agent.model.cost_per_output_token
+            else None,
         ):
             yield chunk
 

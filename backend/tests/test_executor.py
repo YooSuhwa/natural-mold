@@ -389,7 +389,7 @@ async def test_execute_stream_passes_thread_id_in_config(
 
     captured_config = {}
 
-    async def capture_stream(agent, messages, config):
+    async def capture_stream(agent, messages, config, **_kwargs):
         captured_config.update(config)
         yield "done"
 

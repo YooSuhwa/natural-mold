@@ -19,7 +19,6 @@ export function ChatInput({ onSend, disabled, placeholder, modelName }: ChatInpu
   const t = useTranslations('chat.input')
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const isComposingRef = useRef(false)
   const tokenUsage = useAtomValue(sessionTokenUsageAtom)
 
@@ -102,24 +101,16 @@ export function ChatInput({ onSend, disabled, placeholder, modelName }: ChatInpu
       {/* Toolbar */}
       <div className="flex items-center justify-between px-2 py-1.5">
         <div className="flex items-center gap-1">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,.pdf,.md,.txt,.csv"
-            className="hidden"
-            tabIndex={-1}
-            aria-hidden="true"
-          />
           <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
-            className="text-muted-foreground hover:text-foreground"
+            disabled
+            className="text-muted-foreground opacity-40 cursor-not-allowed"
+            title="파일 첨부 (준비 중)"
           >
             <PaperclipIcon className="size-4" />
-            <span className="sr-only">Attach file</span>
+            <span className="sr-only">Attach file (coming soon)</span>
           </Button>
         </div>
         <Button

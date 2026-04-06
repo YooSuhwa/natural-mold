@@ -51,6 +51,12 @@ export default function ChatPage({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [])
 
+  // Reset token usage when conversation changes
+  useEffect(() => {
+    setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
+    setLastMessageTokens(null)
+  }, [conversationId, setSessionTokenUsage, setLastMessageTokens])
+
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
