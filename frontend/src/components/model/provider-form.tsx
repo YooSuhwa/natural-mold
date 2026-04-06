@@ -71,6 +71,7 @@ function ProviderFormContent({
   const [name, setName] = useState(editingProvider?.name ?? 'OpenAI')
   const [baseUrl, setBaseUrl] = useState(editingProvider?.base_url ?? 'https://api.openai.com/v1')
   const [apiKey, setApiKey] = useState('')
+  const [createdProviderId, setCreatedProviderId] = useState<string | null>(null)
 
   function handleTypeChange(type: ProviderType) {
     setProviderType(type)
@@ -106,6 +107,21 @@ function ProviderFormContent({
     }
   }
 
+  async function handleSubmitAndTest() {
+    try {
+      const created = await createProvider.mutateAsync({
+        name,
+        provider_type: providerType,
+        base_url: baseUrl || undefined,
+        api_key: apiKey || undefined,
+      })
+      setCreatedProviderId(created.id)
+      testProvider.mutate(created.id)
+    } catch {
+      toast.error(t('createError'))
+    }
+  }
+
   function handleTest() {
     if (editingProvider) {
       testProvider.mutate(editingProvider.id)
@@ -114,6 +130,7 @@ function ProviderFormContent({
 
   const isSubmitting = editingProvider ? updateProvider.isPending : createProvider.isPending
   const isBaseUrlRequired = providerType === 'openai_compatible'
+  const showTestResult = editingProvider || createdProviderId
 
   return (
     <>
@@ -125,7 +142,7 @@ function ProviderFormContent({
       </DialogHeader>
 
       <div className="space-y-4">
-        {!editingProvider && (
+        {!editingProvider && !createdProviderId && (
           <div className="space-y-2">
             <label htmlFor="provider-type" className="text-sm font-medium">
               {t('providerType')}
@@ -150,45 +167,49 @@ function ProviderFormContent({
           </div>
         )}
 
-        <div className="space-y-2">
-          <label htmlFor="provider-name" className="text-sm font-medium">
-            {t('name')}
-          </label>
-          <Input
-            id="provider-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="My Provider"
-          />
-        </div>
+        {!createdProviderId && (
+          <>
+            <div className="space-y-2">
+              <label htmlFor="provider-name" className="text-sm font-medium">
+                {t('name')}
+              </label>
+              <Input
+                id="provider-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="My Provider"
+              />
+            </div>
 
-        {(isBaseUrlRequired || baseUrl) && (
-          <div className="space-y-2">
-            <label htmlFor="provider-base-url" className="text-sm font-medium">
-              {t('baseUrl')}
-              {isBaseUrlRequired && <span className="text-destructive"> {tc('required')}</span>}
-            </label>
-            <Input
-              id="provider-base-url"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-              placeholder="http://localhost:11434/v1"
-            />
-          </div>
+            {isBaseUrlRequired && (
+              <div className="space-y-2">
+                <label htmlFor="provider-base-url" className="text-sm font-medium">
+                  {t('baseUrl')}
+                  <span className="text-destructive"> {tc('required')}</span>
+                </label>
+                <Input
+                  id="provider-base-url"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder="http://localhost:11434/v1"
+                />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <label htmlFor="provider-api-key" className="text-sm font-medium">
+                {t('apiKey')}
+              </label>
+              <Input
+                id="provider-api-key"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                type="password"
+                placeholder="sk-xxxxxxxxxxxx"
+              />
+            </div>
+          </>
         )}
-
-        <div className="space-y-2">
-          <label htmlFor="provider-api-key" className="text-sm font-medium">
-            {t('apiKey')}
-          </label>
-          <Input
-            id="provider-api-key"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            type="password"
-            placeholder="sk-xxxxxxxxxxxx"
-          />
-        </div>
 
         {editingProvider && (
           <div className="space-y-2">
@@ -202,30 +223,66 @@ function ProviderFormContent({
               {testProvider.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
               {t('testConnection')}
             </Button>
-            {testProvider.isSuccess && (
-              <div className="flex items-center gap-2 rounded-md bg-green-50 p-2 text-sm text-green-700 dark:bg-green-950 dark:text-green-300">
-                <CheckCircleIcon className="size-4" />
-                {testProvider.data.message}
-              </div>
-            )}
-            {testProvider.isError && (
-              <div className="flex items-center gap-2 rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-                <XCircleIcon className="size-4" />
-                {t('testFailed')}
-              </div>
-            )}
+          </div>
+        )}
+
+        {showTestResult && testProvider.isSuccess && (
+          <div className="flex items-center gap-2 rounded-md bg-green-50 p-2 text-sm text-green-700 dark:bg-green-950 dark:text-green-300">
+            <CheckCircleIcon className="size-4" />
+            {testProvider.data.message}
+          </div>
+        )}
+        {showTestResult && testProvider.isError && (
+          <div className="flex items-center gap-2 rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+            <XCircleIcon className="size-4" />
+            {t('testFailed')}
           </div>
         )}
       </div>
 
-      <DialogFooter>
-        <Button
-          onClick={handleSubmit}
-          disabled={!name.trim() || (isBaseUrlRequired && !baseUrl.trim()) || isSubmitting}
-        >
-          {isSubmitting && <Loader2Icon className="mr-1 size-4 animate-spin" />}
-          {editingProvider ? tc('save') : tc('register')}
-        </Button>
+      <DialogFooter className="gap-2 sm:gap-2">
+        {createdProviderId ? (
+          <Button onClick={onClose}>{tc('confirm')}</Button>
+        ) : (
+          <>
+            <Button variant="outline" onClick={onClose}>
+              {tc('cancel')}
+            </Button>
+            {editingProvider ? (
+              <Button onClick={handleSubmit} disabled={!name.trim() || isSubmitting}>
+                {isSubmitting && <Loader2Icon className="mr-1 size-4 animate-spin" />}
+                {tc('save')}
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleSubmit}
+                  disabled={!name.trim() || (isBaseUrlRequired && !baseUrl.trim()) || isSubmitting}
+                >
+                  {isSubmitting && !testProvider.isPending && (
+                    <Loader2Icon className="mr-1 size-4 animate-spin" />
+                  )}
+                  {tc('register')}
+                </Button>
+                <Button
+                  onClick={handleSubmitAndTest}
+                  disabled={
+                    !name.trim() ||
+                    (isBaseUrlRequired && !baseUrl.trim()) ||
+                    isSubmitting ||
+                    testProvider.isPending
+                  }
+                >
+                  {(createProvider.isPending || testProvider.isPending) && (
+                    <Loader2Icon className="mr-1 size-4 animate-spin" />
+                  )}
+                  {t('registerAndTest')}
+                </Button>
+              </>
+            )}
+          </>
+        )}
       </DialogFooter>
     </>
   )

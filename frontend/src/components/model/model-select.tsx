@@ -6,15 +6,8 @@ import { useTranslations } from 'next-intl'
 import { Badge } from '@/components/ui/badge'
 import { useModels } from '@/lib/hooks/use-models'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getProviderIcon } from '@/lib/utils/provider'
+import { getProviderIcon, formatContextWindow } from '@/lib/utils/provider'
 import type { Model } from '@/lib/types'
-
-export function formatContextWindow(tokens: number): string {
-  if (tokens >= 1_000_000)
-    return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`
-  return String(tokens)
-}
 
 interface ModelSelectProps {
   value: string

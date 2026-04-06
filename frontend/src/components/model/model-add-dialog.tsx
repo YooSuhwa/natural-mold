@@ -24,8 +24,7 @@ import {
 } from '@/components/ui/select'
 import { useDiscoverModels } from '@/lib/hooks/use-providers'
 import { useBulkCreateModels, useModels } from '@/lib/hooks/use-models'
-import { getProviderIcon } from '@/lib/utils/provider'
-import { formatContextWindow } from '@/components/model/model-select'
+import { getProviderIcon, formatContextWindow } from '@/lib/utils/provider'
 import type { Provider, DiscoveredModel } from '@/lib/types'
 
 type Step = 'provider' | 'discover' | 'manual'

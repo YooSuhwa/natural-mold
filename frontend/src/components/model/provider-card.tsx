@@ -11,7 +11,7 @@ import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { getProviderIcon } from '@/lib/utils/provider'
+import { getProviderIcon, getProviderLabel } from '@/lib/utils/provider'
 import type { Provider } from '@/lib/types'
 
 interface ProviderCardProps {
@@ -32,7 +32,7 @@ export function ProviderCard({
   const t = useTranslations('provider')
 
   return (
-    <Card>
+    <Card className="transition-colors hover:border-primary/50">
       <CardContent className="flex items-center justify-between py-3">
         <div className="flex items-center gap-3">
           <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground">
@@ -41,22 +41,25 @@ export function ProviderCard({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">{provider.name}</span>
-              <Badge variant="outline">{provider.provider_type}</Badge>
+              <Badge variant="outline">{getProviderLabel(provider.provider_type)}</Badge>
               {provider.has_api_key ? (
-                <Badge variant="secondary">
+                <Badge className="border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950 dark:text-green-300">
                   <CheckCircleIcon className="mr-0.5 size-3" />
                   {t('connected')}
                 </Badge>
               ) : (
-                <Badge variant="ghost">
+                <Badge
+                  className="cursor-pointer border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300 dark:hover:bg-orange-900"
+                  onClick={() => onEdit(provider)}
+                >
                   <AlertTriangleIcon className="mr-0.5 size-3" />
-                  {t('noKey')}
+                  {t('setupApiKey')}
                 </Badge>
               )}
+              <Badge variant="secondary" className="text-[10px]">
+                {t('modelCount', { count: provider.model_count })}
+              </Badge>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {t('modelCount', { count: provider.model_count })}
-            </p>
           </div>
         </div>
         <div className="flex items-center gap-1">

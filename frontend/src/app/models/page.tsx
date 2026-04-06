@@ -27,14 +27,20 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 import { ProviderCard } from '@/components/model/provider-card'
 import { ProviderForm } from '@/components/model/provider-form'
 import { ModelAddDialog } from '@/components/model/model-add-dialog'
-import { formatContextWindow } from '@/components/model/model-select'
-import { getProviderIcon } from '@/lib/utils/provider'
+import { getProviderIcon, formatContextWindow } from '@/lib/utils/provider'
 import type { Model, Provider } from '@/lib/types'
 
 export default function ModelsPage() {
@@ -59,21 +65,27 @@ export default function ModelsPage() {
   const [editingModel, setEditingModel] = useState<Model | null>(null)
   const [editDisplayName, setEditDisplayName] = useState('')
 
-  // Model search
+  // Model search & filter
   const [modelSearch, setModelSearch] = useState('')
+  const [providerFilter, setProviderFilter] = useState('all')
 
   const filteredModels = useMemo(() => {
     if (!models) return []
+    let result = models
+    if (providerFilter !== 'all') {
+      result = result.filter((m) => m.provider_id === providerFilter)
+    }
     const q = modelSearch.toLowerCase()
-    return q
-      ? models.filter(
-          (m) =>
-            m.display_name.toLowerCase().includes(q) ||
-            m.model_name.toLowerCase().includes(q) ||
-            m.provider.toLowerCase().includes(q),
-        )
-      : models
-  }, [models, modelSearch])
+    if (q) {
+      result = result.filter(
+        (m) =>
+          m.display_name.toLowerCase().includes(q) ||
+          m.model_name.toLowerCase().includes(q) ||
+          m.provider.toLowerCase().includes(q),
+      )
+    }
+    return result
+  }, [models, modelSearch, providerFilter])
 
   function openEditProvider(provider: Provider) {
     setEditingProvider(provider)
@@ -163,6 +175,24 @@ export default function ModelsPage() {
                   className="pl-9"
                 />
               </div>
+              <Select
+                value={providerFilter}
+                onValueChange={(val) => {
+                  if (val) setProviderFilter(val)
+                }}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder={t('allProviders')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('allProviders')}</SelectItem>
+                  {providers?.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button onClick={() => setModelAddOpen(true)}>
                 <PlusIcon className="size-4" data-icon="inline-start" />
                 {t('addModel')}

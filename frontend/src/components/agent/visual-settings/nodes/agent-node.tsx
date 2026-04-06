@@ -11,8 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogTrigger, DialogContent } from '@/components/ui/dialog'
-import { formatContextWindow } from '@/components/model/model-select'
-import { getProviderIcon } from '@/lib/utils/provider'
+import { getProviderIcon, formatContextWindow } from '@/lib/utils/provider'
 import type { Model } from '@/lib/types'
 
 interface AgentNodeData {
