@@ -11,33 +11,24 @@ import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { getProviderIcon } from '@/lib/utils/provider'
 import type { Provider } from '@/lib/types'
-
-function getProviderIcon(type: string) {
-  switch (type) {
-    case 'openai':
-      return 'OAI'
-    case 'anthropic':
-      return 'ANT'
-    case 'google':
-      return 'GGL'
-    case 'openrouter':
-      return 'ORT'
-    case 'openai_compatible':
-      return 'LCL'
-    default:
-      return 'AI'
-  }
-}
 
 interface ProviderCardProps {
   provider: Provider
   onEdit: (provider: Provider) => void
   onDelete: (id: string) => void
   isDeleting: boolean
+  deletingId?: string
 }
 
-export function ProviderCard({ provider, onEdit, onDelete, isDeleting }: ProviderCardProps) {
+export function ProviderCard({
+  provider,
+  onEdit,
+  onDelete,
+  isDeleting,
+  deletingId,
+}: ProviderCardProps) {
   const t = useTranslations('provider')
 
   return (
@@ -69,16 +60,26 @@ export function ProviderCard({ provider, onEdit, onDelete, isDeleting }: Provide
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon-sm" onClick={() => onEdit(provider)}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t('editProvider')}
+            onClick={() => onEdit(provider)}
+          >
             <PencilIcon className="size-4 text-muted-foreground" />
           </Button>
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => onDelete(provider.id)}
-            disabled={isDeleting}
+            aria-label={t('deleteLabel', { name: provider.name })}
+            onClick={() => {
+              if (window.confirm(t('deleteConfirm'))) {
+                onDelete(provider.id)
+              }
+            }}
+            disabled={isDeleting && deletingId === provider.id}
           >
-            {isDeleting ? (
+            {isDeleting && deletingId === provider.id ? (
               <Loader2Icon className="size-4 animate-spin" />
             ) : (
               <Trash2Icon className="size-4 text-muted-foreground" />
@@ -89,5 +90,3 @@ export function ProviderCard({ provider, onEdit, onDelete, isDeleting }: Provide
     </Card>
   )
 }
-
-export { getProviderIcon }

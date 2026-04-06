@@ -20,8 +20,9 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select'
+import { toast } from 'sonner'
 import { useCreateProvider, useUpdateProvider, useTestProvider } from '@/lib/hooks/use-providers'
-import type { Provider } from '@/lib/types'
+import type { Provider, ProviderType } from '@/lib/types'
 
 const PROVIDER_TYPES = [
   { value: 'openai', label: 'OpenAI', defaultUrl: 'https://api.openai.com/v1' },
@@ -71,7 +72,7 @@ function ProviderFormContent({
   const [baseUrl, setBaseUrl] = useState(editingProvider?.base_url ?? 'https://api.openai.com/v1')
   const [apiKey, setApiKey] = useState('')
 
-  function handleTypeChange(type: string) {
+  function handleTypeChange(type: ProviderType) {
     setProviderType(type)
     const pt = PROVIDER_TYPES.find((p) => p.value === type)
     if (pt && !editingProvider) {
@@ -81,24 +82,28 @@ function ProviderFormContent({
   }
 
   async function handleSubmit() {
-    if (editingProvider) {
-      await updateProvider.mutateAsync({
-        id: editingProvider.id,
-        data: {
-          name: name || undefined,
+    try {
+      if (editingProvider) {
+        await updateProvider.mutateAsync({
+          id: editingProvider.id,
+          data: {
+            name: name || undefined,
+            base_url: baseUrl || undefined,
+            api_key: apiKey || undefined,
+          },
+        })
+      } else {
+        await createProvider.mutateAsync({
+          name,
+          provider_type: providerType,
           base_url: baseUrl || undefined,
           api_key: apiKey || undefined,
-        },
-      })
-    } else {
-      await createProvider.mutateAsync({
-        name,
-        provider_type: providerType,
-        base_url: baseUrl || undefined,
-        api_key: apiKey || undefined,
-      })
+        })
+      }
+      onClose()
+    } catch {
+      toast.error(editingProvider ? t('updateError') : t('createError'))
     }
-    onClose()
   }
 
   function handleTest() {
@@ -122,11 +127,13 @@ function ProviderFormContent({
       <div className="space-y-4">
         {!editingProvider && (
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('providerType')}</label>
+            <label htmlFor="provider-type" className="text-sm font-medium">
+              {t('providerType')}
+            </label>
             <Select
               value={providerType}
               onValueChange={(val) => {
-                if (val) handleTypeChange(val)
+                if (val) handleTypeChange(val as ProviderType)
               }}
             >
               <SelectTrigger className="w-full">
@@ -144,17 +151,25 @@ function ProviderFormContent({
         )}
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">{t('name')}</label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Provider" />
+          <label htmlFor="provider-name" className="text-sm font-medium">
+            {t('name')}
+          </label>
+          <Input
+            id="provider-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="My Provider"
+          />
         </div>
 
         {(isBaseUrlRequired || baseUrl) && (
           <div className="space-y-2">
-            <label className="text-sm font-medium">
+            <label htmlFor="provider-base-url" className="text-sm font-medium">
               {t('baseUrl')}
               {isBaseUrlRequired && <span className="text-destructive"> {tc('required')}</span>}
             </label>
             <Input
+              id="provider-base-url"
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               placeholder="http://localhost:11434/v1"
@@ -163,8 +178,11 @@ function ProviderFormContent({
         )}
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">{t('apiKey')}</label>
+          <label htmlFor="provider-api-key" className="text-sm font-medium">
+            {t('apiKey')}
+          </label>
           <Input
+            id="provider-api-key"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             type="password"

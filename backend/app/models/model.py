@@ -27,11 +27,11 @@ class Model(Base):
         ForeignKey("llm_providers.id"), nullable=True
     )
     context_window: Mapped[int | None] = mapped_column(Integer)
-    input_modalities: Mapped[list | None] = mapped_column(JSON)
-    output_modalities: Mapped[list | None] = mapped_column(JSON)
+    input_modalities: Mapped[list[str] | None] = mapped_column(JSON)
+    output_modalities: Mapped[list[str] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,
     )
 
-    llm_provider = relationship("LLMProvider", lazy="select")
+    llm_provider = relationship("LLMProvider", back_populates="models", lazy="select")

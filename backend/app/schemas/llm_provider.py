@@ -3,13 +3,14 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ProviderCreate(BaseModel):
-    name: str
-    provider_type: str
+    name: str = Field(max_length=100)
+    provider_type: Literal["openai", "anthropic", "google", "openrouter", "openai_compatible"]
     base_url: str | None = None
     api_key: str | None = None
 

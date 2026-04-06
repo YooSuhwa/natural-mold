@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl'
 import { Badge } from '@/components/ui/badge'
 import { useModels } from '@/lib/hooks/use-models'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getProviderIcon } from '@/lib/utils/provider'
 import type { Model } from '@/lib/types'
 
 export function formatContextWindow(tokens: number): string {
@@ -13,23 +14,6 @@ export function formatContextWindow(tokens: number): string {
     return `${(tokens / 1_000_000).toFixed(tokens % 1_000_000 === 0 ? 0 : 1)}M`
   if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`
   return String(tokens)
-}
-
-function getProviderIcon(provider: string) {
-  switch (provider) {
-    case 'openai':
-      return 'OAI'
-    case 'anthropic':
-      return 'ANT'
-    case 'google':
-      return 'GGL'
-    case 'openrouter':
-      return 'ORT'
-    case 'openai_compatible':
-      return 'LCL'
-    default:
-      return 'AI'
-  }
 }
 
 interface ModelSelectProps {
@@ -70,7 +54,7 @@ export function ModelSelect({ value, onValueChange, className }: ModelSelectProp
           onChange={(e) => setSearch(e.target.value)}
         />
       </div>
-      <div className="max-h-[240px] overflow-auto p-1.5">
+      <div className="max-h-[240px] overflow-auto p-1.5" role="listbox">
         {filteredModels.length === 0 ? (
           <p className="py-4 text-center text-sm text-muted-foreground">{t('modelPlaceholder')}</p>
         ) : (
@@ -100,6 +84,8 @@ function ModelSelectItem({
   return (
     <button
       type="button"
+      role="option"
+      aria-selected={selected}
       onClick={onSelect}
       className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm ${
         selected ? 'bg-muted/60' : 'hover:bg-muted/30'

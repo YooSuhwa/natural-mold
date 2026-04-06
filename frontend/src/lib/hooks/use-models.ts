@@ -20,7 +20,10 @@ export function useBulkCreateModels() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: ModelBulkCreateRequest) => modelsApi.bulkCreate(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['models'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['models'] })
+      qc.invalidateQueries({ queryKey: ['providers'] })
+    },
   })
 }
 

@@ -57,10 +57,12 @@ export interface AgentUpdateRequest {
 }
 
 // Provider
+export type ProviderType = 'openai' | 'anthropic' | 'google' | 'openrouter' | 'openai_compatible'
+
 export interface Provider {
   id: string
   name: string
-  provider_type: string
+  provider_type: ProviderType
   base_url: string | null
   is_active: boolean
   has_api_key: boolean
@@ -71,7 +73,7 @@ export interface Provider {
 
 export interface ProviderCreateRequest {
   name: string
-  provider_type: string
+  provider_type: ProviderType
   base_url?: string
   api_key?: string
 }

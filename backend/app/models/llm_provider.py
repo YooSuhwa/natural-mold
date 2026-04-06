@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -27,3 +27,5 @@ class LLMProvider(Base):
         onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,
     )
+
+    models = relationship("Model", back_populates="llm_provider")

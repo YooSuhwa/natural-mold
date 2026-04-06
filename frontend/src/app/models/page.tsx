@@ -34,24 +34,8 @@ import { ProviderCard } from '@/components/model/provider-card'
 import { ProviderForm } from '@/components/model/provider-form'
 import { ModelAddDialog } from '@/components/model/model-add-dialog'
 import { formatContextWindow } from '@/components/model/model-select'
+import { getProviderIcon } from '@/lib/utils/provider'
 import type { Model, Provider } from '@/lib/types'
-
-function getProviderIcon(p: string) {
-  switch (p) {
-    case 'openai':
-      return 'OAI'
-    case 'anthropic':
-      return 'ANT'
-    case 'google':
-      return 'GGL'
-    case 'openrouter':
-      return 'ORT'
-    case 'openai_compatible':
-      return 'LCL'
-    default:
-      return 'AI'
-  }
-}
 
 export default function ModelsPage() {
   const { data: models, isLoading: modelsLoading } = useModels()
@@ -152,6 +136,7 @@ export default function ModelsPage() {
                     onEdit={openEditProvider}
                     onDelete={(id) => deleteProvider.mutate(id)}
                     isDeleting={deleteProvider.isPending}
+                    deletingId={deleteProvider.variables}
                   />
                 ))}
               </div>
@@ -236,10 +221,14 @@ export default function ModelsPage() {
                           variant="ghost"
                           size="icon-sm"
                           aria-label={t('deleteLabel', { name: model.display_name })}
-                          onClick={() => deleteModel.mutate(model.id)}
-                          disabled={deleteModel.isPending}
+                          onClick={() => {
+                            if (window.confirm(t('deleteConfirm'))) {
+                              deleteModel.mutate(model.id)
+                            }
+                          }}
+                          disabled={deleteModel.isPending && deleteModel.variables === model.id}
                         >
-                          {deleteModel.isPending ? (
+                          {deleteModel.isPending && deleteModel.variables === model.id ? (
                             <Loader2Icon className="size-4 animate-spin" />
                           ) : (
                             <Trash2Icon className="size-4 text-muted-foreground" />

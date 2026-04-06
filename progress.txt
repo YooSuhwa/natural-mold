@@ -406,5 +406,36 @@
   - 완전 전환 후 DROP 권장
 - 결론: M5 regression 없음, 게이트 통과
 
+## M5 리뷰 이슈 수정 완료 (2026-04-06) — Jensen
+- encryption.py: Fernet lazy 캐싱 + InvalidToken fallback + warning 로그
+- providers.py: 전 엔드포인트에 get_current_user 의존성 주입
+- provider_service.py: _UPDATABLE_FIELDS 화이트리스트, delete_provider tuple 반환, get_provider_with_count 추가
+- model_service.py: encrypt_api_key 적용, provider_type 검증, bulk_create 중복 skip + None 반환
+- conversations.py + trigger_executor.py: model-level key fallback에 decrypt_api_key 적용
+- llm_provider.py schema: Literal 타입 + Field(max_length=100)
+- model_discovery.py: _TIMEOUT 상수, KeyError 제거, 에러 메시지 내용 노출 방지
+- models/model.py + llm_provider.py: list[str] 타입, back_populates 양방향 relationship
+- main.py: 시드 모델에 provider_type→provider_id 자동 매핑
+- 테스트: InvalidToken fallback + OpenRouter discovery 추가
+- 결과: ruff 통과, 329 passed (기존 327 + 신규 2)
+
+## M5 Frontend 리뷰 이슈 수정 완료 (2026-04-06) — Zuckerberg
+- lib/utils/provider.ts: getProviderIcon 공통 유틸 추출 (5개 파일 중복 제거)
+- models/page.tsx: 삭제 confirm + 개별 isPending (deleteModel.variables === model.id)
+- provider-card.tsx: aria-label 2개, confirm, deletingId 개별 비활성화
+- provider-form.tsx: try-catch + toast.error, htmlFor/id 4쌍
+- model-add-dialog.tsx: try-catch 2개, isError UI, 이미 등록된 모델 표시 (useModels 연동)
+- model-select.tsx: role="listbox", role="option" + aria-selected
+- agent-node.tsx: 하드코딩 "관리" → i18n ts('manageModels')
+- use-providers.ts: deleteProvider → models 캐시 무효화
+- use-models.ts: bulkCreate → providers 캐시 무효화
+- types/index.ts: ProviderType 유니온 타입 + Provider/ProviderCreateRequest 적용
+- ko.json: i18n 키 7개 추가
+- 검증: pnpm build PASS + pnpm lint PASS
+
+## Gotchas (M5 Frontend)
+- ProviderType 유니온 도입 시 PROVIDER_TYPES(as const)와 Select onValueChange(string) 간 타입 불일치. handleTypeChange를 ProviderType 파라미터로 변경, Select callback에서 as ProviderType 캐스팅.
+- provider-card에서 isDeleting 개별화: deletingId prop 추가 + deleteProvider.variables로 전달.
+
 ## 실패 교훈
 - S1 삭제 분석에서 streaming.py 필터를 "삭제 가능"으로 판단했으나 S2 심층 조사에서 "유지 필요"로 수정됨. 표면적 분석(미들웨어 구조만 확인)보다 실제 소스코드(PatchToolCallsMiddleware가 before_agent만 구현)를 확인해야 정확한 판단 가능. 삭제 분석 시 방어 코드의 필요성은 실행 경로까지 추적할 것.

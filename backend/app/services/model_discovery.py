@@ -13,6 +13,7 @@ from app.services.model_metadata import ANTHROPIC_MODELS, enrich_model
 
 logger = logging.getLogger(__name__)
 
+_TIMEOUT = 15
 _OPENAI_CHAT_PREFIXES = ("gpt-", "o1-", "o3-", "o4-", "chatgpt-")
 
 
@@ -49,7 +50,7 @@ async def test_connection(provider: LLMProvider) -> tuple[bool, str, int | None]
         return False, "연결 실패: URL을 확인하세요", None
     except Exception as e:
         logger.warning("Provider connection test failed: %s", e)
-        return False, f"연결 테스트 실패: {e}", None
+        return False, "연결 테스트에 실패했습니다. 서버 로그를 확인하세요.", None
 
 
 async def _discover_openai(
@@ -57,7 +58,7 @@ async def _discover_openai(
 ) -> list[DiscoveredModel]:
     url = (base_url or "https://api.openai.com/v1").rstrip("/") + "/models"
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.get(url, headers=headers)
         resp.raise_for_status()
     data = resp.json().get("data", [])
@@ -91,7 +92,7 @@ async def _discover_anthropic(
             "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         }
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.post(
                 url,
                 headers=headers,
@@ -129,7 +130,7 @@ async def _discover_google(
     params = {}
     if api_key:
         params["key"] = api_key
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.get(url, params=params)
         resp.raise_for_status()
     data = resp.json().get("models", [])
@@ -161,7 +162,7 @@ async def _discover_openrouter(
 ) -> list[DiscoveredModel]:
     url = "https://openrouter.ai/api/v1/models"
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         resp = await client.get(url, headers=headers)
         resp.raise_for_status()
     data = resp.json().get("data", [])
@@ -192,12 +193,12 @@ async def _discover_openai_compatible(
     url = base_url.rstrip("/") + "/models"
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         try:
             resp = await client.get(url, headers=headers)
             resp.raise_for_status()
             data = resp.json().get("data", [])
-        except (httpx.HTTPStatusError, KeyError):
+        except httpx.HTTPStatusError:
             # Fallback: Ollama /api/tags
             ollama_url = base_url.rstrip("/").removesuffix("/v1") + "/api/tags"
             resp = await client.get(ollama_url, headers=headers)

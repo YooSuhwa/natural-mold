@@ -201,3 +201,52 @@ async def test_discover_openai_compatible_no_base_url():
         result = await discover_models(mock_provider)
 
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_discover_openrouter():
+    """OpenRouter discovery returns models from /api/v1/models."""
+    mock_provider = MagicMock()
+    mock_provider.provider_type = "openrouter"
+    mock_provider.base_url = None
+    mock_provider.api_key_encrypted = "test-key"
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {
+        "data": [
+            {
+                "id": "openai/gpt-4o",
+                "name": "GPT-4o",
+                "context_length": 128000,
+                "pricing": {"prompt": "0.0000025", "completion": "0.00001"},
+            },
+            {
+                "id": "anthropic/claude-sonnet-4-20250514",
+                "name": "Claude Sonnet 4",
+                "context_length": 200000,
+                "pricing": {"prompt": "0.000003", "completion": "0.000015"},
+            },
+        ]
+    }
+    mock_resp.raise_for_status = MagicMock()
+
+    with (
+        patch("app.services.model_discovery.decrypt_api_key", return_value="test-key"),
+        patch("app.services.model_discovery.httpx.AsyncClient") as mock_client_cls,
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_client
+
+        result = await discover_models(mock_provider)
+
+    assert len(result) == 2
+    names = [m.model_name for m in result]
+    assert "anthropic/claude-sonnet-4-20250514" in names
+    assert "openai/gpt-4o" in names
+    # Verify context_window is populated
+    gpt4o = next(m for m in result if m.model_name == "openai/gpt-4o")
+    assert gpt4o.context_window == 128000
+    assert gpt4o.display_name == "GPT-4o"

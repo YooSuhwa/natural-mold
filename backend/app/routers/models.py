@@ -25,7 +25,10 @@ async def create_model(data: ModelCreate, db: AsyncSession = Depends(get_db)):
 
 @router.post("/bulk", response_model=list[ModelResponse], status_code=201)
 async def bulk_create_models(data: ModelBulkCreate, db: AsyncSession = Depends(get_db)):
-    return await model_service.bulk_create_models(db, data)
+    result = await model_service.bulk_create_models(db, data)
+    if result is None:
+        raise NotFoundError("PROVIDER_NOT_FOUND", "프로바이더를 찾을 수 없습니다")
+    return result
 
 
 @router.put("/{model_id}", response_model=ModelResponse)

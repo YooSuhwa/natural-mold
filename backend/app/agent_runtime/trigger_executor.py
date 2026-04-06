@@ -52,7 +52,9 @@ async def execute_trigger(trigger_id: str) -> None:
         api_key = (
             decrypt_api_key(lp.api_key_encrypted)
             if lp and lp.api_key_encrypted
-            else agent.model.api_key_encrypted
+            else decrypt_api_key(agent.model.api_key_encrypted)
+            if agent.model.api_key_encrypted
+            else None
         )
         base_url = lp.base_url if lp and lp.base_url else agent.model.base_url
 

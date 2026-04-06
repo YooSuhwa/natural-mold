@@ -12,24 +12,8 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogTrigger, DialogContent } from '@/components/ui/dialog'
 import { formatContextWindow } from '@/components/model/model-select'
+import { getProviderIcon } from '@/lib/utils/provider'
 import type { Model } from '@/lib/types'
-
-function getProviderIcon(provider: string) {
-  switch (provider) {
-    case 'openai':
-      return 'OAI'
-    case 'anthropic':
-      return 'ANT'
-    case 'google':
-      return 'GGL'
-    case 'openrouter':
-      return 'ORT'
-    case 'openai_compatible':
-      return 'LCL'
-    default:
-      return 'AI'
-  }
-}
 
 interface AgentNodeData {
   name: string
@@ -236,7 +220,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                       href="/models"
                       className="flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
                     >
-                      {ts('model')} 관리
+                      {ts('manageModels')}
                       <ExternalLinkIcon className="size-3.5" />
                     </Link>
                   </div>

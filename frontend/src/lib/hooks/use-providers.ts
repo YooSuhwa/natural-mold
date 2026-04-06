@@ -29,7 +29,10 @@ export function useDeleteProvider() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => providersApi.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['providers'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['providers'] })
+      qc.invalidateQueries({ queryKey: ['models'] })
+    },
   })
 }
 

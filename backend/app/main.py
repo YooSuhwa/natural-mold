@@ -83,7 +83,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Seed default models
         result = await db.execute(select(Model).limit(1))
         if not result.scalar_one_or_none():
+            # Map provider_type → provider_id for linking
+            provider_map_result = await db.execute(
+                select(LLMProvider.id, LLMProvider.provider_type)
+            )
+            ptype_to_id = {r[1]: r[0] for r in provider_map_result.all()}
             for model_data in DEFAULT_MODELS:
+                pid = ptype_to_id.get(model_data.get("provider"))
+                if pid:
+                    model_data = {**model_data, "provider_id": pid}
                 db.add(Model(**model_data))
 
         # Seed default templates (upsert by name)

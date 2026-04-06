@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.models.llm_provider import LLMProvider
 from app.models.model import Model
 from app.schemas.model import ModelBulkCreate, ModelCreate, ModelUpdate
+from app.services.encryption import encrypt_api_key
 
 
 async def list_models(db: AsyncSession) -> list[dict]:
@@ -29,13 +30,21 @@ async def get_model(db: AsyncSession, model_id: uuid.UUID) -> Model | None:
 
 
 async def create_model(db: AsyncSession, data: ModelCreate) -> dict:
+    # Validate provider_type matches if provider_id is given
+    if data.provider_id:
+        provider = await db.get(LLMProvider, data.provider_id)
+        if provider and provider.provider_type != data.provider:
+            raise ValueError(
+                f"provider_type mismatch: provider is '{provider.provider_type}' "
+                f"but model specifies '{data.provider}'"
+            )
     model = Model(
         provider=data.provider,
         model_name=data.model_name,
         display_name=data.display_name,
         provider_id=data.provider_id,
         base_url=data.base_url,
-        api_key_encrypted=data.api_key,
+        api_key_encrypted=encrypt_api_key(data.api_key) if data.api_key else None,
         is_default=data.is_default,
         cost_per_input_token=data.cost_per_input_token,
         cost_per_output_token=data.cost_per_output_token,
@@ -61,7 +70,18 @@ async def update_model(db: AsyncSession, model_id: uuid.UUID, data: ModelUpdate)
         return None
     update_data = data.model_dump(exclude_unset=True)
     if "api_key" in update_data:
-        update_data["api_key_encrypted"] = update_data.pop("api_key")
+        raw_key = update_data.pop("api_key")
+        update_data["api_key_encrypted"] = encrypt_api_key(raw_key) if raw_key else None
+    # Validate provider_type matches if provider_id is being set
+    pid = update_data.get("provider_id", model.provider_id)
+    prov_str = update_data.get("provider", model.provider)
+    if pid:
+        provider = await db.get(LLMProvider, pid)
+        if provider and provider.provider_type != prov_str:
+            raise ValueError(
+                f"provider_type mismatch: provider is '{provider.provider_type}' "
+                f"but model specifies '{prov_str}'"
+            )
     for key, value in update_data.items():
         setattr(model, key, value)
     await db.commit()
@@ -83,14 +103,22 @@ async def delete_model(db: AsyncSession, model_id: uuid.UUID) -> bool:
     return True
 
 
-async def bulk_create_models(db: AsyncSession, data: ModelBulkCreate) -> list[dict]:
+async def bulk_create_models(db: AsyncSession, data: ModelBulkCreate) -> list[dict] | None:
     """Create multiple models at once from discovered models."""
     provider = await db.get(LLMProvider, data.provider_id)
     if not provider:
-        return []
+        return None
+
+    # Query existing models to skip duplicates
+    existing_result = await db.execute(
+        select(Model.model_name, Model.provider_id).where(Model.provider_id == data.provider_id)
+    )
+    existing_pairs = {(r[0], r[1]) for r in existing_result.all()}
 
     created = []
     for item in data.models:
+        if (item.model_name, data.provider_id) in existing_pairs:
+            continue
         model = Model(
             provider=provider.provider_type,
             model_name=item.model_name,

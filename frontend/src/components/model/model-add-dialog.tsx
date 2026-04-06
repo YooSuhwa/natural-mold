@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { Loader2Icon, SearchIcon, CheckIcon, DownloadIcon, ArrowLeftIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -22,8 +23,8 @@ import {
   SelectItem,
 } from '@/components/ui/select'
 import { useDiscoverModels } from '@/lib/hooks/use-providers'
-import { useBulkCreateModels } from '@/lib/hooks/use-models'
-import { getProviderIcon } from '@/components/model/provider-card'
+import { useBulkCreateModels, useModels } from '@/lib/hooks/use-models'
+import { getProviderIcon } from '@/lib/utils/provider'
 import { formatContextWindow } from '@/components/model/model-select'
 import type { Provider, DiscoveredModel } from '@/lib/types'
 
@@ -41,6 +42,7 @@ export function ModelAddDialog({ open, onOpenChange, providers }: ModelAddDialog
 
   const discoverModels = useDiscoverModels()
   const bulkCreate = useBulkCreateModels()
+  const { data: existingModels } = useModels()
 
   const [step, setStep] = useState<Step>('provider')
   const [selectedProviderId, setSelectedProviderId] = useState('')
@@ -86,28 +88,45 @@ export function ModelAddDialog({ open, onOpenChange, providers }: ModelAddDialog
   }
 
   async function handleBulkRegister() {
-    if (!discoverModels.data) return
-    const models = discoverModels.data
-      .filter((m) => selectedModels.has(m.model_name))
-      .map((m) => ({
-        model_name: m.model_name,
-        display_name: m.display_name,
-        context_window: m.context_window,
-        input_modalities: m.input_modalities,
-        output_modalities: m.output_modalities,
-        cost_per_input_token: m.cost_per_input_token,
-        cost_per_output_token: m.cost_per_output_token,
-      }))
-    await bulkCreate.mutateAsync({ provider_id: selectedProviderId, models })
-    handleOpenChange(false)
+    try {
+      if (!discoverModels.data) return
+      const models = discoverModels.data
+        .filter((m) => selectedModels.has(m.model_name))
+        .map((m) => ({
+          model_name: m.model_name,
+          display_name: m.display_name,
+          context_window: m.context_window,
+          input_modalities: m.input_modalities,
+          output_modalities: m.output_modalities,
+          cost_per_input_token: m.cost_per_input_token,
+          cost_per_output_token: m.cost_per_output_token,
+        }))
+      await bulkCreate.mutateAsync({ provider_id: selectedProviderId, models })
+      handleOpenChange(false)
+    } catch {
+      toast.error(t('discoverError'))
+    }
   }
 
   async function handleManualAdd() {
-    await bulkCreate.mutateAsync({
-      provider_id: selectedProviderId,
-      models: [{ model_name: manualModelName, display_name: manualDisplayName || manualModelName }],
-    })
-    handleOpenChange(false)
+    try {
+      await bulkCreate.mutateAsync({
+        provider_id: selectedProviderId,
+        models: [
+          { model_name: manualModelName, display_name: manualDisplayName || manualModelName },
+        ],
+      })
+      handleOpenChange(false)
+    } catch {
+      toast.error(t('discoverError'))
+    }
+  }
+
+  function isModelRegistered(modelName: string): boolean {
+    if (!existingModels) return false
+    return existingModels.some(
+      (m) => m.model_name === modelName && m.provider_id === selectedProviderId,
+    )
   }
 
   const filteredDiscovered = useMemo(() => {
@@ -204,20 +223,28 @@ export function ModelAddDialog({ open, onOpenChange, providers }: ModelAddDialog
                 className="pl-9"
               />
             </div>
+            {discoverModels.isError && (
+              <p className="text-sm text-destructive">{t('discoverError')}</p>
+            )}
             <div className="max-h-[320px] space-y-1 overflow-auto">
               {filteredDiscovered.length === 0 ? (
                 <p className="py-4 text-center text-sm text-muted-foreground">
                   {t('discoverEmpty')}
                 </p>
               ) : (
-                filteredDiscovered.map((model) => (
-                  <DiscoveredModelRow
-                    key={model.model_name}
-                    model={model}
-                    selected={selectedModels.has(model.model_name)}
-                    onToggle={() => toggleModel(model.model_name)}
-                  />
-                ))
+                filteredDiscovered.map((model) => {
+                  const registered = isModelRegistered(model.model_name)
+                  return (
+                    <DiscoveredModelRow
+                      key={model.model_name}
+                      model={model}
+                      selected={selectedModels.has(model.model_name)}
+                      onToggle={() => toggleModel(model.model_name)}
+                      disabled={registered}
+                      registeredLabel={registered ? t('alreadyRegistered') : undefined}
+                    />
+                  )
+                })
               )}
             </div>
             <DialogFooter>
@@ -280,26 +307,38 @@ function DiscoveredModelRow({
   model,
   selected,
   onToggle,
+  disabled,
+  registeredLabel,
 }: {
   model: DiscoveredModel
   selected: boolean
   onToggle: () => void
+  disabled?: boolean
+  registeredLabel?: string
 }) {
   return (
     <button
       type="button"
-      onClick={onToggle}
+      onClick={disabled ? undefined : onToggle}
+      disabled={disabled}
       className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm ${
-        selected ? 'bg-muted/60' : 'hover:bg-muted/30'
+        disabled ? 'opacity-50 cursor-not-allowed' : selected ? 'bg-muted/60' : 'hover:bg-muted/30'
       }`}
     >
-      {selected ? (
+      {disabled ? (
+        <CheckIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      ) : selected ? (
         <CheckIcon className="size-3.5 shrink-0 text-primary" />
       ) : (
         <span className="size-3.5 shrink-0 rounded border border-muted-foreground/30" />
       )}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <span className="truncate text-xs font-medium">{model.display_name}</span>
+        {registeredLabel && (
+          <Badge variant="outline" className="shrink-0 text-[10px]">
+            {registeredLabel}
+          </Badge>
+        )}
         {model.context_window && (
           <Badge variant="outline" className="shrink-0 text-[10px]">
             {formatContextWindow(model.context_window)}

@@ -51,6 +51,9 @@ async def create_provider(db: AsyncSession, data: ProviderCreate) -> LLMProvider
     return provider
 
 
+_UPDATABLE_FIELDS = {"name", "base_url"}
+
+
 async def update_provider(
     db: AsyncSession, provider_id: uuid.UUID, data: ProviderUpdate
 ) -> LLMProvider | None:
@@ -62,19 +65,47 @@ async def update_provider(
         key = update_data.pop("api_key")
         provider.api_key_encrypted = encrypt_api_key(key) if key else None
     for key, value in update_data.items():
-        setattr(provider, key, value)
+        if key in _UPDATABLE_FIELDS:
+            setattr(provider, key, value)
     await db.commit()
     await db.refresh(provider)
     return provider
 
 
-async def delete_provider(db: AsyncSession, provider_id: uuid.UUID) -> bool:
+async def delete_provider(db: AsyncSession, provider_id: uuid.UUID) -> tuple[bool, int]:
+    """Delete a provider. Returns (deleted, model_count)."""
     provider = await get_provider(db, provider_id)
     if not provider:
-        return False
+        return False, 0
+    # Count connected models before deletion
+    count_result = await db.execute(
+        select(func.count(Model.id)).where(Model.provider_id == provider_id)
+    )
+    model_count = count_result.scalar_one()
     await db.delete(provider)
     await db.commit()
-    return True
+    return True, model_count
+
+
+async def get_provider_with_count(db: AsyncSession, provider_id: uuid.UUID) -> dict | None:
+    """Get a single provider with model_count."""
+    stmt = (
+        select(
+            LLMProvider,
+            func.count(Model.id).label("model_count"),
+        )
+        .outerjoin(Model, Model.provider_id == LLMProvider.id)
+        .where(LLMProvider.id == provider_id)
+        .group_by(LLMProvider.id)
+    )
+    row = (await db.execute(stmt)).first()
+    if not row:
+        return None
+    return {
+        **{c.key: getattr(row[0], c.key) for c in LLMProvider.__table__.columns},
+        "has_api_key": row[0].api_key_encrypted is not None,
+        "model_count": row[1],
+    }
 
 
 def get_decrypted_api_key(provider: LLMProvider) -> str | None:

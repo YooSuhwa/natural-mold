@@ -1,4 +1,4 @@
-"""Static metadata for well-known models (context window, modalities, cost)."""
+"""Static metadata for well-known models. Costs are in USD per token."""
 
 from __future__ import annotations
 
