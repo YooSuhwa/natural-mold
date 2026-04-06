@@ -15,11 +15,13 @@ function ThinkingDots() {
   const t = useTranslations('chat.streaming')
 
   return (
-    <div className="flex items-center gap-1 px-1">
-      <span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
-      <span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
-      <span className="size-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:300ms]" />
-      <span className="ml-2 text-xs text-muted-foreground">{t('thinking')}</span>
+    <div className="flex items-center gap-1.5 px-1">
+      <span className="size-2 rounded-full bg-primary/50 animate-pulse [animation-delay:0ms] [animation-duration:1.4s]" />
+      <span className="size-2 rounded-full bg-primary/50 animate-pulse [animation-delay:200ms] [animation-duration:1.4s]" />
+      <span className="size-2 rounded-full bg-primary/50 animate-pulse [animation-delay:400ms] [animation-duration:1.4s]" />
+      <span className="ml-2 text-xs text-muted-foreground animate-pulse [animation-duration:2s]">
+        {t('thinking')}
+      </span>
     </div>
   )
 }
@@ -35,13 +37,13 @@ export function StreamingMessage() {
   const hasToolCalls = streamingToolCalls.length > 0
 
   return (
-    <div className="flex gap-3">
+    <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
       <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
         <BotIcon className="size-4" />
       </div>
       <div className="max-w-[80%] space-y-2">
         {hasToolCalls && (
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {streamingToolCalls.map((tc, i) => (
               <ToolCallDisplay
                 key={i}
@@ -56,14 +58,16 @@ export function StreamingMessage() {
           </div>
         )}
         {hasContent ? (
-          <div className="rounded-2xl bg-muted px-4 py-2.5 text-sm leading-relaxed">
+          <div className="rounded-2xl bg-muted px-4 py-2.5 text-sm leading-relaxed animate-in fade-in duration-200">
             <MarkdownContent content={streamingMessage.content} />
-            <span className="inline-block w-1 animate-pulse bg-foreground/40 ml-0.5">&nbsp;</span>
+            <span className="inline-block w-0.5 h-4 animate-pulse bg-primary/60 ml-0.5 rounded-full align-text-bottom" />
           </div>
         ) : (
-          <div className="rounded-2xl bg-muted px-4 py-3">
-            <ThinkingDots />
-          </div>
+          !hasToolCalls && (
+            <div className="rounded-2xl bg-muted px-4 py-3">
+              <ThinkingDots />
+            </div>
+          )
         )}
       </div>
     </div>

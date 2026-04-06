@@ -4,7 +4,7 @@ import { use, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
-import { Settings2Icon, PlusIcon } from 'lucide-react'
+import { Settings2Icon, PlusIcon, BotIcon, SparklesIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useAgent } from '@/lib/hooks/use-agents'
@@ -15,6 +15,8 @@ import {
   streamingMessageAtom,
   streamingToolCallsAtom,
   isStreamingAtom,
+  sessionTokenUsageAtom,
+  lastMessageTokensAtom,
 } from '@/lib/stores/chat-store'
 import type { StreamingToolCall } from '@/lib/stores/chat-store'
 import { Button } from '@/components/ui/button'
@@ -40,6 +42,8 @@ export default function ChatPage({
   const setStreamingMessage = useSetAtom(streamingMessageAtom)
   const setStreamingToolCalls = useSetAtom(streamingToolCallsAtom)
   const setIsStreaming = useSetAtom(isStreamingAtom)
+  const setSessionTokenUsage = useSetAtom(sessionTokenUsageAtom)
+  const setLastMessageTokens = useSetAtom(lastMessageTokensAtom)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -103,6 +107,19 @@ export default function ChatPage({
             break
           }
           case 'message_end': {
+            const usage = event.data.usage
+            if (usage) {
+              const input = usage.input_tokens ?? usage.prompt_tokens ?? 0
+              const output = usage.output_tokens ?? usage.completion_tokens ?? 0
+              const cost = usage.estimated_cost ?? 0
+              const msgTokens = { inputTokens: input, outputTokens: output, cost }
+              setLastMessageTokens(msgTokens)
+              setSessionTokenUsage((prev) => ({
+                inputTokens: prev.inputTokens + input,
+                outputTokens: prev.outputTokens + output,
+                cost: prev.cost + cost,
+              }))
+            }
             break
           }
           case 'error': {
@@ -128,6 +145,8 @@ export default function ChatPage({
       })
     }
   }
+
+  const hasMessages = messages && messages.length > 0
 
   return (
     <div className="flex flex-1 overflow-hidden">
@@ -165,33 +184,59 @@ export default function ChatPage({
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="mx-auto max-w-2xl space-y-4">
-            {messagesLoading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="flex gap-3">
-                    <Skeleton className="size-8 rounded-full" />
-                    <Skeleton className="h-16 flex-1 rounded-2xl" />
+        <div className="relative flex-1 overflow-y-auto">
+          {/* Top gradient fade */}
+          <div className="pointer-events-none sticky top-0 z-10 h-6 bg-gradient-to-b from-background to-transparent" />
+
+          <div className="px-4 pb-4">
+            <div className="mx-auto max-w-3xl">
+              {messagesLoading ? (
+                <div className="space-y-4">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex gap-3">
+                      <Skeleton className="size-8 rounded-full" />
+                      <Skeleton className="h-16 flex-1 rounded-2xl" />
+                    </div>
+                  ))}
+                </div>
+              ) : hasMessages ? (
+                messages.map((msg, idx) => (
+                  <MessageBubble
+                    key={msg.id}
+                    message={msg}
+                    previousRole={idx > 0 ? messages[idx - 1].role : null}
+                  />
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
+                    <BotIcon className="size-7" />
                   </div>
-                ))}
-              </div>
-            ) : messages && messages.length > 0 ? (
-              messages.map((msg) => <MessageBubble key={msg.id} message={msg} />)
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <p className="text-sm text-muted-foreground">{t('emptyState')}</p>
-              </div>
-            )}
-            <StreamingMessage />
-            <div ref={messagesEndRef} />
+                  <h2 className="text-lg font-semibold mb-1">{agent?.name ?? t('emptyState')}</h2>
+                  {agent?.description && (
+                    <p className="text-sm text-muted-foreground max-w-md mb-4">
+                      {agent.description}
+                    </p>
+                  )}
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <SparklesIcon className="size-3.5" />
+                    <span>{t('emptyState')}</span>
+                  </div>
+                </div>
+              )}
+              <StreamingMessage />
+              <div ref={messagesEndRef} />
+            </div>
           </div>
+
+          {/* Bottom gradient fade */}
+          <div className="pointer-events-none sticky bottom-0 z-10 h-6 bg-gradient-to-t from-background to-transparent" />
         </div>
 
         {/* Input */}
         <div className="border-t p-4">
-          <div className="mx-auto max-w-2xl">
-            <ChatInput onSend={handleSend} />
+          <div className="mx-auto max-w-3xl">
+            <ChatInput onSend={handleSend} modelName={agent?.model?.display_name} />
           </div>
         </div>
       </div>

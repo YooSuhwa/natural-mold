@@ -1,22 +1,27 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { SendIcon } from 'lucide-react'
+import { SendIcon, PaperclipIcon, ArrowDownToLineIcon, ArrowUpFromLineIcon } from 'lucide-react'
+import { useAtomValue } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 
 interface ChatInputProps {
   onSend: (content: string) => void
   disabled?: boolean
   placeholder?: string
+  modelName?: string
 }
 
-export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, placeholder, modelName }: ChatInputProps) {
   const t = useTranslations('chat.input')
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const isComposingRef = useRef(false)
+  const tokenUsage = useAtomValue(sessionTokenUsageAtom)
 
   const adjustHeight = useCallback(() => {
     const el = textareaRef.current
@@ -42,8 +47,42 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
     }
   }
 
+  const hasTokens = tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0
+
   return (
-    <div className="flex items-end gap-2">
+    <div
+      className={cn(
+        'overflow-hidden rounded-2xl border border-input bg-background shadow-sm transition-colors',
+        'focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
+      )}
+    >
+      {/* Model & Token bar */}
+      {(modelName || hasTokens) && (
+        <div className="flex items-center gap-3 border-b border-input/50 px-3.5 py-1.5 text-xs text-muted-foreground">
+          {modelName && <span className="font-medium text-foreground/70">{modelName}</span>}
+          {hasTokens && (
+            <>
+              {modelName && <span className="text-border">·</span>}
+              <span className="flex items-center gap-1">
+                <ArrowDownToLineIcon className="size-3" />
+                {formatTokens(tokenUsage.inputTokens)}
+              </span>
+              <span className="flex items-center gap-1">
+                <ArrowUpFromLineIcon className="size-3" />
+                {formatTokens(tokenUsage.outputTokens)}
+              </span>
+              {tokenUsage.cost > 0 && (
+                <>
+                  <span className="text-border">·</span>
+                  <span>{formatCost(tokenUsage.cost)}</span>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Textarea */}
       <textarea
         ref={textareaRef}
         value={input}
@@ -59,23 +98,61 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
         disabled={disabled}
         rows={1}
         className={cn(
-          'min-h-[44px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed transition-colors outline-none',
+          'min-h-[44px] max-h-[160px] w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none',
           'placeholder:text-muted-foreground',
-          'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
           'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
-          'dark:bg-input/30',
         )}
       />
-      <Button
-        type="button"
-        size="lg"
-        onClick={handleSubmit}
-        disabled={disabled || !input.trim()}
-        className="shrink-0"
-      >
-        <SendIcon className="size-4" />
-        <span className="sr-only">{t('sendButton')}</span>
-      </Button>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-2 py-1.5">
+        <div className="flex items-center gap-1">
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <PaperclipIcon className="size-4" />
+            <span className="sr-only">Attach file</span>
+          </Button>
+        </div>
+        <Button
+          type="button"
+          size="icon-sm"
+          onClick={handleSubmit}
+          disabled={disabled || !input.trim()}
+          className={cn(
+            'rounded-full transition-all',
+            input.trim() && !disabled
+              ? 'bg-primary text-primary-foreground shadow-sm'
+              : 'bg-muted text-muted-foreground',
+          )}
+        >
+          <SendIcon className="size-4" />
+          <span className="sr-only">{t('sendButton')}</span>
+        </Button>
+      </div>
     </div>
   )
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return String(n)
+}
+
+function formatCost(n: number): string {
+  if (n < 0.01) return `$${n.toFixed(4)}`
+  return `$${n.toFixed(2)}`
 }
