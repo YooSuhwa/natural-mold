@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.model import Model
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
@@ -130,7 +131,7 @@ async def get_agent_with_tools(
         select(Agent)
         .where(Agent.id == agent_id, Agent.user_id == user_id)
         .options(
-            selectinload(Agent.model),
+            selectinload(Agent.model).selectinload(Model.llm_provider),
             selectinload(Agent.tool_links)
             .selectinload(AgentToolLink.tool)
             .selectinload(Tool.mcp_server),

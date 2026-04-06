@@ -1,21 +1,28 @@
 'use client'
 
-import { useState } from 'react'
-import { PlusIcon, CpuIcon, Trash2Icon, PencilIcon, Loader2Icon, StarIcon } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import {
+  PlusIcon,
+  CpuIcon,
+  Trash2Icon,
+  PencilIcon,
+  Loader2Icon,
+  StarIcon,
+  SearchIcon,
+  ServerIcon,
+  InfoIcon,
+  EyeIcon,
+  WrenchIcon,
+  BrainIcon,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useModels, useCreateModel, useUpdateModel, useDeleteModel } from '@/lib/hooks/use-models'
+import { useModels, useUpdateModel, useDeleteModel } from '@/lib/hooks/use-models'
+import { useProviders, useDeleteProvider } from '@/lib/hooks/use-providers'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select'
 import {
   Dialog,
   DialogContent,
@@ -23,252 +30,454 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
-import type { Model } from '@/lib/types'
+import { ProviderCard } from '@/components/model/provider-card'
+import { ProviderForm } from '@/components/model/provider-form'
+import { ModelAddDialog } from '@/components/model/model-add-dialog'
+import { ModelDetailModal } from '@/components/model/model-detail-modal'
+import { getProviderIcon, formatContextWindow } from '@/lib/utils/provider'
+import type { Model, Provider } from '@/lib/types'
 
 export default function ModelsPage() {
-  const { data: models, isLoading } = useModels()
-  const createModel = useCreateModel()
+  const { data: models, isLoading: modelsLoading } = useModels()
+  const { data: providers, isLoading: providersLoading } = useProviders()
   const updateModel = useUpdateModel()
   const deleteModel = useDeleteModel()
+  const deleteProvider = useDeleteProvider()
   const t = useTranslations('model')
+  const tp = useTranslations('provider')
   const tc = useTranslations('common')
 
-  const providers = [
-    { value: 'openai', label: t('providers.openai') },
-    { value: 'anthropic', label: t('providers.anthropic') },
-    { value: 'google', label: t('providers.google') },
-    { value: 'custom', label: t('providers.custom') },
-  ]
+  // Provider form state
+  const [providerFormOpen, setProviderFormOpen] = useState(false)
+  const [editingProvider, setEditingProvider] = useState<Provider | null>(null)
 
-  const [open, setOpen] = useState(false)
+  // Model add dialog state
+  const [modelAddOpen, setModelAddOpen] = useState(false)
+
+  // Model edit dialog state
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<Model | null>(null)
-  const [provider, setProvider] = useState('openai')
-  const [modelName, setModelName] = useState('')
-  const [displayName, setDisplayName] = useState('')
-  const [baseUrl, setBaseUrl] = useState('')
-  const [apiKey, setApiKey] = useState('')
+  const [editDisplayName, setEditDisplayName] = useState('')
 
-  function resetForm() {
-    setProvider('openai')
-    setModelName('')
-    setDisplayName('')
-    setBaseUrl('')
-    setApiKey('')
+  // Model search & filter
+  const [modelSearch, setModelSearch] = useState('')
+  const [providerFilter, setProviderFilter] = useState('all')
+  const [capabilityFilter, setCapabilityFilter] = useState('all')
+
+  // Model detail modal state
+  const [detailModel, setDetailModel] = useState<Model | null>(null)
+
+  // Model delete confirm dialog state
+  const [deletingModelTarget, setDeletingModelTarget] = useState<Model | null>(null)
+
+  const filteredModels = useMemo(() => {
+    if (!models) return []
+    let result = models
+    if (providerFilter !== 'all') {
+      result = result.filter((m) => m.provider_id === providerFilter)
+    }
+    if (capabilityFilter !== 'all') {
+      result = result.filter((m) => {
+        if (capabilityFilter === 'vision') return m.supports_vision
+        if (capabilityFilter === 'function_calling') return m.supports_function_calling
+        if (capabilityFilter === 'reasoning') return m.supports_reasoning
+        return true
+      })
+    }
+    const q = modelSearch.toLowerCase()
+    if (q) {
+      result = result.filter(
+        (m) =>
+          m.display_name.toLowerCase().includes(q) ||
+          m.model_name.toLowerCase().includes(q) ||
+          m.provider.toLowerCase().includes(q),
+      )
+    }
+    return result
+  }, [models, modelSearch, providerFilter, capabilityFilter])
+
+  // Provider delete confirm dialog state
+  const [deletingProviderTarget, setDeletingProviderTarget] = useState<Provider | null>(null)
+
+  function openEditProvider(provider: Provider) {
+    setEditingProvider(provider)
+    setProviderFormOpen(true)
+  }
+
+  function openEditModel(model: Model) {
+    setEditingModel(model)
+    setEditDisplayName(model.display_name)
+    setEditDialogOpen(true)
+  }
+
+  async function handleEditModelSubmit() {
+    if (!editingModel) return
+    await updateModel.mutateAsync({
+      id: editingModel.id,
+      data: { display_name: editDisplayName },
+    })
+    setEditDialogOpen(false)
     setEditingModel(null)
   }
 
-  function openEditDialog(model: Model) {
-    setEditingModel(model)
-    setProvider(model.provider)
-    setModelName(model.model_name)
-    setDisplayName(model.display_name)
-    setBaseUrl(model.base_url ?? '')
-    setApiKey('')
-    setOpen(true)
-  }
-
-  async function handleSubmit() {
-    const payload = {
-      provider,
-      model_name: modelName,
-      display_name: displayName || modelName,
-      base_url: baseUrl || undefined,
-      api_key: apiKey || undefined,
-    }
-    if (editingModel) {
-      await updateModel.mutateAsync({ id: editingModel.id, data: payload })
-    } else {
-      await createModel.mutateAsync(payload)
-    }
-    resetForm()
-    setOpen(false)
-  }
-
-  function getProviderIcon(p: string) {
-    switch (p) {
-      case 'openai':
-        return 'OAI'
-      case 'anthropic':
-        return 'ANT'
-      case 'google':
-        return 'GGL'
-      default:
-        return 'AI'
-    }
-  }
-
-  const isSubmitting = editingModel ? updateModel.isPending : createModel.isPending
-
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
-      <PageHeader
-        title={t('pageTitle')}
-        action={
-          <Dialog
-            open={open}
-            onOpenChange={(v) => {
-              setOpen(v)
-              if (!v) resetForm()
-            }}
-          >
-            <DialogTrigger
-              render={
-                <Button>
-                  <PlusIcon className="size-4" data-icon="inline-start" />
-                  {t('addModel')}
-                </Button>
-              }
-            />
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingModel ? t('dialogTitle.edit') : t('dialogTitle.new')}
-                </DialogTitle>
-                <DialogDescription>
-                  {editingModel ? t('dialogDescription.edit') : t('dialogDescription.new')}
-                </DialogDescription>
-              </DialogHeader>
+      <PageHeader title={t('pageTitle')} />
 
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('provider')}</label>
-                  <Select
-                    value={provider}
-                    onValueChange={(val) => {
-                      if (val) setProvider(val)
-                    }}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder={t('providerPlaceholder')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {providers.map((p) => (
-                        <SelectItem key={p.value} value={p.value}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+      <Tabs defaultValue="providers">
+        <TabsList variant="line">
+          <TabsTrigger value="providers">{t('tab.providers')}</TabsTrigger>
+          <TabsTrigger value="models">{t('tab.models')}</TabsTrigger>
+        </TabsList>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    {t('modelName')} <span className="text-destructive">{tc('required')}</span>
-                  </label>
-                  <Input
-                    value={modelName}
-                    onChange={(e) => setModelName(e.target.value)}
-                    placeholder="gpt-4o"
-                  />
-                </div>
+        {/* Providers Tab */}
+        <TabsContent value="providers">
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                onClick={() => {
+                  setEditingProvider(null)
+                  setProviderFormOpen(true)
+                }}
+              >
+                <PlusIcon className="size-4" data-icon="inline-start" />
+                {tp('addProvider')}
+              </Button>
+            </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('displayName')}</label>
-                  <Input
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="GPT-4o"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('baseUrl')}</label>
-                  <Input
-                    value={baseUrl}
-                    onChange={(e) => setBaseUrl(e.target.value)}
-                    placeholder="https://api.openai.com/v1"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('apiKey')}</label>
-                  <Input
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    type="password"
-                    placeholder="sk-xxxxxxxxxxxx"
-                  />
-                </div>
+            {providersLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
               </div>
+            ) : providers && providers.length > 0 ? (
+              <div className="space-y-2">
+                {providers.map((provider) => (
+                  <ProviderCard
+                    key={provider.id}
+                    provider={provider}
+                    onEdit={openEditProvider}
+                    onDelete={() => setDeletingProviderTarget(provider)}
+                    isDeleting={deleteProvider.isPending}
+                    deletingId={deleteProvider.variables}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                icon={<ServerIcon className="size-6" />}
+                title={tp('empty.title')}
+                description={tp('empty.description')}
+              />
+            )}
+          </div>
+        </TabsContent>
 
-              <DialogFooter>
-                <Button onClick={handleSubmit} disabled={!modelName.trim() || isSubmitting}>
-                  {isSubmitting && <Loader2Icon className="mr-1 size-4 animate-spin" />}
-                  {editingModel ? tc('save') : tc('register')}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        }
+        {/* Models Tab */}
+        <TabsContent value="models">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1">
+                <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={modelSearch}
+                  onChange={(e) => setModelSearch(e.target.value)}
+                  placeholder={t('searchModels')}
+                  className="pl-9"
+                />
+              </div>
+              <Select
+                value={providerFilter}
+                onValueChange={(val) => {
+                  if (val) setProviderFilter(val)
+                }}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder={t('allProviders')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('allProviders')}</SelectItem>
+                  {providers?.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={capabilityFilter}
+                onValueChange={(val) => {
+                  if (val) setCapabilityFilter(val)
+                }}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder={t('allCapabilities')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('allCapabilities')}</SelectItem>
+                  <SelectItem value="vision">{t('vision')}</SelectItem>
+                  <SelectItem value="function_calling">{t('functionCalling')}</SelectItem>
+                  <SelectItem value="reasoning">{t('reasoning')}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={() => setModelAddOpen(true)}>
+                <PlusIcon className="size-4" data-icon="inline-start" />
+                {t('addModel')}
+              </Button>
+            </div>
+
+            {modelsLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : filteredModels.length > 0 ? (
+              <div className="space-y-2">
+                {filteredModels.map((model) => (
+                  <Card key={model.id}>
+                    <CardContent className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground">
+                          {getProviderIcon(model.provider)}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium">{model.display_name}</span>
+                            <Badge variant="outline">{model.provider}</Badge>
+                            {model.context_window && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                {formatContextWindow(model.context_window)}
+                              </Badge>
+                            )}
+                            {model.supports_vision && (
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <EyeIcon className="size-3.5 text-blue-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>{t('vision')}</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {model.supports_function_calling && (
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <WrenchIcon className="size-3.5 text-green-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>{t('functionCalling')}</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {model.supports_reasoning && (
+                              <Tooltip>
+                                <TooltipTrigger>
+                                  <BrainIcon className="size-3.5 text-purple-500" />
+                                </TooltipTrigger>
+                                <TooltipContent>{t('reasoning')}</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {model.agent_count > 0 && (
+                              <Badge className="border-blue-200 bg-blue-50 text-blue-700 text-[10px] dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                                {t('agentCount', { count: model.agent_count })}
+                              </Badge>
+                            )}
+                            {model.is_default && (
+                              <Badge variant="secondary">
+                                <StarIcon className="mr-0.5 size-3" />
+                                {t('defaultBadge')}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">{model.model_name}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t('modelDetail')}
+                          onClick={() => setDetailModel(model)}
+                        >
+                          <InfoIcon className="size-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t('editLabel', { name: model.display_name })}
+                          onClick={() => openEditModel(model)}
+                        >
+                          <PencilIcon className="size-4 text-muted-foreground" />
+                        </Button>
+                        {model.agent_count > 0 ? (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <span className="inline-flex size-8 items-center justify-center rounded-md opacity-40">
+                                  <Trash2Icon className="size-4 text-muted-foreground" />
+                                </span>
+                              }
+                              aria-label={t('cannotDeleteInUse')}
+                            />
+                            <TooltipContent>{t('cannotDeleteInUse')}</TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t('deleteLabel', { name: model.display_name })}
+                            onClick={() => setDeletingModelTarget(model)}
+                            disabled={deleteModel.isPending && deleteModel.variables === model.id}
+                          >
+                            {deleteModel.isPending && deleteModel.variables === model.id ? (
+                              <Loader2Icon className="size-4 animate-spin" />
+                            ) : (
+                              <Trash2Icon className="size-4 text-muted-foreground" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                icon={<CpuIcon className="size-6" />}
+                title={t('empty.title')}
+                description={t('empty.description')}
+              />
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {/* Provider Form Dialog */}
+      <ProviderForm
+        open={providerFormOpen}
+        onOpenChange={(v) => {
+          setProviderFormOpen(v)
+          if (!v) setEditingProvider(null)
+        }}
+        editingProvider={editingProvider}
       />
 
-      {isLoading ? (
-        <div className="space-y-2">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
-          ))}
-        </div>
-      ) : models && models.length > 0 ? (
-        <div className="space-y-2">
-          {models.map((model) => (
-            <Card key={model.id}>
-              <CardContent className="flex items-center justify-between py-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground">
-                    {getProviderIcon(model.provider)}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{model.display_name}</span>
-                      <Badge variant="outline">{model.provider}</Badge>
-                      {model.is_default && (
-                        <Badge variant="secondary">
-                          <StarIcon className="mr-0.5 size-3" />
-                          {t('defaultBadge')}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">{model.model_name}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t('editLabel', { name: model.display_name })}
-                    onClick={() => openEditDialog(model)}
-                  >
-                    <PencilIcon className="size-4 text-muted-foreground" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t('deleteLabel', { name: model.display_name })}
-                    onClick={() => deleteModel.mutate(model.id)}
-                    disabled={deleteModel.isPending}
-                  >
-                    {deleteModel.isPending ? (
-                      <Loader2Icon className="size-4 animate-spin" />
-                    ) : (
-                      <Trash2Icon className="size-4 text-muted-foreground" />
-                    )}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={<CpuIcon className="size-6" />}
-          title={t('empty.title')}
-          description={t('empty.description')}
+      {/* Model Add Dialog */}
+      <ModelAddDialog
+        open={modelAddOpen}
+        onOpenChange={setModelAddOpen}
+        providers={providers ?? []}
+      />
+
+      {/* Model Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('dialogTitle.edit')}</DialogTitle>
+            <DialogDescription>{t('dialogDescription.edit')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t('displayName')}</label>
+              <Input value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={handleEditModelSubmit}
+              disabled={!editDisplayName.trim() || updateModel.isPending}
+            >
+              {updateModel.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
+              {tc('save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Model Detail Modal */}
+      {detailModel && (
+        <ModelDetailModal
+          model={detailModel}
+          open={!!detailModel}
+          onClose={() => setDetailModel(null)}
         />
       )}
+
+      {/* Model Delete Confirm */}
+      <AlertDialog
+        open={!!deletingModelTarget}
+        onOpenChange={(v) => !v && setDeletingModelTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteConfirm')}</AlertDialogTitle>
+            <AlertDialogDescription>{deletingModelTarget?.display_name}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deletingModelTarget) {
+                  deleteModel.mutate(deletingModelTarget.id)
+                  setDeletingModelTarget(null)
+                }
+              }}
+            >
+              {tc('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Provider Delete Confirm */}
+      <AlertDialog
+        open={!!deletingProviderTarget}
+        onOpenChange={(v) => !v && setDeletingProviderTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{tp('deleteConfirm')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('deleteProviderWarning', { count: deletingProviderTarget?.model_count ?? 0 })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (deletingProviderTarget) {
+                  deleteProvider.mutate(deletingProviderTarget.id)
+                  setDeletingProviderTarget(null)
+                }
+              }}
+            >
+              {tc('delete')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

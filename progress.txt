@@ -344,5 +344,123 @@
 - 신규 코드: _prepare_agent(), execute_agent_invoke() (executor.py), build_agent(tools=[]) (creation_agent.py) 확인
 - 결론: M4 regression 없음, 게이트 통과
 
+## M5 Provider 시스템 구현 (2026-04-06) — Jensen
+
+### M5-Task1 (M1-S1): Backend 인프라 완료
+- encryption.py: Fernet 기반 encrypt/decrypt, encryption_key 없으면 평문 패스스루
+- LLMProvider ORM: llm_providers 테이블 (id, name, provider_type, base_url, api_key_encrypted, is_active, timestamps)
+- models 테이블: provider_id FK, context_window, input_modalities, output_modalities 추가, model_name/display_name 200자로 확장
+- Alembic migration: llm_providers 생성 + 기존 models → llm_providers 데이터 마이그레이션
+- Provider CRUD API: GET/POST/PUT/DELETE /api/providers, POST /test, GET /discover-models
+- model_discovery.py: OpenAI/Anthropic(정적)/Google/OpenRouter/OpenAI-compatible 지원
+- model_metadata.py: 정적 메타 정보 (context_window, modalities, cost)
+- default_providers seed: OpenAI, Anthropic, Google (API 키 없이)
+- 테스트: 13건 신규 (providers 8 + encryption 2 + discovery 3)
+
+### M5-Task2 (M2-S2): Models API + model_factory 완료
+- schemas/model.py: provider_id, context_window, modalities, ModelBulkCreate 추가
+- model_service.py: list_models/create_model → dict 반환 (provider_name 포함), bulk_create_models 추가
+- model_factory.py: PROVIDER_MAP에 openrouter/openai_compatible 추가 (ChatOpenAI 사용)
+- conversations.py: api_key를 llm_provider에서 decrypt하여 전달 (폴백: model-level key)
+- trigger_executor.py: 동일하게 llm_provider 우선
+- chat_service.py: selectinload(Agent.model).selectinload(Model.llm_provider) 추가
+- models.py 라우터: /api/models/bulk POST 추가
+- 결과: 315 passed, 0 failed (기존 302 + 신규 13)
+
+### M5-Task3 (M3-S3): Frontend 전면 재구성 완료 — Zuckerberg
+- types/index.ts: Provider/DiscoveredModel 타입 추가, Model에 provider_id/context_window/modalities 추가, ModelBulkCreateRequest 추가
+- api/providers.ts (신규): Provider CRUD + test + discover API 클라이언트
+- api/models.ts: bulkCreate 엔드포인트 추가
+- hooks/use-providers.ts (신규): TanStack Query hooks 6개
+- hooks/use-models.ts: useBulkCreateModels 추가
+- components/model/provider-card.tsx (신규): Provider 카드 + getProviderIcon
+- components/model/provider-form.tsx (신규): Provider 추가/수정 Dialog (inner component 패턴)
+- components/model/model-add-dialog.tsx (신규): 3단계 모델 추가 (provider→discover→register/manual)
+- components/model/model-select.tsx (신규): 검색 가능한 모델 선택기 + formatContextWindow
+- app/models/page.tsx: 전면 재작성 (Tabs: Providers|Models)
+- agents/[agentId]/settings/page.tsx: Select → ModelSelect 교체
+- agent-node.tsx: provider 아이콘 + context_window 배지 추가
+- messages/ko.json: provider 섹션 추가, model 섹션 확장
+- 검증: pnpm build PASS + pnpm lint PASS
+
+### Gotchas (M5)
+- model_service에서 list_models/create_model 반환 타입이 ORM → dict로 변경됨. from_attributes=True 기반 테스트가 dict와도 호환됨 (Pydantic이 dict도 처리)
+- provider_service.list_providers는 JOIN + group_by로 model_count 집계. SQLite (테스트)에서도 정상 동작.
+- Alembic migration의 데이터 마이그레이션은 gen_random_uuid() 사용 (PostgreSQL 전용). SQLite에서는 실행 안 됨 (테스트에서는 create_all로 테이블 직접 생성).
+- @base-ui/react Select onValueChange 시그니처: (string|null, eventDetails). setState 직접 전달 불가 → `(val) => { if (val) setState(val) }` 래핑 필요.
+- React 19 lint: useEffect 내 동기 setState 금지. Dialog 폼 초기화는 inner component 패턴으로 해결.
+- IS NOT DISTINCT FROM 구문은 PostgreSQL 전용. NULL 비교 안전 처리.
+
+## M5 통합 검증 결과 (2026-04-06) — Bezos
+- ruff check: 전체 통과
+- pytest: 327 passed, 0 failed (M4 302 + M5 신규 13 + 검증 보강 12 = 327)
+- pnpm build: 전체 통과 (타입 에러 0)
+- 신규 파일 18/18 전부 존재 확인
+- 테스트 보강:
+  - test_providers.py: +5건 (/test, /discover-models, 404, model_count)
+  - test_model_discovery.py: +5건 (test_connection success/auth/connect, google, openai_compatible)
+  - test_models.py: +2건 (bulk_create, provider_id 연결)
+- Alembic Migration 2 (models.api_key_encrypted/base_url DROP) 보류:
+  - conversations.py에서 model-level api_key 폴백 사용 중 (L: llm_provider 우선, model key 폴백)
+  - 폴백 코드 제거 없이 컬럼 DROP하면 기존 model-level key 설정이 깨짐
+  - 완전 전환 후 DROP 권장
+- 결론: M5 regression 없음, 게이트 통과
+
+## M5 리뷰 이슈 수정 완료 (2026-04-06) — Jensen
+- encryption.py: Fernet lazy 캐싱 + InvalidToken fallback + warning 로그
+- providers.py: 전 엔드포인트에 get_current_user 의존성 주입
+- provider_service.py: _UPDATABLE_FIELDS 화이트리스트, delete_provider tuple 반환, get_provider_with_count 추가
+- model_service.py: encrypt_api_key 적용, provider_type 검증, bulk_create 중복 skip + None 반환
+- conversations.py + trigger_executor.py: model-level key fallback에 decrypt_api_key 적용
+- llm_provider.py schema: Literal 타입 + Field(max_length=100)
+- model_discovery.py: _TIMEOUT 상수, KeyError 제거, 에러 메시지 내용 노출 방지
+- models/model.py + llm_provider.py: list[str] 타입, back_populates 양방향 relationship
+- main.py: 시드 모델에 provider_type→provider_id 자동 매핑
+- 테스트: InvalidToken fallback + OpenRouter discovery 추가
+- 결과: ruff 통과, 329 passed (기존 327 + 신규 2)
+
+## M5 Frontend 리뷰 이슈 수정 완료 (2026-04-06) — Zuckerberg
+- lib/utils/provider.ts: getProviderIcon 공통 유틸 추출 (5개 파일 중복 제거)
+- models/page.tsx: 삭제 confirm + 개별 isPending (deleteModel.variables === model.id)
+- provider-card.tsx: aria-label 2개, confirm, deletingId 개별 비활성화
+- provider-form.tsx: try-catch + toast.error, htmlFor/id 4쌍
+- model-add-dialog.tsx: try-catch 2개, isError UI, 이미 등록된 모델 표시 (useModels 연동)
+- model-select.tsx: role="listbox", role="option" + aria-selected
+- agent-node.tsx: 하드코딩 "관리" → i18n ts('manageModels')
+- use-providers.ts: deleteProvider → models 캐시 무효화
+- use-models.ts: bulkCreate → providers 캐시 무효화
+- types/index.ts: ProviderType 유니온 타입 + Provider/ProviderCreateRequest 적용
+- ko.json: i18n 키 7개 추가
+- 검증: pnpm build PASS + pnpm lint PASS
+
+## Gotchas (M5 Frontend)
+- ProviderType 유니온 도입 시 PROVIDER_TYPES(as const)와 Select onValueChange(string) 간 타입 불일치. handleTypeChange를 ProviderType 파라미터로 변경, Select callback에서 as ProviderType 캐스팅.
+- provider-card에서 isDeleting 개별화: deletingId prop 추가 + deleteProvider.variables로 전달.
+
+## M6 메타데이터 강화 (2026-04-06) — Jensen
+
+### Task1 Backend 완료
+- model_metadata.py: 수동 MODEL_METADATA dict → litellm_model_catalog.json 기반 lazy 로딩
+- enrich_model() 시그니처/반환 유지, 새 필드 매핑 추가 (max_output_tokens, supports_vision, supports_function_calling, supports_reasoning)
+- ANTHROPIC_MODELS: 하드코딩 3개 → JSON catalog에서 provider=="anthropic" 필터 (18개)
+- schemas: DiscoveredModel + ModelResponse에 4개 capability 필드 추가, ModelResponse에 agent_count 추가
+- model_service.py: list_models() Agent LEFT JOIN으로 agent_count 집계 + enrich_model() 보강
+- model_discovery.py: openai/anthropic/google discover에서 새 필드도 DiscoveredModel에 전달
+- 결과: ruff 통과, 329 passed (regression 없음)
+
+### Gotchas (M6)
+- ANTHROPIC_MODELS가 JSON 기반이 되면서 3→18개로 확장됨. 기존 테스트에서 `== 3` 하드코딩은 `>= 3`으로 수정 필요.
+- enrich_model import를 _model_to_response 함수 내부에서 lazy로 수행 (circular import 방지)
+
+## M6 Frontend UI 개선 완료 (2026-04-06) — Zuckerberg
+- types/index.ts: Model에 max_output_tokens, supports_vision/function_calling/reasoning, agent_count 추가. DiscoveredModel에 동일 (agent_count 제외). ModelBulkCreateRequest에도 새 필드 반영.
+- model-detail-modal.tsx (신규): 4섹션 Dialog — Overview, Token & Pricing, Capabilities (색상 Badge), Modalities
+- models/page.tsx: Capability 필터 Select 추가 (vision/function_calling/reasoning). 모델 카드에 capability 아이콘 (Eye/Wrench/Brain + Tooltip), agent_count 배지, InfoIcon → 상세 모달, 삭제 보호 (agent_count > 0 → disabled + Tooltip). window.confirm → AlertDialog 전환 (모델/Provider 양쪽).
+- provider-card.tsx: onDelete 시그니처 () => void로 변경, window.confirm 제거 (부모에서 AlertDialog 처리)
+- provider-form.tsx: 테스트 결과 UI 개선 (border + 아이콘 크기 + models_count 표시)
+- model-add-dialog.tsx: bulkCreate 시 새 필드 전달 (max_output_tokens, supports_*)
+- ko.json: model 네임스페이스에 i18n 키 16개 추가
+- 검증: pnpm build PASS + pnpm lint PASS
+
 ## 실패 교훈
 - S1 삭제 분석에서 streaming.py 필터를 "삭제 가능"으로 판단했으나 S2 심층 조사에서 "유지 필요"로 수정됨. 표면적 분석(미들웨어 구조만 확인)보다 실제 소스코드(PatchToolCallsMiddleware가 before_agent만 구현)를 확인해야 정확한 판단 가능. 삭제 분석 시 방어 코드의 필요성은 실행 경로까지 추적할 것.

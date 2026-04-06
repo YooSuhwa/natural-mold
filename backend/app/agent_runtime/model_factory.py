@@ -17,6 +17,8 @@ PROVIDER_MAP: dict[str, type[BaseChatModel]] = {
     "anthropic": ChatAnthropic,
     "google": ChatGoogleGenerativeAI,
     "custom": ChatOpenAI,
+    "openrouter": ChatOpenAI,
+    "openai_compatible": ChatOpenAI,
 }
 
 PROVIDER_API_KEY_MAP = {

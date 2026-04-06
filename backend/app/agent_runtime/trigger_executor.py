@@ -8,6 +8,7 @@ from app.agent_runtime.executor import execute_agent_invoke
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
 from app.services import chat_service
+from app.services.encryption import decrypt_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -46,13 +47,24 @@ async def execute_trigger(trigger_id: str) -> None:
         # Build messages history
         messages_history = [{"role": "user", "content": trigger.input_message}]
 
+        # Resolve API key: prefer llm_provider, fallback to model-level key
+        lp = agent.model.llm_provider
+        api_key = (
+            decrypt_api_key(lp.api_key_encrypted)
+            if lp and lp.api_key_encrypted
+            else decrypt_api_key(agent.model.api_key_encrypted)
+            if agent.model.api_key_encrypted
+            else None
+        )
+        base_url = lp.base_url if lp and lp.base_url else agent.model.base_url
+
         # Execute agent (non-streaming invoke)
         try:
             await execute_agent_invoke(
                 provider=agent.model.provider,
                 model_name=agent.model.model_name,
-                api_key=agent.model.api_key_encrypted,
-                base_url=agent.model.base_url,
+                api_key=api_key,
+                base_url=base_url,
                 system_prompt=effective_prompt,
                 tools_config=tools_config,
                 messages_history=messages_history,

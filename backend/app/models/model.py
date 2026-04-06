@@ -4,8 +4,9 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, Numeric, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -15,14 +16,22 @@ class Model(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
-    model_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(500))
     api_key_encrypted: Mapped[str | None] = mapped_column(Text)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     cost_per_input_token: Mapped[Decimal | None] = mapped_column(Numeric(12, 8))
     cost_per_output_token: Mapped[Decimal | None] = mapped_column(Numeric(12, 8))
+    provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("llm_providers.id"), nullable=True
+    )
+    context_window: Mapped[int | None] = mapped_column(Integer)
+    input_modalities: Mapped[list[str] | None] = mapped_column(JSON)
+    output_modalities: Mapped[list[str] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,
     )
+
+    llm_provider = relationship("LLMProvider", back_populates="models", lazy="select")

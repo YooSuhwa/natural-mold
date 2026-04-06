@@ -16,7 +16,6 @@ import {
 import { toast } from 'sonner'
 import { useTranslations, useFormatter } from 'next-intl'
 import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents'
-import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
@@ -32,13 +31,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select'
+import { ModelSelect } from '@/components/model/model-select'
 import {
   AlertDialog,
   AlertDialogTrigger,
@@ -61,7 +54,6 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const tc = useTranslations('common')
   const format = useFormatter()
   const { data: agent, isLoading: agentLoading } = useAgent(agentId)
-  const { data: models } = useModels()
   const { data: tools } = useTools()
   const { data: skills } = useSkills()
   const { data: middlewares } = useMiddlewares()
@@ -215,27 +207,11 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         {/* Model */}
         <div className="space-y-2">
           <label className="text-sm font-medium">{t('model')}</label>
-          {models ? (
-            <Select
-              value={modelId}
-              onValueChange={(val) => {
-                if (val) setModelId(val)
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('modelPlaceholder')} />
-              </SelectTrigger>
-              <SelectContent>
-                {models.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    {model.display_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Skeleton className="h-8 w-full" />
-          )}
+          <ModelSelect
+            value={modelId}
+            onValueChange={(val) => setModelId(val)}
+            className="rounded-lg border"
+          />
         </div>
 
         {/* Model Parameters */}
