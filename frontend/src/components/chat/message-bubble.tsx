@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { BotIcon, UserIcon, CopyIcon, CheckIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { cn } from '@/lib/utils'
 import type { Message } from '@/lib/types'
 import { ToolCallDisplay } from '@/components/chat/tool-call-display'
 import { MarkdownContent } from '@/components/chat/markdown-content'
@@ -90,9 +91,16 @@ interface MessageBubbleProps {
   tokenInfo?: { tokens: number; cost: number } | null
   /** Role of the previous message — used to determine spacing between messages */
   previousRole?: 'user' | 'assistant' | 'tool' | null
+  /** Map of tool_call_id → raw tool result content (for integrating results into ToolCallDisplay) */
+  toolResultMap?: Map<string, string>
 }
 
-export function MessageBubble({ message, tokenInfo, previousRole }: MessageBubbleProps) {
+export function MessageBubble({
+  message,
+  tokenInfo,
+  previousRole,
+  toolResultMap,
+}: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const t = useTranslations('chat.message')
 
@@ -117,6 +125,7 @@ export function MessageBubble({ message, tokenInfo, previousRole }: MessageBubbl
     }
   }
 
+  // Tool messages that weren't absorbed into a ToolCallDisplay (fallback)
   if (message.role === 'tool') {
     const parsedContent = parseToolContent(message.content)
     return (
@@ -144,19 +153,22 @@ export function MessageBubble({ message, tokenInfo, previousRole }: MessageBubbl
         ) : (
           <div className="w-8 shrink-0" />
         ))}
-      <div className="max-w-[80%] space-y-2">
+      <div className={cn('space-y-2', isUser ? 'max-w-[80%]' : 'flex-1 min-w-0')}>
         {message.tool_calls && message.tool_calls.length > 0 && (
-          <div className="space-y-1">
-            {message.tool_calls.map((tc, i) => (
-              <ToolCallDisplay key={i} toolCall={tc} status="completed" />
-            ))}
+          <div className="space-y-1.5">
+            {message.tool_calls.map((tc, i) => {
+              const rawResult = tc.id && toolResultMap?.get(tc.id)
+              const result = rawResult ? parseToolContent(rawResult) : undefined
+              return <ToolCallDisplay key={i} toolCall={tc} status="completed" result={result} />
+            })}
           </div>
         )}
         {message.content && (
           <div
-            className={`relative rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-              isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
-            }`}
+            className={cn(
+              'relative text-sm leading-relaxed',
+              isUser ? 'rounded-2xl bg-primary text-primary-foreground px-4 py-2.5' : 'py-1',
+            )}
           >
             {isUser ? message.content : <MarkdownContent content={message.content} />}
 

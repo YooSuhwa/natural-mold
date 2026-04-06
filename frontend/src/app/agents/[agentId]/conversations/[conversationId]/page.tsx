@@ -202,13 +202,40 @@ export default function ChatPage({
                   ))}
                 </div>
               ) : hasMessages ? (
-                messages.map((msg, idx) => (
-                  <MessageBubble
-                    key={msg.id}
-                    message={msg}
-                    previousRole={idx > 0 ? messages[idx - 1].role : null}
-                  />
-                ))
+                (() => {
+                  // Build a map of tool_call_id → parsed tool result content
+                  const toolResultMap = new Map<string, string>()
+                  for (const msg of messages) {
+                    if (msg.role === 'tool' && msg.tool_call_id) {
+                      toolResultMap.set(msg.tool_call_id, msg.content)
+                    }
+                  }
+                  // Track which tool messages are absorbed into ToolCallDisplay
+                  const absorbedToolMsgIds = new Set<string>()
+                  for (const msg of messages) {
+                    if (msg.role === 'assistant' && msg.tool_calls) {
+                      for (const tc of msg.tool_calls) {
+                        if (tc.id && toolResultMap.has(tc.id)) {
+                          // Find the tool message and mark it absorbed
+                          const toolMsg = messages.find(
+                            (m) => m.role === 'tool' && m.tool_call_id === tc.id,
+                          )
+                          if (toolMsg) absorbedToolMsgIds.add(toolMsg.id)
+                        }
+                      }
+                    }
+                  }
+                  // Filter out absorbed tool messages for previousRole calculation
+                  const visibleMessages = messages.filter((msg) => !absorbedToolMsgIds.has(msg.id))
+                  return visibleMessages.map((msg, idx) => (
+                    <MessageBubble
+                      key={msg.id}
+                      message={msg}
+                      previousRole={idx > 0 ? visibleMessages[idx - 1].role : null}
+                      toolResultMap={toolResultMap}
+                    />
+                  ))
+                })()
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
