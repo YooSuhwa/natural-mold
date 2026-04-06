@@ -77,18 +77,13 @@ async def _seed_full_setup(
 
 @pytest.mark.asyncio
 async def test_execute_trigger_success():
-    """Successful trigger creates conversation, saves messages, updates state."""
+    """Successful trigger creates conversation, updates state."""
     trigger_id, _ = await _seed_full_setup()
-
-    async def mock_stream(*args, **kwargs):
-        yield 'event: content_delta\ndata: {"delta": "뉴스 "}\n\n'
-        yield 'event: content_delta\ndata: {"delta": "결과입니다"}\n\n'
-        yield 'event: message_end\ndata: {"content": "뉴스 결과입니다", "usage": {}}\n\n'
 
     with (
         patch(
-            "app.agent_runtime.trigger_executor.execute_agent_stream",
-            side_effect=mock_stream,
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="뉴스 결과입니다",
         ),
         patch(
             "app.agent_runtime.trigger_executor.async_session",
@@ -184,15 +179,10 @@ async def test_execute_trigger_execution_error():
     """Agent execution failure should still save error message and update run count."""
     trigger_id, _ = await _seed_full_setup()
 
-    async def mock_stream(*args, **kwargs):
-        raise RuntimeError("LLM call failed")
-        # Make it an async generator that raises
-        yield  # pragma: no cover
-
     with (
         patch(
-            "app.agent_runtime.trigger_executor.execute_agent_stream",
-            side_effect=mock_stream,
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            side_effect=RuntimeError("LLM call failed"),
         ),
         patch(
             "app.agent_runtime.trigger_executor.async_session",
@@ -215,13 +205,10 @@ async def test_execute_trigger_run_count_incremented():
     """Run count should increment on each successful execution."""
     trigger_id, _ = await _seed_full_setup()
 
-    async def mock_stream(*args, **kwargs):
-        yield 'event: message_end\ndata: {"content": "done", "usage": {}}\n\n'
-
     with (
         patch(
-            "app.agent_runtime.trigger_executor.execute_agent_stream",
-            side_effect=mock_stream,
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="done",
         ),
         patch(
             "app.agent_runtime.trigger_executor.async_session",
@@ -239,22 +226,20 @@ async def test_execute_trigger_run_count_incremented():
 
 
 @pytest.mark.asyncio
-async def test_execute_trigger_content_parsing():
-    """SSE delta chunks should be accumulated into full content."""
+async def test_execute_trigger_passes_messages():
+    """User message should be passed to execute_agent_invoke."""
     trigger_id, _ = await _seed_full_setup()
 
     captured_kwargs: dict = {}
 
-    async def mock_stream(*args, **kwargs):
+    async def mock_invoke(*args, **kwargs):
         captured_kwargs.update(kwargs)
-        yield 'event: content_delta\ndata: {"delta": "Part1 "}\n\n'
-        yield 'event: content_delta\ndata: {"delta": "Part2"}\n\n'
-        yield 'event: message_end\ndata: {"content": "Part1 Part2", "usage": {}}\n\n'
+        return "Part1 Part2"
 
     with (
         patch(
-            "app.agent_runtime.trigger_executor.execute_agent_stream",
-            side_effect=mock_stream,
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            side_effect=mock_invoke,
         ),
         patch(
             "app.agent_runtime.trigger_executor.async_session",
@@ -265,7 +250,6 @@ async def test_execute_trigger_content_parsing():
 
         await execute_trigger(str(trigger_id))
 
-    # Verify the user message was passed to the agent stream
     assert captured_kwargs["messages_history"] == [{"role": "user", "content": "뉴스 검색해줘"}]
 
 
@@ -274,13 +258,10 @@ async def test_execute_trigger_creates_conversation():
     """A new conversation should be created for the trigger run."""
     trigger_id, agent_id = await _seed_full_setup()
 
-    async def mock_stream(*args, **kwargs):
-        yield 'event: message_end\ndata: {"content": "ok", "usage": {}}\n\n'
-
     with (
         patch(
-            "app.agent_runtime.trigger_executor.execute_agent_stream",
-            side_effect=mock_stream,
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="ok",
         ),
         patch(
             "app.agent_runtime.trigger_executor.async_session",
@@ -306,14 +287,14 @@ async def test_execute_trigger_with_tools_config():
 
     captured_kwargs: dict = {}
 
-    async def mock_stream(*args, **kwargs):
+    async def mock_invoke(*args, **kwargs):
         captured_kwargs.update(kwargs)
-        yield 'event: message_end\ndata: {"content": "ok", "usage": {}}\n\n'
+        return "ok"
 
     with (
         patch(
-            "app.agent_runtime.trigger_executor.execute_agent_stream",
-            side_effect=mock_stream,
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            side_effect=mock_invoke,
         ),
         patch(
             "app.agent_runtime.trigger_executor.async_session",
@@ -338,14 +319,14 @@ async def test_execute_trigger_passes_user_message():
 
     captured_kwargs: dict = {}
 
-    async def mock_stream(*args, **kwargs):
+    async def mock_invoke(*args, **kwargs):
         captured_kwargs.update(kwargs)
-        yield 'event: message_end\ndata: {"content": "ok", "usage": {}}\n\n'
+        return "ok"
 
     with (
         patch(
-            "app.agent_runtime.trigger_executor.execute_agent_stream",
-            side_effect=mock_stream,
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            side_effect=mock_invoke,
         ),
         patch(
             "app.agent_runtime.trigger_executor.async_session",

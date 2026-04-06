@@ -13,6 +13,9 @@ def format_sse(event: str, data: dict[str, Any]) -> str:
 def _is_tool_selector_json(text: str) -> bool:
     """Check if text is LLMToolSelectorMiddleware output like {"tools":[...]}.
 
+    ADR-004: PatchToolCallsMiddleware는 before_agent() 훅만 구현.
+    스트림 이벤트를 필터링하지 않으므로 이 필터가 여전히 필요.
+
     Strict: only matches when "tools" is the sole key to avoid
     false positives on legitimate agent JSON output.
     """
@@ -38,7 +41,8 @@ async def stream_agent_response(
 
     full_content = ""
     usage_data: dict[str, int] = {}
-    # Buffer to detect and strip middleware JSON like {"tools":[...]}
+    # ADR-004: PatchToolCallsMiddleware가 스트림 필터링을 하지 않으므로
+    # character-by-character 버퍼링으로 미들웨어 JSON을 감지/제거.
     _buf = ""
     _brace_depth = 0
 

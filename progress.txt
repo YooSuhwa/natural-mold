@@ -240,5 +240,109 @@
 - 신규 코드: PASS (executor.py skills/memory 파라미터, FilesystemBackend, conversations.py/trigger_executor.py agent_skills/agent_id 전달)
 - 결론: M3 regression 없음, 게이트 통과
 
+## M4 삭제 분석 결과 (2026-04-06) — Bezos
+
+### 핵심 발견
+- creation_agent.py: raw model.ainvoke() 사용. 단일 함수(run_creation_conversation), 서비스 레이어(agent_creation_service)에서만 호출. 시그니처/반환 형태 유지하면서 내부만 deep agent로 교체 가능.
+- trigger_executor.py: execute_agent_stream() SSE 소비 → build_agent() + invoke() 직접 호출로 교체. SSE 파싱 11줄 제거. chat_service 헬퍼 5개는 전부 유지.
+- streaming.py 미들웨어 필터: 삭제 가능. LLMToolSelectorMiddleware는 내부적으로 structured output 소비, 스트림에 노출 안 됨. deepagents PatchToolCallsMiddleware는 다른 문제(dangling tool call) 해결. 필터는 실질적으로 트리거되지 않는 방어 코드.
+- middleware_registry.py PatchedLLMToolSelectorMiddleware: 유지 필요. deepagents가 const 정규화를 내부 처리하지 않음. langchain LLMToolSelectorMiddleware는 string 기대. GPT-4o + llm_tool_selector 조합 시 패치 없으면 깨짐.
+- 시드 데이터: M1-M3 이후 불일치 없음. Template.recommended_tools 타입 힌트만 경미한 이슈 (dict → list).
+- Dead code: TokenTrackingCallback만 미사용 (token_tracker.py). 나머지 코드베이스 깨끗.
+
+### 테스트 영향 요약
+- test_creation_agent.py: 10건 재작성 (mock 대상 변경)
+- test_agent_creation_extended.py: 14건 patch 경로 수정
+- test_trigger_executor.py: 7건 재작성 (mock 대상 변경), 4건 유지
+- test_streaming.py: char-by-char 관련 assertion 제거
+
+## M4-S2 아키텍처 설계 결과 (2026-04-06) — Pichai
+
+### S1 분석 결과 수정
+- **streaming.py 필터**: S1에서 "삭제 가능"으로 판단했으나, deepagents 소스 조사 결과 **유지 필요**로 수정.
+  PatchToolCallsMiddleware는 `before_agent()` 훅만 구현 (dangling tool call 패치). 스트림 이벤트 필터링 없음.
+  → LLMToolSelectorMiddleware의 `{"tools":[...]}` JSON이 스트림에 그대로 노출됨.
+
+### 3가지 설계 결정
+
+#### 1. creation_agent → create_deep_agent
+- 전환하되 최소 변경: `build_agent(tools=[])` + `agent.ainvoke()`
+- checkpointer 미사용 (DB JSON 히스토리 유지)
+- JSON 파싱 로직 유지 (response_format은 프론트엔드 변경 필요 → M4 스코프 초과)
+- 변경 파일: creation_agent.py만 (서비스 레이어 변경 없음)
+
+#### 2. trigger_executor → direct invoke
+- `_prepare_agent()` 추출 + `execute_agent_invoke()` 추가
+- SSE 인코딩/디코딩 왕복 제거
+- 반환: `str` (최종 content)
+- 변경 파일: executor.py (리팩터), trigger_executor.py (단순화)
+
+#### 3. streaming/middleware 정리
+- **둘 다 유지** (S1 분석과 다름)
+- streaming.py: PatchToolCallsMiddleware가 스트림 미필터링 → JSON 필터 필요
+- PatchedLLMToolSelectorMiddleware: GPT-4o {"const"} 이슈 미수정 → 패치 필요
+- 유일한 변경: 유지 사유 주석 추가
+
+### 산출물
+- docs/design-docs/adr-004-m4-cleanup.md 작성 완료
+- docs/ARCHITECTURE.md M4 섹션 추가 완료
+
+## Gotchas (M4)
+- S1 삭제 분석과 S2 심층 조사가 streaming.py 필터에 대해 상반된 결론 도출. 심층 조사(실제 소스코드 확인)가 정확. 표면적 분석만으로 삭제 판단하지 말 것.
+- create_deep_agent(tools=[])는 `tools or []` 내부 처리로 정상 동작. 빈 리스트 걱정 불필요.
+- CompiledStateGraph는 invoke/ainvoke/stream/astream 모두 지원 (Runnable 인터페이스).
+
+## M4-S3 완료 (2026-04-06) — Jensen
+- executor.py: _prepare_agent() 추출 (도구/미들웨어/백엔드/스킬/메모리/체크포인터 빌드 공용화)
+- executor.py: execute_agent_invoke() 추가 (ainvoke → 마지막 메시지 content 반환)
+- executor.py: execute_agent_stream()을 _prepare_agent() + stream_agent_response()로 리팩터
+- trigger_executor.py: execute_agent_stream SSE 파싱 → execute_agent_invoke 한 줄로 교체
+- trigger_executor.py: json import 제거, full_content 변수 제거 (checkpointer 자동 저장)
+- test_trigger_executor.py: mock_stream async generator → return_value/side_effect 교체
+- 결과: ruff 통과, 24 passed (trigger 10 + executor 14)
+
+## M4-S4 완료 (2026-04-06) — Jensen
+- creation_agent.py: model.ainvoke() → build_agent(tools=[]) + agent.ainvoke() 전환
+- creation_agent.py: system 메시지를 build_agent system_prompt로 분리 (messages에서 제외)
+- test_creation_agent.py: mock 대상 create_chat_model → build_agent, ainvoke 반환 형태 변경
+- test_creation_agent.py: system_prompt 검증은 mock_build.call_args.kwargs["system_prompt"]
+- test_agent_creation_extended.py: 변경 없음 (서비스 레벨 mock으로 영향 없음)
+- 결���: ruff 통과, 28 passed (creation 10 + extended 18)
+
+## M4-S5 완료 (2026-04-06) ��� Jensen
+- streaming.py: _is_tool_selector_json() + 버퍼링에 ADR-004 유지 사유 주석 추가
+- middleware_registry.py: PatchedLLMToolSelectorMiddleware에 ADR-004 유지 사유 주석 추가
+- 코드 로직 변경 없음
+- 결과: ruff 통과, 11 passed
+
+## M4-S6 완료 (2026-04-06) — Jensen
+- token_tracker.py 삭제 (프로덕션 코드 참조 0건)
+- test_token_tracker.py 삭제
+- models/template.py: recommended_tools 타입 힌트 dict → list
+- 결과: ruff 통과, 302 passed (M3 308 - 삭제된 테스트 6건 = 302)
+
+## Gotchas (M4 구현)
+- build_agent(model, tools=[], system_prompt=...) 호출 시 system_prompt는 keyword arg. 테스트에서 call_args[0][2]로 접근하면 IndexError. call_args.kwargs["system_prompt"] 사용.
+- trigger_executor에서 full_content 변수가 ruff F841 (unused) 발생. checkpointer 자동 저장 덕에 로컬 변수 불필요.
+- replace_all=true가 동일 문자열이 아닌 다른 줄에 있는 유사 패턴을 놓칠 수 있음. 수동 확인 필요.
+
+## M4-S7 통합 검증 결과 (2026-04-06) — Bezos
+- ruff check: 전체 통과
+- pytest: 302 passed, 0 failed (M3 308 - 삭제된 테스트 6건 = 302)
+- S1 삭제 체크리스트 18/18 PASS (S2 수정사항 반영):
+  - token_tracker.py 삭제 완료 (파일+클래스 모두 grep 0건)
+  - streaming.py 필터 유지 (S2 결정 준수, ADR-004 주석 2곳)
+  - middleware_registry.py 패치 유지 (ADR-004 주석 1곳)
+  - trigger_executor: execute_agent_stream→execute_agent_invoke, SSE 파싱 제거, json import 제거
+  - creation_agent: model.ainvoke()→build_agent(tools=[]), 테스트 mock 변경
+  - template.py 타입 힌트 수정 (dict→list)
+- M1-M3 제거 항목 regression 0건:
+  - create_mcp_tool/_build_args_schema/call_mcp_tool/_extract_text: 0건
+  - skill_tool_factory/skill_executor/create_skill_tools/execute_skill_script: 0건
+  - create_react_agent: 0건
+  - save_message/list_messages 3건은 false positive (list_messages_from_checkpointer + 라우터 함수명)
+- 신규 코드: _prepare_agent(), execute_agent_invoke() (executor.py), build_agent(tools=[]) (creation_agent.py) 확인
+- 결론: M4 regression 없음, 게이트 통과
+
 ## 실패 교훈
-(아직 없음)
+- S1 삭제 분석에서 streaming.py 필터를 "삭제 가능"으로 판단했으나 S2 심층 조사에서 "유지 필요"로 수정됨. 표면적 분석(미들웨어 구조만 확인)보다 실제 소스코드(PatchToolCallsMiddleware가 before_agent만 구현)를 확인해야 정확한 판단 가능. 삭제 분석 시 방어 코드의 필요성은 실행 경로까지 추적할 것.

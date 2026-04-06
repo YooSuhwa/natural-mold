@@ -17,7 +17,7 @@ class Template(Base):
     description: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str] = mapped_column(String(50), nullable=False)
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    recommended_tools: Mapped[dict | None] = mapped_column(JSON)
+    recommended_tools: Mapped[list | None] = mapped_column(JSON)
     recommended_model_id: Mapped[uuid.UUID | None] = mapped_column()
     usage_example: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(

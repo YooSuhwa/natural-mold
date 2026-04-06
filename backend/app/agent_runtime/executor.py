@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import shlex
 import sys
 from collections.abc import AsyncGenerator
@@ -32,8 +33,11 @@ logger = logging.getLogger(__name__)
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
 
-def _create_skill_execute_tool(output_dir: Path) -> BaseTool:
+def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseTool:
     """스킬 디렉토리에서 Python 스크립트를 실행하는 도구를 생성."""
+
+    api_file_prefix = f"/api/conversations/{thread_id}/files/" if thread_id else ""
+    _path_re = re.compile(re.escape(str(output_dir)) + r"/([^\s\n]+)") if api_file_prefix else None
 
     async def execute_in_skill(skill_directory: str, command: str) -> str:
         """스킬 디렉토리에서 Python 스크립트를 실행합니다.
@@ -79,6 +83,10 @@ def _create_skill_execute_tool(output_dir: Path) -> BaseTool:
         if proc.returncode != 0:
             err = stderr.decode("utf-8", errors="replace")
             result += f"\nSTDERR: {err}"
+
+        # IMAGE: 절대경로 → API URL 자동 변환
+        if _path_re and str(output_dir) in result:
+            result = _path_re.sub(lambda m: api_file_prefix + m.group(1), result)
 
         # 출력 파일 수집
         def _collect_outputs() -> list[str]:
@@ -142,12 +150,6 @@ def _auth_config_to_headers(auth_config: dict | None) -> dict[str, str]:
         return {}
     if "headers" in auth_config:
         return auth_config["headers"]
-    token = auth_config.get("jwt_token") or auth_config.get("api_key")
-    if token:
-        header_name = auth_config.get("header_name", "Authorization")
-        if auth_config.get("jwt_token"):
-            return {"Authorization": f"Bearer {token}"}
-        return {header_name: token}
     return {}
 
 
@@ -158,9 +160,38 @@ def _url_to_server_key(url: str) -> str:
     return key.replace(".", "_").replace(":", "_").replace("/", "_")
 
 
+class _AuthInjectorInterceptor:
+    """MCP 도구 호출 시 auth_config 값을 arguments에 자동 주입.
+
+    langchain-mcp-adapters의 ToolCallInterceptor 프로토콜을 구현.
+    MCP 서버로 JSON-RPC tools/call 전송 직전에 request.args를 수정한다.
+    """
+
+    def __init__(self, tool_auth: dict[str, dict]) -> None:
+        self.tool_auth = tool_auth  # tool_name → auth_config
+
+    async def __call__(self, request: Any, handler: Any) -> Any:
+        auth = self.tool_auth.get(request.name)
+        if auth:
+            merged = {**auth, **request.args}
+            request = request.override(args=merged)
+        return await handler(request)
+
+
+def _hide_auth_params_from_schema(tool: BaseTool, auth_keys: set[str]) -> None:
+    """도구의 dict 스키마에서 auth 파라미터를 제거하여 LLM에게 숨김."""
+    schema = tool.args_schema
+    if not isinstance(schema, dict) or not auth_keys:
+        return
+    props = schema.get("properties", {})
+    required = schema.get("required", [])
+    for key in auth_keys:
+        props.pop(key, None)
+    schema["required"] = [r for r in required if r not in auth_keys]
+
+
 def _create_mcp_error_stub(name: str) -> BaseTool:
     """MCP 서버 연결 실패 시 에러를 반환하는 stub 도구."""
-    from langchain_core.tools import StructuredTool
 
     async def _call(**kwargs: Any) -> str:
         return f"MCP tool '{name}' is temporarily unavailable. Please try again later."
@@ -182,6 +213,7 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     # 1. MCP 서버 URL별로 그룹화 — 서버 키 기준으로 도구 필터링
     servers: dict[str, dict] = {}
     tool_filter: dict[str, set[str]] = {}  # server_key → {tool_names}
+    tool_auth: dict[str, dict] = {}  # tool_name → auth_config
 
     for tc in mcp_configs:
         url = tc["mcp_server_url"]
@@ -199,16 +231,32 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
 
         tool_filter[key].add(tool_name)
 
+        auth = tc.get("auth_config")
+        if auth:
+            tool_auth[tool_name] = auth
+
+    # auth 파라미터 키 수집 (스키마에서 숨길 대상)
+    auth_param_keys: set[str] = set()
+    for auth in tool_auth.values():
+        auth_param_keys.update(auth.keys())
+
+    # interceptor: MCP tools/call 직전에 auth 값을 arguments에 주입
+    interceptors = [_AuthInjectorInterceptor(tool_auth)] if tool_auth else None
+
     # 2. 서버별로 도구 로딩 + 필터링 — (tool, origin) 쌍으로 추적
     collected: list[tuple[BaseTool, str]] = []
 
     for key, config in servers.items():
         try:
-            client = MultiServerMCPClient({key: config})
+            client = MultiServerMCPClient(
+                {key: config},
+                tool_interceptors=interceptors,
+            )
             server_tools = await client.get_tools()
             needed = tool_filter[key]
             for t in server_tools:
                 if t.name in needed:
+                    _hide_auth_params_from_schema(t, auth_param_keys)
                     collected.append((t, key))
         except Exception:
             logger.warning("MCP tool loading failed for %s", key, exc_info=True)
@@ -228,7 +276,7 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     return [tool for tool, _ in collected]
 
 
-async def execute_agent_stream(
+async def _prepare_agent(
     provider: str,
     model_name: str,
     api_key: str | None,
@@ -241,7 +289,8 @@ async def execute_agent_stream(
     middleware_configs: list[dict[str, Any]] | None = None,
     agent_skills: list[dict] | None = None,
     agent_id: str | None = None,
-) -> AsyncGenerator[str, None]:
+) -> tuple[Any, list, dict]:
+    """에이전트 빌드 + 설정. stream/invoke 공용."""
     model = create_chat_model(provider, model_name, api_key, base_url, **(model_params or {}))
 
     # 1. 도구 생성 — builtin/prebuilt/custom은 기존 방식 유지
@@ -287,7 +336,7 @@ async def execute_agent_stream(
         skills_sources = ["/skills/"]
         # 스킬 스크립트 실행 도구 추가 — 출력은 대화 세션 폴더에 저장 (절대경로)
         conv_output_dir = (_DATA_DIR / "conversations" / thread_id).resolve()
-        langchain_tools.append(_create_skill_execute_tool(conv_output_dir))
+        langchain_tools.append(_create_skill_execute_tool(conv_output_dir, thread_id))
         system_prompt += (
             "\n\n## 스킬 사용 규칙\n"
             "스킬을 사용할 때는 반드시 read_file 도구로 SKILL.md를 먼저 읽고 "
@@ -319,9 +368,78 @@ async def execute_agent_stream(
         name=f"agent_{thread_id[:8]}",
     )
 
-    # 6. 스트리밍
     lc_messages = convert_to_langchain_messages(messages_history)
     config = {"configurable": {"thread_id": thread_id}}
 
+    return agent, lc_messages, config
+
+
+async def execute_agent_stream(
+    provider: str,
+    model_name: str,
+    api_key: str | None,
+    base_url: str | None,
+    system_prompt: str,
+    tools_config: list[dict[str, Any]],
+    messages_history: list[dict[str, str]],
+    thread_id: str,
+    model_params: dict[str, Any] | None = None,
+    middleware_configs: list[dict[str, Any]] | None = None,
+    agent_skills: list[dict] | None = None,
+    agent_id: str | None = None,
+) -> AsyncGenerator[str, None]:
+    """스트리밍 실행 (채팅용)."""
+    agent, lc_messages, config = await _prepare_agent(
+        provider,
+        model_name,
+        api_key,
+        base_url,
+        system_prompt,
+        tools_config,
+        messages_history,
+        thread_id,
+        model_params,
+        middleware_configs,
+        agent_skills,
+        agent_id,
+    )
+
     async for chunk in stream_agent_response(agent, lc_messages, config):
         yield chunk
+
+
+async def execute_agent_invoke(
+    provider: str,
+    model_name: str,
+    api_key: str | None,
+    base_url: str | None,
+    system_prompt: str,
+    tools_config: list[dict[str, Any]],
+    messages_history: list[dict[str, str]],
+    thread_id: str,
+    model_params: dict[str, Any] | None = None,
+    middleware_configs: list[dict[str, Any]] | None = None,
+    agent_skills: list[dict] | None = None,
+    agent_id: str | None = None,
+) -> str:
+    """비스트리밍 실행 (트리거용). 최종 응답 텍스트만 반환."""
+    agent, lc_messages, config = await _prepare_agent(
+        provider,
+        model_name,
+        api_key,
+        base_url,
+        system_prompt,
+        tools_config,
+        messages_history,
+        thread_id,
+        model_params,
+        middleware_configs,
+        agent_skills,
+        agent_id,
+    )
+
+    result = await agent.ainvoke({"messages": lc_messages}, config=config)
+    messages = result.get("messages", [])
+    if messages and hasattr(messages[-1], "content"):
+        return messages[-1].content
+    return ""

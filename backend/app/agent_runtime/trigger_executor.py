@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from datetime import UTC, datetime
 
-from app.agent_runtime.executor import execute_agent_stream
+from app.agent_runtime.executor import execute_agent_invoke
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
 from app.services import chat_service
@@ -47,10 +46,9 @@ async def execute_trigger(trigger_id: str) -> None:
         # Build messages history
         messages_history = [{"role": "user", "content": trigger.input_message}]
 
-        # Execute agent (consume full stream, non-streaming)
-        full_content = ""
+        # Execute agent (non-streaming invoke)
         try:
-            async for chunk in execute_agent_stream(
+            await execute_agent_invoke(
                 provider=agent.model.provider,
                 model_name=agent.model.model_name,
                 api_key=agent.model.api_key_encrypted,
@@ -63,21 +61,9 @@ async def execute_trigger(trigger_id: str) -> None:
                 middleware_configs=agent.middleware_configs,
                 agent_skills=agent_skills or None,
                 agent_id=str(agent.id),
-            ):
-                # Parse SSE events to extract content
-                for line in chunk.strip().split("\n"):
-                    if line.startswith("data: "):
-                        try:
-                            data = json.loads(line[6:])
-                            if "delta" in data:
-                                full_content += data["delta"]
-                            elif "content" in data and not full_content:
-                                full_content = data["content"]
-                        except json.JSONDecodeError:
-                            pass
+            )
         except Exception:
             logger.exception("Trigger %s: agent execution failed", trigger_id)
-            full_content = "트리거 실행 중 오류가 발생했습니다."
 
         # Update trigger state
         trigger.last_run_at = datetime.now(UTC).replace(tzinfo=None)
