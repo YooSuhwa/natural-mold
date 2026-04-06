@@ -50,12 +50,7 @@ export function ChatInput({ onSend, disabled, placeholder, modelName }: ChatInpu
   const hasTokens = tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0
 
   return (
-    <div
-      className={cn(
-        'overflow-hidden rounded-2xl border border-input bg-background shadow-sm transition-colors',
-        'focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
-      )}
-    >
+    <div className={cn('overflow-hidden rounded-2xl border border-input bg-background shadow-sm')}>
       {/* Model & Token bar */}
       {(modelName || hasTokens) && (
         <div className="flex items-center gap-3 border-b border-input/50 px-3.5 py-1.5 text-xs text-muted-foreground">
