@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import { Loader2Icon, SearchIcon, CheckIcon, DownloadIcon, ArrowLeftIcon } from 'lucide-react'
+import { Loader2Icon, CheckIcon, DownloadIcon, ArrowLeftIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/shared/search-input'
 import {
   Dialog,
   DialogContent,
@@ -217,15 +218,11 @@ export function ModelAddDialog({ open, onOpenChange, providers }: ModelAddDialog
                 {selectedProvider?.name} — {t('selectModels')}
               </span>
             </div>
-            <div className="relative">
-              <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('searchModels')}
-                className="pl-9"
-              />
-            </div>
+            <SearchInput
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t('searchModels')}
+            />
             {discoverModels.isError && (
               <p className="text-sm text-destructive">{t('discoverError')}</p>
             )}

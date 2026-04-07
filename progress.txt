@@ -1,62 +1,48 @@
 ## Codebase Patterns
-- 프론트엔드: Next.js 16, React 19, Tailwind CSS v4, shadcn/ui, lucide-react
-- 상태관리: Jotai (채팅 스트리밍), TanStack Query (서버 데이터)
-- 채팅 SSE: 커스텀 프로토콜 (content_delta, tool_call_start, tool_call_result, message_end)
-- 채팅 컴포넌트 위치: frontend/src/components/chat/
-  - chat-input.tsx (82줄) — textarea + 전송 버튼
-  - message-bubble.tsx (106줄) — user/assistant/tool 메시지 렌더링
-  - streaming-message.tsx (72줄) — 실시간 스트리밍 표시
-  - tool-call-display.tsx (90줄) — 도구 호출 상태/결과 표시
-  - markdown-content.tsx (84줄) — react-markdown 렌더링
-  - conversation-list.tsx (251줄) — 대화 목록 사이드바
-- 채팅 페이지: frontend/src/app/agents/[agentId]/conversations/[conversationId]/page.tsx (200줄)
-- 채팅 스토어: frontend/src/lib/stores/chat-store.ts (streamingMessageAtom, streamingToolCallsAtom, isStreamingAtom)
-- 백엔드 SSE: backend/app/agent_runtime/streaming.py
-- UI 프레임워크: shadcn/ui + lucide-react 아이콘
-- 폰트: Geist / Geist Mono
-- 패키지 매니저: pnpm (frontend), uv (backend)
-
-## 발견된 문제점 (agent-browser 캡처 2026-04-06)
-- P0: 도구 결과가 raw Python dict로 표시됨 {'type': 'text', 'text': '...'} → text 필드만 추출해야 함
-- P0: \xa0\n 제어 문자가 도구 결과에 노출
-- P0: 이미지 크기 제한 없음 (전체 너비 차지)
-- P1: 토큰/비용 표시 없음 (MessageBubble에 tokenInfo UI 준비됨, 데이터 미연결)
-- P1: 입력 영역 빈약 (textarea + 전송 버튼만)
-- P1: 코드 블록 문법 강조 없음
-- P2: 어시스턴트 메시지에 봇 아이콘 없음
-- P2: 메시지 간 간격 불일치
-
-## 설치된 의존성 (2026-04-06)
-- react-syntax-highlighter + @types/react-syntax-highlighter
-- remark-gfm
-- remark-math + rehype-katex + katex
-
-## M1 완료 사항 (2026-04-06)
-- message-bubble.tsx: parseToolContent()로 Python dict/JSON text 필드 추출 + 제어문자 정규화 + MarkdownContent 렌더링
-- markdown-content.tsx: react-syntax-highlighter(oneDark) 코드 강조 + 복사 버튼, remark-gfm 테이블, remark-math+rehype-katex 수식, 이미지 max-w-md + Dialog 확대 + error/loading 상태
-- markdown-styles.css: 테이블 stripe/border, 코드 블록 헤더, 이미지 스타일, KaTeX 오버라이드
-- TypeScript regex 's' flag는 ES2018+ 타겟 필요 → [\s\S] 패턴으로 대체
-
-## M3 완료 사항 (2026-04-06)
-- message-bubble.tsx: previousRole prop 추가 → 같은 역할 mt-1.5, 역할 전환 mt-5 (tool→assistant도 같은 그룹)
-- message-bubble.tsx: 복사 버튼 → 호버 액션 바 (border + shadow + bg-background) 스타일 개선
-- page.tsx: max-w-3xl 중앙 정렬, 상/하단 gradient fade (sticky)
-- page.tsx: 빈 채팅 초기 화면 — BotIcon + 에이전트 이름/설명 + SparklesIcon + emptyState 텍스트
-
-## M2 완료 사항 (2026-04-06)
-- chat-input.tsx: 전면 리디자인 — 둥근 컨테이너(rounded-2xl), 모델명 바 + 토큰/비용 표시, 파일 첨부 버튼(UI만), 전송 버튼(rounded-full, 상태별 색상)
-- chat-store.ts: TokenUsage 인터페이스 + sessionTokenUsageAtom (누적) + lastMessageTokensAtom (직전 메시지)
-- streaming-message.tsx: fade-in + slide-in-from-bottom-2 등장 애니메이션, ThinkingDots pulse 개선 (1.4s duration), 커서 pulse 디자인 개선
-- tool-call-display.tsx: 상태별 border 색상 (calling=primary, completed=border), ChevronDown rotate 트랜지션, max-height 기반 expand/collapse 애니메이션, 더 둥근 카드(rounded-xl)
-- page.tsx: message_end에서 usage 파싱 → sessionTokenUsageAtom 누적 업데이트, ChatInput에 modelName prop 전달
-- Jotai atom setter는 함수형 업데이터 (prev) => next 지원 — primitive atom이면 자동 동작
+- Next.js 16 + React 19 + Tailwind CSS v4 + shadcn/ui (Base UI)
+- 상태: TanStack Query (서버) + Jotai (클라이언트)
+- i18n: next-intl (useTranslations, useFormatter)
+- 아이콘: lucide-react
+- 토스트: sonner
+- 테마: next-themes
+- 프론트엔드 경로: /Users/chester/dev/natural-mold/frontend/
+- 패키지 매니저: pnpm
+- 빌드: pnpm build, 린트: pnpm lint
 
 ## Gotchas
-- Next.js 16 사용 — frontend/node_modules/next/dist/docs/ 참조
-- Tailwind CSS v4 — @import 방식, CSS 변수 기반 테마
-- 채팅 SSE는 AsyncGenerator 패턴 (frontend/src/lib/sse/stream-chat.ts)
-- message_end 이벤트에 usage 필드 있음 (input_tokens, output_tokens 등)
-- SSEEvent 타입: frontend/src/lib/types/index.ts (260-274줄)
-- MessageBubble의 tokenInfo prop: { tokens: number; cost: number } | null
-- shadcn/ui Dialog 사용 가능 (이미지 확대용)
-- 마크다운 img 태그에 이미 lazy loading + URL 변환 로직 있음
+- Next.js 16은 기존과 API가 다를 수 있음 — frontend/node_modules/next/dist/docs/ 확인 필요
+- params, searchParams가 Promise로 변경됨 (use() 사용)
+- shadcn/ui는 @base-ui/react 기반 (headless)
+- Separator 컴포넌트: @/components/ui/separator
+- Slider, Checkbox 컴포넌트가 shadcn에 있는지 확인 필요 (없으면 설치)
+- 도구 페이지: 카드 onClick과 내부 버튼 onClick이 충돌 — stopPropagation 필수
+- i18n 메시지 파일 위치: frontend/messages/ 아래 ko.json, en.json 등
+
+## 실패 교훈
+- 브레드크럼에서 useTranslations() fallback 시 t(segment)를 직접 호출하면 MISSING_MESSAGE 에러 발생 → ROUTE_LABELS에 없으면 raw segment를 그대로 표시해야 함
+- CardFooter에 onClick stopPropagation 추가하면 카드 내부 모든 버튼 이벤트 버블링을 한 번에 차단 가능
+
+## 삭제 분석 결과 (bezos, 2026-04-07)
+- 미사용 의존성: @tanstack/react-query-devtools (삭제 권장)
+- 미사용 export: agentUsage (usage.ts), useSkill (use-skills.ts), useCreateModel (use-models.ts)
+- CRUD 보일러플레이트: PoC에서는 명시적 반복 유지 (premature abstraction 회피)
+
+## UX 디자인 스펙 (tim-cook, 2026-04-07)
+- 스펙 문서: docs/design-docs/ux-improvement-spec.md
+- 6개 항목: Coming Soon 패턴, 에이전트 카드 리디자인, 설정 탭 분리, 브레드크럼, 앱 설정 페이지, 도구 상세 Dialog
+- 오퍼시티 전략 2가지: Dim(opacity-50/70 = 미출시), Show/Hide(opacity-0/100 = 노이즈 줄임)
+- 트랜지션 표준: duration-200, ease-out
+- shadcn/ui 컴포넌트 네이밍 검증 완료 (TabsTrigger ✓, Dialog* ✓)
+- 설정 페이지 4탭 분리: basic/model/tools/triggers + sticky 저장바
+- 도구 상세: Sheet → Dialog 변경 (패턴 통일)
+
+## 완료된 구현 (zuckerberg, 2026-04-07)
+- S3: 도구/스킬/트리거 삭제 시 AlertDialog 확인 추가 (models 패턴 재사용), 도구 상세 Sheet→Dialog, 카드 내부 버튼 stopPropagation
+- S4: 에이전트 카드 리디자인 (도구 개수 배지, 설명 min-h, 호버 액션 버튼), Coming Soon 패턴 (chat-input, toolbar)
+- S5: 경로 기반 BreadcrumbNav (UUID→에이전트명 캐시 조회), 헤더 통합, 사이드바 테마 토글 분리/설정 링크/로그아웃 toast
+- i18n: common.comingSoon, nav.*, agent.card.noDescription, 삭제 확인 메시지 추가
+
+## 스킬 활용 가이드
+- 디자인 결정 → ui-ux-pro-max 스킬 호출
+- 코드 구조/성능 → vercel-react-best-practices 스킬 호출
+- 두 스킬 동시 호출 금지 (컨텍스트 오버로드)

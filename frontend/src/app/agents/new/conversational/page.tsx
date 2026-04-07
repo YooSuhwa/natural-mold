@@ -13,9 +13,21 @@ import {
   WrenchIcon,
   BookOpenIcon,
   XIcon,
+  ArrowLeftIcon,
+  RotateCcwIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { cn } from '@/lib/utils'
@@ -191,10 +203,12 @@ export default function ConversationalCreationPage({
   const { initialMessage } = use(searchParams)
   const router = useRouter()
   const t = useTranslations('agent.creation')
+  const tc = useTranslations('common')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [currentPhase, setCurrentPhase] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
   // Phase 1: Initial request
   const [initialInput, setInitialInput] = useState('')
@@ -379,6 +393,31 @@ export default function ConversationalCreationPage({
     handleSubmit(t('modificationRequest', { text }))
   }
 
+  async function handleReset() {
+    setSessionId(null)
+    setCurrentPhase(1)
+    setIsLoading(false)
+    setInitialInput('')
+    setQuestion('')
+    setContextText('')
+    setSuggestions(null)
+    setSelectedOptions(new Set())
+    setShowCustomInput(false)
+    setCustomInput('')
+    setRecommendedTools([])
+    setRecommendedSkills([])
+    setModificationInput('')
+    setDraftConfig(null)
+    setPhaseLogs([])
+    hasAutoSubmitted.current = false
+    try {
+      const session = await creationSessionApi.start()
+      setSessionId(session.id)
+    } catch {
+      setQuestion(t('error.sessionFailed'))
+    }
+  }
+
   // Phase 4: Confirm creation
   async function handleConfirm() {
     if (!sessionId || isConfirming) return
@@ -394,8 +433,30 @@ export default function ConversationalCreationPage({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b px-6 py-3">
-        <h1 className="text-lg font-semibold">{t('header')}</h1>
+      <div className="flex items-center justify-between border-b px-6 py-3">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t('cancelButton')}
+            onClick={() => {
+              if (currentPhase > 1) {
+                setShowCancelConfirm(true)
+              } else {
+                router.push('/agents/new')
+              }
+            }}
+          >
+            <ArrowLeftIcon className="size-4" />
+          </Button>
+          <h1 className="text-lg font-semibold">{t('header')}</h1>
+        </div>
+        {currentPhase > 1 && (
+          <Button variant="ghost" size="sm" onClick={handleReset}>
+            <RotateCcwIcon className="size-4" data-icon="inline-start" />
+            {t('resetButton')}
+          </Button>
+        )}
       </div>
 
       {/* Scrollable content */}
@@ -456,13 +517,14 @@ export default function ConversationalCreationPage({
             </div>
           )}
 
-          {/* Phase Timeline (show after Phase 1) */}
-          {currentPhase > 1 && <PhaseTimeline currentPhase={currentPhase} />}
+          {/* Phase Timeline */}
+          <PhaseTimeline currentPhase={currentPhase} />
 
           {/* Loading */}
           {isLoading && (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex flex-col items-center justify-center gap-3 py-12">
               <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">{t('loadingText')}</p>
             </div>
           )}
 
@@ -733,7 +795,21 @@ export default function ConversationalCreationPage({
         </div>
       </div>
 
-      {/* intentionally no bottom bar — submit buttons are inline with content */}
+      {/* Cancel Confirm */}
+      <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('cancelConfirm')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('cancelDescription')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => router.push('/agents/new')}>
+              {t('cancelButton')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

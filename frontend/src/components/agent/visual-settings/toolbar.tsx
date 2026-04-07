@@ -5,6 +5,8 @@ import { useTranslations } from 'next-intl'
 import { ArrowLeftIcon, MessageSquareIcon, Undo2Icon, Redo2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+import { ComingSoonButton } from '@/components/shared/coming-soon-button'
+
 interface ToolbarProps {
   agentId?: string
   agentName: string
@@ -42,16 +44,16 @@ export function Toolbar({ agentId, agentName, onSave, isSaving, mode = 'edit' }:
       </div>
 
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="icon-sm" disabled title={t('toolbar.hideChat')}>
+        <ComingSoonButton title={t('toolbar.hideChat')}>
           <MessageSquareIcon className="size-4" />
-        </Button>
+        </ComingSoonButton>
         <div className="mx-1 h-4 w-px bg-border" />
-        <Button variant="ghost" size="icon-sm" disabled title={t('toolbar.undo')}>
+        <ComingSoonButton title={t('toolbar.undo')}>
           <Undo2Icon className="size-4" />
-        </Button>
-        <Button variant="ghost" size="icon-sm" disabled title={t('toolbar.redo')}>
+        </ComingSoonButton>
+        <ComingSoonButton title={t('toolbar.redo')}>
           <Redo2Icon className="size-4" />
-        </Button>
+        </ComingSoonButton>
         <div className="mx-1 h-4 w-px bg-border" />
         <Button size="sm" onClick={onSave} disabled={isSaving}>
           {mode === 'create' ? tc('create') : tc('save')}

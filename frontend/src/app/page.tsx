@@ -17,7 +17,7 @@ import { useAgents } from '@/lib/hooks/use-agents'
 import { useUsageSummary } from '@/lib/hooks/use-usage'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/shared/search-input'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -150,15 +150,12 @@ export default function DashboardPage() {
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <h2 className="text-lg font-semibold tracking-tight">{t('myAgents')}</h2>
             <div className="ml-auto flex items-center gap-2">
-              <div className="relative">
-                <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder={t('searchPlaceholder')}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="h-9 w-48 pl-8 text-sm"
-                />
-              </div>
+              <SearchInput
+                placeholder={t('searchPlaceholder')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-9 w-48 text-sm"
+              />
 
               <Button
                 variant={showFavoritesOnly ? 'default' : 'outline'}
