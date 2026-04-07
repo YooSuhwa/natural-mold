@@ -8,7 +8,6 @@ import {
   PencilIcon,
   Loader2Icon,
   StarIcon,
-  SearchIcon,
   ServerIcon,
   InfoIcon,
   EyeIcon,
@@ -23,6 +22,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/shared/search-input'
 import {
   Dialog,
   DialogContent,
@@ -199,16 +199,13 @@ export default function ModelsPage() {
         {/* Models Tab */}
         <TabsContent value="models">
           <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1">
-                <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={modelSearch}
-                  onChange={(e) => setModelSearch(e.target.value)}
-                  placeholder={t('searchModels')}
-                  className="pl-9"
-                />
-              </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <SearchInput
+                containerClassName="flex-1 min-w-[200px]"
+                value={modelSearch}
+                onChange={(e) => setModelSearch(e.target.value)}
+                placeholder={t('searchModels')}
+              />
               <Select
                 value={providerFilter}
                 onValueChange={(val) => {
@@ -265,7 +262,7 @@ export default function ModelsPage() {
                           {getProviderIcon(model.provider)}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className="text-sm font-medium">{model.display_name}</span>
                             <Badge variant="outline">{model.provider}</Badge>
                             {model.context_window && (

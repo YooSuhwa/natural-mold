@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations, useFormatter } from 'next-intl'
-import { WrenchIcon, StarIcon, Settings2Icon, WorkflowIcon } from 'lucide-react'
+import { WrenchIcon, StarIcon, Settings2Icon, WorkflowIcon, CpuIcon } from 'lucide-react'
 import {
   Card,
   CardHeader,
@@ -40,47 +40,27 @@ export function AgentCard({ agent }: AgentCardProps) {
         ? t('status.error')
         : t('status.inactive')
 
+  const stopProp = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
   return (
     <Link
       href={`/agents/${agent.id}`}
       className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-xl"
     >
       <Card className="h-full transition-colors hover:border-primary/40">
-        <CardHeader>
+        <CardHeader className="pb-2">
           <div className="flex items-start justify-between">
-            <CardTitle className="group-hover:text-primary transition-colors">
+            <CardTitle className="truncate group-hover:text-primary transition-colors">
               {agent.name}
             </CardTitle>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"
                 onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  router.push(`/agents/${agent.id}/visual-settings`)
-                }}
-                className="rounded-md p-1 hover:bg-accent transition-colors"
-                aria-label={t('visualSettings')}
-              >
-                <WorkflowIcon className="size-4 text-muted-foreground hover:text-foreground transition-colors" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  router.push(`/agents/${agent.id}/settings`)
-                }}
-                className="rounded-md p-1 hover:bg-accent transition-colors"
-                aria-label={t('settings')}
-              >
-                <Settings2Icon className="size-4 text-muted-foreground hover:text-foreground transition-colors" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
+                  stopProp(e)
                   toggleFavorite(agent.id)
                 }}
                 className="rounded-md p-1 hover:bg-accent transition-colors"
@@ -100,28 +80,58 @@ export function AgentCard({ agent }: AgentCardProps) {
               </Badge>
             </div>
           </div>
-          {agent.description && (
-            <CardDescription className="line-clamp-2">{agent.description}</CardDescription>
-          )}
+          <CardDescription className="line-clamp-2 min-h-[2.5rem]">
+            {agent.description || t('noDescription')}
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-2 text-sm text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <span className="font-medium text-foreground">{t('modelLabel')}</span>
-              <span>{agent.model.display_name}</span>
-            </div>
+
+        <CardContent className="pt-0">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <CpuIcon className="size-3.5" />
+              {agent.model.display_name}
+            </span>
             {agent.tools.length > 0 && (
-              <div className="flex items-center gap-1.5">
-                <WrenchIcon className="size-3.5" />
-                <span>{agent.tools.map((t) => t.name).join(', ')}</span>
-              </div>
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-medium">
+                <WrenchIcon className="size-3" />
+                {agent.tools.length}
+              </span>
             )}
           </div>
         </CardContent>
-        <CardFooter className="text-xs text-muted-foreground">
-          {t('createdAt', {
-            date: format.dateTime(new Date(agent.created_at), { dateStyle: 'medium' }),
-          })}
+
+        <CardFooter>
+          <div className="flex w-full items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              {t('createdAt', {
+                date: format.dateTime(new Date(agent.created_at), { dateStyle: 'medium' }),
+              })}
+            </span>
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
+              <button
+                type="button"
+                onClick={(e) => {
+                  stopProp(e)
+                  router.push(`/agents/${agent.id}/visual-settings`)
+                }}
+                className="rounded-md p-1 hover:bg-accent transition-colors"
+                aria-label={t('visualSettings')}
+              >
+                <WorkflowIcon className="size-4 text-muted-foreground hover:text-foreground transition-colors" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  stopProp(e)
+                  router.push(`/agents/${agent.id}/settings`)
+                }}
+                className="rounded-md p-1 hover:bg-accent transition-colors"
+                aria-label={t('settings')}
+              >
+                <Settings2Icon className="size-4 text-muted-foreground hover:text-foreground transition-colors" />
+              </button>
+            </div>
+          </div>
         </CardFooter>
       </Card>
     </Link>

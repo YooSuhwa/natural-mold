@@ -4,10 +4,12 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import {
-  PlusIcon,
+  ChevronLeftIcon,
   MessageSquareIcon,
   MoreVerticalIcon,
   PencilIcon,
+  SquarePenIcon,
+  Settings2Icon,
   PinIcon,
   PinOffIcon,
   Trash2Icon,
@@ -29,16 +31,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogCancel,
-  AlertDialogAction,
-} from '@/components/ui/alert-dialog'
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -51,9 +44,11 @@ import type { Conversation } from '@/lib/types'
 
 interface ConversationListProps {
   agentId: string
+  agentName?: string
+  onClose?: () => void
 }
 
-export function ConversationList({ agentId }: ConversationListProps) {
+export function ConversationList({ agentId, agentName, onClose }: ConversationListProps) {
   const params = useParams<{ conversationId: string }>()
   const router = useRouter()
   const { data: conversations, isLoading } = useConversations(agentId)
@@ -166,16 +161,28 @@ export function ConversationList({ agentId }: ConversationListProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b p-3">
-        <h2 className="text-sm font-medium">{t('title')}</h2>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          onClick={handleNewConversation}
-          disabled={createConversation.isPending}
-        >
-          <PlusIcon className="size-3.5" />
-          <span className="sr-only">{t('newConversation')}</span>
-        </Button>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <h2 className="text-sm font-semibold truncate">{agentName ?? t('title')}</h2>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={handleNewConversation}
+            disabled={createConversation.isPending}
+            aria-label={t('newConversation')}
+          >
+            <SquarePenIcon className="size-3" />
+          </Button>
+          <Link href={`/agents/${agentId}/settings`}>
+            <Button variant="ghost" size="icon-xs" aria-label={t('editAgent')}>
+              <Settings2Icon className="size-3" />
+            </Button>
+          </Link>
+        </div>
+        {onClose && (
+          <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label={t('close')}>
+            <ChevronLeftIcon className="size-4" />
+          </Button>
+        )}
       </div>
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
@@ -206,23 +213,16 @@ export function ConversationList({ agentId }: ConversationListProps) {
         )}
       </div>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('deleteDialog.title')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('deleteDialog.description')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/80"
-            >
-              {tc('delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={t('deleteDialog.title')}
+        description={t('deleteDialog.description')}
+        cancelLabel={tc('cancel')}
+        confirmLabel={tc('delete')}
+        isPending={deleteConversation.isPending}
+        onConfirm={handleDeleteConfirm}
+      />
 
       <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
         <DialogContent>

@@ -5,6 +5,7 @@ import { SendIcon, PaperclipIcon, ArrowDownToLineIcon, ArrowUpFromLineIcon } fro
 import { useAtomValue } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
+import { ComingSoonButton } from '@/components/shared/coming-soon-button'
 import { cn } from '@/lib/utils'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 
@@ -17,6 +18,7 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, disabled, placeholder, modelName }: ChatInputProps) {
   const t = useTranslations('chat.input')
+  const tc = useTranslations('common')
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isComposingRef = useRef(false)
@@ -101,17 +103,10 @@ export function ChatInput({ onSend, disabled, placeholder, modelName }: ChatInpu
       {/* Toolbar */}
       <div className="flex items-center justify-between px-2 py-1.5">
         <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled
-            className="text-muted-foreground opacity-40 cursor-not-allowed"
-            title="파일 첨부 (준비 중)"
-          >
+          <ComingSoonButton message={tc('comingSoon.fileAttach')} className="text-muted-foreground">
             <PaperclipIcon className="size-4" />
-            <span className="sr-only">Attach file (coming soon)</span>
-          </Button>
+            <span className="sr-only">{tc('comingSoon.fileAttach')}</span>
+          </ComingSoonButton>
         </div>
         <Button
           type="button"

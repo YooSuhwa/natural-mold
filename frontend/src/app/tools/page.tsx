@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo } from 'react'
+import { toast } from 'sonner'
 import {
   PlusIcon,
   WrenchIcon,
@@ -22,19 +23,20 @@ import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/shared/search-input'
 import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddToolDialog } from '@/components/tool/add-tool-dialog'
 import { PrebuiltAuthDialog } from '@/components/tool/prebuilt-auth-dialog'
 import { MCPAuthDialog } from '@/components/tool/mcp-auth-dialog'
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import type { Tool } from '@/lib/types'
 
 type ToolFilter = 'all' | 'builtin' | 'prebuilt' | 'mcp' | 'custom'
@@ -138,7 +140,7 @@ function ToolCard({
   onShowDetail,
 }: {
   tool: Tool
-  onDelete: (id: string) => void
+  onDelete: (tool: Tool) => void
   isDeleting: boolean
   onShowDetail: (tool: Tool) => void
 }) {
@@ -212,7 +214,7 @@ function ToolCard({
         )}
       </CardHeader>
 
-      <CardFooter className="gap-2">
+      <CardFooter className="gap-2" onClick={(e) => e.stopPropagation()}>
         {isPrebuilt && pText ? (
           <PrebuiltAuthDialog
             tool={tool}
@@ -238,7 +240,7 @@ function ToolCard({
             variant="ghost"
             size="sm"
             className="w-full text-muted-foreground hover:text-destructive"
-            onClick={() => onDelete(tool.id)}
+            onClick={() => onDelete(tool)}
             disabled={isDeleting}
           >
             {isDeleting ? (
@@ -263,10 +265,12 @@ export default function ToolsPage() {
   const { data: tools, isLoading } = useTools()
   const deleteTool = useDeleteTool()
   const t = useTranslations('tool.page')
+  const tc = useTranslations('common')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<ToolFilter>('all')
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [detailTool, setDetailTool] = useState<Tool | null>(null)
+  const [deletingToolTarget, setDeletingToolTarget] = useState<Tool | null>(null)
 
   const filterOptions: { value: ToolFilter; label: string }[] = [
     { value: 'all', label: t('filter.all') },
@@ -360,15 +364,12 @@ export default function ToolsPage() {
             </Button>
           ))}
         </div>
-        <div className="relative w-full sm:w-64">
-          <SearchIcon className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={t('searchPlaceholder')}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+        <SearchInput
+          containerClassName="w-full sm:w-64"
+          placeholder={t('searchPlaceholder')}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
       {/* Tag Filter */}
@@ -410,7 +411,7 @@ export default function ToolsPage() {
             <ToolCard
               key={tool.id}
               tool={tool}
-              onDelete={(id) => deleteTool.mutate(id)}
+              onDelete={(tool) => setDeletingToolTarget(tool)}
               isDeleting={deleteTool.isPending}
               onShowDetail={setDetailTool}
             />
@@ -451,20 +452,20 @@ export default function ToolsPage() {
         />
       )}
 
-      {/* Tool Detail Sheet */}
-      <Sheet
+      {/* Tool Detail Dialog */}
+      <Dialog
         open={!!detailTool}
         onOpenChange={(open) => {
           if (!open) setDetailTool(null)
         }}
       >
-        <SheetContent className="sm:max-w-lg overflow-auto">
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-auto">
           {detailTool && (
             <>
-              <SheetHeader>
-                <SheetTitle>{detailTool.name}</SheetTitle>
-                <SheetDescription>{detailTool.description}</SheetDescription>
-              </SheetHeader>
+              <DialogHeader>
+                <DialogTitle>{detailTool.name}</DialogTitle>
+                <DialogDescription>{detailTool.description}</DialogDescription>
+              </DialogHeader>
 
               <div className="mt-6 space-y-5">
                 {/* Meta */}
@@ -557,8 +558,27 @@ export default function ToolsPage() {
               </div>
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </DialogContent>
+      </Dialog>
+
+      {/* Tool Delete Confirm */}
+      <DeleteConfirmDialog
+        open={!!deletingToolTarget}
+        onOpenChange={(v) => !v && setDeletingToolTarget(null)}
+        title={t('deleteConfirm')}
+        description={deletingToolTarget?.name}
+        cancelLabel={tc('cancel')}
+        confirmLabel={tc('delete')}
+        isPending={deleteTool.isPending}
+        onConfirm={() => {
+          if (deletingToolTarget) {
+            deleteTool.mutate(deletingToolTarget.id, {
+              onSuccess: () => setDeletingToolTarget(null),
+              onError: () => toast.error(t('toast.deleteFailed')),
+            })
+          }
+        }}
+      />
     </div>
   )
 }

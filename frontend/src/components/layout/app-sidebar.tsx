@@ -1,7 +1,9 @@
 'use client'
 
+import { useMemo } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   HomeIcon,
   WrenchIcon,
@@ -15,12 +17,15 @@ import {
   SettingsIcon,
   LogOutIcon,
   ChevronsUpDownIcon,
+  ToggleRightIcon,
+  ToggleLeftIcon,
   SunIcon,
   MoonIcon,
   MonitorIcon,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 
 import { useAgents } from '@/lib/hooks/use-agents'
 import {
@@ -35,6 +40,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -47,8 +53,10 @@ import {
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { data: agents, isLoading } = useAgents()
   const { setTheme, theme } = useTheme()
+  const { toggleSidebar } = useSidebar()
   const t = useTranslations('sidebar')
 
   const navItems = [
@@ -60,20 +68,57 @@ export function AppSidebar() {
     { label: t('nav.templates'), href: '/agents/new/template', icon: LayoutTemplateIcon },
   ]
 
-  const recentAgents = agents
-    ?.slice()
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    .slice(0, 5)
+  const recentAgents = useMemo(
+    () =>
+      agents
+        ?.slice()
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 5),
+    [agents],
+  )
 
   return (
-    <Sidebar>
-      <SidebarHeader className="px-4 py-4">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-            M
-          </div>
-          <span className="text-lg font-bold tracking-tight">{t('brand')}</span>
-        </Link>
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="px-4 py-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
+        {/* Expanded state: logo + brand + toggle (radio ON) */}
+        <div className="flex items-center justify-between group-data-[collapsible=icon]:hidden">
+          <Link href="/" className="flex items-center gap-2">
+            <Image
+              src="/logo.png"
+              alt="Moldy"
+              width={32}
+              height={32}
+              className="size-8 shrink-0 object-contain"
+            />
+            <span className="text-lg font-bold tracking-tight">{t('brand')}</span>
+          </Link>
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="rounded-md p-1.5 text-primary hover:bg-sidebar-accent transition-colors"
+            aria-label={t('toggleSidebar')}
+          >
+            <ToggleRightIcon className="size-5" />
+          </button>
+        </div>
+        {/* Collapsed state: logo default, toggle on hover */}
+        <div className="hidden items-center justify-center group-data-[collapsible=icon]:flex">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="group/toggle relative flex size-8 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent"
+            aria-label={t('toggleSidebar')}
+          >
+            <Image
+              src="/logo.png"
+              alt="Moldy"
+              width={32}
+              height={32}
+              className="size-8 object-contain transition-opacity group-hover/toggle:opacity-0"
+            />
+            <ToggleLeftIcon className="absolute size-5 text-muted-foreground opacity-0 transition-opacity group-hover/toggle:opacity-100" />
+          </button>
+        </div>
       </SidebarHeader>
 
       <SidebarContent>
@@ -160,9 +205,28 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      {/* User Profile Footer */}
+      {/* Theme Toggle */}
       <SidebarFooter>
         <SidebarSeparator />
+        <div className="flex items-center justify-center gap-1 px-2 py-1">
+          {[
+            { value: 'light' as const, icon: SunIcon },
+            { value: 'dark' as const, icon: MoonIcon },
+            { value: 'system' as const, icon: MonitorIcon },
+          ].map(({ value, icon: Icon }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTheme(value)}
+              className={`rounded-md p-1.5 transition-colors ${theme === value ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-sidebar-accent'}`}
+              aria-label={t(`theme.${value}`)}
+            >
+              <Icon className="size-4" />
+            </button>
+          ))}
+        </div>
+
+        {/* User Profile */}
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
@@ -185,34 +249,17 @@ export function AppSidebar() {
                 <ChevronsUpDownIcon className="ml-auto size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent side="top" align="start" className="w-[--anchor-width]">
-                <DropdownMenuItem onClick={() => setTheme('light')}>
-                  <SunIcon />
-                  {t('theme.light')}
-                  {theme === 'light' && (
-                    <span className="ml-auto text-xs text-muted-foreground">✓</span>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme('dark')}>
-                  <MoonIcon />
-                  {t('theme.dark')}
-                  {theme === 'dark' && (
-                    <span className="ml-auto text-xs text-muted-foreground">✓</span>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setTheme('system')}>
-                  <MonitorIcon />
-                  {t('theme.system')}
-                  {theme === 'system' && (
-                    <span className="ml-auto text-xs text-muted-foreground">✓</span>
-                  )}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push('/settings')}>
                   <SettingsIcon />
                   {t('settings')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    toast.info(t('logoutMessage'))
+                    router.push('/')
+                  }}
+                >
                   <LogOutIcon />
                   {t('logout')}
                 </DropdownMenuItem>

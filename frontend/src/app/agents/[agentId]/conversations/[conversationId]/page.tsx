@@ -1,10 +1,10 @@
 'use client'
 
-import { use, useEffect, useRef, useCallback } from 'react'
+import { use, useEffect, useRef, useCallback, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
-import { Settings2Icon, PlusIcon, BotIcon, SparklesIcon } from 'lucide-react'
+import { Settings2Icon, SquarePenIcon, BotIcon, SparklesIcon, MenuIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useAgent } from '@/lib/hooks/use-agents'
@@ -25,6 +25,7 @@ import { MessageBubble } from '@/components/chat/message-bubble'
 import { StreamingMessage } from '@/components/chat/streaming-message'
 import { ChatInput } from '@/components/chat/chat-input'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 
 export default function ChatPage({
   params,
@@ -38,6 +39,12 @@ export default function ChatPage({
   const { data: messages, isLoading: messagesLoading } = useMessages(conversationId)
   const createConversation = useCreateConversation(agentId)
   const t = useTranslations('chat.page')
+  const [showConversationList, setShowConversationList] = useState(true)
+
+  // 캐시에서 현재 대화 제목만 추출 (전체 목록 구독 방지)
+  const currentTitle = queryClient
+    .getQueryData<{ id: string; title?: string | null }[]>(['agents', agentId, 'conversations'])
+    ?.find((c) => c.id === conversationId)?.title
 
   const setStreamingMessage = useSetAtom(streamingMessageAtom)
   const setStreamingToolCalls = useSetAtom(streamingToolCallsAtom)
@@ -158,37 +165,75 @@ export default function ChatPage({
 
   return (
     <div className="flex flex-1 overflow-hidden">
-      {/* Conversation sidebar */}
-      <div className="hidden w-72 shrink-0 border-r md:block">
-        <ConversationList agentId={agentId} />
-      </div>
+      {/* Conversation sidebar — desktop toggleable */}
+      {showConversationList && (
+        <div className="hidden w-72 shrink-0 border-r md:block">
+          <ConversationList
+            agentId={agentId}
+            agentName={agent?.name}
+            onClose={() => setShowConversationList(false)}
+          />
+        </div>
+      )}
 
       {/* Main chat area */}
       <div className="flex flex-1 flex-col">
         {/* Chat header */}
         <div className="flex items-center justify-between border-b px-4 py-2.5">
           <div className="flex items-center gap-2">
-            <h1 className="text-sm font-semibold">
-              {agent?.name ?? <Skeleton className="h-4 w-24 inline-block" />}
+            {/* Mobile conversation list trigger */}
+            <Sheet>
+              <SheetTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="md:hidden"
+                    aria-label={t('conversationList')}
+                  >
+                    <MenuIcon className="size-4" />
+                  </Button>
+                }
+              />
+              <SheetContent side="left" className="w-72 p-0">
+                <ConversationList agentId={agentId} agentName={agent?.name} />
+              </SheetContent>
+            </Sheet>
+            {/* Desktop: show hamburger when conversation list is hidden */}
+            {!showConversationList && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="hidden md:inline-flex"
+                onClick={() => setShowConversationList(true)}
+                aria-label={t('conversationList')}
+              >
+                <MenuIcon className="size-4" />
+              </Button>
+            )}
+            <h1 className="text-sm font-semibold truncate">
+              {currentTitle ?? agent?.name ?? <Skeleton className="h-4 w-24 inline-block" />}
             </h1>
           </div>
-          <div className="flex items-center gap-1">
-            <Link href={`/agents/${agentId}/settings`}>
-              <Button variant="ghost" size="icon-sm">
-                <Settings2Icon className="size-4" />
-                <span className="sr-only">{t('settings')}</span>
+          {!showConversationList && (
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNewConversation}
+                disabled={createConversation.isPending}
+              >
+                <SquarePenIcon className="size-4" data-icon="inline-start" />
+                {t('newConversation')}
               </Button>
-            </Link>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleNewConversation}
-              disabled={createConversation.isPending}
-            >
-              <PlusIcon className="size-4" data-icon="inline-start" />
-              {t('newConversation')}
-            </Button>
-          </div>
+              <Link href={`/agents/${agentId}/settings`}>
+                <Button variant="ghost" size="sm">
+                  <Settings2Icon className="size-4" data-icon="inline-start" />
+                  {t('settings')}
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Messages */}

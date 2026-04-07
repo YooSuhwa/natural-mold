@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useMemo } from 'react'
 import {
   PlusIcon,
   Loader2Icon,
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { SearchInput } from '@/components/shared/search-input'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -44,6 +45,14 @@ import {
   DialogDescription,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select'
 
 function SkillFormDialog({
   trigger,
@@ -149,7 +158,31 @@ export default function SkillsPage() {
   const deleteSkill = useDeleteSkill()
   const uploadSkill = useUploadSkill()
   const t = useTranslations('skill')
+  const tc = useTranslations('common')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [typeFilter, setTypeFilter] = useState<'all' | 'text' | 'package'>('all')
+  const [deletingSkillTarget, setDeletingSkillTarget] = useState<{
+    id: string
+    name: string
+  } | null>(null)
+
+  const filteredSkills = useMemo(() => {
+    if (!skills) return []
+    let result = skills
+    if (typeFilter !== 'all') {
+      result = result.filter((s) => s.type === typeFilter)
+    }
+    const q = searchQuery.toLowerCase()
+    if (q) {
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          (s.description && s.description.toLowerCase().includes(q)),
+      )
+    }
+    return result
+  }, [skills, searchQuery, typeFilter])
 
   async function handleCreate(data: { name: string; description: string; content: string }) {
     try {
@@ -207,6 +240,33 @@ export default function SkillsPage() {
         }
       />
 
+      {/* Search & Filter */}
+      {skills && skills.length > 0 && (
+        <div className="flex items-center gap-3">
+          <SearchInput
+            containerClassName="flex-1"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('searchPlaceholder')}
+          />
+          <Select
+            value={typeFilter}
+            onValueChange={(val) => {
+              if (val) setTypeFilter(val)
+            }}
+          >
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t('typeFilter.all')}</SelectItem>
+              <SelectItem value="text">{t('typeFilter.text')}</SelectItem>
+              <SelectItem value="package">{t('typeFilter.package')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -221,17 +281,13 @@ export default function SkillsPage() {
             </Card>
           ))}
         </div>
-      ) : skills && skills.length > 0 ? (
+      ) : filteredSkills.length > 0 ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {skills.map((skill) => (
+          {filteredSkills.map((skill) => (
             <SkillCard
               key={skill.id}
               skill={skill}
-              onDelete={() => {
-                deleteSkill.mutate(skill.id, {
-                  onSuccess: () => toast.success(t('toast.deleted')),
-                })
-              }}
+              onDelete={() => setDeletingSkillTarget({ id: skill.id, name: skill.name })}
               isDeleting={deleteSkill.isPending}
             />
           ))}
@@ -263,6 +319,28 @@ export default function SkillsPage() {
           }
         />
       )}
+
+      {/* Skill Delete Confirm */}
+      <DeleteConfirmDialog
+        open={!!deletingSkillTarget}
+        onOpenChange={(v) => !v && setDeletingSkillTarget(null)}
+        title={t('deleteConfirm')}
+        description={deletingSkillTarget?.name}
+        cancelLabel={tc('cancel')}
+        confirmLabel={tc('delete')}
+        isPending={deleteSkill.isPending}
+        onConfirm={() => {
+          if (deletingSkillTarget) {
+            deleteSkill.mutate(deletingSkillTarget.id, {
+              onSuccess: () => {
+                toast.success(t('toast.deleted'))
+                setDeletingSkillTarget(null)
+              },
+              onError: () => toast.error(t('toast.deleteFailed')),
+            })
+          }
+        }}
+      />
     </div>
   )
 }

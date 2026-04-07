@@ -1,48 +1,85 @@
-# HANDOFF — M4: 정리 + Creation Agent
+# HANDOFF — Moldy UI/UX 전체 개선
 
 ## 변경 사항 요약
 
-- **creation_agent.py**: `model.ainvoke()` → `build_agent(tools=[])` + `agent.ainvoke()`. 모든 LLM 호출이 `create_deep_agent` 경로를 통과하는 통일된 엔진 달성.
-- **trigger_executor.py**: `execute_agent_stream()` SSE 파싱 → `execute_agent_invoke()` 직접 호출. SSE 인코딩/디코딩 왕복 제거.
-- **executor.py**: `_prepare_agent()` 추출으로 에이전트 빌드 로직 단일화. `execute_agent_invoke()` 추가 (트리거용 비스트리밍 실행).
-- **streaming.py / middleware_registry.py**: 유지 (ADR-004). 유지 사유 주석 추가.
-- **token_tracker.py**: 삭제 (미사용 dead code).
-- **template.py**: `recommended_tools` 타입 힌트 `dict` → `list` 수정.
+### Critical 수정 (4건)
+- 도구/스킬/트리거 삭제 시 AlertDialog 확인 추가
+- 모바일에서 채팅 대화목록 접근 가능 (Sheet)
+- 도구 상세 Sheet→Dialog 변경 + 이벤트 전파 수정
+- 설정 페이지 4탭 분리 + sticky 저장 바
+
+### Major 개선 (9건)
+- 에이전트 카드: 도구 이름 나열→개수 배지, 설명 강조, 호버 시 버튼
+- 브레드크럼 네비게이션 추가 (app-header 통합)
+- 사이드바: 설정/로그아웃 연결, 테마 토글 분리
+- 앱 설정 페이지 신규 생성 (/settings)
+- 설정 페이지: shadcn Slider/Checkbox 교체, 미저장 경고
+- Coming Soon 패턴 (파일첨부, Chat, Undo/Redo)
+- 대화형 생성: 취소/리셋/Phase1 Timeline/로딩 텍스트
+- 사용량 페이지: 기간 선택기 + Agent 링크
+- 스킬 페이지: 검색 + 타입 필터
+
+### Minor 수정 (5건)
+- agents/new 뒤로가기 버튼
+- 채팅 헤더 모델명 표시
+- 모델 필터 바 flex-wrap
+- Separator(세로선) 제거
+- i18n 키 다수 추가
 
 ## 아키텍처 결정
-
-- **ADR-004**: creation agent 최소 전환 (checkpointer 미사용), trigger invoke 공용화, streaming/middleware 유지
-- **S1→S2 판단 수정**: streaming.py 미들웨어 필터 — S1 "삭제 가능" → S2 "유지 필요" (deepagents 소스 확인)
+- 도구 상세를 Sheet→Dialog로 변경: 다른 페이지(모델, 스킬)와 UI 패턴 통일 + 이벤트 전파 충돌 해결
+- Coming Soon 패턴: disabled 대신 toast.info — 미구현 기능을 grep 가능하게 유지
+- 브레드크럼: 경로 기반 자동 생성, UUID→에이전트명은 TanStack Query 캐시 조회
+- 설정 페이지: 탭 분리 (기본정보/모델/도구스킬/트리거) + isDirty 추적
 
 ## 삭제된 항목 (Musk Step 2)
-
-- `token_tracker.py` + `test_token_tracker.py`: 프로덕션 코드에서 참조 0건
-- trigger_executor SSE 파싱 로직 11줄: `execute_agent_invoke`로 대체
-- creation_agent `model.ainvoke()` 직접 호출: `build_agent` + `ainvoke`로 대체
+- `@tanstack/react-query-devtools` (미사용 의존성)
+- `agentUsage` export (미사용)
+- `useSkill` export (미사용)
+- `useCreateModel` export (미사용)
+- `toggleSetItem` import (미사용 — 수정 완료)
 
 ## Ralph Loop 통계
-
-- 총 스토리: 7개
-- 1회 통과: 7개
-- 재시도 후 통과: 0개
+- 총 스토리: 10개 (S0~S9)
+- 1회 통과: 8개
+- 팀쿡 리뷰 후 보완: 2개 (S7, S8 — 모바일 반응형 3건)
 - 에스컬레이션: 0개
 
-## 테스트 변화
+## 팀 구성
+| 팀원 | 역할 | 담당 스토리 |
+|------|------|-------------|
+| 사티아 | PO/팀 리드 | 오케스트레이션 |
+| 베조스 | QA | S0, S1, S9 |
+| 팀쿡 | Design/UX | S2, 검수 |
+| 저커버그 | Frontend | S3~S8 |
 
-- M3: 308 passed → M4: 302 passed
-- 감소 6건: token_tracker 테스트 삭제
-- regression: 0건
+## 수정된 파일 목록 (16개)
+1. `src/app/tools/page.tsx`
+2. `src/app/skills/page.tsx`
+3. `src/app/agents/[agentId]/settings/page.tsx`
+4. `src/app/agents/[agentId]/conversations/[conversationId]/page.tsx`
+5. `src/app/agents/new/conversational/page.tsx`
+6. `src/app/agents/new/page.tsx`
+7. `src/app/usage/page.tsx`
+8. `src/app/settings/page.tsx` (신규)
+9. `src/app/models/page.tsx`
+10. `src/components/shared/breadcrumb-nav.tsx` (신규)
+11. `src/components/layout/app-header.tsx`
+12. `src/components/layout/app-sidebar.tsx`
+13. `src/components/chat/chat-input.tsx`
+14. `src/components/agent/agent-card.tsx`
+15. `src/components/agent/visual-settings/toolbar.tsx`
+16. i18n 메시지 파일
 
 ## 남은 작업
+- [ ] 파일 첨부 기능 구현 (현재 Coming Soon)
+- [ ] Chat/Undo/Redo 기능 구현 (비주얼 설정, 현재 Coming Soon)
+- [ ] 사용량 차트/그래프 추가 (숫자만 있음)
+- [ ] 설정 페이지 다이얼로그 로직 분리 (P3 — 코드 품질)
 
-- [ ] (Phase 6) E2E 시나리오 검증 — Docker 환경에서 creation agent → 에이전트 생성 → 대화 → 트리거 실행
-- [ ] creation_agent에 `response_format` 도입 검토 (프론트엔드 변경과 함께)
-- [ ] deepagents 스트림 필터링 기능 추가 시 streaming.py 필터 제거
-- [ ] langchain LLMToolSelectorMiddleware `{"const"}` 수정 시 패치 제거
-- [ ] creation_agent에 도구 추가 (템플릿 검색, 스킬 카탈로그 브라우징)
-
-## 배운 점 (progress.txt에서 발췌)
-
-- 삭제 분석(S1)과 아키텍처 심층 조사(S2)가 상반된 결론을 낼 수 있음. 표면적 분석만으로 삭제 판단하지 말고 실제 소스코드(실행 경로)까지 추적할 것.
-- `create_deep_agent(tools=[])` — 빈 도구 리스트로 호출해도 정상 동작. 단순 LLM 호출에도 deep agent 엔진을 통일할 수 있음.
-- `_prepare_agent()` 추출로 stream/invoke 두 경로를 공용화하면 향후 배치 실행 등 새 실행 모드 추가가 용이.
+## 검증 결과
+- `pnpm build`: PASS
+- `pnpm lint`: PASS (0 errors)
+- 라우트: 14/14 PASS
+- UI/UX 기능: 10/10 PASS
+- 다크모드: PASS
