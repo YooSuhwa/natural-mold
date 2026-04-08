@@ -3,13 +3,8 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import {
-  SendIcon,
-  PenLineIcon,
-  LayoutTemplateIcon,
-  SparklesIcon,
-  ArrowLeftIcon,
-} from 'lucide-react'
+import Image from 'next/image'
+import { SendIcon, PenLineIcon, LayoutTemplateIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,19 +24,9 @@ export default function AgentNewPage() {
   return (
     <div className="flex flex-1 flex-col items-center justify-center overflow-auto p-6">
       <div className="flex w-full max-w-2xl flex-col items-center gap-8">
-        {/* Back */}
-        <div className="flex w-full">
-          <Button variant="ghost" size="sm" onClick={() => router.push('/')}>
-            <ArrowLeftIcon className="size-4" data-icon="inline-start" />
-            {t('backToHome')}
-          </Button>
-        </div>
-
         {/* Hero */}
         <div className="flex flex-col items-center gap-3 text-center">
-          <div className="flex size-16 items-center justify-center rounded-2xl bg-primary/10">
-            <SparklesIcon className="size-8 text-primary" />
-          </div>
+          <Image src="/agent-create-hero.png" alt="Moldy" width={250} height={250} />
           <h1 className="text-2xl font-bold tracking-tight">{t('hero.title')}</h1>
           <p className="text-sm text-muted-foreground">{t('hero.subtitle')}</p>
         </div>
