@@ -1,6 +1,6 @@
 from app.models.agent import Agent
-from app.models.agent_creation_session import AgentCreationSession
 from app.models.agent_trigger import AgentTrigger
+from app.models.builder_session import BuilderSession
 from app.models.conversation import Conversation
 from app.models.llm_provider import LLMProvider
 from app.models.model import Model
@@ -21,7 +21,7 @@ __all__ = [
     "Agent",
     "Conversation",
     "TokenUsage",
-    "AgentCreationSession",
+    "BuilderSession",
     "AgentTrigger",
     "Skill",
     "AgentSkillLink",

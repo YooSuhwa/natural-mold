@@ -13,6 +13,41 @@ from app.schemas.model import ModelBulkCreate, ModelCreate, ModelUpdate
 from app.services.encryption import encrypt_api_key
 
 
+async def resolve_model(db: AsyncSession, model_name: str, *, strict: bool = False) -> Model | None:
+    """model_name (display_name 또는 provider:model_id) → Model 레코드.
+
+    builder_service, write_tools 양쪽에서 공통으로 사용한다.
+    매칭 순서: display_name → provider:model_id 파싱 → 기본 모델 (strict=False만).
+
+    Args:
+        db: 비동기 DB 세션.
+        model_name: 찾을 모델 이름.
+        strict: True이면 정확히 매칭되는 모델이 없을 때 default fallback 없이
+                None을 반환한다. Builder confirm이나 Assistant 모델 변경처럼
+                사용자가 명시적으로 모델을 지정한 경우에 사용한다.
+    """
+    # 먼저 display_name으로 검색
+    result = await db.execute(select(Model).where(Model.display_name == model_name))
+    model = result.scalar_one_or_none()
+    if model:
+        return model
+
+    # provider:model_name 형식 파싱 시도
+    if ":" in model_name:
+        _, parsed_model_name = model_name.split(":", 1)
+        result = await db.execute(select(Model).where(Model.model_name == parsed_model_name))
+        model = result.scalar_one_or_none()
+        if model:
+            return model
+
+    if strict:
+        return None
+
+    # 기본 모델 (strict=False일 때만)
+    result = await db.execute(select(Model).where(Model.is_default.is_(True)))
+    return result.scalar_one_or_none()
+
+
 async def list_models(db: AsyncSession) -> list[dict]:
     result = await db.execute(
         select(Model, func.count(Agent.id).label("agent_count"))
@@ -85,6 +120,15 @@ async def update_model(db: AsyncSession, model_id: uuid.UUID, data: ModelUpdate)
                 f"provider_type mismatch: provider is '{provider.provider_type}' "
                 f"but model specifies '{prov_str}'"
             )
+    # is_default=True 설정 시 다른 모델의 is_default를 해제
+    if update_data.get("is_default") is True:
+        from sqlalchemy import update as sa_update
+
+        await db.execute(
+            sa_update(Model)
+            .where(Model.id != model_id, Model.is_default.is_(True))
+            .values(is_default=False)
+        )
     for key, value in update_data.items():
         setattr(model, key, value)
     await db.commit()

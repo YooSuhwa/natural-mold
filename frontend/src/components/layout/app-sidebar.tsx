@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -218,6 +218,7 @@ export function AppSidebar() {
               key={value}
               type="button"
               onClick={() => setTheme(value)}
+              suppressHydrationWarning
               className={`rounded-md p-1.5 transition-colors ${theme === value ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-sidebar-accent'}`}
               aria-label={t(`theme.${value}`)}
             >

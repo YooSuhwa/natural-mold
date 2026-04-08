@@ -90,7 +90,6 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "app/main.py" = ["E402", "SIM115"]                # load_dotenv + SSL setup before imports
 "app/models/*.py" = ["F821"]                      # SQLAlchemy forward refs with __future__ annotations
-"app/agent_runtime/creation_agent.py" = ["E501"]  # long lines in prompt templates
 "app/seed/default_tools.py" = ["E501"]            # long lines in JSON seed data
 "app/routers/skills.py" = ["ASYNC240"]            # sync pathlib for file serving (trivial I/O)
 "app/services/skill_service.py" = ["ASYNC240"]    # sync pathlib for ZIP extraction (bounded I/O)

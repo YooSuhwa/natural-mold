@@ -5,16 +5,11 @@ import { useRouter } from 'next/navigation'
 import {
   SendIcon,
   Loader2Icon,
-  CheckIcon,
-  CircleDotIcon,
-  ClockIcon,
   SparklesIcon,
-  MessageCircleIcon,
-  WrenchIcon,
-  BookOpenIcon,
-  XIcon,
   ArrowLeftIcon,
   RotateCcwIcon,
+  WrenchIcon,
+  ShieldIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
@@ -28,173 +23,36 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { MarkdownContent } from '@/components/chat/markdown-content'
 import { cn } from '@/lib/utils'
-import { creationSessionApi, type CreationMessageResult } from '@/lib/api/creation-session'
-import type { DraftConfig } from '@/lib/types'
+import { builderApi } from '@/lib/api/builder'
+import { streamBuilder } from '@/lib/sse/stream-builder'
+import type {
+  BuilderDraftConfig,
+  BuilderIntent,
+  BuilderToolRecommendation,
+  BuilderMiddlewareRecommendation,
+} from '@/lib/types'
 
-type SuggestedReplies = NonNullable<CreationMessageResult['suggested_replies']>
-type RecommendedTool = CreationMessageResult['recommended_tools'][number]
-type RecommendedSkill = CreationMessageResult['recommended_skills'][number]
-interface PhaseLog {
-  phase: number
-  result: string
+import { PhaseTimeline } from './_components/phase-timeline'
+import type { PhaseState } from './_components/phase-timeline'
+import { IntentCard } from './_components/intent-card'
+import { RecommendationCard } from './_components/recommendation-card'
+import { DraftConfigCard } from './_components/draft-config-card'
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const TOTAL_PHASES = 7
+
+function createInitialPhases(): PhaseState[] {
+  return Array.from({ length: TOTAL_PHASES }, (_, i) => ({ id: i + 1, status: 'pending' as const }))
 }
 
-// --- Phase Timeline ---
-function PhaseTimeline({ currentPhase }: { currentPhase: number }) {
-  const t = useTranslations('agent.creation')
-  const PHASES = [
-    { id: 1, label: t('phase1.label'), description: t('phase1.description') },
-    { id: 2, label: t('phase2.label'), description: t('phase2.description') },
-    { id: 3, label: t('phase3.label'), description: t('phase3.description') },
-    { id: 4, label: t('phase4.label'), description: t('phase4.description') },
-  ]
-  return (
-    <div className="rounded-xl border bg-muted/30 p-4">
-      <h3 className="mb-3 text-sm font-medium text-muted-foreground">{t('progress')}</h3>
-      <div className="space-y-0">
-        {PHASES.map((phase, idx) => {
-          const status =
-            phase.id < currentPhase ? 'completed' : phase.id === currentPhase ? 'active' : 'pending'
-          const isLast = idx === PHASES.length - 1
-          return (
-            <div key={phase.id} className="flex gap-3">
-              <div className="flex flex-col items-center">
-                {status === 'completed' ? (
-                  <div className="flex size-6 items-center justify-center rounded-full bg-emerald-500 text-white">
-                    <CheckIcon className="size-3.5" />
-                  </div>
-                ) : status === 'active' ? (
-                  <div className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                    <CircleDotIcon className="size-3.5" />
-                  </div>
-                ) : (
-                  <div className="flex size-6 items-center justify-center rounded-full border-2 border-muted-foreground/30 text-muted-foreground/50">
-                    <ClockIcon className="size-3" />
-                  </div>
-                )}
-                {!isLast && (
-                  <div
-                    className={cn(
-                      'w-0.5 min-h-4 flex-1',
-                      status === 'completed' ? 'bg-emerald-500' : 'bg-muted-foreground/20',
-                    )}
-                  />
-                )}
-              </div>
-              <div className="flex flex-1 items-start justify-between pb-4">
-                <p
-                  className={cn(
-                    'text-sm leading-6',
-                    status === 'active'
-                      ? 'font-semibold text-foreground'
-                      : status === 'completed'
-                        ? 'font-medium text-foreground'
-                        : 'text-muted-foreground',
-                  )}
-                >
-                  Phase {phase.id}: {phase.label}
-                  <span className="ml-1.5 font-normal text-muted-foreground">
-                    {phase.description}
-                  </span>
-                </p>
-                <span
-                  className={cn(
-                    'shrink-0 rounded-md px-2 py-0.5 text-xs font-medium',
-                    status === 'completed'
-                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
-                      : status === 'active'
-                        ? 'bg-primary/10 text-primary'
-                        : 'bg-muted text-muted-foreground',
-                  )}
-                >
-                  {status === 'completed'
-                    ? t('status.completed')
-                    : status === 'active'
-                      ? t('status.active')
-                      : t('status.pending')}
-                </span>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
 
-// --- Option Card ---
-function OptionCard({
-  label,
-  selected,
-  multiSelect,
-  onClick,
-}: {
-  label: string
-  selected: boolean
-  multiSelect: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex w-full cursor-pointer items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-sm transition-all active:scale-[0.99]',
-        selected
-          ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-          : 'border-border bg-background hover:border-primary/30 hover:bg-muted/50',
-      )}
-    >
-      <div
-        className={cn(
-          'flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-          selected
-            ? 'border-primary bg-primary text-primary-foreground'
-            : 'border-muted-foreground/40',
-          multiSelect && 'rounded-md',
-        )}
-      >
-        {selected && <CheckIcon className="size-3" />}
-      </div>
-      <span className={cn('flex-1', selected && 'font-medium')}>{label}</span>
-    </button>
-  )
-}
-
-// --- Tool Card ---
-function ToolCard({ tool }: { tool: RecommendedTool }) {
-  return (
-    <div className="flex gap-3 rounded-xl border bg-background p-4">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-        <WrenchIcon className="size-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">{tool.name}</p>
-        <p className="mt-0.5 text-sm text-muted-foreground leading-relaxed">{tool.description}</p>
-      </div>
-    </div>
-  )
-}
-
-// --- Skill Card ---
-function SkillCard({ skill }: { skill: RecommendedSkill }) {
-  return (
-    <div className="flex gap-3 rounded-xl border bg-background p-4">
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-        <BookOpenIcon className="size-4" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold">{skill.name}</p>
-        <p className="mt-0.5 text-sm text-muted-foreground leading-relaxed">{skill.description}</p>
-      </div>
-    </div>
-  )
-}
-
-// --- Main Page ---
 export default function ConversationalCreationPage({
   searchParams,
 }: {
@@ -204,39 +62,33 @@ export default function ConversationalCreationPage({
   const router = useRouter()
   const t = useTranslations('agent.creation')
   const tc = useTranslations('common')
+
+  // Build state
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [currentPhase, setCurrentPhase] = useState(1)
-  const [isLoading, setIsLoading] = useState(false)
+  const [buildStatus, setBuildStatus] = useState<'idle' | 'building' | 'preview' | 'failed'>('idle')
   const [isConfirming, setIsConfirming] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
 
-  // Phase 1: Initial request
-  const [initialInput, setInitialInput] = useState('')
+  // Input
+  const [userRequest, setUserRequest] = useState('')
 
-  // Phase 2: Question flow
-  const [question, setQuestion] = useState('')
-  const [contextText, setContextText] = useState('')
-  const [suggestions, setSuggestions] = useState<SuggestedReplies | null>(null)
-  const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set())
-  const [showCustomInput, setShowCustomInput] = useState(false)
-  const [customInput, setCustomInput] = useState('')
+  // Phase tracking
+  const [phases, setPhases] = useState<PhaseState[]>(createInitialPhases)
 
-  // Phase 3: Tool & Skill recommendation
-  const [recommendedTools, setRecommendedTools] = useState<RecommendedTool[]>([])
-  const [recommendedSkills, setRecommendedSkills] = useState<RecommendedSkill[]>([])
-  const [modificationInput, setModificationInput] = useState('')
-
-  // Phase 4: Final
-  const [draftConfig, setDraftConfig] = useState<DraftConfig | null>(null)
-
-  // Logs
-  const [phaseLogs, setPhaseLogs] = useState<PhaseLog[]>([])
+  // Build results (populated via SSE)
+  const [intent, setIntent] = useState<BuilderIntent | null>(null)
+  const [tools, setTools] = useState<BuilderToolRecommendation[]>([])
+  const [middlewares, setMiddlewares] = useState<BuilderMiddlewareRecommendation[]>([])
+  const [draftConfig, setDraftConfig] = useState<BuilderDraftConfig | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const initialTextareaRef = useRef<HTMLTextAreaElement>(null)
   const isComposingRef = useRef(false)
+  const abortRef = useRef<AbortController | null>(null)
   const hasAutoSubmitted = useRef(false)
+  const buildStatusRef = useRef(buildStatus)
+  buildStatusRef.current = buildStatus
 
   const compositionProps = {
     onCompositionStart: () => {
@@ -247,188 +99,174 @@ export default function ConversationalCreationPage({
     },
   } as const
 
-  const scrollToTop = useCallback(() => {
-    contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  const scrollToBottom = useCallback(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTo({ top: contentRef.current.scrollHeight, behavior: 'smooth' })
+    }
   }, [])
 
-  // Start session on mount
-  useEffect(() => {
-    let cancelled = false
-    async function startSession() {
-      try {
-        const session = await creationSessionApi.start()
-        if (cancelled) return
-        setSessionId(session.id)
-      } catch {
-        setQuestion(t('error.sessionFailed'))
-      }
-    }
-    startSession()
-    return () => {
-      cancelled = true
-    }
-  }, [t])
+  // --- Phase update helpers ---
 
-  // Auto-submit initial message from search params
+  const updatePhase = useCallback((phaseId: number, updates: Partial<PhaseState>) => {
+    setPhases((prev) => prev.map((p) => (p.id === phaseId ? { ...p, ...updates } : p)))
+  }, [])
+
+  // --- Build flow (W-2: useCallback) ---
+
+  const handleBuild = useCallback(
+    async (request: string) => {
+      const text = request.trim()
+      if (!text) return
+
+      setBuildStatus('building')
+      setErrorMessage('')
+
+      // Reset phases
+      setPhases(createInitialPhases())
+      setIntent(null)
+      setTools([])
+      setMiddlewares([])
+      setDraftConfig(null)
+
+      try {
+        // 1. Start build session
+        const session = await builderApi.start(text)
+        setSessionId(session.id)
+
+        // 2. Stream build progress
+        const abort = new AbortController()
+        abortRef.current = abort
+
+        for await (const event of streamBuilder(session.id, abort.signal)) {
+          switch (event.event) {
+            case 'phase_progress': {
+              const { phase, status, message } = event.data
+              if (status === 'started') {
+                updatePhase(phase, { status: 'active' })
+              } else if (status === 'completed') {
+                updatePhase(phase, { status: 'completed', resultSummary: message })
+              } else if (status === 'warning') {
+                updatePhase(phase, { status: 'warning', resultSummary: message })
+              } else if (status === 'failed') {
+                updatePhase(phase, { status: 'failed', resultSummary: message })
+              }
+              break
+            }
+            case 'sub_agent_start': {
+              updatePhase(event.data.phase, { subAgentName: event.data.agent_name })
+              break
+            }
+            case 'sub_agent_end': {
+              updatePhase(event.data.phase, {
+                subAgentName: undefined,
+                resultSummary: event.data.result_summary,
+              })
+              break
+            }
+            case 'build_preview': {
+              setDraftConfig(event.data.draft_config)
+              setBuildStatus('preview')
+              break
+            }
+            case 'build_failed': {
+              setBuildStatus('failed')
+              setErrorMessage(event.data.message)
+              break
+            }
+            case 'error': {
+              updatePhase(event.data.phase, { status: 'failed' })
+              if (!event.data.recoverable) {
+                setBuildStatus('failed')
+                setErrorMessage(event.data.message)
+              }
+              break
+            }
+            case 'info':
+            case 'stream_end':
+              break
+          }
+        }
+
+        // Always fetch final session to hydrate intent/tools/middlewares/draft_config
+        // SSE events only carry phase progress — the actual data lives in the session
+        if (buildStatusRef.current !== 'failed') {
+          const finalSession = await builderApi.getSession(session.id)
+          if (finalSession.intent) setIntent(finalSession.intent)
+          if (finalSession.tools_result) setTools(finalSession.tools_result)
+          if (finalSession.middlewares_result) setMiddlewares(finalSession.middlewares_result)
+          if (finalSession.draft_config) setDraftConfig(finalSession.draft_config)
+          if (finalSession.system_prompt) {
+            // system_prompt is part of draft_config display
+          }
+          if (finalSession.status === 'preview' && buildStatusRef.current !== 'preview') {
+            setBuildStatus('preview')
+          }
+        }
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setBuildStatus('failed')
+        setErrorMessage(err instanceof Error ? err.message : t('error.generic'))
+      }
+    },
+    [t, updatePhase],
+  )
+
+  // Auto-submit from search params
   useEffect(() => {
-    if (sessionId && initialMessage && !hasAutoSubmitted.current) {
+    if (initialMessage && !hasAutoSubmitted.current) {
       hasAutoSubmitted.current = true
-      setInitialInput(initialMessage)
-      handleSubmit(initialMessage)
+      setUserRequest(initialMessage)
+      handleBuild(initialMessage)
       router.replace('/agents/new/conversational')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, initialMessage])
+  }, [initialMessage, handleBuild, router])
 
-  // Focus initial textarea
+  // Focus textarea on mount
   useEffect(() => {
-    if (sessionId && currentPhase === 1 && !initialMessage) {
-      initialTextareaRef.current?.focus()
+    if (buildStatus === 'idle') {
+      textareaRef.current?.focus()
     }
-  }, [sessionId, currentPhase, initialMessage])
+  }, [buildStatus])
 
-  function applyResponse(response: CreationMessageResult) {
-    setCurrentPhase(response.current_phase)
-    setQuestion(response.question ?? '')
-    setContextText(response.content)
+  // Scroll when phases update
+  useEffect(() => {
+    scrollToBottom()
+  }, [phases, intent, tools, middlewares, draftConfig, scrollToBottom])
 
-    if (response.phase_result) {
-      setPhaseLogs((prev) => [
-        ...prev,
-        {
-          phase: response.current_phase - 1,
-          result: response.phase_result!,
-        },
-      ])
-    }
-
-    if (response.suggested_replies && response.suggested_replies.options.length > 0) {
-      setSuggestions(response.suggested_replies)
-    } else {
-      setSuggestions(null)
-    }
-
-    if (response.recommended_tools.length > 0) {
-      setRecommendedTools(response.recommended_tools)
-    } else {
-      setRecommendedTools([])
-    }
-
-    if (response.recommended_skills?.length > 0) {
-      setRecommendedSkills(response.recommended_skills)
-    } else {
-      setRecommendedSkills([])
-    }
-
-    if (response.draft_config) {
-      setDraftConfig(response.draft_config)
-    }
-
-    setSelectedOptions(new Set())
-    setShowCustomInput(false)
-    setCustomInput('')
-    setModificationInput('')
-    scrollToTop()
-  }
-
-  // Phase 1: Send initial request
-  async function handleSubmit(text: string) {
-    if (!text || !sessionId || isLoading) return
-
-    setIsLoading(true)
-    try {
-      const response = await creationSessionApi.sendMessage(sessionId, text)
-      applyResponse(response)
-    } catch {
-      setQuestion(t('error.generic'))
-      setSuggestions(null)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  function handleOptionClick(option: string) {
-    if (option === t('customInputOption')) {
-      setShowCustomInput(true)
-      setSelectedOptions(new Set())
-      return
-    }
-
-    setShowCustomInput(false)
-
-    if (!suggestions?.multi_select) {
-      // Single select: replace selection
-      setSelectedOptions(new Set([option]))
-      return
-    }
-
-    // Multi select: toggle
-    setSelectedOptions((prev) => {
-      const next = new Set(prev)
-      if (next.has(option)) next.delete(option)
-      else next.add(option)
-      return next
-    })
-  }
-
-  function handleSelectionSubmit() {
-    if (selectedOptions.size === 0) return
-    handleSubmit(Array.from(selectedOptions).join(', '))
-  }
-
-  function handleCustomSubmit() {
-    const text = customInput.trim()
-    if (!text) return
-    handleSubmit(text)
-  }
-
-  // Phase 3: Approve tools
-  function handleApproveTools() {
-    handleSubmit(t('approve'))
-  }
-
-  function handleRequestModification() {
-    const text = modificationInput.trim()
-    if (!text) return
-    handleSubmit(t('modificationRequest', { text }))
-  }
-
-  async function handleReset() {
-    setSessionId(null)
-    setCurrentPhase(1)
-    setIsLoading(false)
-    setInitialInput('')
-    setQuestion('')
-    setContextText('')
-    setSuggestions(null)
-    setSelectedOptions(new Set())
-    setShowCustomInput(false)
-    setCustomInput('')
-    setRecommendedTools([])
-    setRecommendedSkills([])
-    setModificationInput('')
-    setDraftConfig(null)
-    setPhaseLogs([])
-    hasAutoSubmitted.current = false
-    try {
-      const session = await creationSessionApi.start()
-      setSessionId(session.id)
-    } catch {
-      setQuestion(t('error.sessionFailed'))
-    }
-  }
-
-  // Phase 4: Confirm creation
-  async function handleConfirm() {
+  const handleConfirm = useCallback(async () => {
     if (!sessionId || isConfirming) return
     setIsConfirming(true)
     try {
-      const agent = await creationSessionApi.confirm(sessionId)
+      const agent = await builderApi.confirm(sessionId)
       router.push(`/agents/${agent.id}`)
     } catch {
       setIsConfirming(false)
+      setErrorMessage(t('error.generic'))
     }
-  }
+  }, [sessionId, isConfirming, router, t])
+
+  const handleReset = useCallback(() => {
+    abortRef.current?.abort()
+    abortRef.current = null
+    setSessionId(null)
+    setBuildStatus('idle')
+    setIsConfirming(false)
+    setErrorMessage('')
+    setUserRequest('')
+    setPhases(createInitialPhases())
+    setIntent(null)
+    setTools([])
+    setMiddlewares([])
+    setDraftConfig(null)
+    hasAutoSubmitted.current = false
+  }, [])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [])
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -440,7 +278,7 @@ export default function ConversationalCreationPage({
             size="icon-sm"
             aria-label={t('cancelButton')}
             onClick={() => {
-              if (currentPhase > 1) {
+              if (buildStatus !== 'idle') {
                 setShowCancelConfirm(true)
               } else {
                 router.push('/agents/new')
@@ -451,9 +289,9 @@ export default function ConversationalCreationPage({
           </Button>
           <h1 className="text-lg font-semibold">{t('header')}</h1>
         </div>
-        {currentPhase > 1 && (
+        {buildStatus !== 'idle' && (
           <Button variant="ghost" size="sm" onClick={handleReset}>
-            <RotateCcwIcon className="size-4" data-icon="inline-start" />
+            <RotateCcwIcon className="size-4 data-[icon=inline-start]:mr-1" />
             {t('resetButton')}
           </Button>
         )}
@@ -462,23 +300,23 @@ export default function ConversationalCreationPage({
       {/* Scrollable content */}
       <div ref={contentRef} className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl space-y-6 p-6">
-          {/* Phase 1: Initial request input */}
-          {currentPhase === 1 && !isLoading && (
+          {/* Idle: Input form */}
+          {buildStatus === 'idle' && (
             <div className="space-y-4">
               <div className="rounded-xl border bg-background p-5">
                 <div className="flex items-start gap-2.5">
-                  <MessageCircleIcon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+                  <SparklesIcon className="mt-0.5 size-5 shrink-0 text-primary" />
                   <p className="text-base font-semibold leading-relaxed">{t('initialQuestion')}</p>
                 </div>
               </div>
               <textarea
-                ref={initialTextareaRef}
-                value={initialInput}
-                onChange={(e) => setInitialInput(e.target.value)}
+                ref={textareaRef}
+                value={userRequest}
+                onChange={(e) => setUserRequest(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
                     e.preventDefault()
-                    handleSubmit(initialInput.trim())
+                    handleBuild(userRequest)
                   }
                 }}
                 {...compositionProps}
@@ -492,8 +330,8 @@ export default function ConversationalCreationPage({
               />
               <div className="flex justify-end">
                 <Button
-                  onClick={() => handleSubmit(initialInput.trim())}
-                  disabled={!initialInput.trim() || !sessionId}
+                  onClick={() => handleBuild(userRequest)}
+                  disabled={!userRequest.trim()}
                   size="lg"
                 >
                   <SendIcon className="mr-1.5 size-4" />
@@ -503,299 +341,88 @@ export default function ConversationalCreationPage({
             </div>
           )}
 
-          {/* Phase logs */}
-          {phaseLogs.length > 0 && (
-            <div className="space-y-3">
-              {phaseLogs.map((log, i) => (
-                <div key={i} className="rounded-xl border bg-muted/20 px-4 py-3">
-                  <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                    {t('phaseLogCompleted', { phase: log.phase })}
-                  </p>
-                  <p className="mt-1 text-sm">{log.result}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Phase Timeline */}
-          <PhaseTimeline currentPhase={currentPhase} />
-
-          {/* Loading */}
-          {isLoading && (
-            <div className="flex flex-col items-center justify-center gap-3 py-12">
-              <Loader2Icon className="size-6 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">{t('loadingText')}</p>
-            </div>
-          )}
-
-          {/* Phase 2: Question + Options */}
-          {currentPhase === 2 && !isLoading && (question || contextText) && (
-            <div className="space-y-4">
-              {/* Context text (outside the question card, muted) */}
-              {contextText && (
-                <p className="text-sm text-muted-foreground leading-relaxed">{contextText}</p>
-              )}
-
-              {/* Question card */}
-              {question && (
-                <div className="rounded-xl border bg-background p-5">
-                  <div className="flex items-start gap-2.5">
-                    <MessageCircleIcon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
-                    <p className="text-base font-semibold leading-relaxed">{question}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Option cards */}
-              {suggestions && suggestions.options.length > 0 && (
-                <div className="space-y-2">
-                  {suggestions.multi_select && (
-                    <p className="text-xs text-muted-foreground">{t('multiSelectHint')}</p>
-                  )}
-                  {suggestions.options.map((option) => (
-                    <OptionCard
-                      key={option}
-                      label={option}
-                      selected={
-                        option === t('customInputOption')
-                          ? showCustomInput
-                          : selectedOptions.has(option)
-                      }
-                      multiSelect={suggestions.multi_select}
-                      onClick={() => handleOptionClick(option)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {/* Custom input */}
-              {showCustomInput && (
-                <textarea
-                  ref={textareaRef}
-                  value={customInput}
-                  onChange={(e) => setCustomInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
-                      e.preventDefault()
-                      handleCustomSubmit()
-                    }
-                  }}
-                  {...compositionProps}
-                  placeholder={t('customInputPlaceholder')}
-                  rows={2}
-                  className={cn(
-                    'min-h-[60px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors',
-                    'placeholder:text-muted-foreground',
-                    'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-                  )}
-                />
-              )}
-
-              {/* Fallback: no suggestions from AI */}
-              {!suggestions && !showCustomInput && (
-                <textarea
-                  value={customInput}
-                  onChange={(e) => setCustomInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
-                      e.preventDefault()
-                      handleCustomSubmit()
-                    }
-                  }}
-                  {...compositionProps}
-                  placeholder={t('fallbackPlaceholder')}
-                  rows={2}
-                  className={cn(
-                    'min-h-[60px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors',
-                    'placeholder:text-muted-foreground',
-                    'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-                  )}
-                />
-              )}
-
-              {/* Submit button — inline below options */}
-              {(selectedOptions.size > 0 ||
-                showCustomInput ||
-                (!suggestions && customInput.trim())) && (
-                <div className="flex justify-end">
-                  <Button
-                    onClick={
-                      showCustomInput || !suggestions ? handleCustomSubmit : handleSelectionSubmit
-                    }
-                    disabled={
-                      showCustomInput || !suggestions
-                        ? !customInput.trim()
-                        : selectedOptions.size === 0
-                    }
-                    size="lg"
-                  >
-                    <SendIcon className="mr-1.5 size-4" />
-                    {t('submitButton')}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Phase 3: Tool recommendation */}
-          {currentPhase === 3 && !isLoading && (
-            <div className="space-y-4">
-              {contextText && (
-                <p className="text-sm text-muted-foreground leading-relaxed">{contextText}</p>
-              )}
-
-              {recommendedTools.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">{t('toolRecommendation')}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {recommendedTools.map((tool) => (
-                      <ToolCard key={tool.name} tool={tool} />
-                    ))}
-                  </CardContent>
-                </Card>
-              )}
-
-              {recommendedSkills.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">{t('skillRecommendation')}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {recommendedSkills.map((skill) => (
-                      <SkillCard key={skill.name} skill={skill} />
-                    ))}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Modification input + buttons */}
-              <textarea
-                value={modificationInput}
-                onChange={(e) => setModificationInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === 'Enter' &&
-                    !e.shiftKey &&
-                    !isComposingRef.current &&
-                    modificationInput.trim()
-                  ) {
-                    e.preventDefault()
-                    handleRequestModification()
-                  }
-                }}
-                {...compositionProps}
-                placeholder={t('modificationPlaceholder')}
-                rows={2}
-                className={cn(
-                  'min-h-[60px] max-h-[120px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none transition-colors',
-                  'placeholder:text-muted-foreground',
-                  'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-                )}
-              />
-              <div className="flex justify-end gap-2">
-                {modificationInput.trim() && (
-                  <Button variant="outline" onClick={handleRequestModification} size="lg">
-                    <XIcon className="mr-1.5 size-4" />
-                    {t('modificationButton')}
-                  </Button>
-                )}
-                <Button onClick={handleApproveTools} size="lg">
-                  <CheckIcon className="mr-1.5 size-4" />
-                  {t('approveButton')}
-                </Button>
+          {/* Building / Preview / Failed: Timeline + Results */}
+          {buildStatus !== 'idle' && (
+            <>
+              {/* W-4: User request display — i18n key instead of hardcoded Korean */}
+              <div className="rounded-xl border bg-primary/5 px-4 py-3">
+                <p className="text-sm">
+                  <span className="font-medium text-primary">{t('userRequestLabel')}</span>{' '}
+                  {userRequest}
+                </p>
               </div>
-            </div>
-          )}
 
-          {/* Phase 4: Final result */}
-          {currentPhase === 4 && !isLoading && draftConfig?.is_ready && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <SparklesIcon className="size-4 text-primary" />
-                  {t('configComplete')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {contextText && (
-                  <div className="text-sm leading-relaxed">
-                    <MarkdownContent content={contextText} />
-                  </div>
-                )}
+              {/* Phase timeline */}
+              <PhaseTimeline phases={phases} />
 
-                {/* Agent info */}
-                <div className="space-y-2.5 rounded-lg bg-muted/50 p-4 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">{t('draftName')}</span>
-                    <span className="font-medium">{draftConfig.name ?? '-'}</span>
-                  </div>
-                  {draftConfig.description && (
-                    <div className="flex justify-between gap-4">
-                      <span className="shrink-0 text-muted-foreground">
-                        {t('draftDescription')}
-                      </span>
-                      <span className="text-right">{draftConfig.description}</span>
-                    </div>
-                  )}
-                  {draftConfig.recommended_model && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t('draftModel')}</span>
-                      <span>{draftConfig.recommended_model}</span>
-                    </div>
-                  )}
+              {/* Building spinner */}
+              {buildStatus === 'building' && (
+                <div className="flex flex-col items-center justify-center gap-3 py-8">
+                  <Loader2Icon className="size-6 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">{t('building')}</p>
                 </div>
+              )}
 
-                {/* Tools */}
-                {draftConfig.recommended_tool_names &&
-                  draftConfig.recommended_tool_names.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-medium">
-                        {t('includedTools', { count: draftConfig.recommended_tool_names.length })}
-                      </h4>
-                      <div className="space-y-1.5">
-                        {draftConfig.recommended_tool_names.map((name) => (
-                          <div
-                            key={name}
-                            className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm"
-                          >
-                            <WrenchIcon className="size-3.5 text-muted-foreground" />
-                            {name}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                {/* System prompt */}
-                {draftConfig.system_prompt && (
-                  <details>
-                    <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
-                      {t('viewSystemPrompt')}
-                    </summary>
-                    <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-muted p-3 text-xs whitespace-pre-wrap">
-                      {draftConfig.system_prompt}
-                    </pre>
-                  </details>
-                )}
-
-                <Button
-                  onClick={handleConfirm}
-                  disabled={isConfirming}
-                  className="w-full"
-                  size="lg"
+              {/* Error message */}
+              {buildStatus === 'failed' && errorMessage && (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-destructive/50 bg-destructive/5 px-4 py-3"
                 >
-                  {isConfirming && <Loader2Icon className="mr-1.5 size-4 animate-spin" />}
-                  {t('createAgent')}
-                </Button>
-              </CardContent>
-            </Card>
+                  <p className="text-sm text-destructive">{errorMessage}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => handleBuild(userRequest)}
+                  >
+                    <RotateCcwIcon className="mr-1.5 size-3.5" />
+                    {t('resetButton')}
+                  </Button>
+                </div>
+              )}
+
+              {/* Intent card (when Phase 2 done) */}
+              {intent && <IntentCard intent={intent} />}
+
+              {tools.length > 0 && (
+                <RecommendationCard
+                  icon={WrenchIcon}
+                  titleKey="toolRecommendation"
+                  items={tools.map((tool) => ({
+                    name: tool.tool_name,
+                    description: tool.description,
+                    reason: tool.reason,
+                  }))}
+                />
+              )}
+
+              {middlewares.length > 0 && (
+                <RecommendationCard
+                  icon={ShieldIcon}
+                  titleKey="middlewareRecommendation"
+                  items={middlewares.map((m) => ({
+                    name: m.middleware_name,
+                    description: m.description,
+                    reason: m.reason,
+                  }))}
+                />
+              )}
+
+              {/* Draft config preview (when preview) */}
+              {buildStatus === 'preview' && draftConfig && (
+                <DraftConfigCard
+                  draft={draftConfig}
+                  onConfirm={handleConfirm}
+                  isConfirming={isConfirming}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
 
-      {/* Cancel Confirm */}
+      {/* Cancel Confirm Dialog */}
       <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -804,7 +431,13 @@ export default function ConversationalCreationPage({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => router.push('/agents/new')}>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                abortRef.current?.abort()
+                router.push('/agents/new')
+              }}
+            >
               {t('cancelButton')}
             </AlertDialogAction>
           </AlertDialogFooter>

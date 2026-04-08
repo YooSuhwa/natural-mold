@@ -25,6 +25,13 @@ class ValidationError(AppError):
         super().__init__(code, message, status=422)
 
 
+class ConflictError(AppError):
+    """Conflict error (409)."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(code, message, status=409)
+
+
 class ExternalServiceError(AppError):
     """External service error (502)."""
 

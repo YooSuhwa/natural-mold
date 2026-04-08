@@ -269,8 +269,8 @@ export type SSEEventType =
 export type SSEEvent =
   | { event: 'message_start'; data: { id: string; role: string } }
   | { event: 'content_delta'; data: { delta?: string; content?: string } }
-  | { event: 'tool_call_start'; data: { name: string; args: Record<string, unknown> } }
-  | { event: 'tool_call_result'; data: { result: string } }
+  | { event: 'tool_call_start'; data: { tool_name: string; parameters: Record<string, unknown> } }
+  | { event: 'tool_call_result'; data: { tool_name: string; result: string } }
   | { event: 'message_end'; data: { content: string; usage: Record<string, number> } }
   | { event: 'error'; data: { message: string } }
 
@@ -291,7 +291,7 @@ export interface AgentUsageRow {
   estimated_cost: number
 }
 
-// Creation Session
+// Creation Session (v1 — deprecated, will be removed)
 export interface CreationSession {
   id: string
   status: string
@@ -308,6 +308,95 @@ export interface DraftConfig {
   recommended_tool_names?: string[]
   recommended_model?: string
   is_ready?: boolean
+}
+
+// Builder v2
+export interface BuilderSession {
+  id: string
+  status: 'building' | 'streaming' | 'preview' | 'confirming' | 'completed' | 'failed'
+  current_phase: number
+  user_request: string
+  intent: BuilderIntent | null
+  tools_result: BuilderToolRecommendation[] | null
+  middlewares_result: BuilderMiddlewareRecommendation[] | null
+  system_prompt: string | null
+  draft_config: BuilderDraftConfig | null
+  agent_id: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BuilderIntent {
+  agent_name: string
+  agent_name_ko: string
+  agent_description: string
+  primary_task_type: string
+  tool_preferences: string
+  output_style: string
+  response_tone: string
+  use_cases: string[]
+  constraints: string[]
+  required_capabilities: string[]
+}
+
+export interface BuilderToolRecommendation {
+  tool_name: string
+  description: string
+  reason: string
+}
+
+export interface BuilderMiddlewareRecommendation {
+  middleware_name: string
+  description: string
+  reason: string
+}
+
+export interface BuilderDraftConfig {
+  name: string
+  name_ko: string
+  description: string
+  system_prompt: string
+  tools: string[]
+  middlewares: string[]
+  model_name: string
+  primary_task_type: string
+  use_cases: string[]
+}
+
+// Builder SSE Events
+export type BuilderSSEEventType =
+  | 'phase_progress'
+  | 'sub_agent_start'
+  | 'sub_agent_end'
+  | 'build_preview'
+  | 'build_failed'
+  | 'error'
+  | 'info'
+  | 'stream_end'
+
+export type BuilderSSEEvent =
+  | {
+      event: 'phase_progress'
+      data: {
+        phase: number
+        status: 'started' | 'completed' | 'failed' | 'warning'
+        message?: string
+      }
+    }
+  | { event: 'sub_agent_start'; data: { phase: number; agent_name: string } }
+  | { event: 'sub_agent_end'; data: { phase: number; result_summary: string } }
+  | { event: 'build_preview'; data: { draft_config: BuilderDraftConfig } }
+  | { event: 'build_failed'; data: { message: string } }
+  | { event: 'error'; data: { phase: number; message: string; recoverable: boolean } }
+  | { event: 'info'; data: Record<string, unknown> }
+  | { event: 'stream_end'; data: Record<string, unknown> }
+
+// Assistant v2
+export interface AssistantToolCallResult {
+  tool_name: string
+  success: boolean
+  summary: string
 }
 
 // Skill

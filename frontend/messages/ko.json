@@ -113,48 +113,54 @@
     },
     "creation": {
       "header": "에이전트 만들기",
-      "progress": "진행 상황",
-      "phase1": { "label": "프로젝트 초기화", "description": "요청 분석" },
-      "phase2": { "label": "사용자 의도 분석", "description": "의도 수집" },
-      "phase3": { "label": "도구 추천", "description": "도구 선택" },
-      "phase4": { "label": "에이전트 생성", "description": "최종 구성" },
+      "progress": "빌드 진행 상황",
+      "phase1": { "label": "프로젝트 초기화", "description": "빌드 환경 설정" },
+      "phase2": { "label": "의도 분석", "description": "요청 심층 분석" },
+      "phase3": { "label": "도구 추천", "description": "최적 도구 선정" },
+      "phase4": { "label": "미들웨어 추천", "description": "안정성 계층 구성" },
+      "phase5": { "label": "프롬프트 생성", "description": "시스템 프롬프트 작성" },
+      "phase6": { "label": "설정 저장", "description": "최종 구성 생성" },
+      "phase7": { "label": "에이전트 빌드", "description": "에이전트 인스턴스화" },
       "status": {
         "completed": "완료",
         "active": "진행중",
-        "pending": "대기중"
+        "warning": "경고",
+        "pending": "대기중",
+        "failed": "실패"
       },
       "initialQuestion": "어떤 에이전트를 만들고 싶으세요?",
       "initialPlaceholder": "예: \"한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트\"",
-      "startButton": "시작",
-      "multiSelectHint": "여러 개 선택할 수 있어요",
-      "customInputOption": "직접 입력",
-      "customInputPlaceholder": "원하는 내용을 자유롭게 작성하세요...",
-      "fallbackPlaceholder": "답변을 입력하세요...",
-      "submitButton": "제출",
-      "phaseLogCompleted": "[Phase {phase} 완료]",
-      "toolRecommendation": "도구 추천",
-      "skillRecommendation": "스킬 추천",
-      "modificationPlaceholder": "수정 의견을 입력하세요...",
-      "modificationButton": "수정요청",
-      "approveButton": "승인",
-      "modificationRequest": "수정 요청: {text}",
+      "startButton": "빌드 시작",
+      "building": "에이전트를 빌드하고 있습니다...",
+      "buildingPhase": "Phase {phase}: {label}",
+      "subAgentWorking": "{name} 서브에이전트 작업 중...",
+      "intentTitle": "의도 분석 결과",
+      "intentDescription": "에이전트 설명",
+      "intentUseCases": "사용 사례",
+      "intentCapabilities": "필수 기능",
+      "toolRecommendation": "추천 도구",
+      "middlewareRecommendation": "추천 미들웨어",
+      "toolReason": "선정 이유",
       "configComplete": "에이전트 구성 완료",
       "draftName": "이름",
+      "draftNameKo": "한글 이름",
       "draftDescription": "설명",
       "draftModel": "모델",
+      "draftTaskType": "핵심 작업",
       "includedTools": "포함된 도구 ({count}개)",
+      "includedMiddlewares": "포함된 미들웨어 ({count}개)",
       "viewSystemPrompt": "시스템 프롬프트 보기",
       "createAgent": "에이전트 생성",
       "error": {
-        "sessionFailed": "세션을 시작하는 데 문제가 발생했습니다. 페이지를 새로고침해주세요.",
+        "sessionFailed": "빌드 세션을 시작하는 데 문제가 발생했습니다. 다시 시도해주세요.",
+        "buildFailed": "빌드 중 오류가 발생했습니다: {message}",
         "generic": "오류가 발생했습니다. 다시 시도해주세요."
       },
-      "approve": "승인",
       "cancelButton": "취소",
       "resetButton": "처음부터",
-      "loadingText": "AI가 분석 중입니다...",
       "cancelConfirm": "에이전트 생성을 취소하시겠습니까?",
-      "cancelDescription": "진행 중인 내용은 저장되지 않습니다."
+      "cancelDescription": "진행 중인 내용은 저장되지 않습니다.",
+      "userRequestLabel": "요청:"
     },
     "card": {
       "status": {
@@ -185,7 +191,8 @@
         "basic": "기본정보",
         "model": "모델",
         "tools": "도구·스킬",
-        "triggers": "트리거"
+        "triggers": "트리거",
+        "assistant": "AI Assistant"
       },
       "model": "모델",
       "modelPlaceholder": "모델 선택",
@@ -334,17 +341,17 @@
         "deleteFailed": "삭제에 실패했습니다"
       }
     },
+    "suggestion": {
+      "polite": "존댓말로 바꿔줘",
+      "concise": "더 간결하게 답변하도록",
+      "cost": "비용을 줄여줘",
+      "addSearch": "검색 도구를 추가해줘"
+    },
     "fix": {
       "triggerButton": "AI로 수정하기",
       "title": "Fix Agent",
       "description": "대화로 \"{agentName}\" 에이전트를 수정합니다. 프롬프트, 도구, 모델을 자유롭게 변경해보세요.",
       "emptyState": "어떻게 수정할까요?",
-      "suggestion": {
-        "polite": "존댓말로 바꿔줘",
-        "concise": "더 간결하게 답변하도록",
-        "cost": "비용을 줄여줘",
-        "addSearch": "검색 도구를 추가해줘"
-      },
       "badge": {
         "preview": "미리보기",
         "applied": "적용 완료"
@@ -353,6 +360,20 @@
       "toast": {
         "applied": "변경사항이 적용되었습니다",
         "failed": "Fix Agent 호출에 실패했습니다"
+      },
+      "error": {
+        "generic": "오류가 발생했습니다. 다시 시도해주세요."
+      }
+    },
+    "assistant": {
+      "title": "AI Assistant",
+      "description": "\"{agentName}\" 설정을 대화로 수정합니다",
+      "emptyState": "어떻게 수정할까요?",
+      "inputPlaceholder": "수정 요청을 입력하세요...",
+      "send": "전송",
+      "toast": {
+        "applied": "변경사항이 적용되었습니다",
+        "failed": "Assistant 호출에 실패했습니다"
       },
       "error": {
         "generic": "오류가 발생했습니다. 다시 시도해주세요."
@@ -636,6 +657,8 @@
     "baseUrl": "Base URL",
     "apiKey": "API Key",
     "defaultBadge": "기본",
+    "setDefault": "기본 모델로 설정",
+    "alreadyDefault": "현재 기본 모델",
     "editLabel": "{name} 수정",
     "deleteLabel": "{name} 삭제",
     "contextWindow": "컨텍스트 윈도우",

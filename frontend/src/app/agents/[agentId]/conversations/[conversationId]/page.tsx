@@ -100,9 +100,9 @@ export default function ChatPage({
           }
           case 'tool_call_start': {
             const tc: StreamingToolCall = {
-              name: event.data.name ?? 'tool',
+              name: event.data.tool_name ?? 'tool',
               status: 'calling',
-              params: event.data.args as Record<string, unknown> | undefined,
+              params: event.data.parameters as Record<string, unknown> | undefined,
               startedAt: Date.now(),
             }
             toolCalls.push(tc)
