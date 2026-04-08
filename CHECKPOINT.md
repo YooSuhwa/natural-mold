@@ -1,46 +1,41 @@
-# CHECKPOINT — Moldy UI/UX 개선
+# CHECKPOINT — Moldy Agent Builder v2
 
-## M0: docs/ 초기화 + 삭제 분석
-- [ ] docs/ 디렉토리 구조 생성 + ARCHITECTURE.md
-- [ ] 삭제 분석 보고서 작성
-- 검증: `ls docs/ARCHITECTURE.md && ls tasks/deletion-analysis.md`
-- done-when: 두 파일 모두 존재
+## M1: 아키텍처 설계 + 삭제 분석
+- [ ] docs/ 구조 업데이트 (ARCHITECTURE.md에 Builder/Assistant 추가)
+- [ ] Builder/Assistant 인터페이스 설계 (API 계약, 스키마, 디렉토리 구조)
+- [ ] 삭제 대상 식별 (creation_agent.py, fix_agent.py 의존성 분석)
+- 검증: `ls docs/ARCHITECTURE.md && ls tasks/deletion-analysis-v2.md`
+- done-when: 아키텍처 문서 업데이트 + 삭제 분석 보고서 존재
 - 상태: pending
 
-## M1: UX 디자인 스펙 + 기반 구현
-- [ ] 팀쿡 디자인 스펙 완료
-- [ ] 삭제 확인 다이얼로그 (tools, skills, settings 트리거)
-- [ ] 도구 상세 Sheet→Dialog 변경 + stopPropagation
-- [ ] 에이전트 카드 개선 (도구목록→배지, 설명 강조, 호버 버튼)
-- [ ] Coming Soon 패턴 적용 (chat-input, toolbar)
+## M2: Builder 백엔드
+- [ ] LangGraph 오케스트레이터 + BuilderState + 4 서브에이전트
+- [ ] Builder 전용 도구 + 파일 매니저
+- [ ] Builder API 라우터 + 서비스 + 스키마
+- 검증: `cd backend && uv run ruff check app/agent_runtime/builder/ app/routers/builder.py app/services/builder_service.py app/schemas/builder.py`
+- done-when: ruff 에러 0
+- 상태: pending
+
+## M3: Assistant 백엔드
+- [ ] Assistant 도구 32개 (read 16 + write 15+ + clarify 1)
+- [ ] Assistant 에이전트 설정 (docs/fix_agent_assistant_prompt.md 로드)
+- [ ] Assistant API 라우터 + 서비스 + 스키마
+- 검증: `cd backend && uv run ruff check app/agent_runtime/assistant/ app/routers/assistant.py app/services/assistant_service.py app/schemas/assistant.py`
+- done-when: ruff 에러 0
+- 상태: pending
+
+## M4: 프론트엔드
+- [ ] Builder 7단계 파이프라인 UI (기존 conversational 교체)
+- [ ] Assistant 대화 패널 UI
+- [ ] API 클라이언트 (builder.ts, assistant.ts)
 - 검증: `cd frontend && pnpm build`
 - done-when: 빌드 성공, 타입 에러 0
 - 상태: pending
 
-## M2: 네비게이션 + 레이아웃 개선
-- [ ] 브레드크럼 컴포넌트 + 헤더 통합 + Separator 제거
-- [ ] 사이드바 개선 (설정/로그아웃 연결, 테마 토글 분리)
-- [ ] 앱 설정 페이지 신규 생성
-- [ ] 모바일 채팅 대화목록 Sheet
-- 검증: `cd frontend && pnpm build`
-- done-when: 빌드 성공, 모든 라우트 접근 가능
-- 상태: pending
-
-## M3: 페이지별 UX 개선
-- [ ] 설정 페이지 탭 분리 + sticky 저장 + shadcn 교체 + 미저장 경고
-- [ ] 대화형 생성 UX (취소, Timeline Phase1, 리셋, 로딩 텍스트)
-- [ ] 사용량 페이지 (기간 선택기, Agent 링크)
-- [ ] 스킬 페이지 (검색, 타입 필터)
-- [ ] 기타 Minor (agents/new 뒤로가기, 채팅 헤더 모델명, models flex-wrap)
-- 검증: `cd frontend && pnpm build && pnpm lint`
-- done-when: 빌드 + 린트 통과
-- 상태: pending
-
-## M4: 최종 검증
-- [ ] 전체 빌드 + 린트 통과
-- [ ] agent-browser로 모든 페이지 E2E 확인
-- [ ] 다크모드/라이트모드 확인
-- [ ] QUALITY_SCORE.md 작성
-- 검증: `cd frontend && pnpm build && pnpm lint`
-- done-when: 모든 게이트 통과 + E2E 확인 완료
+## M5: 통합 + E2E
+- [ ] 기존 코드 교체 (creation_agent.py, fix_agent.py 삭제, 라우터 정리)
+- [ ] main.py에 새 라우터 등록
+- [ ] E2E 시나리오 검증
+- 검증: `cd backend && uv run ruff check . && cd ../frontend && pnpm build`
+- done-when: 린트 통과, 빌드 성공
 - 상태: pending
