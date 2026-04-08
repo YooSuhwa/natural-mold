@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import localFont from 'next/font/local'
+import { Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from 'next-themes'
 import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getMessages, getTranslations } from 'next-intl/server'
@@ -7,9 +8,11 @@ import { Toaster } from 'sonner'
 import './globals.css'
 import { AppLayout } from '@/components/layout/app-layout'
 
-const geistSans = Geist({
+const pretendard = localFont({
+  src: 'fonts/PretendardVariable.woff2',
   variable: '--font-sans',
-  subsets: ['latin'],
+  display: 'swap',
+  weight: '45 920',
 })
 
 const geistMono = Geist_Mono({
@@ -36,7 +39,7 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${pretendard.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="h-full bg-background font-sans text-foreground">

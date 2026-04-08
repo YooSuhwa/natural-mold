@@ -170,7 +170,7 @@ export function MessageBubble({
           <div
             className={cn(
               'relative text-sm leading-relaxed',
-              isUser ? 'rounded-2xl bg-primary text-primary-foreground px-4 py-2.5' : 'py-1',
+              isUser ? 'rounded-2xl bg-emerald-100 text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100 px-4 py-2.5' : 'py-1',
             )}
           >
             {isUser ? message.content : <MarkdownContent content={message.content} />}
