@@ -57,5 +57,11 @@ class Settings(BaseSettings):
     # 비어있으면 DB의 is_default 모델 → 첫 번째 모델 순서로 fallback
     default_agent_model: str = ""
 
+    # Agent image generation (OpenRouter + Gemini Flash Image)
+    image_gen_api_key: str = ""
+    image_gen_base_url: str = "https://openrouter.ai/api/v1"
+    image_gen_model: str = "google/gemini-3.1-flash-image-preview"
+    agent_image_dir: str = "./data/agents"
+
 
 settings = Settings()

@@ -4,7 +4,7 @@ import { use, useEffect, useRef, useCallback, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
-import { Settings2Icon, SquarePenIcon, BotIcon, SparklesIcon, MenuIcon } from 'lucide-react'
+import { Settings2Icon, SquarePenIcon, SparklesIcon, MenuIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useAgent } from '@/lib/hooks/use-agents'
@@ -24,6 +24,7 @@ import { ConversationList } from '@/components/chat/conversation-list'
 import { MessageBubble } from '@/components/chat/message-bubble'
 import { StreamingMessage } from '@/components/chat/streaming-message'
 import { ChatInput } from '@/components/chat/chat-input'
+import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 
@@ -284,13 +285,15 @@ export default function ChatPage({
                       message={msg}
                       previousRole={idx > 0 ? visibleMessages[idx - 1].role : null}
                       toolResultMap={toolResultMap}
+                      agentImageUrl={agent?.image_url}
+                      agentName={agent?.name}
                     />
                   ))
                 })()
               ) : (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4">
-                    <BotIcon className="size-7" />
+                  <div className="mb-4">
+                    <AgentAvatar imageUrl={agent?.image_url ?? null} name={agent?.name ?? 'Agent'} size="lg" />
                   </div>
                   <h2 className="text-lg font-semibold mb-1">{agent?.name ?? t('emptyState')}</h2>
                   {agent?.description && (
@@ -304,7 +307,7 @@ export default function ChatPage({
                   </div>
                 </div>
               )}
-              <StreamingMessage />
+              <StreamingMessage agentImageUrl={agent?.image_url} agentName={agent?.name} />
               <div ref={messagesEndRef} />
             </div>
           </div>

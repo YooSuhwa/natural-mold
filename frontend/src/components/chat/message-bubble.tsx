@@ -1,12 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { BotIcon, UserIcon, CopyIcon, CheckIcon } from 'lucide-react'
+import { UserIcon, CopyIcon, CheckIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import type { Message } from '@/lib/types'
 import { ToolCallDisplay } from '@/components/chat/tool-call-display'
 import { MarkdownContent } from '@/components/chat/markdown-content'
+import { AgentAvatar } from '@/components/agent/agent-avatar'
 
 /**
  * Parse tool result content that may be a Python dict string or JSON.
@@ -93,6 +94,8 @@ interface MessageBubbleProps {
   previousRole?: 'user' | 'assistant' | 'tool' | null
   /** Map of tool_call_id → raw tool result content (for integrating results into ToolCallDisplay) */
   toolResultMap?: Map<string, string>
+  agentImageUrl?: string | null
+  agentName?: string
 }
 
 export function MessageBubble({
@@ -100,6 +103,8 @@ export function MessageBubble({
   tokenInfo,
   previousRole,
   toolResultMap,
+  agentImageUrl,
+  agentName,
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const t = useTranslations('chat.message')
@@ -147,9 +152,7 @@ export function MessageBubble({
     <div className={`group flex gap-3 ${gapClass} ${isUser ? 'justify-end' : ''}`}>
       {!isUser &&
         (showBotIcon ? (
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <BotIcon className="size-4" />
-          </div>
+          <AgentAvatar imageUrl={agentImageUrl ?? null} name={agentName ?? 'Agent'} size="sm" />
         ) : (
           <div className="w-8 shrink-0" />
         ))}

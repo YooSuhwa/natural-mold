@@ -85,8 +85,13 @@ class AgentResponse(BaseModel):
     status: str
     is_favorite: bool = False
     model_params: dict[str, Any] | None = None
+    image_url: str | None = None
     template_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class GenerateImageResponse(BaseModel):
+    image_url: str

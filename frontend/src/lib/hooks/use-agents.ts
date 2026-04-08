@@ -46,3 +46,14 @@ export function useToggleFavorite() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['agents'] }),
   })
 }
+
+export function useGenerateAgentImage(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => agentsApi.generateImage(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: ['agents', id] })
+    },
+  })
+}

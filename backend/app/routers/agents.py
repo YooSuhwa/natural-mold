@@ -1,16 +1,25 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
+import anyio
 from fastapi import APIRouter, Depends
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.exceptions import NotFoundError
-from app.schemas.agent import AgentCreate, AgentResponse, AgentUpdate, ToolBrief
+from app.schemas.agent import (
+    AgentCreate,
+    AgentResponse,
+    AgentUpdate,
+    GenerateImageResponse,
+    ToolBrief,
+)
 from app.schemas.skill import SkillBrief
-from app.services import agent_service
+from app.services import agent_service, image_service
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 middleware_router = APIRouter(tags=["middlewares"])
@@ -36,6 +45,11 @@ def _agent_to_response(agent) -> AgentResponse:
         status=agent.status,
         is_favorite=agent.is_favorite,
         model_params=agent.model_params,
+        image_url=(
+            f"/api/agents/{agent.id}/image?t={int(agent.updated_at.timestamp())}"
+            if agent.image_path
+            else None
+        ),
         template_id=agent.template_id,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
@@ -110,6 +124,34 @@ async def delete_agent(
     if not agent:
         raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
     await agent_service.delete_agent(db, agent)
+
+
+@router.post("/{agent_id}/image", response_model=GenerateImageResponse)
+async def generate_agent_image(
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    agent = await agent_service.get_agent(db, agent_id, user.id)
+    if not agent:
+        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
+    image_url = await image_service.generate_agent_image(db, agent)
+    return GenerateImageResponse(image_url=image_url)
+
+
+@router.get("/{agent_id}/image")
+async def get_agent_image(
+    agent_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    agent = await agent_service.get_agent(db, agent_id, user.id)
+    if not agent or not agent.image_path:
+        raise NotFoundError("IMAGE_NOT_FOUND", "이미지를 찾을 수 없습니다")
+    apath = anyio.Path(agent.image_path)
+    if not await apath.is_file():
+        raise NotFoundError("IMAGE_NOT_FOUND", "이미지 파일을 찾을 수 없습니다")
+    return FileResponse(Path(agent.image_path), media_type="image/png")
 
 
 @middleware_router.get("/api/middlewares")

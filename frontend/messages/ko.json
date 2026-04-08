@@ -232,6 +232,11 @@
         "addNew": "자동 실행 추가"
       },
       "manageModels": "모델 관리",
+      "image": {
+        "generate": "AI 이미지 생성",
+        "regenerate": "이미지 재생성",
+        "generating": "이미지 생성 중..."
+      },
       "save": "저장",
       "deleteAgent": "에이전트 삭제",
       "deleteDialog": {
