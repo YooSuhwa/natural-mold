@@ -1,204 +1,225 @@
+import { Suspense, act } from 'react'
 import { render, screen, waitFor } from '../test-utils'
+import userEvent from '@testing-library/user-event'
 import ConversationalCreationPage from '@/app/agents/new/conversational/page'
-import { mockCreationSession } from '../mocks/fixtures'
+import type { BuilderSSEEvent } from '@/lib/types'
+import { mockBuilderSession, mockAgent } from '../mocks/fixtures'
 
-vi.mock('next/link', () => ({
-  default: ({
-    children,
-    href,
-    ...props
-  }: {
-    children: React.ReactNode
-    href: string
-    [key: string]: unknown
-  }) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}))
+// --- Mocks ---
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }))
 
-const mockCreationSessionApi = {
+vi.mock('@/components/chat/markdown-content', () => ({
+  MarkdownContent: ({ content }: { content: string }) => <span>{content}</span>,
+}))
+
+const mockBuilderApi = {
   start: vi.fn(),
-  sendMessage: vi.fn(),
+  getSession: vi.fn(),
   confirm: vi.fn(),
 }
 
-vi.mock('@/lib/api/creation-session', () => ({
-  creationSessionApi: {
-    start: () => mockCreationSessionApi.start(),
-    sendMessage: (...args: unknown[]) => mockCreationSessionApi.sendMessage(...args),
-    confirm: (...args: unknown[]) => mockCreationSessionApi.confirm(...args),
+vi.mock('@/lib/api/builder', () => ({
+  builderApi: {
+    start: (...args: unknown[]) => mockBuilderApi.start(...args),
+    getSession: (...args: unknown[]) => mockBuilderApi.getSession(...args),
+    confirm: (...args: unknown[]) => mockBuilderApi.confirm(...args),
   },
 }))
 
-describe('ConversationalCreationPage', () => {
+const mockStreamBuilder = vi.fn()
+
+vi.mock('@/lib/sse/stream-builder', () => ({
+  streamBuilder: (...args: unknown[]) => mockStreamBuilder(...args),
+}))
+
+// Helper: 주어진 이벤트 배열을 yield 하는 async generator
+async function* fakeBuilderStream(
+  events: BuilderSSEEvent[],
+): AsyncGenerator<BuilderSSEEvent> {
+  for (const event of events) {
+    yield event
+  }
+}
+
+// use(searchParams)가 Suspense를 필요로 하므로 Suspense boundary 포함
+// Promise를 미리 resolve하여 즉시 해소되게 한다
+async function renderPage(initialMessage?: string) {
+  const searchParams = Promise.resolve(
+    initialMessage ? { initialMessage } : {},
+  )
+
+  let result: ReturnType<typeof render>
+  await act(async () => {
+    result = render(
+      <Suspense fallback={<div>loading</div>}>
+        <ConversationalCreationPage searchParams={searchParams} />
+      </Suspense>,
+    )
+  })
+  return result!
+}
+
+describe('ConversationalCreationPage (v2)', () => {
   beforeEach(() => {
-    mockCreationSessionApi.start.mockResolvedValue(mockCreationSession)
-    mockCreationSessionApi.sendMessage.mockClear()
-    mockCreationSessionApi.confirm.mockClear()
+    mockBuilderApi.start.mockReset()
+    mockBuilderApi.getSession.mockReset()
+    mockBuilderApi.confirm.mockReset()
+    mockStreamBuilder.mockReset()
+    // jsdom에는 scrollTo가 없으므로 stub 처리
+    Element.prototype.scrollTo = vi.fn()
   })
 
-  it('renders page header', () => {
-    render(<ConversationalCreationPage />)
-    expect(screen.getByText('에이전트 만들기')).toBeInTheDocument()
+  it('초기 상태에서 textarea와 빌드 시작 버튼을 표시한다', async () => {
+    await renderPage()
+
+    expect(screen.getByText('어떤 에이전트를 만들고 싶으세요?')).toBeInTheDocument()
+
+    const textarea = screen.getByPlaceholderText(
+      '예: "한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트"',
+    )
+    expect(textarea).toBeInTheDocument()
+
+    const startButton = screen.getByRole('button', { name: /빌드 시작/ })
+    expect(startButton).toBeInTheDocument()
+    expect(startButton).toBeDisabled()
   })
 
-  it('shows initial phase with question prompt', async () => {
-    render(<ConversationalCreationPage />)
-    await waitFor(() => {
-      expect(screen.getByText('어떤 에이전트를 만들고 싶으세요?')).toBeInTheDocument()
-    })
-  })
-
-  it('renders textarea for initial input', async () => {
-    render(<ConversationalCreationPage />)
-    await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText('예: "한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트"'),
-      ).toBeInTheDocument()
-    })
-  })
-
-  it('renders start button that is disabled when input is empty', async () => {
-    render(<ConversationalCreationPage />)
-    await waitFor(() => {
-      const startButton = screen.getByRole('button', { name: /시작/ })
-      expect(startButton).toBeInTheDocument()
-    })
-  })
-
-  it('still shows phase 1 UI when session start fails', async () => {
-    mockCreationSessionApi.start.mockRejectedValue(new Error('fail'))
-    render(<ConversationalCreationPage />)
-    // The phase 1 prompt is hardcoded, even on error the page shows phase 1
-    await waitFor(() => {
-      expect(screen.getByText('어떤 에이전트를 만들고 싶으세요?')).toBeInTheDocument()
-    })
-  })
-
-  it('sends message to API when start button clicked', async () => {
-    const { default: userEvent } = await import('@testing-library/user-event')
+  it('입력 후 빌드 시작 시 builderApi.start를 호출한다', async () => {
     const user = userEvent.setup()
 
-    mockCreationSessionApi.sendMessage.mockResolvedValue({
-      role: 'assistant',
-      content: '분석 완료',
-      current_phase: 2,
-      phase_result: null,
-      question: '어떤 도구가 필요한가요?',
-      draft_config: null,
-      suggested_replies: null,
-      recommended_tools: [],
+    mockBuilderApi.start.mockResolvedValue({
+      ...mockBuilderSession,
+      status: 'building',
     })
+    mockStreamBuilder.mockReturnValue(fakeBuilderStream([]))
+    mockBuilderApi.getSession.mockResolvedValue(mockBuilderSession)
 
-    render(<ConversationalCreationPage />)
+    await renderPage()
 
-    // Wait for session to start
+    const textarea = screen.getByPlaceholderText(
+      '예: "한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트"',
+    )
+    await user.type(textarea, '뉴스 요약 에이전트')
+    await user.click(screen.getByRole('button', { name: /빌드 시작/ }))
+
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /시작/ })).toBeInTheDocument()
+      expect(mockBuilderApi.start).toHaveBeenCalledWith('뉴스 요약 에이전트')
     })
+  })
+
+  it('SSE phase_progress 이벤트로 PhaseTimeline을 업데이트한다', async () => {
+    const user = userEvent.setup()
+
+    mockBuilderApi.start.mockResolvedValue({
+      ...mockBuilderSession,
+      status: 'building',
+    })
+    mockStreamBuilder.mockReturnValue(
+      fakeBuilderStream([
+        { event: 'phase_progress', data: { phase: 1, status: 'started' } },
+        {
+          event: 'phase_progress',
+          data: { phase: 1, status: 'completed', message: '초기화 완료' },
+        },
+        { event: 'phase_progress', data: { phase: 2, status: 'started' } },
+        {
+          event: 'phase_progress',
+          data: { phase: 2, status: 'completed', message: '의도 분석 완료' },
+        },
+      ]),
+    )
+    mockBuilderApi.getSession.mockResolvedValue(mockBuilderSession)
+
+    await renderPage()
 
     const textarea = screen.getByPlaceholderText(
       '예: "한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트"',
     )
     await user.type(textarea, '뉴스 에이전트')
-    await user.click(screen.getByRole('button', { name: /시작/ }))
+    await user.click(screen.getByRole('button', { name: /빌드 시작/ }))
 
-    // API should have been called with the session id and text
+    // PhaseTimeline이 렌더되어 빌드 진행 상황이 표시된다
     await waitFor(() => {
-      expect(mockCreationSessionApi.sendMessage).toHaveBeenCalledWith('session-1', '뉴스 에이전트')
+      expect(screen.getByText('빌드 진행 상황')).toBeInTheDocument()
     })
   })
 
-  it('shows PHASES constant data in timeline', () => {
-    // The PHASES data is rendered in the PhaseTimeline component
-    // Just verify the page renders the phase constants
-    render(<ConversationalCreationPage />)
-    // All phases are accessible in the component's code
-    expect(screen.getByText('에이전트 만들기')).toBeInTheDocument()
-  })
-
-  it('shows loading state during API call', async () => {
-    const { default: userEvent } = await import('@testing-library/user-event')
+  it('DraftConfigCard의 확인 버튼으로 builderApi.confirm을 호출한다', async () => {
     const user = userEvent.setup()
 
-    // Use a promise that we control to keep loading state visible
-    let resolveMessage: (value: unknown) => void = () => {}
-    mockCreationSessionApi.sendMessage.mockReturnValue(
-      new Promise((resolve) => {
-        resolveMessage = resolve
-      }),
-    )
-
-    render(<ConversationalCreationPage />)
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /시작/ })).toBeInTheDocument()
+    mockBuilderApi.start.mockResolvedValue({
+      ...mockBuilderSession,
+      id: 'session-confirm',
+      status: 'building',
     })
+    mockStreamBuilder.mockReturnValue(
+      fakeBuilderStream([
+        {
+          event: 'build_preview',
+          data: { draft_config: mockBuilderSession.draft_config },
+        },
+      ]),
+    )
+    mockBuilderApi.getSession.mockResolvedValue(mockBuilderSession)
+    mockBuilderApi.confirm.mockResolvedValue({ ...mockAgent, id: 'agent-created' })
+
+    await renderPage()
 
     const textarea = screen.getByPlaceholderText(
       '예: "한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트"',
     )
     await user.type(textarea, '뉴스 에이전트')
-    await user.click(screen.getByRole('button', { name: /시작/ }))
+    await user.click(screen.getByRole('button', { name: /빌드 시작/ }))
 
-    // During loading, neither phase 1 input nor phase 2 content should show
-    // The loading spinner should be present (Loader2Icon with animate-spin)
+    // DraftConfigCard 표시 대기
     await waitFor(() => {
-      expect(
-        screen.queryByPlaceholderText('예: "한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트"'),
-      ).not.toBeInTheDocument()
+      expect(screen.getByText('에이전트 구성 완료')).toBeInTheDocument()
     })
 
-    // Resolve with phase 2 response
-    resolveMessage({
-      role: 'assistant',
-      content: '분석 완료',
-      current_phase: 2,
-      phase_result: null,
-      question: '도구 선택',
-      draft_config: null,
-      suggested_replies: null,
-      recommended_tools: [],
+    // 에이전트 생성 버튼 클릭
+    await user.click(screen.getByRole('button', { name: /에이전트 생성/ }))
+
+    await waitFor(() => {
+      expect(mockBuilderApi.confirm).toHaveBeenCalledWith('session-confirm')
     })
   })
 
-  it('handles sendMessage error gracefully', async () => {
-    const { default: userEvent } = await import('@testing-library/user-event')
+  it('빌드 실패 시 에러 메시지를 표시한다', async () => {
     const user = userEvent.setup()
 
-    mockCreationSessionApi.sendMessage.mockRejectedValue(new Error('Network error'))
-
-    render(<ConversationalCreationPage />)
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /시작/ })).toBeInTheDocument()
+    mockBuilderApi.start.mockResolvedValue({
+      ...mockBuilderSession,
+      status: 'building',
     })
+    mockStreamBuilder.mockReturnValue(
+      fakeBuilderStream([
+        {
+          event: 'build_failed',
+          data: { message: '빌드 중 오류 발생' },
+        },
+      ]),
+    )
+    // buildStatusRef가 즉시 반영되지 않을 수 있으므로 getSession도 모킹
+    mockBuilderApi.getSession.mockResolvedValue({
+      ...mockBuilderSession,
+      status: 'failed',
+    })
+
+    await renderPage()
 
     const textarea = screen.getByPlaceholderText(
       '예: "한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트"',
     )
-    await user.type(textarea, 'test')
-    await user.click(screen.getByRole('button', { name: /시작/ }))
-
-    // Should not crash - page should still be rendered
-    await waitFor(() => {
-      expect(screen.getByText('에이전트 만들기')).toBeInTheDocument()
-    })
-  })
-
-  it('does not submit when text is empty', async () => {
-    render(<ConversationalCreationPage />)
+    await user.type(textarea, '에러 테스트')
+    await user.click(screen.getByRole('button', { name: /빌드 시작/ }))
 
     await waitFor(() => {
-      const startButton = screen.getByRole('button', { name: /시작/ })
-      expect(startButton).toBeDisabled()
+      const alert = screen.getByRole('alert')
+      expect(alert).toBeInTheDocument()
+      expect(screen.getByText('빌드 중 오류 발생')).toBeInTheDocument()
     })
-    expect(mockCreationSessionApi.sendMessage).not.toHaveBeenCalled()
   })
 })

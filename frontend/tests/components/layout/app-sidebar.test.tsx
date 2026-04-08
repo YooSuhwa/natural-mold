@@ -20,6 +20,7 @@ vi.mock('next/link', () => ({
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }))
 
 const mockUseAgents = vi.fn()
@@ -69,6 +70,7 @@ vi.mock('@/components/ui/sidebar', () => ({
   },
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
   SidebarSeparator: () => <hr />,
+  useSidebar: () => ({ toggleSidebar: vi.fn(), isMobile: false, state: 'expanded', openMobile: false, setOpenMobile: vi.fn() }),
 }))
 
 vi.mock('@/components/ui/skeleton', () => ({
@@ -99,7 +101,6 @@ describe('AppSidebar', () => {
   it('renders sidebar with brand', () => {
     render(<AppSidebar />)
     expect(screen.getByText('Moldy')).toBeInTheDocument()
-    expect(screen.getByText('M')).toBeInTheDocument()
   })
 
   it('renders navigation items', () => {
