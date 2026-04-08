@@ -5,7 +5,6 @@ import {
   SparklesIcon,
   SendIcon,
   Loader2Icon,
-  BotIcon,
   UserIcon,
   CheckCircle2Icon,
   XCircleIcon,
@@ -24,6 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { cn } from '@/lib/utils'
 import { streamAssistant } from '@/lib/sse/stream-assistant'
+import { AgentAvatar } from '@/components/agent/agent-avatar'
 import type { AssistantToolCallResult } from '@/lib/types'
 
 interface AssistantMessage {
@@ -37,6 +37,7 @@ interface AssistantMessage {
 interface AssistantPanelProps {
   agentId: string
   agentName: string
+  agentImageUrl?: string | null
 }
 
 function ToolCallBadge({ call }: { call: AssistantToolCallResult }) {
@@ -77,7 +78,7 @@ function ToolCallBadge({ call }: { call: AssistantToolCallResult }) {
   )
 }
 
-const MessageBubble = memo(function MessageBubble({ message }: { message: AssistantMessage }) {
+const MessageBubble = memo(function MessageBubble({ message, agentImageUrl, agentName }: { message: AssistantMessage; agentImageUrl?: string | null; agentName?: string }) {
   const t = useTranslations('agent.assistant')
 
   if (message.role === 'error') {
@@ -112,9 +113,7 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: Assist
 
   return (
     <div className="flex gap-2.5">
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10">
-        <BotIcon className="size-3.5 text-primary" />
-      </div>
+      <AgentAvatar imageUrl={agentImageUrl ?? null} name={agentName ?? 'Agent'} size="xs" />
       <div className="max-w-[85%] space-y-1">
         <div className="rounded-2xl bg-muted px-3.5 py-2 text-sm leading-relaxed">
           {message.content ? (
@@ -131,7 +130,7 @@ const MessageBubble = memo(function MessageBubble({ message }: { message: Assist
   )
 })
 
-export function AssistantPanel({ agentId, agentName }: AssistantPanelProps) {
+export function AssistantPanel({ agentId, agentName, agentImageUrl }: AssistantPanelProps) {
   const t = useTranslations('agent.assistant')
   const ts = useTranslations('agent.suggestion')
   // Stable session ID per panel instance — each tab/mount gets its own conversation
@@ -325,7 +324,7 @@ export function AssistantPanel({ agentId, agentName }: AssistantPanelProps) {
         )}
 
         {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+          <MessageBubble key={msg.id} message={msg} agentImageUrl={agentImageUrl} agentName={agentName} />
         ))}
       </div>
 

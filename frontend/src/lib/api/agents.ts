@@ -11,4 +11,6 @@ export const agentsApi = {
   delete: (id: string) => apiFetch<void>(`/api/agents/${id}`, { method: 'DELETE' }),
   toggleFavorite: (id: string) =>
     apiFetch<Agent>(`/api/agents/${id}/favorite`, { method: 'PATCH' }),
+  generateImage: (id: string) =>
+    apiFetch<{ image_url: string }>(`/api/agents/${id}/image`, { method: 'POST' }),
 }

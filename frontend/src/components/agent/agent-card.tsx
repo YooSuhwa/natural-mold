@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useToggleFavorite } from '@/lib/hooks/use-agents'
+import { AgentAvatar } from '@/components/agent/agent-avatar'
 import type { Agent } from '@/lib/types'
 
 interface AgentCardProps {
@@ -53,9 +54,14 @@ export function AgentCard({ agent }: AgentCardProps) {
       <Card className="h-full transition-colors hover:border-primary/40">
         <CardHeader className="pb-2">
           <div className="flex items-start justify-between">
-            <CardTitle className="truncate group-hover:text-primary transition-colors">
-              {agent.name}
-            </CardTitle>
+            <div className="flex items-start gap-3 min-w-0">
+              <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="md" />
+              <div className="flex-1 min-w-0">
+                <CardTitle className="truncate group-hover:text-primary transition-colors">
+                  {agent.name}
+                </CardTitle>
+              </div>
+            </div>
             <div className="flex items-center gap-1 shrink-0">
               <button
                 type="button"

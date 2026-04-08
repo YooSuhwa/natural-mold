@@ -1,7 +1,6 @@
 'use client'
 
 import { useAtomValue } from 'jotai'
-import { BotIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import {
   streamingMessageAtom,
@@ -10,6 +9,7 @@ import {
 } from '@/lib/stores/chat-store'
 import { ToolCallDisplay } from '@/components/chat/tool-call-display'
 import { MarkdownContent } from '@/components/chat/markdown-content'
+import { AgentAvatar } from '@/components/agent/agent-avatar'
 
 function ThinkingDots() {
   const t = useTranslations('chat.streaming')
@@ -26,7 +26,12 @@ function ThinkingDots() {
   )
 }
 
-export function StreamingMessage() {
+interface StreamingMessageProps {
+  agentImageUrl?: string | null
+  agentName?: string
+}
+
+export function StreamingMessage({ agentImageUrl, agentName }: StreamingMessageProps = {}) {
   const streamingMessage = useAtomValue(streamingMessageAtom)
   const streamingToolCalls = useAtomValue(streamingToolCallsAtom)
   const isStreaming = useAtomValue(isStreamingAtom)
@@ -38,9 +43,7 @@ export function StreamingMessage() {
 
   return (
     <div className="flex gap-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-        <BotIcon className="size-4" />
-      </div>
+      <AgentAvatar imageUrl={agentImageUrl ?? null} name={agentName ?? 'Agent'} size="sm" />
       <div className="max-w-[80%] space-y-2">
         {hasToolCalls && (
           <div className="space-y-1.5">

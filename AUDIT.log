@@ -19,3 +19,16 @@
 [2026-04-07T17:45] satya ISSUE_RESOLVED ISSUE-1,2 죽은 코드 3파일 삭제
 [2026-04-07T17:50] satya MILESTONE_DONE M5 통합+E2E 완료
 [2026-04-07T17:50] satya PROJECT_DONE "Moldy Agent Builder v2"
+---
+[2026-04-08T13:30] satya PROJECT_START "Agent Image Generation (Moldy Character)"
+[2026-04-08T13:30] satya MILESTONE_CREATED M1,M2,M3,M4
+[2026-04-08T13:30] satya TEAM_FORMED jensen(backend), zuckerberg(frontend), bezos(verification)
+[2026-04-08T13:35] satya MILESTONE_START M1,M2 Backend
+[2026-04-08T13:35] satya MILESTONE_START M3 Frontend
+[2026-04-08T13:45] jensen MILESTONE_DONE M1 스키마+설정+마이그레이션 완료
+[2026-04-08T13:45] jensen MILESTONE_DONE M2 이미지 서비스+라우터 완료 — ruff PASS, pytest 7/7 PASS
+[2026-04-08T13:50] zuckerberg MILESTONE_DONE M3 프론트엔드 완료 — pnpm build PASS, lint PASS
+[2026-04-08T13:50] satya MILESTONE_START M4 Final Verification
+[2026-04-08T13:55] bezos VERIFICATION_PASS M4 ruff PASS, pytest 7 PASS, build PASS, lint PASS — GO
+[2026-04-08T13:55] satya MILESTONE_DONE M4 최종 검증 완료
+[2026-04-08T13:55] satya PROJECT_DONE "Agent Image Generation (Moldy Character)"

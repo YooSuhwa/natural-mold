@@ -12,7 +12,6 @@ import {
   BookOpenIcon,
   LayoutTemplateIcon,
   PlusIcon,
-  BotIcon,
   UserIcon,
   SettingsIcon,
   LogOutIcon,
@@ -28,6 +27,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { useAgents } from '@/lib/hooks/use-agents'
+import { AgentAvatar } from '@/components/agent/agent-avatar'
 import {
   Sidebar,
   SidebarContent,
@@ -192,7 +192,7 @@ export function AppSidebar() {
                               tooltip={agent.name}
                               render={<Link href={`/agents/${agent.id}`} />}
                             >
-                              <BotIcon className="size-4" />
+                              <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="xs" />
                               <span>{agent.name}</span>
                             </SidebarMenuButton>
                           </SidebarMenuItem>

@@ -227,3 +227,8 @@
 ## 실패 교훈
 - assistant_agent.py: .parent x4는 backend/, .parent x5가 프로젝트 루트 (docs/ 위치)
 - ruff --fix 자동 훅: F401 미사용 import를 자동 삭제함 → v1+v2 공존 전략 시 주의
+- ruff ASYNC240: async 함수에서 pathlib.Path.is_file() / os.path.isfile() 금지 → anyio.Path 사용
+- image_service.py: _STATIC_DIR은 __file__ 기준 .parent x3 = backend/ (services/ → app/ → backend/)
+- agent-card.tsx JSX: 중첩 div 래핑 시 닫는 태그 개수 주의 (</div> 하나 과잉 → build 실패)
+- next/image: 백엔드 API 제공 이미지는 unoptimized + width/height 명시로 lint 경고 해결
+- AgentAvatar: API_BASE는 client.ts에서 named export됨 (const API_BASE = process.env...)

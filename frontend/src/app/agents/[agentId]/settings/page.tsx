@@ -210,6 +210,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                 onDescriptionChange={setDescription}
                 systemPrompt={systemPrompt}
                 onSystemPromptChange={setSystemPrompt}
+                agentId={agentId}
+                imageUrl={agent?.image_url ?? null}
               />
             </TabsContent>
 
@@ -249,7 +251,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             </TabsContent>
 
             <TabsContent value="assistant" className="pt-6">
-              {agent && <AssistantPanel agentId={agentId} agentName={agent.name} />}
+              {agent && <AssistantPanel agentId={agentId} agentName={agent.name} agentImageUrl={agent.image_url} />}
             </TabsContent>
           </Tabs>
         </div>

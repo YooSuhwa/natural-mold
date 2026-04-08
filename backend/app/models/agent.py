@@ -27,6 +27,7 @@ class Agent(Base):
     middleware_configs: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSON, nullable=True, default=list
     )
+    image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"))
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
