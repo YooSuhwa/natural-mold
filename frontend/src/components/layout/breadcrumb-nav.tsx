@@ -5,7 +5,8 @@ import { usePathname } from 'next/navigation'
 import { ChevronRightIcon, HomeIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
-import { useQueryClient } from '@tanstack/react-query'
+import { useAgent } from '@/lib/hooks/use-agents'
+import { useConversations } from '@/lib/hooks/use-conversations'
 
 const ROUTE_LABELS: Record<string, string> = {
   tools: 'nav.tools',
@@ -25,10 +26,8 @@ const SKIP_SEGMENTS = new Set(['agents', 'conversations'])
 // (no conditional skip — "new" always shown for context)
 
 function AgentName({ id }: { id: string }) {
-  const queryClient = useQueryClient()
-  const agents = queryClient.getQueryData<{ id: string; name: string }[]>(['agents'])
-  const agent = agents?.find((a) => a.id === id)
-  return <>{agent?.name ?? `${id.slice(0, 8)}…`}</>
+  const { data: agent } = useAgent(id)
+  return <>{agent?.name ?? id}</>
 }
 
 function ConversationTitle({
@@ -38,14 +37,9 @@ function ConversationTitle({
   agentId: string
   conversationId: string
 }) {
-  const queryClient = useQueryClient()
-  const conversations = queryClient.getQueryData<{ id: string; title?: string | null }[]>([
-    'agents',
-    agentId,
-    'conversations',
-  ])
+  const { data: conversations } = useConversations(agentId)
   const conv = conversations?.find((c) => c.id === conversationId)
-  return <>{conv?.title ?? `${conversationId.slice(0, 8)}…`}</>
+  return <>{conv?.title ?? conversationId}</>
 }
 
 export function BreadcrumbNav() {
