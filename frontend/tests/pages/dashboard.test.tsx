@@ -18,6 +18,10 @@ vi.mock('next/link', () => ({
   ),
 }))
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}))
+
 const mockUseAgents = vi.fn()
 const mockUseUsageSummary = vi.fn()
 const mockToggleFavorite = vi.fn()
@@ -65,7 +69,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('템플릿으로 만들기')).toBeInTheDocument()
 
     const conversationalLink = screen.getByText('대화로 만들기').closest('a')
-    expect(conversationalLink).toHaveAttribute('href', '/agents/new/conversational')
+    expect(conversationalLink).toHaveAttribute('href', '/agents/new')
 
     const templateLink = screen.getByText('템플릿으로 만들기').closest('a')
     expect(templateLink).toHaveAttribute('href', '/agents/new/template')

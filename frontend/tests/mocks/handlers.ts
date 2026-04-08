@@ -17,6 +17,7 @@ import {
   mockUsageSummary,
   mockCreationSession,
   mockCreationMessageResult,
+  mockBuilderSession,
 } from './fixtures'
 
 const API_BASE = 'http://localhost:8001'
@@ -204,5 +205,23 @@ export const handlers = [
 
   http.post(`${API_BASE}/api/agents/create-session/:id/confirm`, () => {
     return HttpResponse.json({ ...mockAgent, id: 'agent-from-session' })
+  }),
+
+  // ── Builder v2 ──────────────────────────────────────────────────
+  http.post(`${API_BASE}/api/builder`, async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>
+    return HttpResponse.json({
+      ...mockBuilderSession,
+      status: 'building',
+      user_request: body.user_request,
+    })
+  }),
+
+  http.get(`${API_BASE}/api/builder/:id`, ({ params }) => {
+    return HttpResponse.json({ ...mockBuilderSession, id: params.id })
+  }),
+
+  http.post(`${API_BASE}/api/builder/:id/confirm`, () => {
+    return HttpResponse.json({ ...mockAgent, id: 'agent-from-builder' })
   }),
 ]

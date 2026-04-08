@@ -24,6 +24,7 @@ vi.mock('next/link', () => ({
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useParams: () => ({ conversationId: 'conv-1' }),
+  usePathname: () => '/agents/agent-1/conversations/conv-1',
 }))
 
 // Mock React.use() for params Promise
@@ -57,6 +58,18 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     data: [],
     isLoading: false,
   }),
+  useUpdateConversation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+  useDeleteConversation: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
+}))
+
+vi.mock('@/components/shared/delete-confirm-dialog', () => ({
+  DeleteConfirmDialog: () => null,
 }))
 
 const mockStreamChat = vi.fn()
@@ -75,7 +88,7 @@ vi.mock('jotai', async () => {
   return {
     ...actual,
     useSetAtom: () => vi.fn(),
-    useAtomValue: () => null,
+    useAtomValue: () => ({ inputTokens: 0, outputTokens: 0, cost: 0 }),
   }
 })
 
@@ -165,7 +178,8 @@ describe('ChatPage', () => {
         }
       />,
     )
-    expect(screen.getByText('Test Agent')).toBeInTheDocument()
+    // Agent name appears in both conversation list header and chat header
+    expect(screen.getAllByText('Test Agent').length).toBeGreaterThanOrEqual(1)
   })
 
   it('shows empty conversation prompt when no messages', () => {
@@ -186,7 +200,7 @@ describe('ChatPage', () => {
         }
       />,
     )
-    expect(screen.getByText('대화를 시작해보세요.')).toBeInTheDocument()
+    expect(screen.getAllByText('대화를 시작해보세요.').length).toBeGreaterThanOrEqual(1)
   })
 
   it('calls streamChat when message is sent', async () => {
@@ -357,7 +371,7 @@ describe('ChatPage', () => {
     expect(mockToastError).toHaveBeenCalledWith('에이전트 실행 중 오류가 발생했습니다')
   })
 
-  it('shows settings link and new conversation button', () => {
+  it('shows settings link and new conversation button in conversation list', () => {
     mockUseAgent.mockReturnValue({ data: mockAgent })
     render(
       <ChatPage
@@ -372,11 +386,13 @@ describe('ChatPage', () => {
         }
       />,
     )
-    expect(screen.getByText('설정')).toBeInTheDocument()
-    // "새 대화" appears in both ConversationList and chat header
-    expect(screen.getAllByText('새 대화').length).toBeGreaterThanOrEqual(1)
-    // Settings link points to correct path
-    const settingsLink = screen.getByText('설정').closest('a')
-    expect(settingsLink).toHaveAttribute('href', '/agents/agent-1/settings')
+    // ConversationList has settings link and new conversation button
+    const settingsLinks = screen.getAllByRole('link')
+    const settingsLink = settingsLinks.find(
+      (link) => link.getAttribute('href') === '/agents/agent-1/settings',
+    )
+    expect(settingsLink).toBeDefined()
+    // "새 대화" button should be present in conversation list
+    expect(screen.getByRole('button', { name: '새 대화' })).toBeInTheDocument()
   })
 })

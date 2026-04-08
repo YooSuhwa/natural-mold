@@ -3,12 +3,16 @@ import { AppHeader } from '@/components/layout/app-header'
 
 vi.mock('@/components/ui/sidebar', () => ({
   SidebarTrigger: (props: Record<string, unknown>) => (
-    <button aria-label={props['aria-label'] as string} />
+    <button data-testid="sidebar-trigger" aria-label="사이드바 열기/닫기" className={props.className as string} />
   ),
 }))
 
 vi.mock('@/components/ui/separator', () => ({
   Separator: () => <hr />,
+}))
+
+vi.mock('@/components/layout/breadcrumb-nav', () => ({
+  BreadcrumbNav: () => <nav data-testid="breadcrumb-nav" />,
 }))
 
 describe('AppHeader', () => {

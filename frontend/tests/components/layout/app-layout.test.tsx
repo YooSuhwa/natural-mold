@@ -19,6 +19,7 @@ vi.mock('next/link', () => ({
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }))
 
 vi.mock('@/lib/hooks/use-agents', () => ({
@@ -44,6 +45,7 @@ vi.mock('@/components/ui/sidebar', () => ({
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
   SidebarSeparator: () => <hr />,
   SidebarTrigger: () => <button />,
+  useSidebar: () => ({ toggleSidebar: vi.fn(), isMobile: false, state: 'expanded', openMobile: false, setOpenMobile: vi.fn() }),
 }))
 
 vi.mock('@/components/ui/separator', () => ({
@@ -52,6 +54,10 @@ vi.mock('@/components/ui/separator', () => ({
 
 vi.mock('@/components/ui/tooltip', () => ({
   TooltipProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}))
+
+vi.mock('@/components/layout/breadcrumb-nav', () => ({
+  BreadcrumbNav: () => <nav data-testid="breadcrumb-nav" />,
 }))
 
 vi.mock('@/components/ui/dropdown-menu', () => ({

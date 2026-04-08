@@ -73,6 +73,89 @@ async def test_trigger_crud(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_update_trigger_not_found(client: AsyncClient):
+    """Update trigger with wrong id returns 404."""
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+
+    resp = await client.put(
+        f"/api/agents/{agent_id}/triggers/00000000-0000-0000-0000-000000000099",
+        json={"status": "paused"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_trigger_not_found(client: AsyncClient):
+    """Delete trigger with wrong id returns 404."""
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+
+    resp = await client.delete(
+        f"/api/agents/{agent_id}/triggers/00000000-0000-0000-0000-000000000099"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_trigger_reactivate(client: AsyncClient):
+    """Update trigger status from paused to active re-registers the job."""
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+
+    # Create
+    resp = await client.post(
+        f"/api/agents/{agent_id}/triggers",
+        json={
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 10},
+            "input_message": "test",
+        },
+    )
+    trigger_id = resp.json()["id"]
+
+    # Pause
+    resp = await client.put(
+        f"/api/agents/{agent_id}/triggers/{trigger_id}",
+        json={"status": "paused"},
+    )
+    assert resp.json()["status"] == "paused"
+
+    # Reactivate
+    resp = await client.put(
+        f"/api/agents/{agent_id}/triggers/{trigger_id}",
+        json={"status": "active"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_update_trigger_schedule_change(client: AsyncClient):
+    """Update trigger schedule re-registers the job."""
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+
+    resp = await client.post(
+        f"/api/agents/{agent_id}/triggers",
+        json={
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 10},
+            "input_message": "test",
+        },
+    )
+    trigger_id = resp.json()["id"]
+
+    # Update schedule config
+    resp = await client.put(
+        f"/api/agents/{agent_id}/triggers/{trigger_id}",
+        json={"schedule_config": {"interval_minutes": 30}},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["schedule_config"]["interval_minutes"] == 30
+
+
+@pytest.mark.asyncio
 async def test_trigger_validation(client: AsyncClient):
     model_id = await _create_model(client)
     agent_id = await _create_agent(client, model_id)

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.agent_runtime.streaming import format_sse, stream_agent_response
+from app.agent_runtime.streaming import _is_tool_selector_json, format_sse, stream_agent_response
 
 # ---------------------------------------------------------------------------
 # format_sse
@@ -237,3 +237,111 @@ async def test_stream_full_flow():
         "content_delta",
         "message_end",
     ]
+
+
+# ---------------------------------------------------------------------------
+# _is_tool_selector_json
+# ---------------------------------------------------------------------------
+
+
+def test_is_tool_selector_json_true():
+    assert _is_tool_selector_json('{"tools":["web_search","scraper"]}') is True
+
+
+def test_is_tool_selector_json_false_multiple_keys():
+    assert _is_tool_selector_json('{"tools":[],"extra":"val"}') is False
+
+
+def test_is_tool_selector_json_false_not_list():
+    assert _is_tool_selector_json('{"tools":"not_a_list"}') is False
+
+
+def test_is_tool_selector_json_false_invalid():
+    assert _is_tool_selector_json("not json") is False
+
+
+def test_is_tool_selector_json_false_empty_dict():
+    assert _is_tool_selector_json("{}") is False
+
+
+# ---------------------------------------------------------------------------
+# stream_agent_response — middleware JSON filtering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_filters_middleware_json():
+    """Middleware JSON like {"tools":["a"]} should be filtered out."""
+    ai_chunk = _make_ai_chunk('Before{"tools":["web_search"]}After')
+    agent = MockAgent([(ai_chunk, {})])
+
+    events = [e async for e in stream_agent_response(agent, [], {})]
+
+    content_events = [e for e in events if "content_delta" in e]
+    concatenated = "".join(
+        json.loads(e.split("data: ")[1].strip())["delta"] for e in content_events
+    )
+    assert '{"tools"' not in concatenated
+    assert "Before" in concatenated
+    assert "After" in concatenated
+
+
+@pytest.mark.asyncio
+async def test_stream_preserves_normal_json():
+    """Normal JSON that is NOT {"tools":[...]} should NOT be filtered."""
+    ai_chunk = _make_ai_chunk('Here is {"result":"ok"} data')
+    agent = MockAgent([(ai_chunk, {})])
+
+    events = [e async for e in stream_agent_response(agent, [], {})]
+
+    content_events = [e for e in events if "content_delta" in e]
+    concatenated = "".join(
+        json.loads(e.split("data: ")[1].strip())["delta"] for e in content_events
+    )
+    assert '{"result":"ok"}' in concatenated.replace(" ", "").replace('"result"', '"result"')
+
+
+# ---------------------------------------------------------------------------
+# stream_agent_response — estimated cost
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_estimated_cost():
+    """When cost rates are provided, estimated_cost is calculated."""
+    usage = {"input_tokens": 1000, "output_tokens": 500}
+    ai_chunk = _make_ai_chunk("done", usage_metadata=usage)
+    agent = MockAgent([(ai_chunk, {})])
+
+    events = [
+        e async for e in stream_agent_response(
+            agent, [], {},
+            cost_per_input_token=0.00001,
+            cost_per_output_token=0.00003,
+        )
+    ]
+
+    end_event = [e for e in events if "message_end" in e][0]
+    end_data = json.loads(end_event.split("data: ")[1].strip())
+    assert "estimated_cost" in end_data["usage"]
+    # 1000 * 0.00001 + 500 * 0.00003 = 0.01 + 0.015 = 0.025
+    assert abs(end_data["usage"]["estimated_cost"] - 0.025) < 0.0001
+
+
+# ---------------------------------------------------------------------------
+# stream_agent_response — incomplete JSON buffer flush
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_flushes_incomplete_json():
+    """Incomplete JSON in buffer at end should be flushed as content."""
+    ai_chunk = _make_ai_chunk('Text{incomplete')
+    agent = MockAgent([(ai_chunk, {})])
+
+    events = [e async for e in stream_agent_response(agent, [], {})]
+
+    end_event = [e for e in events if "message_end" in e][0]
+    end_data = json.loads(end_event.split("data: ")[1].strip())
+    # The incomplete JSON buffer should be in the final content
+    assert "Text{incomplete" in end_data["content"]

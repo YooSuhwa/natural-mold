@@ -18,6 +18,14 @@ vi.mock('next/link', () => ({
   ),
 }))
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}))
+
+vi.mock('@/lib/hooks/use-agents', () => ({
+  useToggleFavorite: () => ({ mutate: vi.fn() }),
+}))
+
 const activeAgent: Agent = {
   id: 'agent-1',
   name: 'Test Agent',
@@ -28,7 +36,11 @@ const activeAgent: Agent = {
     { id: 'tool-1', name: 'Web Search' },
     { id: 'tool-2', name: 'Calculator' },
   ],
+  skills: [],
   status: 'active',
+  is_favorite: false,
+  model_params: null,
+  middleware_configs: [],
   template_id: null,
   created_at: '2026-01-15T00:00:00Z',
   updated_at: '2026-01-15T00:00:00Z',
@@ -86,14 +98,16 @@ describe('AgentCard', () => {
     expect(screen.getByText('GPT-4o')).toBeInTheDocument()
   })
 
-  it('shows tool names', () => {
+  it('shows tool count', () => {
     render(<AgentCard agent={activeAgent} />)
-    expect(screen.getByText('Web Search, Calculator')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
   })
 
   it('does not show tool section when no tools', () => {
     render(<AgentCard agent={inactiveAgent} />)
-    expect(screen.queryByText('Web Search')).not.toBeInTheDocument()
+    // Tool count badge should not appear
+    const wrenchIcons = document.querySelectorAll('.lucide-wrench')
+    expect(wrenchIcons.length).toBe(0)
   })
 
   it('links to correct agent URL', () => {

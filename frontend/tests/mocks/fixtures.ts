@@ -9,8 +9,26 @@ import type {
   UsageSummary,
   CreationSession,
   MCPServer,
+  BuilderSession,
+  BuilderDraftConfig,
 } from '@/lib/types'
-import type { CreationMessageResult } from '@/lib/api/creation-session'
+
+// Legacy type — was in @/lib/api/creation-session (removed in v2)
+export interface CreationMessageResult {
+  role: string
+  content: string
+  current_phase: number
+  phase_result: unknown
+  question: string
+  draft_config: {
+    name: string
+    description: string
+    system_prompt: string
+    is_ready: boolean
+  } | null
+  suggested_replies: { options: string[]; multi_select: boolean } | null
+  recommended_tools: Array<{ name: string; description: string }>
+}
 
 // ── Agent ──────────────────────────────────────────────────────────
 
@@ -25,6 +43,7 @@ export const mockAgent: Agent = {
   status: 'active',
   is_favorite: false,
   model_params: null,
+  middleware_configs: [],
   template_id: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -141,6 +160,7 @@ export const mockConversation: Conversation = {
   id: 'conv-1',
   agent_id: 'agent-1',
   title: 'Test Conversation',
+  is_pinned: false,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }
@@ -256,4 +276,47 @@ export const mockCreationMessageResult: CreationMessageResult = {
   },
   suggested_replies: { options: ['Web Search', 'Custom Tool'], multi_select: true },
   recommended_tools: [{ name: 'Web Search', description: 'Search the web' }],
+}
+
+// ── Builder v2 ────────────────────────────────────────────────────
+
+export const mockBuilderDraftConfig: BuilderDraftConfig = {
+  name: 'News Agent',
+  name_ko: '뉴스 에이전트',
+  description: 'Summarizes daily news',
+  system_prompt: 'You are a news summarizer.',
+  tools: ['Web Search', 'Web Scraper'],
+  middlewares: [],
+  model_name: 'gpt-4o',
+  primary_task_type: 'research',
+  use_cases: ['Daily news digest'],
+}
+
+export const mockBuilderSession: BuilderSession = {
+  id: 'builder-session-1',
+  status: 'preview',
+  current_phase: 7,
+  user_request: '뉴스 요약 에이전트',
+  intent: {
+    agent_name: 'News Agent',
+    agent_name_ko: '뉴스 에이전트',
+    agent_description: 'Summarizes daily news',
+    primary_task_type: 'research',
+    tool_preferences: 'web search',
+    output_style: 'summary',
+    response_tone: 'formal',
+    use_cases: ['Daily news digest'],
+    constraints: [],
+    required_capabilities: ['web_search'],
+  },
+  tools_result: [
+    { tool_name: 'Web Search', description: 'Search the web', reason: 'Required for news' },
+  ],
+  middlewares_result: [],
+  system_prompt: 'You are a news summarizer.',
+  draft_config: mockBuilderDraftConfig,
+  agent_id: null,
+  error_message: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
 }

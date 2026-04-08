@@ -17,27 +17,31 @@ vi.mock('next/link', () => ({
   ),
 }))
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}))
+
 describe('AgentNewPage', () => {
-  it('renders two creation method options', () => {
+  it('renders hero section with title', () => {
     render(<AgentNewPage />)
-    expect(screen.getByText('대화로 만들기')).toBeInTheDocument()
-    expect(screen.getByText('템플릿으로 만들기')).toBeInTheDocument()
+    expect(screen.getByText('생성하려는 에이전트에 대해 알려주세요')).toBeInTheDocument()
   })
 
-  it('conversational option links to correct path', () => {
+  it('renders chat input textarea', () => {
     render(<AgentNewPage />)
-    const link = screen.getByText('시작하기').closest('a')
-    expect(link).toHaveAttribute('href', '/agents/new/conversational')
+    const textarea = screen.getByRole('textbox')
+    expect(textarea).toBeInTheDocument()
+  })
+
+  it('manual option links to correct path', () => {
+    render(<AgentNewPage />)
+    const manualLink = screen.getByText('에이전트 직접 만들기').closest('a')
+    expect(manualLink).toHaveAttribute('href', '/agents/new/manual')
   })
 
   it('template option links to correct path', () => {
     render(<AgentNewPage />)
-    const link = screen.getByText('둘러보기').closest('a')
-    expect(link).toHaveAttribute('href', '/agents/new/template')
-  })
-
-  it('renders page header', () => {
-    render(<AgentNewPage />)
-    expect(screen.getByText('새 에이전트 만들기')).toBeInTheDocument()
+    const templateLink = screen.getByText('템플릿으로 만들기').closest('a')
+    expect(templateLink).toHaveAttribute('href', '/agents/new/template')
   })
 })
