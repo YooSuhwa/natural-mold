@@ -163,5 +163,8 @@ async def get_agent_image(
 
 @middleware_router.get("/api/middlewares")
 async def list_middlewares():
-    """Return the available middleware catalog."""
-    return get_middleware_registry()
+    """Return the available middleware catalog.
+
+    deepagents가 자동 추가하는 빌트인 미들웨어는 제외한다.
+    """
+    return get_middleware_registry(exclude_builtin=True)

@@ -113,11 +113,14 @@ def test_get_assistant_model():
     with (
         patch.object(mod, "create_chat_model", return_value=mock_model) as mock_create,
         patch.object(mod, "settings") as mock_settings,
+        patch.object(mod, "PROVIDER_API_KEY_MAP", {"anthropic": "sk-ant-test"}),
     ):
         mock_settings.assistant_model_provider = "anthropic"
         mock_settings.assistant_model_name = "claude-sonnet-4-20250514"
         result = mod._get_assistant_model()
 
     assert result is mock_model
-    mock_create.assert_called_once_with("anthropic", "claude-sonnet-4-20250514")
+    mock_create.assert_called_once_with(
+        "anthropic", "claude-sonnet-4-20250514", api_key="sk-ant-test"
+    )
     mod._get_assistant_model.cache_clear()

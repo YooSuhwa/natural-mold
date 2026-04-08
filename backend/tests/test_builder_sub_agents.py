@@ -339,9 +339,15 @@ async def test_invoke_for_text_retry_on_short():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(side_effect=[short_response, long_response])
 
-    with patch(
-        "app.agent_runtime.builder.sub_agents.helpers.create_chat_model",
-        return_value=mock_model,
+    with (
+        patch(
+            "app.agent_runtime.builder.sub_agents.helpers._get_builder_model",
+            return_value=mock_model,
+        ),
+        patch(
+            "app.agent_runtime.builder.sub_agents.helpers._get_fallback_model",
+            return_value=None,
+        ),
     ):
         from app.agent_runtime.builder.sub_agents.helpers import invoke_for_text
 
@@ -359,9 +365,15 @@ async def test_invoke_for_text_all_short():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(return_value=short_response)
 
-    with patch(
-        "app.agent_runtime.builder.sub_agents.helpers.create_chat_model",
-        return_value=mock_model,
+    with (
+        patch(
+            "app.agent_runtime.builder.sub_agents.helpers._get_builder_model",
+            return_value=mock_model,
+        ),
+        patch(
+            "app.agent_runtime.builder.sub_agents.helpers._get_fallback_model",
+            return_value=None,
+        ),
     ):
         from app.agent_runtime.builder.sub_agents.helpers import invoke_for_text
 

@@ -4,19 +4,27 @@ from decimal import Decimal
 
 DEFAULT_MODELS = [
     {
+        "provider": "anthropic",
+        "model_name": "claude-sonnet-4-6",
+        "display_name": "Claude Sonnet 4.6",
+        "is_default": True,
+        "cost_per_input_token": Decimal("0.000003"),
+        "cost_per_output_token": Decimal("0.000015"),
+    },
+    {
         "provider": "openai",
         "model_name": "gpt-5.4-mini",
         "display_name": "GPT-5.4 Mini",
-        "is_default": True,
+        "is_default": False,
         "cost_per_input_token": Decimal("0.0000025"),
         "cost_per_output_token": Decimal("0.00001"),
     },
     {
-        "provider": "anthropic",
-        "model_name": "claude-sonnet-4-20250514",
-        "display_name": "Claude Sonnet 4",
+        "provider": "openai",
+        "model_name": "gpt-5.4",
+        "display_name": "GPT-5.4",
         "is_default": False,
-        "cost_per_input_token": Decimal("0.000003"),
+        "cost_per_input_token": Decimal("0.0000025"),
         "cost_per_output_token": Decimal("0.000015"),
     },
     {

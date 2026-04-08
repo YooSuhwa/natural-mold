@@ -44,12 +44,7 @@ def create_chat_model(
 ) -> BaseChatModel:
     cls = PROVIDER_MAP.get(provider, ChatOpenAI)
 
-    resolved_key = api_key or PROVIDER_API_KEY_MAP.get(provider, "")
-
-    kwargs: dict = {"model": model_name}
-
-    if resolved_key:
-        kwargs["api_key"] = resolved_key
+    kwargs: dict = {"model": model_name, "api_key": api_key}
     if base_url:
         kwargs["base_url"] = base_url
 

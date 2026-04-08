@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.exceptions import AppError, ConflictError, NotFoundError, ValidationError
+from app.routers.agents import _agent_to_response
 from app.schemas.agent import AgentResponse
 from app.schemas.builder import BuilderSessionResponse, BuilderStartRequest, BuilderStatus
 from app.services import builder_service
@@ -105,7 +106,7 @@ async def confirm_build(
     if session.status == BuilderStatus.COMPLETED and session.agent_id:
         existing_agent = await builder_service.get_agent_by_id(db, session.agent_id)
         if existing_agent:
-            return existing_agent
+            return _agent_to_response(existing_agent)
 
     # 동시 요청 방지: 이미 CONFIRMING이면 409
     if session.status == BuilderStatus.CONFIRMING:
@@ -156,4 +157,4 @@ async def confirm_build(
             "에이전트를 생성할 수 없습니다",
             status=500,
         )
-    return agent
+    return _agent_to_response(agent)

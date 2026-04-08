@@ -17,6 +17,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 
 from app.agent_runtime.message_utils import convert_to_langchain_messages
 from app.agent_runtime.middleware_registry import (
+    DEEPAGENT_BUILTIN_TYPES,
     build_middleware_instances,
     get_provider_middleware,
 )
@@ -246,13 +247,18 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     # 2. 서버별로 도구 로딩 + 필터링 — (tool, origin) 쌍으로 추적
     collected: list[tuple[BaseTool, str]] = []
 
+    from app.config import settings as _settings
+
     for key, config in servers.items():
         try:
             client = MultiServerMCPClient(
                 {key: config},
                 tool_interceptors=interceptors,
             )
-            server_tools = await client.get_tools()
+            server_tools = await asyncio.wait_for(
+                client.get_tools(),
+                timeout=_settings.mcp_connection_timeout,
+            )
             needed = tool_filter[key]
             for t in server_tools:
                 if t.name in needed:
@@ -276,6 +282,32 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     return [tool for tool, _ in collected]
 
 
+_MIDDLEWARE_MODEL_FIELDS = frozenset({"model", "fallback_model"})
+
+
+def _resolve_middleware_model_params(
+    configs: list[dict[str, Any]],
+    provider_api_keys: dict[str, str | None],
+) -> list[dict[str, Any]]:
+    """미들웨어 config의 model 문자열을 BaseChatModel 객체로 사전 해석.
+
+    provider_api_keys에 해당 프로바이더 키가 없으면 api_key=None 전달
+    → LangChain env var 폴백 차단, 인증 실패로 안전하게 처리.
+    """
+    resolved = []
+    for config in configs:
+        params = dict(config.get("params", {}))
+        for field in _MIDDLEWARE_MODEL_FIELDS:
+            val = params.get(field)
+            if isinstance(val, str) and ":" in val:
+                prov, mname = val.split(":", 1)
+                params[field] = create_chat_model(
+                    prov, mname, api_key=provider_api_keys.get(prov)
+                )
+        resolved.append({**config, "params": params})
+    return resolved
+
+
 async def _prepare_agent(
     provider: str,
     model_name: str,
@@ -289,6 +321,7 @@ async def _prepare_agent(
     middleware_configs: list[dict[str, Any]] | None = None,
     agent_skills: list[dict] | None = None,
     agent_id: str | None = None,
+    provider_api_keys: dict[str, str | None] | None = None,
 ) -> tuple[Any, list, dict]:
     """에이전트 빌드 + 설정. stream/invoke 공용."""
     model = create_chat_model(provider, model_name, api_key, base_url, **(model_params or {}))
@@ -324,8 +357,13 @@ async def _prepare_agent(
     mcp_tools = await _build_mcp_tools(mcp_configs)
     langchain_tools.extend(mcp_tools)
 
-    # 3. 미들웨어 — 기존 방식 유지
-    middleware = build_middleware_instances(middleware_configs or [])
+    # 3. 미들웨어 — deepagents 빌트인 타입 제외 후, model 문자열을 BaseChatModel로 사전 해석
+    filtered_mw = [
+        c for c in (middleware_configs or [])
+        if c.get("type") not in DEEPAGENT_BUILTIN_TYPES
+    ]
+    resolved_mw = _resolve_middleware_model_params(filtered_mw, provider_api_keys or {})
+    middleware = build_middleware_instances(resolved_mw)
     middleware += get_provider_middleware(provider)
 
     # 4. Backend + Skills + Memory 구성
@@ -389,6 +427,7 @@ async def execute_agent_stream(
     agent_id: str | None = None,
     cost_per_input_token: float | None = None,
     cost_per_output_token: float | None = None,
+    provider_api_keys: dict[str, str | None] | None = None,
 ) -> AsyncGenerator[str, None]:
     """스트리밍 실행 (채팅용)."""
     agent, lc_messages, config = await _prepare_agent(
@@ -404,6 +443,7 @@ async def execute_agent_stream(
         middleware_configs,
         agent_skills,
         agent_id,
+        provider_api_keys=provider_api_keys,
     )
 
     async for chunk in stream_agent_response(
@@ -429,6 +469,7 @@ async def execute_agent_invoke(
     middleware_configs: list[dict[str, Any]] | None = None,
     agent_skills: list[dict] | None = None,
     agent_id: str | None = None,
+    provider_api_keys: dict[str, str | None] | None = None,
 ) -> str:
     """비스트리밍 실행 (트리거용). 최종 응답 텍스트만 반환."""
     agent, lc_messages, config = await _prepare_agent(
@@ -444,6 +485,7 @@ async def execute_agent_invoke(
         middleware_configs,
         agent_skills,
         agent_id,
+        provider_api_keys=provider_api_keys,
     )
 
     result = await agent.ainvoke({"messages": lc_messages}, config=config)

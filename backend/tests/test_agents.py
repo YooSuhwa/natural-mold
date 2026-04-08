@@ -124,4 +124,6 @@ async def test_list_middlewares(client: AsyncClient):
     assert isinstance(data, list)
     assert len(data) > 0
     types = {item["type"] for item in data}
-    assert "summarization" in types
+    # deepagents 빌트인 타입(summarization, todo_list 등)은 제외됨
+    assert "summarization" not in types
+    assert "tool_retry" in types

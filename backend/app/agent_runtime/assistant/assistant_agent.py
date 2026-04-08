@@ -20,7 +20,7 @@ from app.agent_runtime.assistant.tools.read_tools import build_read_tools
 from app.agent_runtime.assistant.tools.write_tools import build_write_tools
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.executor import build_agent
-from app.agent_runtime.model_factory import create_chat_model
+from app.agent_runtime.model_factory import PROVIDER_API_KEY_MAP, create_chat_model
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,11 @@ def _load_system_prompt() -> str:
 @functools.cache
 def _get_assistant_model() -> BaseChatModel:
     """Assistant 모델 인스턴스를 캐시한다."""
-    return create_chat_model(settings.assistant_model_provider, settings.assistant_model_name)
+    return create_chat_model(
+        settings.assistant_model_provider,
+        settings.assistant_model_name,
+        api_key=PROVIDER_API_KEY_MAP.get(settings.assistant_model_provider),
+    )
 
 
 def build_assistant_agent(

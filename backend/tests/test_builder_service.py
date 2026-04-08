@@ -340,7 +340,9 @@ def test_get_middlewares_catalog():
     assert isinstance(result, list)
     assert len(result) > 0
     types = {item["type"] for item in result}
-    assert "summarization" in types
+    # deepagents 빌트인 타입(summarization, todo_list 등)은 제외됨
+    assert "summarization" not in types
+    assert "tool_retry" in types
 
 
 # ---------------------------------------------------------------------------

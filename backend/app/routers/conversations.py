@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import Path
 
@@ -20,6 +21,9 @@ from app.schemas.conversation import (
 )
 from app.services import chat_service
 from app.services.encryption import decrypt_api_key
+from app.services.provider_service import load_all_provider_api_keys
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["conversations"])
 
@@ -128,28 +132,38 @@ async def send_message(
     )
     base_url = lp.base_url if lp and lp.base_url else agent.model.base_url
 
+    provider_api_keys = await load_all_provider_api_keys(db)
+
     async def generate():
-        async for chunk in execute_agent_stream(
-            provider=agent.model.provider,
-            model_name=agent.model.model_name,
-            api_key=api_key,
-            base_url=base_url,
-            system_prompt=effective_prompt,
-            tools_config=tools_config,
-            messages_history=[{"role": "user", "content": data.content}],
-            thread_id=str(conversation_id),
-            model_params=agent.model_params,
-            middleware_configs=agent.middleware_configs,
-            agent_skills=agent_skills or None,
-            agent_id=str(agent.id),
-            cost_per_input_token=float(agent.model.cost_per_input_token)
-            if agent.model.cost_per_input_token
-            else None,
-            cost_per_output_token=float(agent.model.cost_per_output_token)
-            if agent.model.cost_per_output_token
-            else None,
-        ):
-            yield chunk
+        try:
+            async for chunk in execute_agent_stream(
+                provider=agent.model.provider,
+                model_name=agent.model.model_name,
+                api_key=api_key,
+                base_url=base_url,
+                system_prompt=effective_prompt,
+                tools_config=tools_config,
+                messages_history=[{"role": "user", "content": data.content}],
+                thread_id=str(conversation_id),
+                model_params=agent.model_params,
+                middleware_configs=agent.middleware_configs,
+                agent_skills=agent_skills or None,
+                agent_id=str(agent.id),
+                cost_per_input_token=float(agent.model.cost_per_input_token)
+                if agent.model.cost_per_input_token
+                else None,
+                cost_per_output_token=float(agent.model.cost_per_output_token)
+                if agent.model.cost_per_output_token
+                else None,
+                provider_api_keys=provider_api_keys,
+            ):
+                yield chunk
+        except Exception:
+            logger.exception("Agent stream failed for conversation %s", conversation_id)
+            from app.agent_runtime.streaming import format_sse
+
+            yield format_sse("error", {"message": "에이전트 실행 중 오류가 발생했습니다."})
+            yield format_sse("message_end", {"usage": {}, "content": ""})
 
     return StreamingResponse(
         generate(),

@@ -48,10 +48,12 @@ class Settings(BaseSettings):
     conversation_output_dir: str = "./data/conversations"
 
     # Builder / Assistant sub-agent model defaults (서비스 내부용)
-    builder_model_provider: str = "openai"
-    builder_model_name: str = "gpt-5.4-mini"
-    assistant_model_provider: str = "openai"
-    assistant_model_name: str = "gpt-5.4-mini"
+    builder_model_provider: str = "anthropic"
+    builder_model_name: str = "claude-sonnet-4-6"
+    builder_fallback_provider: str = "openai"
+    builder_fallback_name: str = "gpt-5.4"
+    assistant_model_provider: str = "anthropic"
+    assistant_model_name: str = "claude-sonnet-4-6"
 
     # 에이전트 생성 시 기본 모델 (사용자 에이전트용, DB Model.display_name 또는 provider:model_name)
     # 비어있으면 DB의 is_default 모델 → 첫 번째 모델 순서로 fallback

@@ -180,9 +180,15 @@ async def test_invoke_with_json_retry_retry_then_success():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(side_effect=[bad_response, good_response])
 
-    with patch(
-        "app.agent_runtime.builder.sub_agents.helpers.create_chat_model",
-        return_value=mock_model,
+    with (
+        patch(
+            "app.agent_runtime.builder.sub_agents.helpers._get_builder_model",
+            return_value=mock_model,
+        ),
+        patch(
+            "app.agent_runtime.builder.sub_agents.helpers._get_fallback_model",
+            return_value=None,
+        ),
     ):
         result = await invoke_with_json_retry("system", "task")
         assert result == {"result": "ok"}
@@ -198,10 +204,17 @@ async def test_invoke_with_json_retry_all_fail():
     mock_model = AsyncMock()
     mock_model.ainvoke = AsyncMock(return_value=bad_response)
 
-    with patch(
-        "app.agent_runtime.builder.sub_agents.helpers.create_chat_model",
-        return_value=mock_model,
-    ), pytest.raises(ValueError, match="JSON parsing failed"):
+    with (
+        patch(
+            "app.agent_runtime.builder.sub_agents.helpers._get_builder_model",
+            return_value=mock_model,
+        ),
+        patch(
+            "app.agent_runtime.builder.sub_agents.helpers._get_fallback_model",
+            return_value=None,
+        ),
+        pytest.raises(ValueError, match="JSON parsing failed"),
+    ):
         await invoke_with_json_retry("system", "task", max_retries=2)
 
 
