@@ -310,6 +310,34 @@ export default function ModelsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={
+                                  model.is_default ? t('alreadyDefault') : t('setDefault')
+                                }
+                                onClick={() => {
+                                  if (!model.is_default) {
+                                    updateModel.mutate({
+                                      id: model.id,
+                                      data: { is_default: true },
+                                    })
+                                  }
+                                }}
+                              >
+                                <StarIcon
+                                  className={`size-4 ${model.is_default ? 'fill-yellow-400 text-yellow-500' : 'text-muted-foreground'}`}
+                                />
+                              </Button>
+                            }
+                          />
+                          <TooltipContent>
+                            {model.is_default ? t('alreadyDefault') : t('setDefault')}
+                          </TooltipContent>
+                        </Tooltip>
                         <Button
                           variant="ghost"
                           size="icon-sm"

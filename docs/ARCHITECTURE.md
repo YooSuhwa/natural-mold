@@ -559,3 +559,204 @@ APScheduler → execute_trigger(trigger_id)
 | SSE | 채팅 + 트리거 | 채팅만 |
 | Creation Agent | `model.ainvoke()` 직접 | `create_deep_agent(tools=[])` + `ainvoke()` |
 | 스트리밍 필터 | 미들웨어 JSON 필터 유지 | 동일 (유지 판단 완료) |
+
+---
+
+## v2 변경 영역 (Builder + Assistant 교체)
+
+> 상세 설계: [ADR-005: Builder/Assistant 아키텍처](design-docs/adr-005-builder-assistant.md)
+> 기획서: [moldy-agent-builder-spec-v2.md](moldy-agent-builder-spec-v2.md)
+
+### 아키텍처 변경 개요
+
+기존 `creation_agent.py` (단일 GPT-4o, 4단계 대화형)와 `fix_agent.py` (단일 LLM, JSON changes)를
+**Builder** (7단계 파이프라인 오케스트레이터 + 4 서브에이전트)와 **Assistant** (32개 도구 기반 에이전트)로 교체한다.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Backend (FastAPI)                        │
+│                                                             │
+│  agent_runtime/builder/                                     │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  orchestrator.py  ← LangGraph StateGraph            │    │
+│  │  ┌──────┐ ┌──────┐ ┌────────┐ ┌────────┐           │    │
+│  │  │Intent│→│Tools │→│Middlew.│→│Prompt  │           │    │
+│  │  │Agent │ │Agent │ │Agent   │ │Agent   │           │    │
+│  │  └──────┘ └──────┘ └────────┘ └────────┘           │    │
+│  │      Phase 2    3        4         5                │    │
+│  │                                                     │    │
+│  │  Phase 1 (init) → ... → Phase 6 (config)           │    │
+│  │                            → Phase 7 (build_final)  │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  agent_runtime/assistant/                                   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  assistant.py  ← create_deep_agent + 32 tools       │    │
+│  │  tools.py      ← Assistant 도구 팩토리               │    │
+│  │  (VERIFY-MODIFY 루프, 시스템 프롬프트 기반)           │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  routers/                                                   │
+│  ├── builder.py           # POST /start, SSE /stream,      │
+│  │                        # POST /confirm                   │
+│  └── assistant.py         # POST /message (SSE),            │
+│                           # GET /config                     │
+│                                                             │
+│  services/                                                  │
+│  ├── builder_service.py   # 빌드 세션 관리 + DB 연동        │
+│  └── assistant_service.py # Assistant 세션 + 도구 실행       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 디렉토리 구조 (신규)
+
+```
+agent_runtime/
+├── builder/
+│   ├── __init__.py
+│   ├── orchestrator.py        # LangGraph StateGraph 7-phase 파이프라인
+│   ├── state.py               # BuilderState TypedDict
+│   ├── sub_agents.py          # 4 서브에이전트 생성 (intent/tools/middleware/prompt)
+│   ├── prompts.py             # 서브에이전트 시스템 프롬프트
+│   └── tools.py               # Builder 전용 도구 (write_*, create_*, build_final)
+│
+├── assistant/
+│   ├── __init__.py
+│   ├── assistant.py           # create_deep_agent + 도구 바인딩
+│   ├── tools.py               # 32개 도구 팩토리 (read/write/clarify)
+│   └── prompt.py              # Assistant 시스템 프롬프트 로더
+│
+├── executor.py                # 기존 유지 (채팅 실행)
+├── model_factory.py           # 기존 유지
+├── tool_factory.py            # 기존 유지
+├── middleware_registry.py     # 기존 유지
+├── streaming.py               # 기존 유지 + Builder SSE 재사용
+└── ...
+```
+
+### 교체 대상 → 신규 매핑
+
+| 기존 (삭제 대상) | 신규 (교체) | 비고 |
+|------------------|-------------|------|
+| `creation_agent.py` | `builder/orchestrator.py` | 단일 LLM → 오케스트레이터 + 4 서브에이전트 |
+| `fix_agent.py` | `assistant/assistant.py` | JSON changes → 32개 도구 기반 |
+| `routers/agent_creation.py` | `routers/builder.py` | SSE 스트리밍 추가 |
+| `routers/fix_agent.py` | `routers/assistant.py` | SSE 스트리밍 추가 |
+| `services/agent_creation_service.py` | `services/builder_service.py` | 세션 + 빌드 결과 관리 |
+| `schemas/agent_creation.py` | `schemas/builder.py` | BuilderState, Intent 등 |
+| `schemas/fix_agent.py` | `schemas/assistant.py` | AssistantMessage 등 |
+| `models/agent_creation_session.py` | `models/builder_session.py` | 상태 필드 확장 |
+
+### 핵심 데이터 흐름: Builder
+
+```
+POST /api/builder/start
+│
+├─ 1. create_builder_session(user_id, request)     [builder_service → DB]
+│      → BuilderSession(status=building, user_request=...)
+│
+├─ 2. SSE: GET /api/builder/{session_id}/stream
+│      → orchestrator.astream(BuilderState)
+│    │
+│    ├─ Phase 1: init (도구 직접 호출)
+│    │   └─ SSE event: phase_progress {phase: 1, status: "completed"}
+│    │
+│    ├─ Phase 2: intent_agent.ainvoke(description)
+│    │   └─ SSE event: phase_progress {phase: 2, result: AgentCreationIntent}
+│    │
+│    ├─ Phase 3: tool_agent.ainvoke(intent)
+│    │   └─ SSE event: phase_progress {phase: 3, result: tools[]}
+│    │
+│    ├─ Phase 4: middleware_agent.ainvoke(intent + tools)
+│    │   └─ SSE event: phase_progress {phase: 4, result: middlewares[]}
+│    │
+│    ├─ Phase 5: prompt_agent.ainvoke(intent + tools + mw)
+│    │   └─ SSE event: phase_progress {phase: 5, result: system_prompt}
+│    │
+│    ├─ Phase 6: write_config (도구 직접 호출)
+│    │   └─ SSE event: phase_progress {phase: 6, status: "completed"}
+│    │
+│    └─ Phase 7: build_preview → SSE event: build_preview {draft_config}
+│
+├─ 3. Frontend: 사용자에게 draft_config 프리뷰 표시
+│
+└─ 4. POST /api/builder/{session_id}/confirm
+       → build_final_agent() → Agent 생성 + DB 저장
+       → AgentResponse 반환
+```
+
+### 핵심 데이터 흐름: Assistant
+
+```
+POST /api/agents/{agent_id}/assistant/message
+│
+├─ 1. get_or_create_assistant_session(agent_id)    [assistant_service]
+├─ 2. get_agent_with_tools(agent_id)               [agent_service]
+│
+├─ 3. SSE: assistant.astream({messages})
+│    │
+│    ├─ 도구 호출: get_agent_config → 현재 에이전트 설정 조회
+│    ├─ 도구 호출: list_available_tools → 사용 가능 도구 목록
+│    ├─ 도구 호출: add_tool_to_agent → 도구 추가 (DB 반영)
+│    ├─ 도구 호출: edit_system_prompt → 프롬프트 부분 수정
+│    └─ ... (32개 도구 중 필요한 것만 호출)
+│
+├─ 4. SSE events:
+│    ├─ content_delta  → 텍스트 스트리밍
+│    ├─ tool_call_start → 도구 호출 시작 (UI에 진행 표시)
+│    └─ message_end    → 완료
+│
+└─ 5. 변경사항은 도구가 직접 DB에 반영 (별도 confirm 불필요)
+```
+
+### Builder SSE 이벤트 타입
+
+| 이벤트 | 데이터 | 설명 |
+|--------|--------|------|
+| `phase_progress` | `{phase, status, message}` | 단계 진행 상황 |
+| `sub_agent_start` | `{phase, agent_name}` | 서브에이전트 실행 시작 |
+| `sub_agent_token` | `{phase, delta}` | 서브에이전트 토큰 스트리밍 (선택) |
+| `sub_agent_end` | `{phase, result_summary}` | 서브에이전트 실행 완료 |
+| `build_preview` | `{draft_config}` | 최종 빌드 프리뷰 |
+| `build_complete` | `{agent_id}` | 빌드 완료 |
+| `error` | `{phase, message}` | 오류 발생 |
+
+### 재사용 코드 (변경 불필요)
+
+| 모듈 | Builder에서 | Assistant에서 |
+|------|-------------|---------------|
+| `model_factory.py` | 서브에이전트 LLM 생성 | Assistant LLM 생성 |
+| `tool_factory.py` | Phase 7 `build_final` | - |
+| `middleware_registry.py` | Phase 4 카탈로그 조회 | 미들웨어 목록 도구 |
+| `executor.py` | Phase 7 `build_agent()` 호출 | - |
+| `streaming.py` | `format_sse()` 재사용 | 채팅 SSE 재사용 |
+| `message_utils.py` | 메시지 변환 | 메시지 변환 |
+| `checkpointer.py` | - | Assistant 대화 히스토리 |
+
+### DB 스키마 변경
+
+| 변경 | 상세 |
+|------|------|
+| `agent_creation_sessions` | **확장** → `builder_sessions` (phase 추적, intent/tools/mw/prompt 중간 결과) |
+| `agents` | 변경 없음 (Builder가 최종적으로 Agent 레코드 생성) |
+
+### 데이터 모델 관계 (v2 이후)
+
+```
+User (1) ──────┬──▶ (N) Agent
+               ├──▶ (N) BuilderSession
+               │         ├── user_request: str
+               │         ├── current_phase: int
+               │         ├── intent: JSON (AgentCreationIntent)
+               │         ├── tools_result: JSON
+               │         ├── middlewares_result: JSON
+               │         ├── system_prompt: text
+               │         ├── draft_config: JSON
+               │         └── status: building|preview|completed|failed
+               │
+               └──▶ Agent ◀── BuilderSession.agent_id (완료 후 연결)
+                     │
+                     └──▶ AssistantSession (via conversation)
+                           ├── checkpointer 기반 히스토리
+                           └── 32개 도구로 에이전트 설정 직접 수정
+```

@@ -157,10 +157,10 @@ def create_app() -> FastAPI:
     )
 
     from app.routers import (
-        agent_creation,
         agents,
+        assistant,
+        builder,
         conversations,
-        fix_agent,
         models,
         providers,
         skills,
@@ -172,8 +172,8 @@ def create_app() -> FastAPI:
 
     app.include_router(agents.router)
     app.include_router(agents.middleware_router)
-    app.include_router(agent_creation.router)
-    app.include_router(fix_agent.router)
+    app.include_router(builder.router)
+    app.include_router(assistant.router)
     app.include_router(conversations.router)
     app.include_router(providers.router)
     app.include_router(models.router)

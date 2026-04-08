@@ -5,8 +5,8 @@ from decimal import Decimal
 DEFAULT_MODELS = [
     {
         "provider": "openai",
-        "model_name": "gpt-4o",
-        "display_name": "GPT-4o",
+        "model_name": "gpt-5.4-mini",
+        "display_name": "GPT-5.4 Mini",
         "is_default": True,
         "cost_per_input_token": Decimal("0.0000025"),
         "cost_per_output_token": Decimal("0.00001"),

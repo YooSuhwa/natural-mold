@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,22 @@ from sqlalchemy.orm import selectinload
 
 from app.models.tool import AgentToolLink, MCPServer, Tool
 from app.schemas.tool import MCPServerCreate, ToolCustomCreate
+
+
+async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
+    """사용 가능한 도구 카탈로그를 필요 컬럼만 조회한다.
+
+    builder_service, read_tools 양쪽에서 공통으로 사용한다.
+    """
+    result = await db.execute(
+        select(Tool.name, Tool.description, Tool.type).where(
+            or_(Tool.user_id == user_id, Tool.is_system.is_(True))
+        )
+    )
+    return [
+        {"name": row.name, "description": row.description or "", "type": row.type}
+        for row in result.all()
+    ]
 
 
 async def list_tools(db: AsyncSession, user_id: uuid.UUID) -> list[Tool]:

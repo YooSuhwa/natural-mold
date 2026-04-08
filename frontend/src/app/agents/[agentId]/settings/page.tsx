@@ -2,7 +2,7 @@
 
 import { use, useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeftIcon, Loader2Icon, Trash2Icon, SaveIcon } from 'lucide-react'
+import { ArrowLeftIcon, Loader2Icon, Trash2Icon, SaveIcon, SparklesIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents'
@@ -24,7 +24,7 @@ import {
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PageHeader } from '@/components/shared/page-header'
-import { FixAgentDialog } from '@/components/agent/fix-agent-dialog'
+import { AssistantPanel } from '@/components/agent/assistant-panel'
 import { BasicInfoTab } from './_components/basic-info-tab'
 import { ModelTab } from './_components/model-tab'
 import { ToolsSkillsTab } from './_components/tools-skills-tab'
@@ -187,7 +187,6 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
 
         <div className="flex items-center justify-between">
           <PageHeader title={t('title', { name: agent?.name ?? '' })} />
-          {agent && <FixAgentDialog agentId={agentId} agentName={agent.name} />}
         </div>
 
         <div className="mx-auto w-full max-w-2xl">
@@ -197,6 +196,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
               <TabsTrigger value="model">{t('tabs.model')}</TabsTrigger>
               <TabsTrigger value="tools">{t('tabs.tools')}</TabsTrigger>
               <TabsTrigger value="triggers">{t('tabs.triggers')}</TabsTrigger>
+              <TabsTrigger value="assistant" className="gap-1">
+                <SparklesIcon className="size-3.5" />
+                {t('tabs.assistant')}
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="basic" className="pt-6">
@@ -243,6 +246,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
 
             <TabsContent value="triggers" className="pt-6">
               <TriggersTab agentId={agentId} onRequestDelete={setDeletingTriggerTarget} />
+            </TabsContent>
+
+            <TabsContent value="assistant" className="pt-6">
+              {agent && <AssistantPanel agentId={agentId} agentName={agent.name} />}
             </TabsContent>
           </Tabs>
         </div>
