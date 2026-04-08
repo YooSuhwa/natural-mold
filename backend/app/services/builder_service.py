@@ -412,6 +412,15 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
 
         await db.commit()
         await db.refresh(agent, ["model", "tool_links"])
+
+        # 캐릭터 이미지 자동 생성 (실패해도 에이전트 생성은 유지)
+        try:
+            from app.services import image_service
+
+            await image_service.generate_agent_image(db, agent)
+        except Exception:
+            logger.warning("Image generation failed for agent %s", agent.id, exc_info=True)
+
         return agent
     except Exception:
         # CONFIRMING 고착 방지: 예외 발생 시 PREVIEW로 롤백
