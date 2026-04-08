@@ -9,6 +9,7 @@ from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
 from app.services import chat_service
 from app.services.encryption import decrypt_api_key
+from app.services.provider_service import load_all_provider_api_keys
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,8 @@ async def execute_trigger(trigger_id: str) -> None:
         )
         base_url = lp.base_url if lp and lp.base_url else agent.model.base_url
 
+        provider_api_keys = await load_all_provider_api_keys(db)
+
         # Execute agent (non-streaming invoke)
         try:
             await execute_agent_invoke(
@@ -73,6 +76,7 @@ async def execute_trigger(trigger_id: str) -> None:
                 middleware_configs=agent.middleware_configs,
                 agent_skills=agent_skills or None,
                 agent_id=str(agent.id),
+                provider_api_keys=provider_api_keys,
             )
         except Exception:
             logger.exception("Trigger %s: agent execution failed", trigger_id)

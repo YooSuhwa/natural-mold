@@ -36,7 +36,7 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
             },
             "model": {
                 "type": "string",
-                "default": "openai:gpt-4.1-mini",
+                "default": "openai:gpt-5.4-mini",
                 "description": "요약에 사용할 모델",
             },
         },
@@ -175,7 +175,7 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
         "config_schema": {
             "fallback_model": {
                 "type": "string",
-                "default": "openai:gpt-4.1-mini",
+                "default": "openai:gpt-5.4",
                 "description": "대체 모델 식별자",
             },
         },
@@ -189,7 +189,7 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
         "config_schema": {
             "max_retries": {
                 "type": "integer",
-                "default": 3,
+                "default": 2,
                 "description": "최대 재시도 횟수",
             },
         },
@@ -384,10 +384,28 @@ def get_provider_middleware(provider: str) -> list:
     return build_middleware_instances([{"type": t, "params": {}} for t in types])
 
 
-def get_middleware_registry() -> list[dict[str, Any]]:
-    """Return the full middleware catalog for the frontend.
+# deepagents/create_deep_agent()가 자동 추가하는 미들웨어 타입.
+# 사용자 설정에서 중복 추가하면 AssertionError가 발생하므로 카탈로그/실행 시 제외.
+DEEPAGENT_BUILTIN_TYPES: frozenset[str] = frozenset({
+    "todo_list",
+    "filesystem",
+    "subagent",
+    "summarization",
+    "anthropic_prompt_caching",
+})
+
+
+def get_middleware_registry(*, exclude_builtin: bool = False) -> list[dict[str, Any]]:
+    """Return the middleware catalog.
 
     Each entry includes type key plus all metadata (name, display_name,
     description, category, config_schema, provider_specific).
+
+    Args:
+        exclude_builtin: True이면 deepagents가 자동 추가하는 타입을 제외한다.
     """
-    return [{"type": key, **entry} for key, entry in MIDDLEWARE_REGISTRY.items()]
+    return [
+        {"type": key, **entry}
+        for key, entry in MIDDLEWARE_REGISTRY.items()
+        if not exclude_builtin or key not in DEEPAGENT_BUILTIN_TYPES
+    ]

@@ -114,25 +114,19 @@ class TestCreateChatModel:
         kwargs = mock_cls.call_args[1]
         assert "base_url" not in kwargs
 
-    def test_api_key_from_settings_when_not_provided(self):
-        """When api_key param is None, the key from settings should be used."""
+    def test_api_key_none_when_not_provided(self):
+        """When api_key param is None, api_key=None should be passed (no env fallback)."""
         mock_cls = MagicMock()
-        with (
-            patch.dict(
-                "app.agent_runtime.model_factory.PROVIDER_MAP",
-                {"openai": mock_cls},
-            ),
-            patch.dict(
-                "app.agent_runtime.model_factory.PROVIDER_API_KEY_MAP",
-                {"openai": "settings-key"},
-            ),
+        with patch.dict(
+            "app.agent_runtime.model_factory.PROVIDER_MAP",
+            {"openai": mock_cls},
         ):
             from app.agent_runtime.model_factory import create_chat_model
 
             create_chat_model("openai", "gpt-4o", api_key=None)
 
         kwargs = mock_cls.call_args[1]
-        assert kwargs["api_key"] == "settings-key"
+        assert kwargs["api_key"] is None
 
     def test_explicit_api_key_overrides_settings(self):
         """Explicit api_key parameter should take precedence over settings."""

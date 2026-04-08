@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.agent_runtime.builder.orchestrator import run_builder_pipeline
 from app.agent_runtime.middleware_registry import get_middleware_registry
@@ -16,6 +17,7 @@ from app.agent_runtime.streaming import format_sse
 from app.database import async_session as async_session_factory
 from app.models.agent import Agent
 from app.models.builder_session import BuilderSession
+from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.builder import BuilderStatus
 from app.services.model_service import resolve_model
@@ -111,8 +113,12 @@ async def get_agent_by_id(db: AsyncSession, agent_id: uuid.UUID) -> Agent | None
 
 
 def _get_middlewares_catalog() -> list[dict[str, Any]]:
-    """사용 가능한 미들웨어 카탈로그를 조회한다."""
-    return get_middleware_registry()
+    """사용 가능한 미들웨어 카탈로그를 조회한다.
+
+    deepagents가 자동 추가하는 빌트인 미들웨어는 제외하여
+    중복 추가로 인한 오류를 방지한다.
+    """
+    return get_middleware_registry(exclude_builtin=True)
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +427,17 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
         except Exception:
             logger.warning("Image generation failed for agent %s", agent.id, exc_info=True)
 
-        return agent
+        # 이미지 생성이 commit하면 관계가 expire되므로 selectinload로 재로드
+        result = await db.execute(
+            select(Agent)
+            .where(Agent.id == agent.id)
+            .options(
+                selectinload(Agent.model),
+                selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
+                selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
+            )
+        )
+        return result.scalar_one()
     except Exception:
         # CONFIRMING 고착 방지: 예외 발생 시 PREVIEW로 롤백
         await db.rollback()
