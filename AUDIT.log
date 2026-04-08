@@ -1,18 +1,21 @@
 [2026-04-07T15:00] satya PROJECT_START "Moldy UI/UX 전체 개선"
 [2026-04-07T15:00] satya MILESTONE_CREATED M0,M1,M2,M3,M4
-[2026-04-07T01:30] bezos STORY_DONE S0 docs/ 디렉토리 구조 완성 (exec-plans/ 생성, 나머지 기존재)
-[2026-04-07T01:35] bezos STORY_DONE S1 삭제 분석 완료 — 미사용 의존성 1건, 죽은 코드 3건, 단순화 제안 1건
-[2026-04-07T15:15] bezos MILESTONE_DONE M0 docs/ 초기화 + 삭제 분석 완료
-[2026-04-07T15:30] tim-cook STORY_DONE S2 UX 디자인 스펙 6항목 작성 완료 — docs/design-docs/ux-improvement-spec.md
-[2026-04-07T15:25] tim-cook MILESTONE_DONE S2 UX 디자인 스펙 완료
-[2026-04-07T15:45] zuckerberg MILESTONE_DONE M1 삭제확인+카드+브레드크럼+사이드바 완료
-[2026-04-07T15:45] satya MILESTONE_START M2 네비게이션+레이아웃 개선
-[2026-04-07T15:45] satya MILESTONE_START M3 페이지별 UX 개선
-[2026-04-07T16:10] zuckerberg MILESTONE_DONE M2 네비게이션+레이아웃 개선 완료
-[2026-04-07T16:10] zuckerberg MILESTONE_DONE M3 페이지별 UX 개선 완료
-[2026-04-07T16:10] satya MILESTONE_START M4 최종 검증
-[2026-04-07T16:20] bezos VERIFICATION_PASS M4 빌드0에러, 린트0에러(1warning), 14라우트OK, 10/10 UI/UX PASS
-[2026-04-07T16:20] bezos STORY_DONE S9 최종 검증 완료 — QUALITY_SCORE.md 작성, 릴리스 판정 GO
-[2026-04-07T16:30] bezos VERIFICATION_PASS M4 빌드+린트+E2E 14/14 라우트 + 10/10 기능 통과
-[2026-04-07T16:30] satya MILESTONE_DONE M4 최종 검증 완료
 [2026-04-07T16:30] satya PROJECT_DONE "Moldy UI/UX 전체 개선"
+---
+[2026-04-07T17:00] satya PROJECT_START "Moldy Agent Builder v2"
+[2026-04-07T17:00] satya MILESTONE_CREATED M1,M2,M3,M4,M5
+[2026-04-07T17:10] pichai MILESTONE_DONE M1 아키텍처 설계 완료 — ADR-005, schemas/builder.py, schemas/assistant.py
+[2026-04-07T17:10] bezos MILESTONE_DONE M1 삭제 분석 완료 — tasks/deletion-analysis-v2.md
+[2026-04-07T17:15] satya MILESTONE_START M2 Builder 백엔드
+[2026-04-07T17:15] satya MILESTONE_START M3 Assistant 백엔드
+[2026-04-07T17:15] satya MILESTONE_START M4 프론트엔드
+[2026-04-07T17:25] jensen MILESTONE_DONE M2 Builder 백엔드 완료 — 오케스트레이터+서브에이전트+라우터/서비스
+[2026-04-07T17:35] jensen MILESTONE_DONE M3 Assistant 백엔드 완료 — 35개 도구+에이전트+라우터/서비스
+[2026-04-07T17:30] tim-cook STORY_DONE S6 UI 디자인 스펙 완료
+[2026-04-07T17:35] zuckerberg MILESTONE_DONE M4 프론트엔드 완료 — Builder UI+Assistant UI+SSE
+[2026-04-07T17:40] satya MILESTONE_START M5 통합+E2E
+[2026-04-07T17:40] jensen STORY_DONE S9 기존 코드 교체 완료
+[2026-04-07T17:45] bezos VERIFICATION_PASS M5 빌드+린트+pytest 전체 통과, CONDITIONAL GO
+[2026-04-07T17:45] satya ISSUE_RESOLVED ISSUE-1,2 죽은 코드 3파일 삭제
+[2026-04-07T17:50] satya MILESTONE_DONE M5 통합+E2E 완료
+[2026-04-07T17:50] satya PROJECT_DONE "Moldy Agent Builder v2"
