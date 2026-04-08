@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     default_agent_model: str = ""
 
     # Agent image generation (OpenRouter + Gemini Flash Image)
-    image_gen_api_key: str = ""
+    openrouter_api_key: str = ""
     image_gen_base_url: str = "https://openrouter.ai/api/v1"
     image_gen_model: str = "google/gemini-3.1-flash-image-preview"
     agent_image_dir: str = "./data/agents"

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 
 import anyio
+import httpx
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.exceptions import NotFoundError
+from app.exceptions import ExternalServiceError, NotFoundError, ValidationError
 from app.schemas.agent import (
     AgentCreate,
     AgentResponse,
@@ -135,7 +135,12 @@ async def generate_agent_image(
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
         raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
-    image_url = await image_service.generate_agent_image(db, agent)
+    try:
+        image_url = await image_service.generate_agent_image(db, agent)
+    except ValueError as e:
+        raise ValidationError("IMAGE_GEN_CONFIG", str(e)) from e
+    except (httpx.HTTPStatusError, RuntimeError) as e:
+        raise ExternalServiceError("IMAGE_GEN_FAILED", str(e)) from e
     return GenerateImageResponse(image_url=image_url)
 
 
@@ -151,7 +156,9 @@ async def get_agent_image(
     apath = anyio.Path(agent.image_path)
     if not await apath.is_file():
         raise NotFoundError("IMAGE_NOT_FOUND", "이미지 파일을 찾을 수 없습니다")
-    return FileResponse(Path(agent.image_path), media_type="image/png")
+    media_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
+    media = media_map.get(apath.suffix, "image/png")
+    return FileResponse(str(apath), media_type=media)
 
 
 @middleware_router.get("/api/middlewares")

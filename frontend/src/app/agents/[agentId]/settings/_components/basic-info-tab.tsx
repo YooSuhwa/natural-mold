@@ -1,4 +1,5 @@
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 import { Loader2Icon, ImagePlusIcon, RefreshCwIcon } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -33,16 +34,32 @@ export function BasicInfoTab({
   return (
     <div className="space-y-6">
       <div className="flex flex-col items-center gap-3 pb-6 border-b">
-        <AgentAvatar imageUrl={imageUrl} name={name} size="lg" />
+        <div className="relative">
+          <AgentAvatar imageUrl={imageUrl} name={name} size="lg" />
+          {isPending && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-full bg-background/60">
+              <Loader2Icon className="size-6 animate-spin text-primary" />
+            </div>
+          )}
+        </div>
+        {isPending && <div className="w-48 space-y-1.5">
+          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+            <div className="h-full rounded-full bg-primary animate-[progress_30s_ease-out_forwards]" />
+          </div>
+          <p className="text-xs text-muted-foreground text-center">{t('image.generating')}</p>
+        </div>}
         <Button
           variant="outline"
           size="sm"
-          onClick={() => generateImage()}
+          onClick={() =>
+            generateImage(undefined, {
+              onSuccess: () => toast.success(t('image.success')),
+              onError: () => toast.error(t('image.failed')),
+            })
+          }
           disabled={isPending}
         >
-          {isPending ? (
-            <><Loader2Icon className="size-4 animate-spin" />{t('image.generating')}</>
-          ) : imageUrl ? (
+          {imageUrl ? (
             <><RefreshCwIcon className="size-4" />{t('image.regenerate')}</>
           ) : (
             <><ImagePlusIcon className="size-4" />{t('image.generate')}</>

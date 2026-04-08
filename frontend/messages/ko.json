@@ -233,9 +233,11 @@
       },
       "manageModels": "모델 관리",
       "image": {
-        "generate": "AI 이미지 생성",
-        "regenerate": "이미지 재생성",
-        "generating": "이미지 생성 중..."
+        "generate": "캐릭터 생성",
+        "regenerate": "캐릭터 재생성",
+        "generating": "캐릭터 생성 중...",
+        "success": "캐릭터가 생성되었습니다",
+        "failed": "캐릭터 생성에 실패했습니다"
       },
       "save": "저장",
       "deleteAgent": "에이전트 삭제",
