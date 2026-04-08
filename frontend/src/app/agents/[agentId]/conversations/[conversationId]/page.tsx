@@ -8,7 +8,7 @@ import { Settings2Icon, SquarePenIcon, SparklesIcon, MenuIcon } from 'lucide-rea
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useAgent } from '@/lib/hooks/use-agents'
-import { useMessages, useCreateConversation } from '@/lib/hooks/use-conversations'
+import { useMessages, useCreateConversation, conversationKeys } from '@/lib/hooks/use-conversations'
 import { useQueryClient } from '@tanstack/react-query'
 import { streamChat } from '@/lib/sse/stream-chat'
 import {
@@ -19,6 +19,7 @@ import {
   lastMessageTokensAtom,
 } from '@/lib/stores/chat-store'
 import type { StreamingToolCall } from '@/lib/stores/chat-store'
+import type { Message } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/chat/conversation-list'
 import { MessageBubble } from '@/components/chat/message-bubble'
@@ -44,7 +45,7 @@ export default function ChatPage({
 
   // 캐시에서 현재 대화 제목만 추출 (전체 목록 구독 방지)
   const currentTitle = queryClient
-    .getQueryData<{ id: string; title?: string | null }[]>(['agents', agentId, 'conversations'])
+    .getQueryData<{ id: string; title?: string | null }[]>(conversationKeys.list(agentId))
     ?.find((c) => c.id === conversationId)?.title
 
   const setStreamingMessage = useSetAtom(streamingMessageAtom)
@@ -79,6 +80,21 @@ export default function ChatPage({
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
+
+    // Optimistic update: 사용자 메시지를 즉시 캐시에 추가
+    const optimisticMsg: Message = {
+      id: crypto.randomUUID(),
+      conversation_id: conversationId,
+      role: 'user',
+      content,
+      tool_calls: null,
+      tool_call_id: null,
+      created_at: new Date().toISOString(),
+    }
+    queryClient.setQueryData<Message[]>(
+      conversationKeys.messages(conversationId),
+      (prev) => [...(prev ?? []), optimisticMsg],
+    )
 
     setIsStreaming(true)
     setStreamingMessage({ id: '', content: '' })
@@ -154,10 +170,10 @@ export default function ChatPage({
       setStreamingToolCalls([])
       // Refresh messages and conversation list (title may have changed)
       queryClient.invalidateQueries({
-        queryKey: ['conversations', conversationId, 'messages'],
+        queryKey: conversationKeys.messages(conversationId),
       })
       queryClient.invalidateQueries({
-        queryKey: ['agents', agentId, 'conversations'],
+        queryKey: conversationKeys.list(agentId),
       })
     }
   }
