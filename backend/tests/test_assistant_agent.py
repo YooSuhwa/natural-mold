@@ -42,7 +42,7 @@ def test_load_system_prompt_fallback(tmp_path):
     with patch.object(mod, "_PROMPT_PATH", nonexistent):
         result = mod._load_system_prompt()
 
-    assert "Deep Agent Assistant" in result
+    assert "Moldy Agent Assistant" in result
     assert "VERIFY" in result
     mod._load_system_prompt.cache_clear()
 

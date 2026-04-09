@@ -10,7 +10,7 @@ import json
 import logging
 from typing import Any
 
-from app.agent_runtime.builder.sub_agents.helpers import invoke_with_json_retry
+from app.agent_runtime.builder.sub_agents.helpers import invoke_with_json_retry, load_prompt
 from app.schemas.builder import (
     AgentCreationIntent,
     MiddlewareRecommendation,
@@ -19,39 +19,14 @@ from app.schemas.builder import (
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """\
-# 미들웨어 추천 에이전트 — 시스템 프롬프트
+_FALLBACK_PROMPT = (
+    "AgentCreationIntent와 도구 목록을 분석하여 적합한 미들웨어를 추천한다. "
+    "카탈로그에 있는 미들웨어만 추천하고, JSON 배열로만 응답한다."
+)
 
-## 역할
-AgentCreationIntent와 도구 목록을 분석하여 적합한 미들웨어를 추천한다.
-
-## 선택 기준
-1. 외부 API 도구 존재 → ToolRetryMiddleware 거의 필수
-2. 긴 대화 예상 → SummarizationMiddleware 추천
-3. 복잡한 다단계 작업 → TodoListMiddleware 추천
-4. 빈번한 API 호출 → RateLimiter 또는 Cache 추천
-5. 민감 데이터 처리 → InputSanitizer + OutputFilter 추천
-6. 최소 1개, 최대 5개 범위
-
-## 특별 규칙
-- TodoListMiddleware 추천 시: 반드시 reason에 \
-"시스템 프롬프트에 write_todos 사용 지침 추가 필요"라고 명시할 것
-
-## 출력 형식
-JSON 배열만 반환:
-[
-  {
-    "middleware_name": "미들웨어 레지스트리 키 (카탈로그의 type 값 정확히 사용)",
-    "description": "한 줄 설명",
-    "reason": "선택 이유"
-  }
-]
-
-## 주의사항
-- 카탈로그에 없는 미들웨어를 추천하지 않는다.
-- provider_specific 미들웨어는 해당 provider를 사용할 때만 추천한다.
-- JSON 외 다른 텍스트를 포함하지 않는다.\
-"""
+SYSTEM_PROMPT = (
+    load_prompt("middleware_recommender.md") or _FALLBACK_PROMPT
+)
 
 
 def _format_catalog(middlewares_catalog: list[dict[str, Any]]) -> str:

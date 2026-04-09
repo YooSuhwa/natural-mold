@@ -232,3 +232,21 @@
 - agent-card.tsx JSX: 중첩 div 래핑 시 닫는 태그 개수 주의 (</div> 하나 과잉 → build 실패)
 - next/image: 백엔드 API 제공 이미지는 unoptimized + width/height 명시로 lint 경고 해결
 - AgentAvatar: API_BASE는 client.ts에서 named export됨 (const API_BASE = process.env...)
+
+## S10 Builder 서브에이전트 프롬프트 개선 (pichai, 2026-04-08)
+- prompt_generator.py SYSTEM_PROMPT: 6→9 필수 섹션 (Language Rule, Error Handling, Out of Scope 추가)
+- Tool Guidelines: Purpose/When(조건2~4)/Caution(주의2~4) + 도구 간 순서·관계 명시 지침
+- Workflow: "이해→실행→검증" 3단계 루프, if/else 조건부 분기 패턴
+- 품질 기준: 4→7개 (구조적 분리, 반복 방지, 예시 포함 추가)
+- 금지 패턴 명시: "적절히 대응", "필요 시", "상황에 따라 판단" 등 모호 위임 표현 금지
+- XML 태그 구조 옵션: <identity>, <capabilities>, <decision_logic> 선택적 활용
+- _format_tools, _format_middlewares: reason 필드 포함 ("선택 이유" 컨텍스트 전달)
+- _build_task_description: 9개 섹션 순서 + 신규 요구사항 반영
+- 검증: ruff PASS
+
+## M2 sub-agent 프롬프트 보강 + SSE 메시지 개선 (jensen, 2026-04-08)
+- intent_analyzer: 객관성 원칙, agent_description 품질 기준, use_cases 작성 기준, 도메인별 톤 5종
+- tool_recommender: reason 사용자 관점 작성, 유사 도구 시나리오 차이 명시
+- middleware_recommender: TodoList reason 강화, 미들웨어 조합 규칙, reason에 동작 영향 포함
+- orchestrator.py: 13개 SSE 메시지 대화체 변경, 에러 메시지는 기술적 유지
+- ruff line-length=100: PhaseProgressEvent 한 줄 100자 초과 시 multi-line 전환 필수

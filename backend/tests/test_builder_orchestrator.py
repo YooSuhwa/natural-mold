@@ -122,7 +122,7 @@ def test_phase7_preview():
     assert result["current_phase"] == 7
     assert len(result["sse_events"]) == 1
     assert result["sse_events"][0]["status"] == "completed"
-    assert "프리뷰" in result["sse_events"][0]["message"]
+    assert "준비됐어요" in result["sse_events"][0]["message"]
 
 
 # ---------------------------------------------------------------------------

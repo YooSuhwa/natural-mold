@@ -12,6 +12,7 @@ import asyncio
 import functools
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -21,6 +22,29 @@ from app.agent_runtime.model_factory import PROVIDER_API_KEY_MAP, create_chat_mo
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# 프롬프트 파일 로더
+# ---------------------------------------------------------------------------
+
+# __file__ = backend/app/agent_runtime/builder/sub_agents/helpers.py
+# .parent = sub_agents/, .parent.parent = builder/ (prompts/ 디렉토리가 여기에 위치)
+_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+
+@functools.cache
+def load_prompt(filename: str) -> str | None:
+    """builder/prompts/ 디렉토리에서 프롬프트 파일을 로드한다 (캐시됨).
+
+    파일이 없으면 None을 반환하여 호출자가 fallback을 사용하게 한다.
+    """
+    path = _PROMPTS_DIR / filename
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        logger.warning("Prompt file not found: %s, using fallback", path)
+        return None
+
 
 # API 에러 중 재시도 가능한 상태 코드
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 529}

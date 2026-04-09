@@ -125,7 +125,7 @@ def build_agent(
     memory: list[str] | None = None,
     name: str | None = None,
 ) -> Any:
-    """Build a deep agent. Returns CompiledStateGraph."""
+    """Build a moldy agent. Returns CompiledStateGraph."""
     return create_deep_agent(
         model=model,
         tools=tools,
