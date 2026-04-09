@@ -7,47 +7,20 @@ from __future__ import annotations
 
 import logging
 
-from app.agent_runtime.builder.sub_agents.helpers import invoke_with_json_retry
+from app.agent_runtime.builder.sub_agents.helpers import invoke_with_json_retry, load_prompt
 from app.schemas.builder import AgentCreationIntent
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """\
-# 의도 분석 에이전트 — 시스템 프롬프트
+_FALLBACK_PROMPT = (
+    "당신은 AI 에이전트 생성을 위한 의도 분석 전문가입니다. "
+    "사용자의 자연어 요청을 AgentCreationIntent JSON으로 변환합니다. "
+    "JSON 외 다른 텍스트를 포함하지 않습니다."
+)
 
-## 역할
-당신은 AI 에이전트 생성을 위한 의도 분석 전문가입니다.
-사용자의 자연어 요청을 받아 에이전트를 만들기 위해 필요한 모든 정보를
-체계적으로 분석하고 구조화합니다.
-
-## 출력 형식 (AgentCreationIntent)
-반드시 아래 JSON 형식으로만 응답한다:
-
-{
-  "agent_name": "영문 에이전트 이름",
-  "agent_name_ko": "한글 에이전트 이름",
-  "agent_description": "에이전트의 역할과 기능에 대한 상세 설명 (3~5문장)",
-  "primary_task_type": "에이전트의 핵심 작업을 한 문장으로 기술",
-  "tool_preferences": "선호하는 도구 유형이나 API 종류",
-  "output_style": "결과물의 형태 (요약, 리포트, 목록 등)",
-  "response_tone": "응답의 톤과 스타일",
-  "use_cases": ["사용 사례 1", "사용 사례 2", "사용 사례 3"],
-  "constraints": ["제약 조건"],
-  "required_capabilities": ["필수 기능 1", "필수 기능 2"]
-}
-
-## 추론 가이드라인
-- "검색 에이전트"만 언급 → 일반 웹 검색 + 뉴스 검색을 기본 포함
-- "번역 에이전트"만 언급 → 다국어 번역 기본, 한국어↔영어 우선
-- "코딩 에이전트"만 언급 → 코드 생성 + 디버깅 + 설명 기본
-- 톤 미명시 → "친근하고 캐주얼한 어조" 기본값
-- output_style 미명시 → "간단한 요약과 주요 포인트" 기본값
-
-## 주의사항
-- 사용자에게 추가 질문하지 않는다. 주어진 정보만으로 최선의 분석 수행.
-- 모호한 요청도 합리적 기본값을 채워 완전한 Intent를 반환.
-- JSON 외 다른 텍스트를 포함하지 않는다.\
-"""
+SYSTEM_PROMPT = (
+    load_prompt("intent_analyzer.md") or _FALLBACK_PROMPT
+)
 
 
 def _build_task_description(user_request: str) -> str:

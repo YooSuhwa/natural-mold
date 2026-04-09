@@ -32,3 +32,10 @@
 [2026-04-08T13:55] bezos VERIFICATION_PASS M4 ruff PASS, pytest 7 PASS, build PASS, lint PASS — GO
 [2026-04-08T13:55] satya MILESTONE_DONE M4 최종 검증 완료
 [2026-04-08T13:55] satya PROJECT_DONE "Agent Image Generation (Moldy Character)"
+[2026-04-08T13:10] satya PROJECT_START "Builder Sub-Agent Prompt Improvement"
+[2026-04-08T13:10] satya MILESTONE_CREATED M1,M2,M3,M4
+[2026-04-08T13:13] bezos MILESTONE_DONE M3 Deep Agent → Moldy Agent 네이밍 통일 완료
+[2026-04-08T13:14] pichai MILESTONE_DONE M1 prompt_generator SYSTEM_PROMPT 재설계 + _build_task_description 개선 완료
+[2026-04-08T13:19] jensen MILESTONE_DONE M2 3개 sub-agent SYSTEM_PROMPT 보강 + SSE 메시지 개선 완료
+[2026-04-08T13:22] bezos VERIFICATION_PASS M4 ruff PASS, pytest 39 passed, Deep Agent 0건, sub-agent 4개 개선 확인
+[2026-04-08T13:22] satya PROJECT_DONE "Builder Sub-Agent Prompt Improvement"

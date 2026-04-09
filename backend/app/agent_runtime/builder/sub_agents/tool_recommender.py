@@ -9,44 +9,19 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.agent_runtime.builder.sub_agents.helpers import invoke_with_json_retry
+from app.agent_runtime.builder.sub_agents.helpers import invoke_with_json_retry, load_prompt
 from app.schemas.builder import AgentCreationIntent, ToolRecommendation
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """\
-# 도구 추천 에이전트 — 시스템 프롬프트
+_FALLBACK_PROMPT = (
+    "AgentCreationIntent를 분석하여 에이전트에 적합한 도구를 추천한다. "
+    "카탈로그에 있는 도구만 추천하고, JSON 배열로만 응답한다."
+)
 
-## 역할
-AgentCreationIntent를 분석하여 에이전트에 가장 적합한 도구를 추천한다.
-
-## 선택 기준
-1. **필수성:** primary_task_type 수행에 반드시 필요한가?
-2. **적합성:** use_cases와 required_capabilities를 충족하는가?
-3. **최소성:** 3~5개 적정. 불필요한 도구 금지.
-4. **다양성:** 서로 보완하는 도구 조합 선호.
-5. **사용자 선호:** tool_preferences 명시 시 우선 반영.
-
-## 주의: 유사 도구 선택 기준
-동일 기능의 도구가 복수 존재할 때:
-- 최신 뉴스/일반 정보 → 범용 검색 도구 우선
-- 한국 특화 필요시 → 네이버 검색 도구 추가
-- 개념/문맥 기반 → 시맨틱 검색 도구
-
-## 출력 형식
-JSON 배열만 반환:
-[
-  {
-    "tool_name": "고유 식별자 (카탈로그의 name 값 정확히 사용)",
-    "description": "한 줄 설명",
-    "reason": "선택 이유"
-  }
-]
-
-## 주의사항
-- 카탈로그에 없는 도구를 추천하지 않는다.
-- JSON 외 다른 텍스트를 포함하지 않는다.\
-"""
+SYSTEM_PROMPT = (
+    load_prompt("tool_recommender.md") or _FALLBACK_PROMPT
+)
 
 
 def _format_catalog(tools_catalog: list[dict[str, Any]]) -> str:

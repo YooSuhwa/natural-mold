@@ -1,6 +1,6 @@
 """Assistant v2 에이전트 — build_agent + 35개 도구 바인딩.
 
-docs/fix_agent_assistant_prompt.md를 시스템 프롬프트로 로드하고,
+assistant/prompt.md를 시스템 프롬프트로 로드하고,
 read/write/clarify 도구를 바인딩한다.
 """
 
@@ -27,9 +27,8 @@ logger = logging.getLogger(__name__)
 
 # Assistant 시스템 프롬프트 파일 경로
 # __file__ = backend/app/agent_runtime/assistant/assistant_agent.py
-# .parent x4 = backend/, .parent x5 = project root (where docs/ lives)
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
-_PROMPT_PATH = _PROJECT_ROOT / "docs" / "fix_agent_assistant_prompt.md"
+# .parent = assistant/ (prompt.md와 같은 디렉토리)
+_PROMPT_PATH = Path(__file__).resolve().parent / "prompt.md"
 
 
 @functools.cache
@@ -40,7 +39,7 @@ def _load_system_prompt() -> str:
     except FileNotFoundError:
         logger.warning("Assistant prompt file not found: %s, using fallback", _PROMPT_PATH)
         return (
-            "You are Deep Agent Assistant, an AI that modifies existing "
+            "You are Moldy Agent Assistant, an AI that modifies existing "
             "agent configurations. Always VERIFY before MODIFY."
         )
 

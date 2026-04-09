@@ -269,7 +269,14 @@ async def test_recommend_middlewares_non_list_response():
 @pytest.mark.asyncio
 async def test_generate_system_prompt_success():
     """Mock LLM returns valid prompt text."""
-    long_prompt = "# Weather Bot\n\n## Role\n날씨 봇입니다.\n" + "내용 " * 200
+    long_prompt = (
+        "# Weather Bot\n\n"
+        "## Role\n날씨 봇입니다.\n\n"
+        "## Tool Guidelines\n### Web Search\n- Purpose: 검색\n\n"
+        "## Workflow\n1. 요청 분석\n2. 도구 호출\n\n"
+        "## Constraints\n- ALWAYS: 정확한 정보 제공\n"
+        + "내용 " * 200
+    )
 
     with patch(
         "app.agent_runtime.builder.sub_agents.prompt_generator.invoke_for_text",
@@ -319,7 +326,7 @@ async def test_generate_system_prompt_no_tools_fallback():
 
         intent = _make_intent()
         result = await generate_system_prompt(intent, [], [])
-        assert "없음" in result
+        assert "사용 가능한 도구가 없습니다" in result
 
 
 # ---------------------------------------------------------------------------

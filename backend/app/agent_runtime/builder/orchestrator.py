@@ -91,7 +91,7 @@ def phase1_init(state: BuilderState) -> dict:
         "current_phase": 1,
         "sse_events": [
             PhaseProgressEvent(
-                phase=1, status="completed", message="프로젝트 초기화 완료"
+                phase=1, status="completed", message="에이전트 만들 준비가 됐어요"
             ).model_dump(),
         ],
     }
@@ -100,7 +100,11 @@ def phase1_init(state: BuilderState) -> dict:
 async def phase2_intent(state: BuilderState) -> dict:
     """Phase 2: 의도 분석 — 서브에이전트 호출."""
     events: list[dict] = [
-        PhaseProgressEvent(phase=2, status="started", message="의도 분석 시작").model_dump(),
+        PhaseProgressEvent(
+            phase=2,
+            status="started",
+            message="어떤 에이전트를 만들면 좋을지 분석 중이에요",
+        ).model_dump(),
         SubAgentEvent(phase=2, agent_name="intent_analyzer").model_dump(),
     ]
     try:
@@ -113,7 +117,9 @@ async def phase2_intent(state: BuilderState) -> dict:
             ).model_dump()
         )
         events.append(
-            PhaseProgressEvent(phase=2, status="completed", message="의도 분석 완료").model_dump()
+            PhaseProgressEvent(
+                phase=2, status="completed", message="에이전트의 역할을 파악했어요"
+            ).model_dump()
         )
         return {
             "intent": intent.model_dump(),
@@ -140,7 +146,11 @@ async def phase3_tools(state: BuilderState) -> dict:
         return {"current_phase": 3, "sse_events": []}
 
     events: list[dict] = [
-        PhaseProgressEvent(phase=3, status="started", message="도구 추천 시작").model_dump(),
+        PhaseProgressEvent(
+            phase=3,
+            status="started",
+            message="에이전트에 필요한 도구를 고르고 있어요",
+        ).model_dump(),
         SubAgentEvent(phase=3, agent_name="tool_recommender").model_dump(),
     ]
     try:
@@ -158,7 +168,7 @@ async def phase3_tools(state: BuilderState) -> dict:
         )
         events.append(
             PhaseProgressEvent(
-                phase=3, status="completed", message=f"도구 {len(tools)}개 추천 완료"
+                phase=3, status="completed", message=f"도구 {len(tools)}개를 선정했어요"
             ).model_dump()
         )
         return {
@@ -177,7 +187,7 @@ async def phase3_tools(state: BuilderState) -> dict:
             PhaseProgressEvent(
                 phase=3,
                 status="warning",
-                message="도구 추천 실패 — 도구 없이 계속 진행합니다.",
+                message="도구 추천에 문제가 있었지만, 계속 진행할게요",
             ).model_dump()
         )
         return {
@@ -193,7 +203,11 @@ async def phase4_middlewares(state: BuilderState) -> dict:
         return {"current_phase": 4, "sse_events": []}
 
     events: list[dict] = [
-        PhaseProgressEvent(phase=4, status="started", message="미들웨어 추천 시작").model_dump(),
+        PhaseProgressEvent(
+            phase=4,
+            status="started",
+            message="에이전트의 안정성을 높여줄 미들웨어를 고르고 있어요",
+        ).model_dump(),
         SubAgentEvent(phase=4, agent_name="middleware_recommender").model_dump(),
     ]
     try:
@@ -214,7 +228,7 @@ async def phase4_middlewares(state: BuilderState) -> dict:
             PhaseProgressEvent(
                 phase=4,
                 status="completed",
-                message=f"미들웨어 {len(middlewares)}개 추천 완료",
+                message=f"미들웨어 {len(middlewares)}개를 선정했어요",
             ).model_dump()
         )
         return {
@@ -233,7 +247,7 @@ async def phase4_middlewares(state: BuilderState) -> dict:
             PhaseProgressEvent(
                 phase=4,
                 status="warning",
-                message="미들웨어 추천 실패 — 미들웨어 없이 계속 진행합니다.",
+                message="미들웨어 추천에 문제가 있었지만, 계속 진행할게요",
             ).model_dump()
         )
         return {
@@ -250,7 +264,7 @@ async def phase5_prompt(state: BuilderState) -> dict:
 
     events: list[dict] = [
         PhaseProgressEvent(
-            phase=5, status="started", message="시스템 프롬프트 생성 시작"
+            phase=5, status="started", message="에이전트의 성격과 행동 지침을 작성 중이에요"
         ).model_dump(),
         SubAgentEvent(phase=5, agent_name="prompt_generator").model_dump(),
     ]
@@ -269,7 +283,7 @@ async def phase5_prompt(state: BuilderState) -> dict:
         )
         events.append(
             PhaseProgressEvent(
-                phase=5, status="completed", message="시스템 프롬프트 생성 완료"
+                phase=5, status="completed", message="에이전트의 행동 지침을 완성했어요"
             ).model_dump()
         )
         return {
@@ -314,7 +328,7 @@ def phase6_config(state: BuilderState) -> dict:
 
     events = [
         PhaseProgressEvent(
-            phase=6, status="completed", message="에이전트 설정 저장 완료"
+            phase=6, status="completed", message="에이전트 설정을 정리했어요"
         ).model_dump(),
     ]
     return {
@@ -337,7 +351,7 @@ def phase7_preview(state: BuilderState) -> dict:
         PhaseProgressEvent(
             phase=7,
             status="completed",
-            message="빌드 프리뷰 준비 완료 — 확인을 기다립니다",
+            message="에이전트가 준비됐어요! 설정을 확인해주세요",
         ).model_dump(),
     ]
     return {

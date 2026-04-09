@@ -1,37 +1,36 @@
-# CHECKPOINT — Agent Image Generation (Moldy Character)
+# CHECKPOINT — Builder Sub-Agent Prompt Improvement
 
-## M1: Backend Schema + Config
-- [x] Agent 모델에 image_path 컬럼 추가 + Alembic 마이그레이션
-- [x] config.py에 이미지 생성 설정 추가 (image_gen_api_key 등)
-- [x] AgentResponse 스키마에 image_url 필드 추가
-- 검증: `cd backend && uv run ruff check . && uv run pytest tests/test_agents.py -x`
-- done-when: ruff 에러 0, 기존 에이전트 테스트 통과
+## M1: prompt_generator.py SYSTEM_PROMPT 재설계
+- [x] SYSTEM_PROMPT를 Fix Agent 수준의 구조적 템플릿으로 개선 (9개 필수 섹션, 7개 품질 기준, 금지 패턴)
+- [x] _build_task_description에 도구/미들웨어 reason 필드 포함
+- [x] _format_tools, _format_middlewares에 reason 포함
+- 검증: `cd backend && uv run ruff check app/agent_runtime/builder/sub_agents/prompt_generator.py`
+- done-when: ruff 에러 0, SYSTEM_PROMPT가 9개 이상 필수 섹션 가이드 포함
 - 상태: done
 
-## M2: Backend Image Service + Router
-- [x] image_service.py 신규 생성 (OpenRouter + Gemini Flash Image 호출)
-- [x] POST /api/agents/{id}/image, GET /api/agents/{id}/image 엔드포인트
-- [x] _agent_to_response에 image_url 필드 추가
-- [x] moldy_main.png 참조 이미지 배치
-- 검증: `cd backend && uv run ruff check . && uv run pytest tests/test_agents.py -x`
-- done-when: ruff 에러 0, 기존 테스트 통과
+## M2: 나머지 3개 sub-agent SYSTEM_PROMPT 보강 + SSE 메시지 개선
+- [x] intent_analyzer.py: 객관성 원칙, 도메인별 기본값 5종, description 품질 기준, use_cases 작성 기준
+- [x] tool_recommender.py: 사용자 관점 reason, 유사 도구 차별화 규칙
+- [x] middleware_recommender.py: TodoList reason 강화, 시너지/충돌 규칙, reason 작성 기준
+- [x] orchestrator.py: SSE 메시지 13건 사용자 친화적으로 변경
+- 검증: `cd backend && uv run ruff check app/agent_runtime/builder/`
+- done-when: ruff 에러 0, 4개 파일 모두 SYSTEM_PROMPT 보강됨
 - 상태: done
 
-## M3: Frontend Types + Components
-- [x] Agent 타입에 image_url 추가
-- [x] AgentAvatar 공용 컴포넌트 생성
-- [x] generateImage API + useGenerateAgentImage 훅
-- [x] BotIcon → AgentAvatar 교체 (6곳)
-- [x] 설정 페이지에 이미지 생성 UI
-- [x] i18n 메시지 추가
-- 검증: `cd frontend && pnpm build && pnpm lint`
-- done-when: 빌드 성공, 린트 통과
+## M3: "Deep Agent" → "Moldy Agent" 네이밍 통일
+- [x] docs/fix_agent_assistant_prompt.md: "Deep Agent Assistant" → "Moldy Agent Assistant"
+- [x] backend/app/agent_runtime/assistant/assistant_agent.py: fallback 텍스트 변경
+- [x] backend/app/agent_runtime/executor.py: docstring 변경
+- [x] backend/tests/test_assistant_agent.py: assert 문자열 변경
+- 검증: `grep -r "Deep Agent" backend/app/ docs/fix_agent_assistant_prompt.md`
+- done-when: grep 결과 0건
 - 상태: done
 
-## M4: Final Verification
-- [x] 백엔드 전체 테스트 통과
-- [x] 프론트엔드 빌드 + 린트 통과
-- [x] 기존 테스트 깨짐 없음
-- 검증: `cd backend && uv run ruff check . && uv run pytest tests/test_agents.py -x && cd ../frontend && pnpm build`
+## M4: 최종 통합 검증
+- [x] Backend ruff 전체 통과
+- [x] Backend pytest 39 passed (53.59s)
+- [x] "Deep Agent" 참조 0건
+- [x] Sub-agent SYSTEM_PROMPT 4개 모두 개선 반영 확인
+- 검증: `cd backend && uv run ruff check . && uv run pytest tests/test_builder_service.py tests/test_builder_service_stream.py tests/test_assistant_agent.py -v`
 - done-when: 모든 검증 통과
 - 상태: done
