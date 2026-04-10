@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from typing import Any
 
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -18,7 +19,7 @@ _scheduler: AsyncIOScheduler | None = None
 def get_scheduler() -> AsyncIOScheduler:
     global _scheduler
     if _scheduler is None:
-        jobstores: dict = {}
+        jobstores: dict[str, Any] = {}
         try:
             jobstores["default"] = SQLAlchemyJobStore(url=settings.database_url_sync)
         except Exception:
@@ -34,7 +35,9 @@ def _job_id(trigger_id: uuid.UUID) -> str:
     return f"trigger_{trigger_id}"
 
 
-def add_trigger_job(trigger_id: uuid.UUID, trigger_type: str, schedule_config: dict) -> None:
+def add_trigger_job(
+    trigger_id: uuid.UUID, trigger_type: str, schedule_config: dict[str, Any]
+) -> None:
     """Register a scheduled job for a trigger."""
     from app.agent_runtime.trigger_executor import execute_trigger
 

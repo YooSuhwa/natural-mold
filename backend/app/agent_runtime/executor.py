@@ -132,7 +132,7 @@ def build_agent(
     system_prompt: str,
     *,
     middleware: list | None = None,
-    interrupt_on: dict | bool | None = None,
+    interrupt_on: dict[str, Any] | bool | None = None,
     checkpointer: Any | None = None,
     store: Any | None = None,
     backend: Any | None = None,
@@ -161,7 +161,7 @@ def build_agent(
 # ---------------------------------------------------------------------------
 
 
-def _auth_config_to_headers(auth_config: dict | None) -> dict[str, str]:
+def _auth_config_to_headers(auth_config: dict[str, str] | None) -> dict[str, str]:
     """auth_config를 HTTP 헤더로 변환."""
     if not auth_config:
         return {}

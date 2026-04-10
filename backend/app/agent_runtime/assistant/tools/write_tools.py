@@ -311,7 +311,7 @@ def build_write_tools(
 
     # ------ 10. update_tool_config ------
 
-    async def update_tool_config(tool_name: str, config: dict) -> str:
+    async def update_tool_config(tool_name: str, config: dict[str, Any]) -> str:
         """도구의 설정 파라미터를 변경합니다.
 
         Args:

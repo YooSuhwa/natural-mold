@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import ssl
+from typing import Any
 
 import certifi
 import httpx
@@ -44,7 +45,7 @@ def create_chat_model(
 ) -> BaseChatModel:
     cls = PROVIDER_MAP.get(provider, ChatOpenAI)
 
-    kwargs: dict = {"model": model_name, "api_key": api_key}
+    kwargs: dict[str, Any] = {"model": model_name, "api_key": api_key}
     if base_url:
         kwargs["base_url"] = base_url
 

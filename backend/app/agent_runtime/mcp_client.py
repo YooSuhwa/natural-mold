@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
@@ -7,7 +9,9 @@ from mcp.client.streamable_http import streamablehttp_client
 from app.config import settings
 
 
-async def test_mcp_connection(url: str, auth_config: dict | None = None) -> dict:
+async def test_mcp_connection(
+    url: str, auth_config: dict[str, str] | None = None
+) -> dict[str, Any]:
     """Test connection to an MCP server and discover tools."""
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if auth_config and auth_config.get("api_key"):
