@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.exceptions import NotFoundError
+from app.error_codes import agent_not_found
 from app.schemas.assistant import AssistantMessageRequest
 from app.services import agent_service, assistant_service
 
@@ -26,7 +26,7 @@ async def send_assistant_message(
     """Assistant에게 메시지를 보내고 SSE 스트리밍으로 응답받는다."""
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
-        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
+        raise agent_not_found()
 
     # thread_id: 프론트엔드가 session_id를 제공하면 그것을 사용 (탭별 독립 대화)
     # 미제공 시 agent_id 기반 기본값으로 폴백 (하위 호환)

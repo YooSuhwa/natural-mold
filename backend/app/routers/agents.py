@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.exceptions import ExternalServiceError, NotFoundError, ValidationError
+from app.error_codes import agent_not_found, image_file_not_found, image_not_found
+from app.exceptions import ExternalServiceError, ValidationError
 from app.models.agent import Agent
 from app.schemas.agent import (
     AgentCreate,
@@ -85,7 +86,7 @@ async def get_agent(
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
-        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
+        raise agent_not_found()
     return _agent_to_response(agent)
 
 
@@ -98,7 +99,7 @@ async def update_agent(
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
-        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
+        raise agent_not_found()
     updated = await agent_service.update_agent(db, agent, data)
     return _agent_to_response(updated)
 
@@ -111,7 +112,7 @@ async def toggle_favorite(
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
-        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
+        raise agent_not_found()
     updated = await agent_service.toggle_favorite(db, agent)
     return _agent_to_response(updated)
 
@@ -124,7 +125,7 @@ async def delete_agent(
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
-        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
+        raise agent_not_found()
     await agent_service.delete_agent(db, agent)
 
 
@@ -136,7 +137,7 @@ async def generate_agent_image(
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
-        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
+        raise agent_not_found()
     try:
         image_url = await image_service.generate_agent_image(db, agent)
     except ValueError as e:
@@ -154,10 +155,10 @@ async def get_agent_image(
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent or not agent.image_path:
-        raise NotFoundError("IMAGE_NOT_FOUND", "이미지를 찾을 수 없습니다")
+        raise image_not_found()
     apath = anyio.Path(agent.image_path)
     if not await apath.is_file():
-        raise NotFoundError("IMAGE_NOT_FOUND", "이미지 파일을 찾을 수 없습니다")
+        raise image_file_not_found()
     media_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
     media = media_map.get(apath.suffix, "image/png")
     return FileResponse(str(apath), media_type=media)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_user, get_db
-from app.exceptions import NotFoundError
+from app.error_codes import model_not_found, provider_not_found
 from app.models.user import User
 from app.schemas.model import ModelBulkCreate, ModelCreate, ModelResponse, ModelUpdate
 from app.services import model_service
@@ -34,7 +34,7 @@ async def bulk_create_models(
 ):
     result = await model_service.bulk_create_models(db, data)
     if result is None:
-        raise NotFoundError("PROVIDER_NOT_FOUND", "프로바이더를 찾을 수 없습니다")
+        raise provider_not_found()
     return result
 
 
@@ -47,7 +47,7 @@ async def update_model(
 ):
     model = await model_service.update_model(db, model_id, data)
     if not model:
-        raise NotFoundError("MODEL_NOT_FOUND", "모델을 찾을 수 없습니다")
+        raise model_not_found()
     return model
 
 
@@ -57,4 +57,4 @@ async def delete_model(
 ):
     deleted = await model_service.delete_model(db, model_id)
     if not deleted:
-        raise NotFoundError("MODEL_NOT_FOUND", "모델을 찾을 수 없습니다")
+        raise model_not_found()

@@ -107,7 +107,7 @@ class TestSkillsRouter:
         fake_id = "00000000-0000-0000-0000-000000000099"
         resp = await client.get(f"/api/skills/{fake_id}")
         assert resp.status_code == 404
-        assert resp.json()["detail"] == "Skill not found"
+        assert resp.json()["error"]["code"] == "SKILL_NOT_FOUND"
 
     @pytest.mark.asyncio
     async def test_update_skill_name(self, client: AsyncClient):

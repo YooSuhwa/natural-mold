@@ -270,7 +270,7 @@ class TestUploadSkillRouter:
             "/api/skills/upload",
             files={"file": ("bad.skill", b"not a zip", "application/zip")},
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 422
 
 
 # ===========================================================================

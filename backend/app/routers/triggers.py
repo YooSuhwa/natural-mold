@@ -6,7 +6,11 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.exceptions import NotFoundError, ValidationError
+from app.error_codes import (
+    invalid_schedule_config,
+    invalid_trigger_type,
+    trigger_not_found,
+)
 from app.scheduler import add_trigger_job, pause_trigger_job, remove_trigger_job
 from app.schemas.trigger import TriggerCreate, TriggerResponse, TriggerUpdate
 from app.services import trigger_service
@@ -32,17 +36,12 @@ async def create_trigger(
 ):
     # Validate trigger type
     if data.trigger_type not in ("interval", "cron"):
-        raise ValidationError(
-            "INVALID_TRIGGER_TYPE", "trigger_type은 'interval' 또는 'cron'이어야 합니다"
-        )
+        raise invalid_trigger_type()
 
     if data.trigger_type == "interval":
         minutes = data.schedule_config.get("interval_minutes")
         if not minutes or not isinstance(minutes, (int, float)) or minutes < 1:
-            raise ValidationError(
-                "INVALID_SCHEDULE_CONFIG",
-                "interval은 schedule_config.interval_minutes >= 1이 필요합니다",
-            )
+            raise invalid_schedule_config()
 
     trigger = await trigger_service.create_trigger(db, agent_id, user.id, data)
 
@@ -62,7 +61,7 @@ async def update_trigger(
 ):
     trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
     if not trigger or trigger.agent_id != agent_id:
-        raise NotFoundError("TRIGGER_NOT_FOUND", "트리거를 찾을 수 없습니다")
+        raise trigger_not_found()
 
     trigger = await trigger_service.update_trigger(db, trigger, data)
 
@@ -91,7 +90,7 @@ async def delete_trigger(
 ):
     trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
     if not trigger or trigger.agent_id != agent_id:
-        raise NotFoundError("TRIGGER_NOT_FOUND", "트리거를 찾을 수 없습니다")
+        raise trigger_not_found()
 
     remove_trigger_job(trigger.id)
     await trigger_service.delete_trigger(db, trigger)

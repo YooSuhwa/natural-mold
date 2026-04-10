@@ -10,7 +10,15 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.exceptions import AppError, ConflictError, NotFoundError, ValidationError
+from app.error_codes import (
+    agent_creation_failed,
+    no_draft_config,
+    session_already_claimed,
+    session_confirming,
+    session_not_found,
+    session_not_preview,
+)
+from app.exceptions import ValidationError
 from app.routers.agents import _agent_to_response
 from app.schemas.agent import AgentResponse
 from app.schemas.builder import BuilderSessionResponse, BuilderStartRequest, BuilderStatus
@@ -41,7 +49,7 @@ async def get_build_session(
     """빌드 세션 상태를 조회한다."""
     session = await builder_service.get_session(db, session_id, user.id)
     if not session:
-        raise NotFoundError("SESSION_NOT_FOUND", "빌드 세션을 찾을 수 없습니다")
+        raise session_not_found()
     return session
 
 
@@ -54,15 +62,12 @@ async def stream_build(
     """빌드 파이프라인을 SSE 스트리밍으로 실행한다."""
     session = await builder_service.get_session(db, session_id, user.id)
     if not session:
-        raise NotFoundError("SESSION_NOT_FOUND", "빌드 세션을 찾을 수 없습니다")
+        raise session_not_found()
 
     # 원자적 상태 전환으로 동시 요청 시 중복 실행 방지
     claimed = await builder_service.claim_for_streaming(db, session_id, user.id)
     if not claimed:
-        raise ConflictError(
-            "SESSION_ALREADY_CLAIMED",
-            "이미 스트리밍 중이거나 빌드 중 상태가 아닙니다",
-        )
+        raise session_already_claimed()
 
     # SSE 스트리밍은 응답 이후에도 실행되므로 Depends(get_db) 세션을 전달하지 않는다.
     # run_build_stream 내부에서 자체 세션을 생성한다.
@@ -100,7 +105,7 @@ async def confirm_build(
     """
     session = await builder_service.get_session(db, session_id, user.id)
     if not session:
-        raise NotFoundError("SESSION_NOT_FOUND", "빌드 세션을 찾을 수 없습니다")
+        raise session_not_found()
 
     # 멱등: 이미 완료된 세션이면 기존 Agent 반환
     if session.status == BuilderStatus.COMPLETED and session.agent_id:
@@ -110,31 +115,22 @@ async def confirm_build(
 
     # 동시 요청 방지: 이미 CONFIRMING이면 409
     if session.status == BuilderStatus.CONFIRMING:
-        raise ConflictError(
-            "SESSION_CONFIRMING",
-            "에이전트 생성이 이미 진행 중입니다",
-        )
+        raise session_confirming()
 
     if session.status != BuilderStatus.PREVIEW:
-        raise ValidationError(
-            "SESSION_NOT_PREVIEW",
-            "프리뷰 상태의 세션만 확인할 수 있습니다",
-        )
+        raise session_not_preview()
     if not session.draft_config:
-        raise ValidationError("NO_DRAFT_CONFIG", "드래프트 설정이 없습니다")
+        raise no_draft_config()
 
     # 원자적 PREVIEW → CONFIRMING 전환
     claimed = await builder_service.claim_for_confirming(db, session_id, user.id)
     if not claimed:
-        raise ConflictError(
-            "SESSION_CONFIRMING",
-            "에이전트 생성이 이미 진행 중입니다",
-        )
+        raise session_confirming()
 
     # 세션을 다시 로드 (상태 전환 후 fresh 상태)
     session = await builder_service.get_session(db, session_id, user.id)
     if not session:
-        raise NotFoundError("SESSION_NOT_FOUND", "빌드 세션을 찾을 수 없습니다")
+        raise session_not_found()
 
     try:
         agent = await builder_service.confirm_build(db, session)
@@ -145,16 +141,8 @@ async def confirm_build(
             "Unexpected error during confirm_build for session %s",
             session_id,
         )
-        raise AppError(
-            "AGENT_CREATION_FAILED",
-            "에이전트 생성 중 오류가 발생했습니다. 다시 시도해주세요.",
-            status=500,
-        ) from exc
+        raise agent_creation_failed() from exc
 
     if not agent:
-        raise AppError(
-            "AGENT_CREATION_FAILED",
-            "에이전트를 생성할 수 없습니다",
-            status=500,
-        )
+        raise agent_creation_failed("에이전트를 생성할 수 없습니다")
     return _agent_to_response(agent)
