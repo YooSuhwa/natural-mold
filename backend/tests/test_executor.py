@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -25,6 +25,7 @@ def test_build_agent_calls_deep_agent(mock_create: MagicMock):
         tools=mock_tools,
         system_prompt="You are helpful.",
         middleware=(),
+        interrupt_on=None,
         checkpointer=None,
         store=None,
         backend=None,
@@ -111,8 +112,11 @@ async def test_execute_stream_no_tools(
 
     mock_model_factory.assert_called_once_with("openai", "gpt-4o", "sk-test", None)
     mock_build.assert_called_once()
-    # No tools should be passed
-    assert mock_build.call_args[0][1] == []
+    # Only ask_user tool should be present (auto-included)
+    tools_passed = mock_build.call_args[0][1]
+    # Only ask_user tool should be present (auto-included)
+    assert len(tools_passed) == 1
+    assert tools_passed[0].name == "ask_user"
 
 
 @pytest.mark.asyncio
@@ -158,7 +162,7 @@ async def test_execute_stream_builtin_tool(
 
     mock_builtin.assert_called_once_with("Web Search")
     tools_passed = mock_build.call_args[0][1]
-    assert len(tools_passed) == 1
+    assert len(tools_passed) == 2  # builtin + ask_user (auto)
 
 
 @pytest.mark.asyncio
@@ -320,7 +324,7 @@ async def test_execute_stream_mixed_tools(
     mock_builtin.assert_called_once_with("Web Search")
     mock_prebuilt.assert_called_once()
     tools_passed = mock_build.call_args[0][1]
-    assert len(tools_passed) == 2
+    assert len(tools_passed) == 3  # 2 user tools + ask_user (auto)
 
 
 @pytest.mark.asyncio
@@ -365,7 +369,7 @@ async def test_execute_stream_skips_custom_without_api_url(
         pass
 
     tools_passed = mock_build.call_args[0][1]
-    assert len(tools_passed) == 0
+    assert len(tools_passed) == 1  # ask_user only (auto)
 
 
 @pytest.mark.asyncio
@@ -452,7 +456,7 @@ async def test_execute_stream_skips_unknown_tool_type(
         pass
 
     tools_passed = mock_build.call_args[0][1]
-    assert len(tools_passed) == 0
+    assert len(tools_passed) == 1  # ask_user only (auto)
 
 
 @pytest.mark.asyncio
@@ -597,3 +601,136 @@ async def test_execute_stream_no_skills_no_memory_when_not_provided(
     build_kwargs = mock_build.call_args[1]
     assert build_kwargs["skills"] is None
     assert build_kwargs["memory"] is None
+
+
+# ---------------------------------------------------------------------------
+# interrupt_on extraction
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+async def test_interrupt_on_with_write_tools(
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+):
+    """HiTL middleware + write tool → interrupt_on에 해당 도구 포함."""
+    from app.agent_runtime.executor import execute_agent_stream
+
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = []
+    mock_build.return_value = MagicMock()
+
+    async def fake_stream(*args, **kwargs):
+        yield "done"
+
+    mock_stream.return_value = fake_stream()
+
+    async for _ in execute_agent_stream(
+        provider="openai",
+        model_name="gpt-4o",
+        api_key=None,
+        base_url=None,
+        system_prompt="Hi",
+        tools_config=[{"type": "builtin", "name": "Web Search"}],
+        messages_history=[],
+        thread_id="t-1",
+        middleware_configs=[{"type": "human_in_the_loop", "params": {}}],
+    ):
+        pass
+
+    build_kwargs = mock_build.call_args[1]
+    # interrupt_on should be None — "Web Search" doesn't match _WRITE_TOOL_KEYWORDS
+    assert build_kwargs["interrupt_on"] is None
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+async def test_interrupt_on_without_hitl_middleware(
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+):
+    """No HiTL middleware → interrupt_on is None."""
+    from app.agent_runtime.executor import execute_agent_stream
+
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = []
+    mock_build.return_value = MagicMock()
+
+    async def fake_stream(*args, **kwargs):
+        yield "done"
+
+    mock_stream.return_value = fake_stream()
+
+    async for _ in execute_agent_stream(
+        provider="openai",
+        model_name="gpt-4o",
+        api_key=None,
+        base_url=None,
+        system_prompt="Hi",
+        tools_config=[],
+        messages_history=[],
+        thread_id="t-1",
+        middleware_configs=[{"type": "tool_retry", "params": {}}],
+    ):
+        pass
+
+    build_kwargs = mock_build.call_args[1]
+    assert build_kwargs["interrupt_on"] is None
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.executor.FilesystemBackend")
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+async def test_ask_user_not_included_in_invoke(
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+    mock_fs_backend_cls: MagicMock,
+):
+    """execute_agent_invoke should NOT include ask_user tool."""
+    from app.agent_runtime.executor import execute_agent_invoke
+
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = []
+
+    mock_agent = MagicMock()
+    mock_agent.ainvoke = AsyncMock(return_value={
+        "messages": [MagicMock(content="Hello", type="ai")]
+    })
+    mock_build.return_value = mock_agent
+
+    await execute_agent_invoke(
+        provider="openai",
+        model_name="gpt-4o",
+        api_key=None,
+        base_url=None,
+        system_prompt="Hi",
+        tools_config=[],
+        messages_history=[],
+        thread_id="t-1",
+    )
+
+    tools_passed = mock_build.call_args[0][1]
+    tool_names = [t.name for t in tools_passed]
+    assert "ask_user" not in tool_names

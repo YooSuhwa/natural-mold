@@ -1,17 +1,16 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, use } from 'react'
+import { useState, useRef, useEffect, useCallback, use, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  SendIcon,
   Loader2Icon,
-  SparklesIcon,
   ArrowLeftIcon,
   RotateCcwIcon,
   WrenchIcon,
   ShieldIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -23,9 +22,9 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
-import { cn } from '@/lib/utils'
 import { builderApi } from '@/lib/api/builder'
 import { streamBuilder } from '@/lib/sse/stream-builder'
+import { useBuilderRuntime } from '@/lib/chat/use-builder-runtime'
 import type {
   BuilderDraftConfig,
   BuilderIntent,
@@ -38,6 +37,7 @@ import type { PhaseState } from './_components/phase-timeline'
 import { IntentCard } from './_components/intent-card'
 import { RecommendationCard } from './_components/recommendation-card'
 import { DraftConfigCard } from './_components/draft-config-card'
+import { BuilderThread } from './_components/builder-thread'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -83,21 +83,10 @@ export default function ConversationalCreationPage({
   const [draftConfig, setDraftConfig] = useState<BuilderDraftConfig | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const isComposingRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
   const hasAutoSubmitted = useRef(false)
   const buildStatusRef = useRef(buildStatus)
   buildStatusRef.current = buildStatus
-
-  const compositionProps = {
-    onCompositionStart: () => {
-      isComposingRef.current = true
-    },
-    onCompositionEnd: () => {
-      isComposingRef.current = false
-    },
-  } as const
 
   const scrollToBottom = useCallback(() => {
     if (contentRef.current) {
@@ -111,17 +100,16 @@ export default function ConversationalCreationPage({
     setPhases((prev) => prev.map((p) => (p.id === phaseId ? { ...p, ...updates } : p)))
   }, [])
 
-  // --- Build flow (W-2: useCallback) ---
+  // --- Build flow ---
 
   const handleBuild = useCallback(
     async (request: string) => {
       const text = request.trim()
       if (!text) return
 
+      setUserRequest(text)
       setBuildStatus('building')
       setErrorMessage('')
-
-      // Reset phases
       setPhases(createInitialPhases())
       setIntent(null)
       setTools([])
@@ -129,11 +117,9 @@ export default function ConversationalCreationPage({
       setDraftConfig(null)
 
       try {
-        // 1. Start build session
         const session = await builderApi.start(text)
         setSessionId(session.id)
 
-        // 2. Stream build progress
         const abort = new AbortController()
         abortRef.current = abort
 
@@ -187,17 +173,12 @@ export default function ConversationalCreationPage({
           }
         }
 
-        // Always fetch final session to hydrate intent/tools/middlewares/draft_config
-        // SSE events only carry phase progress — the actual data lives in the session
         if (buildStatusRef.current !== 'failed') {
           const finalSession = await builderApi.getSession(session.id)
           if (finalSession.intent) setIntent(finalSession.intent)
           if (finalSession.tools_result) setTools(finalSession.tools_result)
           if (finalSession.middlewares_result) setMiddlewares(finalSession.middlewares_result)
           if (finalSession.draft_config) setDraftConfig(finalSession.draft_config)
-          if (finalSession.system_prompt) {
-            // system_prompt is part of draft_config display
-          }
           if (finalSession.status === 'preview' && buildStatusRef.current !== 'preview') {
             setBuildStatus('preview')
           }
@@ -220,13 +201,6 @@ export default function ConversationalCreationPage({
       router.replace('/agents/new/conversational')
     }
   }, [initialMessage, handleBuild, router])
-
-  // Focus textarea on mount
-  useEffect(() => {
-    if (buildStatus === 'idle') {
-      textareaRef.current?.focus()
-    }
-  }, [buildStatus])
 
   // Scroll when phases update
   useEffect(() => {
@@ -268,6 +242,92 @@ export default function ConversationalCreationPage({
     }
   }, [])
 
+  // --- Builder Runtime for Thread ---
+  const builderState = useMemo(
+    () => ({
+      userRequest,
+      buildStatus,
+      phases,
+      intent,
+      tools,
+      middlewares,
+      draftConfig,
+      errorMessage,
+    }),
+    [userRequest, buildStatus, phases, intent, tools, middlewares, draftConfig, errorMessage],
+  )
+
+  const runtime = useBuilderRuntime({
+    state: builderState,
+    onSubmit: handleBuild,
+  })
+
+  // Build result cards rendered inside the Thread
+  const buildResultCards = buildStatus !== 'idle' ? (
+    <div className="space-y-6">
+      <PhaseTimeline phases={phases} />
+
+      {buildStatus === 'building' && (
+        <div className="flex flex-col items-center justify-center gap-3 py-8">
+          <Loader2Icon className="size-6 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">{t('building')}</p>
+        </div>
+      )}
+
+      {buildStatus === 'failed' && errorMessage && (
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive/50 bg-destructive/5 px-4 py-3"
+        >
+          <p className="text-sm text-destructive">{errorMessage}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={() => handleBuild(userRequest)}
+          >
+            <RotateCcwIcon className="mr-1.5 size-3.5" />
+            {t('resetButton')}
+          </Button>
+        </div>
+      )}
+
+      {intent && <IntentCard intent={intent} />}
+
+      {tools.length > 0 && (
+        <RecommendationCard
+          icon={WrenchIcon}
+          titleKey="toolRecommendation"
+          items={tools.map((tool) => ({
+            name: tool.tool_name,
+            description: tool.description,
+            reason: tool.reason,
+          }))}
+        />
+      )}
+
+      {middlewares.length > 0 && (
+        <RecommendationCard
+          icon={ShieldIcon}
+          titleKey="middlewareRecommendation"
+          items={middlewares.map((m) => ({
+            name: m.middleware_name,
+            description: m.description,
+            reason: m.reason,
+          }))}
+        />
+      )}
+
+      {buildStatus === 'preview' && draftConfig && (
+        <DraftConfigCard
+          draft={draftConfig}
+          onConfirm={handleConfirm}
+          isConfirming={isConfirming}
+        />
+      )}
+    </div>
+  ) : null
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
@@ -297,130 +357,13 @@ export default function ConversationalCreationPage({
         )}
       </div>
 
-      {/* Scrollable content */}
-      <div ref={contentRef} className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-2xl space-y-6 p-6">
-          {/* Idle: Input form */}
-          {buildStatus === 'idle' && (
-            <div className="space-y-4">
-              <div className="rounded-xl border bg-background p-5">
-                <div className="flex items-start gap-2.5">
-                  <SparklesIcon className="mt-0.5 size-5 shrink-0 text-primary" />
-                  <p className="text-base font-semibold leading-relaxed">{t('initialQuestion')}</p>
-                </div>
-              </div>
-              <textarea
-                ref={textareaRef}
-                value={userRequest}
-                onChange={(e) => setUserRequest(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !isComposingRef.current) {
-                    e.preventDefault()
-                    handleBuild(userRequest)
-                  }
-                }}
-                {...compositionProps}
-                placeholder={t('initialPlaceholder')}
-                rows={3}
-                className={cn(
-                  'min-h-[80px] max-h-[160px] w-full resize-none rounded-xl border border-input bg-transparent px-3.5 py-3 text-sm leading-relaxed outline-none transition-colors',
-                  'placeholder:text-muted-foreground',
-                  'focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
-                )}
-              />
-              <div className="flex justify-end">
-                <Button
-                  onClick={() => handleBuild(userRequest)}
-                  disabled={!userRequest.trim()}
-                  size="lg"
-                >
-                  <SendIcon className="mr-1.5 size-4" />
-                  {t('startButton')}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* Building / Preview / Failed: Timeline + Results */}
-          {buildStatus !== 'idle' && (
-            <>
-              {/* W-4: User request display — i18n key instead of hardcoded Korean */}
-              <div className="rounded-xl border bg-primary/5 px-4 py-3">
-                <p className="text-sm">
-                  <span className="font-medium text-primary">{t('userRequestLabel')}</span>{' '}
-                  {userRequest}
-                </p>
-              </div>
-
-              {/* Phase timeline */}
-              <PhaseTimeline phases={phases} />
-
-              {/* Building spinner */}
-              {buildStatus === 'building' && (
-                <div className="flex flex-col items-center justify-center gap-3 py-8">
-                  <Loader2Icon className="size-6 animate-spin text-primary" />
-                  <p className="text-sm text-muted-foreground">{t('building')}</p>
-                </div>
-              )}
-
-              {/* Error message */}
-              {buildStatus === 'failed' && errorMessage && (
-                <div
-                  role="alert"
-                  className="rounded-xl border border-destructive/50 bg-destructive/5 px-4 py-3"
-                >
-                  <p className="text-sm text-destructive">{errorMessage}</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    onClick={() => handleBuild(userRequest)}
-                  >
-                    <RotateCcwIcon className="mr-1.5 size-3.5" />
-                    {t('resetButton')}
-                  </Button>
-                </div>
-              )}
-
-              {/* Intent card (when Phase 2 done) */}
-              {intent && <IntentCard intent={intent} />}
-
-              {tools.length > 0 && (
-                <RecommendationCard
-                  icon={WrenchIcon}
-                  titleKey="toolRecommendation"
-                  items={tools.map((tool) => ({
-                    name: tool.tool_name,
-                    description: tool.description,
-                    reason: tool.reason,
-                  }))}
-                />
-              )}
-
-              {middlewares.length > 0 && (
-                <RecommendationCard
-                  icon={ShieldIcon}
-                  titleKey="middlewareRecommendation"
-                  items={middlewares.map((m) => ({
-                    name: m.middleware_name,
-                    description: m.description,
-                    reason: m.reason,
-                  }))}
-                />
-              )}
-
-              {/* Draft config preview (when preview) */}
-              {buildStatus === 'preview' && draftConfig && (
-                <DraftConfigCard
-                  draft={draftConfig}
-                  onConfirm={handleConfirm}
-                  isConfirming={isConfirming}
-                />
-              )}
-            </>
-          )}
-        </div>
-      </div>
+      {/* Thread — AssistantRuntimeProvider로 래핑 */}
+      <AssistantRuntimeProvider runtime={runtime}>
+        <BuilderThread
+          buildStatus={buildStatus}
+          buildResultCards={buildResultCards}
+        />
+      </AssistantRuntimeProvider>
 
       {/* Cancel Confirm Dialog */}
       <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>

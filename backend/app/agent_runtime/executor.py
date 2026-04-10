@@ -28,10 +28,17 @@ from app.agent_runtime.tool_factory import (
     create_prebuilt_tool,
     create_tool_from_db,
 )
+from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
 
 logger = logging.getLogger(__name__)
 
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+
+# HiTL: interrupt_on 자동 생성 시 쓰기/실행 도구만 대상으로 하는 키워드
+_WRITE_TOOL_KEYWORDS = frozenset({
+    "book", "create", "send", "delete",
+    "update", "write", "execute", "reserve",
+})
 
 
 def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseTool:
@@ -54,6 +61,13 @@ def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseToo
         args = shlex.split(command)
         if not args or args[0] != "python":
             return "Error: only python commands are allowed."
+
+        # 스크립트 경로가 스킬 디렉토리 하위인지 검증
+        if len(args) > 1 and not args[1].startswith("-"):
+            script_path = (resolved / args[1]).resolve()
+            if not script_path.is_relative_to(resolved):
+                return "Error: script must be within the skill directory."
+
         args[0] = sys.executable
 
         await asyncio.to_thread(output_dir.mkdir, parents=True, exist_ok=True)
@@ -118,6 +132,7 @@ def build_agent(
     system_prompt: str,
     *,
     middleware: list | None = None,
+    interrupt_on: dict | bool | None = None,
     checkpointer: Any | None = None,
     store: Any | None = None,
     backend: Any | None = None,
@@ -131,6 +146,7 @@ def build_agent(
         tools=tools,
         system_prompt=system_prompt,
         middleware=middleware or (),
+        interrupt_on=interrupt_on,
         checkpointer=checkpointer,
         store=store,
         backend=backend,
@@ -322,6 +338,7 @@ async def _prepare_agent(
     agent_skills: list[dict] | None = None,
     agent_id: str | None = None,
     provider_api_keys: dict[str, str | None] | None = None,
+    include_ask_user: bool = True,
 ) -> tuple[Any, list, dict]:
     """에이전트 빌드 + 설정. stream/invoke 공용."""
     model = create_chat_model(provider, model_name, api_key, base_url, **(model_params or {}))
@@ -366,6 +383,29 @@ async def _prepare_agent(
     middleware = build_middleware_instances(resolved_mw)
     middleware += get_provider_middleware(provider)
 
+    # 3-1. HiTL — interrupt_on 추출 (deepagents가 네이티브로 처리)
+    # interrupt_on은 dict[str, bool | InterruptOnConfig] 형식이어야 함
+    # 주의: 모든 도구에 interrupt를 걸면 LLM이 도구 호출을 피할 수 있음
+    # 따라서 params에 명시적 interrupt_on이 없으면 부작용(side-effect) 가능성이 있는
+    # 쓰기/실행 도구만 대상으로 함 (모듈 레벨 _WRITE_TOOL_KEYWORDS 참조)
+    interrupt_on: dict[str, bool] | None = None
+    for mw_config in middleware_configs or []:
+        if mw_config.get("type") == "human_in_the_loop":
+            explicit = mw_config.get("params", {}).get("interrupt_on")
+            if isinstance(explicit, dict) and explicit:
+                interrupt_on = explicit
+            else:
+                # params에 interrupt_on이 없으면 쓰기/실행 도구만 interrupt
+                interrupt_on = {
+                    t.name: True
+                    for t in langchain_tools
+                    if any(kw in t.name.lower() for kw in _WRITE_TOOL_KEYWORDS)
+                }
+                # 대상 도구가 없으면 None (interrupt 비활성)
+                if not interrupt_on:
+                    interrupt_on = None
+            break
+
     # 4. Backend + Skills + Memory 구성
     backend = FilesystemBackend(root_dir=str(_DATA_DIR), virtual_mode=True)
 
@@ -391,6 +431,11 @@ async def _prepare_agent(
         (_DATA_DIR / "agents" / agent_id).mkdir(parents=True, exist_ok=True)
         memory_sources = [f"/agents/{agent_id}/AGENTS.md"]
 
+    # 4-1. ask_user 도구 — 대화형(스트리밍) 에이전트에만 포함
+    # 트리거/배치 실행 시에는 사용자가 없으므로 제외
+    if include_ask_user:
+        langchain_tools.append(ask_user_tool)
+
     # 5. 에이전트 빌드 — create_deep_agent + checkpointer
     from app.agent_runtime.checkpointer import get_checkpointer
 
@@ -399,6 +444,7 @@ async def _prepare_agent(
         langchain_tools,
         system_prompt,
         middleware=middleware or None,
+        interrupt_on=interrupt_on,
         checkpointer=get_checkpointer(),
         backend=backend,
         skills=skills_sources,
@@ -456,6 +502,52 @@ async def execute_agent_stream(
         yield chunk
 
 
+async def resume_agent_stream(
+    provider: str,
+    model_name: str,
+    api_key: str | None,
+    base_url: str | None,
+    system_prompt: str,
+    tools_config: list[dict[str, Any]],
+    thread_id: str,
+    resume_value: Any,
+    model_params: dict[str, Any] | None = None,
+    middleware_configs: list[dict[str, Any]] | None = None,
+    agent_skills: list[dict] | None = None,
+    agent_id: str | None = None,
+    cost_per_input_token: float | None = None,
+    cost_per_output_token: float | None = None,
+    provider_api_keys: dict[str, str | None] | None = None,
+) -> AsyncGenerator[str, None]:
+    """인터럽트 재개 스트리밍 (HiTL resume)."""
+    from langgraph.types import Command
+
+    agent, _, config = await _prepare_agent(
+        provider,
+        model_name,
+        api_key,
+        base_url,
+        system_prompt,
+        tools_config,
+        messages_history=[],
+        thread_id=thread_id,
+        model_params=model_params,
+        middleware_configs=middleware_configs,
+        agent_skills=agent_skills,
+        agent_id=agent_id,
+        provider_api_keys=provider_api_keys,
+    )
+
+    async for chunk in stream_agent_response(
+        agent,
+        Command(resume=resume_value),
+        config,
+        cost_per_input_token=cost_per_input_token,
+        cost_per_output_token=cost_per_output_token,
+    ):
+        yield chunk
+
+
 async def execute_agent_invoke(
     provider: str,
     model_name: str,
@@ -486,6 +578,7 @@ async def execute_agent_invoke(
         agent_skills,
         agent_id,
         provider_api_keys=provider_api_keys,
+        include_ask_user=False,  # 트리거 실행 — 사용자 없음
     )
 
     result = await agent.ainvoke({"messages": lc_messages}, config=config)

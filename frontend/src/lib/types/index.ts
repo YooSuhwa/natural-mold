@@ -266,6 +266,7 @@ export type SSEEventType =
   | 'tool_call_result'
   | 'message_end'
   | 'error'
+  | 'interrupt'
 
 export type SSEEvent =
   | { event: 'message_start'; data: { id: string; role: string } }
@@ -274,6 +275,19 @@ export type SSEEvent =
   | { event: 'tool_call_result'; data: { tool_name: string; result: string } }
   | { event: 'message_end'; data: { content: string; usage: Record<string, number> } }
   | { event: 'error'; data: { message: string } }
+  | { event: 'interrupt'; data: InterruptPayload }
+
+// HiTL (Human-in-the-Loop)
+export interface InterruptPayload {
+  interrupt_id: string
+  value: Record<string, unknown>
+}
+
+export interface UserInputQuestion {
+  question: string
+  type: 'single_select' | 'multi_select' | 'text'
+  options?: Array<{ label: string; description?: string }>
+}
 
 // Usage
 export interface UsageSummary {
