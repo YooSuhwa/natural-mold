@@ -15,6 +15,7 @@ from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.conversation import ConversationUpdate
+from app.schemas.tool import ToolType
 
 
 async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conversation]:
@@ -172,7 +173,7 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
             "auth_type": tool.auth_type,
             "auth_config": merged_auth or None,
         }
-        if tool.type == "mcp" and tool.mcp_server:
+        if tool.type == ToolType.MCP and tool.mcp_server:
             config_entry["mcp_server_url"] = tool.mcp_server.url
             config_entry["mcp_tool_name"] = tool.name
         tools_config.append(config_entry)

@@ -4,13 +4,12 @@ import logging
 import uuid
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.executor import execute_agent_stream, resume_agent_stream
+from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
 from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import agent_not_found, conversation_not_found, file_not_found
@@ -46,8 +45,8 @@ async def _resolve_agent_context(
     db: AsyncSession,
     conversation_id: uuid.UUID,
     user: CurrentUser,
-) -> dict[str, Any]:
-    """conversation + agent 조회 + API 키/도구/미들웨어/비용 해석.
+) -> AgentConfig:
+    """conversation + agent 조회 → AgentConfig 생성.
 
     send_message와 resume_message에서 공통으로 사용.
     """
@@ -69,33 +68,32 @@ async def _resolve_agent_context(
     )
     base_url = lp.base_url if lp and lp.base_url else agent.model.base_url
 
-    return {
-        "conversation": conv,
-        "agent": agent,
-        "provider": agent.model.provider,
-        "model_name": agent.model.model_name,
-        "api_key": api_key,
-        "base_url": base_url,
-        "system_prompt": chat_service.build_effective_prompt(agent),
-        "tools_config": chat_service.build_tools_config(
+    return AgentConfig(
+        provider=agent.model.provider,
+        model_name=agent.model.model_name,
+        api_key=api_key,
+        base_url=base_url,
+        system_prompt=chat_service.build_effective_prompt(agent),
+        tools_config=chat_service.build_tools_config(
             agent, conversation_id=str(conversation_id)
         ),
-        "model_params": agent.model_params,
-        "middleware_configs": agent.middleware_configs,
-        "agent_skills": chat_service.build_agent_skills(agent) or None,
-        "agent_id": str(agent.id),
-        "cost_per_input_token": (
+        thread_id=str(conversation_id),
+        model_params=agent.model_params,
+        middleware_configs=agent.middleware_configs,
+        agent_skills=chat_service.build_agent_skills(agent) or None,
+        agent_id=str(agent.id),
+        provider_api_keys=await load_all_provider_api_keys(db),
+        cost_per_input_token=(
             float(agent.model.cost_per_input_token)
             if agent.model.cost_per_input_token
             else None
         ),
-        "cost_per_output_token": (
+        cost_per_output_token=(
             float(agent.model.cost_per_output_token)
             if agent.model.cost_per_output_token
             else None
         ),
-        "provider_api_keys": await load_all_provider_api_keys(db),
-    }
+    )
 
 
 def _error_sse_pair(error_message: str) -> list[str]:
@@ -202,27 +200,13 @@ async def send_message(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    ctx = await _resolve_agent_context(db, conversation_id, user)
+    cfg = await _resolve_agent_context(db, conversation_id, user)
     await chat_service.maybe_set_auto_title(db, conversation_id, data.content)
 
     async def generate() -> AsyncGenerator[str, None]:
         try:
             async for chunk in execute_agent_stream(
-                provider=ctx["provider"],
-                model_name=ctx["model_name"],
-                api_key=ctx["api_key"],
-                base_url=ctx["base_url"],
-                system_prompt=ctx["system_prompt"],
-                tools_config=ctx["tools_config"],
-                messages_history=[{"role": "user", "content": data.content}],
-                thread_id=str(conversation_id),
-                model_params=ctx["model_params"],
-                middleware_configs=ctx["middleware_configs"],
-                agent_skills=ctx["agent_skills"],
-                agent_id=ctx["agent_id"],
-                cost_per_input_token=ctx["cost_per_input_token"],
-                cost_per_output_token=ctx["cost_per_output_token"],
-                provider_api_keys=ctx["provider_api_keys"],
+                cfg, [{"role": "user", "content": data.content}],
             ):
                 yield chunk
         except Exception:
@@ -241,27 +225,11 @@ async def resume_message(
     user: CurrentUser = Depends(get_current_user),
 ):
     """HiTL interrupt 재개 — Command(resume=response)로 그래프 실행 재개."""
-    ctx = await _resolve_agent_context(db, conversation_id, user)
+    cfg = await _resolve_agent_context(db, conversation_id, user)
 
     async def generate() -> AsyncGenerator[str, None]:
         try:
-            async for chunk in resume_agent_stream(
-                provider=ctx["provider"],
-                model_name=ctx["model_name"],
-                api_key=ctx["api_key"],
-                base_url=ctx["base_url"],
-                system_prompt=ctx["system_prompt"],
-                tools_config=ctx["tools_config"],
-                thread_id=str(conversation_id),
-                resume_value=data.response,
-                model_params=ctx["model_params"],
-                middleware_configs=ctx["middleware_configs"],
-                agent_skills=ctx["agent_skills"],
-                agent_id=ctx["agent_id"],
-                cost_per_input_token=ctx["cost_per_input_token"],
-                cost_per_output_token=ctx["cost_per_output_token"],
-                provider_api_keys=ctx["provider_api_keys"],
-            ):
+            async for chunk in resume_agent_stream(cfg, data.response):
                 yield chunk
         except Exception:
             logger.exception("Agent resume failed for conversation %s", conversation_id)

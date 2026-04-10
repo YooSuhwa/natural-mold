@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, model_validator
+
+
+class ToolType(enum.StrEnum):
+    """도구 타입 열거형. DB 컬럼은 String(20) — StrEnum은 str 호환."""
+
+    BUILTIN = "builtin"
+    PREBUILT = "prebuilt"
+    CUSTOM = "custom"
+    MCP = "mcp"
 
 
 def _check_server_key_available(name: str) -> bool:
@@ -69,7 +79,7 @@ class ToolResponse(BaseModel):
 
     @model_validator(mode="after")
     def compute_server_key_available(self) -> ToolResponse:
-        if self.type == "prebuilt":
+        if self.type == ToolType.PREBUILT:
             self.server_key_available = _check_server_key_available(self.name)
         return self
 

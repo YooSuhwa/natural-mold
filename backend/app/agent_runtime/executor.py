@@ -6,6 +6,7 @@ import re
 import shlex
 import sys
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -29,6 +30,7 @@ from app.agent_runtime.tool_factory import (
     create_tool_from_db,
 )
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
+from app.schemas.tool import ToolType
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,26 @@ _WRITE_TOOL_KEYWORDS = frozenset({
     "book", "create", "send", "delete",
     "update", "write", "execute", "reserve",
 })
+
+
+@dataclass
+class AgentConfig:
+    """에이전트 실행에 필요한 설정 묶음. executor 공용 함수들의 시그니처를 단순화."""
+
+    provider: str
+    model_name: str
+    api_key: str | None
+    base_url: str | None
+    system_prompt: str
+    tools_config: list[dict[str, Any]]
+    thread_id: str
+    model_params: dict[str, Any] | None = None
+    middleware_configs: list[dict[str, Any]] | None = None
+    agent_skills: list[dict[str, Any]] | None = None
+    agent_id: str | None = None
+    provider_api_keys: dict[str, str | None] | None = None
+    cost_per_input_token: float | None = None
+    cost_per_output_token: float | None = None
 
 
 def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseTool:
@@ -313,11 +335,11 @@ def _resolve_middleware_model_params(
     resolved = []
     for config in configs:
         params = dict(config.get("params", {}))
-        for field in _MIDDLEWARE_MODEL_FIELDS:
-            val = params.get(field)
+        for field_name in _MIDDLEWARE_MODEL_FIELDS:
+            val = params.get(field_name)
             if isinstance(val, str) and ":" in val:
                 prov, mname = val.split(":", 1)
-                params[field] = create_chat_model(
+                params[field_name] = create_chat_model(
                     prov, mname, api_key=provider_api_keys.get(prov)
                 )
         resolved.append({**config, "params": params})
@@ -325,37 +347,30 @@ def _resolve_middleware_model_params(
 
 
 async def _prepare_agent(
-    provider: str,
-    model_name: str,
-    api_key: str | None,
-    base_url: str | None,
-    system_prompt: str,
-    tools_config: list[dict[str, Any]],
+    cfg: AgentConfig,
+    *,
     messages_history: list[dict[str, str]],
-    thread_id: str,
-    model_params: dict[str, Any] | None = None,
-    middleware_configs: list[dict[str, Any]] | None = None,
-    agent_skills: list[dict] | None = None,
-    agent_id: str | None = None,
-    provider_api_keys: dict[str, str | None] | None = None,
     include_ask_user: bool = True,
 ) -> tuple[Any, list, dict]:
     """에이전트 빌드 + 설정. stream/invoke 공용."""
-    model = create_chat_model(provider, model_name, api_key, base_url, **(model_params or {}))
+    system_prompt = cfg.system_prompt
+    model = create_chat_model(
+        cfg.provider, cfg.model_name, cfg.api_key, cfg.base_url, **(cfg.model_params or {})
+    )
 
     # 1. 도구 생성 — builtin/prebuilt/custom은 기존 방식 유지
     langchain_tools: list[BaseTool] = []
     mcp_configs: list[dict] = []
 
-    for tc in tools_config:
+    for tc in cfg.tools_config:
         tool_type = tc.get("type")
-        if tool_type == "builtin":
+        if tool_type == ToolType.BUILTIN:
             langchain_tools.append(create_builtin_tool(tc["name"]))
-        elif tool_type == "prebuilt":
+        elif tool_type == ToolType.PREBUILT:
             langchain_tools.append(
                 create_prebuilt_tool(tc["name"], auth_config=tc.get("auth_config"))
             )
-        elif tool_type == "custom" and tc.get("api_url"):
+        elif tool_type == ToolType.CUSTOM and tc.get("api_url"):
             langchain_tools.append(
                 create_tool_from_db(
                     name=tc["name"],
@@ -367,7 +382,7 @@ async def _prepare_agent(
                     auth_config=tc.get("auth_config"),
                 )
             )
-        elif tool_type == "mcp" and tc.get("mcp_server_url"):
+        elif tool_type == ToolType.MCP and tc.get("mcp_server_url"):
             mcp_configs.append(tc)
 
     # 2. MCP 도구 — langchain-mcp-adapters 사용
@@ -376,12 +391,12 @@ async def _prepare_agent(
 
     # 3. 미들웨어 — deepagents 빌트인 타입 제외 후, model 문자열을 BaseChatModel로 사전 해석
     filtered_mw = [
-        c for c in (middleware_configs or [])
+        c for c in (cfg.middleware_configs or [])
         if c.get("type") not in DEEPAGENT_BUILTIN_TYPES
     ]
-    resolved_mw = _resolve_middleware_model_params(filtered_mw, provider_api_keys or {})
+    resolved_mw = _resolve_middleware_model_params(filtered_mw, cfg.provider_api_keys or {})
     middleware = build_middleware_instances(resolved_mw)
-    middleware += get_provider_middleware(provider)
+    middleware += get_provider_middleware(cfg.provider)
 
     # 3-1. HiTL — interrupt_on 추출 (deepagents가 네이티브로 처리)
     # interrupt_on은 dict[str, bool | InterruptOnConfig] 형식이어야 함
@@ -389,7 +404,7 @@ async def _prepare_agent(
     # 따라서 params에 명시적 interrupt_on이 없으면 부작용(side-effect) 가능성이 있는
     # 쓰기/실행 도구만 대상으로 함 (모듈 레벨 _WRITE_TOOL_KEYWORDS 참조)
     interrupt_on: dict[str, bool] | None = None
-    for mw_config in middleware_configs or []:
+    for mw_config in cfg.middleware_configs or []:
         if mw_config.get("type") == "human_in_the_loop":
             explicit = mw_config.get("params", {}).get("interrupt_on")
             if isinstance(explicit, dict) and explicit:
@@ -410,11 +425,11 @@ async def _prepare_agent(
     backend = FilesystemBackend(root_dir=str(_DATA_DIR), virtual_mode=True)
 
     skills_sources: list[str] | None = None
-    if agent_skills:
+    if cfg.agent_skills:
         skills_sources = ["/skills/"]
         # 스킬 스크립트 실행 도구 추가 — 출력은 대화 세션 폴더에 저장 (절대경로)
-        conv_output_dir = (_DATA_DIR / "conversations" / thread_id).resolve()
-        langchain_tools.append(_create_skill_execute_tool(conv_output_dir, thread_id))
+        conv_output_dir = (_DATA_DIR / "conversations" / cfg.thread_id).resolve()
+        langchain_tools.append(_create_skill_execute_tool(conv_output_dir, cfg.thread_id))
         system_prompt += (
             "\n\n## 스킬 사용 규칙\n"
             "스킬을 사용할 때는 반드시 read_file 도구로 SKILL.md를 먼저 읽고 "
@@ -423,13 +438,13 @@ async def _prepare_agent(
             "task 도구의 subagent_type에 스킬 이름을 넣지 마세요. "
             "유일하게 허용된 subagent_type은 'general-purpose'입니다.\n"
             "스크립트 실행 후 OUTPUT_FILES에 이미지가 있으면 "
-            "![image](/api/conversations/" + thread_id + "/files/<파일명>) 형식으로 표시하세요."
+            "![image](/api/conversations/" + cfg.thread_id + "/files/<파일명>) 형식으로 표시하세요."
         )
 
     memory_sources: list[str] | None = None
-    if agent_id:
-        (_DATA_DIR / "agents" / agent_id).mkdir(parents=True, exist_ok=True)
-        memory_sources = [f"/agents/{agent_id}/AGENTS.md"]
+    if cfg.agent_id:
+        (_DATA_DIR / "agents" / cfg.agent_id).mkdir(parents=True, exist_ok=True)
+        memory_sources = [f"/agents/{cfg.agent_id}/AGENTS.md"]
 
     # 4-1. ask_user 도구 — 대화형(스트리밍) 에이전트에만 포함
     # 트리거/배치 실행 시에는 사용자가 없으므로 제외
@@ -449,135 +464,63 @@ async def _prepare_agent(
         backend=backend,
         skills=skills_sources,
         memory=memory_sources,
-        name=f"agent_{thread_id[:8]}",
+        name=f"agent_{cfg.thread_id[:8]}",
     )
 
     lc_messages = convert_to_langchain_messages(messages_history)
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": cfg.thread_id}}
 
     return agent, lc_messages, config
 
 
 async def execute_agent_stream(
-    provider: str,
-    model_name: str,
-    api_key: str | None,
-    base_url: str | None,
-    system_prompt: str,
-    tools_config: list[dict[str, Any]],
+    cfg: AgentConfig,
     messages_history: list[dict[str, str]],
-    thread_id: str,
-    model_params: dict[str, Any] | None = None,
-    middleware_configs: list[dict[str, Any]] | None = None,
-    agent_skills: list[dict] | None = None,
-    agent_id: str | None = None,
-    cost_per_input_token: float | None = None,
-    cost_per_output_token: float | None = None,
-    provider_api_keys: dict[str, str | None] | None = None,
 ) -> AsyncGenerator[str, None]:
     """스트리밍 실행 (채팅용)."""
     agent, lc_messages, config = await _prepare_agent(
-        provider,
-        model_name,
-        api_key,
-        base_url,
-        system_prompt,
-        tools_config,
-        messages_history,
-        thread_id,
-        model_params,
-        middleware_configs,
-        agent_skills,
-        agent_id,
-        provider_api_keys=provider_api_keys,
+        cfg, messages_history=messages_history,
     )
 
     async for chunk in stream_agent_response(
         agent,
         lc_messages,
         config,
-        cost_per_input_token=cost_per_input_token,
-        cost_per_output_token=cost_per_output_token,
+        cost_per_input_token=cfg.cost_per_input_token,
+        cost_per_output_token=cfg.cost_per_output_token,
     ):
         yield chunk
 
 
 async def resume_agent_stream(
-    provider: str,
-    model_name: str,
-    api_key: str | None,
-    base_url: str | None,
-    system_prompt: str,
-    tools_config: list[dict[str, Any]],
-    thread_id: str,
+    cfg: AgentConfig,
     resume_value: Any,
-    model_params: dict[str, Any] | None = None,
-    middleware_configs: list[dict[str, Any]] | None = None,
-    agent_skills: list[dict] | None = None,
-    agent_id: str | None = None,
-    cost_per_input_token: float | None = None,
-    cost_per_output_token: float | None = None,
-    provider_api_keys: dict[str, str | None] | None = None,
 ) -> AsyncGenerator[str, None]:
     """인터럽트 재개 스트리밍 (HiTL resume)."""
     from langgraph.types import Command
 
     agent, _, config = await _prepare_agent(
-        provider,
-        model_name,
-        api_key,
-        base_url,
-        system_prompt,
-        tools_config,
-        messages_history=[],
-        thread_id=thread_id,
-        model_params=model_params,
-        middleware_configs=middleware_configs,
-        agent_skills=agent_skills,
-        agent_id=agent_id,
-        provider_api_keys=provider_api_keys,
+        cfg, messages_history=[],
     )
 
     async for chunk in stream_agent_response(
         agent,
         Command(resume=resume_value),
         config,
-        cost_per_input_token=cost_per_input_token,
-        cost_per_output_token=cost_per_output_token,
+        cost_per_input_token=cfg.cost_per_input_token,
+        cost_per_output_token=cfg.cost_per_output_token,
     ):
         yield chunk
 
 
 async def execute_agent_invoke(
-    provider: str,
-    model_name: str,
-    api_key: str | None,
-    base_url: str | None,
-    system_prompt: str,
-    tools_config: list[dict[str, Any]],
+    cfg: AgentConfig,
     messages_history: list[dict[str, str]],
-    thread_id: str,
-    model_params: dict[str, Any] | None = None,
-    middleware_configs: list[dict[str, Any]] | None = None,
-    agent_skills: list[dict] | None = None,
-    agent_id: str | None = None,
-    provider_api_keys: dict[str, str | None] | None = None,
 ) -> str:
     """비스트리밍 실행 (트리거용). 최종 응답 텍스트만 반환."""
     agent, lc_messages, config = await _prepare_agent(
-        provider,
-        model_name,
-        api_key,
-        base_url,
-        system_prompt,
-        tools_config,
-        messages_history,
-        thread_id,
-        model_params,
-        middleware_configs,
-        agent_skills,
-        agent_id,
-        provider_api_keys=provider_api_keys,
+        cfg,
+        messages_history=messages_history,
         include_ask_user=False,  # 트리거 실행 — 사용자 없음
     )
 

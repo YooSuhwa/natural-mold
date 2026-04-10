@@ -230,10 +230,10 @@ async def test_execute_trigger_passes_messages():
     """User message should be passed to execute_agent_invoke."""
     trigger_id, _ = await _seed_full_setup()
 
-    captured_kwargs: dict = {}
+    captured_args: list = []
 
     async def mock_invoke(*args, **kwargs):
-        captured_kwargs.update(kwargs)
+        captured_args.extend(args)
         return "Part1 Part2"
 
     with (
@@ -250,7 +250,8 @@ async def test_execute_trigger_passes_messages():
 
         await execute_trigger(str(trigger_id))
 
-    assert captured_kwargs["messages_history"] == [{"role": "user", "content": "뉴스 검색해줘"}]
+    # args: (cfg: AgentConfig, messages_history: list)
+    assert captured_args[1] == [{"role": "user", "content": "뉴스 검색해줘"}]
 
 
 @pytest.mark.asyncio
@@ -285,10 +286,10 @@ async def test_execute_trigger_with_tools_config():
     """Tools config should include merged auth from tool + agent link."""
     trigger_id, _ = await _seed_full_setup(with_tools=True)
 
-    captured_kwargs: dict = {}
+    captured_args: list = []
 
     async def mock_invoke(*args, **kwargs):
-        captured_kwargs.update(kwargs)
+        captured_args.extend(args)
         return "ok"
 
     with (
@@ -305,9 +306,10 @@ async def test_execute_trigger_with_tools_config():
 
         await execute_trigger(str(trigger_id))
 
-    tools_cfg = captured_kwargs.get("tools_config", [])
-    assert len(tools_cfg) == 1
-    auth = tools_cfg[0]["auth_config"]
+    # args[0] is AgentConfig — check tools_config on it
+    cfg = captured_args[0]
+    assert len(cfg.tools_config) == 1
+    auth = cfg.tools_config[0]["auth_config"]
     assert auth["server_key"] == "sk"
     assert auth["agent_override"] == "ov"
 
@@ -317,10 +319,10 @@ async def test_execute_trigger_passes_user_message():
     """The trigger's input_message should be passed as messages_history to agent."""
     trigger_id, _ = await _seed_full_setup()
 
-    captured_kwargs: dict = {}
+    captured_args: list = []
 
     async def mock_invoke(*args, **kwargs):
-        captured_kwargs.update(kwargs)
+        captured_args.extend(args)
         return "ok"
 
     with (
@@ -337,4 +339,5 @@ async def test_execute_trigger_passes_user_message():
 
         await execute_trigger(str(trigger_id))
 
-    assert captured_kwargs["messages_history"] == [{"role": "user", "content": "뉴스 검색해줘"}]
+    # args: (cfg: AgentConfig, messages_history: list)
+    assert captured_args[1] == [{"role": "user", "content": "뉴스 검색해줘"}]

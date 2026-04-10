@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.tool import AgentToolLink, MCPServer, Tool
-from app.schemas.tool import MCPServerCreate, ToolCustomCreate
+from app.schemas.tool import MCPServerCreate, ToolCustomCreate, ToolType
 
 
 async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -53,7 +53,7 @@ async def get_tool_agent_counts(
 async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: uuid.UUID) -> Tool:
     tool = Tool(
         user_id=user_id,
-        type="custom",
+        type=ToolType.CUSTOM,
         name=data.name,
         description=data.description,
         api_url=data.api_url,
@@ -93,7 +93,7 @@ async def register_mcp_server(
     for mt in mcp_tools:
         tool = Tool(
             user_id=user_id,
-            type="mcp",
+            type=ToolType.MCP,
             mcp_server_id=server.id,
             name=mt["name"],
             description=mt.get("description"),
@@ -128,7 +128,7 @@ async def update_tool_auth_config(
     tool = result.scalar_one_or_none()
     if not tool:
         return None
-    if tool.type not in ("prebuilt", "mcp"):
+    if tool.type not in (ToolType.PREBUILT, ToolType.MCP):
         return None
     tool.auth_config = auth_config
     await db.commit()
