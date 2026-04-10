@@ -163,13 +163,16 @@ export function AssistantThread({
   emptyContent,
   toolUI,
 }: AssistantThreadProps) {
+  const tChat = useTranslations('chat')
+  const tPage = useTranslations('chat.page')
+
   return (
     <ThreadPrimitive.Root className="flex h-full flex-col">
       <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto">
         <ThreadPrimitive.Empty>
           {emptyContent ?? (
             <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
-              <p className="text-sm">대화를 시작해보세요.</p>
+              <p className="text-sm">{tPage('emptyState')}</p>
             </div>
           )}
         </ThreadPrimitive.Empty>
@@ -183,7 +186,7 @@ export function AssistantThread({
                   <div className="group flex gap-3">
                     <AgentAvatar
                       imageUrl={agentImageUrl ?? null}
-                      name={agentName ?? 'Agent'}
+                      name={agentName ?? tChat('defaultAgentName')}
                       size="sm"
                     />
                     <div className="min-w-0 flex-1">

@@ -385,9 +385,87 @@
       "error": {
         "generic": "오류가 발생했습니다. 다시 시도해주세요."
       }
+    },
+    "schedule": {
+      "title": "스케줄",
+      "description": "에이전트 실행 시간을 설정하세요. 시간은 UTC 기준입니다.",
+      "types": {
+        "minutes": "분 간격",
+        "daily": "매일",
+        "weekly": "매주",
+        "monthly": "매월",
+        "advanced": "고급"
+      },
+      "labels": {
+        "every": "매",
+        "minutes": "분",
+        "days": "요일",
+        "dayOfMonth": "매월",
+        "time": "시간 (UTC)",
+        "cron": "Cron 표현식",
+        "prompt": "프롬프트 (선택)"
+      },
+      "placeholders": {
+        "cron": "0 9 * * 1-5",
+        "prompt": "각 실행 시 에이전트에 전달할 메시지..."
+      },
+      "cronFormat": "형식: 분 시 일 월 요일",
+      "promptDefault": "기본값: \"Cron trigger fired.\"",
+      "create": "스케줄 생성",
+      "update": "스케줄 수정",
+      "cancel": "취소",
+      "noSchedules": "등록된 스케줄 없음",
+      "add": "추가",
+      "everyNMin": "매 {mins}분",
+      "atTimeDays": "{time}, {days}",
+      "atTimeDay": "{time}, {day}일",
+      "atTimeEveryDay": "{time}, 매일",
+      "weekdays": {
+        "mon": "월",
+        "tue": "화",
+        "wed": "수",
+        "thu": "목",
+        "fri": "금",
+        "sat": "토",
+        "sun": "일"
+      }
     }
   },
   "chat": {
+    "defaultAgentName": "에이전트",
+    "approval": {
+      "approved": "승인됨",
+      "rejected": "거부됨",
+      "editApproved": "수정 승인됨",
+      "rejectReasonPlaceholder": "거부 사유를 입력하세요 (선택)",
+      "editArgsPlaceholder": "수정된 인자 (JSON)",
+      "approve": "승인",
+      "reject": "거부",
+      "editAndApprove": "수정 후 승인",
+      "showArgs": "인자 보기",
+      "hideArgs": "인자 숨기기",
+      "pending": "승인 대기 중",
+      "toolCall": "도구 호출",
+      "processing": "처리 중…",
+      "preparing": "승인 요청 준비 중…",
+      "approvalRequired": "승인이 필요합니다",
+      "invalidJson": "유효하지 않은 JSON 형식입니다",
+      "rejectConfirm": "거부 확인",
+      "args": "실행 인자",
+      "argsCount": "{count}개",
+      "edit": "수정"
+    },
+    "userInput": {
+      "placeholder": "답변을 입력하세요…",
+      "sending": "전송 중…",
+      "sent": "전송됨",
+      "send": "전송",
+      "waitingInput": "입력 대기 중",
+      "completed": "답변 완료",
+      "preparing": "질문 준비 중…",
+      "inputRequired": "입력이 필요합니다",
+      "confirm": "확인"
+    },
     "page": {
       "settings": "설정",
       "newConversation": "새 대화",

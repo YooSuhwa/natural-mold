@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ClockIcon, PencilIcon, PlusIcon, TrashIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
 import { ScheduleDialog } from '../dialogs/schedule-dialog'
@@ -16,43 +17,54 @@ export interface ScheduleNodeData {
   isPending?: boolean
 }
 
-function formatTriggerSummary(trigger: AgentTrigger): string {
-  if (trigger.trigger_type === 'interval') {
-    const mins = trigger.schedule_config.interval_minutes ?? 10
-    return `Every ${mins} min`
-  }
+function useFormatTriggerSummary() {
+  const t = useTranslations('agent.schedule')
 
-  const cron = trigger.schedule_config.cron_expression ?? ''
-  const parts = cron.split(' ')
-  if (parts.length !== 5) return cron
+  return useCallback(
+    (trigger: AgentTrigger): string => {
+      if (trigger.trigger_type === 'interval') {
+        const mins = trigger.schedule_config.interval_minutes ?? 10
+        return t('everyNMin', { mins })
+      }
 
-  const [min, hour, dom, , dow] = parts
+      const cron = trigger.schedule_config.cron_expression ?? ''
+      const parts = cron.split(' ')
+      if (parts.length !== 5) return cron
 
-  if (dow !== '*') {
-    const dayMap: Record<string, string> = {
-      '0': 'Sun',
-      '1': 'Mon',
-      '2': 'Tue',
-      '3': 'Wed',
-      '4': 'Thu',
-      '5': 'Fri',
-      '6': 'Sat',
-    }
-    const days = dow
-      .split(',')
-      .map((d) => dayMap[d] ?? d)
-      .join(', ')
-    return `At ${hour.padStart(2, '0')}:${min.padStart(2, '0')}, ${days}`
-  }
+      const [min, hour, dom, , dow] = parts
+      const time = `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
 
-  if (dom !== '*') {
-    return `At ${hour.padStart(2, '0')}:${min.padStart(2, '0')}, day ${dom}`
-  }
+      if (dow !== '*') {
+        const dayMap: Record<string, string> = {
+          '0': t('weekdays.sun'),
+          '1': t('weekdays.mon'),
+          '2': t('weekdays.tue'),
+          '3': t('weekdays.wed'),
+          '4': t('weekdays.thu'),
+          '5': t('weekdays.fri'),
+          '6': t('weekdays.sat'),
+        }
+        const days = dow
+          .split(',')
+          .map((d) => dayMap[d] ?? d)
+          .join(', ')
+        return t('atTimeDays', { time, days })
+      }
 
-  return `At ${hour.padStart(2, '0')}:${min.padStart(2, '0')}, every day`
+      if (dom !== '*') {
+        return t('atTimeDay', { time, day: dom })
+      }
+
+      return t('atTimeEveryDay', { time })
+    },
+    [t],
+  )
 }
 
 export function ScheduleNode({ data }: NodeProps) {
+  const t = useTranslations('agent.schedule')
+  const formatTriggerSummary = useFormatTriggerSummary()
+
   const {
     triggers = [],
     onCreateTrigger = () => {},
@@ -92,11 +104,11 @@ export function ScheduleNode({ data }: NodeProps) {
         {/* Header */}
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Schedule
+            {t('title')}
           </span>
           <Button variant="ghost" size="xs" onClick={handleOpenCreate}>
             <PlusIcon className="size-3" />
-            Add
+            {t('add')}
           </Button>
         </div>
 
@@ -104,7 +116,7 @@ export function ScheduleNode({ data }: NodeProps) {
         <div>
           {triggers.length === 0 ? (
             <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-              No schedules yet
+              {t('noSchedules')}
             </div>
           ) : (
             <div className="max-h-[200px] overflow-y-auto p-1.5 space-y-1">

@@ -10,6 +10,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
+import { useTranslations } from 'next-intl'
 
 interface DeleteConfirmDialogProps {
   open: boolean
@@ -29,9 +30,12 @@ export function DeleteConfirmDialog({
   description,
   onConfirm,
   isPending,
-  cancelLabel = '취소',
-  confirmLabel = '삭제',
+  cancelLabel,
+  confirmLabel,
 }: DeleteConfirmDialogProps) {
+  const t = useTranslations('common')
+  const resolvedCancelLabel = cancelLabel ?? t('cancel')
+  const resolvedConfirmLabel = confirmLabel ?? t('delete')
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -40,9 +44,9 @@ export function DeleteConfirmDialog({
           {description && <AlertDialogDescription>{description}</AlertDialogDescription>}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogCancel>{resolvedCancelLabel}</AlertDialogCancel>
           <AlertDialogAction variant="destructive" onClick={onConfirm} disabled={isPending}>
-            {confirmLabel}
+            {resolvedConfirmLabel}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
