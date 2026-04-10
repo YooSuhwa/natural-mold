@@ -27,6 +27,10 @@ class ConversationResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ResumeRequest(BaseModel):
+    response: str | list[str] | dict[str, Any]  # interrupt 응답값
+
+
 class MessageCreate(BaseModel):
     content: str
 

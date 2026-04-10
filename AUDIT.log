@@ -39,3 +39,23 @@
 [2026-04-08T13:19] jensen MILESTONE_DONE M2 3개 sub-agent SYSTEM_PROMPT 보강 + SSE 메시지 개선 완료
 [2026-04-08T13:22] bezos VERIFICATION_PASS M4 ruff PASS, pytest 39 passed, Deep Agent 0건, sub-agent 4개 개선 확인
 [2026-04-08T13:22] satya PROJECT_DONE "Builder Sub-Agent Prompt Improvement"
+---
+[2026-04-09T15:00] satya PROJECT_START "채팅 UI 통합 — assistant-ui 도입"
+[2026-04-09T15:00] satya MILESTONE_CREATED M1,M2,M3,M4
+[2026-04-09T09:15] bezos STORY_DONE S1 삭제 분석 완료 — tasks/deletion-analysis-chat-ui.md
+[2026-04-09T09:45] bezos STORY_START S8 최종 정리+검증
+[2026-04-09T09:50] bezos CLEANUP 삭제 4파일: streaming-message, message-bubble, chat-input, tool-call-display
+[2026-04-09T09:50] bezos CLEANUP chat-store.ts: 스트리밍 atoms 4개 + StreamingToolCall 타입 삭제
+[2026-04-09T09:50] bezos CLEANUP 미사용 import 정리: SparklesIcon(page.tsx), inputHint(assistant-panel.tsx)
+[2026-04-09T09:50] bezos DECISION markdown-content.tsx 유지 — draft-config-card.tsx에서 아직 사용 중
+[2026-04-09T09:55] bezos VERIFICATION_PASS S8 pnpm build PASS (3.5s), pnpm lint PASS (0 errors, 0 warnings), 삭제 파일 참조 0건
+[2026-04-09T10:00] satya MILESTONE_DONE M1 기반 설정 완료 (패키지+어댑터+Thread)
+[2026-04-09T10:00] satya MILESTONE_DONE M2 대화 페이지 마이그레이션 완료
+[2026-04-09T10:00] satya MILESTONE_DONE M3 AssistantPanel+Builder 마이그레이션 완료
+[2026-04-09T10:00] satya MILESTONE_DONE M4 도구 UI+위트 로딩+정리 완료
+[2026-04-09T10:00] satya PROJECT_DONE "채팅 UI 통합 — assistant-ui 도입"
+---
+[2026-04-09T10:01] satya PROJECT_START "HiTL + Tool-UI 통합"
+[2026-04-09T10:05] bezos STORY_DONE S5 도구 UI 등록 + HiTL Provider 통합 완료
+[2026-04-09T10:05] bezos VERIFICATION_PASS S5 pnpm build PASS + lint PASS + ruff PASS + pytest 539 passed — GO
+[2026-04-09T10:20] satya PROJECT_DONE "HiTL + Tool-UI 통합"

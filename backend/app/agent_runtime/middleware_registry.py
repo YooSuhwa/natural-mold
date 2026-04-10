@@ -361,6 +361,23 @@ def build_middleware_instances(middleware_configs: list[dict[str, Any]]) -> list
             continue
 
         coerced = _coerce_tuple_params(params, registry_entry.get("config_schema", {}))
+
+        # tool_retry: GraphInterrupt는 정상적인 HiTL 시그널이므로
+        # 재시도하지 않고 re-raise하여 그래프 일시정지가 정상 전파되도록 함
+        if middleware_type == "tool_retry":
+            from langgraph.errors import GraphInterrupt
+
+            def _on_failure_reraise_interrupt(exc: Exception) -> str:
+                if isinstance(exc, GraphInterrupt):
+                    raise exc
+                return f"Tool failed after retries: {exc}"
+
+            coerced.setdefault(
+                "retry_on",
+                lambda exc: not isinstance(exc, GraphInterrupt),
+            )
+            coerced.setdefault("on_failure", _on_failure_reraise_interrupt)
+
         try:
             instances.append(cls(**coerced))
         except Exception:
@@ -392,6 +409,7 @@ DEEPAGENT_BUILTIN_TYPES: frozenset[str] = frozenset({
     "subagent",
     "summarization",
     "anthropic_prompt_caching",
+    "human_in_the_loop",  # executor.py에서 interrupt_on으로 별도 처리
 })
 
 

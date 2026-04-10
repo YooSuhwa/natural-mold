@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
+
+from langgraph.errors import GraphInterrupt
+from langgraph.types import Command
+
+logger = logging.getLogger(__name__)
 
 
 def format_sse(event: str, data: dict[str, Any]) -> str:
@@ -32,7 +38,7 @@ def _is_tool_selector_json(text: str) -> bool:
 
 async def stream_agent_response(
     agent: Any,
-    messages: list[Any],
+    input_: list[Any] | Command,
     config: dict[str, Any],
     *,
     cost_per_input_token: float | None = None,
@@ -42,7 +48,11 @@ async def stream_agent_response(
 
     yield format_sse("message_start", {"id": msg_id, "role": "assistant"})
 
+    # Command(resume=...) → 직접 전달, list → {"messages": ...} 래핑
+    actual_input = input_ if isinstance(input_, Command) else {"messages": input_}
+
     full_content = ""
+    was_interrupted = False
     usage_data: dict[str, int] = {}
     # ADR-004: PatchToolCallsMiddleware가 스트림 필터링을 하지 않으므로
     # character-by-character 버퍼링으로 미들웨어 JSON을 감지/제거.
@@ -51,7 +61,7 @@ async def stream_agent_response(
 
     try:
         async for chunk in agent.astream(
-            {"messages": messages},
+            actual_input,
             config=config,
             stream_mode="messages",
         ):
@@ -107,12 +117,39 @@ async def stream_agent_response(
                     "completion_tokens": msg.usage_metadata.get("output_tokens", 0),
                 }
 
+    except GraphInterrupt:
+        # interrupt()에 의한 정상적인 그래프 일시정지 — 에러가 아님
+        # 아래 aget_state에서 interrupt 이벤트를 emit
+        was_interrupted = True
     except Exception as e:
         yield format_sse("error", {"message": str(e)})
 
     # Flush any remaining buffer (incomplete JSON = not middleware output)
     if _buf:
         full_content += _buf
+
+    # HiTL: 그래프 상태에서 interrupt 감지 후 클라이언트에 emit
+    try:
+        state = await agent.aget_state(config)
+        if state.tasks:
+            for task in state.tasks:
+                if task.interrupts:
+                    for intr in task.interrupts:
+                        yield format_sse("interrupt", {
+                            "interrupt_id": str(
+                                getattr(intr, "ns", "")
+                            ),
+                            "value": intr.value
+                            if isinstance(intr.value, dict)
+                            else {"message": str(intr.value)},
+                        })
+    except Exception:
+        logger.warning("aget_state failed (interrupt check)", exc_info=True)
+        if was_interrupted:
+            yield format_sse("interrupt", {
+                "interrupt_id": "",
+                "value": {"message": "Interrupt detected but state unavailable"},
+            })
 
     # Calculate estimated cost from model pricing if available
     if usage_data and (cost_per_input_token or cost_per_output_token):

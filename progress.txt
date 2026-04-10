@@ -224,6 +224,19 @@
 - 검증: pytest 284 passed / ruff all checks passed
 - v1 파일(creation_agent.py, fix_agent.py, routers/agent_creation.py, routers/fix_agent.py, agent_creation_service.py)는 이미 다른 작업에서 삭제됨
 
+## 채팅 UI 통합 — assistant-ui 도입 (2026-04-09)
+- 목표: 3곳(대화, 생성, AssistantPanel)의 채팅 UI를 assistant-ui로 통합
+- 패키지: @assistant-ui/react, @assistant-ui/react-streamdown, streamdown, @streamdown/code, @streamdown/math, @streamdown/cjk
+- 런타임: useExternalStoreRuntime + 커스텀 어댑터 (기존 SSE API 유지, 백엔드 변경 없음)
+- Thread 프리미티브 직접 조립 (shadcn scaffold 미사용, 기존 UI 톤 유지)
+- 도구 UI: makeAssistantToolUI로 등록, tool-ui 레포에서 복붙 (Plan, Progress Tracker 등)
+- 마크다운: react-streamdown + Shiki 코드 + KaTeX 수식 (기존 react-markdown + react-syntax-highlighter 대체)
+- 위트 로딩: 3초 간격 랜덤 메시지 로테이션 + ThinkingDots 애니메이션
+- HiTL: 이번 PR 스코프 외 (다음 PR)
+- 빌더: Thread 래핑 (기존 파이프라인 SSE 유지, 대화형 전환은 향후)
+- 삭제 대상: streaming-message, message-bubble, chat-input, tool-call-display, markdown-content, markdown-styles.css
+- 유지: conversation-list, lib/sse/*.ts, lib/hooks/use-conversations.ts
+
 ## 실패 교훈
 - assistant_agent.py: .parent x4는 backend/, .parent x5가 프로젝트 루트 (docs/ 위치)
 - ruff --fix 자동 훅: F401 미사용 import를 자동 삭제함 → v1+v2 공존 전략 시 주의
@@ -250,3 +263,158 @@
 - middleware_recommender: TodoList reason 강화, 미들웨어 조합 규칙, reason에 동작 영향 포함
 - orchestrator.py: 13개 SSE 메시지 대화체 변경, 에러 메시지는 기술적 유지
 - ruff line-length=100: PhaseProgressEvent 한 줄 100자 초과 시 multi-line 전환 필수
+
+## 채팅 UI 삭제 분석 결과 (bezos, 2026-04-09)
+- 삭제 대상 7파일 ~1,189줄: streaming-message, message-bubble, chat-input, tool-call-display, markdown-content, markdown-styles.css, assistant-panel
+- 유지 10파일: conversation-list, sse/ 4개, use-conversations, conversational/_components 4개
+- chat-store.ts: 스트리밍 atoms 3개 + lastMessageTokensAtom(dead code) + StreamingToolCall 타입 삭제. sessionTokenUsageAtom + TokenUsage 유지
+- 핵심 리스크: markdown-content.tsx는 4곳 import — 조기 삭제 시 빌드 실패
+- 유틸 추출 필수: message-bubble.tsx 내 parseToolContent, normalizeContent, extractTextFromParsed → convert-message.ts
+- 삭제 순서: S2(추출) → S3-S4(신규) → S5(대화) → S6(Assistant) → S7(Builder) → S8(최종 정리)
+- 상세 보고서: tasks/deletion-analysis-chat-ui.md
+
+## S0+S2 assistant-ui 패키지 설치 + 런타임 어댑터 (pichai, 2026-04-09)
+- 패키지 설치: @assistant-ui/react 0.12.24 + @assistant-ui/react-streamdown 0.1.9 + streamdown + @streamdown/* 3개
+- pnpm build PASS (3.4s compile, 3.7s typecheck)
+- lib/chat/convert-message.ts: useExternalMessageConverter.Callback<Message> 콜백
+  - user → string content, assistant → [text, ...tool-call] parts, tool → tool result 자동 병합
+  - args 타입: Record<string,unknown> → Record<string,never> 캐스팅 (ReadonlyJSONObject 호환)
+  - ThreadMessageLike['content'] 타입은 readonly → 중간 배열은 mutable 타입으로 선언 후 as 캐스팅
+- lib/chat/use-chat-runtime.ts: useExternalStoreRuntime 기반 어댑터
+  - TanStack Query messages + streamingMessages(useState) 병합 → useExternalMessageConverter → ThreadMessage[]
+  - onNew: AppendMessage에서 text 추출 → streamFn(content, signal) SSE 소비 → 스트리밍 상태 축적
+  - tool_call_start → ToolCallInfo 배열에 추가, tool_call_result → tool role Message 추가
+  - onCancel: AbortController.abort()
+  - 스트림 종료 시 streamingMessages 초기화 + onStreamEnd 콜백 (쿼리 무효화용)
+- ADR-006: docs/design-docs/adr-006-assistant-ui-runtime.md
+- assistant-stream/utils의 ReadonlyJSONObject는 직접 import 불가 (transitive dep) → 타입 캐스팅으로 해결
+
+## S3 AssistantThread 구현 결과 (zuckerberg, 2026-04-09)
+- components/chat/assistant-thread.tsx 신규 (~300줄) — Thread 프리미티브 직접 조립
+- UserMessage: 초록 버블 (emerald-100/900), 우측 정렬, UserIcon 아바타
+- AssistantMessage: AgentAvatar + StreamdownTextPrimitive(자동 컨텍스트 읽기) + 도구 폴백 + 복사 버튼
+- Composer: ComposerPrimitive 기반, 기존 ChatInput 스타일 유지 (토큰 바, 첨부 버튼, Enter 전송)
+- ToolFallbackPanel: 확장 가능 도구 패널 (기존 tool-call-display.tsx 스타일 재현)
+- GenericToolFallback: makeAssistantToolUI({ toolName: '*' }) — 미등록 도구용 폴백
+- LoadingIndicator: ThinkingDots 3-dot 애니메이션 (S4에서 위트 로딩으로 교체 예정)
+- props: agentImageUrl, agentName, modelName, showTokenBar, compact, emptyContent, toolUI[]
+- 핵심 패턴: StreamdownTextPrimitive는 text prop 불필요 — MessagePrimitive 컨텍스트에서 자동 읽기
+- 검증: pnpm build PASS (3.4s compile, 3.8s typecheck)
+
+## S4 도구 UI + 위트 로딩 (zuckerberg, 2026-04-09)
+- components/chat/tool-ui/generic-tool-ui.tsx — ToolFallbackPanel + GenericToolFallback(makeAssistantToolUI)
+- components/chat/witty-loading.tsx — WittyLoadingMessage (27개 메시지, 3초 로테이션, fade, ThinkingDots)
+- messages/ko.json — chat.loading.witty i18n 키 27개 추가
+- assistant-thread.tsx에서 인라인 ToolFallback → tool-ui/generic-tool-ui.tsx import로 분리
+- LoadingIndicator → WittyLoadingMessage 교체
+- 검증: pnpm build PASS
+
+## S5 대화 페이지 마이그레이션 (zuckerberg, 2026-04-09)
+- conversations/[conversationId]/page.tsx 전면 교체 (344줄 → ~190줄)
+- 제거: Jotai atoms (streamingMessage, streamingToolCalls, isStreaming), handleSend SSE 루프, MessageBubble, StreamingMessage, ChatInput import
+- 추가: useChatRuntime + AssistantRuntimeProvider + AssistantThread
+- streamFn: conversationId 바인딩한 streamChat 래퍼
+- onStreamEnd: messages + conversations 쿼리 무효화
+- 유지: ConversationList 사이드바, 토큰 추적(sessionTokenUsageAtom), 대화 제목 갱신
+- emptyContent: AgentAvatar + 에이전트 설명 (기존 빈 상태 유지)
+- 핵심 패턴: streamChat(conversationId, content, signal)을 streamFn(content, signal)로 래핑
+- 검증: pnpm build PASS
+
+## S6 AssistantPanel 마이그레이션 (zuckerberg, 2026-04-09)
+- components/agent/assistant-panel.tsx 전면 교체 (370줄 → ~100줄)
+- 제거: 자체 MessageBubble, ToolCallBadge, textarea, SSE 이벤트 핸들링 전체
+- 추가: useChatRuntime + AssistantRuntimeProvider + AssistantThread(compact=true)
+- streamFn: agentId + sessionId 바인딩한 streamAssistant 래퍼
+- onStreamEnd: agents 쿼리 무효화
+- 유지: SparklesIcon 헤더, 제안 버튼 (emptyContent에 유지)
+- 검증: pnpm build PASS
+
+## S7 Builder 페이지 Thread 래핑 (zuckerberg, 2026-04-09)
+- lib/chat/use-builder-runtime.ts 신규 — BuilderState → 가상 ThreadMessageLike 변환
+  - userRequest → UserMessage, phase 진행 → AssistantMessage 텍스트 요약
+  - useExternalMessageConverter + useExternalStoreRuntime
+  - onNew → onSubmit(handleBuild) 위임
+- _components/builder-thread.tsx 신규 — Builder 전용 Thread 컴포넌트
+  - idle: 초기 질문 + ComposerPrimitive (큰 textarea)
+  - building/preview: UserMessage + AssistantMessage + buildResultCards(기존 _components)
+  - buildResultCards는 Thread 외부에서 직접 렌더링 (PhaseTimeline, IntentCard 등)
+- page.tsx 수정: AssistantRuntimeProvider + BuilderThread 래핑, 기존 상태관리/SSE 유지
+- 핵심 패턴: 빌더는 파이프라인 기반 → Thread는 Composer + 메시지 레이아웃만 제공, 빌드 결과는 기존 _components가 직접 렌더링
+- 검증: pnpm build PASS
+
+## S8 최종 정리+검증 결과 (bezos, 2026-04-09)
+- 삭제 4파일: streaming-message.tsx, message-bubble.tsx, chat-input.tsx, tool-call-display.tsx
+- chat-store.ts 정리: streamingMessageAtom, streamingToolCallsAtom, isStreamingAtom, lastMessageTokensAtom(dead code), StreamingToolCall 타입 삭제
+- 유지: sessionTokenUsageAtom + TokenUsage (assistant-thread.tsx + conversation page에서 사용)
+- markdown-content.tsx + markdown-styles.css 유지 결정: draft-config-card.tsx에서 아직 사용 중 (Builder 시스템 프롬프트 렌더링)
+- 미사용 import 정리: SparklesIcon(conversational/page.tsx), inputHint(assistant-panel.tsx)
+- 최종 검증: pnpm build PASS (3.5s compile, 3.8s typecheck) + pnpm lint PASS (0 errors, 0 warnings)
+- 삭제 파일 참조 잔존: 0건
+- 판정: **GO** — 빌드/린트 통과, 삭제 완료, 참조 정리 완료
+
+## S4-HiTL 도구별 커스텀 UI — Plan, Search, Code (zuckerberg, 2026-04-09)
+- tool-ui/plan-tool-ui.tsx — write_todos 도구용 Plan UI
+  - 수직 커넥터 + 체크 아이콘, 상태 뱃지 (완료/진행중/대기)
+  - args.items 배열에서 content + status 렌더링
+- tool-ui/search-tool-ui.tsx — web_search, naver_*, google_* 검색 도구 5종 통합
+  - SearchRender 공유 함수 → 5개 makeAssistantToolUI에 재사용
+  - 결과: 문자열/배열/객체 모두 파싱, SearchResultCard (제목+URL+snippet)
+  - 핵심 패턴: render 함수 공유 시 result? optional + status.type readonly 필수
+- tool-ui/code-tool-ui.tsx — read_file, write_file, edit_file 3종
+  - CodeBlock: 라인 번호 + 파일명 헤더 + 언어 추론 + 복사 버튼 + 20줄 truncate
+  - DiffBlock: old(빨강) → new(초록) diff 표시
+  - FileToolWrapper: 접기/펼치기 공통 레이아웃
+- 검증: pnpm build PASS
+
+## S2-HiTL UserInputUI + S3-HiTL ApprovalCard (zuckerberg, 2026-04-09)
+- lib/chat/hitl-context.ts 신규 — HiTLContext + useHiTL 훅 (onResume 제공)
+  - Tool UI 컴포넌트가 onResume에 접근하기 위한 브리지 컨텍스트
+  - S5 통합에서 HiTLContext.Provider로 래핑 필요
+- tool-ui/user-input-ui.tsx 신규 — ask_user 도구 UI
+  - single_select: pill 버튼 (border-primary 활성 스타일)
+  - multi_select: 체크박스 + 라벨 (옵션별 description 지원)
+  - text: textarea 입력
+  - normalizeQuestions: questions 배열 또는 단일 question 폴백 지원
+  - 제출: addResult(payload) + hitl?.onResume(payload, displayText)
+  - 완료 시 CompletedBadge (emerald)
+- tool-ui/approval-card.tsx 신규 — request_approval 도구 UI
+  - 승인(emerald) / 수정(blue) / 거부(red) 3-way 결정
+  - ArgsPreview: 접기/펼치기 JSON 미리보기
+  - 수정: JSON textarea에서 tool_args 편집 후 modified_args로 전송
+  - 거부: 선택적 사유 입력 textarea
+  - ApprovalBadge: decision별 스타일 분기
+- 핵심 패턴: makeAssistantToolUI render는 FunctionComponent → 훅 사용 가능
+- 핵심 패턴: SearchRender 공유 시 result 파라미터 optional + status.type readonly 필수 (TS 호환)
+- 검증: pnpm build PASS
+
+## S0 백엔드 HiTL — interrupt 감지 + /resume 엔드포인트 (jensen, 2026-04-09)
+- streaming.py: input_ 파라미터가 list|Command 수용 (Command → 직접 전달, list → {"messages":...})
+- streaming.py: astream 완료 후 aget_state(config)로 interrupt 감지 → SSE "interrupt" 이벤트 emit
+- interrupt SSE: {interrupt_id, value} — value가 dict이면 그대로, 아니면 {"message": str(value)}
+- schemas/conversation.py: ResumeRequest(response: Any) 추가
+- executor.py: resume_agent_stream() — Command(resume=value)로 그래프 재개, _prepare_agent 재사용
+- routers/conversations.py: POST /api/conversations/{id}/messages/resume — send_message 패턴 미러
+- 핵심: resume 시 messages_history=[] (체크포인터가 히스토리 보존, 새 메시지 불필요)
+- 검증: ruff PASS, pytest 539 passed
+
+## S1 프론트 HiTL SSE 타입 + resume 클라이언트 + 어댑터 수정 (pichai, 2026-04-09)
+- types/index.ts: SSEEventType에 'interrupt' 추가, SSEEvent에 interrupt 유니온 추가
+- types/index.ts: InterruptPayload {interrupt_id, value} + UserInputQuestion {question, type, options?} 타입 신규
+- lib/sse/stream-resume.ts 신규: streamResume(conversationId, response, signal) — /resume 엔드포인트 SSE 클라이언트
+- lib/chat/use-chat-runtime.ts 리팩토링:
+  - consumeStream() 공통 헬퍼 추출 (onNew, onResume이 SSE 소비 로직 공유)
+  - interrupt 이벤트 핸들링: onInterrupt 콜백으로 InterruptPayload 전달
+  - onResume(response, displayText?) 신규: streamResume으로 그래프 재개, 낙관적 사용자 메시지 옵션
+  - 반환값 변경: runtime → { runtime, onResume } (구조분해 필요)
+  - 옵션 확장: onInterrupt, conversationId 추가
+- 사용처 업데이트: conversations/page.tsx, assistant-panel.tsx → { runtime } 구조분해
+- 핵심 패턴: onResume displayText는 optional — HiTL UI 컴포넌트가 선택에 맞는 텍스트를 전달
+- 검증: pnpm build PASS (3.6s compile, 3.8s typecheck)
+
+## S5 통합 + 도구 UI 등록 + 최종 검증 (bezos, 2026-04-09)
+- conversations/[conversationId]/page.tsx: HiTLContext.Provider 래핑 + toolUI 11개 등록
+- components/agent/assistant-panel.tsx: HiTLContext.Provider 래핑 + toolUI 11개 등록
+- 등록된 도구 UI: UserInputUI, ApprovalCard, PlanToolUI, WebSearchToolUI, NaverBlogSearchToolUI, NaverNewsSearchToolUI, GoogleSearchToolUI, GoogleNewsSearchToolUI, ReadFileToolUI, WriteFileToolUI, EditFileToolUI
+- 패턴: TOOL_UI 배열을 useMemo로 안정화 → AssistantThread toolUI prop으로 전달
+- 패턴: HiTLContext.Provider는 AssistantRuntimeProvider 안쪽, AssistantThread 바깥에 위치
+- 최종 검증: pnpm build PASS (3.4s, 3.8s) + pnpm lint PASS + ruff PASS + pytest 539 passed
