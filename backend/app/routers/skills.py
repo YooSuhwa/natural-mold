@@ -3,11 +3,17 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
+from app.error_codes import (
+    invalid_file_path,
+    invalid_skill_package,
+    skill_file_not_found,
+    skill_not_found,
+)
 from app.schemas.skill import SkillCreate, SkillResponse, SkillUpdate
 from app.services import skill_service
 
@@ -42,7 +48,7 @@ async def upload_skill(
     try:
         return await skill_service.upload_skill_package(db, file_data, user.id)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from None
+        raise invalid_skill_package(str(e)) from None
 
 
 @router.get("/{skill_id}/files/{file_path:path}")
@@ -55,15 +61,15 @@ async def get_skill_file(
     """Serve a file from a package skill's extracted directory."""
     skill = await skill_service.get_skill(db, skill_id, user.id)
     if not skill or not skill.storage_path:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise skill_not_found()
 
     base = Path(skill.storage_path).resolve()
     target = (base / file_path).resolve()
 
     if not target.is_relative_to(base):
-        raise HTTPException(status_code=400, detail="Invalid file path")
+        raise invalid_file_path()
     if not target.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
+        raise skill_file_not_found()
 
     return FileResponse(target)
 
@@ -76,7 +82,7 @@ async def get_skill(
 ):
     skill = await skill_service.get_skill(db, skill_id, user.id)
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise skill_not_found()
     return skill
 
 
@@ -89,7 +95,7 @@ async def update_skill(
 ):
     skill = await skill_service.get_skill(db, skill_id, user.id)
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise skill_not_found()
     return await skill_service.update_skill(db, skill, data)
 
 
@@ -101,5 +107,5 @@ async def delete_skill(
 ):
     skill = await skill_service.get_skill(db, skill_id, user.id)
     if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+        raise skill_not_found()
     await skill_service.delete_skill(db, skill)

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.executor import execute_agent_stream, resume_agent_stream
 from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.exceptions import NotFoundError
+from app.error_codes import agent_not_found, conversation_not_found, file_not_found
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationResponse,
@@ -53,11 +53,11 @@ async def _resolve_agent_context(
     """
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
-        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
+        raise conversation_not_found()
 
     agent = await chat_service.get_agent_with_tools(db, conv.agent_id, user.id)
     if not agent:
-        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
+        raise agent_not_found()
 
     lp = agent.model.llm_provider
     api_key = (
@@ -129,7 +129,7 @@ async def list_conversations(
 ):
     agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
     if not agent:
-        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
+        raise agent_not_found()
     return await chat_service.list_conversations(db, agent_id)
 
 
@@ -146,7 +146,7 @@ async def create_conversation(
 ):
     agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
     if not agent:
-        raise NotFoundError("AGENT_NOT_FOUND", "에이전트를 찾을 수 없습니다")
+        raise agent_not_found()
     return await chat_service.create_conversation(db, agent_id, data.title)
 
 
@@ -161,7 +161,7 @@ async def update_conversation(
 ):
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
-        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
+        raise conversation_not_found()
     return await chat_service.update_conversation(db, conv, data)
 
 
@@ -172,7 +172,7 @@ async def delete_conversation(
 ):
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
-        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
+        raise conversation_not_found()
     await chat_service.delete_conversation(db, conv)
 
 
@@ -186,7 +186,7 @@ async def list_messages(
 ):
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
-        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
+        raise conversation_not_found()
     return await chat_service.list_messages_from_checkpointer(conversation_id, conv.created_at)
 
 
@@ -285,10 +285,10 @@ async def get_conversation_file(
 ):
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
-        raise NotFoundError("CONVERSATION_NOT_FOUND", "대화를 찾을 수 없습니다")
+        raise conversation_not_found()
 
     base = Path(settings.conversation_output_dir) / str(conversation_id)
     target = (base / file_path).resolve()
     if not target.is_relative_to(base.resolve()) or not target.is_file():
-        raise NotFoundError("FILE_NOT_FOUND", "파일을 찾을 수 없습니다")
+        raise file_not_found()
     return FileResponse(target)

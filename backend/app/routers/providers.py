@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_user, get_db
-from app.exceptions import NotFoundError
+from app.error_codes import provider_not_found
 from app.models.user import User
 from app.schemas.llm_provider import (
     DiscoveredModel,
@@ -51,7 +51,7 @@ async def update_provider(
 ):
     provider = await provider_service.update_provider(db, provider_id, data)
     if not provider:
-        raise NotFoundError("PROVIDER_NOT_FOUND", "프로바이더를 찾을 수 없습니다")
+        raise provider_not_found()
     row = await provider_service.get_provider_with_count(db, provider_id)
     if row:
         return row
@@ -70,7 +70,7 @@ async def delete_provider(
 ):
     deleted, _ = await provider_service.delete_provider(db, provider_id)
     if not deleted:
-        raise NotFoundError("PROVIDER_NOT_FOUND", "프로바이더를 찾을 수 없습니다")
+        raise provider_not_found()
 
 
 @router.post("/{provider_id}/test", response_model=ProviderTestResponse)
@@ -81,7 +81,7 @@ async def test_provider(
 ):
     provider = await provider_service.get_provider(db, provider_id)
     if not provider:
-        raise NotFoundError("PROVIDER_NOT_FOUND", "프로바이더를 찾을 수 없습니다")
+        raise provider_not_found()
     success, message, count = await model_discovery.test_connection(provider)
     return ProviderTestResponse(success=success, message=message, models_count=count)
 
@@ -94,5 +94,5 @@ async def discover_models(
 ):
     provider = await provider_service.get_provider(db, provider_id)
     if not provider:
-        raise NotFoundError("PROVIDER_NOT_FOUND", "프로바이더를 찾을 수 없습니다")
+        raise provider_not_found()
     return await model_discovery.discover_models(provider)
