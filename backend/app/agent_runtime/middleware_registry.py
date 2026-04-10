@@ -282,7 +282,13 @@ def _patched_llm_tool_selector_class() -> type | None:
         return None
 
     class PatchedLLMToolSelectorMiddleware(LLMToolSelectorMiddleware):
-        def _process_selection_response(self, response, available_tools, valid_tool_names, request):
+        def _process_selection_response(
+            self,
+            response: dict[str, Any],
+            available_tools: list[Any],
+            valid_tool_names: set[str],
+            request: Any,
+        ) -> list[Any]:
             # Normalize {"const": "name"} objects to plain "name" strings
             if "tools" in response:
                 normalized = []

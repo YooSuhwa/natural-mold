@@ -5,12 +5,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 _CATALOG_PATH = Path(__file__).parent.parent / "data" / "litellm_model_catalog.json"
-_catalog: dict | None = None
+_catalog: dict[str, Any] | None = None
 
 
-def _get_catalog() -> dict:
+def _get_catalog() -> dict[str, Any]:
     global _catalog
     if _catalog is None:
         with open(_CATALOG_PATH) as f:
@@ -31,7 +32,7 @@ def get_anthropic_models() -> list[str]:
     return _anthropic_models
 
 
-def enrich_model(model_name: str, base: dict | None = None) -> dict:
+def enrich_model(model_name: str, base: dict[str, Any] | None = None) -> dict[str, Any]:
     """Enrich a model dict with static metadata if available."""
     catalog = _get_catalog()
     meta = catalog.get(model_name, {})

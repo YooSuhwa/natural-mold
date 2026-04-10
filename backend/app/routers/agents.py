@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import anyio
 import httpx
@@ -11,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.exceptions import ExternalServiceError, NotFoundError, ValidationError
+from app.models.agent import Agent
 from app.schemas.agent import (
     AgentCreate,
     AgentResponse,
@@ -25,7 +27,7 @@ router = APIRouter(prefix="/api/agents", tags=["agents"])
 middleware_router = APIRouter(tags=["middlewares"])
 
 
-def _agent_to_response(agent) -> AgentResponse:
+def _agent_to_response(agent: Agent) -> AgentResponse:
     """Convert Agent model to AgentResponse with tool configs."""
     return AgentResponse(
         id=agent.id,
@@ -162,7 +164,7 @@ async def get_agent_image(
 
 
 @middleware_router.get("/api/middlewares")
-async def list_middlewares():
+async def list_middlewares() -> list[dict[str, Any]]:
     """Return the available middleware catalog.
 
     deepagents가 자동 추가하는 빌트인 미들웨어는 제외한다.

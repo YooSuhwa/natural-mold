@@ -181,7 +181,7 @@ def build_read_tools(
             rows = result.all()
             # model display_name은 별도 쿼리로 가져온다
             model_ids = {r.model_id for r in rows if r.model_id}
-            model_names: dict = {}
+            model_names: dict[str, str] = {}
             if model_ids:
                 model_result = await session.execute(
                     select(Model.id, Model.display_name).where(Model.id.in_(model_ids))

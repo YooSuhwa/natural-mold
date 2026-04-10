@@ -121,7 +121,7 @@ async def get_mcp_servers(db: AsyncSession, user_id: uuid.UUID) -> list[MCPServe
 async def update_tool_auth_config(
     db: AsyncSession,
     tool_id: uuid.UUID,
-    auth_config: dict,
+    auth_config: dict[str, str],
 ) -> Tool | None:
     """Update auth_config for a prebuilt tool."""
     result = await db.execute(select(Tool).where(Tool.id == tool_id))

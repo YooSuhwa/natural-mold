@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
@@ -107,7 +108,7 @@ def _error_sse_pair(error_message: str) -> list[str]:
     ]
 
 
-def _sse_response(generator):
+def _sse_response(generator: AsyncGenerator[str, None]) -> StreamingResponse:
     """StreamingResponse 래퍼."""  # noqa: D401
     return StreamingResponse(generator, media_type="text/event-stream", headers=_SSE_HEADERS)
 
@@ -204,7 +205,7 @@ async def send_message(
     ctx = await _resolve_agent_context(db, conversation_id, user)
     await chat_service.maybe_set_auto_title(db, conversation_id, data.content)
 
-    async def generate():
+    async def generate() -> AsyncGenerator[str, None]:
         try:
             async for chunk in execute_agent_stream(
                 provider=ctx["provider"],
@@ -242,7 +243,7 @@ async def resume_message(
     """HiTL interrupt 재개 — Command(resume=response)로 그래프 실행 재개."""
     ctx = await _resolve_agent_context(db, conversation_id, user)
 
-    async def generate():
+    async def generate() -> AsyncGenerator[str, None]:
         try:
             async for chunk in resume_agent_stream(
                 provider=ctx["provider"],
