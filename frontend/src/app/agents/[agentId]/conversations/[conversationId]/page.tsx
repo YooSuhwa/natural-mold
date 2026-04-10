@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useCallback, useState, useMemo, type ComponentType } from 'react'
+import { use, useEffect, useCallback, useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
@@ -189,7 +189,7 @@ export default function ChatPage({
                 modelName={agent?.model?.display_name}
                 showTokenBar
                 emptyContent={emptyContent}
-                toolUI={ALL_TOOL_UI as unknown as ComponentType[]}
+                toolUI={ALL_TOOL_UI}
               />
             </HiTLContext.Provider>
           </AssistantRuntimeProvider>

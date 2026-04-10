@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useCallback, useState, type ComponentType } from 'react'
+import { useMemo, useCallback, useState } from 'react'
 import { SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
@@ -97,7 +97,7 @@ export function AssistantPanel({ agentId, agentName, agentImageUrl }: AssistantP
               agentName={agentName}
               compact
               emptyContent={emptyContent}
-              toolUI={TOOL_UI_WITHOUT_HITL as unknown as ComponentType[]}
+              toolUI={TOOL_UI_WITHOUT_HITL}
             />
         </AssistantRuntimeProvider>
       </div>

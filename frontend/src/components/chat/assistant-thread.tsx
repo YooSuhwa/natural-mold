@@ -7,6 +7,7 @@ import {
   ComposerPrimitive,
   ActionBarPrimitive,
   useThreadViewport,
+  type AssistantToolUI,
 } from '@assistant-ui/react'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { code } from '@streamdown/code'
@@ -151,7 +152,7 @@ export interface AssistantThreadProps {
   /** 빈 상태 커스텀 */
   emptyContent?: React.ReactNode
   /** 추가 도구 UI */
-  toolUI?: React.ComponentType[]
+  toolUI?: readonly AssistantToolUI[]
 }
 
 export function AssistantThread({
