@@ -105,7 +105,7 @@ async def test_stream_content_delta():
     events = [e async for e in stream_agent_response(agent, [], {})]
 
     content_events = [e for e in events if "content_delta" in e]
-    # streaming.py sends character-by-character deltas for middleware JSON filtering
+    # streaming.py batches deltas per LLM chunk (with middleware JSON filtering)
     assert len(content_events) >= 1
     concatenated = "".join(
         json.loads(e.split("data: ")[1].strip())["delta"] for e in content_events
@@ -124,7 +124,7 @@ async def test_stream_multiple_content_deltas():
     events = [e async for e in stream_agent_response(agent, [], {})]
 
     content_events = [e for e in events if "content_delta" in e]
-    # streaming.py sends character-by-character deltas
+    # streaming.py batches deltas per LLM chunk
     assert len(content_events) >= 2
     concatenated = "".join(
         json.loads(e.split("data: ")[1].strip())["delta"] for e in content_events
@@ -223,7 +223,7 @@ async def test_stream_full_flow():
         elif "message_end" in e:
             event_types.append("message_end")
 
-    # Deduplicate consecutive content_deltas (character-by-character streaming)
+    # Deduplicate consecutive content_deltas (chunk-level streaming)
     deduped = []
     for et in event_types:
         if not deduped or deduped[-1] != et:

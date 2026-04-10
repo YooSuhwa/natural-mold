@@ -4,7 +4,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from app.agent_runtime.executor import execute_agent_invoke
+from app.agent_runtime.executor import AgentConfig, execute_agent_invoke
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
 from app.services import chat_service
@@ -62,22 +62,22 @@ async def execute_trigger(trigger_id: str) -> None:
         provider_api_keys = await load_all_provider_api_keys(db)
 
         # Execute agent (non-streaming invoke)
+        cfg = AgentConfig(
+            provider=agent.model.provider,
+            model_name=agent.model.model_name,
+            api_key=api_key,
+            base_url=base_url,
+            system_prompt=effective_prompt,
+            tools_config=tools_config,
+            thread_id=str(conv.id),
+            model_params=agent.model_params,
+            middleware_configs=agent.middleware_configs,
+            agent_skills=agent_skills or None,
+            agent_id=str(agent.id),
+            provider_api_keys=provider_api_keys,
+        )
         try:
-            await execute_agent_invoke(
-                provider=agent.model.provider,
-                model_name=agent.model.model_name,
-                api_key=api_key,
-                base_url=base_url,
-                system_prompt=effective_prompt,
-                tools_config=tools_config,
-                messages_history=messages_history,
-                thread_id=str(conv.id),
-                model_params=agent.model_params,
-                middleware_configs=agent.middleware_configs,
-                agent_skills=agent_skills or None,
-                agent_id=str(agent.id),
-                provider_api_keys=provider_api_keys,
-            )
+            await execute_agent_invoke(cfg, messages_history)
         except Exception:
             logger.exception("Trigger %s: agent execution failed", trigger_id)
 

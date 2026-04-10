@@ -260,10 +260,10 @@ async def test_send_message_with_tools_merges_auth_config(client: AsyncClient):
     agent_id, _ = await _seed_agent(with_tools=True)
     conv_id = await _seed_conversation(agent_id)
 
-    captured_kwargs: dict = {}
+    captured_args: list = []
 
     async def mock_stream(*args, **kwargs):
-        captured_kwargs.update(kwargs)
+        captured_args.extend(args)
         yield 'event: message_end\ndata: {"content": "Done", "usage": {}}\n\n'
 
     with patch("app.routers.conversations.execute_agent_stream", side_effect=mock_stream):
@@ -273,10 +273,10 @@ async def test_send_message_with_tools_merges_auth_config(client: AsyncClient):
         )
 
     assert resp.status_code == 200
-    # Verify tools_config was built with merged auth
-    tools_cfg = captured_kwargs.get("tools_config", [])
-    assert len(tools_cfg) == 1
-    auth = tools_cfg[0]["auth_config"]
+    # args[0] is AgentConfig — check tools_config on it
+    cfg = captured_args[0]
+    assert len(cfg.tools_config) == 1
+    auth = cfg.tools_config[0]["auth_config"]
     # merged: tool.auth_config {"server_key": "val"} + link.config {"extra": "cfg"}
     assert auth["server_key"] == "val"
     assert auth["extra"] == "cfg"

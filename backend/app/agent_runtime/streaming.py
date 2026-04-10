@@ -55,7 +55,8 @@ async def stream_agent_response(
     was_interrupted = False
     usage_data: dict[str, int] = {}
     # ADR-004: PatchToolCallsMiddleware가 스트림 필터링을 하지 않으므로
-    # character-by-character 버퍼링으로 미들웨어 JSON을 감지/제거.
+    # 문자 단위 버퍼링으로 미들웨어 JSON 감지/제거.
+    # yield는 LLM 청크 단위로 배칭하여 SSE 이벤트 수를 줄임.
     _buf = ""
     _brace_depth = 0
 
@@ -69,9 +70,14 @@ async def stream_agent_response(
             if hasattr(msg, "content") and msg.content and msg.type in ("ai", "AIMessageChunk"):
                 delta = msg.content
                 if isinstance(delta, str):
+                    _pending = ""
                     for ch in delta:
                         if ch == "{" and _brace_depth == 0:
-                            # Start buffering potential middleware JSON
+                            # Flush pending text before entering JSON buffering
+                            if _pending:
+                                full_content += _pending
+                                yield format_sse("content_delta", {"delta": _pending})
+                                _pending = ""
                             _brace_depth = 1
                             _buf = ch
                         elif _brace_depth > 0:
@@ -89,8 +95,11 @@ async def stream_agent_response(
                                         yield format_sse("content_delta", {"delta": _buf})
                                         _buf = ""
                         else:
-                            full_content += ch
-                            yield format_sse("content_delta", {"delta": ch})
+                            _pending += ch
+                    # Flush remaining pending text from this LLM chunk
+                    if _pending:
+                        full_content += _pending
+                        yield format_sse("content_delta", {"delta": _pending})
 
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tc in msg.tool_calls:

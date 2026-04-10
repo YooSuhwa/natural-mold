@@ -6,6 +6,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.agent_runtime.executor import AgentConfig
+
+
+def _cfg(**overrides) -> AgentConfig:
+    """테스트용 AgentConfig 기본값 생성."""
+    defaults = dict(
+        provider="openai",
+        model_name="gpt-4o",
+        api_key=None,
+        base_url=None,
+        system_prompt="Hi",
+        tools_config=[],
+        thread_id="t-1",
+    )
+    defaults.update(overrides)
+    return AgentConfig(**defaults)
+
 # ---------------------------------------------------------------------------
 # build_agent
 # ---------------------------------------------------------------------------
@@ -98,16 +115,8 @@ async def test_execute_stream_no_tools(
     mock_stream.return_value = fake_stream()
 
     chunks = []
-    async for chunk in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key="sk-test",
-        base_url=None,
-        system_prompt="Hello",
-        tools_config=[],
-        messages_history=[],
-        thread_id="thread-1",
-    ):
+    cfg = _cfg(api_key="sk-test", system_prompt="Hello", thread_id="thread-1")
+    async for chunk in execute_agent_stream(cfg, []):
         chunks.append(chunk)
 
     mock_model_factory.assert_called_once_with("openai", "gpt-4o", "sk-test", None)
@@ -148,16 +157,7 @@ async def test_execute_stream_builtin_tool(
 
     tools_config = [{"type": "builtin", "name": "Web Search"}]
 
-    async for _ in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=tools_config,
-        messages_history=[],
-        thread_id="t-1",
-    ):
+    async for _ in execute_agent_stream(_cfg(tools_config=tools_config), []):
         pass
 
     mock_builtin.assert_called_once_with("Web Search")
@@ -195,16 +195,7 @@ async def test_execute_stream_prebuilt_tool(
     auth = {"naver_client_id": "id"}
     tools_config = [{"type": "prebuilt", "name": "Naver Blog Search", "auth_config": auth}]
 
-    async for _ in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=tools_config,
-        messages_history=[],
-        thread_id="t-1",
-    ):
+    async for _ in execute_agent_stream(_cfg(tools_config=tools_config), []):
         pass
 
     mock_prebuilt.assert_called_once_with("Naver Blog Search", auth_config=auth)
@@ -250,16 +241,7 @@ async def test_execute_stream_custom_tool(
         }
     ]
 
-    async for _ in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=tools_config,
-        messages_history=[],
-        thread_id="t-1",
-    ):
+    async for _ in execute_agent_stream(_cfg(tools_config=tools_config), []):
         pass
 
     mock_custom.assert_called_once_with(
@@ -308,16 +290,7 @@ async def test_execute_stream_mixed_tools(
         {"type": "prebuilt", "name": "Naver Blog Search"},
     ]
 
-    async for _ in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=tools_config,
-        messages_history=[],
-        thread_id="t-1",
-    ):
+    async for _ in execute_agent_stream(_cfg(tools_config=tools_config), []):
         pass
 
     # Both tool factories should be called
@@ -356,16 +329,7 @@ async def test_execute_stream_skips_custom_without_api_url(
         {"type": "custom", "name": "No URL Tool"}  # missing api_url
     ]
 
-    async for _ in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=tools_config,
-        messages_history=[],
-        thread_id="t-1",
-    ):
+    async for _ in execute_agent_stream(_cfg(tools_config=tools_config), []):
         pass
 
     tools_passed = mock_build.call_args[0][1]
@@ -400,14 +364,8 @@ async def test_execute_stream_passes_thread_id_in_config(
     mock_stream.side_effect = capture_stream
 
     async for _ in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=[],
-        messages_history=[{"role": "user", "content": "hi"}],
-        thread_id="my-thread-42",
+        _cfg(thread_id="my-thread-42"),
+        [{"role": "user", "content": "hi"}],
     ):
         pass
 
@@ -443,16 +401,7 @@ async def test_execute_stream_skips_unknown_tool_type(
         {"type": "mcp", "name": "Some MCP Tool"}  # not handled in executor
     ]
 
-    async for _ in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=tools_config,
-        messages_history=[],
-        thread_id="t-1",
-    ):
+    async for _ in execute_agent_stream(_cfg(tools_config=tools_config), []):
         pass
 
     tools_passed = mock_build.call_args[0][1]
@@ -487,16 +436,7 @@ async def test_execute_stream_yields_chunks(
     mock_stream.return_value = fake_stream()
 
     chunks = []
-    async for chunk in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=[],
-        messages_history=[],
-        thread_id="t-1",
-    ):
+    async for chunk in execute_agent_stream(_cfg(), []):
         chunks.append(chunk)
 
     assert chunks == ["chunk-1", "chunk-2", "chunk-3"]
@@ -537,16 +477,8 @@ async def test_execute_stream_passes_skills_and_memory(
 
     with patch("app.agent_runtime.executor._DATA_DIR", mock_data_dir):
         async for _ in execute_agent_stream(
-            provider="openai",
-            model_name="gpt-4o",
-            api_key=None,
-            base_url=None,
-            system_prompt="Hi",
-            tools_config=[],
-            messages_history=[],
-            thread_id="t-1",
-            agent_skills=agent_skills,
-            agent_id="agent-123",
+            _cfg(agent_skills=agent_skills, agent_id="agent-123"),
+            [],
         ):
             pass
 
@@ -586,16 +518,7 @@ async def test_execute_stream_no_skills_no_memory_when_not_provided(
 
     mock_stream.return_value = fake_stream()
 
-    async for _ in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=[],
-        messages_history=[],
-        thread_id="t-1",
-    ):
+    async for _ in execute_agent_stream(_cfg(), []):
         pass
 
     build_kwargs = mock_build.call_args[1]
@@ -634,15 +557,11 @@ async def test_interrupt_on_with_write_tools(
     mock_stream.return_value = fake_stream()
 
     async for _ in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=[{"type": "builtin", "name": "Web Search"}],
-        messages_history=[],
-        thread_id="t-1",
-        middleware_configs=[{"type": "human_in_the_loop", "params": {}}],
+        _cfg(
+            tools_config=[{"type": "builtin", "name": "Web Search"}],
+            middleware_configs=[{"type": "human_in_the_loop", "params": {}}],
+        ),
+        [],
     ):
         pass
 
@@ -677,15 +596,8 @@ async def test_interrupt_on_without_hitl_middleware(
     mock_stream.return_value = fake_stream()
 
     async for _ in execute_agent_stream(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=[],
-        messages_history=[],
-        thread_id="t-1",
-        middleware_configs=[{"type": "tool_retry", "params": {}}],
+        _cfg(middleware_configs=[{"type": "tool_retry", "params": {}}]),
+        [],
     ):
         pass
 
@@ -720,16 +632,7 @@ async def test_ask_user_not_included_in_invoke(
     })
     mock_build.return_value = mock_agent
 
-    await execute_agent_invoke(
-        provider="openai",
-        model_name="gpt-4o",
-        api_key=None,
-        base_url=None,
-        system_prompt="Hi",
-        tools_config=[],
-        messages_history=[],
-        thread_id="t-1",
-    )
+    await execute_agent_invoke(_cfg(), [])
 
     tools_passed = mock_build.call_args[0][1]
     tool_names = [t.name for t in tools_passed]
