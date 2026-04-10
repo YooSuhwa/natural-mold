@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { ClockIcon, CalendarIcon, SettingsIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import {
   Dialog,
@@ -25,7 +26,7 @@ import type { AgentTrigger, TriggerCreateRequest, TriggerUpdateRequest } from '@
 
 type ScheduleType = 'minutes' | 'daily' | 'weekly' | 'monthly' | 'advanced'
 
-const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const
+const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
 const WEEKDAY_CRON = [1, 2, 3, 4, 5, 6, 0] as const
 
 const INTERVAL_OPTIONS = [5, 10, 20, 30, 60] as const
@@ -120,13 +121,13 @@ function getDefaultForm() {
   }
 }
 
-const TYPE_OPTIONS: { value: ScheduleType; label: string; icon: typeof ClockIcon }[] = [
-  { value: 'minutes', label: 'Every few minutes', icon: ClockIcon },
-  { value: 'daily', label: 'Daily', icon: CalendarIcon },
-  { value: 'weekly', label: 'Weekly', icon: CalendarIcon },
-  { value: 'monthly', label: 'Monthly', icon: CalendarIcon },
-  { value: 'advanced', label: 'Advanced', icon: SettingsIcon },
-]
+const TYPE_ICONS: Record<ScheduleType, typeof ClockIcon> = {
+  minutes: ClockIcon,
+  daily: CalendarIcon,
+  weekly: CalendarIcon,
+  monthly: CalendarIcon,
+  advanced: SettingsIcon,
+}
 
 export function ScheduleDialog({
   open,
@@ -135,10 +136,19 @@ export function ScheduleDialog({
   trigger,
   isPending,
 }: ScheduleDialogProps) {
+  const t = useTranslations('agent.schedule')
   const isEdit = !!trigger
 
   const [form, setForm] = useState(getDefaultForm)
   const [inputMessage, setInputMessage] = useState('')
+
+  const typeOptions: { value: ScheduleType; label: string; icon: typeof ClockIcon }[] = [
+    { value: 'minutes', label: t('types.minutes'), icon: TYPE_ICONS.minutes },
+    { value: 'daily', label: t('types.daily'), icon: TYPE_ICONS.daily },
+    { value: 'weekly', label: t('types.weekly'), icon: TYPE_ICONS.weekly },
+    { value: 'monthly', label: t('types.monthly'), icon: TYPE_ICONS.monthly },
+    { value: 'advanced', label: t('types.advanced'), icon: TYPE_ICONS.advanced },
+  ]
 
   /* eslint-disable react-hooks/set-state-in-effect -- reset form when dialog opens/trigger changes */
   useEffect(() => {
@@ -217,12 +227,12 @@ export function ScheduleDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>Schedule</DialogTitle>
-          <DialogDescription>Choose when to run your agent. Times are in UTC.</DialogDescription>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-3 gap-2">
-          {TYPE_OPTIONS.map(({ value, label, icon: Icon }) => (
+          {typeOptions.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
               type="button"
@@ -243,7 +253,7 @@ export function ScheduleDialog({
         <div className="min-h-[120px] space-y-3">
           {form.type === 'minutes' && (
             <div className="flex items-center gap-2">
-              <span className="text-sm">Every</span>
+              <span className="text-sm">{t('labels.every')}</span>
               <Select
                 value={String(form.intervalMinutes)}
                 onValueChange={(v) => setForm((prev) => ({ ...prev, intervalMinutes: Number(v) }))}
@@ -259,7 +269,7 @@ export function ScheduleDialog({
                   ))}
                 </SelectContent>
               </Select>
-              <span className="text-sm">minutes</span>
+              <span className="text-sm">{t('labels.minutes')}</span>
             </div>
           )}
 
@@ -267,11 +277,11 @@ export function ScheduleDialog({
             <>
               {form.type === 'weekly' && (
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium">Days</label>
+                  <label className="text-xs font-medium">{t('labels.days')}</label>
                   <div className="flex gap-1">
-                    {WEEKDAYS.map((day, i) => (
+                    {WEEKDAY_KEYS.map((key, i) => (
                       <button
-                        key={day}
+                        key={key}
                         type="button"
                         onClick={() => toggleWeekday(WEEKDAY_CRON[i])}
                         className={`rounded-md px-2 py-1 text-xs transition-colors ${
@@ -280,7 +290,7 @@ export function ScheduleDialog({
                             : 'bg-muted text-muted-foreground hover:bg-muted/80'
                         }`}
                       >
-                        {day}
+                        {t(`weekdays.${key}`)}
                       </button>
                     ))}
                   </div>
@@ -289,7 +299,7 @@ export function ScheduleDialog({
 
               {form.type === 'monthly' && (
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium">Day of month</label>
+                  <label className="text-xs font-medium">{t('labels.dayOfMonth')}</label>
                   <Input
                     type="number"
                     min={1}
@@ -302,7 +312,7 @@ export function ScheduleDialog({
               )}
 
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">Time (UTC)</label>
+                <label className="text-xs font-medium">{t('labels.time')}</label>
                 <div className="flex items-center gap-1">
                   <Input
                     type="number"
@@ -338,39 +348,39 @@ export function ScheduleDialog({
 
           {form.type === 'advanced' && (
             <div className="space-y-1.5">
-              <label className="text-xs font-medium">Cron expression</label>
+              <label className="text-xs font-medium">{t('labels.cron')}</label>
               <Input
                 value={form.cronExpression}
                 onChange={(e) => setForm((prev) => ({ ...prev, cronExpression: e.target.value }))}
-                placeholder="0 9 * * 1-5"
+                placeholder={t('placeholders.cron')}
                 className="font-mono text-sm"
               />
               <p className="text-xxs text-muted-foreground">
-                Format: minute hour day-of-month month day-of-week
+                {t('cronFormat')}
               </p>
             </div>
           )}
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-xs font-medium">Prompt (optional)</label>
+          <label className="text-xs font-medium">{t('labels.prompt')}</label>
           <Textarea
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Message sent to the agent on each run..."
+            placeholder={t('placeholders.prompt')}
             rows={2}
           />
           <p className="text-xxs text-muted-foreground">
-            Defaults to &quot;Cron trigger fired.&quot;
+            {t('promptDefault')}
           </p>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={!canSubmit || isPending}>
-            {isEdit ? 'Update schedule' : 'Create schedule'}
+            {isEdit ? t('update') : t('create')}
           </Button>
         </DialogFooter>
       </DialogContent>

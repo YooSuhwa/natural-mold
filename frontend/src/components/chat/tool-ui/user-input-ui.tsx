@@ -1,5 +1,4 @@
 'use client'
-// TODO: 하드코딩된 한국어 문자열을 next-intl 메시지 키로 교체
 
 import { useState, useCallback, useMemo } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
@@ -9,6 +8,7 @@ import {
   SendIcon,
   Loader2Icon,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { cn, toggleSetItem } from '@/lib/utils'
 import { useHiTL } from '@/lib/chat/hitl-context'
 import type { UserInputQuestion } from '@/lib/types'
@@ -104,10 +104,12 @@ function TextInput({
   question,
   value,
   onChange,
+  placeholder,
 }: {
   question: UserInputQuestion
   value: string
   onChange: (value: string) => void
+  placeholder: string
 }) {
   return (
     <div className="space-y-2">
@@ -115,7 +117,7 @@ function TextInput({
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="답변을 입력하세요…"
+        placeholder={placeholder}
         className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
         rows={3}
       />
@@ -124,11 +126,12 @@ function TextInput({
 }
 
 function CompletedBadge({ result }: { result: unknown }) {
+  const t = useTranslations('chat.userInput')
   const display = typeof result === 'string' ? result : JSON.stringify(result)
   return (
     <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs dark:border-emerald-900 dark:bg-emerald-950">
       <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500" />
-      <span className="font-medium text-emerald-700 dark:text-emerald-300">답변 완료</span>
+      <span className="font-medium text-emerald-700 dark:text-emerald-300">{t('completed')}</span>
       {display && (
         <span className="truncate text-emerald-600/80 dark:text-emerald-400/80">
           {display}
@@ -174,6 +177,7 @@ function normalizeQuestions(args: AskUserArgs): UserInputQuestion[] {
 export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
   toolName: 'ask_user',
   render: function AskUserRender({ args, result, status }) {
+    const t = useTranslations('chat.userInput')
     const hitl = useHiTL()
     const [answers, setAnswers] = useState<Answers>({})
     const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted'>('idle')
@@ -236,7 +240,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
       return (
         <div className="flex items-center gap-2 rounded-xl border bg-muted/20 px-3 py-2 text-xs">
           <Loader2Icon className="size-3.5 animate-spin text-primary" />
-          <span className="text-muted-foreground">질문 준비 중…</span>
+          <span className="text-muted-foreground">{t('preparing')}</span>
         </div>
       )
     }
@@ -253,7 +257,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
         {/* Header */}
         <div className="mb-3 flex items-center gap-2">
           <MessageSquareQuoteIcon className="size-4 text-primary" />
-          <span className="text-sm font-medium">입력이 필요합니다</span>
+          <span className="text-sm font-medium">{t('inputRequired')}</span>
         </div>
 
         {/* Questions */}
@@ -293,6 +297,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
                     question={q}
                     value={(answers[i] as string) ?? ''}
                     onChange={(v) => updateAnswer(i, v)}
+                    placeholder={t('placeholder')}
                   />
                 )
             }
@@ -315,12 +320,12 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
             {submitState === 'submitting' ? (
               <>
                 <Loader2Icon className="size-3 animate-spin" />
-                전송 중…
+                {t('sending')}
               </>
             ) : (
               <>
                 <SendIcon className="size-3" />
-                확인
+                {t('confirm')}
               </>
             )}
           </button>
