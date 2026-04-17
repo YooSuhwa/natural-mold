@@ -95,6 +95,14 @@ def resolve_credential_data(credential: Credential) -> dict[str, str]:
     return json.loads(decrypt_api_key(credential.data_encrypted))
 
 
+def extract_field_keys(credential: Credential) -> list[str]:
+    """Return the key names stored inside this credential without exposing values."""
+    try:
+        return list(resolve_credential_data(credential).keys())
+    except Exception:
+        return []
+
+
 def resolve_server_auth(server: MCPServer) -> dict[str, str] | None:
     """Resolve the effective auth_config for an MCP server.
 

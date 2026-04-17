@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import uuid
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
+from app.models.credential import Credential
 from app.schemas.credential import (
     CredentialCreate,
     CredentialProviderDef,
@@ -16,17 +16,12 @@ from app.schemas.credential import (
 )
 from app.services import credential_service
 from app.services.credential_registry import CREDENTIAL_PROVIDERS
-from app.services.encryption import decrypt_api_key
 
 router = APIRouter(prefix="/api/credentials", tags=["credentials"])
 
 
-def _to_response(cred) -> CredentialResponse:
+def _to_response(cred: Credential) -> CredentialResponse:
     """Convert Credential ORM to CredentialResponse (never expose decrypted data)."""
-    try:
-        field_keys = list(json.loads(decrypt_api_key(cred.data_encrypted)).keys())
-    except Exception:
-        field_keys = []
     return CredentialResponse(
         id=cred.id,
         name=cred.name,
@@ -34,7 +29,7 @@ def _to_response(cred) -> CredentialResponse:
         provider_name=cred.provider_name,
         is_active=cred.is_active,
         has_data=bool(cred.data_encrypted),
-        field_keys=field_keys,
+        field_keys=credential_service.extract_field_keys(cred),
         created_at=cred.created_at,
         updated_at=cred.updated_at,
     )

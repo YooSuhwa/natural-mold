@@ -7,10 +7,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.error_codes import credential_not_found
-from app.models.credential import Credential
 from app.models.tool import AgentToolLink, MCPServer, Tool
 from app.schemas.tool import MCPServerCreate, ToolCustomCreate, ToolType
+from app.services import credential_service
 
 
 async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -54,7 +53,7 @@ async def get_tool_agent_counts(
 
 async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: uuid.UUID) -> Tool:
     if data.credential_id:
-        await _verify_credential_owner(db, data.credential_id, user_id)
+        await credential_service.get_credential(db, data.credential_id, user_id)
     tool = Tool(
         user_id=user_id,
         type=ToolType.CUSTOM,
@@ -77,7 +76,7 @@ async def register_mcp_server(
     db: AsyncSession, data: MCPServerCreate, user_id: uuid.UUID
 ) -> MCPServer:
     if data.credential_id:
-        await _verify_credential_owner(db, data.credential_id, user_id)
+        await credential_service.get_credential(db, data.credential_id, user_id)
 
     # Discover tools BEFORE opening the DB transaction to avoid holding
     # a connection while waiting on an external HTTP call.
@@ -152,7 +151,7 @@ async def update_tool_auth_config(
     if "credential_id" in updates:
         credential_id = updates["credential_id"]
         if credential_id is not None:
-            await _verify_credential_owner(db, credential_id, user_id)
+            await credential_service.get_credential(db, credential_id, user_id)
         tool.credential_id = credential_id
     if "auth_config" in updates:
         tool.auth_config = updates["auth_config"]
@@ -174,16 +173,3 @@ async def delete_tool(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) 
     await db.delete(tool)
     await db.commit()
     return True
-
-
-async def _verify_credential_owner(
-    db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
-) -> None:
-    """Verify the credential belongs to the user. Raises if not found."""
-    result = await db.execute(
-        select(Credential).where(
-            Credential.id == credential_id, Credential.user_id == user_id
-        )
-    )
-    if not result.scalar_one_or_none():
-        raise credential_not_found()

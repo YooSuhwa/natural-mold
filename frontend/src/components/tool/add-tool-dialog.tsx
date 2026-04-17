@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2Icon, CheckCircleIcon, WrenchIcon, PlusIcon } from 'lucide-react'
+import { Loader2Icon, CheckCircleIcon, WrenchIcon } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -16,37 +16,26 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-  SelectSeparator,
-} from '@/components/ui/select'
 import { useRegisterMCPServer, useCreateCustomTool } from '@/lib/hooks/use-tools'
 import { useCredentials } from '@/lib/hooks/use-credentials'
 import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
+import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
 import type { Tool } from '@/lib/types'
 
 interface AddToolDialogProps {
   trigger: React.ReactNode
 }
 
-const NONE = 'none'
-const CREATE = '__create__'
-
 export function AddToolDialog({ trigger }: AddToolDialogProps) {
   const t = useTranslations('tool.addDialog')
   const tc = useTranslations('common')
-  const tCred = useTranslations('connections.credentialSelect')
   const [open, setOpen] = useState(false)
   const { data: credentials } = useCredentials()
 
   // MCP form state
   const [mcpName, setMcpName] = useState('')
   const [mcpUrl, setMcpUrl] = useState('')
-  const [mcpMode, setMcpMode] = useState<string>(NONE)
+  const [mcpMode, setMcpMode] = useState<string>(CREDENTIAL_NONE)
   const [credentialDialogOpen, setCredentialDialogOpen] = useState(false)
   const [discoveredTools, setDiscoveredTools] = useState<Tool[] | null>(null)
   const registerMCP = useRegisterMCPServer()
@@ -66,7 +55,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   function resetForms() {
     setMcpName('')
     setMcpUrl('')
-    setMcpMode(NONE)
+    setMcpMode(CREDENTIAL_NONE)
     setDiscoveredTools(null)
     setCustomName('')
     setCustomDescription('')
@@ -82,18 +71,9 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     setOpen(false)
   }
 
-  function handleModeChange(v: string | null) {
-    if (!v) return
-    if (v === CREATE) {
-      setCredentialDialogOpen(true)
-      return
-    }
-    setMcpMode(v)
-  }
-
   async function handleMCPSubmit() {
     const payload =
-      mcpMode === NONE
+      mcpMode === CREDENTIAL_NONE
         ? { name: mcpName, url: mcpUrl, auth_type: 'none' as const }
         : { name: mcpName, url: mcpUrl, credential_id: mcpMode }
     const result = await registerMCP.mutateAsync(payload)
@@ -207,33 +187,12 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium">{t('auth.label')}</label>
-                  <Select value={mcpMode} onValueChange={handleModeChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue>
-                        {(v: string) => {
-                          if (v === NONE) return tCred('none')
-                          const cred = availableCredentials.find((c) => c.id === v)
-                          return cred?.name ?? ''
-                        }}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={NONE}>{tCred('none')}</SelectItem>
-                      {availableCredentials.length > 0 && <SelectSeparator />}
-                      {availableCredentials.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                        </SelectItem>
-                      ))}
-                      <SelectSeparator />
-                      <SelectItem value={CREATE}>
-                        <span className="flex items-center gap-1.5">
-                          <PlusIcon className="size-3.5" />
-                          {tCred('createNew')}
-                        </span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <CredentialSelect
+                    value={mcpMode}
+                    onValueChange={setMcpMode}
+                    onCreateRequested={() => setCredentialDialogOpen(true)}
+                    credentials={availableCredentials}
+                  />
                 </div>
 
                 <DialogFooter>

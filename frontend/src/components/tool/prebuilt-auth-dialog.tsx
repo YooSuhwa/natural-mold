@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { KeyIcon, CheckCircleIcon, Loader2Icon, LinkIcon, PlusIcon } from 'lucide-react'
+import { KeyIcon, CheckCircleIcon, Loader2Icon, LinkIcon } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -13,26 +13,16 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-  SelectSeparator,
-} from '@/components/ui/select'
 import { useUpdateToolAuthConfig } from '@/lib/hooks/use-tools'
 import { useCredentials } from '@/lib/hooks/use-credentials'
 import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
+import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
 import type { Tool } from '@/lib/types'
 
 interface PrebuiltAuthDialogProps {
   tool: Tool
   trigger: React.ReactNode
 }
-
-const NONE = 'none'
-const CREATE = '__create__'
 
 function detectProvider(toolName: string): string {
   const lower = toolName.toLowerCase()
@@ -61,29 +51,14 @@ export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
     } as Record<string, string>
   )[provider]
 
-  const [mode, setMode] = useState<string>(tool.credential_id ?? NONE)
+  const [mode, setMode] = useState<string>(tool.credential_id ?? CREDENTIAL_NONE)
 
   const matchingCredentials = credentials?.filter((c) => c.provider_name === provider) ?? []
 
-  function handleModeChange(v: string | null) {
-    if (!v) return
-    if (v === CREATE) {
-      setCreateOpen(true)
-      return
-    }
-    setMode(v)
-  }
-
   const handleSave = () => {
-    if (mode === NONE) {
-      updateAuth.mutate(
-        { id: tool.id, authConfig: {}, credentialId: null },
-        { onSuccess: () => setOpen(false) },
-      )
-      return
-    }
+    const credentialId = mode === CREDENTIAL_NONE ? null : mode
     updateAuth.mutate(
-      { id: tool.id, authConfig: {}, credentialId: mode },
+      { id: tool.id, authConfig: {}, credentialId },
       { onSuccess: () => setOpen(false) },
     )
   }
@@ -93,7 +68,7 @@ export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
       open={open}
       onOpenChange={(v) => {
         setOpen(v)
-        if (v) setMode(tool.credential_id ?? NONE)
+        if (v) setMode(tool.credential_id ?? CREDENTIAL_NONE)
       }}
     >
       <DialogTrigger render={trigger as React.ReactElement} />
@@ -115,36 +90,15 @@ export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
               <LinkIcon className="size-3.5" />
               {tCred('label')}
             </label>
-            <Select value={mode} onValueChange={handleModeChange}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={tCred('placeholder')}>
-                  {(v: string) => {
-                    if (v === NONE) return tCred('none')
-                    const cred = matchingCredentials.find((c) => c.id === v)
-                    return cred?.name ?? ''
-                  }}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>{tCred('none')}</SelectItem>
-                {matchingCredentials.length > 0 && <SelectSeparator />}
-                {matchingCredentials.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-                <SelectSeparator />
-                <SelectItem value={CREATE}>
-                  <span className="flex items-center gap-1.5">
-                    <PlusIcon className="size-3.5" />
-                    {tCred('createNew')}
-                  </span>
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            <CredentialSelect
+              value={mode}
+              onValueChange={setMode}
+              onCreateRequested={() => setCreateOpen(true)}
+              credentials={matchingCredentials}
+            />
           </div>
 
-          {mode !== NONE && (
+          {mode !== CREDENTIAL_NONE && (
             <div className="flex items-center gap-2 text-xs text-emerald-600">
               <CheckCircleIcon className="size-3.5" />
               {t('configured')}
