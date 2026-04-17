@@ -211,14 +211,14 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                     <SelectTrigger className="w-full">
                       <SelectValue>
                         {(v: string) => {
-                          if (v === NONE) return t('auth.none')
+                          if (v === NONE) return tCred('none')
                           const cred = availableCredentials.find((c) => c.id === v)
                           return cred?.name ?? ''
                         }}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NONE}>{t('auth.none')}</SelectItem>
+                      <SelectItem value={NONE}>{tCred('none')}</SelectItem>
                       {availableCredentials.length > 0 && <SelectSeparator />}
                       {availableCredentials.map((c) => (
                         <SelectItem key={c.id} value={c.id}>

@@ -100,7 +100,7 @@ export const mockTool: Tool = {
   auth_type: null,
   auth_config: null,
   tags: ['search', 'web', 'free'],
-  server_key_available: true,
+  credential_id: null,
   agent_count: 1,
   created_at: '2026-01-01T00:00:00Z',
 }
