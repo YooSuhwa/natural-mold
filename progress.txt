@@ -1,70 +1,82 @@
-# progress.txt — feature/custom-tool-credentials
+# progress.txt — feature/credentials-field-keys-cache (백로그 C)
 
-팀 공유 메모리. (이전 작업의 progress는 `tasks/progress-credential-mgmt.txt`로 archive됨)
+팀 공유 메모리. 이전 작업의 progress는 `tasks/archive/progress-backlog-b.txt`로 아카이브됨.
 
 ## 작업 컨텍스트
 
-PR #46 (credential 시스템) + PR #47 (MCP 그룹화) 머지 완료. prebuilt와 MCP는 credential UI 통합 완료. 이번에는 **커스텀 도구**도 동일 패턴 적용 (백로그 B).
+`GET /api/credentials`가 각 row의 `data_encrypted`를 Fernet 복호화 + JSON 파싱해 `field_keys`를 노출 → N+1 복호화. `credentials.field_keys` 컬럼(비암호화 캐시)을 추가해 복호화 없이 키 이름만 반환.
 
-## 사전 확인된 사실
+**플랜 파일**: `~/.claude/plans/c-credentials-list-glistening-kurzweil.md`
 
-- `tool_service.create_custom_tool` 이미 `credential_id` 받음 (`tool_service.py:54-72`)
-- `tool_service.update_tool_auth_config` PREBUILT/MCP만 허용 — **CUSTOM 거부 필요 수정** (`tool_service.py:266-269`)
-- `add-tool-dialog.tsx` 커스텀 탭에 credential 필드 없음 (`customApiKey` 단일 입력만)
-- `tools/page.tsx` ToolCard isCustom 분기는 "삭제" 버튼만, "인증 설정" 없음
-- 참조: `prebuilt-auth-dialog.tsx`(provider 필터), `mcp-server-auth-dialog.tsx`(서버 단위)
+## 사전 확인된 사실 (Phase 1 탐색 결과)
+
+- `credential_service.list_credentials` (line 16-24): ORM only, 복호화 없음
+- `credential_service.extract_field_keys` (line 98-103): `resolve_credential_data()` → `decrypt_api_key()` 호출 → N+1 원인
+- `credential_service.create_credential` (line 42-66): line 55 암호화, 여기서 `field_keys` 캐시도 저장해야 함
+- `credential_service.update_credential` (line 69-82): `data.data is not None` 분기에서 동기화
+- 라우터 `_to_response()` (credentials.py:23-35): 응답 스키마는 변경 불필요
+- 응답 스키마 `CredentialResponse` (schemas/credential.py:21-32): `field_keys: list[str]` 필드 그대로
+- Alembic head: `m6_add_credentials` (backend/alembic/versions/m6_add_credentials.py)
+- `sa.JSON()`이 프로젝트 관례 (agent_tools.config, builder_sessions.*, models.input_modalities 등)
+- ENCRYPTION_KEY는 `.env`에 설정됨 — backfill 마이그레이션에서 `app.services.encryption.decrypt_api_key` 사용 가능
 
 ## 결정된 설계 (사용자 confirm)
 
 | 항목 | 결정 |
 |---|---|
-| Provider 필터 | **모든 credential 노출** (필터링 없음) |
-| Inline 필드 | **제거 + credential 단일화** (customAuthType/customApiKey 모두 삭제) |
-| 편집 위치 | **ToolCard에 "인증 설정" 버튼** (Prebuilt 패턴) |
-| 신규 컴포넌트 | `custom-auth-dialog.tsx` 별도 신설 (백로그 F에서 통합) |
+| 컬럼 이름 | `field_keys` (모델, 응답 스키마 동일명 — 자연스러움) |
+| 컬럼 타입 | `sa.JSON()` nullable=True (PostgreSQL JSONB 매핑, SQLite 호환) |
+| Backfill 전략 | **마이그레이션 upgrade() + runtime fallback 병행** (사용자 선택) |
+| extract_field_keys | 캐시 우선, NULL이면 복호화 fallback (legacy 대응) |
+| 테스트 | 신규 `test_credentials.py` 신설 (기존 분산됨) |
 
-## Codebase Patterns (이전 PR에서 확립)
+## Gotchas (현재까지)
 
-### Backend (FastAPI + SQLAlchemy async)
-- Router → Service → Model 계층
-- 의존성 주입: `Depends(get_db)`, `Depends(get_current_user)` (mock user)
-- PATCH 부분 업데이트: `data.model_dump(exclude_unset=True)` + `_apply_credential_update` 헬퍼 (이미 존재)
-- ToolType StrEnum: BUILTIN/PREBUILT/CUSTOM/MCP
-- IDOR 방어: user_id 미스매치 시 None 반환 → 라우터에서 404
-- ToolResponse는 `auth_config`를 마스킹 (`***`) — round-trip 거부 validator 적용됨
-
-### Frontend (Next.js 16 + React 19 + TanStack Query)
-- shadcn/ui: components/ui/
-- API 클라이언트: lib/api/*.ts (`apiFetch` 래퍼)
-- TanStack Query hooks: lib/hooks/use-*.ts
-- queryKey invalidate: PATCH는 ['tools']만, register/delete만 ['mcp-servers']까지
-- 'use client' 최소화, any 금지 → unknown + 타입 가드
-- i18n: frontend/messages/ko.json + next-intl
-
-## 재사용 컴포넌트
-
-- `CredentialSelect` (`components/tool/credential-select.tsx`)
-- `CredentialFormDialog` (`components/tool/credential-form-dialog.tsx`) — provider 자유 선택
-- `useCredentials` 훅
-- `useUpdateToolAuthConfig` 훅 — 백엔드 M1으로 CUSTOM도 동작
-- `getPrebuiltStatus` 로직 (`tools/page.tsx:90-96`)
-
-## Gotchas
-
-- 이전 PR과 동일하게 ENCRYPTION_KEY 필수 (이미 설정됨)
-- 마스킹 sentinel `***`는 PATCH로 다시 보내면 422 거부됨 — UI는 sentinel 값 다시 제출 안 함
-- 사용자 메모: 별도 브랜치 작업 시 stash 대신 worktree 사용 (이번엔 main에 modified 없으므로 일반 브랜치)
+- 데코레이터 `sa.JSON()`은 PostgreSQL에서 JSONB로 매핑되지만 명시적 JSONB 사용 금지(프로젝트 관례)
+- 마이그레이션 내 `from app.services.encryption import decrypt_api_key` 가능하나, 실패 시 `[]`로 tolerant 처리
+- aiosqlite 테스트 환경: 백필 마이그레이션이 돌려지더라도 빈 테이블 → 무영향
+- 응답 스키마 불변 (API 소비자 호환성)
+- ENCRYPTION_KEY 미설정 환경에서 마이그레이션은 스킵 (503 반환 환경이므로 create도 거부됨)
 
 ## 실패 교훈
 
-- M1 변경(`update_tool_auth_config`에 CUSTOM 허용) 시 `tests/test_tools_router_extended.py::test_update_auth_config_non_prebuilt_returns_404`가 회귀로 잡힘. 이 테스트의 전제(=CUSTOM 거부)가 의도적으로 뒤집힌 케이스이므로 "회귀 아님" — 새 동작(다른 사용자 CUSTOM → 404 IDOR)을 검증하도록 갱신함. 추후 비슷한 의미 반전 변경 시 매칭되는 기존 테스트 1차 grep 권장 (예: `non_prebuilt`, `not in.*PREBUILT` 등 키워드).
-- 신규 테스트는 `test_update_mcp_server_credential` 패턴을 그대로 차용 (monkeypatch encryption._get_fernet → None, Credential 시드, PATCH 검증, 다른 user_id 거부). `_seed_mcp_server_with_tools` 같은 헬퍼는 CUSTOM에 없으므로 인라인 시드.
-- (M2) `frontend/tests/components/tool/add-tool-dialog.test.tsx`에 `Bearer` radio + `sk-xxx` placeholder를 검증하는 테스트 2건이 inline auth 제거로 깨졌다. 신규 credential UI(인증 없음 디폴트 + payload에 credential_id 미포함)에 맞게 갱신해서 11/11 PASS 회복. M1과 동일 패턴 — 의미 반전 시 keyword grep으로 잠재 깨짐 테스트를 먼저 찾는 것이 효율적.
-- AddToolDialog는 `CredentialFormDialog`를 MCP/custom 두 탭이 공유한다. `onCreated` 콜백이 단일이라 어느 탭이 열었는지 추적이 필요 — `credentialTarget: 'mcp' | 'custom'` state로 분기 처리. 단일 다이얼로그를 두 트리거가 공유할 때 일반화 가능한 패턴.
+(빈 상태 — 루프에서 채워짐)
 
-## 빌드/테스트 명령
+## S2 완료 노트 (2026-04-17, jensen)
 
-```bash
-cd backend && uv run ruff check . && uv run pytest
-cd frontend && pnpm lint && pnpm build
-```
+- `m7_add_credential_field_keys` 마이그레이션 작성. upgrade 왕복 성공 (PostgreSQL 기준).
+- **Gotcha**: SQLAlchemy 2.0에서 SQLite `drop_column`은 batch mode 필요 → `op.batch_alter_table`로 감쌈. PostgreSQL/SQLite 양쪽 호환.
+- **Gotcha**: 백필 시 `json.dumps(keys)`로 문자열화해 `sa.text` 파라미터로 넘겨야 함 (dialect-neutral). 직접 list 바인딩은 PostgreSQL 전용.
+- **Gotcha**: ENCRYPTION_KEY 미설정 환경에서는 upgrade 자체는 진행하되 백필만 skip (경고 로그). 마이그레이션을 실패시키지 않음.
+- `tests/test_encryption.py` + `tests/test_tools.py` 회귀 18건 PASS, ruff PASS.
+- 모델에 `JSON` import 추가 (`from sqlalchemy import JSON, Boolean, ...`), `field_keys: Mapped[list[str] | None]` 추가.
+
+## S1 완료 노트 (2026-04-17, bezos)
+
+- **실제 삭제 항목 0개**: 백로그 C 스코프(N+1 복호화 제거)에 순수히 한정. drive-by 리팩토링 금지.
+- **단순화 1건**: `credential_service.create_credential` line 45-48 함수 내부 `from app.config import settings` + `from app.exceptions import AppError` → 상단 이동 가능. M3에서 젠슨이 조치 검토.
+- **보류 3건** (의도적 비삭제):
+  1. `extract_field_keys` try/except fallback → ADR-007의 legacy row 지원 요구로 **반드시 존치**
+  2. `credentials.is_active` 컬럼 + 응답 노출 → 토글 API 없음, 실질 dead이나 스코프 외 (별도 티켓 권고)
+  3. `has_data` 필드 → 구조적 항상 True, 프론트엔드 영향 조사 후 별도 PR
+- **S4 대비 gotcha**: `test_tools.py:513`의 `resolve_credential_data` patch 패턴 존재 — S4 신규 테스트는 `decrypt_api_key`를 직접 patch(spy)해 호출 횟수 0 검증. 기존 테스트 복제 금지.
+- 산출물: `tasks/deletion-analysis-c.md`
+
+## S4 완료 노트 (2026-04-17, bezos)
+
+- 신규 `backend/tests/test_credentials.py` — 5 시나리오 모두 PASS
+- **Gotcha 1**: `create_credential`가 `ENCRYPTION_KEY` 미설정 시 503 반환 → autouse `_encryption_key` fixture로 `Fernet.generate_key()` 주입 + `enc_mod._fernet` reset
+- **Gotcha 2**: `decrypt_api_key` spy 대상은 **반드시 `app.services.credential_service.decrypt_api_key`** (from-import 바인딩 경로). `app.services.encryption.decrypt_api_key` patch는 서비스 모듈의 이미 바인딩된 이름에는 적용 안 됨
+- **Gotcha 3**: `test_list_credentials_avoids_decryption`는 spy.side_effect에 AssertionError 주입 + `call_count == 0` 이중 가드 — 만약 복호화 호출되면 즉시 raise
+- **Gotcha 4**: legacy fallback 테스트에서 `field_keys=None` row는 명시적 생성자로 넣어야 함 (create_credential 경로 우회)
+- 회귀: `pytest` **545 passed** (540 기준 초과), `ruff check .` 클린
+- 라우터 `_to_response`의 `extract_field_keys` 호출 경로 불변 — 기존 응답 스키마 호환성 유지 확인
+
+## S3 완료 노트 (2026-04-17, jensen)
+
+- `credential_service.create_credential` → `field_keys=list(data.data.keys())` 추가.
+- `credential_service.update_credential` → `data.data is not None` 분기에서만 `cred.field_keys` 동기화 (name-only 업데이트는 불변).
+- `credential_service.extract_field_keys` → 캐시 우선, `field_keys is not None`일 때 캐시 반환; NULL이면 기존 복호화 경로 유지 (ADR-007 legacy 지원).
+- 베조스 S1 권고 중 "함수 내부 import 상단 이동"은 본 스토리 스코프 외 drive-by 리팩토링으로 판단 → 별도 티켓으로 이관 권고 (Minimal Impact 원칙).
+- ruff PASS, test_encryption + test_tools 회귀 18건 PASS.
+- 라우터/스키마는 변경 없음 (응답 스키마 불변).

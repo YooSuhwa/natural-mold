@@ -59,6 +59,7 @@ async def create_credential(
         credential_type=data.credential_type,
         provider_name=data.provider_name,
         data_encrypted=encrypted,
+        field_keys=list(data.data.keys()),
     )
     db.add(cred)
     await db.commit()
@@ -77,6 +78,7 @@ async def update_credential(
         cred.name = data.name
     if data.data is not None:
         cred.data_encrypted = encrypt_api_key(json.dumps(data.data))
+        cred.field_keys = list(data.data.keys())
     await db.commit()
     await db.refresh(cred)
     return cred
@@ -96,7 +98,9 @@ def resolve_credential_data(credential: Credential) -> dict[str, str]:
 
 
 def extract_field_keys(credential: Credential) -> list[str]:
-    """Return the key names stored inside this credential without exposing values."""
+    """Return cached field_keys; fall back to decryption for legacy rows."""
+    if credential.field_keys is not None:
+        return credential.field_keys
     try:
         return list(resolve_credential_data(credential).keys())
     except Exception:

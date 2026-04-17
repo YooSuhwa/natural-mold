@@ -1,7 +1,40 @@
 # Quality Score — Moldy Agent Builder
 
-> 최종 검증일: 2026-04-07
+> 최종 검증일: 2026-04-17
 > 검증자: bezos (QA Engineer)
+
+---
+
+## 백로그 C — credentials list N+1 복호화 제거 (2026-04-17)
+
+### 게이트
+
+| 게이트 | 결과 | 비고 |
+|--------|------|------|
+| `uv run ruff check .` | PASS | 0 errors |
+| `uv run pytest tests/test_credentials.py -v` | PASS | 5/5 신규 |
+| `uv run pytest` | PASS | **545 passed** (540+ 기준 초과) |
+| `alembic upgrade head ↔ downgrade -1 ↔ upgrade head` | PASS | 젠슨 S2 왕복 확인 |
+
+### 신규/변경 파일
+
+| 파일 | 변경 |
+|------|------|
+| `backend/app/models/credential.py` | `field_keys: Mapped[list[str] \| None]` 컬럼 추가 |
+| `backend/alembic/versions/m7_add_credential_field_keys.py` | 신규 마이그레이션 + 백필 |
+| `backend/app/services/credential_service.py` | create/update 동기화, extract 캐시 우선 |
+| `backend/tests/test_credentials.py` | 신규 5 시나리오 |
+
+### 삭제 분석 (M1)
+
+- 실제 삭제: **0건** (스코프 엄격 준수)
+- 단순화 제안: 1건 (별도 티켓 이관)
+- 보류: 3건 (is_active/has_data/fallback — 스코프 외 또는 의도적 보존)
+- 산출물: `tasks/deletion-analysis-c.md`
+
+### 판정
+
+**GO** — 모든 M0~M4 PASS. M5 (통합/커밋)은 사티아 DRI.
 
 ---
 

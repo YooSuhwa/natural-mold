@@ -2,72 +2,67 @@
 
 ## 최근 완료 (2026-04-17)
 
-**브랜치 `feature/custom-tool-credentials` — 커스텀 도구 credential 통합 (백로그 B)**
-- Backend: `update_tool_auth_config`가 CUSTOM 타입 허용 + owner 체크 (MCP/CUSTOM 둘 다)
-- Backend 테스트: `test_update_custom_tool_credential` / `test_update_custom_tool_unset_credential` 신규 2건 + IDOR 의미 반전 테스트 1건 갱신
-- Frontend: 신규 `custom-auth-dialog.tsx` (provider 필터 없음, 모든 credential 노출)
-- Frontend: `add-tool-dialog.tsx` 커스텀 탭 inline `customAuthType`/`customApiKey` 제거 + `CredentialSelect` 통합
-- Frontend: `tools/page.tsx` ToolCard isCustom 분기에 "인증 설정" 버튼 + 상태 배지 (Prebuilt와 동일 UX)
-- Frontend: `add-tool-dialog.test.tsx` 신규 credential UI에 맞게 갱신 (11/11 PASS)
-- i18n: `tool.customAuth.*` 5개 key 추가
-- DB 마이그레이션: 없음 (기존 `tool.credential_id` 컬럼 재사용)
-- 검증: backend ruff PASS, pytest **539 passed**; frontend lint PASS (0 errors, 1 pre-existing warning), build PASS (14 routes, 3.8s)
+**브랜치 `feature/credentials-field-keys-cache` — credentials list N+1 복호화 제거 (백로그 C)**
+- Backend: `credentials.field_keys` 비암호화 캐시 컬럼 추가 (`sa.JSON()`, nullable=True) — `app/models/credential.py`
+- Backend: 신규 Alembic `m7_add_credential_field_keys` — 컬럼 추가 + 기존 row backfill (ENCRYPTION_KEY 미설정 시 skip + 경고). downgrade는 `op.batch_alter_table`로 SQLite/PostgreSQL 양쪽 호환
+- Backend: `credential_service.create_credential` 생성 시 캐시 저장, `update_credential` data 변경 시 동기화(name-only 불변), `extract_field_keys` 캐시 우선 + legacy NULL fallback (ADR-007)
+- 신규 테스트 `backend/tests/test_credentials.py` — 5 시나리오 (create/update sync/name-only preserve/list decrypt=0/legacy fallback)
+- 문서: `docs/design-docs/adr-007-credentials-field-keys-cache.md`, `docs/exec-plans/active/backlog-c-field-keys-cache.md`
+- 검증: backend `ruff check .` PASS, `pytest` **545 passed**, `alembic upgrade/downgrade/upgrade` 왕복 PASS
+- 응답 스키마 불변 (`CredentialResponse.field_keys: list[str]` 그대로) — 클라이언트 변경 없음
 
-**PR #47 머지** — MCP 서버 단위 그룹화 + 서버 단위 인증 (`8dee7e0`)
-- Backend: `GET/PATCH/DELETE /api/tools/mcp-servers[/{id}]` 신규 라우트 3개
-- Backend: `chat_service.build_tools_config` MCP precedence 분리 (server-level만, tool-level 무시)
-- Backend 보안: `ToolResponse.auth_config` 마스킹 (`***`) + round-trip 거부 validator
-- Frontend: `MCPServerGroupCard`(자체 Collapsible) + 서버 단위 Auth/Rename 다이얼로그
-- DB 마이그레이션: 없음
+**PR #48 머지** — 커스텀 도구 credential 통합 (`3a95a9b`)
+**PR #47 머지** — MCP 서버 단위 그룹화 (`8dee7e0`)
+**PR #46 머지** — 중앙 크리덴셜 관리 (n8n 스타일, Fernet, `/connections`)
 
-**PR #46 머지 완료 (이전)** — 중앙 크리덴셜 관리 (n8n 스타일, Fernet 암호화, `/connections` 페이지)
+## 다음 작업 — 백로그 D: `lazy="joined"` → `selectinload` 전환
 
-## 다음 작업 — credentials list N+1 복호화 제거 (백로그 C)
+범용 성능 개선. `lazy="joined"`로 기본 JOIN되는 관계를 필요 시점에만 `selectinload`/`joinedload` 선택적 로딩하도록 전환하여 불필요한 JOIN을 제거.
 
-- 현재 `GET /api/credentials`는 행마다 Fernet 복호화로 field key 목록을 조회 → N+1
-- 해결: `credentials.field_keys`에 비암호화 캐시 컬럼 추가 (값은 여전히 암호화)
-- Alembic 마이그레이션 필요 (`field_keys: ARRAY[String]` 또는 `JSONB`)
-- 작성/갱신 시 cache 동기화 (`credential_service.create_credential`, `update_credential`)
-- 목록 응답 스키마는 그대로 (캐시는 내부 최적화)
-
-**참조 파일**:
-- `backend/app/services/credential_service.py` — 현재 list/get 로직
-- `backend/app/models/credential.py` — 컬럼 추가 위치
-- `backend/alembic/versions/` — 새 마이그레이션 파일
+- 우선 조사 대상: agents, tools, mcp_servers, credentials 등 관계가 있는 모델
+- 기존 쿼리 경로 회귀 검증 필요 (Eager/Lazy 전환이 기대치와 맞는지)
 
 ## 백로그 (추천 순서)
 
 | # | 항목 | 규모 | 비고 |
 |---|------|------|------|
-| **C** | **credentials list N+1 복호화 제거** | 작음 | `field_keys` 캐시 컬럼 (Alembic 필요) |
-| D | `lazy="joined"` → `selectinload` 전환 | 중 | 범용 성능 개선 |
+| ~~C~~ | ~~credentials list N+1 복호화 제거~~ | ~~작음~~ | **완료** (이 브랜치) |
+| **D** | **`lazy="joined"` → `selectinload` 전환** | 중 | 범용 성능 개선 |
 | E | PREBUILT 공유 행 per-user credential binding | 큼 | 아키텍처 변경 (PoC라 우선순위 낮음) |
-| F | `CredentialPickerDialog` 공통 셸 추출 | 중 | prebuilt/mcp-server/custom auth 다이얼로그 3개 중복 제거 |
+| F | `CredentialPickerDialog` 공통 셸 추출 | 중 | prebuilt/custom/mcp-server auth 다이얼로그 3개 중복 제거 |
+| G | ToolCard CardFooter 3-way 분기 sub-component 추출 | 작음 | 가독성 개선 (코드 리뷰 잔여) |
 
 ## 주의사항
 
-- **ENCRYPTION_KEY 필수** — `.env`에 설정 (없으면 503). `0YHrH9wDgLoJ...JYM=` 사용 중 (이 키 백업/관리 필요)
-- **pre-existing 깨진 테스트** — `tests/components/chat/*`, `tests/pages/chat.test.tsx`, `tests/pages/agent-*` (별도 정리 필요)
-- `.claude/worktrees/` 는 .gitignore 추가됨 (PR #46)
-- 보안 마스킹 sentinel `***` 는 PATCH로 다시 보내면 422 — UI는 sentinel 값을 다시 제출하지 않음
-- 백로그 B 작업 중 발견된 패턴: 의미 반전 변경 시 매칭되는 기존 테스트를 keyword grep으로 먼저 찾는 것이 효율적 (예: `non_prebuilt`, `not in.*PREBUILT`)
-- `AddToolDialog`는 `CredentialFormDialog`를 MCP/custom 두 탭이 공유 — `credentialTarget: 'mcp' | 'custom'` state로 분기
+- **ENCRYPTION_KEY 필수** — `.env`에 설정 (없으면 create 503). backfill 마이그레이션은 ENCRYPTION_KEY 없어도 실패 없이 skip + 경고만 (fallback 경로로 legacy row 처리)
+- **`extract_field_keys()` 호출 시 from-import 주의** — 패치 대상은 `app.services.credential_service.decrypt_api_key` (credential_service 모듈이 이미 from-import로 바인딩). `app.services.encryption.decrypt_api_key`에 patch 걸어도 서비스 모듈 함수는 재바인딩되지 않음
+- **SQLite batch 모드** — drop_column은 반드시 `op.batch_alter_table` 래핑 (SQLAlchemy 2.0 + SQLite 조합)
+- pre-existing 깨진 테스트 — `tests/components/chat/*`, `tests/pages/chat.test.tsx`, `tests/pages/agent-*` (별도 정리)
+- `.claude/worktrees/` .gitignore 적용됨
 
-## 관련 파일 (백로그 C 작업 시)
+## 관련 파일 (백로그 C 완료 기준)
 
-| 목적 | 경로 |
-|------|------|
-| 크리덴셜 서비스 (list/get) | `backend/app/services/credential_service.py` |
-| 크리덴셜 모델 | `backend/app/models/credential.py` |
-| 크리덴셜 라우터 | `backend/app/routers/credentials.py` |
-| 응답 스키마 | `backend/app/schemas/credential.py` |
-| Alembic 마이그레이션 | `backend/alembic/versions/` |
-| 크리덴셜 테스트 | `backend/tests/test_credentials*.py` |
+| 목적 | 경로 | 비고 |
+|------|------|------|
+| 크리덴셜 모델 | `backend/app/models/credential.py` | `field_keys` 컬럼 추가됨 |
+| 크리덴셜 서비스 | `backend/app/services/credential_service.py` | create/update/extract 수정됨 |
+| 크리덴셜 라우터 | `backend/app/routers/credentials.py` | 변경 없음 (응답 스키마 불변) |
+| 응답 스키마 | `backend/app/schemas/credential.py` | 변경 없음 |
+| 신규 마이그레이션 | `backend/alembic/versions/m7_add_credential_field_keys.py` | head |
+| 신규 테스트 | `backend/tests/test_credentials.py` | 5 시나리오 |
+| ADR | `docs/design-docs/adr-007-credentials-field-keys-cache.md` | 승인됨 |
 
 ## 마지막 상태
 
-- **브랜치**: `feature/custom-tool-credentials` (커밋 미완료, working tree에 변경 12파일 + 신규 1파일)
-- **최근 main 커밋**: `8dee7e0` Merge pull request #47 (백로그 B 작업의 base)
-- **검증**: Backend ruff PASS, pytest **539 passed** (신규 2건); Frontend `lint`/`build` PASS, `add-tool-dialog.test.tsx` 11/11 PASS
-- **DB 상태**: 스키마 변경 없음 (`alembic upgrade head` 변동 없음)
-- **PR 준비**: 단일 커밋으로 묶어 `feat(tools): custom 도구 credential 통합` 권장 (백엔드 + 프론트 함께 머지되어야 의미 있음)
+- **브랜치**: `feature/credentials-field-keys-cache` (worktree: `.claude/worktrees/backlog-c`)
+- **Base**: `main` @ `3a95a9b` (PR #48 머지)
+- **검증**: backend ruff PASS, pytest **545 passed** (신규 5건 포함), alembic 왕복 PASS
+- **DB 상태**: `m7_add_credential_field_keys` head — `credentials.field_keys` 컬럼 추가
+- **PR 준비**: 단일 커밋 `feat(credentials): field_keys cache column to eliminate N+1 decryption` 권장
+
+## TTH Ralph Loop 통계 (백로그 C)
+
+- 총 스토리: 5 (S0~S4) + M5 통합
+- 1회 통과: 5/5 (재시도 없음)
+- 에스컬레이션: 0
+- 팀 구성: 사티아 + 젠슨(백엔드) + 베조스(QA) — 피차이는 경량팀 구성상 사티아가 ADR 대리 작성

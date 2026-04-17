@@ -1,38 +1,68 @@
-# CHECKPOINT — 커스텀 도구 credential 통합 (백로그 B)
+# CHECKPOINT — credentials list N+1 복호화 제거 (백로그 C)
 
-**브랜치**: `feature/custom-tool-credentials`
-**플랜**: `~/.claude/plans/mcp-idempotent-avalanche.md`
+**브랜치**: `feature/credentials-field-keys-cache`
+**플랜**: `~/.claude/plans/c-credentials-list-glistening-kurzweil.md`
 **시작**: 2026-04-17
+**worktree**: `/Users/chester/dev/natural-mold/.claude/worktrees/backlog-c`
 
-## M1: Backend — CUSTOM 타입 PATCH 허용 + 테스트
+## M0: Docs/ADR 초기화
 
-- [x] services/tool_service.py:266-269 — `update_tool_auth_config`에 CUSTOM 추가, owner 체크 확장
-- [x] tests/test_tools.py — `test_update_custom_tool_credential` + `test_update_custom_tool_unset_credential` 2건 추가
-- [x] tests/test_tools_router_extended.py — 의미가 반전된 `test_update_auth_config_non_prebuilt_returns_404`를 IDOR(다른 사용자 CUSTOM → 404) 검증으로 갱신
-- 검증: `cd backend && uv run ruff check . && uv run pytest`
-- done-when: 신규 2건 통과, 회귀 0
-- 상태: done (ruff PASS, 539 passed)
+- [x] `docs/design-docs/adr-007-credentials-field-keys-cache.md` 작성
+- [x] `docs/exec-plans/active/backlog-c-field-keys-cache.md`에 실행 계획 사본
+- 검증: 두 파일 존재 + `docs/design-docs/index.md`에 신규 ADR 링크 (완료)
+- done-when: ADR 번호 부여, 맥락/결정/대안/결과 4 섹션 작성
+- 상태: **done**
+- 담당: 사티아 (피차이 대리 — 경량팀 구성)
+
+## M1: 삭제 분석
+
+- [x] 삭제 0건, 단순화 1건, 보류 3건 — scope 외 drive-by 금지 원칙 준수
+- [x] `tasks/deletion-analysis-c.md` 보고서 작성
+- 검증: 보고서 존재 + 권고 사항 명시 (완료)
+- done-when: 사티아가 보고서 승인
+- 상태: **done**
+- 담당: 베조스
+
+## M2: 모델 + Alembic 마이그레이션 + 백필
+
+- [ ] `backend/app/models/credential.py`에 `field_keys: Mapped[list[str] | None]` (sa.JSON(), nullable=True) 추가
+- [ ] 신규 마이그레이션 `backend/alembic/versions/m7_add_credential_field_keys.py` — upgrade: 컬럼 추가 + 기존 row backfill, downgrade: drop_column
+- [ ] ENCRYPTION_KEY 미설정 시 backfill 스킵 + 경고 로그
+- 검증: `cd backend && uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head` — 왕복 PASS
+- done-when: 왕복 성공, 테이블에 field_keys 컬럼 존재
+- 상태: **done**
 - 담당: 젠슨
 
-## M2: Frontend — 커스텀 도구 credential UI
+## M3: 서비스 수정 (create/update/extract)
 
-- [x] components/tool/custom-auth-dialog.tsx (신규) — PrebuiltAuthDialog 패턴, provider 필터 없음
-- [x] components/tool/add-tool-dialog.tsx — 커스텀 탭 inline auth 제거 + CredentialSelect 통합
-- [x] app/tools/page.tsx — ToolCard isCustom 분기에 "인증 설정" 버튼 + 상태 배지
-- [x] messages/ko.json — `tool.customAuth.*` 신규
-- [x] tests/components/tool/add-tool-dialog.test.tsx — 신규 credential UI에 맞게 갱신
-- [x] lib/types/index.ts — ToolCustomCreateRequest에 credential_id 추가
-- 검증: `cd frontend && pnpm lint && pnpm build` PASS, `pnpm test add-tool-dialog` 11/11 PASS
-- done-when: build PASS, lint 0 errors
-- 상태: done
-- 담당: 저커버그
+- [ ] `credential_service.create_credential` — Credential 생성 시 `field_keys=list(data.data.keys())`
+- [ ] `credential_service.update_credential` — `data.data` 변경 시 `field_keys` 동기화. name만 변경 시 불변
+- [ ] `credential_service.extract_field_keys` — 캐시 우선, NULL이면 기존 복호화 경로 fallback
+- 검증: `cd backend && uv run ruff check app/services/credential_service.py app/models/credential.py` — PASS
+- done-when: ruff PASS, import 순환 없음
+- 상태: **done**
+- 담당: 젠슨
 
-## M3: 통합 검증 + HANDOFF
+## M4: 테스트 신설 + 회귀
 
-- [x] 백엔드 회귀: `cd backend && uv run pytest` — 539 passed
-- [x] 프론트 풀빌드: `cd frontend && pnpm build` — 14 routes, lint 0 errors
-- [x] HANDOFF.md 업데이트 (백로그 B 완료, 다음은 백로그 C)
-- 검증: backend ruff PASS, pytest 539 passed; frontend lint PASS, build PASS
-- done-when: 회귀 0, HANDOFF 갱신
-- 상태: done
+- [ ] 신규 `backend/tests/test_credentials.py` — 5 시나리오:
+  1. create 시 field_keys 저장
+  2. update(data 변경) 시 field_keys 동기화
+  3. update(name만) 시 field_keys 불변
+  4. list 응답에서 decrypt_api_key 호출 0회 (monkeypatch/spy)
+  5. legacy row(field_keys=None) fallback 경로 동작
+- [ ] 전체 회귀 `uv run pytest` 540+ 유지
+- 검증: `cd backend && uv run pytest tests/test_credentials.py -v && uv run pytest` — **545 passed**
+- done-when: 신규 5 통과, 기존 회귀 0
+- 상태: **done**
 - 담당: 베조스
+
+## M5: 통합 + 커밋
+
+- [x] 전체 verify: `ruff check . && pytest && alembic upgrade/downgrade/upgrade` — 모두 PASS (545 passed, ruff clean, 왕복 성공)
+- [x] `HANDOFF.md` 업데이트 (진행 중)
+- [x] worktree 내 단일 커밋 (feat(credentials): field_keys cache column)
+- 검증: `git log --oneline feature/credentials-field-keys-cache ^main`
+- done-when: 커밋 존재, 전체 verify PASS
+- 상태: **done**
+- 담당: 사티아

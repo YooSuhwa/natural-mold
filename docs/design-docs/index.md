@@ -7,3 +7,4 @@
 | ADR-003 | [스킬 + 메모리 전환](adr-003-skills-memory.md) | 승인됨 | 2026-04-06 |
 | ADR-004 | [M4 정리 — Creation Agent + Trigger + Streaming](adr-004-m4-cleanup.md) | 승인됨 | 2026-04-06 |
 | ADR-005 | [Builder/Assistant 아키텍처](adr-005-builder-assistant.md) | 제안됨 | 2026-04-07 |
+| ADR-007 | [Credentials field_keys 캐시 컬럼](adr-007-credentials-field-keys-cache.md) | 승인됨 | 2026-04-17 |
