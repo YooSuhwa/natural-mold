@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   useCredentialProviders,
   useCreateCredential,
@@ -63,7 +64,7 @@ function FormBody({
 }: CredentialFormDialogProps) {
   const t = useTranslations('connections')
   const tc = useTranslations('common')
-  const { data: providers } = useCredentialProviders()
+  const { data: providers, isLoading: providersLoading } = useCredentialProviders()
   const createCredential = useCreateCredential()
   const updateCredential = useUpdateCredential()
 
@@ -142,24 +143,28 @@ function FormBody({
       <div className="space-y-4 py-2">
         <div className="space-y-2">
           <label className="text-sm font-medium">{t('provider')}</label>
-          <Select
-            value={formProvider}
-            onValueChange={handleProviderChange}
-            disabled={providerLocked}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder={t('providerPlaceholder')}>
-                {(v: string) => providers?.find((p) => p.key === v)?.name ?? ''}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {providers?.map((p) => (
-                <SelectItem key={p.key} value={p.key}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {providersLoading ? (
+            <Skeleton className="h-9 w-full" />
+          ) : (
+            <Select
+              value={formProvider}
+              onValueChange={handleProviderChange}
+              disabled={providerLocked}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={t('providerPlaceholder')}>
+                  {(v: string) => providers?.find((p) => p.key === v)?.name ?? ''}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {providers?.map((p) => (
+                  <SelectItem key={p.key} value={p.key}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         <div className="space-y-2">

@@ -162,48 +162,6 @@ async def update_tool_auth_config(
     return tool
 
 
-async def link_credential_to_tool(
-    db: AsyncSession,
-    tool_id: uuid.UUID,
-    credential_id: uuid.UUID | None,
-    user_id: uuid.UUID,
-) -> Tool | None:
-    """Link or unlink a credential to/from a tool."""
-    result = await db.execute(select(Tool).where(Tool.id == tool_id))
-    tool = result.scalar_one_or_none()
-    if not tool:
-        return None
-    if credential_id:
-        await _verify_credential_owner(db, credential_id, user_id)
-    tool.credential_id = credential_id
-    await db.commit()
-    await db.refresh(tool)
-    return tool
-
-
-async def link_credential_to_mcp_server(
-    db: AsyncSession,
-    server_id: uuid.UUID,
-    credential_id: uuid.UUID | None,
-    user_id: uuid.UUID,
-) -> MCPServer | None:
-    """Link or unlink a credential to/from an MCP server."""
-    result = await db.execute(
-        select(MCPServer).where(
-            MCPServer.id == server_id, MCPServer.user_id == user_id
-        )
-    )
-    server = result.scalar_one_or_none()
-    if not server:
-        return None
-    if credential_id:
-        await _verify_credential_owner(db, credential_id, user_id)
-    server.credential_id = credential_id
-    await db.commit()
-    await db.refresh(server)
-    return server
-
-
 async def delete_tool(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     result = await db.execute(select(Tool).where(Tool.id == tool_id))
     tool = result.scalar_one_or_none()

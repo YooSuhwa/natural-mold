@@ -42,6 +42,16 @@ async def get_credential(
 async def create_credential(
     db: AsyncSession, user_id: uuid.UUID, data: CredentialCreate
 ) -> Credential:
+    from app.config import settings
+
+    if not settings.encryption_key:
+        from app.exceptions import AppError
+
+        raise AppError(
+            code="encryption_not_configured",
+            message="크리덴셜 암호화 키가 설정되지 않아 생성할 수 없습니다. 관리자에게 문의하세요.",
+            status=503,
+        )
     encrypted = encrypt_api_key(json.dumps(data.data))
     cred = Credential(
         user_id=user_id,
