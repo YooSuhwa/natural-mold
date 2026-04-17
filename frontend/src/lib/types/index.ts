@@ -273,6 +273,7 @@ export interface ToolCustomCreateRequest {
   parameters_schema?: Record<string, unknown>
   auth_type?: string
   auth_config?: Record<string, unknown>
+  credential_id?: string
 }
 
 export interface MCPServerCreateRequest {

@@ -221,6 +221,45 @@ async def test_tool_response_masks_auth_config_string_values(
 
 
 # ---------------------------------------------------------------------------
+# Test helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_custom_tool(
+    *, user_id: uuid.UUID = None, name: str = "my_custom_tool", **overrides
+) -> Tool:
+    if user_id is None:
+        user_id = TEST_USER_ID
+    return Tool(
+        user_id=user_id,
+        type="custom",
+        name=name,
+        api_url="https://example.com/api",
+        http_method="GET",
+        auth_type="api_key",
+        **overrides,
+    )
+
+
+def _make_credential(
+    *,
+    user_id: uuid.UUID = None,
+    name: str = "Custom Key",
+    provider_name: str = "custom",
+    data: dict | None = None,
+) -> Credential:
+    if user_id is None:
+        user_id = TEST_USER_ID
+    return Credential(
+        user_id=user_id,
+        name=name,
+        credential_type="api_key",
+        provider_name=provider_name,
+        data_encrypted=json.dumps(data or {"api_key": "secret"}),
+    )
+
+
+# ---------------------------------------------------------------------------
 # MCP server group endpoints (M1: list / patch / delete)
 # ---------------------------------------------------------------------------
 
@@ -375,6 +414,96 @@ async def test_delete_mcp_server_cascades_tools(
     # Deleting a missing server returns 404
     resp = await client.delete(f"/api/tools/mcp-servers/{server_id}")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_custom_tool_credential(
+    client: AsyncClient, db: AsyncSession, monkeypatch
+):
+    """PATCH /api/tools/{id}/auth-config updates a CUSTOM tool's credential_id
+    and rejects modifications to another user's CUSTOM tool with 404.
+    """
+    monkeypatch.setattr(
+        "app.services.encryption._get_fernet", lambda: None, raising=False
+    )
+
+    cred = _make_credential()
+    db.add(cred)
+    await db.flush()
+
+    tool = _make_custom_tool()
+    db.add(tool)
+    await db.commit()
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}/auth-config",
+        json={"credential_id": str(cred.id)},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["credential_id"] == str(cred.id)
+
+    await db.refresh(tool)
+    assert tool.credential_id == cred.id
+
+    # Another user's CUSTOM tool returns 404
+    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
+    other_tool = _make_custom_tool(user_id=other_user_id, name="stranger_custom_tool")
+    db.add(other_tool)
+    await db.commit()
+
+    resp = await client.patch(
+        f"/api/tools/{other_tool.id}/auth-config",
+        json={"credential_id": str(cred.id)},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_update_custom_tool_rejects_other_users_credential(
+    client: AsyncClient, db: AsyncSession
+):
+    """IDOR: binding another user's credential to my own CUSTOM tool returns 404."""
+    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
+    other_cred = _make_credential(user_id=other_user_id, name="Stranger Key")
+    db.add(other_cred)
+    await db.flush()
+
+    tool = _make_custom_tool()
+    db.add(tool)
+    await db.commit()
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}/auth-config",
+        json={"credential_id": str(other_cred.id)},
+    )
+    assert resp.status_code == 404
+    await db.refresh(tool)
+    assert tool.credential_id is None
+
+
+@pytest.mark.asyncio
+async def test_update_custom_tool_unset_credential(
+    client: AsyncClient, db: AsyncSession
+):
+    """PATCH with {credential_id: null} clears a CUSTOM tool's credential link."""
+    cred = _make_credential()
+    db.add(cred)
+    await db.flush()
+
+    tool = _make_custom_tool(credential_id=cred.id)
+    db.add(tool)
+    await db.commit()
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}/auth-config",
+        json={"credential_id": None},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["credential_id"] is None
+
+    await db.refresh(tool)
+    assert tool.credential_id is None
 
 
 @pytest.mark.asyncio

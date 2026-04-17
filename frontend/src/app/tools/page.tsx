@@ -27,6 +27,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddToolDialog } from '@/components/tool/add-tool-dialog'
 import { PrebuiltAuthDialog } from '@/components/tool/prebuilt-auth-dialog'
+import { CustomAuthDialog } from '@/components/tool/custom-auth-dialog'
 import { MCPServerGroupCard } from '@/components/tool/mcp-server-group-card'
 import {
   Dialog,
@@ -85,10 +86,13 @@ const TOOL_TYPE_STYLES: Record<
   },
 }
 
-type PrebuiltStatus = 'not_configured' | 'configured'
+type AuthStatus = 'not_configured' | 'configured'
 
-function getPrebuiltStatus(tool: Tool): PrebuiltStatus {
+function getAuthStatus(tool: Tool): AuthStatus {
   if (tool.credential_id) return 'configured'
+  // Note: server masks string values to "***" before sending. The mask itself
+  // is non-empty, so a configured legacy auth_config still resolves to 'configured'
+  // here — that's intentional (mask presence == real value exists on server).
   const hasAuth =
     tool.auth_config &&
     Object.values(tool.auth_config).some((v) => typeof v === 'string' && v.length > 0)
@@ -96,8 +100,8 @@ function getPrebuiltStatus(tool: Tool): PrebuiltStatus {
   return 'not_configured'
 }
 
-const PREBUILT_STATUS_STYLES: Record<
-  PrebuiltStatus,
+const AUTH_STATUS_STYLES: Record<
+  AuthStatus,
   { color: string; badgeClass: string; icon: typeof KeyIcon }
 > = {
   not_configured: {
@@ -139,11 +143,17 @@ function ToolCard({
   onShowDetail: (tool: Tool) => void
 }) {
   const t = useTranslations('tool.page')
+  const tCustomAuth = useTranslations('tool.customAuth')
   const meta = TOOL_TYPE_STYLES[tool.type] ?? TOOL_TYPE_STYLES.custom
   const Icon = meta.icon
   const isPrebuilt = tool.type === 'prebuilt'
-  const prebuiltStatus = isPrebuilt ? getPrebuiltStatus(tool) : null
-  const pStyle = prebuiltStatus ? PREBUILT_STATUS_STYLES[prebuiltStatus] : null
+  const isCustom = tool.type === 'custom'
+  const showAuth = isPrebuilt || isCustom
+  const authStatus = showAuth ? getAuthStatus(tool) : null
+  // Prebuilt cards swap their type badge for an auth-status badge (system tools
+  // are always present, so auth-state IS the salient signal). Custom cards keep
+  // their "Custom" type badge and surface auth-state only via the footer button.
+  const pStyle = isPrebuilt && authStatus ? AUTH_STATUS_STYLES[authStatus] : null
   const isDeletable = !tool.is_system
 
   const badgeTexts: Record<string, string> = {
@@ -153,12 +163,17 @@ function ToolCard({
     custom: t('badge.custom'),
   }
 
-  const prebuiltTexts: Record<PrebuiltStatus, { badge: string; buttonLabel: string }> = {
+  const prebuiltTexts: Record<AuthStatus, { badge: string; buttonLabel: string }> = {
     not_configured: { badge: t('prebuilt.notConfigured'), buttonLabel: t('prebuilt.setKey') },
     configured: { badge: t('prebuilt.configured'), buttonLabel: t('prebuilt.changeKey') },
   }
 
-  const pText = prebuiltStatus ? prebuiltTexts[prebuiltStatus] : null
+  const customAuthLabels: Record<AuthStatus, string> = {
+    not_configured: tCustomAuth('setKey'),
+    configured: tCustomAuth('changeKey'),
+  }
+
+  const pText = isPrebuilt && authStatus ? prebuiltTexts[authStatus] : null
 
   return (
     <Card
@@ -217,6 +232,34 @@ function ToolCard({
               </Button>
             }
           />
+        ) : isCustom && authStatus ? (
+          <>
+            <CustomAuthDialog
+              tool={tool}
+              trigger={
+                <Button variant="outline" size="sm" className="flex-1 cursor-pointer">
+                  <KeyIcon className="size-3.5" data-icon="inline-start" />
+                  {customAuthLabels[authStatus]}
+                </Button>
+              }
+            />
+            {isDeletable && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground hover:text-destructive"
+                onClick={() => onDelete(tool)}
+                disabled={isDeleting}
+                aria-label={t('deleteButton')}
+              >
+                {isDeleting ? (
+                  <Loader2Icon className="size-3.5 animate-spin" />
+                ) : (
+                  <Trash2Icon className="size-3.5" />
+                )}
+              </Button>
+            )}
+          </>
         ) : isDeletable ? (
           <Button
             variant="ghost"

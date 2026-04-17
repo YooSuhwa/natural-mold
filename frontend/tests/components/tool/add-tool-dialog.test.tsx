@@ -93,13 +93,13 @@ describe('AddToolDialog', () => {
     expect(screen.getByText('파라미터 (JSON Schema)')).toBeInTheDocument()
   })
 
-  it('shows custom tool auth options', async () => {
+  it('shows custom tool credential select with "인증 없음" default', async () => {
     const user = userEvent.setup()
     renderDialog()
     await user.click(screen.getByText('도구 추가'))
     await user.click(screen.getByText('직접 정의'))
-    // Custom auth types: 없음, API Key, Bearer
-    expect(screen.getByText('Bearer')).toBeInTheDocument()
+    // MCP 탭과 동일하게 credential select 노출 — 기본값은 "인증 없음"
+    expect(screen.getAllByText('인증 없음').length).toBeGreaterThan(0)
   })
 
   it('submits MCP server form when filled and clicked', async () => {
@@ -147,14 +147,23 @@ describe('AddToolDialog', () => {
     )
   })
 
-  it('shows custom auth api key field when auth type selected', async () => {
+  it('omits credential_id payload when 인증 없음 is selected', async () => {
     const user = userEvent.setup()
     renderDialog()
     await user.click(screen.getByText('도구 추가'))
     await user.click(screen.getByText('직접 정의'))
 
-    const bearerRadio = screen.getByDisplayValue('bearer')
-    await user.click(bearerRadio)
-    expect(screen.getByPlaceholderText('sk-xxxxxxxxxxxx')).toBeInTheDocument()
+    await user.type(screen.getByPlaceholderText('날씨 조회'), 'Weather API')
+    await user.type(
+      screen.getByPlaceholderText('https://api.example.com/weather'),
+      'https://api.weather.com',
+    )
+
+    await user.click(screen.getByRole('button', { name: '등록' }))
+
+    const callArg = mockCreateCustomTool.mock.calls[0][0] as Record<string, unknown>
+    expect(callArg).not.toHaveProperty('credential_id')
+    expect(callArg).not.toHaveProperty('auth_type')
+    expect(callArg).not.toHaveProperty('auth_config')
   })
 })

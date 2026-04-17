@@ -658,6 +658,13 @@
       },
       "configured": "API 키가 설정되어 있습니다"
     },
+    "customAuth": {
+      "title": "{toolName} 인증 설정",
+      "description": "이 도구가 사용할 자격증명을 선택합니다.",
+      "configured": "인증이 설정되어 있습니다.",
+      "setKey": "인증 설정",
+      "changeKey": "인증 변경"
+    },
     "mcpServer": {
       "toolCount": "{count}개 도구",
       "authNotSet": "인증 미설정",

@@ -254,22 +254,25 @@ async def update_tool_auth_config(
 ) -> Tool | None:
     """Partial update of a tool's auth_config / credential_id.
 
-    Only fields present in ``updates`` are mutated. For MCP tools the caller
-    must own the tool row. PREBUILT tools are shared (is_system=True) —
-    mutation of shared rows remains a known limitation and will be addressed
-    by per-user credential binding in a future change.
+    Only fields present in ``updates`` are mutated. For MCP and CUSTOM tools
+    the caller must own the tool row. PREBUILT tools are shared
+    (is_system=True) — mutation of shared rows remains a known limitation and
+    will be addressed by per-user credential binding in a future change.
     """
     result = await db.execute(select(Tool).where(Tool.id == tool_id))
     tool = result.scalar_one_or_none()
     if not tool:
         return None
-    if tool.type not in (ToolType.PREBUILT, ToolType.MCP):
+    if tool.type not in (ToolType.PREBUILT, ToolType.MCP, ToolType.CUSTOM):
         return None
-    if tool.type == ToolType.MCP and tool.user_id != user_id:
+    if tool.type in (ToolType.MCP, ToolType.CUSTOM) and tool.user_id != user_id:
         return None
 
     await _apply_credential_update(tool, updates, db, user_id)
     if "auth_config" in updates:
+        # Replace semantics: passing {} clears existing inline auth.
+        # All three auth dialogs (Prebuilt/Custom/MCPServer) intentionally send
+        # {} alongside credential_id to wipe any legacy inline secret.
         tool.auth_config = updates["auth_config"]
 
     await db.commit()
