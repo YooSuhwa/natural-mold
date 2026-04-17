@@ -63,6 +63,7 @@ async def test_mcp_connection(
 
     from app.agent_runtime.mcp_client import test_mcp_connection as mcp_test
     from app.models.tool import MCPServer
+    from app.services.credential_service import resolve_server_auth
 
     result = await db.execute(
         select(MCPServer).where(MCPServer.id == server_id, MCPServer.user_id == user.id)
@@ -71,7 +72,8 @@ async def test_mcp_connection(
     if not server:
         raise mcp_server_not_found()
 
-    test_result = await mcp_test(server.url, server.auth_config)
+    effective_auth = resolve_server_auth(server)
+    test_result = await mcp_test(server.url, effective_auth)
     return test_result
 
 

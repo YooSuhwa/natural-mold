@@ -66,6 +66,7 @@ class MCPServerResponse(BaseModel):
     name: str
     url: str
     auth_type: str
+    credential_id: uuid.UUID | None = None
     status: str
     tools: list[ToolResponse]
     created_at: datetime

@@ -85,6 +85,18 @@ def resolve_credential_data(credential: Credential) -> dict[str, str]:
     return json.loads(decrypt_api_key(credential.data_encrypted))
 
 
+def resolve_server_auth(server: MCPServer) -> dict[str, str] | None:
+    """Resolve the effective auth_config for an MCP server.
+
+    Credential (if linked) takes precedence over inline auth_config. This
+    mirrors the precedence used at chat runtime so `test_mcp_connection`
+    and agent execution agree on what's sent to the MCP server.
+    """
+    if server.credential_id and server.credential:
+        return resolve_credential_data(server.credential)
+    return server.auth_config
+
+
 async def get_usage_count(
     db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
 ) -> dict[str, int]:
