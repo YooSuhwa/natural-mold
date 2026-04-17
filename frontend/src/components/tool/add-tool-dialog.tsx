@@ -35,8 +35,9 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   // MCP form state
   const [mcpName, setMcpName] = useState('')
   const [mcpUrl, setMcpUrl] = useState('')
-  const [mcpMode, setMcpMode] = useState<string>(CREDENTIAL_NONE)
+  const [mcpCredentialId, setMcpMode] = useState<string>(CREDENTIAL_NONE)
   const [credentialDialogOpen, setCredentialDialogOpen] = useState(false)
+  const [credentialTarget, setCredentialTarget] = useState<'mcp' | 'custom'>('mcp')
   const [discoveredTools, setDiscoveredTools] = useState<Tool[] | null>(null)
   const registerMCP = useRegisterMCPServer()
 
@@ -46,8 +47,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   const [customApiUrl, setCustomApiUrl] = useState('')
   const [customMethod, setCustomMethod] = useState('GET')
   const [customParams, setCustomParams] = useState('')
-  const [customAuthType, setCustomAuthType] = useState('none')
-  const [customApiKey, setCustomApiKey] = useState('')
+  const [customCredentialId, setCustomCredentialId] = useState<string>(CREDENTIAL_NONE)
   const createCustomTool = useCreateCustomTool()
 
   const availableCredentials = credentials ?? []
@@ -62,8 +62,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     setCustomApiUrl('')
     setCustomMethod('GET')
     setCustomParams('')
-    setCustomAuthType('none')
-    setCustomApiKey('')
+    setCustomCredentialId(CREDENTIAL_NONE)
   }
 
   function handleClose() {
@@ -73,9 +72,9 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
 
   async function handleMCPSubmit() {
     const payload =
-      mcpMode === CREDENTIAL_NONE
+      mcpCredentialId === CREDENTIAL_NONE
         ? { name: mcpName, url: mcpUrl, auth_type: 'none' as const }
-        : { name: mcpName, url: mcpUrl, credential_id: mcpMode }
+        : { name: mcpName, url: mcpUrl, credential_id: mcpCredentialId }
     const result = await registerMCP.mutateAsync(payload)
     setDiscoveredTools(result.tools)
   }
@@ -89,15 +88,13 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
         return // Invalid JSON
       }
     }
-    const authConfig = customAuthType !== 'none' ? { api_key: customApiKey } : undefined
     await createCustomTool.mutateAsync({
       name: customName,
       description: customDescription || undefined,
       api_url: customApiUrl,
       http_method: customMethod,
       parameters_schema: parsedParams,
-      auth_type: customAuthType !== 'none' ? customAuthType : undefined,
-      auth_config: authConfig,
+      ...(customCredentialId !== CREDENTIAL_NONE ? { credential_id: customCredentialId } : {}),
     })
     resetForms()
     setOpen(false)
@@ -188,9 +185,12 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                 <div className="space-y-2">
                   <label className="text-sm font-medium">{t('auth.label')}</label>
                   <CredentialSelect
-                    value={mcpMode}
+                    value={mcpCredentialId}
                     onValueChange={setMcpMode}
-                    onCreateRequested={() => setCredentialDialogOpen(true)}
+                    onCreateRequested={() => {
+                      setCredentialTarget('mcp')
+                      setCredentialDialogOpen(true)
+                    }}
                     credentials={availableCredentials}
                   />
                 </div>
@@ -264,37 +264,17 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('custom.auth')}</label>
-                  <div className="flex gap-4 text-sm">
-                    {[
-                      { value: 'none', label: t('auth.none') },
-                      { value: 'api_key', label: t('auth.apiKey') },
-                      { value: 'bearer', label: t('auth.bearer') },
-                    ].map((opt) => (
-                      <label key={opt.value} className="flex items-center gap-1.5">
-                        <input
-                          type="radio"
-                          name="custom-auth"
-                          value={opt.value}
-                          checked={customAuthType === opt.value}
-                          onChange={(e) => setCustomAuthType(e.target.value)}
-                        />
-                        {opt.label}
-                      </label>
-                    ))}
-                  </div>
+                  <label className="text-sm font-medium">{t('auth.label')}</label>
+                  <CredentialSelect
+                    value={customCredentialId}
+                    onValueChange={setCustomCredentialId}
+                    onCreateRequested={() => {
+                      setCredentialTarget('custom')
+                      setCredentialDialogOpen(true)
+                    }}
+                    credentials={availableCredentials}
+                  />
                 </div>
-                {customAuthType !== 'none' && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">{t('auth.apiKey')}</label>
-                    <Input
-                      value={customApiKey}
-                      onChange={(e) => setCustomApiKey(e.target.value)}
-                      type="password"
-                      placeholder={t('auth.apiKeyPlaceholder')}
-                    />
-                  </div>
-                )}
                 <DialogFooter>
                   <Button
                     onClick={handleCustomSubmit}
@@ -316,7 +296,10 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
         <CredentialFormDialog
           open={credentialDialogOpen}
           onOpenChange={setCredentialDialogOpen}
-          onCreated={(c) => setMcpMode(c.id)}
+          onCreated={(c) => {
+            if (credentialTarget === 'mcp') setMcpMode(c.id)
+            else setCustomCredentialId(c.id)
+          }}
         />
       </DialogContent>
     </Dialog>

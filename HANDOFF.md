@@ -2,81 +2,72 @@
 
 ## 최근 완료 (2026-04-17)
 
-**MCP 서버 단위 그룹화 (feature/mcp-server-grouping)**
+**브랜치 `feature/custom-tool-credentials` — 커스텀 도구 credential 통합 (백로그 B)**
+- Backend: `update_tool_auth_config`가 CUSTOM 타입 허용 + owner 체크 (MCP/CUSTOM 둘 다)
+- Backend 테스트: `test_update_custom_tool_credential` / `test_update_custom_tool_unset_credential` 신규 2건 + IDOR 의미 반전 테스트 1건 갱신
+- Frontend: 신규 `custom-auth-dialog.tsx` (provider 필터 없음, 모든 credential 노출)
+- Frontend: `add-tool-dialog.tsx` 커스텀 탭 inline `customAuthType`/`customApiKey` 제거 + `CredentialSelect` 통합
+- Frontend: `tools/page.tsx` ToolCard isCustom 분기에 "인증 설정" 버튼 + 상태 배지 (Prebuilt와 동일 UX)
+- Frontend: `add-tool-dialog.test.tsx` 신규 credential UI에 맞게 갱신 (11/11 PASS)
+- i18n: `tool.customAuth.*` 5개 key 추가
+- DB 마이그레이션: 없음 (기존 `tool.credential_id` 컬럼 재사용)
+- 검증: backend ruff PASS, pytest **539 passed**; frontend lint PASS (0 errors, 1 pre-existing warning), build PASS (14 routes, 3.8s)
+
+**PR #47 머지** — MCP 서버 단위 그룹화 + 서버 단위 인증 (`8dee7e0`)
 - Backend: `GET/PATCH/DELETE /api/tools/mcp-servers[/{id}]` 신규 라우트 3개
-- Backend: `chat_service.build_tools_config`의 MCP precedence 분리 (server-level credential/auth만, tool-level 무시)
-- Backend: `tool_service.list_mcp_server_items / update_mcp_server / delete_mcp_server` 추가 (cascade는 ORM `delete-orphan`)
-- Frontend: `MCPServerGroupCard` (Collapsible 자체 구현 + DropdownMenu) + 서버 단위 인증/이름변경 다이얼로그
-- Frontend: `tools/page.tsx` 4 섹션 렌더 (builtin / prebuilt / mcp 그룹 / custom)
-- Frontend: 기존 `mcp-auth-dialog.tsx` 삭제, `tool.mcpAuth.*` → `tool.mcpServer.*` i18n 정리
-- DB 마이그레이션: 없음 (스키마 변경 0)
-- 검증: backend `ruff` PASS, `pytest` 536 passed (신규 5건 포함); frontend `lint` PASS (0 errors, 1 pre-existing warning), `build` PASS (14 routes)
+- Backend: `chat_service.build_tools_config` MCP precedence 분리 (server-level만, tool-level 무시)
+- Backend 보안: `ToolResponse.auth_config` 마스킹 (`***`) + round-trip 거부 validator
+- Frontend: `MCPServerGroupCard`(자체 Collapsible) + 서버 단위 Auth/Rename 다이얼로그
+- DB 마이그레이션: 없음
 
-**수동 E2E 가이드** (백엔드 + 프론트엔드 실행 필요)
-1. `/tools` → "도구 추가" → "MCP 서버" → URL 입력 → 등록 (N tools 발견)
-2. MCP 섹션에 그룹 카드 1개 + "N개 도구 · 인증 미설정" 배지 표시
-3. 카드 펼침 → 도구 N개 sub-card 표시 (인증/삭제 버튼 없음)
-4. [⋯] → "인증 설정" → 크리덴셜 선택 또는 "+ 새로 만들기" → 저장 → 배지 갱신
-5. 에이전트 채팅에서 이 MCP 도구 호출 → 새 credential로 인증 성공
-6. [⋯] → "이름 변경" → 새 이름 반영
-7. [⋯] → "삭제" → "N개의 도구가 함께 삭제됩니다" 경고 → 확인 → 그룹 카드 + N개 도구 모두 사라짐
-8. `/connections`에서 credential 사용 카운트(`mcp_server_count`) 정확히 표시되는지
+**PR #46 머지 완료 (이전)** — 중앙 크리덴셜 관리 (n8n 스타일, Fernet 암호화, `/connections` 페이지)
 
-**회귀 확인 포인트**
-- Prebuilt / Custom 도구 섹션 기존과 동일하게 동작
-- `/connections` 페이지 변경 없음
-- 채팅에서 prebuilt/custom 도구 호출 시 인증 정상
+## 다음 작업 — credentials list N+1 복호화 제거 (백로그 C)
 
-**PR #46 머지 완료 (이전 작업)** — 중앙 크리덴셜 관리 시스템 (n8n 스타일)
-- credentials 테이블 + Fernet 암호화 + Provider 레지스트리
-- `/connections` 페이지 + `CredentialSelect` 공통 컴포넌트
-- 세 도구 다이얼로그(add-tool / mcp-auth / prebuilt-auth) credential Select 통합
-- 중첩 다이얼로그 인라인 크리덴셜 생성 (`CredentialFormDialog`)
-- PATCH IDOR 방지 + 부분 업데이트 시맨틱 수정
-- ENCRYPTION_KEY 미설정 시 credential 생성 거부 (503)
-- `test_mcp_connection` credential 반영 (`resolve_server_auth` 헬퍼)
+- 현재 `GET /api/credentials`는 행마다 Fernet 복호화로 field key 목록을 조회 → N+1
+- 해결: `credentials.field_keys`에 비암호화 캐시 컬럼 추가 (값은 여전히 암호화)
+- Alembic 마이그레이션 필요 (`field_keys: ARRAY[String]` 또는 `JSONB`)
+- 작성/갱신 시 cache 동기화 (`credential_service.create_credential`, `update_credential`)
+- 목록 응답 스키마는 그대로 (캐시는 내부 최적화)
 
-## 다음 작업 — 커스텀 도구 탭 credential 통합 (백로그 B)
+**참조 파일**:
+- `backend/app/services/credential_service.py` — 현재 list/get 로직
+- `backend/app/models/credential.py` — 컬럼 추가 위치
+- `backend/alembic/versions/` — 새 마이그레이션 파일
 
-### 핵심 목표
-- 커스텀 도구 추가/편집 다이얼로그에 `CredentialSelect` 통합
-- 도구 카드에서 credential 인디케이터 표시
-- credential UI 일관성 완성 (prebuilt / mcp 와 동일한 UX)
-
-## 백로그 (추천 진행 순서)
+## 백로그 (추천 순서)
 
 | # | 항목 | 규모 | 비고 |
 |---|------|------|------|
-| **B** | **커스텀 도구 탭 credential 통합** (다음 작업) | 중 | credential UI 일관성 완성 |
-| C | credentials list N+1 복호화 제거 | 작음 | `field_keys` 캐시 컬럼 추가 (Alembic 마이그레이션 필요). Agent 3 효율성 리뷰 지적 |
-| D | `lazy="joined"` → `lazy="select"` + selectinload | 중 | 범용 성능 개선. `Tool.credential`, `MCPServer.credential` 등 |
-| E | PREBUILT 공유 행 per-user credential binding | 큼 | ultrareview `bug_032`. 아키텍처 변경 필요 (새 매핑 테이블 또는 `AgentToolLink.config` 활용). PoC 단계라 우선순위 낮춤 |
-
-## 남아있는 마이너 이슈 (우선순위 낮음)
-
-- `bug_009` — PrebuiltAuthDialog 에서 바인딩된 credential 의 provider 가 `detectProvider` 결과와 다르면 Select 에 공란 표시. 엣지 케이스. 수정책: `matchingCredentials` 에 현재 바인딩된 cred 를 fallback 으로 포함
-- `tests/components/chat/*`, `tests/pages/chat.test.tsx`, `tests/pages/agent-*` — 이전 리팩토링으로 깨진 dead test. 별도 정리 필요
+| **C** | **credentials list N+1 복호화 제거** | 작음 | `field_keys` 캐시 컬럼 (Alembic 필요) |
+| D | `lazy="joined"` → `selectinload` 전환 | 중 | 범용 성능 개선 |
+| E | PREBUILT 공유 행 per-user credential binding | 큼 | 아키텍처 변경 (PoC라 우선순위 낮음) |
+| F | `CredentialPickerDialog` 공통 셸 추출 | 중 | prebuilt/mcp-server/custom auth 다이얼로그 3개 중복 제거 |
 
 ## 주의사항
 
-- **ENCRYPTION_KEY 필수** — `.env`에 설정되어야 credential 생성 가능
-- **pre-existing 테스트 실패** — `tests/components/chat/*`, `tests/pages/chat.test.tsx`, `tests/pages/agent-*` 는 이전 리팩토링으로 깨진 dead test (별도 정리 필요)
-- `.claude/worktrees/` 는 로컬 워킹 디렉토리 — 커밋 금지
-- `link_credential_to_tool/mcp_server` 함수는 이미 제거됨 — MCP 그룹화 PR에서 새 `update_mcp_server` 서비스로 대체
+- **ENCRYPTION_KEY 필수** — `.env`에 설정 (없으면 503). `0YHrH9wDgLoJ...JYM=` 사용 중 (이 키 백업/관리 필요)
+- **pre-existing 깨진 테스트** — `tests/components/chat/*`, `tests/pages/chat.test.tsx`, `tests/pages/agent-*` (별도 정리 필요)
+- `.claude/worktrees/` 는 .gitignore 추가됨 (PR #46)
+- 보안 마스킹 sentinel `***` 는 PATCH로 다시 보내면 422 — UI는 sentinel 값을 다시 제출하지 않음
+- 백로그 B 작업 중 발견된 패턴: 의미 반전 변경 시 매칭되는 기존 테스트를 keyword grep으로 먼저 찾는 것이 효율적 (예: `non_prebuilt`, `not in.*PREBUILT`)
+- `AddToolDialog`는 `CredentialFormDialog`를 MCP/custom 두 탭이 공유 — `credentialTarget: 'mcp' | 'custom'` state로 분기
 
-## 관련 파일 (커스텀 도구 credential 통합 작업 시 참조)
+## 관련 파일 (백로그 C 작업 시)
 
 | 목적 | 경로 |
 |------|------|
-| 커스텀 도구 추가 다이얼로그 | `frontend/src/components/tool/add-tool-dialog.tsx` |
-| 도구 목록 페이지 | `frontend/src/app/tools/page.tsx` |
-| 재사용 컴포넌트 | `frontend/src/components/tool/credential-select.tsx`, `credential-form-dialog.tsx`, `prebuilt-auth-dialog.tsx` |
-| credential resolution | `backend/app/services/chat_service.py:build_tools_config` (비MCP 분기) |
-| 커스텀 도구 등록 | `backend/app/routers/tools.py` (POST `/`), `backend/app/services/tool_service.py:create_custom_tool` |
+| 크리덴셜 서비스 (list/get) | `backend/app/services/credential_service.py` |
+| 크리덴셜 모델 | `backend/app/models/credential.py` |
+| 크리덴셜 라우터 | `backend/app/routers/credentials.py` |
+| 응답 스키마 | `backend/app/schemas/credential.py` |
+| Alembic 마이그레이션 | `backend/alembic/versions/` |
+| 크리덴셜 테스트 | `backend/tests/test_credentials*.py` |
 
 ## 마지막 상태
 
-- **브랜치**: `feature/mcp-server-grouping` (커밋 대기, working tree에 변경 15 + 신규 4)
-- **베이스 커밋**: `8685320` (main, PR #46 머지) — 아직 신규 커밋 없음
-- **DB 상태**: 초기화 후 `alembic upgrade head` 까지 적용됨 (스키마 변경 없음)
-- **검증**: Backend `ruff` PASS, `pytest` 536 passed (신규 5건 포함); Frontend `lint` PASS (0 errors, 1 pre-existing warning), `build` PASS (14 routes, 3.7s)
+- **브랜치**: `feature/custom-tool-credentials` (커밋 미완료, working tree에 변경 12파일 + 신규 1파일)
+- **최근 main 커밋**: `8dee7e0` Merge pull request #47 (백로그 B 작업의 base)
+- **검증**: Backend ruff PASS, pytest **539 passed** (신규 2건); Frontend `lint`/`build` PASS, `add-tool-dialog.test.tsx` 11/11 PASS
+- **DB 상태**: 스키마 변경 없음 (`alembic upgrade head` 변동 없음)
+- **PR 준비**: 단일 커밋으로 묶어 `feat(tools): custom 도구 credential 통합` 권장 (백엔드 + 프론트 함께 머지되어야 의미 있음)

@@ -1,69 +1,70 @@
-# progress.txt — feature/mcp-server-grouping
+# progress.txt — feature/custom-tool-credentials
 
-팀 공유 메모리. 모든 팀원이 시작 전 읽고, 완료/실패 후 update.
+팀 공유 메모리. (이전 작업의 progress는 `tasks/progress-credential-mgmt.txt`로 archive됨)
 
-(이전 작업의 progress는 `tasks/progress-credential-mgmt.txt`로 archive됨)
+## 작업 컨텍스트
 
-## Codebase Patterns
+PR #46 (credential 시스템) + PR #47 (MCP 그룹화) 머지 완료. prebuilt와 MCP는 credential UI 통합 완료. 이번에는 **커스텀 도구**도 동일 패턴 적용 (백로그 B).
 
-### Backend (FastAPI + SQLAlchemy async)
-- Router → Service → Model 계층, 비즈니스 로직은 services/
-- 모든 DB 접근은 async (`AsyncSession`)
-- 의존성 주입: `Depends(get_db)`, `Depends(get_current_user)` (mock user, app/dependencies.py)
-- 스키마: Pydantic, `model_config = {"from_attributes": True}`
-- PATCH 부분 업데이트: `data.model_dump(exclude_unset=True)`로 null vs missing 구분
-- 에러 코드: `app/error_codes.py`에 정의된 헬퍼 사용 (mcp_server_not_found 이미 존재)
-- ToolType StrEnum: BUILTIN/PREBUILT/CUSTOM/MCP
+## 사전 확인된 사실
 
-### Frontend (Next.js 16 + React 19 + TanStack Query + Jotai)
-- ⚠️ Next.js 16 — 기존 Next.js와 다름. 코드 작성 전 frontend/AGENTS.md 확인
-- API 클라이언트: lib/api/*.ts (apiFetch 래퍼)
-- TanStack Query hooks: lib/hooks/use-*.ts
-- queryKey invalidate 시 ['tools']와 ['mcp-servers'] 둘 다 무효화 (도구 카드 인증 표시 갱신)
-- shadcn/ui: components/ui/ — Accordion/Collapsible 미설치 (자체 구현 사용)
-- 'use client' 최소화, any 금지 → unknown + 타입 가드
-- i18n: frontend/messages/ko.json + next-intl, useTranslations('tool.page') 패턴
+- `tool_service.create_custom_tool` 이미 `credential_id` 받음 (`tool_service.py:54-72`)
+- `tool_service.update_tool_auth_config` PREBUILT/MCP만 허용 — **CUSTOM 거부 필요 수정** (`tool_service.py:266-269`)
+- `add-tool-dialog.tsx` 커스텀 탭에 credential 필드 없음 (`customApiKey` 단일 입력만)
+- `tools/page.tsx` ToolCard isCustom 분기는 "삭제" 버튼만, "인증 설정" 없음
+- 참조: `prebuilt-auth-dialog.tsx`(provider 필터), `mcp-server-auth-dialog.tsx`(서버 단위)
 
-## 핵심 데이터 모델 (사전 확인)
-
-- `MCPServer.tools`: `cascade="all, delete-orphan"` → 서버 삭제 시 도구 자동 cascade (`backend/app/models/tool.py:52-54`)
-- `MCPServer.credential_id`: `ondelete="SET NULL"` (`tool.py:43-45`)
-- `tool_service.get_mcp_servers()` 이미 정의됨 (`tool_service.py:119-126`), 라우터 미노출
-- `chat_service.build_tools_config()` precedence (`chat_service.py:171-190`): 현재 tool.cred → server.cred → tool.auth → server.auth
-- `credential_service.resolve_server_auth()` 헬퍼 존재 (`credential_service.py:106-115`) → 재사용
-
-## 결정된 설계
+## 결정된 설계 (사용자 confirm)
 
 | 항목 | 결정 |
 |---|---|
-| 라우트 prefix | `/api/tools/mcp-servers` (복수, REST 컬렉션) |
-| Collapsible | 자체 구현 (`useState + chevron icon`) |
-| 그룹 내 도구 삭제 | 미지원 (서버 단위 삭제만) |
-| 마이그레이션 | 없음 (스키마 변경 0) |
-| MCP 도구 precedence | server.cred → server.auth (tool 레벨 무시) |
+| Provider 필터 | **모든 credential 노출** (필터링 없음) |
+| Inline 필드 | **제거 + credential 단일화** (customAuthType/customApiKey 모두 삭제) |
+| 편집 위치 | **ToolCard에 "인증 설정" 버튼** (Prebuilt 패턴) |
+| 신규 컴포넌트 | `custom-auth-dialog.tsx` 별도 신설 (백로그 F에서 통합) |
+
+## Codebase Patterns (이전 PR에서 확립)
+
+### Backend (FastAPI + SQLAlchemy async)
+- Router → Service → Model 계층
+- 의존성 주입: `Depends(get_db)`, `Depends(get_current_user)` (mock user)
+- PATCH 부분 업데이트: `data.model_dump(exclude_unset=True)` + `_apply_credential_update` 헬퍼 (이미 존재)
+- ToolType StrEnum: BUILTIN/PREBUILT/CUSTOM/MCP
+- IDOR 방어: user_id 미스매치 시 None 반환 → 라우터에서 404
+- ToolResponse는 `auth_config`를 마스킹 (`***`) — round-trip 거부 validator 적용됨
+
+### Frontend (Next.js 16 + React 19 + TanStack Query)
+- shadcn/ui: components/ui/
+- API 클라이언트: lib/api/*.ts (`apiFetch` 래퍼)
+- TanStack Query hooks: lib/hooks/use-*.ts
+- queryKey invalidate: PATCH는 ['tools']만, register/delete만 ['mcp-servers']까지
+- 'use client' 최소화, any 금지 → unknown + 타입 가드
+- i18n: frontend/messages/ko.json + next-intl
+
+## 재사용 컴포넌트
+
+- `CredentialSelect` (`components/tool/credential-select.tsx`)
+- `CredentialFormDialog` (`components/tool/credential-form-dialog.tsx`) — provider 자유 선택
+- `useCredentials` 훅
+- `useUpdateToolAuthConfig` 훅 — 백엔드 M1으로 CUSTOM도 동작
+- `getPrebuiltStatus` 로직 (`tools/page.tsx:90-96`)
 
 ## Gotchas
 
-- 기존 `POST /api/tools/mcp-server` (단수)는 그대로. 새 라우트만 복수형. 일관성 어색하지만 호환성 우선
-- `MCPServerListItem.credential` 응답에 CredentialBrief (id/name/provider_name) 포함 — data_encrypted 노출 금지
-- `Tool.mcp_server_id` FK는 DDL ondelete 없음 → ORM cascade에 의존. raw SQL DELETE는 안 됨
-- mcp-auth-dialog.tsx 삭제 시 import 위치 확인 필수 (현재는 tools/page.tsx만 import)
-- 사용자 메모: 별도 브랜치 작업 시 stash 대신 git worktree 사용 (이번엔 main에서 modified만 있어서 일반 브랜치)
-- ENCRYPTION_KEY 미설정 시 credential 생성 거부 (503)
+- 이전 PR과 동일하게 ENCRYPTION_KEY 필수 (이미 설정됨)
+- 마스킹 sentinel `***`는 PATCH로 다시 보내면 422 거부됨 — UI는 sentinel 값 다시 제출 안 함
+- 사용자 메모: 별도 브랜치 작업 시 stash 대신 worktree 사용 (이번엔 main에 modified 없으므로 일반 브랜치)
 
 ## 실패 교훈
 
-- 백엔드 M1 완료 시점에 추가:
-  - `list_mcp_server_items`는 `Tool` count 서브쿼리 + LEFT OUTER JOIN으로 단일 쿼리. `MCPServer.credential` lazy="joined"라 추가 selectinload 불필요.
-  - `chat_service.build_tools_config` MCP precedence 분리 시, 비MCP 분기에서 `tool.mcp_server.auth_config` 폴백을 함께 제거해야 함 (이전엔 `tool.type == MCP and ...` 가드로 묶여 있었음).
-  - 새 테스트에서 `Credential.data_encrypted`는 평문 JSON으로 두고 `chat_service.resolve_credential_data`를 patch.object로 모킹하면 ENCRYPTION_KEY 유무와 무관하게 결정적임.
+- M1 변경(`update_tool_auth_config`에 CUSTOM 허용) 시 `tests/test_tools_router_extended.py::test_update_auth_config_non_prebuilt_returns_404`가 회귀로 잡힘. 이 테스트의 전제(=CUSTOM 거부)가 의도적으로 뒤집힌 케이스이므로 "회귀 아님" — 새 동작(다른 사용자 CUSTOM → 404 IDOR)을 검증하도록 갱신함. 추후 비슷한 의미 반전 변경 시 매칭되는 기존 테스트 1차 grep 권장 (예: `non_prebuilt`, `not in.*PREBUILT` 등 키워드).
+- 신규 테스트는 `test_update_mcp_server_credential` 패턴을 그대로 차용 (monkeypatch encryption._get_fernet → None, Credential 시드, PATCH 검증, 다른 user_id 거부). `_seed_mcp_server_with_tools` 같은 헬퍼는 CUSTOM에 없으므로 인라인 시드.
+- (M2) `frontend/tests/components/tool/add-tool-dialog.test.tsx`에 `Bearer` radio + `sk-xxx` placeholder를 검증하는 테스트 2건이 inline auth 제거로 깨졌다. 신규 credential UI(인증 없음 디폴트 + payload에 credential_id 미포함)에 맞게 갱신해서 11/11 PASS 회복. M1과 동일 패턴 — 의미 반전 시 keyword grep으로 잠재 깨짐 테스트를 먼저 찾는 것이 효율적.
+- AddToolDialog는 `CredentialFormDialog`를 MCP/custom 두 탭이 공유한다. `onCreated` 콜백이 단일이라 어느 탭이 열었는지 추적이 필요 — `credentialTarget: 'mcp' | 'custom'` state로 분기 처리. 단일 다이얼로그를 두 트리거가 공유할 때 일반화 가능한 패턴.
 
 ## 빌드/테스트 명령
 
 ```bash
-# Backend
-cd backend && uv run ruff check . && uv run pytest tests/test_tools.py -v
-
-# Frontend
+cd backend && uv run ruff check . && uv run pytest
 cd frontend && pnpm lint && pnpm build
 ```

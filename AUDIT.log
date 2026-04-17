@@ -87,3 +87,15 @@
 [2026-04-17T14:45] bezos VERIFICATION_PASS M5 backend ruff PASS, pytest 536 passed; frontend lint PASS (0 errors, 1 pre-existing warning), build PASS (14 routes)
 [2026-04-17T14:45] satya MILESTONE_DONE M5 통합 검증 완료
 [2026-04-17T14:45] satya PROJECT_DONE "MCP 서버 단위 그룹화 (feature/mcp-server-grouping)"
+---
+[2026-04-17T15:45] satya PROJECT_START "커스텀 도구 credential 통합 (feature/custom-tool-credentials)"
+[2026-04-17T15:45] satya MILESTONE_CREATED M1,M2,M3
+[2026-04-17T15:45] satya BRANCH_CREATED feature/custom-tool-credentials from main@8dee7e0
+[2026-04-17T15:45] satya TEAM_FORMED jensen(M1 backend), zuckerberg(M2 frontend), bezos(M3 verify)
+[2026-04-17T15:50] zuckerberg MILESTONE_START M2 Frontend 커스텀 도구 credential UI 시작
+[2026-04-17T16:00] jensen MILESTONE_START M1 Backend — update_tool_auth_config CUSTOM 허용 + 테스트
+[2026-04-17T16:35] zuckerberg MILESTONE_DONE M2 Frontend 커스텀 도구 credential UI 완료 — custom-auth-dialog 신규+add-tool-dialog 커스텀 탭 통합+ToolCard isCustom 분기+i18n+테스트 갱신, lint 0 errors, build PASS, add-tool-dialog 11/11 PASS
+[2026-04-17T16:10] jensen MILESTONE_DONE M1 Backend — update_tool_auth_config CUSTOM 허용 + 테스트 완료 — ruff PASS, pytest 539 passed (신규 2건 PASS, 의미 반전 테스트 1건 갱신)
+[2026-04-17T17:00] bezos VERIFICATION_PASS M3 backend ruff PASS, pytest 539 passed; frontend lint PASS (0 errors, 1 pre-existing warning), build PASS (14 routes)
+[2026-04-17T17:00] satya MILESTONE_DONE M3 통합 검증 완료
+[2026-04-17T17:00] satya PROJECT_DONE "커스텀 도구 credential 통합 (feature/custom-tool-credentials)"

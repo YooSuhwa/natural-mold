@@ -123,16 +123,16 @@ async def test_update_auth_config_tool_not_found(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_update_auth_config_non_prebuilt_returns_404(client: AsyncClient):
-    """Updating auth_config on a custom tool should return 404 (service returns None)."""
+async def test_update_auth_config_other_user_custom_returns_404(client: AsyncClient):
+    """Updating auth_config on another user's CUSTOM tool returns 404 (IDOR guard)."""
     await _seed_user()
 
-    # Create a custom tool
+    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
     async with TestSession() as db:
         tool = Tool(
             type="custom",
-            user_id=TEST_USER_ID,
-            name="My Custom",
+            user_id=other_user_id,
+            name="Stranger Custom",
             description="custom tool",
         )
         db.add(tool)
