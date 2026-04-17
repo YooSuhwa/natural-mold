@@ -63,3 +63,6 @@ backend/data/
 
 # Claude
 .claude/plans/
+
+# Claude Code worktrees
+.claude/worktrees/

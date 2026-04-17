@@ -241,6 +241,30 @@ export interface MCPServer {
   created_at: string
 }
 
+export interface CredentialBrief {
+  id: string
+  name: string
+  provider_name: string
+}
+
+export interface MCPServerListItem {
+  id: string
+  name: string
+  url: string
+  auth_type: string
+  credential_id: string | null
+  credential: CredentialBrief | null
+  status: string
+  tool_count: number
+  created_at: string
+}
+
+export interface MCPServerUpdateRequest {
+  name?: string
+  credential_id?: string | null
+  auth_config?: Record<string, unknown>
+}
+
 export interface ToolCustomCreateRequest {
   name: string
   description?: string

@@ -9,7 +9,9 @@ from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import mcp_server_not_found, tool_not_found
 from app.schemas.tool import (
     MCPServerCreate,
+    MCPServerListItem,
     MCPServerResponse,
+    MCPServerUpdate,
     ToolAuthConfigUpdate,
     ToolCustomCreate,
     ToolResponse,
@@ -51,6 +53,39 @@ async def register_mcp_server(
     user: CurrentUser = Depends(get_current_user),
 ):
     return await tool_service.register_mcp_server(db, data, user.id)
+
+
+@router.get("/mcp-servers", response_model=list[MCPServerListItem])
+async def list_mcp_servers(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await tool_service.list_mcp_server_items(db, user.id)
+
+
+@router.patch("/mcp-servers/{server_id}", response_model=MCPServerResponse)
+async def update_mcp_server(
+    server_id: uuid.UUID,
+    data: MCPServerUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    updates = data.model_dump(exclude_unset=True)
+    server = await tool_service.update_mcp_server(db, server_id, updates, user.id)
+    if not server:
+        raise mcp_server_not_found()
+    return server
+
+
+@router.delete("/mcp-servers/{server_id}", status_code=204)
+async def delete_mcp_server(
+    server_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    deleted = await tool_service.delete_mcp_server(db, server_id, user.id)
+    if not deleted:
+        raise mcp_server_not_found()
 
 
 @router.post("/mcp-server/{server_id}/test")

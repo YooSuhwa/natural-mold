@@ -126,6 +126,126 @@ async def get_mcp_servers(db: AsyncSession, user_id: uuid.UUID) -> list[MCPServe
     return list(result.scalars().all())
 
 
+async def list_mcp_server_items(
+    db: AsyncSession, user_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    """List MCP servers as group items (server + tool_count + credential brief).
+
+    Used by /api/tools/mcp-servers. Credential is eagerly loaded via an explicit
+    selectinload (rather than relying on the relationship-level lazy="joined")
+    so the SELECT shape stays predictable when combined with the tool_count
+    subquery; tool_count is computed by a separate aggregated subquery joined
+    on mcp_server_id.
+    """
+    tool_count_subq = (
+        select(Tool.mcp_server_id, func.count(Tool.id).label("tool_count"))
+        .where(Tool.mcp_server_id.is_not(None))
+        .group_by(Tool.mcp_server_id)
+        .subquery()
+    )
+    result = await db.execute(
+        select(MCPServer, func.coalesce(tool_count_subq.c.tool_count, 0))
+        .outerjoin(tool_count_subq, MCPServer.id == tool_count_subq.c.mcp_server_id)
+        .where(MCPServer.user_id == user_id)
+        .options(selectinload(MCPServer.credential))
+        .order_by(MCPServer.created_at.desc())
+    )
+    items: list[dict[str, Any]] = []
+    for server, tool_count in result.all():
+        cred_brief = None
+        if server.credential_id and server.credential:
+            cred_brief = {
+                "id": server.credential.id,
+                "name": server.credential.name,
+                "provider_name": server.credential.provider_name,
+            }
+        items.append(
+            {
+                "id": server.id,
+                "name": server.name,
+                "url": server.url,
+                "auth_type": server.auth_type,
+                "credential_id": server.credential_id,
+                "credential": cred_brief,
+                "status": server.status,
+                "tool_count": int(tool_count or 0),
+                "created_at": server.created_at,
+            }
+        )
+    return items
+
+
+async def _apply_credential_update(
+    target: Tool | MCPServer,
+    updates: dict[str, Any],
+    db: AsyncSession,
+    user_id: uuid.UUID,
+) -> None:
+    """Mutate target.credential_id from updates if present, verifying ownership."""
+    if "credential_id" not in updates:
+        return
+    credential_id = updates["credential_id"]
+    if credential_id is not None:
+        await credential_service.get_credential(db, credential_id, user_id)
+    target.credential_id = credential_id
+
+
+async def update_mcp_server(
+    db: AsyncSession,
+    server_id: uuid.UUID,
+    updates: dict[str, Any],
+    user_id: uuid.UUID,
+) -> MCPServer | None:
+    """Partial update of an MCP server's name / credential / auth_config.
+
+    Only fields present in ``updates`` are mutated. Returns None if the
+    server does not exist or belongs to another user.
+    """
+    result = await db.execute(
+        select(MCPServer).where(
+            MCPServer.id == server_id, MCPServer.user_id == user_id
+        )
+    )
+    server = result.scalar_one_or_none()
+    if not server:
+        return None
+
+    await _apply_credential_update(server, updates, db, user_id)
+    if "name" in updates and updates["name"] is not None:
+        server.name = updates["name"]
+    if "auth_config" in updates:
+        # Replace semantics: passing {} clears the inline auth_config entirely.
+        # Use credential_id for managed secrets; auth_config is the legacy
+        # inline path and is overridden by credential at runtime.
+        server.auth_config = updates["auth_config"]
+
+    await db.commit()
+    await db.refresh(server, ["tools"])
+    return server
+
+
+async def delete_mcp_server(
+    db: AsyncSession, server_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    """Delete an MCP server. ORM cascade removes child tools.
+
+    The selectinload is intentional: SQLAlchemy's ORM cascade requires the
+    child collection to be loaded into the session for delete-orphan to fire.
+    Removing this would silently leak orphaned Tool rows in async sessions.
+    """
+    result = await db.execute(
+        select(MCPServer)
+        .where(MCPServer.id == server_id, MCPServer.user_id == user_id)
+        .options(selectinload(MCPServer.tools))
+    )
+    server = result.scalar_one_or_none()
+    if not server:
+        return False
+    await db.delete(server)
+    await db.commit()
+    return True
+
+
 async def update_tool_auth_config(
     db: AsyncSession,
     tool_id: uuid.UUID,
@@ -148,11 +268,7 @@ async def update_tool_auth_config(
     if tool.type == ToolType.MCP and tool.user_id != user_id:
         return None
 
-    if "credential_id" in updates:
-        credential_id = updates["credential_id"]
-        if credential_id is not None:
-            await credential_service.get_credential(db, credential_id, user_id)
-        tool.credential_id = credential_id
+    await _apply_credential_update(tool, updates, db, user_id)
     if "auth_config" in updates:
         tool.auth_config = updates["auth_config"]
 

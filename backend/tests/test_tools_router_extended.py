@@ -105,7 +105,9 @@ async def test_update_auth_config_prebuilt_tool(client: AsyncClient):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["auth_config"]["naver_client_id"] == "new-id"
+    # ToolResponse masks string values to avoid leaking secrets via API
+    assert data["auth_config"]["naver_client_id"] == "***"
+    assert data["auth_config"]["naver_client_secret"] == "***"
 
 
 @pytest.mark.asyncio
