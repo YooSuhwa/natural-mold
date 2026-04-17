@@ -15,7 +15,6 @@ import {
   PlugIcon,
   SearchIcon,
   ShieldCheckIcon,
-  ServerIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useTools, useDeleteTool } from '@/lib/hooks/use-tools'
@@ -86,7 +85,7 @@ const TOOL_TYPE_STYLES: Record<
   },
 }
 
-type PrebuiltStatus = 'not_configured' | 'server_key' | 'configured'
+type PrebuiltStatus = 'not_configured' | 'configured'
 
 function getPrebuiltStatus(tool: Tool): PrebuiltStatus {
   if (tool.credential_id) return 'configured'
@@ -105,11 +104,6 @@ const PREBUILT_STATUS_STYLES: Record<
     color: 'bg-amber-500/10 text-amber-600',
     badgeClass: 'bg-amber-100 text-amber-700 hover:bg-amber-100',
     icon: KeyIcon,
-  },
-  server_key: {
-    color: 'bg-sky-500/10 text-sky-600',
-    badgeClass: 'bg-sky-100 text-sky-700 hover:bg-sky-100',
-    icon: ServerIcon,
   },
   configured: {
     color: 'bg-emerald-500/10 text-emerald-600',
@@ -162,7 +156,6 @@ function ToolCard({
 
   const prebuiltTexts: Record<PrebuiltStatus, { badge: string; buttonLabel: string }> = {
     not_configured: { badge: t('prebuilt.notConfigured'), buttonLabel: t('prebuilt.setKey') },
-    server_key: { badge: t('prebuilt.serverKey'), buttonLabel: t('prebuilt.setIndividualKey') },
     configured: { badge: t('prebuilt.configured'), buttonLabel: t('prebuilt.changeKey') },
   }
 

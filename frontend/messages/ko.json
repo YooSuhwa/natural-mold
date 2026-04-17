@@ -570,10 +570,8 @@
       },
       "prebuilt": {
         "notConfigured": "키 미설정",
-        "serverKey": "서버 설정",
         "configured": "설정 완료",
         "setKey": "키 설정",
-        "setIndividualKey": "개별 키 설정",
         "changeKey": "키 변경"
       },
       "mcp": {

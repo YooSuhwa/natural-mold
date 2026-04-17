@@ -26,7 +26,7 @@ interface ToolFallbackPanelProps {
 /** 도구 결과 JSON에서 이미지 URL을 추출 */
 function extractImageUrls(data: unknown): string[] {
   const urls: string[] = []
-  if (!data || typeof data !== 'object') return urls
+  if (!data) return urls
 
   const walk = (obj: unknown) => {
     if (!obj || typeof obj !== 'object') return
@@ -47,14 +47,14 @@ function extractImageUrls(data: unknown): string[] {
     }
   }
 
-  // result가 문자열이면 JSON 파싱 시도
+  // 도구 결과가 JSON 문자열로 전달되는 경우 파싱 시도 (일부 MCP/HTTP 도구)
   if (typeof data === 'string') {
     try {
       walk(JSON.parse(data))
     } catch {
       // not JSON
     }
-  } else {
+  } else if (typeof data === 'object') {
     walk(data)
   }
 
