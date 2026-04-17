@@ -130,21 +130,33 @@ async def get_mcp_servers(db: AsyncSession, user_id: uuid.UUID) -> list[MCPServe
 async def update_tool_auth_config(
     db: AsyncSession,
     tool_id: uuid.UUID,
-    auth_config: dict[str, str],
-    credential_id: uuid.UUID | None = None,
-    user_id: uuid.UUID | None = None,
+    updates: dict[str, Any],
+    user_id: uuid.UUID,
 ) -> Tool | None:
-    """Update auth_config for a prebuilt tool. Optionally set credential_id."""
+    """Partial update of a tool's auth_config / credential_id.
+
+    Only fields present in ``updates`` are mutated. For MCP tools the caller
+    must own the tool row. PREBUILT tools are shared (is_system=True) —
+    mutation of shared rows remains a known limitation and will be addressed
+    by per-user credential binding in a future change.
+    """
     result = await db.execute(select(Tool).where(Tool.id == tool_id))
     tool = result.scalar_one_or_none()
     if not tool:
         return None
     if tool.type not in (ToolType.PREBUILT, ToolType.MCP):
         return None
-    if credential_id and user_id:
-        await _verify_credential_owner(db, credential_id, user_id)
-    tool.auth_config = auth_config
-    tool.credential_id = credential_id
+    if tool.type == ToolType.MCP and tool.user_id != user_id:
+        return None
+
+    if "credential_id" in updates:
+        credential_id = updates["credential_id"]
+        if credential_id is not None:
+            await _verify_credential_owner(db, credential_id, user_id)
+        tool.credential_id = credential_id
+    if "auth_config" in updates:
+        tool.auth_config = updates["auth_config"]
+
     await db.commit()
     await db.refresh(tool)
     return tool

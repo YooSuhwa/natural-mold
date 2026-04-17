@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.tool import MCPServer, Tool
 
 # ---------------------------------------------------------------------------
 # API integration tests
@@ -79,3 +84,77 @@ async def test_custom_tool_no_credential(client: AsyncClient):
     assert resp.status_code == 201
     tool = resp.json()
     assert tool["credential_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_auth_config_preserves_unset_fields(
+    client: AsyncClient, db: AsyncSession
+):
+    """PATCH with only auth_config must NOT wipe credential_id, and vice versa."""
+    server = MCPServer(
+        user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+        name="Test MCP",
+        url="https://example.com",
+        auth_type="none",
+    )
+    db.add(server)
+    await db.flush()
+
+    tool = Tool(
+        user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+        type="mcp",
+        mcp_server_id=server.id,
+        name="seed_tool",
+        auth_type="api_key",
+        auth_config={"api_key": "initial"},
+    )
+    db.add(tool)
+    await db.commit()
+
+    # PATCH only auth_config — credential_id should remain null, not be forced null
+    resp = await client.patch(
+        f"/api/tools/{tool.id}/auth-config",
+        json={"auth_config": {"api_key": "updated"}},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["auth_config"] == {"api_key": "updated"}
+    assert body["credential_id"] is None
+
+    # PATCH only credential_id=null — auth_config should be preserved (not wiped to {})
+    resp = await client.patch(
+        f"/api/tools/{tool.id}/auth-config",
+        json={"credential_id": None},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["auth_config"] == {"api_key": "updated"}
+
+
+@pytest.mark.asyncio
+async def test_patch_mcp_tool_rejects_other_user(client: AsyncClient, db: AsyncSession):
+    """IDOR: a user must not be able to modify another user's MCP tool."""
+    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
+    server = MCPServer(
+        user_id=other_user_id,
+        name="Stranger MCP",
+        url="https://example.com",
+        auth_type="none",
+    )
+    db.add(server)
+    await db.flush()
+    tool = Tool(
+        user_id=other_user_id,
+        type="mcp",
+        mcp_server_id=server.id,
+        name="stranger_tool",
+        auth_type="none",
+    )
+    db.add(tool)
+    await db.commit()
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}/auth-config",
+        json={"auth_config": {"api_key": "hijack"}},
+    )
+    assert resp.status_code == 404
