@@ -82,7 +82,13 @@ async def update_tool_auth_config(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    tool = await tool_service.update_tool_auth_config(db, tool_id, data.auth_config)
+    tool = await tool_service.update_tool_auth_config(
+        db,
+        tool_id,
+        data.auth_config or {},
+        credential_id=data.credential_id,
+        user_id=user.id,
+    )
     if not tool:
         raise tool_not_found()
     return tool

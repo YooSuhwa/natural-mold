@@ -89,11 +89,11 @@ const TOOL_TYPE_STYLES: Record<
 type PrebuiltStatus = 'not_configured' | 'server_key' | 'configured'
 
 function getPrebuiltStatus(tool: Tool): PrebuiltStatus {
+  if (tool.credential_id) return 'configured'
   const hasAuth =
     tool.auth_config &&
     Object.values(tool.auth_config).some((v) => typeof v === 'string' && v.length > 0)
   if (hasAuth) return 'configured'
-  if (tool.server_key_available) return 'server_key'
   return 'not_configured'
 }
 

@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 
 
 class ToolType(enum.StrEnum):
@@ -17,26 +17,6 @@ class ToolType(enum.StrEnum):
     MCP = "mcp"
 
 
-def _check_server_key_available(name: str) -> bool:
-    """Check if server-level API keys are configured in .env for a prebuilt tool."""
-    from app.config import settings
-
-    low = name.lower()
-    if low.startswith("naver"):
-        return bool(settings.naver_client_id and settings.naver_client_secret)
-    if low.startswith("google") and "chat" not in low:
-        return bool(settings.google_api_key and settings.google_cse_id)
-    if "chat send" in low:
-        return bool(settings.google_chat_webhook_url)
-    if "gmail" in low or "calendar" in low:
-        return bool(
-            settings.google_oauth_client_id
-            and settings.google_oauth_client_secret
-            and settings.google_oauth_refresh_token
-        )
-    return False
-
-
 class ToolCustomCreate(BaseModel):
     name: str
     description: str | None = None
@@ -45,10 +25,12 @@ class ToolCustomCreate(BaseModel):
     parameters_schema: dict[str, Any] | None = None
     auth_type: str | None = None
     auth_config: dict[str, Any] | None = None
+    credential_id: uuid.UUID | None = None
 
 
 class ToolAuthConfigUpdate(BaseModel):
-    auth_config: dict[str, Any]
+    auth_config: dict[str, Any] | None = None
+    credential_id: uuid.UUID | None = None
 
 
 class MCPServerCreate(BaseModel):
@@ -56,6 +38,7 @@ class MCPServerCreate(BaseModel):
     url: str
     auth_type: str = "none"
     auth_config: dict[str, Any] | None = None
+    credential_id: uuid.UUID | None = None
 
 
 class ToolResponse(BaseModel):
@@ -63,6 +46,7 @@ class ToolResponse(BaseModel):
     type: str
     is_system: bool
     mcp_server_id: uuid.UUID | None
+    credential_id: uuid.UUID | None = None
     name: str
     description: str | None
     parameters_schema: dict[str, Any] | None
@@ -71,17 +55,10 @@ class ToolResponse(BaseModel):
     auth_type: str | None
     auth_config: dict[str, Any] | None = None
     tags: list[str] | None = None
-    server_key_available: bool = False
     agent_count: int = 0
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
-    @model_validator(mode="after")
-    def compute_server_key_available(self) -> ToolResponse:
-        if self.type == ToolType.PREBUILT:
-            self.server_key_available = _check_server_key_available(self.name)
-        return self
 
 
 class MCPServerResponse(BaseModel):

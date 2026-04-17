@@ -59,3 +59,15 @@
 [2026-04-09T10:05] bezos STORY_DONE S5 도구 UI 등록 + HiTL Provider 통합 완료
 [2026-04-09T10:05] bezos VERIFICATION_PASS S5 pnpm build PASS + lint PASS + ruff PASS + pytest 539 passed — GO
 [2026-04-09T10:20] satya PROJECT_DONE "HiTL + Tool-UI 통합"
+---
+[2026-04-10T12:00] satya PROJECT_START "Credential 중앙 관리 시스템"
+[2026-04-10T12:00] satya MILESTONE_CREATED M1,M2,M3,M4,M5
+[2026-04-10T12:00] satya TEAM_FORMED jensen(backend M1+M2), zuckerberg(frontend M3+M4), bezos(verification M5)
+[2026-04-10T12:10] jensen MILESTONE_DONE M1 Credential 모델+스키마+레지스트리+서비스+라우터 완료 — 신규 5파일, 수정 3파일
+[2026-04-10T12:15] jensen MILESTONE_DONE M2 Alembic 마이그레이션+Tool/MCPServer FK+런타임 해석 완료 — ruff PASS, pytest 529 passed
+[2026-04-10T12:15] zuckerberg MILESTONE_DONE M3 Connections 페이지 완료 — API+hooks+types+page+sidebar+i18n
+[2026-04-10T12:15] zuckerberg MILESTONE_DONE M4 도구/MCP 크리덴셜 연결 UI 완료 — pnpm build PASS, lint PASS
+[2026-04-10T12:15] satya MILESTONE_START M5 최종 검증
+[2026-04-10T16:50] bezos VERIFICATION_PASS M5 ruff PASS, pytest 529 passed, build PASS, lint PASS (0 errors, 1 warning) — GO
+[2026-04-10T16:50] satya MILESTONE_DONE M5 최종 검증 완료
+[2026-04-10T16:50] satya PROJECT_DONE "Credential 중앙 관리 시스템"

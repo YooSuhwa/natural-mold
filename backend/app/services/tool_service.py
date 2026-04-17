@@ -7,6 +7,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.error_codes import credential_not_found
+from app.models.credential import Credential
 from app.models.tool import AgentToolLink, MCPServer, Tool
 from app.schemas.tool import MCPServerCreate, ToolCustomCreate, ToolType
 
@@ -51,6 +53,8 @@ async def get_tool_agent_counts(
 
 
 async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: uuid.UUID) -> Tool:
+    if data.credential_id:
+        await _verify_credential_owner(db, data.credential_id, user_id)
     tool = Tool(
         user_id=user_id,
         type=ToolType.CUSTOM,
@@ -61,6 +65,7 @@ async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: 
         parameters_schema=data.parameters_schema,
         auth_type=data.auth_type,
         auth_config=data.auth_config,
+        credential_id=data.credential_id,
     )
     db.add(tool)
     await db.commit()
@@ -71,6 +76,9 @@ async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: 
 async def register_mcp_server(
     db: AsyncSession, data: MCPServerCreate, user_id: uuid.UUID
 ) -> MCPServer:
+    if data.credential_id:
+        await _verify_credential_owner(db, data.credential_id, user_id)
+
     # Discover tools BEFORE opening the DB transaction to avoid holding
     # a connection while waiting on an external HTTP call.
     from app.agent_runtime.mcp_client import list_mcp_tools
@@ -86,6 +94,7 @@ async def register_mcp_server(
         url=data.url,
         auth_type=data.auth_type,
         auth_config=data.auth_config,
+        credential_id=data.credential_id,
     )
     db.add(server)
     await db.flush()
@@ -122,18 +131,65 @@ async def update_tool_auth_config(
     db: AsyncSession,
     tool_id: uuid.UUID,
     auth_config: dict[str, str],
+    credential_id: uuid.UUID | None = None,
+    user_id: uuid.UUID | None = None,
 ) -> Tool | None:
-    """Update auth_config for a prebuilt tool."""
+    """Update auth_config for a prebuilt tool. Optionally set credential_id."""
     result = await db.execute(select(Tool).where(Tool.id == tool_id))
     tool = result.scalar_one_or_none()
     if not tool:
         return None
     if tool.type not in (ToolType.PREBUILT, ToolType.MCP):
         return None
+    if credential_id and user_id:
+        await _verify_credential_owner(db, credential_id, user_id)
     tool.auth_config = auth_config
+    tool.credential_id = credential_id
     await db.commit()
     await db.refresh(tool)
     return tool
+
+
+async def link_credential_to_tool(
+    db: AsyncSession,
+    tool_id: uuid.UUID,
+    credential_id: uuid.UUID | None,
+    user_id: uuid.UUID,
+) -> Tool | None:
+    """Link or unlink a credential to/from a tool."""
+    result = await db.execute(select(Tool).where(Tool.id == tool_id))
+    tool = result.scalar_one_or_none()
+    if not tool:
+        return None
+    if credential_id:
+        await _verify_credential_owner(db, credential_id, user_id)
+    tool.credential_id = credential_id
+    await db.commit()
+    await db.refresh(tool)
+    return tool
+
+
+async def link_credential_to_mcp_server(
+    db: AsyncSession,
+    server_id: uuid.UUID,
+    credential_id: uuid.UUID | None,
+    user_id: uuid.UUID,
+) -> MCPServer | None:
+    """Link or unlink a credential to/from an MCP server."""
+    result = await db.execute(
+        select(MCPServer).where(
+            MCPServer.id == server_id, MCPServer.user_id == user_id
+        )
+    )
+    server = result.scalar_one_or_none()
+    if not server:
+        return None
+    if credential_id:
+        await _verify_credential_owner(db, credential_id, user_id)
+    server.credential_id = credential_id
+    await db.commit()
+    await db.refresh(server)
+    return server
 
 
 async def delete_tool(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -> bool:
@@ -148,3 +204,16 @@ async def delete_tool(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) 
     await db.delete(tool)
     await db.commit()
     return True
+
+
+async def _verify_credential_owner(
+    db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
+) -> None:
+    """Verify the credential belongs to the user. Raises if not found."""
+    result = await db.execute(
+        select(Credential).where(
+            Credential.id == credential_id, Credential.user_id == user_id
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise credential_not_found()

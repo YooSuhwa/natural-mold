@@ -168,6 +168,50 @@ export interface ModelBulkCreateRequest {
   }[]
 }
 
+// Credential
+export interface Credential {
+  id: string
+  name: string
+  credential_type: 'api_key' | 'oauth2'
+  provider_name: string
+  is_active: boolean
+  has_data: boolean
+  field_keys: string[]
+  created_at: string
+  updated_at: string
+}
+
+export interface CredentialProviderDef {
+  key: string
+  name: string
+  credential_type: string
+  fields: CredentialFieldDef[]
+}
+
+export interface CredentialFieldDef {
+  key: string
+  label: string
+  secret: boolean
+  default?: string
+}
+
+export interface CredentialCreateRequest {
+  name: string
+  credential_type: string
+  provider_name: string
+  data: Record<string, string>
+}
+
+export interface CredentialUpdateRequest {
+  name?: string
+  data?: Record<string, string>
+}
+
+export interface CredentialUsage {
+  tool_count: number
+  mcp_server_count: number
+}
+
 // Tool
 export interface Tool {
   id: string
@@ -182,7 +226,7 @@ export interface Tool {
   auth_type: string | null
   auth_config: Record<string, unknown> | null
   tags: string[] | null
-  server_key_available: boolean
+  credential_id: string | null
   agent_count: number
   created_at: string
 }
@@ -212,6 +256,7 @@ export interface MCPServerCreateRequest {
   url: string
   auth_type?: string
   auth_config?: Record<string, unknown>
+  credential_id?: string
 }
 
 // Template

@@ -2,6 +2,7 @@ from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.builder_session import BuilderSession
 from app.models.conversation import Conversation
+from app.models.credential import Credential
 from app.models.llm_provider import LLMProvider
 from app.models.model import Model
 from app.models.skill import AgentSkillLink, Skill
@@ -12,6 +13,7 @@ from app.models.user import User
 
 __all__ = [
     "User",
+    "Credential",
     "LLMProvider",
     "Model",
     "Template",

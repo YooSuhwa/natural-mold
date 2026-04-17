@@ -72,7 +72,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   )
 }
 
-function ChatImage({ src, alt }: { src: string; alt: string }) {
+export function ChatImage({ src, alt }: { src: string; alt: string }) {
   const [open, setOpen] = useState(false)
   const [error, setError] = useState(false)
   const [loaded, setLoaded] = useState(false)

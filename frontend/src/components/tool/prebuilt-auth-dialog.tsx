@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { KeyIcon, CheckCircleIcon, Loader2Icon } from 'lucide-react'
+import { KeyIcon, CheckCircleIcon, Loader2Icon, LinkIcon, PlusIcon } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -13,8 +13,17 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+} from '@/components/ui/select'
 import { useUpdateToolAuthConfig } from '@/lib/hooks/use-tools'
+import { useCredentials } from '@/lib/hooks/use-credentials'
+import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
 import type { Tool } from '@/lib/types'
 
 interface PrebuiltAuthDialogProps {
@@ -22,38 +31,8 @@ interface PrebuiltAuthDialogProps {
   trigger: React.ReactNode
 }
 
-interface FieldDef {
-  key: string
-  label: string
-  placeholder: string
-}
-
-const PROVIDER_FIELDS: Record<string, FieldDef[]> = {
-  naver: [
-    { key: 'naver_client_id', label: 'Client ID', placeholder: 'NAVER_CLIENT_ID' },
-    { key: 'naver_client_secret', label: 'Client Secret', placeholder: 'NAVER_CLIENT_SECRET' },
-  ],
-  google_search: [
-    { key: 'google_api_key', label: 'API Key', placeholder: 'GOOGLE_API_KEY' },
-    { key: 'google_cse_id', label: 'Search Engine ID', placeholder: 'GOOGLE_CSE_ID' },
-  ],
-  google_chat: [
-    {
-      key: 'webhook_url',
-      label: 'Webhook URL',
-      placeholder: 'https://chat.googleapis.com/v1/spaces/...',
-    },
-  ],
-  google_workspace: [
-    {
-      key: 'google_oauth_client_id',
-      label: 'OAuth Client ID',
-      placeholder: 'xxx.apps.googleusercontent.com',
-    },
-    { key: 'google_oauth_client_secret', label: 'OAuth Client Secret', placeholder: 'GOCSPX-xxx' },
-    { key: 'google_oauth_refresh_token', label: 'Refresh Token', placeholder: '1//0xxx' },
-  ],
-}
+const NONE = 'none'
+const CREATE = '__create__'
 
 function detectProvider(toolName: string): string {
   const lower = toolName.toLowerCase()
@@ -67,10 +46,12 @@ function detectProvider(toolName: string): string {
 export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
   const t = useTranslations('tool.authDialog')
   const tc = useTranslations('common')
+  const tCred = useTranslations('connections.credentialSelect')
   const [open, setOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const updateAuth = useUpdateToolAuthConfig()
+  const { data: credentials } = useCredentials()
   const provider = detectProvider(tool.name)
-  const fields = PROVIDER_FIELDS[provider] ?? []
   const providerKey = (
     {
       naver: 'naver',
@@ -80,37 +61,39 @@ export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
     } as Record<string, string>
   )[provider]
 
-  const existingConfig = (tool.auth_config ?? {}) as Record<string, string>
-  const [values, setValues] = useState<Record<string, string>>(() => {
-    const init: Record<string, string> = {}
-    for (const f of fields) {
-      init[f.key] = existingConfig[f.key] ?? ''
-    }
-    return init
-  })
+  const [mode, setMode] = useState<string>(tool.credential_id ?? NONE)
 
-  const handleSave = () => {
-    const authConfig: Record<string, string> = {}
-    for (const f of fields) {
-      if (values[f.key]) {
-        authConfig[f.key] = values[f.key]
-      }
+  const matchingCredentials = credentials?.filter((c) => c.provider_name === provider) ?? []
+
+  function handleModeChange(v: string | null) {
+    if (!v) return
+    if (v === CREATE) {
+      setCreateOpen(true)
+      return
     }
-    updateAuth.mutate({ id: tool.id, authConfig }, { onSuccess: () => setOpen(false) })
+    setMode(v)
   }
 
-  const hasConfig = fields.some((f) => existingConfig[f.key])
+  const handleSave = () => {
+    if (mode === NONE) {
+      updateAuth.mutate(
+        { id: tool.id, authConfig: {}, credentialId: null },
+        { onSuccess: () => setOpen(false) },
+      )
+      return
+    }
+    updateAuth.mutate(
+      { id: tool.id, authConfig: {}, credentialId: mode },
+      { onSuccess: () => setOpen(false) },
+    )
+  }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(v) => {
         setOpen(v)
-        if (v) {
-          const init: Record<string, string> = {}
-          for (const f of fields) init[f.key] = existingConfig[f.key] ?? ''
-          setValues(init)
-        }
+        if (v) setMode(tool.credential_id ?? NONE)
       }}
     >
       <DialogTrigger render={trigger as React.ReactElement} />
@@ -127,22 +110,41 @@ export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {fields.map((f) => (
-            <div key={f.key} className="space-y-2">
-              <label htmlFor={f.key} className="text-sm font-medium">
-                {f.label}
-              </label>
-              <Input
-                id={f.key}
-                type="password"
-                placeholder={f.placeholder}
-                value={values[f.key] ?? ''}
-                onChange={(e) => setValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
-              />
-            </div>
-          ))}
+          <div className="space-y-2">
+            <label className="text-sm font-medium flex items-center gap-1.5">
+              <LinkIcon className="size-3.5" />
+              {tCred('label')}
+            </label>
+            <Select value={mode} onValueChange={handleModeChange}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={tCred('placeholder')}>
+                  {(v: string) => {
+                    if (v === NONE) return tCred('none')
+                    const cred = matchingCredentials.find((c) => c.id === v)
+                    return cred?.name ?? ''
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>{tCred('none')}</SelectItem>
+                {matchingCredentials.length > 0 && <SelectSeparator />}
+                {matchingCredentials.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+                <SelectSeparator />
+                <SelectItem value={CREATE}>
+                  <span className="flex items-center gap-1.5">
+                    <PlusIcon className="size-3.5" />
+                    {tCred('createNew')}
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-          {hasConfig && (
+          {mode !== NONE && (
             <div className="flex items-center gap-2 text-xs text-emerald-600">
               <CheckCircleIcon className="size-3.5" />
               {t('configured')}
@@ -161,6 +163,15 @@ export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
             {tc('save')}
           </Button>
         </DialogFooter>
+
+        <CredentialFormDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          defaultProvider={provider !== 'unknown' ? provider : undefined}
+          onCreated={(c) => {
+            if (c.provider_name === provider) setMode(c.id)
+          }}
+        />
       </DialogContent>
     </Dialog>
   )
