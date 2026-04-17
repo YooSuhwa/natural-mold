@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.tool import AgentToolLink, MCPServer, Tool
 from app.schemas.tool import MCPServerCreate, ToolCustomCreate, ToolType
+from app.services import credential_service
 
 
 async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -51,6 +52,8 @@ async def get_tool_agent_counts(
 
 
 async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: uuid.UUID) -> Tool:
+    if data.credential_id:
+        await credential_service.get_credential(db, data.credential_id, user_id)
     tool = Tool(
         user_id=user_id,
         type=ToolType.CUSTOM,
@@ -61,6 +64,7 @@ async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: 
         parameters_schema=data.parameters_schema,
         auth_type=data.auth_type,
         auth_config=data.auth_config,
+        credential_id=data.credential_id,
     )
     db.add(tool)
     await db.commit()
@@ -71,6 +75,9 @@ async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: 
 async def register_mcp_server(
     db: AsyncSession, data: MCPServerCreate, user_id: uuid.UUID
 ) -> MCPServer:
+    if data.credential_id:
+        await credential_service.get_credential(db, data.credential_id, user_id)
+
     # Discover tools BEFORE opening the DB transaction to avoid holding
     # a connection while waiting on an external HTTP call.
     from app.agent_runtime.mcp_client import list_mcp_tools
@@ -86,6 +93,7 @@ async def register_mcp_server(
         url=data.url,
         auth_type=data.auth_type,
         auth_config=data.auth_config,
+        credential_id=data.credential_id,
     )
     db.add(server)
     await db.flush()
@@ -121,16 +129,33 @@ async def get_mcp_servers(db: AsyncSession, user_id: uuid.UUID) -> list[MCPServe
 async def update_tool_auth_config(
     db: AsyncSession,
     tool_id: uuid.UUID,
-    auth_config: dict[str, str],
+    updates: dict[str, Any],
+    user_id: uuid.UUID,
 ) -> Tool | None:
-    """Update auth_config for a prebuilt tool."""
+    """Partial update of a tool's auth_config / credential_id.
+
+    Only fields present in ``updates`` are mutated. For MCP tools the caller
+    must own the tool row. PREBUILT tools are shared (is_system=True) —
+    mutation of shared rows remains a known limitation and will be addressed
+    by per-user credential binding in a future change.
+    """
     result = await db.execute(select(Tool).where(Tool.id == tool_id))
     tool = result.scalar_one_or_none()
     if not tool:
         return None
     if tool.type not in (ToolType.PREBUILT, ToolType.MCP):
         return None
-    tool.auth_config = auth_config
+    if tool.type == ToolType.MCP and tool.user_id != user_id:
+        return None
+
+    if "credential_id" in updates:
+        credential_id = updates["credential_id"]
+        if credential_id is not None:
+            await credential_service.get_credential(db, credential_id, user_id)
+        tool.credential_id = credential_id
+    if "auth_config" in updates:
+        tool.auth_config = updates["auth_config"]
+
     await db.commit()
     await db.refresh(tool)
     return tool

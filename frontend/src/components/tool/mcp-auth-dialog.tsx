@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { KeyIcon, CheckCircleIcon, Loader2Icon } from 'lucide-react'
+import { KeyIcon, CheckCircleIcon, Loader2Icon, LinkIcon } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -13,8 +13,10 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { useUpdateToolAuthConfig } from '@/lib/hooks/use-tools'
+import { useCredentials } from '@/lib/hooks/use-credentials'
+import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
+import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
 import type { Tool } from '@/lib/types'
 
 interface MCPAuthDialogProps {
@@ -22,30 +24,23 @@ interface MCPAuthDialogProps {
   trigger: React.ReactNode
 }
 
-function getAuthEntry(authConfig: Record<string, unknown> | null): {
-  keyName: string
-  keyValue: string
-} {
-  if (!authConfig) return { keyName: 'api_key', keyValue: '' }
-  const entries = Object.entries(authConfig)
-  if (entries.length === 0) return { keyName: 'api_key', keyValue: '' }
-  const [keyName, keyValue] = entries[0]
-  return { keyName, keyValue: typeof keyValue === 'string' ? keyValue : '' }
-}
-
 export function MCPAuthDialog({ tool, trigger }: MCPAuthDialogProps) {
   const t = useTranslations('tool.mcpAuth')
   const tc = useTranslations('common')
+  const tCred = useTranslations('connections.credentialSelect')
   const [open, setOpen] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const updateAuth = useUpdateToolAuthConfig()
+  const { data: credentials } = useCredentials()
 
-  const existing = getAuthEntry(tool.auth_config)
-  const [keyName, setKeyName] = useState(existing.keyName)
-  const [keyValue, setKeyValue] = useState(existing.keyValue)
+  const [mode, setMode] = useState<string>(tool.credential_id ?? CREDENTIAL_NONE)
+
+  const availableCredentials = credentials ?? []
 
   const handleSave = () => {
+    const credentialId = mode === CREDENTIAL_NONE ? null : mode
     updateAuth.mutate(
-      { id: tool.id, authConfig: { [keyName]: keyValue } },
+      { id: tool.id, authConfig: {}, credentialId },
       { onSuccess: () => setOpen(false) },
     )
   }
@@ -55,11 +50,7 @@ export function MCPAuthDialog({ tool, trigger }: MCPAuthDialogProps) {
       open={open}
       onOpenChange={(v) => {
         setOpen(v)
-        if (v) {
-          const entry = getAuthEntry(tool.auth_config)
-          setKeyName(entry.keyName)
-          setKeyValue(entry.keyValue)
-        }
+        if (v) setMode(tool.credential_id ?? CREDENTIAL_NONE)
       }}
     >
       <DialogTrigger render={trigger as React.ReactElement} />
@@ -74,30 +65,19 @@ export function MCPAuthDialog({ tool, trigger }: MCPAuthDialogProps) {
 
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <label htmlFor="mcp-key-name" className="text-sm font-medium">
-              {t('keyNameLabel')}
+            <label className="text-sm font-medium flex items-center gap-1.5">
+              <LinkIcon className="size-3.5" />
+              {tCred('label')}
             </label>
-            <Input
-              id="mcp-key-name"
-              placeholder="api_key"
-              value={keyName}
-              onChange={(e) => setKeyName(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="mcp-key-value" className="text-sm font-medium">
-              {t('keyValueLabel')}
-            </label>
-            <Input
-              id="mcp-key-value"
-              type="password"
-              placeholder={t('keyValuePlaceholder')}
-              value={keyValue}
-              onChange={(e) => setKeyValue(e.target.value)}
+            <CredentialSelect
+              value={mode}
+              onValueChange={setMode}
+              onCreateRequested={() => setCreateOpen(true)}
+              credentials={availableCredentials}
             />
           </div>
 
-          {existing.keyValue && (
+          {mode !== CREDENTIAL_NONE && (
             <div className="flex items-center gap-2 text-xs text-emerald-600">
               <CheckCircleIcon className="size-3.5" />
               {t('configured')}
@@ -116,6 +96,12 @@ export function MCPAuthDialog({ tool, trigger }: MCPAuthDialogProps) {
             {tc('save')}
           </Button>
         </DialogFooter>
+
+        <CredentialFormDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={(c) => setMode(c.id)}
+        />
       </DialogContent>
     </Dialog>
   )

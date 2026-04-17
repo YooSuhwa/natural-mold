@@ -10,6 +10,7 @@ import {
 import { useTranslations } from 'next-intl'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { cn } from '@/lib/utils'
+import { ChatImage } from '@/components/chat/markdown-content'
 
 // ──────────────────────────────────────────────
 // ToolFallbackPanel — 확장 가능 도구 패널
@@ -22,11 +23,68 @@ interface ToolFallbackPanelProps {
   status: 'running' | 'complete' | 'error'
 }
 
+/** 도구 결과 JSON에서 이미지 URL을 추출 */
+function extractImageUrls(data: unknown): string[] {
+  const urls: string[] = []
+  if (!data) return urls
+
+  const walk = (obj: unknown) => {
+    if (!obj || typeof obj !== 'object') return
+    if (Array.isArray(obj)) {
+      obj.forEach(walk)
+      return
+    }
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      if (
+        typeof value === 'string' &&
+        (key.toLowerCase().includes('image') || key.toLowerCase().includes('img')) &&
+        (value.startsWith('http') || value.startsWith('/api/'))
+      ) {
+        urls.push(value)
+      } else if (typeof value === 'object') {
+        walk(value)
+      }
+    }
+  }
+
+  // 도구 결과가 JSON 문자열로 전달되는 경우 파싱 시도 (일부 MCP/HTTP 도구)
+  if (typeof data === 'string') {
+    try {
+      walk(JSON.parse(data))
+    } catch {
+      // not JSON
+    }
+  } else if (typeof data === 'object') {
+    walk(data)
+  }
+
+  // MCP 도구 결과: [{type:'text', text:'JSON문자열'}] 형태 처리
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        'text' in item &&
+        typeof (item as Record<string, unknown>).text === 'string'
+      ) {
+        try {
+          walk(JSON.parse((item as Record<string, unknown>).text as string))
+        } catch {
+          // not JSON
+        }
+      }
+    }
+  }
+
+  return urls
+}
+
 export function ToolFallbackPanel({ toolName, args, result, status }: ToolFallbackPanelProps) {
   const [expanded, setExpanded] = useState(false)
   const t = useTranslations('chat.toolCall')
   const hasArgs = args && Object.keys(args).length > 0
   const hasResult = result !== undefined && result !== null
+  const imageUrls = hasResult ? extractImageUrls(result) : []
 
   return (
     <div
@@ -62,6 +120,15 @@ export function ToolFallbackPanel({ toolName, args, result, status }: ToolFallba
           />
         )}
       </button>
+
+      {/* 이미지 URL이 있으면 패널 바깥에 바로 표시 */}
+      {imageUrls.length > 0 && (
+        <div className="px-3 pb-2 space-y-2">
+          {imageUrls.map((url) => (
+            <ChatImage key={url} src={url} alt={toolName} />
+          ))}
+        </div>
+      )}
 
       {expanded && (
         <div className="space-y-2 px-3 pb-3">

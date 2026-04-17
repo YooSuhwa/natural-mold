@@ -1,93 +1,12 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+import uuid
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.tool import _check_server_key_available
-
-# ---------------------------------------------------------------------------
-# _check_server_key_available unit tests
-# ---------------------------------------------------------------------------
-
-
-def _patch_settings(**overrides):
-    """Patch app.config.settings attributes for testing."""
-    defaults = {
-        "naver_client_id": "",
-        "naver_client_secret": "",
-        "google_api_key": "",
-        "google_cse_id": "",
-        "google_chat_webhook_url": "",
-        "google_oauth_client_id": "",
-        "google_oauth_client_secret": "",
-        "google_oauth_refresh_token": "",
-    }
-    defaults.update(overrides)
-    return patch.multiple("app.config.settings", **defaults)  # type: ignore[call-overload]
-
-
-class TestServerKeyAvailable:
-    def test_naver_tool_with_keys(self):
-        with _patch_settings(naver_client_id="id123", naver_client_secret="secret456"):
-            assert _check_server_key_available("Naver Blog Search") is True
-            assert _check_server_key_available("Naver News Search") is True
-
-    def test_naver_tool_without_keys(self):
-        with _patch_settings():
-            assert _check_server_key_available("Naver Blog Search") is False
-
-    def test_naver_tool_partial_keys(self):
-        with _patch_settings(naver_client_id="id123"):
-            assert _check_server_key_available("Naver Blog Search") is False
-
-    def test_google_search_with_keys(self):
-        with _patch_settings(google_api_key="key123", google_cse_id="cse456"):
-            assert _check_server_key_available("Google Search") is True
-            assert _check_server_key_available("Google News Search") is True
-
-    def test_google_search_without_keys(self):
-        with _patch_settings():
-            assert _check_server_key_available("Google Search") is False
-
-    def test_google_chat_with_webhook(self):
-        with _patch_settings(google_chat_webhook_url="https://chat.googleapis.com/v1/spaces/xxx"):
-            assert _check_server_key_available("Google Chat Send") is True
-
-    def test_google_chat_without_webhook(self):
-        with _patch_settings():
-            assert _check_server_key_available("Google Chat Send") is False
-
-    def test_gmail_with_oauth(self):
-        with _patch_settings(
-            google_oauth_client_id="cid",
-            google_oauth_client_secret="csecret",
-            google_oauth_refresh_token="rtoken",
-        ):
-            assert _check_server_key_available("Gmail Read") is True
-            assert _check_server_key_available("Gmail Send") is True
-
-    def test_calendar_with_oauth(self):
-        with _patch_settings(
-            google_oauth_client_id="cid",
-            google_oauth_client_secret="csecret",
-            google_oauth_refresh_token="rtoken",
-        ):
-            assert _check_server_key_available("Calendar List Events") is True
-
-    def test_gmail_without_oauth(self):
-        with _patch_settings():
-            assert _check_server_key_available("Gmail Read") is False
-
-    def test_unknown_tool(self):
-        with _patch_settings():
-            assert _check_server_key_available("Unknown Tool") is False
-
-    def test_builtin_tool_returns_false(self):
-        with _patch_settings():
-            assert _check_server_key_available("Web Search") is False
-
+from app.models.tool import MCPServer, Tool
 
 # ---------------------------------------------------------------------------
 # API integration tests
@@ -153,7 +72,7 @@ async def test_delete_nonexistent_tool(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_custom_tool_has_server_key_available_false(client: AsyncClient):
+async def test_custom_tool_no_credential(client: AsyncClient):
     resp = await client.post(
         "/api/tools/custom",
         json={
@@ -164,26 +83,78 @@ async def test_custom_tool_has_server_key_available_false(client: AsyncClient):
     )
     assert resp.status_code == 201
     tool = resp.json()
-    assert tool["server_key_available"] is False
+    assert tool["credential_id"] is None
 
 
 @pytest.mark.asyncio
-async def test_prebuilt_tool_server_key_in_list(client: AsyncClient, db):
-    from app.models.tool import Tool
+async def test_patch_tool_auth_config_preserves_unset_fields(
+    client: AsyncClient, db: AsyncSession
+):
+    """PATCH with only auth_config must NOT wipe credential_id, and vice versa."""
+    server = MCPServer(
+        user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+        name="Test MCP",
+        url="https://example.com",
+        auth_type="none",
+    )
+    db.add(server)
+    await db.flush()
 
     tool = Tool(
-        type="prebuilt",
-        is_system=True,
-        name="Naver Blog Search",
-        description="네이버 블로그 검색",
+        user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+        type="mcp",
+        mcp_server_id=server.id,
+        name="seed_tool",
+        auth_type="api_key",
+        auth_config={"api_key": "initial"},
     )
     db.add(tool)
     await db.commit()
 
-    with _patch_settings(naver_client_id="id", naver_client_secret="secret"):
-        resp = await client.get("/api/tools")
-
+    # PATCH only auth_config — credential_id should remain null, not be forced null
+    resp = await client.patch(
+        f"/api/tools/{tool.id}/auth-config",
+        json={"auth_config": {"api_key": "updated"}},
+    )
     assert resp.status_code == 200
-    tools = resp.json()
-    naver_tool = next(t for t in tools if t["name"] == "Naver Blog Search")
-    assert naver_tool["server_key_available"] is True
+    body = resp.json()
+    assert body["auth_config"] == {"api_key": "updated"}
+    assert body["credential_id"] is None
+
+    # PATCH only credential_id=null — auth_config should be preserved (not wiped to {})
+    resp = await client.patch(
+        f"/api/tools/{tool.id}/auth-config",
+        json={"credential_id": None},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["auth_config"] == {"api_key": "updated"}
+
+
+@pytest.mark.asyncio
+async def test_patch_mcp_tool_rejects_other_user(client: AsyncClient, db: AsyncSession):
+    """IDOR: a user must not be able to modify another user's MCP tool."""
+    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
+    server = MCPServer(
+        user_id=other_user_id,
+        name="Stranger MCP",
+        url="https://example.com",
+        auth_type="none",
+    )
+    db.add(server)
+    await db.flush()
+    tool = Tool(
+        user_id=other_user_id,
+        type="mcp",
+        mcp_server_id=server.id,
+        name="stranger_tool",
+        auth_type="none",
+    )
+    db.add(tool)
+    await db.commit()
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}/auth-config",
+        json={"auth_config": {"api_key": "hijack"}},
+    )
+    assert resp.status_code == 404

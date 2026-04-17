@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.credential import Credential
 
 
 class AgentToolLink(Base):
@@ -37,6 +40,9 @@ class MCPServer(Base):
     url: Mapped[str] = mapped_column(String(500), nullable=False)
     auth_type: Mapped[str] = mapped_column(String(20), nullable=False, default="none")
     auth_config: Mapped[dict | None] = mapped_column(JSON)
+    credential_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
@@ -45,6 +51,9 @@ class MCPServer(Base):
 
     tools: Mapped[list[Tool]] = relationship(
         back_populates="mcp_server", cascade="all, delete-orphan"
+    )
+    credential: Mapped[Credential | None] = relationship(
+        foreign_keys=[credential_id], lazy="joined"
     )
 
 
@@ -63,6 +72,9 @@ class Tool(Base):
     http_method: Mapped[str | None] = mapped_column(String(10))
     auth_type: Mapped[str | None] = mapped_column(String(20))
     auth_config: Mapped[dict | None] = mapped_column(JSON)
+    credential_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True
+    )
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
@@ -70,3 +82,6 @@ class Tool(Base):
     )
 
     mcp_server: Mapped[MCPServer | None] = relationship(back_populates="tools")
+    credential: Mapped[Credential | None] = relationship(
+        foreign_keys=[credential_id], lazy="joined"
+    )

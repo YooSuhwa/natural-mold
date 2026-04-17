@@ -13,9 +13,10 @@ from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
-from app.models.tool import AgentToolLink, Tool
+from app.models.tool import AgentToolLink, MCPServer, Tool
 from app.schemas.conversation import ConversationUpdate
 from app.schemas.tool import ToolType
+from app.services.credential_service import resolve_credential_data
 
 
 async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conversation]:
@@ -135,7 +136,11 @@ async def get_agent_with_tools(
             selectinload(Agent.model).selectinload(Model.llm_provider),
             selectinload(Agent.tool_links)
             .selectinload(AgentToolLink.tool)
-            .selectinload(Tool.mcp_server),
+            .selectinload(Tool.credential),
+            selectinload(Agent.tool_links)
+            .selectinload(AgentToolLink.tool)
+            .selectinload(Tool.mcp_server)
+            .selectinload(MCPServer.credential),
             selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
         )
     )
@@ -162,7 +167,29 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
 
     for link in agent.tool_links:
         tool = link.tool
-        merged_auth = {**(tool.auth_config or {}), **(link.config or {})}
+
+        # Credential resolution priority:
+        # 1. Tool-level credential
+        # 2. MCP server-level credential
+        # 3. Tool-level auth_config
+        # 4. MCP server-level auth_config (MCP tools inherit from server)
+        if tool.credential_id and tool.credential:
+            cred_auth = resolve_credential_data(tool.credential)
+        elif (
+            tool.type == ToolType.MCP
+            and tool.mcp_server
+            and tool.mcp_server.credential_id
+            and tool.mcp_server.credential
+        ):
+            cred_auth = resolve_credential_data(tool.mcp_server.credential)
+        elif tool.auth_config:
+            cred_auth = tool.auth_config
+        elif tool.type == ToolType.MCP and tool.mcp_server and tool.mcp_server.auth_config:
+            cred_auth = tool.mcp_server.auth_config
+        else:
+            cred_auth = {}
+
+        merged_auth = {**cred_auth, **(link.config or {})}
         config_entry: dict[str, Any] = {
             "type": tool.type,
             "name": tool.name,

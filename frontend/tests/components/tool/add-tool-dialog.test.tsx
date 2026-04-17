@@ -1,7 +1,7 @@
 import { render, screen, userEvent } from '../../test-utils'
 import { AddToolDialog } from '@/components/tool/add-tool-dialog'
 
-const mockRegisterMCP = vi.fn().mockResolvedValue({})
+const mockRegisterMCP = vi.fn().mockResolvedValue({ tools: [] })
 const mockCreateCustomTool = vi.fn().mockResolvedValue({})
 
 vi.mock('@/lib/hooks/use-tools', () => ({
@@ -15,11 +15,23 @@ vi.mock('@/lib/hooks/use-tools', () => ({
   }),
 }))
 
+vi.mock('@/lib/hooks/use-credentials', () => ({
+  useCredentials: () => ({ data: [] }),
+  useCredentialProviders: () => ({ data: [] }),
+  useCreateCredential: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateCredential: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+
 function renderDialog() {
   return render(<AddToolDialog trigger={<button type="button">도구 추가</button>} />)
 }
 
 describe('AddToolDialog', () => {
+  beforeEach(() => {
+    mockRegisterMCP.mockClear()
+    mockCreateCustomTool.mockClear()
+  })
+
   it('opens dialog when trigger clicked', async () => {
     const user = userEvent.setup()
     renderDialog()
@@ -48,13 +60,11 @@ describe('AddToolDialog', () => {
     expect(screen.getByPlaceholderText('https://api.example.com/weather')).toBeInTheDocument()
   })
 
-  it('shows MCP auth options', async () => {
+  it('MCP tab shows credential Select with "인증 없음" default', async () => {
     const user = userEvent.setup()
     renderDialog()
     await user.click(screen.getByText('도구 추가'))
-    expect(screen.getByText('없음')).toBeInTheDocument()
-    expect(screen.getByText('API Key')).toBeInTheDocument()
-    expect(screen.getByText('OAuth')).toBeInTheDocument()
+    expect(screen.getAllByText('인증 없음').length).toBeGreaterThan(0)
   })
 
   it('shows custom tool HTTP method options', async () => {
@@ -73,16 +83,6 @@ describe('AddToolDialog', () => {
     await user.click(screen.getByText('도구 추가'))
     const registerButton = screen.getByRole('button', { name: '등록' })
     expect(registerButton).toBeDisabled()
-  })
-
-  it('shows api key field when auth is api_key in MCP tab', async () => {
-    const user = userEvent.setup()
-    renderDialog()
-    await user.click(screen.getByText('도구 추가'))
-    // Click API Key radio
-    const apiKeyRadio = screen.getByDisplayValue('api_key')
-    await user.click(apiKeyRadio)
-    expect(screen.getByPlaceholderText('sk-xxxxxxxxxxxx')).toBeInTheDocument()
   })
 
   it('shows custom tool parameter JSON schema field', async () => {
@@ -107,7 +107,6 @@ describe('AddToolDialog', () => {
     renderDialog()
     await user.click(screen.getByText('도구 추가'))
 
-    // Fill in MCP form
     await user.type(screen.getByPlaceholderText('Google Workspace MCP'), 'My MCP Server')
     await user.type(screen.getByPlaceholderText('https://mcp.example.com'), 'https://mcp.test.com')
 
@@ -119,6 +118,7 @@ describe('AddToolDialog', () => {
       expect.objectContaining({
         name: 'My MCP Server',
         url: 'https://mcp.test.com',
+        auth_type: 'none',
       }),
     )
   })
@@ -129,7 +129,6 @@ describe('AddToolDialog', () => {
     await user.click(screen.getByText('도구 추가'))
     await user.click(screen.getByText('직접 정의'))
 
-    // Fill in custom tool form
     await user.type(screen.getByPlaceholderText('날씨 조회'), 'Weather API')
     await user.type(
       screen.getByPlaceholderText('https://api.example.com/weather'),
@@ -154,10 +153,8 @@ describe('AddToolDialog', () => {
     await user.click(screen.getByText('도구 추가'))
     await user.click(screen.getByText('직접 정의'))
 
-    // Select bearer auth
     const bearerRadio = screen.getByDisplayValue('bearer')
     await user.click(bearerRadio)
-    // API key input should appear
     expect(screen.getByPlaceholderText('sk-xxxxxxxxxxxx')).toBeInTheDocument()
   })
 })

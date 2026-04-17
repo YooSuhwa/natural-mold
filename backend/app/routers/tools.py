@@ -63,6 +63,7 @@ async def test_mcp_connection(
 
     from app.agent_runtime.mcp_client import test_mcp_connection as mcp_test
     from app.models.tool import MCPServer
+    from app.services.credential_service import resolve_server_auth
 
     result = await db.execute(
         select(MCPServer).where(MCPServer.id == server_id, MCPServer.user_id == user.id)
@@ -71,7 +72,8 @@ async def test_mcp_connection(
     if not server:
         raise mcp_server_not_found()
 
-    test_result = await mcp_test(server.url, server.auth_config)
+    effective_auth = resolve_server_auth(server)
+    test_result = await mcp_test(server.url, effective_auth)
     return test_result
 
 
@@ -82,7 +84,10 @@ async def update_tool_auth_config(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    tool = await tool_service.update_tool_auth_config(db, tool_id, data.auth_config)
+    updates = data.model_dump(exclude_unset=True)
+    tool = await tool_service.update_tool_auth_config(
+        db, tool_id, updates, user_id=user.id,
+    )
     if not tool:
         raise tool_not_found()
     return tool

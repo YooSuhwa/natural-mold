@@ -418,3 +418,37 @@
 - 패턴: TOOL_UI 배열을 useMemo로 안정화 → AssistantThread toolUI prop으로 전달
 - 패턴: HiTLContext.Provider는 AssistantRuntimeProvider 안쪽, AssistantThread 바깥에 위치
 - 최종 검증: pnpm build PASS (3.4s, 3.8s) + pnpm lint PASS + ruff PASS + pytest 539 passed
+
+## M1+M2 Credential 백엔드 구현 결과 (jensen, 2026-04-10)
+- models/credential.py: LLMProvider 패턴 — UUID PK, Fernet data_encrypted, created_at/updated_at
+- credential_registry.py: CREDENTIAL_PROVIDERS dict — 키가 기존 auth_config 키와 동일
+- credential_service.py: 모든 함수에 user_id 필터 (사용자 격리), resolve_credential_data() 내부 전용
+- routers/credentials.py: _to_response()에서 field_keys만 반환 (복호화 값 노출 안 함)
+- schemas/tool.py: server_key_available + _check_server_key_available 제거 → test_tools.py 동기화
+- models/tool.py: Tool/MCPServer에 credential_id FK + credential relationship, TYPE_CHECKING import
+- chat_service.py: 크리덴셜 해석 우선순위 tool.credential > mcp_server.credential > auth_config
+- tool_service.py: _verify_credential_owner() 헬퍼로 소유자 검증 통일
+- 검증: ruff PASS, pytest 529 passed
+
+## M3+M4 Credential 프론트엔드 구현 결과 (zuckerberg, 2026-04-10)
+- lib/api/credentials.ts 신규 — list, create, update, delete, getProviders, getUsage API 클라이언트
+- lib/hooks/use-credentials.ts 신규 — useCredentials, useCredentialProviders, useCreateCredential, useUpdateCredential, useDeleteCredential
+- lib/types/index.ts — Credential, CredentialProviderDef, CredentialFieldDef, CredentialCreateRequest, CredentialUpdateRequest, CredentialUsage 타입 추가
+- lib/types/index.ts — Tool 인터페이스: server_key_available 제거, credential_id: string | null 추가
+- lib/types/index.ts — MCPServerCreateRequest에 credential_id 옵션 추가
+- app/connections/page.tsx 신규 (~280줄) — Connections 관리 페이지
+  - 카드 그리드: 이름, provider, type 배지, has_data 상태, field_keys
+  - 검색 + 타입 필터 (api_key / oauth2)
+  - Create/Edit Dialog: Provider 선택 → 레지스트리 기반 동적 폼 (secret 필드는 password input)
+  - AlertDialog 삭제 확인
+- app-sidebar.tsx — navItems에 KeyRoundIcon 연결 항목 추가 (Tools와 Skills 사이)
+- messages/ko.json — sidebar.nav.connections + connections.* i18n 키 40+ 추가
+- prebuilt-auth-dialog.tsx 수정 — "기존 연결 사용" Select 드롭다운 추가, credential_id로 연결
+  - provider별 매칭 크리덴셜만 표시, "직접 입력" 옵션 유지 (하위 호환)
+- mcp-auth-dialog.tsx 수정 — 동일 크리덴셜 Select 드롭다운 추가 (모든 크리덴셜 표시)
+- add-tool-dialog.tsx 수정 — MCP 서버 등록 시 크리덴셜 선택 옵션 추가
+- lib/api/tools.ts — updateAuthConfig에 credential_id 파라미터 추가
+- lib/hooks/use-tools.ts — useUpdateToolAuthConfig에 credentialId 지원
+- app/tools/page.tsx — getPrebuiltStatus에서 credential_id 체크 추가, server_key_available 참조 제거
+- 핵심 패턴: Select onValueChange는 (value: string | null) 시그니처 → null 가드 필수
+- 검증: pnpm build PASS (4.1s compile, 4.1s typecheck) + pnpm lint PASS (0 errors, 0 new warnings)

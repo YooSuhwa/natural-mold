@@ -33,6 +33,7 @@ import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
 import { WittyLoadingMessage } from '@/components/chat/witty-loading'
+import { ChatImage } from '@/components/chat/markdown-content'
 
 export { GenericToolFallback }
 
@@ -60,6 +61,13 @@ function AssistantTextPart() {
       <StreamdownTextPrimitive
         plugins={{ code, math }}
         shikiTheme={['github-light', 'github-dark']}
+        components={{
+          img: ((props: React.ImgHTMLAttributes<HTMLImageElement>) => {
+            const src = typeof props.src === 'string' ? props.src : undefined
+            if (!src) return null
+            return <ChatImage src={src} alt={props.alt ?? ''} />
+          }) as never,
+        }}
       />
     </div>
   )

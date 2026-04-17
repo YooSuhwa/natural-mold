@@ -17,6 +17,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useRegisterMCPServer, useCreateCustomTool } from '@/lib/hooks/use-tools'
+import { useCredentials } from '@/lib/hooks/use-credentials'
+import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
+import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
 import type { Tool } from '@/lib/types'
 
 interface AddToolDialogProps {
@@ -27,13 +30,13 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   const t = useTranslations('tool.addDialog')
   const tc = useTranslations('common')
   const [open, setOpen] = useState(false)
+  const { data: credentials } = useCredentials()
 
   // MCP form state
   const [mcpName, setMcpName] = useState('')
   const [mcpUrl, setMcpUrl] = useState('')
-  const [mcpAuthType, setMcpAuthType] = useState('none')
-  const [mcpAuthKeyName, setMcpAuthKeyName] = useState('api_key')
-  const [mcpAuthKeyValue, setMcpAuthKeyValue] = useState('')
+  const [mcpMode, setMcpMode] = useState<string>(CREDENTIAL_NONE)
+  const [credentialDialogOpen, setCredentialDialogOpen] = useState(false)
   const [discoveredTools, setDiscoveredTools] = useState<Tool[] | null>(null)
   const registerMCP = useRegisterMCPServer()
 
@@ -47,12 +50,12 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   const [customApiKey, setCustomApiKey] = useState('')
   const createCustomTool = useCreateCustomTool()
 
+  const availableCredentials = credentials ?? []
+
   function resetForms() {
     setMcpName('')
     setMcpUrl('')
-    setMcpAuthType('none')
-    setMcpAuthKeyName('api_key')
-    setMcpAuthKeyValue('')
+    setMcpMode(CREDENTIAL_NONE)
     setDiscoveredTools(null)
     setCustomName('')
     setCustomDescription('')
@@ -69,13 +72,11 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   }
 
   async function handleMCPSubmit() {
-    const authConfig = mcpAuthType !== 'none' ? { [mcpAuthKeyName]: mcpAuthKeyValue } : undefined
-    const result = await registerMCP.mutateAsync({
-      name: mcpName,
-      url: mcpUrl,
-      auth_type: mcpAuthType !== 'none' ? mcpAuthType : undefined,
-      auth_config: authConfig,
-    })
+    const payload =
+      mcpMode === CREDENTIAL_NONE
+        ? { name: mcpName, url: mcpUrl, auth_type: 'none' as const }
+        : { name: mcpName, url: mcpUrl, credential_id: mcpMode }
+    const result = await registerMCP.mutateAsync(payload)
     setDiscoveredTools(result.tools)
   }
 
@@ -183,48 +184,17 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                     placeholder={t('mcp.serverUrlPlaceholder')}
                   />
                 </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium">{t('auth.label')}</label>
-                  <div className="flex gap-4 text-sm">
-                    {[
-                      { value: 'none', label: t('auth.none') },
-                      { value: 'api_key', label: t('auth.apiKey') },
-                      { value: 'oauth', label: t('auth.oauth') },
-                    ].map((opt) => (
-                      <label key={opt.value} className="flex items-center gap-1.5">
-                        <input
-                          type="radio"
-                          name="mcp-auth"
-                          value={opt.value}
-                          checked={mcpAuthType === opt.value}
-                          onChange={(e) => setMcpAuthType(e.target.value)}
-                        />
-                        {opt.label}
-                      </label>
-                    ))}
-                  </div>
+                  <CredentialSelect
+                    value={mcpMode}
+                    onValueChange={setMcpMode}
+                    onCreateRequested={() => setCredentialDialogOpen(true)}
+                    credentials={availableCredentials}
+                  />
                 </div>
-                {mcpAuthType !== 'none' && (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">{t('auth.keyName')}</label>
-                      <Input
-                        value={mcpAuthKeyName}
-                        onChange={(e) => setMcpAuthKeyName(e.target.value)}
-                        placeholder="api_key"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">{t('auth.keyValue')}</label>
-                      <Input
-                        value={mcpAuthKeyValue}
-                        onChange={(e) => setMcpAuthKeyValue(e.target.value)}
-                        type="password"
-                        placeholder={t('auth.apiKeyPlaceholder')}
-                      />
-                    </div>
-                  </>
-                )}
+
                 <DialogFooter>
                   <Button
                     onClick={handleMCPSubmit}
@@ -342,6 +312,12 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
             </Tabs>
           </>
         )}
+
+        <CredentialFormDialog
+          open={credentialDialogOpen}
+          onOpenChange={setCredentialDialogOpen}
+          onCreated={(c) => setMcpMode(c.id)}
+        />
       </DialogContent>
     </Dialog>
   )

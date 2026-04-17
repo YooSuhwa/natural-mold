@@ -60,6 +60,15 @@ from app.seed.default_tools import DEFAULT_TOOLS
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    # Startup: warn if encryption is unconfigured (credentials cannot be created)
+    if not settings.encryption_key:
+        logger.warning(
+            "ENCRYPTION_KEY is not set. Credential creation will be rejected "
+            "and any existing API keys in DB are stored as plaintext. "
+            "Generate a key with `python -c \"from cryptography.fernet import "
+            "Fernet; print(Fernet.generate_key().decode())\"` and set it in .env.",
+        )
+
     # Startup: seed default data
     async with async_session() as db:
         # Ensure mock user exists
@@ -161,6 +170,7 @@ def create_app() -> FastAPI:
         assistant,
         builder,
         conversations,
+        credentials,
         models,
         providers,
         skills,
@@ -175,6 +185,7 @@ def create_app() -> FastAPI:
     app.include_router(builder.router)
     app.include_router(assistant.router)
     app.include_router(conversations.router)
+    app.include_router(credentials.router)
     app.include_router(providers.router)
     app.include_router(models.router)
     app.include_router(templates.router)

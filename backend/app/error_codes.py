@@ -66,6 +66,10 @@ def skill_file_not_found() -> NotFoundError:
     return NotFoundError("SKILL_FILE_NOT_FOUND", "스킬 파일을 찾을 수 없습니다")
 
 
+def credential_not_found() -> NotFoundError:
+    return NotFoundError("CREDENTIAL_NOT_FOUND", "크리덴셜을 찾을 수 없습니다")
+
+
 # ---------------------------------------------------------------------------
 # ValidationError (422)
 # ---------------------------------------------------------------------------

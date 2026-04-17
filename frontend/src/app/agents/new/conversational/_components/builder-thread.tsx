@@ -72,10 +72,10 @@ function BuilderUserMessage() {
 
   return (
     <div className="rounded-xl border bg-primary/5 px-4 py-3">
-      <p className="text-sm">
+      <div className="text-sm">
         <span className="font-medium text-primary">{t('userRequestLabel')}</span>{' '}
         <MessagePrimitive.Content />
-      </p>
+      </div>
     </div>
   )
 }
