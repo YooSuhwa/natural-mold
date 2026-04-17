@@ -168,26 +168,23 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
     for link in agent.tool_links:
         tool = link.tool
 
-        # Credential resolution priority:
-        # 1. Tool-level credential
-        # 2. MCP server-level credential
-        # 3. Tool-level auth_config
-        # 4. MCP server-level auth_config (MCP tools inherit from server)
-        if tool.credential_id and tool.credential:
-            cred_auth = resolve_credential_data(tool.credential)
-        elif (
-            tool.type == ToolType.MCP
-            and tool.mcp_server
-            and tool.mcp_server.credential_id
-            and tool.mcp_server.credential
-        ):
-            cred_auth = resolve_credential_data(tool.mcp_server.credential)
-        elif tool.auth_config:
-            cred_auth = tool.auth_config
-        elif tool.type == ToolType.MCP and tool.mcp_server and tool.mcp_server.auth_config:
-            cred_auth = tool.mcp_server.auth_config
+        # MCP tools resolve auth at the server level only — tool-level
+        # credential/auth_config is ignored because the UI now manages
+        # MCP credentials per server.
+        if tool.type == ToolType.MCP and tool.mcp_server:
+            if tool.mcp_server.credential_id and tool.mcp_server.credential:
+                cred_auth = resolve_credential_data(tool.mcp_server.credential)
+            elif tool.mcp_server.auth_config:
+                cred_auth = tool.mcp_server.auth_config
+            else:
+                cred_auth = {}
         else:
-            cred_auth = {}
+            if tool.credential_id and tool.credential:
+                cred_auth = resolve_credential_data(tool.credential)
+            elif tool.auth_config:
+                cred_auth = tool.auth_config
+            else:
+                cred_auth = {}
 
         merged_auth = {**cred_auth, **(link.config or {})}
         config_entry: dict[str, Any] = {

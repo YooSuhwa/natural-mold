@@ -1,5 +1,12 @@
 import { apiFetch } from './client'
-import type { Tool, MCPServer, ToolCustomCreateRequest, MCPServerCreateRequest } from '@/lib/types'
+import type {
+  Tool,
+  MCPServer,
+  MCPServerListItem,
+  MCPServerUpdateRequest,
+  ToolCustomCreateRequest,
+  MCPServerCreateRequest,
+} from '@/lib/types'
 
 export const toolsApi = {
   list: () => apiFetch<Tool[]>('/api/tools'),
@@ -28,4 +35,12 @@ export const toolsApi = {
       }),
     }),
   delete: (id: string) => apiFetch<void>(`/api/tools/${id}`, { method: 'DELETE' }),
+  listMCPServers: () => apiFetch<MCPServerListItem[]>('/api/tools/mcp-servers'),
+  updateMCPServer: (id: string, data: MCPServerUpdateRequest) =>
+    apiFetch<MCPServer>(`/api/tools/mcp-servers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteMCPServer: (id: string) =>
+    apiFetch<void>(`/api/tools/mcp-servers/${id}`, { method: 'DELETE' }),
 }

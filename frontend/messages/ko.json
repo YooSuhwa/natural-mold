@@ -562,6 +562,12 @@
         "custom": "Custom",
         "mcp": "MCP"
       },
+      "section": {
+        "builtin": "기본 도구",
+        "prebuilt": "Prebuilt",
+        "mcp": "MCP 서버",
+        "custom": "커스텀"
+      },
       "badge": {
         "builtin": "Built-in",
         "prebuilt": "Pre-built",
@@ -573,9 +579,6 @@
         "configured": "설정 완료",
         "setKey": "키 설정",
         "changeKey": "키 변경"
-      },
-      "mcp": {
-        "setKey": "API 키 설정"
       },
       "searchPlaceholder": "도구 검색...",
       "tagLabel": "태그:",
@@ -655,13 +658,31 @@
       },
       "configured": "API 키가 설정되어 있습니다"
     },
-    "mcpAuth": {
-      "title": "{toolName} — 인증 설정",
-      "description": "MCP 도구에 전달할 인증 파라미터를 설정하세요.",
-      "keyNameLabel": "파라미터 이름",
-      "keyValueLabel": "값",
-      "keyValuePlaceholder": "인증 값을 입력하세요",
-      "configured": "인증이 설정되어 있습니다"
+    "mcpServer": {
+      "toolCount": "{count}개 도구",
+      "authNotSet": "인증 미설정",
+      "menu": {
+        "auth": "인증 설정",
+        "rename": "이름 변경",
+        "delete": "삭제"
+      },
+      "rename": {
+        "title": "MCP 서버 이름 변경",
+        "label": "서버 이름"
+      },
+      "delete": {
+        "title": "MCP 서버 삭제",
+        "warning": "{count}개의 도구가 함께 삭제됩니다."
+      },
+      "auth": {
+        "title": "{serverName} 인증 설정",
+        "description": "이 서버에 속한 모든 도구에 적용됩니다.",
+        "configured": "이 서버에 인증이 설정되어 있습니다."
+      },
+      "toast": {
+        "saveFailed": "저장에 실패했습니다",
+        "deleteFailed": "삭제에 실패했습니다"
+      }
     }
   },
   "skill": {

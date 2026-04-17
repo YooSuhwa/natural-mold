@@ -17,7 +17,7 @@ import {
   ShieldCheckIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useTools, useDeleteTool } from '@/lib/hooks/use-tools'
+import { useTools, useDeleteTool, useMCPServers } from '@/lib/hooks/use-tools'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -27,7 +27,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 import { AddToolDialog } from '@/components/tool/add-tool-dialog'
 import { PrebuiltAuthDialog } from '@/components/tool/prebuilt-auth-dialog'
-import { MCPAuthDialog } from '@/components/tool/mcp-auth-dialog'
+import { MCPServerGroupCard } from '@/components/tool/mcp-server-group-card'
 import {
   Dialog,
   DialogContent,
@@ -36,7 +36,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
-import type { Tool } from '@/lib/types'
+import type { MCPServerListItem, Tool } from '@/lib/types'
 
 type ToolFilter = 'all' | 'builtin' | 'prebuilt' | 'mcp' | 'custom'
 
@@ -142,7 +142,6 @@ function ToolCard({
   const meta = TOOL_TYPE_STYLES[tool.type] ?? TOOL_TYPE_STYLES.custom
   const Icon = meta.icon
   const isPrebuilt = tool.type === 'prebuilt'
-  const isMCP = tool.type === 'mcp'
   const prebuiltStatus = isPrebuilt ? getPrebuiltStatus(tool) : null
   const pStyle = prebuiltStatus ? PREBUILT_STATUS_STYLES[prebuiltStatus] : null
   const isDeletable = !tool.is_system
@@ -218,16 +217,6 @@ function ToolCard({
               </Button>
             }
           />
-        ) : isMCP ? (
-          <MCPAuthDialog
-            tool={tool}
-            trigger={
-              <Button variant="outline" size="sm" className="w-full cursor-pointer">
-                <KeyIcon className="size-3.5" data-icon="inline-start" />
-                {t('mcp.setKey')}
-              </Button>
-            }
-          />
         ) : isDeletable ? (
           <Button
             variant="ghost"
@@ -254,8 +243,44 @@ function ToolCard({
   )
 }
 
+function ToolSection({
+  label,
+  count,
+  tools,
+  onDelete,
+  isDeleting,
+  onShowDetail,
+}: {
+  label: string
+  count: number
+  tools: Tool[]
+  onDelete: (tool: Tool) => void
+  isDeleting: boolean
+  onShowDetail: (tool: Tool) => void
+}) {
+  return (
+    <section>
+      <h2 className="text-sm font-semibold mb-3 text-foreground/80">
+        {label} <span className="text-muted-foreground font-normal">({count})</span>
+      </h2>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {tools.map((tool) => (
+          <ToolCard
+            key={tool.id}
+            tool={tool}
+            onDelete={onDelete}
+            isDeleting={isDeleting}
+            onShowDetail={onShowDetail}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export default function ToolsPage() {
   const { data: tools, isLoading } = useTools()
+  const { data: mcpServers, isLoading: mcpLoading } = useMCPServers()
   const deleteTool = useDeleteTool()
   const t = useTranslations('tool.page')
   const tc = useTranslations('common')
@@ -291,23 +316,66 @@ export default function ToolsPage() {
     })
   }
 
-  const filteredTools = useMemo(() => {
-    if (!tools) return []
+  function matchesQuery(value: string | null | undefined, q: string) {
+    return value?.toLowerCase().includes(q) ?? false
+  }
+
+  function matchesTags(toolTags: string[] | null | undefined, selected: Set<string>) {
+    if (selected.size === 0) return true
+    if (!toolTags) return false
+    return Array.from(selected).some((tag) => toolTags.includes(tag))
+  }
+
+  const nonMCPTools = useMemo(() => {
+    if (!tools) return [] as Tool[]
+    const q = search.toLowerCase()
     return tools.filter((tl) => {
-      if (filter !== 'all' && tl.type !== filter) return false
-      if (search) {
-        const q = search.toLowerCase()
-        const nameMatch = tl.name.toLowerCase().includes(q)
-        const descMatch = tl.description?.toLowerCase().includes(q) ?? false
-        if (!nameMatch && !descMatch) return false
-      }
-      if (selectedTags.size > 0) {
-        if (!tl.tags || !Array.from(selectedTags).some((tag) => tl.tags!.includes(tag)))
-          return false
-      }
+      if (tl.type === 'mcp') return false
+      if (search && !matchesQuery(tl.name, q) && !matchesQuery(tl.description, q)) return false
+      if (!matchesTags(tl.tags, selectedTags)) return false
       return true
     })
-  }, [tools, filter, search, selectedTags])
+  }, [tools, search, selectedTags])
+
+  const mcpToolsByServer = useMemo(() => {
+    const map = new Map<string, Tool[]>()
+    if (!tools) return map
+    for (const tl of tools) {
+      if (tl.type !== 'mcp' || !tl.mcp_server_id) continue
+      const list = map.get(tl.mcp_server_id) ?? []
+      list.push(tl)
+      map.set(tl.mcp_server_id, list)
+    }
+    return map
+  }, [tools])
+
+  const filteredMCPServers = useMemo(() => {
+    if (!mcpServers) return [] as Array<{ server: MCPServerListItem; matchedByTool: boolean }>
+    const q = search.toLowerCase()
+    return mcpServers
+      .map((server) => {
+        const serverTools = mcpToolsByServer.get(server.id) ?? []
+        const serverMatch = !search || matchesQuery(server.name, q)
+        const toolMatch = search && serverTools.some((tl) => matchesQuery(tl.name, q))
+        if (search && !serverMatch && !toolMatch) return null
+        if (selectedTags.size > 0) {
+          const anyTagMatch = serverTools.some((tl) => matchesTags(tl.tags, selectedTags))
+          if (!anyTagMatch) return null
+        }
+        return { server, matchedByTool: !!toolMatch }
+      })
+      .filter((entry): entry is { server: MCPServerListItem; matchedByTool: boolean } =>
+        entry !== null,
+      )
+  }, [mcpServers, mcpToolsByServer, search, selectedTags])
+
+  const sectionTools = useMemo(() => {
+    return {
+      builtin: nonMCPTools.filter((tl) => tl.type === 'builtin'),
+      prebuilt: nonMCPTools.filter((tl) => tl.type === 'prebuilt'),
+      custom: nonMCPTools.filter((tl) => tl.type === 'custom'),
+    }
+  }, [nonMCPTools])
 
   const counts = useMemo(() => {
     if (!tools) return { all: 0, builtin: 0, prebuilt: 0, mcp: 0, custom: 0 }
@@ -315,10 +383,18 @@ export default function ToolsPage() {
       all: tools.length,
       builtin: tools.filter((tl) => tl.type === 'builtin').length,
       prebuilt: tools.filter((tl) => tl.type === 'prebuilt').length,
-      mcp: tools.filter((tl) => tl.type === 'mcp' && !tl.is_system).length,
+      mcp: mcpServers?.length ?? 0,
       custom: tools.filter((tl) => tl.type === 'custom' && !tl.is_system).length,
     }
-  }, [tools])
+  }, [tools, mcpServers])
+
+  const showSection = (key: ToolFilter) => filter === 'all' || filter === key
+  const totalLoading = isLoading || mcpLoading
+  const totalVisibleCount =
+    (showSection('builtin') ? sectionTools.builtin.length : 0) +
+    (showSection('prebuilt') ? sectionTools.prebuilt.length : 0) +
+    (showSection('mcp') ? filteredMCPServers.length : 0) +
+    (showSection('custom') ? sectionTools.custom.length : 0)
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
@@ -392,23 +468,64 @@ export default function ToolsPage() {
         </div>
       )}
 
-      {isLoading ? (
+      {totalLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {Array.from({ length: 8 }).map((_, i) => (
             <ToolCardSkeleton key={i} />
           ))}
         </div>
-      ) : filteredTools.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredTools.map((tool) => (
-            <ToolCard
-              key={tool.id}
-              tool={tool}
-              onDelete={(tool) => setDeletingToolTarget(tool)}
+      ) : totalVisibleCount > 0 ? (
+        <div className="flex flex-col gap-8">
+          {showSection('builtin') && sectionTools.builtin.length > 0 && (
+            <ToolSection
+              label={t('section.builtin')}
+              count={sectionTools.builtin.length}
+              tools={sectionTools.builtin}
+              onDelete={setDeletingToolTarget}
               isDeleting={deleteTool.isPending}
               onShowDetail={setDetailTool}
             />
-          ))}
+          )}
+          {showSection('prebuilt') && sectionTools.prebuilt.length > 0 && (
+            <ToolSection
+              label={t('section.prebuilt')}
+              count={sectionTools.prebuilt.length}
+              tools={sectionTools.prebuilt}
+              onDelete={setDeletingToolTarget}
+              isDeleting={deleteTool.isPending}
+              onShowDetail={setDetailTool}
+            />
+          )}
+          {showSection('mcp') && filteredMCPServers.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold mb-3 text-foreground/80">
+                {t('section.mcp')}{' '}
+                <span className="text-muted-foreground font-normal">
+                  ({filteredMCPServers.length})
+                </span>
+              </h2>
+              <div className="flex flex-col gap-3">
+                {filteredMCPServers.map(({ server, matchedByTool }) => (
+                  <MCPServerGroupCard
+                    key={server.id}
+                    server={server}
+                    tools={mcpToolsByServer.get(server.id) ?? []}
+                    defaultOpen={matchedByTool}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+          {showSection('custom') && sectionTools.custom.length > 0 && (
+            <ToolSection
+              label={t('section.custom')}
+              count={sectionTools.custom.length}
+              tools={sectionTools.custom}
+              onDelete={setDeletingToolTarget}
+              isDeleting={deleteTool.isPending}
+              onShowDetail={setDetailTool}
+            />
+          )}
         </div>
       ) : search || filter !== 'all' ? (
         <EmptyState

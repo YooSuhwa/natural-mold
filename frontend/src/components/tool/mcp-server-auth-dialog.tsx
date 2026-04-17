@@ -1,8 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 import { KeyIcon, CheckCircleIcon, Loader2Icon, LinkIcon } from 'lucide-react'
+
 import {
   Dialog,
   DialogContent,
@@ -10,55 +12,55 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { useUpdateToolAuthConfig } from '@/lib/hooks/use-tools'
+import { useUpdateMCPServer } from '@/lib/hooks/use-tools'
 import { useCredentials } from '@/lib/hooks/use-credentials'
 import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
 import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
-import type { Tool } from '@/lib/types'
+import type { MCPServerListItem } from '@/lib/types'
 
-interface MCPAuthDialogProps {
-  tool: Tool
-  trigger: React.ReactNode
+interface MCPServerAuthDialogProps {
+  server: MCPServerListItem
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }
 
-export function MCPAuthDialog({ tool, trigger }: MCPAuthDialogProps) {
-  const t = useTranslations('tool.mcpAuth')
+export function MCPServerAuthDialog({ server, open, onOpenChange }: MCPServerAuthDialogProps) {
+  const t = useTranslations('tool.mcpServer.auth')
+  const tToast = useTranslations('tool.mcpServer.toast')
   const tc = useTranslations('common')
   const tCred = useTranslations('connections.credentialSelect')
-  const [open, setOpen] = useState(false)
-  const [createOpen, setCreateOpen] = useState(false)
-  const updateAuth = useUpdateToolAuthConfig()
+  const updateServer = useUpdateMCPServer()
   const { data: credentials } = useCredentials()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [mode, setMode] = useState<string>(server.credential_id ?? CREDENTIAL_NONE)
 
-  const [mode, setMode] = useState<string>(tool.credential_id ?? CREDENTIAL_NONE)
+  function handleOpenChange(next: boolean) {
+    if (next) setMode(server.credential_id ?? CREDENTIAL_NONE)
+    onOpenChange(next)
+  }
 
-  const availableCredentials = credentials ?? []
-
-  const handleSave = () => {
+  function handleSave() {
     const credentialId = mode === CREDENTIAL_NONE ? null : mode
-    updateAuth.mutate(
-      { id: tool.id, authConfig: {}, credentialId },
-      { onSuccess: () => setOpen(false) },
+    updateServer.mutate(
+      { id: server.id, data: { credential_id: credentialId } },
+      {
+        onSuccess: () => onOpenChange(false),
+        onError: () => toast.error(tToast('saveFailed')),
+      },
     )
   }
 
+  const availableCredentials = credentials ?? []
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        setOpen(v)
-        if (v) setMode(tool.credential_id ?? CREDENTIAL_NONE)
-      }}
-    >
-      <DialogTrigger render={trigger as React.ReactElement} />
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyIcon className="size-4" />
-            {t('title', { toolName: tool.name })}
+            {t('title', { serverName: server.name })}
           </DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
@@ -86,11 +88,11 @@ export function MCPAuthDialog({ tool, trigger }: MCPAuthDialogProps) {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             {tc('cancel')}
           </Button>
-          <Button onClick={handleSave} disabled={updateAuth.isPending}>
-            {updateAuth.isPending && (
+          <Button onClick={handleSave} disabled={updateServer.isPending}>
+            {updateServer.isPending && (
               <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
             )}
             {tc('save')}

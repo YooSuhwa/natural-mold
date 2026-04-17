@@ -71,3 +71,19 @@
 [2026-04-10T16:50] bezos VERIFICATION_PASS M5 ruff PASS, pytest 529 passed, build PASS, lint PASS (0 errors, 1 warning) — GO
 [2026-04-10T16:50] satya MILESTONE_DONE M5 최종 검증 완료
 [2026-04-10T16:50] satya PROJECT_DONE "Credential 중앙 관리 시스템"
+---
+[2026-04-17T13:35] satya PROJECT_START "MCP 서버 단위 그룹화 (feature/mcp-server-grouping)"
+[2026-04-17T13:35] satya MILESTONE_CREATED M1,M2,M3,M4,M5
+[2026-04-17T13:35] satya BRANCH_CREATED feature/mcp-server-grouping from main@8685320
+[2026-04-17T13:35] satya TEAM_FORMED jensen(M1 backend), zuckerberg(M2+M3+M4 frontend), bezos(M5 verification)
+[2026-04-17T13:56] jensen MILESTONE_START M1 백엔드 구현 시작
+[2026-04-17T14:00] zuckerberg MILESTONE_START M2 Frontend 데이터 레이어
+[2026-04-17T14:05] zuckerberg MILESTONE_DONE M2 데이터 레이어 완료 — types+API+hooks, lint PASS (0 errors)
+[2026-04-17T14:05] zuckerberg MILESTONE_START M3 신규 UI 컴포넌트 3개
+[2026-04-17T14:15] zuckerberg MILESTONE_DONE M3 신규 UI 컴포넌트 3개 완료 — group-card+auth-dialog+rename-dialog, lint PASS, tsc PASS
+[2026-04-17T14:15] zuckerberg MILESTONE_START M4 페이지 리팩터링+다이얼로그 삭제+i18n
+[2026-04-17T14:02] jensen MILESTONE_DONE M1 백엔드 완료 — schemas/service/router/precedence/tests, ruff PASS, pytest 536 passed (신규 5건 포함)
+[2026-04-17T14:30] zuckerberg MILESTONE_DONE M4 페이지 리팩터링+다이얼로그 삭제+i18n 완료 — pnpm build PASS (3.7s), pnpm lint PASS (0 errors)
+[2026-04-17T14:45] bezos VERIFICATION_PASS M5 backend ruff PASS, pytest 536 passed; frontend lint PASS (0 errors, 1 pre-existing warning), build PASS (14 routes)
+[2026-04-17T14:45] satya MILESTONE_DONE M5 통합 검증 완료
+[2026-04-17T14:45] satya PROJECT_DONE "MCP 서버 단위 그룹화 (feature/mcp-server-grouping)"
