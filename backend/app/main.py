@@ -141,12 +141,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         try:
             await seed_mock_user_prebuilt_connections(db)
             await db.commit()
-        except Exception as exc:  # noqa: BLE001 — lifespan 경계, startup 보호
+        except Exception:  # noqa: BLE001 — lifespan 경계, startup 보호
             await db.rollback()
-            logger.warning(
-                "Prebuilt connection seed failed (%s) — continuing startup. "
-                "Runtime env fallback remains active.",
-                exc,
+            # traceback 포함 로그 — seed 실패 원인을 잃지 않고 startup은 계속
+            # 진행한다 (env fallback으로 runtime 정상 동작).
+            logger.exception(
+                "Prebuilt connection seed failed — continuing startup. "
+                "Runtime env fallback remains active."
             )
 
     # Checkpointer 초기화 — psycopg v3 호환 URL 사용

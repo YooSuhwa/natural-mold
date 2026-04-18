@@ -1,33 +1,35 @@
-"""S5 — PREBUILT → per-user Connection 이관 회귀 + 신규 테스트 (백로그 E M3).
+"""PREBUILT → per-user Connection 이관 회귀 + 신규 테스트 (백로그 E M3).
 
 ADR-008 §3/§4/§11 이행. PREBUILT 도구는 공유 행(`is_system=True, user_id=NULL`)이므로
 runtime credential은 `tool.credential_id`가 아니라 호출 유저의 default Connection
 (`user_id + type='prebuilt' + provider_name + is_default=true`)에서 꺼내야 한다.
 
-M2(S4)가 이미 MCP 분기를 검증하므로 본 파일은 **PREBUILT 분기 전용**이다.
-M6 cleanup 전까지 `_resolve_prebuilt_auth(tool, map)` / `_resolve_legacy_tool_auth(tool)`
-두 경로가 공존한다는 이행 tolerance(사티아 사전 사실 #2/#5)를 아래 시나리오로 못박는다:
+본 파일은 **PREBUILT 분기 전용** (MCP는 별도 파일). M6 cleanup 전까지
+`_resolve_prebuilt_auth(tool, map)` / `_resolve_legacy_tool_auth(tool)` 두 경로가
+공존한다는 이행 tolerance를 시나리오로 고정한다:
 
 1. **per-user 격리 (4-way cross-check)** — user_A agent는 A의 credential만 보고,
-   user_B agent는 B의 credential만 본다. 서로 섞이면 ADR-008 §문제 1 regression.
+   user_B agent는 B의 credential만 본다. 섞이면 공유 행 뒤엉킴 regression.
 2. **connection 부재 → env fallback** — `_resolve_prebuilt_auth`가 `{}` 반환해
-   tool builder(naver_tools 등)가 `settings.*`로 회귀. 런타임 500 없음.
-3. **connection 있지만 credential NULL (ON DELETE SET NULL)** — env fallback 복귀.
+   tool builder(naver_tools 등)가 `settings.*`로 회귀. bootstrap 경로.
+2b. **disabled default → fail closed** — Codex adversarial P1. kill-switch가
+    env fallback로 우회되지 않도록 ToolConfigError raise.
+2c. **disabled → credential+status PATCH로 재활성화** — Codex adversarial P2.
+3. **connection 있지만 credential NULL → fail closed** — unbound/삭제는 명시적
+   의도로 간주, env fallback 거부.
 4. **provider_name NULL PREBUILT → legacy 경로** — m10 백필 실패 row tolerance.
-   `_resolve_legacy_tool_auth`가 `tool.credential` → `tool.auth_config` → `{}` 우선순위
-   로 흐른다. M6에서 제거 예정.
-5. **bulk N+1 방지** — 3 PREBUILT tool(naver/google_search/google_workspace)을 건
-   agent가 `_load_user_default_connection_map` 1회 호출로 3 connection을 모두 로드.
+   M6에서 제거 예정.
+5. **bulk N+1 방지** — 여러 PREBUILT tool을 건 agent가
+   `_load_user_default_connection_map` 1회로 모두 로드.
 6. **cross-tenant credential leak 가드** — connection.user_id == caller지만
-   credential.user_id가 다르면 `ToolConfigError`. DML/마이그레이션 사고 대비.
-7. **m10 idempotent 시드** — 동일 scope default connection이 있으면 m10 helper는
-   추가 INSERT 없이 skip (partial unique index 위반 방지).
+   credential.user_id가 다르면 `ToolConfigError`.
+7. **lifespan seed idempotent / race-safe** — 중복 insert 방지 + SAVEPOINT 래핑.
 8. **m10 downgrade marker 정책** — `M10_SEED_MARKER`가 포함된 행만 역삭제하고
    user-created(마커 없음)는 보존한다.
 
 m10 SQL은 `CAST(:field_keys AS JSON)` 등 PG 전용이라 aiosqlite에서 alembic을 직접
-왕복할 수 없다(M9 precedent). 시나리오 7-8은 helper/소스 레벨에서 invariant를
-고정하고, PG 왕복은 CHECKPOINT의 통합 게이트에서 검증한다(사티아 S6 gate).
+왕복할 수 없다. 시나리오 7-8은 helper/소스 레벨에서 invariant를 고정하고, PG 왕복은
+통합 게이트(S6)에서 검증한다.
 """
 
 from __future__ import annotations
@@ -209,7 +211,7 @@ async def test_prebuilt_resolves_current_user_connection_not_other_user(
 ):
     """user_A agent는 A의 Naver credential만, user_B agent는 B의 credential만.
 
-    사티아 4-way cross-check: 정방향(A gets A) + 역방향(A NOT gets B) + 대칭
+    4-way cross-check: 정방향(A gets A) + 역방향(A NOT gets B) + 대칭
     (B gets B, B NOT gets A). ADR-008 §문제 1: PREBUILT shared row의 connection이
     `tool.connection_id` 기반이 아니라 `(user_id, provider_name)` scope로
     조회된다는 핵심 invariant.
