@@ -1,9 +1,31 @@
 # 백로그 E — Connection 엔티티 통합 리팩토링 (실행 계획)
 
-**상태**: 계획 단계 (M0 대기)
-**작성일**: 2026-04-18
+**상태**: M0 완료 (ADR-008 승인 대기) — M1 대기
+**작성일**: 2026-04-18 (M0 보강: 2026-04-18)
 **선행 조건**: 멀티 유저 인증 도입 이전에 완료 필요
 **범위**: 백로그 E + F(CredentialPickerDialog 공통 셸) 통합
+**ADR**: [`adr-008-connection-entity.md`](../../design-docs/adr-008-connection-entity.md)
+
+---
+
+## M0 합의 사항 (요약)
+
+설계 인터뷰를 통해 다음 결정을 확정했다. 상세 근거는 ADR-008 참조.
+
+| 항목 | 결정 |
+|------|------|
+| `provider_name` | VARCHAR 자유 문자열. PREBUILT는 `credential_registry` enum validator, MCP/CUSTOM은 자유 |
+| UNIQUE 제약 | **없음**. UUID PK + user_id FK + `(user_id, type, provider_name)` 인덱스만 |
+| `user_id` | NOT NULL FK (권한 분리의 기반) |
+| env fallback | **유저 도구 실행 경로에서 제거**. 시스템 내부 기능(creation_agent, 이미지 생성)만 env 유지 |
+| M3 이행 | mock user의 env 값 → credential → default connection 자동 시드 |
+| `is_default` | 유저별 provider별 1개. `agent_tools.connection_id = NULL` → default 사용, 값 있으면 override |
+| `extra_config` | MCP만 사용: `{url, auth_type, headers?, env_vars?, transport?, timeout?}`. PREBUILT/CUSTOM은 NULL |
+| MCP `env_vars` | credential 필드 참조 템플릿(`${credential.xxx}`) 허용. M1은 스키마만, M2에서 해석 구현 |
+| CUSTOM 공유 | 1 credential = 1 connection, 여러 도구가 N:1로 공유 |
+| 롤백 | M2~M5 legacy 컬럼 read-only 유지 + Alembic downgrade 필수 |
+
+---
 
 ---
 
