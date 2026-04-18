@@ -127,6 +127,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         await db.commit()
 
+        # Seed mock user의 PREBUILT default connections (env → credential → connection).
+        # Alembic m10에서 실행하던 시드를 lifespan으로 이동 — migration은 mock user가
+        # 생성되기 전에 실행되므로 silent skip이 발생하고 Alembic이 revision을 applied로
+        # 마킹해 재시도 경로가 사라졌다 (Codex adversarial P1). 여기서 실행하면 매
+        # 기동마다 idempotent하게 재시도하고, mock user 시드와의 순서가 보장된다.
+        from app.seed.prebuilt_connections import seed_mock_user_prebuilt_connections
+
+        await seed_mock_user_prebuilt_connections(db)
+        await db.commit()
+
     # Checkpointer 초기화 — psycopg v3 호환 URL 사용
     from app.agent_runtime.checkpointer import init_checkpointer
 

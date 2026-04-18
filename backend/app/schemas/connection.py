@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from app.schemas.markers import M10_SEED_MARKER
 from app.services.credential_registry import CREDENTIAL_PROVIDERS
 from app.services.env_var_resolver import _ENV_VAR_TEMPLATE
 
@@ -14,8 +15,6 @@ ConnectionType = Literal["prebuilt", "mcp", "custom"]
 ConnectionStatus = Literal["active", "disabled"]
 McpAuthType = Literal["none", "bearer", "api_key", "oauth2", "basic"]
 McpTransport = Literal["http", "stdio"]
-
-from app.schemas.markers import M10_SEED_MARKER
 
 _PROVIDER_NAME_PATTERN = re.compile(r"^[a-z0-9_]+$")
 # env_vars 템플릿 패턴은 runtime resolver와 단일 소스 공유.

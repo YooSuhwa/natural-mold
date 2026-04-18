@@ -319,6 +319,63 @@ async def test_prebuilt_without_default_connection_returns_empty_auth(
 
 
 # ---------------------------------------------------------------------------
+# Scenario 2b — disabled connection은 런타임 resolution에서 제외 (kill switch)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_disabled_default_connection_excluded_from_runtime(
+    db: AsyncSession,
+):
+    """`status='disabled'` connection은 is_default=true여도 runtime auth
+    resolution에서 제외돼 env fallback으로 떨어져야 한다.
+
+    위반 시 유저가 UI에서 connection을 disable해도 서버는 credential을
+    계속 사용 → kill switch 무효 + 프론트/백엔드 split-brain (Codex
+    adversarial P1).
+    """
+    await _seed_user(db, TEST_USER_ID, "test@test.com")
+    model = await _seed_model(db)
+
+    cred = await _seed_credential(
+        db,
+        TEST_USER_ID,
+        {"naver_client_id": "A_ID", "naver_client_secret": "A_SECRET"},
+        name="Naver cred",
+        provider_name="naver",
+    )
+    # connection을 disabled 상태로 생성 (default=true로 두어 status 필터만으로 제외 확인)
+    conn = Connection(
+        user_id=TEST_USER_ID,
+        type="prebuilt",
+        provider_name="naver",
+        display_name="naver disabled",
+        credential_id=cred.id,
+        extra_config=None,
+        is_default=True,
+        status="disabled",
+    )
+    db.add(conn)
+    await db.flush()
+
+    naver_tool = await _seed_prebuilt_tool(
+        db, name="Naver News Search", provider_name="naver"
+    )
+    agent = await _seed_agent_with_tools(
+        db, TEST_USER_ID, model, [naver_tool]
+    )
+
+    loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    assert loaded is not None
+    # disabled는 map에서 제외되어야 함
+    assert loaded._default_connection_map == {}  # type: ignore[attr-defined]
+
+    cfg = build_tools_config(loaded)[0]
+    # env fallback 경로 — auth_config는 None으로 직렬화
+    assert cfg["auth_config"] is None
+
+
+# ---------------------------------------------------------------------------
 # Scenario 3 — connection 있지만 credential NULL (ON DELETE SET NULL)
 # ---------------------------------------------------------------------------
 
@@ -563,36 +620,36 @@ def test_prebuilt_rejects_connection_credential_user_mismatch():
 # ---------------------------------------------------------------------------
 
 
-def test_m10_seed_is_idempotent_source_contract():
-    """`_seed_mock_user_connections`가 동일 scope default connection이 이미
-    있으면 `continue`로 넘어가 중복 INSERT를 피하는지 source-level로 가드.
+def test_lifespan_seed_is_idempotent_source_contract():
+    """`seed_mock_user_prebuilt_connections`가 동일 scope default connection이 이미
+    있으면 skip (continue)하는지 source-level로 가드.
 
     실제 SQL 왕복은 PG 전용(`CAST(:field_keys AS JSON)`)이라 aiosqlite에서
-    실행 불가 — M9 precedent처럼 소스 contract로 invariant를 고정하고,
-    런타임 왕복은 CHECKPOINT의 통합 게이트(S6)에서 PG로 검증한다.
-
-    위반 시 ``uq_connections_one_default_per_scope`` partial unique index가
-    m10 upgrade 자체를 실패시키므로 배포가 롤백된다 — 회귀 비용이 매우 높다.
+    실행 불가 — 소스 contract로 invariant를 고정하고, 런타임 왕복은 통합
+    게이트(S6)에서 PG로 검증한다. 위반 시 partial unique index가 매 기동에서
+    IntegrityError를 던져 lifespan seed가 실패한다.
     """
     import inspect
 
-    src = inspect.getsource(_m10._seed_mock_user_connections)
+    from app.seed import prebuilt_connections as seed_mod
+
+    src = inspect.getsource(seed_mod.seed_mock_user_prebuilt_connections)
     # 존재 체크 SELECT가 있어야 함
     assert "SELECT 1 FROM connections" in src
     # is_default = TRUE 기준으로 중복 탐지
     assert "is_default = TRUE" in src
-    # 중복 발견 시 skip 로그 + continue
-    assert "already exists" in src
-    assert "continue" in src
+    # ENCRYPTION_KEY 가드 존재 확인
+    assert "encryption_key" in src
 
 
-def test_m10_seed_provider_mapping_covers_m3_scope():
-    """m10 `_PROVIDERS`가 M3 스코프 4종(naver/google_search/google_chat/
-    google_workspace)을 전부 커버하는지 가드. 빠지면 env 자동 시드가 조용히
-    건너뛰어 사용자는 ``settings.*`` env 있는데도 UI에서 "미연결"로 보이는
-    혼란이 생긴다 (사티아 사전 사실 #6).
+def test_lifespan_seed_provider_mapping_covers_m3_scope():
+    """`PROVIDERS`가 M3 스코프 4종(naver/google_search/google_chat/
+    google_workspace)을 전부 커버하는지 가드. 빠지면 lifespan seed가 조용히
+    건너뛰어 사용자는 ``settings.*`` env 있는데도 UI에서 "미연결"로 보인다.
     """
-    providers = {p["provider_name"] for p in _m10._PROVIDERS}
+    from app.seed.prebuilt_connections import PROVIDERS
+
+    providers = {p["provider_name"] for p in PROVIDERS}
     assert providers == {
         "naver",
         "google_search",
@@ -601,13 +658,13 @@ def test_m10_seed_provider_mapping_covers_m3_scope():
     }
 
 
-def test_m10_seed_env_to_key_matches_credential_registry():
-    """m10 `env_to_key`의 **값**(credential data 저장 키)이
+def test_lifespan_seed_env_to_key_matches_credential_registry():
+    """seed `env_to_key`의 **값**(credential data 저장 키)이
     `credential_registry.CREDENTIAL_PROVIDERS[provider].fields[*].key`와
     정확히 일치해야 한다.
 
-    일치하지 않으면: m10이 credential.data_decrypted에 엉뚱한 키로 값을
-    저장 → `resolve_credential_data(conn.credential)`이 `auth_config`로
+    일치하지 않으면: lifespan seed가 credential.data_decrypted에 엉뚱한 키로
+    값을 저장 → `resolve_credential_data(conn.credential)`이 `auth_config`로
     반환 → tool builder가 자신이 기대하는 키로 lookup 실패 → env fallback
     으로만 동작 → **PREBUILT per-user 격리 무효** (M3 핵심 목표 파손).
 
@@ -615,18 +672,17 @@ def test_m10_seed_env_to_key_matches_credential_registry():
     저장되는데 tool builder는 `webhook_url`로 lookup. 이 테스트가 회귀
     재발을 막는다.
     """
+    from app.seed.prebuilt_connections import PROVIDERS
     from app.services.credential_registry import CREDENTIAL_PROVIDERS
 
-    for entry in _m10._PROVIDERS:
+    for entry in PROVIDERS:
         provider = entry["provider_name"]
         registry_keys = {
             f["key"] for f in CREDENTIAL_PROVIDERS[provider]["fields"]
         }
         seeded_keys = set(entry["env_to_key"].values())
-        # 시드된 모든 credential data 키가 registry field 키 집합의 부분집합
-        # (registry는 필수 + 선택, 시드는 env가 있는 필수만 채우므로 ⊆ OK)
         assert seeded_keys.issubset(registry_keys), (
-            f"m10 env_to_key mismatch for {provider}: "
+            f"seed env_to_key mismatch for {provider}: "
             f"seeded={seeded_keys} not ⊆ registry_fields={registry_keys}"
         )
 
@@ -645,8 +701,9 @@ def test_m10_downgrade_only_deletes_seed_marker_rows():
     """
     import inspect
 
-    marker = _m10.M10_SEED_MARKER
-    assert marker == "[m10-auto-seed]"  # 계약 고정
+    from app.schemas.markers import M10_SEED_MARKER
+
+    assert _m10.M10_SEED_MARKER == M10_SEED_MARKER == "[m10-auto-seed]"
 
     down_src = inspect.getsource(_m10.downgrade)
     # connections/credentials 두 테이블 모두 marker LIKE 패턴으로 제한
@@ -656,8 +713,10 @@ def test_m10_downgrade_only_deletes_seed_marker_rows():
     assert "DELETE FROM connections\n" not in down_src.replace("  ", "")
     assert "DELETE FROM credentials\n" not in down_src.replace("  ", "")
 
-    # credential/connection 생성 시 실제로 marker를 붙이는지 확인
-    seed_src = inspect.getsource(_m10._seed_mock_user_connections)
+    # lifespan seed에서도 실제로 marker를 붙이는지 확인
+    from app.seed import prebuilt_connections as seed_mod
+
+    seed_src = inspect.getsource(seed_mod.seed_mock_user_prebuilt_connections)
     assert "M10_SEED_MARKER" in seed_src
     assert "credential_name" in seed_src
     assert "connection_display" in seed_src
