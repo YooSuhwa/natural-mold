@@ -27,6 +27,7 @@ import logging
 import uuid
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -160,51 +161,69 @@ async def seed_mock_user_prebuilt_connections(db: AsyncSession) -> None:
         credential_name = f"{M10_SEED_MARKER} {provider_name}"
         encrypted = encrypt_api_key(json.dumps(data))
         field_keys = list(data.keys())
-
-        await db.execute(
-            text(
-                "INSERT INTO credentials ("
-                "id, user_id, name, credential_type, provider_name, "
-                "data_encrypted, field_keys, created_at, updated_at"
-                ") VALUES ("
-                ":id, :uid, :name, :ctype, :provider, "
-                ":data, CAST(:field_keys AS JSON), "
-                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"
-                ")"
-            ),
-            {
-                "id": credential_id,
-                "uid": mock_user_id,
-                "name": credential_name,
-                "ctype": credential_type,
-                "provider": provider_name,
-                "data": encrypted,
-                "field_keys": json.dumps(field_keys),
-            },
-        )
-
         connection_id = uuid.uuid4()
         connection_display = f"{M10_SEED_MARKER} {provider_name}"
-        await db.execute(
-            text(
-                "INSERT INTO connections ("
-                "id, user_id, type, provider_name, display_name, "
-                "credential_id, extra_config, is_default, status, "
-                "created_at, updated_at"
-                ") VALUES ("
-                ":id, :uid, 'prebuilt', :provider, :display, "
-                ":cred_id, NULL, TRUE, 'active', "
-                "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"
-                ")"
-            ),
-            {
-                "id": connection_id,
-                "uid": mock_user_id,
-                "provider": provider_name,
-                "display": connection_display,
-                "cred_id": credential_id,
-            },
-        )
+
+        # SAVEPOINT 기반 race-safe insert: 여러 Pod가 동시 기동해 두 workers가
+        # SELECT를 동시에 통과해도, partial unique index
+        # `uq_connections_one_default_per_scope` 가 두 번째 connection INSERT를
+        # IntegrityError로 차단한다. SAVEPOINT 안에서 catch하면 credential
+        # INSERT도 함께 rollback되어 orphan이 남지 않고, outer transaction은
+        # 살아있어 다음 provider seed로 진행할 수 있다. lifespan 자체가 abort
+        # 되는 것을 방지 (Codex adversarial P1).
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    text(
+                        "INSERT INTO credentials ("
+                        "id, user_id, name, credential_type, provider_name, "
+                        "data_encrypted, field_keys, created_at, updated_at"
+                        ") VALUES ("
+                        ":id, :uid, :name, :ctype, :provider, "
+                        ":data, CAST(:field_keys AS JSON), "
+                        "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"
+                        ")"
+                    ),
+                    {
+                        "id": credential_id,
+                        "uid": mock_user_id,
+                        "name": credential_name,
+                        "ctype": credential_type,
+                        "provider": provider_name,
+                        "data": encrypted,
+                        "field_keys": json.dumps(field_keys),
+                    },
+                )
+                await db.execute(
+                    text(
+                        "INSERT INTO connections ("
+                        "id, user_id, type, provider_name, display_name, "
+                        "credential_id, extra_config, is_default, status, "
+                        "created_at, updated_at"
+                        ") VALUES ("
+                        ":id, :uid, 'prebuilt', :provider, :display, "
+                        ":cred_id, NULL, TRUE, 'active', "
+                        "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP"
+                        ")"
+                    ),
+                    {
+                        "id": connection_id,
+                        "uid": mock_user_id,
+                        "provider": provider_name,
+                        "display": connection_display,
+                        "cred_id": credential_id,
+                    },
+                )
+        except IntegrityError:
+            # race loser — 다른 워커가 먼저 default connection을 만듦. SAVEPOINT
+            # rollback으로 credential insert도 함께 취소된다.
+            logger.info(
+                "seed race: (%s, prebuilt, %s) default already created by "
+                "another worker — skipping.",
+                mock_user_id,
+                provider_name,
+            )
+            continue
 
         logger.info(
             "seeded default connection for (%s, prebuilt, %s) from env.",

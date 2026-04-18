@@ -376,6 +376,72 @@ async def test_disabled_default_connection_excluded_from_runtime(
 
 
 # ---------------------------------------------------------------------------
+# Scenario 2c — disabled default는 credential+status PATCH로 재활성화 가능
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_disabled_default_reactivates_via_credential_and_status_patch(
+    db: AsyncSession,
+):
+    """Frontend binding dialog가 `credential_id` + `status='active'`를 함께
+    PATCH하면 disabled default connection이 재활성화되어 런타임 resolution에
+    다시 등장해야 한다 (Codex adversarial P2).
+
+    이 테스트는 백엔드 contract만 검증 — 실제 프론트 handleSave의 payload
+    형상은 빌드/타입 레벨에서 강제된다 (ConnectionUpdateRequest.status).
+    """
+    await _seed_user(db, TEST_USER_ID, "test@test.com")
+    model = await _seed_model(db)
+
+    cred = await _seed_credential(
+        db,
+        TEST_USER_ID,
+        {"naver_client_id": "A_ID", "naver_client_secret": "A_SECRET"},
+        name="Naver cred",
+        provider_name="naver",
+    )
+    conn = Connection(
+        user_id=TEST_USER_ID,
+        type="prebuilt",
+        provider_name="naver",
+        display_name="naver disabled",
+        credential_id=cred.id,
+        extra_config=None,
+        is_default=True,
+        status="disabled",
+    )
+    db.add(conn)
+    await db.flush()
+
+    # 프론트가 전송하는 payload 동등 — credential_id + status='active'
+    from app.schemas.connection import ConnectionUpdate
+    from app.services.connection_service import update_connection
+
+    updated = await update_connection(
+        db,
+        conn.id,
+        TEST_USER_ID,
+        ConnectionUpdate(credential_id=cred.id, status="active"),
+    )
+    assert updated is not None
+    assert updated.status == "active"
+
+    # 재활성화 후 runtime resolution에 다시 등장
+    naver_tool = await _seed_prebuilt_tool(
+        db, name="Naver News Search", provider_name="naver"
+    )
+    agent = await _seed_agent_with_tools(
+        db, TEST_USER_ID, model, [naver_tool]
+    )
+    loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    assert loaded is not None
+    m = loaded._default_connection_map  # type: ignore[attr-defined]
+    assert "naver" in m
+    assert m["naver"].credential_id == cred.id
+
+
+# ---------------------------------------------------------------------------
 # Scenario 3 — connection 있지만 credential NULL (ON DELETE SET NULL)
 # ---------------------------------------------------------------------------
 
@@ -640,6 +706,32 @@ def test_lifespan_seed_is_idempotent_source_contract():
     assert "is_default = TRUE" in src
     # ENCRYPTION_KEY 가드 존재 확인
     assert "encryption_key" in src
+
+
+def test_lifespan_seed_wraps_inserts_in_savepoint_for_race_safety():
+    """Concurrent boot race 방지 — INSERT 쌍이 SAVEPOINT(`begin_nested`) 안에서
+    실행되고 IntegrityError를 catch해 graceful skip하는지 source-level 가드.
+
+    위반 시 두 pod 동시 기동 race에서 loser pod의 lifespan이 abort되어
+    CrashLoopBackOff 발생 (Codex adversarial 3차 P1).
+    """
+    import inspect
+
+    from app.seed import prebuilt_connections as seed_mod
+
+    src = inspect.getsource(seed_mod.seed_mock_user_prebuilt_connections)
+    # SAVEPOINT 래핑
+    assert "begin_nested" in src
+    # IntegrityError catch 존재
+    assert "IntegrityError" in src
+    # credential/connection INSERT가 같은 savepoint 블록 안에 있어야 orphan 방지
+    # (단순 검증 — 두 INSERT가 try 블록 밖에 있지 않음)
+    try_idx = src.index("try:")
+    nested_idx = src.index("begin_nested", try_idx)
+    cred_insert_idx = src.index("INSERT INTO credentials", nested_idx)
+    conn_insert_idx = src.index("INSERT INTO connections", cred_insert_idx)
+    except_idx = src.index("except IntegrityError", conn_insert_idx)
+    assert nested_idx < cred_insert_idx < conn_insert_idx < except_idx
 
 
 def test_lifespan_seed_provider_mapping_covers_m3_scope():

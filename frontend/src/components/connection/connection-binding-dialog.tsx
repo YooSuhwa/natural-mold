@@ -133,9 +133,13 @@ function DialogBody({
     try {
       let result: Connection
       if (defaultConnection) {
+        // 사용자가 credential을 새로 바인딩하는 의도 = 재활성화 의도로 해석.
+        // 런타임과 프론트 configured 판정이 `status === 'active'` 를 요구하므로,
+        // disabled 상태의 default를 편집해도 저장 후 configured로 돌아오도록
+        // status=active를 함께 PATCH. 이미 active면 no-op (Codex adversarial P2).
         result = await updateConnection.mutateAsync({
           id: defaultConnection.id,
-          data: { credential_id: credentialId },
+          data: { credential_id: credentialId, status: 'active' },
         })
       } else {
         if (credentialId === null) {
