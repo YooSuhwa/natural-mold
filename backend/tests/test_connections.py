@@ -511,6 +511,158 @@ async def test_patch_with_none_unlinks_credential(
 
 
 # ---------------------------------------------------------------------------
+# M10 seed marker — display_name 보호 (downgrade 가역성)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_post_rejects_reserved_marker_display_name(client: AsyncClient):
+    """사용자는 API로 `[m10-auto-seed]` 프리픽스 display_name을 만들 수 없다.
+
+    downgrade의 LIKE 패턴이 사용자 수동 생성분을 잘못 삭제하는 것을 원천 차단
+    (Codex adversarial P1 — downgrade data loss 방지).
+    """
+    resp = await client.post(
+        "/api/connections",
+        json={
+            "type": "prebuilt",
+            "provider_name": "naver",
+            "display_name": "[m10-auto-seed] naver",
+        },
+    )
+    assert resp.status_code == 422
+    body_text = resp.text
+    assert "reserved marker" in body_text or "[m10-auto-seed]" in body_text
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_removing_m10_seed_marker(
+    client: AsyncClient, db: AsyncSession
+):
+    """m10 자동 시드 connection의 display_name은 마커 프리픽스를 제거하지 못한다.
+
+    m10이 이미 시드해둔 marker row(DB 직접 insert로 시뮬레이션)에 대해 PATCH로
+    마커를 제거하면 400. 마커 유지 rename은 허용. marker 없는 row는 자유 편집.
+    """
+    cred = await _seed_credential(db)
+
+    # m10 마커가 있는 row를 DB에 직접 insert (API는 marker를 거부하므로 우회)
+    seeded = Connection(
+        user_id=TEST_USER_ID,
+        type="prebuilt",
+        provider_name="naver",
+        display_name="[m10-auto-seed] naver",
+        credential_id=cred.id,
+        is_default=True,
+        status="active",
+    )
+    db.add(seeded)
+    await db.commit()
+    await db.refresh(seeded)
+    seeded_id = seeded.id
+
+    # 마커 없는 이름으로 PATCH → 400
+    resp = await client.patch(
+        f"/api/connections/{seeded_id}",
+        json={"display_name": "My Naver Key"},
+    )
+    assert resp.status_code == 400
+    assert "자동 시드" in resp.json().get("detail", "")
+
+    # 마커를 유지한 변경도 422 — PATCH schema validator가 marker 프리픽스를
+    # 차단한다 (write path 원칙: 사용자는 marker를 쓸 수 없음).
+    resp = await client.patch(
+        f"/api/connections/{seeded_id}",
+        json={"display_name": "[m10-auto-seed] naver-renamed"},
+    )
+    assert resp.status_code == 422
+    assert "reserved marker" in resp.text or "[m10-auto-seed]" in resp.text
+
+    # marker 없는 connection은 자유 rename (회귀 방지)
+    other = await client.post(
+        "/api/connections",
+        json={
+            "type": "prebuilt",
+            "provider_name": "google_search",
+            "display_name": "My Google Key",
+            "credential_id": None,
+        },
+    )
+    assert other.status_code == 201
+    resp = await client.patch(
+        f"/api/connections/{other.json()['id']}",
+        json={"display_name": "renamed freely"},
+    )
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_post_rejects_provider_mismatched_credential(
+    client: AsyncClient, db: AsyncSession
+):
+    """PREBUILT connection에 provider_name이 다른 credential을 bind하면 400.
+
+    허용되면 `_resolve_prebuilt_auth`가 엉뚱한 키로 auth_config를 만들고
+    tool builder가 settings.* env로 조용히 떨어져 per-user 격리가 파손된다
+    (Codex adversarial P1).
+    """
+    # naver credential 생성 (provider_name=naver)
+    naver_cred = await _seed_credential(db, name="Naver cred")
+    # google_search 타입의 connection에 naver credential 연결 시도 → 400
+    resp = await client.post(
+        "/api/connections",
+        json={
+            "type": "prebuilt",
+            "provider_name": "google_search",
+            "display_name": "My Google Search",
+            "credential_id": str(naver_cred.id),
+        },
+    )
+    assert resp.status_code == 400
+    assert "does not" in resp.json().get("detail", "")
+
+    # 올바른 provider(naver)로는 성공
+    resp = await client.post(
+        "/api/connections",
+        json={
+            "type": "prebuilt",
+            "provider_name": "naver",
+            "display_name": "My Naver",
+            "credential_id": str(naver_cred.id),
+        },
+    )
+    assert resp.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_patch_rejects_provider_mismatched_credential(
+    client: AsyncClient, db: AsyncSession
+):
+    """PATCH로 credential_id 바꾸거나 provider_name 바꿀 때도 일치 검증."""
+    naver_cred = await _seed_credential(db, name="Naver cred")
+    # provider=naver로 먼저 만들고
+    created = await client.post(
+        "/api/connections",
+        json={
+            "type": "prebuilt",
+            "provider_name": "naver",
+            "display_name": "Naver conn",
+            "credential_id": str(naver_cred.id),
+        },
+    )
+    assert created.status_code == 201
+    conn_id = created.json()["id"]
+
+    # provider_name을 google_search로 바꾸려 하면 기존 naver credential과 불일치 → 400
+    resp = await client.patch(
+        f"/api/connections/{conn_id}",
+        json={"provider_name": "google_search"},
+    )
+    assert resp.status_code == 400
+    assert "does not" in resp.json().get("detail", "")
+
+
+# ---------------------------------------------------------------------------
 # Extra — 알 수 없는 필드 전송 시 422 (extra="forbid")
 # ---------------------------------------------------------------------------
 

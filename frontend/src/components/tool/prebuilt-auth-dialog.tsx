@@ -1,132 +1,60 @@
 'use client'
 
 import React, { useState } from 'react'
-import { useTranslations } from 'next-intl'
-import { KeyIcon, CheckCircleIcon, Loader2Icon, LinkIcon } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { useUpdateToolAuthConfig } from '@/lib/hooks/use-tools'
-import { useCredentials } from '@/lib/hooks/use-credentials'
-import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
-import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
-import type { Tool } from '@/lib/types'
+
+import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
+import { CustomAuthDialog } from '@/components/tool/custom-auth-dialog'
+import { isPrebuiltProviderName, type Tool } from '@/lib/types'
 
 interface PrebuiltAuthDialogProps {
   tool: Tool
   trigger: React.ReactNode
 }
 
-function detectProvider(toolName: string): string {
-  const lower = toolName.toLowerCase()
-  if (lower.startsWith('naver')) return 'naver'
-  if (lower.startsWith('google chat')) return 'google_chat'
-  if (lower.startsWith('gmail') || lower.startsWith('calendar')) return 'google_workspace'
-  if (lower.startsWith('google')) return 'google_search'
-  return 'unknown'
-}
-
+/**
+ * PREBUILT 도구 인증 dialog.
+ *
+ * ADR-008: PREBUILT는 per-user Connection 엔티티(user_id+type+provider_name)로
+ * credential을 바인딩한다. tool row 자체는 공유 행이라 mutate하지 않는다.
+ *
+ * tool.provider_name이 null인 경우(m10 매핑 실패 — 실무상 0건 예상이지만
+ * 존재 가능)는 backend가 여전히 legacy `tool.credential_id` 경로로 실행하므로,
+ * UI도 legacy credential-edit 플로우(CustomAuthDialog)로 위임해 rotate/clear/
+ * repair 경로를 유지한다. 그렇지 않으면 "도구는 실행되지만 관리 불가" 운영
+ * 데드엔드가 발생 (Codex adversarial 4차 P2). M6 cleanup에서 legacy path 일괄 제거.
+ */
 export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
-  const t = useTranslations('tool.authDialog')
-  const tc = useTranslations('common')
-  const tCred = useTranslations('connections.credentialSelect')
   const [open, setOpen] = useState(false)
-  const [createOpen, setCreateOpen] = useState(false)
-  const updateAuth = useUpdateToolAuthConfig()
-  const { data: credentials } = useCredentials()
-  const provider = detectProvider(tool.name)
-  const providerKey = (
-    {
-      naver: 'naver',
-      google_search: 'googleSearch',
-      google_chat: 'googleChat',
-      google_workspace: 'googleWorkspace',
-    } as Record<string, string>
-  )[provider]
 
-  const [mode, setMode] = useState<string>(tool.credential_id ?? CREDENTIAL_NONE)
-
-  const matchingCredentials = credentials?.filter((c) => c.provider_name === provider) ?? []
-
-  const handleSave = () => {
-    const credentialId = mode === CREDENTIAL_NONE ? null : mode
-    updateAuth.mutate(
-      { id: tool.id, authConfig: {}, credentialId },
-      { onSuccess: () => setOpen(false) },
-    )
+  // Legacy path (provider_name NULL이거나 알 수 없는 값) — CustomAuthDialog는
+  // tool.credential_id 기반의 기존 credential-edit 플로우를 제공한다. 백필 실패
+  // row나 M3 이후 추가된 미등록 provider를 UI에서 계속 관리 가능하게 한다.
+  // M4에서 교체 예정.
+  if (!isPrebuiltProviderName(tool.provider_name)) {
+    return <CustomAuthDialog tool={tool} trigger={trigger} />
   }
 
+  const clickable = cloneWithProps(trigger, { onClick: () => setOpen(true) })
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        setOpen(v)
-        if (v) setMode(tool.credential_id ?? CREDENTIAL_NONE)
-      }}
-    >
-      <DialogTrigger render={trigger as React.ReactElement} />
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <KeyIcon className="size-4" />
-            {t('title', { toolName: tool.name })}
-          </DialogTitle>
-          <DialogDescription>
-            {t('description')}
-            {providerKey && t(`provider.${providerKey}`)}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium flex items-center gap-1.5">
-              <LinkIcon className="size-3.5" />
-              {tCred('label')}
-            </label>
-            <CredentialSelect
-              value={mode}
-              onValueChange={setMode}
-              onCreateRequested={() => setCreateOpen(true)}
-              credentials={matchingCredentials}
-            />
-          </div>
-
-          {mode !== CREDENTIAL_NONE && (
-            <div className="flex items-center gap-2 text-xs text-emerald-600">
-              <CheckCircleIcon className="size-3.5" />
-              {t('configured')}
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            {tc('cancel')}
-          </Button>
-          <Button onClick={handleSave} disabled={updateAuth.isPending}>
-            {updateAuth.isPending && (
-              <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
-            )}
-            {tc('save')}
-          </Button>
-        </DialogFooter>
-
-        <CredentialFormDialog
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          defaultProvider={provider !== 'unknown' ? provider : undefined}
-          onCreated={(c) => {
-            if (c.provider_name === provider) setMode(c.id)
-          }}
-        />
-      </DialogContent>
-    </Dialog>
+    <>
+      {clickable}
+      <ConnectionBindingDialog
+        type="prebuilt"
+        providerName={tool.provider_name}
+        toolName={tool.name}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
   )
+}
+
+function cloneWithProps(
+  node: React.ReactNode,
+  props: Record<string, unknown>,
+): React.ReactElement {
+  if (!React.isValidElement(node)) {
+    throw new Error('PrebuiltAuthDialog trigger must be a valid React element')
+  }
+  return React.cloneElement(node as React.ReactElement<Record<string, unknown>>, props)
 }

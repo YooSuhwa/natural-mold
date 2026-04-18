@@ -127,6 +127,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         await db.commit()
 
+        # Seed mock user의 PREBUILT default connections (env → credential → connection).
+        # Alembic m10에서 실행하던 시드를 lifespan으로 이동 — migration은 mock user가
+        # 생성되기 전에 실행되므로 silent skip이 발생하고 Alembic이 revision을 applied로
+        # 마킹해 재시도 경로가 사라졌다. 여기서 실행하면 매 기동마다 idempotent하게
+        # 재시도하고, mock user 시드와의 순서가 보장된다.
+        #
+        # 실패 시에도 startup을 blocking하지 않는다 (env fallback 경로가 살아 있으므로
+        # seed 실패 = UI에 connection이 없어 보이는 degrade일 뿐). 특정 provider race는
+        # 함수 내부 SAVEPOINT로 이미 처리되므로 여기선 방어선(정말 예기치 못한 예외).
+        from app.seed.prebuilt_connections import seed_mock_user_prebuilt_connections
+
+        try:
+            await seed_mock_user_prebuilt_connections(db)
+            await db.commit()
+        except Exception:  # noqa: BLE001 — lifespan 경계, startup 보호
+            await db.rollback()
+            # traceback 포함 로그 — seed 실패 원인을 잃지 않고 startup은 계속
+            # 진행한다 (env fallback으로 runtime 정상 동작).
+            logger.exception(
+                "Prebuilt connection seed failed — continuing startup. "
+                "Runtime env fallback remains active."
+            )
+
     # Checkpointer 초기화 — psycopg v3 호환 URL 사용
     from app.agent_runtime.checkpointer import init_checkpointer
 

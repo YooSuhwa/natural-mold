@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
+from app.schemas.markers import check_reserved_marker
 from app.services.credential_registry import CREDENTIAL_PROVIDERS
 from app.services.env_var_resolver import _ENV_VAR_TEMPLATE
 
@@ -102,6 +103,11 @@ class ConnectionCreate(BaseModel):
             return v
         return _validate_provider_name(v, connection_type)
 
+    @field_validator("display_name")
+    @classmethod
+    def _check_display_name_marker(cls, v: str) -> str:
+        return check_reserved_marker(v, "display_name")
+
     @model_validator(mode="after")
     def _check_extra_config_per_type(self) -> ConnectionCreate:
         if self.type == "mcp":
@@ -155,6 +161,11 @@ class ConnectionUpdate(BaseModel):
     extra_config: ConnectionExtraConfig | None = None
     is_default: bool | None = None
     status: ConnectionStatus | None = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _check_display_name_marker(cls, v: str | None) -> str | None:
+        return check_reserved_marker(v, "display_name")
 
     @model_validator(mode="after")
     def _check_write_side_env_vars(self) -> ConnectionUpdate:
