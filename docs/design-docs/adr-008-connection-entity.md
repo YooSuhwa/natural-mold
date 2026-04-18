@@ -52,14 +52,17 @@ connections
   INDEX (user_id, type, provider_name)                          -- hot path: 도구 해석 시 조회
 ```
 
-- **UNIQUE 제약 없음**. UUID PK가 고유성을 보장하고, 같은 provider에 대해 "회사용/개인용"처럼 display_name이 동일/유사한 복수 connection을 허용 (업계 표준: GitHub, Slack).
+- **행 전체 UNIQUE 제약 없음**. UUID PK가 고유성을 보장하고, 같은 provider에 대해 "회사용/개인용"처럼 display_name이 동일/유사한 복수 connection을 허용 (업계 표준: GitHub, Slack).
+- **partial unique index** `uq_connections_one_default_per_scope` — `(user_id, type, provider_name)` WHERE `is_default = true`. "scope 당 default 1개 이하" 불변식을 DB 레벨에서 강제. 앱 레벨 count+clear+insert 패턴은 동시 요청에서 race 발생 가능하므로 DB가 최종 안전망 역할 (Codex adversarial Finding 2). 서비스는 `IntegrityError`를 catch해 409로 변환.
 - `provider_name` validator는 Python/Pydantic 레벨에서 type에 따라 분기:
   - `type='prebuilt'`: `credential_registry` enum (`naver`, `google_search`, `google_workspace`, `google_chat`, `custom_api_key`)만 허용
   - `type='mcp'` / `type='custom'`: 자유 문자열 (영문/숫자/언더스코어, 길이 제한)
 
 ### 2. `extra_config` 구조
 
-**MCP만 사용**. PREBUILT/CUSTOM은 NULL.
+**MCP만 사용**. PREBUILT/CUSTOM은 NULL(서비스/스키마 레벨 강제, 평문 시크릿 채널 방지).
+
+Pydantic 모델 `ConnectionExtraConfig` (`extra="forbid"`):
 
 ```json
 {
@@ -74,7 +77,9 @@ connections
 
 - `url`, `auth_type`은 필수.
 - `headers`, `env_vars`, `transport`, `timeout`은 선택.
-- `env_vars` 값은 **plain string** 또는 **credential 필드 참조 템플릿** (`${credential.field_name}`). 비밀값은 credential에 저장하고 env_vars는 참조만 (유사 서비스 UX 참고 — 이미지 5의 `${RESEND_API_KEY}` 문법). **템플릿 해석 로직의 실제 구현은 M2 MCP 실행 경로에서 수행**하며, M1은 스키마만 허용한다.
+- **`env_vars` 값은 반드시 `${credential.<field_name>}` 템플릿만 허용**. 평문 문자열은 422 반환. 비밀값은 반드시 credential에 저장하고 env_vars는 참조만 할 수 있다 — API 응답도 Pydantic 모델 형태로 echo되므로, 평문 시크릿이 연결 CRUD 응답으로 누출되는 채널이 존재하지 않는다 (Codex adversarial Finding 3).
+- **템플릿 해석 로직의 실제 구현은 M2 MCP 실행 경로에서 수행** (런타임에 credential.decrypt하여 치환).
+- `extra="forbid"`로 알 수 없는 키는 거부 → 새 필드 추가는 반드시 스키마 변경이 동반되므로 은닉 채널 차단.
 
 ### 3. 도구 타입별 해석 로직
 

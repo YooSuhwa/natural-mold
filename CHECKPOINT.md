@@ -1,68 +1,81 @@
-# CHECKPOINT — credentials list N+1 복호화 제거 (백로그 C)
+# CHECKPOINT — 백로그 E M1 · Connection 테이블 + CRUD API
 
-**브랜치**: `feature/credentials-field-keys-cache`
-**플랜**: `~/.claude/plans/c-credentials-list-glistening-kurzweil.md`
-**시작**: 2026-04-17
-**worktree**: `/Users/chester/dev/natural-mold/.claude/worktrees/backlog-c`
+**브랜치**: `feature/connections-table`
+**worktree**: `/Users/chester/dev/natural-mold/.claude/worktrees/backlog-e-m1`
+**ADR**: `docs/design-docs/adr-008-connection-entity.md`
+**실행계획**: `docs/exec-plans/active/backlog-e-connection-refactor.md`
+**시작**: 2026-04-18
+**팀**: 피차이(아키텍트) + 젠슨(구현) + 베조스(QA) — 사티아 리드
 
-## M0: Docs/ADR 초기화
+---
 
-- [x] `docs/design-docs/adr-007-credentials-field-keys-cache.md` 작성
-- [x] `docs/exec-plans/active/backlog-c-field-keys-cache.md`에 실행 계획 사본
-- 검증: 두 파일 존재 + `docs/design-docs/index.md`에 신규 ADR 링크 (완료)
-- done-when: ADR 번호 부여, 맥락/결정/대안/결과 4 섹션 작성
-- 상태: **done**
-- 담당: 사티아 (피차이 대리 — 경량팀 구성)
+## S0: docs/ 구조 확인
 
-## M1: 삭제 분석
+- [x] 이미 `docs/`, `docs/design-docs/`, `docs/exec-plans/active/` 구조 존재
+- [x] ADR-008 이미 존재 (main 머지됨)
+- 검증: `ls docs/ARCHITECTURE.md docs/design-docs/index.md docs/design-docs/adr-008-connection-entity.md`
+- done-when: 3 파일 모두 존재
+- 상태: **done** (사전 존재)
 
-- [x] 삭제 0건, 단순화 1건, 보류 3건 — scope 외 drive-by 금지 원칙 준수
-- [x] `tasks/deletion-analysis-c.md` 보고서 작성
-- 검증: 보고서 존재 + 권고 사항 명시 (완료)
-- done-when: 사티아가 보고서 승인
-- 상태: **done**
+## S1: 삭제 분석 (베조스)
+
+- [ ] M1 스코프에서 제거/단순화 후보 식별 (drive-by 금지)
+- [ ] `tasks/deletion-analysis-e-m1.md` 보고서 작성
+- 검증: 보고서 존재 + 결론이 "제거 X건, 단순화 Y건, 보류 Z건" 형식으로 명시
+- done-when: 사티아 승인
+- 상태: pending
 - 담당: 베조스
 
-## M2: 모델 + Alembic 마이그레이션 + 백필
+## S2: Connection 모델 + 스키마 + Validator (피차이)
 
-- [ ] `backend/app/models/credential.py`에 `field_keys: Mapped[list[str] | None]` (sa.JSON(), nullable=True) 추가
-- [ ] 신규 마이그레이션 `backend/alembic/versions/m7_add_credential_field_keys.py` — upgrade: 컬럼 추가 + 기존 row backfill, downgrade: drop_column
-- [ ] ENCRYPTION_KEY 미설정 시 backfill 스킵 + 경고 로그
-- 검증: `cd backend && uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head` — 왕복 PASS
-- done-when: 왕복 성공, 테이블에 field_keys 컬럼 존재
-- 상태: **done**
+- [ ] `backend/app/models/connection.py` 신규 — ADR-008 §1 스키마 (user_id NOT NULL, type/provider_name/display_name/credential_id/extra_config/is_default/status/created_at/updated_at, 인덱스 `(user_id, type, provider_name)`)
+- [ ] `backend/app/schemas/connection.py` 신규 — `ConnectionCreate`, `ConnectionUpdate`, `ConnectionResponse`
+  - `provider_name` validator: type='prebuilt'이면 credential_registry enum 5종 제약, 아니면 영문/숫자/언더스코어 문자열
+  - MCP validator: `extra_config.url` 필수
+- [ ] `backend/app/models/__init__.py`에 Connection export
+- 검증: `cd backend && uv run ruff check app/models/connection.py app/schemas/connection.py && uv run python -c "from app.models import Connection; from app.schemas.connection import ConnectionCreate"`
+- done-when: ruff PASS + import 순환 없음
+- 상태: pending
+- 담당: 피차이
+- blockedBy: S0
+
+## S3: Service + Router + Migration (젠슨)
+
+- [ ] `backend/alembic/versions/m8_add_connections.py` — upgrade: 테이블 + 인덱스 생성, downgrade: drop
+- [ ] `backend/app/services/connection_service.py` — CRUD + `is_default` 원자 토글 (같은 user_id+type+provider_name 범위 내 기존 default 해제)
+- [ ] `backend/app/routers/connections.py` — `GET /api/connections`, `GET /api/connections/{id}`, `POST /api/connections`, `PATCH /api/connections/{id}`, `DELETE /api/connections/{id}` (모두 `get_current_user` 필터)
+- [ ] `backend/app/main.py` — router 등록
+- 검증: `cd backend && uv run ruff check . && uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head`
+- done-when: 왕복 PASS, ruff PASS
+- 상태: pending
 - 담당: 젠슨
+- blockedBy: S2
 
-## M3: 서비스 수정 (create/update/extract)
+## S4: 테스트 (베조스)
 
-- [ ] `credential_service.create_credential` — Credential 생성 시 `field_keys=list(data.data.keys())`
-- [ ] `credential_service.update_credential` — `data.data` 변경 시 `field_keys` 동기화. name만 변경 시 불변
-- [ ] `credential_service.extract_field_keys` — 캐시 우선, NULL이면 기존 복호화 경로 fallback
-- 검증: `cd backend && uv run ruff check app/services/credential_service.py app/models/credential.py` — PASS
-- done-when: ruff PASS, import 순환 없음
-- 상태: **done**
-- 담당: 젠슨
-
-## M4: 테스트 신설 + 회귀
-
-- [ ] 신규 `backend/tests/test_credentials.py` — 5 시나리오:
-  1. create 시 field_keys 저장
-  2. update(data 변경) 시 field_keys 동기화
-  3. update(name만) 시 field_keys 불변
-  4. list 응답에서 decrypt_api_key 호출 0회 (monkeypatch/spy)
-  5. legacy row(field_keys=None) fallback 경로 동작
-- [ ] 전체 회귀 `uv run pytest` 540+ 유지
-- 검증: `cd backend && uv run pytest tests/test_credentials.py -v && uv run pytest` — **545 passed**
-- done-when: 신규 5 통과, 기존 회귀 0
-- 상태: **done**
+- [ ] `backend/tests/test_connections.py` 신규 — ADR-008 §M1 테스트 시나리오 8개:
+  1. CRUD 기본 (credential 연결 + NULL)
+  2. MCP validator (extra_config.url 없으면 422)
+  3. PREBUILT validator (non-enum provider_name은 422)
+  4. is_default 자동 설정 (첫 connection)
+  5. is_default 토글 원자성 (기존 default 자동 해제)
+  6. IDOR 방지 (user_A가 user_B 리소스 접근 시 404)
+  7. credential ON DELETE SET NULL
+  8. extra_config 타입 불일치 (PREBUILT에 주면 경고/무시)
+- [ ] 전체 회귀 pytest PASS (545+ 유지)
+- 검증: `cd backend && uv run pytest tests/test_connections.py -v && uv run pytest`
+- done-when: 신규 8 시나리오 통과 + 기존 회귀 0
+- 상태: pending
 - 담당: 베조스
+- blockedBy: S3
 
-## M5: 통합 + 커밋
+## S5: 통합 + 커밋 (사티아)
 
-- [x] 전체 verify: `ruff check . && pytest && alembic upgrade/downgrade/upgrade` — 모두 PASS (545 passed, ruff clean, 왕복 성공)
-- [x] `HANDOFF.md` 업데이트 (진행 중)
-- [x] worktree 내 단일 커밋 (feat(credentials): field_keys cache column)
-- 검증: `git log --oneline feature/credentials-field-keys-cache ^main`
-- done-when: 커밋 존재, 전체 verify PASS
-- 상태: **done**
+- [ ] 전체 verify: ruff + pytest + alembic 왕복 PASS
+- [ ] HANDOFF.md 업데이트
+- [ ] 단일 커밋
+- 검증: `git log --oneline feature/connections-table ^main`
+- done-when: 커밋 존재, verify PASS
+- 상태: pending
 - 담당: 사티아
+- blockedBy: S4
