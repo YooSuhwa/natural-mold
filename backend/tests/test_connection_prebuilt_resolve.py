@@ -796,33 +796,23 @@ def test_lifespan_seed_provider_mapping_covers_m3_scope():
     }
 
 
-def test_lifespan_seed_env_to_key_matches_credential_registry():
-    """seed `env_to_key`의 **값**(credential data 저장 키)이
-    `credential_registry.CREDENTIAL_PROVIDERS[provider].fields[*].key`와
-    정확히 일치해야 한다.
-
-    일치하지 않으면: lifespan seed가 credential.data_decrypted에 엉뚱한 키로
-    값을 저장 → `resolve_credential_data(conn.credential)`이 `auth_config`로
-    반환 → tool builder가 자신이 기대하는 키로 lookup 실패 → env fallback
-    으로만 동작 → **PREBUILT per-user 격리 무효** (M3 핵심 목표 파손).
-
-    Codex /review(P2) 발견 케이스: google_chat 이 `google_chat_webhook_url`로
-    저장되는데 tool builder는 `webhook_url`로 lookup. 이 테스트가 회귀
-    재발을 막는다.
+def test_lifespan_seed_derives_from_credential_registry():
+    """seed `PROVIDERS`는 `CREDENTIAL_PROVIDERS`에서 `env_field`가 모두 설정된
+    provider만 파생해야 한다. 싱글 소스 구조를 고정 — registry 필드가 변해도
+    seed가 자동 동기화되므로 env→data key mismatch(Codex review P2 재발)가
+    컴파일 타임에 차단된다.
     """
     from app.seed.prebuilt_connections import PROVIDERS
     from app.services.credential_registry import CREDENTIAL_PROVIDERS
 
     for entry in PROVIDERS:
         provider = entry["provider_name"]
-        registry_keys = {
-            f["key"] for f in CREDENTIAL_PROVIDERS[provider]["fields"]
-        }
-        seeded_keys = set(entry["env_to_key"].values())
-        assert seeded_keys.issubset(registry_keys), (
-            f"seed env_to_key mismatch for {provider}: "
-            f"seeded={seeded_keys} not ⊆ registry_fields={registry_keys}"
-        )
+        registry_fields = CREDENTIAL_PROVIDERS[provider]["fields"]
+        # 모든 field에 env_field가 있어야 seed 대상
+        assert all(f.get("env_field") for f in registry_fields)
+        # env_to_key 매핑이 registry의 (env_field → key) 매핑과 정확히 일치
+        expected = {f["env_field"]: f["key"] for f in registry_fields}
+        assert entry["env_to_key"] == expected
 
 
 # ---------------------------------------------------------------------------

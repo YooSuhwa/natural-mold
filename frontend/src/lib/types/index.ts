@@ -235,6 +235,30 @@ export interface Tool {
 
 // Connection — ADR-008 (user × type × provider 수준 credential 바인딩)
 export type ConnectionType = 'prebuilt' | 'mcp' | 'custom'
+
+// PREBUILT connection에서 허용되는 provider_name 집합. backend
+// `credential_registry.CREDENTIAL_PROVIDERS` 의 enum 키와 일치 — 추가 시 양측 동기.
+export type PrebuiltProviderName =
+  | 'naver'
+  | 'google_search'
+  | 'google_chat'
+  | 'google_workspace'
+
+const PREBUILT_PROVIDER_NAMES: readonly PrebuiltProviderName[] = [
+  'naver',
+  'google_search',
+  'google_chat',
+  'google_workspace',
+]
+
+export function isPrebuiltProviderName(
+  value: string | null | undefined,
+): value is PrebuiltProviderName {
+  return (
+    typeof value === 'string' &&
+    (PREBUILT_PROVIDER_NAMES as readonly string[]).includes(value)
+  )
+}
 export type ConnectionStatus = 'active' | 'disabled'
 export type ConnectionMcpAuthType = 'none' | 'bearer' | 'api_key' | 'oauth2' | 'basic'
 export type ConnectionMcpTransport = 'http' | 'stdio'

@@ -25,11 +25,11 @@ import {
   useUpdateConnection,
 } from '@/lib/hooks/use-connections'
 import { ApiError } from '@/lib/api/client'
-import type { Connection } from '@/lib/types'
+import type { Connection, PrebuiltProviderName } from '@/lib/types'
 
 interface ConnectionBindingDialogProps {
   type: 'prebuilt'
-  providerName: string
+  providerName: PrebuiltProviderName
   // Dialog title에 표시할 tool name. 없으면 providerName 사용
   toolName?: string
   open: boolean
@@ -38,7 +38,7 @@ interface ConnectionBindingDialogProps {
   onSaved?: (connection: Connection) => void
 }
 
-const PROVIDER_I18N_KEY: Record<string, string> = {
+const PROVIDER_I18N_KEY: Record<PrebuiltProviderName, string> = {
   naver: 'naver',
   google_search: 'googleSearch',
   google_chat: 'googleChat',
@@ -83,7 +83,7 @@ function DialogBody({
   onSaved,
 }: {
   type: 'prebuilt'
-  providerName: string
+  providerName: PrebuiltProviderName
   toolName?: string
   onClose: () => void
   onSaved?: (connection: Connection) => void

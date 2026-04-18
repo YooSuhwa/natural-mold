@@ -45,14 +45,14 @@ import { SearchInput } from '@/components/shared/search-input'
 import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
-import type { Connection, Credential } from '@/lib/types'
+import type { Connection, Credential, PrebuiltProviderName } from '@/lib/types'
 
-const PREBUILT_PROVIDERS = [
+const PREBUILT_PROVIDERS: readonly PrebuiltProviderName[] = [
   'naver',
   'google_search',
   'google_chat',
   'google_workspace',
-] as const
+]
 
 export default function ConnectionsPage() {
   const { data: credentials, isLoading } = useCredentials()
@@ -93,6 +93,9 @@ export default function ConnectionsPage() {
     setFormOpen(true)
   }
 
+  // getProviderLabel은 PREBUILT 4종 외 모든 credential provider(custom_api_key 등)
+  // 에 대해서도 호출되므로 string을 받는다. dialog에 PrebuiltProviderName을
+  // 건넬 때는 상수 배열 타입이 자동으로 narrow된다.
   function getProviderLabel(providerName: string): string {
     const p = providers?.find((pr) => pr.key === providerName)
     return p?.name ?? providerName
@@ -203,7 +206,7 @@ function PrebuiltConnectionSection() {
   const tProvider = useTranslations('tool.authDialog.provider')
   const { data: connections, isLoading } = useConnections({ type: 'prebuilt' })
   const { data: credentials } = useCredentials()
-  const [dialogProvider, setDialogProvider] = useState<string | null>(null)
+  const [dialogProvider, setDialogProvider] = useState<PrebuiltProviderName | null>(null)
 
   const PROVIDER_I18N_KEY: Record<string, string> = {
     naver: 'naver',

@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 
 import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
 import { CustomAuthDialog } from '@/components/tool/custom-auth-dialog'
-import type { Tool } from '@/lib/types'
+import { isPrebuiltProviderName, type Tool } from '@/lib/types'
 
 interface PrebuiltAuthDialogProps {
   tool: Tool
@@ -26,10 +26,11 @@ interface PrebuiltAuthDialogProps {
 export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
   const [open, setOpen] = useState(false)
 
-  if (!tool.provider_name) {
-    // Legacy path (provider_name NULL) — CustomAuthDialog는 tool.credential_id
-    // 기반의 기존 credential-edit 플로우를 제공한다. M4에서 교체될 예정이지만
-    // M3~M5 기간 fallback으로 활용.
+  // Legacy path (provider_name NULL이거나 알 수 없는 값) — CustomAuthDialog는
+  // tool.credential_id 기반의 기존 credential-edit 플로우를 제공한다. 백필 실패
+  // row나 M3 이후 추가된 미등록 provider를 UI에서 계속 관리 가능하게 한다.
+  // M4에서 교체 예정.
+  if (!isPrebuiltProviderName(tool.provider_name)) {
     return <CustomAuthDialog tool={tool} trigger={trigger} />
   }
 

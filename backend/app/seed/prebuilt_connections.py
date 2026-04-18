@@ -32,55 +32,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.schemas.markers import M10_SEED_MARKER
+from app.services.credential_registry import CREDENTIAL_PROVIDERS
 
 logger = logging.getLogger(__name__)
 
-# (provider_name, credential_type, env_field → credential data key 매핑)
-# 필수 env가 하나라도 비어 있으면 해당 provider 시드 skip.
-#
-# credential data 저장 키(매핑 value)는 `credential_registry.fields[*].key`와 정확히
-# 일치해야 한다. 런타임 tool builder(naver_tools / google_tools 등)가 그 키로
-# auth_config를 lookup하므로, 일치하지 않으면 env fallback으로 조용히 떨어진다.
-# 회귀 방지: tests/test_connection_prebuilt_resolve.py 의
-# `test_seed_env_to_key_matches_credential_registry`.
-PROVIDERS: list[dict] = [
-    {
-        "provider_name": "naver",
-        "credential_type": "api_key",
-        "env_to_key": {
-            "naver_client_id": "naver_client_id",
-            "naver_client_secret": "naver_client_secret",
-        },
-    },
-    {
-        "provider_name": "google_search",
-        "credential_type": "api_key",
-        "env_to_key": {
-            "google_api_key": "google_api_key",
-            "google_cse_id": "google_cse_id",
-        },
-    },
-    {
-        "provider_name": "google_chat",
-        "credential_type": "api_key",
-        # credential_registry.google_chat.fields = [{key: "webhook_url"}]
-        # tool builder(google_workspace_tools.build_google_chat_webhook_tool)가
-        # auth_config["webhook_url"]을 읽으므로 credential data 키도 "webhook_url"로
-        # 저장해야 한다. env 소스 이름(settings.google_chat_webhook_url)은 유지.
-        "env_to_key": {
-            "google_chat_webhook_url": "webhook_url",
-        },
-    },
-    {
-        "provider_name": "google_workspace",
-        "credential_type": "oauth2",
-        "env_to_key": {
-            "google_oauth_client_id": "google_oauth_client_id",
-            "google_oauth_client_secret": "google_oauth_client_secret",
-            "google_oauth_refresh_token": "google_oauth_refresh_token",
-        },
-    },
-]
+
+def _iter_seedable_providers() -> list[dict]:
+    """credential_registry의 provider 중 **모든 필드에 `env_field`가 있는** 것만
+    seed 대상. custom_api_key처럼 사용자 입력 기반 provider는 제외된다.
+
+    이 파생으로 env-to-data 매핑의 싱글 소스는 `CREDENTIAL_PROVIDERS`가 된다 —
+    필드 추가/이름 변경 시 registry 한 곳만 갱신하면 tool builder(data key
+    lookup)와 seed(env_field → data key 변환)가 자동 동기화.
+    """
+    seedable: list[dict] = []
+    for provider_name, provider_def in CREDENTIAL_PROVIDERS.items():
+        fields = provider_def["fields"]
+        if not all(f.get("env_field") for f in fields):
+            continue
+        seedable.append(
+            {
+                "provider_name": provider_name,
+                "credential_type": provider_def["credential_type"],
+                "env_to_key": {f["env_field"]: f["key"] for f in fields},
+            }
+        )
+    return seedable
+
+
+# 테스트/외부 모듈에서 참조하는 상수 (가독성). registry 변경 시 자동 반영.
+PROVIDERS = _iter_seedable_providers()
 
 
 async def seed_mock_user_prebuilt_connections(db: AsyncSession) -> None:
