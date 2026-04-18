@@ -509,8 +509,10 @@ async def test_update_custom_tool_unset_credential(
 @pytest.mark.asyncio
 async def test_build_tools_config_mcp_uses_server_credential(db: AsyncSession):
     """MCP tools resolve auth from the server's credential, ignoring tool-level fields."""
+    # chat_service는 이제 credential_service.resolve_server_auth 를 경유해
+    # credential data를 읽는다 → 복호화 호출 위치도 credential_service 모듈.
     with patch(
-        "app.services.chat_service.resolve_credential_data",
+        "app.services.credential_service.resolve_credential_data",
         return_value={"api_key": "from-server-cred"},
     ):
         model = Model(

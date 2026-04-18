@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import HTTPException
+from fastapi.encoders import jsonable_encoder
 from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +21,21 @@ from app.services import credential_service
 
 def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+async def _commit_or_409(db: AsyncSession) -> None:
+    """partial unique index(`uq_connections_one_default_per_scope`) 위반을
+    409로 변환. 동시 요청이 같은 scope에 default=true로 쓰려고 할 때 DB가
+    잡아주는 최종 안전망. create/update/delete 세 경로에서 동일 패턴으로 호출."""
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="concurrent modification on the default connection in "
+            "this scope — please retry",
+        ) from exc
 
 
 async def list_connections(
@@ -75,24 +91,48 @@ async def _promote_default_if_orphaned(
     type_: str,
     provider_name: str,
 ) -> None:
-    """scope에 row가 있는데 default가 0개면 가장 최근 row(created_at DESC 1번째)를
-    default로 승격. POST가 첫 row를 자동 default로 만드는 것과 대칭 — demote/rename/
-    delete로 default가 고립된 스코프의 invariant(ADR-008 §5)를 유지한다."""
-    result = await db.execute(
-        select(Connection).where(
+    """scope에 row가 있는데 default가 0개면 가장 최근 row를 default로 승격.
+    POST가 첫 row를 자동 default로 만드는 것과 대칭. ADR-008 §5 invariant.
+
+    SQL-native 구현: 전체 row를 메모리로 가져오지 않고 (a) default 존재 체크,
+    (b) 없으면 최신 후보 id 조회, (c) UPDATE — 총 2~3회 왕복에 scope 당 O(1) row 전송.
+    """
+    # (a) 이미 default가 있으면 no-op
+    existing_default = await db.execute(
+        select(Connection.id)
+        .where(
+            Connection.user_id == user_id,
+            Connection.type == type_,
+            Connection.provider_name == provider_name,
+            Connection.is_default.is_(True),
+        )
+        .limit(1)
+    )
+    if existing_default.scalar() is not None:
+        return
+
+    # (b) 가장 최근 row id 조회 (없으면 빈 scope)
+    candidate = await db.execute(
+        select(Connection.id)
+        .where(
             Connection.user_id == user_id,
             Connection.type == type_,
             Connection.provider_name == provider_name,
         )
+        .order_by(Connection.created_at.desc())
+        .limit(1)
     )
-    rows = list(result.scalars().unique().all())
-    if not rows:
-        return  # 빈 스코프 — 승격할 대상 없음
-    if any(r.is_default for r in rows):
-        return  # 이미 default 존재
-    latest = max(rows, key=lambda r: r.created_at)
-    latest.is_default = True
-    latest.updated_at = _now()
+    promote_id = candidate.scalar()
+    if promote_id is None:
+        return
+
+    # (c) 승격. ORM identity map이 이미 load한 row가 있다면 같은 트랜잭션의
+    # UPDATE로 반영되므로 expire 불필요.
+    await db.execute(
+        update(Connection)
+        .where(Connection.id == promote_id)
+        .values(is_default=True, updated_at=_now())
+    )
 
 
 async def _clear_default_in_scope(
@@ -156,18 +196,7 @@ async def create_connection(
         status=payload.status,
     )
     db.add(conn)
-    try:
-        await db.commit()
-    except IntegrityError as exc:
-        # Partial unique index(uq_connections_one_default_per_scope) 위반 —
-        # 동시 요청이 같은 scope에 default=true로 insert/update 시도 (Codex
-        # adversarial P2: race condition). DB가 잡아낸 것.
-        await db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="concurrent modification on the default connection in "
-            "this scope — please retry",
-        ) from exc
+    await _commit_or_409(db)
     await db.refresh(conn)
     return conn
 
@@ -242,30 +271,43 @@ async def update_connection(
         elif fields["is_default"] is False:
             conn.is_default = False
 
-    # PATCH 후 상태를 ConnectionCreate 규칙으로 재검증 — POST가 거부할
-    # 조합을 PATCH로 우회하지 못하게. (예: prebuilt + non-enum provider_name,
-    # mcp + extra_config 없음 등.) Pydantic ValidationError는 422로 변환.
-    try:
-        # model_dump로 nested typed model을 dict로 풀어서 재검증
-        _extra_cfg_arg = (
-            ConnectionExtraConfig.model_validate(conn.extra_config)
-            if isinstance(conn.extra_config, dict)
-            else conn.extra_config
-        )
-        ConnectionCreate(
-            type=conn.type,
-            provider_name=conn.provider_name,
-            display_name=conn.display_name,
-            credential_id=conn.credential_id,
-            extra_config=_extra_cfg_arg,
-            is_default=conn.is_default,
-            status=conn.status,
-        )
-    except ValidationError as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=exc.errors(include_url=False, include_context=False),
-        ) from exc
+    # PATCH 후 상태를 ConnectionCreate 규칙으로 재검증 — POST가 거부할 조합을
+    # PATCH로 우회하지 못하게 (prebuilt + non-enum provider_name, mcp +
+    # extra_config 없음 등). 단 invariant에 영향을 주는 필드가 실제로 변경된
+    # 경우에만 실행 — 그 외 필드(display_name 등)의 PATCH에선 m9-migrated
+    # legacy plaintext env_vars를 가진 row도 grandfather 처리되어야 한다.
+    # credential_id가 바뀌면 MCP invariant(cred + non-none auth → env_vars 필수)
+    # 를 재검증해야 한다 (Codex 6차 adversarial P2).
+    revalidate = (
+        ("provider_name" in fields and fields["provider_name"] is not None)
+        or "extra_config" in fields
+        or "credential_id" in fields
+    )
+    if revalidate:
+        try:
+            _extra_cfg_arg = (
+                ConnectionExtraConfig.model_validate(conn.extra_config)
+                if isinstance(conn.extra_config, dict)
+                else conn.extra_config
+            )
+            ConnectionCreate(
+                type=conn.type,
+                provider_name=conn.provider_name,
+                display_name=conn.display_name,
+                credential_id=conn.credential_id,
+                extra_config=_extra_cfg_arg,
+                is_default=conn.is_default,
+                status=conn.status,
+            )
+        except ValidationError as exc:
+            # errors()의 "input" 필드에 UUID 등 JSON 직렬화 불가한 값이
+            # 포함될 수 있으므로 jsonable_encoder로 정리.
+            raise HTTPException(
+                status_code=422,
+                detail=jsonable_encoder(
+                    exc.errors(include_url=False, include_context=False)
+                ),
+            ) from exc
 
     # ADR-008 §5 invariant: scope에 row가 있으면 default도 있다. helper는
     # idempotent(default 있으면 no-op)이므로 옛/새 scope 양쪽에 호출해 대칭 유지.
@@ -284,15 +326,7 @@ async def update_connection(
     )
 
     conn.updated_at = _now()
-    try:
-        await db.commit()
-    except IntegrityError as exc:
-        await db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="concurrent modification on the default connection in "
-            "this scope — please retry",
-        ) from exc
+    await _commit_or_409(db)
     await db.refresh(conn)
     return conn
 
@@ -316,13 +350,5 @@ async def delete_connection(
             db, user_id, del_type, del_provider_name
         )
 
-    try:
-        await db.commit()
-    except IntegrityError as exc:
-        await db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="concurrent modification on the default connection in "
-            "this scope — please retry",
-        ) from exc
+    await _commit_or_409(db)
     return True

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
 import re
 import shlex
@@ -249,7 +251,10 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
 
     from langchain_mcp_adapters.client import MultiServerMCPClient
 
-    # 1. MCP 서버 URL별로 그룹화 — 서버 키 기준으로 도구 필터링
+    # 1. MCP 서버 (URL, transport headers)별로 그룹화 — 같은 URL이어도 다른
+    # 연결이 다른 헤더(X-Tenant 등)를 쓸 수 있으므로 URL만으로 묶으면 멀티
+    # 테넌트 MCP gateway에서 cross-tenant 헤더 혼선이 발생한다 (Codex 7차
+    # adversarial P2). 헤더 조합도 함께 키로 사용해 분리.
     servers: dict[str, dict] = {}
     tool_filter: dict[str, set[str]] = {}  # server_key → {tool_names}
     tool_auth: dict[str, dict] = {}  # tool_name → auth_config
@@ -257,10 +262,21 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     for tc in mcp_configs:
         url = tc["mcp_server_url"]
         tool_name = tc.get("mcp_tool_name", tc["name"])
-        key = _url_to_server_key(url)
+        # transport 헤더는 `mcp_transport_headers`(신규 경로, connection
+        # 경유) 우선 사용. legacy auth_config["headers"]도 fallback.
+        headers = tc.get("mcp_transport_headers") or _auth_config_to_headers(
+            tc.get("auth_config")
+        )
+        # 정렬된 JSON 직렬화의 SHA256 단축 해시 — process 재시작 후에도 같은
+        # (url, headers) 조합이 같은 key/이름 prefix를 생성하도록 deterministic
+        # 사용. `hash()`는 PYTHONHASHSEED 때문에 process-randomized라 HiTL
+        # resume 시 tool name이 바뀜 (Codex 8차 adversarial F2).
+        headers_digest = hashlib.sha256(
+            json.dumps(headers or {}, sort_keys=True).encode()
+        ).hexdigest()[:8]
+        key = f"{_url_to_server_key(url)}|{headers_digest}"
 
         if key not in servers:
-            headers = _auth_config_to_headers(tc.get("auth_config"))
             servers[key] = {
                 "transport": "streamable_http",
                 "url": url,

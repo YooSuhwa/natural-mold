@@ -125,3 +125,15 @@
 [2026-04-18T05:20:00Z] jensen MILESTONE_DONE S3 alembic m8_add_connections + connection_service + routers/connections + main.include_router; ruff PASS, alembic 왕복 PASS, pytest 545 회귀 0
 [2026-04-18T05:15:00Z] bezos STORY_DONE S4 test_connections.py 8/8 PASS, 전체 pytest 553 passed (545+→553), ruff PASS
 [2026-04-18T05:15:00Z] bezos ISSUE_FOUND main.py:208 validation_error_handler가 RequestValidationError ctx.error ValueError 객체를 JSONResponse에 그대로 싣어 직렬화 실패 → 500. field_validator/model_validator 422 경로 전체 영향. 시나리오 2/3을 Pydantic 스키마 레벨로 우회 작성했으나 API HTTP 422 회귀 별도 후속 필요
+---
+[2026-04-18T05:45] satya PROJECT_START "백로그 E M2 · MCP → Connection 이관 (고위험)"
+[2026-04-18T05:45] satya WORKTREE_CREATED .claude/worktrees/backlog-e-m2 (branch: feature/connection-mcp-migration, base: 29678a1)
+[2026-04-18T05:45] satya MILESTONE_CREATED S0,S1,S2,S3,S4,S5
+[2026-04-18T05:45] satya S0_DONE docs/ + ADR-008 + exec-plan 사전 존재
+[2026-04-18T06:10] bezos MILESTONE_DONE S1 deletion-analysis-e-m2.md 작성 (즉시0/단순화5/보류10). drive-by 금지 원칙 준수.
+[2026-04-18T06:25] pichai MILESTONE_DONE S2 alembic m9_migrate_mcp_to_connections + tools.connection_id + Tool.connection relationship; ruff PASS, alembic 왕복 PASS, pytest 572 passed (회귀 0)
+[2026-04-18T06:25] pichai MILESTONE_DONE S2 — m9 alembic + Tool.connection_id + Tool.connection relationship, 왕복 PASS, pytest 572 회귀 0
+[2026-04-18T06:25] bezos MILESTONE_DONE S1 — deletion-analysis-e-m2.md (즉시0/단순화5/보류10), drive-by 금지 준수
+[2026-04-18T06:30] satya MILESTONE_START S3 — jensen 스폰 (chat_service MCP 재작성 + env_vars 템플릿 해석)
+[2026-04-18T06:55] jensen MILESTONE_DONE S3 — chat_service MCP 분기 재작성 + _resolve_env_vars 템플릿 해석기 + ToolConfigError. get_agent_with_tools selectinload(Tool.connection, Connection.credential) 확장. 신규 경로: tool.connection_id → conn.extra_config.url + env_vars 템플릿 치환. Legacy fallback: connection_id IS NULL → 기존 mcp_server 경로. executor 계약(mcp_server_url/mcp_tool_name) 유지. ruff PASS, pytest 572 passed (회귀 0). credential_service/connection_service/mcp_client/models/tests 미수정.
+[2026-04-18T07:30] bezos MILESTONE_DONE S4 test_connection_mcp_resolve.py (13 PASS) + 회귀 585 PASS + ruff PASS. legacy fallback 회귀 파일 시맨틱 변경 0.
