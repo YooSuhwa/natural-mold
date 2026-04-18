@@ -10,6 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
+    from app.models.connection import Connection
     from app.models.credential import Credential
 
 
@@ -64,7 +65,11 @@ class Tool(Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     type: Mapped[str] = mapped_column(String(20), nullable=False)
     is_system: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # deprecated: M6에서 제거 예정. 이관 기간 동안 legacy fallback 용도로 유지.
     mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("mcp_servers.id"))
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("connections.id", ondelete="SET NULL"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     parameters_schema: Mapped[dict | None] = mapped_column(JSON)
@@ -82,6 +87,9 @@ class Tool(Base):
     )
 
     mcp_server: Mapped[MCPServer | None] = relationship(back_populates="tools")
+    connection: Mapped[Connection | None] = relationship(
+        foreign_keys=[connection_id]
+    )
     credential: Mapped[Credential | None] = relationship(
         foreign_keys=[credential_id], lazy="joined"
     )

@@ -1013,7 +1013,10 @@ async def test_env_vars_accepts_credential_template(client: AsyncClient):
     )
     assert resp.status_code == 201, resp.text
     body = resp.json()
-    assert body["extra_config"]["env_vars"]["RESEND_API_KEY"] == "${credential.api_key}"
+    # Response side redacts env_vars values — only keys are exposed to the
+    # client to prevent secret echo on read (Codex 4차 adversarial Finding).
+    assert "env_vars" not in body["extra_config"]
+    assert body["extra_config"]["env_var_keys"] == ["RESEND_API_KEY"]
 
 
 @pytest.mark.asyncio
