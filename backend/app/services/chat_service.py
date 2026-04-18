@@ -18,6 +18,9 @@ from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, MCPServer, Tool
 from app.schemas.conversation import ConversationUpdate
 from app.schemas.tool import ToolType
+from app.services.connection_service import (
+    get_default_connections_for_providers,
+)
 from app.services.credential_service import (
     resolve_credential_data,
     resolve_server_auth,
@@ -38,8 +41,37 @@ __all__ = [
     "_ENV_VAR_TEMPLATE",
     "ToolConfigError",
     "_resolve_env_vars",
+    "_load_user_default_connection_map",
+    "_resolve_prebuilt_auth",
+    "_resolve_legacy_tool_auth",
     "build_tools_config",
 ]
+
+
+async def _load_user_default_connection_map(
+    db: AsyncSession,
+    agent: Agent,
+    user_id: uuid.UUID,
+) -> dict[str, Connection]:
+    """Build per-user default connection map for PREBUILT tools on an agent.
+
+    ADR-008 §3. Tool은 공유 행(`user_id=NULL`)이라 connection의 SOT는
+    `(current_user_id, tool.provider_name)` 조합. N+1 방지를 위해 agent의 모든
+    PREBUILT tool에서 distinct `provider_name`을 모아 IN 쿼리 1회로 로드.
+
+    **cross-tenant 가드 hook**: 내부 bulk 쿼리에 `user_id` 필터가 걸려 있으므로
+    user_A agent로 호출해도 user_B의 connection이 섞이지 않는다. S5 회귀
+    테스트가 이 함수를 직접 호출해 격리를 검증할 수 있도록 모듈-private로
+    노출.
+    """
+    provider_names: set[str] = {
+        link.tool.provider_name
+        for link in agent.tool_links
+        if link.tool.type == ToolType.PREBUILT and link.tool.provider_name
+    }
+    return await get_default_connections_for_providers(
+        db, user_id, "prebuilt", provider_names
+    )
 
 
 async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conversation]:
@@ -171,7 +203,20 @@ async def get_agent_with_tools(
             selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
         )
     )
-    return result.scalar_one_or_none()
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        return None
+
+    # PREBUILT 도구의 per-user default connection 프리로드. tool별 selectinload로는
+    # 체인할 수 없는 스코프 — Connection은 (user_id, type, provider_name)로 찾고,
+    # tool.connection_id가 아니라 current_user와 tool.provider_name의 조합으로
+    # 매칭되기 때문(ADR-008 §3). 테스트에서 user_id 필터를 직접 검증할 수 있도록
+    # 모듈-private 헬퍼로 분리.
+    default_conn_map = await _load_user_default_connection_map(db, agent, user_id)
+    # build_tools_config(sync)에서 조회할 수 있도록 agent 객체에 attach.
+    # 반환 시그니처를 건드리지 않는 비침투적 경로.
+    agent._default_connection_map = default_conn_map  # type: ignore[attr-defined]
+    return agent
 
 
 def build_effective_prompt(agent: Agent) -> str:
@@ -188,9 +233,73 @@ def build_agent_skills(agent: Agent) -> list[dict[str, Any]]:
     ]
 
 
+def _resolve_prebuilt_auth(
+    tool: Tool,
+    default_connection_map: dict[str, Connection],
+) -> dict[str, Any]:
+    """Resolve PREBUILT tool auth via per-user default Connection.
+
+    ADR-008 §3 + §11. PREBUILT 공유 행은 credential을 직접 매달지 않고
+    `(current_user, tool.provider_name)` 조합으로 default connection을 찾아
+    거기 걸린 credential을 사용한다. connection이 없으면 `{}`를 반환해
+    tool builder(naver_tools / google_tools 등)가 `settings.*` env fallback을
+    적용하게 한다.
+
+    호출 조건: `tool.type == PREBUILT AND tool.provider_name IS NOT NULL`.
+    provider_name이 NULL인 PREBUILT row는 legacy 경로(`_resolve_legacy_tool_auth`)
+    로 우회한다 — 이행 tolerance(M6에서 제거).
+    """
+    conn = default_connection_map.get(tool.provider_name)
+    if conn is None:
+        # env fallback — tool builder가 settings.* 사용. 여기서 settings를
+        # 재조회하지 않는다(2중 fallback 금지, 사티아 사전 사실 #2).
+        return {}
+    # PREBUILT tool은 `user_id=NULL`(공유 행)이므로 tool-connection ownership
+    # 가드는 no-op이지만, CUSTOM/예외 경로가 공유할 수 있도록 호출은 유지.
+    # credential-connection ownership은 실질적 guard (M1 POST 검증을 우회한
+    # 수동 DML 대비).
+    assert_connection_ownership(
+        tool_user_id=tool.user_id,
+        connection_user_id=conn.user_id,
+        connection_id=conn.id,
+        tool_name=tool.name,
+    )
+    assert_credential_ownership(
+        connection_user_id=conn.user_id,
+        credential=conn.credential,
+        connection_id=conn.id,
+    )
+    if conn.credential is None:
+        # Connection은 있지만 credential이 ON DELETE SET NULL 등으로 끊겼을 때.
+        # env fallback로 회귀해 tool이 동작을 멈추지 않게 한다.
+        return {}
+    return resolve_credential_data(conn.credential)
+
+
+def _resolve_legacy_tool_auth(tool: Tool) -> dict[str, Any]:
+    """Legacy tool.credential_id / tool.auth_config 해석 경로.
+
+    - CUSTOM 도구: M4까지 이 경로 유지 (M4에서 connection으로 이관 예정).
+    - PREBUILT 도구 중 `provider_name IS NULL`: m10 백필 실패 row의 이행
+      tolerance. M6 cleanup에서 제거.
+
+    우선순위: 연결된 credential → inline auth_config → empty. MCP 분기는 별도.
+    """
+    if tool.credential_id and tool.credential:
+        return resolve_credential_data(tool.credential)
+    if tool.auth_config:
+        return tool.auth_config
+    return {}
+
+
 def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list[dict[str, Any]]:
     """Build tools_config list from agent's tool links."""
     tools_config: list[dict[str, Any]] = []
+    # get_agent_with_tools가 attach한 per-user default connection map. prefetch
+    # 경로를 우회한 호출자(테스트 등)를 위해 getattr fallback.
+    default_connection_map: dict[str, Connection] = getattr(
+        agent, "_default_connection_map", {}
+    )
 
     for link in agent.tool_links:
         tool = link.tool
@@ -251,13 +360,17 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
                 mcp_server_url = tool.mcp_server.url
             else:
                 cred_auth = {}
-        else:
-            if tool.credential_id and tool.credential:
-                cred_auth = resolve_credential_data(tool.credential)
-            elif tool.auth_config:
-                cred_auth = tool.auth_config
+        elif tool.type == ToolType.PREBUILT:
+            # PREBUILT 도구: provider_name 있으면 per-user default connection
+            # 경유. 없으면(legacy row, m10 백필 실패) 기존 경로 유지 — M6에서 제거.
+            if tool.provider_name:
+                cred_auth = _resolve_prebuilt_auth(tool, default_connection_map)
             else:
-                cred_auth = {}
+                cred_auth = _resolve_legacy_tool_auth(tool)
+        else:
+            # CUSTOM / BUILTIN 등 나머지. M4에서 CUSTOM이 connection 경유로 이관될
+            # 때까지 기존 시맨틱 유지 (credential → auth_config → {}).
+            cred_auth = _resolve_legacy_tool_auth(tool)
 
         merged_auth = {**cred_auth, **(link.config or {})}
         config_entry: dict[str, Any] = {

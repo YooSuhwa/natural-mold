@@ -656,7 +656,8 @@
         "googleChat": " Google Chat 스페이스 설정에서 Webhook URL을 복사하세요.",
         "googleWorkspace": " Google Cloud Console에서 OAuth2 인증 정보를 발급받을 수 있습니다."
       },
-      "configured": "API 키가 설정되어 있습니다"
+      "configured": "API 키가 설정되어 있습니다",
+      "legacyUnavailable": "이 도구는 연결 설정이 비활성화되어 있습니다. 관리자에게 문의하세요."
     },
     "customAuth": {
       "title": "{toolName} 인증 설정",
@@ -885,6 +886,24 @@
   "connections": {
     "pageTitle": "연결 관리",
     "pageDescription": "도구 및 MCP 서버에서 사용할 API 키와 인증 정보를 중앙에서 관리합니다.",
+    "bindingDialog": {
+      "title": "{name} 연결",
+      "description": "이 PREBUILT 도구가 사용할 credential을 선택합니다. ",
+      "configured": "연결이 설정되어 있습니다",
+      "toast": {
+        "saved": "연결이 저장되었습니다",
+        "saveFailed": "연결 저장에 실패했습니다"
+      }
+    },
+    "prebuiltSection": {
+      "title": "PREBUILT 연결",
+      "description": "시스템 도구(Naver, Google 등)에 사용할 credential을 provider별로 하나씩 기본 연결로 지정합니다.",
+      "providerLabel": "Provider",
+      "empty": "등록된 PREBUILT 연결이 없습니다",
+      "addButton": "연결 추가",
+      "isDefaultBadge": "기본 연결",
+      "providerAll": "전체"
+    },
     "addNew": "연결 추가",
     "editTitle": "연결 수정",
     "provider": "Provider",

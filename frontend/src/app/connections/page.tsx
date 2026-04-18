@@ -18,6 +18,8 @@ import {
   useCredentialProviders,
   useDeleteCredential,
 } from '@/lib/hooks/use-credentials'
+import { useConnections } from '@/lib/hooks/use-connections'
+import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -43,7 +45,14 @@ import { SearchInput } from '@/components/shared/search-input'
 import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
 import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
-import type { Credential } from '@/lib/types'
+import type { Connection, Credential } from '@/lib/types'
+
+const PREBUILT_PROVIDERS = [
+  'naver',
+  'google_search',
+  'google_chat',
+  'google_workspace',
+] as const
 
 export default function ConnectionsPage() {
   const { data: credentials, isLoading } = useCredentials()
@@ -149,6 +158,8 @@ export default function ConnectionsPage() {
         />
       )}
 
+      <PrebuiltConnectionSection />
+
       <CredentialFormDialog
         open={formOpen}
         onOpenChange={setFormOpen}
@@ -184,6 +195,104 @@ export default function ConnectionsPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+function PrebuiltConnectionSection() {
+  const t = useTranslations('connections.prebuiltSection')
+  const tProvider = useTranslations('tool.authDialog.provider')
+  const { data: connections, isLoading } = useConnections({ type: 'prebuilt' })
+  const { data: credentials } = useCredentials()
+  const [dialogProvider, setDialogProvider] = useState<string | null>(null)
+
+  const PROVIDER_I18N_KEY: Record<string, string> = {
+    naver: 'naver',
+    google_search: 'googleSearch',
+    google_chat: 'googleChat',
+    google_workspace: 'googleWorkspace',
+  }
+
+  function getProviderLabel(provider: string): string {
+    const key = PROVIDER_I18N_KEY[provider]
+    if (!key) return provider
+    const raw = tProvider(key).trim()
+    return raw.split(/[.．]/)[0] || provider
+  }
+
+  function findDefault(provider: string): Connection | undefined {
+    return connections?.find((c) => c.provider_name === provider && c.is_default)
+  }
+
+  function findCredentialName(credentialId: string | null | undefined): string | null {
+    if (!credentialId) return null
+    return credentials?.find((c) => c.id === credentialId)?.name ?? null
+  }
+
+  return (
+    <section className="space-y-3 pt-6 border-t">
+      <div>
+        <h2 className="text-base font-semibold">{t('title')}</h2>
+        <p className="text-sm text-muted-foreground">{t('description')}</p>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-14 w-full" />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {PREBUILT_PROVIDERS.map((provider) => {
+            const defaultConn = findDefault(provider)
+            const credName = findCredentialName(defaultConn?.credential_id)
+            return (
+              <Card key={provider}>
+                <CardContent className="flex items-center justify-between py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-9 items-center justify-center rounded-lg bg-muted">
+                      <KeyRoundIcon className="size-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium">
+                          {getProviderLabel(provider)}
+                        </span>
+                        {defaultConn && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            {t('isDefaultBadge')}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {credName ?? t('empty')}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDialogProvider(provider)}
+                  >
+                    {t('addButton')}
+                  </Button>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
+
+      {dialogProvider && (
+        <ConnectionBindingDialog
+          type="prebuilt"
+          providerName={dialogProvider}
+          toolName={getProviderLabel(dialogProvider)}
+          open={!!dialogProvider}
+          onOpenChange={(v) => !v && setDialogProvider(null)}
+        />
+      )}
+    </section>
   )
 }
 

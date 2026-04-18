@@ -1,0 +1,70 @@
+# progress.txt — 백로그 E M2 · MCP → Connection 이관 (팀 공유 메모리)
+
+이전 작업 아카이브: `tasks/archive/progress-backlog-e-m1.txt`
+
+## 프로젝트 목적
+
+M1에서 `connections` 테이블을 parallel run으로 만들었고, 이제 M2에서 MCP 도구의 credential/서버 설정 해석 경로를 connection 경유로 전환한다. 기존 `mcp_servers` 테이블은 read-only deprecate (M6에서 drop).
+
+**이 M2가 끝나면**: MCP 도구 실행 시 `tool.connection_id → connections → credential/extra_config` 경로로 동작. `mcp_servers` 직접 참조하는 경로는 legacy fallback으로만 남음.
+
+## ADR-008 반영 규칙 (반드시 지킬 것)
+
+- **extra_config 구조**: `{url, auth_type, headers?, env_vars?, transport?, timeout?}`
+- **env_vars 값**: 반드시 `${credential.<field_name>}` 템플릿 (평문 금지). 런타임 해석 시 `credential.data_decrypted[<field_name>]`으로 치환
+- **connection.credential_id ON DELETE SET NULL**: credential 삭제 시 connection 살아있음
+- **tool.connection_id**: nullable FK. M6까지 `tool.mcp_server_id`와 공존
+- **legacy fallback**: M6 전까지 `connection_id IS NULL AND mcp_server_id IS NOT NULL`인 tool은 기존 경로로 동작 (이관 실패 tolerance)
+
+## 기존 코드 패턴 (따를 것)
+
+- `backend/app/services/chat_service.py:164-205` — 현재 MCP 분기 (재작성 대상)
+- `backend/app/services/credential_service.py` — `get_credential`, `resolve_credential_data`, `decrypt_api_key`
+- `backend/app/agent_runtime/mcp_client.py` — MCP 서버 연결 코드
+- `backend/app/models/tool.py` — Tool, MCPServer 모델. connection_id 추가 위치
+- M1 학습: `aiosqlite FK 테스트 시 전용 engine + StaticPool + PRAGMA foreign_keys=ON listener`. 공유 conftest engine 건드리지 말 것. ORM identity map 우회는 `session.expire_all()`
+
+## Alembic 주의사항
+
+- Alembic head 확인: `cd backend && uv run alembic heads` → `m8_add_connections`
+- 신규 `m9_migrate_mcp_to_connections.py` `down_revision = "m8_add_connections"`
+- downgrade 재실행 안전성: `op.execute("DROP INDEX IF EXISTS ...")` 패턴 (M1 학습)
+- SQLite `drop_column`은 `op.batch_alter_table` 래핑 필수
+
+## 파일 경계 (충돌 방지)
+
+| 팀원 | 수정 가능 | 수정 금지 |
+|------|-----------|-----------|
+| 피차이 | `alembic/versions/m9_*.py` (신규), `app/models/tool.py` (connection_id 추가만) | chat_service, agent_runtime, 기존 conn 구현 |
+| 젠슨 | `app/services/chat_service.py` (MCP 분기), `app/agent_runtime/mcp_client.py` or `executor.py` (env_vars 해석) | 모델/마이그레이션/테스트 |
+| 베조스 | `tests/test_connection_mcp_resolve.py` (신규), `tests/test_mcp_connection.py`/`tests/test_tools_router_extended.py` (회귀 갱신), `tasks/deletion-analysis-e-m2.md` (신규) | 서비스/모델/마이그레이션 |
+
+**주의**: `app/services/connection_service.py` 는 M1 산출물 — M2에서 건드리지 않음 (버그 수정 제외).
+
+## 검증 커맨드
+
+```bash
+cd backend
+uv run ruff check .
+uv run pytest tests/test_connection_mcp_resolve.py tests/test_mcp_connection.py tests/test_tools_router_extended.py -v
+uv run pytest                          # 전체 회귀 (572+ 유지)
+uv run alembic upgrade head
+uv run alembic downgrade -1
+uv run alembic upgrade head            # 왕복 PASS
+```
+
+## 고위험 포인트
+
+1. 데이터 이관 중 mcp_servers row 누락 → pytest에서 row count assertion
+2. chat_service.build_tools_config 변경 → 기존 MCP 도구 실행 회귀
+3. env_vars 템플릿이 없는 기존 mcp_servers.auth_config 평문값 이관 정책 (피차이가 §리스크 4에 따라 판단)
+4. legacy fallback 미작동 → 이행 기간 중 프로덕션 다운
+
+## 진행 기록 (팀원이 이어서 append)
+
+- [2026-04-18T05:45] satya: TEAM_FORMED, S0 done, S1/S2 병렬 시작 준비
+- [2026-04-18T06:10] bezos S1_DONE 삭제분석 보고서 작성 완료 (tasks/deletion-analysis-e-m2.md). 즉시0/단순화5/보류10. 사전 사실: Tool.connection_id 모델 선반영(tool.py:70-72,90-92) — 피차이 S2 Alembic만 남음. 단순화 #3: credential_service.py 시그니처 변경 금지(파일경계). S4 idle 대기.
+- [2026-04-18T06:25] pichai: S2 DONE. m9 마이그레이션 + Tool 모델 업데이트. `Tool.connection_id` (UUID? FK connections.id ON DELETE SET NULL) + `Tool.connection` relationship 추가. m9 upgrade는 mcp_servers → connections(type='mcp') 복제 + tools.mcp_server_id→connection_id 매핑. auth_config 평문은 extra_config.env_vars에 그대로 이관 (런타임 fallback 책임은 젠슨 S3). tools.mcp_server_id는 유지(deprecate 주석). ruff PASS, alembic 왕복 PASS, pytest 572 passed.
+- [2026-04-18T06:55] jensen: S3 DONE. `chat_service.build_tools_config` MCP 분기 재작성 + `_resolve_env_vars` 템플릿 해석기(모듈-private) + `ToolConfigError` 도입. 신규 경로: `tool.connection_id` 있으면 `tool.connection.extra_config.url` + `env_vars` 템플릿 치환(credential.data_decrypted로), legacy 평문은 경고 로그 + tolerance. Legacy fallback: `connection_id IS NULL AND mcp_server_id IS NOT NULL` → 기존 mcp_server 경로. `get_agent_with_tools`에 `selectinload(Tool.connection).selectinload(Connection.credential)` 추가 — sync `build_tools_config` 유지(async 변환 회피). executor.py 계약(`mcp_server_url`/`mcp_tool_name`) 그대로 유지(수정 없음). credential_service.resolve_server_auth 시그니처 보존. mcp_client.test_mcp_connection 시그니처 보존. 검증: ruff PASS, pytest 572 passed(회귀 0), MCP 테스트 29건 PASS. S4 베조스 시작 가능 — 신규 connection 경유 smoke + env_vars 템플릿 치환 검증이 필요.
+  패턴 기록: build_tools_config는 sync이고 db session이 없음 → connection_service.get_connection(async) 호출 대신 ORM selectinload로 tool.connection/credential 로드하는 편이 simpler. Connection.credential은 `lazy="select"` 기본값이라 selectinload 체인 명시 필수. `_ENV_VAR_TEMPLATE`은 스키마(schemas/connection.py)와 동일한 pattern 사용하되 `re.match`(fullmatch와 동등한 ^$ 앵커 포함)로 런타임 해석.
+- [2026-04-18T07:30] bezos S4_DONE 신규 tests/test_connection_mcp_resolve.py (13 tests, 5+α 시나리오) PASS. 전체 회귀 585 passed (572+ 유지). ruff PASS. 회귀 파일(test_mcp_client/test_tools_router_extended/test_tools.py:510-575) 시맨틱 변경 0 — legacy fallback 보존 입증. M1 학습 재사용: m9 모듈은 importlib.util로 alembic/__init__.py 없는 구조 우회 로드. m9 SQL은 PG 전용(CAST...AS JSON / TRUE)이라 unit DB는 helper + collision algorithm만 격리 검증, 실제 데이터 무결성은 사티아 S5 alembic 왕복으로 PG에서 확인.

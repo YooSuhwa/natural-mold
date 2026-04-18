@@ -64,6 +64,9 @@ class Tool(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # PREBUILT 도구의 provider 식별자. per-user connection 조회 키
+    # (user_id + type='prebuilt' + provider_name). MCP/CUSTOM/BUILTIN은 NULL.
+    provider_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_system: Mapped[bool] = mapped_column(default=False, nullable=False)
     # deprecated: M6에서 제거 예정. 이관 기간 동안 legacy fallback 용도로 유지.
     mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("mcp_servers.id"))

@@ -218,6 +218,8 @@ export interface Tool {
   type: 'mcp' | 'custom' | 'builtin' | 'prebuilt'
   is_system: boolean
   mcp_server_id: string | null
+  // PREBUILT tool의 provider 식별자. connection 조회에 사용. 그 외 타입은 null.
+  provider_name: string | null
   name: string
   description: string | null
   parameters_schema: Record<string, unknown> | null
@@ -229,6 +231,52 @@ export interface Tool {
   credential_id: string | null
   agent_count: number
   created_at: string
+}
+
+// Connection — ADR-008 (user × type × provider 수준 credential 바인딩)
+export type ConnectionType = 'prebuilt' | 'mcp' | 'custom'
+export type ConnectionStatus = 'active' | 'disabled'
+export type ConnectionMcpAuthType = 'none' | 'bearer' | 'api_key' | 'oauth2' | 'basic'
+export type ConnectionMcpTransport = 'http' | 'stdio'
+
+export interface ConnectionExtraConfigResponse {
+  url: string
+  auth_type: ConnectionMcpAuthType
+  header_keys: string[] | null
+  env_var_keys: string[] | null
+  transport: ConnectionMcpTransport | null
+  timeout: number | null
+}
+
+export interface Connection {
+  id: string
+  user_id: string
+  type: ConnectionType
+  provider_name: string
+  display_name: string
+  credential_id: string | null
+  extra_config: ConnectionExtraConfigResponse | null
+  is_default: boolean
+  status: ConnectionStatus
+  created_at: string
+  updated_at: string
+}
+
+export interface ConnectionCreateRequest {
+  type: ConnectionType
+  provider_name: string
+  display_name: string
+  credential_id?: string | null
+  is_default?: boolean
+  status?: ConnectionStatus
+}
+
+export interface ConnectionUpdateRequest {
+  provider_name?: string
+  display_name?: string
+  credential_id?: string | null
+  is_default?: boolean
+  status?: ConnectionStatus
 }
 
 export interface MCPServer {

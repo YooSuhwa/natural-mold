@@ -164,3 +164,51 @@ async def test_mcp_server_register_via_api(client: AsyncClient):
     assert data["name"] == "New MCP Server"
     assert data["status"] == "active"
     assert data["tools"] == []
+
+
+# ---------------------------------------------------------------------------
+# GET /api/tools — ToolResponse.provider_name (M3 hotfix)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_tools_exposes_provider_name_for_prebuilt(client: AsyncClient):
+    """PREBUILT tool should expose `provider_name` in ToolResponse; BUILTIN stays null.
+
+    Regression fence for Pichai's schemas/tool.py:64 hotfix. Without this field the
+    frontend ConnectionBindingDialog cannot scope by provider and falls back to
+    legacy auth_config writes — the exact ADR-008 §문제 1 regression we are here to
+    prevent.
+    """
+    await _seed_user()
+
+    async with TestSession() as db:
+        naver = Tool(
+            type="prebuilt",
+            is_system=True,
+            provider_name="naver",
+            name="Naver Blog Search",
+            description="네이버 블로그 검색",
+        )
+        web_search = Tool(
+            type="builtin",
+            is_system=True,
+            provider_name=None,
+            name="Web Search",
+            description="DuckDuckGo web search (no credentials)",
+        )
+        db.add_all([naver, web_search])
+        await db.commit()
+
+    resp = await client.get("/api/tools")
+    assert resp.status_code == 200
+    tools = resp.json()
+
+    by_name = {t["name"]: t for t in tools}
+    assert "Naver Blog Search" in by_name
+    assert "Web Search" in by_name
+
+    assert by_name["Naver Blog Search"]["provider_name"] == "naver"
+    assert by_name["Naver Blog Search"]["type"] == "prebuilt"
+    assert by_name["Web Search"]["provider_name"] is None
+    assert by_name["Web Search"]["type"] == "builtin"

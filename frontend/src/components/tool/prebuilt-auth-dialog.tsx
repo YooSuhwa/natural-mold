@@ -2,21 +2,14 @@
 
 import React, { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { KeyIcon, CheckCircleIcon, Loader2Icon, LinkIcon } from 'lucide-react'
+
+import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
-import { useUpdateToolAuthConfig } from '@/lib/hooks/use-tools'
-import { useCredentials } from '@/lib/hooks/use-credentials'
-import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
-import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import type { Tool } from '@/lib/types'
 
 interface PrebuiltAuthDialogProps {
@@ -24,109 +17,52 @@ interface PrebuiltAuthDialogProps {
   trigger: React.ReactNode
 }
 
-function detectProvider(toolName: string): string {
-  const lower = toolName.toLowerCase()
-  if (lower.startsWith('naver')) return 'naver'
-  if (lower.startsWith('google chat')) return 'google_chat'
-  if (lower.startsWith('gmail') || lower.startsWith('calendar')) return 'google_workspace'
-  if (lower.startsWith('google')) return 'google_search'
-  return 'unknown'
-}
-
+/**
+ * PREBUILT 도구 인증 dialog — ConnectionBindingDialog 래퍼.
+ *
+ * ADR-008: PREBUILT는 per-user Connection 엔티티(user_id+type+provider_name)로
+ * credential을 바인딩한다. tool row 자체는 공유 행이라 mutate하지 않는다.
+ *
+ * tool.provider_name이 null이면 legacy seed(m10 매핑 실패)라 connection 경로를
+ * 쓸 수 없다 → trigger disabled + 안내 tooltip. 실무상 0건 예상.
+ */
 export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
   const t = useTranslations('tool.authDialog')
-  const tc = useTranslations('common')
-  const tCred = useTranslations('connections.credentialSelect')
   const [open, setOpen] = useState(false)
-  const [createOpen, setCreateOpen] = useState(false)
-  const updateAuth = useUpdateToolAuthConfig()
-  const { data: credentials } = useCredentials()
-  const provider = detectProvider(tool.name)
-  const providerKey = (
-    {
-      naver: 'naver',
-      google_search: 'googleSearch',
-      google_chat: 'googleChat',
-      google_workspace: 'googleWorkspace',
-    } as Record<string, string>
-  )[provider]
 
-  const [mode, setMode] = useState<string>(tool.credential_id ?? CREDENTIAL_NONE)
-
-  const matchingCredentials = credentials?.filter((c) => c.provider_name === provider) ?? []
-
-  const handleSave = () => {
-    const credentialId = mode === CREDENTIAL_NONE ? null : mode
-    updateAuth.mutate(
-      { id: tool.id, authConfig: {}, credentialId },
-      { onSuccess: () => setOpen(false) },
+  if (!tool.provider_name) {
+    const disabled = cloneWithProps(trigger, { disabled: true, 'aria-disabled': true })
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger render={disabled} />
+          <TooltipContent>{t('legacyUnavailable')}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     )
   }
 
+  const clickable = cloneWithProps(trigger, { onClick: () => setOpen(true) })
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        setOpen(v)
-        if (v) setMode(tool.credential_id ?? CREDENTIAL_NONE)
-      }}
-    >
-      <DialogTrigger render={trigger as React.ReactElement} />
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <KeyIcon className="size-4" />
-            {t('title', { toolName: tool.name })}
-          </DialogTitle>
-          <DialogDescription>
-            {t('description')}
-            {providerKey && t(`provider.${providerKey}`)}
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium flex items-center gap-1.5">
-              <LinkIcon className="size-3.5" />
-              {tCred('label')}
-            </label>
-            <CredentialSelect
-              value={mode}
-              onValueChange={setMode}
-              onCreateRequested={() => setCreateOpen(true)}
-              credentials={matchingCredentials}
-            />
-          </div>
-
-          {mode !== CREDENTIAL_NONE && (
-            <div className="flex items-center gap-2 text-xs text-emerald-600">
-              <CheckCircleIcon className="size-3.5" />
-              {t('configured')}
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            {tc('cancel')}
-          </Button>
-          <Button onClick={handleSave} disabled={updateAuth.isPending}>
-            {updateAuth.isPending && (
-              <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
-            )}
-            {tc('save')}
-          </Button>
-        </DialogFooter>
-
-        <CredentialFormDialog
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          defaultProvider={provider !== 'unknown' ? provider : undefined}
-          onCreated={(c) => {
-            if (c.provider_name === provider) setMode(c.id)
-          }}
-        />
-      </DialogContent>
-    </Dialog>
+    <>
+      {clickable}
+      <ConnectionBindingDialog
+        type="prebuilt"
+        providerName={tool.provider_name}
+        toolName={tool.name}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
   )
+}
+
+function cloneWithProps(
+  node: React.ReactNode,
+  props: Record<string, unknown>,
+): React.ReactElement {
+  if (!React.isValidElement(node)) {
+    throw new Error('PrebuiltAuthDialog trigger must be a valid React element')
+  }
+  return React.cloneElement(node as React.ReactElement<Record<string, unknown>>, props)
 }

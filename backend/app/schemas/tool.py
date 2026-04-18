@@ -64,6 +64,7 @@ class MCPServerCreate(BaseModel):
 class ToolResponse(BaseModel):
     id: uuid.UUID
     type: str
+    provider_name: str | None = None
     is_system: bool
     mcp_server_id: uuid.UUID | None
     credential_id: uuid.UUID | None = None

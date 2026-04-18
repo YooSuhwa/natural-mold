@@ -43,6 +43,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Naver Blog Search",
         "type": "prebuilt",
+        "provider_name": "naver",
         "is_system": True,
         "description": "네이버 블로그에서 키워드를 검색합니다. 블로그 포스트, 리뷰, 개인 의견 등을 찾을 때 사용하세요.",
         "tags": ["search", "naver", "korean"],
@@ -73,6 +74,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Naver News Search",
         "type": "prebuilt",
+        "provider_name": "naver",
         "is_system": True,
         "description": "네이버 뉴스에서 키워드를 검색합니다. 최신 뉴스, 기사, 보도 내용을 찾을 때 사용하세요.",
         "tags": ["search", "naver", "korean", "news"],
@@ -103,6 +105,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Naver Image Search",
         "type": "prebuilt",
+        "provider_name": "naver",
         "is_system": True,
         "description": "네이버에서 이미지를 검색합니다. 사진, 일러스트, 인포그래픽 등을 찾을 때 사용하세요.",
         "tags": ["search", "naver", "korean", "image"],
@@ -139,6 +142,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Naver Shopping Search",
         "type": "prebuilt",
+        "provider_name": "naver",
         "is_system": True,
         "description": "네이버 쇼핑에서 상품을 검색합니다. 가격 비교, 상품 정보 조회에 사용하세요.",
         "tags": ["search", "naver", "korean", "shopping"],
@@ -169,6 +173,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Naver Local Search",
         "type": "prebuilt",
+        "provider_name": "naver",
         "is_system": True,
         "description": "네이버에서 지역 업체를 검색합니다. 맛집, 카페, 병원 등 주변 업체를 찾을 때 사용하세요.",
         "tags": ["search", "naver", "korean", "local"],
@@ -198,6 +203,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Google Search",
         "type": "prebuilt",
+        "provider_name": "google_search",
         "is_system": True,
         "description": "구글에서 웹 페이지를 검색합니다. 영문 검색, 글로벌 정보 검색에 특히 유용합니다.",
         "tags": ["search", "google", "web"],
@@ -213,6 +219,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Google News Search",
         "type": "prebuilt",
+        "provider_name": "google_search",
         "is_system": True,
         "description": "구글 뉴스에서 키워드를 검색합니다. 글로벌 뉴스, 영문 기사를 찾을 때 사용하세요.",
         "tags": ["search", "google", "news"],
@@ -228,6 +235,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Google Image Search",
         "type": "prebuilt",
+        "provider_name": "google_search",
         "is_system": True,
         "description": "구글에서 이미지를 검색합니다. 글로벌 이미지, 영문 키워드 검색에 유용합니다.",
         "tags": ["search", "google", "image"],
@@ -246,6 +254,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Google Chat Send",
         "type": "prebuilt",
+        "provider_name": "google_chat",
         "is_system": True,
         "description": "Google Chat 채널에 메시지를 전송합니다. 알림, 보고, 요약 결과 공유 등에 사용하세요.",
         "tags": ["communication", "google"],
@@ -260,6 +269,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Gmail Read",
         "type": "prebuilt",
+        "provider_name": "google_workspace",
         "is_system": True,
         "description": "Gmail에서 이메일을 검색하고 읽습니다. 검색 쿼리로 필터링할 수 있습니다.",
         "tags": ["email", "google", "communication"],
@@ -282,6 +292,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Gmail Send",
         "type": "prebuilt",
+        "provider_name": "google_workspace",
         "is_system": True,
         "description": "Gmail로 이메일을 전송합니다. 수신자, 제목, 본문을 지정하여 이메일을 보냅니다.",
         "tags": ["email", "google", "communication"],
@@ -298,6 +309,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Calendar List Events",
         "type": "prebuilt",
+        "provider_name": "google_workspace",
         "is_system": True,
         "description": "Google Calendar에서 일정을 조회합니다. 오늘 또는 며칠간의 일정을 확인할 수 있습니다.",
         "tags": ["calendar", "google", "productivity"],
@@ -320,6 +332,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Calendar Create Event",
         "type": "prebuilt",
+        "provider_name": "google_workspace",
         "is_system": True,
         "description": "Google Calendar에 새 일정을 생성합니다. 제목, 시작/종료 시간, 설명, 장소를 지정할 수 있습니다.",
         "tags": ["calendar", "google", "productivity"],
@@ -338,6 +351,7 @@ DEFAULT_TOOLS = [
     {
         "name": "Calendar Update Event",
         "type": "prebuilt",
+        "provider_name": "google_workspace",
         "is_system": True,
         "description": "Google Calendar의 기존 일정을 수정합니다. 일정 ID와 변경할 필드를 지정합니다.",
         "tags": ["calendar", "google", "productivity"],
