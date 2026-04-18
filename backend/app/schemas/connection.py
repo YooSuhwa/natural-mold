@@ -15,9 +15,21 @@ ConnectionStatus = Literal["active", "disabled"]
 McpAuthType = Literal["none", "bearer", "api_key", "oauth2", "basic"]
 McpTransport = Literal["http", "stdio"]
 
+from app.schemas.markers import M10_SEED_MARKER
+
 _PROVIDER_NAME_PATTERN = re.compile(r"^[a-z0-9_]+$")
 # env_vars 템플릿 패턴은 runtime resolver와 단일 소스 공유.
 _ENV_VAR_TEMPLATE_PATTERN = _ENV_VAR_TEMPLATE
+
+
+def _check_reserved_marker(value: str, field_name: str) -> str:
+    if value.startswith(M10_SEED_MARKER):
+        raise ValueError(
+            f"{field_name} cannot start with the reserved marker "
+            f"'{M10_SEED_MARKER}' — this prefix is reserved for m10 "
+            "auto-seeded rows so rollback can safely identify them."
+        )
+    return value
 
 
 def _validate_provider_name(
@@ -102,6 +114,11 @@ class ConnectionCreate(BaseModel):
             return v
         return _validate_provider_name(v, connection_type)
 
+    @field_validator("display_name")
+    @classmethod
+    def _check_display_name_marker(cls, v: str) -> str:
+        return _check_reserved_marker(v, "display_name")
+
     @model_validator(mode="after")
     def _check_extra_config_per_type(self) -> ConnectionCreate:
         if self.type == "mcp":
@@ -155,6 +172,13 @@ class ConnectionUpdate(BaseModel):
     extra_config: ConnectionExtraConfig | None = None
     is_default: bool | None = None
     status: ConnectionStatus | None = None
+
+    @field_validator("display_name")
+    @classmethod
+    def _check_display_name_marker(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return _check_reserved_marker(v, "display_name")
 
     @model_validator(mode="after")
     def _check_write_side_env_vars(self) -> ConnectionUpdate:

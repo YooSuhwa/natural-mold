@@ -17,13 +17,8 @@ from app.schemas.connection import (
     ConnectionExtraConfig,
     ConnectionUpdate,
 )
+from app.schemas.markers import M10_SEED_MARKER
 from app.services import credential_service
-
-# m10 마이그레이션이 env 기반으로 자동 시드한 connection의 display_name 프리픽스.
-# downgrade 시 이 마커로 사용자 수동 생성분과 자동 시드분을 구분하므로, 런타임
-# PATCH에서도 마커를 제거하지 못하도록 보호한다. 사용자가 이름을 바꾸려면 먼저
-# delete 후 재생성해야 한다.
-M10_SEED_MARKER = "[m10-auto-seed]"
 
 
 def _now() -> datetime:
@@ -218,14 +213,53 @@ async def _clear_default_in_scope(
     await db.execute(stmt)
 
 
+async def _assert_credential_provider_match(
+    db: AsyncSession,
+    credential_id: uuid.UUID,
+    user_id: uuid.UUID,
+    connection_type: str,
+    connection_provider_name: str,
+) -> None:
+    """Credential 소유권 + PREBUILT provider 일치 검증.
+
+    PREBUILT에서 credential.provider_name이 connection.provider_name과 다르면
+    런타임 `_resolve_prebuilt_auth`가 엉뚱한 키로 auth를 만들고 tool builder가
+    키를 못 찾아 env fallback으로 조용히 떨어진다. 즉 per-user 격리가 파손되고
+    유저는 자기 credential이 쓰이는 줄 착각. 이 검증이 핵심 가드.
+
+    MCP는 credential이 env_vars 템플릿으로 재매핑되므로 provider 일치를
+    강요하지 않는다 (ADR-008 §M2).
+    CUSTOM은 M4 작업 — 현 시점에서는 소유권만 검증.
+    """
+    cred = await credential_service.get_credential(db, credential_id, user_id)
+    if (
+        connection_type == "prebuilt"
+        and cred.provider_name != connection_provider_name
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"credential provider '{cred.provider_name}' does not "
+                f"match connection provider '{connection_provider_name}'. "
+                "PREBUILT connections require a credential whose "
+                "provider_name matches exactly — otherwise the runtime "
+                "silently falls back to global env credentials."
+            ),
+        )
+
+
 async def create_connection(
     db: AsyncSession, user_id: uuid.UUID, payload: ConnectionCreate
 ) -> Connection:
-    # credential 소유권 검증 — 다른 유저의 credential을 참조 못 하도록.
-    # credential_service.get_credential이 미존재/타 유저 모두 404 반환.
+    # credential 소유권 + PREBUILT provider 일치 검증 — 타 유저 credential 차단
+    # 및 엉뚱한 provider의 credential을 bind해 env fallback으로 빠지는 것을 차단.
     if payload.credential_id is not None:
-        await credential_service.get_credential(
-            db, payload.credential_id, user_id
+        await _assert_credential_provider_match(
+            db,
+            payload.credential_id,
+            user_id,
+            payload.type,
+            payload.provider_name,
         )
 
     existing = await _count_in_scope(
@@ -297,18 +331,28 @@ async def update_connection(
             ),
         )
 
-    # credential 소유권 검증 (None 해제는 검증 불필요)
-    if "credential_id" in fields and fields["credential_id"] is not None:
-        await credential_service.get_credential(
-            db, fields["credential_id"], user_id
-        )
-
     # 새 scope / 새 is_default를 먼저 계산 (아직 conn을 mutate하지 않음)
     new_provider_name = (
         fields["provider_name"]
         if ("provider_name" in fields and fields["provider_name"] is not None)
         else conn.provider_name
     )
+
+    # credential 소유권 + PREBUILT provider 일치 검증 (None 해제는 검증 불필요).
+    # credential_id가 유지되더라도 provider_name이 바뀌는 PATCH는 mismatch를
+    # 만들 수 있으므로 양쪽 변경을 모두 검증 대상으로 본다.
+    new_credential_id = fields.get("credential_id", conn.credential_id)
+    credential_or_provider_changed = (
+        "credential_id" in fields or "provider_name" in fields
+    )
+    if credential_or_provider_changed and new_credential_id is not None:
+        await _assert_credential_provider_match(
+            db,
+            new_credential_id,
+            user_id,
+            conn.type,
+            new_provider_name,
+        )
     new_is_default = conn.is_default
     if "is_default" in fields:
         new_is_default = bool(fields["is_default"])

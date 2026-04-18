@@ -166,8 +166,20 @@ def _seed_mock_user_connections(bind) -> None:
         )
         return
 
+    # ENCRYPTION_KEY 미설정 시 credential 시드를 skip한다. encrypt_api_key는
+    # 키가 없으면 plaintext를 반환하는데 (legacy 호환), migration은 API의
+    # 503 가드(credential_service.create_credential)를 우회하므로 설정 누락
+    # 배포에서 Google/Naver secrets가 영구 plaintext로 저장될 수 있다.
+    # 이를 차단 — ENCRYPTION_KEY 설정 후 수동 re-run으로만 시드된다.
+    if not settings.encryption_key:
+        logger.warning(
+            "m10: ENCRYPTION_KEY not set — skipping env secret seed to avoid "
+            "persisting plaintext credentials. Set ENCRYPTION_KEY and re-run "
+            "m10 manually if you want env values auto-seeded."
+        )
+        return
+
     # Fernet 암호화는 app.services.encryption 헬퍼 재사용 (키 관리 일관성).
-    # encryption_key 미설정 시 encrypt_api_key는 plaintext로 저장 (warn 로그).
     from app.services.encryption import encrypt_api_key
 
     for prov in _PROVIDERS:

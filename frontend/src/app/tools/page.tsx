@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useTools, useDeleteTool, useMCPServers } from '@/lib/hooks/use-tools'
+import { useConnections } from '@/lib/hooks/use-connections'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -88,7 +89,19 @@ const TOOL_TYPE_STYLES: Record<
 
 type AuthStatus = 'not_configured' | 'configured'
 
-function getAuthStatus(tool: Tool): AuthStatus {
+function getAuthStatus(
+  tool: Tool,
+  prebuiltConfiguredProviders: Set<string>,
+): AuthStatus {
+  // PREBUILT는 M3부터 per-user connection이 SOT. provider_name에 해당하는
+  // default connection이 credential_id를 가진 active 상태면 configured.
+  // legacy(credential_id/auth_config) fallback은 provider_name이 없는 row에
+  // 한해 유지 (M6까지 이행 tolerance).
+  if (tool.type === 'prebuilt' && tool.provider_name) {
+    return prebuiltConfiguredProviders.has(tool.provider_name)
+      ? 'configured'
+      : 'not_configured'
+  }
   if (tool.credential_id) return 'configured'
   // Note: server masks string values to "***" before sending. The mask itself
   // is non-empty, so a configured legacy auth_config still resolves to 'configured'
@@ -136,11 +149,13 @@ function ToolCard({
   onDelete,
   isDeleting,
   onShowDetail,
+  prebuiltConfiguredProviders,
 }: {
   tool: Tool
   onDelete: (tool: Tool) => void
   isDeleting: boolean
   onShowDetail: (tool: Tool) => void
+  prebuiltConfiguredProviders: Set<string>
 }) {
   const t = useTranslations('tool.page')
   const tCustomAuth = useTranslations('tool.customAuth')
@@ -149,7 +164,7 @@ function ToolCard({
   const isPrebuilt = tool.type === 'prebuilt'
   const isCustom = tool.type === 'custom'
   const showAuth = isPrebuilt || isCustom
-  const authStatus = showAuth ? getAuthStatus(tool) : null
+  const authStatus = showAuth ? getAuthStatus(tool, prebuiltConfiguredProviders) : null
   // Prebuilt cards swap their type badge for an auth-status badge (system tools
   // are always present, so auth-state IS the salient signal). Custom cards keep
   // their "Custom" type badge and surface auth-state only via the footer button.
@@ -293,6 +308,7 @@ function ToolSection({
   onDelete,
   isDeleting,
   onShowDetail,
+  prebuiltConfiguredProviders,
 }: {
   label: string
   count: number
@@ -300,6 +316,7 @@ function ToolSection({
   onDelete: (tool: Tool) => void
   isDeleting: boolean
   onShowDetail: (tool: Tool) => void
+  prebuiltConfiguredProviders: Set<string>
 }) {
   return (
     <section>
@@ -314,6 +331,7 @@ function ToolSection({
             onDelete={onDelete}
             isDeleting={isDeleting}
             onShowDetail={onShowDetail}
+            prebuiltConfiguredProviders={prebuiltConfiguredProviders}
           />
         ))}
       </div>
@@ -324,6 +342,9 @@ function ToolSection({
 export default function ToolsPage() {
   const { data: tools, isLoading } = useTools()
   const { data: mcpServers, isLoading: mcpLoading } = useMCPServers()
+  // PREBUILT connection 목록 — configured 상태 판정에 사용. type 필터만 적용해
+  // tool.provider_name 매핑용 Set 구성.
+  const { data: prebuiltConnections } = useConnections({ type: 'prebuilt' })
   const deleteTool = useDeleteTool()
   const t = useTranslations('tool.page')
   const tc = useTranslations('common')
@@ -332,6 +353,18 @@ export default function ToolsPage() {
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set())
   const [detailTool, setDetailTool] = useState<Tool | null>(null)
   const [deletingToolTarget, setDeletingToolTarget] = useState<Tool | null>(null)
+
+  // provider_name 중 default + credential_id가 붙은 것만 "configured"로 간주.
+  // Set으로 만들어 ToolCard에서 O(1) lookup.
+  const prebuiltConfiguredProviders = useMemo(() => {
+    const set = new Set<string>()
+    for (const conn of prebuiltConnections ?? []) {
+      if (conn.is_default && conn.credential_id && conn.status === 'active') {
+        set.add(conn.provider_name)
+      }
+    }
+    return set
+  }, [prebuiltConnections])
 
   const filterOptions: { value: ToolFilter; label: string }[] = [
     { value: 'all', label: t('filter.all') },
@@ -527,6 +560,7 @@ export default function ToolsPage() {
               onDelete={setDeletingToolTarget}
               isDeleting={deleteTool.isPending}
               onShowDetail={setDetailTool}
+              prebuiltConfiguredProviders={prebuiltConfiguredProviders}
             />
           )}
           {showSection('prebuilt') && sectionTools.prebuilt.length > 0 && (
@@ -537,6 +571,7 @@ export default function ToolsPage() {
               onDelete={setDeletingToolTarget}
               isDeleting={deleteTool.isPending}
               onShowDetail={setDetailTool}
+              prebuiltConfiguredProviders={prebuiltConfiguredProviders}
             />
           )}
           {showSection('mcp') && filteredMCPServers.length > 0 && (
@@ -567,6 +602,7 @@ export default function ToolsPage() {
               onDelete={setDeletingToolTarget}
               isDeleting={deleteTool.isPending}
               onShowDetail={setDetailTool}
+              prebuiltConfiguredProviders={prebuiltConfiguredProviders}
             />
           )}
         </div>
