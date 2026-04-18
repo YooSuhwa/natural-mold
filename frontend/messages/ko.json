@@ -892,7 +892,8 @@
       "configured": "연결이 설정되어 있습니다",
       "toast": {
         "saved": "연결이 저장되었습니다",
-        "saveFailed": "연결 저장에 실패했습니다"
+        "saveFailed": "연결 저장에 실패했습니다",
+        "conflictRetry": "다른 세션에서 기본 연결이 변경되었습니다. 최신 상태로 다시 시도해주세요."
       }
     },
     "prebuiltSection": {

@@ -19,6 +19,12 @@ from app.schemas.connection import (
 )
 from app.services import credential_service
 
+# m10 마이그레이션이 env 기반으로 자동 시드한 connection의 display_name 프리픽스.
+# downgrade 시 이 마커로 사용자 수동 생성분과 자동 시드분을 구분하므로, 런타임
+# PATCH에서도 마커를 제거하지 못하도록 보호한다. 사용자가 이름을 바꾸려면 먼저
+# delete 후 재생성해야 한다.
+M10_SEED_MARKER = "[m10-auto-seed]"
+
 
 def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
@@ -272,6 +278,24 @@ async def update_connection(
     # exclude_unset으로 "미전송" vs "명시적 None 전송"을 구분.
     # credential_id/extra_config=None은 명시적 해제로 반영된다.
     fields = payload.model_dump(exclude_unset=True)
+
+    # m10 자동 시드 connection은 display_name 마커로 downgrade 추적 대상이다.
+    # 마커 프리픽스가 있는 row에서 display_name을 마커 없는 값으로 바꾸면
+    # downgrade가 시드분을 식별하지 못해 orphan이 된다. 이름을 바꾸려면
+    # delete 후 재생성하도록 400 반환.
+    if (
+        "display_name" in fields
+        and fields["display_name"] is not None
+        and conn.display_name.startswith(M10_SEED_MARKER)
+        and not str(fields["display_name"]).startswith(M10_SEED_MARKER)
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "이 connection은 환경변수로 자동 시드된 기본 연결입니다. "
+                "이름을 변경하려면 먼저 삭제 후 수동으로 재생성해주세요."
+            ),
+        )
 
     # credential 소유권 검증 (None 해제는 검증 불필요)
     if "credential_id" in fields and fields["credential_id"] is not None:

@@ -511,6 +511,70 @@ async def test_patch_with_none_unlinks_credential(
 
 
 # ---------------------------------------------------------------------------
+# M10 seed marker — display_name 보호 (downgrade 가역성)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_rejects_removing_m10_seed_marker(
+    client: AsyncClient, db: AsyncSession
+):
+    """m10 자동 시드 connection의 display_name은 마커 프리픽스를 제거하지 못한다.
+
+    downgrade가 `[m10-auto-seed]%` LIKE 매칭으로 시드분을 역삭제하므로, 사용자가
+    마커를 없앤 이름으로 변경하면 downgrade가 해당 row를 식별하지 못해 orphan이
+    된다. 400으로 거부 — 이름 변경은 delete 후 재생성 경로로 유도.
+    """
+    cred = await _seed_credential(db)
+
+    # m10 마커가 있는 display_name으로 생성 (시드 경로 시뮬레이션)
+    created = await client.post(
+        "/api/connections",
+        json={
+            "type": "prebuilt",
+            "provider_name": "naver",
+            "display_name": "[m10-auto-seed] naver",
+            "credential_id": str(cred.id),
+        },
+    )
+    assert created.status_code == 201
+    conn_id = created.json()["id"]
+
+    # 마커 없는 이름으로 PATCH → 400
+    resp = await client.patch(
+        f"/api/connections/{conn_id}",
+        json={"display_name": "My Naver Key"},
+    )
+    assert resp.status_code == 400
+    assert "자동 시드" in resp.json().get("detail", "")
+
+    # 마커를 유지한 변경은 허용
+    resp = await client.patch(
+        f"/api/connections/{conn_id}",
+        json={"display_name": "[m10-auto-seed] naver-renamed"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] == "[m10-auto-seed] naver-renamed"
+
+    # 원래 마커가 없는 connection은 제약 없음 (회귀 방지)
+    other = await client.post(
+        "/api/connections",
+        json={
+            "type": "prebuilt",
+            "provider_name": "google_search",
+            "display_name": "My Google Key",
+            "credential_id": None,
+        },
+    )
+    assert other.status_code == 201
+    resp = await client.patch(
+        f"/api/connections/{other.json()['id']}",
+        json={"display_name": "renamed freely"},
+    )
+    assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
 # Extra — 알 수 없는 필드 전송 시 422 (extra="forbid")
 # ---------------------------------------------------------------------------
 

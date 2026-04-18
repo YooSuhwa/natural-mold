@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
+import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { CheckCircleIcon, KeyIcon, LinkIcon, Loader2Icon } from 'lucide-react'
 
@@ -23,6 +24,7 @@ import {
   useCreateConnection,
   useUpdateConnection,
 } from '@/lib/hooks/use-connections'
+import { ApiError } from '@/lib/api/client'
 import type { Connection } from '@/lib/types'
 
 interface ConnectionBindingDialogProps {
@@ -91,6 +93,7 @@ function DialogBody({
   const tc = useTranslations('common')
   const tCred = useTranslations('connections.credentialSelect')
 
+  const qc = useQueryClient()
   const { data: connections, isLoading: connectionsLoading } = useConnections({
     type,
     provider_name: providerName,
@@ -151,7 +154,17 @@ function DialogBody({
       toast.success(t('toast.saved'))
       onSaved?.(result)
       onClose()
-    } catch {
+    } catch (err) {
+      // 409는 partial unique index 경합 — 타 탭/세션이 먼저 default를 승격/생성.
+      // 1분 stale 캐시로 POST/PATCH 오분기가 발생할 수 있으므로 scope를 강제
+      // 무효화하고 retry 안내 toast로 분기한다. 다이얼로그는 열어둔 채 사용자가
+      // 최신 상태로 다시 저장할 수 있게 한다.
+      if (err instanceof ApiError && err.status === 409) {
+        qc.invalidateQueries({ queryKey: ['connections', type, providerName] })
+        qc.invalidateQueries({ queryKey: ['connections'] })
+        toast.error(t('toast.conflictRetry'))
+        return
+      }
       toast.error(t('toast.saveFailed'))
     }
   }
