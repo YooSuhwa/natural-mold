@@ -19,15 +19,18 @@
 
 ## 백로그 (추천 순서)
 
+> **순서 결정 (2026-04-18)**: 멀티 유저 인증 도입 **전에** Connection 리팩토링(E)을 먼저 완료. 이유: 인증 활성화 순간 PREBUILT 공유 행의 credential 뒤엉킴이 프로덕션 incident로 전환됨. 스키마를 먼저 정리하면 인증 도입 PR은 `get_current_user` 교체 + 세션만 얹는 작은 단위로 축소 가능.
+
 | # | 항목 | 규모 | 비고 |
 |---|------|------|------|
-| ~~C~~ | ~~credentials list N+1 복호화 제거~~ | - | **완료** (이 브랜치) |
-| **D** | **`lazy="joined"` → `selectinload`** | 중 | 범용 성능 개선 |
-| E | PREBUILT 공유행 per-user credential binding | 큼 | 아키텍처 변경 (PoC 우선순위 낮음) |
-| F | `CredentialPickerDialog` 공통 셸 추출 | 중 | prebuilt/custom/mcp-server 3 다이얼로그 중복 제거 |
+| ~~C~~ | ~~credentials list N+1 복호화 제거~~ | - | **완료** (PR #49) |
+| **E** | **Connection 엔티티 통합 리팩토링** | 큼 | **멀티 유저 선행 필수**. PREBUILT 공유 행 per-user binding + F(다이얼로그 공통 셸) 흡수. 새 `connections(user_id, provider_name, credential_id, …)` 엔티티로 MCP/PREBUILT/CUSTOM credential 바인딩 통일. 별도 `/plan` 세션에서 ADR부터 착수 권장 |
+| **D** | **`lazy="joined"` → `selectinload`** | 중 | 범용 성능 개선. E와 독립적이므로 병렬/선행 가능 |
 | G | ToolCard CardFooter 3-way 분기 sub-component | 작음 | 가독성 개선 |
 | H | `credentials.is_active` dead column 처리 | 작음 | 토글 API 없음 (C 삭제분석 보류 #2) |
 | I | `CredentialResponse.has_data` 필드 재검토 | 작음 | 항상 True — 프론트 영향 조사 후 결정 (C 삭제분석 보류 #3) |
+| ~~F~~ | ~~`CredentialPickerDialog` 공통 셸 추출~~ | - | **E에 흡수** (Connection 통합 시 UI 재편과 함께 처리) |
+| (후속) | 멀티 유저 인증 도입 | 중 | E 완료 **후** 진행 — 로그인/세션 + `get_current_user` 실제화 |
 
 ## 주의사항
 
