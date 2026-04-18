@@ -11,14 +11,19 @@
 
 **이전 머지**: PR #50 (백로그 재정렬 E 우선), PR #49 (백로그 C 완료), #48/#47/#46 (credential/MCP 시스템)
 
-## 다음 작업 — 백로그 E: Connection 엔티티 통합 (M0부터)
+## 다음 작업 — 백로그 E: Connection 엔티티 통합 (**M1부터**)
 
 **루트 계획**: `docs/exec-plans/active/backlog-e-connection-refactor.md` (6 마일스톤)
+**ADR**: `docs/design-docs/adr-008-connection-entity.md` (제안됨 — 2026-04-18)
 
-**새 세션 진입**:
+**M0 완료 (2026-04-18)** — 브랜치 `docs/adr-008-connection-entity` (worktree `.claude/worktrees/backlog-e-m0`)
+- ADR-008 작성: 맥락/결정/대안(A~D)/결과 + 테스트 시나리오
+- exec-plan 보강: M0 합의 사항 요약표 추가
+- design-docs index 갱신
+
+**새 세션 진입 (M1)**:
 ```
-docs/exec-plans/active/backlog-e-connection-refactor.md 읽고 M0 시작해줘.
-/spec으로 ADR-008 (Connection 엔티티) 설계 인터뷰 진행하자.
+docs/exec-plans/active/backlog-e-connection-refactor.md 와 docs/design-docs/adr-008-connection-entity.md 읽고 M1 시작해줘.
 ```
 
 **마일스톤별 권장 스킬**:
