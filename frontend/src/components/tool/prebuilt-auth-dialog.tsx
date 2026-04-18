@@ -1,15 +1,9 @@
 'use client'
 
 import React, { useState } from 'react'
-import { useTranslations } from 'next-intl'
 
 import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import { CustomAuthDialog } from '@/components/tool/custom-auth-dialog'
 import type { Tool } from '@/lib/types'
 
 interface PrebuiltAuthDialogProps {
@@ -18,28 +12,25 @@ interface PrebuiltAuthDialogProps {
 }
 
 /**
- * PREBUILT 도구 인증 dialog — ConnectionBindingDialog 래퍼.
+ * PREBUILT 도구 인증 dialog.
  *
  * ADR-008: PREBUILT는 per-user Connection 엔티티(user_id+type+provider_name)로
  * credential을 바인딩한다. tool row 자체는 공유 행이라 mutate하지 않는다.
  *
- * tool.provider_name이 null이면 legacy seed(m10 매핑 실패)라 connection 경로를
- * 쓸 수 없다 → trigger disabled + 안내 tooltip. 실무상 0건 예상.
+ * tool.provider_name이 null인 경우(m10 매핑 실패 — 실무상 0건 예상이지만
+ * 존재 가능)는 backend가 여전히 legacy `tool.credential_id` 경로로 실행하므로,
+ * UI도 legacy credential-edit 플로우(CustomAuthDialog)로 위임해 rotate/clear/
+ * repair 경로를 유지한다. 그렇지 않으면 "도구는 실행되지만 관리 불가" 운영
+ * 데드엔드가 발생 (Codex adversarial 4차 P2). M6 cleanup에서 legacy path 일괄 제거.
  */
 export function PrebuiltAuthDialog({ tool, trigger }: PrebuiltAuthDialogProps) {
-  const t = useTranslations('tool.authDialog')
   const [open, setOpen] = useState(false)
 
   if (!tool.provider_name) {
-    const disabled = cloneWithProps(trigger, { disabled: true, 'aria-disabled': true })
-    return (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger render={disabled} />
-          <TooltipContent>{t('legacyUnavailable')}</TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
-    )
+    // Legacy path (provider_name NULL) — CustomAuthDialog는 tool.credential_id
+    // 기반의 기존 credential-edit 플로우를 제공한다. M4에서 교체될 예정이지만
+    // M3~M5 기간 fallback으로 활용.
+    return <CustomAuthDialog tool={tool} trigger={trigger} />
   }
 
   const clickable = cloneWithProps(trigger, { onClick: () => setOpen(true) })

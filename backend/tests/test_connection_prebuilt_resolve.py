@@ -324,15 +324,15 @@ async def test_prebuilt_without_default_connection_returns_empty_auth(
 
 
 @pytest.mark.asyncio
-async def test_disabled_default_connection_excluded_from_runtime(
+async def test_disabled_default_connection_fails_closed(
     db: AsyncSession,
 ):
-    """`status='disabled'` connection은 is_default=true여도 runtime auth
-    resolution에서 제외돼 env fallback으로 떨어져야 한다.
+    """`status='disabled'` connection은 execution을 차단해야 한다 (fail closed).
 
-    위반 시 유저가 UI에서 connection을 disable해도 서버는 credential을
-    계속 사용 → kill switch 무효 + 프론트/백엔드 split-brain (Codex
-    adversarial P1).
+    이전(2차 adversarial)에는 status='active' 필터로 map에서 제외 → env
+    fallback으로 떨어졌으나, Codex 4차 지적: env fallback이 kill-switch를
+    무력화한다. 3-state 도입 후: map에는 disabled도 포함되고, 런타임에서
+    `ToolConfigError`를 raise해 공용 env secret으로의 우회를 차단한다.
     """
     await _seed_user(db, TEST_USER_ID, "test@test.com")
     model = await _seed_model(db)
@@ -344,7 +344,6 @@ async def test_disabled_default_connection_excluded_from_runtime(
         name="Naver cred",
         provider_name="naver",
     )
-    # connection을 disabled 상태로 생성 (default=true로 두어 status 필터만으로 제외 확인)
     conn = Connection(
         user_id=TEST_USER_ID,
         type="prebuilt",
@@ -367,12 +366,53 @@ async def test_disabled_default_connection_excluded_from_runtime(
 
     loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
     assert loaded is not None
-    # disabled는 map에서 제외되어야 함
-    assert loaded._default_connection_map == {}  # type: ignore[attr-defined]
+    # disabled도 map에 포함 — 런타임 resolver가 3-state로 판단해야 함
+    m = loaded._default_connection_map  # type: ignore[attr-defined]
+    assert "naver" in m
+    assert m["naver"].status == "disabled"
 
-    cfg = build_tools_config(loaded)[0]
-    # env fallback 경로 — auth_config는 None으로 직렬화
-    assert cfg["auth_config"] is None
+    # build_tools_config → _resolve_prebuilt_auth → ToolConfigError
+    with pytest.raises(ToolConfigError) as exc_info:
+        build_tools_config(loaded)
+    assert "status='disabled'" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_unbound_default_connection_fails_closed(
+    db: AsyncSession,
+):
+    """credential_id=NULL(명시적 unbind 또는 ON DELETE SET NULL) connection은
+    execution을 차단해야 한다. env fallback으로 우회하면 kill-switch가 무력화
+    된다 (Codex adversarial 4차 P1).
+    """
+    await _seed_user(db, TEST_USER_ID, "test@test.com")
+    model = await _seed_model(db)
+
+    conn = Connection(
+        user_id=TEST_USER_ID,
+        type="prebuilt",
+        provider_name="naver",
+        display_name="naver unbound",
+        credential_id=None,
+        extra_config=None,
+        is_default=True,
+        status="active",
+    )
+    db.add(conn)
+    await db.flush()
+
+    naver_tool = await _seed_prebuilt_tool(
+        db, name="Naver News Search", provider_name="naver"
+    )
+    agent = await _seed_agent_with_tools(
+        db, TEST_USER_ID, model, [naver_tool]
+    )
+    loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    assert loaded is not None
+
+    with pytest.raises(ToolConfigError) as exc_info:
+        build_tools_config(loaded)
+    assert "no bound credential" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -446,11 +486,14 @@ async def test_disabled_default_reactivates_via_credential_and_status_patch(
 # ---------------------------------------------------------------------------
 
 
-def test_prebuilt_connection_with_dangling_credential_falls_back_to_env():
+def test_prebuilt_connection_with_dangling_credential_fails_closed():
     """Credential이 삭제되어 connection.credential_id가 ON DELETE SET NULL로
-    끊긴 dangling 상태: `_resolve_prebuilt_auth`는 `{}`를 반환해 env fallback
-    경로로 회귀한다. 런타임이 None deref로 터지면 안 됨 (ADR-008 §11 resilience).
+    끊긴 dangling 상태: `_resolve_prebuilt_auth`는 `ToolConfigError`를 raise
+    해 tool 실행을 차단해야 한다.
 
+    이전에는 `{}`를 반환해 env fallback으로 회귀했으나, Codex 4차 지적:
+    "connection은 있지만 credential 없음"은 명시적 unbind 의도와 구분
+    불가능하고 env fallback은 kill-switch 무력화. fail closed로 전환.
     단위 테스트 — connection_map을 in-memory로 구성해 헬퍼만 호출한다.
     """
     tool = Tool(
@@ -466,13 +509,14 @@ def test_prebuilt_connection_with_dangling_credential_falls_back_to_env():
         type="prebuilt",
         provider_name="naver",
         display_name="Naver (dangling)",
-        credential_id=None,  # FK SET NULL 결과
+        credential_id=None,  # FK SET NULL 결과 또는 사용자 명시적 unbind
         credential=None,
         is_default=True,
         status="active",
     )
-    result = _resolve_prebuilt_auth(tool, {"naver": dangling})
-    assert result == {}
+    with pytest.raises(ToolConfigError) as exc_info:
+        _resolve_prebuilt_auth(tool, {"naver": dangling})
+    assert "no bound credential" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------

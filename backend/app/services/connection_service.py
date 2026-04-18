@@ -75,15 +75,17 @@ async def get_default_connection(
     type_: str,
     provider_name: str,
 ) -> Connection | None:
-    """Fetch the user's **active** default connection for (type, provider_name).
+    """Fetch the user's default connection for (type, provider_name).
 
     partial unique index `uq_connections_one_default_per_scope`가 유일성을
     보장하므로 결과는 0 또는 1건. credential은 eager load 되어 호출자가
     세션 밖에서도 decrypt 가능하다. user_id 필터는 cross-tenant leak 방지.
-    `status='active'` 필터는 disable kill-switch가 런타임에도 적용되도록 강제
-    (ADR-008 §M3 보강, Codex adversarial P1). disabled connection은
-    "없는 것"과 동일하게 취급되어 `_resolve_prebuilt_auth`가 env fallback으로
-    귀결하고 프론트의 configured 상태 판정과도 정합.
+
+    status(`active` / `disabled`) 필터는 **적용하지 않는다** — 호출자(런타임
+    `_resolve_prebuilt_auth`)가 status/credential 상태를 보고 3-state로 판단
+    해야 disable/unbound가 env fallback로 우회되지 않는다 (Codex adversarial
+    4차 P1). "connection 없음"과 "disabled/unbound"을 구분해야 kill-switch가
+    실질적으로 작동한다.
     """
     result = await db.execute(
         select(Connection)
@@ -92,7 +94,6 @@ async def get_default_connection(
             Connection.type == type_,
             Connection.provider_name == provider_name,
             Connection.is_default.is_(True),
-            Connection.status == "active",
         )
         .options(selectinload(Connection.credential))
         .limit(1)
@@ -106,13 +107,14 @@ async def get_default_connections_for_providers(
     type_: str,
     provider_names: set[str],
 ) -> dict[str, Connection]:
-    """Bulk-load **active** default connections for several providers in a single query.
+    """Bulk-load default connections (active + disabled) for several providers.
 
     PREBUILT tool 해석 경로의 N+1 방지. 한 에이전트가 naver/google_search/
     google_workspace 도구를 동시에 쓰면 provider당 쿼리 대신 IN 1회로 처리.
     provider_name IN 집합이 비면 즉시 빈 dict 반환. user_id 필터 필수.
-    `status='active'` 필터로 disable 상태는 map에서 제외 — 프론트 configured
-    판정과 정합하고 disable이 실제 kill-switch로 동작하도록 강제.
+
+    status 필터는 적용하지 않는다 — 호출자가 disabled/unbound 판단을 직접
+    수행하도록 온전한 connection 상태를 노출한다 (Codex adversarial 4차 P1).
     """
     if not provider_names:
         return {}
@@ -123,7 +125,6 @@ async def get_default_connections_for_providers(
             Connection.type == type_,
             Connection.provider_name.in_(provider_names),
             Connection.is_default.is_(True),
-            Connection.status == "active",
         )
         .options(selectinload(Connection.credential))
     )

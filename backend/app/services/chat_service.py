@@ -240,10 +240,17 @@ def _resolve_prebuilt_auth(
     """Resolve PREBUILT tool auth via per-user default Connection.
 
     ADR-008 §3 + §11. PREBUILT 공유 행은 credential을 직접 매달지 않고
-    `(current_user, tool.provider_name)` 조합으로 default connection을 찾아
-    거기 걸린 credential을 사용한다. connection이 없으면 `{}`를 반환해
-    tool builder(naver_tools / google_tools 등)가 `settings.*` env fallback을
-    적용하게 한다.
+    `(current_user, tool.provider_name)` 조합으로 default connection을 찾는다.
+
+    3-state 동작 (Codex adversarial 4차 P1):
+    1. **connection 자체가 없음** (사용자가 아직 바인딩 안 한 bootstrap 상태):
+       `{}` 반환 → tool builder가 `settings.*` env fallback 사용. ADR-008 §11
+       유지.
+    2. **connection이 disabled 또는 credential=NULL** (사용자가 명시적으로
+       비활성화/unbind 또는 credential 삭제): `ToolConfigError` raise → tool
+       실행 차단 (fail closed). env fallback으로 회귀하지 않아 kill-switch가
+       실질적으로 작동한다.
+    3. **active + credential 있음**: credential 복호화 후 auth 반환.
 
     호출 조건: `tool.type == PREBUILT AND tool.provider_name IS NOT NULL`.
     provider_name이 NULL인 PREBUILT row는 legacy 경로(`_resolve_legacy_tool_auth`)
@@ -251,9 +258,10 @@ def _resolve_prebuilt_auth(
     """
     conn = default_connection_map.get(tool.provider_name)
     if conn is None:
-        # env fallback — tool builder가 settings.* 사용. 여기서 settings를
-        # 재조회하지 않는다(2중 fallback 금지, 사티아 사전 사실 #2).
+        # State 1: bootstrap — env fallback (ADR-008 §11). tool builder가
+        # settings.*를 사용. 여기서 settings를 재조회하지 않는다 (2중 fallback 금지).
         return {}
+
     # PREBUILT tool은 `user_id=NULL`(공유 행)이므로 tool-connection ownership
     # 가드는 no-op이지만, CUSTOM/예외 경로가 공유할 수 있도록 호출은 유지.
     # credential-connection ownership은 실질적 guard (M1 POST 검증을 우회한
@@ -269,10 +277,25 @@ def _resolve_prebuilt_auth(
         credential=conn.credential,
         connection_id=conn.id,
     )
+
+    # State 2a: disabled — 사용자 의도된 kill-switch. fail closed.
+    if conn.status != "active":
+        raise ToolConfigError(
+            f"PREBUILT tool '{tool.name}' default connection is "
+            f"status='{conn.status}' — execution blocked. "
+            "Reactivate the connection to run this tool."
+        )
+
+    # State 2b: credential unbound/deleted — 사용자 의도된 해제 또는 삭제.
+    # fail closed로 env fallback 우회를 차단 (kill-switch 관점에서 "비활성" 동등).
     if conn.credential is None:
-        # Connection은 있지만 credential이 ON DELETE SET NULL 등으로 끊겼을 때.
-        # env fallback로 회귀해 tool이 동작을 멈추지 않게 한다.
-        return {}
+        raise ToolConfigError(
+            f"PREBUILT tool '{tool.name}' default connection has no bound "
+            "credential — execution blocked. Bind a credential or delete the "
+            "connection to fall back to environment defaults."
+        )
+
+    # State 3: active + credential → 정상 경로
     return resolve_credential_data(conn.credential)
 
 
