@@ -99,3 +99,16 @@
 [2026-04-17T17:00] bezos VERIFICATION_PASS M3 backend ruff PASS, pytest 539 passed; frontend lint PASS (0 errors, 1 pre-existing warning), build PASS (14 routes)
 [2026-04-17T17:00] satya MILESTONE_DONE M3 통합 검증 완료
 [2026-04-17T17:00] satya PROJECT_DONE "커스텀 도구 credential 통합 (feature/custom-tool-credentials)"
+---
+[2026-04-17T00:00] satya PROJECT_START "백로그 C — credentials list N+1 복호화 제거"
+[2026-04-17T00:00] satya MILESTONE_CREATED M0,M1,M2,M3,M4,M5
+[2026-04-17T00:00] satya WORKTREE_CREATED .claude/worktrees/backlog-c (branch: feature/credentials-field-keys-cache)
+[2026-04-17T17:09] jensen MILESTONE_START M2 credentials.field_keys 컬럼 추가 + 백필 마이그레이션 작성 시작
+[2026-04-17T17:10] jensen MILESTONE_DONE M2 field_keys 컬럼/마이그레이션/백필 구현 + upgrade↔downgrade 왕복 PASS + 회귀 18건 PASS
+[2026-04-17T17:11] jensen MILESTONE_START M3 credential_service create/update/extract 수정
+[2026-04-17T17:15] bezos MILESTONE_START M1 삭제 분석 보고서 작성
+[2026-04-17T17:20] bezos MILESTONE_DONE M1 삭제 분석 완료 — 실제 삭제 0건, 단순화 1건(create_credential 내부 import), 보류 3건 (is_active/has_data/fallback), tasks/deletion-analysis-c.md 생성
+[2026-04-17T17:11] jensen MILESTONE_DONE M3 credential_service create/update/extract 수정 + ruff PASS + 회귀 18건 PASS
+[2026-04-17T17:22] bezos MILESTONE_START M4 테스트 신설 + 회귀 통과
+[2026-04-17T17:30] bezos MILESTONE_DONE M4 test_credentials.py 5 시나리오 PASS + 회귀 545 passed + ruff PASS
+[2026-04-17T17:30] bezos VERIFICATION_PASS M4 신규 5/5 PASS, 전체 pytest 545 passed (540+ 유지), ruff check . 클린
