@@ -112,3 +112,16 @@
 [2026-04-17T17:22] bezos MILESTONE_START M4 테스트 신설 + 회귀 통과
 [2026-04-17T17:30] bezos MILESTONE_DONE M4 test_credentials.py 5 시나리오 PASS + 회귀 545 passed + ruff PASS
 [2026-04-17T17:30] bezos VERIFICATION_PASS M4 신규 5/5 PASS, 전체 pytest 545 passed (540+ 유지), ruff check . 클린
+---
+[2026-04-18T04:10] satya PROJECT_START "백로그 E M1 · Connections 테이블 + CRUD"
+[2026-04-18T04:10] satya WORKTREE_CREATED .claude/worktrees/backlog-e-m1 (branch: feature/connections-table)
+[2026-04-18T04:10] satya MILESTONE_CREATED S0,S1,S2,S3,S4,S5
+[2026-04-18T04:10] satya S0_DONE docs/ 구조 사전 존재 — ADR-008 포함 main 머지 완료
+[2026-04-18T04:35:00Z] pichai MILESTONE_DONE S2 Connection model+schema+validator ruff+import PASS
+[2026-04-18T04:40:00Z] bezos STORY_DONE S1 삭제 분석 완료 — 즉시 삭제 0건, 단순화 제안 5건, 보류 8건(M2/M4/M5/M6 이월), tasks/deletion-analysis-e-m1.md
+[2026-04-18T04:35] pichai MILESTONE_DONE S2 Connection 모델+스키마+validator 완료
+[2026-04-18T04:35] satya MILESTONE_START S3 jensen 스폰 (Alembic+service+router)
+[2026-04-18T04:40] bezos MILESTONE_DONE S1 삭제 분석 — 삭제 0 / 단순화 5 / 보류 8, drive-by 금지 준수
+[2026-04-18T05:20:00Z] jensen MILESTONE_DONE S3 alembic m8_add_connections + connection_service + routers/connections + main.include_router; ruff PASS, alembic 왕복 PASS, pytest 545 회귀 0
+[2026-04-18T05:15:00Z] bezos STORY_DONE S4 test_connections.py 8/8 PASS, 전체 pytest 553 passed (545+→553), ruff PASS
+[2026-04-18T05:15:00Z] bezos ISSUE_FOUND main.py:208 validation_error_handler가 RequestValidationError ctx.error ValueError 객체를 JSONResponse에 그대로 싣어 직렬화 실패 → 500. field_validator/model_validator 422 경로 전체 영향. 시나리오 2/3을 Pydantic 스키마 레벨로 우회 작성했으나 API HTTP 422 회귀 별도 후속 필요

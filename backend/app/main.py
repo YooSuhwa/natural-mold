@@ -34,6 +34,7 @@ import logging
 import uuid
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -169,6 +170,7 @@ def create_app() -> FastAPI:
         agents,
         assistant,
         builder,
+        connections,
         conversations,
         credentials,
         models,
@@ -184,6 +186,7 @@ def create_app() -> FastAPI:
     app.include_router(agents.middleware_router)
     app.include_router(builder.router)
     app.include_router(assistant.router)
+    app.include_router(connections.router)
     app.include_router(conversations.router)
     app.include_router(credentials.router)
     app.include_router(providers.router)
@@ -207,13 +210,17 @@ def create_app() -> FastAPI:
     async def validation_error_handler(
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
+        # Pydantic의 ctx.error(ValueError 객체)는 JSON 직렬화 불가 →
+        # jsonable_encoder로 정리. field/model_validator가 ValueError를
+        # raise하는 모든 422 경로에서 500이 나는 잠복 버그(베조스 S4 /
+        # Codex adversarial Finding 1)를 해소.
         return JSONResponse(
             status_code=422,
             content={
                 "error": {
                     "code": "VALIDATION_ERROR",
                     "message": "입력값 검증에 실패했습니다",
-                    "details": exc.errors(),
+                    "details": jsonable_encoder(exc.errors()),
                 }
             },
         )
