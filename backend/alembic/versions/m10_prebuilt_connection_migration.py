@@ -79,8 +79,12 @@ _PROVIDERS: list[dict] = [
     {
         "provider_name": "google_chat",
         "credential_type": "api_key",
+        # credential_registry.google_chat.fields = [{key: "webhook_url"}]
+        # tool builder(google_workspace_tools.build_google_chat_webhook_tool)가
+        # auth_config["webhook_url"]을 읽으므로 credential data 키도 "webhook_url"로
+        # 저장해야 한다. env 소스 이름(settings.google_chat_webhook_url)은 유지.
         "env_to_key": {
-            "google_chat_webhook_url": "google_chat_webhook_url",
+            "google_chat_webhook_url": "webhook_url",
         },
     },
     {

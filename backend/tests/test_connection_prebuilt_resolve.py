@@ -601,6 +601,36 @@ def test_m10_seed_provider_mapping_covers_m3_scope():
     }
 
 
+def test_m10_seed_env_to_key_matches_credential_registry():
+    """m10 `env_to_key`의 **값**(credential data 저장 키)이
+    `credential_registry.CREDENTIAL_PROVIDERS[provider].fields[*].key`와
+    정확히 일치해야 한다.
+
+    일치하지 않으면: m10이 credential.data_decrypted에 엉뚱한 키로 값을
+    저장 → `resolve_credential_data(conn.credential)`이 `auth_config`로
+    반환 → tool builder가 자신이 기대하는 키로 lookup 실패 → env fallback
+    으로만 동작 → **PREBUILT per-user 격리 무효** (M3 핵심 목표 파손).
+
+    Codex /review(P2) 발견 케이스: google_chat 이 `google_chat_webhook_url`로
+    저장되는데 tool builder는 `webhook_url`로 lookup. 이 테스트가 회귀
+    재발을 막는다.
+    """
+    from app.services.credential_registry import CREDENTIAL_PROVIDERS
+
+    for entry in _m10._PROVIDERS:
+        provider = entry["provider_name"]
+        registry_keys = {
+            f["key"] for f in CREDENTIAL_PROVIDERS[provider]["fields"]
+        }
+        seeded_keys = set(entry["env_to_key"].values())
+        # 시드된 모든 credential data 키가 registry field 키 집합의 부분집합
+        # (registry는 필수 + 선택, 시드는 env가 있는 필수만 채우므로 ⊆ OK)
+        assert seeded_keys.issubset(registry_keys), (
+            f"m10 env_to_key mismatch for {provider}: "
+            f"seeded={seeded_keys} not ⊆ registry_fields={registry_keys}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Scenario 8 — m10 downgrade marker 정책
 # ---------------------------------------------------------------------------
