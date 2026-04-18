@@ -9,13 +9,30 @@
 - 응답 스키마 불변 (`CredentialResponse.field_keys: list[str]`)
 - 검증: ruff PASS, pytest **545 passed**, alembic upgrade/downgrade/upgrade 왕복 PASS
 
-**이전 머지**: PR #48 (커스텀 도구 credential), #47 (MCP 서버 그룹화), #46 (중앙 크리덴셜)
+**이전 머지**: PR #50 (백로그 재정렬 E 우선), PR #49 (백로그 C 완료), #48/#47/#46 (credential/MCP 시스템)
 
-## 다음 작업 — 백로그 D: `lazy="joined"` → `selectinload` 전환
+## 다음 작업 — 백로그 E: Connection 엔티티 통합 (M0부터)
 
-범용 성능 개선. 기본 JOIN되는 관계를 필요 시점에만 선택적 로딩하도록 전환.
-- 조사 대상: agents, tools, mcp_servers, credentials의 relationship
-- 기존 쿼리 경로 회귀 검증 필수
+**루트 계획**: `docs/exec-plans/active/backlog-e-connection-refactor.md` (6 마일스톤)
+
+**새 세션 진입**:
+```
+docs/exec-plans/active/backlog-e-connection-refactor.md 읽고 M0 시작해줘.
+/spec으로 ADR-008 (Connection 엔티티) 설계 인터뷰 진행하자.
+```
+
+**마일스톤별 권장 스킬**:
+| M | 작업 | 스킬 |
+|---|------|------|
+| M0 | ADR-008 + 스펙 확정 (문서) | `/spec` |
+| M1 | `connections` 테이블 + CRUD (parallel run) | 단독 or `/tth` |
+| M2 | MCP → Connection 이관 (**고위험**) | `/tth` |
+| M3 | PREBUILT per-user Connection | 단독 or `/tth` |
+| M4 | CUSTOM Connection 통합 | 단독 or `/tth` |
+| M5 | UI 통합 + F 흡수 | `/frontend` or `/tth` |
+| M6 | Cleanup (legacy drop) | `/tth` or 단독+`/review` |
+
+각 마일스톤마다 새 worktree + 새 브랜치 권장 (컨텍스트 캐시 효율).
 
 ## 백로그 (추천 순서)
 
