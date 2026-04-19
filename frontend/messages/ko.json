@@ -644,7 +644,11 @@
         "httpMethod": "HTTP 메서드",
         "params": "파라미터 (JSON Schema)",
         "paramsPlaceholder": "'{ \"type\": \"object\", \"properties\": '{ \"city\": '{ \"type\": \"string\" '}' '}' '}'",
-        "auth": "인증"
+        "auth": "인증",
+        "connectionHint": "선택한 자격증명으로 커스텀 연결(Connection)이 자동 생성·재사용됩니다.",
+        "connectionConflict": "연결 생성이 다른 세션과 충돌했습니다. 잠시 후 다시 시도하세요.",
+        "connectionFailed": "연결 생성에 실패했습니다.",
+        "toolFailed": "도구 등록에 실패했습니다."
       }
     },
     "authDialog": {

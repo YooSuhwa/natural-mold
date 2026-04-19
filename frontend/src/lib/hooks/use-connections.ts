@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { connectionsApi, type ListConnectionsParams } from '@/lib/api/connections'
 import type {
+  Connection,
   ConnectionCreateRequest,
   ConnectionType,
   ConnectionUpdateRequest,
@@ -10,7 +11,7 @@ import type {
 
 type ConnectionScope = { type: ConnectionType; provider_name: string }
 
-function scopeKey(scope: ConnectionScope) {
+export function scopeKey(scope: ConnectionScope) {
   return ['connections', scope.type, scope.provider_name] as const
 }
 
@@ -28,11 +29,19 @@ export function useCreateConnection() {
   return useMutation({
     mutationFn: (data: ConnectionCreateRequest) => connectionsApi.create(data),
     onSuccess: (created) => {
-      // Scope 전체 invalidation — is_default 승격 시 같은 scope의 다른 connection이
-      // 함께 false로 뒤집히므로 단일 id 캐시 갱신으로는 불충분.
-      qc.invalidateQueries({
-        queryKey: scopeKey({ type: created.type, provider_name: created.provider_name }),
+      // Seed the owning scope cache synchronously so the next read (e.g.
+      // `resolveCustomConnectionId`'s find-or-create) sees it before the
+      // async refetch below completes. Prevents duplicate CUSTOM connections
+      // on rapid dual submits (ADR-008 N:1).
+      const scopeK = scopeKey({ type: created.type, provider_name: created.provider_name })
+      qc.setQueryData<Connection[]>(scopeK, (prev) => {
+        if (!prev) return prev
+        if (prev.some((c) => c.id === created.id)) return prev
+        return [...prev, created]
       })
+      // is_default 승격은 같은 scope의 다른 connection을 false로 뒤집으므로
+      // 단일 id 갱신으로는 불충분. `['connections']` prefix invalidate가
+      // scopeK를 포함하므로 scopeK 별도 호출은 중복.
       qc.invalidateQueries({ queryKey: ['connections'] })
     },
   })

@@ -20,6 +20,12 @@ from app.schemas.connection import (
 from app.schemas.markers import M10_SEED_MARKER
 from app.services import credential_service
 
+# Structured error codes shared by router/FE for CUSTOM connection binding
+# failures. Kept as module-level constants so FE can pattern-match on them
+# without coupling to free-form messages.
+CUSTOM_CONNECTION_DISABLED = "CUSTOM_CONNECTION_DISABLED"
+CUSTOM_CONNECTION_UNBOUND = "CUSTOM_CONNECTION_UNBOUND"
+
 
 def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
@@ -67,6 +73,52 @@ async def get_connection(
         )
     )
     return result.scalars().unique().one_or_none()
+
+
+async def validate_connection_for_custom_tool(
+    db: AsyncSession, conn_id: uuid.UUID, user_id: uuid.UUID
+) -> Connection:
+    """Fetch + validate a CUSTOM connection for binding a new tool.
+
+    Shared by `tool_service.create_custom_tool` (and future callers). Enforces
+    the same invariants that runtime `_resolve_custom_auth` would: ownership,
+    `type='custom'`, `status='active'`, `credential_id IS NOT NULL`. Raising
+    at creation time prevents latent "dead-on-arrival" tools that would
+    fail-closed on first execution.
+
+    Raises:
+        HTTPException(404): not found, not owned, or not type='custom'
+        HTTPException(409, CUSTOM_CONNECTION_DISABLED): status != 'active'
+        HTTPException(400, CUSTOM_CONNECTION_UNBOUND): credential_id is None
+    """
+    conn = await db.get(Connection, conn_id)
+    if conn is None or conn.user_id != user_id or conn.type != "custom":
+        raise HTTPException(status_code=404, detail="Connection not found")
+    if conn.status != "active":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error_code": CUSTOM_CONNECTION_DISABLED,
+                "message": (
+                    "Cannot bind a new tool to a disabled connection. "
+                    "Reactivate the connection in /connections first."
+                ),
+                "connection_id": str(conn.id),
+            },
+        )
+    if conn.credential_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error_code": CUSTOM_CONNECTION_UNBOUND,
+                "message": (
+                    "Cannot bind a new tool to a connection with no "
+                    "credential. Attach a credential to the connection first."
+                ),
+                "connection_id": str(conn.id),
+            },
+        )
+    return conn
 
 
 async def get_default_connection(
@@ -270,6 +322,39 @@ async def create_connection(
             payload.type,
             payload.provider_name,
         )
+
+    # CUSTOM N:1 invariant (ADR-008) — server-side get-or-create. FE cache
+    # dedup은 integrity boundary가 아니므로 (cold cache / 탭 경합 / 동시 submit)
+    # 서버 경계에서 `(user_id, type='custom', credential_id)` 단위로 기존 행을
+    # 재사용. DB partial unique index(`uq_connections_custom_one_per_credential`,
+    # m11)가 동시 INSERT race까지 차단하는 두 번째 계층.
+    if payload.type == "custom" and payload.credential_id is not None:
+        reused = await db.execute(
+            select(Connection).where(
+                Connection.user_id == user_id,
+                Connection.type == "custom",
+                Connection.credential_id == payload.credential_id,
+            )
+        )
+        existing_conn = reused.scalar_one_or_none()
+        if existing_conn is not None:
+            # kill-switch(=disabled)를 자동 reactivation으로 우회하지 않고
+            # 409로 명시적 재활성화 유도. 그대로 반환하면 후속 tool이 runtime에
+            # fail-closed로 즉시 죽어 latent failure.
+            if existing_conn.status != "active":
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error_code": CUSTOM_CONNECTION_DISABLED,
+                        "message": (
+                            "An existing CUSTOM connection for this credential "
+                            "is disabled. Reactivate it in /connections before "
+                            "creating a new tool."
+                        ),
+                        "connection_id": str(existing_conn.id),
+                    },
+                )
+            return existing_conn
 
     existing = await _count_in_scope(
         db, user_id, payload.type, payload.provider_name

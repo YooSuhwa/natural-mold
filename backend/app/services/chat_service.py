@@ -43,6 +43,7 @@ __all__ = [
     "_resolve_env_vars",
     "_load_user_default_connection_map",
     "_resolve_prebuilt_auth",
+    "_resolve_custom_auth",
     "_resolve_legacy_tool_auth",
     "build_tools_config",
 ]
@@ -233,70 +234,110 @@ def build_agent_skills(agent: Agent) -> list[dict[str, Any]]:
     ]
 
 
-def _resolve_prebuilt_auth(
-    tool: Tool,
-    default_connection_map: dict[str, Connection],
-) -> dict[str, Any]:
-    """Resolve PREBUILT tool auth via per-user default Connection.
+def _gate_connection_active(tool: Tool, conn: Connection) -> None:
+    """Gate A: ownership + `status='active'` (kill-switch).
 
-    ADR-008 §3 + §11. PREBUILT 공유 행은 credential을 직접 매달지 않고
-    `(current_user, tool.provider_name)` 조합으로 default connection을 찾는다.
-
-    3-state 동작 (Codex adversarial 4차 P1):
-    1. **connection 자체가 없음** (사용자가 아직 바인딩 안 한 bootstrap 상태):
-       `{}` 반환 → tool builder가 `settings.*` env fallback 사용. ADR-008 §11
-       유지.
-    2. **connection이 disabled 또는 credential=NULL** (사용자가 명시적으로
-       비활성화/unbind 또는 credential 삭제): `ToolConfigError` raise → tool
-       실행 차단 (fail closed). env fallback으로 회귀하지 않아 kill-switch가
-       실질적으로 작동한다.
-    3. **active + credential 있음**: credential 복호화 후 auth 반환.
-
-    호출 조건: `tool.type == PREBUILT AND tool.provider_name IS NOT NULL`.
-    provider_name이 NULL인 PREBUILT row는 legacy 경로(`_resolve_legacy_tool_auth`)
-    로 우회한다 — 이행 tolerance(M6에서 제거).
+    Shared by PREBUILT and CUSTOM resolvers. Must run before any credential
+    read so a disabled connection cannot be bypassed by tool-level fallback.
+    Raises `ToolConfigError` on failure.
     """
-    conn = default_connection_map.get(tool.provider_name)
-    if conn is None:
-        # State 1: bootstrap — env fallback (ADR-008 §11). tool builder가
-        # settings.*를 사용. 여기서 settings를 재조회하지 않는다 (2중 fallback 금지).
-        return {}
-
-    # PREBUILT tool은 `user_id=NULL`(공유 행)이므로 tool-connection ownership
-    # 가드는 no-op이지만, CUSTOM/예외 경로가 공유할 수 있도록 호출은 유지.
-    # credential-connection ownership은 실질적 guard (M1 POST 검증을 우회한
-    # 수동 DML 대비).
     assert_connection_ownership(
         tool_user_id=tool.user_id,
         connection_user_id=conn.user_id,
         connection_id=conn.id,
         tool_name=tool.name,
     )
+    if conn.status != "active":
+        raise ToolConfigError(
+            f"Tool '{tool.name}' connection {conn.id} is "
+            f"status='{conn.status}' — execution blocked. "
+            "Reactivate the connection to run this tool."
+        )
+
+
+def _gate_connection_credential(tool: Tool, conn: Connection) -> dict[str, Any]:
+    """Gate B: credential ownership + `credential IS NOT NULL` + decrypt.
+
+    Shared by PREBUILT and CUSTOM resolvers. Assumes Gate A has passed.
+    Returns the decrypted auth dict.
+    """
     assert_credential_ownership(
         connection_user_id=conn.user_id,
         credential=conn.credential,
         connection_id=conn.id,
     )
-
-    # State 2a: disabled — 사용자 의도된 kill-switch. fail closed.
-    if conn.status != "active":
-        raise ToolConfigError(
-            f"PREBUILT tool '{tool.name}' default connection is "
-            f"status='{conn.status}' — execution blocked. "
-            "Reactivate the connection to run this tool."
-        )
-
-    # State 2b: credential unbound/deleted — 사용자 의도된 해제 또는 삭제.
-    # fail closed로 env fallback 우회를 차단 (kill-switch 관점에서 "비활성" 동등).
     if conn.credential is None:
         raise ToolConfigError(
-            f"PREBUILT tool '{tool.name}' default connection has no bound "
+            f"Tool '{tool.name}' connection {conn.id} has no bound "
             "credential — execution blocked. Bind a credential or delete the "
-            "connection to fall back to environment defaults."
+            "connection."
+        )
+    return resolve_credential_data(conn.credential)
+
+
+def _resolve_prebuilt_auth(
+    tool: Tool,
+    default_connection_map: dict[str, Connection],
+) -> dict[str, Any]:
+    """Resolve PREBUILT tool auth via per-user default Connection.
+
+    ADR-008 §3 + §11. PREBUILT shared rows lookup by
+    `(current_user, tool.provider_name)`. Caller: `tool.type == PREBUILT AND
+    tool.provider_name IS NOT NULL`; rows with NULL provider_name fall through
+    `_resolve_legacy_tool_auth` (M6까지 tolerance).
+
+    - connection 자체가 없음 → `{}` (env fallback, ADR-008 §11)
+    - connection 있음 → Gate A (ownership + active) → Gate B (credential decrypt)
+    """
+    conn = default_connection_map.get(tool.provider_name)
+    if conn is None:
+        # env fallback — tool builder가 `settings.*`를 사용. 여기서 settings를
+        # 재조회하지 않는다 (2중 fallback 금지).
+        return {}
+    _gate_connection_active(tool, conn)
+    return _gate_connection_credential(tool, conn)
+
+
+def _resolve_custom_auth(tool: Tool) -> dict[str, Any]:
+    """Resolve CUSTOM tool auth via bound Connection (ADR-008 §4 M4).
+
+    PREBUILT와 시맨틱 차이: CUSTOM은 env fallback이 없으므로 connection_id가
+    NULL이면 `_resolve_legacy_tool_auth` 경로(M6까지 tolerance). Caller:
+    `tool.type == CUSTOM`. 호출자는 `selectinload(Tool.connection)`을 보장
+    (`get_agent_with_tools`가 M2에서 eager-load).
+
+    - `connection_id IS NULL` → legacy fallback
+    - `connection_id` 있으나 relationship None → FK dangling → `ToolConfigError`
+    - connection 있음 → Gate A (kill-switch) → bridge override OR Gate B
+
+    **Bridge override** (M4-M5): Gate A 통과 후 `tool.credential_id !=
+    conn.credential_id`이면 `custom-auth-dialog`의 PATCH로 방금 credential을
+    회전한 상태 → legacy 경로로 위임(rotation SOT). `TODO(M6)`: dialog가
+    connection API로 migrate되면 동치가 돼 no-op이므로 이 분기 제거 가능.
+    """
+    if tool.connection_id is None:
+        return _resolve_legacy_tool_auth(tool)
+    if tool.connection is None:
+        # async SQLAlchemy에서 lazy-load는 MissingGreenlet raise이므로 None은
+        # FK dangling(connection row 삭제) 또는 eager-load 누락. legacy로
+        # 회귀하면 kill-switch 우회.
+        raise ToolConfigError(
+            f"CUSTOM tool '{tool.name}' has connection_id={tool.connection_id} "
+            "but the connection relationship is missing — execution blocked. "
+            "Caller must eager-load Tool.connection or the connection row was "
+            "deleted out-of-band."
         )
 
-    # State 3: active + credential → 정상 경로
-    return resolve_credential_data(conn.credential)
+    conn = tool.connection
+    # Gate A: kill-switch는 bridge override보다 반드시 선행.
+    _gate_connection_active(tool, conn)
+
+    # Bridge override: Gate A 통과 후에만 진입. active connection의 tool-level
+    # rotation을 credential SOT로 사용.
+    if tool.credential_id is not None and tool.credential_id != conn.credential_id:
+        return _resolve_legacy_tool_auth(tool)
+
+    return _gate_connection_credential(tool, conn)
 
 
 def _resolve_legacy_tool_auth(tool: Tool) -> dict[str, Any]:
@@ -390,9 +431,15 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
                 cred_auth = _resolve_prebuilt_auth(tool, default_connection_map)
             else:
                 cred_auth = _resolve_legacy_tool_auth(tool)
+        elif tool.type == ToolType.CUSTOM:
+            # CUSTOM 도구(M4): connection_id FK 경유 → credential 복호화 +
+            # 3-state fail-closed. connection_id NULL은 legacy fallback
+            # (M6까지 tolerance). bezos S1 #2에 따라 BUILTIN 분기와 분리 —
+            # M6 cleanup에서 CUSTOM legacy 경로만 정확히 제거 가능.
+            cred_auth = _resolve_custom_auth(tool)
         else:
-            # CUSTOM / BUILTIN 등 나머지. M4에서 CUSTOM이 connection 경유로 이관될
-            # 때까지 기존 시맨틱 유지 (credential → auth_config → {}).
+            # BUILTIN 등 나머지. env fallback도 connection도 없는 도구 —
+            # 기존 legacy 경로(credential → auth_config → {}) 유지.
             cred_auth = _resolve_legacy_tool_auth(tool)
 
         merged_auth = {**cred_auth, **(link.config or {})}

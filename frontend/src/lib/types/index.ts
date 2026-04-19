@@ -229,6 +229,7 @@ export interface Tool {
   auth_config: Record<string, unknown> | null
   tags: string[] | null
   credential_id: string | null
+  connection_id: string | null
   agent_count: number
   created_at: string
 }
@@ -346,6 +347,7 @@ export interface ToolCustomCreateRequest {
   auth_type?: string
   auth_config?: Record<string, unknown>
   credential_id?: string
+  connection_id?: string
 }
 
 export interface MCPServerCreateRequest {

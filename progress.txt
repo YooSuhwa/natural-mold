@@ -1,70 +1,93 @@
-# progress.txt — 백로그 E M3 · PREBUILT per-user Connection (팀 공유 메모리)
+# progress.txt — 백로그 E M4 · CUSTOM Connection 통합 (팀 공유 메모리)
 
 이전 작업 아카이브:
 - M1: `tasks/archive/progress-backlog-e-m1.txt`
 - M2: `tasks/archive/progress-backlog-e-m2.txt`
+- M3: `tasks/archive/progress-backlog-e-m3.txt`
 
 ## 프로젝트 목적
 
-M1에서 `connections` 테이블 + CRUD API, M2에서 MCP 도구를 connection 경유로 이관했다. M3에서는 PREBUILT 도구가 per-user 기준으로 각자의 credential을 쓰도록 한다. 현재는 `tools.credential_id` (공유 행) 참조 → 유저 A의 credential이 유저 B에게 노출되는 구조.
+M3까지 PREBUILT 도구가 per-user default connection을 통해 credential을 해석한다. M4는 **CUSTOM 도구**도 `tool.connection_id` 경유로 이관한다. 현재 CUSTOM은 `tool.credential_id` 공유 행 참조 (PR #55 M3 완료 시점 기준 `_resolve_legacy_tool_auth` 경로).
 
-**이 M3가 끝나면**: PREBUILT 도구 실행 시 `tool.provider_name + current_user → default connection → credential` 경로로 동작. 같은 seed tool을 여러 유저가 각자의 credential로 실행 가능.
+**이 M4가 끝나면**: CUSTOM 도구 실행 시 `tool.connection.credential`로 복호화. 같은 credential을 공유하는 여러 CUSTOM tool은 1개 connection을 N:1로 공유. tool.credential_id / tool.auth_config는 M6 drop까지 legacy fallback.
 
-## ADR-008 / M0 합의 반영 규칙
+## ADR-008 / exec-plan §4 M4 반영 규칙
 
-- **Tool.provider_name 신설**: PREBUILT는 필수(seed에서 부여), MCP/CUSTOM은 NULL
-- **Connection default 해석**: user_id + type='prebuilt' + provider_name + is_default=true (per-user, per-provider 1개)
-- **env fallback 유지**: default connection 없으면 `cred_auth = {}` → 기존 `settings.naver_*` 등 경로 유지 (ADR-008 §11)
-- **mock user 시드**: Alembic m10에서 env 값 → credential → default connection 자동 생성 (idempotent)
-- **Legacy fallback**: `tools.credential_id`는 PREBUILT에서 무시하는 게 원칙이나, M6까지는 `provider_name IS NULL` 케이스에 한해 기존 경로 유지 (이행 tolerance)
-- **Cross-tenant 가드**: `assert_connection_ownership` / `assert_credential_ownership`는 M2에서 이미 도입 — PREBUILT에서도 재사용
+- **CUSTOM Connection 형태**: `type='custom'`, `provider_name='custom_api_key'`, `extra_config=NULL`, `display_name=credential.name`, `is_default=true`, `status='active'`
+- **N:1 공유 원칙**: 같은 credential을 참조하는 여러 CUSTOM tool은 동일 connection 공유 (m11에서 `(user_id, credential_id)` 단위 dedup)
+- **Legacy fallback M6까지**: `tool.connection_id IS NULL AND tool.credential_id` 있으면 기존 `_resolve_legacy_tool_auth` 경로 — M6 cleanup에서 제거
+- **Fail-closed 정책 (PREBUILT M3와 동일)**: `tool.connection_id` 지정된 상태에서 connection disabled / credential=NULL → `ToolConfigError` raise (env fallback으로 퇴행하지 않음)
+- **Cross-tenant 가드**: `assert_connection_ownership` / `assert_credential_ownership` 재사용 (M2 도입, M3 확장)
 
 ## 기존 코드 패턴 (따를 것)
 
-- **chat_service.py:191-280** — `build_tools_config` 현재 구조. MCP 분기(203-253)는 M2에서 이미 connection 경유. PREBUILT/CUSTOM 분기(254-260)가 M3 재작성 대상.
-- **chat_service.py:152-174** — `get_agent_with_tools`의 selectinload 체인. default connection은 tool별이 아니라 (user, provider) 스코프라 selectinload로 체인 불가 → 별도 쿼리로 user default map 조회 후 inject.
-- **connection_service.py** — M1 산출. M3에서 `get_default_connection(db, user_id, type, provider_name)` sync 헬퍼 추가.
-- **credential_service.py** — `resolve_credential_data(credential)` 재사용.
-- **tool_factory.py** — `create_prebuilt_tool(name, auth_config)` 변경 없음.
-- **naver_tools.py / google_tools.py** — `(auth_config or {}).get("naver_client_id") or settings.naver_client_id` 패턴 보존. connection 없을 때 env 값 자동 적용.
+- **chat_service.py:236-315** (M3 기준 라인) — `_resolve_prebuilt_auth`가 3-state (connection 없음 / disabled or credential NULL / active) fail-closed 패턴을 이미 구현. CUSTOM용 `_resolve_custom_auth`는 대칭 구조로 설계하되 "connection_id 없음" = legacy fallback으로 분기 (PREBUILT는 "connection 없음" = env fallback으로 분기와 다름 — **주의**).
+- **chat_service.py:318-416** `build_tools_config` CUSTOM 분기 (`else: cred_auth = _resolve_legacy_tool_auth(tool)`) 교체 지점. MCP/PREBUILT 분기는 건드리지 말 것.
+- **chat_service.py:184-219** `get_agent_with_tools` selectinload 체인에 `Tool.connection` + `Connection.credential`이 M2에서 이미 추가됨 — 추가 쿼리 불필요 (CUSTOM은 tool 단위 FK라 PREBUILT처럼 bulk 프리로드 안 해도 됨).
+- **connection_service.py** — M1 산출. M4에서 CUSTOM 전용 헬퍼가 필요한지 젠슨이 판단 (대체로 불필요 — selectinload로 충분).
+- **credential_service.py `resolve_credential_data(credential)`** — 재사용 (시그니처 보존, M2/M3 규칙).
+- **tool_factory.py `create_tool_from_db(..., auth_config)`** — 변경 없음. `build_tools_config` 출력이 동일 시그니처로 나감.
+- **`_AuthInjectorInterceptor`** — CUSTOM HTTP 도구에서 auth_config를 request에 주입. 영향 없음.
 
-## Tool-Provider 매핑 (m10 백필용)
+## Alembic m11 상세 설계
 
-| Tool name 패턴 | provider_name |
-|----------------|---------------|
-| `Naver *` | naver |
-| `Google Search`, `Google Image Search`, `Google News Search` | google_search |
-| `Gmail *`, `Google Calendar *` | google_workspace |
-| `Google Chat *` | google_chat |
-| 그 외 `type='prebuilt'` | WARN + NULL 유지 (수동 수정 필요) |
-| `type='builtin'` (API 키 불필요) | NULL (connection 없음) |
+### 대상 식별
+```sql
+SELECT id, user_id, credential_id FROM tools
+WHERE type = 'custom'
+  AND credential_id IS NOT NULL
+  AND connection_id IS NULL;
+```
 
-## Alembic 주의사항
+### 이관 흐름 (idempotent)
+1. 위 결과를 `(user_id, credential_id)` 단위로 distinct 그룹화.
+2. 각 그룹에 대해:
+   - 기존 `connections` 테이블에 `(user_id, type='custom', credential_id, display_name LIKE '[m11-auto-seed]%')` 존재하는가?
+   - 있으면 **재사용** (conn_id 취함).
+   - 없으면 **insert**:
+     ```
+     id = uuid4()
+     user_id = tool.user_id
+     type = 'custom'
+     provider_name = 'custom_api_key'
+     display_name = f'[m11-auto-seed] {credential.name}'
+     credential_id = tool.credential_id
+     extra_config = NULL
+     status = 'active'
+     is_default = true
+     ```
+3. 그룹 내 모든 tool의 `connection_id` 를 해당 conn_id로 UPDATE.
 
-- Alembic head 확인: `cd backend && uv run alembic heads` → `m9_migrate_mcp_to_connections`
-- 신규 `m10_prebuilt_connection_migration.py` `down_revision = "m9_migrate_mcp_to_connections"`
-- **idempotent seed**: 이미 `(user_id, type='prebuilt', provider_name, is_default=true)` connection이 있으면 skip (partial unique index가 걸려 있어 insert 실패를 피해야 함)
-- downgrade는 마이그레이션이 생성한 연결만 삭제 (사용자 수동 생성분은 건드리지 않음 — `display_name` 또는 별도 마커로 구분)
-- SQLite drop_column은 `op.batch_alter_table` 래핑 필수
+### downgrade
+1. `display_name LIKE '[m11-auto-seed]%'` 조건의 connection을 대상으로 tool.connection_id = NULL로 역설정.
+2. 해당 connection들 DELETE.
+3. 수동 생성된 CUSTOM connection은 건드리지 않음.
+
+### revision ID
+- 파일명: `m11_custom_credential_migration.py`
+- revision: `m11_custom_connection` (21자 — PG VARCHAR(32) 안전)
+- down_revision: `m10_prebuilt_connection`
+
+### 주의
+- PostgreSQL 네이티브 SQL 사용 시 aiosqlite 테스트에서 실행 불가 → M9/M10 precedent처럼 helper 함수로 분리하고 pytest는 `inspect.getsource` 가드로만 검증. 실제 왕복은 PG에서 실행.
+- `M11_SEED_MARKER = "[m11-auto-seed]"` 상수는 마이그레이션 파일 상단에 정의 후 display_name에 박음.
 
 ## 파일 경계 (충돌 방지)
 
 | 팀원 | 수정 가능 | 수정 금지 |
 |------|-----------|-----------|
-| 피차이 | `alembic/versions/m10_*.py` (신규), `app/models/tool.py` (provider_name 추가만), `app/seed/default_tools.py` (PREBUILT tool에 provider_name 필드 추가) | chat_service, connection_service, 기존 연관 코드 |
-| 젠슨 | `app/services/chat_service.py` (PREBUILT 분기 + get_agent_with_tools 확장), `app/services/connection_service.py` (get_default_connection 헬퍼만) | 모델/마이그레이션/seed/테스트, MCP 분기 |
-| 저커버그 | `frontend/src/components/connection/ConnectionBindingDialog.tsx` (신규), `frontend/src/components/tool/*-auth-dialog.tsx` (3종 재배선), `frontend/src/app/connections/page.tsx`, `frontend/src/lib/api/connections.ts`, connection 관련 타입 | backend 전체 |
-| 베조스 | `tests/test_connection_prebuilt_resolve.py` (신규), `tasks/deletion-analysis-e-m3.md` (신규), 기존 PREBUILT 테스트 회귀 갱신 | 서비스/모델/마이그레이션/프론트엔드 |
-
-**주의**: `app/services/connection_service.py`는 M1 산출물. M3에서 `get_default_connection` 헬퍼 추가 외 다른 수정 금지.
+| 피차이 | `backend/alembic/versions/m11_custom_credential_migration.py` (신규) | 모든 services, models, seed, frontend, tests |
+| 젠슨 | `backend/app/services/chat_service.py` (CUSTOM 분기 + `_resolve_custom_auth` 신규), `backend/app/services/connection_service.py` (필요 시 CUSTOM 헬퍼 — 판단) | models, 마이그레이션, seed, frontend, tests, MCP/PREBUILT 분기 |
+| 저커버그 | `frontend/src/components/tool/add-tool-dialog.tsx` (Custom 탭 재배선), `frontend/src/lib/types/index.ts` (ToolCreateRequest.connection_id), `frontend/src/lib/api/tools.ts` (body 필드 전달), `messages/ko.json` (tool.addDialog.custom.*) | backend 전체, **custom-auth-dialog.tsx / mcp-server-auth-dialog.tsx / /connections 페이지 (M5 이월)** |
+| 베조스 | `backend/tests/test_connection_custom_resolve.py` (신규), `backend/tests/test_tools_router_extended.py` (회귀 갱신), `tasks/deletion-analysis-e-m4.md` (신규) | 모든 services/models/migrations/frontend 소스 |
 
 ## 검증 커맨드
 
 ```bash
 cd backend
 uv run ruff check .
-uv run pytest tests/test_connection_prebuilt_resolve.py -v
-uv run pytest                           # 전체 회귀 (585+ 유지)
+uv run pytest tests/test_connection_custom_resolve.py -v
+uv run pytest                           # 614+ 유지
 uv run alembic upgrade head
 uv run alembic downgrade -1
 uv run alembic upgrade head             # 왕복 PASS
@@ -76,20 +99,160 @@ pnpm build
 
 ## 고위험 포인트
 
-1. **get_agent_with_tools의 default connection 프리로드** — PREBUILT tool별로 N+1 쿼리 방지. user_id당 provider_name list로 IN 쿼리 1회, dict 매핑.
-2. **env fallback 유효성** — connection 없을 때 `auth_config=None` 또는 `{}`로 전달되어야 tool builder가 env 값 사용.
-3. **mock user 시드 idempotent** — 두 번째 upgrade 또는 다른 PROD에서 실행 시 중복 생성 금지.
-4. **frontend 3 dialog 통합** — 현 기능 회귀 없이 교체. add-tool-dialog/tool-card 호출부도 연쇄 업데이트.
-5. **CUSTOM 분기 건드리지 말 것** — `tool.credential_id` CUSTOM 경로는 M4 작업.
+1. **credential 공유 → connection 1개** (N:1 shared). m11에서 `(user_id, credential_id)` dedup. 테스트로 강제.
+2. **Legacy fallback 경로** — 기존 CUSTOM tool이 `connection_id IS NULL`로 남은 상태에서 실행 회귀 없어야 함. chat_service._resolve_legacy_tool_auth 경로 유지.
+3. **Fail-closed 정책** — `connection_id` 있는데 disabled/credential=NULL → `ToolConfigError`. env fallback으로 회귀 금지 (PREBUILT는 env fallback이 있지만 CUSTOM은 env가 없어 어차피 동작 불가).
+4. **ownership mismatch** — CUSTOM은 `tool.user_id NOT NULL` + `connection.user_id NOT NULL` + `credential.user_id NOT NULL` 3중 가드. DML 실수 방어.
+5. **add-tool-dialog find-or-create UX** — credential 선택 → connection 자동 생성 흐름이 user-facing으로 보이지 않아야 함. 트랜잭션이 아니라 2-step (connection POST 성공 후 tool POST)이므로 실패 시 orphan connection 처리는 M5로 이월.
+6. **M5 drive-by 금지** — custom-auth-dialog.tsx는 기존 tool의 credential re-bind에 쓰이지만 M4에서 교체하지 않음. Legacy 경로로만 동작.
 
 ## 진행 기록 (팀원이 이어서 append)
 
-- [2026-04-18T08:00] satya: WORKTREE_CREATED feature/prebuilt-per-user-connection from main@b34125d. TEAM 구성: 피차이/젠슨/저커버그/베조스. 스코프 = Backend + 전체 dialog 재배선(M5 일부 당김), env fallback 유지, mock user 시드는 Alembic m10.
-- [2026-04-18T08:45] bezos S1_DONE tasks/deletion-analysis-e-m3.md 작성 완료. 즉시삭제 1 / 단순화 6 / 보류 12. 사전 사실(피차이/젠슨 공유 필요): (1) tool.provider_name 미선반영 — 피차이 S2에서 완전 신규 추가 필요(M2 때의 부분 선반영 없음). (2) Tool.connection_id는 M2 존재하지만 PREBUILT는 사용 안 함 — 공유 행이라 per-user 바인딩 불가. ADR §3대로 (user_id, tool.provider_name, is_default=true) 조회가 SOT. (3) connection_service.get_default_connection 헬퍼 현재 없음 — 젠슨 S3 신규. (4) env fallback은 naver_tools/google_tools 내부(or settings.*) 이미 동작 — chat_service에 env 재조회 로직 끼워넣지 말 것. cred_auth={} 전달만으로 tool builder가 env 사용. (5) tool.credential/credential_id/auth_config/auth_type/mcp_server_id/agent_tools.config 모두 M6 drop 대상 — M3 PR에서 절대 건드리지 말 것. (6) credential_service.py 시그니처 보존(M2 보고서 단순화 #3 원칙 재적용). 단순화 중 핵심: chat_service.build_tools_config 비-MCP 분기를 _resolve_prebuilt_auth + _resolve_legacy_tool_auth 2개 모듈-private 헬퍼로 분리(젠슨 S3), get_agent_with_tools 끝에서 (user_id, provider_name) IN 쿼리 1회로 user_default_conn_map 주입해 N+1 방지(젠슨 S3), ConnectionBindingDialog 공통 셸 도입 + 3 dialog 얇은 어댑터화(저커버그 S4), /connections 페이지는 PREBUILT 탭 추가만(기존 CredentialCard M5까지 유지). S5 베조스 신규 테스트 5+ 시나리오 격리(기존 PREBUILT 테스트는 mechanical change만, 시맨틱 변경 0 목표).
-- [2026-04-18T10:05] pichai S2_HOTFIX schemas/tool.py ToolResponse `provider_name: str | None = None` 추가 — model에만 있고 response 스키마 누락으로 저커버그 S4 PrebuiltAuthDialog가 legacyUnavailable 경로로 떨어지던 블로커 해소. ToolCreate/ToolUpdate는 유지(seed+m10 백필이 SOT). ruff PASS, pytest 604 유지. gotcha: 모델 컬럼 추가 시 항상 ToolResponse/MCPServerResponse/MCPServerListItem 등 응답 스키마 동시 점검 필요.
-- [2026-04-18T09:30] pichai S2_DONE alembic/versions/m10_prebuilt_connection_migration.py (revision=`m10_prebuilt_connection` — 32자 제한 준수, 파일명과 revision ID 불일치 주의) + models/tool.py `provider_name Mapped[str|None] String(50)` 추가 + seed/default_tools.py 14개 PREBUILT tool에 provider_name 필드 추가. 주요 결정/gotcha: (1) PostgreSQL alembic_version.version_num VARCHAR(32) — revision ID 32자 초과 시 StringDataRightTruncationError. `m10_prebuilt_connection_migration`(37자) → `m10_prebuilt_connection`(22자) 축약. 향후 m11+ 명명 시 주의. (2) main.py의 seed 로직은 수정 금지 파일(pichai 경계 밖)이라 건드리지 않음. 기존 `seed_default_tools`는 함수가 아닌 main.py 인라인이며 type/tags만 upsert — 기존 row의 provider_name은 m10 마이그레이션 UPDATE로 백필, 신규 row는 `Tool(**tool_data)`로 provider_name 자동 전달. (3) mock user 시드는 users 테이블에 settings.mock_user_id 행이 있을 때만 수행 — clean install에서는 app.main lifespan이 먼저 mock user를 만든 뒤 재-upgrade 해야 시드. 대신 env fallback(ADR-008 §11)이 유지되므로 connection 없어도 런타임 동작 OK. (4) M10_SEED_MARKER = "[m10-auto-seed]" — credential.name 및 connection.display_name에 프리픽스로 박아서 downgrade에서 정확히 역삭제(사용자 수동 생성분 보호). (5) 시드 실패는 try/except로 관용 처리 — DDL 자체를 막지 않음. (6) Fernet 암호화는 app.services.encryption.encrypt_api_key 재사용(키 관리 일관성, CHECKPOINT 가이드 준수). (7) SQLite drop_column은 batch_alter_table 래핑 — 테스트 conftest는 create_all이라 마이그레이션 미실행이지만 sqlite 호환 유지. 검증: ruff PASS / alembic upgrade → downgrade → upgrade 왕복 PASS / mock user naver connection 1건 정상 시드(나머지 provider는 env 미설정으로 skip) / pytest 604 passed (회귀 0, 1 deselected).
-- [2026-04-18T10:05] jensen: S3 DONE. `connection_service.get_default_connection(db, user_id, type_, provider_name)` + `get_default_connections_for_providers(db, user_id, type_, provider_names: set[str])` 2종 async 헬퍼 추가(단건/bulk, 둘 다 `selectinload(Connection.credential)`). `chat_service.get_agent_with_tools`가 agent 로드 후 PREBUILT tool의 distinct provider_name set을 계산해 bulk 헬퍼 1회 호출로 default_connection_map 빌드 → `agent._default_connection_map`에 attach (반환 시그니처 유지). `build_tools_config`는 2개 모듈-private 헬퍼로 분기: `_resolve_prebuilt_auth(tool, map)` (provider_name 있을 때만; map miss → `{}` 반환해 naver_tools/google_tools의 `settings.*` env fallback 경로 활성화; ownership 가드는 M2 경로 재사용), `_resolve_legacy_tool_auth(tool)` (CUSTOM + PREBUILT provider_name NULL 공통; credential → auth_config → {}). 분기 순서는 `if MCP(기존 유지) / elif PREBUILT / else CUSTOM-legacy`. MCP 분기(:203-253 영역) 시맨틱 변경 0. credential_service 시그니처 보존. tool.connection_id는 PREBUILT에서 참조하지 않음(공유 행이므로 SOT 아님). ruff PASS, pytest 604 passed (회귀 0, 585→604 유지 초과). 사티아 사전 사실 5건(1 tool.connection_id 미사용, 2 env 2중 fallback 금지, 3 CUSTOM 시맨틱 변경 0, 4 credential_service 보존, 5 MCP 변경 금지) 모두 준수. S4 저커버그는 FE dialog 재배선에 필요한 백엔드 계약 없음 — 이미 M1 API로 충분. S5 베조스는 user_A/user_B 격리 + env fallback + legacy fallback 3축 회귀 테스트 가능.
-  패턴 기록: PREBUILT tool은 `user_id=NULL`(is_system=True 공유 행)이라 `assert_connection_ownership`의 `tool_user_id is not None` 가드에서 no-op; credential-connection ownership assertion만 실질적. env fallback 경로가 코드 복잡도의 핵심이므로 `_resolve_prebuilt_auth`는 `{}` 반환 3개 분기(map miss, credential None, ownership 통과 후 credential None)를 주석으로 명확화. `get_default_connections_for_providers`는 `provider_names` 빈 set일 때 DB hit 회피(에이전트에 PREBUILT tool이 0개인 케이스 최적화). `agent._default_connection_map` attach는 sync 경계(build_tools_config)에서 async select를 회피하기 위한 M2 학습의 일반화.
-- [2026-04-18T11:30] zuckerberg: S4 DONE. 신규 3파일: `src/lib/api/connections.ts` (list/get/create/update/delete) / `src/lib/hooks/use-connections.ts` (scope = `['connections', type, provider_name]`, is_default 승격 원자성 위해 create/update/delete 모두 scope 전체 + global `['connections']` invalidate) / `src/components/connection/connection-binding-dialog.tsx` (공통 shell; `useConnections({type,provider_name})` 기반 default connection 조회 → 없으면 POST, 있으면 PATCH credential_id). 수정: `src/lib/types/index.ts` (Tool에 `provider_name: string | null` + ConnectionType/Status/McpAuthType/McpTransport, Connection, ConnectionCreateRequest, ConnectionUpdateRequest) / `src/components/tool/prebuilt-auth-dialog.tsx` (detectProvider 제거, useUpdateToolAuthConfig 제거 — PREBUILT는 tool row를 mutate하지 않음. React.cloneElement로 trigger에 onClick/disabled 주입. provider_name=null 시 TooltipProvider+Tooltip으로 `legacyUnavailable` 안내 + disabled trigger) / `src/app/connections/page.tsx` (PrebuiltConnectionSection 추가 — 4개 provider 고정 리스트 카드로 표시, 기본 연결 있으면 credential 이름 + "기본 연결" 뱃지, "연결 추가" 버튼 → ConnectionBindingDialog 오픈. 기존 CredentialCard 리스트 유지 — M5로 이월). 수정: `messages/ko.json` (`connections.bindingDialog.*`, `connections.prebuiltSection.*`, `tool.authDialog.legacyUnavailable` 추가). 검증: pnpm lint 0 errors(streamError pre-existing warning만 존재), pnpm build PASS (타입체크 + 14 static routes). 설계 결정: (a) custom-auth-dialog / mcp-server-auth-dialog는 scope out — S1 분석서의 "drive-by 금지" 원칙 준수, M4(custom)와 M5(mcp reclassify)로 이월. (b) ConnectionBindingDialog 하이드레이션은 React 19 권장 "setState during render + guard" 패턴 사용 — useEffect+setState는 eslint-plugin-react-hooks의 `react-hooks/set-state-in-effect` rule이 cascading renders 경고로 차단. (c) PrebuiltConnectionSection의 provider 리스트는 `PROVIDER_I18N_KEY`와 동일한 4개 고정 — `CREDENTIAL_PROVIDERS`(backend/schemas/connection.py) 기준. (d) i18n 네임스페이스는 기존 프로젝트 convention 따라 `connections.*`(plural) 사용. 블로킹 이슈(S5/S6 사전 필요): `ToolResponse` 스키마에 `provider_name: str | None = None` 필드 미노출 — `backend/app/schemas/tool.py:64` ToolResponse 클래스. 모델에는 있지만 Pydantic response가 직렬화하지 않으므로 런타임 tool.provider_name이 undefined → PrebuiltAuthDialog가 모든 tool에 대해 legacyUnavailable 경로로 떨어짐. 1줄 핫픽스 필요(pichai 스코프). 패턴 기록: 리액트 dialog 트리거 a11y는 `<span onClick>` 래퍼 대신 `React.cloneElement(trigger, { onClick })`로 원본 Button에 핸들러 주입 — 원본 컴포넌트의 disabled/focus 상태를 보존. `CREDENTIAL_NONE` sentinel("__none__")은 select value가 빈 문자열/null과 충돌하지 않도록 의도적으로 non-empty — CredentialSelect와 credential_id 간 변환은 dialog save 시점에 일원화.
-- [2026-04-18T12:45] bezos S5_DONE tests/test_connection_prebuilt_resolve.py 신규(9 테스트) + tests/test_tools_router_extended.py provider_name 응답 필드 회귀 1건 추가. **검증 결과**: pytest 614 passed (604→614 신규 10, 회귀 0, 1 deselected integration), ruff PASS. **시나리오 결과**: (1) user_A/B 4-way cross-check — agent_a→cred_a.naver_client_id=A_ID, NOT B_ID; agent_b→cred_b.naver_client_id=B_ID, NOT A_ID. `_default_connection_map`의 connection.user_id로 격리 검증. (2) connection 부재 → `_default_connection_map={}` + `build_tools_config[0].auth_config is None` (`auth_config or None` 직렬화 경로로 tool builder env fallback 활성). (3) dangling credential(credential_id=None) → `_resolve_prebuilt_auth`가 `{}` 반환(env fallback 복귀, None deref 없음). (4) provider_name NULL PREBUILT → `_resolve_legacy_tool_auth`로 tool.auth_config 평문 그대로 전달(m10 백필 실패 row tolerance, M6 제거 예정). (5) 3-provider(naver/google_search/google_workspace) bulk — sqlalchemy `before_cursor_execute` 이벤트로 쿼리 포집, `connections` 테이블에 대한 IN SELECT가 정확히 1건임을 확인(N+1 회귀 고정). (6) connection.user_id==caller지만 credential.user_id 불일치 → `ToolConfigError: owned by a different user` (env_var_resolver.assert_credential_ownership 재사용, M2 방어선 유지). (7-8) m10 idempotent/downgrade는 aiosqlite에서 PG-native SQL(`CAST(:field_keys AS JSON)`) 실행 불가 → M9 precedent처럼 `inspect.getsource`로 helper 소스 계약 가드(SELECT 1 존재/continue skip/M10_SEED_MARKER LIKE 제한 DELETE). PG 왕복은 S6 integration 게이트에서 수행.
-  **설계 결정/gotcha**: (a) 기존 PREBUILT 테스트(test_chat_service/test_tool_factory_extended/test_builtin_tools 등) 시맨틱 변경 0 달성 — 기존 테스트가 tool.auth_config/credential 경로만 사용하므로 `_resolve_legacy_tool_auth` 경로로 자동 흡수. 목차 갱신 불요. (b) `_seed_prebuilt_tool` helper에서 `user_id=None`으로 공유 행 명시 — PREBUILT tool은 `is_system=True` + `user_id=NULL`이 invariant이므로 테스트에서도 강제. (c) scenario 1은 A→A / A NOT→B / B→B / B NOT→A의 4-way cross-check를 한 테스트에 모아 regression이 한쪽 방향만 우연히 통과하는 시나리오를 차단. (d) scenario 5의 bulk count 검증은 `sync_engine` 이벤트 리스너 사용 — async engine에는 직접 `event.listen`이 안 되고 `engine.sync_engine`에 걸어야 함(aiosqlite 호환). (e) scenario 6의 credential leak 가드는 PREBUILT tool이 `user_id=NULL`이라 tool↔connection ownership은 no-op지만, connection↔credential ownership은 실질 가드 — 이 경계 명확화가 M2 테스트 재사용의 핵심. (f) Pichai S2_HOTFIX(ToolResponse.provider_name)는 단순한 1줄 추가였지만 API-level 회귀 테스트가 없으면 Pydantic response에서 다시 누락될 가능성 → test_tools_router_extended.py에 prebuilt(provider_name='naver')와 builtin(provider_name=None) 2케이스로 고정. 파일 경계 준수: tests/* + progress.txt + AUDIT.log만 수정. services/models/migrations/frontend/router 소스 미수정. 사티아 S6로 넘김.
+- [2026-04-18T13:00] satya: WORKTREE_CREATED feature/custom-connection-migration from main@44a39c6. 사용자 합의 스코프: exec-plan §4 M4 그대로 + legacy fallback M6까지. M3 progress/CHECKPOINT tasks/archive로 이동. 팀 구성: 피차이(Alembic m11) + 젠슨(chat_service CUSTOM + connection_service) + 저커버그(add-tool-dialog Custom 탭) + 베조스(삭제 분석 + 테스트).
+- [2026-04-18T13:20] bezos S1_DONE tasks/deletion-analysis-e-m4.md 작성. 즉시삭제 0 / 단순화 3 / 보류(M6) 5 / M5 이월 현황 3. drive-by 0, 소스 미변경. **팀원 사전 사실(S2~S5 진입 전 필독)**:
+  (1) **CUSTOM은 env fallback이 없다** — PREBUILT의 `_resolve_prebuilt_auth`는 "connection 없음 = env fallback"이지만 CUSTOM의 `_resolve_custom_auth`는 "connection 없음 = legacy fallback(`_resolve_legacy_tool_auth`)"이 돼야 한다. 젠슨 S3 docstring에 이 시맨틱 차이 필수 명시. fail-closed 트리거도 PREBUILT와 동일(connection_id 지정됐는데 disabled/credential=NULL → `ToolConfigError`).
+  (2) **chat_service build_tools_config 분기 분리 권장** — 현재 라인 393-396의 `else: cred_auth = _resolve_legacy_tool_auth(tool)`는 CUSTOM+BUILTIN+provider_name NULL 혼합. 젠슨 S3에서 `elif tool.type == ToolType.CUSTOM: _resolve_custom_auth(tool)` / `else: _resolve_legacy_tool_auth(tool)`(BUILTIN 전용)로 분리하면 M6 cleanup 시 CUSTOM legacy 분기만 정확히 제거 가능.
+  (3) **add-tool-dialog 신규 row는 credential_id 전달 금지** — 저커버그 S4: customCredentialId를 dialog 내부 상태로만 쓰고 Submit 시점에 find-or-create connection 수행 후 `connection_id`만 body에 실어 보냄. 신규 생성 CUSTOM tool이 legacy 경로를 타면 m11 dedup과 중복되고 M6 cleanup 복잡도↑. tool POST body에서 `credential_id` **빼기**.
+  (4) **`ToolCreateRequest.connection_id?` 필드 존재 확인 필요** — `frontend/src/lib/types/index.ts`에 `Tool.connection_id`는 M2에서 추가됐지만 `ToolCreateRequest`(POST body 스키마) 쪽에 `connection_id?: string | null`이 있는지 미검증. 저커버그 S4에서 확인하고 누락이면 추가. `backend/app/schemas/tool.py` `ToolCustomCreate`에도 `connection_id?` 추가 필요 여부 피차이/젠슨 판단 (다만 S2/S3 파일 경계에 schemas/tool.py가 없으므로 필요 시 사티아 경유 핫픽스 — M3 HOTFIX precedent).
+  (5) **PATCH /api/tools/{tool_id}/auth-config 엔드포인트는 M4에서 유지** — 3 auth dialog 공통 경로. M5(custom-auth-dialog 교체) + M6(mcp-server-auth-dialog 교체) 후 제거 대상. M4에서 이 엔드포인트의 credential_id 처리를 건드리면 M5 dialog가 깨진다.
+  (6) **`_resolve_legacy_tool_auth` 자체는 M4에서 보존** — 이 헬퍼의 CUSTOM 경로는 M6에서 제거되지만 PREBUILT `provider_name IS NULL` 이행 tolerance도 커버하므로 M4 PR에서 시그니처/본체 변경 금지. 젠슨 S3는 `_resolve_custom_auth` 내부에서 "`connection_id IS NULL` → `_resolve_legacy_tool_auth(tool)` 호출"로만 연결.
+  (7) **m11 sanity 재확인** — 분석서 검증 중 `tool.connection_id IS NULL AND tool.credential_id IS NOT NULL AND tool.type='custom'`이 m11 대상임을 재확인. `(user_id, credential_id)` dedup → 1 connection N tools 공유. `M11_SEED_MARKER="[m11-auto-seed]"` 프리픽스. `m11_custom_connection`(22자) revision ID. 피차이 진입 시 분석서 §3 [H-2]/[H-5] 참조해 컬럼 drop은 **건드리지 말 것**(M6 이월).
+  M5 이월 현황 기록(건드리지 않음): custom-auth-dialog.tsx 109줄 — `useUpdateToolAuthConfig`로 PATCH /auth-config 호출, `tool.credential_id`에 직접 의존. mcp-server-auth-dialog.tsx — 동일 엔드포인트 경유 추정. `/connections` 페이지 CUSTOM 섹션 — CredentialCard 유지, M5에서 `CustomConnectionSection` 추가로 PREBUILT 패턴 복제 예정.
+  gotcha/패턴 기록: (a) 분석서는 "즉시 삭제 0"이 정상 — M4는 신규 경로 추가 + 우선순위 지정 단계, 실제 제거는 M6 일괄. M3 분석서가 "즉시 삭제 1"이었던 건 PREBUILT env fallback 경로 보존 맥락에서 제거 가능한 미묘한 legacy가 있었기 때문이고, M4는 CUSTOM에 env fallback 자체가 없어 그런 레거시도 없다. (b) 분석 범위 서브에이전트 위임 없이 직접 Read로 완료 가능 — 4개 파일만 타겟이고 라인 범위 명확해서 Explore 오버헤드 불요. (c) 젠슨 S3에서 `_resolve_custom_auth`를 만들면 S5 베조스 테스트에서 `inspect.getsource` 소스 계약 가드를 M9/M10 precedent대로 추가 가능 — 시그니처 보존 강제.
+- [2026-04-18T13:45] satya HOTFIX 사전 블로커(bezos S1 #4) 해소. `backend/app/schemas/tool.py`: `ToolCustomCreate.connection_id?`(line 47) + `ToolResponse.connection_id?`(line 71) 필드 추가. `backend/app/services/tool_service.py`: `create_custom_tool`에 `connection_id=data.connection_id` 패스스루 + ownership+type 가드(`conn.user_id != user_id OR conn.type != 'custom'` → 404 HTTPException, credential_id 가드와 대칭). import `app.models.connection.Connection` 추가. `frontend/src/lib/types/index.ts`: `Tool.connection_id: string | null`(line 232) + `ToolCustomCreateRequest.connection_id?: string`(line 350) 필드 추가. 검증: ruff PASS, pytest 623 passed (M3 대비 회귀 0, bezos의 test_tools_router_extended 1건이 이미 provider_name 가드 중 — M3 precedent와 동일). M3 HOTFIX precedent(ToolResponse.provider_name 1줄 추가)와 동일 크로스커팅 패턴 — 팀원 경계 밖이라 satya 직접 패치. **저커버그 S4는 이제 블로커 없이 진입 가능** — `tool.connection_id`는 POST body에 `connection_id` 필드로 송신, 응답에서도 역직렬화 됨.
+- [2026-04-18T14:00] pichai MILESTONE_DONE S2 `backend/alembic/versions/m11_custom_credential_migration.py` 작성 + PG 왕복 검증 PASS.
+  - revision=`m11_custom_connection` (21자, PG VARCHAR(32) 안전) / down_revision=`m10_prebuilt_connection`
+  - `M11_SEED_MARKER = "[m11-auto-seed]"` 상수 / `_migrate_custom_credentials(bind)` 헬퍼로 PG-native 로직 분리 (aiosqlite 테스트 호환, M9/M10 precedent — inspect.getsource 소스 계약 검증용).
+  - **설계 주의 (S3/S4 팀원 필독)**: CUSTOM은 모든 seed connection이 `provider_name='custom_api_key'` 고정이라, 같은 user에 N credentials가 있을 때 `uq_connections_one_default_per_scope` partial unique index(`(user_id, type, provider_name) WHERE is_default=true`) 위반 위험. 해결 채택: **user별 CUSTOM scope의 첫 seed connection만 `is_default=true`, 이후는 `is_default=false`**. 기존 user에 CUSTOM default가 이미 존재하면 seed 전체가 false. ADR-008 §5(첫 connection 자동 default) 준수. 젠슨 S3 `_resolve_custom_auth`는 `connection.is_default`에 의존하지 않고 `tool.connection_id`로만 lookup → 이 시맨틱 영향 없음. 저커버그 S4 find-or-create UX도 기존 is_default를 건드리지 않음.
+  - idempotent 재사용 키: `(user_id, type='custom', credential_id, display_name LIKE '[m11-auto-seed]%')`. 수동 생성 CUSTOM connection은 마커가 없어 **보존**.
+  - downgrade: 마커 connection → 해당 `tool.connection_id = NULL` → connection DELETE. `tools.credential_id` / `tools.auth_config`는 drop 하지 않음(M6 legacy fallback).
+  - 검증 결과:
+    * `uv run ruff check .` PASS
+    * `uv run pytest` **623 passed** (M3 614+ 기준 충족, 회귀 0)
+    * PG 왕복 (real data 3 tools / 2 credentials — tool_1/2 share cred_A, tool_3 uses cred_B):
+      - upgrade: 2 connections 생성 (cred_A is_default=true, cred_B is_default=false). tool.connection_id 3건 모두 설정. tool.credential_id 3건 모두 보존.
+      - idempotent rerun (tool_2.connection_id 수동 NULL 후 `_migrate_custom_credentials` 직접 재호출): 중복 connection 0 생성, tool_2 기존 connection 재바인딩.
+      - downgrade: 마커 connection 2건 삭제, tool.connection_id 3건 모두 NULL, credential_id 보존.
+      - upgrade 재실행: 동일 결과 재현. 왕복 사이클 clean.
+    * 파일 경계 준수: services/models/seed/frontend/tests 전부 **무수정** (사티아 HOTFIX로 schemas/tool.py + tool_service.py + types/index.ts는 이미 언블록됨).
+  - S3(젠슨) / S4(저커버그) 언블록 완료. S5(베조스)는 S3/S4 이후 시작.
+- [2026-04-18T14:20] jensen MILESTONE_DONE S3 `backend/app/services/chat_service.py` CUSTOM 분기 재작성 + `_resolve_custom_auth` 신규.
+  - 신규 헬퍼 `_resolve_custom_auth(tool) -> dict[str, Any]`: `_resolve_prebuilt_auth` 대칭 구조. 3-state fail-closed (State1 connection_id NULL → `_resolve_legacy_tool_auth` fallback / State2 disabled or credential NULL → `ToolConfigError` / State3 active+credential → `resolve_credential_data`). ownership guards (`assert_connection_ownership` + `assert_credential_ownership`) PREBUILT와 동일 재사용.
+  - **PREBUILT와 시맨틱 차이 docstring 명시 (bezos S1 #1)**: PREBUILT는 "connection 없음 = env fallback(settings.*)"이지만 CUSTOM은 "connection_id NULL = legacy fallback(`_resolve_legacy_tool_auth`)" — CUSTOM 도구는 env fallback 자체가 없어 성립 불가. M6까지 `tool.credential_id` / `tool.auth_config` tolerance 유지.
+  - `build_tools_config` CUSTOM 분기 분리 (bezos S1 #2 권장 채택): 기존 `else: _resolve_legacy_tool_auth(tool)`(CUSTOM+BUILTIN 혼합)을 `elif tool.type == ToolType.CUSTOM: _resolve_custom_auth(tool)` + `else: _resolve_legacy_tool_auth(tool)`(BUILTIN 전용)로 분리. M6 cleanup 시 CUSTOM legacy 경로만 정확히 제거 가능.
+  - `_resolve_legacy_tool_auth` 시그니처/본체 **보존**(bezos S1 #6). MCP 분기(라인 335-385) / PREBUILT 분기(라인 386-392) 변경 0.
+  - `__all__`에 `_resolve_custom_auth` 추가 — S5 베조스 테스트의 `inspect.getsource` 소스 계약 가드 지원(M9/M10 precedent).
+  - **connection_service.py 수정 없음** — CHECKPOINT S3 판단 대상이었으나 `selectinload(Tool.connection).selectinload(Connection.credential)`가 M2에서 이미 걸려 있어 CUSTOM은 tool 단위 FK로 1회 lookup으로 해결. PREBUILT bulk 헬퍼 같은 별도 함수 **불필요**. get_agent_with_tools eager-load도 변경 0.
+  - 파일 경계 준수: `chat_service.py`만 수정. models / migrations / seed / frontend / tests / MCP/PREBUILT 분기 전부 무수정.
+  - 검증:
+    * `uv run ruff check .` PASS (chat_service.py 및 전체 backend)
+    * `uv run pytest` **623 passed**, 1 deselected, 3 warnings (M3/S2 대비 회귀 0)
+  - S4는 저커버그가 이미 in_progress 상태. S5 베조스는 S3+S4 완료 후 진입 — S5 테스트는 `_resolve_custom_auth`를 직접 호출해 3-state 검증하면 chat_service 세션 setup 없이 unit-level로 가능.
+- [2026-04-18T14:40] zuckerberg MILESTONE_DONE S4 `frontend/src/components/tool/add-tool-dialog.tsx` Custom 탭 find-or-create 재배선.
+  - 신규 로직 `resolveCustomConnectionId(credentialId)`: `useConnections({type:'custom', provider_name:'custom_api_key'})` 캐시에서 `credential_id` 일치 connection find → 있으면 id 재사용(ADR-008 N:1 공유), 없으면 `useCreateConnection().mutateAsync({type:'custom', provider_name:'custom_api_key', display_name:credential.name ?? customName, credential_id})` POST. `is_default` 생략 — 서버가 첫 CUSTOM connection이면 auto true, 아니면 false 판단(pichai S2 #3 partial unique index 회피).
+  - `handleCustomSubmit` 재구성: credential 선택 시 connection resolve 선행 후 `createCustomTool.mutateAsync({..., connection_id})` **만** 전달. `credential_id`는 신규 POST body에서 제거 (bezos S1 #3 / satya HOTFIX 합의 — m11 dedup과 중복 회피 + M6 cleanup 단순화). credential NONE이면 connection resolve 스킵, 기존 UX 유지.
+  - 에러 처리: connection create 409(partial unique index race) → scope 캐시 invalidation + `t('custom.connectionConflict')` toast + dialog 유지. 그 외 실패 → `custom.connectionFailed` / tool POST 실패 → `custom.toolFailed`. ConnectionBindingDialog M3 패턴 정렬.
+  - UX 힌트: credential 선택 시 `custom.connectionHint` 안내 문구 노출("자격증명으로 커스텀 연결이 자동 생성·재사용됩니다"). Submit 버튼 disabled 조건에 `createConnection.isPending` 추가, 스피너도 connection pending 포함.
+  - types/api 경계: `ToolCustomCreateRequest.connection_id?`는 사티아 HOTFIX에서 이미 추가됨 — 그대로 활용. `lib/api/tools.ts`는 passthrough라 **수정 불필요**. i18n은 ko.json `tool.addDialog.custom.*`에 connectionHint/connectionConflict/connectionFailed/toolFailed 4개 추가 (ko.json 단일 로케일).
+  - **scope out 준수**: custom-auth-dialog.tsx / mcp-server-auth-dialog.tsx / /connections 페이지 CUSTOM 섹션 / prebuilt-auth-dialog.tsx 전부 **무수정** (M5 이월 / M3 완료분). PATCH `/api/tools/{id}/auth-config` 엔드포인트는 기존 tool의 legacy credential_id re-bind에 계속 사용 — 건드리지 않음.
+  - 검증:
+    * `pnpm lint` PASS (기존 경고 1건 `streamError unused` — use-chat-runtime.ts, M4와 무관)
+    * `pnpm build` PASS (Next 16.2.2 Turbopack, TypeScript compile 4.0s 성공, 14/14 static pages, /tools 정상)
+  - S5 베조스 패턴 참고: 신규 CUSTOM tool POST body는 `credential_id` 미포함이 정상. 백엔드 `create_custom_tool`(tool_service.py)에 `credential_id IS NULL AND connection_id IS NOT NULL` 경로 회귀 테스트 권장. 프론트 find-or-create는 E2E 범위로 M5 이후 검증(분석 근거: M3 precedent에서도 dialog 로직은 unit/E2E로 커버).
+- [2026-04-18T15:30] bezos STORY_DONE S5 `backend/tests/test_connection_custom_resolve.py` (606L 신규) + `backend/tests/test_tools_router_extended.py` 회귀 3건 추가.
+  - **신규 파일 `test_connection_custom_resolve.py` (11 PASS)**: M3 `test_connection_prebuilt_resolve.py` 패턴 미러링. 공통 fixture — `_encryption_key`(Fernet, `ENCRYPTION_KEY` env inject), `_seed_user/_model/_credential(provider_name='custom_api_key', encrypt_api_key)/_custom_connection/_custom_tool/_agent_with_tools`. m11 모듈은 importlib로 로드(`_load_m11_module()`).
+  - 시나리오 커버리지:
+    * **S1 cross-isolation 4-way**: user_A/B 각자의 agent+tool+connection → `get_agent_with_tools`+`build_tools_config`로 자기 credential(A_KEY vs B_KEY)만 복호화 확인. PREBUILT와 달리 CUSTOM은 tool 자체가 per-user(`user_id NOT NULL`)라 isolation은 row-level guard + resolver double-check로 성립.
+    * **S2 active+credential happy path**: `auth_config == {"api_key": "custom-secret"}` 정상 복호화.
+    * **S3a disabled connection**: `ToolConfigError` "status='disabled'" 문자열 포함.
+    * **S3b connection with NULL credential**: `ToolConfigError` "no bound credential" 포함.
+    * **S4 legacy fallback (connection_id NULL)**: `tool.credential_id` 경로만으로 `_resolve_legacy_tool_auth` 복호화. M6까지 보존 보장 회귀 fence.
+    * **S5 unit — inline auth_config**: `_resolve_custom_auth` 직접 호출, tool.auth_config dict 그대로 리턴 / 빈 tool → {}.
+    * **S6 unit — foreign credential leak**: connection.user_id=A / credential.user_id=B → `ToolConfigError` "owned by a different user" (assert_credential_ownership 회귀 fence).
+    * **S7 m11 source contract**: `inspect.getsource(_migrate_custom_credentials)`로 (a) 대상 SQL 패턴(`type='custom' AND credential_id IS NOT NULL AND connection_id IS NULL`), (b) `(user_id, credential_id)` dedup groups 로직, (c) marker 상수 `[m11-auto-seed]`, (d) is_default race guard(partial unique index scan), (e) tool UPDATE 경로를 전부 grep-style 검증. revision ID 안정성(`m11_custom_connection` 21자) 별도 fence.
+    * **S8 m11 downgrade source contract**: `UPDATE tools SET connection_id = NULL`, `DELETE FROM connections ... LIKE :m`, `type='custom'`, `provider_name='custom_api_key'` 조건을 downgrade 소스에서 검증. `tools.credential_id`/`tools.auth_config` drop 없음 확인.
+    * **S9 m11 preserves tool.credential_id**: upgrade 소스가 `tools.credential_id = NULL`을 하지 **않는지** 확인(legacy fallback 유지).
+  - **`test_tools_router_extended.py` +3 PASS**:
+    * `test_create_custom_tool_with_connection_id_returns_connection_id`: POST `/api/tools/custom` with `connection_id` → 201 + response `connection_id` round-trip (ToolResponse 회귀 fence).
+    * `test_create_custom_tool_rejects_other_user_connection`: 다른 user의 custom connection → 404 (IDOR).
+    * `test_create_custom_tool_rejects_non_custom_connection_type`: PREBUILT type connection → 404 (type guard, satya HOTFIX 가드 회귀 fence).
+  - 파일 경계 준수: `tests/test_connection_custom_resolve.py`(신규), `tests/test_tools_router_extended.py`(추가만), `progress.txt`, `AUDIT.log`만 편집. services/models/migrations/frontend 전부 **무수정**.
+  - 검증:
+    * `uv run ruff check tests/test_tools_router_extended.py tests/test_connection_custom_resolve.py` PASS
+    * `uv run pytest` **637 passed**, 1 deselected, 3 warnings (623+ 목표 충족, M4 전체 +14 테스트, 회귀 0)
+  - 패턴/gotcha:
+    * CUSTOM isolation은 tool row 자체가 per-user라 PREBUILT의 "같은 tool 다른 credential" 4-way 매트릭스보다 단순. 대신 foreign-credential(S6)은 반드시 `assert_credential_ownership`까지 확인.
+    * m11 downgrade는 `type='custom'` + marker LIKE 동시 매칭 — 수동 생성 CUSTOM connection 보존. 소스 계약 테스트에서 둘 다 assert.
+    * `ToolCustomCreate.connection_id` HOTFIX를 satya가 선처리했으므로 S5 router 테스트는 POST body에 `connection_id` 그대로 넣으면 됨(프론트/백 양쪽 이미 연결). bezos는 검증만 담당.
+- [2026-04-18T14:15] satya REVIEW_FIX code-reviewer 독립 패스 결과 Blocker 1 + High 1 + Medium 4 + Low 5 발견. Blocker/High/Medium 핵심 3건 + M1 스타일 1건 수정:
+  (B1) `chat_service._resolve_custom_auth` fail-closed 허점 — `connection_id IS NOT NULL AND connection IS NULL` 케이스가 legacy fallback으로 회귀해 kill-switch 우회 가능. State 1(connection_id NULL) / State 2(connection 미로드 → ToolConfigError) / State 3(disabled) / State 4(active)로 4-state 분리 + docstring 갱신 + neu Scenario 3c 테스트 추가(`test_custom_resolves_raises_when_connection_missing_despite_fk`). 
+  (H1) `env_var_resolver.assert_connection_ownership` 에러 메시지 `f"MCP tool '{tool_name}'"` 하드코딩 — M3 PREBUILT / M4 CUSTOM / M2 MCP 공유 함수라 cross-tenant 방어 발동 시 incident triage 오진. `f"Tool '{tool_name}'"` 중립 메시지로 변경. `test_connection_mcp_resolve.py:634` match="owner mismatch"는 보존되어 회귀 0.
+  (M1) `tool_service.create_custom_tool` 내부 `from fastapi import HTTPException` 지연 import → 파일 상단으로 이동.
+  (M4) `test_m11_preserves_tool_credential_id_for_legacy_fallback` 가드 `assert "drop column" not in lowered or "credential_id" not in lowered` tautology(credential_id는 m11 소스에 정상 등장해 사실상 항상 PASS) → `not ("drop column" in lowered and "credential_id" in lowered)` 정상 AND 가드로 수정.
+  **수용 이월(M5에서 정리)**: M2(FE find-or-create 409 race — 이미 try/catch 있음, auto-retry는 M5), M3(tool POST 실패 시 orphan connection — CHECKPOINT risk #5에 기록), L1~L5(nit).
+  검증: ruff PASS / pytest 638 passed (+1 B1 scenario, 회귀 0) / 기존 M2 MCP ownership 테스트도 PASS(메시지 변경이 match 패턴 보존).
+  **리뷰어 제안 CLAUDE.md 규칙 후보**(사용자 판단): (a) 공통 방어 함수 에러 메시지 도구타입 중립화, (b) `inspect.getsource` 가드 작성 시 `not (A and B)` 패턴, (c) async SQLAlchemy relationship 호출 계약(eager-load + lazy-None을 legacy fallback으로 재활용 금지).
+- [2026-04-19T10:00] satya CODEX_REVIEW_FIX codex working-tree review에서 P1 + P2 추가 발견. 둘 다 타당해 같은 PR에 수정:
+  (P1) `add-tool-dialog.tsx` 신규 CUSTOM tool POST에서 `credential_id` 생략 → `tools/page.tsx:105` getAuthStatus와 `custom-auth-dialog.tsx:36`이 여전히 `tool.credential_id`로 "configured" 판정하므로 신규 row가 즉시 'not_configured'로 표시되고 dialog 재오픈 시 credential 미선택. **bezos S1 #3의 "credential_id 빼기"는 잘못된 가이드** — m11 dedup은 `connection_id IS NULL` row만 노리므로 둘 다 채워도 충돌 없음. 수정: bridge 기간(M5까지) credential_id + connection_id 동시 전송. M5에서 위 consumer를 connection 기반으로 전환하면서 credential_id 송신 제거.
+  (P2) `useCreateConnection.onSuccess`가 `invalidateQueries`만 호출 — 비동기 refetch라 직후 `resolveCustomConnectionId`가 stale `customConnections`로 find 실패 → 같은 credential에 대한 두 번째 connection 생성 (partial unique index는 is_default=true 1개만 막음, is_default=false duplicate는 통과 → ADR-008 N:1 위반). 수정 2단:
+    (a) `useCreateConnection.onSuccess`에 `qc.setQueryData(scopeKey, prev => [...prev, created])` 추가해 캐시 즉시 seed (`scopeKey` export로 변경).
+    (b) `resolveCustomConnectionId`가 closure의 `customConnections` 대신 `qc.getQueryData(scopeKey({type:'custom', provider_name:'custom_api_key'}))`로 캐시 직접 read — render 사이 setQueryData 결과 즉시 반영.
+  검증: pnpm lint 0 errors / pnpm build 15 routes PASS. backend 미수정.
+  **bezos 가이드 정정**: tasks/deletion-analysis-e-m4.md S1 #3은 "신규 row credential_id 전달 금지"였으나 실제로는 bridge 기간 동안 양쪽 다 채워야 함 — M5에서 consumer migration 완료 시 제거. progress.txt에 정정 기록.
+- [2026-04-19T10:30] satya CODEX_REVIEW_FIX_2 codex 2차 review에서 m11 P1 추가 발견 — 수정.
+  (P1) `m11._migrate_custom_credentials` lookup 쿼리에 `display_name LIKE :marker` 필터가 있어, 사용자가 M1 connection POST API로 미리 만든 manual CUSTOM connection이 있어도 매칭 실패 → 새 `[m11-auto-seed]` 행을 생성하고 tool들을 그쪽으로 repoint. 결과: manual connection 고립, ADR-008 1-credential→1-connection 불변 위반.
+  본질: 마커가 두 용도(downgrade 식별 + upgrade idempotency)에 섞여 사용됨. **upgrade lookup**은 (user_id, type='custom', credential_id) 단위로 넓게 매칭해야 하고, 마커는 INSERT 시점에만 부착(downgrade 안전).
+  수정: lookup SQL에서 `AND display_name LIKE :marker` 제거, `ORDER BY is_default DESC, created_at ASC LIMIT 1`로 결정적 우선순위(default 행 우선, 그다음 가장 오래된 행). 재사용 시 `logger.info("m11: reused existing CUSTOM connection ...")` 로깅 추가. 사용하지 않게 된 `marker_like` 변수(line 101) 삭제. downgrade는 그대로 마커 LIKE 유지 (수동 생성분 보호).
+  테스트 contract 업데이트 — `display_name LIKE :marker` not in src로 가드 반전(역회귀 방지). 마커 상수는 INSERT prefix로만 사용됨을 명시.
+  검증: ruff PASS / alembic upgrade→downgrade→upgrade 왕복 PASS / pytest 638 passed (회귀 0). 기존 마커 행 재사용도 새 lookup으로 자동 매칭됨(같은 (user_id, type, credential_id) 튜플).
+- [2026-04-19T11:00] satya CODEX_REVIEW_FIX_3 codex 3차 review에서 P1 + P2 추가 발견. 둘 다 타당 — 수정:
+  (P1 runtime/patch 경로 분기) m11 backfill 후 CUSTOM tool은 credential_id + connection_id 둘 다 set. `custom-auth-dialog.tsx`의 PATCH /auth-config는 `_apply_credential_update`를 통해 `tool.credential_id`만 mutate하고 `tool.connection_id`/connection.credential_id는 건드리지 않음(tool_service.py:194-200). 이 상태에서 `_resolve_custom_auth`가 connection 경로를 고집하면 UI는 "credential 교체 성공"으로 표시하지만 runtime은 stale connection.credential을 사용 → silent credential rotation failure.
+  선택지 3개 중 **Option B (runtime-side bridge override)** 채택: `_resolve_custom_auth`에 State 3을 추가 — `tool.credential_id IS NOT NULL AND tool.credential_id != conn.credential_id`이면 `_resolve_legacy_tool_auth(tool)`로 위임. tool이 최신 SOT로 간주. M5에서 dialog가 connection API로 migrate되면 두 값이 항상 동치가 되어 no-op, M6에서 분기 제거. 장점: 엔드포인트 미수정, N:1 공유 connection을 통한 surprise rotation 없음, M5 drop point 명확.
+  이동: 기존 State 2a/2b → 4a/4b, State 3 → 5. docstring 4-state → 5-state로 갱신.
+  (P2 m11 disabled connection 재사용) 직전 2차 P1 수정에서 lookup을 `(user_id, type='custom', credential_id)`로 넓힌 뒤 status 필터를 빠뜨림. 사용자가 manual CUSTOM connection을 disable해 둔 상황에서 m11이 그 disabled 행을 재사용 → 모든 legacy tool이 disabled connection으로 rebind → post-m11에 `_resolve_custom_auth` State 4a(disabled → ToolConfigError)로 일괄 실행 불가. pre-m11에는 tool.credential_id 경로로 잘 작동했는데 upgrade가 깨뜨리는 회귀.
+  수정: m11 lookup에 `AND status = 'active'` 추가. disabled만 남아있으면 fall-through해 새 [m11-auto-seed] active connection을 생성 → 기존 동작 보존. disabled 유지 vs seeded 재사용 reconcile은 M5 UI의 몫.
+  테스트: Scenario 3bis(`test_custom_bridge_override_when_tool_credential_rotated`) 신규 — cred_old에 바인딩된 connection + tool.credential_id=cred_new로 회전 → auth_config에 NEW_KEY 나오는지 검증. m11 contract에 `assert "status = 'active'" in src` 추가.
+  검증: ruff PASS / alembic upgrade→downgrade→upgrade 왕복 PASS / pytest 639 passed (+1 신규 P1 scenario, 회귀 0).
+- [2026-04-19T11:45] satya CODEX_ADVERSARIAL_FIX_1 Codex adversarial 1차 [high]+[medium] 수정.
+  ([high]) `_resolve_custom_auth`의 bridge override가 ownership/status 가드보다 먼저 동작해 disabled connection의 kill-switch를 우회할 수 있었음. 재구성:
+    - Gate A(precondition): connection_ownership + status='active'를 항상 선행
+    - Gate B(source selection): Gate A 통과 후에만 tool.credential_id != conn.credential_id이면 legacy로 위임(5a), 동일하면 conn.credential(5b)
+    - 새 테스트 `test_custom_bridge_override_blocked_by_disabled_connection`: disabled conn + rotated tool.credential_id → 이전엔 legacy override로 실행됐지만 이제 State 4(disabled) ToolConfigError로 차단.
+  ([medium]) CUSTOM N:1 invariant가 프론트엔드 cache dedup에만 의존 — cold cache / cross-tab / 동시 submit 시 duplicate 생성. 서버 경계 강제 추가:
+    - `connection_service.create_connection`에 server-side get-or-create: `type='custom' AND credential_id IS NOT NULL`이면 기존 `(user_id, type, credential_id)` SELECT → 있으면 그대로 반환 (display_name 갱신 없음).
+    - m11에 partial unique index `uq_connections_custom_one_per_credential ON connections (user_id, credential_id) WHERE type='custom' AND credential_id IS NOT NULL` 추가 (defense-in-depth — 동시 INSERT race를 DB가 차단). downgrade에서 DROP.
+    - 새 테스트 `test_custom_create_connection_returns_existing_same_credential`: 동일 (user, credential_id) 2회 POST → 두 번째가 첫 번째 id 반환 + 첫 번째 display_name 유지.
+  **프론트엔드 미변경** — `resolveCustomConnectionId`의 cache find + 409 catch는 defense-in-depth로 그대로 유지(서버 get-or-create가 실제 SOT, FE는 optimistic).
+  검증: ruff PASS / alembic upgrade→downgrade→upgrade 왕복 PASS (partial unique index 생성/삭제 포함) / pytest **641 passed** (+2 신규, 회귀 0).
+- [2026-04-19T12:30] satya CODEX_ADVERSARIAL_FIX_2 Codex adversarial 2차 [high]+[high]+[medium] 3건 수정.
+  ([high] #1 downgrade 비대칭) m11 upgrade가 reused manual connection에도 tool.connection_id를 set하는데 downgrade는 마커 connection만 기준으로 tool을 NULL 복원 → 재사용된 manual connection에 바인딩된 tool은 post-downgrade에도 migrated 상태로 남음. **Provenance 테이블** `_m11_tool_backfill_provenance (tool_id UUID PK)` 신설: upgrade가 tool.connection_id를 set할 때마다 tool_id를 `ON CONFLICT DO NOTHING`으로 기록. downgrade는 provenance 기반으로 tool 전체 NULL 복원 후 marker connection DELETE + provenance 테이블 drop. 과거 provenance-없는 upgrade 상태의 DB 호환을 위해 downgrade 진입 시 `CREATE TABLE IF NOT EXISTS`로 빈 테이블 보장.
+  ([high] #2 기존 duplicate가 CREATE UNIQUE INDEX 실패시킴) m11 이전에는 partial unique index가 없어 M1 API로 같은 (user_id, credential_id)에 대해 duplicate CUSTOM connection 생성 가능했음. CREATE UNIQUE INDEX 전에 duplicate cleanup 필요. `_dedup_preexisting_custom_duplicates()` 신규 헬퍼 — `(user_id, credential_id)` GROUP BY HAVING COUNT(*)>1, canonical은 is_default DESC → status='active' 우선 → created_at ASC → id ASC로 결정적 선택, duplicates에 바인딩된 tool은 canonical로 repoint 후 DELETE. upgrade 실행 순서: provenance 테이블 → backfill → dedup → CREATE UNIQUE INDEX.
+  ([medium] disabled connection get-or-create) 기존 CUSTOM connection이 disabled 상태이면 그대로 반환 시 사용자는 "생성 성공"으로 보이지만 runtime에 즉시 `_resolve_custom_auth` State 4로 fail-closed → 죽은 tool. 자동 reactivation은 kill-switch 우회. `connection_service.create_connection`에서 get-or-create 재사용 시점에 `existing_conn.status != 'active'`면 `HTTPException(409, detail={error_code:"CUSTOM_CONNECTION_DISABLED", connection_id, message})` raise → 사용자가 `/connections`에서 명시적 reactivate 후 재시도하도록 유도. FE는 이미 409 catch + toast 가지고 있음.
+  새 테스트 3건: `test_custom_create_connection_rejects_disabled_existing`(409 with structured detail), m11 contract에 `_m11_tool_backfill_provenance` + `ON CONFLICT` + `_dedup_preexisting_custom_duplicates` + dedup ORDER BY 결정성 + `DROP TABLE IF EXISTS` 가드 추가.
+  검증: ruff PASS / alembic upgrade→downgrade→upgrade 왕복 PASS (provenance 정상 기록+복원) / pytest **643 passed** (+2 신규, 회귀 0) / pnpm lint 0 errors / pnpm build 15 routes PASS.
+- [2026-04-19T13:00] satya CODEX_ADVERSARIAL_FIX_3 Codex adversarial 3차 [high]+[medium] 2건 수정.
+  ([high] split-brain credential_id/connection_id mismatch) `create_custom_tool`이 `credential_id`와 `connection_id`를 독립 검증만 하고 consistency 체크 없었음. 클라이언트가 mismatched 조합을 POST하면 tool.credential_id=X + tool.connection_id=Y (conn.credential_id=Z) 상태로 저장 → runtime `_resolve_custom_auth` State 5a가 bridge override 발동 → tool.credential_id(X)를 사용. `/connections` UI는 Y로 표시하지만 runtime은 X 인증.
+  수정 방향: connection_id가 SOT. `if data.connection_id`이면 `effective_credential_id = conn.credential_id`로 override(클라이언트 credential_id 무시). 이렇게 하면 `tool.credential_id == tool.connection.credential_id` 불변이 항상 성립 → bridge override 경로 진입은 오로지 "custom-auth-dialog PATCH /auth-config 회전" 케이스만 가능.
+  ([medium] dead-on-arrival POST) connection의 status/credential_id 체크 없음. disabled/unbound connection에 tool POST시 201 반환 후 첫 실행에서 ToolConfigError — latent failure. creation time에 fail-closed 차단:
+    - `conn.status != 'active'` → `HTTPException(409, CUSTOM_CONNECTION_DISABLED)` (`create_connection`의 에러 코드와 동일 패턴)
+    - `conn.credential_id is None` → `HTTPException(400, CUSTOM_CONNECTION_UNBOUND)`
+  새 테스트 3건: `test_create_custom_tool_derives_credential_id_from_connection` (mismatched 클라이언트 값 무시 + conn.credential_id로 override), `test_create_custom_tool_rejects_disabled_connection` (409), `test_create_custom_tool_rejects_connection_without_credential` (400).
+  검증: ruff PASS / 관련 테스트 스위트 61 passed / pytest **646 passed** (+3 신규, 회귀 0).
+- [2026-04-19T13:30] satya CODEX_ADVERSARIAL_FIX_4 Codex adversarial 4차 [high]+[high] 2건 수정 (옵션 A — fully reversible dedup).
+  ([high] #1 canonical이 disabled default를 우선) `_dedup_preexisting_custom_duplicates`의 ORDER BY가 `is_default DESC`를 첫 키로 써서 (disabled+default, active+non-default) 조합에서 disabled 행을 canonical로 선택 → active 행 삭제 + tool repoint → post-m11에 fail-closed 회귀. 수정: ORDER를 `(CASE WHEN status='active' THEN 0 ELSE 1 END)` 첫 키로 바꿔 active 우선, 그 다음 is_default DESC → created_at ASC → id ASC.
+  ([high] #2 dedup DELETE 비가역) 기존 구현은 dedup가 duplicate connection을 DELETE만 하고 downgrade에서 복원하지 않아 lossy rollback. 수정: 두 개의 provenance 테이블 추가.
+    - `_m11_dedup_connection_snapshot (connection_id PK, user_id, type, provider_name, display_name, credential_id, extra_config JSON, is_default, status, created_at, updated_at)` — 삭제되는 duplicate의 full row snapshot
+    - `_m11_dedup_tool_remap (tool_id PK, original_connection_id)` — repoint되는 tool의 원래 binding
+  dedup는 DELETE/UPDATE 직전에 `INSERT INTO ... SELECT`로 각각 기록 (JSON 직렬화 없이 타입 보존, `ON CONFLICT DO NOTHING` idempotent).
+  downgrade 순서 재작성: (1) 3종 provenance 테이블 `CREATE TABLE IF NOT EXISTS` 가드 → (2) unique index drop → (3) snapshot에서 INSERT로 duplicate connection 복원 → (4) tool_remap으로 `UPDATE tools SET connection_id = r.original_connection_id FROM _m11_dedup_tool_remap r` → (5) backfill_provenance로 NULL 복원 → (6) marker connection DELETE → (7) 3종 provenance 테이블 DROP. dedup 복원이 backfill NULL보다 앞서야 두 집합이 disjoint.
+  테스트: `test_m11_upgrade_dedup_preexisting_custom_duplicates`에 (a) canonical ORDER가 active < is_default 순서인지(문자 위치 검증), (b) snapshot INSERT < DELETE, (c) tool_remap INSERT < UPDATE 순서 contract 추가. `test_m11_downgrade_only_deletes_seed_marker_rows`에 (d) snapshot INSERT + remap UPDATE 존재, (e) 3종 DROP TABLE, (f) dedup restore < backfill NULL 순서 contract 추가.
+  검증: ruff PASS / alembic upgrade→downgrade→upgrade 왕복 PASS (3종 테이블 생성/drop 정상) / pytest **646 passed** (회귀 0, contract 테스트 강화분 포함).
+- [2026-04-19T14:00] satya SIMPLIFY_REFACTOR /simplify 3-agent 리뷰 반영. 핵심 High 1건 + Medium 다수 정리.
+  (High) `_resolve_prebuilt_auth`와 `_resolve_custom_auth`의 ownership/status/credential 5단계 중복 gate 추출 — `_gate_connection_active` + `_gate_connection_credential` 공용 헬퍼로 분리. 에러 메시지도 env_var_resolver 뒤를 이어 "Tool '{name}'" 중립화(PREBUILT/CUSTOM 라벨 없음). PREBUILT 테스트는 substring 매칭("status='disabled'", "no bound credential")만 사용해 회귀 0. CUSTOM 테스트의 "CUSTOM tool" prefix assertion은 "Tool"로 업데이트.
+  (Medium) `tool_service.create_custom_tool`의 60줄 inline ownership/type/status/unbound 가드를 `connection_service.validate_connection_for_custom_tool`로 추출 — `connection_service` 쪽이 connection 도메인 SOT. `tool_service`의 `HTTPException` / `Connection` 직접 import 제거. 함수가 15줄 수준으로 축소.
+  (Medium) error_code 문자열 `"CUSTOM_CONNECTION_DISABLED"` / `"CUSTOM_CONNECTION_UNBOUND"` → `connection_service` 모듈 레벨 상수 2종으로 추출. 재사용 지점(validate_connection_for_custom_tool + create_connection get-or-create)에서 공용. `M11_SEED_MARKER` 패턴과 일관.
+  (Low) `add-tool-dialog.tsx`의 dead fallback 제거 — `(cached ?? customConnections)?.find(...)`에서 `customConnections` fallback은 도달 불가(같은 쿼리키 useConnections가 cache 채움)라 `cached?.find(...)`로 단순화. `useConnections` 호출은 캐시 등록 목적이라 destructure 제거.
+  (Low) `use-connections.ts`의 중복 invalidate 제거 — `scopeK`는 `['connections']` prefix subset이라 `invalidateQueries({ queryKey: ['connections'] })` 한 번으로 커버. setQueryData는 scope-specific seed로 유지.
+  (Low) 과도한 "Codex adversarial 1차 [high] — ..." 류 리뷰 참조 주석을 `_resolve_prebuilt_auth`/`_resolve_custom_auth`/`create_custom_tool`/`create_connection`/FE에서 정리. 핵심 invariant(WHY)만 남기고 round 트레이스는 git log/progress.txt에 귀속. m11 migration의 라운드 주석은 복잡성 설명을 위해 유지.
+  검증: ruff PASS / pytest **646 passed** (회귀 0, CUSTOM 테스트 2건 assertion 업데이트) / alembic 왕복 PASS / pnpm lint 0 errors / pnpm build 15 routes PASS.
+  **이월 (M5/M6)**: m11의 3종 provenance 테이블 공용 헬퍼 모듈화, m11 dedup/backfill 쿼리 배치(N→상수, 1회성이라 ROI 낮음), `connection_service.create_connection` SELECT+INSERT → `ON CONFLICT RETURNING` 1-round-trip, `tool_service`에서 selectinload(Connection.credential)로 2→1 round-trip.
