@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.tool import AgentToolLink, MCPServer, Tool
 from app.schemas.tool import MCPServerCreate, ToolCustomCreate, ToolType
-from app.services import credential_service
+from app.services import connection_service, credential_service
 
 
 async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -52,8 +52,21 @@ async def get_tool_agent_counts(
 
 
 async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: uuid.UUID) -> Tool:
-    if data.credential_id:
-        await credential_service.get_credential(db, data.credential_id, user_id)
+    # `connection_id`가 있으면 이 값이 single source of truth.
+    # `credential_id`는 connection.credential_id에서 파생 (split-brain 방지:
+    # 클라이언트가 보낸 credential_id 값은 무시). `connection_id` 없는 legacy
+    # 경로는 기존대로 credential_id만 검증.
+    effective_credential_id: uuid.UUID | None = data.credential_id
+
+    if data.connection_id:
+        conn = await connection_service.validate_connection_for_custom_tool(
+            db, data.connection_id, user_id
+        )
+        effective_credential_id = conn.credential_id
+
+    if effective_credential_id:
+        await credential_service.get_credential(db, effective_credential_id, user_id)
+
     tool = Tool(
         user_id=user_id,
         type=ToolType.CUSTOM,
@@ -64,7 +77,8 @@ async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: 
         parameters_schema=data.parameters_schema,
         auth_type=data.auth_type,
         auth_config=data.auth_config,
-        credential_id=data.credential_id,
+        credential_id=effective_credential_id,
+        connection_id=data.connection_id,
     )
     db.add(tool)
     await db.commit()

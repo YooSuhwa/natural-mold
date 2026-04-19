@@ -104,7 +104,7 @@ def assert_connection_ownership(
     """
     if tool_user_id is not None and tool_user_id != connection_user_id:
         raise ToolConfigError(
-            f"MCP tool '{tool_name}' connection {connection_id} owner "
+            f"Tool '{tool_name}' connection {connection_id} owner "
             "mismatch with tool owner"
         )
 

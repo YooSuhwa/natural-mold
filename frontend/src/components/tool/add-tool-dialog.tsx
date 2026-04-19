@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import { Loader2Icon, CheckCircleIcon, WrenchIcon } from 'lucide-react'
+import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Dialog,
   DialogContent,
@@ -18,9 +20,14 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useRegisterMCPServer, useCreateCustomTool } from '@/lib/hooks/use-tools'
 import { useCredentials } from '@/lib/hooks/use-credentials'
+import { scopeKey, useConnections, useCreateConnection } from '@/lib/hooks/use-connections'
+import type { Connection } from '@/lib/types'
+import { ApiError } from '@/lib/api/client'
 import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
 import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
 import type { Tool } from '@/lib/types'
+
+const CUSTOM_PROVIDER_NAME = 'custom_api_key'
 
 interface AddToolDialogProps {
   trigger: React.ReactNode
@@ -49,6 +56,13 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   const [customParams, setCustomParams] = useState('')
   const [customCredentialId, setCustomCredentialId] = useState<string>(CREDENTIAL_NONE)
   const createCustomTool = useCreateCustomTool()
+
+  // CUSTOM connection find-or-create (M4): `useConnections` 구독으로 캐시를
+  // 채워 두면 `resolveCustomConnectionId`가 `qc.getQueryData`로 최신 상태를
+  // 직접 읽는다. tool POST는 find-or-create 후 connection_id만 전달한다.
+  useConnections({ type: 'custom', provider_name: CUSTOM_PROVIDER_NAME })
+  const createConnection = useCreateConnection()
+  const qc = useQueryClient()
 
   const availableCredentials = credentials ?? []
 
@@ -79,6 +93,28 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     setDiscoveredTools(result.tools)
   }
 
+  async function resolveCustomConnectionId(credentialId: string): Promise<string> {
+    // 같은 credential을 공유하는 N tools는 1 connection을 재사용한다 (ADR-008 N:1).
+    // 직전 onSuccess가 갱신한 최신 cache를 직접 read — closure snapshot은
+    // render 시점 값이라 stale.
+    const cached = qc.getQueryData<Connection[]>(
+      scopeKey({ type: 'custom', provider_name: CUSTOM_PROVIDER_NAME }),
+    )
+    const existing = cached?.find((c) => c.credential_id === credentialId)
+    if (existing) return existing.id
+
+    const credential = availableCredentials.find((c) => c.id === credentialId)
+    // is_default는 서버 판단에 위임 — 기존 CUSTOM default가 있으면 partial unique
+    // index(`uq_connections_one_default_per_scope`) 때문에 강제 true 전송 시 409.
+    const created = await createConnection.mutateAsync({
+      type: 'custom',
+      provider_name: CUSTOM_PROVIDER_NAME,
+      display_name: credential?.name ?? customName,
+      credential_id: credentialId,
+    })
+    return created.id
+  }
+
   async function handleCustomSubmit() {
     let parsedParams: Record<string, unknown> | undefined
     if (customParams.trim()) {
@@ -88,14 +124,46 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
         return // Invalid JSON
       }
     }
-    await createCustomTool.mutateAsync({
-      name: customName,
-      description: customDescription || undefined,
-      api_url: customApiUrl,
-      http_method: customMethod,
-      parameters_schema: parsedParams,
-      ...(customCredentialId !== CREDENTIAL_NONE ? { credential_id: customCredentialId } : {}),
-    })
+
+    let connectionId: string | undefined
+    if (customCredentialId !== CREDENTIAL_NONE) {
+      try {
+        connectionId = await resolveCustomConnectionId(customCredentialId)
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+          qc.invalidateQueries({
+            queryKey: ['connections', 'custom', CUSTOM_PROVIDER_NAME],
+          })
+          qc.invalidateQueries({ queryKey: ['connections'] })
+          toast.error(t('custom.connectionConflict'))
+          return
+        }
+        toast.error(t('custom.connectionFailed'))
+        return
+      }
+    }
+
+    try {
+      await createCustomTool.mutateAsync({
+        name: customName,
+        description: customDescription || undefined,
+        api_url: customApiUrl,
+        http_method: customMethod,
+        parameters_schema: parsedParams,
+        // Bridge 기간(M5까지): tools/page.tsx의 getAuthStatus와 custom-auth-dialog가
+        // 아직 `tool.credential_id`로 "configured" 여부를 판정하므로, 신규 row도
+        // credential_id를 함께 전송해 UX 회귀를 막는다 (Codex P1). m11 dedup은
+        // `connection_id IS NULL` row만 노리므로 둘 다 채워도 충돌 없음. M5에서
+        // 위 consumer를 connection 기반으로 전환한 뒤 이 필드를 제거.
+        ...(customCredentialId !== CREDENTIAL_NONE
+          ? { credential_id: customCredentialId }
+          : {}),
+        ...(connectionId ? { connection_id: connectionId } : {}),
+      })
+    } catch {
+      toast.error(t('custom.toolFailed'))
+      return
+    }
     resetForms()
     setOpen(false)
   }
@@ -274,15 +342,23 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                     }}
                     credentials={availableCredentials}
                   />
+                  {customCredentialId !== CREDENTIAL_NONE && (
+                    <p className="text-xs text-muted-foreground">
+                      {t('custom.connectionHint')}
+                    </p>
+                  )}
                 </div>
                 <DialogFooter>
                   <Button
                     onClick={handleCustomSubmit}
                     disabled={
-                      !customName.trim() || !customApiUrl.trim() || createCustomTool.isPending
+                      !customName.trim() ||
+                      !customApiUrl.trim() ||
+                      createCustomTool.isPending ||
+                      createConnection.isPending
                     }
                   >
-                    {createCustomTool.isPending && (
+                    {(createCustomTool.isPending || createConnection.isPending) && (
                       <Loader2Icon className="mr-1 size-4 animate-spin" />
                     )}
                     {tc('register')}

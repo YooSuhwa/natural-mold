@@ -1227,3 +1227,114 @@ async def test_partial_unique_blocks_two_defaults_in_same_scope(
     with pytest.raises(_IE):
         await db.commit()
     await db.rollback()
+
+
+# ---------------------------------------------------------------------------
+# Scenario — CUSTOM server-side get-or-create (ADR-008 N:1, Codex adversarial [medium])
+# POST /api/connections with the same (user, type='custom', credential_id) must
+# return the pre-existing row instead of inserting a duplicate. Client-side
+# dedup via React Query cache is not a safe integrity boundary (cold cache /
+# cross-tab / concurrent submit races).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_custom_create_connection_returns_existing_same_credential(
+    client: AsyncClient, db: AsyncSession
+):
+    """같은 (user, credential_id)로 CUSTOM connection을 두 번 POST → 두 번째는
+    첫 번째 connection id를 그대로 반환해야 한다 (server-side get-or-create).
+    """
+    cred = Credential(
+        user_id=TEST_USER_ID,
+        name="custom-cred",
+        credential_type="api_key",
+        provider_name="custom_api_key",
+        data_encrypted="ciphertext-placeholder",
+        field_keys=["api_key"],
+    )
+    db.add(cred)
+    await db.commit()
+    await db.refresh(cred)
+
+    payload = {
+        "type": "custom",
+        "provider_name": "custom_api_key",
+        "display_name": "first",
+        "credential_id": str(cred.id),
+    }
+
+    r1 = await client.post("/api/connections", json=payload)
+    assert r1.status_code == 201
+    first = r1.json()
+
+    # 두 번째 POST — display_name이 달라도 같은 credential이면 첫 번째를 재사용
+    r2 = await client.post(
+        "/api/connections",
+        json={**payload, "display_name": "second"},
+    )
+    assert r2.status_code == 201
+    second = r2.json()
+    assert second["id"] == first["id"], (
+        "server-side get-or-create must reuse existing (user, type='custom', "
+        "credential_id) connection to preserve ADR-008 N:1 invariant"
+    )
+    # display_name은 첫 번째 그대로 (두 번째 POST의 값으로 갱신되지 않음)
+    assert second["display_name"] == "first"
+
+
+@pytest.mark.asyncio
+async def test_custom_create_connection_rejects_disabled_existing(
+    client: AsyncClient, db: AsyncSession
+):
+    """기존 CUSTOM connection이 disabled 상태면 get-or-create 재사용 대신 409로
+    거부 (Codex adversarial 2차 [medium]). 자동 reactivation으로 kill-switch를
+    우회하지 않고, 사용자가 `/connections`에서 명시적으로 reactivate 하도록 유도.
+    """
+    cred = Credential(
+        user_id=TEST_USER_ID,
+        name="custom-cred-disabled",
+        credential_type="api_key",
+        provider_name="custom_api_key",
+        data_encrypted="ciphertext-placeholder",
+        field_keys=["api_key"],
+    )
+    db.add(cred)
+    await db.commit()
+    await db.refresh(cred)
+
+    # 기존 connection을 disabled 상태로 직접 insert (API는 status 입력을 받지만
+    # 명시 전달 검증 차원에서 DB에 직접 씀)
+    from app.models.connection import Connection
+
+    disabled = Connection(
+        user_id=TEST_USER_ID,
+        type="custom",
+        provider_name="custom_api_key",
+        display_name="pre-existing disabled",
+        credential_id=cred.id,
+        is_default=False,
+        status="disabled",
+    )
+    db.add(disabled)
+    await db.commit()
+
+    resp = await client.post(
+        "/api/connections",
+        json={
+            "type": "custom",
+            "provider_name": "custom_api_key",
+            "display_name": "new attempt",
+            "credential_id": str(cred.id),
+        },
+    )
+    assert resp.status_code == 409
+    body = resp.json()
+    # detail이 구조적 payload(error_code + connection_id 포함)
+    detail = body.get("detail", {})
+    if isinstance(detail, dict):
+        assert detail.get("error_code") == "CUSTOM_CONNECTION_DISABLED"
+        assert detail.get("connection_id") == str(disabled.id)
+    else:
+        # FastAPI HTTPException이 dict detail을 문자열화하는 경우 방어
+        assert "CUSTOM_CONNECTION_DISABLED" in detail

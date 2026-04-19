@@ -44,6 +44,7 @@ class ToolCustomCreate(BaseModel):
     auth_type: str | None = None
     auth_config: dict[str, Any] | None = None
     credential_id: uuid.UUID | None = None
+    connection_id: uuid.UUID | None = None
 
 
 class ToolAuthConfigUpdate(BaseModel):
@@ -68,6 +69,7 @@ class ToolResponse(BaseModel):
     is_system: bool
     mcp_server_id: uuid.UUID | None
     credential_id: uuid.UUID | None = None
+    connection_id: uuid.UUID | None = None
     name: str
     description: str | None
     parameters_schema: dict[str, Any] | None
