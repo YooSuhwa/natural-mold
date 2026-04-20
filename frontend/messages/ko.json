@@ -13,6 +13,7 @@
     "name": "이름",
     "required": "*",
     "confirm": "확인",
+    "close": "닫기",
     "comingSoon": {
       "default": "이 기능은 준비 중입니다",
       "fileAttach": "파일 첨부 기능은 준비 중입니다"
@@ -668,7 +669,8 @@
       "description": "이 도구가 사용할 자격증명을 선택합니다.",
       "configured": "인증이 설정되어 있습니다.",
       "setKey": "인증 설정",
-      "changeKey": "인증 변경"
+      "changeKey": "인증 변경",
+      "toolSyncFailed": "연결은 저장됐지만 도구 자격증명 동기화에 실패했습니다."
     },
     "mcpServer": {
       "toolCount": "{count}개 도구",
@@ -894,8 +896,19 @@
       "title": "{name} 연결",
       "description": "이 PREBUILT 도구가 사용할 credential을 선택합니다. ",
       "configured": "연결이 설정되어 있습니다",
+      "custom": {
+        "title": "{toolName} 인증 설정",
+        "description": "이 Custom 도구가 사용할 credential을 선택합니다.",
+        "bridgeOverrideWarning": "이 도구는 현재 공통 연결과 다른 credential을 직접 사용 중입니다. 저장하면 공통 연결의 credential만 바뀌고, 도구 자체 override는 유지됩니다."
+      },
+      "mcp": {
+        "title": "{serverName} 인증 설정",
+        "description": "이 MCP 서버가 사용할 credential을 선택합니다.",
+        "sharedCredentialWarning": "이 credential은 다른 MCP 서버와 공유 중입니다. 저장하면 이 서버 설정만 변경되고, 다른 서버는 영향을 받지 않습니다 — 단, 새 credential이 다른 서버 도구에 즉시 반영되지는 않습니다 (M6에서 통합 정리 예정)."
+      },
       "toast": {
         "saved": "연결이 저장되었습니다",
+        "savedSharedCredential": "서버 설정이 변경되었습니다 — 다른 공유 서버는 영향 없음",
         "saveFailed": "연결 저장에 실패했습니다",
         "conflictRetry": "다른 세션에서 기본 연결이 변경되었습니다. 최신 상태로 다시 시도해주세요."
       }
@@ -908,6 +921,70 @@
       "addButton": "연결 추가",
       "isDefaultBadge": "기본 연결",
       "providerAll": "전체"
+    },
+    "providerName": {
+      "naver": "Naver",
+      "googleSearch": "Google Search",
+      "googleChat": "Google Chat",
+      "googleWorkspace": "Google Workspace"
+    },
+    "sections": {
+      "prebuilt": {
+        "title": "PREBUILT 연결",
+        "description": "시스템 도구(Naver, Google 등)에 사용할 API 키를 관리합니다.",
+        "addButton": "연결 추가",
+        "providerEmpty": "아직 {provider} 연결이 없습니다."
+      },
+      "custom": {
+        "title": "CUSTOM 연결",
+        "description": "사용자 정의 도구에서 재사용할 API 키를 관리합니다.",
+        "addButton": "연결 추가",
+        "empty": "아직 CUSTOM 연결이 없습니다."
+      },
+      "mcp": {
+        "title": "MCP 연결",
+        "description": "MCP 서버에 연결해 추가 도구를 가져옵니다.",
+        "addButton": "연결 추가",
+        "empty": "아직 MCP 연결이 없습니다."
+      }
+    },
+    "card": {
+      "credentialUnbound": "credential 미지정",
+      "usedByTools": "{count}개 도구에서 사용 중",
+      "noUsage": "사용 중 도구 없음",
+      "isDefaultBadge": "기본",
+      "statusActive": "활성",
+      "statusDisabled": "비활성",
+      "openDetail": "상세"
+    },
+    "detail": {
+      "sectionOverview": "개요",
+      "sectionCredential": "Credential",
+      "sectionUsage": "사용 중 도구",
+      "sectionDanger": "위험 구역",
+      "type": "타입",
+      "provider": "Provider",
+      "createdAt": "생성일",
+      "updatedAt": "수정일",
+      "credentialName": "이름",
+      "credentialUnbound": "credential이 지정되지 않았습니다",
+      "changeCredential": "credential 변경",
+      "editCredential": "credential 편집",
+      "toggleToDisabled": "비활성화",
+      "toggleToActive": "활성화",
+      "disabledWarning": "이 연결을 사용하는 도구는 실행 시 실패합니다.",
+      "deleteButton": "이 연결만 삭제",
+      "deleteButtonHint": "credential은 유지됩니다",
+      "deleteBlockedByUsage": "사용 중인 도구가 있어 삭제할 수 없습니다. 먼저 도구의 연결을 교체하세요.",
+      "defaultPrebuiltWarning": "이 provider의 다른 연결이 없어, 삭제하면 이 provider 기본 연결이 사라집니다.",
+      "noToolsInUse": "현재 이 연결을 사용하는 도구가 없습니다.",
+      "mcpRebindHint": "MCP 인증은 도구 페이지의 서버 카드에서 변경할 수 있습니다."
+    },
+    "statusToast": {
+      "changed": "연결 상태가 변경되었습니다",
+      "changeFailed": "연결 상태 변경에 실패했습니다",
+      "deleted": "연결이 삭제되었습니다",
+      "deleteFailed": "연결을 삭제할 수 없습니다"
     },
     "addNew": "연결 추가",
     "editTitle": "연결 수정",

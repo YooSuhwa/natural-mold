@@ -25,7 +25,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
-import { MCPServerAuthDialog } from '@/components/tool/mcp-server-auth-dialog'
+import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
 import { MCPServerRenameDialog } from '@/components/tool/mcp-server-rename-dialog'
 import { useDeleteMCPServer } from '@/lib/hooks/use-tools'
 import type { MCPServerListItem, Tool } from '@/lib/types'
@@ -140,7 +140,15 @@ export function MCPServerGroupCard({ server, tools, defaultOpen = false }: MCPSe
         )}
       </Card>
 
-      <MCPServerAuthDialog server={server} open={authOpen} onOpenChange={setAuthOpen} />
+      <ConnectionBindingDialog
+        type="mcp"
+        mcpServerId={server.id}
+        serverName={server.name}
+        currentCredentialId={server.credential_id}
+        triggerContext="tool-edit"
+        open={authOpen}
+        onOpenChange={setAuthOpen}
+      />
       <MCPServerRenameDialog server={server} open={renameOpen} onOpenChange={setRenameOpen} />
       <DeleteConfirmDialog
         open={deleteOpen}

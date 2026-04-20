@@ -21,13 +21,11 @@ import { Textarea } from '@/components/ui/textarea'
 import { useRegisterMCPServer, useCreateCustomTool } from '@/lib/hooks/use-tools'
 import { useCredentials } from '@/lib/hooks/use-credentials'
 import { scopeKey, useConnections, useCreateConnection } from '@/lib/hooks/use-connections'
-import type { Connection } from '@/lib/types'
+import { CUSTOM_CONNECTION_PROVIDER_NAME as CUSTOM_PROVIDER_NAME } from '@/lib/types'
+import type { Connection, Tool } from '@/lib/types'
 import { ApiError } from '@/lib/api/client'
 import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
 import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
-import type { Tool } from '@/lib/types'
-
-const CUSTOM_PROVIDER_NAME = 'custom_api_key'
 
 interface AddToolDialogProps {
   trigger: React.ReactNode

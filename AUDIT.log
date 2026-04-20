@@ -1,166 +1,33 @@
-[2026-04-07T15:00] satya PROJECT_START "Moldy UI/UX 전체 개선"
-[2026-04-07T15:00] satya MILESTONE_CREATED M0,M1,M2,M3,M4
-[2026-04-07T16:30] satya PROJECT_DONE "Moldy UI/UX 전체 개선"
----
-[2026-04-07T17:00] satya PROJECT_START "Moldy Agent Builder v2"
-[2026-04-07T17:00] satya MILESTONE_CREATED M1,M2,M3,M4,M5
-[2026-04-07T17:10] pichai MILESTONE_DONE M1 아키텍처 설계 완료 — ADR-005, schemas/builder.py, schemas/assistant.py
-[2026-04-07T17:10] bezos MILESTONE_DONE M1 삭제 분석 완료 — tasks/deletion-analysis-v2.md
-[2026-04-07T17:15] satya MILESTONE_START M2 Builder 백엔드
-[2026-04-07T17:15] satya MILESTONE_START M3 Assistant 백엔드
-[2026-04-07T17:15] satya MILESTONE_START M4 프론트엔드
-[2026-04-07T17:25] jensen MILESTONE_DONE M2 Builder 백엔드 완료 — 오케스트레이터+서브에이전트+라우터/서비스
-[2026-04-07T17:35] jensen MILESTONE_DONE M3 Assistant 백엔드 완료 — 35개 도구+에이전트+라우터/서비스
-[2026-04-07T17:30] tim-cook STORY_DONE S6 UI 디자인 스펙 완료
-[2026-04-07T17:35] zuckerberg MILESTONE_DONE M4 프론트엔드 완료 — Builder UI+Assistant UI+SSE
-[2026-04-07T17:40] satya MILESTONE_START M5 통합+E2E
-[2026-04-07T17:40] jensen STORY_DONE S9 기존 코드 교체 완료
-[2026-04-07T17:45] bezos VERIFICATION_PASS M5 빌드+린트+pytest 전체 통과, CONDITIONAL GO
-[2026-04-07T17:45] satya ISSUE_RESOLVED ISSUE-1,2 죽은 코드 3파일 삭제
-[2026-04-07T17:50] satya MILESTONE_DONE M5 통합+E2E 완료
-[2026-04-07T17:50] satya PROJECT_DONE "Moldy Agent Builder v2"
----
-[2026-04-08T13:30] satya PROJECT_START "Agent Image Generation (Moldy Character)"
-[2026-04-08T13:30] satya MILESTONE_CREATED M1,M2,M3,M4
-[2026-04-08T13:30] satya TEAM_FORMED jensen(backend), zuckerberg(frontend), bezos(verification)
-[2026-04-08T13:35] satya MILESTONE_START M1,M2 Backend
-[2026-04-08T13:35] satya MILESTONE_START M3 Frontend
-[2026-04-08T13:45] jensen MILESTONE_DONE M1 스키마+설정+마이그레이션 완료
-[2026-04-08T13:45] jensen MILESTONE_DONE M2 이미지 서비스+라우터 완료 — ruff PASS, pytest 7/7 PASS
-[2026-04-08T13:50] zuckerberg MILESTONE_DONE M3 프론트엔드 완료 — pnpm build PASS, lint PASS
-[2026-04-08T13:50] satya MILESTONE_START M4 Final Verification
-[2026-04-08T13:55] bezos VERIFICATION_PASS M4 ruff PASS, pytest 7 PASS, build PASS, lint PASS — GO
-[2026-04-08T13:55] satya MILESTONE_DONE M4 최종 검증 완료
-[2026-04-08T13:55] satya PROJECT_DONE "Agent Image Generation (Moldy Character)"
-[2026-04-08T13:10] satya PROJECT_START "Builder Sub-Agent Prompt Improvement"
-[2026-04-08T13:10] satya MILESTONE_CREATED M1,M2,M3,M4
-[2026-04-08T13:13] bezos MILESTONE_DONE M3 Deep Agent → Moldy Agent 네이밍 통일 완료
-[2026-04-08T13:14] pichai MILESTONE_DONE M1 prompt_generator SYSTEM_PROMPT 재설계 + _build_task_description 개선 완료
-[2026-04-08T13:19] jensen MILESTONE_DONE M2 3개 sub-agent SYSTEM_PROMPT 보강 + SSE 메시지 개선 완료
-[2026-04-08T13:22] bezos VERIFICATION_PASS M4 ruff PASS, pytest 39 passed, Deep Agent 0건, sub-agent 4개 개선 확인
-[2026-04-08T13:22] satya PROJECT_DONE "Builder Sub-Agent Prompt Improvement"
----
-[2026-04-09T15:00] satya PROJECT_START "채팅 UI 통합 — assistant-ui 도입"
-[2026-04-09T15:00] satya MILESTONE_CREATED M1,M2,M3,M4
-[2026-04-09T09:15] bezos STORY_DONE S1 삭제 분석 완료 — tasks/deletion-analysis-chat-ui.md
-[2026-04-09T09:45] bezos STORY_START S8 최종 정리+검증
-[2026-04-09T09:50] bezos CLEANUP 삭제 4파일: streaming-message, message-bubble, chat-input, tool-call-display
-[2026-04-09T09:50] bezos CLEANUP chat-store.ts: 스트리밍 atoms 4개 + StreamingToolCall 타입 삭제
-[2026-04-09T09:50] bezos CLEANUP 미사용 import 정리: SparklesIcon(page.tsx), inputHint(assistant-panel.tsx)
-[2026-04-09T09:50] bezos DECISION markdown-content.tsx 유지 — draft-config-card.tsx에서 아직 사용 중
-[2026-04-09T09:55] bezos VERIFICATION_PASS S8 pnpm build PASS (3.5s), pnpm lint PASS (0 errors, 0 warnings), 삭제 파일 참조 0건
-[2026-04-09T10:00] satya MILESTONE_DONE M1 기반 설정 완료 (패키지+어댑터+Thread)
-[2026-04-09T10:00] satya MILESTONE_DONE M2 대화 페이지 마이그레이션 완료
-[2026-04-09T10:00] satya MILESTONE_DONE M3 AssistantPanel+Builder 마이그레이션 완료
-[2026-04-09T10:00] satya MILESTONE_DONE M4 도구 UI+위트 로딩+정리 완료
-[2026-04-09T10:00] satya PROJECT_DONE "채팅 UI 통합 — assistant-ui 도입"
----
-[2026-04-09T10:01] satya PROJECT_START "HiTL + Tool-UI 통합"
-[2026-04-09T10:05] bezos STORY_DONE S5 도구 UI 등록 + HiTL Provider 통합 완료
-[2026-04-09T10:05] bezos VERIFICATION_PASS S5 pnpm build PASS + lint PASS + ruff PASS + pytest 539 passed — GO
-[2026-04-09T10:20] satya PROJECT_DONE "HiTL + Tool-UI 통합"
----
-[2026-04-10T12:00] satya PROJECT_START "Credential 중앙 관리 시스템"
-[2026-04-10T12:00] satya MILESTONE_CREATED M1,M2,M3,M4,M5
-[2026-04-10T12:00] satya TEAM_FORMED jensen(backend M1+M2), zuckerberg(frontend M3+M4), bezos(verification M5)
-[2026-04-10T12:10] jensen MILESTONE_DONE M1 Credential 모델+스키마+레지스트리+서비스+라우터 완료 — 신규 5파일, 수정 3파일
-[2026-04-10T12:15] jensen MILESTONE_DONE M2 Alembic 마이그레이션+Tool/MCPServer FK+런타임 해석 완료 — ruff PASS, pytest 529 passed
-[2026-04-10T12:15] zuckerberg MILESTONE_DONE M3 Connections 페이지 완료 — API+hooks+types+page+sidebar+i18n
-[2026-04-10T12:15] zuckerberg MILESTONE_DONE M4 도구/MCP 크리덴셜 연결 UI 완료 — pnpm build PASS, lint PASS
-[2026-04-10T12:15] satya MILESTONE_START M5 최종 검증
-[2026-04-10T16:50] bezos VERIFICATION_PASS M5 ruff PASS, pytest 529 passed, build PASS, lint PASS (0 errors, 1 warning) — GO
-[2026-04-10T16:50] satya MILESTONE_DONE M5 최종 검증 완료
-[2026-04-10T16:50] satya PROJECT_DONE "Credential 중앙 관리 시스템"
----
-[2026-04-17T13:35] satya PROJECT_START "MCP 서버 단위 그룹화 (feature/mcp-server-grouping)"
-[2026-04-17T13:35] satya MILESTONE_CREATED M1,M2,M3,M4,M5
-[2026-04-17T13:35] satya BRANCH_CREATED feature/mcp-server-grouping from main@8685320
-[2026-04-17T13:35] satya TEAM_FORMED jensen(M1 backend), zuckerberg(M2+M3+M4 frontend), bezos(M5 verification)
-[2026-04-17T13:56] jensen MILESTONE_START M1 백엔드 구현 시작
-[2026-04-17T14:00] zuckerberg MILESTONE_START M2 Frontend 데이터 레이어
-[2026-04-17T14:05] zuckerberg MILESTONE_DONE M2 데이터 레이어 완료 — types+API+hooks, lint PASS (0 errors)
-[2026-04-17T14:05] zuckerberg MILESTONE_START M3 신규 UI 컴포넌트 3개
-[2026-04-17T14:15] zuckerberg MILESTONE_DONE M3 신규 UI 컴포넌트 3개 완료 — group-card+auth-dialog+rename-dialog, lint PASS, tsc PASS
-[2026-04-17T14:15] zuckerberg MILESTONE_START M4 페이지 리팩터링+다이얼로그 삭제+i18n
-[2026-04-17T14:02] jensen MILESTONE_DONE M1 백엔드 완료 — schemas/service/router/precedence/tests, ruff PASS, pytest 536 passed (신규 5건 포함)
-[2026-04-17T14:30] zuckerberg MILESTONE_DONE M4 페이지 리팩터링+다이얼로그 삭제+i18n 완료 — pnpm build PASS (3.7s), pnpm lint PASS (0 errors)
-[2026-04-17T14:45] bezos VERIFICATION_PASS M5 backend ruff PASS, pytest 536 passed; frontend lint PASS (0 errors, 1 pre-existing warning), build PASS (14 routes)
-[2026-04-17T14:45] satya MILESTONE_DONE M5 통합 검증 완료
-[2026-04-17T14:45] satya PROJECT_DONE "MCP 서버 단위 그룹화 (feature/mcp-server-grouping)"
----
-[2026-04-17T15:45] satya PROJECT_START "커스텀 도구 credential 통합 (feature/custom-tool-credentials)"
-[2026-04-17T15:45] satya MILESTONE_CREATED M1,M2,M3
-[2026-04-17T15:45] satya BRANCH_CREATED feature/custom-tool-credentials from main@8dee7e0
-[2026-04-17T15:45] satya TEAM_FORMED jensen(M1 backend), zuckerberg(M2 frontend), bezos(M3 verify)
-[2026-04-17T15:50] zuckerberg MILESTONE_START M2 Frontend 커스텀 도구 credential UI 시작
-[2026-04-17T16:00] jensen MILESTONE_START M1 Backend — update_tool_auth_config CUSTOM 허용 + 테스트
-[2026-04-17T16:35] zuckerberg MILESTONE_DONE M2 Frontend 커스텀 도구 credential UI 완료 — custom-auth-dialog 신규+add-tool-dialog 커스텀 탭 통합+ToolCard isCustom 분기+i18n+테스트 갱신, lint 0 errors, build PASS, add-tool-dialog 11/11 PASS
-[2026-04-17T16:10] jensen MILESTONE_DONE M1 Backend — update_tool_auth_config CUSTOM 허용 + 테스트 완료 — ruff PASS, pytest 539 passed (신규 2건 PASS, 의미 반전 테스트 1건 갱신)
-[2026-04-17T17:00] bezos VERIFICATION_PASS M3 backend ruff PASS, pytest 539 passed; frontend lint PASS (0 errors, 1 pre-existing warning), build PASS (14 routes)
-[2026-04-17T17:00] satya MILESTONE_DONE M3 통합 검증 완료
-[2026-04-17T17:00] satya PROJECT_DONE "커스텀 도구 credential 통합 (feature/custom-tool-credentials)"
----
-[2026-04-17T00:00] satya PROJECT_START "백로그 C — credentials list N+1 복호화 제거"
-[2026-04-17T00:00] satya MILESTONE_CREATED M0,M1,M2,M3,M4,M5
-[2026-04-17T00:00] satya WORKTREE_CREATED .claude/worktrees/backlog-c (branch: feature/credentials-field-keys-cache)
-[2026-04-17T17:09] jensen MILESTONE_START M2 credentials.field_keys 컬럼 추가 + 백필 마이그레이션 작성 시작
-[2026-04-17T17:10] jensen MILESTONE_DONE M2 field_keys 컬럼/마이그레이션/백필 구현 + upgrade↔downgrade 왕복 PASS + 회귀 18건 PASS
-[2026-04-17T17:11] jensen MILESTONE_START M3 credential_service create/update/extract 수정
-[2026-04-17T17:15] bezos MILESTONE_START M1 삭제 분석 보고서 작성
-[2026-04-17T17:20] bezos MILESTONE_DONE M1 삭제 분석 완료 — 실제 삭제 0건, 단순화 1건(create_credential 내부 import), 보류 3건 (is_active/has_data/fallback), tasks/deletion-analysis-c.md 생성
-[2026-04-17T17:11] jensen MILESTONE_DONE M3 credential_service create/update/extract 수정 + ruff PASS + 회귀 18건 PASS
-[2026-04-17T17:22] bezos MILESTONE_START M4 테스트 신설 + 회귀 통과
-[2026-04-17T17:30] bezos MILESTONE_DONE M4 test_credentials.py 5 시나리오 PASS + 회귀 545 passed + ruff PASS
-[2026-04-17T17:30] bezos VERIFICATION_PASS M4 신규 5/5 PASS, 전체 pytest 545 passed (540+ 유지), ruff check . 클린
----
-[2026-04-18T04:10] satya PROJECT_START "백로그 E M1 · Connections 테이블 + CRUD"
-[2026-04-18T04:10] satya WORKTREE_CREATED .claude/worktrees/backlog-e-m1 (branch: feature/connections-table)
-[2026-04-18T04:10] satya MILESTONE_CREATED S0,S1,S2,S3,S4,S5
-[2026-04-18T04:10] satya S0_DONE docs/ 구조 사전 존재 — ADR-008 포함 main 머지 완료
-[2026-04-18T04:35:00Z] pichai MILESTONE_DONE S2 Connection model+schema+validator ruff+import PASS
-[2026-04-18T04:40:00Z] bezos STORY_DONE S1 삭제 분석 완료 — 즉시 삭제 0건, 단순화 제안 5건, 보류 8건(M2/M4/M5/M6 이월), tasks/deletion-analysis-e-m1.md
-[2026-04-18T04:35] pichai MILESTONE_DONE S2 Connection 모델+스키마+validator 완료
-[2026-04-18T04:35] satya MILESTONE_START S3 jensen 스폰 (Alembic+service+router)
-[2026-04-18T04:40] bezos MILESTONE_DONE S1 삭제 분석 — 삭제 0 / 단순화 5 / 보류 8, drive-by 금지 준수
-[2026-04-18T05:20:00Z] jensen MILESTONE_DONE S3 alembic m8_add_connections + connection_service + routers/connections + main.include_router; ruff PASS, alembic 왕복 PASS, pytest 545 회귀 0
-[2026-04-18T05:15:00Z] bezos STORY_DONE S4 test_connections.py 8/8 PASS, 전체 pytest 553 passed (545+→553), ruff PASS
-[2026-04-18T05:15:00Z] bezos ISSUE_FOUND main.py:208 validation_error_handler가 RequestValidationError ctx.error ValueError 객체를 JSONResponse에 그대로 싣어 직렬화 실패 → 500. field_validator/model_validator 422 경로 전체 영향. 시나리오 2/3을 Pydantic 스키마 레벨로 우회 작성했으나 API HTTP 422 회귀 별도 후속 필요
----
-[2026-04-18T05:45] satya PROJECT_START "백로그 E M2 · MCP → Connection 이관 (고위험)"
-[2026-04-18T05:45] satya WORKTREE_CREATED .claude/worktrees/backlog-e-m2 (branch: feature/connection-mcp-migration, base: 29678a1)
-[2026-04-18T05:45] satya MILESTONE_CREATED S0,S1,S2,S3,S4,S5
-[2026-04-18T05:45] satya S0_DONE docs/ + ADR-008 + exec-plan 사전 존재
-[2026-04-18T06:10] bezos MILESTONE_DONE S1 deletion-analysis-e-m2.md 작성 (즉시0/단순화5/보류10). drive-by 금지 원칙 준수.
-[2026-04-18T06:25] pichai MILESTONE_DONE S2 alembic m9_migrate_mcp_to_connections + tools.connection_id + Tool.connection relationship; ruff PASS, alembic 왕복 PASS, pytest 572 passed (회귀 0)
-[2026-04-18T06:25] pichai MILESTONE_DONE S2 — m9 alembic + Tool.connection_id + Tool.connection relationship, 왕복 PASS, pytest 572 회귀 0
-[2026-04-18T06:25] bezos MILESTONE_DONE S1 — deletion-analysis-e-m2.md (즉시0/단순화5/보류10), drive-by 금지 준수
-[2026-04-18T06:30] satya MILESTONE_START S3 — jensen 스폰 (chat_service MCP 재작성 + env_vars 템플릿 해석)
-[2026-04-18T06:55] jensen MILESTONE_DONE S3 — chat_service MCP 분기 재작성 + _resolve_env_vars 템플릿 해석기 + ToolConfigError. get_agent_with_tools selectinload(Tool.connection, Connection.credential) 확장. 신규 경로: tool.connection_id → conn.extra_config.url + env_vars 템플릿 치환. Legacy fallback: connection_id IS NULL → 기존 mcp_server 경로. executor 계약(mcp_server_url/mcp_tool_name) 유지. ruff PASS, pytest 572 passed (회귀 0). credential_service/connection_service/mcp_client/models/tests 미수정.
-[2026-04-18T07:30] bezos MILESTONE_DONE S4 test_connection_mcp_resolve.py (13 PASS) + 회귀 585 PASS + ruff PASS. legacy fallback 회귀 파일 시맨틱 변경 0.
----
-[2026-04-18T08:00] satya PROJECT_START "백로그 E M3 · PREBUILT per-user Connection"
-[2026-04-18T08:00] satya WORKTREE_CREATED .claude/worktrees/backlog-e-m3 (branch: feature/prebuilt-per-user-connection, base: b34125d)
-[2026-04-18T08:00] satya MILESTONE_CREATED S0,S1,S2,S3,S4,S5,S6
-[2026-04-18T08:00] satya S0_DONE docs/ + ADR-008 + exec-plan 사전 존재
-[2026-04-18T08:00] satya SCOPE_DECIDED Backend + 전체 dialog 재배선(M5 일부 당김), env fallback 유지, mock user 시드는 Alembic m10
-[2026-04-18T08:45] bezos S1_DONE tasks/deletion-analysis-e-m3.md 작성 완료. 즉시삭제 1(detectProvider) / 단순화 6 / 보류 12. 사전 사실 6건 (provider_name 미선반영, PREBUILT가 tool.connection_id 미사용, get_default_connection 미존재, env fallback 2중 처리 방지 등) 사티아 경유 S2/S3에 공유 필요.
-[2026-04-18T09:30] pichai STORY_DONE S2 — alembic m10_prebuilt_connection_migration (revision=m10_prebuilt_connection, 32자 제한 준수) + models/tool.py provider_name 추가 + seed/default_tools.py 14 PREBUILT tool에 provider_name 필드 추가. 매핑: Naver *→naver, Google Search/Image/News→google_search, Gmail *+Calendar *→google_workspace, Google Chat *→google_chat. mock user env → credential+default connection 자동 시드(idempotent, M10_SEED_MARKER로 downgrade 역삭제 보호). ruff PASS, alembic upgrade↔downgrade↔upgrade 왕복 PASS, pytest 604 passed (회귀 0, 585→604). .env에 naver만 설정되어 naver connection만 시드됨(설계대로).
-[2026-04-18T10:05] jensen MILESTONE_DONE S3 — chat_service PREBUILT 분기 재작성 + _resolve_prebuilt_auth/_resolve_legacy_tool_auth 헬퍼 분리 + connection_service.get_default_connection/get_default_connections_for_providers 추가. get_agent_with_tools가 PREBUILT tool의 distinct provider_name set을 추출해 IN 쿼리 1회로 default_connection_map을 빌드, agent._default_connection_map에 attach. build_tools_config는 if MCP(유지) / elif PREBUILT(provider_name 분기) / else legacy 순서로 재작성. credential_service/MCP 분기/naver-google tool builder/models/alembic/tests/frontend 미수정. ruff PASS, pytest 604 passed (회귀 0).
-[2026-04-18T11:30] zuckerberg STORY_DONE S4 — 프론트엔드 ConnectionBindingDialog 생성 + prebuilt-auth-dialog 재배선 + /connections 페이지 PREBUILT 섹션 추가. 신규: src/lib/api/connections.ts (CRUD client), src/lib/hooks/use-connections.ts (scope-wide invalidation), src/components/connection/connection-binding-dialog.tsx (render-time setState+guard 하이드레이션). 수정: src/lib/types/index.ts (Tool.provider_name + Connection types), src/components/tool/prebuilt-auth-dialog.tsx (detectProvider 제거, useUpdateToolAuthConfig 제거, 공유 shell 래퍼로 축소, provider_name=null 시 tooltip degraded), src/app/connections/page.tsx (PrebuiltConnectionSection 추가, 기존 Credential 리스트 유지). messages/ko.json에 connections.bindingDialog.*, connections.prebuiltSection.*, tool.authDialog.legacyUnavailable 추가. pnpm lint 0 errors, pnpm build PASS (타입체크 포함). custom-auth-dialog/mcp-server-auth-dialog는 scope out (M4/M5로 이월 — drive-by 금지). 백엔드 의존성: ToolResponse 스키마에 provider_name 필드 추가 필요(backend/app/schemas/tool.py:64) — S4 런타임 동작의 블로킹 이슈. 모델에는 provider_name 존재, Pydantic 응답에만 누락. Satya 경유 pichai 핫픽스 요청 필요.
-[2026-04-18T10:05] pichai HOTFIX S2 — schemas/tool.py ToolResponse에 `provider_name: str | None = None` 추가. 저커버그 S4 블로커(API 응답 필드 누락으로 프론트 PrebuiltAuthDialog legacyUnavailable 오분기) 해소. 위치: `type` 직후. ruff PASS, pytest 604 passed 유지(회귀 0). ToolCreate/ToolUpdate는 변경 없음 — seed + m10 백필이 SOT이므로 API 수정 경로 불요.
-[2026-04-18T12:45] bezos STORY_DONE S5 — PREBUILT connection resolve 회귀+신규 테스트. tests/test_connection_prebuilt_resolve.py 신규(9 테스트: user_A/B 4-way cross-check, connection 부재 env fallback, dangling credential env fallback, provider_name NULL legacy 경로, 3-provider bulk N+1 방지 SQL count 검증, cross-tenant credential leak 가드, m10 idempotent 시드 source-level contract, m10 provider 매핑 M3 스코프 커버, m10 downgrade marker 정책) + tests/test_tools_router_extended.py에 GET /api/tools provider_name 응답 필드 회귀 테스트 1건(Pichai S2_HOTFIX 검증). 전체 pytest 614 passed (회귀 0, 604→614, 1 deselected integration). 기존 PREBUILT 회귀 테스트 시맨틱 변경 0 목표 달성 — 기존 tools/auth_config 경로는 _resolve_legacy_tool_auth로 자동 우회되어 추가 수정 불요. 파일 경계: tests/*, progress.txt, AUDIT.log만 수정. services/models/migrations/frontend/router 소스 미수정.
-[2026-04-18T13:00] satya WORKTREE_CREATED feature/custom-connection-migration from main@44a39c6 — 백로그 E M4 (CUSTOM Connection 통합) 시작. 스코프 = exec-plan §4 M4 그대로, legacy fallback M6까지 유지.
-[2026-04-18T13:00] satya MILESTONE_START M4 — S0 docs/ 재확인 + M3 아카이브 완료. 팀 구성: 피차이/젠슨/저커버그/베조스.
-[2026-04-18T13:20] bezos STORY_DONE S1 — tasks/deletion-analysis-e-m4.md 작성. 즉시삭제 0 / 단순화 3 / 보류 5 (M6) / M5 이월 현황 3. drive-by 0, 소스 미변경. 핵심 사전 사실(S2~S5 공유): (1) CUSTOM은 PREBUILT와 달리 env fallback 없음 — _resolve_custom_auth docstring 필수(젠슨 S3). (2) build_tools_config `else:` 혼합 분기를 `elif CUSTOM / else BUILTIN`으로 분리 권장 — M6 cleanup 직관화. (3) add-tool-dialog는 body에 credential_id 금지, find-or-create connection 후 connection_id만 전달 — 신규 row가 legacy 경로를 타지 않게(저커버그 S4). (4) PATCH /tools/{id}/auth-config 엔드포인트는 M5(custom-dialog)+M6(mcp-dialog) 후 제거 — M4 유지. (5) ToolCreateRequest.connection_id? 필드 존재 여부 저커버그 S4에서 확인.
-[2026-04-18T13:20] bezos MILESTONE_DONE S1 tasks/deletion-analysis-e-m4.md 작성 완료. 사전 사실 6건 공유 — S4 블로커 1건(schema connection_id 미노출) 포함.
-[2026-04-18T13:45] satya HOTFIX ToolCustomCreate/ToolResponse/tool_service.create_custom_tool + FE Tool/ToolCustomCreateRequest에 connection_id 필드 추가. pytest 623 passed 회귀 0.
-[2026-04-18T15:30] bezos STORY_DONE S5 CUSTOM resolve tests + router 회귀 + m11 소스 계약 — pytest 637 passed, ruff PASS, 파일 경계 준수
-[2026-04-18T14:15] satya REVIEW_FIX code-reviewer pass → B1/H1/M1/M4 수정 + scenario 3c 테스트 추가. pytest 638 passed 회귀 0.
-[2026-04-19T10:00] satya CODEX_REVIEW_FIX P1(credential_id bridge 유지) + P2(setQueryData seed + 캐시 직접 read) 수정. lint+build PASS.
-[2026-04-19T10:30] satya CODEX_REVIEW_FIX_2 m11 lookup 마커 필터 제거 — manual CUSTOM connection 재사용 가능. pytest 638 passed.
-[2026-04-19T11:00] satya CODEX_REVIEW_FIX_3 P1(_resolve_custom_auth bridge override) + P2(m11 status='active' lookup filter) 수정. pytest 639 passed.
-[2026-04-19T11:45] satya CODEX_ADVERSARIAL_FIX_1 [high] bridge override kill-switch precedence + [medium] server-side get-or-create + m11 partial unique index. pytest 641 passed.
-[2026-04-19T12:30] satya CODEX_ADVERSARIAL_FIX_2 [high #1 downgrade provenance] + [high #2 pre-existing dedup] + [medium disabled 409] 수정. pytest 643 passed, alembic 왕복 PASS.
-[2026-04-19T13:00] satya CODEX_ADVERSARIAL_FIX_3 [high] credential_id/connection_id consistency enforce + [medium] disabled/unbound POST fail-closed. pytest 646 passed.
-[2026-04-19T13:30] satya CODEX_ADVERSARIAL_FIX_4 [high #1] canonical ORDER active-first + [high #2] reversible dedup via snapshot/remap provenance. pytest 646 passed, alembic 왕복 PASS.
-[2026-04-19T14:00] satya SIMPLIFY_REFACTOR _gate_connection_active/_credential 공용 헬퍼 + validate_connection_for_custom_tool 추출 + error_code 상수화 + FE dead code 제거. pytest 646 passed.
+[2026-04-19T00:00] satya PROJECT_START "백로그 E M5 — UI 통합 + F 흡수 (프론트 전용)"
+[2026-04-19T00:01] satya SCOPE_DECIDED "프론트 전용, agent_tools.override는 M5.5 분리, /connections Connection 중심 전면 재편"
+[2026-04-19T00:02] satya MILESTONE_CREATED S0,S1,S2,S3,S4,S5,S6
+[2026-04-19T00:10] bezos MILESTONE_START S1 삭제 분석
+[2026-04-19T07:17] tim-cook MILESTONE_START S2 UX 스펙 2종 작성 시작
+[2026-04-19T00:45] bezos MILESTONE_DONE S1 삭제 분석 완료 — tasks/deletion-analysis-e-m5.md 작성, 백엔드 0건 확인, M5.5/M6 경계 명시
+[2026-04-19T00:30] 베조스 MILESTONE_DONE S1 삭제 분석 — 위험 신호 5건
+[2026-04-19T00:31] satya COURSE_CORRECTION S2 — 위험 신호 5건 팀쿡 spec 반영 지시
+[2026-04-19T07:22] tim-cook MILESTONE_DONE S2 UX 스펙 2종 완료 (binding-dialog + connections-page-redesign)
+[2026-04-19T07:30] zuckerberg MILESTONE_START S3 ConnectionBindingDialog type union 확장 + 3 dialog 호출부 교체
+[2026-04-19T07:28] tim-cook SPEC_V2 베조스 S1 5개 항목 반영 (MCP 스코프 축소, bridge 보존, credential N:1 삭제, 회귀 주의)
+[2026-04-19T08:10] zuckerberg MILESTONE_DONE S3 — ConnectionBindingDialog type union 확장 (prebuilt/custom/mcp), 호출부 2건 교체 (tools/page.tsx, mcp-server-group-card.tsx), i18n custom/mcp 키 추가, lint(기존 경고 1건 외 0), build PASS, 외부 호출처 grep 0건
+[2026-04-19T08:15] zuckerberg MILESTONE_START S4 /connections 페이지 Connection 중심 재편
+[2026-04-19T08:50] zuckerberg MILESTONE_DONE S4 — connections/page.tsx 전면 재작성 (3섹션: PREBUILT/CUSTOM/MCP), ConnectionCard + ConnectionDetailSheet 신규, useToolsByConnection selector 추가(use-tools.ts), Credential 카드/검색/type 필터 제거, MCP "연결 추가"는 AddToolDialog 재사용, i18n connections.sections/card/detail/emptyPage/statusToast 키 추가, lint PASS, build PASS, CredentialCard/filteredCredentials grep 0건
+[2026-04-19T04:00] bezos MILESTONE_START S5 회귀 검증 + 수동 E2E
+[2026-04-19T04:30] bezos VERIFICATION_PASS M5 pytest 646 / ruff / lint / build 전수 PASS
+[2026-04-19T04:30] bezos MILESTONE_DONE S5 회귀 검증 + 수동 E2E 완료 — tasks/manual-e2e-e-m5.md, 베조스 S1 위험 5건 해소
+[2026-04-19T09:00] satya REVIEW_FIX M1+M2 — toast 메시지 connections.statusToast.deleted/deleteFailed 신규 + SheetContent showCloseButton=false (X 중복 제거)
+[2026-04-19T09:05] satya VERIFICATION_PASS lint(기존 1건만) + build(14 routes) PASS
+[2026-04-19T09:06] satya TEAM_DISBAND_REQUEST backlog-e-m5
+[2026-04-19T09:10] satya TEAM_DISBANDED backlog-e-m5 — 3명(팀쿡/베조스/저커버그) shutdown 완료, TeamDelete 정리 완료
+[2026-04-19T09:30] satya CODEX_REVIEW_FIX P1+P2 — tools/page.tsx: (P2) provider_name 누락/unknown prebuilt → type='custom' fallback 부활. (P1) custom onBound에서 useUpdateToolAuthConfig로 tool.credential_id 동기화 (legacy first-bind + bridge override 해소). 백엔드 변경 0건
+[2026-04-19T09:32] satya VERIFICATION_PASS lint(기존 1건만) + build(15 routes) PASS
+[2026-04-19T09:50] satya CODEX_REVIEW2_FIX P1A+P1B+P2 — (P1A) McpBody가 server PATCH + linkedConnections.credential_id 동기 갱신 (chat_service SOT 일치). (P1B) useToolsByConnection PREBUILT는 provider_name 매칭으로 변경. (P2) detail-sheet MCP 분기에서 changeCredential 버튼 숨김 + mcpRebindHint 안내. i18n connections.detail.mcpRebindHint 신규
+[2026-04-19T09:51] satya VERIFICATION_PASS lint(기존 1건만) + build(15 routes) PASS
+[2026-04-19T10:10] satya CODEX_REVIEW3_FIX P1+P2x3 — (P1) custom auth clear가 tool.credential_id에도 전파(`!== tool.credential_id` 조건). (P2A) /connections isEmpty 분기 제거 — 항상 3섹션 노출 (first-time user 진입점 보존). (P2B) PrebuiltBody triggerContext='standalone' + default 있음 → 신규 connection 생성 (덮어쓰기 방지). (P2C) useToolsByConnection PREBUILT는 is_default일 때만 매칭 (non-default 사용량 inflation 방지)
+[2026-04-19T10:11] satya VERIFICATION_PASS lint(기존 1건만) + build(15 routes) PASS
+[2026-04-20T00:30] satya ADVERSARIAL_FIX high#1+#2 — (옵션 C) PrebuiltProps에 connectionId prop 신규, drawer rebind는 connectionId={connection.id} + triggerContext='tool-edit'로 selected row 직접 update (default 여부 무관). PrebuiltBody에 explicitTarget 분기 추가. (옵션 F) McpBody는 단일 connection만 안전 sync, N:1 공유 시 server PATCH만 + sharedCredentialWarning inline alert + savedSharedCredential toast. 옵션 D(새 connection find-or-create + tool.connection_id PATCH)는 M6 cleanup으로 명시 (mcp_servers drop과 통합). 백엔드 변경 0건
+[2026-04-20T00:31] satya VERIFICATION_PASS lint(기존 1건만) + build(15 routes) PASS
+[2026-04-20T01:30] satya SIMPLIFY_FIX 6건 — (1) types.ts에 CUSTOM_CONNECTION_PROVIDER_NAME + PREBUILT_PROVIDER_I18N_KEY + PREBUILT_PROVIDER_NAMES export → 3 파일 중복 제거 (binding-dialog, add-tool-dialog, connections/page). (2) tools/page.tsx handleCustomBound mutate→mutateAsync + onError toolSyncFailed → silent partial failure 차단. (3) McpBody handleSave 두 mutation Promise.all 병렬 (perceived latency 1/2). (4) detail-sheet AlertDialog inline → DeleteConfirmDialog shared (8 import 정리). (5) connections.emptyPage dead i18n key 제거. (6) tool.customAuth.toolSyncFailed 신규 키
+[2026-04-20T01:31] satya VERIFICATION_PASS lint(기존 1건만) + build(15 routes) PASS
+[2026-04-20T02:00] satya SIMPLIFY_FIX2 3건 — (1) dead 3 dialog 파일(prebuilt-auth/custom-auth/mcp-server-auth-dialog.tsx) 삭제. 외부 호출 0 확인 후. (2) connections.providerName.{naver,googleSearch,googleChat,googleWorkspace} short label i18n 신규 + page.tsx providerLabel hack(description split) 제거 → fragile string parsing 차단. (3) useCredential(id) selector hook + ConnectionStatusBadge 컴포넌트 신규 → connection-card / connection-detail-sheet 두 곳 중복(credential lookup + status badge 마크업) 제거
+[2026-04-20T02:01] satya VERIFICATION_PASS lint(기존 1건만) + build(15 routes) PASS
