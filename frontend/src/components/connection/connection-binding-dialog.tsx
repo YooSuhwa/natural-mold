@@ -4,7 +4,14 @@ import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { CheckCircleIcon, KeyIcon, LinkIcon, Loader2Icon } from 'lucide-react'
+import {
+  AlertTriangleIcon,
+  CheckCircleIcon,
+  KeyIcon,
+  LinkIcon,
+  Loader2Icon,
+  ServerIcon,
+} from 'lucide-react'
 
 import {
   Dialog,
@@ -20,39 +27,67 @@ import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
 import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
 import { useCredentials } from '@/lib/hooks/use-credentials'
 import {
+  scopeKey,
   useConnections,
   useCreateConnection,
   useUpdateConnection,
 } from '@/lib/hooks/use-connections'
+import { useUpdateMCPServer } from '@/lib/hooks/use-tools'
 import { ApiError } from '@/lib/api/client'
-import type { Connection, PrebuiltProviderName } from '@/lib/types'
+import {
+  CUSTOM_CONNECTION_PROVIDER_NAME as CUSTOM_PROVIDER_NAME,
+  PREBUILT_PROVIDER_I18N_KEY as PROVIDER_I18N_KEY,
+} from '@/lib/types'
+import type { Connection, PrebuiltProviderName, Tool } from '@/lib/types'
 
-interface ConnectionBindingDialogProps {
-  type: 'prebuilt'
-  providerName: PrebuiltProviderName
-  // Dialog title에 표시할 tool name. 없으면 providerName 사용
-  toolName?: string
+interface CommonProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  // (선택) 저장 성공 시 콜백 — refresh 트리거 등
+  /** Dialog 진입 맥락 — i18n/완료 동작 분기. 미지정 시 'standalone'. */
+  triggerContext?: 'tool-create' | 'tool-edit' | 'standalone'
+}
+
+type PrebuiltProps = CommonProps & {
+  type: 'prebuilt'
+  providerName: PrebuiltProviderName
+  /** Dialog title에 표시할 tool name. 없으면 providerName 사용. */
+  toolName?: string
+  /**
+   * 명시적으로 update 대상 connection. detail drawer 같은 곳에서 selected
+   * connection을 직접 갱신할 때 사용. 미지정 시 default rotate 또는 신규 생성
+   * 휴리스틱(`triggerContext`)을 적용한다.
+   */
+  connectionId?: string
+  /** @deprecated use onBound. PREBUILT 호출부 후방 호환을 위해 유지. */
   onSaved?: (connection: Connection) => void
+  onBound?: (connection: Connection) => void
 }
 
-const PROVIDER_I18N_KEY: Record<PrebuiltProviderName, string> = {
-  naver: 'naver',
-  google_search: 'googleSearch',
-  google_chat: 'googleChat',
-  google_workspace: 'googleWorkspace',
+type CustomProps = CommonProps & {
+  type: 'custom'
+  /** tool-edit 맥락에서 tool row. bridge override 판정과 현재 connection 해석에 사용. */
+  tool?: Tool
+  /** tool-edit 맥락에서만. tool.connection_id 보다 우선. */
+  currentConnectionId?: string
+  /** Dialog title에 표시할 tool name. */
+  toolName?: string
+  onBound?: (connection: Connection) => void
 }
 
-export function ConnectionBindingDialog({
-  type,
-  providerName,
-  toolName,
-  open,
-  onOpenChange,
-  onSaved,
-}: ConnectionBindingDialogProps) {
+type McpProps = CommonProps & {
+  type: 'mcp'
+  /** mcp_servers row id — credential binding 대상. 필수. */
+  mcpServerId: string
+  serverName?: string
+  currentCredentialId?: string | null
+  /** MCP는 Connection 엔티티를 만들지 않는다 — server row의 credential만 갱신. */
+  onBound?: (result: { serverId: string; credentialId: string | null }) => void
+}
+
+type ConnectionBindingDialogProps = PrebuiltProps | CustomProps | McpProps
+
+export function ConnectionBindingDialog(props: ConnectionBindingDialogProps) {
+  const { open, onOpenChange } = props
   return (
     <Dialog
       open={open}
@@ -61,33 +96,33 @@ export function ConnectionBindingDialog({
       }}
     >
       <DialogContent className="sm:max-w-md">
-        {open && (
-          <DialogBody
-            type={type}
-            providerName={providerName}
-            toolName={toolName}
-            onClose={() => onOpenChange(false)}
-            onSaved={onSaved}
-          />
-        )}
+        {open && <BodyDispatch {...props} onClose={() => onOpenChange(false)} />}
       </DialogContent>
     </Dialog>
   )
 }
 
-function DialogBody({
-  type,
+type BodyDispatchProps = ConnectionBindingDialogProps & { onClose: () => void }
+
+function BodyDispatch(props: BodyDispatchProps) {
+  if (props.type === 'prebuilt') return <PrebuiltBody {...props} />
+  if (props.type === 'custom') return <CustomBody {...props} />
+  return <McpBody {...props} />
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// PREBUILT
+// ─────────────────────────────────────────────────────────────────────
+
+function PrebuiltBody({
   providerName,
   toolName,
-  onClose,
+  triggerContext = 'standalone',
+  connectionId,
   onSaved,
-}: {
-  type: 'prebuilt'
-  providerName: PrebuiltProviderName
-  toolName?: string
-  onClose: () => void
-  onSaved?: (connection: Connection) => void
-}) {
+  onBound,
+  onClose,
+}: PrebuiltProps & { onClose: () => void }) {
   const t = useTranslations('connections.bindingDialog')
   const tProvider = useTranslations('tool.authDialog.provider')
   const tc = useTranslations('common')
@@ -95,7 +130,7 @@ function DialogBody({
 
   const qc = useQueryClient()
   const { data: connections, isLoading: connectionsLoading } = useConnections({
-    type,
+    type: 'prebuilt',
     provider_name: providerName,
   })
   const { data: credentials } = useCredentials()
@@ -107,16 +142,21 @@ function DialogBody({
     () => connections?.find((c) => c.is_default) ?? null,
     [connections],
   )
-  // connections 응답이 로드된 후 default connection의 credential을 선택 상태로 하이드레이트.
-  // React 19 권장 패턴: render 중 setState + guard (useEffect의 cascading render 회피).
+  // 명시적으로 connectionId가 주어지면 그 row가 hydration / update 대상.
+  // 없으면 default connection이 대상 (M3 rotate 패턴).
+  const targetConnection = useMemo(
+    () => (connectionId ? (connections?.find((c) => c.id === connectionId) ?? null) : defaultConnection),
+    [connections, connectionId, defaultConnection],
+  )
+  // render 중 setState + guard (M3 패턴) — useEffect cascading render 회피.
   const hydrationKey = connectionsLoading
     ? null
-    : (defaultConnection?.id ?? 'empty') + ':' + (defaultConnection?.credential_id ?? 'none')
+    : (targetConnection?.id ?? 'empty') + ':' + (targetConnection?.credential_id ?? 'none')
   const [mode, setMode] = useState<string>(CREDENTIAL_NONE)
   const [hydratedFor, setHydratedFor] = useState<string | null>(null)
   if (hydrationKey !== null && hydrationKey !== hydratedFor) {
     setHydratedFor(hydrationKey)
-    setMode(defaultConnection?.credential_id ?? CREDENTIAL_NONE)
+    setMode(targetConnection?.credential_id ?? CREDENTIAL_NONE)
   }
 
   const matchingCredentials = useMemo(
@@ -128,43 +168,54 @@ function DialogBody({
   const displayTitle = toolName ?? providerName
   const isPending = createConnection.isPending || updateConnection.isPending
 
+  // 명시적 connectionId가 있으면 항상 그 row를 update (drawer rebind 흐름).
+  // 없으면 standalone="연결 추가"는 신규 생성, tool-edit은 default rotate.
+  const explicitTarget = connectionId ? targetConnection : null
+  const shouldCreateNew =
+    explicitTarget != null
+      ? false
+      : triggerContext === 'standalone'
+        ? !!defaultConnection
+        : !defaultConnection
+
   async function handleSave() {
     const credentialId = mode === CREDENTIAL_NONE ? null : mode
     try {
       let result: Connection
-      if (defaultConnection) {
-        // 사용자가 credential을 새로 바인딩하는 의도 = 재활성화 의도로 해석.
-        // 런타임과 프론트 configured 판정이 `status === 'active'` 를 요구하므로,
-        // disabled 상태의 default를 편집해도 저장 후 configured로 돌아오도록
-        // status=active를 함께 PATCH. 이미 active면 no-op (Codex adversarial P2).
+      if (explicitTarget) {
+        // 명시 target의 직접 갱신. default 여부와 무관 — drawer rebind 흐름.
+        result = await updateConnection.mutateAsync({
+          id: explicitTarget.id,
+          data: { credential_id: credentialId, status: 'active' },
+        })
+      } else if (!shouldCreateNew && defaultConnection) {
+        // credential 재바인딩 = 재활성화 의도. disabled default도 저장 후 active로.
         result = await updateConnection.mutateAsync({
           id: defaultConnection.id,
           data: { credential_id: credentialId, status: 'active' },
         })
       } else {
         if (credentialId === null) {
-          // default connection이 없고 credential도 선택하지 않음 → 아무것도 생성 안 함
           onClose()
           return
         }
         result = await createConnection.mutateAsync({
-          type,
+          type: 'prebuilt',
           provider_name: providerName,
           display_name: toolName ?? providerName,
           credential_id: credentialId,
-          is_default: true,
+          // 첫 connection은 default. 기존 default가 이미 있으면 새 row는 non-default
+          // (user가 detail sheet에서 default 토글로 승격 가능).
+          is_default: !defaultConnection,
         })
       }
       toast.success(t('toast.saved'))
       onSaved?.(result)
+      onBound?.(result)
       onClose()
     } catch (err) {
-      // 409는 partial unique index 경합 — 타 탭/세션이 먼저 default를 승격/생성.
-      // 1분 stale 캐시로 POST/PATCH 오분기가 발생할 수 있으므로 scope를 강제
-      // 무효화하고 retry 안내 toast로 분기한다. 다이얼로그는 열어둔 채 사용자가
-      // 최신 상태로 다시 저장할 수 있게 한다.
       if (err instanceof ApiError && err.status === 409) {
-        qc.invalidateQueries({ queryKey: ['connections', type, providerName] })
+        qc.invalidateQueries({ queryKey: ['connections', 'prebuilt', providerName] })
         qc.invalidateQueries({ queryKey: ['connections'] })
         toast.error(t('toast.conflictRetry'))
         return
@@ -231,6 +282,309 @@ function DialogBody({
         onCreated={(c) => {
           if (c.provider_name === providerName) setMode(c.id)
         }}
+      />
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// CUSTOM
+// ─────────────────────────────────────────────────────────────────────
+
+function CustomBody({
+  tool,
+  currentConnectionId,
+  toolName,
+  triggerContext = 'standalone',
+  onBound,
+  onClose,
+}: CustomProps & { onClose: () => void }) {
+  const t = useTranslations('connections.bindingDialog')
+  const tc = useTranslations('common')
+  const tCred = useTranslations('connections.credentialSelect')
+
+  const qc = useQueryClient()
+  const { data: credentials } = useCredentials()
+  const { data: connections, isLoading: connectionsLoading } = useConnections({
+    type: 'custom',
+    provider_name: CUSTOM_PROVIDER_NAME,
+  })
+  const createConnection = useCreateConnection()
+  const updateConnection = useUpdateConnection()
+  const [createOpen, setCreateOpen] = useState(false)
+
+  const effectiveConnectionId = currentConnectionId ?? tool?.connection_id ?? null
+  const currentConnection = useMemo(
+    () => connections?.find((c) => c.id === effectiveConnectionId) ?? null,
+    [connections, effectiveConnectionId],
+  )
+
+  // 하이드레이션: 초기 선택값은 현재 connection의 credential. 없으면 tool.credential_id
+  // (legacy fallback), 없으면 none.
+  const hydrationKey = connectionsLoading
+    ? null
+    : (currentConnection?.id ?? 'empty') + ':' + (currentConnection?.credential_id ?? 'none')
+  const [mode, setMode] = useState<string>(CREDENTIAL_NONE)
+  const [hydratedFor, setHydratedFor] = useState<string | null>(null)
+  if (hydrationKey !== null && hydrationKey !== hydratedFor) {
+    setHydratedFor(hydrationKey)
+    setMode(currentConnection?.credential_id ?? tool?.credential_id ?? CREDENTIAL_NONE)
+  }
+
+  const availableCredentials = credentials ?? []
+  const isPending = createConnection.isPending || updateConnection.isPending
+
+  // Bridge override: tool이 connection과 다른 credential을 직접 지정 중.
+  // M5 정책 — 경고 배너만, 실제 tool.credential_id 변경은 M6까지 미루다.
+  const showBridgeWarning =
+    triggerContext === 'tool-edit' &&
+    !!tool?.credential_id &&
+    !!currentConnection?.credential_id &&
+    tool.credential_id !== currentConnection.credential_id
+
+  async function handleSave() {
+    const credentialId = mode === CREDENTIAL_NONE ? null : mode
+    try {
+      let result: Connection
+      if (currentConnection) {
+        // 기존 connection의 credential rotate — tool.credential_id는 건드리지 않음 (bridge 보존)
+        result = await updateConnection.mutateAsync({
+          id: currentConnection.id,
+          data: { credential_id: credentialId, status: 'active' },
+        })
+      } else {
+        if (credentialId === null) {
+          onClose()
+          return
+        }
+        // find-or-create — 같은 credential을 공유하는 connection이 이미 있으면 재사용 (ADR-008 N:1).
+        const cached = qc.getQueryData<Connection[]>(
+          scopeKey({ type: 'custom', provider_name: CUSTOM_PROVIDER_NAME }),
+        )
+        const existing = cached?.find((c) => c.credential_id === credentialId)
+        if (existing) {
+          result = existing
+        } else {
+          const credential = availableCredentials.find((c) => c.id === credentialId)
+          result = await createConnection.mutateAsync({
+            type: 'custom',
+            provider_name: CUSTOM_PROVIDER_NAME,
+            display_name: credential?.name ?? toolName ?? 'Custom connection',
+            credential_id: credentialId,
+          })
+        }
+      }
+      toast.success(t('toast.saved'))
+      onBound?.(result)
+      onClose()
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        qc.invalidateQueries({
+          queryKey: scopeKey({ type: 'custom', provider_name: CUSTOM_PROVIDER_NAME }),
+        })
+        qc.invalidateQueries({ queryKey: ['connections'] })
+        toast.error(t('toast.conflictRetry'))
+        return
+      }
+      toast.error(t('toast.saveFailed'))
+    }
+  }
+
+  const displayTitle = toolName ?? tool?.name ?? ''
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <KeyIcon className="size-4" />
+          {t('custom.title', { toolName: displayTitle })}
+        </DialogTitle>
+        <DialogDescription>{t('custom.description')}</DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-4 py-2">
+        {showBridgeWarning && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800"
+          >
+            <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
+            <span>{t('custom.bridgeOverrideWarning')}</span>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium flex items-center gap-1.5">
+            <LinkIcon className="size-3.5" />
+            {tCred('label')}
+          </label>
+          {connectionsLoading ? (
+            <Skeleton className="h-9 w-full" />
+          ) : (
+            <CredentialSelect
+              value={mode}
+              onValueChange={setMode}
+              onCreateRequested={() => setCreateOpen(true)}
+              credentials={availableCredentials}
+            />
+          )}
+        </div>
+
+        {mode !== CREDENTIAL_NONE && (
+          <div className="flex items-center gap-2 text-xs text-emerald-600">
+            <CheckCircleIcon className="size-3.5" />
+            {t('configured')}
+          </div>
+        )}
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          {tc('cancel')}
+        </Button>
+        <Button onClick={handleSave} disabled={isPending}>
+          {isPending && (
+            <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
+          )}
+          {tc('save')}
+        </Button>
+      </DialogFooter>
+
+      <CredentialFormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={(c) => setMode(c.id)}
+      />
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// MCP — credential binding only (server row PATCH)
+// ─────────────────────────────────────────────────────────────────────
+
+function McpBody({
+  mcpServerId,
+  serverName,
+  currentCredentialId,
+  onBound,
+  onClose,
+}: McpProps & { onClose: () => void }) {
+  const t = useTranslations('connections.bindingDialog')
+  const tc = useTranslations('common')
+  const tCred = useTranslations('connections.credentialSelect')
+
+  const { data: credentials } = useCredentials()
+  const { data: mcpConnections } = useConnections({ type: 'mcp' })
+  const updateServer = useUpdateMCPServer()
+  const updateConnection = useUpdateConnection()
+  const [createOpen, setCreateOpen] = useState(false)
+  const [mode, setMode] = useState<string>(currentCredentialId ?? CREDENTIAL_NONE)
+
+  const availableCredentials = credentials ?? []
+
+  // chat_service는 `tool.connection.credential_id`를 SOT로 사용한다. server PATCH만으로는
+  // runtime이 stale → connection도 동기 갱신해야 한다. **단일 connection이 이 server만 가리키는
+  // 경우(linkedConnections.length === 1)에 한해 안전하게 sync한다.** N:1 공유는 cross-server
+  // mutation이 되므로 차단 + 사용자 안내. 진짜 정공법(새 connection find-or-create + tool.connection_id
+  // PATCH)은 M6 cleanup(`mcp_servers` drop과 통합) 영역.
+  const linkedConnections = useMemo(
+    () =>
+      currentCredentialId
+        ? (mcpConnections?.filter((c) => c.credential_id === currentCredentialId) ?? [])
+        : [],
+    [mcpConnections, currentCredentialId],
+  )
+  const sharedAcrossServers = linkedConnections.length > 1
+
+  async function handleSave() {
+    const credentialId = mode === CREDENTIAL_NONE ? null : mode
+    try {
+      // server PATCH와 connection PATCH는 독립 row → 병렬. 한쪽 실패 시 toast.saveFailed로
+      // 사용자에게 fallthrough; 부분 적용 가능성은 M6 cleanup에서 트랜잭셔널 endpoint로 정리.
+      const tasks: Array<Promise<unknown>> = [
+        updateServer.mutateAsync({ id: mcpServerId, data: { credential_id: credentialId } }),
+      ]
+      // 단일 connection만 안전 sync. N:1 공유는 server PATCH만 + 다른 server 영향 없음.
+      if (!sharedAcrossServers && linkedConnections[0]) {
+        tasks.push(
+          updateConnection.mutateAsync({
+            id: linkedConnections[0].id,
+            data: { credential_id: credentialId, status: 'active' },
+          }),
+        )
+      }
+      await Promise.all(tasks)
+      toast.success(
+        sharedAcrossServers ? t('toast.savedSharedCredential') : t('toast.saved'),
+      )
+      onBound?.({ serverId: mcpServerId, credentialId })
+      onClose()
+    } catch {
+      toast.error(t('toast.saveFailed'))
+    }
+  }
+
+  const isPending = updateServer.isPending || updateConnection.isPending
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <ServerIcon className="size-4" />
+          {t('mcp.title', { serverName: serverName ?? '' })}
+        </DialogTitle>
+        <DialogDescription>{t('mcp.description')}</DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-4 py-2">
+        {sharedAcrossServers && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800"
+          >
+            <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
+            <span>{t('mcp.sharedCredentialWarning')}</span>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium flex items-center gap-1.5">
+            <LinkIcon className="size-3.5" />
+            {tCred('label')}
+          </label>
+          <CredentialSelect
+            value={mode}
+            onValueChange={setMode}
+            onCreateRequested={() => setCreateOpen(true)}
+            credentials={availableCredentials}
+          />
+        </div>
+
+        {mode !== CREDENTIAL_NONE && (
+          <div className="flex items-center gap-2 text-xs text-emerald-600">
+            <CheckCircleIcon className="size-3.5" />
+            {t('configured')}
+          </div>
+        )}
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          {tc('cancel')}
+        </Button>
+        <Button onClick={handleSave} disabled={isPending}>
+          {isPending && (
+            <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
+          )}
+          {tc('save')}
+        </Button>
+      </DialogFooter>
+
+      <CredentialFormDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={(c) => setMode(c.id)}
       />
     </>
   )

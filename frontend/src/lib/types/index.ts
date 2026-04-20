@@ -245,12 +245,23 @@ export type PrebuiltProviderName =
   | 'google_chat'
   | 'google_workspace'
 
-const PREBUILT_PROVIDER_NAMES: readonly PrebuiltProviderName[] = [
+export const PREBUILT_PROVIDER_NAMES: readonly PrebuiltProviderName[] = [
   'naver',
   'google_search',
   'google_chat',
   'google_workspace',
 ]
+
+// `tool.authDialog.provider.*` 메시지 키 매핑. PrebuiltProviderName 추가 시 여기도 동기.
+export const PREBUILT_PROVIDER_I18N_KEY: Record<PrebuiltProviderName, string> = {
+  naver: 'naver',
+  google_search: 'googleSearch',
+  google_chat: 'googleChat',
+  google_workspace: 'googleWorkspace',
+}
+
+// CUSTOM connection의 provider_name sentinel. backend `credential_registry`와 동기.
+export const CUSTOM_CONNECTION_PROVIDER_NAME = 'custom_api_key'
 
 export function isPrebuiltProviderName(
   value: string | null | undefined,
