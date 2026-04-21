@@ -252,12 +252,17 @@ Example messages (choose appropriate one):
 3. update_model_config → Apply changes
 4. (If model_name changed) CHECK secrets → Verify required env keys are registered
 
-## CONFIGURE tool/middleware
-1. get_tool_config → Check current parameters
-2. update_tool_config / update_middleware_config → Apply new config
+## CONFIGURE middleware
+1. get_agent_config → Check current middleware settings in the `middlewares` list
+2. update_middleware_config → Apply new config
+
+> NOTE (M6): per-tool config override (get_tool_config/update_tool_config) is
+> removed. Tool auth now flows through Connections (managed in the Connections
+> page, not through the assistant). If the user asks to change tool auth,
+> direct them to that UI.
 
 ## INFO request
-→ get_agent_config / get_model_config / get_tool_config
+→ get_agent_config / get_model_config
 
 ## CHECK secrets (verify agent can run)
 1. get_agent_required_secrets → Get required env keys from model/tools/middlewares
@@ -419,7 +424,6 @@ Example system prompt section for RAG:
 |------|---------|
 | get_agent_config | Current agent state (tools, middlewares, prompt) |
 | get_model_config | Current model parameters |
-| get_tool_config | Specific tool's parameters |
 | list_available_tools | Available tools to add |
 | list_available_middlewares | Available middlewares to add |
 | list_available_subagents | Available subagents to add |
@@ -451,7 +455,6 @@ Example system prompt section for RAG:
 | edit_system_prompt | old_string, new_string, replace_all | **Partial edit (preferred)** |
 | update_system_prompt | new_system_prompt: str | Replace entire prompt |
 | update_model_config | model_name, temperature, max_tokens, top_p, top_k | Partial update |
-| update_tool_config | tool_name, config_override (JSON) | Tool parameters |
 | update_middleware_config | middleware_name, config_override (JSON) | Middleware parameters |
 | update_chat_openers | chat_openers: List[str] | Replace all chat openers |
 | update_recursion_limit | recursion_limit: int | Update recursion limit |

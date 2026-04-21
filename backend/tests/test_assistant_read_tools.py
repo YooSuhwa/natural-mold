@@ -50,7 +50,7 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
     )
     db.add(tool)
     await db.flush()
-    link = AgentToolLink(agent_id=agent.id, tool_id=tool.id, config=None)
+    link = AgentToolLink(agent_id=agent.id, tool_id=tool.id)
     db.add(link)
     await db.commit()
     return agent.id, model.id
@@ -221,33 +221,6 @@ async def test_get_recursion_limit(db: AsyncSession, patch_read_session):
 
 
 # ---------------------------------------------------------------------------
-# get_tool_config
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_get_tool_config(db: AsyncSession, patch_read_session):
-    agent_id, _ = await _seed_full(db)
-    tools = _build_tools(db, agent_id)
-    tool = _find_tool(tools, "get_tool_config")
-
-    result = await tool.ainvoke({"tool_name": "Web Search"})
-    data = json.loads(result)
-    assert data["name"] == "Web Search"
-    assert data["type"] == "prebuilt"
-
-
-@pytest.mark.asyncio
-async def test_get_tool_config_not_found(db: AsyncSession, patch_read_session):
-    agent_id, _ = await _seed_full(db)
-    tools = _build_tools(db, agent_id)
-    tool = _find_tool(tools, "get_tool_config")
-
-    result = await tool.ainvoke({"tool_name": "Nonexistent"})
-    assert "찾을 수 없습니다" in result
-
-
-# ---------------------------------------------------------------------------
 # list_available_subagents
 # ---------------------------------------------------------------------------
 
@@ -323,7 +296,7 @@ async def test_get_agent_required_secrets_with_naver_tool(db: AsyncSession, patc
     )
     db.add(naver_tool)
     await db.flush()
-    link = AgentToolLink(agent_id=agent_id, tool_id=naver_tool.id, config=None)
+    link = AgentToolLink(agent_id=agent_id, tool_id=naver_tool.id)
     db.add(link)
     await db.commit()
 

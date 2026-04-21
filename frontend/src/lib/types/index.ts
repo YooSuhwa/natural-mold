@@ -226,9 +226,7 @@ export interface Tool {
   api_url: string | null
   http_method: string | null
   auth_type: string | null
-  auth_config: Record<string, unknown> | null
   tags: string[] | null
-  credential_id: string | null
   connection_id: string | null
   agent_count: number
   created_at: string
@@ -356,8 +354,6 @@ export interface ToolCustomCreateRequest {
   http_method?: string
   parameters_schema?: Record<string, unknown>
   auth_type?: string
-  auth_config?: Record<string, unknown>
-  credential_id?: string
   connection_id?: string
 }
 

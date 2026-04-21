@@ -1,124 +1,147 @@
-# CHECKPOINT — 백로그 E M5 · UI 통합 + F 흡수 (프론트 전용)
+# CHECKPOINT — 백로그 E M6 · Cleanup (백엔드 drop + legacy 제거)
 
-**브랜치**: `feature/backlog-e-m5`
-**worktree**: `/Users/chester/dev/natural-mold/.claude/worktrees/backlog-e-m5`
-**base**: main @ `12d3d18` (PR #57 머지 — M4 HANDOFF docs 후속)
-**ADR**: `docs/design-docs/adr-008-connection-entity.md`
-**실행계획**: `docs/exec-plans/active/backlog-e-connection-refactor.md` (§4 M5)
-**팀**: 팀쿡(UX 스펙 + 디자인 리뷰) + 저커버그(구현 DRI) + 베조스(삭제 분석 + 회귀) — 사티아 리드
+**브랜치**: `feature/backlog-e-m6`
+**worktree**: `/Users/chester/dev/natural-mold/.claude/worktrees/backlog-e-m6`
+**base**: main @ `ad8c0fd` (PR #58 머지 — M5 UI 통합 + F 흡수)
+**ADR 참조**: `docs/design-docs/adr-008-connection-entity.md`
+**실행계획 참조**: `docs/exec-plans/active/backlog-e-connection-refactor.md` (§5 M6)
+**팀**: 베조스(삭제 분석 + 회귀) + 피차이(마이그레이션 설계) + 젠슨(백엔드 구현) + 저커버그(프론트 type/API thin cleanup) — 사티아 리드
 
 ---
 
-## 스코프 합의 (2026-04-19, 사용자 승인)
+## 스코프 합의 (2026-04-21, 사용자 승인 — 2차 축소)
+
+**축소 사유**: 베조스 S1 분석에서 `connection-binding-dialog.tsx:479`가 `useUpdateMCPServer`를 라이브 호출 중임을 확인. M5가 의도적으로 옵션 D를 M6로 넘겼으나 사용자가 옵션 D는 M6.1로 분리하기로 함 → `mcp_servers` 관련 drop 불가능 → M6는 **auth_config/credential_id/agent_tools.config 만** drop.
 
 | 항목 | 결정 |
 |------|------|
-| 스코프 | M5 = **프론트엔드 전용** (5개 항목). `agent_tools.connection_id` override는 M5.5로 분리 |
-| /connections 재편 깊이 | **Connection 중심 전면 재편** — Credential 카드 제거, Connection이 1급. Credential은 Connection 상세 안에서만 노출 |
-| 백엔드 변경 | **없음** — M4까지 백엔드 완료. 신규 alembic/모델/서비스 변경 0 |
-| Legacy fallback | M6까지 유지 — `tool.credential_id IS NULL AND tool.auth_config` 있으면 inline auth |
-| F(중복 다이얼로그 흡수) | M5에서 완료 — 3개 dialog → ConnectionBindingDialog 1개로 수렴 |
-| 향후 M5.5 | `agent_tools.connection_id` override (백엔드 m12 + chat_service + UI). M5 머지 후 별도 worktree |
-| 향후 M6 | `tool.credential_id` / `tool.auth_config` / `tool.mcp_server_id` / `agent_tools.config` drop + legacy 코드 제거 |
+| M6 스코프 | **축소 cleanup** — `tools.auth_config` + `tools.credential_id` + `agent_tools.config` drop. MCP 관련은 보류 |
+| `mcp_servers` 테이블 drop | **보류 → M6.1** (옵션 D 선행 필요) |
+| `tools.mcp_server_id` drop | **보류 → M6.1** |
+| `credential_service.resolve_server_auth` | **유지** — MCP 경로가 여전히 라이브 |
+| `chat_service` MCP legacy fallback | **유지** — MCP resolve가 여전히 필요 |
+| `chat_service` CUSTOM bridge override | **제거** — `tool.credential_id` drop과 동반 |
+| `chat_service` `merged_auth` agent_tools.config merge | **제거** |
+| 옵션 D (PATCH tools connection_id) | 보류 → M6.1 |
+| M5.5 (agent_tools.connection_id override) | M6.1 이후 |
+| 신규 프론트 기능 / 리디자인 | 금지 |
 
 ---
 
-## S0: docs/ 구조 확인 [done]
+## M6 제거 대상 (축소 스코프 locked)
 
-- [x] main에 docs/, ADR-008, exec-plan 존재
-- [x] M4 progress.txt / CHECKPOINT.md를 tasks/archive/로 이동
-- 검증: `ls tasks/archive/progress-backlog-e-m4.txt tasks/archive/CHECKPOINT-backlog-e-m4.md`
+**DB 스키마 (m12)**
+- `tools.auth_config` 컬럼 drop
+- `tools.credential_id` 컬럼 + FK drop
+- `agent_tools.config` 컬럼 drop
+
+**DB 스키마 (M6 유지)**
+- `tools.mcp_server_id` (live via MCPServer CRUD)
+- `mcp_servers` 테이블
+- `fk_tools_mcp_server_id`
+
+**백엔드 코드 제거**
+- `chat_service.py` CUSTOM bridge override (tool.credential_id != connection.credential_id 분기)
+- `chat_service.py` `merged_auth = {**cred_auth, **(link.config or {})}` → `cred_auth`만
+- `chat_service.py` `_resolve_legacy_tool_auth`에서 CUSTOM 분기 제거 → fail-closed ToolConfigError. MCP/BUILTIN 분기는 유지 (mcp 보류) — S1 지침에 따라 전체 삭제 가능 시 제거
+- `schemas/agent.py` `ToolConfigEntry` / `tool_configs` / `agent_config` (프론트 dead transmit)
+- `agent_service.py` tool_configs 처리 블록
+- `agent_runtime/assistant/tools/write_tools.py` `update_tool_config` + `read_tools.py` config 반환
+- `schemas/tool.py` `ToolResponse.auth_config` + `_mask_auth_config`
+- `models/tool.py` `Tool.auth_config` / `Tool.credential_id` / `Tool.credential` relationship / `AgentToolLink.config`
+
+**백엔드 코드 유지 (M6.1에서 처리)**
+- `credential_service.resolve_server_auth()` + 호출처
+- `chat_service.py` MCP legacy fallback 블록
+- `tool_service.py` MCPServer CRUD 4종
+- `routers/tools.py` `/api/tools/mcp-server*` 4개 엔드포인트
+- `schemas/tool.py` `MCPServerCreate`/`MCPServerResponse` + `ToolResponse.mcp_server_id`
+- `models/tool.py` `MCPServer` 클래스 + `Tool.mcp_server`/`mcp_server_id`
+
+**프론트 thin cleanup**
+- `lib/api/tools.ts` `updateAuthConfig` 내 `auth_config`/`credential_id` 전달 제거 (함수 자체 dead 여부 S4에서 판단)
+- `lib/types/*.ts` `Tool`에서 `auth_config`/`credential_id` 제거, `AgentTool`에서 `config` 제거
+- `Tool.mcp_server_id` 타입은 **유지** (live)
+- MCP 관련 hook (`useUpdateMCPServer` 등)은 **유지**
+- 참조처는 삭제 or type-narrow만
+
+---
+
+## S0: M5 아카이브 + 새 진행 상태 초기화 [사티아] — 완료
+
+- [x] M5 progress.txt/CHECKPOINT.md/AUDIT.log → `tasks/archive/*-backlog-e-m5.*`
+- [x] 새 CHECKPOINT.md, progress.txt, AUDIT.log 초기화
 
 ## S1: 삭제 분석 (베조스) [blockedBy: S0]
 
-- [ ] M5 스코프 legacy 코드 식별:
-  - `components/tool/prebuilt-auth-dialog.tsx`, `custom-auth-dialog.tsx`, `mcp-server-auth-dialog.tsx` — 3종 다이얼로그 중복 표면 분석 (제거/대체/유지 분류)
-  - `app/connections/page.tsx` 현재 구조 — Credential 카드, PREBUILT 섹션 의존성 분석
-  - `add-tool-dialog.tsx` MCP 탭 현 동작 (mcp_server_id 직접 선택) → connection 기반 재배선 영역
-  - `lib/api/credentials.ts` / `lib/hooks/use-credentials.ts` — /connections 재편 시 사용량 변화
-- [ ] `tasks/deletion-analysis-e-m5.md` (즉시 삭제 / 단순화 / 보류 M6 이월)
-- [ ] **반드시 분리**: M5.5(agent_tools.override)/M6(legacy drop)에서 처리할 항목은 명시적으로 "보류"로 표시
-- 검증: 보고서 존재, drive-by 금지 준수, 백엔드 파일 0건
+- [ ] `tasks/deletion-analysis-e-m6.md` 작성
+  - 제거 대상을 **파일:라인** 단위로 정확히 확정
+  - **삭제(D) / 단순화(S) / 유지(K)** 태그 분류
+  - `agent_tools.config` merge 로직(`chat_service.py:445`) 처리 방안 확정:
+    - `tools_config` 주입 경로가 이 필드를 사용하는지 재확인
+    - 사용 중이면 대체 경로 제안 or scope 축소 제안
+  - 테스트 파일 중 "전체 삭제" vs "legacy 시나리오만 삭제" 분리
+- [ ] **scope creep 차단**: 옵션 D / UI 리팩토링 / M5.5 변경 0건 명시
+- 검증: 보고서 존재, 파일:라인 명시, drive-by 금지
 
-## S2: ConnectionBindingDialog 셸 + UX 스펙 (팀쿡) [blockedBy: S0]
+## S2: m12 마이그레이션 설계 (피차이) [blockedBy: S0]
 
-- [ ] `docs/design-docs/m5-connection-binding-dialog-spec.md` 작성
-  - 3 dialog(prebuilt/custom/mcp) 공통 surface 정의
-  - props 계약: `type: 'prebuilt' | 'custom' | 'mcp'`, `provider_name`, `tool` (or external context), `onBound`
-  - 상태 머신: idle → loading → connection_select(기존 active connection 목록) → credential_form(새로 만들 때) → binding → success/error
-  - PREBUILT vs CUSTOM vs MCP 차이점 명시 (provider_name 고정 vs 선택 vs server config 입력)
-  - i18n 키 네이밍: `connection.binding.{type}.*`
-  - 접근성: focus trap, ESC 닫기, 에러 알림(role=alert)
-- [ ] `docs/design-docs/m5-connections-page-redesign-spec.md` 작성
-  - Credential 카드 제거 → Connection 카드 1급
-  - 섹션: PREBUILT (provider별 그룹) / CUSTOM / MCP
-  - Connection 상세 (drawer or modal): credential 메타, 사용 중 tool 목록, status toggle, 삭제
-  - "연결 추가" CTA → ConnectionBindingDialog 진입
-  - 빈 상태 카피, 에러 표시 정책
-- 검증: 두 spec 문서 존재, 저커버그가 spec 읽고 구현 가능 (소프트 게이트)
+- [ ] `docs/design-docs/m6-cleanup-migration-spec.md` 작성
+  - upgrade 순서: FK drop → column drop → table drop
+  - downgrade 전략: **구조만 복구, 데이터 복구 불가** 명시
+  - pre-check 쿼리: `SELECT count(*) FROM tools WHERE credential_id IS NOT NULL AND connection_id IS NULL` → 0 기대
+  - 모델 레이어 변경 스펙
+- [ ] m12 revision ID convention: `m12_drop_legacy_columns`
+- 검증: 설계 문서 존재, 젠슨이 읽고 바로 구현 가능
 
-## S3: ConnectionBindingDialog 구현 + 3 dialog 교체 (저커버그) [blockedBy: S1, S2]
+## S3: 백엔드 legacy 코드 제거 (젠슨) [blockedBy: S1, S2]
 
-- [ ] `frontend/src/components/connection/ConnectionBindingDialog.tsx` 신규 — 공통 셸
-  - Props: `type`, `provider_name?`, `triggerContext` (tool 생성 / tool 편집 / standalone), `onBound(connection)`
-  - 내부 상태: `useConnections({type, provider_name})` 조회 → 기존 connection 선택 or 신규 생성 분기
-  - 신규 생성 시: CredentialFormDialog → `useCreateConnection` → setQueryData seed (M4 패턴 재사용)
-  - PREBUILT 모드: provider_name 고정, credential form만 제공
-  - CUSTOM 모드: M4 add-tool-dialog Custom 탭 패턴 흡수
-  - MCP 모드: server config(name, transport, url, headers) + credential 옵션
-- [ ] `prebuilt-auth-dialog.tsx` → `ConnectionBindingDialog(type='prebuilt')`로 호출 변경. 기존 파일은 thin wrapper or 제거
-- [ ] `custom-auth-dialog.tsx` → `ConnectionBindingDialog(type='custom')` 교체. M4 bridge override 흐름(`tool.credential_id != connection.credential_id`)은 절대 건드리지 않음 — M6에서 정리
-- [ ] `mcp-server-auth-dialog.tsx` → `ConnectionBindingDialog(type='mcp')` 교체
-- [ ] `add-tool-dialog.tsx` MCP 탭 재배선 — server 직접 선택 → ConnectionBindingDialog 진입 (Custom 탭은 M4 완료, 변경 없음)
-- [ ] i18n `messages/ko.json` `connection.binding.*` 키 추가
-- [ ] **F 흡수 검증**: 3 dialog 파일이 thin wrapper(or 제거)가 되었는지 grep로 확인 (`rg "Auth.*Dialog" components/tool/`)
-- 검증: pnpm lint PASS, pnpm build PASS, 기존 화면(에이전트 도구 탭/추가) 수동 회귀 OK
+- [ ] `backend/alembic/versions/m12_drop_legacy_columns.py` 신규
+- [ ] `models/tool.py`: MCPServer 클래스 + Tool legacy FK/관계 + AgentToolLink.config 삭제
+- [ ] `services/credential_service.py`: `resolve_server_auth()` 삭제
+- [ ] `services/chat_service.py`: MCP legacy fallback / CUSTOM bridge override / agent_tools.config merge 제거
+- [ ] `services/tool_service.py`: MCPServer CRUD 4종 삭제
+- [ ] `routers/tools.py`: `/api/tools/mcp-server*` 4개 엔드포인트 삭제
+- [ ] `schemas/tool.py`: MCPServerCreate/Response + ToolResponse legacy 필드 + `_mask_auth_config` 삭제
+- [ ] `agent_runtime/`: legacy 필드 참조 정리
+- [ ] 테스트: MCP legacy 시나리오만 삭제 (connection path 테스트 유지)
+- 검증: `uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head` PASS, ruff PASS, pytest PASS (허용 감소 후 0 regression)
 
-## S4: /connections 페이지 Connection 중심 재편 (저커버그) [blockedBy: S2]
+## S4: 프론트 dead API/type 제거 (저커버그) [blockedBy: S3 스키마 결정]
 
-- [ ] `app/connections/page.tsx` 재구조화
-  - 기존 Credential 카드 섹션 제거 (Credential 직접 노출 → Connection 안으로 흡수)
-  - 섹션 순서: PREBUILT (provider별 그룹) → CUSTOM → MCP
-  - 각 섹션 헤더 + "연결 추가" CTA → ConnectionBindingDialog 진입
-  - Connection 카드: name, status, provider, 사용 중 tool 카운트
-- [ ] Connection 상세 패널 (drawer 권장, 모달도 가능)
-  - credential 메타 (이름, 마스킹된 일부)
-  - 사용 중 tool 목록
-  - status toggle (active ↔ disabled), 삭제 (사용 중 tool 있으면 차단/경고)
-  - PATCH `/api/connections/{id}` 호출 (M1에서 구현됨)
-- [ ] Credential 단독 관리 UI 제거 (`lib/hooks/use-credentials.ts`는 backend 호환 위해 유지, UI에서만 분리)
-- [ ] 빈 상태: "아직 연결이 없습니다" 카피 + CTA
-- 검증: pnpm lint PASS, pnpm build PASS, 모든 connection CRUD 수동 검증, 기존 PREBUILT 흐름(M3 connections 페이지) 회귀 0
+- [ ] `lib/api/tools.ts`: MCPServer CRUD 4종 + updateAuthConfig legacy 필드 제거
+- [ ] `lib/types/*.ts`: Tool/AgentTool 레거시 필드 제거
+- [ ] 타입 참조처: 빌드 에러 터지는 곳만 **삭제** (신규 로직 금지)
+- [ ] `use-chat-runtime.ts:74` streamError unused warning은 건드리지 말 것 (기존 부채)
+- 검증: `pnpm lint` (기존 1건 외 0), `pnpm build` PASS
 
-## S5: 회귀 검증 + 신규 컴포넌트 테스트 (베조스) [blockedBy: S3, S4]
+## S5: 통합 검증 + 수동 회귀 (베조스) [blockedBy: S3, S4]
 
-- [ ] **백엔드 테스트 변경 없음** (스코프 백엔드 0). 단, 회귀 확인 위해 `uv run pytest` 1회 실행 — 646 유지
-- [ ] 프론트 깨진 테스트(HANDOFF 알려진 이슈)는 M5에서 신규로 깨뜨리지만 않으면 OK. 추가 깨짐 0 확인
-- [ ] 수동 E2E 시나리오 (베조스 작성 → 사티아 검토)
-  - PREBUILT: connections 페이지 → Naver provider 연결 추가 → tool 생성 시 자동 매칭
-  - CUSTOM: tool 생성 → Custom 탭 → 신규 credential → connection 자동 생성
-  - MCP: tool 생성 → MCP 탭 → 새 server connection → tool 등록
-  - Connection 비활성화 → tool 호출 시 disabled 에러 (M3/M4 fail-closed 회귀 확인)
-- [ ] `tasks/manual-e2e-e-m5.md` 시나리오 + 결과 기록
-- 검증: pytest 646+ 유지, pnpm lint 0 errors, pnpm build PASS, 수동 E2E 보고서 존재
+- [ ] `tasks/manual-e2e-e-m6.md` 5개 시나리오
+  1. PREBUILT connection → Naver 도구 → 에이전트 실행
+  2. CUSTOM connection → 사용자 도구 → 에이전트 실행
+  3. MCP connection → MCP 도구 → 에이전트 실행
+  4. Connection 비활성화 → fail-closed 에러
+  5. DB 직접: `SELECT * FROM mcp_servers` → relation does not exist
+- [ ] pytest / ruff / pnpm lint / pnpm build 전체 PASS
+- 검증: 전체 그린, 수동 E2E 5/5 PASS
 
-## S6: 통합 + 커밋 (사티아) [blockedBy: S5]
+## S6: HANDOFF.md + 단일 커밋 (사티아) [blockedBy: S5]
 
-- [ ] 전체 verify: ruff + pytest + pnpm lint + pnpm build
-- [ ] /codex:review (대규모 UI 변경 — 권장)
-- [ ] HANDOFF.md 업데이트 (M5 완료, 다음 = M5.5 또는 M6)
-- [ ] 단일 커밋 → PR
+- [ ] HANDOFF.md M6 상태 반영 (M5.5 / M6.1 로드맵 업데이트)
+- [ ] 전체 verify 재확인
+- [ ] 단일 커밋 → push는 사용자에게 위임
 
 ---
 
-## 리스크 (M5 포인트)
+## 리스크
 
-1. **3 dialog 흡수 시 props 표면 충돌** — PREBUILT는 provider 고정, CUSTOM은 자유, MCP는 server config 추가. 단일 셸이 비대해질 수 있음. 팀쿡 spec에서 type별 sub-section 명확히
-2. **/connections 전면 재편 회귀** — M3에서 PREBUILT 섹션이 이미 동작 중. 사용자가 만든 connection들이 새 UI에서 모두 보이는지 manual E2E 필수
-3. **add-tool-dialog MCP 탭 재배선** — 기존 mcp_server_id 직접 선택 흐름. 새 connection 기반 흐름과의 마이그레이션 UX 주의 (이미 등록된 mcp_server는 어떻게 보이는가)
-4. **i18n 키 충돌** — `connection.binding.*` 신규 키. 기존 `tool.addDialog.*` 키와 중복 금지
-5. **Credential 카드 제거** — credentials API 자체는 살아 있어야 함 (Connection 안에서 호출). UI 표면만 제거
-6. **drive-by 금지 (M5.5/M6)** — `agent_tools.connection_id` 백엔드 변경 0건, `tool.credential_id` 컬럼 drop 0건. 베조스 S1에서 명시적으로 "보류" 표시
+1. `agent_tools.config` merge 로직 — 실제 사용 여부 S1에서 재확인 필수
+2. FK drop 순서 오류 — credential_id/mcp_server_id FK ondelete 확인
+3. pre-check 데이터 누락 — `credential_id IS NOT NULL AND connection_id IS NULL` row 존재 시 migration 실패
+4. 테스트 삭제 과다 — connection path 회귀 커버리지 손실 금지
+5. 프론트 타입 cascade — 모든 참조처 grep 후 제거
+6. downgrade 불가능성 — 프로덕션 가이드에 명시
 
 ---
 
@@ -126,14 +149,21 @@
 
 ```bash
 cd backend
+uv run alembic upgrade head
+uv run alembic downgrade -1 && uv run alembic upgrade head
 uv run ruff check .
-uv run pytest                           # 646+ 유지
+uv run pytest
 
 cd ../frontend
 pnpm lint
 pnpm build
 
-# F 흡수 검증
-rg -l "AuthDialog" frontend/src/components/tool/ | wc -l   # 0 또는 thin wrapper만
-rg -l "ConnectionBindingDialog" frontend/src/components/   # 신규 셸 + 호출처 N건
+# 스키마 검증 (프로덕션 PostgreSQL)
+psql -U moldy -d moldy -c "\d tools"
+psql -U moldy -d moldy -c "\d agent_tools"
+psql -U moldy -d moldy -c "SELECT to_regclass('mcp_servers')"
+
+# legacy 흔적 grep (0 기대)
+rg "mcp_server_id|auth_config|resolve_server_auth" backend/app/
+rg "MCPServer|register_mcp_server" backend/app/
 ```

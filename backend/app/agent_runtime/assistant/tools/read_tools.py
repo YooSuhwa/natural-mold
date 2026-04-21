@@ -1,22 +1,21 @@
-"""Assistant 읽기 도구 — 16개 Safe 도구 (DB 수정 없음).
+"""Assistant 읽기 도구 — 15개 Safe 도구 (DB 수정 없음).
 
 도구 목록:
 1. get_agent_config
 2. get_model_config
-3. get_tool_config
-4. list_available_tools
-5. list_available_middlewares
-6. list_available_subagents
-7. list_available_models
-8. get_agent_required_secrets
-9. get_user_secrets
-10. get_chat_openers
-11. get_recursion_limit
-12. list_permanent_files
-13. get_file_content
-14. search_system_prompt
-15. list_cron_schedules
-16. get_cron_schedule
+3. list_available_tools
+4. list_available_middlewares
+5. list_available_subagents
+6. list_available_models
+7. get_agent_required_secrets
+8. get_user_secrets
+9. get_chat_openers
+10. get_recursion_limit
+11. list_permanent_files
+12. get_file_content
+13. search_system_prompt
+14. list_cron_schedules
+15. get_cron_schedule
 """
 
 from __future__ import annotations
@@ -67,7 +66,6 @@ def build_read_tools(
                 "name": link.tool.name,
                 "description": link.tool.description,
                 "type": link.tool.type,
-                "config": link.config or {},
             }
             for link in agent.tool_links
         ]
@@ -121,31 +119,7 @@ def build_read_tools(
             ensure_ascii=False,
         )
 
-    # ------ 3. get_tool_config ------
-
-    async def get_tool_config(tool_name: str) -> str:
-        """특정 도구의 설정을 조회합니다.
-
-        Args:
-            tool_name: 조회할 도구 이름
-        """
-        agent = await _get_agent()
-        if not agent:
-            return "에이전트를 찾을 수 없습니다."
-        for link in agent.tool_links:
-            if link.tool.name.lower() == tool_name.lower():
-                return json.dumps(
-                    {
-                        "name": link.tool.name,
-                        "type": link.tool.type,
-                        "description": link.tool.description,
-                        "config": link.config or {},
-                    },
-                    ensure_ascii=False,
-                )
-        return f"도구 '{tool_name}'을(를) 찾을 수 없습니다."
-
-    # ------ 4. list_available_tools ------
+    # ------ 3. list_available_tools ------
 
     async def list_available_tools() -> str:
         """시스템에서 사용 가능한 도구 목록을 조회합니다."""
@@ -378,11 +352,6 @@ def build_read_tools(
             coroutine=get_model_config,
             name="get_model_config",
             description="현재 에이전트의 모델 설정 조회",
-        ),
-        StructuredTool.from_function(
-            coroutine=get_tool_config,
-            name="get_tool_config",
-            description="특정 도구의 설정을 조회",
         ),
         StructuredTool.from_function(
             coroutine=list_available_tools,

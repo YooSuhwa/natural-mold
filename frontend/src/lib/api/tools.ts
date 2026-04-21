@@ -22,18 +22,6 @@ export const toolsApi = {
       `/api/tools/mcp-server/${serverId}/test`,
       { method: 'POST' },
     ),
-  updateAuthConfig: (
-    id: string,
-    authConfig: Record<string, unknown>,
-    credentialId?: string | null,
-  ) =>
-    apiFetch<Tool>(`/api/tools/${id}/auth-config`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        auth_config: authConfig,
-        ...(credentialId !== undefined ? { credential_id: credentialId } : {}),
-      }),
-    }),
   delete: (id: string) => apiFetch<void>(`/api/tools/${id}`, { method: 'DELETE' }),
   listMCPServers: () => apiFetch<MCPServerListItem[]>('/api/tools/mcp-servers'),
   updateMCPServer: (id: string, data: MCPServerUpdateRequest) =>

@@ -4,16 +4,9 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.schemas.skill import SkillBrief as SkillBrief  # noqa: F401 — used in AgentResponse
-
-
-class ToolConfigEntry(BaseModel):
-    """Per-agent tool configuration (e.g. webhook_url for Google Chat)."""
-
-    tool_id: uuid.UUID
-    config: dict[str, Any] = {}
 
 
 class MiddlewareConfigEntry(BaseModel):
@@ -33,12 +26,15 @@ class MiddlewareConfigEntry(BaseModel):
 
 
 class AgentCreate(BaseModel):
+    # M6: extra='forbid' — 구버전 client가 tool_configs / agent_config 등
+    # 이미 제거된 필드를 보내면 422로 명시적 reject. silent drop 금지.
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     description: str | None = None
     system_prompt: str
     model_id: uuid.UUID
     tool_ids: list[uuid.UUID] = []
-    tool_configs: list[ToolConfigEntry] = []
     skill_ids: list[uuid.UUID] = []
     middleware_configs: list[MiddlewareConfigEntry] = []
     template_id: uuid.UUID | None = None
@@ -46,12 +42,14 @@ class AgentCreate(BaseModel):
 
 
 class AgentUpdate(BaseModel):
+    # M6: extra='forbid' — AgentCreate와 동일 이유.
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     description: str | None = None
     system_prompt: str | None = None
     model_id: uuid.UUID | None = None
     tool_ids: list[uuid.UUID] | None = None
-    tool_configs: list[ToolConfigEntry] | None = None
     skill_ids: list[uuid.UUID] | None = None
     middleware_configs: list[MiddlewareConfigEntry] | None = None
     is_favorite: bool | None = None
@@ -68,7 +66,6 @@ class ModelBrief(BaseModel):
 class ToolBrief(BaseModel):
     id: uuid.UUID
     name: str
-    agent_config: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}
 

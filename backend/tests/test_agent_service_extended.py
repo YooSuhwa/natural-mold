@@ -81,35 +81,6 @@ async def test_create_agent_with_template_tools(db: AsyncSession):
 
 
 # ---------------------------------------------------------------------------
-# create_agent — with tool_ids and tool_configs
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_create_agent_with_tool_configs(db: AsyncSession):
-    """create_agent with tool_ids and tool_configs stores per-tool config."""
-    from app.schemas.agent import AgentCreate, ToolConfigEntry
-
-    model, tool, _, _ = await _seed_all(db)
-    await db.commit()
-
-    agent = await create_agent(
-        db,
-        AgentCreate(
-            name="Config Agent",
-            system_prompt="test",
-            model_id=model.id,
-            tool_ids=[tool.id],
-            tool_configs=[ToolConfigEntry(tool_id=tool.id, config={"key": "value"})],
-        ),
-        TEST_USER_ID,
-    )
-
-    assert len(agent.tool_links) == 1
-    assert agent.tool_links[0].config == {"key": "value"}
-
-
-# ---------------------------------------------------------------------------
 # create_agent — with skills
 # ---------------------------------------------------------------------------
 
@@ -169,39 +140,6 @@ async def test_update_agent_tool_ids(db: AsyncSession):
         AgentUpdate(tool_ids=[]),
     )
     assert len(updated.tool_links) == 0
-
-
-# ---------------------------------------------------------------------------
-# update_agent — update tool_configs only (no tool_ids change)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_update_agent_tool_configs_only(db: AsyncSession):
-    """update_agent with tool_configs but no tool_ids updates configs in place."""
-    from app.schemas.agent import AgentCreate, AgentUpdate, ToolConfigEntry
-
-    model, tool, _, _ = await _seed_all(db)
-    await db.commit()
-
-    agent = await create_agent(
-        db,
-        AgentCreate(
-            name="Agent",
-            system_prompt="test",
-            model_id=model.id,
-            tool_ids=[tool.id],
-        ),
-        TEST_USER_ID,
-    )
-
-    updated = await update_agent(
-        db,
-        agent,
-        AgentUpdate(tool_configs=[ToolConfigEntry(tool_id=tool.id, config={"new": "config"})]),
-    )
-    assert len(updated.tool_links) == 1
-    assert updated.tool_links[0].config == {"new": "config"}
 
 
 # ---------------------------------------------------------------------------

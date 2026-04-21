@@ -44,22 +44,6 @@ export function useRegisterMCPServer() {
   })
 }
 
-export function useUpdateToolAuthConfig() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({
-      id,
-      authConfig,
-      credentialId,
-    }: {
-      id: string
-      authConfig: Record<string, unknown>
-      credentialId?: string | null
-    }) => toolsApi.updateAuthConfig(id, authConfig, credentialId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tools'] }),
-  })
-}
-
 export function useDeleteTool() {
   const qc = useQueryClient()
   return useMutation({

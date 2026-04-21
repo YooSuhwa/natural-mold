@@ -1,4 +1,4 @@
-"""Assistant 쓰기 도구 — 15+ 도구 (DB 수정, Verify First).
+"""Assistant 쓰기 도구 — 17 도구 (DB 수정, Verify First).
 
 도구 목록:
 1. add_tool_to_agent (배치)
@@ -10,15 +10,14 @@
 7. edit_system_prompt (부분 수정)
 8. update_system_prompt (전체 교체)
 9. update_model_config
-10. update_tool_config
-11. update_middleware_config
-12. update_chat_openers
-13. update_recursion_limit
-14. create_cron_schedule
-15. update_cron_schedule
-16. delete_cron_schedule
-17. enable_cron_schedule
-18. disable_cron_schedule
+10. update_middleware_config
+11. update_chat_openers
+12. update_recursion_limit
+13. create_cron_schedule
+14. update_cron_schedule
+15. delete_cron_schedule
+16. enable_cron_schedule
+17. disable_cron_schedule
 """
 
 from __future__ import annotations
@@ -309,26 +308,6 @@ def build_write_tools(
             await session.commit()
             return f"모델 설정 변경 완료: {', '.join(changes)}" if changes else "변경 사항 없음."
 
-    # ------ 10. update_tool_config ------
-
-    async def update_tool_config(tool_name: str, config: dict[str, Any]) -> str:
-        """도구의 설정 파라미터를 변경합니다.
-
-        Args:
-            tool_name: 도구 이름
-            config: 새 설정 딕셔너리
-        """
-        async with async_session_factory() as session:
-            agent = await _get_agent_with_session(session)
-            if not agent:
-                return "에이전트를 찾을 수 없습니다."
-            for link in agent.tool_links:
-                if link.tool.name.lower() == tool_name.lower():
-                    link.config = {**(link.config or {}), **config}
-                    await session.commit()
-                    return f"'{tool_name}' 도구 설정 변경 완료."
-            return f"도구 '{tool_name}'을(를) 찾을 수 없습니다."
-
     # ------ 11. update_middleware_config ------
 
     async def update_middleware_config(middleware_name: str, params: dict) -> str:
@@ -606,11 +585,6 @@ def build_write_tools(
             coroutine=update_model_config,
             name="update_model_config",
             description="모델 설정 변경 (모델명, temperature, max_tokens 등)",
-        ),
-        StructuredTool.from_function(
-            coroutine=update_tool_config,
-            name="update_tool_config",
-            description="도구의 설정 파라미터 변경",
         ),
         StructuredTool.from_function(
             coroutine=update_middleware_config,

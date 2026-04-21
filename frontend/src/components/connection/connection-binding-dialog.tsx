@@ -30,6 +30,7 @@ import {
   scopeKey,
   useConnections,
   useCreateConnection,
+  useFindOrCreateCustomConnection,
   useUpdateConnection,
 } from '@/lib/hooks/use-connections'
 import { useUpdateMCPServer } from '@/lib/hooks/use-tools'
@@ -295,7 +296,6 @@ function CustomBody({
   tool,
   currentConnectionId,
   toolName,
-  triggerContext = 'standalone',
   onBound,
   onClose,
 }: CustomProps & { onClose: () => void }) {
@@ -309,7 +309,7 @@ function CustomBody({
     type: 'custom',
     provider_name: CUSTOM_PROVIDER_NAME,
   })
-  const createConnection = useCreateConnection()
+  const findOrCreate = useFindOrCreateCustomConnection()
   const updateConnection = useUpdateConnection()
   const [createOpen, setCreateOpen] = useState(false)
 
@@ -319,8 +319,7 @@ function CustomBody({
     [connections, effectiveConnectionId],
   )
 
-  // 하이드레이션: 초기 선택값은 현재 connection의 credential. 없으면 tool.credential_id
-  // (legacy fallback), 없으면 none.
+  // 하이드레이션: 초기 선택값은 현재 connection의 credential. 없으면 none.
   const hydrationKey = connectionsLoading
     ? null
     : (currentConnection?.id ?? 'empty') + ':' + (currentConnection?.credential_id ?? 'none')
@@ -328,26 +327,28 @@ function CustomBody({
   const [hydratedFor, setHydratedFor] = useState<string | null>(null)
   if (hydrationKey !== null && hydrationKey !== hydratedFor) {
     setHydratedFor(hydrationKey)
-    setMode(currentConnection?.credential_id ?? tool?.credential_id ?? CREDENTIAL_NONE)
+    setMode(currentConnection?.credential_id ?? CREDENTIAL_NONE)
   }
 
   const availableCredentials = credentials ?? []
-  const isPending = createConnection.isPending || updateConnection.isPending
+  const isPending = findOrCreate.isPending || updateConnection.isPending
 
-  // Bridge override: tool이 connection과 다른 credential을 직접 지정 중.
-  // M5 정책 — 경고 배너만, 실제 tool.credential_id 변경은 M6까지 미루다.
-  const showBridgeWarning =
-    triggerContext === 'tool-edit' &&
-    !!tool?.credential_id &&
-    !!currentConnection?.credential_id &&
-    tool.credential_id !== currentConnection.credential_id
+  // 기존 tool인데 connection이 없는 경우(첫 바인딩) runtime이 fail-closed인데
+  // tool.connection_id를 쓰는 API가 없어 수리 경로가 없다. 옵션 D가 들어오는
+  // M6.1까지는 UX로 차단.
+  const needsOptionDFirstBind = !!tool && !tool.connection_id
+  const saveDisabled = isPending || needsOptionDFirstBind
 
   async function handleSave() {
+    if (needsOptionDFirstBind) {
+      toast.error(t('toast.unsupportedFirstBindM6'))
+      return
+    }
     const credentialId = mode === CREDENTIAL_NONE ? null : mode
     try {
       let result: Connection
       if (currentConnection) {
-        // 기존 connection의 credential rotate — tool.credential_id는 건드리지 않음 (bridge 보존)
+        // 기존 connection의 credential rotate. (M6 이후 tool.credential_id 컬럼 자체 삭제됨.)
         result = await updateConnection.mutateAsync({
           id: currentConnection.id,
           data: { credential_id: credentialId, status: 'active' },
@@ -357,22 +358,11 @@ function CustomBody({
           onClose()
           return
         }
-        // find-or-create — 같은 credential을 공유하는 connection이 이미 있으면 재사용 (ADR-008 N:1).
-        const cached = qc.getQueryData<Connection[]>(
-          scopeKey({ type: 'custom', provider_name: CUSTOM_PROVIDER_NAME }),
+        const credential = availableCredentials.find((c) => c.id === credentialId)
+        result = await findOrCreate.run(
+          credentialId,
+          credential?.name ?? toolName ?? 'Custom connection',
         )
-        const existing = cached?.find((c) => c.credential_id === credentialId)
-        if (existing) {
-          result = existing
-        } else {
-          const credential = availableCredentials.find((c) => c.id === credentialId)
-          result = await createConnection.mutateAsync({
-            type: 'custom',
-            provider_name: CUSTOM_PROVIDER_NAME,
-            display_name: credential?.name ?? toolName ?? 'Custom connection',
-            credential_id: credentialId,
-          })
-        }
       }
       toast.success(t('toast.saved'))
       onBound?.(result)
@@ -403,16 +393,6 @@ function CustomBody({
       </DialogHeader>
 
       <div className="space-y-4 py-2">
-        {showBridgeWarning && (
-          <div
-            role="alert"
-            className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800"
-          >
-            <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-            <span>{t('custom.bridgeOverrideWarning')}</span>
-          </div>
-        )}
-
         <div className="space-y-2">
           <label className="text-sm font-medium flex items-center gap-1.5">
             <LinkIcon className="size-3.5" />
@@ -438,11 +418,21 @@ function CustomBody({
         )}
       </div>
 
+      {needsOptionDFirstBind && (
+        <div
+          role="alert"
+          className="mb-4 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800"
+        >
+          <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
+          <span>{t('custom.unsupportedFirstBindM6')}</span>
+        </div>
+      )}
+
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
           {tc('cancel')}
         </Button>
-        <Button onClick={handleSave} disabled={isPending}>
+        <Button onClick={handleSave} disabled={saveDisabled}>
           {isPending && (
             <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
           )}

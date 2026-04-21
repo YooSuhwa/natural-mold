@@ -47,13 +47,10 @@ async def _seed_full_setup(
                 type="builtin",
                 is_system=True,
                 description="Search",
-                auth_config={"server_key": "sk"},
             )
             db.add(tool)
             await db.flush()
-            link = AgentToolLink(
-                agent_id=agent.id, tool_id=tool.id, config={"agent_override": "ov"}
-            )
+            link = AgentToolLink(agent_id=agent.id, tool_id=tool.id)
             db.add(link)
 
         trigger = AgentTrigger(
@@ -283,7 +280,7 @@ async def test_execute_trigger_creates_conversation():
 
 @pytest.mark.asyncio
 async def test_execute_trigger_with_tools_config():
-    """Tools config should include merged auth from tool + agent link."""
+    """BUILTIN tools resolve with empty auth (M6 이후 legacy 컬럼 drop)."""
     trigger_id, _ = await _seed_full_setup(with_tools=True)
 
     captured_args: list = []
@@ -309,9 +306,7 @@ async def test_execute_trigger_with_tools_config():
     # args[0] is AgentConfig — check tools_config on it
     cfg = captured_args[0]
     assert len(cfg.tools_config) == 1
-    auth = cfg.tools_config[0]["auth_config"]
-    assert auth["server_key"] == "sk"
-    assert auth["agent_override"] == "ov"
+    assert cfg.tools_config[0]["auth_config"] is None
 
 
 @pytest.mark.asyncio

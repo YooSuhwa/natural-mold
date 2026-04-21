@@ -1,120 +1,128 @@
-# progress.txt — 백로그 E M5 (UI 통합 + F 흡수, 프론트 전용)
+# progress.txt — 백로그 E M6 (Cleanup — backend drop + legacy 제거)
 
-## Codebase Patterns (M1~M4에서 확인된 것)
-- 모델 컬럼 추가 시 Pydantic 응답/요청 + FE 타입 세트 체크 (M3 provider_name, M4 connection_id 두 번 다 블로커)
-- Alembic revision ID 32자 이하 (alembic_version VARCHAR(32))
-- `is_default` partial unique index — user×type×provider당 1개
-- PG 네이티브 SQL 이관은 aiosqlite 테스트에서 `inspect.getsource` 계약 가드로만 검증
-- React Query setQueryData seed 패턴 (M4 useCreateConnection.onSuccess) — invalidate 대신 seed로 race 방지
-- find-or-create 패턴: `useConnections({type, provider_name})` + filter → 없으면 CredentialFormDialog → useCreateConnection
+## Codebase Patterns (M1~M5에서 확인된 것)
 
-## Policy Invariants (chat_service, M5에서 깨면 안 됨)
-- CUSTOM kill-switch(status='active') > bridge override 선행 (rotation 우회 차단)
-- PREBUILT "no connection" → env fallback({}) / CUSTOM "no connection" → legacy fallback (비대칭 의도)
-- CUSTOM `tool.credential_id`는 `connection.credential_id`에서 derive
-- 공통 방어 함수 에러 메시지는 도구 타입 중립("Tool '{name}'")
-- `_resolve_prebuilt_auth` / `_resolve_custom_auth` 공용 gate 사용 (`_gate_connection_active`, `_gate_connection_credential`)
+- Alembic convention: `m{N}_<snake_case>.py`. 최신 head는 `m11_custom_credential_migration`.
+- FK constraint naming: `fk_<table>_<col>` 패턴 사용. drop 시 명시적 constraint name.
+- aiosqlite in-memory 테스트 — 실제 FK cascade 동작이 PG와 다를 수 있음. 통합 검증은 docker PG 사용.
+- Connection 엔티티는 1:1(CUSTOM) 또는 N:1(MCP 공유) credential 참조. M5 기준 is_default=True인 PREBUILT connection이 tool.connection_id와 매핑.
+- `status='active' | 'disabled'` kill-switch. disabled → fail-closed at chat_service.
 
-## File Boundaries (M5 drive-by 금지)
-- 백엔드 변경 0건 — 모델/서비스/라우터/alembic 절대 수정 금지
-- M5.5 영역(`agent_tools.connection_id` override): 모델 컬럼 추가 / Alembic m12 / chat_service 분기 / agent_tools 라우터 — 0건
-- M6 영역(legacy drop): `tool.credential_id`, `tool.auth_config`, `tool.mcp_server_id`, `agent_tools.config` 컬럼 — 0건
-- `mcp_servers` 테이블 / `lib/api/mcp-servers.ts` — 표면적 호출은 변경 가능하나 테이블 drop은 M6
+## Gotchas
 
-## Known Pre-existing Issues (M4 HANDOFF)
-- `frontend/src/lib/chat/use-chat-runtime.ts:74` `streamError` unused (lint warning) — 건드리지 말 것 (drive-by 방지)
-- 깨진 프론트 테스트: `tests/components/chat/*`, `tests/pages/chat.test.tsx`, `agent-*` — 신규 깨짐만 0이면 OK
+- `tools.credential_id` FK ondelete=SET NULL → drop 시 FK constraint 먼저 제거 필수
+- `tools.mcp_server_id` FK는 ondelete RESTRICT일 수 있음 — 드롭 전 확인
+- `chat_service.py` `merged_auth = {**cred_auth, **(link.config or {})}` 라인 — `link.config`는 `agent_tools.config`. 실제로 저장된 값이 있는지 S1에서 재확인
+- `ToolResponse._mask_auth_config`는 auth_config 컬럼 제거와 함께 삭제. 다른 곳에서 참조 없는지 grep
+- `lib/api/tools.ts` `updateAuthConfig` 함수 — 호출처가 모두 dead인지 M5 이후 상태 확인 (UI 통합 후 3개 legacy dialog 삭제됨 → 호출처 0일 가능성 높음)
+- `use-chat-runtime.ts:74` streamError unused warning은 M5 알려진 부채. M6에서 건드리지 말 것
+- `credentials.ts` / `use-credentials.ts`는 UI 분리되었지만 Connection 내부 API로 살아있음. 지우지 말 것
 
-## M5 Specific Patterns (작업 중 추가)
-- [tim-cook S2 완료] UX spec 2종:
-  - `docs/design-docs/m5-connection-binding-dialog-spec.md` — props 계약, state machine(idle→loading→connection_select/credential_form→binding→success/error), type별 분기, i18n 키(`connections.bindingDialog.{prebuilt|custom|mcp}.*`), 접근성 체크리스트, 호출처 시그니처 변경표
-  - `docs/design-docs/m5-connections-page-redesign-spec.md` — 3섹션(PREBUILT provider별 subgroup / CUSTOM flat / MCP flat), ConnectionCard + Drawer 상세, 삭제/제거 항목 체크리스트, i18n `connections.sections/card/detail.*`
-- ConnectionBindingDialog props 계약 핵심:
-  - **저장 동작을 호출측이 선택하지 않는다** — 셸이 Connection upsert까지 책임. 호출측은 `onBound(connection)` 이후 동작(tool POST/PATCH/닫기)만 처리
-  - `triggerContext: 'tool-create' | 'tool-edit' | 'standalone'` 로 i18n 카피/CTA 레이블 분기
-  - CUSTOM find-or-create는 M4 `resolveCustomConnectionId` 로직을 셸 내부 util로 승격
-  - CUSTOM bridge override 보존: tool-edit에서 `tool.credential_id != connection.credential_id`면 경고 배지만 노출. 실제 갱신은 호출측이 판단 (M6까지 유지)
-- MCP 관련 결정 (저커버그 주의):
-  - ConnectionBindingDialog(type='mcp')는 Section A(display_name/url/transport/auth_type) + Section B(credential) + Section C(headers/env_vars 최소 편집 UI)를 담는다
-  - `tool-edit` 맥락에서 Section A는 read-only, Section B만 수정 가능
-  - `extra_config.env_vars` 값은 `${credential.<field>}` 템플릿만 허용 — 클라이언트 validation + role=alert
-  - `add-tool-dialog` MCP 탭도 이 셸로 흡수 (기존 인라인 폼 제거, `onBound`에서 tool 등록 이어가기)
-- /connections 페이지 재편 핵심:
-  - 기존 Credential 카드/검색/타입 필터/최상단 "연결 추가" 제거 → 섹션별 CTA로 분산
-  - PREBUILT 그룹 순서 고정: `['naver', 'google_search', 'google_chat', 'google_workspace']`
-  - ConnectionCard에 "사용 중 tool 카운트" 표시 — 신규 `useToolsByConnection(connectionId)` 파생 selector (useTools 캐시 재사용). MCP는 tool→mcp_server→connection 이중 hop 필요
-  - Connection 삭제: 사용 중 tool >0이면 차단. is_default PREBUILT 삭제 시 "동일 provider의 다른 connection 없음" 경고
-  - Connection 상세는 Sheet(drawer) 권장. credential 편집은 `CredentialFormDialog` 직접 오픈 (비밀 rotate 동선)
-- i18n 충돌 방지: 신규 키 `connections.bindingDialog.{prebuilt|custom|mcp}.*` / `connections.sections/card/detail.*`. 기존 `tool.addDialog.*`, `tool.customAuth.*`, `tool.mcpServer.auth.*`, `connections.prebuiltSection.*` 와 중복 금지. `connections.prebuiltSection.*`은 deprecated (M6 cleanup에서 드롭)
-- 저커버그 구현 순서 권장: (1) ConnectionBindingDialog를 discriminated union으로 확장(`type` branch) → (2) tools/page.tsx 호출부 교체로 회귀 체크 → (3) /connections 재편 → (4) add-tool-dialog MCP 탭 셸 호출로 치환 → (5) 3 레거시 dialog 파일 thin wrapper 또는 삭제
-- ConnectionBindingDialog는 M3에서 이미 PREBUILT 전용으로 구현됨 (components/connection/connection-binding-dialog.tsx, 237줄). 셸 존재 — S3는 `type` discriminated union 확장 작업
-- PrebuiltAuthDialog는 이미 thin wrapper (60줄). legacy fallback 한 줄(provider_name NULL → CustomAuthDialog 위임)이 backend fallback과 1:1 대응 — 파일 유지, 호출부만 교체가 안전
-- CustomAuthDialog/MCPServerAuthDialog도 **파일 유지, 호출부만 교체** 전략 (F 흡수 검증은 호출부 grep 0으로 판정)
-- connections/page.tsx의 CredentialCard(302-368) + filteredCredentials/search/typeFilter(64-84)는 즉시 삭제. PrebuiltConnectionSection(204-300)은 유지하되 재구성
-- `useCredentials`/`useDeleteCredential` hook **자체는 유지** — Connection 상세 drawer가 재사용. UI 직접 노출만 제거
-- add-tool-dialog MCP 탭은 server+credential 선행 흐름 — ConnectionBindingDialog(type='mcp') 흡수 대신 "새 credential 생성" CTA만 수렴 권장 (server create는 별개)
-- MCP connection semantics: credential은 server 2차 속성. ConnectionBindingDialog(type='mcp')는 mcp_server_id를 context로 받아 credential binding만 담당
-- tools/page.tsx getAuthStatus(미열람)가 `tool.credential_id` 기반일 가능성 — S3 구현 시 Custom tool configured 판정 회귀 체크 필수 (베조스 ? 플래그)
+## 실패 교훈
 
-## M5 Spec v2 업데이트 (2026-04-19, 베조스 S1 5개 항목 반영)
+- 2026-04-21 [젠슨 S3]: `credential_service.get_usage_count`가 `Tool.credential_id`를 SELECT하고 있었음 — M6 drop 스코프와 간접 충돌. 해결: `tools JOIN connections ON tools.connection_id = connections.id WHERE connections.credential_id = X`로 재작성 (stale UI 호출이 `{credential_id}/usage` 엔드포인트 끊기면 안 되기 때문). `mcp_server_count`는 MCPServer 유지 스코프이므로 그대로.
+- 2026-04-21 [젠슨 S3]: `_resolve_legacy_tool_auth`가 모듈 외부(`__all__` + test imports)에 노출되어 있어 함수 삭제 시 두 테스트 파일(`test_connection_custom_resolve.py` / `test_connection_prebuilt_resolve.py`)이 ImportError로 전체 collection 실패. 해결: import 제거 + legacy 전용 testcase 삭제 + M6 fail-closed 시나리오로 교체.
+- 2026-04-21 [젠슨 S3]: `Tool(auth_config=..., credential_id=...)` / `AgentToolLink(config=...)` 생성자 kwarg를 쓰던 테스트가 모델 레이어 drop과 함께 TypeError 발생. 전수 grep으로 8개 파일에서 일괄 정리.
 
-- **확장 관점**: ConnectionBindingDialog는 신규 아닌 M3 기존 셸 **확장**. `type` discriminated union + 신규 props는 기존 `onSaved` alias 유지로 PREBUILT 호출처 후방 호환
-- **Props 결과 shape (discriminated)**:
-  - PREBUILT/CUSTOM: `onBound({ kind: 'connection', connection })`
-  - MCP: `onBound({ kind: 'mcp-credential', serverId, credentialId })` — Connection 엔티티 미생성
-  - 기존 `onSaved(connection)`는 legacy alias로 유지
-- **CUSTOM bridge 보존 정책 (M5)**: 기본 저장은 `connection.credential_id`만 PATCH, `tool.credential_id`는 건드리지 않음. UI는 bridge 상태 경고 배너 + "공통 connection으로 복귀" 옵션 버튼만 제공. override clear는 M6에서 일괄
-- **MCP 스코프 축소 (베조스 §2.2 권장 채택)**: `type='mcp'` 셸은 **credential binding만** 담당. server create/edit는 기존 add-tool-dialog / mcp-server-rename-dialog 유지. Section A(URL/transport) 와이어프레임 제거, CredentialSelect-only로 단순화. props에 `mcpServerId` 추가. 내부 저장은 `useUpdateMCPServer({credential_id})`
-- **/connections MCP 섹션 "연결 추가" CTA**: ConnectionBindingDialog 진입 X. 대신 `add-tool-dialog` MCP 탭을 연다. `AddToolDialog`에 `defaultTab='mcp'` prop 추가는 허용 (드라이브바이 최소 한 줄)
-- **Credential 삭제 semantics (N:1 반영)**:
-  - Connection 삭제 ≠ Credential 삭제. connection row만 제거, credential row는 살아남음 (고아 허용)
-  - Credential 삭제는 `CredentialFormDialog` 내 삭제 버튼에서만 — 다른 connection 참조 중이면 disabled
-  - Drawer "삭제" 라벨은 "이 연결만 삭제 (credential은 유지)"로 명시
-  - drawer의 credential 관련 action은 [변경]/[편집]/(⋮→[삭제]) 3종 — 파괴 동작은 한 단계 숨김
-- **tools/page.tsx getAuthStatus 회귀 주의 (§12.1 + §11b.1)**: CustomAuthDialog 교체 시 `tool.credential_id` 단독 판정이면 bridge 보존 원칙상 회귀 없음. 신규 `tool.credential_id IS NULL AND connection_id NOT NULL` row 등장 시 판정 로직을 `connection_id`로 확장 필요. S5 수동 E2E 3종 (bridge/신규/legacy-only) 필수
-- **useToolsByConnection 파생 selector**: CUSTOM은 `tool.connection_id` 매칭, MCP는 `tool.mcp_server_id → mcp_server.credential_id → connection.credential_id` 이중 hop. type별 분기 필수
-- **PREBUILT 호출처 후방 호환**: `type` narrowing + `isPrebuiltProviderName` guard 유지, `useConnections`는 type='mcp' 시 스킵
+## 결정사항 (S3 젠슨 추가)
 
-## S3 구현 결과 (zuckerberg, 2026-04-19)
-- ConnectionBindingDialog 확장 완료: discriminated union `{ type: 'prebuilt' | 'custom' | 'mcp' }`, 237줄 → 524줄
-- 외부 호출부 교체 2건: `tools/page.tsx` (PrebuiltAuthDialog + CustomAuthDialog 인라인 Button + 제어형 open state로), `mcp-server-group-card.tsx` (MCPServerAuthDialog)
-- `add-tool-dialog.tsx` MCP 탭은 손대지 않음 — progress.txt v2에 따라 MCP 셸은 기존 server의 credential 재바인딩만 담당
-- 3 legacy dialog 파일(`prebuilt-auth-dialog.tsx`, `custom-auth-dialog.tsx`, `mcp-server-auth-dialog.tsx`)은 파일 유지 — F 흡수 판정은 외부 호출처 grep 0건으로 (확인됨)
-- 호출부 패턴 (React 19 + shadcn Dialog 제어형):
-  - open state를 ToolCard/MCPServerGroupCard 안에 `useState` 로 두고 Button `onClick={() => setOpen(true)}` 로 트리거
-  - ConnectionBindingDialog는 `open`/`onOpenChange` 제어형으로 렌더, `trigger` prop 사용 안 함 (ConnectionBindingDialog는 DialogTrigger 소비 안 함)
-  - PREBUILT 호출 시 `isPrebuiltProviderName(tool.provider_name)` guard로 좁혀 타입 안전성 유지 (PrebuiltProviderName literal union 요구)
-  - MCP 호출 시 `currentCredentialId={server.credential_id}` 전달 — `MCPServerListItem`은 `credential_id: string | null` 와 `credential: CredentialBrief | null` 둘 다 제공, id만 쓰면 됨
-- getAuthStatus 회귀 없음 — tools/page.tsx의 L92-114는 PREBUILT는 connection 기반, CUSTOM은 `tool.credential_id` 단독. CUSTOM bridge 보존 원칙으로 새 dialog가 tool.credential_id를 건드리지 않으므로 기존 판정 유지
-- PrebuiltBody는 `onSaved` legacy alias 계속 발사 — /connections 페이지의 PrebuiltConnectionSection이 `onSaved`를 쓰는 경우 호환
-- i18n 충돌 없음: `connections.bindingDialog.{custom,mcp}.*` 신규 (기존 `tool.customAuth.*`, `tool.mcpServer.auth.*` 는 legacy wrapper 전용으로 유지)
-- lint: 기존 streamError 경고 1건 외 0건. build: PASS (Next.js 16 Turbopack, 4.0s compile)
+- 2026-04-21 [젠슨 S3]: PATCH `/api/tools/{id}/auth-config` 엔드포인트 + `ToolAuthConfigUpdate` 스키마 + `tool_service.update_tool_auth_config` 완전 삭제 (베조스 권고 수용).
+- 2026-04-21 [젠슨 S3]: `_resolve_legacy_tool_auth` 함수 완전 삭제. PREBUILT provider_name NULL 분기 + BUILTIN else 분기는 `cred_auth = {}`로 단순화 (env fallback과 동치).
+- 2026-04-21 [젠슨 S3]: CUSTOM tool이 connection_id NULL이면 `ToolConfigError` fail-closed (legacy `_resolve_legacy_tool_auth` 위임 제거).
+- 2026-04-21 [젠슨 S3]: `_mask_auth_config` / `AUTH_CONFIG_MASK` / `_reject_mask_sentinel` 전부 제거. ToolResponse가 이제 auth_config 필드 자체를 가지지 않으므로 masking 불필요.
+- 2026-04-21 [젠슨 S3]: `tool_service._apply_credential_update` 시그니처 좁힘(`Tool | MCPServer` → `MCPServer` only). Tool은 M6 이후 credential_id 없음.
 
-## S4 구현 결과 (zuckerberg, 2026-04-19)
-- `/connections` 페이지 전면 재작성 — Credential 카드/검색/type 필터 제거, 3섹션(PREBUILT/CUSTOM/MCP) 구조
-- 신규 파일 2건:
-  - `components/connection/connection-card.tsx` — display_name · provider badge · status badge · is_default badge · credential 이름 · 사용 tool 카운트 (useToolsByConnection 기반)
-  - `components/connection/connection-detail-sheet.tsx` — Sheet drawer (shadcn sheet.tsx 재사용). 개요/Credential/사용 tool 목록/위험 구역 (status toggle + "이 연결만 삭제")
-- 신규 selector `useToolsByConnection(connection: Connection)` 를 `lib/hooks/use-tools.ts` 에 추가 — CUSTOM/PREBUILT는 `tool.connection_id === connection.id` 매칭, MCP는 `mcp_server.credential_id === connection.credential_id` 이중 hop
-- Connection 삭제: 사용 중 tool > 0이면 Button disabled + 경고 카피. PREBUILT의 `is_default && 같은 provider 다른 connection 0개` 시 추가 경고 카피
-- Credential 편집 버튼 → `CredentialFormDialog(editingCredential)` 직접 오픈. Credential 삭제는 CredentialFormDialog 내부 (이번 S4 범위 외)
-- MCP 섹션 "연결 추가" CTA는 `<AddToolDialog trigger={...} />` 로 위임 — spec §3.3 옵션 A (add-tool-dialog 드라이브바이 없음, 탭 고정 prop 추가 없이 기본 동작 허용)
-- MCP drawer 내 credential 변경은 표시하지 않음 — server-group-card 측에서 수행 (mcp_server PATCH 경로 유지). drawer에서는 개요/사용 tool/상태 전환/삭제만 제공
-- Connection 삭제는 `useDeleteConnection` 호출 — credential row는 보존 (ADR-008 N:1)
-- i18n 신규 네임스페이스: `connections.sections.{prebuilt,custom,mcp}`, `connections.card.*`, `connections.detail.*`, `connections.emptyPage.*`, `connections.statusToast.*`. 기존 `connections.prebuiltSection.*`은 deprecated (M6 drop)
-- `common.close` 한 줄 추가 (sheet close 버튼 aria-label)
-- 회귀 체크: lint PASS (기존 streamError 외 0), build PASS. `CredentialCard|filteredCredentials` grep 0건
-- PrebuiltConnectionSection 기존 인라인 구현(302-368, 204-300)은 완전 삭제됨 — 사용자 생성 PREBUILT connection은 새 카드로 노출됨
+## S4 변경 요약 (저커버그)
 
-## S5 검증 결과 (bezos, 2026-04-19)
-- 자동 회귀 전수 PASS: pytest 646 passed / ruff PASS / lint 기존 1건만 / build PASS / F 흡수 grep 0 / backend diff 0
-- 코드 경로 정적 추적으로 7 시나리오 (S1-S7) 전수 통과
-  - PREBUILT 자동 매칭: tools/page.tsx:380-385 `is_default && credential_id && status === 'active'` 3중 조건 = fail-closed gate
-  - CUSTOM N:1: CustomBody.handleSave (cbd:334-348) + add-tool-dialog.tsx:96-116 양쪽 find-or-create
-  - Connection 삭제 차단: connection-detail-sheet.tsx:270 `disabled={hasUsage}` + backend FK 이중 차단
-  - getAuthStatus 회귀: bridge 보존 원칙(`tool.credential_id` 미터치)으로 현 M5 변경 0, 회귀 경로 불가능
-- 베조스 S1 위험 5건 전수 해소 (tasks/manual-e2e-e-m5.md §4 테이블)
-- 수동 E2E 보고서 = 정적 추적 + 브라우저 실측 체크리스트 분리 (브라우저 실측은 docker-compose+dev server 시간 비용으로 S6/PR 단계로 위임)
+- 수정 파일 5개:
+  - `frontend/src/lib/types/index.ts` — `Tool.auth_config` / `Tool.credential_id` 제거, `ToolCustomCreateRequest.auth_config` / `credential_id` 제거. **유지**: `Tool.mcp_server_id`, `MCPServer*` 타입 전부, `MCPServerCreate/Update/ListItem`.
+  - `frontend/src/lib/api/tools.ts` — `updateAuthConfig` 함수 제거 (PATCH `/api/tools/{id}/auth-config` dead). **유지**: MCP server CRUD 4종 + `testMCPConnection`.
+  - `frontend/src/lib/hooks/use-tools.ts` — `useUpdateToolAuthConfig` hook 제거. **유지**: `useRegisterMCPServer`, `useMCPServers`, `useUpdateMCPServer`, `useDeleteMCPServer`, `useToolsByConnection` (mcp_server_id 참조 포함).
+  - `frontend/src/app/tools/page.tsx` — `getAuthStatus`에서 `tool.credential_id` / `tool.auth_config` legacy 분기 제거, `handleCustomBound` 함수 + `updateAuth` hook 호출 제거, `Connection` import 제거, prebuilt-NULL-fallback 주석 갱신. MCP 섹션은 건드리지 않음.
+  - `frontend/src/components/tool/add-tool-dialog.tsx` — custom tool POST body의 `credential_id: customCredentialId` 제거 (connection_id만 전송).
+  - `frontend/src/components/connection/connection-binding-dialog.tsx` — `showBridgeWarning` 블록 전체 제거, 하이드레이션의 `tool?.credential_id` fallback 제거, unused `triggerContext` param 제거. MCP body는 건드리지 않음.
 
-## 실패 교훈 (작업 중 추가)
-- (M5 내 실패 사례 없음 — S1 분석 정밀도가 높아 S2-S5가 직선적으로 진행됨)
+- 삭제 라인 수: 약 60줄 (tool.auth_config/credential_id 관련 로직 + updateAuthConfig API/hook + bridge warning UI + unused imports/params).
+
+- 검증: `pnpm lint` → 기존 `use-chat-runtime.ts:74` 1건만 남음 (요구된 동작). `pnpm build` → 15 routes, Turbopack compile 4.2s PASS.
+
+- 예상 외 발견:
+  - `showBridgeWarning` 제거로 `CustomBody`의 `triggerContext` param이 완전 dead가 되어 새 ESLint warning 발생 → destructure에서 제거로 해결.
+  - `app/tools/page.tsx`의 `Connection` type import가 `handleCustomBound` 제거로 unused → 함께 제거.
+  - `add-tool-dialog.tsx`는 MCP 경로에서 `credential_id: mcpCredentialId` 전송을 유지 (MCPServerCreateRequest는 M6.1까지 live) — CUSTOM 경로의 tool POST body에서만 legacy `credential_id` 필드 전송 제거.
+
+## S3 변경 요약 (젠슨)
+
+- Alembic: `backend/alembic/versions/m12_drop_legacy_columns.py` 신규 (upgrade/downgrade round-trip docker PG PASS)
+- 모델: `backend/app/models/tool.py` — `Tool.credential_id` / `Tool.auth_config` / `Tool.credential` relationship / `AgentToolLink.config` 삭제. `MCPServer`, `Tool.mcp_server_id`, `Tool.mcp_server` 유지.
+- 서비스: `chat_service.py` (bridge override + legacy resolver 삭제, merged_auth 단순화), `agent_service.py` (`_build_tool_links` 시그니처 단순화 + tool_configs 처리 삭제), `tool_service.py` (`create_custom_tool` 단순화, `update_tool_auth_config` 삭제, `_apply_credential_update` 축소), `credential_service.py` (`get_usage_count` tool_count 쿼리 재작성).
+- 라우터/스키마: `routers/tools.py` (`PATCH /auth-config` 삭제), `routers/agents.py` (`ToolBrief.agent_config` 제거), `schemas/tool.py` (`_mask_auth_config` + `ToolAuthConfigUpdate` + `ToolCustomCreate.{credential_id,auth_config}` + `ToolResponse.{auth_config,credential_id}` 제거), `schemas/agent.py` (`ToolConfigEntry` + `tool_configs` + `ToolBrief.agent_config` 제거).
+- Agent runtime: `agent_runtime/assistant/tools/write_tools.py` (`update_tool_config` 삭제), `read_tools.py` (`get_tool_config` 삭제 + `get_agent_config`의 `config` 반환 제거).
+- 테스트: 1개 파일 전체 삭제 (`test_agent_tool_config.py`), 22개 testcase 삭제 혹은 재작성 (legacy credential/bridge override/PATCH auth-config). Round-trip pytest 624/624 PASS, ruff clean.
+
+## 결정사항
+
+- 2026-04-21: M6 스코프 = 백엔드 cleanup만. 옵션 D + UI 리팩토링은 M6.1로 분리
+- 2026-04-21: M5.5 (agent_tools.connection_id override)는 M6 이후 — 깨끗한 스키마 위에서 설계
+- 2026-04-21: m12 downgrade는 구조만 복구, 데이터 복구 불가 명시
+- 2026-04-21 [피차이 S2]: m12 down_revision = `m11_custom_connection` (파일명 m11_custom_credential_migration.py의 내부 revision ID — 파일명 ≠ revision ID 주의)
+- 2026-04-21 [피차이 S2]: m12 upgrade 순서 확정 = (1) FK drop tools_mcp_server_id_fkey + fk_tools_credential_id → (2) tools 컬럼 3개 drop → (3) agent_tools.config drop → (4) mcp_servers 테이블 drop. drop_table이 mcp_servers 내부 FK(fk_mcp_servers_credential_id, user_id)를 자동 정리
+- 2026-04-21 [피차이 S2]: tools.mcp_server_id FK 이름은 initial migration aa5b4cc59ddb가 **이름 없이** 생성 → PG 기본명 `tools_mcp_server_id_fkey`. 배포 전 `\d tools`로 실측 확인 필수 (spec §8.2)
+- 2026-04-21 [피차이 S2]: tools.credential_id FK 이름은 m6_add_credentials.py에서 명시된 `fk_tools_credential_id` (확정)
+- 2026-04-21 [피차이 S2]: connections 테이블은 mcp_servers를 FK로 참조하지 않음 — drop 안전. tools.mcp_server_id가 mcp_servers를 참조하는 유일한 FK
+- 2026-04-21 [피차이 S2]: pre-check 3쿼리 필수 (stale_custom_tools=0, stale_mcp_tools=0, non_empty_agent_tool_configs는 S1과 교차검증). spec §5.1
+- 2026-04-21 [피차이 S2]: 스펙 → docs/design-docs/m6-cleanup-migration-spec.md. 젠슨 S3 input 준비 완료
+- 2026-04-21 [베조스 S1]: deletion-analysis-e-m6.md 작성 완료. 판정 = **주의**. agent_tools.config drop은 3파트 원자 정리 필수:
+  (1) schemas/agent.py ToolConfigEntry / AgentCreate.tool_configs / AgentUpdate.tool_configs / ToolBrief.agent_config
+  (2) services/agent_service.py tool_configs 처리 블록 (line 74-77, 124-137) + _build_tool_links 시그니처
+  (3) agent_runtime/assistant/tools/write_tools.py update_tool_config(line 312-330) + read_tools.py get_tool_config/get_agent_config.tools[].config
+  이 중 하나라도 빠지면 AI 에이전트 생성 대화에서 AttributeError. 프론트는 해당 필드 미사용(grep 0) → UI 회귀 없음
+- 2026-04-21 [베조스 S1]: chat_service.py merged_auth 라인은 `merged_auth = cred_auth` 로 단순화 (link.config 제거)
+- 2026-04-21 [베조스 S1]: `_resolve_legacy_tool_auth` 완전 삭제 결정 — PREBUILT provider_name NULL / CUSTOM connection_id NULL / BUILTIN else 3분기 모두 제거. CUSTOM NULL은 ToolConfigError raise로 변경 (fail-closed)
+- 2026-04-21 [베조스 S1]: `PATCH /api/tools/{id}/auth-config` 라우터 + ToolAuthConfigUpdate 스키마 삭제 권고 (dead path) — 사티아 최종 판단
+- 2026-04-21 [베조스 S1]: frontend S4 scope 경고 — `app/tools/page.tsx` MCP 섹션, `add-tool-dialog`, `mcp-server-*-dialog`, `connection-binding-dialog`의 `useUpdateMCPServer` 사용처는 "thin cleanup"을 초과 가능. 저커버그가 S4 착수 전 사티아 범위 승인 권고
+- 2026-04-21 [사티아 SCOPE_REDUCED_2]: M6 실제 scope **축소** = `tools.auth_config` + `tools.credential_id` + `agent_tools.config` drop만. mcp_servers/tools.mcp_server_id/resolve_server_auth/chat_service MCP fallback 전부 **M6.1로 이월** (옵션 D 선행 필요). 이유: connection-binding-dialog.tsx:479가 useUpdateMCPServer 라이브 호출 중 → MCP drop 불가. 피차이 spec §mcp_servers drop은 M6.1에서 재사용, S3 젠슨은 spec §4.1-4.2 tools/agent_tools drop만 사용. 베조스 S1 MCP fallback/`_resolve_legacy_tool_auth` MCP 분기 삭제도 M6.1로 이월.
+
+## S5 검증 결과 (베조스)
+
+- 2026-04-21 [베조스 S5]: 자동 검증 전수 PASS
+  - `uv run ruff check .` → `All checks passed!` (0.14s)
+  - `uv run pytest -q` → `624 passed, 1 deselected, 3 warnings in 81.21s`
+  - `pnpm lint` → `1 problem (0 errors, 1 warning)` — 기존 use-chat-runtime.ts:74만 (신규 깨짐 0), 4.40s
+  - `pnpm build` → `15 routes`, Turbopack, 10.19s
+  - Alembic round-trip on docker PG (fresh DB `moldy_m6verify`): `upgrade head (m12) → downgrade -1 (m11) → upgrade head (m12)` 전부 PASS
+
+- 2026-04-21 [베조스 S5]: grep 불변식 — 삭제 스코프 0건 (MCPServer 이월 스코프 제외)
+  - `rg "link\.config|AgentToolLink.*config" backend/app/` → 0
+  - `rg "tool\.credential_id|Tool\.credential_id" backend/app/` → 0 (docstring 1건 제외)
+  - `rg "ToolConfigEntry|tool_configs|ToolAuthConfigUpdate" backend/app/` → 0
+  - `rg "_mask_auth_config|AUTH_CONFIG_MASK" backend/app/` → 0
+  - `rg "_resolve_legacy_tool_auth" backend/app/` → 0
+  - `rg "tool_configs|agent_config" frontend/src` → 0
+  - `rg "updateAuthConfig|useUpdateToolAuthConfig" frontend/src` → 0
+  - `\.auth_config` 잔존 매칭은 backend 4건 / frontend 3건 전부 **MCPServer 스코프** (types/service/model) — M6.1 이월 대상이라 유지되어야 함
+
+- 2026-04-21 [베조스 S5]: 유지 스코프 존재 확인 (M6.1 이월)
+  - `backend/app/models/tool.py:34` `class MCPServer` 존재
+  - `backend/app/models/tool.py:71` `mcp_server_id` FK 존재
+  - `backend/app/services/credential_service.py:111` `resolve_server_auth(server: MCPServer)` 존재
+  - `frontend/src/lib/hooks/use-tools.ts:97` `useUpdateMCPServer` 존재
+
+- 2026-04-21 [베조스 S5]: DB 스키마 실측 (docker PG, m12 head)
+  - `\d tools` → 컬럼 15개 중 `auth_config`/`credential_id` **부재** 확인, `mcp_server_id`/`connection_id` 존재. FK `fk_tools_connection_id`(SET NULL) + `tools_mcp_server_id_fkey` 동시 존재
+  - `\d agent_tools` → `(agent_id, tool_id)` 2컬럼만. `config` 부재
+  - `SELECT to_regclass('mcp_servers')` → `mcp_servers` 존재 (M6.1 이월)
+
+- 2026-04-21 [베조스 S5]: 잠재 회귀 포인트 3개 전수 검증
+  - (1) `credential_service.get_usage_count` — 단일 호출처 `routers/credentials.py:93`, `tools JOIN connections` 재작성 쿼리 정상. `test_credentials.py` 5/5 PASS. 회귀 없음.
+  - (2) `_resolve_legacy_tool_auth` 삭제 후 CUSTOM null connection 커버리지 — `chat_service.py:306` fail-closed, `test_connection_custom_resolve.py::test_custom_resolves_raises_when_connection_id_is_null` 포함 12/12 PASS. 회귀 없음.
+  - (3) `_mask_auth_config` 제거 후 masking 누수 — ToolResponse가 auth_config 필드 자체를 가지지 않음, grep 잔존 0건. 누수 없음.
+
+- 2026-04-21 [베조스 S5]: 수동 E2E 5 시나리오 `tasks/manual-e2e-e-m6.md` 작성 완료
+  1. PREBUILT Naver → 자동 매칭 → 에이전트 실행
+  2. CUSTOM connection → credential_id 필드 POST body 부재 확인 → 에이전트 실행
+  3. MCP 경로 (M6.1 이월) — useUpdateMCPServer 라이브 동작, connection-binding-dialog 정상
+  4. Connection status=disabled → ToolConfigError fail-closed
+  5. DB 직접 검증 — `\d tools` / `\d agent_tools` / `to_regclass('mcp_servers')`
+
+- 2026-04-21 [베조스 S5]: 종합 판정 = **그린**. MCP 경계 침범 0건, 회귀 발견 0건. 사티아 S6(HANDOFF.md + 단일 커밋) 진행 가능.

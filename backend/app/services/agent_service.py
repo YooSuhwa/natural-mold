@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,12 +41,9 @@ async def get_agent(db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -
     return result.scalar_one_or_none()
 
 
-def _build_tool_links(
-    tool_ids: list[uuid.UUID],
-    config_map: dict[uuid.UUID, dict[str, Any]],
-) -> list[AgentToolLink]:
-    """Create AgentToolLink objects with optional per-tool config."""
-    return [AgentToolLink(tool_id=tid, config=config_map.get(tid)) for tid in tool_ids]
+def _build_tool_links(tool_ids: list[uuid.UUID]) -> list[AgentToolLink]:
+    """Create AgentToolLink objects for the given tool ids."""
+    return [AgentToolLink(tool_id=tid) for tid in tool_ids]
 
 
 async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
@@ -71,11 +67,6 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         template_id=data.template_id,
     )
 
-    # Build config map from tool_configs
-    config_map: dict[uuid.UUID, dict[str, Any]] = {
-        tc.tool_id: tc.config for tc in data.tool_configs if tc.config
-    }
-
     # Collect tools to link
     tool_ids_to_link: list[uuid.UUID] = []
 
@@ -95,7 +86,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
             tool_ids_to_link.extend(r[0] for r in result.all())
 
     if tool_ids_to_link:
-        agent.tool_links = _build_tool_links(tool_ids_to_link, config_map)
+        agent.tool_links = _build_tool_links(tool_ids_to_link)
 
     if data.skill_ids:
         agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
@@ -122,19 +113,10 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
     if data.middleware_configs is not None:
         agent.middleware_configs = [mc.model_dump() for mc in data.middleware_configs]
     if data.tool_ids is not None:
-        config_map: dict[uuid.UUID, dict[str, Any]] = {}
-        if data.tool_configs:
-            config_map = {tc.tool_id: tc.config for tc in data.tool_configs if tc.config}
         # Clear existing links first to avoid PK conflict, then add new ones
         agent.tool_links.clear()
         await db.flush()
-        agent.tool_links = _build_tool_links(data.tool_ids, config_map)
-    elif data.tool_configs is not None:
-        # Update configs only (no tool_ids change)
-        config_map = {tc.tool_id: tc.config for tc in data.tool_configs}
-        for link in agent.tool_links:
-            if link.tool_id in config_map:
-                link.config = config_map[link.tool_id]
+        agent.tool_links = _build_tool_links(data.tool_ids)
     if data.skill_ids is not None:
         agent.skill_links.clear()
         await db.flush()

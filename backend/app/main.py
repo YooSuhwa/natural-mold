@@ -39,6 +39,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.exceptions import AppError
 
@@ -57,6 +58,78 @@ from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_providers import DEFAULT_PROVIDERS
 from app.seed.default_templates import DEFAULT_TEMPLATES
 from app.seed.default_tools import DEFAULT_TOOLS
+
+
+async def _enforce_m6_legacy_invariants(db: AsyncSession) -> None:
+    """Block startup if m12-preflight invariants are violated on pre-m12 schema.
+
+    information_schema는 PostgreSQL 전용. sqlite 테스트 환경에서는 조용히
+    건너뛴다 (conftest가 최신 모델로 테이블을 만들기 때문에 legacy 컬럼이
+    아예 없음).
+    """
+    import os
+
+    from sqlalchemy import text as sa_text
+
+    from app.services.legacy_invariants import collect_legacy_checks
+
+    bypass = os.environ.get("ALLOW_DIRTY_AGENT_TOOLS_CONFIG") == "1"
+
+    try:
+        async def column_exists_async(table: str, column: str) -> bool:
+            result = await db.execute(
+                sa_text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = :table AND column_name = :column"
+                ),
+                {"table": table, "column": column},
+            )
+            return result.first() is not None
+
+        cache: dict[tuple[str, str], bool] = {}
+        for table, column in [
+            ("agent_tools", "config"),
+            ("tools", "credential_id"),
+            ("tools", "auth_config"),
+        ]:
+            cache[(table, column)] = await column_exists_async(table, column)
+
+        checks = collect_legacy_checks(
+            dialect=db.bind.dialect.name if db.bind else "postgresql",
+            column_exists=lambda table, column: cache.get((table, column), False),
+        )
+
+        errors: list[str] = []
+        for label, sql in checks:
+            count = (await db.execute(sa_text(sql))).scalar() or 0
+            if count:
+                errors.append(f"  - {label}: {count} row(s)")
+    except Exception:  # noqa: BLE001
+        # information_schema 미지원 dialect (sqlite 등) — 프로덕션 외 경로.
+        return
+
+    if not errors:
+        return
+
+    if bypass:
+        logger.warning(
+            "M6 deploy-order bypass: legacy auth rows detected but "
+            "ALLOW_DIRTY_AGENT_TOOLS_CONFIG=1 — continuing startup with "
+            "silent behavior changes:\n%s\nEnsure migration runs "
+            "immediately after.",
+            "\n".join(errors),
+        )
+        return
+
+    raise RuntimeError(
+        "M6 deploy-order error — legacy auth rows detected on a schema "
+        "that still predates m12. Serving traffic now would silently "
+        "change or fail tool auth. Apply "
+        "`alembic upgrade m12_drop_legacy_columns` (or backfill) before "
+        "starting this build. Dirty rows:\n"
+        + "\n".join(errors)
+        + "\nEmergency bypass: ALLOW_DIRTY_AGENT_TOOLS_CONFIG=1."
+    )
 
 
 @asynccontextmanager
@@ -149,6 +222,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "Prebuilt connection seed failed — continuing startup. "
                 "Runtime env fallback remains active."
             )
+
+        # M6 deploy-order guard: 새 runtime은 legacy auth 경로를 모두 제거했으므로
+        # m12 preflight와 동일한 invariant를 startup에서도 강제한다. dirty row가
+        # 남아있는 상태로 트래픽을 받으면 silent wrong-secret / fail-closed 발생.
+        # 긴급 bypass: ALLOW_DIRTY_AGENT_TOOLS_CONFIG=1.
+        await _enforce_m6_legacy_invariants(db)
 
     # Checkpointer 초기화 — psycopg v3 호환 URL 사용
     from app.agent_runtime.checkpointer import init_checkpointer

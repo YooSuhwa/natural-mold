@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class AgentToolLink(Base):
-    """Association object: agent <-> tool with per-agent config override."""
+    """Association object: agent <-> tool."""
 
     __tablename__ = "agent_tools"
 
@@ -27,7 +27,6 @@ class AgentToolLink(Base):
         ForeignKey("tools.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    config: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     tool: Mapped[Tool] = relationship(lazy="joined")
 
@@ -68,7 +67,8 @@ class Tool(Base):
     # (user_id + type='prebuilt' + provider_name). MCP/CUSTOM/BUILTIN은 NULL.
     provider_name: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_system: Mapped[bool] = mapped_column(default=False, nullable=False)
-    # deprecated: M6에서 제거 예정. 이관 기간 동안 legacy fallback 용도로 유지.
+    # deprecated: M6.1에서 제거 예정 (옵션 D — PATCH /api/tools/{id} connection_id
+    # 도입 후 mcp_servers 테이블과 함께 drop). 이관 기간 동안 MCP fallback 용도로 유지.
     mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("mcp_servers.id"))
     connection_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("connections.id", ondelete="SET NULL"), nullable=True
@@ -79,10 +79,6 @@ class Tool(Base):
     api_url: Mapped[str | None] = mapped_column(String(500))
     http_method: Mapped[str | None] = mapped_column(String(10))
     auth_type: Mapped[str | None] = mapped_column(String(20))
-    auth_config: Mapped[dict | None] = mapped_column(JSON)
-    credential_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True
-    )
     tags: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
@@ -92,7 +88,4 @@ class Tool(Base):
     mcp_server: Mapped[MCPServer | None] = relationship(back_populates="tools")
     connection: Mapped[Connection | None] = relationship(
         foreign_keys=[connection_id]
-    )
-    credential: Mapped[Credential | None] = relationship(
-        foreign_keys=[credential_id], lazy="joined"
     )
