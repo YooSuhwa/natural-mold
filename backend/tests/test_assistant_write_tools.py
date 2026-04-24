@@ -50,7 +50,7 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
     )
     db.add(tool)
     await db.flush()
-    link = AgentToolLink(agent_id=agent.id, tool_id=tool.id, config=None)
+    link = AgentToolLink(agent_id=agent.id, tool_id=tool.id)
     db.add(link)
 
     # Add a second tool (not linked to agent) for add_tool test
@@ -329,32 +329,6 @@ async def test_remove_subagent_stub(db: AsyncSession, patch_write_session):
 
     result = await tool.ainvoke({"agent_ids": ["some-id"]})
     assert "구현되지 않았습니다" in result
-
-
-# ---------------------------------------------------------------------------
-# update_tool_config
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_update_tool_config(db: AsyncSession, patch_write_session):
-    agent_id, _ = await _seed_full(db)
-    # Invoke the underlying coroutine directly to avoid StructuredTool dict parsing
-    from app.agent_runtime.assistant.tools.write_tools import build_write_tools as _build
-    write_tools = _build(db, agent_id, TEST_USER_ID)
-    tool = _find_tool(write_tools, "update_tool_config")
-    result = await tool.coroutine("Web Search", {"api_key": "test"})
-    assert "변경 완료" in result
-
-
-@pytest.mark.asyncio
-async def test_update_tool_config_not_found(db: AsyncSession, patch_write_session):
-    agent_id, _ = await _seed_full(db)
-    from app.agent_runtime.assistant.tools.write_tools import build_write_tools as _build
-    write_tools = _build(db, agent_id, TEST_USER_ID)
-    tool = _find_tool(write_tools, "update_tool_config")
-    result = await tool.coroutine("Nonexistent", {"key": "val"})
-    assert "찾을 수 없습니다" in result
 
 
 # ---------------------------------------------------------------------------

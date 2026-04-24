@@ -55,7 +55,6 @@ from app.models.user import User
 from app.schemas.tool import ToolType
 from app.services.chat_service import (
     _resolve_custom_auth,
-    _resolve_legacy_tool_auth,
     build_tools_config,
     get_agent_with_tools,
 )
@@ -173,8 +172,6 @@ async def _seed_custom_tool(
     user_id: uuid.UUID,
     name: str,
     connection: Connection | None = None,
-    credential: Credential | None = None,
-    auth_config: dict | None = None,
 ) -> Tool:
     tool = Tool(
         user_id=user_id,
@@ -185,8 +182,6 @@ async def _seed_custom_tool(
         api_url="https://api.example.com/endpoint",
         http_method="GET",
         connection_id=connection.id if connection else None,
-        credential_id=credential.id if credential else None,
-        auth_config=auth_config,
     )
     db.add(tool)
     await db.flush()
@@ -387,110 +382,6 @@ async def test_custom_connection_with_null_credential_fails_closed(
 
 
 # ---------------------------------------------------------------------------
-# Scenario 3bis — bridge override: tool.credential_id != connection.credential_id
-# (Codex 3차 P1 — custom-auth-dialog의 PATCH /auth-config는 tool.credential_id만
-# update하므로 connection의 stale credential을 쓰면 silent rotation failure).
-# Codex adversarial 1차 [high]: bridge override는 status='active' gate를 통과한
-# 후에만 동작 — disabled connection에서의 rotation은 fail-closed.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_custom_bridge_override_when_tool_credential_rotated(
-    db: AsyncSession,
-):
-    """M4 bridge 기간 시나리오: m11 backfill 후 CUSTOM tool은 (credential_id,
-    connection_id) 둘 다 set. 사용자가 custom-auth-dialog에서 credential을 다른
-    것으로 회전 → PATCH /auth-config가 `tool.credential_id`만 update, 연결된
-    `connection.credential_id`는 그대로. 이 상태에서 `_resolve_custom_auth`가
-    connection 경로를 고집하면 silent credential rotation failure 발생.
-    fix: 두 값이 다르면 `_resolve_legacy_tool_auth`로 위임해 tool.credential_id를
-    SOT로 사용한다. M5에서 dialog가 connection API로 migrate되면 두 값은 항상
-    같아지고 이 분기는 no-op이 된다. M6에서 분기 제거.
-    """
-    await _seed_user(db, TEST_USER_ID, "test@test.com")
-    model = await _seed_model(db)
-
-    # 원본 credential (connection에 바인딩됨) vs 회전된 credential (tool에 직접)
-    cred_old = await _seed_credential(
-        db, TEST_USER_ID, {"api_key": "OLD_KEY"}, name="cred-old"
-    )
-    cred_new = await _seed_credential(
-        db, TEST_USER_ID, {"api_key": "NEW_KEY"}, name="cred-new"
-    )
-
-    # m11이 만든 것처럼 connection은 cred_old에 바인딩됨
-    conn = await _seed_custom_connection(
-        db, TEST_USER_ID, cred_old, display_name="[m11-auto-seed] cred-old"
-    )
-    # tool은 connection_id + credential_id(cred_new로 회전) 둘 다 가짐
-    tool = await _seed_custom_tool(
-        db,
-        user_id=TEST_USER_ID,
-        name="Rotated Tool",
-        connection=conn,
-        credential=cred_new,
-    )
-    agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [tool])
-
-    loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
-    assert loaded is not None
-    configs = build_tools_config(loaded)
-    # tool.credential_id(cred_new)가 legacy override로 선택되어야 함
-    assert configs[0]["auth_config"] == {"api_key": "NEW_KEY"}, (
-        "bridge override should prefer tool.credential_id when it diverges "
-        "from connection.credential_id — otherwise credential rotation via "
-        "custom-auth-dialog is silently ignored."
-    )
-
-
-@pytest.mark.asyncio
-async def test_custom_bridge_override_blocked_by_disabled_connection(
-    db: AsyncSession,
-):
-    """Codex adversarial 1차 [high] — bridge override가 kill-switch를 우회하면
-    안 된다. 사용자가 connection을 disable해 둔 상태에서 tool.credential_id를
-    회전해도 disabled connection은 실행 차단이어야 한다.
-    시나리오: connection.status='disabled' + tool.credential_id != conn.credential_id
-    → 이전 구현은 bridge override 경로로 실행됐음(bug). 현 구현은 State 4에서
-    ToolConfigError raise.
-    """
-    await _seed_user(db, TEST_USER_ID, "test@test.com")
-    model = await _seed_model(db)
-
-    cred_old = await _seed_credential(
-        db, TEST_USER_ID, {"api_key": "OLD_KEY"}, name="cred-old"
-    )
-    cred_new = await _seed_credential(
-        db, TEST_USER_ID, {"api_key": "NEW_KEY"}, name="cred-new"
-    )
-    # disabled connection (kill-switch)
-    conn = await _seed_custom_connection(
-        db,
-        TEST_USER_ID,
-        cred_old,
-        display_name="disabled conn",
-        status="disabled",
-    )
-    tool = await _seed_custom_tool(
-        db,
-        user_id=TEST_USER_ID,
-        name="Rotated But Disabled",
-        connection=conn,
-        credential=cred_new,
-    )
-    agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [tool])
-
-    loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
-    assert loaded is not None
-    with pytest.raises(ToolConfigError) as exc_info:
-        build_tools_config(loaded)
-    # bridge override가 아닌 State 4(disabled) 에러여야 함
-    assert "status='disabled'" in str(exc_info.value)
-    assert "Rotated But Disabled" in str(exc_info.value)
-
-
-# ---------------------------------------------------------------------------
 # Scenario 3c — connection_id IS NOT NULL AND connection IS NULL → fail-closed
 # (FK dangling or caller contract violation — must not silently legacy-fallback)
 # ---------------------------------------------------------------------------
@@ -510,8 +401,6 @@ def test_custom_resolves_raises_when_connection_missing_despite_fk():
     tool.connection_id = uuid.uuid4()
     tool.connection = None  # FK 있는데 relationship None
     tool.user_id = TEST_USER_ID
-    tool.credential_id = None
-    tool.auth_config = None
 
     with pytest.raises(ToolConfigError) as exc_info:
         _resolve_custom_auth(tool)
@@ -520,77 +409,27 @@ def test_custom_resolves_raises_when_connection_missing_despite_fk():
 
 
 # ---------------------------------------------------------------------------
-# Scenario 4 — connection_id=NULL + credential_id → legacy 경로 유지
+# Scenario 4 — connection_id=NULL → ToolConfigError (fail-closed, M6 이후)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_custom_legacy_credential_path_preserved(db: AsyncSession):
-    """m11 backfill 전 상태(connection_id=NULL + credential_id IS NOT NULL)인
-    CUSTOM tool은 `_resolve_legacy_tool_auth`로 위임되어 credential이 정상
-    복호화되어야 한다. M6까지 tolerance.
-    """
-    await _seed_user(db, TEST_USER_ID, "test@test.com")
-    model = await _seed_model(db)
-
-    cred = await _seed_credential(
-        db,
-        TEST_USER_ID,
-        {"api_key": "legacy-cred-key"},
-        name="legacy cred",
-    )
-    # connection_id=NULL, credential_id만 설정 — m11 이전 상태
-    tool = await _seed_custom_tool(
-        db,
-        user_id=TEST_USER_ID,
-        name="Legacy Tool",
-        connection=None,
-        credential=cred,
-    )
-    agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [tool])
-
-    loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
-    assert loaded is not None
-    cfg = build_tools_config(loaded)[0]
-    # legacy 경로 — credential이 복호화되어 auth_config로 나옴
-    assert cfg["auth_config"] == {"api_key": "legacy-cred-key"}
-    assert cfg["name"] == "Legacy Tool"
-
-
-# ---------------------------------------------------------------------------
-# Scenario 5 — connection_id=NULL + credential_id=NULL + auth_config → inline
-# ---------------------------------------------------------------------------
-
-
-def test_custom_legacy_inline_auth_config_returned_as_is():
-    """connection도 credential도 없고 inline auth_config만 있는 legacy 상태 —
-    `_resolve_legacy_tool_auth`의 두 번째 우선순위(auth_config dict 그대로).
-    단위 테스트 — `_resolve_custom_auth` 직접 호출.
+def test_custom_resolves_raises_when_connection_id_is_null():
+    """M6 cleanup 이후 legacy credential/auth_config 필드가 drop 되었으므로
+    connection_id=NULL 인 CUSTOM tool은 fail-closed. M6 이전에는
+    `_resolve_legacy_tool_auth` 로 위임되어 tool.credential/auth_config 를
+    fallback 으로 사용했지만 M6 에서는 필드 자체가 사라진다.
     """
     tool = Tool(
         user_id=TEST_USER_ID,
         type=ToolType.CUSTOM,
         is_system=False,
-        name="Inline Legacy Tool",
+        name="Unbound Custom Tool",
         connection_id=None,
-        credential_id=None,
-        auth_config={"api_key": "inline-key"},
     )
-    assert _resolve_custom_auth(tool) == {"api_key": "inline-key"}
-
-    # 완전 공백 — auth_config도 없음 → {}
-    bare = Tool(
-        user_id=TEST_USER_ID,
-        type=ToolType.CUSTOM,
-        is_system=False,
-        name="Bare Legacy Tool",
-        connection_id=None,
-        credential_id=None,
-        auth_config=None,
-    )
-    assert _resolve_custom_auth(bare) == {}
-    # 대응 legacy resolver 단위 동작 확인
-    assert _resolve_legacy_tool_auth(bare) == {}
+    with pytest.raises(ToolConfigError) as exc_info:
+        _resolve_custom_auth(tool)
+    assert "no connection_id" in str(exc_info.value)
+    assert "Unbound Custom Tool" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -716,23 +555,21 @@ def test_m11_migrate_custom_credentials_source_contract():
     assert "'custom_api_key'" in src
 
 
-def test_m11_preserves_tool_credential_id_for_legacy_fallback():
-    """m11 upgrade가 `tools.credential_id`를 drop/NULL 처리하지 않는지 가드.
-    M6까지 legacy fallback 유지가 스코프 합의 — drop하면 `_resolve_legacy_tool_auth`
-    경로가 깨진다.
+def test_m11_preserves_tool_credential_id_during_own_upgrade():
+    """m11 자체 upgrade 에서는 `tools.credential_id`를 NULL/DROP 처리하지
+    않아야 한다 (m12 에서 drop 되기 전까지 legacy fallback 유지 가정 하에
+    작성됨). m12 가 별도 revision 으로 분리돼 있으므로 m11 helper 본문 계약은
+    여전히 유효하다.
     """
     import inspect
 
     src = inspect.getsource(_m11.upgrade) + inspect.getsource(
         _m11._migrate_custom_credentials
     )
-    # upgrade 본체에 tools.credential_id 을 NULL/DROP 처리하는 구문이 없어야 한다
     lowered = src.lower()
-    # "drop column"과 "credential_id"가 **함께** 등장하면 실패 (둘 중 하나만 있으면 OK).
-    # 이전 `not A or not B` 형식은 tautology — credential_id는 m11 본문에 정상 등장하므로
-    # 항상 PASS가 되어 가드가 무력화됐음.
     assert not ("drop column" in lowered and "credential_id" in lowered), (
-        "m11 upgrade must not drop tools.credential_id (M6까지 legacy fallback 유지)"
+        "m11 upgrade must not drop tools.credential_id — the column drop is "
+        "handled by a separate revision (m12)."
     )
     assert "set credential_id = null" not in lowered
     # tool.connection_id UPDATE만 수행

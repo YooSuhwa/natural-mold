@@ -71,7 +71,11 @@ export function useChatRuntime({
 }: UseChatRuntimeOptions) {
   const [isRunning, setIsRunning] = useState(false)
   const [streamingMessages, setStreamingMessages] = useState<Message[]>([])
-  const [streamError, setStreamError] = useState<string | null>(null)
+  // streamError는 아직 caller에 노출되지 않은 setter-only 상태. 향후 UI에
+  // 에러 배너를 띄울 때 사용할 자리(현재는 toast로 대체). 지금 제거하지 않고
+  // setter만 유지하는 이유 = SSE 이벤트 경로에서 state transition을 잃지 않기
+  // 위해서.
+  const [, setStreamError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
 

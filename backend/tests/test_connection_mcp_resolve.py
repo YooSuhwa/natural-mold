@@ -408,8 +408,6 @@ async def test_build_tools_config_legacy_mcp_server_fallback(
         mcp_server_id=server.id,
         name="legacy_tool",
         auth_type="api_key",
-        # tool-level junk는 그대로 무시 (기존 동작 보존)
-        auth_config={"api_key": "from-tool-junk"},
     )
     agent = await _seed_agent_with_tool(db, tool=tool, model=model)
 
@@ -609,15 +607,12 @@ class TestOwnershipGuards:
             connection=conn,
             mcp_server_id=None,
             mcp_server=None,
-            credential_id=None,
-            credential=None,
             created_at=now,
         )
         link = AgentToolLink(
             agent_id=uuid.uuid4(),
             tool_id=tool_uid,
             tool=tool,
-            config=None,
         )
         agent = Agent(id=uuid.uuid4(), user_id=tool_user_id, name="a")
         agent.tool_links = [link]
@@ -733,15 +728,12 @@ def test_build_tools_config_forwards_connection_headers():
         connection=conn,
         mcp_server_id=None,
         mcp_server=None,
-        credential_id=None,
-        credential=None,
         created_at=now,
     )
     link = AgentToolLink(
         agent_id=uuid.uuid4(),
         tool_id=tool_id,
         tool=tool,
-        config=None,
     )
     agent = Agent(id=uuid.uuid4(), user_id=user_id, name="a")
     agent.tool_links = [link]

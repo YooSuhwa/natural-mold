@@ -5,25 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
-from pydantic_core import PydanticCustomError
-
-# Sentinel used by ToolResponse._mask_auth_config — must not be persisted
-# back into the database when a client echoes a previous response.
-AUTH_CONFIG_MASK = "***"
-
-
-def _reject_mask_sentinel(value: dict[str, Any] | None) -> dict[str, Any] | None:
-    if value:
-        for v in value.values():
-            if isinstance(v, str) and v == AUTH_CONFIG_MASK:
-                # PydanticCustomError serializes via app error handler;
-                # plain ValueError leaks an unserializable exception object.
-                raise PydanticCustomError(
-                    "auth_config_mask",
-                    "auth_config value is a reserved mask sentinel",
-                )
-    return value
+from pydantic import BaseModel, Field
 
 
 class ToolType(enum.StrEnum):
@@ -42,16 +24,11 @@ class ToolCustomCreate(BaseModel):
     http_method: str = "GET"
     parameters_schema: dict[str, Any] | None = None
     auth_type: str | None = None
-    auth_config: dict[str, Any] | None = None
-    credential_id: uuid.UUID | None = None
-    connection_id: uuid.UUID | None = None
-
-
-class ToolAuthConfigUpdate(BaseModel):
-    auth_config: dict[str, Any] | None = None
-    credential_id: uuid.UUID | None = None
-
-    _validate_auth_config = field_validator("auth_config")(_reject_mask_sentinel)
+    # M6: connection은 필수. chat_service._resolve_custom_auth가 NULL connection_id
+    # CUSTOM tool을 fail-closed로 거부하므로, 생성 시점에 invariant를 강제한다.
+    # "인증 없는 공개 API" 사용처도 credential이 비어있는 connection을 명시적으로
+    # 바인딩해 의도를 DB에 남긴다.
+    connection_id: uuid.UUID
 
 
 class MCPServerCreate(BaseModel):
@@ -68,7 +45,6 @@ class ToolResponse(BaseModel):
     provider_name: str | None = None
     is_system: bool
     mcp_server_id: uuid.UUID | None
-    credential_id: uuid.UUID | None = None
     connection_id: uuid.UUID | None = None
     name: str
     description: str | None
@@ -76,27 +52,11 @@ class ToolResponse(BaseModel):
     api_url: str | None
     http_method: str | None
     auth_type: str | None
-    auth_config: dict[str, Any] | None = None
     tags: list[str] | None = None
     agent_count: int = 0
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
-    @field_serializer("auth_config")
-    def _mask_auth_config(
-        self, value: dict[str, Any] | None
-    ) -> dict[str, Any] | None:
-        # Mask string values to avoid leaking legacy plaintext secrets via the
-        # API response. Keys are preserved so the UI can still detect "configured"
-        # state via key presence; the sentinel is non-empty so existing length
-        # checks keep working. Round-trip is blocked by _reject_mask_sentinel.
-        if not value:
-            return value
-        return {
-            k: (AUTH_CONFIG_MASK if isinstance(v, str) and v else v)
-            for k, v in value.items()
-        }
 
 
 class MCPServerResponse(BaseModel):
@@ -138,5 +98,3 @@ class MCPServerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     credential_id: uuid.UUID | None = None
     auth_config: dict[str, Any] | None = None
-
-    _validate_auth_config = field_validator("auth_config")(_reject_mask_sentinel)

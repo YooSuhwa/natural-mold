@@ -1,12 +1,14 @@
 'use client'
 
+import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { connectionsApi, type ListConnectionsParams } from '@/lib/api/connections'
-import type {
-  Connection,
-  ConnectionCreateRequest,
-  ConnectionType,
-  ConnectionUpdateRequest,
+import {
+  CUSTOM_CONNECTION_PROVIDER_NAME,
+  type Connection,
+  type ConnectionCreateRequest,
+  type ConnectionType,
+  type ConnectionUpdateRequest,
 } from '@/lib/types'
 
 type ConnectionScope = { type: ConnectionType; provider_name: string }
@@ -73,4 +75,32 @@ export function useDeleteConnection() {
       qc.invalidateQueries({ queryKey: ['connections'] })
     },
   })
+}
+
+// ADR-008 N:1: 같은 credential을 쓰는 custom connection이 있으면 재사용하고,
+// 없을 때만 새로 만든다. add-tool-dialog와 connection-binding-dialog가 동일
+// 패턴을 쓰므로 단일 훅으로 집중해 drift 차단.
+export function useFindOrCreateCustomConnection() {
+  const qc = useQueryClient()
+  const createConnection = useCreateConnection()
+
+  const run = useCallback(
+    async (credentialId: string, displayName: string): Promise<Connection> => {
+      const cached = qc.getQueryData<Connection[]>(
+        scopeKey({ type: 'custom', provider_name: CUSTOM_CONNECTION_PROVIDER_NAME }),
+      )
+      const existing = cached?.find((c) => c.credential_id === credentialId)
+      if (existing) return existing
+
+      return createConnection.mutateAsync({
+        type: 'custom',
+        provider_name: CUSTOM_CONNECTION_PROVIDER_NAME,
+        display_name: displayName,
+        credential_id: credentialId,
+      })
+    },
+    [qc, createConnection],
+  )
+
+  return { run, isPending: createConnection.isPending }
 }

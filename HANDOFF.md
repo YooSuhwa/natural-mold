@@ -1,69 +1,87 @@
 # 작업 인계 문서
 
-## 최근 완료 (2026-04-20)
+## 최근 완료 (2026-04-24)
 
-**백로그 E M5: UI 통합 + F 흡수 (프론트 전용) — 머지 대기**
-worktree `.claude/worktrees/backlog-e-m5` / 브랜치 `feature/backlog-e-m5` / base main@`12d3d18`
+**백로그 E M6: Cleanup (축소 스코프 — legacy 컬럼 drop + runtime 정리) — 커밋 대기**
+worktree `.claude/worktrees/backlog-e-m6` / 브랜치 `feature/backlog-e-m6` / base main@`ad8c0fd` / HEAD `52c79d6`
 
-### 핵심 변경 (17 파일, +1047/-881, 백엔드 0건)
-- `ConnectionBindingDialog` type discriminated union 확장 (prebuilt/custom/mcp) — 3 legacy dialog 흡수
-- `app/connections/page.tsx` 전면 재작성: PREBUILT/CUSTOM/MCP 3섹션, `ConnectionCard` + `ConnectionDetailSheet` 신규
-- `PrebuiltProps.connectionId` 추가 → drawer가 selected row 직접 update (default 덮어쓰기 방지)
-- `useToolsByConnection` selector (PREBUILT=default만, MCP=credential 이중 hop)
-- `handleCustomBound` mutateAsync + onError → silent partial failure 차단
-- McpBody: 단일 connection만 안전 sync, N:1 공유는 `sharedCredentialWarning` + server PATCH만 (cross-server mutation 차단)
-- dead 3 dialog 파일 삭제(`prebuilt-auth/custom-auth/mcp-server-auth-dialog.tsx`)
-- 중복 상수 단일화: `CUSTOM_CONNECTION_PROVIDER_NAME`, `PREBUILT_PROVIDER_I18N_KEY`, `PREBUILT_PROVIDER_NAMES` → `lib/types`
-- `useCredential(id)` selector + `ConnectionStatusBadge` 컴포넌트 추출
+## 완료 작업
 
-### 검증
-ruff PASS · **pytest 646 passed** (변경 0, 회귀 0) · pnpm lint(기존 1건만) · pnpm build 15 routes · F 흡수 grep 0
+- [x] TTH 사일로 Ralph Loop S0~S6 (피차이/베조스/젠슨/저커버그 병렬 실행)
+- [x] m12 migration: `tools.auth_config` / `tools.credential_id` / `agent_tools.config` drop
+- [x] Runtime: CUSTOM bridge override 제거, `_resolve_legacy_tool_auth` 삭제, fail-closed 일관화
+- [x] Frontend thin cleanup (type/API dead 삭제, MCP 경계 보존)
+- [x] 리뷰 5회차 반영 (code-reviewer 1 + codex-review 2 + codex-adversarial 5 + simplify 1)
+- [x] `app/services/legacy_invariants.py` 공용 모듈로 m12 preflight + startup guard 통합
+- [x] `useFindOrCreateCustomConnection` 훅으로 CUSTOM connection N:1 find-or-create 집중화
+- [x] `get_usage_count` PREBUILT 경로 + `agent_tools` JOIN 포함
+- [x] ADD tool dialog: credential 미선택 시 submit disabled + amber hint
+- [x] Startup guard: m12 preflight와 동일 invariant, 긴급 bypass `ALLOW_DIRTY_AGENT_TOOLS_CONFIG=1`
 
-### 리뷰 이력
-사티아 내부 + codex review 3회차 (P1×3, P2×5 해소) + codex adversarial 2회차 (high 2건 해소) + /simplify 3 agent (재사용/품질/효율 6+3건 정리)
+## M6 실제 스코프 (MCP 관련 전부 M6.1 이월)
 
-## 다음 작업
+**DROP**: `tools.auth_config`, `tools.credential_id` + FK, `agent_tools.config`
+**유지**: `mcp_servers`, `tools.mcp_server_id`, `resolve_server_auth`, MCP legacy fallback, MCPServer CRUD 라우터
 
-### 사용자 직접
-1. 브라우저 E2E 11항목 (`tasks/manual-e2e-e-m5.md §3`)
-2. staged → 단일 커밋 → push → PR 생성
+## 검증
+- ruff clean · **pytest 624/624 PASS** · pnpm lint 0 warnings · pnpm build 15 routes PASS
+- alembic round-trip docker PG PASS
+- legacy grep 0 / MCP 유지 스코프 보존
 
-### 이후 마일스톤 — **M6: Cleanup**
+## 사용자 다음 작업
+
+1. 브라우저 E2E 5항목 (`tasks/manual-e2e-e-m6.md §시나리오`)
+2. `git push -u origin feature/backlog-e-m6` + PR 생성
+
+## 다음 마일스톤 — **M6.1: MCP cleanup + 옵션 D**
+
 **스코프**:
-- Alembic `m12_drop_legacy_columns`: `mcp_servers` drop, `tool.credential_id/auth_config/mcp_server_id` drop, `agent_tools.config` drop
-- legacy fallback 코드 제거 (chat_service custom/mcp fallback 경로, `credential_service.resolve_server_auth`)
-- **옵션 D 정공 흡수**: `PATCH /api/tools/{id}`에 `connection_id` 필드 추가 → ConnectionBindingDialog의 bridge/N:1 공유 한계 해소
-- UI 후속 리팩토링: `triggerContext` mode 일원화, Body split + `BindingDialogShell` 추출 (M5에서 "M6 cleanup 시"로 미룬 부채들)
+- `PATCH /api/tools/{id}`에 `connection_id` 필드 추가 (옵션 D)
+- 프론트 MCP 경로 re-wire (updateMCPServer → tool.connection_id PATCH)
+- 프론트 Custom "first-bind" 경로 활성화 (현재 `needsOptionDFirstBind`로 차단)
+- Alembic `m13_drop_mcp_legacy`: `mcp_servers` drop, `tools.mcp_server_id` drop
+- `resolve_server_auth` + chat_service MCP fallback 제거
+- UI 리팩토링: `triggerContext` mode 일원화, `BindingDialogShell` 추출
 
-### M5.5 — `agent_tools.connection_id` override (별도 PR)
-원래 exec-plan M5에 포함이었으나 분리. 백엔드(m12? — M6 이전/이후 배치 재결정) + UI. M6와 배치 순서는 사용자 결정.
+**M5.5** (M6.1 이후): `agent_tools.connection_id` override
 
-## 주의사항 / invariant (M6 재사용)
+## 주의사항 / invariant
+
+### Breaking API changes (M6)
+외부 API client는 다음 필드 제거 반영 필요 (pydantic `extra='forbid'` 422 rejection):
+- `POST /api/agents` / `PATCH /api/agents/{id}`: `tool_configs` 필드 제거
+- `POST /api/tools/custom`: `credential_id`/`auth_config` 제거, `connection_id` 필수
+- `PATCH /api/tools/{id}/auth-config`: 엔드포인트 삭제
+- `ToolResponse.auth_config`/`credential_id`, `AgentResponse.tools[].agent_config` 응답 필드 제거
 
 ### 정책
-- CUSTOM runtime kill-switch(`status='active'`) > bridge override 선행
-- PREBUILT "no connection" → env fallback / CUSTOM "no connection" → legacy fallback (비대칭 의도)
-- CUSTOM `tool.credential_id` = `connection.credential_id` derive (M6에서 credential_id 컬럼 drop 시 자동 해소)
-- PREBUILT usage/삭제 가드는 `is_default` connection만 카운트
-
-### M5에서 남긴 의식된 부채 (M6에서 해소)
-1. **MCP N:1 공유 rebind**: 1:1만 safe sync, N:1은 차단+안내. 정공=옵션 D (새 connection find-or-create + tool.connection_id PATCH)
-2. **Custom legacy first-bind**: `tool.connection_id` 미저장, credential_id만 동기화. 정공=옵션 D
-3. `triggerContext` string union + prop 비대칭(`connectionId` vs `currentConnectionId`) → 옵션 D 적용 시 mode 재정의
-4. ConnectionBindingDialog 590줄 단일 파일 → Body split은 옵션 D 적용 시 같이
+- CUSTOM `connection_id` 없으면 `ToolConfigError` fail-closed (legacy 위임 없음)
+- PREBUILT `provider_name IS NULL` → `cred_auth = {}` (env fallback과 동치)
+- MCP fallback 경로는 여전히 라이브 (M6.1 대상)
+- Startup legacy guard는 PostgreSQL 전용. sqlite(테스트) silent skip
 
 ### drive-by 금지
-- `use-connections.ts`의 `['connections']` prefix invalidate는 "is_default 승격" 의식적 결정. 좁히기 전 분석+테스트 필요
-- `use-chat-runtime.ts:74` streamError unused warning은 기존 부채, M5에서 건드리지 말 것 유지
+- `mcp-server-rename-dialog.tsx`, `connection-binding-dialog.tsx` MCP body, MCP API/hook 전량 — M6.1 전까지 유지
 
-## 마일스톤 진행
-| M0 | M1 | M2 | M3 | M4 | M5 | M5.5 | M6 |
-|---|---|---|---|---|---|---|---|
-| PR #52 | PR #53 | PR #54 | PR #55 | PR #56 | **머지 대기** | 분리 | 다음 |
+## 관련 파일 (M6 핵심)
+- `backend/alembic/versions/m12_drop_legacy_columns.py` — migration + preflight
+- `backend/app/services/legacy_invariants.py` — dirty-row invariant 정의 (공용)
+- `backend/app/main.py::_enforce_m6_legacy_invariants` — startup guard
+- `backend/app/services/credential_service.py::get_usage_count` — PREBUILT + agent_tools JOIN
+- `backend/app/services/chat_service.py::_resolve_custom_auth` — fail-closed
+- `frontend/src/lib/hooks/use-connections.ts::useFindOrCreateCustomConnection` — N:1 공용 훅
+- `frontend/src/components/connection/connection-binding-dialog.tsx` — first-bind guard
+- `frontend/src/components/tool/add-tool-dialog.tsx` — credential 필수 UX
 
 ## 마지막 상태
-- 브랜치: `feature/backlog-e-m5` (PR 미생성, user 진행)
-- Base: main @ `12d3d18`
-- DB head: `m11_custom_connection` (M4 from M5 무변경)
-- TTH 팀: `backlog-e-m5` 해산 완료
-- 보존 worktree: `backlog-e-m1~m5`
+- 브랜치: `feature/backlog-e-m6` (PR 미생성, user 진행)
+- Base: main @ `ad8c0fd` (PR #58 M5 머지)
+- DB head: `m12_drop_legacy_columns`
+- HEAD: `52c79d6`
+- 변경량: 46 files, +2369/-1575
+- 보존 worktree: `backlog-e-m0~m3`, `backlog-e-m6`
+
+## 마일스톤 진행
+| M0 | M1 | M2 | M3 | M4 | M5 | **M6** | M6.1 | M5.5 |
+|---|---|---|---|---|---|---|---|---|
+| PR #52 | PR #53 | PR #54 | PR #55 | PR #56 | PR #58 | **커밋 대기** | 다음 | M6.1 이후 |

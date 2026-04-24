@@ -224,7 +224,7 @@ async def test_get_agent_with_tools_found(db: AsyncSession):
     db.add(tool)
     await db.flush()
 
-    link = AgentToolLink(agent_id=agent.id, tool_id=tool.id, config=None)
+    link = AgentToolLink(agent_id=agent.id, tool_id=tool.id)
     db.add(link)
     await db.commit()
 

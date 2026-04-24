@@ -40,19 +40,6 @@ async def _seed_mcp_server() -> uuid.UUID:
         return server.id
 
 
-async def _seed_prebuilt_tool() -> uuid.UUID:
-    async with TestSession() as db:
-        tool = Tool(
-            type="prebuilt",
-            is_system=True,
-            name="Naver Blog Search",
-            description="네이버 블로그 검색",
-        )
-        db.add(tool)
-        await db.commit()
-        return tool.id
-
-
 # ---------------------------------------------------------------------------
 # POST /api/tools/mcp-server/{id}/test
 # ---------------------------------------------------------------------------
@@ -88,63 +75,6 @@ async def test_test_mcp_connection_server_not_found(client: AsyncClient):
     fake_id = "00000000-0000-0000-0000-000000000099"
 
     resp = await client.post(f"/api/tools/mcp-server/{fake_id}/test")
-    assert resp.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# PATCH /api/tools/{id}/auth-config
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_update_auth_config_prebuilt_tool(client: AsyncClient):
-    await _seed_user()
-    tool_id = await _seed_prebuilt_tool()
-
-    resp = await client.patch(
-        f"/api/tools/{tool_id}/auth-config",
-        json={"auth_config": {"naver_client_id": "new-id", "naver_client_secret": "new-secret"}},
-    )
-    assert resp.status_code == 200
-    data = resp.json()
-    # ToolResponse masks string values to avoid leaking secrets via API
-    assert data["auth_config"]["naver_client_id"] == "***"
-    assert data["auth_config"]["naver_client_secret"] == "***"
-
-
-@pytest.mark.asyncio
-async def test_update_auth_config_tool_not_found(client: AsyncClient):
-    await _seed_user()
-    fake_id = "00000000-0000-0000-0000-000000000099"
-
-    resp = await client.patch(
-        f"/api/tools/{fake_id}/auth-config",
-        json={"auth_config": {"key": "val"}},
-    )
-    assert resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_update_auth_config_other_user_custom_returns_404(client: AsyncClient):
-    """Updating auth_config on another user's CUSTOM tool returns 404 (IDOR guard)."""
-    await _seed_user()
-
-    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
-    async with TestSession() as db:
-        tool = Tool(
-            type="custom",
-            user_id=other_user_id,
-            name="Stranger Custom",
-            description="custom tool",
-        )
-        db.add(tool)
-        await db.commit()
-        tool_id = tool.id
-
-    resp = await client.patch(
-        f"/api/tools/{tool_id}/auth-config",
-        json={"auth_config": {"key": "val"}},
-    )
     assert resp.status_code == 404
 
 
@@ -359,39 +289,30 @@ async def _seed_connection_with_status(
 
 
 @pytest.mark.asyncio
-async def test_create_custom_tool_derives_credential_id_from_connection(
+async def test_create_custom_tool_ignores_unknown_credential_id_field(
     client: AsyncClient,
 ):
-    """클라이언트가 보낸 mismatched credential_id는 무시되고 server가
-    conn.credential_id로 override해야 한다 (Codex adversarial 3차 [high]).
-    split-brain 원천 차단: runtime bridge override는 오로지 PATCH /auth-config
-    회전 케이스만 진입 가능.
+    """M6 이후 `credential_id`는 `ToolCustomCreate` 스키마에 더 이상 존재하지
+    않는다. 클라이언트가 legacy 필드를 보내도 pydantic 이 조용히 무시하고
+    connection_id 경유로 생성에 성공해야 한다 (forward-compat).
     """
     await _seed_user()
-    # connection에 바인딩된 credential
     cred_in_conn = await _seed_custom_credential(TEST_USER_ID)
     conn_id = await _seed_connection(TEST_USER_ID, cred_in_conn, type_="custom")
-    # 서로 다른 credential (클라이언트가 실수 또는 악의로 전송)
-    other_cred = await _seed_custom_credential(TEST_USER_ID)
-    assert other_cred != cred_in_conn
 
     resp = await client.post(
         "/api/tools/custom",
         json={
             "name": "Consistent Tool",
             "api_url": "https://api.example.com",
-            "credential_id": str(other_cred),  # 서버가 무시해야 함
+            "credential_id": str(uuid.uuid4()),  # legacy — 무시되어야 함
             "connection_id": str(conn_id),
         },
     )
     assert resp.status_code == 201
     data = resp.json()
     assert data["connection_id"] == str(conn_id)
-    # 서버가 conn.credential_id로 override했어야 함 (other_cred가 아니라)
-    assert data["credential_id"] == str(cred_in_conn), (
-        "server must derive credential_id from connection to prevent "
-        "split-brain state (tool.credential_id != tool.connection.credential_id)"
-    )
+    assert "credential_id" not in data
 
 
 @pytest.mark.asyncio

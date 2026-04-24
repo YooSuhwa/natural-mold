@@ -44,7 +44,6 @@ __all__ = [
     "_load_user_default_connection_map",
     "_resolve_prebuilt_auth",
     "_resolve_custom_auth",
-    "_resolve_legacy_tool_auth",
     "build_tools_config",
 ]
 
@@ -192,9 +191,6 @@ async def get_agent_with_tools(
             selectinload(Agent.model).selectinload(Model.llm_provider),
             selectinload(Agent.tool_links)
             .selectinload(AgentToolLink.tool)
-            .selectinload(Tool.credential),
-            selectinload(Agent.tool_links)
-            .selectinload(AgentToolLink.tool)
             .selectinload(Tool.mcp_server)
             .selectinload(MCPServer.credential),
             selectinload(Agent.tool_links)
@@ -283,8 +279,7 @@ def _resolve_prebuilt_auth(
 
     ADR-008 §3 + §11. PREBUILT shared rows lookup by
     `(current_user, tool.provider_name)`. Caller: `tool.type == PREBUILT AND
-    tool.provider_name IS NOT NULL`; rows with NULL provider_name fall through
-    `_resolve_legacy_tool_auth` (M6까지 tolerance).
+    tool.provider_name IS NOT NULL`.
 
     - connection 자체가 없음 → `{}` (env fallback, ADR-008 §11)
     - connection 있음 → Gate A (ownership + active) → Gate B (credential decrypt)
@@ -301,26 +296,21 @@ def _resolve_prebuilt_auth(
 def _resolve_custom_auth(tool: Tool) -> dict[str, Any]:
     """Resolve CUSTOM tool auth via bound Connection (ADR-008 §4 M4).
 
-    PREBUILT와 시맨틱 차이: CUSTOM은 env fallback이 없으므로 connection_id가
-    NULL이면 `_resolve_legacy_tool_auth` 경로(M6까지 tolerance). Caller:
-    `tool.type == CUSTOM`. 호출자는 `selectinload(Tool.connection)`을 보장
-    (`get_agent_with_tools`가 M2에서 eager-load).
+    M6 cleanup: legacy tool.credential_id / tool.auth_config 컬럼이 drop
+    되었으므로 connection_id 없는 CUSTOM tool은 fail-closed.
 
-    - `connection_id IS NULL` → legacy fallback
+    - `connection_id IS NULL` → `ToolConfigError` (fail-closed)
     - `connection_id` 있으나 relationship None → FK dangling → `ToolConfigError`
-    - connection 있음 → Gate A (kill-switch) → bridge override OR Gate B
-
-    **Bridge override** (M4-M5): Gate A 통과 후 `tool.credential_id !=
-    conn.credential_id`이면 `custom-auth-dialog`의 PATCH로 방금 credential을
-    회전한 상태 → legacy 경로로 위임(rotation SOT). `TODO(M6)`: dialog가
-    connection API로 migrate되면 동치가 돼 no-op이므로 이 분기 제거 가능.
+    - connection 있음 → Gate A (kill-switch) → Gate B (credential decrypt)
     """
     if tool.connection_id is None:
-        return _resolve_legacy_tool_auth(tool)
+        raise ToolConfigError(
+            f"CUSTOM tool '{tool.name}' has no connection_id — execution "
+            "blocked. Bind a connection to run this tool."
+        )
     if tool.connection is None:
         # async SQLAlchemy에서 lazy-load는 MissingGreenlet raise이므로 None은
-        # FK dangling(connection row 삭제) 또는 eager-load 누락. legacy로
-        # 회귀하면 kill-switch 우회.
+        # FK dangling(connection row 삭제) 또는 eager-load 누락.
         raise ToolConfigError(
             f"CUSTOM tool '{tool.name}' has connection_id={tool.connection_id} "
             "but the connection relationship is missing — execution blocked. "
@@ -329,31 +319,8 @@ def _resolve_custom_auth(tool: Tool) -> dict[str, Any]:
         )
 
     conn = tool.connection
-    # Gate A: kill-switch는 bridge override보다 반드시 선행.
     _gate_connection_active(tool, conn)
-
-    # Bridge override: Gate A 통과 후에만 진입. active connection의 tool-level
-    # rotation을 credential SOT로 사용.
-    if tool.credential_id is not None and tool.credential_id != conn.credential_id:
-        return _resolve_legacy_tool_auth(tool)
-
     return _gate_connection_credential(tool, conn)
-
-
-def _resolve_legacy_tool_auth(tool: Tool) -> dict[str, Any]:
-    """Legacy tool.credential_id / tool.auth_config 해석 경로.
-
-    - CUSTOM 도구: M4까지 이 경로 유지 (M4에서 connection으로 이관 예정).
-    - PREBUILT 도구 중 `provider_name IS NULL`: m10 백필 실패 row의 이행
-      tolerance. M6 cleanup에서 제거.
-
-    우선순위: 연결된 credential → inline auth_config → empty. MCP 분기는 별도.
-    """
-    if tool.credential_id and tool.credential:
-        return resolve_credential_data(tool.credential)
-    if tool.auth_config:
-        return tool.auth_config
-    return {}
 
 
 def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list[dict[str, Any]]:
@@ -415,34 +382,33 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
                     mcp_transport_headers = extra_headers
                 mcp_server_url = url
             elif tool.mcp_server is not None:
-                # Legacy fallback — M3~M5 이행기 동안 기존 mcp_servers 경로
-                # 유지. M6에서 제거(tools.mcp_server_id drop과 함께).
-                # credential_service.resolve_server_auth가 credential 우선 +
-                # inline auth_config fallback 규칙을 이미 구현 (test_mcp_connection
-                # router도 동일 함수 경유 → runtime 정합).
+                # Legacy fallback — M3~M6 이행기 동안 기존 mcp_servers 경로 유지.
+                # **M6.1에서 제거** (옵션 D — PATCH /api/tools/{id} connection_id
+                # 도입 후 tools.mcp_server_id drop과 함께). credential_service.
+                # resolve_server_auth가 credential 우선 + inline auth_config
+                # fallback 규칙을 이미 구현 (test_mcp_connection router도 동일
+                # 함수 경유 → runtime 정합).
                 cred_auth = resolve_server_auth(tool.mcp_server) or {}
                 mcp_server_url = tool.mcp_server.url
             else:
                 cred_auth = {}
         elif tool.type == ToolType.PREBUILT:
             # PREBUILT 도구: provider_name 있으면 per-user default connection
-            # 경유. 없으면(legacy row, m10 백필 실패) 기존 경로 유지 — M6에서 제거.
+            # 경유. provider_name NULL row는 m10 백필로 이미 해소됨 — M6 이후
+            # env fallback과 동치이므로 `{}` 반환.
             if tool.provider_name:
                 cred_auth = _resolve_prebuilt_auth(tool, default_connection_map)
             else:
-                cred_auth = _resolve_legacy_tool_auth(tool)
+                cred_auth = {}
         elif tool.type == ToolType.CUSTOM:
-            # CUSTOM 도구(M4): connection_id FK 경유 → credential 복호화 +
-            # 3-state fail-closed. connection_id NULL은 legacy fallback
-            # (M6까지 tolerance). bezos S1 #2에 따라 BUILTIN 분기와 분리 —
-            # M6 cleanup에서 CUSTOM legacy 경로만 정확히 제거 가능.
+            # CUSTOM 도구: connection_id FK 경유 → credential 복호화 +
+            # 3-state fail-closed (M6에서 legacy fallback 제거).
             cred_auth = _resolve_custom_auth(tool)
         else:
             # BUILTIN 등 나머지. env fallback도 connection도 없는 도구 —
-            # 기존 legacy 경로(credential → auth_config → {}) 유지.
-            cred_auth = _resolve_legacy_tool_auth(tool)
+            # auth는 빈 dict (M6에서 legacy credential/auth_config 컬럼 제거).
+            cred_auth = {}
 
-        merged_auth = {**cred_auth, **(link.config or {})}
         config_entry: dict[str, Any] = {
             "type": tool.type,
             "name": tool.name,
@@ -451,7 +417,7 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
             "http_method": tool.http_method,
             "parameters_schema": tool.parameters_schema,
             "auth_type": tool.auth_type,
-            "auth_config": merged_auth or None,
+            "auth_config": cred_auth or None,
         }
         if tool.type == ToolType.MCP and mcp_server_url is not None:
             config_entry["mcp_server_url"] = mcp_server_url

@@ -647,6 +647,7 @@
         "paramsPlaceholder": "'{ \"type\": \"object\", \"properties\": '{ \"city\": '{ \"type\": \"string\" '}' '}' '}'",
         "auth": "인증",
         "connectionHint": "선택한 자격증명으로 커스텀 연결(Connection)이 자동 생성·재사용됩니다.",
+        "credentialRequired": "자격증명을 선택해야 커스텀 도구를 등록할 수 있습니다 (M6). 인증 없는 공개 API는 현재 지원되지 않습니다.",
         "connectionConflict": "연결 생성이 다른 세션과 충돌했습니다. 잠시 후 다시 시도하세요.",
         "connectionFailed": "연결 생성에 실패했습니다.",
         "toolFailed": "도구 등록에 실패했습니다."
@@ -899,7 +900,8 @@
       "custom": {
         "title": "{toolName} 인증 설정",
         "description": "이 Custom 도구가 사용할 credential을 선택합니다.",
-        "bridgeOverrideWarning": "이 도구는 현재 공통 연결과 다른 credential을 직접 사용 중입니다. 저장하면 공통 연결의 credential만 바뀌고, 도구 자체 override는 유지됩니다."
+        "bridgeOverrideWarning": "이 도구는 현재 공통 연결과 다른 credential을 직접 사용 중입니다. 저장하면 공통 연결의 credential만 바뀌고, 도구 자체 override는 유지됩니다.",
+        "unsupportedFirstBindM6": "이 도구는 연결이 없는 상태로 생성되었습니다. 현재는 연결을 새로 묶는 경로가 제공되지 않으며, M6.1 업데이트에서 지원될 예정입니다. 임시로 이 도구를 삭제한 뒤 다시 생성하면서 credential을 지정해주세요."
       },
       "mcp": {
         "title": "{serverName} 인증 설정",
@@ -910,7 +912,8 @@
         "saved": "연결이 저장되었습니다",
         "savedSharedCredential": "서버 설정이 변경되었습니다 — 다른 공유 서버는 영향 없음",
         "saveFailed": "연결 저장에 실패했습니다",
-        "conflictRetry": "다른 세션에서 기본 연결이 변경되었습니다. 최신 상태로 다시 시도해주세요."
+        "conflictRetry": "다른 세션에서 기본 연결이 변경되었습니다. 최신 상태로 다시 시도해주세요.",
+        "unsupportedFirstBindM6": "연결이 없는 도구의 바인딩은 M6.1에서 지원됩니다"
       }
     },
     "prebuiltSection": {

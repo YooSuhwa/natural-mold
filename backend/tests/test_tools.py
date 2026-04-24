@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
+from app.models.connection import Connection
 from app.models.credential import Credential
 from app.models.model import Model
 from app.models.tool import AgentToolLink, MCPServer, Tool
@@ -21,7 +22,28 @@ from tests.conftest import TEST_USER_ID
 
 
 @pytest.mark.asyncio
-async def test_create_custom_tool(client: AsyncClient):
+async def test_create_custom_tool(client: AsyncClient, db: AsyncSession):
+    # M6: CUSTOM tool 생성은 connection_id 필수 — credential + connection 선행 세팅
+    credential = Credential(
+        user_id=TEST_USER_ID,
+        name="Weather Key",
+        credential_type="api_key",
+        provider_name="custom",
+        data_encrypted=json.dumps({"api_key": "secret"}),
+        field_keys=["api_key"],
+    )
+    db.add(credential)
+    await db.flush()
+    connection = Connection(
+        user_id=TEST_USER_ID,
+        type="custom",
+        provider_name="custom",
+        display_name="Weather",
+        credential_id=credential.id,
+    )
+    db.add(connection)
+    await db.commit()
+
     resp = await client.post(
         "/api/tools/custom",
         json={
@@ -35,6 +57,7 @@ async def test_create_custom_tool(client: AsyncClient):
                 "required": ["city"],
             },
             "auth_type": "api_key",
+            "connection_id": str(connection.id),
         },
     )
     assert resp.status_code == 201
@@ -79,7 +102,8 @@ async def test_delete_nonexistent_tool(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_custom_tool_no_credential(client: AsyncClient):
+async def test_custom_tool_requires_connection(client: AsyncClient):
+    """M6: CUSTOM tool 생성 시 connection_id 누락 → 422 (pydantic invariant)."""
     resp = await client.post(
         "/api/tools/custom",
         json={
@@ -88,136 +112,7 @@ async def test_custom_tool_no_credential(client: AsyncClient):
             "http_method": "GET",
         },
     )
-    assert resp.status_code == 201
-    tool = resp.json()
-    assert tool["credential_id"] is None
-
-
-@pytest.mark.asyncio
-async def test_patch_tool_auth_config_preserves_unset_fields(
-    client: AsyncClient, db: AsyncSession
-):
-    """PATCH with only auth_config must NOT wipe credential_id, and vice versa."""
-    server = MCPServer(
-        user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-        name="Test MCP",
-        url="https://example.com",
-        auth_type="none",
-    )
-    db.add(server)
-    await db.flush()
-
-    tool = Tool(
-        user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
-        type="mcp",
-        mcp_server_id=server.id,
-        name="seed_tool",
-        auth_type="api_key",
-        auth_config={"api_key": "initial"},
-    )
-    db.add(tool)
-    await db.commit()
-
-    # PATCH only auth_config — credential_id should remain null, not be forced null.
-    # ToolResponse masks string values in auth_config, so the response shows "***"
-    # while the underlying DB row keeps the real value (verified separately below).
-    resp = await client.patch(
-        f"/api/tools/{tool.id}/auth-config",
-        json={"auth_config": {"api_key": "updated"}},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["auth_config"] == {"api_key": "***"}
-    assert body["credential_id"] is None
-
-    # PATCH only credential_id=null — auth_config should be preserved (not wiped to {})
-    resp = await client.patch(
-        f"/api/tools/{tool.id}/auth-config",
-        json={"credential_id": None},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["auth_config"] == {"api_key": "***"}
-
-    # Confirm the underlying value was actually persisted (and not the mask)
-    await db.refresh(tool)
-    assert tool.auth_config == {"api_key": "updated"}
-
-
-@pytest.mark.asyncio
-async def test_patch_mcp_tool_rejects_other_user(client: AsyncClient, db: AsyncSession):
-    """IDOR: a user must not be able to modify another user's MCP tool."""
-    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
-    server = MCPServer(
-        user_id=other_user_id,
-        name="Stranger MCP",
-        url="https://example.com",
-        auth_type="none",
-    )
-    db.add(server)
-    await db.flush()
-    tool = Tool(
-        user_id=other_user_id,
-        type="mcp",
-        mcp_server_id=server.id,
-        name="stranger_tool",
-        auth_type="none",
-    )
-    db.add(tool)
-    await db.commit()
-
-    resp = await client.patch(
-        f"/api/tools/{tool.id}/auth-config",
-        json={"auth_config": {"api_key": "hijack"}},
-    )
-    assert resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_tool_response_masks_auth_config_string_values(
-    client: AsyncClient, db: AsyncSession
-):
-    """GET /api/tools must not leak plaintext auth_config values (legacy data).
-
-    Tools created before centralised credentials may still hold inline secrets
-    in `auth_config`. The API response masks string values with "***" while
-    preserving keys so the UI can detect "configured" state.
-    """
-    server = MCPServer(
-        user_id=TEST_USER_ID,
-        name="Legacy MCP",
-        url="https://example.com",
-        auth_type="api_key",
-    )
-    db.add(server)
-    await db.flush()
-    tool = Tool(
-        user_id=TEST_USER_ID,
-        type="mcp",
-        mcp_server_id=server.id,
-        name="legacy_tool",
-        auth_type="api_key",
-        auth_config={"api_key": "real-secret", "extra": ""},
-    )
-    db.add(tool)
-    await db.commit()
-
-    resp = await client.get("/api/tools")
-    assert resp.status_code == 200
-    found = next((t for t in resp.json() if t["id"] == str(tool.id)), None)
-    assert found is not None
-    # Non-empty string masked to "***"; empty string left as-is (still falsy)
-    assert found["auth_config"] == {"api_key": "***", "extra": ""}
-
-    # Round-trip protection: client must not be able to PATCH the mask back in.
-    resp = await client.patch(
-        f"/api/tools/{tool.id}/auth-config",
-        json={"auth_config": {"api_key": "***"}},
-    )
-    assert resp.status_code == 422
-    # Server's stored value is unchanged
-    await db.refresh(tool)
-    assert tool.auth_config == {"api_key": "real-secret", "extra": ""}
+    assert resp.status_code == 422, resp.text
 
 
 # ---------------------------------------------------------------------------
@@ -417,100 +312,13 @@ async def test_delete_mcp_server_cascades_tools(
 
 
 @pytest.mark.asyncio
-async def test_update_custom_tool_credential(
-    client: AsyncClient, db: AsyncSession, monkeypatch
-):
-    """PATCH /api/tools/{id}/auth-config updates a CUSTOM tool's credential_id
-    and rejects modifications to another user's CUSTOM tool with 404.
-    """
-    monkeypatch.setattr(
-        "app.services.encryption._get_fernet", lambda: None, raising=False
-    )
-
-    cred = _make_credential()
-    db.add(cred)
-    await db.flush()
-
-    tool = _make_custom_tool()
-    db.add(tool)
-    await db.commit()
-
-    resp = await client.patch(
-        f"/api/tools/{tool.id}/auth-config",
-        json={"credential_id": str(cred.id)},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["credential_id"] == str(cred.id)
-
-    await db.refresh(tool)
-    assert tool.credential_id == cred.id
-
-    # Another user's CUSTOM tool returns 404
-    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
-    other_tool = _make_custom_tool(user_id=other_user_id, name="stranger_custom_tool")
-    db.add(other_tool)
-    await db.commit()
-
-    resp = await client.patch(
-        f"/api/tools/{other_tool.id}/auth-config",
-        json={"credential_id": str(cred.id)},
-    )
-    assert resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_update_custom_tool_rejects_other_users_credential(
-    client: AsyncClient, db: AsyncSession
-):
-    """IDOR: binding another user's credential to my own CUSTOM tool returns 404."""
-    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
-    other_cred = _make_credential(user_id=other_user_id, name="Stranger Key")
-    db.add(other_cred)
-    await db.flush()
-
-    tool = _make_custom_tool()
-    db.add(tool)
-    await db.commit()
-
-    resp = await client.patch(
-        f"/api/tools/{tool.id}/auth-config",
-        json={"credential_id": str(other_cred.id)},
-    )
-    assert resp.status_code == 404
-    await db.refresh(tool)
-    assert tool.credential_id is None
-
-
-@pytest.mark.asyncio
-async def test_update_custom_tool_unset_credential(
-    client: AsyncClient, db: AsyncSession
-):
-    """PATCH with {credential_id: null} clears a CUSTOM tool's credential link."""
-    cred = _make_credential()
-    db.add(cred)
-    await db.flush()
-
-    tool = _make_custom_tool(credential_id=cred.id)
-    db.add(tool)
-    await db.commit()
-
-    resp = await client.patch(
-        f"/api/tools/{tool.id}/auth-config",
-        json={"credential_id": None},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["credential_id"] is None
-
-    await db.refresh(tool)
-    assert tool.credential_id is None
-
-
-@pytest.mark.asyncio
 async def test_build_tools_config_mcp_uses_server_credential(db: AsyncSession):
-    """MCP tools resolve auth from the server's credential, ignoring tool-level fields."""
-    # chat_service는 이제 credential_service.resolve_server_auth 를 경유해
-    # credential data를 읽는다 → 복호화 호출 위치도 credential_service 모듈.
+    """MCP tools (legacy mcp_server path) resolve auth from the server's credential.
+
+    M6.1 까지 legacy fallback (`tools.mcp_server_id` → `mcp_servers.credential_id`)
+    이 유지된다. 이 테스트는 tool-level inline auth 없이도 server 경로가 동작
+    하는지만 검증한다.
+    """
     with patch(
         "app.services.credential_service.resolve_credential_data",
         return_value={"api_key": "from-server-cred"},
@@ -550,8 +358,6 @@ async def test_build_tools_config_mcp_uses_server_credential(db: AsyncSession):
             mcp_server_id=server.id,
             name="srv_tool",
             auth_type="api_key",
-            # tool-level junk that must be ignored
-            auth_config={"api_key": "from-tool-auth"},
         )
         db.add(tool)
         await db.flush()

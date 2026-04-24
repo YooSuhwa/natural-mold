@@ -45,11 +45,10 @@ async def _seed_agent(*, with_tools: bool = False) -> tuple[uuid.UUID, uuid.UUID
                 type="builtin",
                 is_system=True,
                 description="Search the web",
-                auth_config={"server_key": "val"},
             )
             db.add(tool)
             await db.flush()
-            link = AgentToolLink(agent_id=agent.id, tool_id=tool.id, config={"extra": "cfg"})
+            link = AgentToolLink(agent_id=agent.id, tool_id=tool.id)
             db.add(link)
             tool_id = tool.id
 
@@ -276,10 +275,9 @@ async def test_send_message_with_tools_merges_auth_config(client: AsyncClient):
     # args[0] is AgentConfig — check tools_config on it
     cfg = captured_args[0]
     assert len(cfg.tools_config) == 1
-    auth = cfg.tools_config[0]["auth_config"]
-    # merged: tool.auth_config {"server_key": "val"} + link.config {"extra": "cfg"}
-    assert auth["server_key"] == "val"
-    assert auth["extra"] == "cfg"
+    # M6 이후 BUILTIN 도구는 auth_config=None (legacy tool.auth_config /
+    # agent_tools.config 컬럼 drop).
+    assert cfg.tools_config[0]["auth_config"] is None
 
 
 # ---------------------------------------------------------------------------

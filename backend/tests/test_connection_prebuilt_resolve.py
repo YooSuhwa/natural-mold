@@ -53,7 +53,6 @@ from app.models.user import User
 from app.schemas.tool import ToolType
 from app.services.chat_service import (
     _load_user_default_connection_map,
-    _resolve_legacy_tool_auth,
     _resolve_prebuilt_auth,
     build_tools_config,
     get_agent_with_tools,
@@ -522,34 +521,29 @@ def test_prebuilt_connection_with_dangling_credential_fails_closed():
 
 
 # ---------------------------------------------------------------------------
-# Scenario 4 — provider_name NULL PREBUILT → legacy 경로
+# Scenario 4 — provider_name NULL PREBUILT → empty auth (M6 이후)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_prebuilt_without_provider_name_uses_legacy_resolver(
+async def test_prebuilt_without_provider_name_returns_empty_auth(
     db: AsyncSession,
 ):
-    """m10 백필 실패 row(`provider_name IS NULL`)는 ADR-008 이행 tolerance로
-    legacy 경로를 유지해야 한다. `_resolve_legacy_tool_auth`의 우선순위
-    (credential → auth_config → {})가 그대로 흘러야 M6 cleanup 전에 기존 시드
-    동작이 깨지지 않는다.
-
-    여기서는 tool.auth_config inline(평문) 경로만 커버 — credential 연결 경로는
-    legacy resolver의 기존 유닛 테스트에서 커버된다.
+    """m10 백필 실패 row(`provider_name IS NULL`)는 M6 이후 empty auth
+    (`{}`)로 처리된다 — legacy `tools.credential_id`/`auth_config` 컬럼이
+    drop 되었으므로 더 이상 inline fallback 할 값이 없다. env fallback 과
+    동치.
     """
     await _seed_user(db, TEST_USER_ID, "test@test.com")
     model = await _seed_model(db)
 
-    # provider_name=NULL + inline auth_config
     legacy_tool = Tool(
         user_id=None,
         type=ToolType.PREBUILT,
         is_system=True,
         provider_name=None,
         name="Unmapped Legacy Prebuilt",
-        description="m10 backfill miss — stays on legacy path",
-        auth_config={"api_key": "legacy-inline-key"},
+        description="m10 backfill miss",
     )
     db.add(legacy_tool)
     await db.flush()
@@ -561,19 +555,7 @@ async def test_prebuilt_without_provider_name_uses_legacy_resolver(
     assert loaded is not None
 
     cfg = build_tools_config(loaded)[0]
-    # _resolve_legacy_tool_auth — credential 없으므로 auth_config 그대로
-    assert cfg["auth_config"] == {"api_key": "legacy-inline-key"}
-
-    # 대응 헬퍼 단위 동작: tool.credential/auth_config 모두 None → {}
-    empty_tool = Tool(
-        user_id=None,
-        type=ToolType.PREBUILT,
-        is_system=True,
-        provider_name=None,
-        name="Bare Legacy",
-        auth_config=None,
-    )
-    assert _resolve_legacy_tool_auth(empty_tool) == {}
+    assert cfg["auth_config"] is None
 
 
 # ---------------------------------------------------------------------------

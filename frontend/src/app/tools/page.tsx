@@ -17,7 +17,7 @@ import {
   ShieldCheckIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useTools, useDeleteTool, useMCPServers, useUpdateToolAuthConfig } from '@/lib/hooks/use-tools'
+import { useTools, useDeleteTool, useMCPServers } from '@/lib/hooks/use-tools'
 import { useConnections } from '@/lib/hooks/use-connections'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
@@ -37,8 +37,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
-import type { Connection, MCPServerListItem, Tool } from '@/lib/types'
-import { isPrebuiltProviderName } from '@/lib/types'
+import type { MCPServerListItem, Tool } from '@/lib/types'
+import { CUSTOM_CONNECTION_PROVIDER_NAME, isPrebuiltProviderName } from '@/lib/types'
 
 type ToolFilter = 'all' | 'builtin' | 'prebuilt' | 'mcp' | 'custom'
 
@@ -92,24 +92,19 @@ type AuthStatus = 'not_configured' | 'configured'
 function getAuthStatus(
   tool: Tool,
   prebuiltConfiguredProviders: Set<string>,
+  customConfiguredConnectionIds: Set<string>,
 ): AuthStatus {
   // PREBUILT는 M3부터 per-user connection이 SOT. provider_name에 해당하는
   // default connection이 credential_id를 가진 active 상태면 configured.
-  // legacy(credential_id/auth_config) fallback은 provider_name이 없는 row에
-  // 한해 유지 (M6까지 이행 tolerance).
   if (tool.type === 'prebuilt' && tool.provider_name) {
     return prebuiltConfiguredProviders.has(tool.provider_name)
       ? 'configured'
       : 'not_configured'
   }
-  if (tool.credential_id) return 'configured'
-  // Note: server masks string values to "***" before sending. The mask itself
-  // is non-empty, so a configured legacy auth_config still resolves to 'configured'
-  // here — that's intentional (mask presence == real value exists on server).
-  const hasAuth =
-    tool.auth_config &&
-    Object.values(tool.auth_config).some((v) => typeof v === 'string' && v.length > 0)
-  if (hasAuth) return 'configured'
+  // CUSTOM: runtime은 connection이 active + credential_id 세팅됐을 때만 실행
+  // 가능하므로 UI도 같은 invariant를 적용한다.
+  if (tool.connection_id && customConfiguredConnectionIds.has(tool.connection_id))
+    return 'configured'
   return 'not_configured'
 }
 
@@ -150,12 +145,14 @@ function ToolCard({
   isDeleting,
   onShowDetail,
   prebuiltConfiguredProviders,
+  customConfiguredConnectionIds,
 }: {
   tool: Tool
   onDelete: (tool: Tool) => void
   isDeleting: boolean
   onShowDetail: (tool: Tool) => void
   prebuiltConfiguredProviders: Set<string>
+  customConfiguredConnectionIds: Set<string>
 }) {
   const t = useTranslations('tool.page')
   const tCustomAuth = useTranslations('tool.customAuth')
@@ -164,7 +161,9 @@ function ToolCard({
   const isPrebuilt = tool.type === 'prebuilt'
   const isCustom = tool.type === 'custom'
   const showAuth = isPrebuilt || isCustom
-  const authStatus = showAuth ? getAuthStatus(tool, prebuiltConfiguredProviders) : null
+  const authStatus = showAuth
+    ? getAuthStatus(tool, prebuiltConfiguredProviders, customConfiguredConnectionIds)
+    : null
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
   // Prebuilt cards swap their type badge for an auth-status badge (system tools
   // are always present, so auth-state IS the salient signal). Custom cards keep
@@ -190,28 +189,6 @@ function ToolCard({
   }
 
   const pText = isPrebuilt && authStatus ? prebuiltTexts[authStatus] : null
-
-  const updateAuth = useUpdateToolAuthConfig()
-
-  // ConnectionBindingDialog는 Connection만 변경(rotate/create/clear)하므로, custom tool의
-  // runtime credential을 실제로 갈아끼우려면 tool.credential_id도 동기화해야 한다.
-  // - legacy custom tool (connection_id=null) 첫 바인딩 → connection.credential_id 반영
-  // - bridge override 상태에서 user가 명시적으로 connection을 바꾼 경우 → bridge 해소
-  // - user가 None을 골라 auth를 명시 해제한 경우 → tool.credential_id도 null로 클리어
-  // dialog의 "saved" toast 후에 tool sync가 silent partial failure 되지 않도록 await + onError.
-  // M6에서 tool.connection_id 직접 binding으로 일괄 정리. 백엔드 변경 0건 (기존 endpoint 활용).
-  const handleCustomBound = async (connection: Connection) => {
-    if (tool.type !== 'custom' || connection.credential_id === tool.credential_id) return
-    try {
-      await updateAuth.mutateAsync({
-        id: tool.id,
-        authConfig: (tool.auth_config as Record<string, unknown> | null) ?? {},
-        credentialId: connection.credential_id,
-      })
-    } catch {
-      toast.error(tCustomAuth('toolSyncFailed'))
-    }
-  }
 
   return (
     <Card
@@ -281,9 +258,9 @@ function ToolCard({
                 onOpenChange={setAuthDialogOpen}
               />
             ) : (
-              // provider_name이 NULL이거나 알 수 없는 prebuilt row(m10 매핑 실패 등)는
-              // legacy `tool.credential_id` 기반으로 backend가 실행하므로, UI도 custom
-              // 플로우로 위임해 rotate/clear 경로를 유지한다 (M6 cleanup까지 tolerance).
+              // provider_name이 NULL인 prebuilt row(m10 매핑 실패 등)는 UI도 custom
+              // 플로우로 위임해 rotate/clear 경로를 유지한다. backend 실행은 connection
+              // SOT에만 의존(M6에서 legacy tool.credential_id 컬럼 제거 완료).
               <ConnectionBindingDialog
                 type="custom"
                 tool={tool}
@@ -291,7 +268,6 @@ function ToolCard({
                 triggerContext="tool-edit"
                 open={authDialogOpen}
                 onOpenChange={setAuthDialogOpen}
-                onBound={handleCustomBound}
               />
             )}
           </>
@@ -313,7 +289,6 @@ function ToolCard({
               triggerContext="tool-edit"
               open={authDialogOpen}
               onOpenChange={setAuthDialogOpen}
-              onBound={handleCustomBound}
             />
             {isDeletable && (
               <Button
@@ -366,6 +341,7 @@ function ToolSection({
   isDeleting,
   onShowDetail,
   prebuiltConfiguredProviders,
+  customConfiguredConnectionIds,
 }: {
   label: string
   count: number
@@ -374,6 +350,7 @@ function ToolSection({
   isDeleting: boolean
   onShowDetail: (tool: Tool) => void
   prebuiltConfiguredProviders: Set<string>
+  customConfiguredConnectionIds: Set<string>
 }) {
   return (
     <section>
@@ -389,6 +366,7 @@ function ToolSection({
             isDeleting={isDeleting}
             onShowDetail={onShowDetail}
             prebuiltConfiguredProviders={prebuiltConfiguredProviders}
+            customConfiguredConnectionIds={customConfiguredConnectionIds}
           />
         ))}
       </div>
@@ -402,6 +380,11 @@ export default function ToolsPage() {
   // PREBUILT connection 목록 — configured 상태 판정에 사용. type 필터만 적용해
   // tool.provider_name 매핑용 Set 구성.
   const { data: prebuiltConnections } = useConnections({ type: 'prebuilt' })
+  // CUSTOM connection 목록 — tool.connection_id 기준 configured 판정에 사용.
+  const { data: customConnections } = useConnections({
+    type: 'custom',
+    provider_name: CUSTOM_CONNECTION_PROVIDER_NAME,
+  })
   const deleteTool = useDeleteTool()
   const t = useTranslations('tool.page')
   const tc = useTranslations('common')
@@ -422,6 +405,18 @@ export default function ToolsPage() {
     }
     return set
   }, [prebuiltConnections])
+
+  // runtime이 active + credential_id 세팅된 connection만 실행 가능하므로 UI도
+  // 동일 invariant로 configured 판정.
+  const customConfiguredConnectionIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const conn of customConnections ?? []) {
+      if (conn.credential_id && conn.status === 'active') {
+        set.add(conn.id)
+      }
+    }
+    return set
+  }, [customConnections])
 
   const filterOptions: { value: ToolFilter; label: string }[] = [
     { value: 'all', label: t('filter.all') },
@@ -618,6 +613,7 @@ export default function ToolsPage() {
               isDeleting={deleteTool.isPending}
               onShowDetail={setDetailTool}
               prebuiltConfiguredProviders={prebuiltConfiguredProviders}
+              customConfiguredConnectionIds={customConfiguredConnectionIds}
             />
           )}
           {showSection('prebuilt') && sectionTools.prebuilt.length > 0 && (
@@ -629,6 +625,7 @@ export default function ToolsPage() {
               isDeleting={deleteTool.isPending}
               onShowDetail={setDetailTool}
               prebuiltConfiguredProviders={prebuiltConfiguredProviders}
+              customConfiguredConnectionIds={customConfiguredConnectionIds}
             />
           )}
           {showSection('mcp') && filteredMCPServers.length > 0 && (
@@ -660,6 +657,7 @@ export default function ToolsPage() {
               isDeleting={deleteTool.isPending}
               onShowDetail={setDetailTool}
               prebuiltConfiguredProviders={prebuiltConfiguredProviders}
+              customConfiguredConnectionIds={customConfiguredConnectionIds}
             />
           )}
         </div>

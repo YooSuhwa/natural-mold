@@ -37,7 +37,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         system_prompt=agent.system_prompt,
         model=agent.model,
         tools=[
-            ToolBrief(id=link.tool.id, name=link.tool.name, agent_config=link.config)
+            ToolBrief(id=link.tool.id, name=link.tool.name)
             for link in agent.tool_links
         ],
         skills=[

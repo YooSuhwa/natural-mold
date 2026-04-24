@@ -7,9 +7,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.error_codes import credential_not_found
+from app.models.connection import Connection
 from app.models.credential import Credential
-from app.models.tool import MCPServer, Tool
+from app.models.tool import AgentToolLink, MCPServer, Tool
 from app.schemas.credential import CredentialCreate, CredentialUpdate
+from app.schemas.tool import ToolType
 from app.services.encryption import decrypt_api_key, encrypt_api_key
 
 
@@ -125,13 +127,41 @@ async def get_usage_count(
     # Verify ownership
     await get_credential(db, credential_id, user_id)
 
-    tool_count_result = await db.execute(
-        select(func.count())
+    # UX는 "agent에 실제로 연결된 tool 수"를 원하므로 agent_tools 바인딩을 JOIN
+    # 한다. JOIN 없이 카운트하면 PREBUILT 카탈로그 전수(Naver 5종 등)가 잡혀
+    # 과장된 사용량으로 delete confirmation UX가 왜곡된다.
+    #   (a) CUSTOM/MCP: tools.connection_id → connections.credential_id 직결
+    #   (b) PREBUILT: provider_name 매칭된 PREBUILT 중 agent_tools에 바인딩된 것만
+    custom_mcp_count_result = await db.execute(
+        select(func.count(func.distinct(Tool.id)))
         .select_from(Tool)
-        .where(Tool.credential_id == credential_id)
+        .join(Connection, Tool.connection_id == Connection.id)
+        .join(AgentToolLink, AgentToolLink.tool_id == Tool.id)
+        .where(Connection.credential_id == credential_id)
     )
-    tool_count = tool_count_result.scalar() or 0
+    custom_mcp_count = custom_mcp_count_result.scalar() or 0
 
+    prebuilt_count_result = await db.execute(
+        select(func.count(func.distinct(Tool.id)))
+        .select_from(Tool)
+        .join(AgentToolLink, AgentToolLink.tool_id == Tool.id)
+        .where(Tool.type == ToolType.PREBUILT)
+        .where(
+            Tool.provider_name.in_(
+                select(Connection.provider_name)
+                .where(Connection.credential_id == credential_id)
+                .where(Connection.type == "prebuilt")
+                .where(Connection.is_default.is_(True))
+                .where(Connection.status == "active")
+                .where(Connection.user_id == user_id)
+            )
+        )
+    )
+    prebuilt_count = prebuilt_count_result.scalar() or 0
+
+    tool_count = custom_mcp_count + prebuilt_count
+
+    # MCPServer 테이블 + credential_id 컬럼은 M6.1로 이월 (옵션 D 선행 필요).
     mcp_count_result = await db.execute(
         select(func.count())
         .select_from(MCPServer)

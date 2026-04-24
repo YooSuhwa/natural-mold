@@ -52,20 +52,13 @@ async def get_tool_agent_counts(
 
 
 async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: uuid.UUID) -> Tool:
-    # `connection_id`가 있으면 이 값이 single source of truth.
-    # `credential_id`는 connection.credential_id에서 파생 (split-brain 방지:
-    # 클라이언트가 보낸 credential_id 값은 무시). `connection_id` 없는 legacy
-    # 경로는 기존대로 credential_id만 검증.
-    effective_credential_id: uuid.UUID | None = data.credential_id
-
-    if data.connection_id:
-        conn = await connection_service.validate_connection_for_custom_tool(
-            db, data.connection_id, user_id
-        )
-        effective_credential_id = conn.credential_id
-
-    if effective_credential_id:
-        await credential_service.get_credential(db, effective_credential_id, user_id)
+    # M6 이후 CUSTOM tool 생성은 connection_id 경유가 유일한 경로.
+    # schema 단에서 required로 선언했지만 방어적으로 서비스에서도 확인한다.
+    # connection ownership/active 검증은 chat runtime에서 일어나므로 여기선
+    # 존재 + 소유 여부만 확인한다.
+    await connection_service.validate_connection_for_custom_tool(
+        db, data.connection_id, user_id
+    )
 
     tool = Tool(
         user_id=user_id,
@@ -76,8 +69,6 @@ async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: 
         http_method=data.http_method,
         parameters_schema=data.parameters_schema,
         auth_type=data.auth_type,
-        auth_config=data.auth_config,
-        credential_id=effective_credential_id,
         connection_id=data.connection_id,
     )
     db.add(tool)
@@ -121,7 +112,6 @@ async def register_mcp_server(
             description=mt.get("description"),
             parameters_schema=mt.get("inputSchema"),
             auth_type=data.auth_type,
-            auth_config=data.auth_config,
         )
         db.add(tool)
 
@@ -190,7 +180,7 @@ async def list_mcp_server_items(
 
 
 async def _apply_credential_update(
-    target: Tool | MCPServer,
+    target: MCPServer,
     updates: dict[str, Any],
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -258,40 +248,6 @@ async def delete_mcp_server(
     await db.delete(server)
     await db.commit()
     return True
-
-
-async def update_tool_auth_config(
-    db: AsyncSession,
-    tool_id: uuid.UUID,
-    updates: dict[str, Any],
-    user_id: uuid.UUID,
-) -> Tool | None:
-    """Partial update of a tool's auth_config / credential_id.
-
-    Only fields present in ``updates`` are mutated. For MCP and CUSTOM tools
-    the caller must own the tool row. PREBUILT tools are shared
-    (is_system=True) — mutation of shared rows remains a known limitation and
-    will be addressed by per-user credential binding in a future change.
-    """
-    result = await db.execute(select(Tool).where(Tool.id == tool_id))
-    tool = result.scalar_one_or_none()
-    if not tool:
-        return None
-    if tool.type not in (ToolType.PREBUILT, ToolType.MCP, ToolType.CUSTOM):
-        return None
-    if tool.type in (ToolType.MCP, ToolType.CUSTOM) and tool.user_id != user_id:
-        return None
-
-    await _apply_credential_update(tool, updates, db, user_id)
-    if "auth_config" in updates:
-        # Replace semantics: passing {} clears existing inline auth.
-        # All three auth dialogs (Prebuilt/Custom/MCPServer) intentionally send
-        # {} alongside credential_id to wipe any legacy inline secret.
-        tool.auth_config = updates["auth_config"]
-
-    await db.commit()
-    await db.refresh(tool)
-    return tool
 
 
 async def delete_tool(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -> bool:
