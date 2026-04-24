@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 
 class ToolType(enum.StrEnum):
@@ -31,20 +31,11 @@ class ToolCustomCreate(BaseModel):
     connection_id: uuid.UUID
 
 
-class MCPServerCreate(BaseModel):
-    name: str
-    url: str
-    auth_type: str = "none"
-    auth_config: dict[str, Any] | None = None
-    credential_id: uuid.UUID | None = None
-
-
 class ToolResponse(BaseModel):
     id: uuid.UUID
     type: str
     provider_name: str | None = None
     is_system: bool
-    mcp_server_id: uuid.UUID | None
     connection_id: uuid.UUID | None = None
     name: str
     description: str | None
@@ -57,47 +48,6 @@ class ToolResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
-
-
-class MCPServerResponse(BaseModel):
-    id: uuid.UUID
-    name: str
-    url: str
-    auth_type: str
-    credential_id: uuid.UUID | None = None
-    status: str
-    tools: list[ToolResponse]
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class CredentialBrief(BaseModel):
-    id: uuid.UUID
-    name: str
-    provider_name: str
-
-    model_config = {"from_attributes": True}
-
-
-class MCPServerListItem(BaseModel):
-    id: uuid.UUID
-    name: str
-    url: str
-    auth_type: str
-    credential_id: uuid.UUID | None = None
-    credential: CredentialBrief | None = None
-    status: str
-    tool_count: int
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class MCPServerUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    credential_id: uuid.UUID | None = None
-    auth_config: dict[str, Any] | None = None
 
 
 class ToolUpdate(BaseModel):

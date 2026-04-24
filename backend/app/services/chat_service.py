@@ -15,7 +15,7 @@ from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
-from app.models.tool import AgentToolLink, MCPServer, Tool
+from app.models.tool import AgentToolLink, Tool
 from app.schemas.conversation import ConversationUpdate
 from app.schemas.tool import ToolType
 from app.services.connection_service import (
@@ -23,7 +23,6 @@ from app.services.connection_service import (
 )
 from app.services.credential_service import (
     resolve_credential_data,
-    resolve_server_auth,
 )
 from app.services.env_var_resolver import (
     _ENV_VAR_TEMPLATE,
@@ -191,10 +190,6 @@ async def get_agent_with_tools(
             selectinload(Agent.model).selectinload(Model.llm_provider),
             selectinload(Agent.tool_links)
             .selectinload(AgentToolLink.tool)
-            .selectinload(Tool.mcp_server)
-            .selectinload(MCPServer.credential),
-            selectinload(Agent.tool_links)
-            .selectinload(AgentToolLink.tool)
             .selectinload(Tool.connection)
             .selectinload(Connection.credential),
             selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
@@ -341,57 +336,50 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
         mcp_transport_headers: dict[str, str] | None = None
 
         if tool.type == ToolType.MCP:
-            # 우선순위: connection 경유 (M2+) → mcp_server legacy fallback.
-            # 둘 다 없는 MCP tool은 실행 불가이므로 빈 auth로 넘기고 URL 키를
-            # 생략 → executor가 `tc.get("mcp_server_url")` 체크에서 스킵.
-            if tool.connection_id is not None and tool.connection is not None:
-                conn = tool.connection
-                # Cross-tenant credential leak 방어: DML/이관 실수로 user_id
-                # 불일치가 생겨도 런타임에서 타 유저 credential 복호화를 거부.
-                assert_connection_ownership(
-                    tool_user_id=tool.user_id,
-                    connection_user_id=conn.user_id,
-                    connection_id=conn.id,
-                    tool_name=tool.name,
+            # M6.1: legacy mcp_server fallback 제거. connection 없는 MCP tool은
+            # fail-closed로 차단 (Bezos M1 §2.2 결정).
+            if tool.connection_id is None or tool.connection is None:
+                raise ToolConfigError(
+                    f"MCP tool '{tool.name}' has no connection — execution "
+                    "blocked. Bind a connection (PATCH /api/tools/{id}) to "
+                    "run this tool."
                 )
-                assert_credential_ownership(
-                    connection_user_id=conn.user_id,
-                    credential=conn.credential,
-                    connection_id=conn.id,
+            conn = tool.connection
+            # Cross-tenant credential leak 방어: DML/이관 실수로 user_id
+            # 불일치가 생겨도 런타임에서 타 유저 credential 복호화를 거부.
+            assert_connection_ownership(
+                tool_user_id=tool.user_id,
+                connection_user_id=conn.user_id,
+                connection_id=conn.id,
+                tool_name=tool.name,
+            )
+            assert_credential_ownership(
+                connection_user_id=conn.user_id,
+                credential=conn.credential,
+                connection_id=conn.id,
+            )
+            extra = conn.extra_config or {}
+            url = extra.get("url")
+            if not url:
+                raise ToolConfigError(
+                    f"MCP tool '{tool.name}' connection {conn.id} is "
+                    "missing extra_config.url"
                 )
-                extra = conn.extra_config or {}
-                url = extra.get("url")
-                if not url:
-                    raise ToolConfigError(
-                        f"MCP tool '{tool.name}' connection {conn.id} is "
-                        "missing extra_config.url"
-                    )
-                cred_auth = resolve_env_vars(
-                    extra.get("env_vars"),
-                    conn.credential,
-                    context={
-                        "connection_id": str(conn.id),
-                        "tool_name": tool.name,
-                    },
-                )
-                # ConnectionExtraConfig.headers는 transport 헤더 — auth_config에
-                # 병합하지 말고 별도 필드로 executor에 전달해야 tool argument
-                # injection 대상에서 제외된다.
-                extra_headers = extra.get("headers")
-                if extra_headers:
-                    mcp_transport_headers = extra_headers
-                mcp_server_url = url
-            elif tool.mcp_server is not None:
-                # Legacy fallback — M3~M6 이행기 동안 기존 mcp_servers 경로 유지.
-                # **M6.1에서 제거** (옵션 D — PATCH /api/tools/{id} connection_id
-                # 도입 후 tools.mcp_server_id drop과 함께). credential_service.
-                # resolve_server_auth가 credential 우선 + inline auth_config
-                # fallback 규칙을 이미 구현 (test_mcp_connection router도 동일
-                # 함수 경유 → runtime 정합).
-                cred_auth = resolve_server_auth(tool.mcp_server) or {}
-                mcp_server_url = tool.mcp_server.url
-            else:
-                cred_auth = {}
+            cred_auth = resolve_env_vars(
+                extra.get("env_vars"),
+                conn.credential,
+                context={
+                    "connection_id": str(conn.id),
+                    "tool_name": tool.name,
+                },
+            )
+            # ConnectionExtraConfig.headers는 transport 헤더 — auth_config에
+            # 병합하지 말고 별도 필드로 executor에 전달해야 tool argument
+            # injection 대상에서 제외된다.
+            extra_headers = extra.get("headers")
+            if extra_headers:
+                mcp_transport_headers = extra_headers
+            mcp_server_url = url
         elif tool.type == ToolType.PREBUILT:
             # PREBUILT 도구: provider_name 있으면 per-user default connection
             # 경유. provider_name NULL row는 m10 백필로 이미 해소됨 — M6 이후

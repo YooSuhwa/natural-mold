@@ -41,7 +41,7 @@ from app.models.agent import Agent
 from app.models.connection import Connection
 from app.models.credential import Credential
 from app.models.model import Model
-from app.models.tool import AgentToolLink, MCPServer, Tool
+from app.models.tool import AgentToolLink, Tool
 from app.services.chat_service import (
     ToolConfigError,
     _resolve_env_vars,
@@ -373,149 +373,6 @@ class TestResolveEnvVarsMissing:
             build_tools_config(loaded)
 
 
-# ---------------------------------------------------------------------------
-# Scenario 5 — Legacy fallback: connection_id IS NULL → mcp_server 경로 유지
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_build_tools_config_legacy_mcp_server_fallback(
-    db: AsyncSession,
-):
-    """connection_id 가 None 인 MCP tool은 m9 이관 실패 row를 의미하므로
-    M3-M5 이행기 동안 기존 mcp_server.credential 경로로 계속 동작해야 한다.
-    M6에서 mcp_server_id drop 과 함께 fallback 제거 예정.
-    """
-    model = await _seed_model(db)
-
-    server_cred = await _seed_credential(
-        db, {"api_key": "from-legacy-server-cred"}, name="LegacyCred"
-    )
-    server = MCPServer(
-        user_id=TEST_USER_ID,
-        name="LegacyServer",
-        url="https://legacy.example.com",
-        auth_type="api_key",
-        credential_id=server_cred.id,
-    )
-    db.add(server)
-    await db.flush()
-
-    tool = Tool(
-        user_id=TEST_USER_ID,
-        type="mcp",
-        connection_id=None,  # 이관 실패 / 신규 도입 직후 상태
-        mcp_server_id=server.id,
-        name="legacy_tool",
-        auth_type="api_key",
-    )
-    agent = await _seed_agent_with_tool(db, tool=tool, model=model)
-
-    loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
-    assert loaded is not None
-    configs = build_tools_config(loaded)
-    assert len(configs) == 1
-    cfg = configs[0]
-    assert cfg["type"] == "mcp"
-    assert cfg["mcp_server_url"] == "https://legacy.example.com"
-    assert cfg["auth_config"] == {"api_key": "from-legacy-server-cred"}
-
-
-@pytest.mark.asyncio
-async def test_build_tools_config_legacy_fallback_inline_auth_config(
-    db: AsyncSession,
-):
-    """credential 미연결 + inline auth_config 만 있는 legacy mcp_server 도
-    기존 동작(평문 auth_config 그대로 사용)이 보존되는지 확인."""
-    model = await _seed_model(db)
-
-    server = MCPServer(
-        user_id=TEST_USER_ID,
-        name="InlineAuth",
-        url="https://inline.example.com",
-        auth_type="api_key",
-        auth_config={"api_key": "inline-key"},
-        credential_id=None,
-    )
-    db.add(server)
-    await db.flush()
-
-    tool = Tool(
-        user_id=TEST_USER_ID,
-        type="mcp",
-        connection_id=None,
-        mcp_server_id=server.id,
-        name="inline_tool",
-        auth_type="api_key",
-    )
-    agent = await _seed_agent_with_tool(db, tool=tool, model=model)
-
-    loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
-    assert loaded is not None
-    configs = build_tools_config(loaded)
-    assert configs[0]["auth_config"] == {"api_key": "inline-key"}
-    assert configs[0]["mcp_server_url"] == "https://inline.example.com"
-
-
-# ---------------------------------------------------------------------------
-# 연결 우선순위 — connection_id + mcp_server_id 둘 다 있으면 connection 경로
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_connection_takes_precedence_over_mcp_server(db: AsyncSession):
-    """m9 이관 후 일정 기간 tools 는 ``connection_id`` 와 ``mcp_server_id`` 가
-    모두 채워져 있다(M6 drop 전). chat_service 는 connection 경로를 우선해야
-    한다. 만약 mcp_server fallback이 잘못 우선되면 마이그레이션 효과가 사라
-    진다(이관 후에도 legacy 경로로 흐르는 것).
-    """
-    model = await _seed_model(db)
-    cred = await _seed_credential(db, {"api_key": "winner"})
-
-    connection = Connection(
-        user_id=TEST_USER_ID,
-        type="mcp",
-        provider_name="dual",
-        display_name="Dual",
-        credential_id=cred.id,
-        extra_config={
-            "url": "https://winner.example.com",
-            "auth_type": "api_key",
-            "env_vars": {"API_KEY": "${credential.api_key}"},
-        },
-        is_default=True,
-        status="active",
-    )
-    db.add(connection)
-    await db.flush()
-
-    server = MCPServer(
-        user_id=TEST_USER_ID,
-        name="Loser",
-        url="https://loser.example.com",
-        auth_type="api_key",
-        auth_config={"api_key": "loser"},
-    )
-    db.add(server)
-    await db.flush()
-
-    tool = Tool(
-        user_id=TEST_USER_ID,
-        type="mcp",
-        connection_id=connection.id,
-        mcp_server_id=server.id,
-        name="dual_tool",
-        auth_type="api_key",
-    )
-    agent = await _seed_agent_with_tool(db, tool=tool, model=model)
-
-    loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
-    assert loaded is not None
-    cfg = build_tools_config(loaded)[0]
-    assert cfg["mcp_server_url"] == "https://winner.example.com"
-    assert cfg["auth_config"] == {"API_KEY": "winner"}
-
-
 # Compile-time guard: chat_service 의 템플릿 정규식이 ADR-008 §2 패턴과 동일.
 def test_template_regex_contract():
     """`${credential.<field_name>}` 패턴은 ADR-008 §2 명세. 정규식 변경 시
@@ -605,8 +462,6 @@ class TestOwnershipGuards:
             is_system=False,
             connection_id=conn_uid,
             connection=conn,
-            mcp_server_id=None,
-            mcp_server=None,
             created_at=now,
         )
         link = AgentToolLink(
@@ -726,8 +581,6 @@ def test_build_tools_config_forwards_connection_headers():
         is_system=False,
         connection_id=conn_id,
         connection=conn,
-        mcp_server_id=None,
-        mcp_server=None,
         created_at=now,
     )
     link = AgentToolLink(

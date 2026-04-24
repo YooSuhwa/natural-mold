@@ -183,7 +183,7 @@ class ConnectionExtraConfigResponse(BaseModel):
       `env_var_keys`로 노출
     - `headers` 값도 secret 가능성(Authorization, API key) 있어 동일하게
       redact. 키 이름만 `header_keys`로 노출
-    - `MCPServerResponse`의 `auth_config` 전체 redaction 정책과 정합
+    - 과거 `MCPServerResponse.auth_config` 전체 redaction 정책의 후속 (M6.1에서 mcp_servers drop)
     - m9 이관한 legacy `auth_config` dict의 비-string 값도 키만 살아남으므로
       schema 타입 충돌 발생 안 함
     """

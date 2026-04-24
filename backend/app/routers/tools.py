@@ -6,12 +6,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.error_codes import mcp_server_not_found, tool_not_found
+from app.error_codes import tool_not_found
 from app.schemas.tool import (
-    MCPServerCreate,
-    MCPServerListItem,
-    MCPServerResponse,
-    MCPServerUpdate,
     ToolCustomCreate,
     ToolResponse,
     ToolUpdate,
@@ -46,70 +42,59 @@ async def create_custom_tool(
     return await tool_service.create_custom_tool(db, data, user.id)
 
 
-@router.post("/mcp-server", response_model=MCPServerResponse, status_code=201)
-async def register_mcp_server(
-    data: MCPServerCreate,
+@router.post("/{tool_id}/test")
+async def test_tool_connection(
+    tool_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    return await tool_service.register_mcp_server(db, data, user.id)
+    """Probe an MCP tool's connection (M6.1 옵션 D).
 
-
-@router.get("/mcp-servers", response_model=list[MCPServerListItem])
-async def list_mcp_servers(
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-):
-    return await tool_service.list_mcp_server_items(db, user.id)
-
-
-@router.patch("/mcp-servers/{server_id}", response_model=MCPServerResponse)
-async def update_mcp_server(
-    server_id: uuid.UUID,
-    data: MCPServerUpdate,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-):
-    updates = data.model_dump(exclude_unset=True)
-    server = await tool_service.update_mcp_server(db, server_id, updates, user.id)
-    if not server:
-        raise mcp_server_not_found()
-    return server
-
-
-@router.delete("/mcp-servers/{server_id}", status_code=204)
-async def delete_mcp_server(
-    server_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-):
-    deleted = await tool_service.delete_mcp_server(db, server_id, user.id)
-    if not deleted:
-        raise mcp_server_not_found()
-
-
-@router.post("/mcp-server/{server_id}/test")
-async def test_mcp_connection(
-    server_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-):
+    tool.connection 경유로 url/auth를 해석하므로 chat runtime과 동일한 경로를
+    공유한다. PREBUILT/CUSTOM 또는 connection 미바인딩 시 400.
+    """
     from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
 
     from app.agent_runtime.mcp_client import test_mcp_connection as mcp_test
-    from app.models.tool import MCPServer
-    from app.services.credential_service import resolve_server_auth
+    from app.models.connection import Connection
+    from app.models.tool import Tool
+    from app.schemas.tool import ToolType
+    from app.services.env_var_resolver import ToolConfigError, resolve_env_vars
 
     result = await db.execute(
-        select(MCPServer).where(MCPServer.id == server_id, MCPServer.user_id == user.id)
+        select(Tool)
+        .where(Tool.id == tool_id)
+        .options(selectinload(Tool.connection).selectinload(Connection.credential))
     )
-    server = result.scalar_one_or_none()
-    if not server:
-        raise mcp_server_not_found()
+    tool = result.scalar_one_or_none()
+    if tool is None:
+        raise tool_not_found()
+    if not tool.is_system and tool.user_id != user.id:
+        raise tool_not_found()
+    if tool.type != ToolType.MCP:
+        raise ToolConfigError(
+            f"Tool '{tool.name}' is type={tool.type}; /test only supports MCP tools."
+        )
+    if tool.connection_id is None or tool.connection is None:
+        raise ToolConfigError(
+            f"MCP tool '{tool.name}' has no connection — bind one via "
+            "PATCH /api/tools/{tool_id} before testing."
+        )
 
-    effective_auth = resolve_server_auth(server)
-    test_result = await mcp_test(server.url, effective_auth)
-    return test_result
+    conn = tool.connection
+    extra = conn.extra_config or {}
+    url = extra.get("url")
+    if not url:
+        raise ToolConfigError(
+            f"MCP tool '{tool.name}' connection {conn.id} is missing extra_config.url"
+        )
+    effective_auth = resolve_env_vars(
+        extra.get("env_vars"),
+        conn.credential,
+        context={"connection_id": str(conn.id), "tool_name": tool.name},
+    )
+    return await mcp_test(url, effective_auth)
 
 
 @router.patch("/{tool_id}", response_model=ToolResponse)

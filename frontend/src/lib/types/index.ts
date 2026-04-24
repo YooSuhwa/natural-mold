@@ -209,7 +209,6 @@ export interface CredentialUpdateRequest {
 
 export interface CredentialUsage {
   tool_count: number
-  mcp_server_count: number
 }
 
 // Tool
@@ -217,7 +216,9 @@ export interface Tool {
   id: string
   type: 'mcp' | 'custom' | 'builtin' | 'prebuilt'
   is_system: boolean
-  mcp_server_id: string | null
+  // M6.1 백엔드 drop 완료 — 응답에 더 이상 포함되지 않음. M5에서 frontend MCP
+  // re-wire 시 함께 제거 예정 (현재는 useToolsByMCPServer 등 dead path가 참조).
+  mcp_server_id?: string | null
   // PREBUILT tool의 provider 식별자. connection 조회에 사용. 그 외 타입은 null.
   provider_name: string | null
   name: string

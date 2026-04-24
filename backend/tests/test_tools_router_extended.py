@@ -1,16 +1,15 @@
-"""Extended tests for app.routers.tools — MCP server, auth config, edge cases."""
+"""Extended tests for app.routers.tools — auth config, edge cases."""
 
 from __future__ import annotations
 
 import uuid
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 
 from app.models.connection import Connection
 from app.models.credential import Credential
-from app.models.tool import MCPServer, Tool
+from app.models.tool import Tool
 from app.models.user import User
 from tests.conftest import TEST_USER_ID, TestSession
 
@@ -24,78 +23,6 @@ async def _seed_user() -> None:
         user = User(id=TEST_USER_ID, email="test@test.com", name="Test")
         db.add(user)
         await db.commit()
-
-
-async def _seed_mcp_server() -> uuid.UUID:
-    async with TestSession() as db:
-        server = MCPServer(
-            user_id=TEST_USER_ID,
-            name="Test MCP",
-            url="https://mcp.example.com",
-            auth_type="api_key",
-            auth_config={"api_key": "test-key"},
-        )
-        db.add(server)
-        await db.commit()
-        return server.id
-
-
-# ---------------------------------------------------------------------------
-# POST /api/tools/mcp-server/{id}/test
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_test_mcp_connection_success(client: AsyncClient):
-    await _seed_user()
-    server_id = await _seed_mcp_server()
-
-    mock_result = {
-        "success": True,
-        "server_info": {"name": "test", "version": "1.0"},
-        "tools": [{"name": "tool1"}],
-    }
-
-    with patch(
-        "app.agent_runtime.mcp_client.test_mcp_connection",
-        new_callable=AsyncMock,
-        return_value=mock_result,
-    ):
-        resp = await client.post(f"/api/tools/mcp-server/{server_id}/test")
-
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["success"] is True
-    assert len(data["tools"]) == 1
-
-
-@pytest.mark.asyncio
-async def test_test_mcp_connection_server_not_found(client: AsyncClient):
-    await _seed_user()
-    fake_id = "00000000-0000-0000-0000-000000000099"
-
-    resp = await client.post(f"/api/tools/mcp-server/{fake_id}/test")
-    assert resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_mcp_server_register_via_api(client: AsyncClient):
-    """POST /api/tools/mcp-server should create and return the server."""
-    await _seed_user()
-
-    resp = await client.post(
-        "/api/tools/mcp-server",
-        json={
-            "name": "New MCP Server",
-            "url": "https://new-mcp.example.com",
-            "auth_type": "none",
-        },
-    )
-    assert resp.status_code == 201
-    data = resp.json()
-    assert data["name"] == "New MCP Server"
-    assert data["status"] == "active"
-    assert data["tools"] == []
 
 
 # ---------------------------------------------------------------------------

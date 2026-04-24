@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.error_codes import credential_not_found
 from app.models.connection import Connection
 from app.models.credential import Credential
-from app.models.tool import AgentToolLink, MCPServer, Tool
+from app.models.tool import AgentToolLink, Tool
 from app.schemas.credential import CredentialCreate, CredentialUpdate
 from app.schemas.tool import ToolType
 from app.services.encryption import decrypt_api_key, encrypt_api_key
@@ -109,18 +109,6 @@ def extract_field_keys(credential: Credential) -> list[str]:
         return []
 
 
-def resolve_server_auth(server: MCPServer) -> dict[str, str] | None:
-    """Resolve the effective auth_config for an MCP server.
-
-    Credential (if linked) takes precedence over inline auth_config. This
-    mirrors the precedence used at chat runtime so `test_mcp_connection`
-    and agent execution agree on what's sent to the MCP server.
-    """
-    if server.credential_id and server.credential:
-        return resolve_credential_data(server.credential)
-    return server.auth_config
-
-
 async def get_usage_count(
     db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
 ) -> dict[str, int]:
@@ -161,12 +149,4 @@ async def get_usage_count(
 
     tool_count = custom_mcp_count + prebuilt_count
 
-    # MCPServer 테이블 + credential_id 컬럼은 M6.1로 이월 (옵션 D 선행 필요).
-    mcp_count_result = await db.execute(
-        select(func.count())
-        .select_from(MCPServer)
-        .where(MCPServer.credential_id == credential_id)
-    )
-    mcp_count = mcp_count_result.scalar() or 0
-
-    return {"tool_count": tool_count, "mcp_server_count": mcp_count}
+    return {"tool_count": tool_count}

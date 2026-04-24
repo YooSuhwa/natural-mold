@@ -170,3 +170,39 @@
 ### 검증 결과
 - `pnpm lint`: **PASS** (0 warnings, 0 errors)
 - `pnpm build`: **PASS** (15 routes 전부 컴파일 성공, TypeScript 3.9s)
+
+## M3 젠슨 결정 (2026-04-24)
+
+### 파일:라인 수정 요약
+- `backend/alembic/versions/m13_drop_mcp_legacy.py` (신규) — preflight (`_assert_no_stale_legacy_rows()` → `collect_legacy_checks`) + `tools_mcp_server_id_fkey` drop + `tools.mcp_server_id` 컬럼 drop + `fk_mcp_servers_credential_id` drop + `mcp_servers` 테이블 drop. SQLite 분기로 FK drop skip (구조만 round-trip). down_revision=`m12_drop_legacy_columns`.
+- `backend/app/models/tool.py` — `class MCPServer` 전체 + `Tool.mcp_server_id` + `Tool.mcp_server` 관계 제거. `Credential` TYPE_CHECKING import도 정리.
+- `backend/app/models/__init__.py` — `MCPServer` import + `__all__` 제거.
+- `backend/app/schemas/tool.py` — `MCPServerCreate`/`MCPServerResponse`/`CredentialBrief`/`MCPServerListItem`/`MCPServerUpdate` + `ToolResponse.mcp_server_id` 제거. `Field` import 제거.
+- `backend/app/services/credential_service.py` — `resolve_server_auth(server: MCPServer)` 함수 + `MCPServer` import + mcp_count subquery + 반환 dict의 `mcp_server_count` 키 제거. 반환은 `{"tool_count": tool_count}`.
+- `backend/app/services/tool_service.py` — `register_mcp_server`/`get_mcp_servers`/`list_mcp_server_items`/`_apply_credential_update`/`update_mcp_server`/`delete_mcp_server` 6개 함수 제거. `MCPServer`/`MCPServerCreate`/`credential_service` import 제거. `update_tool` (M2)/`delete_tool` 보존.
+- `backend/app/services/chat_service.py` — `selectinload(Tool.mcp_server).selectinload(MCPServer.credential)` prefetch 체인 제거. L384-394 elif/else legacy fallback 통째로 fail-closed `ToolConfigError`로 교체 (`MCP tool '{name}' has no connection — execution blocked`).
+- `backend/app/routers/tools.py` — `POST /mcp-server` (register), `GET /mcp-server` (list), `PATCH /mcp-server/{id}` (update), `DELETE /mcp-server/{id}` (delete), `POST /mcp-server/{id}/test` 4+1개 라우트 제거. `POST /{tool_id}/test` 신설 — `selectinload(Tool.connection).selectinload(Connection.credential)` + `extra_config.url`/`env_vars` 경로로 `mcp_client.test_mcp_connection` 호출.
+- `backend/app/error_codes.py` — `mcp_server_not_found()` factory 제거.
+- `backend/app/services/legacy_invariants.py` — m13 invariant 추가: `WHERE type='mcp' AND mcp_server_id IS NOT NULL AND connection_id IS NULL` (m9-skip된 stale rows 차단).
+- `backend/app/main.py` — startup guard column_exists cache loop에 `("tools", "mcp_server_id")` 추가.
+- `backend/app/routers/credentials.py` — `CredentialUsageResponse(mcp_server_count=...)` 인자 제거.
+- `backend/app/schemas/credential.py` — `CredentialUsageResponse.mcp_server_count` 필드 제거.
+- `backend/app/schemas/connection.py:186` — docstring 업데이트 ("M6.1에서 mcp_servers drop").
+- `frontend/src/lib/types/index.ts` — `CredentialUsage.mcp_server_count` 제거. `Tool.mcp_server_id`는 M5 정리용으로 옵셔널 보존.
+- 테스트: `test_tools.py`/`test_tools_router_extended.py`/`test_connection_mcp_resolve.py` — MCPServer 참조 헬퍼/케이스 12개 제거. `test_m9_pg_roundtrip.py` 보존(m9 history).
+
+### 신규 Gotcha
+- **dev PG 마이그레이션 차단**: `alembic upgrade head` 실행 시 `RuntimeError: M13 preflight failed — 7 row(s)` (Hancom-GW MCP 서버 ID `0578a536...`). 이 7건은 m9 단계에서 `credential_auth_recoverable=False`로 스킵된 row → `connection_id IS NULL AND mcp_server_id IS NOT NULL`. 코드 경로상 이미 죽은 row지만 DROP 전 사티아 결정 필요 (delete vs manual connection 생성).
+- `routers/tools.py::test_tool_connection`에서 `selectinload(Tool.connection).selectinload(Connection.credential)` 체인을 위해 `Connection` 직접 import 필요 (`Tool.connection.property.mapper.class_` 식의 우회는 가독성 떨어짐).
+- `legacy_invariants.py`에 `mcp_server_id` 문자열 grep 매치는 의도된 SQL — 실제 코드 참조 아님.
+- `frontend/src/app/tools/page.tsx`/`use-tools.ts`의 `mcp_server_id` 사용처는 M5 (저커버그) 스코프 — M3에선 타입만 옵셔널 유지하여 빌드 통과.
+
+### 검증 결과
+- `uv run pytest`: **621 PASS** (M2 baseline 633 → 12 MCP-only test 제거 = 621)
+- `uv run ruff check .`: **clean**
+- alembic preflight: dev PG에서 정확히 7건 abort (의도된 동작)
+
+### Scope creep 회피
+- `agent_tools.connection_id` (M5.5) 미터치
+- 프론트 MCP UI/훅/카드 (M5) 미터치 — `mcp_server_id` TS 필드만 옵셔널로 보존
+- `tests/integration/test_m9_pg_roundtrip.py` MCPServer 참조 보존 (m9 round-trip 보호)
