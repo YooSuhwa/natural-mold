@@ -3,12 +3,15 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from fastapi import HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.error_codes import tool_not_found
+from app.models.connection import Connection
 from app.models.tool import AgentToolLink, MCPServer, Tool
-from app.schemas.tool import MCPServerCreate, ToolCustomCreate, ToolType
+from app.schemas.tool import MCPServerCreate, ToolCustomCreate, ToolType, ToolUpdate
 from app.services import connection_service, credential_service
 
 
@@ -248,6 +251,73 @@ async def delete_mcp_server(
     await db.delete(server)
     await db.commit()
     return True
+
+
+async def update_tool(
+    db: AsyncSession,
+    tool_id: uuid.UUID,
+    user_id: uuid.UUID,
+    payload: ToolUpdate,
+) -> Tool:
+    """PATCH /api/tools/{id} — connection_id 단일 필드 갱신 (M6.1 옵션 D).
+
+    검증 순서:
+    1) tool 존재 확인 (없으면 404)
+    2) 소유권 확인 — system tool 또는 타 유저 tool은 404 (정보 노출 방지)
+    3) PREBUILT는 (user_id, provider_name) 스코프이므로 PATCH 거부 (400)
+    4) connection_id가 not None이면:
+       - connection 존재 + 소유 확인 (없거나 타 유저면 404, IDOR 방지)
+       - connection.type == tool.type 정합성 (불일치 422)
+    5) 반영 후 commit + connection eager refresh
+    """
+    result = await db.execute(
+        select(Tool)
+        .where(Tool.id == tool_id)
+        .options(selectinload(Tool.connection))
+    )
+    tool = result.scalar_one_or_none()
+    if tool is None:
+        raise tool_not_found()
+
+    # 정보 노출 방지: 타 유저 소유 user-tool은 404로 위장.
+    # is_system=True PREBUILT 행은 글로벌 자산이므로 ownership 체크에서 제외 —
+    # 아래 PREBUILT 분기에서 400으로 거부된다.
+    if not tool.is_system and tool.user_id != user_id:
+        raise tool_not_found()
+
+    if tool.type == ToolType.PREBUILT:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "PREBUILT tools use (user_id, provider_name) scoped connections; "
+                "PATCH /api/tools/{id} does not apply. Manage the connection in "
+                "/connections instead."
+            ),
+        )
+
+    if payload.connection_id is not None:
+        conn_result = await db.execute(
+            select(Connection)
+            .where(Connection.id == payload.connection_id)
+            .options(selectinload(Connection.credential))
+        )
+        connection = conn_result.scalar_one_or_none()
+        if connection is None or connection.user_id != user_id:
+            # IDOR 방지: 다른 유저의 connection 존재 자체를 노출하지 않는다
+            raise HTTPException(status_code=404, detail="Connection not found")
+        if connection.type != tool.type:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Connection type '{connection.type}' does not match "
+                    f"tool type '{tool.type}'"
+                ),
+            )
+
+    tool.connection_id = payload.connection_id
+    await db.commit()
+    await db.refresh(tool, attribute_names=["connection"])
+    return tool
 
 
 async def delete_tool(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -> bool:

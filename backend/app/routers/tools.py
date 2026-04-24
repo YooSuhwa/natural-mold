@@ -14,6 +14,7 @@ from app.schemas.tool import (
     MCPServerUpdate,
     ToolCustomCreate,
     ToolResponse,
+    ToolUpdate,
 )
 from app.services import tool_service
 
@@ -109,6 +110,16 @@ async def test_mcp_connection(
     effective_auth = resolve_server_auth(server)
     test_result = await mcp_test(server.url, effective_auth)
     return test_result
+
+
+@router.patch("/{tool_id}", response_model=ToolResponse)
+async def update_tool_endpoint(
+    tool_id: uuid.UUID,
+    payload: ToolUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await tool_service.update_tool(db, tool_id, user.id, payload)
 
 
 @router.delete("/{tool_id}", status_code=204)

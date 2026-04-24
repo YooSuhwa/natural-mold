@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ToolType(enum.StrEnum):
@@ -98,3 +98,14 @@ class MCPServerUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     credential_id: uuid.UUID | None = None
     auth_config: dict[str, Any] | None = None
+
+
+class ToolUpdate(BaseModel):
+    """PATCH /api/tools/{id} payload — connection_id 단일 필드 (M6.1 옵션 D).
+
+    `extra="forbid"`로 알 수 없는 필드는 422로 거부 (스코프 보호).
+    명시적 None 전송 시 connection 해제로 해석된다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+    connection_id: uuid.UUID | None = None

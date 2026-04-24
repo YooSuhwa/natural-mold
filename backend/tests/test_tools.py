@@ -381,3 +381,244 @@ async def test_build_tools_config_mcp_uses_server_credential(db: AsyncSession):
         assert cfg["type"] == "mcp"
         assert cfg["auth_config"] == {"api_key": "from-server-cred"}
         assert cfg["mcp_server_url"] == "https://example.com"
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/tools/{id} — connection_id (M6.1 옵션 D)
+# ---------------------------------------------------------------------------
+
+
+async def _seed_credential_and_connection(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID = TEST_USER_ID,
+    conn_type: str = "custom",
+    provider_name: str = "custom",
+    display_name: str = "Test Connection",
+) -> Connection:
+    cred = Credential(
+        user_id=user_id,
+        name=f"{display_name} Key",
+        credential_type="api_key",
+        provider_name=provider_name,
+        data_encrypted=json.dumps({"api_key": "secret"}),
+        field_keys=["api_key"],
+    )
+    db.add(cred)
+    await db.flush()
+    conn = Connection(
+        user_id=user_id,
+        type=conn_type,
+        provider_name=provider_name,
+        display_name=display_name,
+        credential_id=cred.id,
+    )
+    db.add(conn)
+    await db.commit()
+    await db.refresh(conn)
+    return conn
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_connection_id_custom_success(
+    client: AsyncClient, db: AsyncSession
+):
+    """CUSTOM tool + CUSTOM connection → 200, connection_id 반영."""
+    initial_conn = await _seed_credential_and_connection(
+        db, conn_type="custom", display_name="Initial"
+    )
+    new_conn = await _seed_credential_and_connection(
+        db, conn_type="custom", display_name="New"
+    )
+    tool = _make_custom_tool(connection_id=initial_conn.id)
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}",
+        json={"connection_id": str(new_conn.id)},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["connection_id"] == str(new_conn.id)
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_connection_id_mcp_success(
+    client: AsyncClient, db: AsyncSession
+):
+    """MCP tool + MCP connection → 200."""
+    mcp_conn = await _seed_credential_and_connection(
+        db,
+        conn_type="mcp",
+        provider_name="custom",
+        display_name="MCP Conn",
+    )
+    tool = Tool(
+        user_id=TEST_USER_ID,
+        type="mcp",
+        name="my_mcp_tool",
+        auth_type="api_key",
+    )
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}",
+        json={"connection_id": str(mcp_conn.id)},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["connection_id"] == str(mcp_conn.id)
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_connection_id_prebuilt_400(
+    client: AsyncClient, db: AsyncSession
+):
+    """PREBUILT system tool → 400 (PREBUILT는 (user_id, provider_name) 스코프)."""
+    tool = Tool(
+        type="prebuilt",
+        is_system=True,
+        provider_name="naver",
+        name="Naver Blog Search",
+        description="네이버 블로그 검색",
+        auth_type="api_key",
+    )
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    prebuilt_conn = await _seed_credential_and_connection(
+        db, conn_type="prebuilt", provider_name="naver", display_name="Naver Conn"
+    )
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}",
+        json={"connection_id": str(prebuilt_conn.id)},
+    )
+    assert resp.status_code == 400, resp.text
+    assert "PREBUILT" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_connection_id_other_user_connection_404(
+    client: AsyncClient, db: AsyncSession
+):
+    """다른 유저의 connection → 404 (IDOR 방지)."""
+    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
+    other_conn = await _seed_credential_and_connection(
+        db, user_id=other_user_id, conn_type="custom", display_name="Other"
+    )
+    own_conn = await _seed_credential_and_connection(
+        db, conn_type="custom", display_name="Own"
+    )
+    tool = _make_custom_tool(connection_id=own_conn.id)
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}",
+        json={"connection_id": str(other_conn.id)},
+    )
+    assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_connection_id_type_mismatch_422(
+    client: AsyncClient, db: AsyncSession
+):
+    """CUSTOM tool + MCP connection → 422 (type 정합성)."""
+    own_conn = await _seed_credential_and_connection(
+        db, conn_type="custom", display_name="Own Custom"
+    )
+    mcp_conn = await _seed_credential_and_connection(
+        db, conn_type="mcp", display_name="MCP Wrong"
+    )
+    tool = _make_custom_tool(connection_id=own_conn.id)
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}",
+        json={"connection_id": str(mcp_conn.id)},
+    )
+    assert resp.status_code == 422, resp.text
+    assert "does not match" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_connection_id_none_clears_binding(
+    client: AsyncClient, db: AsyncSession
+):
+    """None으로 설정 → connection_id NULL (해제)."""
+    conn = await _seed_credential_and_connection(
+        db, conn_type="custom", display_name="ToClear"
+    )
+    tool = _make_custom_tool(connection_id=conn.id)
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}",
+        json={"connection_id": None},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["connection_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_nonexistent_404(client: AsyncClient):
+    """존재하지 않는 tool → 404."""
+    resp = await client.patch(
+        "/api/tools/00000000-0000-0000-0000-000000000999",
+        json={"connection_id": None},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_unknown_field_422(
+    client: AsyncClient, db: AsyncSession
+):
+    """`extra="forbid"` — 알 수 없는 필드는 422."""
+    conn = await _seed_credential_and_connection(
+        db, conn_type="custom", display_name="Extra"
+    )
+    tool = _make_custom_tool(connection_id=conn.id)
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}",
+        json={"name": "renamed"},
+    )
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_other_user_owned_tool_404(
+    client: AsyncClient, db: AsyncSession
+):
+    """다른 유저 소유의 user-tool PATCH → 404 (정보 노출 방지)."""
+    other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
+    other_conn = await _seed_credential_and_connection(
+        db, user_id=other_user_id, conn_type="custom", display_name="Other Conn"
+    )
+    other_tool = _make_custom_tool(
+        user_id=other_user_id, name="strangers_tool", connection_id=other_conn.id
+    )
+    db.add(other_tool)
+    await db.commit()
+    await db.refresh(other_tool)
+
+    resp = await client.patch(
+        f"/api/tools/{other_tool.id}",
+        json={"connection_id": None},
+    )
+    assert resp.status_code == 404
