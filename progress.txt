@@ -138,3 +138,35 @@
 - `useUpdateTool` 훅 구현 시 `PATCH /api/tools/{id}` body는 `{connection_id: string | null}` 단일 필드만 — extra 필드는 422
 - 응답은 `ToolResponse` (기존 GET /api/tools 응답과 동일 shape, `connection_id` 포함)
 - `connection_id=null` 전송 시 200 응답 + `connection_id: null` — 해제 동작 보장
+
+## M4 저커버그 결정 (2026-04-24)
+
+### 파일:라인 수정 요약
+- `frontend/src/lib/api/tools.ts:25-29` — `toolsApi.update(id, { connection_id })` 추가. PATCH `/api/tools/${id}`, body single field, 응답 `Tool`.
+- `frontend/src/lib/hooks/use-tools.ts:55-67` — `useUpdateTool()` 훅. `invalidateQueries(['tools'])` + `['agents']`. 인자 시그니처 `{id, data: {connection_id?: string | null}}`.
+- `frontend/src/components/connection/connection-binding-dialog.tsx`
+  - L36 — import에 `useUpdateTool` 추가 (기존 `useUpdateMCPServer` 동일 라인)
+  - L314 — `const updateTool = useUpdateTool()` 추가
+  - L335 — `isPending`에 `updateTool.isPending` OR 추가
+  - L337-341 (구) — `needsOptionDFirstBind` 상수 + `saveDisabled` 계산 완전 제거
+  - L343-345 (구) — `handleSave` 가드/토스트 제거
+  - L352-360 (신) — CUSTOM `handleSave` else 브랜치: `findOrCreate.run` 반환 후 `tool && !tool.connection_id`일 때 `updateTool.mutateAsync({id: tool.id, data: {connection_id: result.id}})` 체인
+  - L421-429 (구) — 경고 UI 블록 제거
+  - L435 (구→신) — `disabled={saveDisabled}` → `disabled={isPending}` 단순화
+- `AlertTriangleIcon` import은 McpBody(L526)가 여전히 사용 → 보존.
+
+### Gotchas
+- `pnpm lint` 예상 1건(use-chat-runtime.ts:74) 실제로는 **0 warnings** 출력됨. eslint config가 해당 규칙 exempt 중이거나 이미 해결된 것으로 보임 — 베조스 M6 회귀 검증에서 재확인 대상.
+- `useFindOrCreateCustomConnection().run`은 cached scope에서 credential_id 매칭 connection을 재사용 (ADR-008 N:1). 즉 기존 connection을 공유할 때도 PATCH /api/tools는 새 binding만 생성 — safe. 다른 tool의 connection_id를 덮어쓰지 않는다.
+- 체인 순서: (1) findOrCreate → (2) updateTool. updateTool 실패 시 findOrCreate가 만든 connection은 "orphaned" 가능성 있으나 N:1 재사용 패턴상 재시도 시 재활용돼 누수 없음 — 베조스 M6 수동 E2E에서 실패 시나리오 커버.
+
+### 스코프 경계 준수 (베조스 경고 반영)
+- McpBody(`updateMCPServer` 사용) 변경 **없음** — M5
+- `BindingDialogShell` 추출 **없음** — M5
+- `mcp-server-rename-dialog.tsx` 삭제 **없음** — M5
+- `triggerContext` 일원화 **없음** — M5
+- `Tool.mcp_server_id` 타입 정리 **없음** — M5 (`MCPServer*` 타입 삭제와 같은 커밋에서)
+
+### 검증 결과
+- `pnpm lint`: **PASS** (0 warnings, 0 errors)
+- `pnpm build`: **PASS** (15 routes 전부 컴파일 성공, TypeScript 3.9s)

@@ -7,3 +7,6 @@
 [2026-04-24T07:35:00Z] bezos MILESTONE_DONE M1 deletion-analysis → tasks/deletion-analysis-e-m6-1.md (판정=GREEN, backend 57건/9파일 + frontend 53건/10파일, 순감소 -326 LOC 예상)
 [2026-04-24T07:35:00Z] satya M1_ACK 판정=GREEN 수용. 젠슨 M2 단독 착수. 저커버그 M4는 M2 PR 직후 병렬. M3/M5는 각각 M2/M4 이후.
 [2026-04-24T07:38:37Z] jensen MILESTONE_DONE M2 patch-tool-connection-id → schemas/tool.py(ToolUpdate +extra=forbid) + services/tool_service.py(update_tool, 검증 5단) + routers/tools.py(PATCH /{tool_id}) + tests/test_tools.py(+9 PATCH 테스트). pytest 633 PASS (baseline 624 → 633), ruff clean. 저커버그 M4 착수 가능.
+[2026-04-24T07:42:00Z] jensen MILESTONE_DONE M2 patch-tool-connection-id → commit 10c55dc (ruff clean, pytest 633 PASS +9 / baseline 624, 회귀 0)
+[2026-04-24T07:42:00Z] satya M2_ACK 병렬 착수: 젠슨 M3 (백엔드 MCP drop), 저커버그 M4 (프론트 옵션 D + first-bind)
+[2026-04-24T07:55:00Z] zuckerberg MILESTONE_DONE M4 custom-first-bind → frontend/src/lib/api/tools.ts(+update PATCH), frontend/src/lib/hooks/use-tools.ts(+useUpdateTool), frontend/src/components/connection/connection-binding-dialog.tsx(CustomBody: needsOptionDFirstBind 가드 제거, first-bind 시 findOrCreate→updateTool 체인). pnpm lint PASS 0 warnings, pnpm build PASS 15 routes. McpBody는 스코프 외 보존 (M5 담당).

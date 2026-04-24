@@ -52,6 +52,20 @@ export function useDeleteTool() {
   })
 }
 
+// PATCH /api/tools/{id} — connection_id single-field (M6.1 옵션 D). CUSTOM first-bind /
+// MCP re-wire / None 해제. PREBUILT는 서버가 400 — 호출부 가드 필요.
+export function useUpdateTool() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { connection_id?: string | null } }) =>
+      toolsApi.update(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tools'] })
+      qc.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
+}
+
 export function useMCPServers() {
   return useQuery({
     queryKey: ['mcp-servers'],

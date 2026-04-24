@@ -33,7 +33,7 @@ import {
   useFindOrCreateCustomConnection,
   useUpdateConnection,
 } from '@/lib/hooks/use-connections'
-import { useUpdateMCPServer } from '@/lib/hooks/use-tools'
+import { useUpdateMCPServer, useUpdateTool } from '@/lib/hooks/use-tools'
 import { ApiError } from '@/lib/api/client'
 import {
   CUSTOM_CONNECTION_PROVIDER_NAME as CUSTOM_PROVIDER_NAME,
@@ -311,6 +311,7 @@ function CustomBody({
   })
   const findOrCreate = useFindOrCreateCustomConnection()
   const updateConnection = useUpdateConnection()
+  const updateTool = useUpdateTool()
   const [createOpen, setCreateOpen] = useState(false)
 
   const effectiveConnectionId = currentConnectionId ?? tool?.connection_id ?? null
@@ -331,19 +332,10 @@ function CustomBody({
   }
 
   const availableCredentials = credentials ?? []
-  const isPending = findOrCreate.isPending || updateConnection.isPending
-
-  // 기존 tool인데 connection이 없는 경우(첫 바인딩) runtime이 fail-closed인데
-  // tool.connection_id를 쓰는 API가 없어 수리 경로가 없다. 옵션 D가 들어오는
-  // M6.1까지는 UX로 차단.
-  const needsOptionDFirstBind = !!tool && !tool.connection_id
-  const saveDisabled = isPending || needsOptionDFirstBind
+  const isPending =
+    findOrCreate.isPending || updateConnection.isPending || updateTool.isPending
 
   async function handleSave() {
-    if (needsOptionDFirstBind) {
-      toast.error(t('toast.unsupportedFirstBindM6'))
-      return
-    }
     const credentialId = mode === CREDENTIAL_NONE ? null : mode
     try {
       let result: Connection
@@ -363,6 +355,14 @@ function CustomBody({
           credentialId,
           credential?.name ?? toolName ?? 'Custom connection',
         )
+        // first-bind: tool이 바인딩이 없으면 PATCH /api/tools/{id}로 connection_id 연결.
+        // ADR-008 N:1 — findOrCreate가 기존 connection을 재사용해도 tool이 새로 붙을 뿐이라 안전.
+        if (tool && !tool.connection_id) {
+          await updateTool.mutateAsync({
+            id: tool.id,
+            data: { connection_id: result.id },
+          })
+        }
       }
       toast.success(t('toast.saved'))
       onBound?.(result)
@@ -418,21 +418,11 @@ function CustomBody({
         )}
       </div>
 
-      {needsOptionDFirstBind && (
-        <div
-          role="alert"
-          className="mb-4 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800"
-        >
-          <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
-          <span>{t('custom.unsupportedFirstBindM6')}</span>
-        </div>
-      )}
-
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
           {tc('cancel')}
         </Button>
-        <Button onClick={handleSave} disabled={saveDisabled}>
+        <Button onClick={handleSave} disabled={isPending}>
           {isPending && (
             <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
           )}
