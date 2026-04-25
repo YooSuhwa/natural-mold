@@ -974,7 +974,11 @@
       "deleteBlockedByUsage": "사용 중인 도구가 있어 삭제할 수 없습니다. 먼저 도구의 연결을 교체하세요.",
       "defaultPrebuiltWarning": "이 provider의 다른 연결이 없어, 삭제하면 이 provider 기본 연결이 사라집니다.",
       "noToolsInUse": "현재 이 연결을 사용하는 도구가 없습니다.",
-      "mcpRebindHint": "MCP 인증은 도구 페이지의 서버 카드에서 변경할 수 있습니다."
+      "mcpRebindHint": "MCP 인증은 도구 페이지의 서버 카드에서 변경할 수 있습니다.",
+      "discoverTools": "도구 재탐색",
+      "discoverHint": "MCP 서버에서 도구 목록을 다시 가져옵니다. 새 도구는 추가되고 기존 도구는 유지됩니다.",
+      "discoverSuccess": "{created}개 도구를 새로 가져왔습니다 (기존 {existing}개 유지)",
+      "discoverFailed": "도구 탐색 실패: {detail}"
     },
     "statusToast": {
       "changed": "연결 상태가 변경되었습니다",
@@ -988,10 +992,10 @@
       "displayName": "표시 이름",
       "displayNamePlaceholder": "예: GitHub MCP",
       "url": "서버 URL",
-      "authNoticeV1": "공개 MCP 서버(인증 없음)만 등록할 수 있습니다. 인증이 필요한 경우 등록 후 연결 상세에서 credential을 연결하세요.",
+      "authNoticeV1": "현재 버전은 공개 MCP 서버(인증 없음)만 지원합니다. 인증이 필요한 서버 등록은 후속 업데이트에서 제공됩니다.",
       "submit": "등록하고 도구 탐색",
       "connectionFailed": "연결 생성 실패: {detail}",
-      "discoverFailed": "도구 탐색 실패: {detail}. 연결 상세에서 재시도할 수 있습니다.",
+      "discoverFailed": "도구 탐색 실패: {detail}. 연결 상세에서 재탐색할 수 있습니다.",
       "discoverSuccess": "{created}개 도구를 새로 가져왔습니다 (기존 {existing}개 유지)"
     },
     "addNew": "연결 추가",

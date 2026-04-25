@@ -6,7 +6,9 @@ import { toast } from 'sonner'
 import {
   AlertTriangleIcon,
   KeyRoundIcon,
+  Loader2Icon,
   PencilIcon,
+  RefreshCwIcon,
   ServerIcon,
   Trash2Icon,
   WrenchIcon,
@@ -28,6 +30,7 @@ import { ConnectionStatusBadge } from '@/components/connection/connection-status
 import {
   useConnections,
   useDeleteConnection,
+  useDiscoverMcpTools,
   useUpdateConnection,
 } from '@/lib/hooks/use-connections'
 import { useToolsByConnection } from '@/lib/hooks/use-tools'
@@ -76,6 +79,7 @@ function DetailBody({ connection, onClose }: { connection: Connection; onClose: 
   const tools = useToolsByConnection(connection)
   const updateConnection = useUpdateConnection()
   const deleteConnection = useDeleteConnection()
+  const discoverMcpTools = useDiscoverMcpTools()
 
   const [rebindOpen, setRebindOpen] = useState(false)
   const [credentialEditOpen, setCredentialEditOpen] = useState(false)
@@ -104,6 +108,20 @@ function DetailBody({ connection, onClose }: { connection: Connection; onClose: 
         onError: () => toast.error(tStatus('changeFailed')),
       },
     )
+  }
+
+  function handleRediscover() {
+    discoverMcpTools.mutate(connection.id, {
+      onSuccess: (result) => {
+        const created = result.items.filter((i) => i.status === 'created').length
+        const existing = result.items.filter((i) => i.status === 'existing').length
+        toast.success(t('discoverSuccess', { created, existing }))
+      },
+      onError: (err) => {
+        const detail = err instanceof Error ? err.message : String(err)
+        toast.error(t('discoverFailed', { detail }))
+      },
+    })
   }
 
   function handleDelete() {
@@ -206,10 +224,30 @@ function DetailBody({ connection, onClose }: { connection: Connection; onClose: 
 
         {/* Usage */}
         <section>
-          <h3 className="text-sm font-semibold mb-2">
-            {t('sectionUsage')}{' '}
-            <span className="font-normal text-muted-foreground">({toolCount})</span>
-          </h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold">
+              {t('sectionUsage')}{' '}
+              <span className="font-normal text-muted-foreground">({toolCount})</span>
+            </h3>
+            {connection.type === 'mcp' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRediscover}
+                disabled={discoverMcpTools.isPending || isDisabled}
+              >
+                {discoverMcpTools.isPending ? (
+                  <Loader2Icon className="size-3.5 animate-spin" data-icon="inline-start" />
+                ) : (
+                  <RefreshCwIcon className="size-3.5" data-icon="inline-start" />
+                )}
+                {t('discoverTools')}
+              </Button>
+            )}
+          </div>
+          {connection.type === 'mcp' && (
+            <p className="mb-2 text-xs text-muted-foreground">{t('discoverHint')}</p>
+          )}
           {toolCount > 0 ? (
             <ul className="space-y-1 text-sm">
               {tools.map((tl) => (
