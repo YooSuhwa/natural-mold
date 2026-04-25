@@ -1338,3 +1338,115 @@ async def test_custom_create_connection_rejects_disabled_existing(
     else:
         # FastAPI HTTPException이 dict detail을 문자열화하는 경우 방어
         assert "CUSTOM_CONNECTION_DISABLED" in detail
+
+
+# ---------------------------------------------------------------------------
+# M6.1 M7+ — delete connection guard against bound tools (Codex adversarial Fix)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_delete_connection_blocked_when_tools_bound(
+    client: AsyncClient, db: AsyncSession
+):
+    """CUSTOM connection에 tool이 바인딩되어 있으면 DELETE → 409.
+
+    backend invariant: tools.connection_id가 ON DELETE SET NULL이라 삭제 자체는
+    가능하지만 tool이 fail-closed orphan 상태로 남는다. UI 가드는 우회 가능
+    하므로 서비스 레이어에서 강제.
+    """
+    from app.models.tool import Tool
+
+    cred = await _seed_credential(db, name="bound-cred")
+    conn = Connection(
+        user_id=TEST_USER_ID,
+        type="custom",
+        provider_name="custom_api_key",
+        display_name="Bound CUSTOM",
+        credential_id=cred.id,
+        is_default=False,
+        status="active",
+    )
+    db.add(conn)
+    await db.commit()
+    await db.refresh(conn)
+
+    bound_tool = Tool(
+        user_id=TEST_USER_ID,
+        type="custom",
+        name="bound_tool",
+        api_url="https://example.com/api",
+        http_method="GET",
+        connection_id=conn.id,
+    )
+    db.add(bound_tool)
+    await db.commit()
+
+    resp = await client.delete(f"/api/connections/{conn.id}")
+    assert resp.status_code == 409, resp.text
+    detail = resp.json().get("detail", "")
+    assert "bound" in detail.lower()
+
+    # connection은 여전히 살아있어야 함
+    still = await client.get(f"/api/connections/{conn.id}")
+    assert still.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_delete_connection_succeeds_when_no_tools(
+    client: AsyncClient, db: AsyncSession
+):
+    """tool이 0개면 정상 삭제 (가드는 ≥1개일 때만 발동)."""
+    cred = await _seed_credential(db, name="empty-cred")
+    conn = Connection(
+        user_id=TEST_USER_ID,
+        type="custom",
+        provider_name="custom_api_key",
+        display_name="Empty CUSTOM",
+        credential_id=cred.id,
+        is_default=False,
+        status="active",
+    )
+    db.add(conn)
+    await db.commit()
+    await db.refresh(conn)
+
+    resp = await client.delete(f"/api/connections/{conn.id}")
+    assert resp.status_code == 204, resp.text
+
+
+@pytest.mark.asyncio
+async def test_delete_prebuilt_connection_not_blocked_by_tools(
+    client: AsyncClient, db: AsyncSession
+):
+    """PREBUILT connection은 tool.connection_id를 사용하지 않으므로 가드 대상 아님.
+
+    PREBUILT 해석은 (user_id, provider_name) 스코프 default — tool 바인딩과
+    독립. 삭제는 다른 default가 있는지 / orphan promote 정책으로 처리.
+    """
+    cred = await _seed_credential(db, name="prebuilt-cred")
+    primary = Connection(
+        user_id=TEST_USER_ID,
+        type="prebuilt",
+        provider_name="naver",
+        display_name="primary",
+        credential_id=cred.id,
+        is_default=True,
+        status="active",
+    )
+    secondary = Connection(
+        user_id=TEST_USER_ID,
+        type="prebuilt",
+        provider_name="naver",
+        display_name="secondary",
+        credential_id=cred.id,
+        is_default=False,
+        status="active",
+    )
+    db.add_all([primary, secondary])
+    await db.commit()
+    await db.refresh(secondary)
+
+    # secondary 삭제 — 기본 promote 없이 정상 204
+    resp = await client.delete(f"/api/connections/{secondary.id}")
+    assert resp.status_code == 204, resp.text

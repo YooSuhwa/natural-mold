@@ -550,9 +550,34 @@ async def update_connection(
 async def delete_connection(
     db: AsyncSession, conn_id: uuid.UUID, user_id: uuid.UUID
 ) -> bool:
+    """connection 삭제. 사용 중인 tool이 있으면 409로 거부 (orphan 방지).
+
+    `tools.connection_id`가 ON DELETE SET NULL이라 삭제 자체는 가능하지만, 그
+    결과 CUSTOM/MCP tool이 connection 없는 fail-closed 상태로 남는다. UI 가드
+    (`hasUsage`)는 클라이언트 우회 가능 — 직접 API 호출/stale state/race 모두
+    가능하므로 서비스 레이어에서 invariant를 강제한다.
+
+    PREBUILT는 `(user_id, provider_name)` 스코프에서 default 회전으로 안전하므로
+    가드 대상 아님 (Tool이 connection_id를 사용하지 않음).
+    """
+    from app.models.tool import Tool
+
     conn = await get_connection(db, conn_id, user_id)
     if conn is None:
         return False
+
+    if conn.type in ("custom", "mcp"):
+        bound_count = await db.scalar(
+            select(func.count(Tool.id)).where(Tool.connection_id == conn_id)
+        )
+        if (bound_count or 0) > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Connection {conn.id} has {bound_count} bound tool(s) — "
+                    "remap or delete those tools before removing the connection."
+                ),
+            )
 
     was_default = conn.is_default
     del_type = conn.type

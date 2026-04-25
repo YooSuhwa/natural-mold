@@ -7,13 +7,19 @@ Create Date: 2026-04-25
 `POST /api/connections/{id}/discover-tools`가 user_id × connection × name 기준
 idempotency를 약속하지만, 동시 두 요청이 같은 name에 대해 existing snapshot을
 read-after-snapshot으로 미스하면 중복 Tool row가 생성될 수 있다 (Codex
-adversarial Finding). 앱 레벨 가드(IntegrityError catch)는 이 partial unique
-index를 최종 안전망으로 사용한다.
+adversarial Finding). 앱 레벨 가드(IntegrityError catch + savepoint)는 이
+partial unique index를 최종 안전망으로 사용한다.
 
 스코프: type='mcp'인 행에만 적용 — PREBUILT/CUSTOM/BUILTIN은 connection_id가
 NULL일 수 있고 name이 자유롭게 중복될 수 있다.
 
 PostgreSQL/SQLite 둘 다 partial unique index를 지원 (SQLite 3.8+).
+
+## Pre-check 정책 (운영자 안전망)
+M6.1 이전엔 unique 가드가 없었기에 dev/stg 환경에 (user, connection, name)
+중복 mcp tool row가 잔존할 수 있다. 이 마이그레이션은 **silent dedupe를 하지
+않는다** — `agent_tools.tool_id`가 ON DELETE CASCADE라 임의 dedupe는 agent
+바인딩까지 silently 손실시킨다. 운영자가 명시적으로 정리 후 재실행해야 한다.
 """
 
 from __future__ import annotations
@@ -35,52 +41,39 @@ def upgrade() -> None:
     bind = op.get_bind()
     dialect = bind.dialect.name
 
-    # 사전 정리: 기존 중복 row가 남아있으면 인덱스 생성이 실패한다. 동일 (user,
-    # connection, name) 그룹에서 가장 오래된 row만 유지하고 나머지는 삭제 (created_at
-    # ASC, id를 tie-breaker). M6.1 이전엔 unique 가드가 없었으므로 dev/stg에 잔존
-    # 가능성 있음. PoC 단계라 데이터 보존 손실은 비치명적.
-    if dialect == "postgresql":
-        bind.execute(
-            sa.text(
-                """
-                DELETE FROM tools
-                WHERE id IN (
-                    SELECT id FROM (
-                        SELECT id, ROW_NUMBER() OVER (
-                            PARTITION BY user_id, connection_id, name
-                            ORDER BY created_at ASC, id ASC
-                        ) AS rn
-                        FROM tools
-                        WHERE type = 'mcp'
-                          AND user_id IS NOT NULL
-                          AND connection_id IS NOT NULL
-                    ) ranked
-                    WHERE rn > 1
-                )
-                """
-            )
+    # Pre-check: 중복이 있으면 fail-fast. silent DELETE는 agent_tools.tool_id
+    # ON DELETE CASCADE를 통해 agent 바인딩까지 함께 사라지게 하므로 위험.
+    # 운영자가 manual repair 후 재실행하는 경로로 유도.
+    dup_groups = bind.execute(
+        sa.text(
+            """
+            SELECT user_id, connection_id, name, COUNT(*) AS cnt
+            FROM tools
+            WHERE type = 'mcp'
+              AND user_id IS NOT NULL
+              AND connection_id IS NOT NULL
+            GROUP BY user_id, connection_id, name
+            HAVING COUNT(*) > 1
+            ORDER BY COUNT(*) DESC
+            LIMIT 5
+            """
         )
-    elif dialect == "sqlite":
-        # SQLite도 ROW_NUMBER 지원 (3.25+) — round-trip 안전성 위해 동일 SQL.
-        bind.execute(
-            sa.text(
-                """
-                DELETE FROM tools
-                WHERE id IN (
-                    SELECT id FROM (
-                        SELECT id, ROW_NUMBER() OVER (
-                            PARTITION BY user_id, connection_id, name
-                            ORDER BY created_at ASC, id ASC
-                        ) AS rn
-                        FROM tools
-                        WHERE type = 'mcp'
-                          AND user_id IS NOT NULL
-                          AND connection_id IS NOT NULL
-                    ) ranked
-                    WHERE rn > 1
-                )
-                """
-            )
+    ).fetchall()
+    if dup_groups:
+        sample = "\n".join(
+            f"  - user={row[0]} conn={row[1]} name={row[2]!r}: {row[3]} rows"
+            for row in dup_groups
+        )
+        raise RuntimeError(
+            "M14 preflight failed — duplicate (user_id, connection_id, name) MCP "
+            "tool rows detected. Resolve manually before retrying.\n"
+            "agent_tools.tool_id is ON DELETE CASCADE, so silent dedupe would "
+            "drop agent bindings to the deleted rows. Required steps:\n"
+            "1) Pick the canonical Tool id per (user, connection, name) group.\n"
+            "2) UPDATE agent_tools SET tool_id=<canonical> WHERE tool_id IN <duplicates>.\n"
+            "3) DELETE FROM tools WHERE id IN <duplicates>.\n"
+            "4) Re-run alembic upgrade.\n"
+            f"Sample groups (top 5):\n{sample}"
         )
 
     # partial unique index — type='mcp'인 행에만 적용
@@ -103,7 +96,6 @@ def upgrade() -> None:
         )
     else:
         # 알 수 없는 dialect — 안전하게 일반 unique index (전체 행 적용)
-        # 스코프 외이므로 실 호출 가능성 낮음.
         op.create_index(
             INDEX_NAME,
             "tools",

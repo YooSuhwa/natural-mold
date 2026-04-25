@@ -303,6 +303,65 @@ async def test_discover_race_duplicate_blocked_by_unique_index(
 
 
 @pytest.mark.asyncio
+async def test_discover_race_preserves_earlier_created_rows(
+    client: AsyncClient, db: AsyncSession
+):
+    """savepoint 격리 검증 — race 발생해도 이미 created된 row는 손실되지 않음.
+
+    이전 구현은 IntegrityError 시 session-wide rollback으로 같은 호출의 이전
+    inserts까지 모두 잃었음 (silent catalog drift). begin_nested() savepoint로
+    수정 후, 한 row가 race에 걸려도 앞서 commit된 row는 그대로 유지.
+    """
+    conn = await _seed_mcp_connection(db)
+    fake_result = {
+        "success": True,
+        "server_info": {},
+        "tools": [
+            {"name": "first", "description": "OK"},
+            {"name": "race_target", "description": "winner외부에서먼저"},
+            {"name": "third", "description": "after race"},
+        ],
+    }
+
+    async def insert_race_winner(*args, **kwargs):
+        race_tool = Tool(
+            user_id=TEST_USER_ID,
+            type="mcp",
+            name="race_target",
+            description="winner",
+            connection_id=conn.id,
+        )
+        db.add(race_tool)
+        await db.commit()
+        return fake_result
+
+    with patch(
+        "app.agent_runtime.mcp_client.test_mcp_connection",
+        new=AsyncMock(side_effect=insert_race_winner),
+    ):
+        resp = await client.post(f"/api/connections/{conn.id}/discover-tools")
+
+    assert resp.status_code == 200, resp.text
+    statuses = {i["tool"]["name"]: i["status"] for i in resp.json()["items"]}
+    # race_target은 외부 winner가 먼저 commit → existing
+    assert statuses.get("race_target") == "existing"
+    # first/third는 race 무관하게 created로 보존되어야 함 (savepoint 격리 효과)
+    assert statuses.get("first") == "created"
+    assert statuses.get("third") == "created"
+
+    # DB 실측 — first/third가 실제로 commit됐는지
+    rows = (
+        await db.execute(
+            select(Tool).where(
+                Tool.connection_id == conn.id,
+                Tool.name.in_(["first", "third"]),
+            )
+        )
+    ).scalars().all()
+    assert {r.name for r in rows} == {"first", "third"}
+
+
+@pytest.mark.asyncio
 async def test_discover_passes_extra_config_headers_to_probe(
     client: AsyncClient, db: AsyncSession
 ):

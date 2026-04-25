@@ -278,14 +278,16 @@ async def discover_mcp_tools(
             connection_id=connection_id,
         )
         # m14 partial unique index가 (user_id, connection_id, name) WHERE type='mcp'
-        # 중복을 거부한다. 동시 두 요청이 같은 name에 대해 existing snapshot을 미스해도
-        # 두 번째 flush가 IntegrityError → 기존 행으로 흡수해 idempotent 유지.
-        db.add(new_tool)
+        # 중복을 거부한다. 각 insert를 SAVEPOINT(begin_nested)로 격리 — IntegrityError
+        # 발생 시 savepoint만 rollback되고 이전 created 행들은 그대로 보존된다.
+        # session-wide `db.rollback()` 사용 금지: 동시성 race가 한 번 잡혀도 같은
+        # discovery 호출의 이전 inserts가 함께 사라지는 silent catalog drift 발생.
         try:
-            await db.flush()
+            async with db.begin_nested():
+                db.add(new_tool)
+                await db.flush()
         except IntegrityError:
-            await db.rollback()
-            # 다른 요청이 먼저 insert 완료 → re-fetch해서 skipped로 분류.
+            # savepoint만 rollback. 외부 트랜잭션의 다른 created rows는 살아있음.
             refetch = await db.execute(
                 select(Tool).where(
                     Tool.user_id == user_id,
@@ -302,7 +304,7 @@ async def discover_mcp_tools(
         created.append(new_tool)
 
     if created or skipped:
-        # 잔여 트랜잭션 commit. flush는 row 단위였지만 commit은 한 번으로 충분.
+        # 잔여 outer transaction commit. savepoint는 row 단위지만 commit은 한 번.
         await db.commit()
 
     items: list[dict[str, Any]] = []
