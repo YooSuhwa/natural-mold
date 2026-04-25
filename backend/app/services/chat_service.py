@@ -376,9 +376,9 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
             # ConnectionExtraConfig.headers는 transport 헤더 — auth_config에
             # 병합하지 말고 별도 필드로 executor에 전달해야 tool argument
             # injection 대상에서 제외된다.
-            extra_headers = extra.get("headers")
-            if extra_headers:
-                mcp_transport_headers = extra_headers
+            from app.agent_runtime.mcp_client import extract_transport_headers
+
+            mcp_transport_headers = extract_transport_headers(extra)
             mcp_server_url = url
         elif tool.type == ToolType.PREBUILT:
             # PREBUILT 도구: provider_name 있으면 per-user default connection

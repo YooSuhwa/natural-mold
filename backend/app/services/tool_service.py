@@ -253,12 +253,13 @@ async def discover_mcp_tools(
         conn.credential,
         context={"connection_id": str(conn.id)},
     )
-    # transport headers (인증/테넌트 헤더 등)는 chat runtime의 MCP 빌더와 동일하게
-    # probe에도 전달해야 동일 카탈로그가 나온다 — 누락 시 인증 MCP에서 401/잘못된 목록.
-    extra_headers = extra.get("headers")
-    if not isinstance(extra_headers, dict):
-        extra_headers = None
-    probe = await mcp_probe(url, effective_auth, extra_headers=extra_headers)
+    # transport headers — chat runtime / probe / test 모두 같은 헬퍼로 정규화해
+    # 인증 MCP에서 동일 카탈로그가 나오도록 한다.
+    from app.agent_runtime.mcp_client import extract_transport_headers
+
+    probe = await mcp_probe(
+        url, effective_auth, extra_headers=extract_transport_headers(extra)
+    )
     if not probe.get("success"):
         raise HTTPException(
             status_code=502,

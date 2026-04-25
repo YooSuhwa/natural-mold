@@ -9,6 +9,23 @@ from mcp.client.streamable_http import streamablehttp_client
 from app.config import settings
 
 
+def extract_transport_headers(
+    extra_config: dict[str, Any] | None,
+) -> dict[str, str] | None:
+    """connection.extra_config에서 MCP transport headers를 안전하게 추출.
+
+    chat runtime / discovery probe / test endpoint 모두 같은 키를 사용하므로
+    단일 진입점에서 dict 검증 + str 값 필터링을 수행한다.
+    """
+    if not extra_config:
+        return None
+    headers = extra_config.get("headers")
+    if not isinstance(headers, dict):
+        return None
+    cleaned = {k: v for k, v in headers.items() if isinstance(v, str)}
+    return cleaned or None
+
+
 async def test_mcp_connection(
     url: str,
     auth_config: dict[str, str] | None = None,
@@ -22,9 +39,8 @@ async def test_mcp_connection(
     """
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if extra_headers:
-        for k, v in extra_headers.items():
-            if isinstance(v, str):
-                headers[k] = v
+        # extract_transport_headers가 이미 str 값 필터링을 수행하므로 그대로 merge.
+        headers.update(extra_headers)
     if auth_config and auth_config.get("api_key"):
         header_name = auth_config.get("header_name", "Authorization")
         headers[header_name] = auth_config["api_key"]

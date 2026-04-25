@@ -89,15 +89,16 @@ async def test_tool_connection(
         raise ToolConfigError(
             f"MCP tool '{tool.name}' connection {conn.id} is missing extra_config.url"
         )
+    from app.agent_runtime.mcp_client import extract_transport_headers
+
     effective_auth = resolve_env_vars(
         extra.get("env_vars"),
         conn.credential,
         context={"connection_id": str(conn.id), "tool_name": tool.name},
     )
-    extra_headers = extra.get("headers")
-    if not isinstance(extra_headers, dict):
-        extra_headers = None
-    return await mcp_test(url, effective_auth, extra_headers=extra_headers)
+    return await mcp_test(
+        url, effective_auth, extra_headers=extract_transport_headers(extra)
+    )
 
 
 @router.patch("/{tool_id}", response_model=ToolResponse)
