@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
@@ -9,7 +9,6 @@ import {
   KeyIcon,
   LinkIcon,
   MoreVerticalIcon,
-  PencilIcon,
   Trash2Icon,
   CheckCircleIcon,
 } from 'lucide-react'
@@ -26,30 +25,44 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
-import { MCPServerRenameDialog } from '@/components/tool/mcp-server-rename-dialog'
-import { useDeleteMCPServer } from '@/lib/hooks/use-tools'
-import type { MCPServerListItem, Tool } from '@/lib/types'
+import { useDeleteConnection } from '@/lib/hooks/use-connections'
+import { useCredentials } from '@/lib/hooks/use-credentials'
+import type { Connection, Tool } from '@/lib/types'
 
 interface MCPServerGroupCardProps {
-  server: MCPServerListItem
+  connection: Connection
   tools: Tool[]
   defaultOpen?: boolean
 }
 
-export function MCPServerGroupCard({ server, tools, defaultOpen = false }: MCPServerGroupCardProps) {
+export function MCPServerGroupCard({
+  connection,
+  tools,
+  defaultOpen = false,
+}: MCPServerGroupCardProps) {
   const t = useTranslations('tool.mcpServer')
   const tc = useTranslations('common')
   const [open, setOpen] = useState(defaultOpen)
   const [authOpen, setAuthOpen] = useState(false)
-  const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const deleteServer = useDeleteMCPServer()
+  const deleteConnection = useDeleteConnection()
+  const { data: credentials } = useCredentials()
+
+  const credentialName = useMemo(
+    () => credentials?.find((c) => c.id === connection.credential_id)?.name ?? null,
+    [credentials, connection.credential_id],
+  )
+  const url = connection.extra_config?.url ?? ''
+  const toolCount = tools.length
 
   function handleDelete() {
-    deleteServer.mutate(server.id, {
-      onSuccess: () => setDeleteOpen(false),
-      onError: () => toast.error(t('toast.deleteFailed')),
-    })
+    deleteConnection.mutate(
+      { id: connection.id, type: connection.type, provider_name: connection.provider_name },
+      {
+        onSuccess: () => setDeleteOpen(false),
+        onError: () => toast.error(t('toast.deleteFailed')),
+      },
+    )
   }
 
   return (
@@ -60,7 +73,7 @@ export function MCPServerGroupCard({ server, tools, defaultOpen = false }: MCPSe
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            aria-label={server.name}
+            aria-label={connection.display_name}
             className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary cursor-pointer transition-transform"
           >
             {open ? (
@@ -77,23 +90,23 @@ export function MCPServerGroupCard({ server, tools, defaultOpen = false }: MCPSe
           >
             <div className="flex items-center gap-2">
               <span className="font-heading text-sm font-medium leading-snug truncate">
-                {server.name}
+                {connection.display_name}
               </span>
               <span className="shrink-0 text-xs text-muted-foreground">
-                {t('toolCount', { count: server.tool_count })}
+                {t('toolCount', { count: toolCount })}
               </span>
             </div>
             <div className="flex w-full items-center gap-1.5 text-[11px] text-muted-foreground">
               <LinkIcon className="size-3 shrink-0" />
-              <span className="truncate">{server.url}</span>
+              <span className="truncate">{url}</span>
             </div>
           </button>
 
           <div className="flex items-center gap-2 shrink-0">
-            {server.credential ? (
+            {credentialName ? (
               <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 gap-1">
                 <CheckCircleIcon className="size-3" />
-                {server.credential.name}
+                {credentialName}
               </Badge>
             ) : (
               <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 gap-1">
@@ -114,10 +127,6 @@ export function MCPServerGroupCard({ server, tools, defaultOpen = false }: MCPSe
                 <DropdownMenuItem onClick={() => setAuthOpen(true)}>
                   <KeyIcon />
                   {t('menu.auth')}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setRenameOpen(true)}>
-                  <PencilIcon />
-                  {t('menu.rename')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
@@ -142,22 +151,20 @@ export function MCPServerGroupCard({ server, tools, defaultOpen = false }: MCPSe
 
       <ConnectionBindingDialog
         type="mcp"
-        mcpServerId={server.id}
-        serverName={server.name}
-        currentCredentialId={server.credential_id}
-        triggerContext="tool-edit"
+        connectionId={connection.id}
+        connectionName={connection.display_name}
+        currentCredentialId={connection.credential_id}
         open={authOpen}
         onOpenChange={setAuthOpen}
       />
-      <MCPServerRenameDialog server={server} open={renameOpen} onOpenChange={setRenameOpen} />
       <DeleteConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title={t('delete.title')}
-        description={`${server.name}\n${t('delete.warning', { count: server.tool_count })}`}
+        description={`${connection.display_name}\n${t('delete.warning', { count: toolCount })}`}
         cancelLabel={tc('cancel')}
         confirmLabel={tc('delete')}
-        isPending={deleteServer.isPending}
+        isPending={deleteConnection.isPending}
         onConfirm={handleDelete}
       />
     </>

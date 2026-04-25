@@ -11,7 +11,6 @@ import { useConnections } from '@/lib/hooks/use-connections'
 import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
 import { ConnectionCard } from '@/components/connection/connection-card'
 import { ConnectionDetailSheet } from '@/components/connection/connection-detail-sheet'
-import { AddToolDialog } from '@/components/tool/add-tool-dialog'
 import {
   PREBUILT_PROVIDER_NAMES as PREBUILT_PROVIDERS,
   PREBUILT_PROVIDER_I18N_KEY as PREBUILT_PROVIDER_I18N,
@@ -138,7 +137,7 @@ function PrebuiltSection({
           type="prebuilt"
           providerName={dialogProvider}
           toolName={providerLabel(dialogProvider)}
-          triggerContext="standalone"
+          createNew
           open={!!dialogProvider}
           onOpenChange={(v) => !v && setDialogProvider(null)}
         />
@@ -189,7 +188,6 @@ function CustomSection({
       {dialogOpen && (
         <ConnectionBindingDialog
           type="custom"
-          triggerContext="standalone"
           open={dialogOpen}
           onOpenChange={setDialogOpen}
         />
@@ -217,14 +215,17 @@ function McpSection({
           <h2 className="text-base font-semibold">{t('title')}</h2>
           <p className="text-sm text-muted-foreground">{t('description')}</p>
         </div>
-        <AddToolDialog
-          trigger={
-            <Button variant="outline" size="sm">
-              <PlusIcon className="size-3.5" data-icon="inline-start" />
-              {t('addButton')}
-            </Button>
-          }
-        />
+        {/* M6.1 M5 — 신규 MCP 등록 경로는 backend route 재설계 대기 중.
+            기존 connection의 credential rotate/ delete는 카드 detail에서 가능. */}
+        <Button
+          variant="outline"
+          size="sm"
+          disabled
+          title={t('addDisabledHint')}
+        >
+          <PlusIcon className="size-3.5" data-icon="inline-start" />
+          {t('addButton')}
+        </Button>
       </header>
 
       {connections.length > 0 ? (

@@ -17,7 +17,7 @@ import {
   ShieldCheckIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useTools, useDeleteTool, useMCPServers } from '@/lib/hooks/use-tools'
+import { useTools, useDeleteTool } from '@/lib/hooks/use-tools'
 import { useConnections } from '@/lib/hooks/use-connections'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card'
@@ -37,7 +37,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
-import type { MCPServerListItem, Tool } from '@/lib/types'
+import type { Connection, Tool } from '@/lib/types'
 import { CUSTOM_CONNECTION_PROVIDER_NAME, isPrebuiltProviderName } from '@/lib/types'
 
 type ToolFilter = 'all' | 'builtin' | 'prebuilt' | 'mcp' | 'custom'
@@ -253,7 +253,6 @@ function ToolCard({
                 type="prebuilt"
                 providerName={tool.provider_name}
                 toolName={tool.name}
-                triggerContext="tool-edit"
                 open={authDialogOpen}
                 onOpenChange={setAuthDialogOpen}
               />
@@ -265,7 +264,6 @@ function ToolCard({
                 type="custom"
                 tool={tool}
                 toolName={tool.name}
-                triggerContext="tool-edit"
                 open={authDialogOpen}
                 onOpenChange={setAuthDialogOpen}
               />
@@ -286,7 +284,6 @@ function ToolCard({
               type="custom"
               tool={tool}
               toolName={tool.name}
-              triggerContext="tool-edit"
               open={authDialogOpen}
               onOpenChange={setAuthDialogOpen}
             />
@@ -376,7 +373,7 @@ function ToolSection({
 
 export default function ToolsPage() {
   const { data: tools, isLoading } = useTools()
-  const { data: mcpServers, isLoading: mcpLoading } = useMCPServers()
+  const { data: mcpConnections, isLoading: mcpLoading } = useConnections({ type: 'mcp' })
   // PREBUILT connection 목록 — configured 상태 판정에 사용. type 필터만 적용해
   // tool.provider_name 매핑용 Set 구성.
   const { data: prebuiltConnections } = useConnections({ type: 'prebuilt' })
@@ -465,37 +462,38 @@ export default function ToolsPage() {
     })
   }, [tools, search, selectedTags])
 
-  const mcpToolsByServer = useMemo(() => {
+  // M6.1 M5: MCP tool grouping key는 connection_id (mcp_servers 테이블 제거됨).
+  const mcpToolsByConnection = useMemo(() => {
     const map = new Map<string, Tool[]>()
     if (!tools) return map
     for (const tl of tools) {
-      if (tl.type !== 'mcp' || !tl.mcp_server_id) continue
-      const list = map.get(tl.mcp_server_id) ?? []
+      if (tl.type !== 'mcp' || !tl.connection_id) continue
+      const list = map.get(tl.connection_id) ?? []
       list.push(tl)
-      map.set(tl.mcp_server_id, list)
+      map.set(tl.connection_id, list)
     }
     return map
   }, [tools])
 
-  const filteredMCPServers = useMemo(() => {
-    if (!mcpServers) return [] as Array<{ server: MCPServerListItem; matchedByTool: boolean }>
+  const filteredMCPConnections = useMemo(() => {
+    if (!mcpConnections) return [] as Array<{ connection: Connection; matchedByTool: boolean }>
     const q = search.toLowerCase()
-    return mcpServers
-      .map((server) => {
-        const serverTools = mcpToolsByServer.get(server.id) ?? []
-        const serverMatch = !search || matchesQuery(server.name, q)
-        const toolMatch = search && serverTools.some((tl) => matchesQuery(tl.name, q))
+    return mcpConnections
+      .map((connection) => {
+        const connTools = mcpToolsByConnection.get(connection.id) ?? []
+        const serverMatch = !search || matchesQuery(connection.display_name, q)
+        const toolMatch = search && connTools.some((tl) => matchesQuery(tl.name, q))
         if (search && !serverMatch && !toolMatch) return null
         if (selectedTags.size > 0) {
-          const anyTagMatch = serverTools.some((tl) => matchesTags(tl.tags, selectedTags))
+          const anyTagMatch = connTools.some((tl) => matchesTags(tl.tags, selectedTags))
           if (!anyTagMatch) return null
         }
-        return { server, matchedByTool: !!toolMatch }
+        return { connection, matchedByTool: !!toolMatch }
       })
-      .filter((entry): entry is { server: MCPServerListItem; matchedByTool: boolean } =>
+      .filter((entry): entry is { connection: Connection; matchedByTool: boolean } =>
         entry !== null,
       )
-  }, [mcpServers, mcpToolsByServer, search, selectedTags])
+  }, [mcpConnections, mcpToolsByConnection, search, selectedTags])
 
   const sectionTools = useMemo(() => {
     return {
@@ -511,17 +509,17 @@ export default function ToolsPage() {
       all: tools.length,
       builtin: tools.filter((tl) => tl.type === 'builtin').length,
       prebuilt: tools.filter((tl) => tl.type === 'prebuilt').length,
-      mcp: mcpServers?.length ?? 0,
+      mcp: mcpConnections?.length ?? 0,
       custom: tools.filter((tl) => tl.type === 'custom' && !tl.is_system).length,
     }
-  }, [tools, mcpServers])
+  }, [tools, mcpConnections])
 
   const showSection = (key: ToolFilter) => filter === 'all' || filter === key
   const totalLoading = isLoading || mcpLoading
   const totalVisibleCount =
     (showSection('builtin') ? sectionTools.builtin.length : 0) +
     (showSection('prebuilt') ? sectionTools.prebuilt.length : 0) +
-    (showSection('mcp') ? filteredMCPServers.length : 0) +
+    (showSection('mcp') ? filteredMCPConnections.length : 0) +
     (showSection('custom') ? sectionTools.custom.length : 0)
 
   return (
@@ -628,20 +626,20 @@ export default function ToolsPage() {
               customConfiguredConnectionIds={customConfiguredConnectionIds}
             />
           )}
-          {showSection('mcp') && filteredMCPServers.length > 0 && (
+          {showSection('mcp') && filteredMCPConnections.length > 0 && (
             <section>
               <h2 className="text-sm font-semibold mb-3 text-foreground/80">
                 {t('section.mcp')}{' '}
                 <span className="text-muted-foreground font-normal">
-                  ({filteredMCPServers.length})
+                  ({filteredMCPConnections.length})
                 </span>
               </h2>
               <div className="flex flex-col gap-3">
-                {filteredMCPServers.map(({ server, matchedByTool }) => (
+                {filteredMCPConnections.map(({ connection, matchedByTool }) => (
                   <MCPServerGroupCard
-                    key={server.id}
-                    server={server}
-                    tools={mcpToolsByServer.get(server.id) ?? []}
+                    key={connection.id}
+                    connection={connection}
+                    tools={mcpToolsByConnection.get(connection.id) ?? []}
                     defaultOpen={matchedByTool}
                   />
                 ))}

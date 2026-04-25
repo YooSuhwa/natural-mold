@@ -14,3 +14,9 @@
 [2026-04-24T07:50:00Z] satya M4_ACK M5는 M3 완료 대기 (저커버그 idle).
 [2026-04-24T08:25:00Z] jensen MILESTONE_DONE M3 backend-mcp-legacy-drop → alembic m13_drop_mcp_legacy(preflight + FK + 컬럼 + 테이블 drop) + models/tool.py MCPServer/mcp_server_id/mcp_server 제거 + schemas/tool.py MCPServer* + ToolResponse.mcp_server_id 제거 + services/tool_service.py 6개 MCP CRUD 제거 + services/credential_service.py resolve_server_auth + mcp_server_count 제거 + services/chat_service.py MCP fallback fail-closed (ToolConfigError) + routers/tools.py 4개 mcp-server 라우트 제거 + POST /{tool_id}/test 신설(connection 경유) + error_codes mcp_server_not_found 제거 + legacy_invariants m13 invariant + main.py startup guard 확장 + frontend types CredentialUsage.mcp_server_count 제거. pytest 621 PASS, ruff clean.
 [2026-04-24T08:25:00Z] jensen NOTE_DEV_DB_BLOCKED dev PG에 m9-skip된 stale MCP tools 7건(Hancom-GW 서버) 존재 → m13 preflight가 정확히 abort. credential_auth_recoverable=False였던 이관 실패분이라 backfill 불가; 사티아 결정 필요(삭제 vs 수동 connection 생성). 코드/테스트는 영향 없음.
+[2026-04-25T01:55:00Z] satya DEV_DB_CLEANUP 사용자가 psql로 stale 7 tools + Hancom-GW mcp_server 삭제 완료. stale_mcp_tools=0 확인. m13 round-trip 준비 완료.
+[2026-04-25T02:05:00Z] satya COURSE_CORRECTION M5 저커버그 scope 확인 — MCP 신규 등록 경로(POST /api/tools/mcp-servers)는 M3에서 drop됨. 옵션 1 승인: AddToolDialog MCP 탭 + /connections "연결 추가" 비활성화, useRegisterMCPServer 제거. MCP 신규 등록 UI는 M6.1 이후 후속 PR. 기존 MCP tool credential rotate 경로는 유지.
+[2026-04-25T13:30] 저커버그 MILESTONE_START M5 프론트 MCP re-wire + BindingDialogShell 추출 + MCP 파일 정리
+[2026-04-25T15:45] 저커버그 ESCALATION AddToolDialog MCP 탭 scope 확인 요청 (backend /mcp-server/* drop 여파)
+[2026-04-25T16:00] team-lead DECISION 옵션 1 승인 — MCP 탭 제거 + McpSection "연결 추가" 비활성화 + 신규 등록 경로는 후속 작업 이월
+[2026-04-25T16:30] 저커* MILESTONE_DONE M5 lint+build PASS, grep residue 0

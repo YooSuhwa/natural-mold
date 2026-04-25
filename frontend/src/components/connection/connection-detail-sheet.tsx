@@ -284,7 +284,6 @@ function DetailBody({ connection, onClose }: { connection: Connection; onClose: 
           providerName={connection.provider_name}
           connectionId={connection.id}
           toolName={connection.display_name}
-          triggerContext="tool-edit"
           open={rebindOpen}
           onOpenChange={setRebindOpen}
         />
@@ -294,7 +293,6 @@ function DetailBody({ connection, onClose }: { connection: Connection; onClose: 
           type="custom"
           currentConnectionId={connection.id}
           toolName={connection.display_name}
-          triggerContext="standalone"
           open={rebindOpen}
           onOpenChange={setRebindOpen}
         />
