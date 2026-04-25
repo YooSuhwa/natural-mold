@@ -5,7 +5,7 @@
 **백로그 E M6.1: 옵션 D + MCP legacy 완전 제거 + 신규 등록 경로 복원 — 커밋 대기**
 worktree `.claude/worktrees/backlog-e-m6-1` / 브랜치 `feature/backlog-e-m6-1` / base main@`18d98be` (PR #59 M6 머지)
 
-### 7 커밋
+### 8 커밋
 - `10c55dc` [feat] M6.1 M2 — PATCH /api/tools/{id} connection_id
 - `87b173e` [feat] M6.1 M4 — 프론트 옵션 D + CUSTOM first-bind
 - `7d3fef0` [feat] M6.1 M3 — MCP legacy drop (m13)
@@ -13,6 +13,7 @@ worktree `.claude/worktrees/backlog-e-m6-1` / 브랜치 `feature/backlog-e-m6-1`
 - `1c04481` [docs] M6.1 — HANDOFF + 검증 리포트 + E2E + 삭제 분석
 - `0dc1610` [feat] M6.1 M7 — Backend: MCP connection discovery 엔드포인트
 - `5e872e2` [feat] M6.1 M7 — Frontend: MCP 서버 신규 등록 경로 복원
+- `b40e399` [docs] M6.1 — HANDOFF M7 반영
 
 ### 완료 작업
 - [x] TTH 사일로 M1~M6 (베조스 M1/M6, 젠슨 M2/M3, 저커버그 M4/M5, 사티아 PO)
@@ -106,18 +107,21 @@ m12_drop_legacy_columns → m13_drop_mcp_legacy → m12 → m13
 - `startup guard` m13 invariant: `tools.mcp_server_id` 컬럼 존재 시점에 `WHERE type='mcp' AND mcp_server_id IS NOT NULL AND connection_id IS NULL` rows 0건 강제 (prod 배포 전 safety net)
 
 ### drive-by 금지 (다음 PR로 이월)
-- `agent_tools.connection_id` override (M5.5)
-- MCP 서버 신규 등록 UI (M5 이월 결정 — 저커버그 결정사항 참조)
+- `agent_tools.connection_id` override (M5.5 — 멀티 유저 인증 도입 후)
 
 ## 관련 파일 (M6.1 핵심)
 
 ### 신규
 - `backend/alembic/versions/m13_drop_mcp_legacy.py` — MCP drop migration + SQLite skip FK
-- `backend/app/schemas/tool.py::ToolUpdate` — `connection_id` 단일 필드, extra="forbid"
-- `backend/app/services/tool_service.py::update_tool` — PATCH 핵심 로직
+- `backend/app/schemas/tool.py::ToolUpdate` / `DiscoverToolsResponse` (M7)
+- `backend/app/services/tool_service.py::update_tool` + `discover_mcp_tools` (M7)
 - `backend/app/routers/tools.py::test_tool_connection` — connection.extra_config 경유 MCP test
+- `backend/app/routers/connections.py::discover_tools` (M7)
+- `backend/tests/test_connection_discover_tools.py` (M7, 8 테스트)
 - `frontend/src/components/connection/binding-dialog-shell.tsx` — 공용 Dialog chrome
+- `frontend/src/components/connection/mcp-connection-create-dialog.tsx` (M7)
 - `frontend/src/lib/hooks/use-tools.ts::useUpdateTool` — PATCH 훅
+- `frontend/src/lib/hooks/use-connections.ts::useDiscoverMcpTools` (M7)
 
 ### 수정
 - `backend/app/services/chat_service.py::build_tools_config` — MCP fallback → fail-closed
@@ -127,8 +131,10 @@ m12_drop_legacy_columns → m13_drop_mcp_legacy → m12 → m13
 - `frontend/src/components/connection/connection-binding-dialog.tsx` — 가드 제거 + McpBody re-wire + triggerContext 제거 + PrebuiltProps.createNew 신설
 - `frontend/src/components/tool/mcp-server-group-card.tsx` — Connection 기반 재작성
 - `frontend/src/app/tools/page.tsx` — `useMCPServers()` → `useConnections({type:'mcp'})`
-- `frontend/src/app/connections/page.tsx` — McpSection "연결 추가" 비활성화
-- `frontend/src/components/tool/add-tool-dialog.tsx` — MCP 탭 제거 (Tabs → 단일 Custom form)
+- `frontend/src/app/connections/page.tsx` — McpSection "연결 추가" 버튼 재활성화 (M7, `McpConnectionCreateDialog` 연결)
+- `frontend/src/components/tool/add-tool-dialog.tsx` — MCP 탭 제거 (Tabs → 단일 Custom form; MCP 등록은 `/connections` McpSection으로 일원화)
+- `frontend/src/lib/api/connections.ts::discoverTools` (M7)
+- `frontend/src/lib/types/index.ts` — `ConnectionCreateRequest.extra_config` + `DiscoverToolsResponse` (M7)
 
 ### 삭제
 - `frontend/src/components/tool/mcp-server-rename-dialog.tsx` (파일 전체)
@@ -138,7 +144,7 @@ m12_drop_legacy_columns → m13_drop_mcp_legacy → m12 → m13
 - 브랜치: `feature/backlog-e-m6-1` (PR 미생성, user 진행)
 - Base: main @ `18d98be` (PR #59 M6 머지)
 - DB head: `m13_drop_mcp_legacy` (docker PG 적용 완료)
-- HEAD: `5e872e2`
+- HEAD: `b40e399` (8 커밋)
 - 보존 worktree: `backlog-e-m0~m3`, `backlog-e-m6`, `backlog-e-m6-1`
 
 ## 마일스톤 진행

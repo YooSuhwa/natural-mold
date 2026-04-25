@@ -1,9 +1,9 @@
 # M6.1 수동 E2E 시나리오
 
 **작성자**: 베조스 (QA DRI)
-**작성일**: 2026-04-25
-**브랜치**: `feature/backlog-e-m6-1` (4 commits: `10c55dc` M2 / `87b173e` M4 / `7d3fef0` M3 / `b24ef1b` M5)
-**대상**: `tool.connection_id` single source of truth + MCP legacy drop
+**작성일**: 2026-04-25 (M7 시나리오 추가: 2026-04-25)
+**브랜치**: `feature/backlog-e-m6-1` (8 commits: M2 `10c55dc` / M3 `7d3fef0` / M4 `87b173e` / M5 `b24ef1b` / M7 `0dc1610` + `5e872e2` / docs `1c04481` + `b40e399`)
+**대상**: `tool.connection_id` single source of truth + MCP legacy drop + MCP 신규 등록 복원 (M7)
 
 ## 사전 준비
 
@@ -196,6 +196,48 @@ uv run alembic downgrade -1 && uv run alembic upgrade head
 
 ---
 
+## 시나리오 6: MCP 서버 신규 등록 + 자동 discovery (M7)
+
+**목표**: `/connections` → MCP 섹션 "연결 추가" 버튼 → URL 입력 → connection 생성 + tool discovery 자동 실행 검증.
+
+**전제**:
+- 테스트용 공개 MCP 서버 URL 준비 (또는 로컬 MCP 서버). 예: `https://mcp.example.com/mcp` (응답만 되면 됨).
+- `auth_type='none'` 공개 서버 전용 (인증 MCP는 생성 후 Connection Detail에서 credential 연결).
+
+**단계**:
+1. `/connections` 페이지 → MCP 섹션 헤더의 "연결 추가" 버튼 (활성화 상태 확인)
+2. 버튼 클릭 → `McpConnectionCreateDialog` 오픈
+   - 표시 이름 입력 (예: "Test MCP")
+   - 서버 URL 입력
+   - 안내 문구 "공개 MCP 서버(인증 없음)만 등록할 수 있습니다..." 노출 확인
+3. "등록하고 도구 탐색" 버튼 클릭
+4. Network 탭 확인:
+   - (a) `POST /api/connections` body: `{type: "mcp", provider_name: "test_mcp", display_name: "Test MCP", extra_config: {url: "...", auth_type: "none"}}` → 201
+   - (b) `POST /api/connections/{id}/discover-tools` → 200 with `{connection_id, server_info, items: [{tool, status}]}`
+5. 토스트 "N개 도구를 새로 가져왔습니다 (기존 0개 유지)" 노출
+6. 다이얼로그 자동 닫힘
+7. `/connections` MCP 섹션에 신규 카드 표시 + `/tools` 페이지에 새 tool들 표시
+8. DB 실측:
+   ```sql
+   SELECT COUNT(*) FROM tools WHERE connection_id = '<new-conn-id>' AND type = 'mcp';
+   -- 기대: items.length 값과 일치
+   ```
+
+**Pass 기준**:
+- ✅ connection 생성 201
+- ✅ discovery 200 + items 배열
+- ✅ tools 레코드 upsert (user_id × connection_id × name 기준 idempotent)
+- ✅ 재실행 시 items[].status 모두 "existing" (중복 생성 없음)
+
+**Fail 기준**:
+- ❌ "연결 추가" 버튼 여전히 disabled
+- ❌ discovery 502 (probe 실패 — 공개 서버인지 확인)
+- ❌ 재실행 시 tool 중복 생성 (idempotent 깨짐)
+
+**자동화 커버**: `tests/test_connection_discover_tools.py` 8건 전수 PASS (success/idempotent/IDOR/non-mcp/no-url/502/malformed/404).
+
+---
+
 ## 실행 기록
 
 | 시나리오 | 실행자 | 실행일 | 결과 | 비고 |
@@ -205,6 +247,7 @@ uv run alembic downgrade -1 && uv run alembic upgrade head
 | 3. PREBUILT PATCH 차단 | 베조스 | 2026-04-25 | **✅ 자동화 PASS** | `tests/test_tools.py::test_patch_tool_connection_id_prebuilt_400` |
 | 4. IDOR 차단 | 베조스 | 2026-04-25 | **✅ 자동화 PASS** | `tests/test_tools.py::test_patch_tool_connection_id_other_user_connection_404` |
 | 5. DB 직접 검증 | 베조스 | 2026-04-25 | **✅ PASS** | m12 → m13 → m12 → m13 round-trip + `\d tools` + `to_regclass` 실측 |
+| 6. MCP 신규 등록 + discovery (M7) | 사티아 | 2026-04-25 | **코드경로 ✅ / 수동 실행 ⏳** | pytest `test_connection_discover_tools.py` 8건 PASS. 브라우저 실제 클릭은 PR reviewer가 공개 MCP URL로 수행 |
 
 ---
 
