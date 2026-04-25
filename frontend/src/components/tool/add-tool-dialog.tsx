@@ -67,6 +67,10 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   // MCP form state
   const [mcpDisplayName, setMcpDisplayName] = useState('')
   const [mcpUrl, setMcpUrl] = useState('')
+  const [mcpAuthEnabled, setMcpAuthEnabled] = useState(false)
+  const [mcpHeaderName, setMcpHeaderName] = useState('Authorization')
+  const [mcpCredentialId, setMcpCredentialId] = useState<string>(CREDENTIAL_NONE)
+  const [mcpCredentialField, setMcpCredentialField] = useState<string>('')
   const discoverMcpTools = useDiscoverMcpTools()
 
   // CUSTOM connection 캐시 구독 — find-or-create 훅이 캐시에서 기존 row를 찾을
@@ -87,6 +91,10 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     setCustomCredentialId(CREDENTIAL_NONE)
     setMcpDisplayName('')
     setMcpUrl('')
+    setMcpAuthEnabled(false)
+    setMcpHeaderName('Authorization')
+    setMcpCredentialId(CREDENTIAL_NONE)
+    setMcpCredentialField('')
   }
 
   function handleClose() {
@@ -152,13 +160,33 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     const trimmedUrl = mcpUrl.trim()
     if (!trimmedName || !trimmedUrl) return
 
+    // 인증 사용 시: api_key auth_type + env_vars 템플릿 매핑.
+    // backend env_var_resolver는 전체 매칭만 지원 — 부분 치환 불가하므로
+    // credential 값에 prefix(예: "Bearer ")가 필요하면 사용자가 credential
+    // 저장 시 prefix를 포함해 저장해야 한다.
+    const useAuth =
+      mcpAuthEnabled &&
+      mcpCredentialId !== CREDENTIAL_NONE &&
+      mcpHeaderName.trim() &&
+      mcpCredentialField.trim()
+    const extraConfig = useAuth
+      ? {
+          url: trimmedUrl,
+          auth_type: 'api_key' as const,
+          env_vars: {
+            [mcpHeaderName.trim()]: `\${credential.${mcpCredentialField.trim()}}`,
+          },
+        }
+      : { url: trimmedUrl, auth_type: 'none' as const }
+
     let connectionId: string
     try {
       const created = await createConnection.mutateAsync({
         type: 'mcp',
         provider_name: slugify(trimmedName),
         display_name: trimmedName,
-        extra_config: { url: trimmedUrl, auth_type: 'none' },
+        credential_id: useAuth ? mcpCredentialId : null,
+        extra_config: extraConfig,
       })
       connectionId = created.id
     } catch (err) {
@@ -187,9 +215,16 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     customCredentialId === CREDENTIAL_NONE ||
     createCustomTool.isPending ||
     createConnection.isPending
+  const selectedMcpCredential = availableCredentials.find((c) => c.id === mcpCredentialId)
+  const mcpAuthIncomplete =
+    mcpAuthEnabled &&
+    (mcpCredentialId === CREDENTIAL_NONE ||
+      !mcpHeaderName.trim() ||
+      !mcpCredentialField.trim())
   const mcpSubmitDisabled =
     !mcpDisplayName.trim() ||
     !mcpUrl.trim() ||
+    mcpAuthIncomplete ||
     createConnection.isPending ||
     discoverMcpTools.isPending
   const customPending = createCustomTool.isPending || createConnection.isPending
@@ -248,7 +283,69 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                 maxLength={500}
               />
             </div>
-            <p className="text-xs text-muted-foreground">{t('mcp.authNoticeV1')}</p>
+
+            <div className="space-y-3 rounded-md border p-3">
+              <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={mcpAuthEnabled}
+                  onChange={(e) => setMcpAuthEnabled(e.target.checked)}
+                />
+                {t('mcp.authEnabled')}
+              </label>
+              {mcpAuthEnabled && (
+                <div className="space-y-3 pt-1">
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      {t('auth.label')}
+                    </label>
+                    <CredentialSelect
+                      value={mcpCredentialId}
+                      onValueChange={(v) => {
+                        setMcpCredentialId(v)
+                        setMcpCredentialField('')
+                      }}
+                      onCreateRequested={() => setCredentialDialogOpen(true)}
+                      credentials={availableCredentials}
+                    />
+                  </div>
+                  {selectedMcpCredential && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        {t('mcp.credentialField')}
+                      </label>
+                      <select
+                        className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+                        value={mcpCredentialField}
+                        onChange={(e) => setMcpCredentialField(e.target.value)}
+                      >
+                        <option value="">{t('mcp.credentialFieldPlaceholder')}</option>
+                        {selectedMcpCredential.field_keys.map((field) => (
+                          <option key={field} value={field}>
+                            {field}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      {t('mcp.headerName')}
+                    </label>
+                    <Input
+                      value={mcpHeaderName}
+                      onChange={(e) => setMcpHeaderName(e.target.value)}
+                      placeholder="Authorization"
+                      maxLength={100}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t('mcp.authHint')}</p>
+                </div>
+              )}
+              {!mcpAuthEnabled && (
+                <p className="text-xs text-muted-foreground">{t('mcp.authNoticeV1')}</p>
+              )}
+            </div>
 
             <DialogFooter>
               <Button onClick={handleMcpSubmit} disabled={mcpSubmitDisabled}>
