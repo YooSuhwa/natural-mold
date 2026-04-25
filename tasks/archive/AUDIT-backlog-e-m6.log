@@ -1,0 +1,19 @@
+[2026-04-21T00:00] satya MILESTONE_START M6 — Cleanup (backend drop + legacy 제거)
+[2026-04-21T00:00] satya SCOPE_LOCKED 백엔드 cleanup만 — 옵션 D/UI 리팩토링 M6.1로 분리, M5.5는 M6 이후
+[2026-04-21T00:00] satya WORKTREE_READY feature/backlog-e-m6 @ ad8c0fd
+[2026-04-21T00:00] satya S0_DONE M5 아카이브 + 새 상태 파일 초기화
+[2026-04-21T01:00] pichai MILESTONE_START S2 m12-migration-spec 작성
+[2026-04-21T01:00] pichai MILESTONE_DONE S2 m12-migration-spec → docs/design-docs/m6-cleanup-migration-spec.md (down_revision=m11_custom_connection 확정, FK 이름 실측 가이드 포함, 젠슨 S3 input 준비 완료)
+[2026-04-21T01:10] bezos MILESTONE_START S1 deletion-analysis
+[2026-04-21T01:45] bezos MILESTONE_DONE S1 deletion-analysis → tasks/deletion-analysis-e-m6.md (판정=주의, agent_tools.config drop은 schemas/agent_service/assistant-tools 3파트 원자 정리 필수, frontend grep 0 → UI 회귀 없음, S4 scope creep 경고 포함)
+[2026-04-21T01:50] satya SCOPE_REDUCED_2 프론트가 useUpdateMCPServer 라이브 호출(connection-binding-dialog.tsx:479) → mcp_servers drop 불가. 사용자 승인: M6 = tools.auth_config + tools.credential_id + agent_tools.config drop만. mcp_servers + tools.mcp_server_id + resolve_server_auth + MCP fallback은 M6.1(옵션 D)로 분리. CHECKPOINT.md §스코프 합의 2차 갱신
+[2026-04-21T02:10] jensen MILESTONE_START S3 backend-cleanup (축소 스코프)
+[2026-04-21T03:00] jensen MILESTONE_DONE S3 backend-cleanup → m12 + 14 files edited (pytest 624 passed, 22 tests deleted/replaced, ruff clean, PG round-trip PASS on docker)
+[2026-04-21T03:30] zuckerberg MILESTONE_START S4 frontend-cleanup (축소 스코프)
+[2026-04-21T03:45] zuckerberg MILESTONE_DONE S4 frontend-cleanup → 5 files edited, pnpm lint (기존 1건만) + pnpm build 15 routes PASS
+[2026-04-21T04:00] bezos MILESTONE_START S5 integration-verify
+[2026-04-21T04:20] bezos VERIFICATION_PASS S5 ruff=clean, pytest=624/624 (81.21s), pnpm lint=1 pre-existing warning, pnpm build=15 routes (10.19s), alembic round-trip docker PG (upgrade→downgrade→upgrade) PASS, grep 삭제 스코프 0건(MCP 이월 스코프 제외), DB 스키마 실측 tools(auth_config/credential_id 부재, mcp_server_id/connection_id 존재) + agent_tools(config 부재) + mcp_servers(존재, M6.1 이월) 일치, 회귀 포인트 3종(get_usage_count/fail-closed 커버리지/masking 누수) 전수 PASS
+[2026-04-21T04:25] bezos MILESTONE_DONE S5 integration-verify → tasks/manual-e2e-e-m6.md (5 scenarios + 자동검증 수치 + grep 불변식 + 회귀 조사). regression=0. GREEN → 사티아 S6 진행 가능
+[2026-04-21T04:00] satya S5_VERIFIED 베조스 [그린] — 자동검증 전수 PASS, grep 불변식 통과, MCP 경계 보존
+[2026-04-21T04:10] satya S6_DONE HANDOFF.md M6 반영, 단일 커밋 444c507 생성 (40 files, +1930/-1496). push는 사용자 진행
+[2026-04-21T04:10] satya MILESTONE_DONE M6 — Cleanup 완료. TTH 팀(베조스/피차이/젠슨/저커버그) 해산

@@ -237,3 +237,38 @@
 ### Scope creep 회피
 - BindingDialogShell은 UI chrome만 추출. PrebuiltBody/CustomBody/McpBody의 hydration (hydrationKey + hydratedFor pattern), 409 handling, save path는 각 body 보존 → 추상화 비용/리스크 최소화.
 - `MCPServerGroupCard` 파일명/컴포넌트명 리네임은 미실행 — UX 유지 최우선. 기능적 네이밍이라 스코프 외 정리 불필요.
+
+## M6 (베조스, 2026-04-25) — 통합 검증 완료
+
+### 검증 결과 전수 PASS
+- backend ruff: clean
+- backend pytest: 621 passed, 1 deselected (M2 baseline 624 → M2 결과 633 → M3 drop 후 621. MCPServer CRUD 전용 테스트 12건 삭제 기인, 회귀 0)
+- frontend pnpm lint: 0 warnings / 0 errors (M4 시점 예측 1 warning은 false — 실제 0)
+- frontend pnpm build: 14 pages PASS (M5에서 MCP register 탭 제거로 15→14)
+
+### DB round-trip (docker PG)
+- m12 → m13 → m12 → m13 가역성 확인
+- `\d tools`: mcp_server_id 없음, connection_id 존재
+- to_regclass('mcp_servers') = NULL
+- FK 2건 only: tools_user_id_fkey, fk_tools_connection_id (tools_mcp_server_id_fkey 없음)
+
+### 잔재 grep
+- backend: 6건 의도된 잔재 (main.py:94 column_exists cache, legacy_invariants.py:73-79 preflight SQL 리터럴, schemas/connection.py:125+186 docstring)
+- frontend: 0건 (MCPServerGroupCard 컴포넌트명은 기능적 네이밍 유지)
+
+### 회귀 테스트 포인트
+- PATCH tool 9건 (CUSTOM/MCP success, PREBUILT 400, IDOR 404, type mismatch 422, none clears, nonexistent 404, extra forbid 422, 타 유저 tool 404)
+- chat_service fail-closed 2건 (MCP missing connection raises, MCP with connection succeeds)
+
+### Gotcha (M6 검증 중 확인)
+- dev DB에 MCP tool 0건 → 시나리오 2 (MCP credential rotate) 브라우저 확인 불가. staging seed 또는 PR review 시 재현 필요
+- m13 downgrade 시 mcp_servers 테이블 + FK 복원 정상 → PROD 머지 직전 safety net 확보
+- legacy_invariants.py m13 preflight는 PROD 배포 전 stale row 차단용 — 사용자 Hancom-GW cleanup 완료로 현재 clean
+
+### 산출물
+- `tasks/verification-report-e-m6-1.md` (본 판정)
+- `tasks/manual-e2e-e-m6-1.md` (5 시나리오)
+- `HANDOFF.md` 전면 갱신
+
+### 최종 판정
+🟢 GREEN — 커밋/PR 가능. 사용자 브라우저 확인 + push + PR 생성 대기.

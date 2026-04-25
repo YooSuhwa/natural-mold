@@ -20,3 +20,8 @@
 [2026-04-25T15:45] 저커버그 ESCALATION AddToolDialog MCP 탭 scope 확인 요청 (backend /mcp-server/* drop 여파)
 [2026-04-25T16:00] team-lead DECISION 옵션 1 승인 — MCP 탭 제거 + McpSection "연결 추가" 비활성화 + 신규 등록 경로는 후속 작업 이월
 [2026-04-25T16:30] 저커* MILESTONE_DONE M5 lint+build PASS, grep residue 0
+[2026-04-25T02:10:00Z] zuckerberg MILESTONE_DONE M5 frontend-mcp-rewire → commit b24ef1b (pnpm lint clean, build 14 pages PASS, residue 0, AddToolDialog MCP 탭 + /connections McpSection 버튼 비활성화, BindingDialogShell 추출, triggerContext 제거)
+[2026-04-25T02:10:00Z] satya M5_ACK 베조스 M6 통합 검증 착수 지시. dev PG round-trip 준비 완료.
+[2026-04-25T08:15:00Z] bezos MILESTONE_DONE M6 integration-verification → tasks/verification-report-e-m6-1.md (판정=GREEN). ruff clean / pytest 621 / lint 0 / build 14 pages / alembic m12↔m13 round-trip PASS / DB schema 3 invariant PASS (mcp_server_id 없음, mcp_servers 없음, FK 2건 only) / backend residue 6건 의도 / frontend residue 0 / PATCH tool 9건 + fail-closed 2건 회귀 PASS / scope creep 0.
+[2026-04-25T08:15:00Z] bezos DELIVERABLES HANDOFF.md 전면 갱신 + tasks/manual-e2e-e-m6-1.md (5 시나리오) + tasks/verification-report-e-m6-1.md. 사용자 다음 작업: 시나리오 1/2 브라우저 확인 + git push + PR 생성.
+[2026-04-25T02:20:00Z] satya FINAL_REVIEW 스태프 엔지니어 승인 가능 — 판정 GREEN 수용. 문서 커밋 + 팀 해산 진행.
