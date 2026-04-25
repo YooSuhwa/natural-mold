@@ -77,6 +77,19 @@ export function useDeleteConnection() {
   })
 }
 
+// POST /api/connections/{id}/discover-tools — MCP 서버에서 tool 목록 discovery +
+// Tool 레코드 upsert (M6.1 M7). 성공 시 ['tools'] + ['connections'] 무효화.
+export function useDiscoverMcpTools() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => connectionsApi.discoverTools(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tools'] })
+      qc.invalidateQueries({ queryKey: ['connections'] })
+    },
+  })
+}
+
 // ADR-008 N:1: 같은 credential을 쓰는 custom connection이 있으면 재사용하고,
 // 없을 때만 새로 만든다. add-tool-dialog와 connection-binding-dialog가 동일
 // 패턴을 쓰므로 단일 훅으로 집중해 drift 차단.

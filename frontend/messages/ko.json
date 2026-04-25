@@ -941,7 +941,6 @@
         "title": "MCP 연결",
         "description": "MCP 서버에 연결해 추가 도구를 가져옵니다.",
         "addButton": "연결 추가",
-        "addDisabledHint": "MCP 서버 신규 등록 경로는 후속 업데이트에서 지원됩니다. 기존 MCP 연결의 credential 변경은 연결 상세에서 가능합니다.",
         "empty": "아직 MCP 연결이 없습니다."
       }
     },
@@ -982,6 +981,18 @@
       "changeFailed": "연결 상태 변경에 실패했습니다",
       "deleted": "연결이 삭제되었습니다",
       "deleteFailed": "연결을 삭제할 수 없습니다"
+    },
+    "mcpCreateDialog": {
+      "title": "MCP 서버 등록",
+      "description": "MCP 서버 URL을 입력하면 연결을 만들고 제공하는 도구 목록을 자동으로 가져옵니다.",
+      "displayName": "표시 이름",
+      "displayNamePlaceholder": "예: GitHub MCP",
+      "url": "서버 URL",
+      "authNoticeV1": "공개 MCP 서버(인증 없음)만 등록할 수 있습니다. 인증이 필요한 경우 등록 후 연결 상세에서 credential을 연결하세요.",
+      "submit": "등록하고 도구 탐색",
+      "connectionFailed": "연결 생성 실패: {detail}",
+      "discoverFailed": "도구 탐색 실패: {detail}. 연결 상세에서 재시도할 수 있습니다.",
+      "discoverSuccess": "{created}개 도구를 새로 가져왔습니다 (기존 {existing}개 유지)"
     },
     "addNew": "연결 추가",
     "editTitle": "연결 수정",

@@ -299,8 +299,22 @@ export interface ConnectionCreateRequest {
   provider_name: string
   display_name: string
   credential_id?: string | null
+  extra_config?: {
+    url: string
+    auth_type: ConnectionMcpAuthType
+    headers?: Record<string, string> | null
+    env_vars?: Record<string, string> | null
+    transport?: ConnectionMcpTransport | null
+    timeout?: number | null
+  } | null
   is_default?: boolean
   status?: ConnectionStatus
+}
+
+export interface DiscoverToolsResponse {
+  connection_id: string
+  server_info: Record<string, unknown>
+  items: Array<{ tool: Tool; status: 'created' | 'existing' }>
 }
 
 export interface ConnectionUpdateRequest {

@@ -11,6 +11,7 @@ import { useConnections } from '@/lib/hooks/use-connections'
 import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
 import { ConnectionCard } from '@/components/connection/connection-card'
 import { ConnectionDetailSheet } from '@/components/connection/connection-detail-sheet'
+import { McpConnectionCreateDialog } from '@/components/connection/mcp-connection-create-dialog'
 import {
   PREBUILT_PROVIDER_NAMES as PREBUILT_PROVIDERS,
   PREBUILT_PROVIDER_I18N_KEY as PREBUILT_PROVIDER_I18N,
@@ -197,7 +198,8 @@ function CustomSection({
 }
 
 // ─────────────────────────────────────────────────────────────────
-// MCP Section — "연결 추가"는 AddToolDialog MCP 탭으로 위임 (spec §3.3 옵션 A)
+// MCP Section — URL + display_name 입력 → POST /api/connections + discovery
+// (M6.1 M7 — 신규 MCP 서버 등록 경로 복원)
 // ─────────────────────────────────────────────────────────────────
 
 function McpSection({
@@ -208,6 +210,8 @@ function McpSection({
   onOpenDetail: (c: Connection) => void
 }) {
   const t = useTranslations('connections.sections.mcp')
+  const [dialogOpen, setDialogOpen] = useState(false)
+
   return (
     <section>
       <header className="mb-3 flex items-start justify-between gap-2">
@@ -215,14 +219,7 @@ function McpSection({
           <h2 className="text-base font-semibold">{t('title')}</h2>
           <p className="text-sm text-muted-foreground">{t('description')}</p>
         </div>
-        {/* M6.1 M5 — 신규 MCP 등록 경로는 backend route 재설계 대기 중.
-            기존 connection의 credential rotate/ delete는 카드 detail에서 가능. */}
-        <Button
-          variant="outline"
-          size="sm"
-          disabled
-          title={t('addDisabledHint')}
-        >
+        <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
           <PlusIcon className="size-3.5" data-icon="inline-start" />
           {t('addButton')}
         </Button>
@@ -239,6 +236,8 @@ function McpSection({
           {t('empty')}
         </p>
       )}
+
+      <McpConnectionCreateDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </section>
   )
 }
