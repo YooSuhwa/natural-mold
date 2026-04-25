@@ -27,6 +27,11 @@ export function useDeleteTool() {
 
 // PATCH /api/tools/{id} — connection_id single-field (M6.1 옵션 D). CUSTOM first-bind /
 // MCP re-wire / None 해제. PREBUILT는 서버가 400 — 호출부 가드 필요.
+//
+// Agent 응답의 ToolBrief는 {id, name}만 포함하고 connection 메타를 노출하지 않으므로
+// ['agents'] invalidate는 불필요한 광역 refetch(대시보드/detail/conversations 전부).
+// agent에서 tool connection 상태가 필요한 컴포넌트는 ['connections'] 또는 ['tools']를
+// 직접 구독한다.
 export function useUpdateTool() {
   const qc = useQueryClient()
   return useMutation({
@@ -34,7 +39,6 @@ export function useUpdateTool() {
       toolsApi.update(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tools'] })
-      qc.invalidateQueries({ queryKey: ['agents'] })
     },
   })
 }

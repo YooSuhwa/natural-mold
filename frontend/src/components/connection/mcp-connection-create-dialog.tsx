@@ -27,7 +27,8 @@ interface McpConnectionCreateDialogProps {
 }
 
 // 표시 이름 → provider_name 슬러그. 백엔드 validator는 ^[a-z0-9_]+$ 강제 (길이 ≤50).
-// 빈 결과는 `mcp`로 fallback, 백엔드에서 display_name 중복은 허용 (PK로 구분).
+// 한글/이모지 등 ASCII 외 문자만으로 구성된 이름은 normalized가 빈 문자열이 되므로,
+// random suffix로 scope 내 중복을 회피한다 (provider_name은 identifier 역할도 함).
 function slugify(raw: string): string {
   const normalized = raw
     .trim()
@@ -35,7 +36,8 @@ function slugify(raw: string): string {
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '')
     .slice(0, 50)
-  return normalized || 'mcp'
+  if (normalized) return normalized
+  return `mcp_${Math.random().toString(36).slice(2, 8)}`
 }
 
 /**
