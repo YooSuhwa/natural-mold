@@ -226,6 +226,21 @@ async def test_discover_probe_failure_502(
 
 
 @pytest.mark.asyncio
+async def test_discover_disabled_connection_409(
+    client: AsyncClient, db: AsyncSession
+):
+    """kill-switch: disabled connection에서 probe/생성 모두 거부."""
+    conn = await _seed_mcp_connection(db)
+    conn.status = "disabled"
+    await db.commit()
+
+    # mcp_probe이 호출되지 않아야 하므로 mock 없이도 509가 나와야 함
+    resp = await client.post(f"/api/connections/{conn.id}/discover-tools")
+    assert resp.status_code == 409
+    assert "disabled" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
 async def test_discover_ignores_malformed_tools(
     client: AsyncClient, db: AsyncSession
 ):

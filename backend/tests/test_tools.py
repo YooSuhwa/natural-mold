@@ -353,6 +353,32 @@ async def test_patch_tool_unknown_field_422(
 
 
 @pytest.mark.asyncio
+async def test_patch_tool_empty_body_preserves_binding(
+    client: AsyncClient, db: AsyncSession
+):
+    """빈 body 전송은 미전송으로 해석 — 기존 connection_id 유지.
+
+    `connection_id: None`으로 덮어써 실수로 바인딩 해제되는 것을 방지.
+    명시적 해제는 `{"connection_id": null}` 전송으로만 가능.
+    """
+    conn = await _seed_credential_and_connection(
+        db, conn_type="custom", display_name="Preserve"
+    )
+    tool = _make_custom_tool(connection_id=conn.id)
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+    original_connection_id = tool.connection_id
+
+    resp = await client.patch(f"/api/tools/{tool.id}", json={})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["connection_id"] == str(original_connection_id)
+
+    await db.refresh(tool)
+    assert tool.connection_id == original_connection_id
+
+
+@pytest.mark.asyncio
 async def test_patch_tool_other_user_owned_tool_404(
     client: AsyncClient, db: AsyncSession
 ):

@@ -122,10 +122,17 @@ async def update_tool(
             ),
         )
 
-    if payload.connection_id is not None:
+    # 빈 body(`{}`)로 들어오면 connection_id 필드가 "미전송" 상태 → 기존 바인딩
+    # 유지. 명시적 해제는 `{"connection_id": null}` 전송으로만 가능.
+    patch_fields = payload.model_dump(exclude_unset=True)
+    if "connection_id" not in patch_fields:
+        return tool
+
+    new_connection_id = patch_fields["connection_id"]
+    if new_connection_id is not None:
         conn_result = await db.execute(
             select(Connection)
-            .where(Connection.id == payload.connection_id)
+            .where(Connection.id == new_connection_id)
             .options(selectinload(Connection.credential))
         )
         connection = conn_result.scalar_one_or_none()
@@ -141,7 +148,7 @@ async def update_tool(
                 ),
             )
 
-    tool.connection_id = payload.connection_id
+    tool.connection_id = new_connection_id
     await db.commit()
     await db.refresh(tool, attribute_names=["connection"])
     return tool
@@ -202,6 +209,16 @@ async def discover_mcp_tools(
                 "only 'mcp' connections expose a remote tool catalog."
             ),
         )
+    # kill-switch: 사용자가 disable한 connection은 원격 probe/생성을 막는다.
+    # chat_service._gate_connection_active와 정책 정합 (disabled = 실행 불가).
+    if conn.status != "active":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Connection {conn.id} is status='{conn.status}' — "
+                "reactivate before discovering tools."
+            ),
+        )
 
     extra = conn.extra_config or {}
     url = extra.get("url")
@@ -258,9 +275,10 @@ async def discover_mcp_tools(
         created.append(new_tool)
 
     if created:
+        # commit 한 번으로 PK + server default 반영. 각 Tool은 파이썬 default
+        # (id=uuid4, created_at=now)로 생성 시점에 이미 값이 있으므로 개별
+        # refresh 루프는 불필요한 N round-trip.
         await db.commit()
-        for t in created:
-            await db.refresh(t)
 
     items: list[dict[str, Any]] = []
     for t in created:
