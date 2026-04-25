@@ -10,10 +10,21 @@ from app.config import settings
 
 
 async def test_mcp_connection(
-    url: str, auth_config: dict[str, str] | None = None
+    url: str,
+    auth_config: dict[str, str] | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Test connection to an MCP server and discover tools."""
+    """Test connection to an MCP server and discover tools.
+
+    `extra_headers`는 connection.extra_config.headers (transport headers) 전달용.
+    chat runtime의 MCP 빌더와 동일 헤더로 probe해 인증 MCP 서버에서 정확한 카탈로그
+    를 가져온다. `auth_config.api_key`는 추가 단일 헤더(legacy 호환)로 합산된다.
+    """
     headers: dict[str, str] = {"Content-Type": "application/json"}
+    if extra_headers:
+        for k, v in extra_headers.items():
+            if isinstance(v, str):
+                headers[k] = v
     if auth_config and auth_config.get("api_key"):
         header_name = auth_config.get("header_name", "Authorization")
         headers[header_name] = auth_config["api_key"]

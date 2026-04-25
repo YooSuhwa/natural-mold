@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -233,7 +234,12 @@ async def discover_mcp_tools(
         conn.credential,
         context={"connection_id": str(conn.id)},
     )
-    probe = await mcp_probe(url, effective_auth)
+    # transport headers (인증/테넌트 헤더 등)는 chat runtime의 MCP 빌더와 동일하게
+    # probe에도 전달해야 동일 카탈로그가 나온다 — 누락 시 인증 MCP에서 401/잘못된 목록.
+    extra_headers = extra.get("headers")
+    if not isinstance(extra_headers, dict):
+        extra_headers = None
+    probe = await mcp_probe(url, effective_auth, extra_headers=extra_headers)
     if not probe.get("success"):
         raise HTTPException(
             status_code=502,
@@ -271,13 +277,32 @@ async def discover_mcp_tools(
             parameters_schema=entry.get("inputSchema") or entry.get("input_schema"),
             connection_id=connection_id,
         )
+        # m14 partial unique index가 (user_id, connection_id, name) WHERE type='mcp'
+        # 중복을 거부한다. 동시 두 요청이 같은 name에 대해 existing snapshot을 미스해도
+        # 두 번째 flush가 IntegrityError → 기존 행으로 흡수해 idempotent 유지.
         db.add(new_tool)
+        try:
+            await db.flush()
+        except IntegrityError:
+            await db.rollback()
+            # 다른 요청이 먼저 insert 완료 → re-fetch해서 skipped로 분류.
+            refetch = await db.execute(
+                select(Tool).where(
+                    Tool.user_id == user_id,
+                    Tool.type == ToolType.MCP,
+                    Tool.connection_id == connection_id,
+                    Tool.name == name,
+                )
+            )
+            winner = refetch.scalar_one_or_none()
+            if winner is not None:
+                skipped.append(winner)
+                existing_by_name[name] = winner
+            continue
         created.append(new_tool)
 
-    if created:
-        # commit 한 번으로 PK + server default 반영. 각 Tool은 파이썬 default
-        # (id=uuid4, created_at=now)로 생성 시점에 이미 값이 있으므로 개별
-        # refresh 루프는 불필요한 N round-trip.
+    if created or skipped:
+        # 잔여 트랜잭션 commit. flush는 row 단위였지만 commit은 한 번으로 충분.
         await db.commit()
 
     items: list[dict[str, Any]] = []

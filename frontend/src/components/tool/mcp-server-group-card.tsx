@@ -55,7 +55,17 @@ export function MCPServerGroupCard({
   const url = connection.extra_config?.url ?? ''
   const toolCount = tools.length
 
+  // tools가 살아있을 때 connection 삭제는 tools.connection_id를 NULL로 만들어
+  // 도구를 fail-closed 상태로 orphan시킨다 (chat_service._resolve_*가 NULL conn
+  // 에서 ToolConfigError raise). ConnectionDetailSheet의 hasUsage 가드와 동일
+  // 정책. UI 메뉴에서도 같은 보호 적용.
+  const hasBoundTools = toolCount > 0
+
   function handleDelete() {
+    if (hasBoundTools) {
+      toast.error(t('delete.blockedByUsage'))
+      return
+    }
     deleteConnection.mutate(
       { id: connection.id, type: connection.type, provider_name: connection.provider_name },
       {
@@ -129,7 +139,12 @@ export function MCPServerGroupCard({
                   {t('menu.auth')}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => setDeleteOpen(true)}
+                  disabled={hasBoundTools}
+                  title={hasBoundTools ? t('delete.blockedByUsage') : undefined}
+                >
                   <Trash2Icon />
                   {t('menu.delete')}
                 </DropdownMenuItem>
