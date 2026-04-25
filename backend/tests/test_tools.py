@@ -399,3 +399,110 @@ async def test_patch_tool_other_user_owned_tool_404(
         json={"connection_id": None},
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_rejects_disabled_connection(
+    client: AsyncClient, db: AsyncSession
+):
+    """status='disabled' connection으로 rebind → 409 (런타임 invariant 정합)."""
+    initial_conn = await _seed_credential_and_connection(
+        db, conn_type="custom", display_name="Initial"
+    )
+    disabled_conn = await _seed_credential_and_connection(
+        db, conn_type="custom", display_name="Disabled"
+    )
+    disabled_conn.status = "disabled"
+    await db.commit()
+
+    tool = _make_custom_tool(connection_id=initial_conn.id)
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}",
+        json={"connection_id": str(disabled_conn.id)},
+    )
+    assert resp.status_code == 409, resp.text
+    assert "disabled" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_patch_custom_tool_rejects_connection_without_credential(
+    client: AsyncClient, db: AsyncSession
+):
+    """CUSTOM tool은 credential 없는 connection에 bind 불가 — 422.
+
+    (chat_service._gate_connection_credential과 동일 invariant)
+    """
+    initial_conn = await _seed_credential_and_connection(
+        db, conn_type="custom", display_name="Initial"
+    )
+    # credential 없는 custom connection 생성
+    bare_conn = Connection(
+        user_id=TEST_USER_ID,
+        type="custom",
+        provider_name="custom",
+        display_name="Bare CUSTOM",
+        credential_id=None,
+        is_default=False,
+        status="active",
+    )
+    db.add(bare_conn)
+    await db.commit()
+    await db.refresh(bare_conn)
+
+    tool = _make_custom_tool(connection_id=initial_conn.id)
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}",
+        json={"connection_id": str(bare_conn.id)},
+    )
+    assert resp.status_code == 422, resp.text
+    assert "credential" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_patch_mcp_tool_allows_connection_without_credential(
+    client: AsyncClient, db: AsyncSession
+):
+    """MCP tool은 auth_type='none'이면 credential 없어도 OK (현 버전 v1 스코프)."""
+    initial_conn = await _seed_credential_and_connection(
+        db, conn_type="mcp", provider_name="initial_mcp", display_name="Initial MCP"
+    )
+    # extra_config 추가 (MCP 필수)
+    initial_conn.extra_config = {"url": "https://x.example.com", "auth_type": "none"}
+    bare_conn = Connection(
+        user_id=TEST_USER_ID,
+        type="mcp",
+        provider_name="bare_mcp",
+        display_name="Bare MCP",
+        credential_id=None,
+        extra_config={"url": "https://y.example.com", "auth_type": "none"},
+        is_default=False,
+        status="active",
+    )
+    db.add(bare_conn)
+    await db.commit()
+    await db.refresh(bare_conn)
+
+    tool = Tool(
+        user_id=TEST_USER_ID,
+        type="mcp",
+        name="mcp_no_cred",
+        connection_id=initial_conn.id,
+    )
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    resp = await client.patch(
+        f"/api/tools/{tool.id}",
+        json={"connection_id": str(bare_conn.id)},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["connection_id"] == str(bare_conn.id)

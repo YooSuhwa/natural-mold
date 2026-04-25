@@ -148,6 +148,25 @@ async def update_tool(
                     f"tool type '{tool.type}'"
                 ),
             )
+        # 런타임 invariant 정합 — chat_service._gate_connection_active /
+        # _gate_connection_credential과 같은 조건. PATCH 시점에 거부해 dead-on-
+        # arrival tool을 막는다. create_custom_tool도 같은 검증을 수행함.
+        if connection.status != "active":
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Connection {connection.id} is status='{connection.status}'. "
+                    "Reactivate the connection before binding."
+                ),
+            )
+        if tool.type == ToolType.CUSTOM and connection.credential_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"CUSTOM tools require a connection with a credential "
+                    f"attached. Connection {connection.id} has no credential."
+                ),
+            )
 
     tool.connection_id = new_connection_id
     await db.commit()
@@ -258,13 +277,20 @@ async def discover_mcp_tools(
     )
     existing_by_name = {t.name: t for t in existing_result.scalars().all()}
 
+    # Tool.name은 String(100) — 원격 서버가 보낸 oversized name을 그대로 insert하면
+    # DataError로 500 응답. 검증 단계에서 skip.
+    MAX_TOOL_NAME_LEN = 100
+
     created: list[Tool] = []
     skipped: list[Tool] = []
+    invalid_count = 0
     for entry in discovered:
         if not isinstance(entry, dict):
+            invalid_count += 1
             continue
         name = entry.get("name")
-        if not isinstance(name, str) or not name:
+        if not isinstance(name, str) or not name or len(name) > MAX_TOOL_NAME_LEN:
+            invalid_count += 1
             continue
         if name in existing_by_name:
             skipped.append(existing_by_name[name])

@@ -409,6 +409,35 @@ async def test_discover_passes_extra_config_headers_to_probe(
 
 
 @pytest.mark.asyncio
+async def test_discover_ignores_oversized_name(
+    client: AsyncClient, db: AsyncSession
+):
+    """Tool.name 컬럼은 String(100) — 원격 서버가 oversized name을 보내면 DataError로
+    500이 떨어진다. 검증 단계에서 skip해 controlled 응답 유지.
+    """
+    conn = await _seed_mcp_connection(db)
+    fake_result = {
+        "success": True,
+        "server_info": {},
+        "tools": [
+            {"name": "ok_short", "description": "fine"},
+            {"name": "x" * 101, "description": "oversize"},
+            {"name": "x" * 200, "description": "very oversize"},
+        ],
+    }
+    with patch(
+        "app.agent_runtime.mcp_client.test_mcp_connection",
+        new=AsyncMock(return_value=fake_result),
+    ):
+        resp = await client.post(f"/api/connections/{conn.id}/discover-tools")
+
+    assert resp.status_code == 200, resp.text
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["tool"]["name"] == "ok_short"
+
+
+@pytest.mark.asyncio
 async def test_discover_ignores_malformed_tools(
     client: AsyncClient, db: AsyncSession
 ):
