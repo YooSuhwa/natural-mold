@@ -30,7 +30,7 @@ worktree `.claude/worktrees/backlog-e-m6-1` / 브랜치 `feature/backlog-e-m6-1`
 - [x] `/tools` 페이지 grouping: `mcp_server_id` → `connection_id` (UX 유지, 내부 키만 교체)
 - [x] `credential_service.get_usage_count` 반환에서 `mcp_server_count` 제거 + 프론트 `CredentialUsage` 타입 정리
 - [x] i18n: `unsupportedFirstBindM6` / MCP rename 키 제거, `connections.mcpCreateDialog` 블록 신설
-- [x] **M7 신규 등록 경로 복원**: `POST /api/connections/{id}/discover-tools` + `McpConnectionCreateDialog` — URL + display_name 2필드 입력 → connection 생성 → 자동 discovery → 도구 upsert
+- [x] **M7 신규 등록 경로 복원**: `POST /api/connections/{id}/discover-tools` + `/tools` AddToolDialog **MCP 탭** (M5 이전 위치로 환원) — URL + display_name 2필드 입력 → connection 생성 → 자동 discovery → 도구 upsert. `/connections` McpSection은 조회 전용
 
 ## M6.1 스코프 vs 실제
 
@@ -43,7 +43,7 @@ worktree `.claude/worktrees/backlog-e-m6-1` / 브랜치 `feature/backlog-e-m6-1`
 | CUSTOM first-bind | ✅ | 프론트 가드 제거 + 체인 연결 |
 | BindingDialogShell | ✅ | UI chrome만 추출 (hydration은 body 소유) |
 | `/api/tools/mcp-server*` 삭제 | ✅ | 4 라우트 제거 |
-| MCP **신규 등록** UI | ✅ | **M7에서 복원 완료**. `POST /api/connections/{id}/discover-tools` + `McpConnectionCreateDialog`. v1은 `auth_type='none'` 공개 서버만 (인증 MCP는 생성 후 Connection Detail에서 credential 연결) |
+| MCP **신규 등록** UI | ✅ | **M7에서 복원 완료**. `POST /api/connections/{id}/discover-tools` + `/tools` AddToolDialog의 **MCP 탭** (M5 이전 위치로 환원). v1은 `auth_type='none'` 공개 서버만. `/connections` McpSection은 조회/관리 전용 |
 
 ## 검증
 
@@ -119,7 +119,6 @@ m12_drop_legacy_columns → m13_drop_mcp_legacy → m12 → m13
 - `backend/app/routers/connections.py::discover_tools` (M7)
 - `backend/tests/test_connection_discover_tools.py` (M7, 8 테스트)
 - `frontend/src/components/connection/binding-dialog-shell.tsx` — 공용 Dialog chrome
-- `frontend/src/components/connection/mcp-connection-create-dialog.tsx` (M7)
 - `frontend/src/lib/hooks/use-tools.ts::useUpdateTool` — PATCH 훅
 - `frontend/src/lib/hooks/use-connections.ts::useDiscoverMcpTools` (M7)
 
@@ -131,8 +130,8 @@ m12_drop_legacy_columns → m13_drop_mcp_legacy → m12 → m13
 - `frontend/src/components/connection/connection-binding-dialog.tsx` — 가드 제거 + McpBody re-wire + triggerContext 제거 + PrebuiltProps.createNew 신설
 - `frontend/src/components/tool/mcp-server-group-card.tsx` — Connection 기반 재작성
 - `frontend/src/app/tools/page.tsx` — `useMCPServers()` → `useConnections({type:'mcp'})`
-- `frontend/src/app/connections/page.tsx` — McpSection "연결 추가" 버튼 재활성화 (M7, `McpConnectionCreateDialog` 연결)
-- `frontend/src/components/tool/add-tool-dialog.tsx` — MCP 탭 제거 (Tabs → 단일 Custom form; MCP 등록은 `/connections` McpSection으로 일원화)
+- `frontend/src/app/connections/page.tsx` — McpSection 조회 전용 (M7 후속에서 신규 등록 진입점은 `/tools`로 환원)
+- `frontend/src/components/tool/add-tool-dialog.tsx` — Tabs 구조 (MCP 탭 + CUSTOM 탭). MCP 탭은 `useCreateConnection` + `useDiscoverMcpTools` 체인
 - `frontend/src/lib/api/connections.ts::discoverTools` (M7)
 - `frontend/src/lib/types/index.ts` — `ConnectionCreateRequest.extra_config` + `DiscoverToolsResponse` (M7)
 

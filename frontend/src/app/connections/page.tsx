@@ -11,7 +11,6 @@ import { useConnections } from '@/lib/hooks/use-connections'
 import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
 import { ConnectionCard } from '@/components/connection/connection-card'
 import { ConnectionDetailSheet } from '@/components/connection/connection-detail-sheet'
-import { McpConnectionCreateDialog } from '@/components/connection/mcp-connection-create-dialog'
 import {
   PREBUILT_PROVIDER_NAMES as PREBUILT_PROVIDERS,
   PREBUILT_PROVIDER_I18N_KEY as PREBUILT_PROVIDER_I18N,
@@ -198,8 +197,7 @@ function CustomSection({
 }
 
 // ─────────────────────────────────────────────────────────────────
-// MCP Section — URL + display_name 입력 → POST /api/connections + discovery
-// (M6.1 M7 — 신규 MCP 서버 등록 경로 복원)
+// MCP Section — 조회/관리 전용. 신규 등록은 `/tools` AddToolDialog의 MCP 탭.
 // ─────────────────────────────────────────────────────────────────
 
 function McpSection({
@@ -210,19 +208,12 @@ function McpSection({
   onOpenDetail: (c: Connection) => void
 }) {
   const t = useTranslations('connections.sections.mcp')
-  const [dialogOpen, setDialogOpen] = useState(false)
 
   return (
     <section>
-      <header className="mb-3 flex items-start justify-between gap-2">
-        <div>
-          <h2 className="text-base font-semibold">{t('title')}</h2>
-          <p className="text-sm text-muted-foreground">{t('description')}</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
-          <PlusIcon className="size-3.5" data-icon="inline-start" />
-          {t('addButton')}
-        </Button>
+      <header className="mb-3">
+        <h2 className="text-base font-semibold">{t('title')}</h2>
+        <p className="text-sm text-muted-foreground">{t('description')}</p>
       </header>
 
       {connections.length > 0 ? (
@@ -236,8 +227,6 @@ function McpSection({
           {t('empty')}
         </p>
       )}
-
-      <McpConnectionCreateDialog open={dialogOpen} onOpenChange={setDialogOpen} />
     </section>
   )
 }
