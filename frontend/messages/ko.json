@@ -678,6 +678,7 @@
       "authNotSet": "인증 미설정",
       "menu": {
         "auth": "인증 설정",
+        "authNotSupported": "이 connection은 env_vars 템플릿이 없어 credential 연결이 적용되지 않습니다. 인증 MCP 등록 UI는 후속 업데이트에서 제공됩니다.",
         "delete": "삭제"
       },
       "delete": {

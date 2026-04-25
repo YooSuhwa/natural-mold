@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, ForeignKey, String, Text
+from sqlalchemy import JSON, ForeignKey, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -32,6 +32,21 @@ class AgentToolLink(Base):
 
 class Tool(Base):
     __tablename__ = "tools"
+    # m14 partial unique index를 ORM metadata로도 표현해 metadata 기반 schema 환경
+    # (테스트 conftest의 `Base.metadata.create_all`)에서도 race 가드가 작동하게 한다.
+    # `type='mcp'`인 행에만 적용 — PREBUILT/CUSTOM/BUILTIN은 다른 매니징 정책.
+    # PostgreSQL/SQLite 둘 다 partial index 지원(SQLite 3.8+).
+    __table_args__ = (
+        Index(
+            "uq_mcp_tools_user_connection_name",
+            "user_id",
+            "connection_id",
+            "name",
+            unique=True,
+            postgresql_where=text("type = 'mcp'"),
+            sqlite_where=text("type = 'mcp'"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)

@@ -303,6 +303,67 @@ async def test_discover_race_duplicate_blocked_by_unique_index(
 
 
 @pytest.mark.asyncio
+async def test_orm_metadata_partial_unique_index_enforced(
+    db: AsyncSession,
+):
+    """ORM `__table_args__` partial unique index가 metadata 기반 schema에서도
+    enforced되는지 검증. conftest는 `Base.metadata.create_all` 사용 — m14
+    alembic 마이그레이션을 거치지 않으므로 metadata에 표현된 index만 작동한다.
+
+    동일 (user_id, connection_id, name) MCP tool 두 건을 직접 insert할 때
+    두 번째가 IntegrityError로 거부되어야 race 가드가 metadata 환경에서도 유효.
+    """
+    conn = await _seed_mcp_connection(db)
+    t1 = Tool(
+        user_id=TEST_USER_ID,
+        type="mcp",
+        name="dup_target",
+        connection_id=conn.id,
+    )
+    db.add(t1)
+    await db.commit()
+
+    t2 = Tool(
+        user_id=TEST_USER_ID,
+        type="mcp",
+        name="dup_target",
+        connection_id=conn.id,
+    )
+    db.add(t2)
+    from sqlalchemy.exc import IntegrityError
+
+    with pytest.raises(IntegrityError):
+        await db.commit()
+    await db.rollback()
+
+
+@pytest.mark.asyncio
+async def test_orm_metadata_partial_index_allows_non_mcp_duplicates(
+    db: AsyncSession,
+):
+    """partial index의 WHERE type='mcp' 조건으로 PREBUILT/CUSTOM/BUILTIN 같은
+    이름 중복은 허용되어야 한다 (PREBUILT 시드 도구는 다양한 connection이
+    존재할 수 있고, CUSTOM은 connection_id가 NULL일 수 있는 등 다른 정책).
+    """
+    conn = await _seed_mcp_connection(db)
+    t1 = Tool(
+        user_id=TEST_USER_ID,
+        type="custom",
+        name="same_name_custom",
+        connection_id=conn.id,
+    )
+    t2 = Tool(
+        user_id=TEST_USER_ID,
+        type="custom",
+        name="same_name_custom",
+        connection_id=conn.id,
+    )
+    db.add_all([t1, t2])
+    # custom은 partial index의 WHERE 조건에 해당 안 됨 → 중복 허용
+    await db.commit()
+
+
+@pytest.mark.asyncio
 async def test_discover_race_preserves_earlier_created_rows(
     client: AsyncClient, db: AsyncSession
 ):

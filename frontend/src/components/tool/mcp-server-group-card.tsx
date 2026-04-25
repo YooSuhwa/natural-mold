@@ -54,6 +54,12 @@ export function MCPServerGroupCard({
   )
   const url = connection.extra_config?.url ?? ''
   const toolCount = tools.length
+  // env_vars 템플릿이 있어야 credential이 실제로 인증 헤더로 주입된다.
+  // v1 신규 등록 dialog는 auth_type='none'으로만 connection을 만들기 때문에
+  // 이 경로의 connection은 credential을 받아도 무용지물 — 인증 설정 메뉴를
+  // 비활성화해 dead-on-arrival 상태를 사용자에게 노출. m9 마이그레이션으로
+  // 만들어진 기존 connection은 env_vars 템플릿을 가지고 있어 그대로 동작.
+  const supportsCredentialBinding = (connection.extra_config?.env_var_keys?.length ?? 0) > 0
 
   // tools가 살아있을 때 connection 삭제는 tools.connection_id를 NULL로 만들어
   // 도구를 fail-closed 상태로 orphan시킨다 (chat_service._resolve_*가 NULL conn
@@ -134,7 +140,15 @@ export function MCPServerGroupCard({
                 <MoreVerticalIcon className="size-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="bottom" sideOffset={4}>
-                <DropdownMenuItem onClick={() => setAuthOpen(true)}>
+                <DropdownMenuItem
+                  onClick={() => setAuthOpen(true)}
+                  disabled={!supportsCredentialBinding}
+                  title={
+                    supportsCredentialBinding
+                      ? undefined
+                      : t('menu.authNotSupported')
+                  }
+                >
                   <KeyIcon />
                   {t('menu.auth')}
                 </DropdownMenuItem>
