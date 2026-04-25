@@ -2,14 +2,17 @@
 
 ## 최근 완료 (2026-04-25)
 
-**백로그 E M6.1: MCP legacy 완전 제거 + 옵션 D (PATCH tool.connection_id) — 커밋 대기**
+**백로그 E M6.1: 옵션 D + MCP legacy 완전 제거 + 신규 등록 경로 복원 — 커밋 대기**
 worktree `.claude/worktrees/backlog-e-m6-1` / 브랜치 `feature/backlog-e-m6-1` / base main@`18d98be` (PR #59 M6 머지)
 
-### 4 커밋
+### 7 커밋
 - `10c55dc` [feat] M6.1 M2 — PATCH /api/tools/{id} connection_id
 - `87b173e` [feat] M6.1 M4 — 프론트 옵션 D + CUSTOM first-bind
 - `7d3fef0` [feat] M6.1 M3 — MCP legacy drop (m13)
 - `b24ef1b` [feat] M6.1 M5 — 프론트 MCP re-wire + BindingDialogShell
+- `1c04481` [docs] M6.1 — HANDOFF + 검증 리포트 + E2E + 삭제 분석
+- `0dc1610` [feat] M6.1 M7 — Backend: MCP connection discovery 엔드포인트
+- `5e872e2` [feat] M6.1 M7 — Frontend: MCP 서버 신규 등록 경로 복원
 
 ### 완료 작업
 - [x] TTH 사일로 M1~M6 (베조스 M1/M6, 젠슨 M2/M3, 저커버그 M4/M5, 사티아 PO)
@@ -25,7 +28,8 @@ worktree `.claude/worktrees/backlog-e-m6-1` / 브랜치 `feature/backlog-e-m6-1`
 - [x] `mcp-server-rename-dialog.tsx` 파일 삭제
 - [x] `/tools` 페이지 grouping: `mcp_server_id` → `connection_id` (UX 유지, 내부 키만 교체)
 - [x] `credential_service.get_usage_count` 반환에서 `mcp_server_count` 제거 + 프론트 `CredentialUsage` 타입 정리
-- [x] i18n: `unsupportedFirstBindM6` / MCP rename 키 제거, `connections.sections.mcp.addDisabledHint` 신설
+- [x] i18n: `unsupportedFirstBindM6` / MCP rename 키 제거, `connections.mcpCreateDialog` 블록 신설
+- [x] **M7 신규 등록 경로 복원**: `POST /api/connections/{id}/discover-tools` + `McpConnectionCreateDialog` — URL + display_name 2필드 입력 → connection 생성 → 자동 discovery → 도구 upsert
 
 ## M6.1 스코프 vs 실제
 
@@ -38,15 +42,15 @@ worktree `.claude/worktrees/backlog-e-m6-1` / 브랜치 `feature/backlog-e-m6-1`
 | CUSTOM first-bind | ✅ | 프론트 가드 제거 + 체인 연결 |
 | BindingDialogShell | ✅ | UI chrome만 추출 (hydration은 body 소유) |
 | `/api/tools/mcp-server*` 삭제 | ✅ | 4 라우트 제거 |
-| MCP **신규 등록** UI | **이월** | M5에서 `/connections` McpSection "연결 추가" 버튼 비활성화 (tooltip). 신규 등록은 별도 PR (backend 신규 엔드포인트 + discovery helper 필요) |
+| MCP **신규 등록** UI | ✅ | **M7에서 복원 완료**. `POST /api/connections/{id}/discover-tools` + `McpConnectionCreateDialog`. v1은 `auth_type='none'` 공개 서버만 (인증 MCP는 생성 후 Connection Detail에서 credential 연결) |
 
 ## 검증
 
 ### 자동화
 - backend `uv run ruff check .` → **clean**
-- backend `uv run pytest` → **621 passed, 1 deselected** (M6 baseline 624 → M2 633 → M3 621. MCPServer CRUD 전용 테스트 12건 제거 기인. CUSTOM/MCP connection path 회귀 전부 유지)
+- backend `uv run pytest` → **629 passed, 1 deselected** (M6 baseline 624 → M2 633 → M3 621 → M7 629. +8 MCP discovery 테스트 추가)
 - frontend `pnpm lint` → **0 warnings / 0 errors**
-- frontend `pnpm build` → **14 pages** PASS (TypeScript 3.9s)
+- frontend `pnpm build` → **14 pages** PASS
 
 ### DB round-trip (docker PG)
 ```
@@ -68,7 +72,7 @@ m12_drop_legacy_columns → m13_drop_mcp_legacy → m12 → m13
 1. 브라우저 E2E 수동 확인 — `tasks/manual-e2e-e-m6-1.md` §시나리오 1, 2 (코드경로 PASS, 브라우저 검증만 대기)
 2. `git push -u origin feature/backlog-e-m6-1` + PR 생성
 
-## 다음 마일스톤 — **M5.5: `agent_tools.connection_id` override**
+## 다음 마일스톤 — **M5.5: `agent_tools.connection_id` override** (멀티 유저 인증 도입 후)
 
 스코프:
 - `agent_tools` 테이블에 `connection_id: UUID | None` 컬럼 추가
@@ -76,7 +80,7 @@ m12_drop_legacy_columns → m13_drop_mcp_legacy → m12 → m13
 - `build_tools_config`에서 override 우선순위 반영
 - ADR-008 §5 참조
 
-**그 외 후속**: MCP 서버 신규 등록 UI — `POST /api/connections (type=mcp, extra_config)` + discovery helper. 별도 PR로 분리.
+**우선순위**: 파워 유저 기능 (멀티 유저 실사용 패턴 확인 후 결정). 기본 UX는 이미 온전.
 
 ## 주의사항 / invariant
 
@@ -88,6 +92,7 @@ m12_drop_legacy_columns → m13_drop_mcp_legacy → m12 → m13
 - `PATCH /api/tools/mcp-servers/{id}` (update) — **삭제됨**
 - `DELETE /api/tools/mcp-servers/{id}` (delete) — **삭제됨**
 - `POST /api/tools/mcp-server/{id}/test` — **`POST /api/tools/{tool_id}/test`로 이전** (파라미터 의미 server_id → tool_id)
+- `POST /api/connections/{id}/discover-tools` — **신규** (M7, MCP 서버 tool discovery)
 - `ToolResponse.mcp_server_id` 필드 제거
 - `MCPServerResponse` / `MCPServerListItem` / `MCPServerCreate` / `MCPServerUpdate` 스키마 전량 제거
 - `CredentialUsage.mcp_server_count` 반환 필드 제거
@@ -133,7 +138,7 @@ m12_drop_legacy_columns → m13_drop_mcp_legacy → m12 → m13
 - 브랜치: `feature/backlog-e-m6-1` (PR 미생성, user 진행)
 - Base: main @ `18d98be` (PR #59 M6 머지)
 - DB head: `m13_drop_mcp_legacy` (docker PG 적용 완료)
-- HEAD: `b24ef1b`
+- HEAD: `5e872e2`
 - 보존 worktree: `backlog-e-m0~m3`, `backlog-e-m6`, `backlog-e-m6-1`
 
 ## 마일스톤 진행
