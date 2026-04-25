@@ -59,3 +59,14 @@ class ToolUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     connection_id: uuid.UUID | None = None
+
+
+class DiscoverToolItem(BaseModel):
+    tool: ToolResponse
+    status: str  # "created" | "existing"
+
+
+class DiscoverToolsResponse(BaseModel):
+    connection_id: uuid.UUID
+    server_info: dict[str, Any] = {}
+    items: list[DiscoverToolItem]

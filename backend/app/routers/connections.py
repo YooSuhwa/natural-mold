@@ -12,7 +12,8 @@ from app.schemas.connection import (
     ConnectionType,
     ConnectionUpdate,
 )
-from app.services import connection_service
+from app.schemas.tool import DiscoverToolsResponse
+from app.services import connection_service, tool_service
 
 router = APIRouter(prefix="/api/connections", tags=["connections"])
 
@@ -79,3 +80,18 @@ async def delete_connection(
     if not deleted:
         raise HTTPException(status_code=404, detail="Connection not found")
     return Response(status_code=204)
+
+
+@router.post("/{connection_id}/discover-tools", response_model=DiscoverToolsResponse)
+async def discover_tools(
+    connection_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """MCP connection URL에서 tool 목록을 discovery해 Tool 레코드로 upsert.
+
+    기존에 같은 connection으로 생성된 tool은 skip (status=existing), 신규는 생성
+    (status=created). IDOR 차단: 타 유저 connection은 404. connection.type != 'mcp'
+    이면 422. extra_config.url 없으면 422. 실제 probe 실패 시 502.
+    """
+    return await tool_service.discover_mcp_tools(db, connection_id, user.id)

@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.error_codes import tool_not_found
 from app.models.connection import Connection
 from app.models.tool import AgentToolLink, Tool
-from app.schemas.tool import ToolCustomCreate, ToolType, ToolUpdate
+from app.schemas.tool import ToolCustomCreate, ToolResponse, ToolType, ToolUpdate
 from app.services import connection_service
 
 
@@ -159,3 +159,117 @@ async def delete_tool(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) 
     await db.delete(tool)
     await db.commit()
     return True
+
+
+async def discover_mcp_tools(
+    db: AsyncSession,
+    connection_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> dict[str, Any]:
+    """POST /api/connections/{id}/discover-tools — MCP 서버에서 tool 목록 발견 후 upsert.
+
+    m9 마이그레이션 경로의 사용자 대체물: MCP connection이 이미 `/api/connections`로
+    생성되면, 이 엔드포인트로 실제 서버에서 tool 스키마를 읽어 Tool 레코드로 승격한다.
+
+    검증 순서:
+    1) connection 존재 + 소유 확인 (IDOR 방지: 타 유저는 404)
+    2) connection.type == 'mcp' 아니면 422
+    3) extra_config.url 없으면 422
+    4) `test_mcp_connection` (JSON-RPC probe) 호출 — success=False면 502
+    5) 반환된 tools를 user_id×connection_id×name 기준으로 upsert:
+       - name 이미 있으면 skip (status=existing)
+       - 없으면 신규 Tool(type='mcp') 생성 (status=created)
+
+    응답: {connection_id, server_info, items: [{tool, status}]}
+    """
+    from app.agent_runtime.mcp_client import test_mcp_connection as mcp_probe
+    from app.services.env_var_resolver import resolve_env_vars
+
+    result = await db.execute(
+        select(Connection)
+        .where(Connection.id == connection_id)
+        .options(selectinload(Connection.credential))
+    )
+    conn = result.scalar_one_or_none()
+    if conn is None or conn.user_id != user_id:
+        # IDOR 방지: 타 유저 connection의 존재 자체를 노출하지 않는다
+        raise HTTPException(status_code=404, detail="Connection not found")
+    if conn.type != "mcp":
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Connection type '{conn.type}' does not support tool discovery; "
+                "only 'mcp' connections expose a remote tool catalog."
+            ),
+        )
+
+    extra = conn.extra_config or {}
+    url = extra.get("url")
+    if not url:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Connection {conn.id} has no extra_config.url",
+        )
+
+    effective_auth = resolve_env_vars(
+        extra.get("env_vars"),
+        conn.credential,
+        context={"connection_id": str(conn.id)},
+    )
+    probe = await mcp_probe(url, effective_auth)
+    if not probe.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail=f"MCP discovery failed: {probe.get('error') or 'unknown error'}",
+        )
+
+    discovered = probe.get("tools") or []
+    server_info = probe.get("server_info") or {}
+
+    existing_result = await db.execute(
+        select(Tool).where(
+            Tool.user_id == user_id,
+            Tool.type == ToolType.MCP,
+            Tool.connection_id == connection_id,
+        )
+    )
+    existing_by_name = {t.name: t for t in existing_result.scalars().all()}
+
+    created: list[Tool] = []
+    skipped: list[Tool] = []
+    for entry in discovered:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        if name in existing_by_name:
+            skipped.append(existing_by_name[name])
+            continue
+        new_tool = Tool(
+            user_id=user_id,
+            type=ToolType.MCP,
+            name=name,
+            description=(entry.get("description") or "")[:10000] or None,
+            parameters_schema=entry.get("inputSchema") or entry.get("input_schema"),
+            connection_id=connection_id,
+        )
+        db.add(new_tool)
+        created.append(new_tool)
+
+    if created:
+        await db.commit()
+        for t in created:
+            await db.refresh(t)
+
+    items: list[dict[str, Any]] = []
+    for t in created:
+        items.append({"tool": ToolResponse.model_validate(t), "status": "created"})
+    for t in skipped:
+        items.append({"tool": ToolResponse.model_validate(t), "status": "existing"})
+
+    return {
+        "connection_id": connection_id,
+        "server_info": server_info,
+        "items": items,
+    }
