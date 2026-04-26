@@ -22,6 +22,28 @@ def _parse_msg_id(raw_id: str | None, conversation_id: uuid.UUID, idx: int) -> u
         return uuid.uuid5(uuid.NAMESPACE_URL, raw_id)
 
 
+def _content_to_text(content: Any) -> str:
+    """LangChain BaseMessage.content를 사용자 표시용 plain text로 변환.
+
+    Anthropic은 multi-block content (text + tool_use 등)를 list[dict]로 반환.
+    text 블록만 concat하고 tool_use 블록은 무시 (tool_calls 필드로 별도 노출).
+    그 외 비-list/dict 형태는 안전하게 str() fallback.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and block.get("type") == "text":
+                text = block.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "".join(parts)
+    return str(content)
+
+
 def langchain_messages_to_response(
     messages: list[BaseMessage],
     conversation_id: uuid.UUID,
@@ -33,7 +55,7 @@ def langchain_messages_to_response(
 
     for idx, msg in enumerate(messages):
         role = _TYPE_TO_ROLE.get(msg.type, msg.type)
-        content = msg.content if isinstance(msg.content, str) else str(msg.content)
+        content = _content_to_text(msg.content)
 
         results.append(
             MessageResponse(
