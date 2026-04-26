@@ -81,5 +81,3 @@ async def test_mcp_connection(
             return {"success": True, "server_info": server_info, "tools": tools}
     except Exception as e:  # noqa: BLE001
         return {"success": False, "error": str(e), "tools": []}
-
-

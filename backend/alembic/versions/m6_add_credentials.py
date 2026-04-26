@@ -59,14 +59,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "fk_mcp_servers_credential_id", "mcp_servers", type_="foreignkey"
-    )
+    op.drop_constraint("fk_mcp_servers_credential_id", "mcp_servers", type_="foreignkey")
     op.drop_column("mcp_servers", "credential_id")
 
-    op.drop_constraint(
-        "fk_tools_credential_id", "tools", type_="foreignkey"
-    )
+    op.drop_constraint("fk_tools_credential_id", "tools", type_="foreignkey")
     op.drop_column("tools", "credential_id")
 
     op.drop_table("credentials")

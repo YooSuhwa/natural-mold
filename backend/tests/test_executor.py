@@ -11,7 +11,7 @@ from app.agent_runtime.executor import AgentConfig
 
 def _cfg(**overrides) -> AgentConfig:
     """테스트용 AgentConfig 기본값 생성."""
-    defaults = dict(
+    defaults: dict[str, object] = dict(
         provider="openai",
         model_name="gpt-4o",
         api_key=None,
@@ -21,7 +21,8 @@ def _cfg(**overrides) -> AgentConfig:
         thread_id="t-1",
     )
     defaults.update(overrides)
-    return AgentConfig(**defaults)
+    return AgentConfig(**defaults)  # type: ignore[arg-type]
+
 
 # ---------------------------------------------------------------------------
 # build_agent
@@ -627,9 +628,9 @@ async def test_ask_user_not_included_in_invoke(
     mock_convert.return_value = []
 
     mock_agent = MagicMock()
-    mock_agent.ainvoke = AsyncMock(return_value={
-        "messages": [MagicMock(content="Hello", type="ai")]
-    })
+    mock_agent.ainvoke = AsyncMock(
+        return_value={"messages": [MagicMock(content="Hello", type="ai")]}
+    )
     mock_build.return_value = mock_agent
 
     await execute_agent_invoke(_cfg(), [])

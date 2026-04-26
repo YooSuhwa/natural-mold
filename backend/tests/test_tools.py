@@ -101,7 +101,7 @@ async def test_custom_tool_requires_connection(client: AsyncClient):
 
 
 def _make_custom_tool(
-    *, user_id: uuid.UUID = None, name: str = "my_custom_tool", **overrides
+    *, user_id: uuid.UUID | None = None, name: str = "my_custom_tool", **overrides
 ) -> Tool:
     if user_id is None:
         user_id = TEST_USER_ID
@@ -118,7 +118,7 @@ def _make_custom_tool(
 
 def _make_credential(
     *,
-    user_id: uuid.UUID = None,
+    user_id: uuid.UUID | None = None,
     name: str = "Custom Key",
     provider_name: str = "custom",
     data: dict | None = None,
@@ -171,16 +171,12 @@ async def _seed_credential_and_connection(
 
 
 @pytest.mark.asyncio
-async def test_patch_tool_connection_id_custom_success(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_tool_connection_id_custom_success(client: AsyncClient, db: AsyncSession):
     """CUSTOM tool + CUSTOM connection → 200, connection_id 반영."""
     initial_conn = await _seed_credential_and_connection(
         db, conn_type="custom", display_name="Initial"
     )
-    new_conn = await _seed_credential_and_connection(
-        db, conn_type="custom", display_name="New"
-    )
+    new_conn = await _seed_credential_and_connection(db, conn_type="custom", display_name="New")
     tool = _make_custom_tool(connection_id=initial_conn.id)
     db.add(tool)
     await db.commit()
@@ -196,9 +192,7 @@ async def test_patch_tool_connection_id_custom_success(
 
 
 @pytest.mark.asyncio
-async def test_patch_tool_connection_id_mcp_success(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_tool_connection_id_mcp_success(client: AsyncClient, db: AsyncSession):
     """MCP tool + MCP connection → 200."""
     mcp_conn = await _seed_credential_and_connection(
         db,
@@ -225,9 +219,7 @@ async def test_patch_tool_connection_id_mcp_success(
 
 
 @pytest.mark.asyncio
-async def test_patch_tool_connection_id_prebuilt_400(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_tool_connection_id_prebuilt_400(client: AsyncClient, db: AsyncSession):
     """PREBUILT system tool → 400 (PREBUILT는 (user_id, provider_name) 스코프)."""
     tool = Tool(
         type="prebuilt",
@@ -262,9 +254,7 @@ async def test_patch_tool_connection_id_other_user_connection_404(
     other_conn = await _seed_credential_and_connection(
         db, user_id=other_user_id, conn_type="custom", display_name="Other"
     )
-    own_conn = await _seed_credential_and_connection(
-        db, conn_type="custom", display_name="Own"
-    )
+    own_conn = await _seed_credential_and_connection(db, conn_type="custom", display_name="Own")
     tool = _make_custom_tool(connection_id=own_conn.id)
     db.add(tool)
     await db.commit()
@@ -278,16 +268,12 @@ async def test_patch_tool_connection_id_other_user_connection_404(
 
 
 @pytest.mark.asyncio
-async def test_patch_tool_connection_id_type_mismatch_422(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_tool_connection_id_type_mismatch_422(client: AsyncClient, db: AsyncSession):
     """CUSTOM tool + MCP connection → 422 (type 정합성)."""
     own_conn = await _seed_credential_and_connection(
         db, conn_type="custom", display_name="Own Custom"
     )
-    mcp_conn = await _seed_credential_and_connection(
-        db, conn_type="mcp", display_name="MCP Wrong"
-    )
+    mcp_conn = await _seed_credential_and_connection(db, conn_type="mcp", display_name="MCP Wrong")
     tool = _make_custom_tool(connection_id=own_conn.id)
     db.add(tool)
     await db.commit()
@@ -302,13 +288,9 @@ async def test_patch_tool_connection_id_type_mismatch_422(
 
 
 @pytest.mark.asyncio
-async def test_patch_tool_connection_id_none_clears_binding(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_tool_connection_id_none_clears_binding(client: AsyncClient, db: AsyncSession):
     """None으로 설정 → connection_id NULL (해제)."""
-    conn = await _seed_credential_and_connection(
-        db, conn_type="custom", display_name="ToClear"
-    )
+    conn = await _seed_credential_and_connection(db, conn_type="custom", display_name="ToClear")
     tool = _make_custom_tool(connection_id=conn.id)
     db.add(tool)
     await db.commit()
@@ -333,13 +315,9 @@ async def test_patch_tool_nonexistent_404(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_patch_tool_unknown_field_422(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_tool_unknown_field_422(client: AsyncClient, db: AsyncSession):
     """`extra="forbid"` — 알 수 없는 필드는 422."""
-    conn = await _seed_credential_and_connection(
-        db, conn_type="custom", display_name="Extra"
-    )
+    conn = await _seed_credential_and_connection(db, conn_type="custom", display_name="Extra")
     tool = _make_custom_tool(connection_id=conn.id)
     db.add(tool)
     await db.commit()
@@ -353,17 +331,13 @@ async def test_patch_tool_unknown_field_422(
 
 
 @pytest.mark.asyncio
-async def test_patch_tool_empty_body_preserves_binding(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_tool_empty_body_preserves_binding(client: AsyncClient, db: AsyncSession):
     """빈 body 전송은 미전송으로 해석 — 기존 connection_id 유지.
 
     `connection_id: None`으로 덮어써 실수로 바인딩 해제되는 것을 방지.
     명시적 해제는 `{"connection_id": null}` 전송으로만 가능.
     """
-    conn = await _seed_credential_and_connection(
-        db, conn_type="custom", display_name="Preserve"
-    )
+    conn = await _seed_credential_and_connection(db, conn_type="custom", display_name="Preserve")
     tool = _make_custom_tool(connection_id=conn.id)
     db.add(tool)
     await db.commit()
@@ -379,9 +353,7 @@ async def test_patch_tool_empty_body_preserves_binding(
 
 
 @pytest.mark.asyncio
-async def test_patch_tool_other_user_owned_tool_404(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_tool_other_user_owned_tool_404(client: AsyncClient, db: AsyncSession):
     """다른 유저 소유의 user-tool PATCH → 404 (정보 노출 방지)."""
     other_user_id = uuid.UUID("00000000-0000-0000-0000-000000000099")
     other_conn = await _seed_credential_and_connection(
@@ -402,9 +374,7 @@ async def test_patch_tool_other_user_owned_tool_404(
 
 
 @pytest.mark.asyncio
-async def test_patch_tool_rejects_disabled_connection(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_tool_rejects_disabled_connection(client: AsyncClient, db: AsyncSession):
     """status='disabled' connection으로 rebind → 409 (런타임 invariant 정합)."""
     initial_conn = await _seed_credential_and_connection(
         db, conn_type="custom", display_name="Initial"

@@ -2,12 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import {
-  MessageSquareQuoteIcon,
-  CheckCircle2Icon,
-  SendIcon,
-  Loader2Icon,
-} from 'lucide-react'
+import { MessageSquareQuoteIcon, CheckCircle2Icon, SendIcon, Loader2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn, toggleSetItem } from '@/lib/utils'
 import { useHiTL } from '@/lib/chat/hitl-context'
@@ -77,9 +72,7 @@ function MultiSelectInput({
               key={opt.label}
               className={cn(
                 'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-xs transition-all',
-                checked
-                  ? 'border-primary/50 bg-primary/5'
-                  : 'border-border hover:bg-accent',
+                checked ? 'border-primary/50 bg-primary/5' : 'border-border hover:bg-accent',
               )}
             >
               <input
@@ -89,9 +82,7 @@ function MultiSelectInput({
                 className="size-3.5 rounded border-border accent-primary"
               />
               <span>{opt.label}</span>
-              {opt.description && (
-                <span className="text-muted-foreground">{opt.description}</span>
-              )}
+              {opt.description && <span className="text-muted-foreground">{opt.description}</span>}
             </label>
           )
         })}
@@ -133,9 +124,7 @@ function CompletedBadge({ result }: { result: unknown }) {
       <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500" />
       <span className="font-medium text-emerald-700 dark:text-emerald-300">{t('completed')}</span>
       {display && (
-        <span className="truncate text-emerald-600/80 dark:text-emerald-400/80">
-          {display}
-        </span>
+        <span className="truncate text-emerald-600/80 dark:text-emerald-400/80">{display}</span>
       )}
     </div>
   )
@@ -159,9 +148,7 @@ function normalizeQuestions(args: AskUserArgs): UserInputQuestion[] {
     }))
   }
   if (args.question) {
-    const opts = normalizeOptions(
-      args.options as (string | { label: string })[] | undefined,
-    )
+    const opts = normalizeOptions(args.options as (string | { label: string })[] | undefined)
     return [
       {
         question: args.question,
@@ -185,8 +172,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     const questions = useMemo(() => normalizeQuestions(args ?? {}), [args])
 
     const updateAnswer = useCallback(
-      (idx: number, value: unknown) =>
-        setAnswers((prev) => ({ ...prev, [idx]: value })),
+      (idx: number, value: unknown) => setAnswers((prev) => ({ ...prev, [idx]: value })),
       [],
     )
 
@@ -214,8 +200,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
       setSubmitState('submitting')
 
       // 질문이 1개면 값만 전송, 복수면 객체 전송
-      const payload =
-        questions.length === 1 ? Object.values(response)[0] : response
+      const payload = questions.length === 1 ? Object.values(response)[0] : response
 
       // 화면 표시용 텍스트
       const displayParts = questions.map((_, i) => {

@@ -8,7 +8,8 @@ import type {
   AgentTrigger,
   UsageSummary,
   CreationSession,
-  MCPServer,
+  Connection,
+  Credential,
   BuilderSession,
   BuilderDraftConfig,
 } from '@/lib/types'
@@ -91,16 +92,15 @@ export const mockTool: Tool = {
   id: 'tool-1',
   type: 'prebuilt',
   is_system: true,
-  mcp_server_id: null,
+  provider_name: 'naver',
   name: 'Web Search',
   description: 'Search the web using DuckDuckGo',
   parameters_schema: null,
   api_url: null,
   http_method: null,
   auth_type: null,
-  auth_config: null,
   tags: ['search', 'web', 'free'],
-  credential_id: null,
+  connection_id: null,
   agent_count: 1,
   created_at: '2026-01-01T00:00:00Z',
 }
@@ -112,22 +112,77 @@ export const mockToolList: Tool[] = [
     id: 'tool-2',
     type: 'custom',
     is_system: false,
+    provider_name: null,
     name: 'My Custom API',
     description: 'A custom tool',
     api_url: 'https://example.com/api',
     http_method: 'POST',
+    connection_id: 'conn-custom-1',
   },
 ]
 
-export const mockMCPServer: MCPServer = {
-  id: 'mcp-1',
-  name: 'Test MCP Server',
-  url: 'http://localhost:9000',
-  auth_type: 'none',
-  status: 'connected',
-  tools: [mockTool],
+// ── Connection (ADR-008) ───────────────────────────────────────────
+
+export const mockCustomConnection: Connection = {
+  id: 'conn-custom-1',
+  user_id: 'user-1',
+  type: 'custom',
+  provider_name: 'custom_api_key',
+  display_name: 'My Custom API',
+  credential_id: 'cred-1',
+  extra_config: null,
+  is_default: false,
+  status: 'active',
   created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
 }
+
+export const mockMcpConnection: Connection = {
+  id: 'conn-mcp-1',
+  user_id: 'user-1',
+  type: 'mcp',
+  provider_name: 'mcp_custom',
+  display_name: 'Test MCP',
+  credential_id: 'cred-2',
+  extra_config: {
+    url: 'https://example.com/mcp',
+    auth_type: 'bearer',
+    header_keys: null,
+    env_var_keys: ['Authorization'],
+    transport: null,
+    timeout: null,
+  },
+  is_default: false,
+  status: 'active',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+}
+
+export const mockConnectionList: Connection[] = [mockCustomConnection, mockMcpConnection]
+
+// ── Credential ─────────────────────────────────────────────────────
+
+export const mockCredential: Credential = {
+  id: 'cred-1',
+  name: 'My API Key',
+  credential_type: 'api_key',
+  provider_name: 'custom_api_key',
+  is_active: true,
+  has_data: true,
+  field_keys: ['api_key'],
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
+}
+
+export const mockCredentialList: Credential[] = [
+  mockCredential,
+  {
+    ...mockCredential,
+    id: 'cred-2',
+    name: 'MCP Bearer',
+    field_keys: ['api_key'],
+  },
+]
 
 // ── Template ───────────────────────────────────────────────────────
 

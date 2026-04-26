@@ -27,18 +27,25 @@ vi.mock('@/lib/hooks/use-tools', () => ({
     mutate: mockDeleteTool,
     isPending: false,
   }),
-  useRegisterMCPServer: () => ({
-    mutateAsync: vi.fn(),
-    isPending: false,
-  }),
   useCreateCustomTool: () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
-  useUpdateToolAuthConfig: () => ({
-    mutate: vi.fn(),
+  useUpdateTool: () => ({
+    mutateAsync: vi.fn(),
     isPending: false,
   }),
+  useToolsByConnection: () => [],
+}))
+
+vi.mock('@/lib/hooks/use-connections', () => ({
+  useConnections: () => ({ data: [], isLoading: false }),
+  useCreateConnection: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateConnection: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDeleteConnection: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDiscoverMcpTools: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useFindOrCreateCustomConnection: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  scopeKey: (scope: unknown) => ['connections', scope],
 }))
 
 describe('ToolsPage', () => {
@@ -137,7 +144,8 @@ describe('ToolsPage', () => {
   it('shows delete button for non-system custom tools', () => {
     mockUseTools.mockReturnValue({ data: mockToolList, isLoading: false })
     render(<ToolsPage />)
-    expect(screen.getByText('삭제')).toBeInTheDocument()
+    // CUSTOM tool은 아이콘 버튼 + aria-label="삭제"로 표시 (i18n key: deleteButton)
+    expect(screen.getByLabelText('삭제')).toBeInTheDocument()
   })
 
   it('shows filter count when tools exist', () => {

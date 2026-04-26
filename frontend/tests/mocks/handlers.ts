@@ -6,7 +6,6 @@ import {
   mockModel,
   mockToolList,
   mockTool,
-  mockMCPServer,
   mockTemplateList,
   mockTemplate,
   mockConversationList,
@@ -18,6 +17,11 @@ import {
   mockCreationSession,
   mockCreationMessageResult,
   mockBuilderSession,
+  mockConnectionList,
+  mockCustomConnection,
+  mockMcpConnection,
+  mockCredentialList,
+  mockCredential,
 } from './fixtures'
 
 const API_BASE = 'http://localhost:8001'
@@ -96,29 +100,90 @@ export const handlers = [
     })
   }),
 
-  http.post(`${API_BASE}/api/tools/mcp-server`, async ({ request }) => {
-    const body = (await request.json()) as Record<string, unknown>
-    return HttpResponse.json({
-      ...mockMCPServer,
-      id: 'mcp-new',
-      name: body.name,
-      url: body.url,
-    })
-  }),
-
-  http.post(`${API_BASE}/api/tools/mcp-server/:serverId/test`, () => {
-    return HttpResponse.json({ success: true, tools: [{ name: 'test_tool' }] })
-  }),
-
-  http.patch(`${API_BASE}/api/tools/:id/auth-config`, async ({ params }) => {
+  http.patch(`${API_BASE}/api/tools/:id`, async ({ params, request }) => {
+    const body = (await request.json()) as { connection_id?: string | null }
     return HttpResponse.json({
       ...mockTool,
       id: params.id,
-      auth_config: { api_key: '***' },
+      type: 'custom',
+      is_system: false,
+      connection_id: body.connection_id ?? null,
     })
   }),
 
   http.delete(`${API_BASE}/api/tools/:id`, () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  // ── Connections (ADR-008) ──────────────────────────────────────
+  http.get(`${API_BASE}/api/connections`, ({ request }) => {
+    const url = new URL(request.url)
+    const type = url.searchParams.get('type')
+    const list = type ? mockConnectionList.filter((c) => c.type === type) : mockConnectionList
+    return HttpResponse.json(list)
+  }),
+
+  http.get(`${API_BASE}/api/connections/:id`, ({ params }) => {
+    const found = mockConnectionList.find((c) => c.id === params.id)
+    return found
+      ? HttpResponse.json(found)
+      : HttpResponse.json({ detail: 'Connection not found' }, { status: 404 })
+  }),
+
+  http.post(`${API_BASE}/api/connections`, async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>
+    return HttpResponse.json(
+      {
+        ...(body.type === 'mcp' ? mockMcpConnection : mockCustomConnection),
+        id: 'conn-new',
+        ...body,
+      },
+      { status: 201 },
+    )
+  }),
+
+  http.patch(`${API_BASE}/api/connections/:id`, async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>
+    const base =
+      mockConnectionList.find((c) => c.id === params.id) ?? mockCustomConnection
+    return HttpResponse.json({ ...base, ...body, id: params.id })
+  }),
+
+  http.delete(`${API_BASE}/api/connections/:id`, () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  http.post(`${API_BASE}/api/connections/:id/discover-tools`, ({ params }) => {
+    return HttpResponse.json({
+      connection_id: params.id,
+      server_info: { name: 'Test MCP', version: '1.0' },
+      items: [{ tool: { ...mockTool, type: 'mcp', name: 'discovered_tool' }, status: 'created' }],
+    })
+  }),
+
+  // ── Credentials ────────────────────────────────────────────────
+  http.get(`${API_BASE}/api/credentials`, () => {
+    return HttpResponse.json(mockCredentialList)
+  }),
+
+  http.get(`${API_BASE}/api/credentials/:id`, ({ params }) => {
+    return HttpResponse.json({ ...mockCredential, id: params.id })
+  }),
+
+  http.post(`${API_BASE}/api/credentials`, async ({ request }) => {
+    const body = (await request.json()) as Record<string, unknown>
+    return HttpResponse.json(
+      { ...mockCredential, id: 'cred-new', ...body, has_data: true },
+      { status: 201 },
+    )
+  }),
+
+  http.patch(`${API_BASE}/api/credentials/:id`, async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>
+    return HttpResponse.json({ ...mockCredential, id: params.id, ...body })
+  }),
+
+  http.delete(`${API_BASE}/api/credentials/:id`, () => {
     return new HttpResponse(null, { status: 204 })
   }),
 

@@ -45,7 +45,12 @@ def create_chat_model(
 ) -> BaseChatModel:
     cls = PROVIDER_MAP.get(provider, ChatOpenAI)
 
-    kwargs: dict[str, Any] = {"model": model_name, "api_key": api_key}
+    # api_key 미지정 시 settings의 provider별 기본 키로 fallback. 새 langchain-*
+    # 버전은 pydantic strict로 None을 거부하므로 명시 fallback 후 None은 dict에서 제외.
+    resolved_key = api_key or PROVIDER_API_KEY_MAP.get(provider)
+    kwargs: dict[str, Any] = {"model": model_name}
+    if resolved_key:
+        kwargs["api_key"] = resolved_key
     if base_url:
         kwargs["base_url"] = base_url
 

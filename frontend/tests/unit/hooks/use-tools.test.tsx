@@ -4,8 +4,7 @@ import type { ReactNode } from 'react'
 import {
   useTools,
   useCreateCustomTool,
-  useRegisterMCPServer,
-  useUpdateToolAuthConfig,
+  useUpdateTool,
   useDeleteTool,
 } from '@/lib/hooks/use-tools'
 import { mockToolList } from '../../mocks/fixtures'
@@ -51,37 +50,20 @@ describe('useCreateCustomTool', () => {
   })
 })
 
-describe('useRegisterMCPServer', () => {
-  it('registers an MCP server and returns response', async () => {
+describe('useUpdateTool', () => {
+  it('updates tool connection_id and returns response', async () => {
     const wrapper = createWrapper()
-    const { result } = renderHook(() => useRegisterMCPServer(), { wrapper })
-    let response: unknown
-
-    await act(async () => {
-      response = await result.current.mutateAsync({
-        name: 'Test Server',
-        url: 'http://localhost:9000',
-      })
-    })
-
-    expect(response).toMatchObject({ id: 'mcp-new' })
-  })
-})
-
-describe('useUpdateToolAuthConfig', () => {
-  it('updates auth config and returns response', async () => {
-    const wrapper = createWrapper()
-    const { result } = renderHook(() => useUpdateToolAuthConfig(), { wrapper })
+    const { result } = renderHook(() => useUpdateTool(), { wrapper })
     let response: unknown
 
     await act(async () => {
       response = await result.current.mutateAsync({
         id: 'tool-1',
-        authConfig: { api_key: 'test-key' },
+        data: { connection_id: 'conn-custom-1' },
       })
     })
 
-    expect(response).toMatchObject({ auth_config: { api_key: '***' } })
+    expect(response).toMatchObject({ id: 'tool-1', connection_id: 'conn-custom-1' })
   })
 })
 

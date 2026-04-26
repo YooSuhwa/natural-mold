@@ -286,7 +286,7 @@ def _patched_llm_tool_selector_class() -> type | None:
             self,
             response: dict[str, Any],
             available_tools: list[Any],
-            valid_tool_names: set[str],
+            valid_tool_names: list[str],
             request: Any,
         ) -> list[Any]:
             # Normalize {"const": "name"} objects to plain "name" strings
@@ -300,7 +300,7 @@ def _patched_llm_tool_selector_class() -> type | None:
                     else:
                         normalized.append(str(item))
                 response = {**response, "tools": normalized}
-            return super()._process_selection_response(
+            return super()._process_selection_response(  # type: ignore[misc]
                 response, available_tools, valid_tool_names, request
             )
 
@@ -409,14 +409,16 @@ def get_provider_middleware(provider: str) -> list:
 
 # deepagents/create_deep_agent()가 자동 추가하는 미들웨어 타입.
 # 사용자 설정에서 중복 추가하면 AssertionError가 발생하므로 카탈로그/실행 시 제외.
-DEEPAGENT_BUILTIN_TYPES: frozenset[str] = frozenset({
-    "todo_list",
-    "filesystem",
-    "subagent",
-    "summarization",
-    "anthropic_prompt_caching",
-    "human_in_the_loop",  # executor.py에서 interrupt_on으로 별도 처리
-})
+DEEPAGENT_BUILTIN_TYPES: frozenset[str] = frozenset(
+    {
+        "todo_list",
+        "filesystem",
+        "subagent",
+        "summarization",
+        "anthropic_prompt_caching",
+        "human_in_the_loop",  # executor.py에서 interrupt_on으로 별도 처리
+    }
+)
 
 
 def get_middleware_registry(*, exclude_builtin: bool = False) -> list[dict[str, Any]]:

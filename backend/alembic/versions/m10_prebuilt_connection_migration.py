@@ -76,10 +76,7 @@ def _backfill_provider_name(bind) -> None:
 
     # 매핑 실패 row 경고 — NULL로 남으면 런타임 legacy fallback 경로가 동작 (tolerance).
     leftovers = bind.execute(
-        sa.text(
-            "SELECT id, name FROM tools "
-            "WHERE type = 'prebuilt' AND provider_name IS NULL"
-        )
+        sa.text("SELECT id, name FROM tools WHERE type = 'prebuilt' AND provider_name IS NULL")
     ).fetchall()
     for row in leftovers:
         logger.warning(
@@ -94,9 +91,7 @@ def _backfill_provider_name(bind) -> None:
 def upgrade() -> None:
     # 1) tools.provider_name 컬럼 추가 — SQLite 호환을 위해 batch_alter_table
     with op.batch_alter_table("tools") as batch_op:
-        batch_op.add_column(
-            sa.Column("provider_name", sa.String(length=50), nullable=True)
-        )
+        batch_op.add_column(sa.Column("provider_name", sa.String(length=50), nullable=True))
 
     bind = op.get_bind()
 
@@ -114,10 +109,7 @@ def downgrade() -> None:
     # 사용자가 UI에서 만든 connection/credential은 마커가 없으므로 보존.
     marker_like = f"{M10_SEED_MARKER}%"
     bind.execute(
-        sa.text(
-            "DELETE FROM connections "
-            "WHERE type = 'prebuilt' AND display_name LIKE :m"
-        ),
+        sa.text("DELETE FROM connections WHERE type = 'prebuilt' AND display_name LIKE :m"),
         {"m": marker_like},
     )
     bind.execute(

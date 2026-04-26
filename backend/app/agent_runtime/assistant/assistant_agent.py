@@ -84,7 +84,7 @@ def build_assistant_agent(
 
     return build_agent(
         model=model,
-        tools=tools,
+        tools=tools,  # type: ignore[arg-type]  # StructuredTool은 BaseTool 호환 (langchain runtime 동작 OK)
         system_prompt=system_prompt,
         middleware=[],
         checkpointer=get_checkpointer(),

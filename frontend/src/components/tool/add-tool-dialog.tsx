@@ -41,13 +41,7 @@ interface AddToolDialogProps {
 // 직접 입력). select에서 숨기고 토큰 필드만 노출.
 const META_CREDENTIAL_FIELDS = new Set(['header_name', 'headername', 'header'])
 // 토큰을 보관할 가능성이 가장 높은 필드 — credential 선택 시 default로 자동 채움.
-const TOKEN_CREDENTIAL_FIELD_PRIORITY = [
-  'api_key',
-  'token',
-  'access_token',
-  'bearer',
-  'auth_token',
-]
+const TOKEN_CREDENTIAL_FIELD_PRIORITY = ['api_key', 'token', 'access_token', 'bearer', 'auth_token']
 
 function pickDefaultCredentialField(fieldKeys: string[]): string {
   const usable = fieldKeys.filter((k) => !META_CREDENTIAL_FIELDS.has(k.toLowerCase()))
@@ -278,8 +272,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
           <TabsContent value="mcp" className="space-y-4 pt-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                {t('mcp.serverName')}{' '}
-                <span className="text-destructive">{tc('required')}</span>
+                {t('mcp.serverName')} <span className="text-destructive">{tc('required')}</span>
               </label>
               <Input
                 value={mcpDisplayName}
@@ -290,8 +283,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                {t('mcp.serverUrl')}{' '}
-                <span className="text-destructive">{tc('required')}</span>
+                {t('mcp.serverUrl')} <span className="text-destructive">{tc('required')}</span>
               </label>
               <Input
                 value={mcpUrl}
@@ -309,9 +301,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                 onValueChange={(v) => {
                   setMcpCredentialId(v)
                   const picked = availableCredentials.find((c) => c.id === v)
-                  setMcpCredentialField(
-                    picked ? pickDefaultCredentialField(picked.field_keys) : '',
-                  )
+                  setMcpCredentialField(picked ? pickDefaultCredentialField(picked.field_keys) : '')
                 }}
                 onCreateRequested={() => setCredentialDialogOpen(true)}
                 credentials={availableCredentials}
@@ -360,10 +350,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
             <DialogFooter>
               <Button onClick={handleMcpSubmit} disabled={mcpSubmitDisabled}>
                 {mcpPending && (
-                  <Loader2Icon
-                    className="size-4 animate-spin"
-                    data-icon="inline-start"
-                  />
+                  <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
                 )}
                 {t('mcp.submit')}
               </Button>
@@ -373,8 +360,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
           <TabsContent value="custom" className="space-y-4 pt-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                {t('custom.name')}{' '}
-                <span className="text-destructive">{tc('required')}</span>
+                {t('custom.name')} <span className="text-destructive">{tc('required')}</span>
               </label>
               <Input
                 value={customName}
@@ -392,8 +378,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">
-                {t('custom.apiUrl')}{' '}
-                <span className="text-destructive">{tc('required')}</span>
+                {t('custom.apiUrl')} <span className="text-destructive">{tc('required')}</span>
               </label>
               <Input
                 value={customApiUrl}
@@ -437,23 +422,16 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                 credentials={availableCredentials}
               />
               {customCredentialId !== CREDENTIAL_NONE ? (
-                <p className="text-xs text-muted-foreground">
-                  {t('custom.connectionHint')}
-                </p>
+                <p className="text-xs text-muted-foreground">{t('custom.connectionHint')}</p>
               ) : (
-                <p className="text-xs text-amber-700">
-                  {t('custom.credentialRequired')}
-                </p>
+                <p className="text-xs text-amber-700">{t('custom.credentialRequired')}</p>
               )}
             </div>
 
             <DialogFooter>
               <Button onClick={handleCustomSubmit} disabled={customSubmitDisabled}>
                 {customPending && (
-                  <Loader2Icon
-                    className="size-4 animate-spin"
-                    data-icon="inline-start"
-                  />
+                  <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
                 )}
                 {tc('register')}
               </Button>

@@ -61,8 +61,7 @@ def upgrade() -> None:
     ).fetchall()
     if dup_groups:
         sample = "\n".join(
-            f"  - user={row[0]} conn={row[1]} name={row[2]!r}: {row[3]} rows"
-            for row in dup_groups
+            f"  - user={row[0]} conn={row[1]} name={row[2]!r}: {row[3]} rows" for row in dup_groups
         )
         raise RuntimeError(
             "M14 preflight failed — duplicate (user_id, connection_id, name) MCP "

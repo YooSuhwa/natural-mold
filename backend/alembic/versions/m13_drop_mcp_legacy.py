@@ -26,6 +26,7 @@ M9에서 mcp_servers → connections로 데이터 이관, M6.1에서 PATCH /api/
 from __future__ import annotations
 
 import sqlalchemy as sa
+from sqlalchemy import exc as sa_exc
 
 from alembic import op
 
@@ -43,16 +44,12 @@ def upgrade() -> None:
 
     # 1) tools.mcp_server_id FK + 컬럼 drop
     if not is_sqlite:
-        op.drop_constraint(
-            "tools_mcp_server_id_fkey", "tools", type_="foreignkey"
-        )
+        op.drop_constraint("tools_mcp_server_id_fkey", "tools", type_="foreignkey")
     op.drop_column("tools", "mcp_server_id")
 
     # 2) mcp_servers.credential_id FK drop (m6_add_credentials에서 add)
     if not is_sqlite:
-        op.drop_constraint(
-            "fk_mcp_servers_credential_id", "mcp_servers", type_="foreignkey"
-        )
+        op.drop_constraint("fk_mcp_servers_credential_id", "mcp_servers", type_="foreignkey")
 
     # 3) mcp_servers 테이블 drop
     op.drop_table("mcp_servers")
@@ -72,7 +69,7 @@ def _assert_no_stale_legacy_rows() -> None:
     def column_exists(table: str, column: str) -> bool:
         try:
             return column in {c["name"] for c in inspector.get_columns(table)}
-        except sa.exc.NoSuchTableError:
+        except sa_exc.NoSuchTableError:
             return False
 
     checks = collect_legacy_checks(bind.dialect.name, column_exists)

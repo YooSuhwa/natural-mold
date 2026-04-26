@@ -22,9 +22,7 @@ _FALLBACK_PROMPT = (
     "2000~5000자, 마크다운 형식만, 프롬프트 본문만 반환."
 )
 
-SYSTEM_PROMPT = (
-    load_prompt("prompt_generator.md") or _FALLBACK_PROMPT
-)
+SYSTEM_PROMPT = load_prompt("prompt_generator.md") or _FALLBACK_PROMPT
 
 
 def _format_tools(tools: list[ToolRecommendation]) -> str:
@@ -32,10 +30,7 @@ def _format_tools(tools: list[ToolRecommendation]) -> str:
         return "(추천된 도구 없음)"
     lines: list[str] = []
     for i, t in enumerate(tools, 1):
-        lines.append(
-            f"{i}. {t.tool_name} - {t.description}"
-            f" (선택 이유: {t.reason})"
-        )
+        lines.append(f"{i}. {t.tool_name} - {t.description} (선택 이유: {t.reason})")
     return "\n".join(lines)
 
 
@@ -44,10 +39,7 @@ def _format_middlewares(middlewares: list[MiddlewareRecommendation]) -> str:
         return "(추천된 미들웨어 없음)"
     lines: list[str] = []
     for i, m in enumerate(middlewares, 1):
-        lines.append(
-            f"{i}. {m.middleware_name} - {m.description}"
-            f" (선택 이유: {m.reason})"
-        )
+        lines.append(f"{i}. {m.middleware_name} - {m.description} (선택 이유: {m.reason})")
     return "\n".join(lines)
 
 

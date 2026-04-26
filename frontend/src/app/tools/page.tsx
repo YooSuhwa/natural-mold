@@ -97,9 +97,7 @@ function getAuthStatus(
   // PREBUILT는 M3부터 per-user connection이 SOT. provider_name에 해당하는
   // default connection이 credential_id를 가진 active 상태면 configured.
   if (tool.type === 'prebuilt' && tool.provider_name) {
-    return prebuiltConfiguredProviders.has(tool.provider_name)
-      ? 'configured'
-      : 'not_configured'
+    return prebuiltConfiguredProviders.has(tool.provider_name) ? 'configured' : 'not_configured'
   }
   // CUSTOM: runtime은 connection이 active + credential_id 세팅됐을 때만 실행
   // 가능하므로 UI도 같은 invariant를 적용한다.
@@ -490,8 +488,8 @@ export default function ToolsPage() {
         }
         return { connection, matchedByTool: !!toolMatch }
       })
-      .filter((entry): entry is { connection: Connection; matchedByTool: boolean } =>
-        entry !== null,
+      .filter(
+        (entry): entry is { connection: Connection; matchedByTool: boolean } => entry !== null,
       )
   }, [mcpConnections, mcpToolsByConnection, search, selectedTags])
 

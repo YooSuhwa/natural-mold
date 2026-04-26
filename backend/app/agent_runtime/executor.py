@@ -39,10 +39,18 @@ logger = logging.getLogger(__name__)
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 
 # HiTL: interrupt_on 자동 생성 시 쓰기/실행 도구만 대상으로 하는 키워드
-_WRITE_TOOL_KEYWORDS = frozenset({
-    "book", "create", "send", "delete",
-    "update", "write", "execute", "reserve",
-})
+_WRITE_TOOL_KEYWORDS = frozenset(
+    {
+        "book",
+        "create",
+        "send",
+        "delete",
+        "update",
+        "write",
+        "execute",
+        "reserve",
+    }
+)
 
 
 @dataclass
@@ -170,7 +178,7 @@ def build_agent(
         tools=tools,
         system_prompt=system_prompt,
         middleware=middleware or (),
-        interrupt_on=interrupt_on,
+        interrupt_on=interrupt_on,  # type: ignore[arg-type]  # bool/dict 양쪽 지원
         checkpointer=checkpointer,
         store=store,
         backend=backend,
@@ -190,7 +198,7 @@ def _auth_config_to_headers(auth_config: dict[str, str] | None) -> dict[str, str
     if not auth_config:
         return {}
     if "headers" in auth_config:
-        return auth_config["headers"]
+        return auth_config["headers"]  # type: ignore[return-value]  # legacy: dict 형태 전달 시
     return {}
 
 
@@ -264,9 +272,7 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
         tool_name = tc.get("mcp_tool_name", tc["name"])
         # transport 헤더는 `mcp_transport_headers`(신규 경로, connection
         # 경유) 우선 사용. legacy auth_config["headers"]도 fallback.
-        headers = tc.get("mcp_transport_headers") or _auth_config_to_headers(
-            tc.get("auth_config")
-        )
+        headers = tc.get("mcp_transport_headers") or _auth_config_to_headers(tc.get("auth_config"))
         # 정렬된 JSON 직렬화의 SHA256 단축 해시 — process 재시작 후에도 같은
         # (url, headers) 조합이 같은 key/이름 prefix를 생성하도록 deterministic
         # 사용. `hash()`는 PYTHONHASHSEED 때문에 process-randomized라 HiTL
@@ -306,8 +312,8 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     for key, config in servers.items():
         try:
             client = MultiServerMCPClient(
-                {key: config},
-                tool_interceptors=interceptors,
+                {key: config},  # type: ignore[arg-type]  # dict는 Connection TypedDict 호환
+                tool_interceptors=interceptors,  # type: ignore[arg-type]
             )
             server_tools = await asyncio.wait_for(
                 client.get_tools(),
@@ -407,8 +413,7 @@ async def _prepare_agent(
 
     # 3. 미들웨어 — deepagents 빌트인 타입 제외 후, model 문자열을 BaseChatModel로 사전 해석
     filtered_mw = [
-        c for c in (cfg.middleware_configs or [])
-        if c.get("type") not in DEEPAGENT_BUILTIN_TYPES
+        c for c in (cfg.middleware_configs or []) if c.get("type") not in DEEPAGENT_BUILTIN_TYPES
     ]
     resolved_mw = _resolve_middleware_model_params(filtered_mw, cfg.provider_api_keys or {})
     middleware = build_middleware_instances(resolved_mw)
@@ -495,7 +500,8 @@ async def execute_agent_stream(
 ) -> AsyncGenerator[str, None]:
     """스트리밍 실행 (채팅용)."""
     agent, lc_messages, config = await _prepare_agent(
-        cfg, messages_history=messages_history,
+        cfg,
+        messages_history=messages_history,
     )
 
     async for chunk in stream_agent_response(
@@ -516,7 +522,8 @@ async def resume_agent_stream(
     from langgraph.types import Command
 
     agent, _, config = await _prepare_agent(
-        cfg, messages_history=[],
+        cfg,
+        messages_history=[],
     )
 
     async for chunk in stream_agent_response(

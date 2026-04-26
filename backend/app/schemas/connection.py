@@ -21,9 +21,7 @@ _PROVIDER_NAME_PATTERN = re.compile(r"^[a-z0-9_]+$")
 _ENV_VAR_TEMPLATE_PATTERN = _ENV_VAR_TEMPLATE
 
 
-def _validate_provider_name(
-    provider_name: str, connection_type: str
-) -> str:
+def _validate_provider_name(provider_name: str, connection_type: str) -> str:
     if connection_type == "prebuilt":
         if provider_name not in CREDENTIAL_PROVIDERS:
             allowed = ", ".join(sorted(CREDENTIAL_PROVIDERS.keys()))
@@ -36,9 +34,7 @@ def _validate_provider_name(
     if len(provider_name) > 50:
         raise ValueError("provider_name must be 50 characters or fewer")
     if not _PROVIDER_NAME_PATTERN.match(provider_name):
-        raise ValueError(
-            "provider_name must match ^[a-z0-9_]+$ for type='mcp'|'custom'"
-        )
+        raise ValueError("provider_name must match ^[a-z0-9_]+$ for type='mcp'|'custom'")
     return provider_name
 
 
@@ -106,15 +102,13 @@ class ConnectionCreate(BaseModel):
     @field_validator("display_name")
     @classmethod
     def _check_display_name_marker(cls, v: str) -> str:
-        return check_reserved_marker(v, "display_name")
+        return check_reserved_marker(v, "display_name") or v
 
     @model_validator(mode="after")
     def _check_extra_config_per_type(self) -> ConnectionCreate:
         if self.type == "mcp":
             if self.extra_config is None:
-                raise ValueError(
-                    "extra_config is required when type='mcp'"
-                )
+                raise ValueError("extra_config is required when type='mcp'")
             # ConnectionExtraConfig 모델이 url/auth_type을 이미 required로 강제.
             # env_vars는 write-side에서만 template-only 검증
             _ensure_env_vars_template_only(self.extra_config.env_vars)

@@ -165,6 +165,7 @@ class TestUploadSkillPackage:
             skill = await skill_service.upload_skill_package(db, zip_data, TEST_USER_ID)
 
         assert skill.name == "nested-skill"
+        assert skill.storage_path is not None
         dest = Path(skill.storage_path)
         assert (dest / "SKILL.md").is_file()
         assert (dest / "scripts" / "main.py").is_file()

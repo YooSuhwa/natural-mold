@@ -154,7 +154,7 @@ async def phase3_tools(state: BuilderState) -> dict:
         SubAgentEvent(phase=3, agent_name="tool_recommender").model_dump(),
     ]
     try:
-        intent = AgentCreationIntent(**state["intent"])
+        intent = AgentCreationIntent(**(state["intent"] or {}))  # type: ignore[arg-type]
         catalog = state.get("available_tools_catalog", [])
         tools = await recommend_tools(intent, catalog)
 
@@ -211,7 +211,7 @@ async def phase4_middlewares(state: BuilderState) -> dict:
         SubAgentEvent(phase=4, agent_name="middleware_recommender").model_dump(),
     ]
     try:
-        intent = AgentCreationIntent(**state["intent"])
+        intent = AgentCreationIntent(**(state["intent"] or {}))  # type: ignore[arg-type]
         tools = [ToolRecommendation(**t) for t in state.get("tools", [])]
         catalog = state.get("available_middlewares_catalog", [])
         middlewares = await recommend_middlewares(intent, tools, catalog)
@@ -269,7 +269,7 @@ async def phase5_prompt(state: BuilderState) -> dict:
         SubAgentEvent(phase=5, agent_name="prompt_generator").model_dump(),
     ]
     try:
-        intent = AgentCreationIntent(**state["intent"])
+        intent = AgentCreationIntent(**(state["intent"] or {}))  # type: ignore[arg-type]
         tools = [ToolRecommendation(**t) for t in state.get("tools", [])]
         middlewares = [MiddlewareRecommendation(**m) for m in state.get("middlewares", [])]
         prompt = await generate_system_prompt(intent, tools, middlewares)
@@ -310,7 +310,7 @@ def phase6_config(state: BuilderState) -> dict:
     if state.get("error"):
         return {"current_phase": 6, "sse_events": []}
 
-    intent_data = state.get("intent", {})
+    intent_data: dict = state.get("intent") or {}
     tool_names = [t.get("tool_name", "") for t in state.get("tools", [])]
     mw_names = [m.get("middleware_name", "") for m in state.get("middlewares", [])]
 

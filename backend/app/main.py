@@ -76,6 +76,7 @@ async def _enforce_m6_legacy_invariants(db: AsyncSession) -> None:
     bypass = os.environ.get("ALLOW_DIRTY_AGENT_TOOLS_CONFIG") == "1"
 
     try:
+
         async def column_exists_async(table: str, column: str) -> bool:
             result = await db.execute(
                 sa_text(
@@ -140,8 +141,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning(
             "ENCRYPTION_KEY is not set. Credential creation will be rejected "
             "and any existing API keys in DB are stored as plaintext. "
-            "Generate a key with `python -c \"from cryptography.fernet import "
-            "Fernet; print(Fernet.generate_key().decode())\"` and set it in .env.",
+            'Generate a key with `python -c "from cryptography.fernet import '
+            'Fernet; print(Fernet.generate_key().decode())"` and set it in .env.',
         )
 
     # Startup: seed default data

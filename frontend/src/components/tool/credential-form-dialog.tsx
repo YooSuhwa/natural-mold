@@ -48,9 +48,7 @@ export function CredentialFormDialog(props: CredentialFormDialogProps) {
         if (!v) onOpenChange(false)
       }}
     >
-      <DialogContent className="sm:max-w-md">
-        {open && <FormBody {...props} />}
-      </DialogContent>
+      <DialogContent className="sm:max-w-md">{open && <FormBody {...props} />}</DialogContent>
     </Dialog>
   )
 }
@@ -184,11 +182,9 @@ function FormBody({
             <Input
               id={`cred-${field.key}`}
               type={field.secret ? 'password' : 'text'}
-              placeholder={editingCredential ? '********' : field.default ?? ''}
+              placeholder={editingCredential ? '********' : (field.default ?? '')}
               value={formValues[field.key] ?? ''}
-              onChange={(e) =>
-                setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))
-              }
+              onChange={(e) => setFormValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
             />
           </div>
         ))}

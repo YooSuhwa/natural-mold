@@ -114,30 +114,21 @@ def upgrade() -> None:
 
     # credential 조회 batch — server별 N+1 SELECT 방지. auth_config가 비어있고
     # credential_id가 달린 server가 존재하는 경우에만 수행.
-    credential_ids_needed = {
-        s[6] for s in servers if (not s[5]) and s[6] is not None
-    }
+    credential_ids_needed = {s[6] for s in servers if (not s[5]) and s[6] is not None}
     credentials_by_id: dict[uuid.UUID, tuple] = {}
     if credential_ids_needed:
         stmt = sa.text(
-            "SELECT id, field_keys, data_encrypted FROM credentials "
-            "WHERE id IN :ids"
+            "SELECT id, field_keys, data_encrypted FROM credentials WHERE id IN :ids"
         ).bindparams(sa.bindparam("ids", expanding=True))
-        rows = bind.execute(
-            stmt, {"ids": list(credential_ids_needed)}
-        ).fetchall()
+        rows = bind.execute(stmt, {"ids": list(credential_ids_needed)}).fetchall()
         credentials_by_id = {r[0]: (r[1], r[2]) for r in rows}
 
     # (user_id, provider_name) scope 내 충돌을 추적. 기존 connections에도
     # 동일 scope의 row가 있을 수 있으므로 미리 로드.
     existing = bind.execute(
-        sa.text(
-            "SELECT user_id, provider_name FROM connections WHERE type = 'mcp'"
-        )
+        sa.text("SELECT user_id, provider_name FROM connections WHERE type = 'mcp'")
     ).fetchall()
-    taken: set[tuple[str, str]] = {
-        (str(row[0]), row[1]) for row in existing
-    }
+    taken: set[tuple[str, str]] = {(str(row[0]), row[1]) for row in existing}
 
     server_to_connection: dict[uuid.UUID, uuid.UUID] = {}
 
@@ -208,9 +199,7 @@ def upgrade() -> None:
                         field_keys_list = None
 
             if field_keys_list:
-                env_vars_out = {
-                    k: f"${{credential.{k}}}" for k in field_keys_list
-                }
+                env_vars_out = {k: f"${{credential.{k}}}" for k in field_keys_list}
             else:
                 # 복구 실패 → 이관하지 않고 legacy path 유지. connection 생성
                 # 자체를 건너뛰어 tools.connection_id가 설정되지 않게 한다.
@@ -271,20 +260,14 @@ def upgrade() -> None:
 
         # 이관 추적: downgrade에서 이 row만 정확히 지울 수 있도록 기록
         bind.execute(
-            sa.text(
-                "INSERT INTO _m9_migrated_connections (connection_id) "
-                "VALUES (:id)"
-            ),
+            sa.text("INSERT INTO _m9_migrated_connections (connection_id) VALUES (:id)"),
             {"id": connection_id},
         )
 
     # 4) tools.mcp_server_id → tools.connection_id 매핑
     for server_id, connection_id in server_to_connection.items():
         bind.execute(
-            sa.text(
-                "UPDATE tools SET connection_id = :cid "
-                "WHERE mcp_server_id = :sid"
-            ),
+            sa.text("UPDATE tools SET connection_id = :cid WHERE mcp_server_id = :sid"),
             {"cid": connection_id, "sid": server_id},
         )
 
@@ -294,9 +277,7 @@ def downgrade() -> None:
 
     # tools.mcp_server_id 는 upgrade에서 그대로 유지했으므로 역매핑 불필요.
     # connection_id FK/컬럼만 제거.
-    op.drop_constraint(
-        "fk_tools_connection_id", "tools", type_="foreignkey"
-    )
+    op.drop_constraint("fk_tools_connection_id", "tools", type_="foreignkey")
     op.drop_column("tools", "connection_id")
 
     # upgrade에서 만든 connections만 제거. `_m9_migrated_connections`
@@ -306,8 +287,7 @@ def downgrade() -> None:
     # 되도록 테이블 존재 여부를 먼저 확인한다.
     tracking_exists = bind.execute(
         sa.text(
-            "SELECT 1 FROM information_schema.tables "
-            "WHERE table_name = '_m9_migrated_connections'"
+            "SELECT 1 FROM information_schema.tables WHERE table_name = '_m9_migrated_connections'"
         )
     ).scalar()
     if tracking_exists:

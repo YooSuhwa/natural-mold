@@ -4,12 +4,7 @@ import { useState, type ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 import { CheckCircleIcon, LinkIcon, Loader2Icon } from 'lucide-react'
 
-import {
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
@@ -105,9 +100,7 @@ export function BindingDialogShell({
           {tc('cancel')}
         </Button>
         <Button onClick={onSave} disabled={disabled}>
-          {isPending && (
-            <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
-          )}
+          {isPending && <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />}
           {tc('save')}
         </Button>
       </DialogFooter>

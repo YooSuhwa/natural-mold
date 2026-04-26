@@ -70,12 +70,8 @@ from tests.conftest import TEST_USER_ID
 
 def _load_m11_module():
     repo_root = Path(__file__).resolve().parents[1]
-    m11_path = (
-        repo_root / "alembic" / "versions" / "m11_custom_credential_migration.py"
-    )
-    spec = importlib.util.spec_from_file_location(
-        "_test_m11_custom_connection", m11_path
-    )
+    m11_path = repo_root / "alembic" / "versions" / "m11_custom_credential_migration.py"
+    spec = importlib.util.spec_from_file_location("_test_m11_custom_connection", m11_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -240,18 +236,10 @@ async def test_custom_resolves_current_user_connection_not_other_user(
     cred_b = await _seed_credential(
         db, user_b, {"api_key": "B_KEY", "api_secret": "B_SECRET"}, name="B cred"
     )
-    conn_a = await _seed_custom_connection(
-        db, user_a, cred_a, display_name="A conn"
-    )
-    conn_b = await _seed_custom_connection(
-        db, user_b, cred_b, display_name="B conn"
-    )
-    tool_a = await _seed_custom_tool(
-        db, user_id=user_a, name="A Tool", connection=conn_a
-    )
-    tool_b = await _seed_custom_tool(
-        db, user_id=user_b, name="B Tool", connection=conn_b
-    )
+    conn_a = await _seed_custom_connection(db, user_a, cred_a, display_name="A conn")
+    conn_b = await _seed_custom_connection(db, user_b, cred_b, display_name="B conn")
+    tool_a = await _seed_custom_tool(db, user_id=user_a, name="A Tool", connection=conn_a)
+    tool_b = await _seed_custom_tool(db, user_id=user_b, name="B Tool", connection=conn_b)
 
     agent_a = await _seed_agent_with_tools(db, user_a, model, [tool_a], name="A")
     agent_b = await _seed_agent_with_tools(db, user_b, model, [tool_b], name="B")
@@ -296,9 +284,7 @@ async def test_custom_with_active_connection_resolves_credential(
         name="active cred",
     )
     conn = await _seed_custom_connection(db, TEST_USER_ID, cred)
-    tool = await _seed_custom_tool(
-        db, user_id=TEST_USER_ID, name="Active Tool", connection=conn
-    )
+    tool = await _seed_custom_tool(db, user_id=TEST_USER_ID, name="Active Tool", connection=conn)
     agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [tool])
 
     loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
@@ -333,9 +319,7 @@ async def test_custom_disabled_connection_fails_closed(db: AsyncSession):
     conn = await _seed_custom_connection(
         db, TEST_USER_ID, cred, display_name="disabled conn", status="disabled"
     )
-    tool = await _seed_custom_tool(
-        db, user_id=TEST_USER_ID, name="Disabled Tool", connection=conn
-    )
+    tool = await _seed_custom_tool(db, user_id=TEST_USER_ID, name="Disabled Tool", connection=conn)
     agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [tool])
 
     loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
@@ -368,9 +352,7 @@ async def test_custom_connection_with_null_credential_fails_closed(
         display_name="unbound conn",
         status="active",
     )
-    tool = await _seed_custom_tool(
-        db, user_id=TEST_USER_ID, name="Unbound Tool", connection=conn
-    )
+    tool = await _seed_custom_tool(db, user_id=TEST_USER_ID, name="Unbound Tool", connection=conn)
     agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [tool])
 
     loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
@@ -563,9 +545,7 @@ def test_m11_preserves_tool_credential_id_during_own_upgrade():
     """
     import inspect
 
-    src = inspect.getsource(_m11.upgrade) + inspect.getsource(
-        _m11._migrate_custom_credentials
-    )
+    src = inspect.getsource(_m11.upgrade) + inspect.getsource(_m11._migrate_custom_credentials)
     lowered = src.lower()
     assert not ("drop column" in lowered and "credential_id" in lowered), (
         "m11 upgrade must not drop tools.credential_id — the column drop is "

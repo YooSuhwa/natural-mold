@@ -395,6 +395,7 @@ async def test_list_cron_schedules_with_trigger(db: AsyncSession, patch_read_ses
 
     # Create a trigger
     from app.models.agent_trigger import AgentTrigger
+
     trigger = AgentTrigger(
         agent_id=agent_id,
         user_id=TEST_USER_ID,
@@ -425,6 +426,7 @@ async def test_get_cron_schedule(db: AsyncSession, patch_read_session):
     agent_id, _ = await _seed_full(db)
 
     from app.models.agent_trigger import AgentTrigger
+
     trigger = AgentTrigger(
         agent_id=agent_id,
         user_id=TEST_USER_ID,

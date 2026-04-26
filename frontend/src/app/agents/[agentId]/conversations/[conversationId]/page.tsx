@@ -80,7 +80,11 @@ export default function ChatPage({
     () => (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <div className="mb-4">
-          <AgentAvatar imageUrl={agent?.image_url ?? null} name={agent?.name ?? 'Agent'} size="lg" />
+          <AgentAvatar
+            imageUrl={agent?.image_url ?? null}
+            name={agent?.name ?? 'Agent'}
+            size="lg"
+          />
         </div>
         <h2 className="mb-1 text-lg font-semibold">{agent?.name ?? t('emptyState')}</h2>
         {agent?.description && (

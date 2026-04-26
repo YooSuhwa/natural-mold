@@ -2,13 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, use, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  Loader2Icon,
-  ArrowLeftIcon,
-  RotateCcwIcon,
-  WrenchIcon,
-  ShieldIcon,
-} from 'lucide-react'
+import { Loader2Icon, ArrowLeftIcon, RotateCcwIcon, WrenchIcon, ShieldIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { Button } from '@/components/ui/button'
@@ -263,70 +257,71 @@ export default function ConversationalCreationPage({
   })
 
   // Build result cards rendered inside the Thread
-  const buildResultCards = buildStatus !== 'idle' ? (
-    <div className="space-y-6">
-      <PhaseTimeline phases={phases} />
+  const buildResultCards =
+    buildStatus !== 'idle' ? (
+      <div className="space-y-6">
+        <PhaseTimeline phases={phases} />
 
-      {buildStatus === 'building' && (
-        <div className="flex flex-col items-center justify-center gap-3 py-8">
-          <Loader2Icon className="size-6 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">{t('building')}</p>
-        </div>
-      )}
+        {buildStatus === 'building' && (
+          <div className="flex flex-col items-center justify-center gap-3 py-8">
+            <Loader2Icon className="size-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">{t('building')}</p>
+          </div>
+        )}
 
-      {buildStatus === 'failed' && errorMessage && (
-        <div
-          role="alert"
-          className="rounded-xl border border-destructive/50 bg-destructive/5 px-4 py-3"
-        >
-          <p className="text-sm text-destructive">{errorMessage}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-2"
-            onClick={() => handleBuild(userRequest)}
+        {buildStatus === 'failed' && errorMessage && (
+          <div
+            role="alert"
+            className="rounded-xl border border-destructive/50 bg-destructive/5 px-4 py-3"
           >
-            <RotateCcwIcon className="mr-1.5 size-3.5" />
-            {t('resetButton')}
-          </Button>
-        </div>
-      )}
+            <p className="text-sm text-destructive">{errorMessage}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => handleBuild(userRequest)}
+            >
+              <RotateCcwIcon className="mr-1.5 size-3.5" />
+              {t('resetButton')}
+            </Button>
+          </div>
+        )}
 
-      {intent && <IntentCard intent={intent} />}
+        {intent && <IntentCard intent={intent} />}
 
-      {tools.length > 0 && (
-        <RecommendationCard
-          icon={WrenchIcon}
-          titleKey="toolRecommendation"
-          items={tools.map((tool) => ({
-            name: tool.tool_name,
-            description: tool.description,
-            reason: tool.reason,
-          }))}
-        />
-      )}
+        {tools.length > 0 && (
+          <RecommendationCard
+            icon={WrenchIcon}
+            titleKey="toolRecommendation"
+            items={tools.map((tool) => ({
+              name: tool.tool_name,
+              description: tool.description,
+              reason: tool.reason,
+            }))}
+          />
+        )}
 
-      {middlewares.length > 0 && (
-        <RecommendationCard
-          icon={ShieldIcon}
-          titleKey="middlewareRecommendation"
-          items={middlewares.map((m) => ({
-            name: m.middleware_name,
-            description: m.description,
-            reason: m.reason,
-          }))}
-        />
-      )}
+        {middlewares.length > 0 && (
+          <RecommendationCard
+            icon={ShieldIcon}
+            titleKey="middlewareRecommendation"
+            items={middlewares.map((m) => ({
+              name: m.middleware_name,
+              description: m.description,
+              reason: m.reason,
+            }))}
+          />
+        )}
 
-      {buildStatus === 'preview' && draftConfig && (
-        <DraftConfigCard
-          draft={draftConfig}
-          onConfirm={handleConfirm}
-          isConfirming={isConfirming}
-        />
-      )}
-    </div>
-  ) : null
+        {buildStatus === 'preview' && draftConfig && (
+          <DraftConfigCard
+            draft={draftConfig}
+            onConfirm={handleConfirm}
+            isConfirming={isConfirming}
+          />
+        )}
+      </div>
+    ) : null
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -359,10 +354,7 @@ export default function ConversationalCreationPage({
 
       {/* Thread — AssistantRuntimeProvider로 래핑 */}
       <AssistantRuntimeProvider runtime={runtime}>
-        <BuilderThread
-          buildStatus={buildStatus}
-          buildResultCards={buildResultCards}
-        />
+        <BuilderThread buildStatus={buildStatus} buildResultCards={buildResultCards} />
       </AssistantRuntimeProvider>
 
       {/* Cancel Confirm Dialog */}

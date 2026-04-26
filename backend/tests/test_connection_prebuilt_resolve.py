@@ -68,12 +68,8 @@ from tests.conftest import TEST_USER_ID
 
 def _load_m10_module():
     repo_root = Path(__file__).resolve().parents[1]
-    m10_path = (
-        repo_root / "alembic" / "versions" / "m10_prebuilt_connection_migration.py"
-    )
-    spec = importlib.util.spec_from_file_location(
-        "_test_m10_prebuilt_connection", m10_path
-    )
+    m10_path = repo_root / "alembic" / "versions" / "m10_prebuilt_connection_migration.py"
+    spec = importlib.util.spec_from_file_location("_test_m10_prebuilt_connection", m10_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -163,9 +159,7 @@ async def _seed_default_connection(
     return conn
 
 
-async def _seed_prebuilt_tool(
-    db: AsyncSession, *, name: str, provider_name: str | None
-) -> Tool:
+async def _seed_prebuilt_tool(db: AsyncSession, *, name: str, provider_name: str | None) -> Tool:
     tool = Tool(
         user_id=None,  # PREBUILT 공유 행
         type=ToolType.PREBUILT,
@@ -239,9 +233,7 @@ async def test_prebuilt_resolves_current_user_connection_not_other_user(
     conn_a = await _seed_default_connection(db, user_a, "naver", cred_a)
     conn_b = await _seed_default_connection(db, user_b, "naver", cred_b)
 
-    naver_tool = await _seed_prebuilt_tool(
-        db, name="Naver Blog Search", provider_name="naver"
-    )
+    naver_tool = await _seed_prebuilt_tool(db, name="Naver Blog Search", provider_name="naver")
     agent_a = await _seed_agent_with_tools(db, user_a, model, [naver_tool])
     agent_b = await _seed_agent_with_tools(db, user_b, model, [naver_tool])
 
@@ -300,12 +292,8 @@ async def test_prebuilt_without_default_connection_returns_empty_auth(
     model = await _seed_model(db)
 
     # connection 시드 생략 — scope가 비어 있는 상태
-    naver_tool = await _seed_prebuilt_tool(
-        db, name="Naver News Search", provider_name="naver"
-    )
-    agent = await _seed_agent_with_tools(
-        db, TEST_USER_ID, model, [naver_tool]
-    )
+    naver_tool = await _seed_prebuilt_tool(db, name="Naver News Search", provider_name="naver")
+    agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [naver_tool])
 
     loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
     assert loaded is not None
@@ -358,12 +346,8 @@ async def test_disabled_default_connection_fails_closed(
     db.add(conn)
     await db.flush()
 
-    naver_tool = await _seed_prebuilt_tool(
-        db, name="Naver News Search", provider_name="naver"
-    )
-    agent = await _seed_agent_with_tools(
-        db, TEST_USER_ID, model, [naver_tool]
-    )
+    naver_tool = await _seed_prebuilt_tool(db, name="Naver News Search", provider_name="naver")
+    agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [naver_tool])
 
     loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
     assert loaded is not None
@@ -402,12 +386,8 @@ async def test_unbound_default_connection_fails_closed(
     db.add(conn)
     await db.flush()
 
-    naver_tool = await _seed_prebuilt_tool(
-        db, name="Naver News Search", provider_name="naver"
-    )
-    agent = await _seed_agent_with_tools(
-        db, TEST_USER_ID, model, [naver_tool]
-    )
+    naver_tool = await _seed_prebuilt_tool(db, name="Naver News Search", provider_name="naver")
+    agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [naver_tool])
     loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
     assert loaded is not None
 
@@ -469,12 +449,8 @@ async def test_disabled_default_reactivates_via_credential_and_status_patch(
     assert updated.status == "active"
 
     # 재활성화 후 runtime resolution에 다시 등장
-    naver_tool = await _seed_prebuilt_tool(
-        db, name="Naver News Search", provider_name="naver"
-    )
-    agent = await _seed_agent_with_tools(
-        db, TEST_USER_ID, model, [naver_tool]
-    )
+    naver_tool = await _seed_prebuilt_tool(db, name="Naver News Search", provider_name="naver")
+    agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [naver_tool])
     loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
     assert loaded is not None
     m = loaded._default_connection_map  # type: ignore[attr-defined]
@@ -548,9 +524,7 @@ async def test_prebuilt_without_provider_name_returns_empty_auth(
     db.add(legacy_tool)
     await db.flush()
 
-    agent = await _seed_agent_with_tools(
-        db, TEST_USER_ID, model, [legacy_tool]
-    )
+    agent = await _seed_agent_with_tools(db, TEST_USER_ID, model, [legacy_tool])
     loaded = await get_agent_with_tools(db, agent.id, TEST_USER_ID)
     assert loaded is not None
 
@@ -618,20 +592,14 @@ async def test_default_connection_map_uses_single_bulk_query(
     sync_engine = engine.sync_engine  # type: ignore[union-attr]
     queries: list[str] = []
 
-    def _before_cursor_execute(
-        conn, cursor, statement, parameters, context, executemany
-    ):
+    def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
         queries.append(statement)
 
     event.listen(sync_engine, "before_cursor_execute", _before_cursor_execute)
     try:
-        conn_map = await _load_user_default_connection_map(
-            db, loaded, TEST_USER_ID
-        )
+        conn_map = await _load_user_default_connection_map(db, loaded, TEST_USER_ID)
     finally:
-        event.remove(
-            sync_engine, "before_cursor_execute", _before_cursor_execute
-        )
+        event.remove(sync_engine, "before_cursor_execute", _before_cursor_execute)
 
     connection_select_count = sum(
         1
@@ -651,14 +619,8 @@ async def test_default_connection_map_uses_single_bulk_query(
     # 실제 build_tools_config 출력도 각 provider별 credential로 치환됨
     configs = {c["name"]: c for c in build_tools_config(loaded)}
     assert configs["naver tool"]["auth_config"] == provider_to_data["naver"]
-    assert (
-        configs["google_search tool"]["auth_config"]
-        == provider_to_data["google_search"]
-    )
-    assert (
-        configs["google_workspace tool"]["auth_config"]
-        == provider_to_data["google_workspace"]
-    )
+    assert configs["google_search tool"]["auth_config"] == provider_to_data["google_search"]
+    assert configs["google_workspace tool"]["auth_config"] == provider_to_data["google_workspace"]
 
 
 # ---------------------------------------------------------------------------

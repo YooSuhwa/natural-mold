@@ -314,8 +314,11 @@ async def test_stream_estimated_cost():
     agent = MockAgent([(ai_chunk, {})])
 
     events = [
-        e async for e in stream_agent_response(
-            agent, [], {},
+        e
+        async for e in stream_agent_response(
+            agent,
+            [],
+            {},
             cost_per_input_token=0.00001,
             cost_per_output_token=0.00003,
         )
@@ -336,7 +339,7 @@ async def test_stream_estimated_cost():
 @pytest.mark.asyncio
 async def test_stream_flushes_incomplete_json():
     """Incomplete JSON in buffer at end should be flushed as content."""
-    ai_chunk = _make_ai_chunk('Text{incomplete')
+    ai_chunk = _make_ai_chunk("Text{incomplete")
     agent = MockAgent([(ai_chunk, {})])
 
     events = [e async for e in stream_agent_response(agent, [], {})]

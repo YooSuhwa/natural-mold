@@ -70,6 +70,4 @@ class Tool(Base):
         nullable=False,
     )
 
-    connection: Mapped[Connection | None] = relationship(
-        foreign_keys=[connection_id]
-    )
+    connection: Mapped[Connection | None] = relationship(foreign_keys=[connection_id])

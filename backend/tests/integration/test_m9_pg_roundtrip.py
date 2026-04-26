@@ -46,9 +46,7 @@ PG_DSN_ENV = "INTEGRATION_DATABASE_URL"
 def pg_engine():
     dsn = os.environ.get(PG_DSN_ENV)
     if not dsn:
-        pytest.skip(
-            f"{PG_DSN_ENV} not set — point at a disposable Postgres for this test"
-        )
+        pytest.skip(f"{PG_DSN_ENV} not set — point at a disposable Postgres for this test")
     engine = sa.create_engine(dsn, future=True)
     yield engine
     engine.dispose()
@@ -64,9 +62,7 @@ def alembic_config():
     return cfg
 
 
-def test_m9_roundtrip_preserves_user_created_mcp_connections(
-    pg_engine, alembic_config
-):
+def test_m9_roundtrip_preserves_user_created_mcp_connections(pg_engine, alembic_config):
     # Reset to m8 baseline
     command.downgrade(alembic_config, "m8_add_connections")
 
@@ -77,8 +73,7 @@ def test_m9_roundtrip_preserves_user_created_mcp_connections(
     with pg_engine.begin() as conn:
         conn.execute(
             sa.text(
-                "INSERT INTO users (id, email, name, created_at) "
-                "VALUES (:id, :email, :name, now())"
+                "INSERT INTO users (id, email, name, created_at) VALUES (:id, :email, :name, now())"
             ),
             {"id": user_id, "email": f"m9-{user_id.hex[:8]}@t", "name": "u"},
         )
@@ -137,8 +132,7 @@ def test_m9_roundtrip_preserves_user_created_mcp_connections(
 
         tracked = conn.execute(
             sa.text(
-                "SELECT connection_id FROM _m9_migrated_connections "
-                "WHERE connection_id = :cid"
+                "SELECT connection_id FROM _m9_migrated_connections WHERE connection_id = :cid"
             ),
             {"cid": migrated[0]},
         ).scalar()
@@ -175,10 +169,7 @@ def test_m9_roundtrip_preserves_user_created_mcp_connections(
 
     with pg_engine.connect() as conn:
         rows = conn.execute(
-            sa.text(
-                "SELECT id FROM connections "
-                "WHERE user_id = :uid AND type = 'mcp'"
-            ),
+            sa.text("SELECT id FROM connections WHERE user_id = :uid AND type = 'mcp'"),
             {"uid": user_id},
         ).fetchall()
         ids = {row[0] for row in rows}
@@ -189,9 +180,7 @@ def test_m9_roundtrip_preserves_user_created_mcp_connections(
     # Re-upgrade to leave DB at head + cleanup
     command.upgrade(alembic_config, "m9_migrate_mcp_to_connections")
     with pg_engine.begin() as conn:
-        conn.execute(
-            sa.text("DELETE FROM tools WHERE id = :tid"), {"tid": tool_id}
-        )
+        conn.execute(sa.text("DELETE FROM tools WHERE id = :tid"), {"tid": tool_id})
         conn.execute(
             sa.text("DELETE FROM connections WHERE user_id = :uid"),
             {"uid": user_id},
@@ -200,6 +189,4 @@ def test_m9_roundtrip_preserves_user_created_mcp_connections(
             sa.text("DELETE FROM mcp_servers WHERE id = :sid"),
             {"sid": server_id},
         )
-        conn.execute(
-            sa.text("DELETE FROM users WHERE id = :uid"), {"uid": user_id}
-        )
+        conn.execute(sa.text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})

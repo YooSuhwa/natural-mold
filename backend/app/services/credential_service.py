@@ -15,9 +15,7 @@ from app.schemas.tool import ToolType
 from app.services.encryption import decrypt_api_key, encrypt_api_key
 
 
-async def list_credentials(
-    db: AsyncSession, user_id: uuid.UUID
-) -> list[Credential]:
+async def list_credentials(db: AsyncSession, user_id: uuid.UUID) -> list[Credential]:
     result = await db.execute(
         select(Credential)
         .where(Credential.user_id == user_id)
@@ -86,9 +84,7 @@ async def update_credential(
     return cred
 
 
-async def delete_credential(
-    db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
-) -> None:
+async def delete_credential(db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID) -> None:
     cred = await get_credential(db, credential_id, user_id)
     await db.delete(cred)
     await db.commit()

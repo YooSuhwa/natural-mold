@@ -73,9 +73,7 @@ async def _seed_custom_connection(
 
 
 @pytest.mark.asyncio
-async def test_discover_creates_tools_and_returns_items(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_creates_tools_and_returns_items(client: AsyncClient, db: AsyncSession):
     conn = await _seed_mcp_connection(db)
 
     fake_result = {
@@ -107,21 +105,21 @@ async def test_discover_creates_tools_and_returns_items(
 
     # DB 실측: Tool 레코드 2개 생성되었고 user/connection/type 정확히 설정
     rows = (
-        await db.execute(
-            select(Tool).where(
-                Tool.connection_id == conn.id, Tool.user_id == TEST_USER_ID
+        (
+            await db.execute(
+                select(Tool).where(Tool.connection_id == conn.id, Tool.user_id == TEST_USER_ID)
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 2
     assert {r.name for r in rows} == {"search", "fetch"}
     assert all(r.type == "mcp" for r in rows)
 
 
 @pytest.mark.asyncio
-async def test_discover_skips_existing_tools_idempotent(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_skips_existing_tools_idempotent(client: AsyncClient, db: AsyncSession):
     conn = await _seed_mcp_connection(db)
     fake_result = {
         "success": True,
@@ -144,18 +142,12 @@ async def test_discover_skips_existing_tools_idempotent(
     assert {i["status"] for i in first.json()["items"]} == {"created"}
     assert {i["status"] for i in second.json()["items"]} == {"existing"}
 
-    rows = (
-        await db.execute(
-            select(Tool).where(Tool.connection_id == conn.id)
-        )
-    ).scalars().all()
+    rows = (await db.execute(select(Tool).where(Tool.connection_id == conn.id))).scalars().all()
     assert len(rows) == 2  # 중복 생성 없음
 
 
 @pytest.mark.asyncio
-async def test_discover_other_user_connection_404(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_other_user_connection_404(client: AsyncClient, db: AsyncSession):
     # 타 유저 생성
     other = User(id=OTHER_USER_ID, email="other@example.com", name="other")
     db.add(other)
@@ -174,9 +166,7 @@ async def test_discover_nonexistent_connection_404(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_discover_non_mcp_connection_422(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_non_mcp_connection_422(client: AsyncClient, db: AsyncSession):
     conn = await _seed_custom_connection(db)
     resp = await client.post(f"/api/connections/{conn.id}/discover-tools")
     assert resp.status_code == 422
@@ -184,9 +174,7 @@ async def test_discover_non_mcp_connection_422(
 
 
 @pytest.mark.asyncio
-async def test_discover_missing_url_422(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_missing_url_422(client: AsyncClient, db: AsyncSession):
     conn = Connection(
         user_id=TEST_USER_ID,
         type="mcp",
@@ -209,9 +197,7 @@ async def test_discover_missing_url_422(
 
 
 @pytest.mark.asyncio
-async def test_discover_probe_failure_502(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_probe_failure_502(client: AsyncClient, db: AsyncSession):
     conn = await _seed_mcp_connection(db)
     fake_result = {"success": False, "error": "Connection timeout", "tools": []}
 
@@ -226,9 +212,7 @@ async def test_discover_probe_failure_502(
 
 
 @pytest.mark.asyncio
-async def test_discover_disabled_connection_409(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_disabled_connection_409(client: AsyncClient, db: AsyncSession):
     """kill-switch: disabled connection에서 probe/생성 모두 거부."""
     conn = await _seed_mcp_connection(db)
     conn.status = "disabled"
@@ -292,13 +276,17 @@ async def test_discover_race_duplicate_blocked_by_unique_index(
 
     # DB 실측: race_target은 단 1행만 존재 (m14 unique 보호)
     rows = (
-        await db.execute(
-            select(Tool).where(
-                Tool.connection_id == conn.id,
-                Tool.name == "race_target",
+        (
+            await db.execute(
+                select(Tool).where(
+                    Tool.connection_id == conn.id,
+                    Tool.name == "race_target",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(rows) == 1
 
 
@@ -364,9 +352,7 @@ async def test_orm_metadata_partial_index_allows_non_mcp_duplicates(
 
 
 @pytest.mark.asyncio
-async def test_discover_race_preserves_earlier_created_rows(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_race_preserves_earlier_created_rows(client: AsyncClient, db: AsyncSession):
     """savepoint 격리 검증 — race 발생해도 이미 created된 row는 손실되지 않음.
 
     이전 구현은 IntegrityError 시 session-wide rollback으로 같은 호출의 이전
@@ -412,20 +398,22 @@ async def test_discover_race_preserves_earlier_created_rows(
 
     # DB 실측 — first/third가 실제로 commit됐는지
     rows = (
-        await db.execute(
-            select(Tool).where(
-                Tool.connection_id == conn.id,
-                Tool.name.in_(["first", "third"]),
+        (
+            await db.execute(
+                select(Tool).where(
+                    Tool.connection_id == conn.id,
+                    Tool.name.in_(["first", "third"]),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {r.name for r in rows} == {"first", "third"}
 
 
 @pytest.mark.asyncio
-async def test_discover_passes_extra_config_headers_to_probe(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_passes_extra_config_headers_to_probe(client: AsyncClient, db: AsyncSession):
     """extra_config.headers (transport headers)는 probe에도 전달되어야 한다.
 
     chat runtime의 MCP 빌더가 동일 헤더를 사용하므로, discovery만 헤더 없이 호출하면
@@ -470,9 +458,7 @@ async def test_discover_passes_extra_config_headers_to_probe(
 
 
 @pytest.mark.asyncio
-async def test_discover_ignores_oversized_name(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_ignores_oversized_name(client: AsyncClient, db: AsyncSession):
     """Tool.name 컬럼은 String(100) — 원격 서버가 oversized name을 보내면 DataError로
     500이 떨어진다. 검증 단계에서 skip해 controlled 응답 유지.
     """
@@ -499,9 +485,7 @@ async def test_discover_ignores_oversized_name(
 
 
 @pytest.mark.asyncio
-async def test_discover_ignores_malformed_tools(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_discover_ignores_malformed_tools(client: AsyncClient, db: AsyncSession):
     conn = await _seed_mcp_connection(db)
     fake_result = {
         "success": True,

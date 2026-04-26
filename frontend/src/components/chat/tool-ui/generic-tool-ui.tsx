@@ -1,12 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  ChevronDownIcon,
-  WrenchIcon,
-  Loader2Icon,
-  CircleCheckIcon,
-} from 'lucide-react'
+import { ChevronDownIcon, WrenchIcon, Loader2Icon, CircleCheckIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { cn } from '@/lib/utils'

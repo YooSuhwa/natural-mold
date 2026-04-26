@@ -15,13 +15,7 @@ import {
   XIcon,
 } from 'lucide-react'
 
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetClose,
-} from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose } from '@/components/ui/sheet'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
@@ -44,10 +38,7 @@ interface ConnectionDetailSheetProps {
   onOpenChange: (open: boolean) => void
 }
 
-export function ConnectionDetailSheet({
-  connection,
-  onOpenChange,
-}: ConnectionDetailSheetProps) {
+export function ConnectionDetailSheet({ connection, onOpenChange }: ConnectionDetailSheetProps) {
   return (
     <Sheet
       open={!!connection}
@@ -55,10 +46,7 @@ export function ConnectionDetailSheet({
         if (!v) onOpenChange(false)
       }}
     >
-      <SheetContent
-        showCloseButton={false}
-        className="flex w-full flex-col gap-0 sm:max-w-md"
-      >
+      <SheetContent showCloseButton={false} className="flex w-full flex-col gap-0 sm:max-w-md">
         {connection && <DetailBody connection={connection} onClose={() => onOpenChange(false)} />}
       </SheetContent>
     </Sheet>
@@ -160,9 +148,7 @@ function DetailBody({ connection, onClose }: { connection: Connection; onClose: 
             </div>
           </div>
         </div>
-        <SheetClose
-          render={<Button variant="ghost" size="icon-sm" aria-label={tc('close')} />}
-        >
+        <SheetClose render={<Button variant="ghost" size="icon-sm" aria-label={tc('close')} />}>
           <XIcon className="size-4" />
         </SheetClose>
       </SheetHeader>
@@ -191,9 +177,7 @@ function DetailBody({ connection, onClose }: { connection: Connection; onClose: 
               <div className="font-medium">{credential.name}</div>
               <div className="mt-0.5 text-xs text-muted-foreground">
                 {credential.credential_type === 'oauth2' ? 'OAuth2' : 'API Key'}
-                {credential.field_keys.length > 0 && (
-                  <> · {credential.field_keys.join(', ')}</>
-                )}
+                {credential.field_keys.length > 0 && <> · {credential.field_keys.join(', ')}</>}
               </div>
             </div>
           ) : (
@@ -316,16 +300,18 @@ function DetailBody({ connection, onClose }: { connection: Connection; onClose: 
       {/* Rebind credential — connection.credential_id 만 바뀌다, credential row는 그대로.
           drawer는 selected connection을 직접 update (default 여부와 무관) — connectionId
           명시로 PrebuiltBody가 standalone "연결 추가" 흐름이 아니라 단일 row patch를 수행. */}
-      {rebindOpen && connection.type === 'prebuilt' && isPrebuiltProviderName(connection.provider_name) && (
-        <ConnectionBindingDialog
-          type="prebuilt"
-          providerName={connection.provider_name}
-          connectionId={connection.id}
-          toolName={connection.display_name}
-          open={rebindOpen}
-          onOpenChange={setRebindOpen}
-        />
-      )}
+      {rebindOpen &&
+        connection.type === 'prebuilt' &&
+        isPrebuiltProviderName(connection.provider_name) && (
+          <ConnectionBindingDialog
+            type="prebuilt"
+            providerName={connection.provider_name}
+            connectionId={connection.id}
+            toolName={connection.display_name}
+            open={rebindOpen}
+            onOpenChange={setRebindOpen}
+          />
+        )}
       {rebindOpen && connection.type === 'custom' && (
         <ConnectionBindingDialog
           type="custom"

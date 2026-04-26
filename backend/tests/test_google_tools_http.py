@@ -177,7 +177,9 @@ async def test_google_image_search(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
 
     tool = build_google_search_tool(
-        "image", "google_images", "Images",
+        "image",
+        "google_images",
+        "Images",
         auth_config={"google_api_key": "k", "google_cse_id": "c"},
     )
     await tool.ainvoke({"query": "photos"})

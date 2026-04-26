@@ -1,12 +1,6 @@
 'use client'
 
-import {
-  KeyRoundIcon,
-  LinkIcon,
-  MoreVerticalIcon,
-  ServerIcon,
-  WrenchIcon,
-} from 'lucide-react'
+import { KeyRoundIcon, LinkIcon, MoreVerticalIcon, ServerIcon, WrenchIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
@@ -74,9 +68,7 @@ export function ConnectionCard({ connection, onOpenDetail }: ConnectionCardProps
               </span>
               <span className="flex items-center gap-1">
                 <WrenchIcon className="size-3" />
-                {tools.length > 0
-                  ? t('usedByTools', { count: tools.length })
-                  : t('noUsage')}
+                {tools.length > 0 ? t('usedByTools', { count: tools.length }) : t('noUsage')}
               </span>
             </div>
           </div>

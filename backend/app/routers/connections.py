@@ -60,9 +60,7 @@ async def update_connection(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conn = await connection_service.update_connection(
-        db, connection_id, user.id, payload
-    )
+    conn = await connection_service.update_connection(db, connection_id, user.id, payload)
     if conn is None:
         raise HTTPException(status_code=404, detail="Connection not found")
     return ConnectionResponse.model_validate(conn)
@@ -74,9 +72,7 @@ async def delete_connection(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    deleted = await connection_service.delete_connection(
-        db, connection_id, user.id
-    )
+    deleted = await connection_service.delete_connection(db, connection_id, user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Connection not found")
     return Response(status_code=204)

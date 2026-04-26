@@ -49,9 +49,7 @@ def _make_legacy_credential(
 
 
 @pytest.mark.asyncio
-async def test_create_credential_populates_field_keys(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_create_credential_populates_field_keys(client: AsyncClient, db: AsyncSession):
     """POST /api/credentials stores field_keys cache matching the input payload keys."""
     resp = await client.post(
         "/api/credentials",
@@ -67,17 +65,13 @@ async def test_create_credential_populates_field_keys(
     assert body["field_keys"] == ["api_key"]
 
     row = (
-        await db.execute(
-            select(Credential).where(Credential.id == uuid.UUID(body["id"]))
-        )
+        await db.execute(select(Credential).where(Credential.id == uuid.UUID(body["id"])))
     ).scalar_one()
     assert row.field_keys == ["api_key"]
 
 
 @pytest.mark.asyncio
-async def test_update_credential_data_syncs_field_keys(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_update_credential_data_syncs_field_keys(client: AsyncClient, db: AsyncSession):
     """PUT with new data regenerates the field_keys cache."""
     create_resp = await client.post(
         "/api/credentials",
@@ -98,10 +92,9 @@ async def test_update_credential_data_syncs_field_keys(
     assert sorted(update_resp.json()["field_keys"]) == ["client_id", "client_secret"]
 
     row = (
-        await db.execute(
-            select(Credential).where(Credential.id == uuid.UUID(credential_id))
-        )
+        await db.execute(select(Credential).where(Credential.id == uuid.UUID(credential_id)))
     ).scalar_one()
+    assert row.field_keys is not None
     assert sorted(row.field_keys) == ["client_id", "client_secret"]
 
 
@@ -130,17 +123,13 @@ async def test_update_credential_name_only_preserves_field_keys(
     assert update_resp.json()["field_keys"] == ["api_key"]
 
     row = (
-        await db.execute(
-            select(Credential).where(Credential.id == uuid.UUID(credential_id))
-        )
+        await db.execute(select(Credential).where(Credential.id == uuid.UUID(credential_id)))
     ).scalar_one()
     assert row.field_keys == ["api_key"]
 
 
 @pytest.mark.asyncio
-async def test_list_credentials_avoids_decryption(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_list_credentials_avoids_decryption(client: AsyncClient, db: AsyncSession):
     """GET /api/credentials serves field_keys from the cache without any Fernet decryption."""
     # Seed a few credentials via the real API so the field_keys cache is populated.
     for i in range(3):

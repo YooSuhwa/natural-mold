@@ -16,6 +16,7 @@ def _get_catalog() -> dict[str, Any]:
     if _catalog is None:
         with open(_CATALOG_PATH) as f:
             _catalog = json.load(f)
+    assert _catalog is not None
     return _catalog
 
 

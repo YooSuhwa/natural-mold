@@ -22,26 +22,10 @@ describe('toolsApi', () => {
     expect(tool.api_url).toBe('https://example.com/api')
   })
 
-  it('registerMCPServer() sends POST and returns MCPServer', async () => {
-    const server = await toolsApi.registerMCPServer({
-      name: 'My MCP',
-      url: 'http://localhost:9999',
-    })
-    expect(server.id).toBe('mcp-new')
-    expect(server.name).toBe('My MCP')
-    expect(server.url).toBe('http://localhost:9999')
-  })
-
-  it('testMCPConnection() returns success result', async () => {
-    const result = await toolsApi.testMCPConnection('mcp-1')
-    expect(result.success).toBe(true)
-    expect(result.tools).toHaveLength(1)
-  })
-
-  it('updateAuthConfig() sends PATCH and returns updated tool', async () => {
-    const tool = await toolsApi.updateAuthConfig('tool-1', { api_key: 'new-key' })
+  it('update() sends PATCH and returns tool with connection_id', async () => {
+    const tool = await toolsApi.update('tool-1', { connection_id: 'conn-custom-1' })
     expect(tool.id).toBe('tool-1')
-    expect(tool.auth_config).toEqual({ api_key: '***' })
+    expect(tool.connection_id).toBe('conn-custom-1')
   })
 
   it('delete() sends DELETE and returns undefined', async () => {

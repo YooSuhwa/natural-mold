@@ -60,9 +60,7 @@ async def create_custom_tool(db: AsyncSession, data: ToolCustomCreate, user_id: 
     # schema 단에서 required로 선언했지만 방어적으로 서비스에서도 확인한다.
     # connection ownership/active 검증은 chat runtime에서 일어나므로 여기선
     # 존재 + 소유 여부만 확인한다.
-    await connection_service.validate_connection_for_custom_tool(
-        db, data.connection_id, user_id
-    )
+    await connection_service.validate_connection_for_custom_tool(db, data.connection_id, user_id)
 
     tool = Tool(
         user_id=user_id,
@@ -99,9 +97,7 @@ async def update_tool(
     5) 반영 후 commit + connection eager refresh
     """
     result = await db.execute(
-        select(Tool)
-        .where(Tool.id == tool_id)
-        .options(selectinload(Tool.connection))
+        select(Tool).where(Tool.id == tool_id).options(selectinload(Tool.connection))
     )
     tool = result.scalar_one_or_none()
     if tool is None:
@@ -144,8 +140,7 @@ async def update_tool(
             raise HTTPException(
                 status_code=422,
                 detail=(
-                    f"Connection type '{connection.type}' does not match "
-                    f"tool type '{tool.type}'"
+                    f"Connection type '{connection.type}' does not match tool type '{tool.type}'"
                 ),
             )
         # 런타임 invariant 정합 — chat_service._gate_connection_active /
@@ -257,9 +252,7 @@ async def discover_mcp_tools(
     # 인증 MCP에서 동일 카탈로그가 나오도록 한다.
     from app.agent_runtime.mcp_client import extract_transport_headers
 
-    probe = await mcp_probe(
-        url, effective_auth, extra_headers=extract_transport_headers(extra)
-    )
+    probe = await mcp_probe(url, effective_auth, extra_headers=extract_transport_headers(extra))
     if not probe.get("success"):
         raise HTTPException(
             status_code=502,

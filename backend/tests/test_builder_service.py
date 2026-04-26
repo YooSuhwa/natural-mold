@@ -473,6 +473,7 @@ async def test_confirm_build_no_models_raises(db: AsyncSession):
 
     # Session should be rolled back to PREVIEW
     reloaded = await get_session(db, session.id, TEST_USER_ID)
+    assert reloaded is not None
     assert reloaded.status == BuilderStatus.PREVIEW
 
 
@@ -508,5 +509,6 @@ async def test_get_agent_by_id(db: AsyncSession):
 async def test_get_agent_by_id_not_found(db: AsyncSession):
     """get_agent_by_id returns None when not found."""
     import uuid as _uuid
+
     found = await get_agent_by_id(db, _uuid.uuid4())
     assert found is None

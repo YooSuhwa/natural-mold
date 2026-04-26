@@ -42,12 +42,14 @@ export function BasicInfoTab({
             </div>
           )}
         </div>
-        {isPending && <div className="w-48 space-y-1.5">
-          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-            <div className="h-full rounded-full bg-primary animate-[progress_30s_ease-out_forwards]" />
+        {isPending && (
+          <div className="w-48 space-y-1.5">
+            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+              <div className="h-full rounded-full bg-primary animate-[progress_30s_ease-out_forwards]" />
+            </div>
+            <p className="text-xs text-muted-foreground text-center">{t('image.generating')}</p>
           </div>
-          <p className="text-xs text-muted-foreground text-center">{t('image.generating')}</p>
-        </div>}
+        )}
         <Button
           variant="outline"
           size="sm"
@@ -60,9 +62,15 @@ export function BasicInfoTab({
           disabled={isPending}
         >
           {imageUrl ? (
-            <><RefreshCwIcon className="size-4" />{t('image.regenerate')}</>
+            <>
+              <RefreshCwIcon className="size-4" />
+              {t('image.regenerate')}
+            </>
           ) : (
-            <><ImagePlusIcon className="size-4" />{t('image.generate')}</>
+            <>
+              <ImagePlusIcon className="size-4" />
+              {t('image.generate')}
+            </>
           )}
         </Button>
       </div>

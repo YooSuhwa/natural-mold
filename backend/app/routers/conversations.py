@@ -74,9 +74,7 @@ async def _resolve_agent_context(
         api_key=api_key,
         base_url=base_url,
         system_prompt=chat_service.build_effective_prompt(agent),
-        tools_config=chat_service.build_tools_config(
-            agent, conversation_id=str(conversation_id)
-        ),
+        tools_config=chat_service.build_tools_config(agent, conversation_id=str(conversation_id)),
         thread_id=str(conversation_id),
         model_params=agent.model_params,
         middleware_configs=agent.middleware_configs,
@@ -84,14 +82,10 @@ async def _resolve_agent_context(
         agent_id=str(agent.id),
         provider_api_keys=await load_all_provider_api_keys(db),
         cost_per_input_token=(
-            float(agent.model.cost_per_input_token)
-            if agent.model.cost_per_input_token
-            else None
+            float(agent.model.cost_per_input_token) if agent.model.cost_per_input_token else None
         ),
         cost_per_output_token=(
-            float(agent.model.cost_per_output_token)
-            if agent.model.cost_per_output_token
-            else None
+            float(agent.model.cost_per_output_token) if agent.model.cost_per_output_token else None
         ),
     )
 
@@ -206,7 +200,8 @@ async def send_message(
     async def generate() -> AsyncGenerator[str, None]:
         try:
             async for chunk in execute_agent_stream(
-                cfg, [{"role": "user", "content": data.content}],
+                cfg,
+                [{"role": "user", "content": data.content}],
             ):
                 yield chunk
         except Exception:

@@ -58,8 +58,7 @@ def resolve_env_vars(
         return {}
     if not isinstance(env_vars, dict):
         raise ToolConfigError(
-            "extra_config.env_vars must be a dict (got "
-            f"{type(env_vars).__name__})"
+            f"extra_config.env_vars must be a dict (got {type(env_vars).__name__})"
         )
     cred_data = resolve_credential_data(credential) if credential else {}
     resolved: dict[str, Any] = {}
@@ -72,8 +71,7 @@ def resolve_env_vars(
             field = match.group(1)
             if field not in cred_data:
                 raise ToolConfigError(
-                    f"MCP env_var '{key}' references credential.{field}, "
-                    "not present in credential"
+                    f"MCP env_var '{key}' references credential.{field}, not present in credential"
                 )
             resolved[key] = cred_data[field]
         else:
@@ -104,8 +102,7 @@ def assert_connection_ownership(
     """
     if tool_user_id is not None and tool_user_id != connection_user_id:
         raise ToolConfigError(
-            f"Tool '{tool_name}' connection {connection_id} owner "
-            "mismatch with tool owner"
+            f"Tool '{tool_name}' connection {connection_id} owner mismatch with tool owner"
         )
 
 
@@ -119,6 +116,5 @@ def assert_credential_ownership(
         return
     if credential.user_id != connection_user_id:
         raise ToolConfigError(
-            f"Credential {credential.id} on connection {connection_id} is "
-            "owned by a different user"
+            f"Credential {credential.id} on connection {connection_id} is owned by a different user"
         )

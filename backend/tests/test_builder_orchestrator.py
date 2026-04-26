@@ -300,9 +300,13 @@ async def test_phase3_tools_success():
     mock_tools = [
         MagicMock(
             tool_name="Web Search",
-            model_dump=MagicMock(return_value={
-                "tool_name": "Web Search", "description": "검색", "reason": "필요",
-            }),
+            model_dump=MagicMock(
+                return_value={
+                    "tool_name": "Web Search",
+                    "description": "검색",
+                    "reason": "필요",
+                }
+            ),
         ),
     ]
 
@@ -367,9 +371,7 @@ async def test_phase3_tools_failure_recoverable():
         result = await phase3_tools(state)
         assert result["tools"] == []
         # Should have warning event, not hard error
-        has_warning = any(
-            e.get("status") == "warning" for e in result["sse_events"]
-        )
+        has_warning = any(e.get("status") == "warning" for e in result["sse_events"])
         assert has_warning
 
 
@@ -386,9 +388,13 @@ async def test_phase4_middlewares_success():
     mock_mws = [
         MagicMock(
             middleware_name="tool_retry",
-            model_dump=MagicMock(return_value={
-                "middleware_name": "tool_retry", "description": "재시도", "reason": "안정성",
-            }),
+            model_dump=MagicMock(
+                return_value={
+                    "middleware_name": "tool_retry",
+                    "description": "재시도",
+                    "reason": "안정성",
+                }
+            ),
         ),
     ]
 
@@ -563,18 +569,26 @@ async def test_run_builder_pipeline():
     mock_tools = [
         MagicMock(
             tool_name="Web Search",
-            model_dump=MagicMock(return_value={
-                "tool_name": "Web Search", "description": "검색", "reason": "필요",
-            }),
+            model_dump=MagicMock(
+                return_value={
+                    "tool_name": "Web Search",
+                    "description": "검색",
+                    "reason": "필요",
+                }
+            ),
         ),
     ]
 
     mock_mws = [
         MagicMock(
             middleware_name="tool_retry",
-            model_dump=MagicMock(return_value={
-                "middleware_name": "tool_retry", "description": "재시도", "reason": "안정성",
-            }),
+            model_dump=MagicMock(
+                return_value={
+                    "middleware_name": "tool_retry",
+                    "description": "재시도",
+                    "reason": "안정성",
+                }
+            ),
         ),
     ]
 

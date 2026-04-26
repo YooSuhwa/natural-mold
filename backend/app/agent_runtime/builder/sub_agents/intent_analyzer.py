@@ -18,9 +18,7 @@ _FALLBACK_PROMPT = (
     "JSON 외 다른 텍스트를 포함하지 않습니다."
 )
 
-SYSTEM_PROMPT = (
-    load_prompt("intent_analyzer.md") or _FALLBACK_PROMPT
-)
+SYSTEM_PROMPT = load_prompt("intent_analyzer.md") or _FALLBACK_PROMPT
 
 
 def _build_task_description(user_request: str) -> str:

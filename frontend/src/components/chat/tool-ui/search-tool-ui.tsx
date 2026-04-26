@@ -1,12 +1,7 @@
 'use client'
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import {
-  SearchIcon,
-  ExternalLinkIcon,
-  GlobeIcon,
-  Loader2Icon,
-} from 'lucide-react'
+import { SearchIcon, ExternalLinkIcon, GlobeIcon, Loader2Icon } from 'lucide-react'
 
 // ──────────────────────────────────────────────
 // Types
@@ -37,8 +32,7 @@ function parseSearchResults(raw: unknown): SearchResultItem[] {
     try {
       const parsed: unknown = JSON.parse(raw)
       if (Array.isArray(parsed)) return parsed as SearchResultItem[]
-      if (typeof parsed === 'object' && parsed !== null)
-        return [parsed as SearchResultItem]
+      if (typeof parsed === 'object' && parsed !== null) return [parsed as SearchResultItem]
     } catch {
       return [{ snippet: raw }]
     }
@@ -83,20 +77,12 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
                   {title}
                 </a>
               ) : (
-                <span className="truncate text-[11px] font-medium">
-                  {title}
-                </span>
+                <span className="truncate text-[11px] font-medium">{title}</span>
               )}
-              {url && (
-                <ExternalLinkIcon className="size-2.5 shrink-0 text-muted-foreground" />
-              )}
+              {url && <ExternalLinkIcon className="size-2.5 shrink-0 text-muted-foreground" />}
             </div>
           )}
-          {url && (
-            <div className="truncate text-[10px] text-muted-foreground">
-              {url}
-            </div>
-          )}
+          {url && <div className="truncate text-[10px] text-muted-foreground">{url}</div>}
           {snippet && (
             <p className="mt-0.5 text-[11px] leading-relaxed text-foreground/70 line-clamp-2">
               {snippet}
@@ -133,12 +119,8 @@ function SearchRender({
         ) : (
           <SearchIcon className="size-3.5 text-emerald-500" />
         )}
-        <span className="truncate font-medium">
-          {args?.query ? `"${args.query}"` : '웹 검색'}
-        </span>
-        {isRunning && (
-          <span className="text-muted-foreground">검색 중…</span>
-        )}
+        <span className="truncate font-medium">{args?.query ? `"${args.query}"` : '웹 검색'}</span>
+        {isRunning && <span className="text-muted-foreground">검색 중…</span>}
         {!isRunning && items.length > 0 && (
           <span className="text-muted-foreground">{items.length}건</span>
         )}

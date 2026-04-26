@@ -1,17 +1,9 @@
 'use client'
 
 import { useRef, useState, useCallback, useMemo } from 'react'
-import {
-  useExternalStoreRuntime,
-  useExternalMessageConverter,
-} from '@assistant-ui/react'
+import { useExternalStoreRuntime, useExternalMessageConverter } from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
-import type {
-  Message,
-  SSEEvent,
-  ToolCallInfo,
-  InterruptPayload,
-} from '@/lib/types'
+import type { Message, SSEEvent, ToolCallInfo, InterruptPayload } from '@/lib/types'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
@@ -34,10 +26,7 @@ function createOptimisticMessage(
   }
 }
 
-type StreamFn = (
-  content: string,
-  signal: AbortSignal,
-) => AsyncGenerator<SSEEvent>
+type StreamFn = (content: string, signal: AbortSignal) => AsyncGenerator<SSEEvent>
 
 interface UseChatRuntimeOptions {
   /** TanStack Query에서 가져온 메시지 목록 */
@@ -103,10 +92,7 @@ export function useChatRuntime({
 
   /** SSE 스트림 소비 공통 로직 (onNew, onResume 공유) */
   const consumeStream = useCallback(
-    async (
-      stream: AsyncGenerator<SSEEvent>,
-      optimisticUserMsg: Message | null,
-    ) => {
+    async (stream: AsyncGenerator<SSEEvent>, optimisticUserMsg: Message | null) => {
       let accumulated = ''
       let interrupted = false
       const toolCalls: ToolCallInfo[] = []
@@ -173,20 +159,23 @@ export function useChatRuntime({
               break
             }
             case 'error': {
-              const errMsg = (event.data as { message?: string }).message
-                ?? '에이전트 실행 중 오류가 발생했습니다.'
+              const errMsg =
+                (event.data as { message?: string }).message ??
+                '에이전트 실행 중 오류가 발생했습니다.'
               setStreamError(errMsg)
               break
             }
             case 'message_end': {
               // 토큰 사용량 업데이트
-              const usage = (event.data as {
-                usage?: {
-                  prompt_tokens?: number
-                  completion_tokens?: number
-                  estimated_cost?: number
+              const usage = (
+                event.data as {
+                  usage?: {
+                    prompt_tokens?: number
+                    completion_tokens?: number
+                    estimated_cost?: number
+                  }
                 }
-              }).usage
+              ).usage
               if (usage) {
                 setTokenUsage((prev) => ({
                   inputTokens: prev.inputTokens + (usage.prompt_tokens ?? 0),
@@ -244,10 +233,7 @@ export function useChatRuntime({
       const userMsg = displayText ? createOptimisticMessage('user', displayText) : null
 
       try {
-        await consumeStream(
-          streamResume(conversationId, response, signal),
-          userMsg,
-        )
+        await consumeStream(streamResume(conversationId, response, signal), userMsg)
       } catch (err) {
         console.error('[useChatRuntime] Resume error:', err)
       }

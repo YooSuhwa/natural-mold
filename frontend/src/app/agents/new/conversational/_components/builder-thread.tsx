@@ -1,11 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import {
-  ThreadPrimitive,
-  MessagePrimitive,
-  ComposerPrimitive,
-} from '@assistant-ui/react'
+import { ThreadPrimitive, MessagePrimitive, ComposerPrimitive } from '@assistant-ui/react'
 import { SendIcon, SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
