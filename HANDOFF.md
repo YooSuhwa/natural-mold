@@ -43,7 +43,7 @@ worktree `.claude/worktrees/backlog-e-m6-1` / 브랜치 `feature/backlog-e-m6-1`
 | CUSTOM first-bind | ✅ | 프론트 가드 제거 + 체인 연결 |
 | BindingDialogShell | ✅ | UI chrome만 추출 (hydration은 body 소유) |
 | `/api/tools/mcp-server*` 삭제 | ✅ | 4 라우트 제거 |
-| MCP **신규 등록** UI | ✅ | **M7에서 복원 완료**. `POST /api/connections/{id}/discover-tools` + `/tools` AddToolDialog의 **MCP 탭** (M5 이전 위치로 환원). v1은 `auth_type='none'` 공개 서버만. `/connections` McpSection은 조회/관리 전용 |
+| MCP **신규 등록** UI | ✅ | **M7에서 복원 완료**. `POST /api/connections/{id}/discover-tools` + `/tools` AddToolDialog의 **MCP 탭** (M5 이전 위치로 환원). 공개 MCP + 인증 MCP(credential + 헤더 매핑) 둘 다 지원. probe transport는 mcp library `streamablehttp_client` 사용 — Hancom-GW 등 SSE 강제 서버에서 정상 동작. `/connections` McpSection은 조회/관리 전용 |
 
 ## 검증
 

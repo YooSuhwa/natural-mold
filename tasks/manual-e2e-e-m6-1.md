@@ -201,8 +201,16 @@ uv run alembic downgrade -1 && uv run alembic upgrade head
 **목표**: `/tools` → "도구 추가" → MCP 탭 → URL 입력 → connection 생성 + tool discovery 자동 실행 검증.
 
 **전제**:
-- 테스트용 공개 MCP 서버 URL 준비. 예: `https://mcp.example.com/mcp` (응답만 되면 됨).
-- `auth_type='none'` 공개 서버 전용 (인증 MCP 등록은 후속 업데이트).
+- 테스트용 MCP 서버 URL. 공개 서버는 응답만 되면 OK. 인증 MCP는 credential
+  생성 후 사용 (e.g. Hancom-GW: credential의 `api_key` 필드에 JWT 토큰 + 헤더
+  이름 `GW_JWT_TOKEN`).
+- 공개 / 인증 두 케이스 모두 지원.
+
+**인증 MCP 추가 단계**:
+- "인증" 영역에서 credential 선택 → Credential 필드 자동 default(`api_key`)
+- 헤더 이름 입력 (서버가 받는 실제 헤더 이름, e.g. `GW_JWT_TOKEN`)
+- 등록 시 backend `extra_config.env_vars = {<header>: ${credential.<field>}}`
+  템플릿으로 저장 → discovery probe와 chat runtime이 동일 헤더로 호출
 
 **단계**:
 1. `/tools` 페이지 → 헤더의 "도구 추가" 버튼 → AddToolDialog 오픈

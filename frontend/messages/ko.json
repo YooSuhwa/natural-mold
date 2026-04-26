@@ -621,7 +621,7 @@
         "serverNamePlaceholder": "Google Workspace MCP",
         "serverUrl": "서버 URL",
         "serverUrlPlaceholder": "https://mcp.example.com",
-        "authNoticeV1": "credential을 선택하지 않으면 공개 MCP 서버(인증 없음)로 등록됩니다.",
+        "authNoticeV1": "credential을 선택하지 않으면 공개 MCP 서버(인증 없음)로 등록됩니다. 인증이 필요한 서버는 위 인증 영역에서 credential을 선택하세요.",
         "headerName": "헤더 이름",
         "credentialField": "Credential 필드",
         "credentialFieldPlaceholder": "필드 선택...",

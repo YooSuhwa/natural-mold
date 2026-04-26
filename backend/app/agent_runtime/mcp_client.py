@@ -83,25 +83,3 @@ async def test_mcp_connection(
         return {"success": False, "error": str(e), "tools": []}
 
 
-async def list_mcp_tools(
-    url: str,
-    headers: dict[str, str] | None = None,
-) -> list[dict]:
-    """MCP 서버에서 도구 목록 발견 (인증 헤더 옵셔널)."""
-    try:
-        async with (
-            streamablehttp_client(url, headers=headers) as (read, write, _),
-            ClientSession(read, write) as session,
-        ):
-            await session.initialize()
-            result = await session.list_tools()
-            return [
-                {
-                    "name": t.name,
-                    "description": t.description or "",
-                    "inputSchema": t.inputSchema,
-                }
-                for t in result.tools
-            ]
-    except Exception:
-        return []
