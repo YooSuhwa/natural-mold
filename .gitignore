@@ -63,6 +63,7 @@ backend/data/
 
 # Claude
 .claude/plans/
+.claude/scheduled_tasks.lock
 
 # Claude Code worktrees
 .claude/worktrees/
