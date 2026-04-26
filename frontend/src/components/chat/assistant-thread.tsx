@@ -7,6 +7,7 @@ import {
   ComposerPrimitive,
   ActionBarPrimitive,
   useThreadViewport,
+  useAssistantState,
   type AssistantToolUI,
 } from '@assistant-ui/react'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
@@ -94,17 +95,35 @@ function ToolCallFallback({
   return <ToolFallbackPanel toolName={toolName} args={args} result={result} status={resolved} />
 }
 
-/** 표준 메시지 파트 렌더러 — 텍스트 + 도구 UI 모두 표시 */
+/** 표준 메시지 파트 렌더러 — 텍스트 + 도구 UI 모두 표시.
+ *
+ * Empty 슬롯은 의도적으로 비워둔다. assistant-ui의 Empty는 컨텐츠 마지막에
+ * 노출되어 도구 호출 박스 아래에 loading 메시지가 표시되는데, 사용자 UX
+ * 관점에선 도구 박스 위에 보이는 게 자연스럽다.  StreamingLoadingIndicator를
+ * AssistantMessage 상단에 별도 배치해 위치를 잡는다.
+ */
 function AssistantMessageParts() {
   return (
     <MessagePrimitive.Content
       components={{
         Text: AssistantTextPart,
         tools: { Fallback: ToolCallFallback },
-        Empty: LoadingIndicator,
       }}
     />
   )
+}
+
+/** 메시지가 running 상태일 때 도구 박스 위쪽에 표시되는 loading row.
+ *
+ * 메시지가 끝나면 status.type !== 'running'이 되어 자동으로 사라지므로 과거
+ * 메시지에는 영향 없음.
+ */
+function StreamingLoadingIndicator() {
+  const isRunning = useAssistantState(
+    (s) => (s.message?.status as { type?: string } | undefined)?.type === 'running',
+  )
+  if (!isRunning) return null
+  return <WittyLoadingMessage className="px-1 pb-1" />
 }
 
 function CopyButton() {
@@ -134,11 +153,6 @@ function CopyButton() {
       )}
     </ActionBarPrimitive.Copy>
   )
-}
-
-/** MessagePrimitive.Content의 Empty 컴포넌트로 사용 */
-function LoadingIndicator() {
-  return <WittyLoadingMessage className="px-1" />
 }
 
 export interface AssistantThreadProps {
@@ -192,6 +206,8 @@ export function AssistantThread({
                       size="sm"
                     />
                     <div className="min-w-0 flex-1">
+                      {/* 도구 호출 박스 위에 streaming indicator 표시 (UX) */}
+                      <StreamingLoadingIndicator />
                       <AssistantMessageParts />
                       {/* 복사 버튼 — hover 시 표시 */}
                       <div className="mt-1 opacity-0 transition-opacity group-hover:opacity-100">
