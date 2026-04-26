@@ -47,6 +47,7 @@ vi.mock('@/lib/hooks/use-agents', () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
   useUpdateAgent: () => ({ mutateAsync: mockUpdateAgent, isPending: false }),
   useDeleteAgent: () => ({ mutateAsync: mockDeleteAgent, isPending: false }),
+  useGenerateAgentImage: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 const mockUseTools = vi.fn()

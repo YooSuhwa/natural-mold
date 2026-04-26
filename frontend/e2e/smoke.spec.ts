@@ -27,12 +27,13 @@ test.describe('Smoke Test - Static Pages', () => {
     await page.goto('/agents/new')
     await page.waitForLoadState('domcontentloaded')
 
-    await expect(page.getByText('새 에이전트 만들기')).toBeVisible()
-    await expect(page.getByRole('main').getByText('대화로 만들기')).toBeVisible()
-    await expect(page.getByRole('main').getByText('템플릿으로 만들기')).toBeVisible()
-    // Buttons
-    await expect(page.getByRole('link', { name: '시작하기' })).toBeVisible()
-    await expect(page.getByRole('link', { name: '둘러보기' })).toBeVisible()
+    // 페이지 hero + chat input + 2개 옵션 카드 (manual / template)
+    await expect(
+      page.getByRole('heading', { name: '생성하려는 에이전트에 대해 알려주세요' }),
+    ).toBeVisible()
+    const main = page.getByRole('main')
+    await expect(main.getByText('에이전트 직접 만들기')).toBeVisible()
+    await expect(main.getByText('템플릿으로 만들기')).toBeVisible()
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
@@ -69,7 +70,8 @@ test.describe('Smoke Test - Static Pages', () => {
     await page.waitForLoadState('domcontentloaded')
 
     await expect(page.getByRole('heading', { name: '모델 관리' })).toBeVisible()
-    // "모델 추가" button
+    // 기본 탭: Providers / Models. Models 탭으로 전환 후 "모델 추가" 버튼 확인
+    await page.getByRole('tab', { name: 'Models' }).click()
     await expect(page.getByRole('button', { name: '모델 추가' })).toBeVisible()
 
     expect(errors.console).toEqual([])
@@ -137,8 +139,9 @@ test.describe('Smoke Test - Dynamic Pages', () => {
 
     const main = page.getByRole('main')
 
-    // Agent name should appear in the chat header (h1)
-    await expect(main.getByRole('heading', { name: 'E2E Smoke Agent' })).toBeVisible()
+    // Agent name appears in multiple headings (sidebar h2, chat header h1, empty state h2).
+    // smoke 검증은 적어도 하나가 보이면 OK.
+    await expect(main.getByRole('heading', { name: 'E2E Smoke Agent' }).first()).toBeVisible()
     // "새 대화" button (appears in conversation sidebar and chat header, use first)
     await expect(main.getByRole('button', { name: '새 대화' }).first()).toBeVisible()
     // Settings icon link
@@ -160,12 +163,11 @@ test.describe('Smoke Test - Dynamic Pages', () => {
     await expect(main.getByText('에이전트 설정: E2E Smoke Agent')).toBeVisible()
     // Form labels
     await expect(main.getByText('시스템 프롬프트')).toBeVisible()
-    // "AI로 수정하기" (fix agent) button
-    await expect(main.getByRole('button', { name: 'AI로 수정하기' })).toBeVisible()
     // "저장" button
     await expect(main.getByRole('button', { name: '저장' })).toBeVisible()
     // "에이전트 삭제" button
     await expect(main.getByRole('button', { name: '에이전트 삭제' })).toBeVisible()
+    // AssistantPanel은 우측 패널로 통합 — 별도 트리거 버튼 없음
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
@@ -177,9 +179,9 @@ test.describe('Smoke Test - Dynamic Pages', () => {
     await page.waitForURL(`**/agents/${agentId}/conversations/**`, { timeout: 10_000 })
     await page.waitForLoadState('domcontentloaded')
 
-    // Verify we landed on the chat page (use heading to avoid sidebar ambiguity)
+    // Verify we landed on the chat page (heading 여러 곳 — first 매칭으로 충분)
     await expect(
-      page.getByRole('main').getByRole('heading', { name: 'E2E Smoke Agent' })
+      page.getByRole('main').getByRole('heading', { name: 'E2E Smoke Agent' }).first(),
     ).toBeVisible()
 
     expect(errors.console).toEqual([])
@@ -218,6 +220,8 @@ test.describe('Smoke Test - Dialogs', () => {
     await page.goto('/models')
     await page.waitForLoadState('domcontentloaded')
 
+    // "모델 추가" 버튼은 Models 탭에서만 노출
+    await page.getByRole('tab', { name: 'Models' }).click()
     await page.getByRole('button', { name: '모델 추가' }).click()
     // Verify dialog content
     const dialog = page.getByRole('dialog')
@@ -309,23 +313,9 @@ test.describe('Smoke Test - Dialogs', () => {
     expect(errors.network).toEqual([])
   })
 
-  test('settings page - "AI로 수정하기" dialog opens', async ({ page, errors }) => {
-    await page.goto(`/agents/${agentId}/settings`)
-    await page.waitForLoadState('domcontentloaded')
-
-    await page.getByRole('button', { name: 'AI로 수정하기' }).click()
-    // Verify dialog content
-    const dialog = page.getByRole('dialog')
-    await expect(dialog.getByRole('heading', { name: 'Fix Agent' })).toBeVisible()
-    await expect(dialog.getByText('어떻게 수정할까요?')).toBeVisible()
-    // Suggestion chips
-    await expect(dialog.getByText('존댓말로 바꿔줘')).toBeVisible()
-    // Close
-    await page.keyboard.press('Escape')
-
-    expect(errors.console).toEqual([])
-    expect(errors.network).toEqual([])
-  })
+  // "AI로 수정하기" 다이얼로그는 AssistantPanel이 settings 우측 패널로 통합되면서
+  // 별도 트리거 버튼이 사라짐. 패널 자체의 동작은 manual QA 또는 후속 e2e로.
+  test.skip('settings page - "AI로 수정하기" dialog opens', async () => {})
 
   test('settings page - "에이전트 삭제" confirmation dialog opens', async ({ page, errors }) => {
     await page.goto(`/agents/${agentId}/settings`)
