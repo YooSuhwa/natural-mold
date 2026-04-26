@@ -94,7 +94,6 @@ export function useChatRuntime({
   const consumeStream = useCallback(
     async (stream: AsyncGenerator<SSEEvent>, optimisticUserMsg: Message | null) => {
       let accumulated = ''
-      let interrupted = false
       const toolCalls: ToolCallInfo[] = []
       const toolResults: Message[] = []
       const assistantId = `stream-${crypto.randomUUID()}`
@@ -153,7 +152,6 @@ export function useChatRuntime({
             }
             case 'interrupt': {
               // interrupt 발생 → 사용자 응답 대기 상태이므로 로딩 중지
-              interrupted = true
               setIsRunning(false)
               onInterrupt?.(event.data)
               break
@@ -199,9 +197,11 @@ export function useChatRuntime({
           onMessagesCommit(finalMsgs)
         }
         setStreamingMessages([])
-        if (!interrupted) {
-          onStreamEnd?.()
-        }
+        // interrupt(HiTL)도 그래프가 일시정지된 stream 종료 — backend는 ask_user tool_call을
+        // 이미 DB에 저장한 상태이므로, onStreamEnd로 messages query를 invalidate해야
+        // streaming 비운 직후 UI에서 ask_user input이 사라지지 않고 fetch된 메시지로 채워진다.
+        // (interrupted 시 호출 안 하던 이전 동작이 이 버그의 원인이었음)
+        onStreamEnd?.()
       }
     },
     [onStreamEnd, onInterrupt, onMessagesCommit, setTokenUsage],
