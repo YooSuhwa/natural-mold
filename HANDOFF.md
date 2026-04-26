@@ -1,5 +1,34 @@
 # 작업 인계 문서
 
+## 최근 완료 (2026-04-26 후속 2) — 채팅 UX/HiTL/메시지 표시 버그 정리
+
+main HEAD: `e49d979` (PR #66 머지). 5개 PR + 1개 핫픽스.
+
+### PR (시간순)
+- **#62** [docs] PR #61 후속 — HANDOFF + tasks/full-verification + .gitignore lock
+- **#63** [fix] Anthropic multi-block content가 message 응답에 raw 노출
+  - `langchain_messages_to_response`가 list-of-blocks을 `str()` 직렬화 → text 블록만 concat하는 `_content_to_text` helper 추가
+  - 부수: PR #61의 stale `test_api_key_none_when_not_provided` 갱신
+  - backend pytest 656 passed (648 → +8)
+- **#64** [fix] 채팅 입력창이 viewport 밖으로 짤리는 layout 버그
+  - `page.tsx`의 두 ancestor flex 컨테이너에 `min-h-0` 누락 → 추가
+- **#65** [fix] streaming loading indicator를 도구 박스 위로 이동
+  - `MessagePrimitive.Content`의 `Empty` 슬롯 제거 → 별도 `StreamingLoadingIndicator` (status==='running' 시 노출)
+- **#66** [fix] HiTL interrupt 직후 ask_user tool_call이 화면에서 사라지는 버그
+  - `consumeStream` finally에서 `if (!interrupted) onStreamEnd?.()` → 항상 호출. interrupt 시 messages query invalidate 누락이 원인. unused `interrupted` 플래그 제거
+
+### 핫픽스 (코드 변경 없음, DB)
+- agent `0515042d-...`의 `model_params.top_p` 제거 (claude-sonnet-4-6은 temperature/top_p 동시 거부)
+
+### 이번 세션 follow-up 후보
+- **이미지를 DB BYTEA로 저장** (사용자 제안, 미진행) — 현재 `backend/data/agents/{id}/avatar.jpg` 로컬 저장이라 worktree 간 공유 안 됨, orphan 발생
+- **agent 생성 시 default `top_p:1` 차단** — 위 핫픽스의 근본 원인. seed/agent 생성 default + model_factory 호환성 체크 + 마이그레이션 필요
+
+### 검증
+backend pytest 656 / pyright 0 / ruff clean / frontend tsc·lint·build·vitest·Playwright 모두 clean
+
+---
+
 ## 최근 완료 (2026-04-26 후속) — 테스트 인프라 + 채팅 버그 클린업
 
 **PR #61 머지** (main `bcb3a35`). 전체 검증 후 누적 회귀 일괄 정리.
