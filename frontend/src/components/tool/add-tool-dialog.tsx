@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Loader2Icon, CheckCircleIcon, WrenchIcon } from 'lucide-react'
+import { Loader2Icon, ServerIcon, WrenchIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -13,20 +13,20 @@ import {
   DialogFooter,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { useTranslations } from 'next-intl'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { useRegisterMCPServer, useCreateCustomTool } from '@/lib/hooks/use-tools'
+import { useCreateCustomTool } from '@/lib/hooks/use-tools'
 import { useCredentials } from '@/lib/hooks/use-credentials'
 import {
   useConnections,
   useCreateConnection,
+  useDiscoverMcpTools,
   useFindOrCreateCustomConnection,
 } from '@/lib/hooks/use-connections'
 import { CUSTOM_CONNECTION_PROVIDER_NAME } from '@/lib/types'
-import type { Tool } from '@/lib/types'
 import { ApiError } from '@/lib/api/client'
 import { CredentialFormDialog } from '@/components/tool/credential-form-dialog'
 import { CredentialSelect, CREDENTIAL_NONE } from '@/components/tool/credential-select'
@@ -35,29 +35,65 @@ interface AddToolDialogProps {
   trigger: React.ReactNode
 }
 
+// legacy `Custom API Key` provider는 field_keys=["header_name", "api_key"]를
+// 갖는다 — header_name은 헤더 이름을 저장하는 메타 필드라 새 connection 시스템
+// 의 env_vars dict key 위치에는 부적합 (헤더 이름은 사용자가 connection level에서
+// 직접 입력). select에서 숨기고 토큰 필드만 노출.
+const META_CREDENTIAL_FIELDS = new Set(['header_name', 'headername', 'header'])
+// 토큰을 보관할 가능성이 가장 높은 필드 — credential 선택 시 default로 자동 채움.
+const TOKEN_CREDENTIAL_FIELD_PRIORITY = [
+  'api_key',
+  'token',
+  'access_token',
+  'bearer',
+  'auth_token',
+]
+
+function pickDefaultCredentialField(fieldKeys: string[]): string {
+  const usable = fieldKeys.filter((k) => !META_CREDENTIAL_FIELDS.has(k.toLowerCase()))
+  for (const candidate of TOKEN_CREDENTIAL_FIELD_PRIORITY) {
+    if (usable.includes(candidate)) return candidate
+  }
+  return usable[0] ?? ''
+}
+
+// 표시 이름 → provider_name 슬러그. 백엔드 validator는 ^[a-z0-9_]+$ 강제 (길이 ≤50).
+// 한글/이모지 등 ASCII 외 입력은 빈 normalized → random suffix로 scope 내 중복 회피.
+function slugify(raw: string): string {
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 50)
+  if (normalized) return normalized
+  return `mcp_${Math.random().toString(36).slice(2, 8)}`
+}
+
 export function AddToolDialog({ trigger }: AddToolDialogProps) {
   const t = useTranslations('tool.addDialog')
   const tc = useTranslations('common')
   const [open, setOpen] = useState(false)
   const { data: credentials } = useCredentials()
 
-  // MCP form state
-  const [mcpName, setMcpName] = useState('')
-  const [mcpUrl, setMcpUrl] = useState('')
-  const [mcpCredentialId, setMcpMode] = useState<string>(CREDENTIAL_NONE)
-  const [credentialDialogOpen, setCredentialDialogOpen] = useState(false)
-  const [credentialTarget, setCredentialTarget] = useState<'mcp' | 'custom'>('mcp')
-  const [discoveredTools, setDiscoveredTools] = useState<Tool[] | null>(null)
-  const registerMCP = useRegisterMCPServer()
-
-  // Custom tool form state
+  // CUSTOM form state
   const [customName, setCustomName] = useState('')
   const [customDescription, setCustomDescription] = useState('')
   const [customApiUrl, setCustomApiUrl] = useState('')
   const [customMethod, setCustomMethod] = useState('GET')
   const [customParams, setCustomParams] = useState('')
   const [customCredentialId, setCustomCredentialId] = useState<string>(CREDENTIAL_NONE)
+  const [credentialDialogOpen, setCredentialDialogOpen] = useState(false)
   const createCustomTool = useCreateCustomTool()
+
+  // MCP form state — credential 선택이 곧 "인증 사용" 의도. CREDENTIAL_NONE이면
+  // 공개 MCP 서버로 등록, credential 선택 시 헤더/필드 입력 노출.
+  const [mcpDisplayName, setMcpDisplayName] = useState('')
+  const [mcpUrl, setMcpUrl] = useState('')
+  const [mcpHeaderName, setMcpHeaderName] = useState('Authorization')
+  const [mcpCredentialId, setMcpCredentialId] = useState<string>(CREDENTIAL_NONE)
+  const [mcpCredentialField, setMcpCredentialField] = useState<string>('')
+  const discoverMcpTools = useDiscoverMcpTools()
 
   // CUSTOM connection 캐시 구독 — find-or-create 훅이 캐시에서 기존 row를 찾을
   // 수 있도록 이 컴포넌트에서 쿼리를 켜 둔다.
@@ -69,30 +105,22 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   const availableCredentials = credentials ?? []
 
   function resetForms() {
-    setMcpName('')
-    setMcpUrl('')
-    setMcpMode(CREDENTIAL_NONE)
-    setDiscoveredTools(null)
     setCustomName('')
     setCustomDescription('')
     setCustomApiUrl('')
     setCustomMethod('GET')
     setCustomParams('')
     setCustomCredentialId(CREDENTIAL_NONE)
+    setMcpDisplayName('')
+    setMcpUrl('')
+    setMcpHeaderName('Authorization')
+    setMcpCredentialId(CREDENTIAL_NONE)
+    setMcpCredentialField('')
   }
 
   function handleClose() {
     resetForms()
     setOpen(false)
-  }
-
-  async function handleMCPSubmit() {
-    const payload =
-      mcpCredentialId === CREDENTIAL_NONE
-        ? { name: mcpName, url: mcpUrl, auth_type: 'none' as const }
-        : { name: mcpName, url: mcpUrl, credential_id: mcpCredentialId }
-    const result = await registerMCP.mutateAsync(payload)
-    setDiscoveredTools(result.tools)
   }
 
   async function resolveCustomConnectionId(credentialId: string): Promise<string> {
@@ -110,7 +138,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
       try {
         parsedParams = JSON.parse(customParams)
       } catch {
-        return // Invalid JSON
+        return
       }
     }
 
@@ -139,16 +167,86 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
         api_url: customApiUrl,
         http_method: customMethod,
         parameters_schema: parsedParams,
-        // M6 이후 auth SOT = connection. tool.credential_id는 제거됨.
         ...(connectionId ? { connection_id: connectionId } : {}),
       })
     } catch {
       toast.error(t('custom.toolFailed'))
       return
     }
-    resetForms()
-    setOpen(false)
+    handleClose()
   }
+
+  async function handleMcpSubmit() {
+    const trimmedName = mcpDisplayName.trim()
+    const trimmedUrl = mcpUrl.trim()
+    if (!trimmedName || !trimmedUrl) return
+
+    // credential 선택 = 인증 사용 의도. CREDENTIAL_NONE이면 공개 MCP 서버.
+    // backend env_var_resolver는 전체 매칭만 지원 — 부분 치환 불가하므로
+    // credential 값에 prefix(예: "Bearer ")가 필요하면 사용자가 credential
+    // 저장 시 prefix를 포함해 저장해야 한다.
+    const useAuth =
+      mcpCredentialId !== CREDENTIAL_NONE &&
+      mcpHeaderName.trim() !== '' &&
+      mcpCredentialField.trim() !== ''
+    const extraConfig = useAuth
+      ? {
+          url: trimmedUrl,
+          auth_type: 'api_key' as const,
+          env_vars: {
+            [mcpHeaderName.trim()]: `\${credential.${mcpCredentialField.trim()}}`,
+          },
+        }
+      : { url: trimmedUrl, auth_type: 'none' as const }
+
+    let connectionId: string
+    try {
+      const created = await createConnection.mutateAsync({
+        type: 'mcp',
+        provider_name: slugify(trimmedName),
+        display_name: trimmedName,
+        credential_id: useAuth ? mcpCredentialId : null,
+        extra_config: extraConfig,
+      })
+      connectionId = created.id
+    } catch (err) {
+      const detail = err instanceof ApiError ? err.message : String(err)
+      toast.error(t('mcp.connectionFailed', { detail }))
+      return
+    }
+
+    try {
+      const result = await discoverMcpTools.mutateAsync(connectionId)
+      const created = result.items.filter((i) => i.status === 'created').length
+      const existing = result.items.filter((i) => i.status === 'existing').length
+      toast.success(t('mcp.discoverSuccess', { created, existing }))
+    } catch (err) {
+      const detail = err instanceof ApiError ? err.message : String(err)
+      toast.error(t('mcp.discoverFailed', { detail }))
+      // connection은 이미 생성됨 — Connection 상세에서 재탐색 가능 (rediscover 버튼).
+    }
+
+    handleClose()
+  }
+
+  const customSubmitDisabled =
+    !customName.trim() ||
+    !customApiUrl.trim() ||
+    customCredentialId === CREDENTIAL_NONE ||
+    createCustomTool.isPending ||
+    createConnection.isPending
+  const selectedMcpCredential = availableCredentials.find((c) => c.id === mcpCredentialId)
+  const mcpHasCredential = mcpCredentialId !== CREDENTIAL_NONE
+  const mcpAuthIncomplete =
+    mcpHasCredential && (!mcpHeaderName.trim() || !mcpCredentialField.trim())
+  const mcpSubmitDisabled =
+    !mcpDisplayName.trim() ||
+    !mcpUrl.trim() ||
+    mcpAuthIncomplete ||
+    createConnection.isPending ||
+    discoverMcpTools.isPending
+  const customPending = createCustomTool.isPending || createConnection.isPending
+  const mcpPending = createConnection.isPending || discoverMcpTools.isPending
 
   return (
     <Dialog
@@ -160,209 +258,213 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     >
       <DialogTrigger render={trigger as React.ReactElement} />
       <DialogContent className="sm:max-w-lg">
-        {discoveredTools !== null ? (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <CheckCircleIcon className="size-4 text-emerald-600" />
-                {t('mcp.registrationComplete')}
-              </DialogTitle>
-              <DialogDescription>
-                {discoveredTools.length > 0
-                  ? t('mcp.discoveredTools', { count: discoveredTools.length })
-                  : t('mcp.noToolsFound')}
-              </DialogDescription>
-            </DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
+        </DialogHeader>
 
-            {discoveredTools.length > 0 && (
-              <ul className="max-h-60 space-y-2 overflow-auto py-2">
-                {discoveredTools.map((tool) => (
-                  <li key={tool.id} className="flex items-start gap-2 rounded-md border p-2.5">
-                    <WrenchIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{tool.name}</p>
-                      {tool.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-2">
-                          {tool.description}
-                        </p>
-                      )}
+        <Tabs defaultValue="mcp" className="pt-2">
+          <TabsList className="grid grid-cols-2 w-full">
+            <TabsTrigger value="mcp">
+              <ServerIcon className="size-3.5" data-icon="inline-start" />
+              {t('tab.mcp')}
+            </TabsTrigger>
+            <TabsTrigger value="custom">
+              <WrenchIcon className="size-3.5" data-icon="inline-start" />
+              {t('tab.custom')}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="mcp" className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {t('mcp.serverName')}{' '}
+                <span className="text-destructive">{tc('required')}</span>
+              </label>
+              <Input
+                value={mcpDisplayName}
+                onChange={(e) => setMcpDisplayName(e.target.value)}
+                placeholder={t('mcp.serverNamePlaceholder')}
+                maxLength={200}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {t('mcp.serverUrl')}{' '}
+                <span className="text-destructive">{tc('required')}</span>
+              </label>
+              <Input
+                value={mcpUrl}
+                onChange={(e) => setMcpUrl(e.target.value)}
+                placeholder={t('mcp.serverUrlPlaceholder')}
+                type="url"
+                maxLength={500}
+              />
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-sm font-medium">{t('auth.label')}</label>
+              <CredentialSelect
+                value={mcpCredentialId}
+                onValueChange={(v) => {
+                  setMcpCredentialId(v)
+                  const picked = availableCredentials.find((c) => c.id === v)
+                  setMcpCredentialField(
+                    picked ? pickDefaultCredentialField(picked.field_keys) : '',
+                  )
+                }}
+                onCreateRequested={() => setCredentialDialogOpen(true)}
+                credentials={availableCredentials}
+              />
+              {mcpHasCredential ? (
+                <div className="space-y-3 rounded-md border p-3">
+                  {selectedMcpCredential && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        {t('mcp.credentialField')}
+                      </label>
+                      <select
+                        className="w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+                        value={mcpCredentialField}
+                        onChange={(e) => setMcpCredentialField(e.target.value)}
+                      >
+                        <option value="">{t('mcp.credentialFieldPlaceholder')}</option>
+                        {selectedMcpCredential.field_keys
+                          .filter((f) => !META_CREDENTIAL_FIELDS.has(f.toLowerCase()))
+                          .map((field) => (
+                            <option key={field} value={field}>
+                              {field}
+                            </option>
+                          ))}
+                      </select>
                     </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+                  )}
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">
+                      {t('mcp.headerName')}
+                    </label>
+                    <Input
+                      value={mcpHeaderName}
+                      onChange={(e) => setMcpHeaderName(e.target.value)}
+                      placeholder="Authorization"
+                      maxLength={100}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">{t('mcp.authHint')}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t('mcp.authNoticeV1')}</p>
+              )}
+            </div>
 
             <DialogFooter>
-              <Button onClick={handleClose}>{tc('confirm')}</Button>
+              <Button onClick={handleMcpSubmit} disabled={mcpSubmitDisabled}>
+                {mcpPending && (
+                  <Loader2Icon
+                    className="size-4 animate-spin"
+                    data-icon="inline-start"
+                  />
+                )}
+                {t('mcp.submit')}
+              </Button>
             </DialogFooter>
-          </>
-        ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle>{t('title')}</DialogTitle>
-              <DialogDescription>{t('description')}</DialogDescription>
-            </DialogHeader>
+          </TabsContent>
 
-            <Tabs defaultValue="mcp">
-              <TabsList className="w-full">
-                <TabsTrigger value="mcp" className="flex-1">
-                  {t('tab.mcp')}
-                </TabsTrigger>
-                <TabsTrigger value="custom" className="flex-1">
-                  {t('tab.custom')}
-                </TabsTrigger>
-              </TabsList>
-
-              {/* MCP Server Tab */}
-              <TabsContent value="mcp" className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('mcp.serverName')}</label>
-                  <Input
-                    value={mcpName}
-                    onChange={(e) => setMcpName(e.target.value)}
-                    placeholder={t('mcp.serverNamePlaceholder')}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('mcp.serverUrl')}</label>
-                  <Input
-                    value={mcpUrl}
-                    onChange={(e) => setMcpUrl(e.target.value)}
-                    placeholder={t('mcp.serverUrlPlaceholder')}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('auth.label')}</label>
-                  <CredentialSelect
-                    value={mcpCredentialId}
-                    onValueChange={setMcpMode}
-                    onCreateRequested={() => {
-                      setCredentialTarget('mcp')
-                      setCredentialDialogOpen(true)
-                    }}
-                    credentials={availableCredentials}
-                  />
-                </div>
-
-                <DialogFooter>
-                  <Button
-                    onClick={handleMCPSubmit}
-                    disabled={!mcpName.trim() || !mcpUrl.trim() || registerMCP.isPending}
-                  >
-                    {registerMCP.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
-                    {tc('register')}
-                  </Button>
-                </DialogFooter>
-              </TabsContent>
-
-              {/* Custom Tool Tab */}
-              <TabsContent value="custom" className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    {t('custom.name')} <span className="text-destructive">{tc('required')}</span>
+          <TabsContent value="custom" className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {t('custom.name')}{' '}
+                <span className="text-destructive">{tc('required')}</span>
+              </label>
+              <Input
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder={t('custom.namePlaceholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t('custom.description')}</label>
+              <Input
+                value={customDescription}
+                onChange={(e) => setCustomDescription(e.target.value)}
+                placeholder={t('custom.descriptionPlaceholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">
+                {t('custom.apiUrl')}{' '}
+                <span className="text-destructive">{tc('required')}</span>
+              </label>
+              <Input
+                value={customApiUrl}
+                onChange={(e) => setCustomApiUrl(e.target.value)}
+                placeholder={t('custom.apiUrlPlaceholder')}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t('custom.httpMethod')}</label>
+              <div className="flex gap-4 text-sm">
+                {['GET', 'POST', 'PUT'].map((m) => (
+                  <label key={m} className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="custom-method"
+                      value={m}
+                      checked={customMethod === m}
+                      onChange={(e) => setCustomMethod(e.target.value)}
+                    />
+                    {m}
                   </label>
-                  <Input
-                    value={customName}
-                    onChange={(e) => setCustomName(e.target.value)}
-                    placeholder={t('custom.namePlaceholder')}
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t('custom.params')}</label>
+              <Textarea
+                value={customParams}
+                onChange={(e) => setCustomParams(e.target.value)}
+                placeholder='{ "type": "object", "properties": { "city": { "type": "string" } } }'
+                rows={4}
+                className="font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">{t('auth.label')}</label>
+              <CredentialSelect
+                value={customCredentialId}
+                onValueChange={setCustomCredentialId}
+                onCreateRequested={() => setCredentialDialogOpen(true)}
+                credentials={availableCredentials}
+              />
+              {customCredentialId !== CREDENTIAL_NONE ? (
+                <p className="text-xs text-muted-foreground">
+                  {t('custom.connectionHint')}
+                </p>
+              ) : (
+                <p className="text-xs text-amber-700">
+                  {t('custom.credentialRequired')}
+                </p>
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button onClick={handleCustomSubmit} disabled={customSubmitDisabled}>
+                {customPending && (
+                  <Loader2Icon
+                    className="size-4 animate-spin"
+                    data-icon="inline-start"
                   />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('custom.description')}</label>
-                  <Input
-                    value={customDescription}
-                    onChange={(e) => setCustomDescription(e.target.value)}
-                    placeholder={t('custom.descriptionPlaceholder')}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    {t('custom.apiUrl')} <span className="text-destructive">{tc('required')}</span>
-                  </label>
-                  <Input
-                    value={customApiUrl}
-                    onChange={(e) => setCustomApiUrl(e.target.value)}
-                    placeholder={t('custom.apiUrlPlaceholder')}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('custom.httpMethod')}</label>
-                  <div className="flex gap-4 text-sm">
-                    {['GET', 'POST', 'PUT'].map((m) => (
-                      <label key={m} className="flex items-center gap-1.5">
-                        <input
-                          type="radio"
-                          name="custom-method"
-                          value={m}
-                          checked={customMethod === m}
-                          onChange={(e) => setCustomMethod(e.target.value)}
-                        />
-                        {m}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('custom.params')}</label>
-                  <Textarea
-                    value={customParams}
-                    onChange={(e) => setCustomParams(e.target.value)}
-                    placeholder='{ "type": "object", "properties": { "city": { "type": "string" } } }'
-                    rows={4}
-                    className="font-mono text-xs"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">{t('auth.label')}</label>
-                  <CredentialSelect
-                    value={customCredentialId}
-                    onValueChange={setCustomCredentialId}
-                    onCreateRequested={() => {
-                      setCredentialTarget('custom')
-                      setCredentialDialogOpen(true)
-                    }}
-                    credentials={availableCredentials}
-                  />
-                  {customCredentialId !== CREDENTIAL_NONE ? (
-                    <p className="text-xs text-muted-foreground">
-                      {t('custom.connectionHint')}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-amber-700">
-                      {t('custom.credentialRequired')}
-                    </p>
-                  )}
-                </div>
-                <DialogFooter>
-                  <Button
-                    onClick={handleCustomSubmit}
-                    disabled={
-                      !customName.trim() ||
-                      !customApiUrl.trim() ||
-                      customCredentialId === CREDENTIAL_NONE ||
-                      createCustomTool.isPending ||
-                      createConnection.isPending
-                    }
-                  >
-                    {(createCustomTool.isPending || createConnection.isPending) && (
-                      <Loader2Icon className="mr-1 size-4 animate-spin" />
-                    )}
-                    {tc('register')}
-                  </Button>
-                </DialogFooter>
-              </TabsContent>
-            </Tabs>
-          </>
-        )}
+                )}
+                {tc('register')}
+              </Button>
+            </DialogFooter>
+          </TabsContent>
+        </Tabs>
 
         <CredentialFormDialog
           open={credentialDialogOpen}
           onOpenChange={setCredentialDialogOpen}
-          onCreated={(c) => {
-            if (credentialTarget === 'mcp') setMcpMode(c.id)
-            else setCustomCredentialId(c.id)
-          }}
+          onCreated={(c) => setCustomCredentialId(c.id)}
         />
       </DialogContent>
     </Dialog>

@@ -621,9 +621,15 @@
         "serverNamePlaceholder": "Google Workspace MCP",
         "serverUrl": "서버 URL",
         "serverUrlPlaceholder": "https://mcp.example.com",
-        "discoveredTools": "{count}개 도구 발견",
-        "noToolsFound": "도구를 발견하지 못했습니다",
-        "registrationComplete": "서버가 등록되었습니다"
+        "authNoticeV1": "credential을 선택하지 않으면 공개 MCP 서버(인증 없음)로 등록됩니다. 인증이 필요한 서버는 위 인증 영역에서 credential을 선택하세요.",
+        "headerName": "헤더 이름",
+        "credentialField": "Credential 필드",
+        "credentialFieldPlaceholder": "필드 선택...",
+        "authHint": "헤더 이름은 직접 입력하고, 토큰을 보관한 credential 필드를 선택하세요. credential의 'header_name' 같은 메타 필드는 새 시스템에서 사용되지 않습니다. Bearer 토큰은 credential 값에 'Bearer xxx' 형태로 저장하세요.",
+        "submit": "등록하고 도구 탐색",
+        "connectionFailed": "MCP 연결 생성 실패: {detail}",
+        "discoverFailed": "도구 탐색 실패: {detail}. 연결 상세에서 재탐색할 수 있습니다.",
+        "discoverSuccess": "{created}개 도구를 새로 가져왔습니다 (기존 {existing}개 유지)"
       },
       "auth": {
         "label": "인증",
@@ -678,16 +684,13 @@
       "authNotSet": "인증 미설정",
       "menu": {
         "auth": "인증 설정",
-        "rename": "이름 변경",
+        "authNotSupported": "이 connection은 env_vars 템플릿이 없어 credential 연결이 적용되지 않습니다. 인증 MCP 등록 UI는 후속 업데이트에서 제공됩니다.",
         "delete": "삭제"
-      },
-      "rename": {
-        "title": "MCP 서버 이름 변경",
-        "label": "서버 이름"
       },
       "delete": {
         "title": "MCP 서버 삭제",
-        "warning": "{count}개의 도구가 함께 삭제됩니다."
+        "warning": "{count}개의 도구가 함께 삭제됩니다.",
+        "blockedByUsage": "사용 중인 도구가 있어 삭제할 수 없습니다. 도구를 먼저 정리하거나 다른 connection으로 옮기세요."
       },
       "auth": {
         "title": "{serverName} 인증 설정",
@@ -900,8 +903,7 @@
       "custom": {
         "title": "{toolName} 인증 설정",
         "description": "이 Custom 도구가 사용할 credential을 선택합니다.",
-        "bridgeOverrideWarning": "이 도구는 현재 공통 연결과 다른 credential을 직접 사용 중입니다. 저장하면 공통 연결의 credential만 바뀌고, 도구 자체 override는 유지됩니다.",
-        "unsupportedFirstBindM6": "이 도구는 연결이 없는 상태로 생성되었습니다. 현재는 연결을 새로 묶는 경로가 제공되지 않으며, M6.1 업데이트에서 지원될 예정입니다. 임시로 이 도구를 삭제한 뒤 다시 생성하면서 credential을 지정해주세요."
+        "bridgeOverrideWarning": "이 도구는 현재 공통 연결과 다른 credential을 직접 사용 중입니다. 저장하면 공통 연결의 credential만 바뀌고, 도구 자체 override는 유지됩니다."
       },
       "mcp": {
         "title": "{serverName} 인증 설정",
@@ -912,8 +914,7 @@
         "saved": "연결이 저장되었습니다",
         "savedSharedCredential": "서버 설정이 변경되었습니다 — 다른 공유 서버는 영향 없음",
         "saveFailed": "연결 저장에 실패했습니다",
-        "conflictRetry": "다른 세션에서 기본 연결이 변경되었습니다. 최신 상태로 다시 시도해주세요.",
-        "unsupportedFirstBindM6": "연결이 없는 도구의 바인딩은 M6.1에서 지원됩니다"
+        "conflictRetry": "다른 세션에서 기본 연결이 변경되었습니다. 최신 상태로 다시 시도해주세요."
       }
     },
     "prebuiltSection": {
@@ -946,9 +947,8 @@
       },
       "mcp": {
         "title": "MCP 연결",
-        "description": "MCP 서버에 연결해 추가 도구를 가져옵니다.",
-        "addButton": "연결 추가",
-        "empty": "아직 MCP 연결이 없습니다."
+        "description": "MCP 서버에 연결해 추가 도구를 가져옵니다. 신규 등록은 도구 페이지에서 수행하세요.",
+        "empty": "아직 MCP 연결이 없습니다. 도구 페이지에서 MCP 서버를 추가할 수 있습니다."
       }
     },
     "card": {
@@ -981,7 +981,11 @@
       "deleteBlockedByUsage": "사용 중인 도구가 있어 삭제할 수 없습니다. 먼저 도구의 연결을 교체하세요.",
       "defaultPrebuiltWarning": "이 provider의 다른 연결이 없어, 삭제하면 이 provider 기본 연결이 사라집니다.",
       "noToolsInUse": "현재 이 연결을 사용하는 도구가 없습니다.",
-      "mcpRebindHint": "MCP 인증은 도구 페이지의 서버 카드에서 변경할 수 있습니다."
+      "mcpRebindHint": "MCP 인증은 도구 페이지의 서버 카드에서 변경할 수 있습니다.",
+      "discoverTools": "도구 재탐색",
+      "discoverHint": "MCP 서버에서 도구 목록을 다시 가져옵니다. 새 도구는 추가되고 기존 도구는 유지됩니다.",
+      "discoverSuccess": "{created}개 도구를 새로 가져왔습니다 (기존 {existing}개 유지)",
+      "discoverFailed": "도구 탐색 실패: {detail}"
     },
     "statusToast": {
       "changed": "연결 상태가 변경되었습니다",

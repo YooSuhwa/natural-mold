@@ -70,6 +70,16 @@ def collect_legacy_checks(
             )
         )
 
+    if column_exists("tools", "mcp_server_id"):
+        checks.append(
+            (
+                "MCP tools with legacy mcp_server_id but no connection_id (dead after M6.1)",
+                "SELECT COUNT(*) FROM tools "
+                "WHERE type = 'mcp' "
+                "AND mcp_server_id IS NOT NULL AND connection_id IS NULL",
+            )
+        )
+
     checks.append(
         (
             "PREBUILT tools with NULL provider_name",

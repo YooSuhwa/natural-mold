@@ -4,6 +4,7 @@ import type {
   ConnectionCreateRequest,
   ConnectionType,
   ConnectionUpdateRequest,
+  DiscoverToolsResponse,
 } from '@/lib/types'
 
 export interface ListConnectionsParams {
@@ -35,4 +36,9 @@ export const connectionsApi = {
     }),
   delete: (id: string) =>
     apiFetch<void>(`/api/connections/${id}`, { method: 'DELETE' }),
+  discoverTools: (id: string) =>
+    apiFetch<DiscoverToolsResponse>(`/api/connections/${id}/discover-tools`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
 }

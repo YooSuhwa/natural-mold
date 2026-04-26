@@ -96,5 +96,4 @@ async def get_credential_usage(
     return CredentialUsageResponse(
         credential_id=credential_id,
         tool_count=counts["tool_count"],
-        mcp_server_count=counts["mcp_server_count"],
     )

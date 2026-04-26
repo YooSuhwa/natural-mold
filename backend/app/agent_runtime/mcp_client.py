@@ -2,97 +2,84 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
 from mcp.client.session import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-from app.config import settings
+
+def extract_transport_headers(
+    extra_config: dict[str, Any] | None,
+) -> dict[str, str] | None:
+    """connection.extra_config에서 MCP transport headers를 안전하게 추출.
+
+    chat runtime / discovery probe / test endpoint 모두 같은 키를 사용하므로
+    단일 진입점에서 dict 검증 + str 값 필터링을 수행한다.
+    """
+    if not extra_config:
+        return None
+    headers = extra_config.get("headers")
+    if not isinstance(headers, dict):
+        return None
+    cleaned = {k: v for k, v in headers.items() if isinstance(v, str)}
+    return cleaned or None
 
 
-async def test_mcp_connection(
-    url: str, auth_config: dict[str, str] | None = None
-) -> dict[str, Any]:
-    """Test connection to an MCP server and discover tools."""
-    headers: dict[str, str] = {"Content-Type": "application/json"}
+def _build_probe_headers(
+    auth_config: dict[str, str] | None,
+    extra_headers: dict[str, str] | None,
+) -> dict[str, str] | None:
+    """probe에 전달할 헤더 dict 합성. mcp transport(Content-Type/Accept)는 라이브러리가 처리.
+
+    chat runtime이 사용하는 transport 헤더 + legacy `auth_config.api_key`(단일 헤더)를
+    동일 위치에서 merge — 라이브러리에 None 또는 dict로 전달.
+    """
+    headers: dict[str, str] = {}
+    if extra_headers:
+        headers.update(extra_headers)
     if auth_config and auth_config.get("api_key"):
         header_name = auth_config.get("header_name", "Authorization")
         headers[header_name] = auth_config["api_key"]
-
-    try:
-        async with httpx.AsyncClient(timeout=settings.mcp_connection_timeout) as client:
-            # Try MCP initialize handshake
-            resp = await client.post(
-                url,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "initialize",
-                    "params": {
-                        "protocolVersion": "2024-11-05",
-                        "capabilities": {},
-                        "clientInfo": {"name": "moldy", "version": "0.1.0"},
-                    },
-                    "id": 1,
-                },
-                headers=headers,
-            )
-
-            if resp.status_code != 200:
-                return {
-                    "success": False,
-                    "error": f"Server returned status {resp.status_code}",
-                    "tools": [],
-                }
-
-            data = resp.json()
-
-            # Try to list tools
-            tools_resp = await client.post(
-                url,
-                json={
-                    "jsonrpc": "2.0",
-                    "method": "tools/list",
-                    "params": {},
-                    "id": 2,
-                },
-                headers=headers,
-            )
-
-            tools = []
-            if tools_resp.status_code == 200:
-                tools_data = tools_resp.json()
-                if "result" in tools_data and "tools" in tools_data["result"]:
-                    tools = tools_data["result"]["tools"]
-
-            return {
-                "success": True,
-                "server_info": data.get("result", {}).get("serverInfo", {}),
-                "tools": tools,
-            }
-
-    except httpx.TimeoutException:
-        return {"success": False, "error": "Connection timeout", "tools": []}
-    except httpx.ConnectError:
-        return {"success": False, "error": "Cannot connect to server", "tools": []}
-    except Exception as e:
-        return {"success": False, "error": str(e), "tools": []}
+    return headers or None
 
 
-async def list_mcp_tools(url: str) -> list[dict]:
-    """MCP 서버에서 도구 목록 발견."""
+async def test_mcp_connection(
+    url: str,
+    auth_config: dict[str, str] | None = None,
+    extra_headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """MCP 서버에 streamable-http 핸드셰이크로 연결 + 도구 목록 발견.
+
+    raw HTTP는 streamable-http SSE 협상/Accept/세션 ID 등을 처리하지 못해 일부
+    서버에서 406/SSE 파싱 실패. mcp library의 `streamablehttp_client`를 사용해
+    chat runtime과 동일 transport로 probe한다 — 인증 헤더(extra_headers +
+    auth_config)는 그대로 전달.
+    """
+    headers = _build_probe_headers(auth_config, extra_headers)
+
     try:
         async with (
-            streamablehttp_client(url) as (read, write, _),
+            streamablehttp_client(url, headers=headers) as (read, write, _),
             ClientSession(read, write) as session,
         ):
-            await session.initialize()
-            result = await session.list_tools()
-            return [
+            init_result = await session.initialize()
+            tools_result = await session.list_tools()
+
+            server_info: dict[str, Any] = {}
+            if init_result.serverInfo is not None:
+                server_info = {
+                    "name": init_result.serverInfo.name,
+                    "version": init_result.serverInfo.version,
+                }
+
+            tools = [
                 {
                     "name": t.name,
                     "description": t.description or "",
                     "inputSchema": t.inputSchema,
                 }
-                for t in result.tools
+                for t in tools_result.tools
             ]
-    except Exception:
-        return []
+            return {"success": True, "server_info": server_info, "tools": tools}
+    except Exception as e:  # noqa: BLE001
+        return {"success": False, "error": str(e), "tools": []}
+
+

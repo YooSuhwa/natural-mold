@@ -209,7 +209,6 @@ export interface CredentialUpdateRequest {
 
 export interface CredentialUsage {
   tool_count: number
-  mcp_server_count: number
 }
 
 // Tool
@@ -217,7 +216,6 @@ export interface Tool {
   id: string
   type: 'mcp' | 'custom' | 'builtin' | 'prebuilt'
   is_system: boolean
-  mcp_server_id: string | null
   // PREBUILT tool의 provider 식별자. connection 조회에 사용. 그 외 타입은 null.
   provider_name: string | null
   name: string
@@ -301,8 +299,22 @@ export interface ConnectionCreateRequest {
   provider_name: string
   display_name: string
   credential_id?: string | null
+  extra_config?: {
+    url: string
+    auth_type: ConnectionMcpAuthType
+    headers?: Record<string, string> | null
+    env_vars?: Record<string, string> | null
+    transport?: ConnectionMcpTransport | null
+    timeout?: number | null
+  } | null
   is_default?: boolean
   status?: ConnectionStatus
+}
+
+export interface DiscoverToolsResponse {
+  connection_id: string
+  server_info: Record<string, unknown>
+  items: Array<{ tool: Tool; status: 'created' | 'existing' }>
 }
 
 export interface ConnectionUpdateRequest {
@@ -313,40 +325,6 @@ export interface ConnectionUpdateRequest {
   status?: ConnectionStatus
 }
 
-export interface MCPServer {
-  id: string
-  name: string
-  url: string
-  auth_type: string
-  status: string
-  tools: Tool[]
-  created_at: string
-}
-
-export interface CredentialBrief {
-  id: string
-  name: string
-  provider_name: string
-}
-
-export interface MCPServerListItem {
-  id: string
-  name: string
-  url: string
-  auth_type: string
-  credential_id: string | null
-  credential: CredentialBrief | null
-  status: string
-  tool_count: number
-  created_at: string
-}
-
-export interface MCPServerUpdateRequest {
-  name?: string
-  credential_id?: string | null
-  auth_config?: Record<string, unknown>
-}
-
 export interface ToolCustomCreateRequest {
   name: string
   description?: string
@@ -355,14 +333,6 @@ export interface ToolCustomCreateRequest {
   parameters_schema?: Record<string, unknown>
   auth_type?: string
   connection_id?: string
-}
-
-export interface MCPServerCreateRequest {
-  name: string
-  url: string
-  auth_type?: string
-  auth_config?: Record<string, unknown>
-  credential_id?: string
 }
 
 // Template

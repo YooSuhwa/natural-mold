@@ -9,7 +9,7 @@ from app.models.model import Model
 from app.models.skill import AgentSkillLink, Skill
 from app.models.template import Template
 from app.models.token_usage import TokenUsage
-from app.models.tool import AgentToolLink, MCPServer, Tool
+from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
 
 __all__ = [
@@ -20,7 +20,6 @@ __all__ = [
     "Model",
     "Template",
     "AgentToolLink",
-    "MCPServer",
     "Tool",
     "Agent",
     "Conversation",

@@ -91,6 +91,7 @@ async def _enforce_m6_legacy_invariants(db: AsyncSession) -> None:
             ("agent_tools", "config"),
             ("tools", "credential_id"),
             ("tools", "auth_config"),
+            ("tools", "mcp_server_id"),
         ]:
             cache[(table, column)] = await column_exists_async(table, column)
 

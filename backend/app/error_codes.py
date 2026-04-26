@@ -26,10 +26,6 @@ def tool_not_found() -> NotFoundError:
     return NotFoundError("TOOL_NOT_FOUND", "도구를 찾을 수 없습니다")
 
 
-def mcp_server_not_found() -> NotFoundError:
-    return NotFoundError("MCP_SERVER_NOT_FOUND", "MCP 서버를 찾을 수 없습니다")
-
-
 def session_not_found() -> NotFoundError:
     return NotFoundError("SESSION_NOT_FOUND", "빌드 세션을 찾을 수 없습니다")
 

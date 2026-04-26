@@ -63,4 +63,3 @@ class CredentialProviderDef(BaseModel):
 class CredentialUsageResponse(BaseModel):
     credential_id: uuid.UUID
     tool_count: int
-    mcp_server_count: int

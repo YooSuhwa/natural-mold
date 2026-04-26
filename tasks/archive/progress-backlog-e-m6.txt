@@ -1,0 +1,128 @@
+# progress.txt — 백로그 E M6 (Cleanup — backend drop + legacy 제거)
+
+## Codebase Patterns (M1~M5에서 확인된 것)
+
+- Alembic convention: `m{N}_<snake_case>.py`. 최신 head는 `m11_custom_credential_migration`.
+- FK constraint naming: `fk_<table>_<col>` 패턴 사용. drop 시 명시적 constraint name.
+- aiosqlite in-memory 테스트 — 실제 FK cascade 동작이 PG와 다를 수 있음. 통합 검증은 docker PG 사용.
+- Connection 엔티티는 1:1(CUSTOM) 또는 N:1(MCP 공유) credential 참조. M5 기준 is_default=True인 PREBUILT connection이 tool.connection_id와 매핑.
+- `status='active' | 'disabled'` kill-switch. disabled → fail-closed at chat_service.
+
+## Gotchas
+
+- `tools.credential_id` FK ondelete=SET NULL → drop 시 FK constraint 먼저 제거 필수
+- `tools.mcp_server_id` FK는 ondelete RESTRICT일 수 있음 — 드롭 전 확인
+- `chat_service.py` `merged_auth = {**cred_auth, **(link.config or {})}` 라인 — `link.config`는 `agent_tools.config`. 실제로 저장된 값이 있는지 S1에서 재확인
+- `ToolResponse._mask_auth_config`는 auth_config 컬럼 제거와 함께 삭제. 다른 곳에서 참조 없는지 grep
+- `lib/api/tools.ts` `updateAuthConfig` 함수 — 호출처가 모두 dead인지 M5 이후 상태 확인 (UI 통합 후 3개 legacy dialog 삭제됨 → 호출처 0일 가능성 높음)
+- `use-chat-runtime.ts:74` streamError unused warning은 M5 알려진 부채. M6에서 건드리지 말 것
+- `credentials.ts` / `use-credentials.ts`는 UI 분리되었지만 Connection 내부 API로 살아있음. 지우지 말 것
+
+## 실패 교훈
+
+- 2026-04-21 [젠슨 S3]: `credential_service.get_usage_count`가 `Tool.credential_id`를 SELECT하고 있었음 — M6 drop 스코프와 간접 충돌. 해결: `tools JOIN connections ON tools.connection_id = connections.id WHERE connections.credential_id = X`로 재작성 (stale UI 호출이 `{credential_id}/usage` 엔드포인트 끊기면 안 되기 때문). `mcp_server_count`는 MCPServer 유지 스코프이므로 그대로.
+- 2026-04-21 [젠슨 S3]: `_resolve_legacy_tool_auth`가 모듈 외부(`__all__` + test imports)에 노출되어 있어 함수 삭제 시 두 테스트 파일(`test_connection_custom_resolve.py` / `test_connection_prebuilt_resolve.py`)이 ImportError로 전체 collection 실패. 해결: import 제거 + legacy 전용 testcase 삭제 + M6 fail-closed 시나리오로 교체.
+- 2026-04-21 [젠슨 S3]: `Tool(auth_config=..., credential_id=...)` / `AgentToolLink(config=...)` 생성자 kwarg를 쓰던 테스트가 모델 레이어 drop과 함께 TypeError 발생. 전수 grep으로 8개 파일에서 일괄 정리.
+
+## 결정사항 (S3 젠슨 추가)
+
+- 2026-04-21 [젠슨 S3]: PATCH `/api/tools/{id}/auth-config` 엔드포인트 + `ToolAuthConfigUpdate` 스키마 + `tool_service.update_tool_auth_config` 완전 삭제 (베조스 권고 수용).
+- 2026-04-21 [젠슨 S3]: `_resolve_legacy_tool_auth` 함수 완전 삭제. PREBUILT provider_name NULL 분기 + BUILTIN else 분기는 `cred_auth = {}`로 단순화 (env fallback과 동치).
+- 2026-04-21 [젠슨 S3]: CUSTOM tool이 connection_id NULL이면 `ToolConfigError` fail-closed (legacy `_resolve_legacy_tool_auth` 위임 제거).
+- 2026-04-21 [젠슨 S3]: `_mask_auth_config` / `AUTH_CONFIG_MASK` / `_reject_mask_sentinel` 전부 제거. ToolResponse가 이제 auth_config 필드 자체를 가지지 않으므로 masking 불필요.
+- 2026-04-21 [젠슨 S3]: `tool_service._apply_credential_update` 시그니처 좁힘(`Tool | MCPServer` → `MCPServer` only). Tool은 M6 이후 credential_id 없음.
+
+## S4 변경 요약 (저커버그)
+
+- 수정 파일 5개:
+  - `frontend/src/lib/types/index.ts` — `Tool.auth_config` / `Tool.credential_id` 제거, `ToolCustomCreateRequest.auth_config` / `credential_id` 제거. **유지**: `Tool.mcp_server_id`, `MCPServer*` 타입 전부, `MCPServerCreate/Update/ListItem`.
+  - `frontend/src/lib/api/tools.ts` — `updateAuthConfig` 함수 제거 (PATCH `/api/tools/{id}/auth-config` dead). **유지**: MCP server CRUD 4종 + `testMCPConnection`.
+  - `frontend/src/lib/hooks/use-tools.ts` — `useUpdateToolAuthConfig` hook 제거. **유지**: `useRegisterMCPServer`, `useMCPServers`, `useUpdateMCPServer`, `useDeleteMCPServer`, `useToolsByConnection` (mcp_server_id 참조 포함).
+  - `frontend/src/app/tools/page.tsx` — `getAuthStatus`에서 `tool.credential_id` / `tool.auth_config` legacy 분기 제거, `handleCustomBound` 함수 + `updateAuth` hook 호출 제거, `Connection` import 제거, prebuilt-NULL-fallback 주석 갱신. MCP 섹션은 건드리지 않음.
+  - `frontend/src/components/tool/add-tool-dialog.tsx` — custom tool POST body의 `credential_id: customCredentialId` 제거 (connection_id만 전송).
+  - `frontend/src/components/connection/connection-binding-dialog.tsx` — `showBridgeWarning` 블록 전체 제거, 하이드레이션의 `tool?.credential_id` fallback 제거, unused `triggerContext` param 제거. MCP body는 건드리지 않음.
+
+- 삭제 라인 수: 약 60줄 (tool.auth_config/credential_id 관련 로직 + updateAuthConfig API/hook + bridge warning UI + unused imports/params).
+
+- 검증: `pnpm lint` → 기존 `use-chat-runtime.ts:74` 1건만 남음 (요구된 동작). `pnpm build` → 15 routes, Turbopack compile 4.2s PASS.
+
+- 예상 외 발견:
+  - `showBridgeWarning` 제거로 `CustomBody`의 `triggerContext` param이 완전 dead가 되어 새 ESLint warning 발생 → destructure에서 제거로 해결.
+  - `app/tools/page.tsx`의 `Connection` type import가 `handleCustomBound` 제거로 unused → 함께 제거.
+  - `add-tool-dialog.tsx`는 MCP 경로에서 `credential_id: mcpCredentialId` 전송을 유지 (MCPServerCreateRequest는 M6.1까지 live) — CUSTOM 경로의 tool POST body에서만 legacy `credential_id` 필드 전송 제거.
+
+## S3 변경 요약 (젠슨)
+
+- Alembic: `backend/alembic/versions/m12_drop_legacy_columns.py` 신규 (upgrade/downgrade round-trip docker PG PASS)
+- 모델: `backend/app/models/tool.py` — `Tool.credential_id` / `Tool.auth_config` / `Tool.credential` relationship / `AgentToolLink.config` 삭제. `MCPServer`, `Tool.mcp_server_id`, `Tool.mcp_server` 유지.
+- 서비스: `chat_service.py` (bridge override + legacy resolver 삭제, merged_auth 단순화), `agent_service.py` (`_build_tool_links` 시그니처 단순화 + tool_configs 처리 삭제), `tool_service.py` (`create_custom_tool` 단순화, `update_tool_auth_config` 삭제, `_apply_credential_update` 축소), `credential_service.py` (`get_usage_count` tool_count 쿼리 재작성).
+- 라우터/스키마: `routers/tools.py` (`PATCH /auth-config` 삭제), `routers/agents.py` (`ToolBrief.agent_config` 제거), `schemas/tool.py` (`_mask_auth_config` + `ToolAuthConfigUpdate` + `ToolCustomCreate.{credential_id,auth_config}` + `ToolResponse.{auth_config,credential_id}` 제거), `schemas/agent.py` (`ToolConfigEntry` + `tool_configs` + `ToolBrief.agent_config` 제거).
+- Agent runtime: `agent_runtime/assistant/tools/write_tools.py` (`update_tool_config` 삭제), `read_tools.py` (`get_tool_config` 삭제 + `get_agent_config`의 `config` 반환 제거).
+- 테스트: 1개 파일 전체 삭제 (`test_agent_tool_config.py`), 22개 testcase 삭제 혹은 재작성 (legacy credential/bridge override/PATCH auth-config). Round-trip pytest 624/624 PASS, ruff clean.
+
+## 결정사항
+
+- 2026-04-21: M6 스코프 = 백엔드 cleanup만. 옵션 D + UI 리팩토링은 M6.1로 분리
+- 2026-04-21: M5.5 (agent_tools.connection_id override)는 M6 이후 — 깨끗한 스키마 위에서 설계
+- 2026-04-21: m12 downgrade는 구조만 복구, 데이터 복구 불가 명시
+- 2026-04-21 [피차이 S2]: m12 down_revision = `m11_custom_connection` (파일명 m11_custom_credential_migration.py의 내부 revision ID — 파일명 ≠ revision ID 주의)
+- 2026-04-21 [피차이 S2]: m12 upgrade 순서 확정 = (1) FK drop tools_mcp_server_id_fkey + fk_tools_credential_id → (2) tools 컬럼 3개 drop → (3) agent_tools.config drop → (4) mcp_servers 테이블 drop. drop_table이 mcp_servers 내부 FK(fk_mcp_servers_credential_id, user_id)를 자동 정리
+- 2026-04-21 [피차이 S2]: tools.mcp_server_id FK 이름은 initial migration aa5b4cc59ddb가 **이름 없이** 생성 → PG 기본명 `tools_mcp_server_id_fkey`. 배포 전 `\d tools`로 실측 확인 필수 (spec §8.2)
+- 2026-04-21 [피차이 S2]: tools.credential_id FK 이름은 m6_add_credentials.py에서 명시된 `fk_tools_credential_id` (확정)
+- 2026-04-21 [피차이 S2]: connections 테이블은 mcp_servers를 FK로 참조하지 않음 — drop 안전. tools.mcp_server_id가 mcp_servers를 참조하는 유일한 FK
+- 2026-04-21 [피차이 S2]: pre-check 3쿼리 필수 (stale_custom_tools=0, stale_mcp_tools=0, non_empty_agent_tool_configs는 S1과 교차검증). spec §5.1
+- 2026-04-21 [피차이 S2]: 스펙 → docs/design-docs/m6-cleanup-migration-spec.md. 젠슨 S3 input 준비 완료
+- 2026-04-21 [베조스 S1]: deletion-analysis-e-m6.md 작성 완료. 판정 = **주의**. agent_tools.config drop은 3파트 원자 정리 필수:
+  (1) schemas/agent.py ToolConfigEntry / AgentCreate.tool_configs / AgentUpdate.tool_configs / ToolBrief.agent_config
+  (2) services/agent_service.py tool_configs 처리 블록 (line 74-77, 124-137) + _build_tool_links 시그니처
+  (3) agent_runtime/assistant/tools/write_tools.py update_tool_config(line 312-330) + read_tools.py get_tool_config/get_agent_config.tools[].config
+  이 중 하나라도 빠지면 AI 에이전트 생성 대화에서 AttributeError. 프론트는 해당 필드 미사용(grep 0) → UI 회귀 없음
+- 2026-04-21 [베조스 S1]: chat_service.py merged_auth 라인은 `merged_auth = cred_auth` 로 단순화 (link.config 제거)
+- 2026-04-21 [베조스 S1]: `_resolve_legacy_tool_auth` 완전 삭제 결정 — PREBUILT provider_name NULL / CUSTOM connection_id NULL / BUILTIN else 3분기 모두 제거. CUSTOM NULL은 ToolConfigError raise로 변경 (fail-closed)
+- 2026-04-21 [베조스 S1]: `PATCH /api/tools/{id}/auth-config` 라우터 + ToolAuthConfigUpdate 스키마 삭제 권고 (dead path) — 사티아 최종 판단
+- 2026-04-21 [베조스 S1]: frontend S4 scope 경고 — `app/tools/page.tsx` MCP 섹션, `add-tool-dialog`, `mcp-server-*-dialog`, `connection-binding-dialog`의 `useUpdateMCPServer` 사용처는 "thin cleanup"을 초과 가능. 저커버그가 S4 착수 전 사티아 범위 승인 권고
+- 2026-04-21 [사티아 SCOPE_REDUCED_2]: M6 실제 scope **축소** = `tools.auth_config` + `tools.credential_id` + `agent_tools.config` drop만. mcp_servers/tools.mcp_server_id/resolve_server_auth/chat_service MCP fallback 전부 **M6.1로 이월** (옵션 D 선행 필요). 이유: connection-binding-dialog.tsx:479가 useUpdateMCPServer 라이브 호출 중 → MCP drop 불가. 피차이 spec §mcp_servers drop은 M6.1에서 재사용, S3 젠슨은 spec §4.1-4.2 tools/agent_tools drop만 사용. 베조스 S1 MCP fallback/`_resolve_legacy_tool_auth` MCP 분기 삭제도 M6.1로 이월.
+
+## S5 검증 결과 (베조스)
+
+- 2026-04-21 [베조스 S5]: 자동 검증 전수 PASS
+  - `uv run ruff check .` → `All checks passed!` (0.14s)
+  - `uv run pytest -q` → `624 passed, 1 deselected, 3 warnings in 81.21s`
+  - `pnpm lint` → `1 problem (0 errors, 1 warning)` — 기존 use-chat-runtime.ts:74만 (신규 깨짐 0), 4.40s
+  - `pnpm build` → `15 routes`, Turbopack, 10.19s
+  - Alembic round-trip on docker PG (fresh DB `moldy_m6verify`): `upgrade head (m12) → downgrade -1 (m11) → upgrade head (m12)` 전부 PASS
+
+- 2026-04-21 [베조스 S5]: grep 불변식 — 삭제 스코프 0건 (MCPServer 이월 스코프 제외)
+  - `rg "link\.config|AgentToolLink.*config" backend/app/` → 0
+  - `rg "tool\.credential_id|Tool\.credential_id" backend/app/` → 0 (docstring 1건 제외)
+  - `rg "ToolConfigEntry|tool_configs|ToolAuthConfigUpdate" backend/app/` → 0
+  - `rg "_mask_auth_config|AUTH_CONFIG_MASK" backend/app/` → 0
+  - `rg "_resolve_legacy_tool_auth" backend/app/` → 0
+  - `rg "tool_configs|agent_config" frontend/src` → 0
+  - `rg "updateAuthConfig|useUpdateToolAuthConfig" frontend/src` → 0
+  - `\.auth_config` 잔존 매칭은 backend 4건 / frontend 3건 전부 **MCPServer 스코프** (types/service/model) — M6.1 이월 대상이라 유지되어야 함
+
+- 2026-04-21 [베조스 S5]: 유지 스코프 존재 확인 (M6.1 이월)
+  - `backend/app/models/tool.py:34` `class MCPServer` 존재
+  - `backend/app/models/tool.py:71` `mcp_server_id` FK 존재
+  - `backend/app/services/credential_service.py:111` `resolve_server_auth(server: MCPServer)` 존재
+  - `frontend/src/lib/hooks/use-tools.ts:97` `useUpdateMCPServer` 존재
+
+- 2026-04-21 [베조스 S5]: DB 스키마 실측 (docker PG, m12 head)
+  - `\d tools` → 컬럼 15개 중 `auth_config`/`credential_id` **부재** 확인, `mcp_server_id`/`connection_id` 존재. FK `fk_tools_connection_id`(SET NULL) + `tools_mcp_server_id_fkey` 동시 존재
+  - `\d agent_tools` → `(agent_id, tool_id)` 2컬럼만. `config` 부재
+  - `SELECT to_regclass('mcp_servers')` → `mcp_servers` 존재 (M6.1 이월)
+
+- 2026-04-21 [베조스 S5]: 잠재 회귀 포인트 3개 전수 검증
+  - (1) `credential_service.get_usage_count` — 단일 호출처 `routers/credentials.py:93`, `tools JOIN connections` 재작성 쿼리 정상. `test_credentials.py` 5/5 PASS. 회귀 없음.
+  - (2) `_resolve_legacy_tool_auth` 삭제 후 CUSTOM null connection 커버리지 — `chat_service.py:306` fail-closed, `test_connection_custom_resolve.py::test_custom_resolves_raises_when_connection_id_is_null` 포함 12/12 PASS. 회귀 없음.
+  - (3) `_mask_auth_config` 제거 후 masking 누수 — ToolResponse가 auth_config 필드 자체를 가지지 않음, grep 잔존 0건. 누수 없음.
+
+- 2026-04-21 [베조스 S5]: 수동 E2E 5 시나리오 `tasks/manual-e2e-e-m6.md` 작성 완료
+  1. PREBUILT Naver → 자동 매칭 → 에이전트 실행
+  2. CUSTOM connection → credential_id 필드 POST body 부재 확인 → 에이전트 실행
+  3. MCP 경로 (M6.1 이월) — useUpdateMCPServer 라이브 동작, connection-binding-dialog 정상
+  4. Connection status=disabled → ToolConfigError fail-closed
+  5. DB 직접 검증 — `\d tools` / `\d agent_tools` / `to_regclass('mcp_servers')`
+
+- 2026-04-21 [베조스 S5]: 종합 판정 = **그린**. MCP 경계 침범 0건, 회귀 발견 0건. 사티아 S6(HANDOFF.md + 단일 커밋) 진행 가능.

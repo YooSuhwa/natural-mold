@@ -1,150 +1,87 @@
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+import pytest
 
-import httpx
+from app.agent_runtime.mcp_client import (
+    _build_probe_headers,
+    extract_transport_headers,
+)
+from app.agent_runtime.mcp_client import (
+    test_mcp_connection as mcp_test_connection,
+)
 
-from app.agent_runtime.mcp_client import test_mcp_connection as mcp_test_connection
+# ---------------------------------------------------------------------------
+# Header helpers — pure function 단위 테스트.
+# probe 자체는 mcp library의 streamable-http transport에 위임하므로 외부 호출
+# 모킹 가치가 낮음 — 헤더 합성/추출 로직만 회귀 방어한다.
+# ---------------------------------------------------------------------------
 
 
-def _mock_response(status_code: int = 200, json_data: dict | None = None):
-    resp = MagicMock()
-    resp.status_code = status_code
-    resp.json.return_value = json_data or {}
-    return resp
+class TestExtractTransportHeaders:
+    def test_none_input_returns_none(self):
+        assert extract_transport_headers(None) is None
+
+    def test_no_headers_key_returns_none(self):
+        assert extract_transport_headers({"url": "https://x"}) is None
+
+    def test_non_dict_headers_returns_none(self):
+        assert extract_transport_headers({"headers": "not a dict"}) is None
+
+    def test_dict_headers_returns_str_only(self):
+        assert extract_transport_headers(
+            {"headers": {"X-Tenant": "acme", "X-Bad": 123, "X-Empty": None}}
+        ) == {"X-Tenant": "acme"}
+
+    def test_all_non_str_returns_none(self):
+        assert extract_transport_headers({"headers": {"X-Bad": 123}}) is None
 
 
-class TestMcpConnection:
-    async def test_success(self):
-        init_resp = _mock_response(
-            200, {"result": {"serverInfo": {"name": "test-server", "version": "1.0"}}}
+class TestBuildProbeHeaders:
+    def test_no_auth_no_extra_returns_none(self):
+        assert _build_probe_headers(None, None) is None
+
+    def test_extra_headers_only(self):
+        assert _build_probe_headers(None, {"X-Tenant": "acme"}) == {"X-Tenant": "acme"}
+
+    def test_auth_config_default_authorization_header(self):
+        headers = _build_probe_headers({"api_key": "secret"}, None)
+        assert headers == {"Authorization": "secret"}
+
+    def test_auth_config_custom_header_name(self):
+        headers = _build_probe_headers(
+            {"api_key": "secret", "header_name": "X-API-Key"}, None
         )
-        tools_resp = _mock_response(
-            200, {"result": {"tools": [{"name": "tool1"}, {"name": "tool2"}]}}
+        assert headers == {"X-API-Key": "secret"}
+
+    def test_auth_config_without_api_key_ignored(self):
+        # api_key 없으면 auth_config 전체 무시 — 빈 헤더 반환
+        assert _build_probe_headers({"header_name": "X-API-Key"}, None) is None
+
+    def test_extra_and_auth_merged(self):
+        headers = _build_probe_headers(
+            {"api_key": "tok"}, {"X-Tenant": "acme"}
         )
+        assert headers == {"X-Tenant": "acme", "Authorization": "tok"}
 
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=[init_resp, tools_resp])
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
+    def test_auth_overrides_extra_with_same_header(self):
+        # auth_config가 extra_headers 뒤에 적용되어 동일 키는 덮어쓴다 (legacy 호환)
+        headers = _build_probe_headers(
+            {"api_key": "winner", "header_name": "X-Auth"},
+            {"X-Auth": "loser"},
+        )
+        assert headers == {"X-Auth": "winner"}
 
-        with patch("app.agent_runtime.mcp_client.httpx.AsyncClient", return_value=mock_client):
-            result = await mcp_test_connection("https://mcp.example.com")
 
-        assert result["success"] is True
-        assert result["server_info"] == {"name": "test-server", "version": "1.0"}
-        assert len(result["tools"]) == 2
+# ---------------------------------------------------------------------------
+# probe failure — streamablehttp_client에 도달 불가능한 URL → success=False.
+# 외부 호출은 발생하지만 즉시 connection error로 떨어진다 (실제 네트워크 X).
+# ---------------------------------------------------------------------------
 
-    async def test_connection_timeout(self):
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("timeout"))
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.agent_runtime.mcp_client.httpx.AsyncClient", return_value=mock_client):
-            result = await mcp_test_connection("https://mcp.example.com")
-
-        assert result["success"] is False
-        assert result["error"] == "Connection timeout"
-        assert result["tools"] == []
-
-    async def test_connection_error(self):
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("app.agent_runtime.mcp_client.httpx.AsyncClient", return_value=mock_client):
-            result = await mcp_test_connection("https://mcp.example.com")
-
-        assert result["success"] is False
-        assert result["error"] == "Cannot connect to server"
-        assert result["tools"] == []
-
-    async def test_non_200_status(self):
-        init_resp = _mock_response(503, {})
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(return_value=init_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("app.agent_runtime.mcp_client.httpx.AsyncClient", return_value=mock_client):
-            result = await mcp_test_connection("https://mcp.example.com")
-
-        assert result["success"] is False
-        assert "503" in result["error"]
-        assert result["tools"] == []
-
-    async def test_invalid_json_response(self):
-        mock_client = AsyncMock()
-        bad_resp = MagicMock()
-        bad_resp.status_code = 200
-        bad_resp.json.side_effect = ValueError("Invalid JSON")
-        mock_client.post = AsyncMock(return_value=bad_resp)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("app.agent_runtime.mcp_client.httpx.AsyncClient", return_value=mock_client):
-            result = await mcp_test_connection("https://mcp.example.com")
-
-        assert result["success"] is False
-        assert "Invalid JSON" in result["error"]
-
-    async def test_with_auth_config_api_key(self):
-        init_resp = _mock_response(200, {"result": {"serverInfo": {}}})
-        tools_resp = _mock_response(200, {"result": {"tools": []}})
-
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=[init_resp, tools_resp])
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("app.agent_runtime.mcp_client.httpx.AsyncClient", return_value=mock_client):
-            result = await mcp_test_connection(
-                "https://mcp.example.com",
-                auth_config={"api_key": "secret-key"},
-            )
-
-        assert result["success"] is True
-        # Verify auth header was included in the request
-        call_kwargs = mock_client.post.call_args_list[0]
-        headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
-        assert headers.get("Authorization") == "secret-key"
-
-    async def test_with_auth_config_custom_header(self):
-        init_resp = _mock_response(200, {"result": {"serverInfo": {}}})
-        tools_resp = _mock_response(200, {"result": {"tools": []}})
-
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=[init_resp, tools_resp])
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("app.agent_runtime.mcp_client.httpx.AsyncClient", return_value=mock_client):
-            result = await mcp_test_connection(
-                "https://mcp.example.com",
-                auth_config={"api_key": "my-key", "header_name": "X-API-Key"},
-            )
-
-        assert result["success"] is True
-        call_kwargs = mock_client.post.call_args_list[0]
-        headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
-        assert headers.get("X-API-Key") == "my-key"
-
-    async def test_without_auth_config(self):
-        init_resp = _mock_response(200, {"result": {"serverInfo": {}}})
-        tools_resp = _mock_response(200, {"result": {"tools": []}})
-
-        mock_client = AsyncMock()
-        mock_client.post = AsyncMock(side_effect=[init_resp, tools_resp])
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-
-        with patch("app.agent_runtime.mcp_client.httpx.AsyncClient", return_value=mock_client):
-            result = await mcp_test_connection("https://mcp.example.com")
-
-        assert result["success"] is True
-        # Only Content-Type header, no Authorization
-        call_kwargs = mock_client.post.call_args_list[0]
-        headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
-        assert "Authorization" not in headers
+@pytest.mark.asyncio
+async def test_probe_unreachable_returns_failure():
+    # localhost의 닫힌 포트로 즉시 connection refused.
+    result = await mcp_test_connection("http://127.0.0.1:1/nonexistent")
+    assert result["success"] is False
+    assert "error" in result
+    assert result["tools"] == []

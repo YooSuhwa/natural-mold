@@ -11,7 +11,6 @@ import { useConnections } from '@/lib/hooks/use-connections'
 import { ConnectionBindingDialog } from '@/components/connection/connection-binding-dialog'
 import { ConnectionCard } from '@/components/connection/connection-card'
 import { ConnectionDetailSheet } from '@/components/connection/connection-detail-sheet'
-import { AddToolDialog } from '@/components/tool/add-tool-dialog'
 import {
   PREBUILT_PROVIDER_NAMES as PREBUILT_PROVIDERS,
   PREBUILT_PROVIDER_I18N_KEY as PREBUILT_PROVIDER_I18N,
@@ -138,7 +137,7 @@ function PrebuiltSection({
           type="prebuilt"
           providerName={dialogProvider}
           toolName={providerLabel(dialogProvider)}
-          triggerContext="standalone"
+          createNew
           open={!!dialogProvider}
           onOpenChange={(v) => !v && setDialogProvider(null)}
         />
@@ -189,7 +188,6 @@ function CustomSection({
       {dialogOpen && (
         <ConnectionBindingDialog
           type="custom"
-          triggerContext="standalone"
           open={dialogOpen}
           onOpenChange={setDialogOpen}
         />
@@ -199,7 +197,7 @@ function CustomSection({
 }
 
 // ─────────────────────────────────────────────────────────────────
-// MCP Section — "연결 추가"는 AddToolDialog MCP 탭으로 위임 (spec §3.3 옵션 A)
+// MCP Section — 조회/관리 전용. 신규 등록은 `/tools` AddToolDialog의 MCP 탭.
 // ─────────────────────────────────────────────────────────────────
 
 function McpSection({
@@ -210,21 +208,12 @@ function McpSection({
   onOpenDetail: (c: Connection) => void
 }) {
   const t = useTranslations('connections.sections.mcp')
+
   return (
     <section>
-      <header className="mb-3 flex items-start justify-between gap-2">
-        <div>
-          <h2 className="text-base font-semibold">{t('title')}</h2>
-          <p className="text-sm text-muted-foreground">{t('description')}</p>
-        </div>
-        <AddToolDialog
-          trigger={
-            <Button variant="outline" size="sm">
-              <PlusIcon className="size-3.5" data-icon="inline-start" />
-              {t('addButton')}
-            </Button>
-          }
-        />
+      <header className="mb-3">
+        <h2 className="text-base font-semibold">{t('title')}</h2>
+        <p className="text-sm text-muted-foreground">{t('description')}</p>
       </header>
 
       {connections.length > 0 ? (
