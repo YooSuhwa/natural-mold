@@ -114,19 +114,50 @@ class TestCreateChatModel:
         kwargs = mock_cls.call_args[1]
         assert "base_url" not in kwargs
 
-    def test_api_key_none_when_not_provided(self):
-        """When api_key param is None, api_key=None should be passed (no env fallback)."""
+    def test_api_key_none_falls_back_to_settings(self):
+        """api_key=None일 때 PROVIDER_API_KEY_MAP의 settings 키로 fallback.
+
+        새 langchain-anthropic / langchain-openai은 pydantic strict로 None을 거부하므로
+        명시 fallback 후 None이면 kwargs에서 제외 (라이브러리 환경변수 fallback).
+        """
         mock_cls = MagicMock()
-        with patch.dict(
-            "app.agent_runtime.model_factory.PROVIDER_MAP",
-            {"openai": mock_cls},
+        with (
+            patch.dict(
+                "app.agent_runtime.model_factory.PROVIDER_MAP",
+                {"openai": mock_cls},
+            ),
+            patch.dict(
+                "app.agent_runtime.model_factory.PROVIDER_API_KEY_MAP",
+                {"openai": "settings-fallback"},
+            ),
         ):
             from app.agent_runtime.model_factory import create_chat_model
 
             create_chat_model("openai", "gpt-4o", api_key=None)
 
         kwargs = mock_cls.call_args[1]
-        assert kwargs["api_key"] is None
+        assert kwargs["api_key"] == "settings-fallback"
+
+    def test_api_key_none_with_no_settings_excluded_from_kwargs(self):
+        """api_key 인자도 None, settings도 None이면 kwargs에서 아예 제외 (라이브러리가
+        환경변수로 직접 잡게)."""
+        mock_cls = MagicMock()
+        with (
+            patch.dict(
+                "app.agent_runtime.model_factory.PROVIDER_MAP",
+                {"openai": mock_cls},
+            ),
+            patch.dict(
+                "app.agent_runtime.model_factory.PROVIDER_API_KEY_MAP",
+                {"openai": None},
+            ),
+        ):
+            from app.agent_runtime.model_factory import create_chat_model
+
+            create_chat_model("openai", "gpt-4o", api_key=None)
+
+        kwargs = mock_cls.call_args[1]
+        assert "api_key" not in kwargs
 
     def test_explicit_api_key_overrides_settings(self):
         """Explicit api_key parameter should take precedence over settings."""
