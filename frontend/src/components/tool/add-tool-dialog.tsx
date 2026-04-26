@@ -64,10 +64,10 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
   const [credentialDialogOpen, setCredentialDialogOpen] = useState(false)
   const createCustomTool = useCreateCustomTool()
 
-  // MCP form state
+  // MCP form state — credential 선택이 곧 "인증 사용" 의도. CREDENTIAL_NONE이면
+  // 공개 MCP 서버로 등록, credential 선택 시 헤더/필드 입력 노출.
   const [mcpDisplayName, setMcpDisplayName] = useState('')
   const [mcpUrl, setMcpUrl] = useState('')
-  const [mcpAuthEnabled, setMcpAuthEnabled] = useState(false)
   const [mcpHeaderName, setMcpHeaderName] = useState('Authorization')
   const [mcpCredentialId, setMcpCredentialId] = useState<string>(CREDENTIAL_NONE)
   const [mcpCredentialField, setMcpCredentialField] = useState<string>('')
@@ -91,7 +91,6 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     setCustomCredentialId(CREDENTIAL_NONE)
     setMcpDisplayName('')
     setMcpUrl('')
-    setMcpAuthEnabled(false)
     setMcpHeaderName('Authorization')
     setMcpCredentialId(CREDENTIAL_NONE)
     setMcpCredentialField('')
@@ -160,15 +159,14 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     const trimmedUrl = mcpUrl.trim()
     if (!trimmedName || !trimmedUrl) return
 
-    // 인증 사용 시: api_key auth_type + env_vars 템플릿 매핑.
+    // credential 선택 = 인증 사용 의도. CREDENTIAL_NONE이면 공개 MCP 서버.
     // backend env_var_resolver는 전체 매칭만 지원 — 부분 치환 불가하므로
     // credential 값에 prefix(예: "Bearer ")가 필요하면 사용자가 credential
     // 저장 시 prefix를 포함해 저장해야 한다.
     const useAuth =
-      mcpAuthEnabled &&
       mcpCredentialId !== CREDENTIAL_NONE &&
-      mcpHeaderName.trim() &&
-      mcpCredentialField.trim()
+      mcpHeaderName.trim() !== '' &&
+      mcpCredentialField.trim() !== ''
     const extraConfig = useAuth
       ? {
           url: trimmedUrl,
@@ -216,11 +214,9 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
     createCustomTool.isPending ||
     createConnection.isPending
   const selectedMcpCredential = availableCredentials.find((c) => c.id === mcpCredentialId)
+  const mcpHasCredential = mcpCredentialId !== CREDENTIAL_NONE
   const mcpAuthIncomplete =
-    mcpAuthEnabled &&
-    (mcpCredentialId === CREDENTIAL_NONE ||
-      !mcpHeaderName.trim() ||
-      !mcpCredentialField.trim())
+    mcpHasCredential && (!mcpHeaderName.trim() || !mcpCredentialField.trim())
   const mcpSubmitDisabled =
     !mcpDisplayName.trim() ||
     !mcpUrl.trim() ||
@@ -284,31 +280,19 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
               />
             </div>
 
-            <div className="space-y-3 rounded-md border p-3">
-              <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={mcpAuthEnabled}
-                  onChange={(e) => setMcpAuthEnabled(e.target.checked)}
-                />
-                {t('mcp.authEnabled')}
-              </label>
-              {mcpAuthEnabled && (
-                <div className="space-y-3 pt-1">
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">
-                      {t('auth.label')}
-                    </label>
-                    <CredentialSelect
-                      value={mcpCredentialId}
-                      onValueChange={(v) => {
-                        setMcpCredentialId(v)
-                        setMcpCredentialField('')
-                      }}
-                      onCreateRequested={() => setCredentialDialogOpen(true)}
-                      credentials={availableCredentials}
-                    />
-                  </div>
+            <div className="space-y-3">
+              <label className="text-sm font-medium">{t('auth.label')}</label>
+              <CredentialSelect
+                value={mcpCredentialId}
+                onValueChange={(v) => {
+                  setMcpCredentialId(v)
+                  setMcpCredentialField('')
+                }}
+                onCreateRequested={() => setCredentialDialogOpen(true)}
+                credentials={availableCredentials}
+              />
+              {mcpHasCredential ? (
+                <div className="space-y-3 rounded-md border p-3">
                   {selectedMcpCredential && (
                     <div className="space-y-2">
                       <label className="text-xs font-medium text-muted-foreground">
@@ -341,8 +325,7 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                   </div>
                   <p className="text-xs text-muted-foreground">{t('mcp.authHint')}</p>
                 </div>
-              )}
-              {!mcpAuthEnabled && (
+              ) : (
                 <p className="text-xs text-muted-foreground">{t('mcp.authNoticeV1')}</p>
               )}
             </div>
