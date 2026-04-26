@@ -100,7 +100,7 @@ export default function ChatPage({
   )
 
   return (
-    <div className="flex flex-1 overflow-hidden">
+    <div className="flex min-h-0 flex-1 overflow-hidden">
       {/* Conversation sidebar — desktop toggleable */}
       {showConversationList && (
         <div className="hidden w-72 shrink-0 border-r md:block">
@@ -112,8 +112,10 @@ export default function ChatPage({
         </div>
       )}
 
-      {/* Main chat area */}
-      <div className="flex flex-1 flex-col">
+      {/* Main chat area — min-h-0 필수: 자식(AssistantThread)의 h-full + flex-1
+          overflow-y-auto Viewport가 부모 height를 정확히 받게 하려면 모든 flex
+          ancestor에 min-h-0이 있어야 함. 누락되면 Composer가 viewport 밖으로 밀려남. */}
+      <div className="flex min-h-0 flex-1 flex-col">
         {/* Chat header */}
         <div className="flex items-center justify-between border-b px-4 py-2.5">
           <div className="flex items-center gap-2">
