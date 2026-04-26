@@ -96,9 +96,7 @@ async def test_tool_connection(
         conn.credential,
         context={"connection_id": str(conn.id), "tool_name": tool.name},
     )
-    return await mcp_test(
-        url, effective_auth, extra_headers=extract_transport_headers(extra)
-    )
+    return await mcp_test(url, effective_auth, extra_headers=extract_transport_headers(extra))
 
 
 @router.patch("/{tool_id}", response_model=ToolResponse)

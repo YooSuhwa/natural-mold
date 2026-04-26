@@ -174,9 +174,7 @@ async def test_create_custom_tool_rejects_non_custom_connection_type(
     """
     await _seed_user()
     cred_id = await _seed_custom_credential(TEST_USER_ID)
-    prebuilt_conn_id = await _seed_connection(
-        TEST_USER_ID, cred_id, type_="prebuilt"
-    )
+    prebuilt_conn_id = await _seed_connection(TEST_USER_ID, cred_id, type_="prebuilt")
 
     resp = await client.post(
         "/api/tools/custom",

@@ -24,9 +24,7 @@ _FALLBACK_PROMPT = (
     "카탈로그에 있는 미들웨어만 추천하고, JSON 배열로만 응답한다."
 )
 
-SYSTEM_PROMPT = (
-    load_prompt("middleware_recommender.md") or _FALLBACK_PROMPT
-)
+SYSTEM_PROMPT = load_prompt("middleware_recommender.md") or _FALLBACK_PROMPT
 
 
 def _format_catalog(middlewares_catalog: list[dict[str, Any]]) -> str:

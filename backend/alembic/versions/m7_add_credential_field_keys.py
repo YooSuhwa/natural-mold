@@ -40,9 +40,7 @@ def upgrade() -> None:
     from app.services.encryption import decrypt_api_key
 
     bind = op.get_bind()
-    rows = bind.execute(
-        sa.text("SELECT id, data_encrypted FROM credentials")
-    ).fetchall()
+    rows = bind.execute(sa.text("SELECT id, data_encrypted FROM credentials")).fetchall()
 
     for row in rows:
         cred_id = row[0]
@@ -52,15 +50,11 @@ def upgrade() -> None:
             payload = json.loads(plaintext)
             keys = list(payload.keys()) if isinstance(payload, dict) else []
         except Exception as exc:  # noqa: BLE001 — tolerant backfill
-            logger.warning(
-                "Failed to backfill field_keys for credential %s: %s", cred_id, exc
-            )
+            logger.warning("Failed to backfill field_keys for credential %s: %s", cred_id, exc)
             keys = []
 
         bind.execute(
-            sa.text(
-                "UPDATE credentials SET field_keys = :keys WHERE id = :id"
-            ),
+            sa.text("UPDATE credentials SET field_keys = :keys WHERE id = :id"),
             {"keys": json.dumps(keys), "id": cred_id},
         )
 

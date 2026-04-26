@@ -127,8 +127,11 @@ async def _invoke_with_api_retry(
 
     # 재시도 소진 → 폴백 모델 시도
     if fallback:
-        logger.info("Falling back to %s:%s", settings.builder_fallback_provider,
-                     settings.builder_fallback_name)
+        logger.info(
+            "Falling back to %s:%s",
+            settings.builder_fallback_provider,
+            settings.builder_fallback_name,
+        )
         try:
             return await fallback.ainvoke(messages)
         except Exception as fallback_exc:

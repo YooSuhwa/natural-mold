@@ -37,10 +37,7 @@ def _to_response(cred: Credential) -> CredentialResponse:
 
 @router.get("/providers", response_model=list[CredentialProviderDef])
 async def list_providers():
-    return [
-        CredentialProviderDef(key=key, **value)
-        for key, value in CREDENTIAL_PROVIDERS.items()
-    ]
+    return [CredentialProviderDef(key=key, **value) for key, value in CREDENTIAL_PROVIDERS.items()]
 
 
 @router.get("", response_model=list[CredentialResponse])
@@ -69,9 +66,7 @@ async def update_credential(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    cred = await credential_service.update_credential(
-        db, credential_id, user.id, data
-    )
+    cred = await credential_service.update_credential(db, credential_id, user.id, data)
     return _to_response(cred)
 
 
@@ -90,9 +85,7 @@ async def get_credential_usage(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    counts = await credential_service.get_usage_count(
-        db, credential_id, user.id
-    )
+    counts = await credential_service.get_usage_count(db, credential_id, user.id)
     return CredentialUsageResponse(
         credential_id=credential_id,
         tool_count=counts["tool_count"],

@@ -269,8 +269,7 @@ function CustomBody({
   }
 
   const availableCredentials = credentials ?? []
-  const isPending =
-    findOrCreate.isPending || updateConnection.isPending || updateTool.isPending
+  const isPending = findOrCreate.isPending || updateConnection.isPending || updateTool.isPending
 
   async function handleSave() {
     const credentialId = mode === CREDENTIAL_NONE ? null : mode
@@ -373,9 +372,7 @@ function McpBody({
         id: connectionId,
         data: { credential_id: credentialId, status: 'active' },
       })
-      toast.success(
-        sharedAcrossConnections ? t('toast.savedSharedCredential') : t('toast.saved'),
-      )
+      toast.success(sharedAcrossConnections ? t('toast.savedSharedCredential') : t('toast.saved'))
       onBound?.(updated)
       onClose()
     } catch {

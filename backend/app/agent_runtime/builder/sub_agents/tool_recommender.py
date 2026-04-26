@@ -19,9 +19,7 @@ _FALLBACK_PROMPT = (
     "카탈로그에 있는 도구만 추천하고, JSON 배열로만 응답한다."
 )
 
-SYSTEM_PROMPT = (
-    load_prompt("tool_recommender.md") or _FALLBACK_PROMPT
-)
+SYSTEM_PROMPT = load_prompt("tool_recommender.md") or _FALLBACK_PROMPT
 
 
 def _format_catalog(tools_catalog: list[dict[str, Any]]) -> str:

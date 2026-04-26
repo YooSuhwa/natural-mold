@@ -143,11 +143,7 @@ export function MCPServerGroupCard({
                 <DropdownMenuItem
                   onClick={() => setAuthOpen(true)}
                   disabled={!supportsCredentialBinding}
-                  title={
-                    supportsCredentialBinding
-                      ? undefined
-                      : t('menu.authNotSupported')
-                  }
+                  title={supportsCredentialBinding ? undefined : t('menu.authNotSupported')}
                 >
                   <KeyIcon />
                   {t('menu.auth')}

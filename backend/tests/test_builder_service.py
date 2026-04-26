@@ -508,5 +508,6 @@ async def test_get_agent_by_id(db: AsyncSession):
 async def test_get_agent_by_id_not_found(db: AsyncSession):
     """get_agent_by_id returns None when not found."""
     import uuid as _uuid
+
     found = await get_agent_by_id(db, _uuid.uuid4())
     assert found is None

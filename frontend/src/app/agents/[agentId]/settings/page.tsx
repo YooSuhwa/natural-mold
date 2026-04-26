@@ -251,7 +251,13 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             </TabsContent>
 
             <TabsContent value="assistant" className="pt-6">
-              {agent && <AssistantPanel agentId={agentId} agentName={agent.name} agentImageUrl={agent.image_url} />}
+              {agent && (
+                <AssistantPanel
+                  agentId={agentId}
+                  agentName={agent.name}
+                  agentImageUrl={agent.image_url}
+                />
+              )}
             </TabsContent>
           </Tabs>
         </div>

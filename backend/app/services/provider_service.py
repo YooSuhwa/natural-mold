@@ -117,9 +117,7 @@ def get_decrypted_api_key(provider: LLMProvider) -> str | None:
 
 async def load_all_provider_api_keys(db: AsyncSession) -> dict[str, str | None]:
     """모든 활성 프로바이더의 복호화된 API 키를 조회한다."""
-    result = await db.execute(
-        select(LLMProvider).where(LLMProvider.is_active.is_(True))
-    )
+    result = await db.execute(select(LLMProvider).where(LLMProvider.is_active.is_(True)))
     keys: dict[str, str | None] = {}
     for p in result.scalars():
         if p.api_key_encrypted:

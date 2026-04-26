@@ -127,9 +127,7 @@ function CodeBlock({
             </div>
           ))}
           {truncated && (
-            <div className="mt-1 text-center text-zinc-500">
-              … {lines.length - maxLines}줄 더
-            </div>
+            <div className="mt-1 text-center text-zinc-500">… {lines.length - maxLines}줄 더</div>
           )}
         </pre>
       </div>
@@ -218,9 +216,7 @@ function FileToolWrapper({
           />
         )}
       </button>
-      {expanded && children && (
-        <div className="px-3 pb-3">{children}</div>
-      )}
+      {expanded && children && <div className="px-3 pb-3">{children}</div>}
     </div>
   )
 }
@@ -238,12 +234,7 @@ export const ReadFileToolUI = makeAssistantToolUI<ReadFileArgs, unknown>({
     const content = typeof result === 'string' ? result : null
 
     return (
-      <FileToolWrapper
-        icon={FileIcon}
-        label="Read"
-        filePath={filePath}
-        isRunning={isRunning}
-      >
+      <FileToolWrapper icon={FileIcon} label="Read" filePath={filePath} isRunning={isRunning}>
         {content && <CodeBlock code={content} filename={filename} />}
       </FileToolWrapper>
     )
@@ -262,15 +253,8 @@ export const WriteFileToolUI = makeAssistantToolUI<WriteFileArgs, unknown>({
     const filename = extractFilename(filePath)
 
     return (
-      <FileToolWrapper
-        icon={FilePlusIcon}
-        label="Write"
-        filePath={filePath}
-        isRunning={isRunning}
-      >
-        {args?.content && (
-          <CodeBlock code={args.content} filename={filename} />
-        )}
+      <FileToolWrapper icon={FilePlusIcon} label="Write" filePath={filePath} isRunning={isRunning}>
+        {args?.content && <CodeBlock code={args.content} filename={filename} />}
       </FileToolWrapper>
     )
   },
@@ -289,18 +273,9 @@ export const EditFileToolUI = makeAssistantToolUI<EditFileArgs, unknown>({
     const hasEdit = args?.old_string && args?.new_string
 
     return (
-      <FileToolWrapper
-        icon={FileEditIcon}
-        label="Edit"
-        filePath={filePath}
-        isRunning={isRunning}
-      >
+      <FileToolWrapper icon={FileEditIcon} label="Edit" filePath={filePath} isRunning={isRunning}>
         {hasEdit && (
-          <DiffBlock
-            oldStr={args.old_string!}
-            newStr={args.new_string!}
-            filename={filename}
-          />
+          <DiffBlock oldStr={args.old_string!} newStr={args.new_string!} filename={filename} />
         )}
       </FileToolWrapper>
     )

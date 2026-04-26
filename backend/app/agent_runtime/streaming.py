@@ -144,21 +144,25 @@ async def stream_agent_response(
             for task in state.tasks:
                 if task.interrupts:
                     for intr in task.interrupts:
-                        yield format_sse("interrupt", {
-                            "interrupt_id": str(
-                                getattr(intr, "ns", "")
-                            ),
-                            "value": intr.value
-                            if isinstance(intr.value, dict)
-                            else {"message": str(intr.value)},
-                        })
+                        yield format_sse(
+                            "interrupt",
+                            {
+                                "interrupt_id": str(getattr(intr, "ns", "")),
+                                "value": intr.value
+                                if isinstance(intr.value, dict)
+                                else {"message": str(intr.value)},
+                            },
+                        )
     except Exception:
         logger.warning("aget_state failed (interrupt check)", exc_info=True)
         if was_interrupted:
-            yield format_sse("interrupt", {
-                "interrupt_id": "",
-                "value": {"message": "Interrupt detected but state unavailable"},
-            })
+            yield format_sse(
+                "interrupt",
+                {
+                    "interrupt_id": "",
+                    "value": {"message": "Interrupt detected but state unavailable"},
+                },
+            )
 
     # Calculate estimated cost from model pricing if available
     if usage_data and (cost_per_input_token or cost_per_output_token):

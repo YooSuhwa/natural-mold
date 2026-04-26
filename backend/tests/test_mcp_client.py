@@ -48,9 +48,7 @@ class TestBuildProbeHeaders:
         assert headers == {"Authorization": "secret"}
 
     def test_auth_config_custom_header_name(self):
-        headers = _build_probe_headers(
-            {"api_key": "secret", "header_name": "X-API-Key"}, None
-        )
+        headers = _build_probe_headers({"api_key": "secret", "header_name": "X-API-Key"}, None)
         assert headers == {"X-API-Key": "secret"}
 
     def test_auth_config_without_api_key_ignored(self):
@@ -58,9 +56,7 @@ class TestBuildProbeHeaders:
         assert _build_probe_headers({"header_name": "X-API-Key"}, None) is None
 
     def test_extra_and_auth_merged(self):
-        headers = _build_probe_headers(
-            {"api_key": "tok"}, {"X-Tenant": "acme"}
-        )
+        headers = _build_probe_headers({"api_key": "tok"}, {"X-Tenant": "acme"})
         assert headers == {"X-Tenant": "acme", "Authorization": "tok"}
 
     def test_auth_overrides_extra_with_same_header(self):

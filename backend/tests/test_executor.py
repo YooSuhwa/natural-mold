@@ -23,6 +23,7 @@ def _cfg(**overrides) -> AgentConfig:
     defaults.update(overrides)
     return AgentConfig(**defaults)
 
+
 # ---------------------------------------------------------------------------
 # build_agent
 # ---------------------------------------------------------------------------
@@ -627,9 +628,9 @@ async def test_ask_user_not_included_in_invoke(
     mock_convert.return_value = []
 
     mock_agent = MagicMock()
-    mock_agent.ainvoke = AsyncMock(return_value={
-        "messages": [MagicMock(content="Hello", type="ai")]
-    })
+    mock_agent.ainvoke = AsyncMock(
+        return_value={"messages": [MagicMock(content="Hello", type="ai")]}
+    )
     mock_build.return_value = mock_agent
 
     await execute_agent_invoke(_cfg(), [])

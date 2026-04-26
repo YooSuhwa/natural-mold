@@ -134,8 +134,7 @@ def _migrate_custom_credentials(bind) -> None:
         if existing is not None:
             connection_id = existing[0]
             logger.info(
-                "m11: reused existing CUSTOM connection %s for user=%s "
-                "credential=%s (%d tools)",
+                "m11: reused existing CUSTOM connection %s for user=%s credential=%s (%d tools)",
                 connection_id,
                 user_id,
                 credential_id,
@@ -285,10 +284,7 @@ def _dedup_preexisting_custom_duplicates(bind) -> None:
                 {"dup": dup_id},
             )
             bind.execute(
-                sa.text(
-                    "UPDATE tools SET connection_id = :canonical "
-                    "WHERE connection_id = :dup"
-                ),
+                sa.text("UPDATE tools SET connection_id = :canonical WHERE connection_id = :dup"),
                 {"canonical": canonical_id, "dup": dup_id},
             )
             bind.execute(
@@ -296,8 +292,7 @@ def _dedup_preexisting_custom_duplicates(bind) -> None:
                 {"id": dup_id},
             )
         logger.info(
-            "m11: deduped %d duplicate CUSTOM connections for user=%s "
-            "credential=%s → canonical=%s",
+            "m11: deduped %d duplicate CUSTOM connections for user=%s credential=%s → canonical=%s",
             len(rows) - 1,
             user_id,
             credential_id,
@@ -318,9 +313,7 @@ def upgrade() -> None:
     # - `_m11_dedup_tool_remap`: _dedup이 repoint한 tool의 (tool_id,
     #   original_connection_id). downgrade에서 원래 duplicate로 되돌림.
     op.execute(
-        "CREATE TABLE IF NOT EXISTS _m11_tool_backfill_provenance ("
-        "tool_id UUID PRIMARY KEY"
-        ")"
+        "CREATE TABLE IF NOT EXISTS _m11_tool_backfill_provenance (tool_id UUID PRIMARY KEY)"
     )
     op.execute(
         "CREATE TABLE IF NOT EXISTS _m11_dedup_connection_snapshot ("
@@ -375,9 +368,7 @@ def downgrade() -> None:
     # 적용된 DB에서 downgrade 실행 시에도 안전하도록. 빈 테이블이면 아래 복원
     # 단계들이 no-op이 되고, marker DELETE가 여전히 [m11-auto-seed] 행을 정리한다.
     op.execute(
-        "CREATE TABLE IF NOT EXISTS _m11_tool_backfill_provenance ("
-        "tool_id UUID PRIMARY KEY"
-        ")"
+        "CREATE TABLE IF NOT EXISTS _m11_tool_backfill_provenance (tool_id UUID PRIMARY KEY)"
     )
     op.execute(
         "CREATE TABLE IF NOT EXISTS _m11_dedup_connection_snapshot ("

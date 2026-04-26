@@ -41,8 +41,7 @@ async def _commit_or_409(db: AsyncSession) -> None:
         await db.rollback()
         raise HTTPException(
             status_code=409,
-            detail="concurrent modification on the default connection in "
-            "this scope — please retry",
+            detail="concurrent modification on the default connection in this scope — please retry",
         ) from exc
 
 
@@ -293,10 +292,7 @@ async def _assert_credential_provider_match(
     CUSTOM은 M4 작업 — 현 시점에서는 소유권만 검증.
     """
     cred = await credential_service.get_credential(db, credential_id, user_id)
-    if (
-        connection_type == "prebuilt"
-        and cred.provider_name != connection_provider_name
-    ):
+    if connection_type == "prebuilt" and cred.provider_name != connection_provider_name:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -356,18 +352,14 @@ async def create_connection(
                 )
             return existing_conn
 
-    existing = await _count_in_scope(
-        db, user_id, payload.type, payload.provider_name
-    )
+    existing = await _count_in_scope(db, user_id, payload.type, payload.provider_name)
 
     is_default = payload.is_default
     if existing == 0:
         # First connection in scope — force default on.
         is_default = True
     elif payload.is_default:
-        await _clear_default_in_scope(
-            db, user_id, payload.type, payload.provider_name
-        )
+        await _clear_default_in_scope(db, user_id, payload.type, payload.provider_name)
 
     conn = Connection(
         user_id=user_id,
@@ -436,9 +428,7 @@ async def update_connection(
     # credential_id가 유지되더라도 provider_name이 바뀌는 PATCH는 mismatch를
     # 만들 수 있으므로 양쪽 변경을 모두 검증 대상으로 본다.
     new_credential_id = fields.get("credential_id", conn.credential_id)
-    credential_or_provider_changed = (
-        "credential_id" in fields or "provider_name" in fields
-    )
+    credential_or_provider_changed = "credential_id" in fields or "provider_name" in fields
     if credential_or_provider_changed and new_credential_id is not None:
         await _assert_credential_provider_match(
             db,
@@ -520,9 +510,7 @@ async def update_connection(
             # 포함될 수 있으므로 jsonable_encoder로 정리.
             raise HTTPException(
                 status_code=422,
-                detail=jsonable_encoder(
-                    exc.errors(include_url=False, include_context=False)
-                ),
+                detail=jsonable_encoder(exc.errors(include_url=False, include_context=False)),
             ) from exc
 
     # ADR-008 §5 invariant: scope에 row가 있으면 default도 있다. helper는
@@ -534,12 +522,8 @@ async def update_connection(
         conn.provider_name,
     )
     if scope_changed:
-        await _promote_default_if_orphaned(
-            db, conn.user_id, pre_type, pre_provider_name
-        )
-    await _promote_default_if_orphaned(
-        db, conn.user_id, conn.type, conn.provider_name
-    )
+        await _promote_default_if_orphaned(db, conn.user_id, pre_type, pre_provider_name)
+    await _promote_default_if_orphaned(db, conn.user_id, conn.type, conn.provider_name)
 
     conn.updated_at = _now()
     await _commit_or_409(db)
@@ -547,9 +531,7 @@ async def update_connection(
     return conn
 
 
-async def delete_connection(
-    db: AsyncSession, conn_id: uuid.UUID, user_id: uuid.UUID
-) -> bool:
+async def delete_connection(db: AsyncSession, conn_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     """connection 삭제. 사용 중인 tool이 있으면 409로 거부 (orphan 방지).
 
     `tools.connection_id`가 ON DELETE SET NULL이라 삭제 자체는 가능하지만, 그
@@ -587,9 +569,7 @@ async def delete_connection(
     await db.flush()  # 삭제를 세션에 반영해 후속 쿼리가 사라진 row를 보지 않도록
 
     if was_default:
-        await _promote_default_if_orphaned(
-            db, user_id, del_type, del_provider_name
-        )
+        await _promote_default_if_orphaned(db, user_id, del_type, del_provider_name)
 
     await _commit_or_409(db)
     return True

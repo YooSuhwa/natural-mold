@@ -43,16 +43,12 @@ def upgrade() -> None:
 
     # 1) tools.mcp_server_id FK + 컬럼 drop
     if not is_sqlite:
-        op.drop_constraint(
-            "tools_mcp_server_id_fkey", "tools", type_="foreignkey"
-        )
+        op.drop_constraint("tools_mcp_server_id_fkey", "tools", type_="foreignkey")
     op.drop_column("tools", "mcp_server_id")
 
     # 2) mcp_servers.credential_id FK drop (m6_add_credentials에서 add)
     if not is_sqlite:
-        op.drop_constraint(
-            "fk_mcp_servers_credential_id", "mcp_servers", type_="foreignkey"
-        )
+        op.drop_constraint("fk_mcp_servers_credential_id", "mcp_servers", type_="foreignkey")
 
     # 3) mcp_servers 테이블 drop
     op.drop_table("mcp_servers")

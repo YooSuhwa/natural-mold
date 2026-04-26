@@ -91,14 +91,7 @@ function ToolCallFallback({
       : status.type === 'complete'
         ? ('complete' as const)
         : ('error' as const)
-  return (
-    <ToolFallbackPanel
-      toolName={toolName}
-      args={args}
-      result={result}
-      status={resolved}
-    />
-  )
+  return <ToolFallbackPanel toolName={toolName} args={args} result={result} status={resolved} />
 }
 
 /** 표준 메시지 파트 렌더러 — 텍스트 + 도구 UI 모두 표시 */
@@ -218,15 +211,13 @@ export function AssistantThread({
       </ThreadPrimitive.Viewport>
 
       {/* 도구 UI 등록 */}
-      {toolUI?.map((ToolComponent, i) => <ToolComponent key={i} />)}
+      {toolUI?.map((ToolComponent, i) => (
+        <ToolComponent key={i} />
+      ))}
 
       {/* Composer */}
       <div className="mx-auto w-full max-w-3xl px-4 pb-4">
-        <ThreadComposer
-          modelName={modelName}
-          showTokenBar={showTokenBar}
-          compact={compact}
-        />
+        <ThreadComposer modelName={modelName} showTokenBar={showTokenBar} compact={compact} />
       </div>
     </ThreadPrimitive.Root>
   )
@@ -269,9 +260,7 @@ function ThreadComposer({
       {(modelName || hasTokens) && (
         <div className="flex items-center gap-3 border-b border-input/50 px-3.5 py-1.5 text-xs text-muted-foreground">
           {modelName && <span className="font-medium text-foreground/70">{modelName}</span>}
-          {hasTokens && (
-            <TokenBar tokenUsage={tokenUsage} showDivider={!!modelName} />
-          )}
+          {hasTokens && <TokenBar tokenUsage={tokenUsage} showDivider={!!modelName} />}
         </div>
       )}
 
@@ -297,11 +286,7 @@ function ThreadComposer({
           </ComingSoonButton>
         </div>
         <ComposerPrimitive.Send asChild>
-          <Button
-            type="submit"
-            size="icon-sm"
-            className="rounded-full transition-all"
-          >
+          <Button type="submit" size="icon-sm" className="rounded-full transition-all">
             <SendIcon className="size-4" />
             <span className="sr-only">{t('sendButton')}</span>
           </Button>

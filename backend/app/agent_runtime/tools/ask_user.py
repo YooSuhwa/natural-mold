@@ -26,9 +26,11 @@ def ask_user(question: str, options: list[str] | None = None) -> str:
         question: 사용자에게 보여줄 질문
         options: 선택지 목록 (없으면 자유 입력)
     """
-    response = interrupt({
-        "type": "ask_user",
-        "question": question,
-        "options": options or [],
-    })
+    response = interrupt(
+        {
+            "type": "ask_user",
+            "question": question,
+            "options": options or [],
+        }
+    )
     return str(response)

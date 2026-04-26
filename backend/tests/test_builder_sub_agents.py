@@ -20,6 +20,7 @@ from app.schemas.builder import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 def _make_intent(**overrides) -> AgentCreationIntent:
     defaults = {
         "agent_name": "Weather Bot",
@@ -274,8 +275,7 @@ async def test_generate_system_prompt_success():
         "## Role\n날씨 봇입니다.\n\n"
         "## Tool Guidelines\n### Web Search\n- Purpose: 검색\n\n"
         "## Workflow\n1. 요청 분석\n2. 도구 호출\n\n"
-        "## Constraints\n- ALWAYS: 정확한 정보 제공\n"
-        + "내용 " * 200
+        "## Constraints\n- ALWAYS: 정확한 정보 제공\n" + "내용 " * 200
     )
 
     with patch(
@@ -396,11 +396,13 @@ async def test_invoke_for_text_all_short():
 
 def test_format_catalog_empty():
     from app.agent_runtime.builder.sub_agents.tool_recommender import _format_catalog
+
     assert "사용 가능한 도구가 없습니다" in _format_catalog([])
 
 
 def test_format_catalog_items():
     from app.agent_runtime.builder.sub_agents.tool_recommender import _format_catalog
+
     result = _format_catalog(TOOL_CATALOG)
     assert "Web Search" in result
     assert "Web Scraper" in result
@@ -413,14 +415,21 @@ def test_format_catalog_items():
 
 def test_mw_format_catalog_empty():
     from app.agent_runtime.builder.sub_agents.middleware_recommender import _format_catalog
+
     assert "사용 가능한 미들웨어가 없습니다" in _format_catalog([])
 
 
 def test_mw_format_catalog_with_provider():
     from app.agent_runtime.builder.sub_agents.middleware_recommender import _format_catalog
+
     catalog = [
-        {"type": "anthropic_prompt_caching", "name": "AnthropicPromptCachingMiddleware",
-         "description": "캐싱", "category": "provider", "provider_specific": "anthropic"},
+        {
+            "type": "anthropic_prompt_caching",
+            "name": "AnthropicPromptCachingMiddleware",
+            "description": "캐싱",
+            "category": "provider",
+            "provider_specific": "anthropic",
+        },
     ]
     result = _format_catalog(catalog)
     assert "anthropic" in result
@@ -433,11 +442,13 @@ def test_mw_format_catalog_with_provider():
 
 def test_format_tools_empty():
     from app.agent_runtime.builder.sub_agents.prompt_generator import _format_tools
+
     assert "추천된 도구 없음" in _format_tools([])
 
 
 def test_format_tools_items():
     from app.agent_runtime.builder.sub_agents.prompt_generator import _format_tools
+
     tools = [ToolRecommendation(tool_name="Web Search", description="검색", reason="필요")]
     result = _format_tools(tools)
     assert "Web Search" in result
@@ -445,6 +456,7 @@ def test_format_tools_items():
 
 def test_format_middlewares_empty():
     from app.agent_runtime.builder.sub_agents.prompt_generator import _format_middlewares
+
     assert "추천된 미들웨어 없음" in _format_middlewares([])
 
 

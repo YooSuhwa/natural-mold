@@ -59,9 +59,7 @@ from tests.conftest import TEST_USER_ID
 def _load_m9_module():
     repo_root = Path(__file__).resolve().parents[1]
     m9_path = repo_root / "alembic" / "versions" / "m9_migrate_mcp_to_connections.py"
-    spec = importlib.util.spec_from_file_location(
-        "_test_m9_migrate_mcp_to_connections", m9_path
-    )
+    spec = importlib.util.spec_from_file_location("_test_m9_migrate_mcp_to_connections", m9_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -102,9 +100,7 @@ async def _seed_model(db: AsyncSession) -> Model:
     return model
 
 
-async def _seed_agent_with_tool(
-    db: AsyncSession, *, tool: Tool, model: Model
-) -> Agent:
+async def _seed_agent_with_tool(db: AsyncSession, *, tool: Tool, model: Model) -> Agent:
     db.add(tool)
     await db.flush()
 
@@ -278,9 +274,7 @@ class TestResolveEnvVars:
             name="C",
             credential_type="api_key",
             provider_name="custom",
-            data_encrypted=encrypt_api_key(
-                json.dumps({"api_key": "k1", "client_id": "id1"})
-            ),
+            data_encrypted=encrypt_api_key(json.dumps({"api_key": "k1", "client_id": "id1"})),
         )
         env_vars = {
             "API_KEY": "${credential.api_key}",
@@ -333,9 +327,7 @@ class TestResolveEnvVarsMissing:
             _resolve_env_vars(env_vars, None)
 
     @pytest.mark.asyncio
-    async def test_build_tools_config_propagates_missing_field_error(
-        self, db: AsyncSession
-    ):
+    async def test_build_tools_config_propagates_missing_field_error(self, db: AsyncSession):
         """build_tools_config 호출 시 누락 필드 참조면 ToolConfigError가
         그대로 전파되어 호출자(chat router)가 처리하도록 한다."""
         model = await _seed_model(db)
@@ -478,9 +470,7 @@ class TestOwnershipGuards:
 
         user_a = uuid.uuid4()
         user_b = uuid.uuid4()
-        agent = self._make_agent_with_tool(
-            tool_user_id=user_a, conn_user_id=user_b
-        )
+        agent = self._make_agent_with_tool(tool_user_id=user_a, conn_user_id=user_b)
         with pytest.raises(ToolConfigError, match="owner mismatch"):
             build_tools_config(agent)
 
@@ -1081,9 +1071,7 @@ async def test_distinct_transport_headers_create_separate_mcp_groups(
 
     # _build_mcp_tools 함수 내부에서 `from langchain_mcp_adapters.client
     # import MultiServerMCPClient` 하므로 원 모듈의 속성을 교체한다.
-    monkeypatch.setattr(
-        lc_mcp_client, "MultiServerMCPClient", _FakeClient, raising=True
-    )
+    monkeypatch.setattr(lc_mcp_client, "MultiServerMCPClient", _FakeClient, raising=True)
 
     mcp_configs = [
         {
@@ -1133,9 +1121,9 @@ def test_executor_server_key_is_deterministic_across_calls():
     def compute_key(url: str, headers: dict | None) -> str:
         from app.agent_runtime.executor import _url_to_server_key
 
-        digest = _hashlib.sha256(
-            _json.dumps(headers or {}, sort_keys=True).encode()
-        ).hexdigest()[:8]
+        digest = _hashlib.sha256(_json.dumps(headers or {}, sort_keys=True).encode()).hexdigest()[
+            :8
+        ]
         return f"{_url_to_server_key(url)}|{digest}"
 
     url = "https://gateway.example.com/mcp"

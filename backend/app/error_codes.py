@@ -85,9 +85,7 @@ def invalid_schedule_config() -> ValidationError:
 
 
 def session_not_preview() -> ValidationError:
-    return ValidationError(
-        "SESSION_NOT_PREVIEW", "프리뷰 상태의 세션만 확인할 수 있습니다"
-    )
+    return ValidationError("SESSION_NOT_PREVIEW", "프리뷰 상태의 세션만 확인할 수 있습니다")
 
 
 def no_draft_config() -> ValidationError:

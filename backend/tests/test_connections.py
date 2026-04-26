@@ -66,9 +66,7 @@ async def _seed_credential(
 
 
 @pytest.mark.asyncio
-async def test_crud_basic_with_and_without_credential(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_crud_basic_with_and_without_credential(client: AsyncClient, db: AsyncSession):
     """POST/GET/PATCH/DELETE cycle works for both credential-bound and NULL connections."""
     cred = await _seed_credential(db)
 
@@ -139,9 +137,7 @@ def test_mcp_validator_requires_extra_config_url():
     """type='mcp' must require extra_config with url + auth_type (Pydantic level)."""
     # Missing extra_config entirely
     with pytest.raises(ValidationError) as exc:
-        ConnectionCreate(
-            type="mcp", provider_name="resend", display_name="Resend MCP"
-        )
+        ConnectionCreate(type="mcp", provider_name="resend", display_name="Resend MCP")
     assert "extra_config" in str(exc.value)
 
     # extra_config present but url missing
@@ -183,9 +179,7 @@ def test_mcp_validator_requires_extra_config_url():
 def test_prebuilt_validator_rejects_non_enum_provider():
     """type='prebuilt' non-enum provider_name → ValidationError; MCP/CUSTOM free-form."""
     with pytest.raises(ValidationError) as exc:
-        ConnectionCreate(
-            type="prebuilt", provider_name="foo", display_name="Bogus"
-        )
+        ConnectionCreate(type="prebuilt", provider_name="foo", display_name="Bogus")
     msg = str(exc.value)
     assert "provider_name" in msg and "prebuilt" in msg
 
@@ -194,15 +188,11 @@ def test_prebuilt_validator_rejects_non_enum_provider():
         ConnectionCreate(type="prebuilt", provider_name=name, display_name="n")
 
     # CUSTOM accepts free-form identifiers
-    ConnectionCreate(
-        type="custom", provider_name="my_internal_api", display_name="x"
-    )
+    ConnectionCreate(type="custom", provider_name="my_internal_api", display_name="x")
 
     # CUSTOM rejects invalid identifier characters
     with pytest.raises(ValidationError):
-        ConnectionCreate(
-            type="custom", provider_name="Bad Name!", display_name="x"
-        )
+        ConnectionCreate(type="custom", provider_name="Bad Name!", display_name="x")
 
 
 # ---------------------------------------------------------------------------
@@ -232,9 +222,7 @@ async def test_is_default_auto_on_first_connection(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_is_default_toggle_clears_previous_default(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_is_default_toggle_clears_previous_default(client: AsyncClient, db: AsyncSession):
     """Creating/promoting another default within the same scope demotes the existing default."""
     first = await client.post(
         "/api/connections",
@@ -264,9 +252,7 @@ async def test_is_default_toggle_clears_previous_default(
 
     # First must have been demoted
     reloaded_first = (
-        await db.execute(
-            select(Connection).where(Connection.id == uuid.UUID(first_id))
-        )
+        await db.execute(select(Connection).where(Connection.id == uuid.UUID(first_id)))
     ).scalar_one()
     assert reloaded_first.is_default is False
 
@@ -279,9 +265,7 @@ async def test_is_default_toggle_clears_previous_default(
     assert patch_resp.json()["is_default"] is True
 
     reloaded_second = (
-        await db.execute(
-            select(Connection).where(Connection.id == uuid.UUID(second_id))
-        )
+        await db.execute(select(Connection).where(Connection.id == uuid.UUID(second_id)))
     ).scalar_one()
     assert reloaded_second.is_default is False
 
@@ -292,9 +276,7 @@ async def test_is_default_toggle_clears_previous_default(
 
 
 @pytest.mark.asyncio
-async def test_idor_returns_404_for_other_user_rows(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_idor_returns_404_for_other_user_rows(client: AsyncClient, db: AsyncSession):
     """Rows owned by another user_id must appear as 404 to the current user."""
     foreign = Connection(
         user_id=OTHER_USER_ID,
@@ -374,9 +356,7 @@ async def test_credential_delete_sets_connection_credential_id_null():
 
         async with Session() as session:
             # Belt-and-braces: also assert pragma on this logical connection.
-            pragma_val = (
-                await session.execute(text("PRAGMA foreign_keys"))
-            ).scalar()
+            pragma_val = (await session.execute(text("PRAGMA foreign_keys"))).scalar()
             assert pragma_val == 1, f"FK pragma not enforced (got {pragma_val})"
             user = User(id=TEST_USER_ID, email="fk@test.com", name="FK User")
             session.add(user)
@@ -419,9 +399,7 @@ async def test_credential_delete_sets_connection_credential_id_null():
             session.expire_all()
 
             fresh = (
-                await session.execute(
-                    select(Connection).where(Connection.id == conn_id)
-                )
+                await session.execute(select(Connection).where(Connection.id == conn_id))
             ).scalar_one()
             assert fresh.id == conn_id
             assert fresh.credential_id is None
@@ -473,9 +451,7 @@ async def test_prebuilt_and_custom_extra_config_rejected(
 
 
 @pytest.mark.asyncio
-async def test_patch_with_none_unlinks_credential(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_with_none_unlinks_credential(client: AsyncClient, db: AsyncSession):
     """credential_id=None 을 명시적으로 보내면 FK 링크가 해제된다 (미전송과 구분)."""
     cred = await _seed_credential(db)
 
@@ -536,9 +512,7 @@ async def test_post_rejects_reserved_marker_display_name(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_update_rejects_removing_m10_seed_marker(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_update_rejects_removing_m10_seed_marker(client: AsyncClient, db: AsyncSession):
     """m10 자동 시드 connection의 display_name은 마커 프리픽스를 제거하지 못한다.
 
     m10이 이미 시드해둔 marker row(DB 직접 insert로 시뮬레이션)에 대해 PATCH로
@@ -597,9 +571,7 @@ async def test_update_rejects_removing_m10_seed_marker(
 
 
 @pytest.mark.asyncio
-async def test_post_rejects_provider_mismatched_credential(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_post_rejects_provider_mismatched_credential(client: AsyncClient, db: AsyncSession):
     """PREBUILT connection에 provider_name이 다른 credential을 bind하면 400.
 
     허용되면 `_resolve_prebuilt_auth`가 엉뚱한 키로 auth_config를 만들고
@@ -635,9 +607,7 @@ async def test_post_rejects_provider_mismatched_credential(
 
 
 @pytest.mark.asyncio
-async def test_patch_rejects_provider_mismatched_credential(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_rejects_provider_mismatched_credential(client: AsyncClient, db: AsyncSession):
     """PATCH로 credential_id 바꾸거나 provider_name 바꿀 때도 일치 검증."""
     naver_cred = await _seed_credential(db, name="Naver cred")
     # provider=naver로 먼저 만들고
@@ -696,9 +666,7 @@ def test_update_rejects_type_field():
 
 
 @pytest.mark.asyncio
-async def test_create_rejects_cross_tenant_credential(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_create_rejects_cross_tenant_credential(client: AsyncClient, db: AsyncSession):
     """다른 유저의 credential_id로 connection을 만들 수 없다 (credential 소유권 검증)."""
     # OTHER_USER 소유의 credential 생성
     # OTHER_USER 존재 보장 (이미 다른 테스트가 만들어뒀을 수 있어 멱등 처리)
@@ -712,9 +680,7 @@ async def test_create_rejects_cross_tenant_credential(
             )
         )
         await db.commit()
-    other_cred = await _seed_credential(
-        db, user_id=OTHER_USER_ID, name="OtherUserCred"
-    )
+    other_cred = await _seed_credential(db, user_id=OTHER_USER_ID, name="OtherUserCred")
 
     # 현재 유저(TEST_USER)가 타 유저의 cred_id를 참조 시도 → 404
     resp = await client.post(
@@ -730,9 +696,7 @@ async def test_create_rejects_cross_tenant_credential(
 
 
 @pytest.mark.asyncio
-async def test_patch_rejects_cross_tenant_credential(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_patch_rejects_cross_tenant_credential(client: AsyncClient, db: AsyncSession):
     """PATCH로 타 유저의 credential_id를 설정할 수 없다."""
     # OTHER_USER 존재 보장 (이미 다른 테스트가 만들어뒀을 수 있어 멱등 처리)
     existing = await db.get(User, OTHER_USER_ID)
@@ -745,9 +709,7 @@ async def test_patch_rejects_cross_tenant_credential(
             )
         )
         await db.commit()
-    other_cred = await _seed_credential(
-        db, user_id=OTHER_USER_ID, name="OtherUserCred"
-    )
+    other_cred = await _seed_credential(db, user_id=OTHER_USER_ID, name="OtherUserCred")
 
     created = await client.post(
         "/api/connections",
@@ -1346,9 +1308,7 @@ async def test_custom_create_connection_rejects_disabled_existing(
 
 
 @pytest.mark.asyncio
-async def test_delete_connection_blocked_when_tools_bound(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_delete_connection_blocked_when_tools_bound(client: AsyncClient, db: AsyncSession):
     """CUSTOM connection에 tool이 바인딩되어 있으면 DELETE → 409.
 
     backend invariant: tools.connection_id가 ON DELETE SET NULL이라 삭제 자체는
@@ -1393,9 +1353,7 @@ async def test_delete_connection_blocked_when_tools_bound(
 
 
 @pytest.mark.asyncio
-async def test_delete_connection_succeeds_when_no_tools(
-    client: AsyncClient, db: AsyncSession
-):
+async def test_delete_connection_succeeds_when_no_tools(client: AsyncClient, db: AsyncSession):
     """tool이 0개면 정상 삭제 (가드는 ≥1개일 때만 발동)."""
     cred = await _seed_credential(db, name="empty-cred")
     conn = Connection(

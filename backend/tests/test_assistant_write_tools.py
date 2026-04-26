@@ -148,10 +148,12 @@ async def test_edit_system_prompt(db: AsyncSession, patch_write_session):
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "edit_system_prompt")
 
-    result = await tool.ainvoke({
-        "old_string": "helpful assistant",
-        "new_string": "expert analyst",
-    })
+    result = await tool.ainvoke(
+        {
+            "old_string": "helpful assistant",
+            "new_string": "expert analyst",
+        }
+    )
     assert "수정 완료" in result
 
     # Verify the change persisted via read tool
@@ -168,10 +170,12 @@ async def test_edit_system_prompt_not_found(db: AsyncSession, patch_write_sessio
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "edit_system_prompt")
 
-    result = await tool.ainvoke({
-        "old_string": "nonexistent text that does not appear",
-        "new_string": "replacement",
-    })
+    result = await tool.ainvoke(
+        {
+            "old_string": "nonexistent text that does not appear",
+            "new_string": "replacement",
+        }
+    )
     assert "찾을 수 없습니다" in result
 
 
@@ -346,10 +350,12 @@ async def test_update_middleware_config(db: AsyncSession, patch_write_session):
     await add_tool.ainvoke({"middleware_names": ["summarization"]})
 
     tool = _find_tool(tools, "update_middleware_config")
-    result = await tool.ainvoke({
-        "middleware_name": "summarization",
-        "params": {"trigger": ["tokens", 8000]},
-    })
+    result = await tool.ainvoke(
+        {
+            "middleware_name": "summarization",
+            "params": {"trigger": ["tokens", 8000]},
+        }
+    )
     assert "변경 완료" in result
 
 
@@ -359,10 +365,12 @@ async def test_update_middleware_config_not_found(db: AsyncSession, patch_write_
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "update_middleware_config")
 
-    result = await tool.ainvoke({
-        "middleware_name": "nonexistent",
-        "params": {"key": "val"},
-    })
+    result = await tool.ainvoke(
+        {
+            "middleware_name": "nonexistent",
+            "params": {"key": "val"},
+        }
+    )
     assert "찾을 수 없습니다" in result
 
 
@@ -421,11 +429,13 @@ async def test_create_cron_schedule_recurring(db: AsyncSession, patch_write_sess
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "create_cron_schedule")
 
-    result = await tool.ainvoke({
-        "schedule_type": "recurring",
-        "message": "매 시간 뉴스 검색",
-        "cron_expression": "0 * * * *",
-    })
+    result = await tool.ainvoke(
+        {
+            "schedule_type": "recurring",
+            "message": "매 시간 뉴스 검색",
+            "cron_expression": "0 * * * *",
+        }
+    )
     assert "생성 완료" in result
 
 
@@ -435,11 +445,13 @@ async def test_create_cron_schedule_one_time(db: AsyncSession, patch_write_sessi
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "create_cron_schedule")
 
-    result = await tool.ainvoke({
-        "schedule_type": "one_time",
-        "message": "내일 리포트",
-        "scheduled_at": "2026-04-08T09:00:00",
-    })
+    result = await tool.ainvoke(
+        {
+            "schedule_type": "one_time",
+            "message": "내일 리포트",
+            "scheduled_at": "2026-04-08T09:00:00",
+        }
+    )
     assert "생성 완료" in result
 
 
@@ -449,10 +461,12 @@ async def test_create_cron_schedule_missing_cron(db: AsyncSession, patch_write_s
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "create_cron_schedule")
 
-    result = await tool.ainvoke({
-        "schedule_type": "recurring",
-        "message": "test",
-    })
+    result = await tool.ainvoke(
+        {
+            "schedule_type": "recurring",
+            "message": "test",
+        }
+    )
     assert "cron_expression이 필요" in result
 
 
@@ -462,10 +476,12 @@ async def test_create_cron_schedule_missing_scheduled_at(db: AsyncSession, patch
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "create_cron_schedule")
 
-    result = await tool.ainvoke({
-        "schedule_type": "one_time",
-        "message": "test",
-    })
+    result = await tool.ainvoke(
+        {
+            "schedule_type": "one_time",
+            "message": "test",
+        }
+    )
     assert "scheduled_at이 필요" in result
 
 
@@ -475,10 +491,12 @@ async def test_create_cron_schedule_invalid_type(db: AsyncSession, patch_write_s
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "create_cron_schedule")
 
-    result = await tool.ainvoke({
-        "schedule_type": "invalid",
-        "message": "test",
-    })
+    result = await tool.ainvoke(
+        {
+            "schedule_type": "invalid",
+            "message": "test",
+        }
+    )
     assert "'recurring' 또는 'one_time'" in result
 
 
@@ -488,11 +506,13 @@ async def test_create_cron_schedule_invalid_cron_expression(db: AsyncSession, pa
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "create_cron_schedule")
 
-    result = await tool.ainvoke({
-        "schedule_type": "recurring",
-        "message": "test",
-        "cron_expression": "invalid cron",
-    })
+    result = await tool.ainvoke(
+        {
+            "schedule_type": "recurring",
+            "message": "test",
+            "cron_expression": "invalid cron",
+        }
+    )
     assert "유효하지 않은 cron 표현식" in result
 
 
@@ -508,20 +528,24 @@ async def test_update_cron_schedule(db: AsyncSession, patch_write_session):
 
     # Create first
     create_tool = _find_tool(tools, "create_cron_schedule")
-    create_result = await create_tool.ainvoke({
-        "schedule_type": "recurring",
-        "message": "매 시간 검색",
-        "cron_expression": "0 * * * *",
-    })
+    create_result = await create_tool.ainvoke(
+        {
+            "schedule_type": "recurring",
+            "message": "매 시간 검색",
+            "cron_expression": "0 * * * *",
+        }
+    )
     # Extract ID
     schedule_id = _extract_schedule_id(create_result)
 
     update_tool = _find_tool(tools, "update_cron_schedule")
-    result = await update_tool.ainvoke({
-        "schedule_id": schedule_id,
-        "cron_expression": "30 * * * *",
-        "message": "30분마다 검색",
-    })
+    result = await update_tool.ainvoke(
+        {
+            "schedule_id": schedule_id,
+            "cron_expression": "30 * * * *",
+            "message": "30분마다 검색",
+        }
+    )
     assert "수정 완료" in result
 
 
@@ -556,11 +580,13 @@ async def test_delete_cron_schedule(db: AsyncSession, patch_write_session):
     tools = _build_write_tools(db, agent_id)
 
     create_tool = _find_tool(tools, "create_cron_schedule")
-    create_result = await create_tool.ainvoke({
-        "schedule_type": "recurring",
-        "message": "삭제 테스트",
-        "cron_expression": "0 * * * *",
-    })
+    create_result = await create_tool.ainvoke(
+        {
+            "schedule_type": "recurring",
+            "message": "삭제 테스트",
+            "cron_expression": "0 * * * *",
+        }
+    )
     schedule_id = _extract_schedule_id(create_result)
 
     delete_tool = _find_tool(tools, "delete_cron_schedule")
@@ -599,11 +625,13 @@ async def test_enable_cron_schedule(db: AsyncSession, patch_write_session):
     tools = _build_write_tools(db, agent_id)
 
     create_tool = _find_tool(tools, "create_cron_schedule")
-    create_result = await create_tool.ainvoke({
-        "schedule_type": "recurring",
-        "message": "활성화 테스트",
-        "cron_expression": "0 * * * *",
-    })
+    create_result = await create_tool.ainvoke(
+        {
+            "schedule_type": "recurring",
+            "message": "활성화 테스트",
+            "cron_expression": "0 * * * *",
+        }
+    )
     schedule_id = _extract_schedule_id(create_result)
 
     tool = _find_tool(tools, "enable_cron_schedule")
@@ -642,11 +670,13 @@ async def test_disable_cron_schedule(db: AsyncSession, patch_write_session):
     tools = _build_write_tools(db, agent_id)
 
     create_tool = _find_tool(tools, "create_cron_schedule")
-    create_result = await create_tool.ainvoke({
-        "schedule_type": "recurring",
-        "message": "비활성화 테스트",
-        "cron_expression": "0 * * * *",
-    })
+    create_result = await create_tool.ainvoke(
+        {
+            "schedule_type": "recurring",
+            "message": "비활성화 테스트",
+            "cron_expression": "0 * * * *",
+        }
+    )
     schedule_id = _extract_schedule_id(create_result)
 
     tool = _find_tool(tools, "disable_cron_schedule")

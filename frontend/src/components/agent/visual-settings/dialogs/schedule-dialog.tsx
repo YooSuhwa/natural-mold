@@ -355,9 +355,7 @@ export function ScheduleDialog({
                 placeholder={t('placeholders.cron')}
                 className="font-mono text-sm"
               />
-              <p className="text-xxs text-muted-foreground">
-                {t('cronFormat')}
-              </p>
+              <p className="text-xxs text-muted-foreground">{t('cronFormat')}</p>
             </div>
           )}
         </div>
@@ -370,9 +368,7 @@ export function ScheduleDialog({
             placeholder={t('placeholders.prompt')}
             rows={2}
           />
-          <p className="text-xxs text-muted-foreground">
-            {t('promptDefault')}
-          </p>
+          <p className="text-xxs text-muted-foreground">{t('promptDefault')}</p>
         </div>
 
         <DialogFooter>

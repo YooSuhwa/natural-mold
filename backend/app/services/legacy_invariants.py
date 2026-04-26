@@ -83,15 +83,13 @@ def collect_legacy_checks(
     checks.append(
         (
             "PREBUILT tools with NULL provider_name",
-            "SELECT COUNT(*) FROM tools "
-            "WHERE type = 'prebuilt' AND provider_name IS NULL",
+            "SELECT COUNT(*) FROM tools WHERE type = 'prebuilt' AND provider_name IS NULL",
         )
     )
     checks.append(
         (
             "CUSTOM tools with no connection_id (dead after M6)",
-            "SELECT COUNT(*) FROM tools "
-            "WHERE type = 'custom' AND connection_id IS NULL",
+            "SELECT COUNT(*) FROM tools WHERE type = 'custom' AND connection_id IS NULL",
         )
     )
 

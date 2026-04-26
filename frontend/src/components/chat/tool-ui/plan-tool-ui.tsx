@@ -1,12 +1,7 @@
 'use client'
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import {
-  CheckCircle2Icon,
-  CircleDotIcon,
-  CircleIcon,
-  ListTodoIcon,
-} from 'lucide-react'
+import { CheckCircle2Icon, CircleDotIcon, CircleIcon, ListTodoIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ──────────────────────────────────────────────
@@ -102,8 +97,7 @@ export const PlanToolUI = makeAssistantToolUI<WriteTodosArgs, string>({
                     <span
                       className={cn(
                         'leading-5',
-                        item.status === 'completed' &&
-                          'text-muted-foreground line-through',
+                        item.status === 'completed' && 'text-muted-foreground line-through',
                       )}
                     >
                       {item.content}

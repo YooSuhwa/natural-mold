@@ -17,12 +17,14 @@ async def test_ask_clarifying_question():
     tool = tools[0]
     assert tool.name == "ask_clarifying_question"
 
-    result = await tool.ainvoke({
-        "question": "어떤 유형의 검색을 원하시나요?",
-        "option_1": "웹 검색",
-        "option_2": "뉴스 검색",
-        "option_3": "이미지 검색",
-    })
+    result = await tool.ainvoke(
+        {
+            "question": "어떤 유형의 검색을 원하시나요?",
+            "option_1": "웹 검색",
+            "option_2": "뉴스 검색",
+            "option_3": "이미지 검색",
+        }
+    )
 
     data = json.loads(result)
     assert data["type"] == "clarifying_question"

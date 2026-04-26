@@ -34,8 +34,7 @@ export const connectionsApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  delete: (id: string) =>
-    apiFetch<void>(`/api/connections/${id}`, { method: 'DELETE' }),
+  delete: (id: string) => apiFetch<void>(`/api/connections/${id}`, { method: 'DELETE' }),
   discoverTools: (id: string) =>
     apiFetch<DiscoverToolsResponse>(`/api/connections/${id}/discover-tools`, {
       method: 'POST',

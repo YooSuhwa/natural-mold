@@ -35,8 +35,7 @@ export function AssistantPanel({ agentId, agentName, agentImageUrl }: AssistantP
 
   // streamFn: agentId + sessionId를 바인딩
   const streamFn = useCallback(
-    (content: string, signal: AbortSignal) =>
-      streamAssistant(agentId, content, signal, sessionId),
+    (content: string, signal: AbortSignal) => streamAssistant(agentId, content, signal, sessionId),
     [agentId, sessionId],
   )
 
@@ -70,7 +69,9 @@ export function AssistantPanel({ agentId, agentName, agentImageUrl }: AssistantP
               key={suggestion}
               type="button"
               className="rounded-full border px-3 py-1 text-xs transition-colors hover:bg-accent"
-              onClick={() => { /* TODO: Composer에 텍스트 주입 */ }}
+              onClick={() => {
+                /* TODO: Composer에 텍스트 주입 */
+              }}
             >
               {suggestion}
             </button>
@@ -92,13 +93,13 @@ export function AssistantPanel({ agentId, agentName, agentImageUrl }: AssistantP
 
       <div className="min-h-[300px] max-h-[500px]">
         <AssistantRuntimeProvider runtime={runtime}>
-            <AssistantThread
-              agentImageUrl={agentImageUrl}
-              agentName={agentName}
-              compact
-              emptyContent={emptyContent}
-              toolUI={TOOL_UI_WITHOUT_HITL}
-            />
+          <AssistantThread
+            agentImageUrl={agentImageUrl}
+            agentName={agentName}
+            compact
+            emptyContent={emptyContent}
+            toolUI={TOOL_UI_WITHOUT_HITL}
+          />
         </AssistantRuntimeProvider>
       </div>
     </div>

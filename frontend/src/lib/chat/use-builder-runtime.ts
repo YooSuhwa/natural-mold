@@ -1,10 +1,7 @@
 'use client'
 
 import { useMemo, useCallback } from 'react'
-import {
-  useExternalStoreRuntime,
-  useExternalMessageConverter,
-} from '@assistant-ui/react'
+import { useExternalStoreRuntime, useExternalMessageConverter } from '@assistant-ui/react'
 import type { ThreadMessageLike, useExternalMessageConverter as UEC } from '@assistant-ui/react'
 import type {
   BuilderIntent,
@@ -44,7 +41,13 @@ function buildVirtualMessages(state: BuilderState): VirtualMessage[] {
   const activePhases = state.phases.filter((p) => p.status !== 'pending')
   const phaseLines = activePhases.map((p) => {
     const status =
-      p.status === 'completed' ? '✓' : p.status === 'active' ? '⟳' : p.status === 'failed' ? '✗' : '⚠'
+      p.status === 'completed'
+        ? '✓'
+        : p.status === 'active'
+          ? '⟳'
+          : p.status === 'failed'
+            ? '✗'
+            : '⚠'
     const summary = p.resultSummary ? ` — ${p.resultSummary}` : ''
     return `${status} Phase ${p.id}${summary}`
   })
@@ -77,9 +80,7 @@ interface VirtualMessage {
   content: string
 }
 
-const convertVirtualMessage: UEC.Callback<VirtualMessage> = (
-  msg,
-): ThreadMessageLike => ({
+const convertVirtualMessage: UEC.Callback<VirtualMessage> = (msg): ThreadMessageLike => ({
   role: msg.role,
   id: msg._id,
   content: msg.content,

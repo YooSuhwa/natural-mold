@@ -68,9 +68,7 @@ async def _load_user_default_connection_map(
         for link in agent.tool_links
         if link.tool.type == ToolType.PREBUILT and link.tool.provider_name
     }
-    return await get_default_connections_for_providers(
-        db, user_id, "prebuilt", provider_names
-    )
+    return await get_default_connections_for_providers(db, user_id, "prebuilt", provider_names)
 
 
 async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conversation]:
@@ -323,9 +321,7 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
     tools_config: list[dict[str, Any]] = []
     # get_agent_with_tools가 attach한 per-user default connection map. prefetch
     # 경로를 우회한 호출자(테스트 등)를 위해 getattr fallback.
-    default_connection_map: dict[str, Connection] = getattr(
-        agent, "_default_connection_map", {}
-    )
+    default_connection_map: dict[str, Connection] = getattr(agent, "_default_connection_map", {})
 
     for link in agent.tool_links:
         tool = link.tool
@@ -362,8 +358,7 @@ def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list
             url = extra.get("url")
             if not url:
                 raise ToolConfigError(
-                    f"MCP tool '{tool.name}' connection {conn.id} is "
-                    "missing extra_config.url"
+                    f"MCP tool '{tool.name}' connection {conn.id} is missing extra_config.url"
                 )
             cred_auth = resolve_env_vars(
                 extra.get("env_vars"),

@@ -82,9 +82,7 @@ function ApprovalBadge({ result }: { result: unknown }) {
       <Icon className={cn('size-3.5 shrink-0', style.iconColor)} />
       <span className={cn('font-medium', style.textColor)}>{style.label}</span>
       {parsed?.reason && (
-        <span className={cn('truncate opacity-70', style.textColor)}>
-          — {parsed.reason}
-        </span>
+        <span className={cn('truncate opacity-70', style.textColor)}>— {parsed.reason}</span>
       )}
     </div>
   )
@@ -150,10 +148,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
 
         if (d === 'modified' && editedArgs) {
           try {
-            response.modified_args = JSON.parse(editedArgs) as Record<
-              string,
-              unknown
-            >
+            response.modified_args = JSON.parse(editedArgs) as Record<string, unknown>
             setJsonError(null)
           } catch {
             setJsonError(t('invalidJson'))
@@ -204,15 +199,11 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
               <WrenchIcon className="size-3 text-muted-foreground" />
               <span className="text-xs font-semibold">{toolName}</span>
             </div>
-            {description && (
-              <p className="text-xs text-muted-foreground">{description}</p>
-            )}
+            {description && <p className="text-xs text-muted-foreground">{description}</p>}
           </div>
 
           {/* Args preview */}
-          {toolArgs && Object.keys(toolArgs).length > 0 && (
-            <ArgsPreview args={toolArgs} />
-          )}
+          {toolArgs && Object.keys(toolArgs).length > 0 && <ArgsPreview args={toolArgs} />}
 
           {/* 거부 사유 입력 (거부 선택 시) */}
           {decision === 'rejected' && !submitting && (
@@ -238,9 +229,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                 className="w-full resize-none rounded-lg border border-blue-200 bg-background px-3 py-2 font-mono text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-blue-300 dark:border-blue-900"
                 rows={4}
               />
-              {jsonError && (
-                <p className="mt-1 text-xs text-destructive">{jsonError}</p>
-              )}
+              {jsonError && <p className="mt-1 text-xs text-destructive">{jsonError}</p>}
             </>
           )}
 
@@ -263,9 +252,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                   type="button"
                   onClick={() => {
                     setShowEdit(true)
-                    setEditedArgs(
-                      toolArgs ? JSON.stringify(toolArgs, null, 2) : '{}',
-                    )
+                    setEditedArgs(toolArgs ? JSON.stringify(toolArgs, null, 2) : '{}')
                   }}
                   className="flex items-center gap-1.5 rounded-full border border-blue-300 px-4 py-2 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950"
                 >

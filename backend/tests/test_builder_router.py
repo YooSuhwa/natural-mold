@@ -61,9 +61,7 @@ async def test_start_build_empty_request(client: AsyncClient):
 async def test_get_session(client: AsyncClient, db: AsyncSession):
     await _seed(db)
 
-    create_resp = await client.post(
-        "/api/builder", json={"user_request": "검색 에이전트"}
-    )
+    create_resp = await client.post("/api/builder", json={"user_request": "검색 에이전트"})
     session_id = create_resp.json()["id"]
 
     resp = await client.get(f"/api/builder/{session_id}")

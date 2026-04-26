@@ -103,11 +103,7 @@ function PrebuiltSection({
             <div key={provider} className="rounded-lg border bg-card/50 p-3 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-medium">{providerLabel(provider)}</h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setDialogProvider(provider)}
-                >
+                <Button variant="outline" size="sm" onClick={() => setDialogProvider(provider)}>
                   <PlusIcon className="size-3.5" data-icon="inline-start" />
                   {t('addButton')}
                 </Button>
@@ -186,11 +182,7 @@ function CustomSection({
       )}
 
       {dialogOpen && (
-        <ConnectionBindingDialog
-          type="custom"
-          open={dialogOpen}
-          onOpenChange={setDialogOpen}
-        />
+        <ConnectionBindingDialog type="custom" open={dialogOpen} onOpenChange={setDialogOpen} />
       )}
     </section>
   )
@@ -230,4 +222,3 @@ function McpSection({
     </section>
   )
 }
-
