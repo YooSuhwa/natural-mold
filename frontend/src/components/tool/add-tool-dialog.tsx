@@ -35,6 +35,28 @@ interface AddToolDialogProps {
   trigger: React.ReactNode
 }
 
+// legacy `Custom API Key` provider는 field_keys=["header_name", "api_key"]를
+// 갖는다 — header_name은 헤더 이름을 저장하는 메타 필드라 새 connection 시스템
+// 의 env_vars dict key 위치에는 부적합 (헤더 이름은 사용자가 connection level에서
+// 직접 입력). select에서 숨기고 토큰 필드만 노출.
+const META_CREDENTIAL_FIELDS = new Set(['header_name', 'headername', 'header'])
+// 토큰을 보관할 가능성이 가장 높은 필드 — credential 선택 시 default로 자동 채움.
+const TOKEN_CREDENTIAL_FIELD_PRIORITY = [
+  'api_key',
+  'token',
+  'access_token',
+  'bearer',
+  'auth_token',
+]
+
+function pickDefaultCredentialField(fieldKeys: string[]): string {
+  const usable = fieldKeys.filter((k) => !META_CREDENTIAL_FIELDS.has(k.toLowerCase()))
+  for (const candidate of TOKEN_CREDENTIAL_FIELD_PRIORITY) {
+    if (usable.includes(candidate)) return candidate
+  }
+  return usable[0] ?? ''
+}
+
 // 표시 이름 → provider_name 슬러그. 백엔드 validator는 ^[a-z0-9_]+$ 강제 (길이 ≤50).
 // 한글/이모지 등 ASCII 외 입력은 빈 normalized → random suffix로 scope 내 중복 회피.
 function slugify(raw: string): string {
@@ -286,7 +308,10 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                 value={mcpCredentialId}
                 onValueChange={(v) => {
                   setMcpCredentialId(v)
-                  setMcpCredentialField('')
+                  const picked = availableCredentials.find((c) => c.id === v)
+                  setMcpCredentialField(
+                    picked ? pickDefaultCredentialField(picked.field_keys) : '',
+                  )
                 }}
                 onCreateRequested={() => setCredentialDialogOpen(true)}
                 credentials={availableCredentials}
@@ -304,11 +329,13 @@ export function AddToolDialog({ trigger }: AddToolDialogProps) {
                         onChange={(e) => setMcpCredentialField(e.target.value)}
                       >
                         <option value="">{t('mcp.credentialFieldPlaceholder')}</option>
-                        {selectedMcpCredential.field_keys.map((field) => (
-                          <option key={field} value={field}>
-                            {field}
-                          </option>
-                        ))}
+                        {selectedMcpCredential.field_keys
+                          .filter((f) => !META_CREDENTIAL_FIELDS.has(f.toLowerCase()))
+                          .map((field) => (
+                            <option key={field} value={field}>
+                              {field}
+                            </option>
+                          ))}
                       </select>
                     </div>
                   )}
