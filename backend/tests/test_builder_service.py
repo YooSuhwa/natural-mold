@@ -473,6 +473,7 @@ async def test_confirm_build_no_models_raises(db: AsyncSession):
 
     # Session should be rolled back to PREVIEW
     reloaded = await get_session(db, session.id, TEST_USER_ID)
+    assert reloaded is not None
     assert reloaded.status == BuilderStatus.PREVIEW
 
 

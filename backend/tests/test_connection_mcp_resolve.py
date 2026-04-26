@@ -641,6 +641,7 @@ def test_migrated_extra_config_passes_strict_schema():
             "updated_at": now,
         }
     )
+    assert resp.extra_config is not None
     assert resp.extra_config.url == "https://mcp.example.com"
     # secret 값 은닉, 키만 노출
     assert resp.extra_config.env_var_keys == ["RESEND_API_KEY"]
@@ -684,6 +685,7 @@ def test_response_tolerates_legacy_non_string_env_var_values():
             "updated_at": now,
         }
     )
+    assert resp.extra_config is not None
     assert resp.extra_config.env_var_keys == sorted(
         ["RESEND_API_KEY", "TIMEOUT", "VERIFY_SSL", "CFG"]
     )

@@ -125,7 +125,7 @@ async def list_messages_from_checkpointer(
 
     checkpointer = get_checkpointer()
     config = {"configurable": {"thread_id": str(conversation_id)}}
-    checkpoint_tuple = await checkpointer.aget_tuple(config)
+    checkpoint_tuple = await checkpointer.aget_tuple(config)  # type: ignore[arg-type]  # RunnableConfig 호환 dict
 
     if not checkpoint_tuple:
         return []
@@ -277,7 +277,7 @@ def _resolve_prebuilt_auth(
     - connection 자체가 없음 → `{}` (env fallback, ADR-008 §11)
     - connection 있음 → Gate A (ownership + active) → Gate B (credential decrypt)
     """
-    conn = default_connection_map.get(tool.provider_name)
+    conn = default_connection_map.get(tool.provider_name or "")
     if conn is None:
         # env fallback — tool builder가 `settings.*`를 사용. 여기서 settings를
         # 재조회하지 않는다 (2중 fallback 금지).

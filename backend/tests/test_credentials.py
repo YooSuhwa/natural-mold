@@ -94,6 +94,7 @@ async def test_update_credential_data_syncs_field_keys(client: AsyncClient, db: 
     row = (
         await db.execute(select(Credential).where(Credential.id == uuid.UUID(credential_id)))
     ).scalar_one()
+    assert row.field_keys is not None
     assert sorted(row.field_keys) == ["client_id", "client_secret"]
 
 

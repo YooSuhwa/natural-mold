@@ -101,7 +101,7 @@ async def test_custom_tool_requires_connection(client: AsyncClient):
 
 
 def _make_custom_tool(
-    *, user_id: uuid.UUID = None, name: str = "my_custom_tool", **overrides
+    *, user_id: uuid.UUID | None = None, name: str = "my_custom_tool", **overrides
 ) -> Tool:
     if user_id is None:
         user_id = TEST_USER_ID
@@ -118,7 +118,7 @@ def _make_custom_tool(
 
 def _make_credential(
     *,
-    user_id: uuid.UUID = None,
+    user_id: uuid.UUID | None = None,
     name: str = "Custom Key",
     provider_name: str = "custom",
     data: dict | None = None,

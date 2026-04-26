@@ -286,7 +286,7 @@ def _patched_llm_tool_selector_class() -> type | None:
             self,
             response: dict[str, Any],
             available_tools: list[Any],
-            valid_tool_names: set[str],
+            valid_tool_names: list[str],
             request: Any,
         ) -> list[Any]:
             # Normalize {"const": "name"} objects to plain "name" strings
@@ -300,7 +300,7 @@ def _patched_llm_tool_selector_class() -> type | None:
                     else:
                         normalized.append(str(item))
                 response = {**response, "tools": normalized}
-            return super()._process_selection_response(
+            return super()._process_selection_response(  # type: ignore[misc]
                 response, available_tools, valid_tool_names, request
             )
 

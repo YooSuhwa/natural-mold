@@ -146,7 +146,7 @@ def test_mcp_validator_requires_extra_config_url():
             type="mcp",
             provider_name="resend",
             display_name="Resend MCP",
-            extra_config={"auth_type": "bearer"},
+            extra_config={"auth_type": "bearer"},  # type: ignore[arg-type]
         )
     assert "url" in str(exc.value)
 
@@ -156,7 +156,7 @@ def test_mcp_validator_requires_extra_config_url():
             type="mcp",
             provider_name="resend",
             display_name="Resend MCP",
-            extra_config={"url": "https://x"},
+            extra_config={"url": "https://x"},  # type: ignore[arg-type]
         )
     assert "auth_type" in str(exc.value)
 
@@ -165,8 +165,9 @@ def test_mcp_validator_requires_extra_config_url():
         type="mcp",
         provider_name="resend",
         display_name="Resend MCP",
-        extra_config={"url": "https://mcp.example.com", "auth_type": "bearer"},
+        extra_config={"url": "https://mcp.example.com", "auth_type": "bearer"},  # type: ignore[arg-type]
     )
+    assert ok.extra_config is not None
     assert ok.extra_config.url == "https://mcp.example.com"
 
 
@@ -644,7 +645,7 @@ def test_create_rejects_unknown_fields():
             type="prebuilt",
             provider_name="naver",
             display_name="N",
-            unknown_field="nope",
+            unknown_field="nope",  # type: ignore[call-arg]
         )
     assert "unknown_field" in str(exc_info.value)
 
@@ -655,7 +656,7 @@ def test_update_rejects_type_field():
     from app.schemas.connection import ConnectionUpdate
 
     with pytest.raises(ValidationError) as exc_info:
-        ConnectionUpdate(type="mcp")
+        ConnectionUpdate(type="mcp")  # type: ignore[call-arg]
     # Pydantic forbid 에러 메시지는 'Extra inputs are not permitted'
     assert "type" in str(exc_info.value).lower()
 

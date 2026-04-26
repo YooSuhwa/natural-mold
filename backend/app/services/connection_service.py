@@ -497,13 +497,13 @@ async def update_connection(
                 else conn.extra_config
             )
             ConnectionCreate(
-                type=conn.type,
+                type=conn.type,  # type: ignore[arg-type]  # ORM 칼럼 → Pydantic Literal narrowing
                 provider_name=conn.provider_name,
                 display_name=conn.display_name,
                 credential_id=conn.credential_id,
                 extra_config=_extra_cfg_arg,
                 is_default=conn.is_default,
-                status=conn.status,
+                status=conn.status,  # type: ignore[arg-type]
             )
         except ValidationError as exc:
             # errors()의 "input" 필드에 UUID 등 JSON 직렬화 불가한 값이

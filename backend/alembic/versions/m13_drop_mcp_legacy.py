@@ -26,6 +26,7 @@ M9에서 mcp_servers → connections로 데이터 이관, M6.1에서 PATCH /api/
 from __future__ import annotations
 
 import sqlalchemy as sa
+from sqlalchemy import exc as sa_exc
 
 from alembic import op
 
@@ -68,7 +69,7 @@ def _assert_no_stale_legacy_rows() -> None:
     def column_exists(table: str, column: str) -> bool:
         try:
             return column in {c["name"] for c in inspector.get_columns(table)}
-        except sa.exc.NoSuchTableError:
+        except sa_exc.NoSuchTableError:
             return False
 
     checks = collect_legacy_checks(bind.dialect.name, column_exists)

@@ -169,6 +169,6 @@ async def stream_agent_response(
         prompt = usage_data.get("prompt_tokens", 0)
         completion = usage_data.get("completion_tokens", 0)
         cost = (prompt * (cost_per_input_token or 0)) + (completion * (cost_per_output_token or 0))
-        usage_data["estimated_cost"] = round(cost, 8)
+        usage_data["estimated_cost"] = round(cost, 8)  # type: ignore[assignment]  # SSE payload는 float 허용
 
     yield format_sse("message_end", {"usage": usage_data, "content": full_content})

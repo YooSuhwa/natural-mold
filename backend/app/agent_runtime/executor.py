@@ -178,7 +178,7 @@ def build_agent(
         tools=tools,
         system_prompt=system_prompt,
         middleware=middleware or (),
-        interrupt_on=interrupt_on,
+        interrupt_on=interrupt_on,  # type: ignore[arg-type]  # bool/dict 양쪽 지원
         checkpointer=checkpointer,
         store=store,
         backend=backend,
@@ -198,7 +198,7 @@ def _auth_config_to_headers(auth_config: dict[str, str] | None) -> dict[str, str
     if not auth_config:
         return {}
     if "headers" in auth_config:
-        return auth_config["headers"]
+        return auth_config["headers"]  # type: ignore[return-value]  # legacy: dict 형태 전달 시
     return {}
 
 
@@ -312,8 +312,8 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     for key, config in servers.items():
         try:
             client = MultiServerMCPClient(
-                {key: config},
-                tool_interceptors=interceptors,
+                {key: config},  # type: ignore[arg-type]  # dict는 Connection TypedDict 호환
+                tool_interceptors=interceptors,  # type: ignore[arg-type]
             )
             server_tools = await asyncio.wait_for(
                 client.get_tools(),

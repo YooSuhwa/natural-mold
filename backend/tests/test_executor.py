@@ -11,7 +11,7 @@ from app.agent_runtime.executor import AgentConfig
 
 def _cfg(**overrides) -> AgentConfig:
     """테스트용 AgentConfig 기본값 생성."""
-    defaults = dict(
+    defaults: dict[str, object] = dict(
         provider="openai",
         model_name="gpt-4o",
         api_key=None,
@@ -21,7 +21,7 @@ def _cfg(**overrides) -> AgentConfig:
         thread_id="t-1",
     )
     defaults.update(overrides)
-    return AgentConfig(**defaults)
+    return AgentConfig(**defaults)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

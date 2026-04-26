@@ -234,7 +234,7 @@ async def run_build_stream(
 
     try:
         try:
-            async for update in run_builder_pipeline(
+            async for pipeline_update in run_builder_pipeline(
                 user_id=str(user_id),
                 user_request=user_request,
                 session_id=str(session_id),
@@ -243,13 +243,13 @@ async def run_build_stream(
                 default_model_name=default_model_name,
             ):
                 # SSE 이벤트 전송
-                events = update.get("events", [])
+                events = pipeline_update.get("events", [])
                 for event in events:
                     event_type = _detect_event_type(event)
                     yield format_sse(event_type, event)
 
                 # 중간 상태 업데이트 수집
-                state_update = update.get("state_update", {})
+                state_update = pipeline_update.get("state_update", {})
                 final_state.update(state_update)
 
                 # phase 완료 이벤트가 있으면 해당 phase 결과를 DB에 점진적 저장

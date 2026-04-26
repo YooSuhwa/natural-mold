@@ -87,7 +87,7 @@ async def test_connection_success():
         success, message, count = await test_connection(mock_provider)
 
     assert success is True
-    assert count >= 3  # JSON catalog contains all Anthropic models
+    assert count is not None and count >= 3  # JSON catalog contains all Anthropic models
     assert "모델 검색 성공" in message
 
 

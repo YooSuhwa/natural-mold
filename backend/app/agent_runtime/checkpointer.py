@@ -26,7 +26,7 @@ async def init_checkpointer(conn_string: str) -> None:
         kwargs={"autocommit": True, "prepare_threshold": 0},
     )
     await _pool.open()
-    _checkpointer = AsyncPostgresSaver(conn=_pool)
+    _checkpointer = AsyncPostgresSaver(conn=_pool)  # type: ignore[arg-type]  # Pool도 Conn 인터페이스 호환
     await _checkpointer.setup()
     logger.info("Checkpointer initialized (PostgreSQL)")
 

@@ -102,7 +102,7 @@ class ConnectionCreate(BaseModel):
     @field_validator("display_name")
     @classmethod
     def _check_display_name_marker(cls, v: str) -> str:
-        return check_reserved_marker(v, "display_name")
+        return check_reserved_marker(v, "display_name") or v
 
     @model_validator(mode="after")
     def _check_extra_config_per_type(self) -> ConnectionCreate:
