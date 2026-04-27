@@ -1,4 +1,4 @@
-"""Builder v2 서비스 — 세션 관리, 파이프라인 실행, confirm 로직."""
+"""Builder 서비스 — 세션 관리, v3 메시지 스트리밍, confirm 로직."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.agent_runtime.builder.orchestrator import run_builder_pipeline
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.agent_runtime.streaming import format_sse
 from app.database import async_session as async_session_factory
@@ -62,28 +61,6 @@ async def get_session(
 # ---------------------------------------------------------------------------
 
 
-async def claim_for_streaming(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> bool:
-    """BUILDING → STREAMING 원자적 전환. 성공하면 True.
-
-    동시 GET /stream 요청이 오더라도 하나만 성공한다.
-    STREAMING 상태의 re-claim은 허용하지 않는다 — 2개 SSE 소비자가
-    동시에 파이프라인을 실행하는 것을 방지한다.
-    이전 SSE 연결이 끊어진 경우: finally 롤백이 STREAMING → BUILDING으로
-    되돌려주므로, 클라이언트는 재시도 시 BUILDING에서 새로 claim 가능하다.
-    """
-    result = await db.execute(
-        update(BuilderSession)
-        .where(
-            BuilderSession.id == session_id,
-            BuilderSession.user_id == user_id,
-            BuilderSession.status == BuilderStatus.BUILDING,
-        )
-        .values(status=BuilderStatus.STREAMING)
-    )
-    await db.commit()
-    return result.rowcount == 1  # type: ignore[return-value]
-
-
 async def claim_for_confirming(db: AsyncSession, session_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     """PREVIEW → CONFIRMING 원자적 전환. 성공하면 True.
 
@@ -123,7 +100,7 @@ def _get_middlewares_catalog() -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# 파이프라인 실행 (SSE 스트리밍)
+# 모델 조회 (v3 노드 동적 주입용)
 # ---------------------------------------------------------------------------
 
 
@@ -156,214 +133,6 @@ async def _get_default_model_name(db: AsyncSession) -> str:
         return f"{model.provider}:{model.model_name}"
 
     return ""
-
-
-async def _save_phase_result(
-    session_id: uuid.UUID,
-    state: dict[str, Any],
-) -> None:
-    """완료된 phase의 중간 결과를 DB에 점진적으로 저장한다.
-
-    SSE 스트림 중단 시에도 이미 완료된 phase 결과가 유실되지 않도록 한다.
-    """
-    phase = state.get("current_phase", 0)
-    try:
-        async with async_session_factory() as db:
-            result = await db.execute(select(BuilderSession).where(BuilderSession.id == session_id))
-            session = result.scalar_one_or_none()
-            if not session:
-                return
-
-            session.current_phase = phase
-            if "project_path" in state:
-                session.project_path = state["project_path"]
-            if "intent" in state:
-                session.intent = state["intent"]
-            if "tools" in state:
-                session.tools_result = state["tools"]
-            if "middlewares" in state:
-                session.middlewares_result = state["middlewares"]
-            if "system_prompt" in state:
-                session.system_prompt = state["system_prompt"]
-            if "draft_config" in state:
-                session.draft_config = state["draft_config"]
-
-            await db.commit()
-    except Exception:
-        logger.warning(
-            "Failed to save phase %d result for session %s",
-            phase,
-            session_id,
-            exc_info=True,
-        )
-
-
-def _has_phase_completed(events: list[dict]) -> bool:
-    """SSE 이벤트 목록에 phase 완료 이벤트가 있는지 확인한다."""
-    for event in events:
-        event_type = event.get("event_type", "")
-        if not event_type:
-            # event_type 없으면 구조 기반 추론
-            if "phase" in event and event.get("status") == "completed":
-                return True
-        elif event_type == "phase_progress" and event.get("status") == "completed":
-            return True
-    return False
-
-
-async def run_build_stream(
-    session_id: uuid.UUID,
-    user_id: uuid.UUID,
-    user_request: str,
-) -> AsyncGenerator[str, None]:
-    """Builder 파이프라인을 실행하고 SSE 이벤트를 스트리밍한다.
-
-    SSE 스트리밍은 응답이 반환된 뒤에도 계속 실행되므로,
-    라우터의 Depends(get_db) 세션에 의존하면 세션이 닫힐 수 있다.
-    따라서 내부에서 자체 DB 세션을 생성하여 라이프사이클을 관리한다.
-
-    각 phase 완료 시 결과를 DB에 점진적으로 저장하여,
-    SSE 중단 시에도 완료된 phase 결과가 유실되지 않도록 한다.
-    """
-    async with async_session_factory() as db:
-        # async DB call 두 개 병렬, sync 호출은 직접
-        tools_catalog, default_model_name = await asyncio.gather(
-            get_tools_catalog(db, user_id),
-            _get_default_model_name(db),
-        )
-        middlewares_catalog = _get_middlewares_catalog()
-
-    final_state: dict[str, Any] = {}
-    _stream_finished = False
-
-    try:
-        try:
-            async for pipeline_update in run_builder_pipeline(
-                user_id=str(user_id),
-                user_request=user_request,
-                session_id=str(session_id),
-                tools_catalog=tools_catalog,
-                middlewares_catalog=middlewares_catalog,
-                default_model_name=default_model_name,
-            ):
-                # SSE 이벤트 전송
-                events = pipeline_update.get("events", [])
-                for event in events:
-                    event_type = _detect_event_type(event)
-                    yield format_sse(event_type, event)
-
-                # 중간 상태 업데이트 수집
-                state_update = pipeline_update.get("state_update", {})
-                final_state.update(state_update)
-
-                # phase 완료 이벤트가 있으면 해당 phase 결과를 DB에 점진적 저장
-                if _has_phase_completed(events):
-                    await _save_phase_result(session_id, final_state)
-        except Exception as exc:
-            logger.exception("Builder pipeline error in session %s", session_id)
-            yield format_sse(
-                "error",
-                {
-                    "message": "빌드 파이프라인에서 오류가 발생했습니다. 다시 시도해주세요.",
-                    "recoverable": False,
-                },
-            )
-            # 세션 상태를 failed로 업데이트
-            async with async_session_factory() as db:
-                result = await db.execute(
-                    select(BuilderSession).where(BuilderSession.id == session_id)
-                )
-                session = result.scalar_one_or_none()
-                if session:
-                    session.status = BuilderStatus.FAILED
-                    session.error_message = str(exc)
-                    await db.commit()
-            _stream_finished = True
-            yield format_sse("stream_end", {})
-            return
-
-        # 파이프라인 완료 — fresh DB 세션으로 업데이트
-        async with async_session_factory() as db:
-            result = await db.execute(select(BuilderSession).where(BuilderSession.id == session_id))
-            session = result.scalar_one_or_none()
-            if not session:
-                _stream_finished = True
-                yield format_sse("error", {"message": "세션을 찾을 수 없습니다."})
-                yield format_sse("stream_end", {})
-                return
-
-            error = final_state.get("error", "")
-            if error:
-                session.status = BuilderStatus.FAILED
-                session.error_message = error
-            else:
-                session.status = BuilderStatus.PREVIEW
-
-            session.current_phase = final_state.get("current_phase", 0)
-            session.project_path = final_state.get("project_path", "")
-            session.intent = final_state.get("intent")
-            session.tools_result = final_state.get("tools")
-            session.middlewares_result = final_state.get("middlewares")
-            session.system_prompt = final_state.get("system_prompt")
-            session.draft_config = final_state.get("draft_config")
-
-            await db.commit()
-
-        # 최종 이벤트
-        _stream_finished = True
-        if error:
-            yield format_sse("build_failed", {"message": error})
-        else:
-            yield format_sse(
-                "build_preview",
-                {"draft_config": final_state.get("draft_config") or {}},
-            )
-        yield format_sse("stream_end", {})
-    finally:
-        # 안전망: SSE 연결이 중간에 끊기면 (클라이언트 disconnect, 네트워크 오류)
-        # 세션이 STREAMING에 영구 고착되는 것을 방지한다.
-        # 정상 완료/실패 경로에서는 이미 다른 상태로 전환되었으므로
-        # WHERE status=STREAMING 조건에 걸리지 않는다.
-        # 중간 결과는 이미 phase 완료 시점에 DB에 저장되어 있다.
-        if not _stream_finished:
-            try:
-                async with async_session_factory() as db:
-                    await db.execute(
-                        update(BuilderSession)
-                        .where(
-                            BuilderSession.id == session_id,
-                            BuilderSession.status == BuilderStatus.STREAMING,
-                        )
-                        .values(status=BuilderStatus.BUILDING)
-                    )
-                    await db.commit()
-            except Exception:
-                logger.warning(
-                    "Failed to rollback STREAMING→BUILDING for session %s",
-                    session_id,
-                    exc_info=True,
-                )
-
-
-def _detect_event_type(event: dict) -> str:
-    """SSE 이벤트 딕셔너리에서 이벤트 타입을 결정한다.
-
-    event_type 필드가 있으면 그 값을 우선 사용한다.
-    없으면 구조 기반으로 추론한다 (하위 호환성).
-    """
-    if "event_type" in event:
-        return event["event_type"]
-    if "phase" in event and "status" in event:
-        return "phase_progress"
-    if "agent_name" in event and "result_summary" in event:
-        return "sub_agent_end"
-    if "agent_name" in event:
-        return "sub_agent_start"
-    if "recoverable" in event:
-        return "error"
-    if "draft_config" in event:
-        return "build_preview"
-    return "info"
 
 
 # ---------------------------------------------------------------------------
@@ -618,7 +387,7 @@ async def run_v3_resume_stream(
 
     from app.agent_runtime.builder_v3.graph import compile_graph
     from app.agent_runtime.checkpointer import get_checkpointer
-    from app.agent_runtime.streaming import format_sse, stream_agent_response
+    from app.agent_runtime.streaming import stream_agent_response
 
     checkpointer = get_checkpointer()
     graph_compiled = compile_graph(checkpointer)

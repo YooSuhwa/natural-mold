@@ -13,11 +13,8 @@ from app.models.tool import Tool
 from app.models.user import User
 from app.schemas.builder import BuilderStatus
 from app.services.builder_service import (
-    _detect_event_type,
     _get_middlewares_catalog,
-    _has_phase_completed,
     claim_for_confirming,
-    claim_for_streaming,
     confirm_build,
     create_session,
     get_agent_by_id,
@@ -97,42 +94,6 @@ async def test_get_session(db: AsyncSession):
 async def test_get_session_not_found(db: AsyncSession):
     result = await get_session(db, uuid.uuid4(), TEST_USER_ID)
     assert result is None
-
-
-# ---------------------------------------------------------------------------
-# claim_for_streaming
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_claim_for_streaming(db: AsyncSession):
-    """BUILDING -> STREAMING transition succeeds."""
-    await _seed_user(db)
-    await db.commit()
-
-    session = await create_session(db, TEST_USER_ID, "테스트")
-    assert session.status == BuilderStatus.BUILDING
-
-    ok = await claim_for_streaming(db, session.id, TEST_USER_ID)
-    assert ok is True
-
-    reloaded = await get_session(db, session.id, TEST_USER_ID)
-    assert reloaded is not None
-    assert reloaded.status == BuilderStatus.STREAMING
-
-
-@pytest.mark.asyncio
-async def test_claim_already_streaming(db: AsyncSession):
-    """Re-claiming a STREAMING session fails."""
-    await _seed_user(db)
-    await db.commit()
-
-    session = await create_session(db, TEST_USER_ID, "테스트")
-    await claim_for_streaming(db, session.id, TEST_USER_ID)
-
-    # Second claim should fail
-    ok = await claim_for_streaming(db, session.id, TEST_USER_ID)
-    assert ok is False
 
 
 # ---------------------------------------------------------------------------
@@ -256,77 +217,6 @@ async def test_confirm_build_idempotent(db: AsyncSession):
     reloaded = await get_session(db, session.id, TEST_USER_ID)
     assert reloaded is not None
     assert reloaded.agent_id == agent1.id
-
-
-# ---------------------------------------------------------------------------
-# _detect_event_type
-# ---------------------------------------------------------------------------
-
-
-def test_detect_event_type_explicit():
-    """event_type field is used when present."""
-    assert _detect_event_type({"event_type": "phase_progress"}) == "phase_progress"
-    assert _detect_event_type({"event_type": "custom_event"}) == "custom_event"
-
-
-def test_detect_event_type_phase_progress():
-    """phase + status => phase_progress."""
-    assert _detect_event_type({"phase": 1, "status": "started"}) == "phase_progress"
-
-
-def test_detect_event_type_sub_agent_end():
-    """agent_name + result_summary => sub_agent_end."""
-    assert _detect_event_type({"agent_name": "foo", "result_summary": "done"}) == "sub_agent_end"
-
-
-def test_detect_event_type_sub_agent_start():
-    """agent_name without result_summary => sub_agent_start."""
-    assert _detect_event_type({"agent_name": "foo"}) == "sub_agent_start"
-
-
-def test_detect_event_type_error():
-    """recoverable field => error."""
-    assert _detect_event_type({"recoverable": True}) == "error"
-
-
-def test_detect_event_type_build_preview():
-    """draft_config field => build_preview."""
-    assert _detect_event_type({"draft_config": {}}) == "build_preview"
-
-
-def test_detect_event_type_fallback():
-    """Unknown structure => info."""
-    assert _detect_event_type({"random": "data"}) == "info"
-
-
-# ---------------------------------------------------------------------------
-# _has_phase_completed
-# ---------------------------------------------------------------------------
-
-
-def test_has_phase_completed_true_by_event_type():
-    events = [
-        {"event_type": "phase_progress", "status": "completed", "phase": 1},
-    ]
-    assert _has_phase_completed(events) is True
-
-
-def test_has_phase_completed_true_by_structure():
-    events = [
-        {"phase": 2, "status": "completed"},
-    ]
-    assert _has_phase_completed(events) is True
-
-
-def test_has_phase_completed_false_started():
-    events = [
-        {"event_type": "phase_progress", "status": "started", "phase": 1},
-    ]
-    assert _has_phase_completed(events) is False
-
-
-def test_has_phase_completed_false_empty():
-    assert _has_phase_completed([]) is False
 
 
 # ---------------------------------------------------------------------------

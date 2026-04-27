@@ -196,39 +196,3 @@ async def test_builder_confirm_no_models(client: AsyncClient):
 
     resp = await client.post(f"/api/builder/{session_id}/confirm")
     assert resp.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# Builder stream — session not found
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_builder_stream_not_found(client: AsyncClient):
-    """GET /api/builder/{id}/stream — 404 for nonexistent session."""
-    fake_id = "00000000-0000-0000-0000-000000000099"
-    resp = await client.get(f"/api/builder/{fake_id}/stream")
-    assert resp.status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# Builder stream — already streaming
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_builder_stream_already_streaming(client: AsyncClient):
-    """GET /api/builder/{id}/stream — 409 when session is already STREAMING."""
-    async with TestSession() as db:
-        user = User(id=TEST_USER_ID, email="test@test.com", name="Test")
-        db.add(user)
-        await db.commit()
-
-    async with TestSession() as db:
-        session = await create_session(db, TEST_USER_ID, "test")
-        session.status = BuilderStatus.STREAMING
-        await db.commit()
-        session_id = session.id
-
-    resp = await client.get(f"/api/builder/{session_id}/stream")
-    assert resp.status_code == 409

@@ -226,34 +226,3 @@ async def test_confirm_no_model_returns_422(client: AsyncClient, db: AsyncSessio
     resp = await client.post(f"/api/builder/{session.id}/confirm")
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "MODEL_NOT_FOUND"
-
-
-# ---------------------------------------------------------------------------
-# GET /api/builder/{id}/stream — SSE streaming
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_stream_not_found(client: AsyncClient):
-    """Streaming a non-existent session returns 404."""
-    fake_id = str(uuid.uuid4())
-    resp = await client.get(f"/api/builder/{fake_id}/stream")
-    assert resp.status_code == 404
-
-
-@pytest.mark.asyncio
-async def test_stream_not_building_state(client: AsyncClient, db: AsyncSession):
-    """Streaming a session not in BUILDING state returns 409."""
-    await _seed(db)
-
-    session = BuilderSession(
-        user_id=TEST_USER_ID,
-        user_request="test",
-        status=BuilderStatus.PREVIEW,
-    )
-    db.add(session)
-    await db.commit()
-    await db.refresh(session)
-
-    resp = await client.get(f"/api/builder/{session.id}/stream")
-    assert resp.status_code == 409
