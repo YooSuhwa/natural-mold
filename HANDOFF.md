@@ -1,64 +1,67 @@
-# HANDOFF — Builder v3 (8-phase StateGraph + Chat UI 통합)
+# HANDOFF — Builder v2 정리 + 후속 작업
 
-**브랜치**: `feature/builder-v3-state-graph`
-**Base**: `main @ e5876f2`
 **최종 업데이트**: 2026-04-27
-**Plan**: `/Users/chester/.claude/plans/kind-squishing-shore.md`
+**Base**: `main @ 38961b6`
+**열린 PR**: [#69 — Builder v2 코드 제거](https://github.com/YooSuhwa/natural-mold/pull/69) (review 대기)
 
 ---
 
-## 완료된 작업
+## 이번 세션 (2026-04-27) 요약
 
-- [x] **Builder v3 핵심**: LangGraph StateGraph 8-phase + HiTL + 채팅 UI 통합 (assistant-thread.tsx 재사용)
-- [x] **8-phase 구조**: 1 init → 2 intent (ask_user) → 3/4/5 (approval+수정) → 6 image (skip/gen) → 7 save → 8 build (router 분기)
-- [x] **신규 모듈**: `backend/app/agent_runtime/builder_v3/` (graph/state/todos/image_gen/nodes×9/constants), `frontend/src/components/chat/tool-ui/{phase-timeline,recommendation-approval,prompt-approval,image-generation,draft-config}-ui.tsx`
-- [x] **API**: `POST /api/builder/{id}/messages`, `/messages/resume`, `GET /image/{filename}`
-- [x] **Codex 리뷰 3라운드 + /simplify** 모든 지적 반영 (image_url 키 명시, "직접 입력" 제거, 빌드 실패 노출, interrupt_id 검증, ToolMessage close 패턴, Phase 2 revision 반영, ToolNames 상수, asyncio.gather, TOCTOU fix)
+### 완료
+- [x] **PR #69 생성** — Builder v2 dead code 제거 (+4/-1812 lines, 8 files)
+  - 삭제: `builder/orchestrator.py`, `test_builder_orchestrator.py`, `test_builder_service_stream.py`
+  - 부분 제거: `routers/builder.py::stream_build` GET, `builder_service::run_build_stream` 외 v2 헬퍼 4종, 관련 테스트 17개
+  - 보존: `sub_agents/*`, `prompts/*` (v3 import), `BuilderStatus.STREAMING` enum (DB 안전성), `confirm_build`의 v2/v3 image 분기
+- [x] **검증** — pytest 624 passed (회귀 0, -47 v2 테스트), ruff clean, frontend tsc/lint/build 통과
 
-## 검증 결과
+### 검증 명령
+```bash
+cd backend && uv run ruff check . && uv run pytest
+cd frontend && pnpm exec tsc --noEmit && pnpm lint && pnpm build
+```
 
-- **Backend**: pytest **671 passed** (회귀 0, +15 신규), ruff clean
-- **Frontend**: pnpm build 성공, lint 0 error
-- **수동 E2E**: 브라우저 검증 일부 (사용자 기존 세션에서 Phase 8까지 완료)
+---
 
 ## 다음에 해야 할 작업
 
-1. **커밋 + PR 생성** — 단일 PR로 모두 묶을지 plan의 4-PR 분리 권장 따를지 결정
-2. **백엔드 v2 코드 제거 (별도 PR)**: `builder/orchestrator.py`, `services/builder_service.py::run_build_stream`, `routers/builder.py::stream_build` GET, `tests/test_builder_orchestrator.py`. 단 `builder/sub_agents/*.py` + `prompts/*.md`는 v3에서 import하므로 보존
-3. **브라우저 E2E 시나리오 사용자 검증** — mockup 1~4 흐름 + 수정 요청 분기 + 이미지 skip/regenerate
-4. **(선택) 후속 refactor**: Tool UI HiTL form 헬퍼 추출 (`useApprovalForm` hook + `ApprovalCard` wrapper, 5종 컴포넌트 ~40% 코드 감소 가능)
-5. **(선택) frontend buildStreamState memoization** — SSE 이벤트 빈도 높을 때 re-render 비용 감소
+### 즉시
+1. **PR #69 머지** — review 후 main 머지
+2. **main sync** — `git checkout main && git pull` 후 worktree 정리
+
+### 필수 (사용자 직접)
+3. **브라우저 E2E 시나리오 검증** (PRD-screens 기반)
+   - mockup 1~4 흐름
+   - 수정 요청 분기 (recommendation/prompt approval)
+   - 이미지 skip / regenerate
+   - HiTL stale interrupt 처리
+
+### 선택 (refactor)
+4. **Tool UI HiTL form 헬퍼 추출** — `useApprovalForm` hook + `ApprovalCard` wrapper로 5종 approval 컴포넌트 ~40% 감소
+5. **Frontend `buildStreamState` memoization** — SSE 이벤트 빈도 높을 때 re-render 비용 감소
+6. **(선택) v2 enum 정리** — `BuilderStatus.STREAMING` 사용처 0이 된 후, DB 마이그레이션과 함께 enum 제거 가능
+
+---
 
 ## 주의사항
 
-- **LangGraph checkpoint stale**: 같은 builder_session_id 새로고침해도 진행 상태 유지. 새 흐름 검증 시 새 user_request로 시작
-- **stream_mode="messages"**: 노드 add_messages 결과도 stream으로 emit됨 (텍스트는 content_delta, ToolMessage는 tool_call_result). `builder:internal` tag로 sub-LLM 응답 필터링 필수
-- **Tool UI 컴포넌트 mount 안정성**: `submitState` 컴포넌트 로컬 state. 페이지 새로고침 시 reset되므로 `close_pending_tool_card`로 result 채워서 status='complete' 강제 — wait 노드들이 이를 emit
-- **conditional_edges + Command goto**: LangGraph 1.x에서 충돌 — 모든 wait/approval은 dict-only로 통일 (router만 Command + destinations)
-- **이미지 src API_BASE prepend**: `/api/builder/.../image/...`는 backend(:8001) 직접 fetch 필요 → `lib/utils.ts::resolveImageUrl` 사용
+- **`BuilderStatus.STREAMING` enum 보존 이유**: 운영 DB에 STREAMING 상태로 남아있을 수 있는 레코드 안전성. enum 제거하려면 마이그레이션 필요
+- **`confirm_build`의 v2 image 분기 (`services/builder_service.py:208-214`)**: `image_url` 키 없으면 `image_service.generate_agent_image` 자동 호출. v3은 항상 키 포함하므로 dead code지만 HANDOFF 범위 외라 보존. PR #69 머지 후 별도 정리 권장
+- **frontend는 변경 없음** — `stream-builder.ts`, `use-builder-runtime.ts`는 PR #68에서 이미 v3로 통합됨
+
+---
 
 ## 관련 파일
 
-핵심 신규:
-- `backend/app/agent_runtime/builder_v3/graph.py` (8-phase + named routing fns)
-- `backend/app/agent_runtime/builder_v3/state.py` (BuilderState TypedDict)
-- `backend/app/agent_runtime/builder_v3/nodes/_helpers.py` (make_pending_tool_card, close_pending_tool_card, build_approval_result)
-- `backend/app/agent_runtime/builder_v3/constants.py` (ToolNames)
-- `backend/app/agent_runtime/builder_v3/image_gen.py` (OpenRouter Moldy)
+- 분석 문서: `tasks/deletion-analysis.md` (베조스 분석, K/M/D 분류)
+- 아키텍처: `docs/design-docs/builder-v3-architecture.md`
+- 이전 HANDOFF: `e02dc2b [docs] HANDOFF — 2026-04-26 세션 종료`
 
-수정 (보안/엣지):
-- `backend/app/routers/builder.py` (BuilderResumeRequest interrupt_id, serve_builder_image ownership)
-- `backend/app/services/builder_service.py` (run_v3_*, _transfer_builder_image_sync, asyncio.gather)
-- `frontend/src/lib/chat/use-chat-runtime.ts` (resumeFn, lastInterruptIdRef, phase_timeline tool_name 매칭)
-- `frontend/src/app/agents/new/conversational/page.tsx` (AssistantThread 기반 재작성)
-
-문서: `tasks/deletion-analysis.md`, `docs/design-docs/builder-v3-architecture.md`
+---
 
 ## 마지막 상태
 
-- 브랜치: `feature/builder-v3-state-graph` (main에 머지 안 됨)
-- working tree: 47 파일 변경 (+1300/-1560), uncommitted
-- pytest: **671 passed**, ruff/lint clean
-- backend dev server (uvicorn :8001) + frontend (next :3000) 실행 중
+- 브랜치: `main` (PR #69 review 대기, worktree `feature/cleanup-builder-v2`)
+- 검증: pytest 624 / ruff / tsc / lint / build 모두 pass
 
-새 세션에서 "HANDOFF.md 읽고 커밋부터 진행해줘" 또는 "백엔드 v2 제거 PR 만들어줘" 등으로 이어가면 됩니다.
+새 세션에서 "HANDOFF.md 읽고 PR #69 review 결과 반영해줘" 또는 "E2E 검증 도와줘" 등으로 이어가면 됩니다.
