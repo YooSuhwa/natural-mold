@@ -192,26 +192,15 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
         await db.commit()
         await db.refresh(agent, ["model", "tool_links"])
 
-        # 이미지 처리:
-        # - v3 흐름: draft_config["image_url"] 키 존재 → 사용자가 phase6에서 결정
-        #     truthy → 임시 파일을 Agent 디렉토리로 이동
-        #     None/falsy → 명시적 skip (자동 생성 안 함)
-        # - v2 흐름: "image_url" 키 없음 → 자동 생성 (기존 동작)
-        v3_image_decided = "image_url" in (config or {})
-        if v3_image_decided:
-            image_url = config.get("image_url")
-            if image_url:
-                await _transfer_builder_image(session, agent, image_url)
-                # agent.image_path 변경을 DB에 반영
-                await db.commit()
-                await db.refresh(agent)
-        else:
-            try:
-                from app.services import image_service
-
-                await image_service.generate_agent_image(db, agent)
-            except Exception:
-                logger.warning("Image generation failed for agent %s", agent.id, exc_info=True)
+        # 이미지 처리: phase7_save가 draft_config["image_url"]을 항상 명시적으로 set.
+        #   truthy → 임시 파일을 Agent 디렉토리로 이동
+        #   None/falsy → 사용자가 phase6에서 명시적 skip
+        image_url = (config or {}).get("image_url")
+        if image_url:
+            await _transfer_builder_image(session, agent, image_url)
+            # agent.image_path 변경을 DB에 반영
+            await db.commit()
+            await db.refresh(agent)
 
         # 이미지 생성이 commit하면 관계가 expire되므로 selectinload로 재로드
         result = await db.execute(

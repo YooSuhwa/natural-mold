@@ -72,8 +72,7 @@ async def _persist_session(
             if not row:
                 return
             payload: dict[str, Any] = draft.model_dump(mode="json")
-            # image_url은 항상 명시적으로 set (None도 유지) — confirm_build가 키 존재
-            # 여부로 v3/v2 흐름을 구분하므로, skip을 v2 자동 생성으로 misclassify되지 않도록.
+            # image_url은 항상 명시적으로 set — None은 사용자가 phase6에서 skip한 의미.
             payload["image_url"] = image_url
             row.draft_config = payload
             row.system_prompt = draft.system_prompt
@@ -91,9 +90,7 @@ async def _persist_session(
 async def phase7_save(state: BuilderState) -> dict:
     draft = _build_draft(state)
     draft_dict: dict[str, Any] = draft.model_dump(mode="json")
-    # image_url 키는 항상 명시적으로 set — confirm_build가 키 존재 여부로
-    # v3 흐름(skip 포함)을 v2 자동 생성과 구분하기 때문.
-    # state.image_url이 None이면 사용자가 명시적으로 skip했다는 의미.
+    # image_url은 항상 명시적으로 set — None이면 사용자가 phase6에서 skip한 의미.
     draft_dict["image_url"] = state.get("image_url")
 
     await _persist_session(
