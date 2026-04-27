@@ -9,6 +9,8 @@ import { convertMessage } from './convert-message'
 import { extractText } from './utils'
 import { streamResume } from '@/lib/sse/stream-resume'
 
+const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
+
 function createOptimisticMessage(
   role: 'user' | 'assistant' | 'tool',
   content: string,
@@ -27,6 +29,12 @@ function createOptimisticMessage(
 }
 
 type StreamFn = (content: string, signal: AbortSignal) => AsyncGenerator<SSEEvent>
+type ResumeFn = (
+  response: unknown,
+  signal: AbortSignal,
+  displayText?: string,
+  interruptId?: string | null,
+) => AsyncGenerator<SSEEvent>
 
 interface UseChatRuntimeOptions {
   /** TanStack Query에서 가져온 메시지 목록 */
@@ -39,8 +47,10 @@ interface UseChatRuntimeOptions {
   onMessagesCommit?: (messages: Message[]) => void
   /** interrupt 발생 시 호출 (HiTL UI 렌더링용) */
   onInterrupt?: (payload: InterruptPayload) => void
-  /** resume 시 conversationId가 필요 */
+  /** resume 시 conversationId가 필요 (legacy, conversations 페이지용) */
   conversationId?: string
+  /** 커스텀 resume 함수 (Builder v3 등 conversationId가 없는 컨텍스트용) */
+  resumeFn?: ResumeFn
 }
 
 /**
@@ -57,6 +67,7 @@ export function useChatRuntime({
   onInterrupt,
   onMessagesCommit,
   conversationId,
+  resumeFn,
 }: UseChatRuntimeOptions) {
   const [isRunning, setIsRunning] = useState(false)
   const [streamingMessages, setStreamingMessages] = useState<Message[]>([])
@@ -66,6 +77,8 @@ export function useChatRuntime({
   // 위해서.
   const [, setStreamError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  // 가장 최근에 emit된 interrupt_id (resume 시 stale 검증용)
+  const lastInterruptIdRef = useRef<string | null>(null)
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
 
   // useCallback 불필요 — abortRef/setIsRunning은 안정 참조, 이벤트 핸들러 내부에서만 호출
@@ -125,33 +138,73 @@ export function useChatRuntime({
               break
             }
             case 'tool_call_start': {
+              const toolName = event.data.tool_name
+              const params = event.data.parameters as Record<string, unknown>
+              // phase_timeline은 단일 카드 갱신 (불변 패턴 — 같은 인덱스에 새 객체로 교체)
+              if (toolName === PHASE_TIMELINE_TOOL_NAME) {
+                const idx = toolCalls.findIndex((tc) => tc.name === PHASE_TIMELINE_TOOL_NAME)
+                if (idx >= 0) {
+                  toolCalls[idx] = { ...toolCalls[idx], args: params }
+                  setStreamingMessages(buildStreamState())
+                  break
+                }
+              }
               const tcId = `tc-${crypto.randomUUID()}`
-              toolCalls.push({
-                id: tcId,
-                name: event.data.tool_name,
-                args: event.data.parameters as Record<string, unknown>,
-              })
+              toolCalls.push({ id: tcId, name: toolName, args: params })
               setStreamingMessages(buildStreamState())
               break
             }
             case 'tool_call_result': {
-              const lastTc = toolCalls[toolCalls.length - 1]
-              if (lastTc) {
-                toolResults.push({
-                  id: `tr-${crypto.randomUUID()}`,
-                  conversation_id: '',
-                  role: 'tool',
-                  content: String(event.data.result ?? ''),
-                  tool_calls: null,
-                  tool_call_id: lastTc.id ?? null,
-                  created_at: new Date().toISOString(),
-                })
-                setStreamingMessages(buildStreamState())
+              const eventToolName = (event.data as { tool_name?: string }).tool_name
+              const resultStr = String(event.data.result ?? '')
+
+              // phase_timeline result는 tool_name 기반으로 매칭 (lastTc 의존 X)
+              // — 다른 tool이 사이에 emit되어도 정확히 timeline 카드만 갱신
+              if (eventToolName === PHASE_TIMELINE_TOOL_NAME) {
+                const tcIdx = toolCalls
+                  .map((tc, i) => (tc.name === PHASE_TIMELINE_TOOL_NAME ? i : -1))
+                  .filter((i) => i >= 0)
+                  .pop()
+                if (tcIdx !== undefined) {
+                  const tc = toolCalls[tcIdx]
+                  const trIdx = toolResults.findIndex((tr) => tr.tool_call_id === tc.id)
+                  if (trIdx >= 0) {
+                    toolResults[trIdx] = { ...toolResults[trIdx], content: resultStr }
+                  } else {
+                    toolResults.push({
+                      id: `tr-${crypto.randomUUID()}`,
+                      conversation_id: '',
+                      role: 'tool',
+                      content: resultStr,
+                      tool_calls: null,
+                      tool_call_id: tc.id ?? null,
+                      created_at: new Date().toISOString(),
+                    })
+                  }
+                  setStreamingMessages(buildStreamState())
+                  break
+                }
               }
+
+              // 일반 tool: 마지막 tool_call에 매칭
+              const lastTc = toolCalls[toolCalls.length - 1]
+              if (!lastTc) break
+              toolResults.push({
+                id: `tr-${crypto.randomUUID()}`,
+                conversation_id: '',
+                role: 'tool',
+                content: resultStr,
+                tool_calls: null,
+                tool_call_id: lastTc.id ?? null,
+                created_at: new Date().toISOString(),
+              })
+              setStreamingMessages(buildStreamState())
               break
             }
             case 'interrupt': {
               // interrupt 발생 → 사용자 응답 대기 상태이므로 로딩 중지
+              const intrId = (event.data as { interrupt_id?: string }).interrupt_id
+              if (intrId) lastInterruptIdRef.current = intrId
               setIsRunning(false)
               onInterrupt?.(event.data)
               break
@@ -227,18 +280,27 @@ export function useChatRuntime({
   /** HiTL: interrupt 응답 후 그래프 재개 */
   const onResume = useCallback(
     async (response: unknown, displayText?: string) => {
-      if (!conversationId) return
-
       const signal = prepareStream()
       const userMsg = displayText ? createOptimisticMessage('user', displayText) : null
 
+      // resumeFn 우선, 없으면 conversationId 기반 streamResume fallback
+      const intrId = lastInterruptIdRef.current
+      let stream: AsyncGenerator<SSEEvent> | null = null
+      if (resumeFn) {
+        stream = resumeFn(response, signal, displayText, intrId)
+      } else if (conversationId) {
+        stream = streamResume(conversationId, response, signal)
+      }
+
+      if (!stream) return
+
       try {
-        await consumeStream(streamResume(conversationId, response, signal), userMsg)
+        await consumeStream(stream, userMsg)
       } catch (err) {
         console.error('[useChatRuntime] Resume error:', err)
       }
     },
-    [conversationId, consumeStream],
+    [conversationId, resumeFn, consumeStream],
   )
 
   const onCancel = useCallback(async () => {
@@ -252,5 +314,21 @@ export function useChatRuntime({
     onCancel,
   })
 
-  return { runtime, onResume }
+  /** 외부에서 자동으로 첫 메시지를 전송할 때 사용 (e.g., URL ?initialMessage=...) */
+  const sendMessage = useCallback(
+    async (content: string) => {
+      const trimmed = content.trim()
+      if (!trimmed) return
+      const signal = prepareStream()
+      const userMsg = createOptimisticMessage('user', trimmed)
+      try {
+        await consumeStream(streamFn(trimmed, signal), userMsg)
+      } catch (err) {
+        console.error('[useChatRuntime] sendMessage error:', err)
+      }
+    },
+    [streamFn, consumeStream],
+  )
+
+  return { runtime, onResume, sendMessage }
 }
