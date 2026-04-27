@@ -1,4 +1,4 @@
-"""Builder 라우터 — v2 (legacy GET /stream) + v3 (POST /messages, /messages/resume)."""
+"""Builder 라우터 — v3 채팅 UI 통합 (POST /messages, /messages/resume, GET /image)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import (
     agent_creation_failed,
     no_draft_config,
-    session_already_claimed,
     session_confirming,
     session_not_found,
     session_not_preview,
@@ -79,39 +78,6 @@ async def get_build_session(
     if not session:
         raise session_not_found()
     return session
-
-
-@router.get("/{session_id}/stream")
-async def stream_build(
-    session_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-):
-    """빌드 파이프라인을 SSE 스트리밍으로 실행한다."""
-    session = await builder_service.get_session(db, session_id, user.id)
-    if not session:
-        raise session_not_found()
-
-    # 원자적 상태 전환으로 동시 요청 시 중복 실행 방지
-    claimed = await builder_service.claim_for_streaming(db, session_id, user.id)
-    if not claimed:
-        raise session_already_claimed()
-
-    # SSE 스트리밍은 응답 이후에도 실행되므로 Depends(get_db) 세션을 전달하지 않는다.
-    # run_build_stream 내부에서 자체 세션을 생성한다.
-    return StreamingResponse(
-        builder_service.run_build_stream(
-            session_id=session.id,
-            user_id=session.user_id,
-            user_request=session.user_request,
-        ),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @router.post(
