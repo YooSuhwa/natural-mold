@@ -63,6 +63,10 @@ export function AgentCard({ agent }: AgentCardProps) {
               </div>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              <Badge variant="secondary" className="shrink-0">
+                <span className={`mr-1 inline-block size-1.5 rounded-full ${statusColor}`} />
+                {statusLabel}
+              </Badge>
               <button
                 type="button"
                 onClick={(e) => {
@@ -80,10 +84,6 @@ export function AgentCard({ agent }: AgentCardProps) {
                   }`}
                 />
               </button>
-              <Badge variant="secondary" className="shrink-0">
-                <span className={`mr-1 inline-block size-1.5 rounded-full ${statusColor}`} />
-                {statusLabel}
-              </Badge>
             </div>
           </div>
           <CardDescription className="line-clamp-2 min-h-[2.5rem]">

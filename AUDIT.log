@@ -45,3 +45,7 @@
 [2026-04-26T19:35] satya CLEANUP frontend v2 _components/* + use-builder-runtime + stream-builder 제거
 [2026-04-26T19:35] satya MILESTONE_DONE M6 정리 (backend v2는 별도 PR에서 제거 예정)
 [2026-04-26T19:35] satya PROJECT_DONE Builder v3 구현 완료
+[2026-04-27T05:04:19Z] satya PROJECT_START 메인 대시보드 디자인 개선 (Hero 캐릭터 + Quick Action 색상 + 팁 박스)
+[2026-04-27T05:04:19Z] satya MILESTONE_CREATED M_DASH_1=구현 M_DASH_2=verify
+[2026-04-27T05:08:00Z] zuckerberg MILESTONE_DONE M_DASH_1 page.tsx + ko.json 수정 (lint+build PASS)
+[2026-04-27T05:08:00Z] satya VERIFICATION_PASS M_DASH_2 git diff 검토 완료, plan과 일치

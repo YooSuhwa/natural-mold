@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   PlusIcon,
   SparklesIcon,
@@ -11,6 +12,7 @@ import {
   SearchIcon,
   StarIcon,
   ArrowUpDownIcon,
+  ChevronRightIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useAgents } from '@/lib/hooks/use-agents'
@@ -45,18 +47,27 @@ export default function DashboardPage() {
       description: t('quickAction.conversational.description'),
       href: '/agents/new',
       icon: MessageSquareIcon,
+      iconBg: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300',
+      cardBg:
+        'bg-gradient-to-br from-emerald-50 via-emerald-50/30 to-white dark:from-emerald-950/40 dark:via-emerald-950/10 dark:to-card',
     },
     {
       label: t('quickAction.manual.label'),
       description: t('quickAction.manual.description'),
       href: '/agents/new/manual',
       icon: PenLineIcon,
+      iconBg: 'bg-violet-100 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300',
+      cardBg:
+        'bg-gradient-to-br from-violet-50 via-violet-50/30 to-white dark:from-violet-950/40 dark:via-violet-950/10 dark:to-card',
     },
     {
       label: t('quickAction.template.label'),
       description: t('quickAction.template.description'),
       href: '/agents/new/template',
       icon: LayoutTemplateIcon,
+      iconBg: 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300',
+      cardBg:
+        'bg-gradient-to-br from-sky-50 via-sky-50/30 to-white dark:from-sky-950/40 dark:via-sky-950/10 dark:to-card',
     },
   ]
 
@@ -98,35 +109,52 @@ export default function DashboardPage() {
   }, [agents, search, sortBy, showFavoritesOnly])
 
   return (
-    <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
-      {/* Hero Section */}
-      <div className="flex items-start justify-between rounded-xl bg-muted/30 p-6">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight">{t('greeting')}</h1>
-          <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 overflow-auto p-6">
+      <section className="relative overflow-hidden rounded-3xl border border-emerald-100/60 bg-gradient-to-br from-emerald-50/60 via-background to-background p-6 sm:p-8 dark:border-emerald-500/10 dark:from-emerald-950/20">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1 space-y-2">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t('greeting')}</h1>
+            <p className="text-sm text-muted-foreground sm:text-base">{t('subtitle')}</p>
+          </div>
+          <div className="relative hidden shrink-0 sm:block sm:size-32 md:size-40 lg:size-44">
+            <Image
+              src="/dashboard-mascot.png"
+              alt=""
+              fill
+              preload
+              sizes="(min-width: 1024px) 11rem, (min-width: 768px) 10rem, 8rem"
+              className="object-contain"
+            />
+          </div>
+          <Link href="/agents/new" className="shrink-0">
+            <Button className="bg-emerald-900 text-emerald-50 hover:bg-emerald-800 dark:bg-emerald-700 dark:hover:bg-emerald-600">
+              <PlusIcon className="size-4" data-icon="inline-start" />
+              {t('newAgent')}
+            </Button>
+          </Link>
         </div>
-        <Link href="/agents/new">
-          <Button>
-            <PlusIcon className="size-4" data-icon="inline-start" />
-            {t('newAgent')}
-          </Button>
-        </Link>
-      </div>
+      </section>
 
-      {/* Quick Action Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
         {quickActions.map((action) => (
           <Link key={action.href} href={action.href} className="group">
-            <Card className="cursor-pointer transition-colors hover:border-primary/40">
+            <Card
+              className={`cursor-pointer transition-all hover:shadow-md hover:ring-foreground/15 ${action.cardBg}`}
+            >
               <CardContent className="flex items-center gap-4 p-4">
-                <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                  <action.icon className="size-5 text-primary" />
+                <div
+                  className={`flex size-11 shrink-0 items-center justify-center rounded-xl ${action.iconBg}`}
+                >
+                  <action.icon className="size-5" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium group-hover:text-primary transition-colors">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold tracking-tight transition-colors group-hover:text-foreground">
                     {action.label}
                   </p>
-                  <p className="text-xs text-muted-foreground">{action.description}</p>
+                  <p className="line-clamp-1 text-xs text-muted-foreground">{action.description}</p>
+                </div>
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-white/80 ring-1 ring-foreground/5 shadow-sm transition-all group-hover:translate-x-0.5 group-hover:shadow dark:bg-background/60">
+                  <ChevronRightIcon className="size-3.5 text-muted-foreground transition-colors group-hover:text-foreground" />
                 </div>
               </CardContent>
             </Card>
@@ -134,7 +162,6 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Agent Grid */}
       {agentsLoading ? (
         <div>
           <h2 className="mb-4 text-lg font-semibold tracking-tight">{t('myAgents')}</h2>
@@ -146,7 +173,6 @@ export default function DashboardPage() {
         </div>
       ) : agents && agents.length > 0 ? (
         <div>
-          {/* Search / Sort / Filter Bar */}
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <h2 className="text-lg font-semibold tracking-tight">{t('myAgents')}</h2>
             <div className="ml-auto flex items-center gap-2">
@@ -212,7 +238,6 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* Usage Summary */}
       {usage && usage.total_tokens > 0 && (
         <div className="rounded-xl border bg-muted/30 p-4">
           <h2 className="mb-2 text-sm font-medium text-muted-foreground">
@@ -230,6 +255,8 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      <p className="pb-2 text-center text-xs text-muted-foreground">{t('tip')}</p>
     </div>
   )
 }
