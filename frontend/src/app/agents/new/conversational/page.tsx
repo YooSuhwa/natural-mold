@@ -25,12 +25,12 @@ function WelcomeContent() {
       <div>
         <h2 className="text-xl font-bold">자연어로 에이전트 만들기</h2>
         <p className="mt-2 max-w-md text-sm text-muted-foreground">
-          만들고 싶은 에이전트를 자연어로 설명해주세요. 8단계로 함께 만들어나갑니다 — 의도 분석, 도구 추천,
-          미들웨어, 시스템 프롬프트, 이미지 생성을 한 번에.
+          만들고 싶은 에이전트를 자연어로 설명해주세요. 8단계로 함께 만들어나갑니다 — 의도 분석,
+          도구 추천, 미들웨어, 시스템 프롬프트, 이미지 생성을 한 번에.
         </p>
         <p className="mt-3 text-xs text-muted-foreground">
-          예: &quot;인터넷 검색하는 에이전트를 만들어줘&quot;, &quot;매일 아침 9시 주식 시세 알려주는 에이전트
-          만들어줘&quot;
+          예: &quot;인터넷 검색하는 에이전트를 만들어줘&quot;, &quot;매일 아침 9시 주식 시세
+          알려주는 에이전트 만들어줘&quot;
         </p>
       </div>
     </div>
@@ -51,20 +51,17 @@ export default function ConversationalCreationPage({
   const autoSentRef = useRef(false)
 
   // 첫 메시지: 세션 생성 후 stream 시작 / 후속: 기존 세션으로
-  const streamFn = useCallback(
-    (content: string, signal: AbortSignal): AsyncGenerator<SSEEvent> => {
-      async function* run() {
-        if (!sessionIdRef.current) {
-          const session = await builderApi.start(content)
-          sessionIdRef.current = session.id
-          setSessionId(session.id)
-        }
-        yield* streamBuilderMessage(sessionIdRef.current!, content, signal)
+  const streamFn = useCallback((content: string, signal: AbortSignal): AsyncGenerator<SSEEvent> => {
+    async function* run() {
+      if (!sessionIdRef.current) {
+        const session = await builderApi.start(content)
+        sessionIdRef.current = session.id
+        setSessionId(session.id)
       }
-      return run()
-    },
-    [],
-  )
+      yield* streamBuilderMessage(sessionIdRef.current!, content, signal)
+    }
+    return run()
+  }, [])
 
   const resumeFn = useCallback(
     (
@@ -75,13 +72,7 @@ export default function ConversationalCreationPage({
     ): AsyncGenerator<SSEEvent> => {
       async function* run() {
         if (!sessionIdRef.current) return
-        yield* streamBuilderResume(
-          sessionIdRef.current,
-          response,
-          signal,
-          displayText,
-          interruptId,
-        )
+        yield* streamBuilderResume(sessionIdRef.current, response, signal, displayText, interruptId)
       }
       return run()
     },

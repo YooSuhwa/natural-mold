@@ -13,7 +13,13 @@ interface PromptApprovalArgs {
   summary?: string
 }
 
-function PromptApproval({ args, status }: { args: PromptApprovalArgs; status: 'running' | 'complete' | 'incomplete' | 'requires-action' }) {
+function PromptApproval({
+  args,
+  status,
+}: {
+  args: PromptApprovalArgs
+  status: 'running' | 'complete' | 'incomplete' | 'requires-action'
+}) {
   const form = useApprovalForm({
     isComplete: status === 'complete',
     revisionFallback: '프롬프트를 다시 작성해주세요',

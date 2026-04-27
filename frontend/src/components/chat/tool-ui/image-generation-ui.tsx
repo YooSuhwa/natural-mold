@@ -18,7 +18,13 @@ interface ImageChoiceArgs {
   options?: Array<{ value: string; label: string }>
 }
 
-function ImageChoice({ args, status }: { args: ImageChoiceArgs; status: 'running' | 'complete' | 'incomplete' | 'requires-action' }) {
+function ImageChoice({
+  args,
+  status,
+}: {
+  args: ImageChoiceArgs
+  status: 'running' | 'complete' | 'incomplete' | 'requires-action'
+}) {
   const hitl = useHiTL()
   const [submitted, setSubmitted] = useState<string | null>(null)
   const [editPrompt, setEditPrompt] = useState(args.auto_prompt ?? '')
@@ -32,9 +38,7 @@ function ImageChoice({ args, status }: { args: ImageChoiceArgs; status: 'running
           <ImageIcon className="size-4" />
           이미지 생성 비활성화
         </div>
-        <p className="mt-1 text-amber-700 dark:text-amber-300">
-          {args.auto_prompt}
-        </p>
+        <p className="mt-1 text-amber-700 dark:text-amber-300">{args.auto_prompt}</p>
       </div>
     )
   }
@@ -56,7 +60,9 @@ function ImageChoice({ args, status }: { args: ImageChoiceArgs; status: 'running
         {args.title || '에이전트 이미지를 생성하시겠습니까?'}
       </div>
       <div className="px-4 py-3">
-        <label className="mb-1 block text-xs font-medium text-zinc-500">자동 생성 프롬프트 (편집 가능)</label>
+        <label className="mb-1 block text-xs font-medium text-zinc-500">
+          자동 생성 프롬프트 (편집 가능)
+        </label>
         <textarea
           value={editPrompt}
           onChange={(e) => setEditPrompt(e.target.value)}
@@ -107,7 +113,13 @@ interface ImageApprovalArgs {
   options?: Array<{ value: string; label: string }>
 }
 
-function ImageApproval({ args, status }: { args: ImageApprovalArgs; status: 'running' | 'complete' | 'incomplete' | 'requires-action' }) {
+function ImageApproval({
+  args,
+  status,
+}: {
+  args: ImageApprovalArgs
+  status: 'running' | 'complete' | 'incomplete' | 'requires-action'
+}) {
   const hitl = useHiTL()
   const [submitted, setSubmitted] = useState<string | null>(null)
   const [editPrompt, setEditPrompt] = useState(args.prompt ?? '')
@@ -142,7 +154,9 @@ function ImageApproval({ args, status }: { args: ImageApprovalArgs; status: 'run
           <p className="text-sm text-zinc-500">이미지가 없습니다.</p>
         )}
         <div className="mt-3">
-          <label className="mb-1 block text-xs font-medium text-zinc-500">재생성 프롬프트 (편집 가능)</label>
+          <label className="mb-1 block text-xs font-medium text-zinc-500">
+            재생성 프롬프트 (편집 가능)
+          </label>
           <textarea
             value={editPrompt}
             onChange={(e) => setEditPrompt(e.target.value)}

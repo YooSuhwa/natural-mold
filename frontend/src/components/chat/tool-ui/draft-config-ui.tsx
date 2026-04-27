@@ -30,7 +30,13 @@ interface DraftConfigArgs {
 // Phase 7 — DraftConfig 표시 (자동 진행, 입력 폼 없음)
 // ---------------------------------------------------------------------------
 
-function DraftConfigSummary({ draft, image_url }: { draft: DraftConfig; image_url?: string | null }) {
+function DraftConfigSummary({
+  draft,
+  image_url,
+}: {
+  draft: DraftConfig
+  image_url?: string | null
+}) {
   const tools = draft.tools ?? []
   const middlewares = draft.middlewares ?? []
   return (
@@ -123,7 +129,13 @@ export const DraftConfigCardToolUI = makeAssistantToolUI<DraftConfigArgs, unknow
 // Phase 8 — 최종 승인 (interrupt approval)
 // ---------------------------------------------------------------------------
 
-function DraftApprovalView({ args, status }: { args: DraftConfigArgs; status: 'running' | 'complete' | 'incomplete' | 'requires-action' }) {
+function DraftApprovalView({
+  args,
+  status,
+}: {
+  args: DraftConfigArgs
+  status: 'running' | 'complete' | 'incomplete' | 'requires-action'
+}) {
   const form = useApprovalForm({
     isComplete: status === 'complete',
     approveDisplay: '최종 승인',

@@ -7,8 +7,7 @@ import type { ApprovalFormState } from './use-approval-form'
 type Accent = 'zinc' | 'violet'
 
 const APPROVE_BUTTON_BY_ACCENT: Record<Accent, string> = {
-  zinc:
-    'bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100',
+  zinc: 'bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100',
   violet: 'bg-violet-600 text-white hover:bg-violet-700',
 }
 
