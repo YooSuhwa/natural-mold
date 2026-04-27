@@ -77,7 +77,7 @@ describe('DashboardPage', () => {
 
   it('shows hero section with new agent button', () => {
     render(<DashboardPage />)
-    expect(screen.getByText('안녕하세요!')).toBeInTheDocument()
+    expect(screen.getByText('안녕하세요! 👋')).toBeInTheDocument()
     const newAgentLink = screen.getByText('새 에이전트').closest('a')
     expect(newAgentLink).toHaveAttribute('href', '/agents/new')
   })
