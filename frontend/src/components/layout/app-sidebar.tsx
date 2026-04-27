@@ -79,6 +79,12 @@ export function AppSidebar() {
     [agents],
   )
 
+  const activeMenuClass =
+    'data-active:bg-emerald-100/50 data-active:font-semibold data-active:text-emerald-800 data-active:hover:bg-emerald-100/70 data-active:hover:text-emerald-900 dark:data-active:bg-emerald-500/15 dark:data-active:text-emerald-300 dark:data-active:hover:bg-emerald-500/20 dark:data-active:hover:text-emerald-200'
+
+  const newAgentButtonClass =
+    'h-11 rounded-xl border border-emerald-200/80 bg-emerald-100/50 font-semibold text-emerald-800 hover:border-emerald-300/80 hover:bg-emerald-100/70 hover:text-emerald-900 active:bg-emerald-100/80 active:text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-200'
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="px-4 py-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
@@ -130,9 +136,9 @@ export function AppSidebar() {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  variant="outline"
                   tooltip={t('newAgent')}
                   render={<Link href="/agents/new" />}
+                  className={newAgentButtonClass}
                 >
                   <PlusIcon className="size-4" />
                   <span>{t('newAgent')}</span>
@@ -147,7 +153,7 @@ export function AppSidebar() {
         {/* Main Navigation */}
         <SidebarGroup>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-1">
               {navItems.map((item) => {
                 const isActive =
                   item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
@@ -157,6 +163,7 @@ export function AppSidebar() {
                       isActive={isActive}
                       tooltip={item.label}
                       render={<Link href={item.href} />}
+                      className={activeMenuClass}
                     >
                       <item.icon className="size-4" />
                       <span>{item.label}</span>
@@ -175,7 +182,7 @@ export function AppSidebar() {
             <SidebarGroup>
               <SidebarGroupLabel>{t('recentAgents')}</SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu>
+                <SidebarMenu className="gap-1">
                   {isLoading
                     ? Array.from({ length: 3 }).map((_, i) => (
                         <li key={i} className="flex h-8 items-center gap-2 rounded-md px-2">
@@ -193,6 +200,7 @@ export function AppSidebar() {
                               isActive={isActive}
                               tooltip={agent.name}
                               render={<Link href={`/agents/${agent.id}`} />}
+                              className={activeMenuClass}
                             >
                               <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="xs" />
                               <span>{agent.name}</span>

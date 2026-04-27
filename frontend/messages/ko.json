@@ -47,7 +47,7 @@
     "toggleSidebar": "사이드바 열기/닫기"
   },
   "dashboard": {
-    "greeting": "안녕하세요!",
+    "greeting": "안녕하세요! 👋",
     "subtitle": "AI 에이전트를 만들어 반복 업무를 자동화하세요.",
     "newAgent": "새 에이전트",
     "quickAction": {
@@ -81,7 +81,8 @@
       "title": "이번 달 사용량",
       "totalTokens": "총 토큰: ",
       "estimatedCost": "추정 비용: "
-    }
+    },
+    "tip": "💡 팁: 템플릿을 활용하면 더 빠르게 시작할 수 있어요!"
   },
   "agent": {
     "new": {
