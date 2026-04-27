@@ -38,7 +38,7 @@ def _is_tool_selector_json(text: str) -> bool:
 
 async def stream_agent_response(
     agent: Any,
-    input_: list[Any] | Command,
+    input_: list[Any] | Command | dict[str, Any],
     config: dict[str, Any],
     *,
     cost_per_input_token: float | None = None,
@@ -48,8 +48,12 @@ async def stream_agent_response(
 
     yield format_sse("message_start", {"id": msg_id, "role": "assistant"})
 
-    # Command(resume=...) → 직접 전달, list → {"messages": ...} 래핑
-    actual_input = input_ if isinstance(input_, Command) else {"messages": input_}
+    # Command(resume=...) → 직접 전달
+    # dict → 그대로 (Builder v3 초기 state inject용)
+    # list → {"messages": ...} 래핑
+    actual_input: Any = (
+        input_ if isinstance(input_, (Command, dict)) else {"messages": input_}
+    )
 
     full_content = ""
     was_interrupted = False
@@ -67,6 +71,10 @@ async def stream_agent_response(
             stream_mode="messages",
         ):
             msg, metadata = chunk
+            # Builder v3 sub-LLM 호출은 화면 스트림에서 제외 (helpers.py에서 tag 부여)
+            chunk_tags = (metadata or {}).get("tags") or []
+            if "builder:internal" in chunk_tags:
+                continue
             if hasattr(msg, "content") and msg.content and msg.type in ("ai", "AIMessageChunk"):
                 delta = msg.content
                 if isinstance(delta, str):

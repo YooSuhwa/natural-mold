@@ -25,3 +25,23 @@
 [2026-04-25T08:15:00Z] bezos MILESTONE_DONE M6 integration-verification → tasks/verification-report-e-m6-1.md (판정=GREEN). ruff clean / pytest 621 / lint 0 / build 14 pages / alembic m12↔m13 round-trip PASS / DB schema 3 invariant PASS (mcp_server_id 없음, mcp_servers 없음, FK 2건 only) / backend residue 6건 의도 / frontend residue 0 / PATCH tool 9건 + fail-closed 2건 회귀 PASS / scope creep 0.
 [2026-04-25T08:15:00Z] bezos DELIVERABLES HANDOFF.md 전면 갱신 + tasks/manual-e2e-e-m6-1.md (5 시나리오) + tasks/verification-report-e-m6-1.md. 사용자 다음 작업: 시나리오 1/2 브라우저 확인 + git push + PR 생성.
 [2026-04-25T02:20:00Z] satya FINAL_REVIEW 스태프 엔지니어 승인 가능 — 판정 GREEN 수용. 문서 커밋 + 팀 해산 진행.
+
+[2026-04-26T18:00] satya PROJECT_START "Builder v3 — 8-phase StateGraph + Chat UI 통합"
+[2026-04-26T18:00] satya BRANCH_CREATED feature/builder-v3-state-graph from main@e5876f2
+[2026-04-26T18:00] satya MILESTONE_CREATED M0,M1,M2,M3,M4,M5,M6
+[2026-04-26T18:00] satya MILESTONE_DONE M0 사일로 초기화 (브랜치+CHECKPOINT+progress.txt)
+[2026-04-26T18:15] bezos MILESTONE_DONE M1 deletion-analysis.md 완료 (GREEN, 23K)
+[2026-04-26T18:15] pichai MILESTONE_DONE M2 builder-v3-architecture.md ADR 완료 (GREEN)
+[2026-04-26T18:15] jensen MILESTONE_START M3-1 builder_v3 핵심 인프라 구현
+[2026-04-26T18:45] jensen MILESTONE_DONE M3-1,2,3 백엔드 builder_v3 구현 완료 (graph.py, 8 nodes, router, image_gen)
+[2026-04-26T18:50] jensen MILESTONE_DONE M3-4 pytest 12 passed, 전체 668 passed (회귀 0)
+[2026-04-26T18:50] zuckerberg MILESTONE_START M4-1 use-chat-runtime 추상화
+[2026-04-26T19:30] zuckerberg MILESTONE_DONE M4-1 use-chat-runtime resumeFn 추상화 + SSE 함수 신규
+[2026-04-26T19:30] timcook+zuckerberg MILESTONE_DONE M4-2 Tool UI 5종 (phase-timeline, recommendation-approval, prompt-approval, image-generation, draft-config)
+[2026-04-26T19:30] zuckerberg MILESTONE_DONE M4-3 conversational/page.tsx AssistantThread 기반 재작성
+[2026-04-26T19:30] bezos VERIFICATION_PASS frontend pnpm build 성공, lint 0 error
+[2026-04-26T19:30] bezos VERIFICATION_PASS backend 668 passed, 회귀 0
+[2026-04-26T19:30] satya MILESTONE_DONE M5 통합 검증 (수동 브라우저 E2E는 사용자 실행 대상)
+[2026-04-26T19:35] satya CLEANUP frontend v2 _components/* + use-builder-runtime + stream-builder 제거
+[2026-04-26T19:35] satya MILESTONE_DONE M6 정리 (backend v2는 별도 PR에서 제거 예정)
+[2026-04-26T19:35] satya PROJECT_DONE Builder v3 구현 완료

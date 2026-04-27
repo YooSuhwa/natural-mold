@@ -106,12 +106,17 @@ async def _invoke_with_api_retry(
     *,
     fallback: BaseChatModel | None = None,
 ) -> Any:
-    """LLM을 호출하되, API 에러 시 재시도 후 폴백 모델로 전환한다."""
+    """LLM을 호출하되, API 에러 시 재시도 후 폴백 모델로 전환한다.
+
+    `builder:internal` tag를 부여하여, 상위 streaming.py가 sub-LLM 응답
+    chunk를 사용자 화면 stream에서 제외할 수 있도록 한다.
+    """
     last_exc: Exception | None = None
+    invoke_config: dict[str, Any] = {"tags": ["builder:internal"]}
 
     for attempt in range(_API_MAX_RETRIES):
         try:
-            return await model.ainvoke(messages)
+            return await model.ainvoke(messages, config=invoke_config)
         except Exception as exc:
             if not _is_retryable(exc):
                 raise
@@ -133,7 +138,7 @@ async def _invoke_with_api_retry(
             settings.builder_fallback_name,
         )
         try:
-            return await fallback.ainvoke(messages)
+            return await fallback.ainvoke(messages, config=invoke_config)
         except Exception as fallback_exc:
             logger.error("Fallback model also failed: %s", fallback_exc)
             raise fallback_exc from last_exc

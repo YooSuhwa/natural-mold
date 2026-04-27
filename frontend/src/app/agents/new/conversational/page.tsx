@@ -1,51 +1,41 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, use, useMemo } from 'react'
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2Icon, ArrowLeftIcon, RotateCcwIcon, WrenchIcon, ShieldIcon } from 'lucide-react'
-import { useTranslations } from 'next-intl'
+import Link from 'next/link'
+import { ArrowLeftIcon, SparklesIcon } from 'lucide-react'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
+
+import { AssistantThread } from '@/components/chat/assistant-thread'
 import { Button } from '@/components/ui/button'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '@/components/ui/alert-dialog'
 import { builderApi } from '@/lib/api/builder'
-import { streamBuilder } from '@/lib/sse/stream-builder'
-import { useBuilderRuntime } from '@/lib/chat/use-builder-runtime'
-import type {
-  BuilderDraftConfig,
-  BuilderIntent,
-  BuilderToolRecommendation,
-  BuilderMiddlewareRecommendation,
-} from '@/lib/types'
+import { HiTLContext } from '@/lib/chat/hitl-context'
+import { BUILDER_TOOL_UI } from '@/lib/chat/tool-ui-registry'
+import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
+import { streamBuilderMessage } from '@/lib/sse/stream-builder-message'
+import { streamBuilderResume } from '@/lib/sse/stream-builder-resume'
+import type { Message, SSEEvent } from '@/lib/types'
 
-import { PhaseTimeline } from './_components/phase-timeline'
-import type { PhaseState } from './_components/phase-timeline'
-import { IntentCard } from './_components/intent-card'
-import { RecommendationCard } from './_components/recommendation-card'
-import { DraftConfigCard } from './_components/draft-config-card'
-import { BuilderThread } from './_components/builder-thread'
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const TOTAL_PHASES = 7
-
-function createInitialPhases(): PhaseState[] {
-  return Array.from({ length: TOTAL_PHASES }, (_, i) => ({ id: i + 1, status: 'pending' as const }))
+function WelcomeContent() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-12 text-center">
+      <div className="flex size-16 items-center justify-center rounded-2xl bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-400">
+        <SparklesIcon className="size-8" />
+      </div>
+      <div>
+        <h2 className="text-xl font-bold">자연어로 에이전트 만들기</h2>
+        <p className="mt-2 max-w-md text-sm text-muted-foreground">
+          만들고 싶은 에이전트를 자연어로 설명해주세요. 8단계로 함께 만들어나갑니다 — 의도 분석, 도구 추천,
+          미들웨어, 시스템 프롬프트, 이미지 생성을 한 번에.
+        </p>
+        <p className="mt-3 text-xs text-muted-foreground">
+          예: &quot;인터넷 검색하는 에이전트를 만들어줘&quot;, &quot;매일 아침 9시 주식 시세 알려주는 에이전트
+          만들어줘&quot;
+        </p>
+      </div>
+    </div>
+  )
 }
-
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
 
 export default function ConversationalCreationPage({
   searchParams,
@@ -54,330 +44,122 @@ export default function ConversationalCreationPage({
 }) {
   const { initialMessage } = use(searchParams)
   const router = useRouter()
-  const t = useTranslations('agent.creation')
-  const tc = useTranslations('common')
-
-  // Build state
+  const [messages, setMessages] = useState<Message[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
-  const [buildStatus, setBuildStatus] = useState<'idle' | 'building' | 'preview' | 'failed'>('idle')
-  const [isConfirming, setIsConfirming] = useState(false)
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
-  const [errorMessage, setErrorMessage] = useState('')
+  const sessionIdRef = useRef<string | null>(null)
+  const completedRef = useRef(false)
+  const autoSentRef = useRef(false)
 
-  // Input
-  const [userRequest, setUserRequest] = useState('')
-
-  // Phase tracking
-  const [phases, setPhases] = useState<PhaseState[]>(createInitialPhases)
-
-  // Build results (populated via SSE)
-  const [intent, setIntent] = useState<BuilderIntent | null>(null)
-  const [tools, setTools] = useState<BuilderToolRecommendation[]>([])
-  const [middlewares, setMiddlewares] = useState<BuilderMiddlewareRecommendation[]>([])
-  const [draftConfig, setDraftConfig] = useState<BuilderDraftConfig | null>(null)
-
-  const contentRef = useRef<HTMLDivElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
-  const hasAutoSubmitted = useRef(false)
-  const buildStatusRef = useRef(buildStatus)
-  buildStatusRef.current = buildStatus
-
-  const scrollToBottom = useCallback(() => {
-    if (contentRef.current) {
-      contentRef.current.scrollTo({ top: contentRef.current.scrollHeight, behavior: 'smooth' })
-    }
-  }, [])
-
-  // --- Phase update helpers ---
-
-  const updatePhase = useCallback((phaseId: number, updates: Partial<PhaseState>) => {
-    setPhases((prev) => prev.map((p) => (p.id === phaseId ? { ...p, ...updates } : p)))
-  }, [])
-
-  // --- Build flow ---
-
-  const handleBuild = useCallback(
-    async (request: string) => {
-      const text = request.trim()
-      if (!text) return
-
-      setUserRequest(text)
-      setBuildStatus('building')
-      setErrorMessage('')
-      setPhases(createInitialPhases())
-      setIntent(null)
-      setTools([])
-      setMiddlewares([])
-      setDraftConfig(null)
-
-      try {
-        const session = await builderApi.start(text)
-        setSessionId(session.id)
-
-        const abort = new AbortController()
-        abortRef.current = abort
-
-        for await (const event of streamBuilder(session.id, abort.signal)) {
-          switch (event.event) {
-            case 'phase_progress': {
-              const { phase, status, message } = event.data
-              if (status === 'started') {
-                updatePhase(phase, { status: 'active' })
-              } else if (status === 'completed') {
-                updatePhase(phase, { status: 'completed', resultSummary: message })
-              } else if (status === 'warning') {
-                updatePhase(phase, { status: 'warning', resultSummary: message })
-              } else if (status === 'failed') {
-                updatePhase(phase, { status: 'failed', resultSummary: message })
-              }
-              break
-            }
-            case 'sub_agent_start': {
-              updatePhase(event.data.phase, { subAgentName: event.data.agent_name })
-              break
-            }
-            case 'sub_agent_end': {
-              updatePhase(event.data.phase, {
-                subAgentName: undefined,
-                resultSummary: event.data.result_summary,
-              })
-              break
-            }
-            case 'build_preview': {
-              setDraftConfig(event.data.draft_config)
-              setBuildStatus('preview')
-              break
-            }
-            case 'build_failed': {
-              setBuildStatus('failed')
-              setErrorMessage(event.data.message)
-              break
-            }
-            case 'error': {
-              updatePhase(event.data.phase, { status: 'failed' })
-              if (!event.data.recoverable) {
-                setBuildStatus('failed')
-                setErrorMessage(event.data.message)
-              }
-              break
-            }
-            case 'info':
-            case 'stream_end':
-              break
-          }
+  // 첫 메시지: 세션 생성 후 stream 시작 / 후속: 기존 세션으로
+  const streamFn = useCallback(
+    (content: string, signal: AbortSignal): AsyncGenerator<SSEEvent> => {
+      async function* run() {
+        if (!sessionIdRef.current) {
+          const session = await builderApi.start(content)
+          sessionIdRef.current = session.id
+          setSessionId(session.id)
         }
+        yield* streamBuilderMessage(sessionIdRef.current!, content, signal)
+      }
+      return run()
+    },
+    [],
+  )
 
-        if (buildStatusRef.current !== 'failed') {
-          const finalSession = await builderApi.getSession(session.id)
-          if (finalSession.intent) setIntent(finalSession.intent)
-          if (finalSession.tools_result) setTools(finalSession.tools_result)
-          if (finalSession.middlewares_result) setMiddlewares(finalSession.middlewares_result)
-          if (finalSession.draft_config) setDraftConfig(finalSession.draft_config)
-          if (finalSession.status === 'preview' && buildStatusRef.current !== 'preview') {
-            setBuildStatus('preview')
-          }
+  const resumeFn = useCallback(
+    (
+      response: unknown,
+      signal: AbortSignal,
+      displayText?: string,
+      interruptId?: string | null,
+    ): AsyncGenerator<SSEEvent> => {
+      async function* run() {
+        if (!sessionIdRef.current) return
+        yield* streamBuilderResume(
+          sessionIdRef.current,
+          response,
+          signal,
+          displayText,
+          interruptId,
+        )
+      }
+      return run()
+    },
+    [],
+  )
+
+  // 스트리밍 메시지를 영구 messages로 누적
+  const onMessagesCommit = useCallback((commit: Message[]) => {
+    setMessages((prev) => [...prev, ...commit])
+  }, [])
+
+  // Stream 종료 후 status 체크
+  // - COMPLETED + agent_id → 자동 리다이렉트
+  // - FAILED → 콘솔 경고 (메시지는 graph가 이미 emit했음)
+  const onStreamEnd = useCallback(() => {
+    const sid = sessionIdRef.current
+    if (!sid || completedRef.current) return
+    void (async () => {
+      try {
+        const session = await builderApi.getSession(sid)
+        if (session.status === 'completed' && session.agent_id) {
+          completedRef.current = true
+          router.push(`/agents/${session.agent_id}`)
+        } else if (session.status === 'failed') {
+          completedRef.current = true
+          console.warn('[builder] session failed:', session.error_message)
         }
       } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        setBuildStatus('failed')
-        setErrorMessage(err instanceof Error ? err.message : t('error.generic'))
+        console.error('[builder] getSession failed:', err)
       }
-    },
-    [t, updatePhase],
-  )
+    })()
+  }, [router])
 
-  // Auto-submit from search params
-  useEffect(() => {
-    if (initialMessage && !hasAutoSubmitted.current) {
-      hasAutoSubmitted.current = true
-      setUserRequest(initialMessage)
-      handleBuild(initialMessage)
-      router.replace('/agents/new/conversational')
-    }
-  }, [initialMessage, handleBuild, router])
-
-  // Scroll when phases update
-  useEffect(() => {
-    scrollToBottom()
-  }, [phases, intent, tools, middlewares, draftConfig, scrollToBottom])
-
-  const handleConfirm = useCallback(async () => {
-    if (!sessionId || isConfirming) return
-    setIsConfirming(true)
-    try {
-      const agent = await builderApi.confirm(sessionId)
-      router.push(`/agents/${agent.id}`)
-    } catch {
-      setIsConfirming(false)
-      setErrorMessage(t('error.generic'))
-    }
-  }, [sessionId, isConfirming, router, t])
-
-  const handleReset = useCallback(() => {
-    abortRef.current?.abort()
-    abortRef.current = null
-    setSessionId(null)
-    setBuildStatus('idle')
-    setIsConfirming(false)
-    setErrorMessage('')
-    setUserRequest('')
-    setPhases(createInitialPhases())
-    setIntent(null)
-    setTools([])
-    setMiddlewares([])
-    setDraftConfig(null)
-    hasAutoSubmitted.current = false
-  }, [])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort()
-    }
-  }, [])
-
-  // --- Builder Runtime for Thread ---
-  const builderState = useMemo(
-    () => ({
-      userRequest,
-      buildStatus,
-      phases,
-      intent,
-      tools,
-      middlewares,
-      draftConfig,
-      errorMessage,
-    }),
-    [userRequest, buildStatus, phases, intent, tools, middlewares, draftConfig, errorMessage],
-  )
-
-  const runtime = useBuilderRuntime({
-    state: builderState,
-    onSubmit: handleBuild,
+  const { runtime, onResume, sendMessage } = useChatRuntime({
+    messages,
+    streamFn,
+    resumeFn,
+    onMessagesCommit,
+    onStreamEnd,
   })
 
-  // Build result cards rendered inside the Thread
-  const buildResultCards =
-    buildStatus !== 'idle' ? (
-      <div className="space-y-6">
-        <PhaseTimeline phases={phases} />
+  // URL ?initialMessage=... 가 있으면 한 번만 자동 전송
+  useEffect(() => {
+    if (initialMessage && !autoSentRef.current) {
+      autoSentRef.current = true
+      void sendMessage(initialMessage)
+    }
+  }, [initialMessage, sendMessage])
 
-        {buildStatus === 'building' && (
-          <div className="flex flex-col items-center justify-center gap-3 py-8">
-            <Loader2Icon className="size-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">{t('building')}</p>
-          </div>
-        )}
-
-        {buildStatus === 'failed' && errorMessage && (
-          <div
-            role="alert"
-            className="rounded-xl border border-destructive/50 bg-destructive/5 px-4 py-3"
-          >
-            <p className="text-sm text-destructive">{errorMessage}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-2"
-              onClick={() => handleBuild(userRequest)}
-            >
-              <RotateCcwIcon className="mr-1.5 size-3.5" />
-              {t('resetButton')}
-            </Button>
-          </div>
-        )}
-
-        {intent && <IntentCard intent={intent} />}
-
-        {tools.length > 0 && (
-          <RecommendationCard
-            icon={WrenchIcon}
-            titleKey="toolRecommendation"
-            items={tools.map((tool) => ({
-              name: tool.tool_name,
-              description: tool.description,
-              reason: tool.reason,
-            }))}
-          />
-        )}
-
-        {middlewares.length > 0 && (
-          <RecommendationCard
-            icon={ShieldIcon}
-            titleKey="middlewareRecommendation"
-            items={middlewares.map((m) => ({
-              name: m.middleware_name,
-              description: m.description,
-              reason: m.reason,
-            }))}
-          />
-        )}
-
-        {buildStatus === 'preview' && draftConfig && (
-          <DraftConfigCard
-            draft={draftConfig}
-            onConfirm={handleConfirm}
-            isConfirming={isConfirming}
-          />
-        )}
-      </div>
-    ) : null
+  const hitlValue = useMemo(() => ({ onResume }), [onResume])
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b px-6 py-3">
+    <div className="flex h-screen flex-col">
+      <header className="flex items-center justify-between border-b px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t('cancelButton')}
-            onClick={() => {
-              if (buildStatus !== 'idle') {
-                setShowCancelConfirm(true)
-              } else {
-                router.push('/agents/new')
-              }
-            }}
-          >
-            <ArrowLeftIcon className="size-4" />
-          </Button>
-          <h1 className="text-lg font-semibold">{t('header')}</h1>
+          <Link href="/">
+            <Button variant="ghost" size="icon-sm" aria-label="뒤로가기">
+              <ArrowLeftIcon className="size-4" />
+            </Button>
+          </Link>
+          <h1 className="text-sm font-semibold">새 에이전트 만들기 (대화형)</h1>
+          {sessionId && (
+            <span className="text-xs text-muted-foreground">세션 #{sessionId.slice(0, 8)}</span>
+          )}
         </div>
-        {buildStatus !== 'idle' && (
-          <Button variant="ghost" size="sm" onClick={handleReset}>
-            <RotateCcwIcon className="size-4 data-[icon=inline-start]:mr-1" />
-            {t('resetButton')}
-          </Button>
-        )}
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <AssistantRuntimeProvider runtime={runtime}>
+          <HiTLContext.Provider value={hitlValue}>
+            <AssistantThread
+              agentName="에이전트 빌더"
+              emptyContent={<WelcomeContent />}
+              toolUI={BUILDER_TOOL_UI}
+            />
+          </HiTLContext.Provider>
+        </AssistantRuntimeProvider>
       </div>
-
-      {/* Thread — AssistantRuntimeProvider로 래핑 */}
-      <AssistantRuntimeProvider runtime={runtime}>
-        <BuilderThread buildStatus={buildStatus} buildResultCards={buildResultCards} />
-      </AssistantRuntimeProvider>
-
-      {/* Cancel Confirm Dialog */}
-      <AlertDialog open={showCancelConfirm} onOpenChange={setShowCancelConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('cancelConfirm')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('cancelDescription')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                abortRef.current?.abort()
-                router.push('/agents/new')
-              }}
-            >
-              {t('cancelButton')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import AsyncGenerator
@@ -225,9 +226,12 @@ async def run_build_stream(
     SSE 중단 시에도 완료된 phase 결과가 유실되지 않도록 한다.
     """
     async with async_session_factory() as db:
-        tools_catalog = await get_tools_catalog(db, user_id)
+        # async DB call 두 개 병렬, sync 호출은 직접
+        tools_catalog, default_model_name = await asyncio.gather(
+            get_tools_catalog(db, user_id),
+            _get_default_model_name(db),
+        )
         middlewares_catalog = _get_middlewares_catalog()
-        default_model_name = await _get_default_model_name(db)
 
     final_state: dict[str, Any] = {}
     _stream_finished = False
@@ -419,13 +423,26 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
         await db.commit()
         await db.refresh(agent, ["model", "tool_links"])
 
-        # 캐릭터 이미지 자동 생성 (실패해도 에이전트 생성은 유지)
-        try:
-            from app.services import image_service
+        # 이미지 처리:
+        # - v3 흐름: draft_config["image_url"] 키 존재 → 사용자가 phase6에서 결정
+        #     truthy → 임시 파일을 Agent 디렉토리로 이동
+        #     None/falsy → 명시적 skip (자동 생성 안 함)
+        # - v2 흐름: "image_url" 키 없음 → 자동 생성 (기존 동작)
+        v3_image_decided = "image_url" in (config or {})
+        if v3_image_decided:
+            image_url = config.get("image_url")
+            if image_url:
+                await _transfer_builder_image(session, agent, image_url)
+                # agent.image_path 변경을 DB에 반영
+                await db.commit()
+                await db.refresh(agent)
+        else:
+            try:
+                from app.services import image_service
 
-            await image_service.generate_agent_image(db, agent)
-        except Exception:
-            logger.warning("Image generation failed for agent %s", agent.id, exc_info=True)
+                await image_service.generate_agent_image(db, agent)
+            except Exception:
+                logger.warning("Image generation failed for agent %s", agent.id, exc_info=True)
 
         # 이미지 생성이 commit하면 관계가 expire되므로 selectinload로 재로드
         result = await db.execute(
@@ -466,3 +483,176 @@ async def _resolve_tools(
         )
     )
     return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Builder v3 — StateGraph 기반 메시지 스트리밍
+# ---------------------------------------------------------------------------
+
+
+def _transfer_builder_image_sync(
+    session_id: uuid.UUID,
+    agent_id: uuid.UUID,
+    public_url: str,
+) -> str | None:
+    """Sync I/O — copy file + cleanup builder temp dir. asyncio.to_thread로 호출.
+
+    Returns: agent.image_path 값 (None이면 실패).
+    """
+    import shutil
+    from pathlib import Path
+
+    from app.agent_runtime.builder_v3.image_gen import resolve_local_path
+    from app.config import settings
+
+    filename = Path(public_url).name
+    src = resolve_local_path(str(session_id), filename)
+    if not src:
+        logger.warning("Builder image source not found: %s", public_url)
+        return None
+
+    dest_dir = Path(settings.agent_image_dir) / str(agent_id)
+    dest = dest_dir / f"avatar{src.suffix}"
+    try:
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        # 직접 copy — 파일 사라지면 FileNotFoundError로 처리 (TOCTOU 방어)
+        shutil.copy(src, dest)
+    except FileNotFoundError:
+        logger.warning("Builder image disappeared before copy: %s", src)
+        return None
+    except Exception:
+        logger.warning("Builder image transfer failed", exc_info=True)
+        return None
+
+    # Cleanup: builder temp dir 정리 (실패해도 무시)
+    builder_dir = src.parent
+    if builder_dir.name == str(session_id):
+        shutil.rmtree(builder_dir, ignore_errors=True)
+
+    return str(dest)
+
+
+async def _transfer_builder_image(
+    session: BuilderSession,
+    agent: Agent,
+    public_url: str,
+) -> None:
+    """Phase 6 임시 이미지 → Agent 디렉토리 복사 (async wrapper).
+
+    실패해도 Agent 생성은 유지한다.
+    """
+    result = await asyncio.to_thread(
+        _transfer_builder_image_sync, session.id, agent.id, public_url
+    )
+    if result:
+        agent.image_path = result
+
+
+async def run_v3_message_stream(
+    session_id: uuid.UUID,
+    user_id: uuid.UUID,
+    content: str,
+) -> AsyncGenerator[str, None]:
+    """Builder v3 StateGraph로 메시지를 스트리밍한다.
+
+    - 첫 메시지: 카탈로그/모델/세션 정보를 inject한 full state로 시작
+    - 후속 메시지: messages만 추가 (state는 checkpoint에서 복원)
+    """
+    from langchain_core.messages import HumanMessage
+
+    from app.agent_runtime.builder_v3.graph import compile_graph
+    from app.agent_runtime.builder_v3.state import initial_todos
+    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.streaming import stream_agent_response
+
+    async with async_session_factory() as db:
+        # async DB call 두 개 병렬, sync 호출은 직접
+        tools_catalog, default_model_name = await asyncio.gather(
+            get_tools_catalog(db, user_id),
+            _get_default_model_name(db),
+        )
+        middlewares_catalog = _get_middlewares_catalog()
+
+    checkpointer = get_checkpointer()
+    graph_compiled = compile_graph(checkpointer)
+    config: dict[str, Any] = {"configurable": {"thread_id": str(session_id)}}
+
+    state_snapshot = await graph_compiled.aget_state(config)
+    is_first = not state_snapshot.values
+
+    if is_first:
+        graph_input: Any = {
+            "messages": [HumanMessage(content=content)],
+            "user_id": str(user_id),
+            "session_id": str(session_id),
+            "user_request": content,
+            "tools_catalog": tools_catalog,
+            "middlewares_catalog": middlewares_catalog,
+            "default_model_name": default_model_name,
+            "current_phase": 1,
+            "todos": initial_todos(),
+        }
+    else:
+        graph_input = [HumanMessage(content=content)]
+
+    async for chunk in stream_agent_response(graph_compiled, graph_input, config):
+        yield chunk
+
+
+class StaleInterruptError(Exception):
+    """resume이 현재 paused interrupt와 매칭되지 않음 (stale 카드 클릭)."""
+
+
+async def run_v3_resume_stream(
+    session_id: uuid.UUID,
+    user_id: uuid.UUID,
+    response: Any,
+    interrupt_id: str | None = None,
+) -> AsyncGenerator[str, None]:
+    """interrupt 응답을 받아 Command(resume=...)로 그래프를 재개한다.
+
+    interrupt_id가 제공되면 현재 paused interrupt의 ns와 비교하여 stale 카드로 인한
+    오용을 차단한다. None이면 검증 skip (backward compatibility).
+    """
+    from langgraph.types import Command
+
+    from app.agent_runtime.builder_v3.graph import compile_graph
+    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.streaming import format_sse, stream_agent_response
+
+    checkpointer = get_checkpointer()
+    graph_compiled = compile_graph(checkpointer)
+    config: dict[str, Any] = {"configurable": {"thread_id": str(session_id)}}
+
+    # interrupt_id stale 검증
+    if interrupt_id:
+        try:
+            state = await graph_compiled.aget_state(config)
+            current_ids: list[str] = []
+            for task in state.tasks or []:
+                for intr in task.interrupts or []:
+                    current_ids.append(str(getattr(intr, "ns", "")))
+            if current_ids and interrupt_id not in current_ids:
+                # stale interrupt — 사용자에게 알리고 graph는 재개하지 않음
+                logger.warning(
+                    "Stale interrupt resume rejected. expected=%s got=%s",
+                    current_ids,
+                    interrupt_id,
+                )
+                yield format_sse("message_start", {"id": "stale", "role": "assistant"})
+                yield format_sse(
+                    "error",
+                    {
+                        "message": (
+                            "이 카드는 이미 처리되었거나 만료되었습니다. "
+                            "최신 카드에서 응답해주세요."
+                        )
+                    },
+                )
+                yield format_sse("message_end", {"usage": {}, "content": ""})
+                return
+        except Exception:  # pragma: no cover
+            logger.warning("interrupt_id validation failed", exc_info=True)
+
+    async for chunk in stream_agent_response(graph_compiled, Command(resume=response), config):
+        yield chunk
