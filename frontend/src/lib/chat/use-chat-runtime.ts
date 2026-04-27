@@ -110,16 +110,27 @@ export function useChatRuntime({
       const toolCalls: ToolCallInfo[] = []
       const toolResults: Message[] = []
       const assistantId = `stream-${crypto.randomUUID()}`
+      const assistantCreatedAt = new Date().toISOString()
+
+      // tool_calls 배열은 토큰 단위로 재생성하지 않고 dirty 시점에만 스냅샷.
+      // content_delta가 빈번해도 cachedToolCalls 참조가 유지되어 React.memo 자식이
+      // tool_calls prop을 동일 참조로 비교 가능.
+      let cachedToolCalls: ToolCallInfo[] | null = null
+      let toolCallsDirty = true
 
       const buildStreamState = (): Message[] => {
+        if (toolCallsDirty) {
+          cachedToolCalls = toolCalls.length > 0 ? [...toolCalls] : null
+          toolCallsDirty = false
+        }
         const assistantMsg: Message = {
           id: assistantId,
           conversation_id: '',
           role: 'assistant',
           content: accumulated,
-          tool_calls: toolCalls.length > 0 ? [...toolCalls] : null,
+          tool_calls: cachedToolCalls,
           tool_call_id: null,
-          created_at: new Date().toISOString(),
+          created_at: assistantCreatedAt,
         }
         const msgs: Message[] = []
         if (optimisticUserMsg) msgs.push(optimisticUserMsg)
@@ -145,12 +156,14 @@ export function useChatRuntime({
                 const idx = toolCalls.findIndex((tc) => tc.name === PHASE_TIMELINE_TOOL_NAME)
                 if (idx >= 0) {
                   toolCalls[idx] = { ...toolCalls[idx], args: params }
+                  toolCallsDirty = true
                   setStreamingMessages(buildStreamState())
                   break
                 }
               }
               const tcId = `tc-${crypto.randomUUID()}`
               toolCalls.push({ id: tcId, name: toolName, args: params })
+              toolCallsDirty = true
               setStreamingMessages(buildStreamState())
               break
             }
