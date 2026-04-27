@@ -45,7 +45,10 @@ function ItemCard({ item, kind }: { item: ToolItem; kind: ItemKind }) {
           <div className="font-mono text-sm font-semibold">{name}</div>
           {(item.path || name) && (
             <div className="mt-1 text-xs text-zinc-500">
-              경로: <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-800">{getItemPath(item, kind)}</code>
+              경로:{' '}
+              <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-800">
+                {getItemPath(item, kind)}
+              </code>
             </div>
           )}
           {item.reason && (
@@ -57,7 +60,13 @@ function ItemCard({ item, kind }: { item: ToolItem; kind: ItemKind }) {
   )
 }
 
-function RecommendationApproval({ args, status }: { args: RecommendationArgs; status: 'running' | 'complete' | 'incomplete' | 'requires-action' }) {
+function RecommendationApproval({
+  args,
+  status,
+}: {
+  args: RecommendationArgs
+  status: 'running' | 'complete' | 'incomplete' | 'requires-action'
+}) {
   const form = useApprovalForm({ isComplete: status === 'complete' })
   const items = args.items ?? []
 
@@ -70,9 +79,7 @@ function RecommendationApproval({ args, status }: { args: RecommendationArgs; st
         {items.map((item, idx) => (
           <ItemCard key={idx} item={item} kind={args.item_kind ?? 'tool'} />
         ))}
-        {items.length === 0 && (
-          <p className="text-sm text-zinc-500">추천된 항목이 없습니다.</p>
-        )}
+        {items.length === 0 && <p className="text-sm text-zinc-500">추천된 항목이 없습니다.</p>}
       </div>
       {args.summary && (
         <div className="border-t border-zinc-200 px-4 py-3 text-sm text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">

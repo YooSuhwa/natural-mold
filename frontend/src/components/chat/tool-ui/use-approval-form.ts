@@ -30,11 +30,7 @@ export interface ApprovalFormState {
  * - HiTL onResume 호출 + display text 변환
  */
 export function useApprovalForm(options: UseApprovalFormOptions): ApprovalFormState {
-  const {
-    revisionFallback = '수정 요청',
-    approveDisplay = '승인',
-    isComplete,
-  } = options
+  const { revisionFallback = '수정 요청', approveDisplay = '승인', isComplete } = options
 
   const hitl = useHiTL()
   const [revision, setRevision] = useState('')
