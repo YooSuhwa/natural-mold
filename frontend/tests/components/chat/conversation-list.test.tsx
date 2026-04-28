@@ -71,9 +71,14 @@ describe('ConversationList', () => {
     mockUseConversations.mockReturnValue({ data: mockConversations, isLoading: false })
   })
 
-  it('renders heading', () => {
+  it('renders agent name in card header', () => {
+    render(<ConversationList agentId="agent-1" agentName="테스트 에이전트" />)
+    expect(screen.getByText('테스트 에이전트')).toBeInTheDocument()
+  })
+
+  it('renders 대화 section label', () => {
     render(<ConversationList agentId="agent-1" />)
-    expect(screen.getByText('대화 목록')).toBeInTheDocument()
+    expect(screen.getByText('대화')).toBeInTheDocument()
   })
 
   it('renders new conversation button', () => {

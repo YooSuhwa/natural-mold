@@ -3,7 +3,7 @@ import localFont from 'next/font/local'
 import { Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from 'next-themes'
 import { NextIntlClientProvider } from 'next-intl'
-import { getLocale, getMessages, getTranslations } from 'next-intl/server'
+import { getLocale, getMessages, getTimeZone, getTranslations } from 'next-intl/server'
 import { Toaster } from 'sonner'
 import './globals.css'
 import { AppLayout } from '@/components/layout/app-layout'
@@ -35,6 +35,7 @@ export default async function RootLayout({
 }>) {
   const locale = await getLocale()
   const messages = await getMessages()
+  const timeZone = await getTimeZone()
 
   return (
     <html
@@ -43,7 +44,7 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className="h-full bg-background font-sans text-foreground">
-        <NextIntlClientProvider messages={messages}>
+        <NextIntlClientProvider messages={messages} timeZone={timeZone}>
           <ThemeProvider
             attribute="class"
             defaultTheme="system"

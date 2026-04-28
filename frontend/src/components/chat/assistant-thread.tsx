@@ -1,6 +1,6 @@
 'use client'
 
-import { type FC, useState } from 'react'
+import { useState } from 'react'
 import {
   ThreadPrimitive,
   MessagePrimitive,
@@ -35,25 +35,23 @@ import { sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
 import { WittyLoadingMessage } from '@/components/chat/witty-loading'
 import { ChatImage } from '@/components/chat/markdown-content'
+import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 
 export { GenericToolFallback }
 
-const UserMessage: FC = () => (
-  <div className="group relative flex gap-3 justify-end">
-    <div className="max-w-[80%]">
-      <div className="rounded-2xl bg-emerald-100 px-4 py-2.5 text-sm leading-relaxed text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100">
-        <MessagePrimitive.Content />
-      </div>
-      {/* 복사 버튼 — hover 시 표시 */}
-      <div className="flex justify-end mt-1 opacity-0 transition-opacity group-hover:opacity-100">
-        <CopyButton />
-      </div>
-    </div>
-    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-      <UserIcon className="size-4" />
-    </div>
-  </div>
-)
+/** 메시지 메타에서 createdAt을 읽어 한국어 상대 시간을 표시 */
+function MessageTimestamp() {
+  const tCommon = useTranslations('common')
+  const createdAt = useAssistantState(
+    (s) => (s.message as { createdAt?: Date } | undefined)?.createdAt,
+  )
+  if (!createdAt) return null
+  return (
+    <span className="text-[10px] text-muted-foreground">
+      {formatRelativeShort(createdAt, tCommon('yesterday'))}
+    </span>
+  )
+}
 
 /** StreamdownTextPrimitive는 MessagePrimitive 컨텍스트에서 자동으로 텍스트를 읽는다. */
 function AssistantTextPart() {
@@ -95,35 +93,71 @@ function ToolCallFallback({
   return <ToolFallbackPanel toolName={toolName} args={args} result={result} status={resolved} />
 }
 
-/** 표준 메시지 파트 렌더러 — 텍스트 + 도구 UI 모두 표시.
+/** flex order로 도구 호출(order-1)을 위, 텍스트(order-2)를 아래로 시각 재배치.
+ * assistant-ui의 streaming/state는 그대로 유지되며 DOM 순서만 reorder된다.
  *
- * Empty 슬롯은 의도적으로 비워둔다. assistant-ui의 Empty는 컨텐츠 마지막에
- * 노출되어 도구 호출 박스 아래에 loading 메시지가 표시되는데, 사용자 UX
- * 관점에선 도구 박스 위에 보이는 게 자연스럽다.  StreamingLoadingIndicator를
- * AssistantMessage 상단에 별도 배치해 위치를 잡는다.
+ * 모듈-level 컴포넌트로 정의해 components prop의 함수 reference가 매 render마다
+ * 새로 생기지 않게 한다 — assistant-ui 내부 메모화가 깨져 token마다 자식이
+ * 리마운트되면 streaming 텍스트가 화면에 표시되지 않는 문제를 방지.
  */
-function AssistantMessageParts() {
+function OrderedTextPart() {
   return (
-    <MessagePrimitive.Content
-      components={{
-        Text: AssistantTextPart,
-        tools: { Fallback: ToolCallFallback },
-      }}
-    />
+    <div className="order-2">
+      <AssistantTextPart />
+    </div>
   )
 }
 
-/** 메시지가 running 상태일 때 도구 박스 위쪽에 표시되는 loading row.
+function OrderedToolFallback(props: {
+  toolName: string
+  args: Record<string, unknown>
+  result?: unknown
+  status: { type: string }
+}) {
+  return (
+    <div className="order-1">
+      <ToolCallFallback {...props} />
+    </div>
+  )
+}
+
+const ASSISTANT_PART_COMPONENTS = {
+  Text: OrderedTextPart,
+  tools: { Fallback: OrderedToolFallback },
+} as const
+
+function AssistantMessageParts() {
+  return (
+    <div className="flex flex-col">
+      <MessagePrimitive.Content components={ASSISTANT_PART_COMPONENTS} />
+    </div>
+  )
+}
+
+/** 메시지가 running 상태일 때 메시지 위쪽에 absolute로 띄우는 loading row.
  *
- * 메시지가 끝나면 status.type !== 'running'이 되어 자동으로 사라지므로 과거
- * 메시지에는 영향 없음.
+ * 부모(AssistantMsg)의 `relative` 컨테이너 안에 absolute로 배치되므로 메시지
+ * layout에 영향을 주지 않는다. 메시지가 끝나면 자동으로 사라지지만 답변
+ * 텍스트의 위치는 흔들리지 않는다.
  */
 function StreamingLoadingIndicator() {
   const isRunning = useAssistantState(
     (s) => (s.message?.status as { type?: string } | undefined)?.type === 'running',
   )
   if (!isRunning) return null
-  return <WittyLoadingMessage className="px-1 pb-1" />
+  // left-11 = avatar size-8(2rem) + gap-3(0.75rem) → avatar 우측에 정렬.
+  // size 변경 시 동기화 필요.
+  return <WittyLoadingMessage className="pointer-events-none absolute -top-5 left-11 px-1" />
+}
+
+/** 메시지 hover 시 표시되는 메타 row (시간 + 복사 버튼). 자식 순서로
+ * 사용자/AI 메시지 쪽 정렬을 표현. */
+function MessageMetaRow({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mt-1 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+      {children}
+    </div>
+  )
 }
 
 function CopyButton() {
@@ -164,6 +198,8 @@ export interface AssistantThreadProps {
   showTokenBar?: boolean
   /** 컴팩트 모드 (AssistantPanel용) — Composer 높이 축소 */
   compact?: boolean
+  /** true이면 메시지 하단에 createdAt 시간 라벨 표시 */
+  showMessageTimestamp?: boolean
   /** 빈 상태 커스텀 */
   emptyContent?: React.ReactNode
   /** 추가 도구 UI */
@@ -176,6 +212,7 @@ export function AssistantThread({
   modelName,
   showTokenBar = false,
   compact = false,
+  showMessageTimestamp = false,
   emptyContent,
   toolUI,
 }: AssistantThreadProps) {
@@ -183,8 +220,8 @@ export function AssistantThread({
   const tPage = useTranslations('chat.page')
 
   return (
-    <ThreadPrimitive.Root className="flex h-full flex-col">
-      <ThreadPrimitive.Viewport className="flex-1 overflow-y-auto">
+    <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
+      <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto">
         <ThreadPrimitive.Empty>
           {emptyContent ?? (
             <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
@@ -196,23 +233,41 @@ export function AssistantThread({
         <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4">
           <ThreadPrimitive.Messages
             components={{
-              UserMessage,
+              UserMessage: function UserMsg() {
+                return (
+                  <div className="group relative flex justify-end gap-3">
+                    <div className="flex max-w-[80%] flex-col items-end">
+                      <div className="rounded-2xl bg-emerald-100 px-4 py-2.5 text-sm leading-relaxed text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100">
+                        <MessagePrimitive.Content />
+                      </div>
+                      <MessageMetaRow>
+                        <CopyButton />
+                        {showMessageTimestamp && <MessageTimestamp />}
+                      </MessageMetaRow>
+                    </div>
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                      <UserIcon className="size-4" />
+                    </div>
+                  </div>
+                )
+              },
               AssistantMessage: function AssistantMsg() {
                 return (
-                  <div className="group flex gap-3">
+                  <div className="group relative flex gap-3">
+                    {/* loading indicator를 absolute로 배치 — 메시지 layout 밖에 떠 있어
+                        사라질 때 답변 텍스트가 점프하지 않도록 한다. */}
+                    <StreamingLoadingIndicator />
                     <AgentAvatar
                       imageUrl={agentImageUrl ?? null}
                       name={agentName ?? tChat('defaultAgentName')}
                       size="sm"
                     />
                     <div className="min-w-0 flex-1">
-                      {/* 도구 호출 박스 위에 streaming indicator 표시 (UX) */}
-                      <StreamingLoadingIndicator />
                       <AssistantMessageParts />
-                      {/* 복사 버튼 — hover 시 표시 */}
-                      <div className="mt-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <MessageMetaRow>
+                        {showMessageTimestamp && <MessageTimestamp />}
                         <CopyButton />
-                      </div>
+                      </MessageMetaRow>
                     </div>
                   </div>
                 )
@@ -276,7 +331,9 @@ function ThreadComposer({
       {(modelName || hasTokens) && (
         <div className="flex items-center gap-3 border-b border-input/50 px-3.5 py-1.5 text-xs text-muted-foreground">
           {modelName && <span className="font-medium text-foreground/70">{modelName}</span>}
-          {hasTokens && <TokenBar tokenUsage={tokenUsage} showDivider={!!modelName} />}
+          {hasTokens && (
+            <TokenBar tokenUsage={tokenUsage} showDivider={false} className="ml-auto" />
+          )}
         </div>
       )}
 
@@ -302,7 +359,7 @@ function ThreadComposer({
           </ComingSoonButton>
         </div>
         <ComposerPrimitive.Send asChild>
-          <Button type="submit" size="icon-sm" className="rounded-full transition-all">
+          <Button type="submit" size="icon-sm" variant="emerald" className="rounded-full">
             <SendIcon className="size-4" />
             <span className="sr-only">{t('sendButton')}</span>
           </Button>
@@ -312,11 +369,19 @@ function ThreadComposer({
   )
 }
 
-function TokenBar({ tokenUsage, showDivider }: { tokenUsage: TokenUsage; showDivider: boolean }) {
+function TokenBar({
+  tokenUsage,
+  showDivider,
+  className,
+}: {
+  tokenUsage: TokenUsage
+  showDivider: boolean
+  className?: string
+}) {
   return (
     <>
       {showDivider && <span className="text-border">·</span>}
-      <span className="flex items-center gap-1">
+      <span className={cn('flex items-center gap-1', className)}>
         <ArrowDownToLineIcon className="size-3" />
         {formatTokens(tokenUsage.inputTokens)}
       </span>

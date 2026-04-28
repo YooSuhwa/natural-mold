@@ -14,9 +14,11 @@
     "required": "*",
     "confirm": "확인",
     "close": "닫기",
+    "yesterday": "어제",
     "comingSoon": {
       "default": "이 기능은 준비 중입니다",
-      "fileAttach": "파일 첨부 기능은 준비 중입니다"
+      "fileAttach": "파일 첨부 기능은 준비 중입니다",
+      "trash": "휴지통 기능은 준비 중입니다"
     }
   },
   "sidebar": {
@@ -474,7 +476,8 @@
       "newConversation": "새 대화",
       "emptyState": "대화를 시작해보세요.",
       "error": "에이전트 실행 중 오류가 발생했습니다",
-      "conversationList": "대화 목록"
+      "conversationList": "대화 목록",
+      "menu": "더보기 메뉴"
     },
     "input": {
       "placeholder": "메시지 입력...",
@@ -529,6 +532,8 @@
     },
     "conversationList": {
       "title": "대화 목록",
+      "label": "대화",
+      "trash": "휴지통",
       "newConversation": "새 대화",
       "fallbackTitle": "새 대화",
       "empty": "대화가 없습니다",

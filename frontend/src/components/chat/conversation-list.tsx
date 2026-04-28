@@ -4,17 +4,17 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import {
-  ChevronLeftIcon,
   MessageSquareIcon,
   MoreVerticalIcon,
   PencilIcon,
-  SquarePenIcon,
+  PlusIcon,
   Settings2Icon,
   PinIcon,
   PinOffIcon,
   Trash2Icon,
 } from 'lucide-react'
-import { useTranslations, useFormatter } from 'next-intl'
+import { useTranslations } from 'next-intl'
+import { toast } from 'sonner'
 import {
   useConversations,
   useCreateConversation,
@@ -39,16 +39,24 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
+import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 import { cn } from '@/lib/utils'
 import type { Conversation } from '@/lib/types'
 
 interface ConversationListProps {
   agentId: string
   agentName?: string
-  onClose?: () => void
+  agentImageUrl?: string | null
+  agentDescription?: string | null
 }
 
-export function ConversationList({ agentId, agentName, onClose }: ConversationListProps) {
+export function ConversationList({
+  agentId,
+  agentName,
+  agentImageUrl,
+  agentDescription,
+}: ConversationListProps) {
   const params = useParams<{ conversationId: string }>()
   const router = useRouter()
   const { data: conversations, isLoading } = useConversations(agentId)
@@ -56,19 +64,18 @@ export function ConversationList({ agentId, agentName, onClose }: ConversationLi
   const updateConversation = useUpdateConversation(agentId)
   const deleteConversation = useDeleteConversation(agentId)
   const t = useTranslations('chat.conversationList')
-  const tc = useTranslations('common')
-  const format = useFormatter()
+  const tCommon = useTranslations('common')
 
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [renameTarget, setRenameTarget] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
-  const { pinned, unpinned } = useMemo(() => {
-    if (!conversations) return { pinned: [], unpinned: [] }
-    return {
-      pinned: conversations.filter((c) => c.is_pinned),
-      unpinned: conversations.filter((c) => !c.is_pinned),
-    }
+  // pinned 우선 정렬, 단일 배열로 결합 (섹션 라벨 없음)
+  const orderedConversations = useMemo(() => {
+    if (!conversations) return []
+    const pinned = conversations.filter((c) => c.is_pinned)
+    const unpinned = conversations.filter((c) => !c.is_pinned)
+    return [...pinned, ...unpinned]
   }, [conversations])
 
   async function handleNewConversation() {
@@ -113,22 +120,23 @@ export function ConversationList({ agentId, agentName, onClose }: ConversationLi
         key={conv.id}
         className={cn(
           'group flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted',
-          isActive && 'bg-muted font-medium',
+          isActive &&
+            'bg-emerald-50 font-medium ring-1 ring-emerald-200/60 hover:bg-emerald-50 dark:bg-emerald-500/10 dark:ring-emerald-500/20 dark:hover:bg-emerald-500/10',
         )}
       >
         <Link
           href={`/agents/${agentId}/conversations/${conv.id}`}
-          className="flex min-w-0 flex-1 items-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          {conv.is_pinned && <PinIcon className="size-3 shrink-0 text-muted-foreground" />}
+          {conv.is_pinned ? (
+            <PinIcon className="size-3 shrink-0 text-muted-foreground" />
+          ) : (
+            <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
           <span className="truncate">{conv.title ?? t('fallbackTitle')}</span>
         </Link>
         <span className="shrink-0 text-xs text-muted-foreground">
-          {format.dateTime(new Date(conv.updated_at), {
-            month: 'numeric',
-            day: 'numeric',
-          })}
+          {formatRelativeShort(conv.updated_at, tCommon('yesterday'))}
         </span>
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -160,30 +168,43 @@ export function ConversationList({ agentId, agentName, onClose }: ConversationLi
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b p-3">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <h2 className="text-sm font-semibold truncate">{agentName ?? t('title')}</h2>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={handleNewConversation}
-            disabled={createConversation.isPending}
-            aria-label={t('newConversation')}
-          >
-            <SquarePenIcon className="size-3" />
-          </Button>
-          <Link href={`/agents/${agentId}/settings`}>
-            <Button variant="ghost" size="icon-xs" aria-label={t('editAgent')}>
-              <Settings2Icon className="size-3" />
-            </Button>
-          </Link>
+      {/* Agent card header */}
+      <div className="border-b p-4">
+        <div className="flex items-start gap-3">
+          <AgentAvatar imageUrl={agentImageUrl ?? null} name={agentName ?? ''} size="md" />
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            <h2 className="min-w-0 flex-1 truncate text-base font-semibold">
+              {agentName ?? <Skeleton className="inline-block h-5 w-24" />}
+            </h2>
+            <Link href={`/agents/${agentId}/settings`}>
+              <Button variant="ghost" size="icon-xs" aria-label={t('editAgent')}>
+                <Settings2Icon className="size-3.5" />
+              </Button>
+            </Link>
+          </div>
         </div>
-        {onClose && (
-          <Button variant="ghost" size="icon-xs" onClick={onClose} aria-label={t('close')}>
-            <ChevronLeftIcon className="size-4" />
-          </Button>
+        {agentDescription && (
+          <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+            {agentDescription}
+          </p>
         )}
       </div>
+
+      {/* "대화" 라벨 + 새 대화 버튼 */}
+      <div className="flex items-center justify-between border-b px-4 py-2">
+        <span className="text-xs font-medium text-muted-foreground">{t('label')}</span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          onClick={handleNewConversation}
+          disabled={createConversation.isPending}
+          aria-label={t('newConversation')}
+        >
+          <PlusIcon className="size-3.5" />
+        </Button>
+      </div>
+
+      {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
           <div className="space-y-1 p-2">
@@ -191,26 +212,23 @@ export function ConversationList({ agentId, agentName, onClose }: ConversationLi
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
-        ) : conversations && conversations.length > 0 ? (
-          <div className="space-y-0.5 p-2">
-            {pinned.length > 0 && (
-              <div className="mb-2">
-                <p className="px-3 pt-1 pb-0.5 text-[0.65rem] font-medium tracking-wider text-muted-foreground">
-                  {t('pinned')}
-                </p>
-                {pinned.map(renderItem)}
-              </div>
-            )}
-            {unpinned.length > 0 && pinned.length > 0 && (
-              <p className="px-3 pt-1 pb-0.5 text-[0.65rem] font-medium tracking-wider text-muted-foreground">
-                {t('recent')}
-              </p>
-            )}
-            {unpinned.map(renderItem)}
-          </div>
+        ) : orderedConversations.length > 0 ? (
+          <div className="space-y-0.5 p-2">{orderedConversations.map(renderItem)}</div>
         ) : (
           <div className="p-4 text-center text-xs text-muted-foreground">{t('empty')}</div>
         )}
+      </div>
+
+      {/* 휴지통 풋터 (placeholder) */}
+      <div className="border-t p-2">
+        <Button
+          variant="ghost"
+          className="w-full justify-start gap-2 px-3 py-2 text-sm font-normal text-muted-foreground"
+          onClick={() => toast.info(tCommon('comingSoon.trash'))}
+        >
+          <Trash2Icon className="size-4" />
+          <span>{t('trash')}</span>
+        </Button>
       </div>
 
       <DeleteConfirmDialog
@@ -218,8 +236,8 @@ export function ConversationList({ agentId, agentName, onClose }: ConversationLi
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title={t('deleteDialog.title')}
         description={t('deleteDialog.description')}
-        cancelLabel={tc('cancel')}
-        confirmLabel={tc('delete')}
+        cancelLabel={tCommon('cancel')}
+        confirmLabel={tCommon('delete')}
         isPending={deleteConversation.isPending}
         onConfirm={handleDeleteConfirm}
       />

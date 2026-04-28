@@ -1,5 +1,6 @@
 import type { ThreadMessageLike, useExternalMessageConverter } from '@assistant-ui/react'
 import type { Message } from '@/lib/types'
+import { parseTimestamp } from '@/lib/utils/format-relative-time'
 
 type ConvertedMessage = useExternalMessageConverter.Message
 
@@ -28,7 +29,7 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
       role: 'user' as const,
       id: message.id,
       content: message.content,
-      createdAt: new Date(message.created_at),
+      createdAt: parseTimestamp(message.created_at),
     }
   }
 
