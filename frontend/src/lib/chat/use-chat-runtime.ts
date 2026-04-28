@@ -262,16 +262,27 @@ export function useChatRuntime({
           const finalMsgs = buildStreamState()
           onMessagesCommit(finalMsgs)
         }
-        setStreamingMessages([])
+        // streamingMessages는 즉시 비우지 않는다 — refetch가 끝나기 전 비우면 답변이
+        // 화면에서 잠깐 사라졌다 다시 나타나는 깜박임이 생긴다. 아래 prevMessagesRef
+        // 비교 블록이 backend messages refetch 완료 후 clear한다.
         // interrupt(HiTL)도 그래프가 일시정지된 stream 종료 — backend는 ask_user tool_call을
         // 이미 DB에 저장한 상태이므로, onStreamEnd로 messages query를 invalidate해야
         // streaming 비운 직후 UI에서 ask_user input이 사라지지 않고 fetch된 메시지로 채워진다.
-        // (interrupted 시 호출 안 하던 이전 동작이 이 버그의 원인이었음)
         onStreamEnd?.()
       }
     },
     [onStreamEnd, onInterrupt, onMessagesCommit, setTokenUsage],
   )
+
+  // messages가 새로 fetch되면(refetch 완료) streaming messages를 clear.
+  // streaming 직후 messages → effective 전환에서 깜박임 방지.
+  const prevMessagesRef = useRef(messages)
+  if (prevMessagesRef.current !== messages) {
+    prevMessagesRef.current = messages
+    if (!isRunning && streamingMessages.length > 0) {
+      setStreamingMessages([])
+    }
+  }
 
   const onNew = useCallback(
     async (appendMessage: { content: readonly { type: string; text?: string }[] }) => {

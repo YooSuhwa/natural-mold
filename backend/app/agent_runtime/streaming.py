@@ -9,11 +9,17 @@ from typing import Any
 from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 
+from app.agent_runtime.message_utils import content_to_text
+
 logger = logging.getLogger(__name__)
 
 
 def format_sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+# Middleware-internal schema names (LLMToolSelectorMiddleware 등) — UI 노출 X.
+_INTERNAL_TOOL_NAMES: frozenset[str] = frozenset({"ToolSelectionResponse"})
 
 
 def _is_tool_selector_json(text: str) -> bool:
@@ -58,6 +64,8 @@ async def stream_agent_response(
     full_content = ""
     was_interrupted = False
     usage_data: dict[str, int] = {}
+    # AIMessageChunk가 같은 tool_call을 partial state로 반복 emit하므로 dedupe.
+    emitted_tool_call_keys: set[tuple[str, str]] = set()
     # ADR-004: PatchToolCallsMiddleware가 스트림 필터링을 하지 않으므로
     # 문자 단위 버퍼링으로 미들웨어 JSON 감지/제거.
     # yield는 LLM 청크 단위로 배칭하여 SSE 이벤트 수를 줄임.
@@ -76,8 +84,10 @@ async def stream_agent_response(
             if "builder:internal" in chunk_tags:
                 continue
             if hasattr(msg, "content") and msg.content and msg.type in ("ai", "AIMessageChunk"):
-                delta = msg.content
-                if isinstance(delta, str):
+                # Anthropic은 multi-block content (text + tool_use 등)를 list[dict]로
+                # 보내므로 text 블록만 평탄화. message_utils의 공유 헬퍼 사용.
+                delta = content_to_text(msg.content)
+                if delta:
                     _pending = ""
                     for ch in delta:
                         if ch == "{" and _brace_depth == 0:
@@ -111,22 +121,39 @@ async def stream_agent_response(
 
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tc in msg.tool_calls:
+                    tc_name = tc.get("name", "")
+                    # 빈 이름(아직 partial state) / 미들웨어 internal schema는 UI 노출 X
+                    if not tc_name or tc_name in _INTERNAL_TOOL_NAMES:
+                        continue
+                    tc_id = tc.get("id") or ""
+                    # id가 비어 있으면 dedupe 키로 쓰지 않는다 — 같은 이름의 서로
+                    # 다른 tool_call이 collision되어 silently 누락되는 것을 방지.
+                    if tc_id:
+                        key = (tc_name, tc_id)
+                        if key in emitted_tool_call_keys:
+                            continue
+                        emitted_tool_call_keys.add(key)
                     yield format_sse(
                         "tool_call_start",
                         {
-                            "tool_name": tc.get("name", ""),
+                            "tool_name": tc_name,
                             "parameters": tc.get("args", {}),
                         },
                     )
 
             if msg.type == "tool":
-                yield format_sse(
-                    "tool_call_result",
-                    {
-                        "tool_name": msg.name if hasattr(msg, "name") else "",
-                        "result": msg.content if isinstance(msg.content, str) else str(msg.content),
-                    },
-                )
+                tool_name = msg.name if hasattr(msg, "name") else ""
+                # Internal middleware tool result도 UI 노출 X (start와 대칭)
+                if tool_name not in _INTERNAL_TOOL_NAMES:
+                    yield format_sse(
+                        "tool_call_result",
+                        {
+                            "tool_name": tool_name,
+                            "result": msg.content
+                            if isinstance(msg.content, str)
+                            else str(msg.content),
+                        },
+                    )
 
             if hasattr(msg, "usage_metadata") and msg.usage_metadata:
                 usage_data = {
