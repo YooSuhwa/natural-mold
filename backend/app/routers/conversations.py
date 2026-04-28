@@ -179,7 +179,7 @@ async def list_messages(
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
         raise conversation_not_found()
-    return await chat_service.list_messages_from_checkpointer(conversation_id, conv.created_at)
+    return await chat_service.list_messages_from_checkpointer(db, conv)
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +196,9 @@ async def send_message(
 ):
     cfg = await _resolve_agent_context(db, conversation_id, user)
     await chat_service.maybe_set_auto_title(db, conversation_id, data.content)
+    # 메시지 송신 시점에 conv.updated_at 갱신 → list_messages refetch에서 정확한 base.
+    # generate() 안에서 호출하면 SSE 응답 후 db session이 close되어 실패 가능.
+    await chat_service.touch_conversation(db, conversation_id)
 
     async def generate() -> AsyncGenerator[str, None]:
         try:
@@ -221,6 +224,7 @@ async def resume_message(
 ):
     """HiTL interrupt 재개 — Command(resume=response)로 그래프 실행 재개."""
     cfg = await _resolve_agent_context(db, conversation_id, user)
+    await chat_service.touch_conversation(db, conversation_id)
 
     async def generate() -> AsyncGenerator[str, None]:
         try:
