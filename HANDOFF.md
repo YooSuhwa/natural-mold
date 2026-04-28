@@ -1,100 +1,68 @@
-# HANDOFF — 메인 대시보드 디자인 개선 (세션 3)
+# HANDOFF — 채팅 UI 안정화 + 시간 시스템 정착 (세션 5, 2026-04-28)
 
-**최종 업데이트**: 2026-04-27 (세션 3)
-**Base**: `main @ 62d76fc` (PR #75 머지 후)
-**이전 세션**: `f9a6465` (Builder v3 cleanup) — git history 참조
-
----
-
-## 이번 세션 머지/대기 PR
-
-| PR | 내용 | 상태 |
-|---|---|---|
-| [#75](https://github.com/YooSuhwa/natural-mold/pull/75) | 메인 대시보드 디자인 개선 (Hero 캐릭터 + Quick Action 색상) | **머지 완료 (62d76fc)** |
-| [#76](https://github.com/YooSuhwa/natural-mold/pull/76) | dashboard 테스트 매칭 + obsolete v2 conversational 테스트 제거 + prettier | 머지 대기 |
-
-검증: lint / format / vitest **256 passed** / build 14/14 모두 pass
+**Base**: `main @ 4f8df0c` (PR #76 머지 후)
+**누적 변경**: ~30 파일 (backend 7 + frontend 16 + alembic m15 + docs/지원 5)
+**검증 상태**: backend ruff + 624 pytest / frontend lint + format + 257 tests + build 모두 PASS
+**이전 세션 기록**: 본 파일 위쪽 섹션(세션 1~3) + git log 참조
 
 ---
 
-## 주요 변경 (PR #75)
+## 이번 세션 핵심 변경
 
-- Hero Section: 마스코트(`dashboard-mascot.png`) + emerald 그라디언트 배경 + 다크그린 CTA
-- Quick Action Cards: emerald/violet/sky 색상 차별화 + 원형 ChevronRight chip
-- 사이드바: `+ 새 에이전트` 버튼 + active 메뉴 emerald 톤 통일 (`data-active:` modifier)
-- 사이드바 메뉴 항목 간격 `gap-1` + selected 상태 색상 `bg-emerald-100/50`
-- 에이전트 카드: 활성 배지 ↔ 별표 위치 swap
-- 페이지 콘텐츠 `max-w-7xl mx-auto` 가운데 정렬, 하단 팁 박스 (`dashboard.tip`)
-- Next.js 16 `<Image priority>` → `preload` 마이그레이션
+### 1. 채팅 박스 카드 레이아웃 (Image #22)
+- `page.tsx`: 루트 `bg-muted/30 + p-3 + gap-3`, 좌/우 각 `rounded-xl border bg-card shadow-sm` 카드
+- 헤더 단순화: 제목 + ⋯ 드롭다운(새 대화/설정)
+- `ConversationList`: 에이전트 카드 헤더 + "대화" 라벨 + 휴지통 풋터(`toast.info` placeholder)
 
-## 사후 정리 (PR #76)
+### 2. 시간 시스템 (가장 까다로웠음)
+- **백엔드**: `MessageResponse`/`ConversationResponse`에 `UtcDatetime` annotation(`PlainSerializer`로 'Z' suffix). `m15_add_message_timestamps` 마이그레이션 — `Conversation.message_timestamps: dict[msg_uuid, iso]` 영구 저장으로 옛 메시지 시각이 송신 시 흔들리지 않게.
+- **프론트엔드**: `lib/utils/format-relative-time.ts` 신규 — `Intl.DateTimeFormat(timeZone='Asia/Seoul')` 직접 사용 (use-intl wrapper의 timeZone 옵션이 일관되지 않아 우회). `parseTimestamp`로 'Z' 없는 string은 UTC로 가정.
 
-- `tests/pages/dashboard.test.tsx`: greeting 매칭 `안녕하세요!` → `안녕하세요! 👋`
-- `tests/pages/agent-conversational.test.tsx` **삭제** — v2 API mock(`stream-builder`)을 사용하지만 페이지는 v3 `AssistantThread` 기반으로 재구현되어 의미 없음
-- Prettier 자동 포맷 7 파일
+### 3. 채팅 streaming 버그 (오늘 진단/fix)
+- **list-content fix** (`backend/app/agent_runtime/streaming.py`): Anthropic multi-block content가 `list[dict]`로 와도 처리. 이전엔 `isinstance(delta, str)`만 처리해 tool 사용 시 token streaming이 0개였음. 지금은 `content_to_text` 공유 헬퍼로 평탄화.
+- **메시지 refetch 깜박임 fix** (`use-chat-runtime.ts`): `setStreamingMessages([])`를 `finally`에서 즉시 호출 → refetch 도착까지 답변 사라지는 깜박임. `prevMessagesRef` rendering-time 비교로 messages 변경 후 clear.
+- **scroll fix** (`assistant-thread.tsx`): `ThreadPrimitive.Root`/`Viewport`에 `min-h-0` — 메시지 많을 때 입력창 화면 밖으로 밀려나는 문제.
+- **streaming tool_call dedupe** (`streaming.py`): `_INTERNAL_TOOL_NAMES` filter(`ToolSelectionResponse` 등 미들웨어 schema 노출 차단) + `(name, id)` 기준 dedupe.
+
+### 4. UI 디테일
+- 사용자 메시지 wrapper `flex flex-col items-end max-w-[80%]` (짧은 메시지 우측 여백 fix)
+- 메시지 hover 시만 시간/복사 표시 (`MessageMetaRow` 추출)
+- AI 아바타 emerald 배경 + `imageUrl` 변경 시 hasError 자동 reset (`prevImageUrl` rendering-time 패턴)
+- Composer: 모델 좌측, 토큰 바 `ml-auto` 우측 정렬, send 버튼 `variant="emerald"`
+- StreamingLoadingIndicator를 absolute(`-top-5 left-11`)로 띄워 답변 텍스트 위치 stable
+- `Button` cva에 `emerald`/`emeraldStrong` variant 추가
+- 이미지 webp 변환 (3.6MB → 142KB, -96%)
 
 ---
 
 ## 다음에 해야 할 작업
 
-1. **PR #76 머지** — 머지하면 main 테스트 깨짐 해소
-2. **v3 conversational 페이지 새 테스트 작성** — `@assistant-ui/react`의 `AssistantThread` mock 전략 필요. PR #76에서 obsolete v2 테스트 삭제 후 신규 v3 테스트 미작성 상태.
-3. **`frontend/public/dashboard-mascot2.png` 처리** — 코드 미참조 untracked 파일. 백업이면 그대로, 불필요면 삭제.
-4. **husky pre-commit 권한 설정** — `chmod +x .husky/pre-commit`
-5. **i18n dead key 정리** — `messages/ko.json`의 `conversational.initialQuestion / initialPlaceholder / startButton` 등은 v3 페이지에서 사용 안 함. 정리 또는 v3 페이지를 i18n 사용하도록 수정.
-6. **다른 페이지 `<Image priority>` 일괄 `preload` 마이그레이션** — Next.js 16 deprecated.
-
-### 보류 (이전 세션에서 결정)
-
-- **`BuilderStatus.STREAMING` enum 제거** — production 출시 전 본격 정리 라운드까지 보류 (사용처 0건이나 DB 안전성 우선)
-
----
+| 우선순위 | 항목 | 영향/작업 |
+|---|---|---|
+| 1 | **커밋/PR** (4-5개 분리 커밋 권장: 박스 레이아웃 / 시간 시스템 / 이미지 / refactor) | 중/하 |
+| 2 | `list_messages_from_checkpointer` write-on-read 제거 — LangGraph hook 또는 별도 messages 테이블 | 상/상 |
+| 3 | 휴지통 실제 기능 — 소프트 삭제(`deleted_at`) + 복원 페이지 | 중/중 |
+| 4 | StreamingLoadingIndicator `-top-5 left-11` 매직 숫자 → avatar `sizeMap` 동기화 | 하/중 |
 
 ## 주의사항
+- **`AppSidebar`/`AppHeader`/`AppLayout`**: 손대지 말 것 (사용자 결정으로 글로벌 사이드바 유지).
+- **휴지통**: 현재 `toast.info()` placeholder만. 실제 기능 미구현.
+- **모델 드롭다운**: 사용자가 명시적으로 보류 (시각만 텍스트, 인터랙션 X).
+- **flex-order DOM hack** (`OrderedTextPart`/`OrderedToolFallback`): 사용자 명시 요구로 도구→텍스트 순서. a11y 영향 인지하되 변경 시 큰 리팩토링.
 
-- **사이드바 active 색상**: `data-active:` modifier 필수 — `sidebar.tsx`의 기본 cva variant(`data-active:bg-sidebar-accent`)와 같은 selector 사용해야 tailwind-merge가 정확히 오버라이드
-- **agent-conversational 페이지는 v3 (AssistantThread 기반)** — v2 mock 패턴(`stream-builder`, `mockStreamBuilder`)으로 새 테스트 작성 금지
-- **`dashboard-mascot.png` 변경 시**: 브라우저 하드 리프레시 + `.next/cache/images` 비우기 + dev 서버 재시작 필요 (in-memory 캐시 때문)
-- **`builder/sub_agents/*.py` + `prompts/*.md`** (이전 세션) — v3 노드가 import. 변경 금지
-
----
-
-## 관련 파일
-
-- `frontend/src/app/page.tsx` — 메인 대시보드
-- `frontend/src/components/layout/app-sidebar.tsx` — 사이드바 (`activeMenuClass`, `newAgentButtonClass`)
-- `frontend/src/components/agent/agent-card.tsx` — 에이전트 카드 (Badge ↔ Star 순서)
-- `frontend/messages/ko.json` — i18n (greeting 이모지, tip 키)
-- `frontend/public/dashboard-mascot.png` — 마스코트
-- `frontend/tests/pages/dashboard.test.tsx` — 대시보드 테스트
-- 이전 세션 인계: git history `f9a6465` 참조
-
----
+## 핵심 파일
+- `frontend/src/components/chat/assistant-thread.tsx` — 메시지/composer/streaming
+- `frontend/src/lib/chat/use-chat-runtime.ts` — SSE 스트림 누적/state 전환
+- `frontend/src/lib/utils/format-relative-time.ts` — KST 시간 라벨
+- `backend/app/agent_runtime/streaming.py` — SSE event 변환
+- `backend/app/services/chat_service.py` — `list_messages_from_checkpointer` (timestamp 영구 매핑)
+- `backend/alembic/versions/m15_add_message_timestamps.py`
 
 ## 마지막 상태
+- 브랜치: `main` (uncommitted)
+- 변경 파일: ~30개 (커밋 대기)
+- backend dev: PID 91482 (uvicorn --reload)
+- frontend dev: background ID `bim0lrvw7` (port 3000)
+- DB: `m15` 마이그레이션 적용됨
 
-- 브랜치: `fix/dashboard-test-greeting-emoji` (PR #76)
-- 마지막 커밋: `3e8f1c2`
-- main HEAD: `62d76fc`
-- 검증: lint / format / vitest 256 passed / build 14/14 모두 pass
-
----
-
-## TTH 사일로 통계 (이번 세션)
-
-- 사일로: 사티아(PO) + 저커버그(프론트엔드 DRI)
-- Ralph Loop 재시도: 0회 (1회 통과)
-- 사후 회귀: 2건 (greeting 매칭 / obsolete 테스트) → PR #76 통합
-- 에스컬레이션: 0회
-
----
-
-## 배운 점
-
-- shadcn `SidebarMenuButton` active 스타일은 `data-active:` modifier — tailwind-merge가 정확히 머지하려면 동일 modifier 사용
-- v3 마이그레이션 시 v2 테스트 함께 마이그레이션/삭제 필수 — 누락 시 머지 후 main 회귀
-- Next.js 16 `<Image priority>` deprecated → `preload`
-- 단일 PR에 wrapper 통합 + 주석 정리 + 변수 추출 같은 코드 품질 개선을 함께 포함하면 리뷰 효율적
-- main 브랜치 실수 commit 발생 시 → `git reset --hard origin/main`으로 안전 복구 (push 전이라면)
-
-새 세션에서 "HANDOFF.md 읽고 v3 conversational 테스트 작성해줘" 또는 다른 후속 작업으로 이어가면 됩니다.
+새 세션에서: "HANDOFF.md 읽고 커밋 진행해줘" 또는 "다음 작업 #2 진행"으로 이어가면 됩니다.

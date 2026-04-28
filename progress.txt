@@ -100,4 +100,8 @@ class BuilderState(TypedDict):
 
 ## 실패 교훈
 
-(아직 없음)
+### [chat-box-layout 2026-04-27]
+- **next-intl `useFormatter` 타입은 `Intl.DateTimeFormatOptions`와 비호환**: timeZoneName 등 일부 옵션이 next-intl 자체 타입으로 좁혀져 있다. 유틸 함수에서 Formatter 타입을 직접 정의하면 빌드 실패. 해법: `type Formatter = ReturnType<typeof useFormatter>`로 그대로 import.
+- **assistant-ui `useAssistantState`로 message.createdAt 접근**: 패턴 = `useAssistantState((s) => (s.message as { createdAt?: Date } | undefined)?.createdAt)`. 타입 캐스팅이 필요한 이유는 message union 타입 분기 때문. 동일 파일의 `s.message?.status` 패턴과 정합.
+- **AssistantThread 회귀 방지**: builder v3 등 다른 페이지도 사용. 신규 시각 변경(메시지 시간 라벨)은 반드시 `showMessageTimestamp?: boolean` 옵셔널 prop으로 게이팅, 채팅 페이지에서만 `true` 전달.
+- **shadcn `DropdownMenuTrigger.render` 패턴**: `render={<Button ... aria-label={...} />}`로 Button을 trigger로 위임. aria-label은 render 안에 둬야 a11y 보장.

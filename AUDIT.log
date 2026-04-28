@@ -49,3 +49,16 @@
 [2026-04-27T05:04:19Z] satya MILESTONE_CREATED M_DASH_1=구현 M_DASH_2=verify
 [2026-04-27T05:08:00Z] zuckerberg MILESTONE_DONE M_DASH_1 page.tsx + ko.json 수정 (lint+build PASS)
 [2026-04-27T05:08:00Z] satya VERIFICATION_PASS M_DASH_2 git diff 검토 완료, plan과 일치
+
+[2026-04-27T10:00] satya PROJECT_START "채팅 화면 박스 카드 레이아웃 (Image #22)"
+[2026-04-27T10:00] satya MILESTONE_CREATED M_CHAT_BOX_1,2,3,4,5
+[2026-04-27T10:00] satya TEAM_FORMED 저커버그 단독 (UI 리디자인 + plan 매우 상세)
+[2026-04-27T10:00] satya REFERENCE plan=~/.claude/plans/image-22-distributed-parasol.md
+[2026-04-27T10:30] satya FALLBACK 자식 agent가 plan mode 상속 → 메인에서 직접 구현 진행
+[2026-04-27T10:45] satya MILESTONE_DONE M_CHAT_BOX_4 ko.json i18n 키 4개 추가 (yesterday, comingSoon.trash, page.menu, conversationList.{label,trash})
+[2026-04-27T10:50] satya MILESTONE_DONE M_CHAT_BOX_3 format-relative-time.ts 신규 + AssistantThread MessageTimestamp 컴포넌트 + showMessageTimestamp prop
+[2026-04-27T10:55] satya MILESTONE_DONE M_CHAT_BOX_2 ConversationList 4-zone 재구성 (에이전트 카드 + 대화 라벨 + 목록 + 휴지통 풋터), agentImageUrl/agentDescription props 추가
+[2026-04-27T11:00] satya MILESTONE_DONE M_CHAT_BOX_1 page.tsx 박스 레이아웃 (bg-muted/30+p-3+gap-3, rounded-xl 카드 2개) + 헤더 단순화 (⋯ 드롭다운)
+[2026-04-27T11:05] satya VERIFICATION_PASS pnpm build PASS (16 routes, type-check 0 error), pnpm lint PASS (exit 0)
+[2026-04-27T11:05] satya MILESTONE_DONE M_CHAT_BOX_5 통합 검증 완료
+[2026-04-27T11:05] satya PROJECT_DONE 채팅 화면 박스 카드 레이아웃 (Image #22) — 5개 마일스톤 단일 build cycle로 완료. 타입 에러 1건(use-intl Formatter ↔ Intl 호환) 즉시 fix.
