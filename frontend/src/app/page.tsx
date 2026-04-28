@@ -116,9 +116,9 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t('greeting')}</h1>
             <p className="text-sm text-muted-foreground sm:text-base">{t('subtitle')}</p>
           </div>
-          <div className="relative hidden shrink-0 sm:block sm:size-32 md:size-40 lg:size-44">
+          <div className="relative hidden aspect-[738/628] shrink-0 sm:block sm:w-32 md:w-40 lg:w-44">
             <Image
-              src="/dashboard-mascot.png"
+              src="/dashboard-mascot.webp"
               alt=""
               fill
               preload
@@ -127,7 +127,7 @@ export default function DashboardPage() {
             />
           </div>
           <Link href="/agents/new" className="shrink-0">
-            <Button className="bg-emerald-900 text-emerald-50 hover:bg-emerald-800 dark:bg-emerald-700 dark:hover:bg-emerald-600">
+            <Button variant="emeraldStrong">
               <PlusIcon className="size-4" data-icon="inline-start" />
               {t('newAgent')}
             </Button>

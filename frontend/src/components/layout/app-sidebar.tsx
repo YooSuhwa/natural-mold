@@ -92,7 +92,7 @@ export function AppSidebar() {
         <div className="flex items-center justify-between group-data-[collapsible=icon]:hidden">
           <Link href="/" className="flex items-center gap-2">
             <Image
-              src="/logo.png"
+              src="/logo.webp"
               alt="Moldy"
               width={32}
               height={32}
@@ -118,7 +118,7 @@ export function AppSidebar() {
             aria-label={t('toggleSidebar')}
           >
             <Image
-              src="/logo.png"
+              src="/logo.webp"
               alt="Moldy"
               width={32}
               height={32}
