@@ -84,9 +84,7 @@ export function ToolFallbackPanel({ toolName, args, result, status }: ToolFallba
   return (
     <div
       className={cn(
-        'w-full rounded-xl border bg-muted/20 text-xs transition-colors',
-        status === 'running' && 'border-primary/20 bg-primary/5',
-        status === 'complete' && 'border-border/50',
+        'w-full rounded-xl border border-border/50 text-xs transition-colors',
         status === 'error' && 'border-destructive/20 bg-destructive/5',
       )}
     >

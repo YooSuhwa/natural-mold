@@ -20,6 +20,10 @@ const buttonVariants = cva(
         destructive:
           'bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40',
         link: 'text-primary underline-offset-4 hover:underline',
+        emerald:
+          'bg-emerald-100 text-emerald-950 hover:bg-emerald-200 dark:bg-emerald-900 dark:text-emerald-100 dark:hover:bg-emerald-800',
+        emeraldStrong:
+          'bg-emerald-900 text-emerald-50 hover:bg-emerald-800 dark:bg-emerald-700 dark:hover:bg-emerald-600',
       },
       size: {
         default:

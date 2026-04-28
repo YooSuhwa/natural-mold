@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import JSON, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -25,5 +25,8 @@ class Conversation(Base):
         onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,
     )
+    # 메시지 idx → ISO timestamp 매핑. 한 번 부여되면 변경되지 않아
+    # list_messages 호출 시 옛 메시지 시각이 흔들리지 않게 한다.
+    message_timestamps: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     agent: Mapped[Agent] = relationship(back_populates="conversations")  # type: ignore[name-defined]

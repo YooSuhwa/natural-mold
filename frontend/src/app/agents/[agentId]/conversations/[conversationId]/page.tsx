@@ -1,10 +1,15 @@
 'use client'
 
-import { use, useEffect, useCallback, useState, useMemo } from 'react'
-import Link from 'next/link'
+import { use, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
-import { Settings2Icon, SquarePenIcon, SparklesIcon, MenuIcon } from 'lucide-react'
+import {
+  Settings2Icon,
+  SquarePenIcon,
+  SparklesIcon,
+  MenuIcon,
+  MoreHorizontalIcon,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 import { useAgent } from '@/lib/hooks/use-agents'
@@ -21,6 +26,12 @@ import { AssistantThread } from '@/components/chat/assistant-thread'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 
 export default function ChatPage({
   params,
@@ -34,7 +45,6 @@ export default function ChatPage({
   const { data: messages = [], isLoading: messagesLoading } = useMessages(conversationId)
   const createConversation = useCreateConversation(agentId)
   const t = useTranslations('chat.page')
-  const [showConversationList, setShowConversationList] = useState(true)
   const setSessionTokenUsage = useSetAtom(sessionTokenUsageAtom)
 
   // 캐시에서 현재 대화 제목만 추출 (전체 목록 구독 방지)
@@ -42,18 +52,15 @@ export default function ChatPage({
     .getQueryData<{ id: string; title?: string | null }[]>(conversationKeys.list(agentId))
     ?.find((c) => c.id === conversationId)?.title
 
-  // Reset token usage when conversation changes
   useEffect(() => {
     setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
   }, [conversationId, setSessionTokenUsage])
 
-  // streamFn: conversationId를 바인딩한 SSE 스트리밍 함수
   const streamFn = useCallback(
     (content: string, signal: AbortSignal) => streamChat(conversationId, content, signal),
     [conversationId],
   )
 
-  // 스트리밍 완료 후 처리: 메시지 + 대화 목록 갱신, 토큰 추적
   const onStreamEnd = useCallback(() => {
     queryClient.invalidateQueries({
       queryKey: conversationKeys.messages(conversationId),
@@ -75,7 +82,6 @@ export default function ChatPage({
     router.push(`/agents/${agentId}/conversations/${conv.id}`)
   }
 
-  // 빈 상태 커스텀 콘텐츠
   const emptyContent = useMemo(
     () => (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -100,26 +106,21 @@ export default function ChatPage({
   )
 
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden">
-      {/* Conversation sidebar — desktop toggleable */}
-      {showConversationList && (
-        <div className="hidden w-72 shrink-0 border-r md:block">
-          <ConversationList
-            agentId={agentId}
-            agentName={agent?.name}
-            onClose={() => setShowConversationList(false)}
-          />
-        </div>
-      )}
+    <div className="flex min-h-0 flex-1 gap-3 overflow-hidden bg-muted/30 p-3">
+      {/* 좌측 사이드바 카드 (데스크톱) */}
+      <aside className="hidden w-72 shrink-0 overflow-hidden rounded-xl border bg-card shadow-sm md:block">
+        <ConversationList
+          agentId={agentId}
+          agentName={agent?.name}
+          agentImageUrl={agent?.image_url ?? null}
+          agentDescription={agent?.description ?? null}
+        />
+      </aside>
 
-      {/* Main chat area — min-h-0 필수: 자식(AssistantThread)의 h-full + flex-1
-          overflow-y-auto Viewport가 부모 height를 정확히 받게 하려면 모든 flex
-          ancestor에 min-h-0이 있어야 함. 누락되면 Composer가 viewport 밖으로 밀려남. */}
-      <div className="flex min-h-0 flex-1 flex-col">
-        {/* Chat header */}
+      {/* 메인 채팅 카드 */}
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
         <div className="flex items-center justify-between border-b px-4 py-2.5">
-          <div className="flex items-center gap-2">
-            {/* Mobile conversation list trigger */}
+          <div className="flex min-w-0 items-center gap-2">
             <Sheet>
               <SheetTrigger
                 render={
@@ -134,47 +135,41 @@ export default function ChatPage({
                 }
               />
               <SheetContent side="left" className="w-72 p-0">
-                <ConversationList agentId={agentId} agentName={agent?.name} />
+                <ConversationList
+                  agentId={agentId}
+                  agentName={agent?.name}
+                  agentImageUrl={agent?.image_url ?? null}
+                  agentDescription={agent?.description ?? null}
+                />
               </SheetContent>
             </Sheet>
-            {/* Desktop: show hamburger when conversation list is hidden */}
-            {!showConversationList && (
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="hidden md:inline-flex"
-                onClick={() => setShowConversationList(true)}
-                aria-label={t('conversationList')}
-              >
-                <MenuIcon className="size-4" />
-              </Button>
-            )}
             <h1 className="truncate text-sm font-semibold">
               {currentTitle ?? agent?.name ?? <Skeleton className="inline-block h-4 w-24" />}
             </h1>
           </div>
-          {!showConversationList && (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-sm" aria-label={t('menu')} />}
+            >
+              <MoreHorizontalIcon className="size-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
                 onClick={handleNewConversation}
                 disabled={createConversation.isPending}
               >
-                <SquarePenIcon className="size-4" data-icon="inline-start" />
+                <SquarePenIcon />
                 {t('newConversation')}
-              </Button>
-              <Link href={`/agents/${agentId}/settings`}>
-                <Button variant="ghost" size="sm">
-                  <Settings2Icon className="size-4" data-icon="inline-start" />
-                  {t('settings')}
-                </Button>
-              </Link>
-            </div>
-          )}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(`/agents/${agentId}/settings`)}>
+                <Settings2Icon />
+                {t('settings')}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        {/* Thread — assistant-ui 런타임으로 교체 */}
+        {/* Thread */}
         {messagesLoading ? (
           <div className="flex-1 px-4 py-4">
             <div className="mx-auto max-w-3xl space-y-4">
@@ -194,13 +189,14 @@ export default function ChatPage({
                 agentName={agent?.name}
                 modelName={agent?.model?.display_name}
                 showTokenBar
+                showMessageTimestamp
                 emptyContent={emptyContent}
                 toolUI={ALL_TOOL_UI}
               />
             </HiTLContext.Provider>
           </AssistantRuntimeProvider>
         )}
-      </div>
+      </section>
     </div>
   )
 }

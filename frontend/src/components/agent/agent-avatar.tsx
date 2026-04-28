@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Image from 'next/image'
 import { BotIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -21,8 +22,16 @@ interface AgentAvatarProps {
 
 export function AgentAvatar({ imageUrl, name, size = 'sm', className }: AgentAvatarProps) {
   const { container, icon, px } = sizeMap[size]
+  const [hasError, setHasError] = useState(false)
+  // imageUrl이 바뀌면 이전 에러 상태 리셋 (React 공식 "rendering 중 비교" 패턴).
+  // useEffect + setState는 react-hooks/set-state-in-effect lint를 위반.
+  const [prevImageUrl, setPrevImageUrl] = useState(imageUrl)
+  if (prevImageUrl !== imageUrl) {
+    setPrevImageUrl(imageUrl)
+    setHasError(false)
+  }
 
-  if (imageUrl) {
+  if (imageUrl && !hasError) {
     return (
       <Image
         src={`${API_BASE}${imageUrl}`}
@@ -30,7 +39,12 @@ export function AgentAvatar({ imageUrl, name, size = 'sm', className }: AgentAva
         width={px}
         height={px}
         unoptimized
-        className={cn('shrink-0 rounded-full object-cover', container, className)}
+        onError={() => setHasError(true)}
+        className={cn(
+          'shrink-0 rounded-full bg-emerald-100 object-cover dark:bg-emerald-900',
+          container,
+          className,
+        )}
       />
     )
   }
@@ -38,7 +52,7 @@ export function AgentAvatar({ imageUrl, name, size = 'sm', className }: AgentAva
   return (
     <div
       className={cn(
-        'flex shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary',
+        'flex shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200',
         container,
         className,
       )}

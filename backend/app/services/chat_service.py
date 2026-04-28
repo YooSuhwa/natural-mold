@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select, update
@@ -116,22 +116,57 @@ async def delete_conversation(db: AsyncSession, conv: Conversation) -> None:
 
 
 async def list_messages_from_checkpointer(
-    conversation_id: uuid.UUID,
-    base_timestamp: datetime | None = None,
+    db: AsyncSession,
+    conversation: Conversation,
 ) -> list:
-    """Checkpointer에서 대화 메시지를 조회하여 MessageResponse 리스트로 반환."""
+    """Checkpointer에서 대화 메시지를 조회하여 MessageResponse 리스트로 반환.
+
+    LangChain BaseMessage에 timestamp 메타가 없으므로 idx → ISO 매핑을
+    `Conversation.message_timestamps`에 영구 저장한다. 처음 노출되는 메시지에는
+    현재 시각을 부여하고 이후엔 저장된 값을 그대로 사용 → 옛 메시지 시각이
+    송신마다 흔들리지 않는다.
+    """
     from app.agent_runtime.checkpointer import get_checkpointer
-    from app.agent_runtime.message_utils import langchain_messages_to_response
+    from app.agent_runtime.message_utils import langchain_messages_to_response, parse_msg_id
 
     checkpointer = get_checkpointer()
-    config = {"configurable": {"thread_id": str(conversation_id)}}
+    config = {"configurable": {"thread_id": str(conversation.id)}}
     checkpoint_tuple = await checkpointer.aget_tuple(config)  # type: ignore[arg-type]  # RunnableConfig 호환 dict
 
     if not checkpoint_tuple:
         return []
 
     messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
-    return langchain_messages_to_response(messages, conversation_id, base_timestamp)
+
+    # key는 message UUID. parse_msg_id가 raw id 있으면 UUID 변환, 없으면
+    # (conv_id, idx) deterministic UUID로 안정 ID를 보장하므로 idx 어긋남에도
+    # raw id 있는 메시지 매핑은 흔들리지 않는다.
+    new_stored: dict[str, str] = dict(conversation.message_timestamps or {})
+    timestamps: list[datetime] = []
+    now = datetime.now(UTC).replace(tzinfo=None)
+    changed = False
+
+    for idx, msg in enumerate(messages):
+        msg_uuid = parse_msg_id(getattr(msg, "id", None), conversation.id, idx)
+        key = str(msg_uuid)
+        iso = new_stored.get(key)
+        if iso:
+            ts = datetime.fromisoformat(iso)
+        else:
+            ts = now + timedelta(milliseconds=idx)
+            new_stored[key] = ts.isoformat()
+            changed = True
+        timestamps.append(ts)
+
+    if changed:
+        await db.execute(
+            update(Conversation)
+            .where(Conversation.id == conversation.id)
+            .values(message_timestamps=new_stored)
+        )
+        await db.commit()
+
+    return langchain_messages_to_response(messages, conversation.id, timestamps=timestamps)
 
 
 async def maybe_set_auto_title(
@@ -176,6 +211,21 @@ async def save_token_usage(
     db.add(usage)
     await db.commit()
     return usage
+
+
+async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> None:
+    """대화의 updated_at을 현재 시각으로 갱신.
+
+    LangChain BaseMessage에 timestamp 메타가 없어 list_messages 응답의 base를
+    conv.updated_at으로 사용한다. 메시지 송신/재개 흐름이 끝날 때마다 호출하면
+    프론트엔드의 시간 라벨이 거의 정확한 시각을 표시할 수 있다.
+    """
+    await db.execute(
+        update(Conversation)
+        .where(Conversation.id == conversation_id)
+        .values(updated_at=datetime.now(UTC).replace(tzinfo=None))
+    )
+    await db.commit()
 
 
 async def get_agent_with_tools(

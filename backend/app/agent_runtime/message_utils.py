@@ -13,7 +13,7 @@ from app.schemas.conversation import MessageResponse
 _TYPE_TO_ROLE = {"human": "user", "ai": "assistant", "tool": "tool"}
 
 
-def _parse_msg_id(raw_id: str | None, conversation_id: uuid.UUID, idx: int) -> uuid.UUID:
+def parse_msg_id(raw_id: str | None, conversation_id: uuid.UUID, idx: int) -> uuid.UUID:
     if not raw_id:
         return uuid.uuid5(conversation_id, str(idx))
     try:
@@ -22,7 +22,7 @@ def _parse_msg_id(raw_id: str | None, conversation_id: uuid.UUID, idx: int) -> u
         return uuid.uuid5(uuid.NAMESPACE_URL, raw_id)
 
 
-def _content_to_text(content: Any) -> str:
+def content_to_text(content: Any) -> str:
     """LangChain BaseMessage.content를 사용자 표시용 plain text로 변환.
 
     Anthropic은 multi-block content (text + tool_use 등)를 list[dict]로 반환.
@@ -47,25 +47,34 @@ def _content_to_text(content: Any) -> str:
 def langchain_messages_to_response(
     messages: list[BaseMessage],
     conversation_id: uuid.UUID,
-    base_timestamp: datetime | None = None,
+    timestamps: list[datetime] | None = None,
 ) -> list[MessageResponse]:
-    """LangChain BaseMessage 리스트를 MessageResponse 리스트로 변환."""
+    """LangChain BaseMessage 리스트를 MessageResponse 리스트로 변환.
+
+    `timestamps`가 주어지면 메시지 idx별 시각으로 사용 (영구 매핑 우선).
+    fallback은 `now() + idx*1ms` (테스트/단발 호출용).
+    """
     results: list[MessageResponse] = []
-    base_ts = base_timestamp or datetime.now(UTC).replace(tzinfo=None)
+    fallback_base = datetime.now(UTC).replace(tzinfo=None)
 
     for idx, msg in enumerate(messages):
         role = _TYPE_TO_ROLE.get(msg.type, msg.type)
-        content = _content_to_text(msg.content)
+        content = content_to_text(msg.content)
+
+        if timestamps is not None and idx < len(timestamps):
+            created_at = timestamps[idx]
+        else:
+            created_at = fallback_base + timedelta(milliseconds=idx)
 
         results.append(
             MessageResponse(
-                id=_parse_msg_id(msg.id, conversation_id, idx),
+                id=parse_msg_id(msg.id, conversation_id, idx),
                 conversation_id=conversation_id,
                 role=role,
                 content=content,
                 tool_calls=getattr(msg, "tool_calls", None) or None,
                 tool_call_id=getattr(msg, "tool_call_id", None),
-                created_at=base_ts + timedelta(milliseconds=idx),
+                created_at=created_at,
             )
         )
 

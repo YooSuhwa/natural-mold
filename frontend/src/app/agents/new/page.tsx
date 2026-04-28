@@ -26,7 +26,7 @@ export default function AgentNewPage() {
       <div className="flex w-full max-w-2xl flex-col items-center gap-8">
         {/* Hero */}
         <div className="flex flex-col items-center gap-3 text-center">
-          <Image src="/agent-create-hero.png" alt="Moldy" width={250} height={250} />
+          <Image src="/agent-create-hero.webp" alt="Moldy" width={250} height={250} />
           <h1 className="text-2xl font-bold tracking-tight">{t('hero.title')}</h1>
           <p className="text-sm text-muted-foreground">{t('hero.subtitle')}</p>
         </div>
