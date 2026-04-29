@@ -1,3 +1,79 @@
+# HANDOFF — 머지 후 hotfix + 대시보드 UX 다듬기 (세션 9, 2026-04-29 저녁)
+
+**Base**: `main @ b5515bc` (PR #78 머지 후) — 8 파일 미커밋
+**상태**: BE pytest **647 passed** / ruff clean / FE lint 0/0 / build 14/14
+
+---
+
+## 이번 세션 핵심 변경
+
+### 🔴 Critical: Anthropic 채팅 응답 안 오던 버그
+- **증상**: 모든 Claude 에이전트에서 메시지 보내면 SSE `error` 이벤트만 emit하고 즉시 종료 (Anthropic API 400 `temperature and top_p cannot both be specified`)
+- **원인**: agent.model_params default가 `top_p=1.0`이라 매 요청마다 temperature와 함께 전송 → Anthropic만 거부
+- **수정**: `backend/app/agent_runtime/model_factory.py`
+  - `top_p == 1.0`(sampling off default) → 모든 provider에서 omit
+  - 추가: `provider == "anthropic"` + 둘 다 명시(0.95 등) → top_p 자동 제거 (Anthropic 권장 노브 temperature 우선)
+
+### 대시보드 UX
+- `src/app/page.tsx`: hero(`shrink-0`)/quickActions(`shrink-0`) 고정 + 카드 그리드만 자체 scroll. 외부 `overflow-hidden`, 내부 `scrollbar-hide flex min-h-0 flex-1 overflow-y-auto px-1` (px-1은 카드 ring 잘림 방지)
+- `src/app/globals.css`: `@utility scrollbar-hide` 신설 (Tailwind v4)
+- 기존 분산된 scrollbar 클래스 통일: `scrollbar-none`(right-panel) + `no-scrollbar`(sidebar) → 모두 `scrollbar-hide`
+
+### Settings 캐릭터 크기 키움
+- `AgentAvatar` sizeMap에 `xl` variant 추가 (`size-44 sm:size-52` = 176/208px) — FixHero와 동일
+- `settings-panel.tsx`: `size="lg"` → `size="xl"`, spinner `size-6` → `size-10`, progress bar `w-48` → `w-52`
+
+### i18n
+- `messages/ko.json` `agent.settings.defaultName: "새 에이전트"` 추가 — 매뉴얼 페이지 namespace mismatch fix (`MISSING_MESSAGE` 해소)
+
+### 이미지 생성 모델 변경 시도 → 원복
+- `image_gen_model: openai/gpt-5.4-image-2`로 변경했으나 응답 너무 느림 → `google/gemini-3.1-flash-image-preview`로 원복
+
+### /simplify 후속 정리
+- `model_factory.py` 두 가드 의도 주석 분리 (default omit vs Anthropic 거부 회피)
+- `page.tsx` wrapper 주석 추가 (의도 명시)
+- `globals.css` EOF newline 추가
+
+---
+
+## 다음 작업 (PR #78 다음 작업 리스트와 동일, 변동 없음)
+
+| 우선 | 항목 |
+|---|---|
+| 1 | **PR 생성** — 위 8 파일 미커밋 변경분 (hotfix 위주, 단일 PR 권장) |
+| 2 | LangGraph executor sub-agent 실행 통합 (PR #78 후속) |
+| 3 | 브라우저 수동 검증 — Anthropic 채팅 정상 동작, 대시보드 카드 무한 스크롤, settings 캐릭터 크기 |
+| 4 | TestChatPanel ephemeral conversation endpoint 분리 |
+| 5 | LangSmith 429 traces 한도 초과 — 별개 이슈, graph 동작에 영향 없음. 다음 달 reset 또는 LangSmith 설정 변경 |
+
+---
+
+## 주의사항
+
+- **`top_p < 1.0` + Anthropic 사용자 명시 케이스**: top_p가 자동 제거됨 (temperature 우선). 사용자가 의도한 top_p 값이 무시되는 점 인지 필요
+- **AgentAvatar `xl` Image `unoptimized`**: 모바일에서도 px=208 다운로드 → 다운스케일 비용 미미하지만 그리드 적용 시 재검토
+- **이미지 모델 호환성**: `image_service.py`는 Gemini 특화 페이로드(`image_config: aspect_ratio`, system message + 참조 이미지) 사용. OpenAI 계열로 변경 시 endpoint/페이로드 분기 필요
+- **대시보드 wrapper 자식 들여쓰기**: 96줄 indent 정리는 비용 큼 + lint 영향 없어 skip. prettier auto-format에 위임
+
+---
+
+## 핵심 파일 (이번 세션 수정)
+
+- `backend/app/agent_runtime/model_factory.py` (top_p / Anthropic 분기) ⚠ Critical
+- `frontend/src/app/page.tsx` (대시보드 layout 분할 + scrollbar-hide)
+- `frontend/src/app/globals.css` (`@utility scrollbar-hide`)
+- `frontend/src/components/agent/agent-avatar.tsx` (`xl` size)
+- `frontend/src/app/agents/[agentId]/settings/_components/right-panel/settings-panel.tsx` (xl + spinner/progress)
+- `frontend/src/app/agents/[agentId]/settings/_components/right-panel/right-panel.tsx` (scrollbar-hide 통일)
+- `frontend/src/components/ui/sidebar.tsx` (scrollbar-hide 통일)
+- `frontend/messages/ko.json` (defaultName)
+
+---
+
+새 세션에서 "HANDOFF.md 읽고 PR 생성 / executor sub-agent 통합 진행" 등으로 이어가면 됩니다.
+
+---
+
 # HANDOFF — 서브에이전트 분리 완성 + Codex 리뷰 라운드 4회 통과 (세션 8, 2026-04-29 오후)
 
 **Base**: `main @ 0609210` (세션 6 PR 머지 후) → `feature/agent-edit-workbench` 브랜치에 세션 7 + 8 누적 미커밋

@@ -33,16 +33,16 @@ export function SettingsPanel({ agentId, imageUrl, name }: SettingsPanelProps) {
   return (
     <div className="flex flex-col items-center gap-4 rounded-xl border bg-background p-6">
       <div className="relative">
-        <AgentAvatar imageUrl={imageUrl} name={name} size="lg" />
+        <AgentAvatar imageUrl={imageUrl} name={name} size="xl" />
         {isPending && (
           <div className="absolute inset-0 flex items-center justify-center rounded-full bg-background/60">
-            <Loader2Icon className="size-6 animate-spin text-primary" />
+            <Loader2Icon className="size-10 animate-spin text-primary" />
           </div>
         )}
       </div>
 
       {isPending && (
-        <div className="w-48 space-y-1.5">
+        <div className="w-52 space-y-1.5">
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
             <div className="h-full animate-[progress_30s_ease-out_forwards] rounded-full bg-primary" />
           </div>

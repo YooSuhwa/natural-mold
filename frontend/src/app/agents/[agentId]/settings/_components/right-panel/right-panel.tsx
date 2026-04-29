@@ -55,7 +55,7 @@ export function RightPanel({
       onValueChange={(v) => onTabChange(v as RightTab)}
       className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="sticky top-0 z-10 flex justify-center overflow-x-auto overflow-y-hidden scrollbar-none bg-background">
+      <div className="scrollbar-hide sticky top-0 z-10 flex justify-center overflow-x-auto overflow-y-hidden bg-background">
         <TabsList variant="line" className="h-auto">
           <TabsTrigger
             value="fix"

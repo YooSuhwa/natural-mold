@@ -54,10 +54,18 @@ def create_chat_model(
     if base_url:
         kwargs["base_url"] = base_url
 
-    # Model parameters (temperature, top_p, max_tokens, etc.)
+    # top_p=1.0은 sampling 효과가 없는 default 값 — 모든 provider에서 omit.
     for param in ("temperature", "top_p", "max_tokens"):
         if param in extra and extra[param] is not None:
+            if param == "top_p" and extra[param] == 1.0:
+                continue
             kwargs[param] = extra[param]
+
+    # Anthropic은 temperature와 top_p 동시 지정을 거부(400 invalid_request_error).
+    # 사용자가 top_p<1.0 + temperature를 함께 지정한 경우, temperature를 우선한다
+    # (Anthropic 공식 권장 노브).
+    if provider == "anthropic" and "temperature" in kwargs and "top_p" in kwargs:
+        kwargs.pop("top_p")
 
     # Enable usage metadata in streaming responses
     kwargs["stream_usage"] = True
