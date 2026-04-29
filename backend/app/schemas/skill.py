@@ -1,54 +1,74 @@
+"""Skill API schemas — text and package kinds with metadata + file listings."""
+
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field
 
 
 class SkillCreate(BaseModel):
-    name: str
+    """Create a text-kind skill via JSON.
+
+    Package-kind skills are uploaded as multipart files to
+    ``POST /api/skills/upload``.
+    """
+
+    name: str = Field(..., min_length=1, max_length=150)
+    slug: str | None = None
     description: str | None = None
+    content: str
+    version: str | None = None
+
+
+class SkillMetadataUpdate(BaseModel):
+    """Patch metadata fields only — content edits use a separate endpoint."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    description: str | None = None
+    version: str | None = None
+
+
+class SkillContentUpdate(BaseModel):
     content: str
 
 
-class SkillUpdate(BaseModel):
-    name: str | None = None
-    description: str | None = None
-    content: str | None = None
+class SkillFileEntry(BaseModel):
+    path: str
+    size: int
+    is_dir: bool
 
 
 class SkillResponse(BaseModel):
     id: uuid.UUID
     name: str
+    slug: str
     description: str | None
-    content: str
-    type: str = "text"
-    has_scripts: bool = False
+    kind: Literal["text", "package"]
+    version: str | None
+    storage_path: str | None
+    content_hash: str | None
+    size_bytes: int
+    used_by_count: int
+    package_metadata: dict[str, Any] | None
+    last_modified_at: datetime
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
-    @model_validator(mode="wrap")
-    @classmethod
-    def _compute_has_scripts(cls, data: Any, handler: Any) -> SkillResponse:
-        result = handler(data)
-        # Check _has_scripts (set by upload) or compute from storage_path
-        if hasattr(data, "_has_scripts"):
-            result.has_scripts = data._has_scripts
-        elif hasattr(data, "storage_path") and data.storage_path:
-            scripts_dir = Path(data.storage_path) / "scripts"
-            if scripts_dir.is_dir():
-                result.has_scripts = any(scripts_dir.glob("*.py"))
-        return result
-
 
 class SkillBrief(BaseModel):
     id: uuid.UUID
     name: str
+    slug: str
+    kind: Literal["text", "package"]
     description: str | None
 
     model_config = {"from_attributes": True}
+
+
+class SkillTextContentResponse(BaseModel):
+    content: str

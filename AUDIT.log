@@ -9,3 +9,5 @@
 [2026-04-29T09:30:00Z] jensen MILESTONE_DONE M2 Credential 도메인+Vault — 32 신규 + 4 수정 파일, 68 tests PASS (M1+M2 합산), ruff PASS, branding 0건. 레거시 ~46 tests fail (M5에서 정리). OAuth2 in-process state map 후속 교체 권장.
 [2026-04-29T10:00:00Z] jensen MILESTONE_START M3 Tools+MCP (sub-agent)
 [2026-04-29T11:00:00Z] jensen MILESTONE_DONE M3 Tools+MCP — 도구 12개 (HTTP Request 1 + Naver 5 + Google 검색 3 + Gmail/Calendar/Chat 3), MCP 도메인+라우터, 29 신규 tests, 97 PASS 누계, ruff/branding clean. main.py lifespan는 M4(m13)+M5(seed)에서 정리.
+[2026-04-29T11:30:00Z] pichai+jensen MILESTONE_START M4 Skills+m13+seed (sub-agent)
+[2026-04-29T12:30:00Z] pichai+jensen MILESTONE_DONE M4 Skills+m18 마이그레이션+seed — Skills 도메인 재작성, m18(번호 충돌로 m13→m18 변경)+downgrade NotImplementedError, bootstrap_from_env.py, lifespan 재작성. 옛 prebuilt_connections.py + google_oauth_setup.py 삭제. 31 신규 + 97 회귀 = 128 PASS. alembic upgrade head는 사용자 확인 후 실행.

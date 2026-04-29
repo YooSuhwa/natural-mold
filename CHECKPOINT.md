@@ -82,10 +82,11 @@
   ```
   docker-compose down -v && docker-compose up -d postgres
   cd backend && uv run alembic upgrade head
-  uv run pytest tests/test_skills.py -v
+  uv run pytest tests/test_skills.py tests/test_seed.py tests/test_migration_m18.py -v
   ```
 - done-when: 클린 마이그레이션 성공, 시드 정상, skills 테스트 통과
-- 상태: pending
+- 상태: done (2026-04-29, 31 신규 + 97 회귀 = 128 PASS, alembic upgrade head는 사용자 확인 후 실행 예정)
+- 비고: 마이그레이션 파일명은 m13가 이미 점유되어 있어 `m18_greenfield_credentials`로 명명. down_revision=m17_add_agent_subagents.
 
 ## M5: agent_runtime 재배선 + 키 로테이션 cron (젠슨 + 베조스 DRI)
 
