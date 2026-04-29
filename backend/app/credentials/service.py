@@ -205,6 +205,38 @@ async def record_test(
     )
 
 
+async def re_encrypt_with_active_key(
+    db: AsyncSession,
+    credential: Credential,
+    *,
+    actor_user_id: uuid.UUID | None = None,
+    source: str = "rotation",
+) -> Credential:
+    """Re-encrypt ``credential.data_encrypted`` with the active key.
+
+    The blob is decrypted with whichever key it was originally written under
+    (``cipher.decrypt`` walks all configured keys), then re-encrypted with the
+    current active key. ``key_id`` is updated and a ``rotate`` audit log is
+    written. Caller commits.
+    """
+
+    plaintext = decrypt_data(credential.data_encrypted)
+    new_blob, new_key_id, _ = encrypt_data(plaintext)
+    if new_key_id == credential.key_id and new_blob == credential.data_encrypted:
+        return credential
+    credential.data_encrypted = new_blob
+    credential.key_id = new_key_id
+    await write_audit_log(
+        db,
+        credential_id=credential.id,
+        actor_user_id=actor_user_id,
+        action="rotate",
+        source=source,
+        metadata={"key_id": new_key_id},
+    )
+    return credential
+
+
 async def list_audit_logs(
     db: AsyncSession,
     *,
@@ -228,6 +260,7 @@ __all__ = [
     "get_for_user",
     "list_audit_logs",
     "list_for_user",
+    "re_encrypt_with_active_key",
     "record_test",
     "update",
     "write_audit_log",

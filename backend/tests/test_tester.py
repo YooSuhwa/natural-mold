@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 
 from app.credentials.authenticate import GenericAuth
 from app.credentials.domain import CredentialDefinition, TestRequestSpec
@@ -50,7 +50,7 @@ async def test_tester_default_rule_treats_2xx_as_success(
     class FakeAsyncClient:
         def __init__(self, *args, **kwargs) -> None: ...
 
-        async def __aenter__(self) -> "FakeAsyncClient":
+        async def __aenter__(self) -> FakeAsyncClient:
             return self
 
         async def __aexit__(self, *exc_info) -> None:

@@ -52,6 +52,11 @@ class Agent(Base):
 
     user: Mapped[User] = relationship(back_populates="agents")  # type: ignore[name-defined]
     model: Mapped[Model] = relationship()  # type: ignore[name-defined]
+    # The Credential providing the LLM API key. ``lazy='select'`` so callers
+    # explicitly opt into the join via ``selectinload``.
+    llm_credential: Mapped[Credential | None] = relationship(  # type: ignore[name-defined]  # noqa: F821
+        "Credential", lazy="select", foreign_keys="[Agent.llm_credential_id]"
+    )
     tool_links: Mapped[list[AgentToolLink]] = relationship(
         cascade="all, delete-orphan",
     )

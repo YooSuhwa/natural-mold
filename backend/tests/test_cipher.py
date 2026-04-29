@@ -139,7 +139,8 @@ def test_decrypt_fails_when_no_key_matches() -> None:
     ct = encrypt("secret", real)
     with pytest.raises(DecryptionError) as excinfo:
         decrypt(ct, [other1, other2])
-    assert "could not decrypt" in str(excinfo.value).lower() or "candidate" in str(excinfo.value).lower()
+    msg = str(excinfo.value).lower()
+    assert "could not decrypt" in msg or "candidate" in msg
 
 
 def test_decrypt_with_empty_candidate_list_fails() -> None:
@@ -232,7 +233,8 @@ def test_blob_structure() -> None:
     ct = encrypt("abc", key)
     raw = base64.b64decode(ct)
     assert raw[0:1] == FORMAT_VERSION
-    assert len(raw) == 1 + SALT_LEN + AUTH_TAG_LEN + len("abc")  # ciphertext = plaintext_len for GCM
+    # GCM ciphertext length equals plaintext length; the tag is stored separately.
+    assert len(raw) == 1 + SALT_LEN + AUTH_TAG_LEN + len("abc")
 
 
 def test_module_exposes_aes_key_length_constant() -> None:

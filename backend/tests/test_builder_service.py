@@ -45,8 +45,7 @@ async def _seed_model(db: AsyncSession, *, is_default: bool = True) -> Model:
 async def _seed_tool(db: AsyncSession) -> Tool:
     tool = Tool(
         name="Web Search",
-        type="prebuilt",
-        is_system=True,
+        definition_key="builtin:web_search",
         description="Search the web",
     )
     db.add(tool)

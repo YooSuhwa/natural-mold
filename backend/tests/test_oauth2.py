@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import time
-import uuid
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
@@ -16,10 +16,7 @@ from app.credentials.oauth2_base import (
     is_token_expired,
     refresh_oauth_token,
 )
-from app.credentials.registry import CredentialRegistry
-from app.models.credential_audit_log import CredentialAuditLog
 from app.models.user import User
-from sqlalchemy import select
 from tests.conftest import TEST_USER_ID
 
 

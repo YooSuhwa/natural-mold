@@ -1,3 +1,12 @@
+"""Scheduler entrypoint — executes a single trigger run.
+
+Greenfield M5: pulls everything via ``chat_service.get_agent_with_tools`` so
+prefetch matches the conversations router exactly. The legacy
+``llm_provider`` join + Fernet decrypt is replaced by an optional
+``Agent.llm_credential`` lookup; env-var fallback in ``model_factory`` covers
+agents that haven't bound a credential yet.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -5,21 +14,36 @@ import uuid
 from datetime import UTC, datetime
 
 from app.agent_runtime.executor import AgentConfig, execute_agent_invoke
+from app.agent_runtime.model_factory import env_provider_keys
+from app.credentials import service as credential_service
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
 from app.services import chat_service
-from app.services.encryption import decrypt_api_key
-from app.services.provider_service import load_all_provider_api_keys
 
 logger = logging.getLogger(__name__)
 
 
-async def execute_trigger(trigger_id: str) -> None:
-    """Called by APScheduler when a trigger fires.
+async def _resolve_llm_api_key(agent) -> str | None:
+    """Decrypt ``Agent.llm_credential`` and return ``api_key``.
 
-    Creates a new conversation, sends the trigger's input_message,
-    runs the agent with tools, and stores the result.
+    Returns ``None`` when no credential is bound (env-var fallback handles it).
     """
+
+    cred = getattr(agent, "llm_credential", None)
+    if cred is None:
+        return None
+    try:
+        payload = await credential_service.decrypt_with_external(cred.data_encrypted)
+    except Exception:  # noqa: BLE001 — surface as missing key
+        logger.exception("LLM credential %s decryption failed", cred.id)
+        return None
+    api_key = payload.get("api_key") or payload.get("token")
+    return str(api_key) if api_key else None
+
+
+async def execute_trigger(trigger_id: str) -> None:
+    """Called by APScheduler when a trigger fires."""
+
     trigger_uuid = uuid.UUID(trigger_id)
 
     async with async_session() as db:
@@ -28,7 +52,8 @@ async def execute_trigger(trigger_id: str) -> None:
             logger.info("Trigger %s skipped (not found or inactive)", trigger_id)
             return
 
-        # Load agent with tools
+        # Single source of truth for prefetch — same call the conversations
+        # router uses, so no field on ``agent`` is lazy-loaded later.
         agent = await chat_service.get_agent_with_tools(db, trigger.agent_id, trigger.user_id)
         if not agent:
             logger.warning("Trigger %s: agent not found", trigger_id)
@@ -36,32 +61,16 @@ async def execute_trigger(trigger_id: str) -> None:
             await db.commit()
             return
 
-        # Create a new conversation for this trigger run
         now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
         conv = await chat_service.create_conversation(db, agent.id, title=f"자동 실행: {now_str}")
 
-        # Build prompt (with skill contents) and tools config via shared helpers
         effective_prompt = chat_service.build_effective_prompt(agent)
-        tools_config = chat_service.build_tools_config(agent)
+        tools_config = await chat_service.build_tools_config(agent, db=db)
         agent_skills = chat_service.build_agent_skills(agent)
 
-        # Build messages history
-        messages_history = [{"role": "user", "content": trigger.input_message}]
+        api_key = await _resolve_llm_api_key(agent)
+        base_url = agent.model.base_url
 
-        # Resolve API key: prefer llm_provider, fallback to model-level key
-        lp = agent.model.llm_provider
-        api_key = (
-            decrypt_api_key(lp.api_key_encrypted)
-            if lp and lp.api_key_encrypted
-            else decrypt_api_key(agent.model.api_key_encrypted)
-            if agent.model.api_key_encrypted
-            else None
-        )
-        base_url = lp.base_url if lp and lp.base_url else agent.model.base_url
-
-        provider_api_keys = await load_all_provider_api_keys(db)
-
-        # Execute agent (non-streaming invoke)
         cfg = AgentConfig(
             provider=agent.model.provider,
             model_name=agent.model.model_name,
@@ -74,14 +83,13 @@ async def execute_trigger(trigger_id: str) -> None:
             middleware_configs=agent.middleware_configs,
             agent_skills=agent_skills or None,
             agent_id=str(agent.id),
-            provider_api_keys=provider_api_keys,
+            provider_api_keys=env_provider_keys(),
         )
         try:
-            await execute_agent_invoke(cfg, messages_history)
+            await execute_agent_invoke(cfg, [{"role": "user", "content": trigger.input_message}])
         except Exception:
             logger.exception("Trigger %s: agent execution failed", trigger_id)
 
-        # Update trigger state
         trigger.last_run_at = datetime.now(UTC).replace(tzinfo=None)
         trigger.run_count += 1
         await db.commit()

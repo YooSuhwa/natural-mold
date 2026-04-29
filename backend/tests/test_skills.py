@@ -74,7 +74,7 @@ class TestTextSkill:
         assert skill.size_bytes == len(b"hello world")
         assert skill.content_hash and len(skill.content_hash) == 64
         assert skill.storage_path
-        assert Path(skill.storage_path).read_text() == "hello world"
+        assert Path(skill.storage_path).read_text() == "hello world"  # noqa: ASYNC240
 
     @pytest.mark.asyncio
     async def test_update_text_content_rehashes(
@@ -97,7 +97,7 @@ class TestTextSkill:
 
         assert skill.content_hash != old_hash
         assert skill.size_bytes == len(b"v2 longer")
-        assert Path(skill.storage_path).read_text() == "v2 longer"
+        assert Path(skill.storage_path).read_text() == "v2 longer"  # noqa: ASYNC240
 
     @pytest.mark.asyncio
     async def test_delete_removes_disk(

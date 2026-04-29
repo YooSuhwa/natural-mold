@@ -26,13 +26,8 @@ from app.agent_runtime.middleware_registry import (
 )
 from app.agent_runtime.model_factory import create_chat_model
 from app.agent_runtime.streaming import stream_agent_response
-from app.agent_runtime.tool_factory import (
-    create_builtin_tool,
-    create_prebuilt_tool,
-    create_tool_from_db,
-)
+from app.agent_runtime.tool_factory import create_tool_for_runtime
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
-from app.schemas.tool import ToolType
 
 logger = logging.getLogger(__name__)
 
@@ -380,34 +375,23 @@ async def _prepare_agent(
         cfg.provider, cfg.model_name, cfg.api_key, cfg.base_url, **(cfg.model_params or {})
     )
 
-    # 1. 도구 생성 — builtin/prebuilt/custom은 기존 방식 유지
+    # 1. 도구 생성 — 단일 경로 (definition_key + credentials).
+    # MCP는 향후 별도 mcp_configs 키로 전달 (PoC 단계에서는 비어있음).
     langchain_tools: list[BaseTool] = []
     mcp_configs: list[dict] = []
 
     for tc in cfg.tools_config:
-        tool_type = tc.get("type")
-        if tool_type == ToolType.BUILTIN:
-            langchain_tools.append(create_builtin_tool(tc["name"]))
-        elif tool_type == ToolType.PREBUILT:
-            langchain_tools.append(
-                create_prebuilt_tool(tc["name"], auth_config=tc.get("auth_config"))
-            )
-        elif tool_type == ToolType.CUSTOM and tc.get("api_url"):
-            langchain_tools.append(
-                create_tool_from_db(
-                    name=tc["name"],
-                    description=tc.get("description"),
-                    api_url=tc["api_url"],
-                    http_method=tc.get("http_method", "GET"),
-                    parameters_schema=tc.get("parameters_schema"),
-                    auth_type=tc.get("auth_type"),
-                    auth_config=tc.get("auth_config"),
-                )
-            )
-        elif tool_type == ToolType.MCP and tc.get("mcp_server_url"):
+        if tc.get("mcp_server_url"):
+            # 임시 호환: 옛 chat_service가 채워주던 MCP 항목. M5 이후로는
+            # build_tools_config가 더 이상 채우지 않으므로 dead branch에 가깝지만
+            # 외부 호출자가 직접 cfg를 만들 수 있으므로 무해하게 보존.
             mcp_configs.append(tc)
+            continue
+        tool = create_tool_for_runtime(tc)
+        if tool is not None:
+            langchain_tools.append(tool)
 
-    # 2. MCP 도구 — langchain-mcp-adapters 사용
+    # 2. MCP 도구 — langchain-mcp-adapters 사용 (legacy 경로, 항목이 비면 no-op)
     mcp_tools = await _build_mcp_tools(mcp_configs)
     langchain_tools.extend(mcp_tools)
 

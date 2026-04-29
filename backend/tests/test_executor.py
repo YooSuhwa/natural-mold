@@ -135,9 +135,9 @@ async def test_execute_stream_no_tools(
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
 @patch("app.agent_runtime.executor.create_chat_model")
-@patch("app.agent_runtime.executor.create_builtin_tool")
-async def test_execute_stream_builtin_tool(
-    mock_builtin: MagicMock,
+@patch("app.agent_runtime.executor.create_tool_for_runtime")
+async def test_execute_stream_runtime_tool_called_per_entry(
+    mock_factory: MagicMock,
     mock_model_factory: MagicMock,
     mock_convert: MagicMock,
     mock_build: MagicMock,
@@ -149,80 +149,7 @@ async def test_execute_stream_builtin_tool(
     mock_model_factory.return_value = MagicMock()
     mock_convert.return_value = []
     mock_build.return_value = MagicMock()
-    mock_builtin.return_value = MagicMock()
-
-    async def fake_stream(*args, **kwargs):
-        yield "done"
-
-    mock_stream.return_value = fake_stream()
-
-    tools_config = [{"type": "builtin", "name": "Web Search"}]
-
-    async for _ in execute_agent_stream(_cfg(tools_config=tools_config), []):
-        pass
-
-    mock_builtin.assert_called_once_with("Web Search")
-    tools_passed = mock_build.call_args[0][1]
-    assert len(tools_passed) == 2  # builtin + ask_user (auto)
-
-
-@pytest.mark.asyncio
-@patch("app.agent_runtime.checkpointer.get_checkpointer")
-@patch("app.agent_runtime.executor.stream_agent_response")
-@patch("app.agent_runtime.executor.build_agent")
-@patch("app.agent_runtime.executor.convert_to_langchain_messages")
-@patch("app.agent_runtime.executor.create_chat_model")
-@patch("app.agent_runtime.executor.create_prebuilt_tool")
-async def test_execute_stream_prebuilt_tool(
-    mock_prebuilt: MagicMock,
-    mock_model_factory: MagicMock,
-    mock_convert: MagicMock,
-    mock_build: MagicMock,
-    mock_stream: MagicMock,
-    mock_checkpointer: MagicMock,
-):
-    from app.agent_runtime.executor import execute_agent_stream
-
-    mock_model_factory.return_value = MagicMock()
-    mock_convert.return_value = []
-    mock_build.return_value = MagicMock()
-    mock_prebuilt.return_value = MagicMock()
-
-    async def fake_stream(*args, **kwargs):
-        yield "done"
-
-    mock_stream.return_value = fake_stream()
-
-    auth = {"naver_client_id": "id"}
-    tools_config = [{"type": "prebuilt", "name": "Naver Blog Search", "auth_config": auth}]
-
-    async for _ in execute_agent_stream(_cfg(tools_config=tools_config), []):
-        pass
-
-    mock_prebuilt.assert_called_once_with("Naver Blog Search", auth_config=auth)
-
-
-@pytest.mark.asyncio
-@patch("app.agent_runtime.checkpointer.get_checkpointer")
-@patch("app.agent_runtime.executor.stream_agent_response")
-@patch("app.agent_runtime.executor.build_agent")
-@patch("app.agent_runtime.executor.convert_to_langchain_messages")
-@patch("app.agent_runtime.executor.create_chat_model")
-@patch("app.agent_runtime.executor.create_tool_from_db")
-async def test_execute_stream_custom_tool(
-    mock_custom: MagicMock,
-    mock_model_factory: MagicMock,
-    mock_convert: MagicMock,
-    mock_build: MagicMock,
-    mock_stream: MagicMock,
-    mock_checkpointer: MagicMock,
-):
-    from app.agent_runtime.executor import execute_agent_stream
-
-    mock_model_factory.return_value = MagicMock()
-    mock_convert.return_value = []
-    mock_build.return_value = MagicMock()
-    mock_custom.return_value = MagicMock()
+    mock_factory.return_value = MagicMock()
 
     async def fake_stream(*args, **kwargs):
         yield "done"
@@ -231,29 +158,32 @@ async def test_execute_stream_custom_tool(
 
     tools_config = [
         {
-            "type": "custom",
-            "name": "My API",
-            "description": "desc",
-            "api_url": "https://api.example.com",
-            "http_method": "POST",
-            "parameters_schema": None,
-            "auth_type": "api_key",
-            "auth_config": {"header_name": "X-Key", "api_key": "k"},
-        }
+            "tool_id": "1",
+            "definition_key": "builtin:web_search",
+            "name": "Web Search",
+            "description": "search",
+            "parameters": {},
+            "credentials": None,
+            "credential_id": None,
+        },
+        {
+            "tool_id": "2",
+            "definition_key": "naver_search_blog",
+            "name": "Naver Blog Search",
+            "description": "blog",
+            "parameters": {"query": "x"},
+            "credentials": {"client_id": "a", "client_secret": "b"},
+            "credential_id": "cred-1",
+        },
     ]
 
     async for _ in execute_agent_stream(_cfg(tools_config=tools_config), []):
         pass
 
-    mock_custom.assert_called_once_with(
-        name="My API",
-        description="desc",
-        api_url="https://api.example.com",
-        http_method="POST",
-        parameters_schema=None,
-        auth_type="api_key",
-        auth_config={"header_name": "X-Key", "api_key": "k"},
-    )
+    assert mock_factory.call_count == 2
+    tools_passed = mock_build.call_args[0][1]
+    # 2 user tools + ask_user auto-injected helper
+    assert len(tools_passed) == 3
 
 
 @pytest.mark.asyncio
@@ -262,24 +192,24 @@ async def test_execute_stream_custom_tool(
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
 @patch("app.agent_runtime.executor.create_chat_model")
-@patch("app.agent_runtime.executor.create_builtin_tool")
-@patch("app.agent_runtime.executor.create_prebuilt_tool")
-async def test_execute_stream_mixed_tools(
-    mock_prebuilt: MagicMock,
-    mock_builtin: MagicMock,
+@patch("app.agent_runtime.executor.create_tool_for_runtime")
+async def test_execute_stream_skips_unknown_tool(
+    mock_factory: MagicMock,
     mock_model_factory: MagicMock,
     mock_convert: MagicMock,
     mock_build: MagicMock,
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
 ):
+    """When the factory returns ``None`` (unknown definition_key), the
+    executor must skip it instead of crashing the chat session."""
+
     from app.agent_runtime.executor import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
     mock_convert.return_value = []
     mock_build.return_value = MagicMock()
-    mock_builtin.return_value = MagicMock()
-    mock_prebuilt.return_value = MagicMock()
+    mock_factory.return_value = None
 
     async def fake_stream(*args, **kwargs):
         yield "done"
@@ -287,18 +217,23 @@ async def test_execute_stream_mixed_tools(
     mock_stream.return_value = fake_stream()
 
     tools_config = [
-        {"type": "builtin", "name": "Web Search"},
-        {"type": "prebuilt", "name": "Naver Blog Search"},
+        {
+            "tool_id": "1",
+            "definition_key": "unknown:thing",
+            "name": "Mystery",
+            "description": "?",
+            "parameters": {},
+            "credentials": None,
+            "credential_id": None,
+        }
     ]
 
     async for _ in execute_agent_stream(_cfg(tools_config=tools_config), []):
         pass
 
-    # Both tool factories should be called
-    mock_builtin.assert_called_once_with("Web Search")
-    mock_prebuilt.assert_called_once()
     tools_passed = mock_build.call_args[0][1]
-    assert len(tools_passed) == 3  # 2 user tools + ask_user (auto)
+    # Only ask_user remains.
+    assert len(tools_passed) == 1
 
 
 @pytest.mark.asyncio

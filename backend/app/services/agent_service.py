@@ -83,7 +83,7 @@ async def _validate_tool_ids_owned(
     result = await db.execute(
         select(Tool.id).where(
             Tool.id.in_(tool_ids),
-            or_(Tool.user_id == user_id, Tool.is_system.is_(True)),
+            or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
         )
     )
     valid = {row[0] for row in result.all()}
@@ -152,7 +152,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
             lower_names = [n.lower() for n in template.recommended_tools]
             result = await db.execute(
                 select(Tool.id).where(
-                    or_(Tool.user_id == user_id, Tool.is_system.is_(True)),
+                    or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
                     func.lower(Tool.name).in_(lower_names),
                 )
             )

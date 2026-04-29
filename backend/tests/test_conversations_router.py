@@ -42,8 +42,7 @@ async def _seed_agent(*, with_tools: bool = False) -> tuple[uuid.UUID, uuid.UUID
         if with_tools:
             tool = Tool(
                 name="Web Search",
-                type="builtin",
-                is_system=True,
+                definition_key="builtin:web_search",
                 description="Search the web",
             )
             db.add(tool)
@@ -254,8 +253,8 @@ async def test_send_message_conversation_not_found(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_send_message_with_tools_merges_auth_config(client: AsyncClient):
-    """Agent with tools should merge tool.auth_config + agent_tools.config."""
+async def test_send_message_with_tools_passes_tools_config(client: AsyncClient):
+    """Agent with tools surfaces a greenfield tools_config entry."""
     agent_id, _ = await _seed_agent(with_tools=True)
     conv_id = await _seed_conversation(agent_id)
 
@@ -272,12 +271,12 @@ async def test_send_message_with_tools_merges_auth_config(client: AsyncClient):
         )
 
     assert resp.status_code == 200
-    # args[0] is AgentConfig — check tools_config on it
     cfg = captured_args[0]
     assert len(cfg.tools_config) == 1
-    # M6 이후 BUILTIN 도구는 auth_config=None (legacy tool.auth_config /
-    # agent_tools.config 컬럼 drop).
-    assert cfg.tools_config[0]["auth_config"] is None
+    entry = cfg.tools_config[0]
+    assert entry["definition_key"] == "builtin:web_search"
+    assert entry["credentials"] is None
+    assert entry["credential_id"] is None
 
 
 # ---------------------------------------------------------------------------

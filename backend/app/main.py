@@ -49,7 +49,7 @@ from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
 from app.models.template import Template
 from app.models.user import User
-from app.scheduler import add_trigger_job, get_scheduler
+from app.scheduler import add_trigger_job, get_scheduler, register_credential_rotation_job
 from app.seed.bootstrap_from_env import bootstrap_credentials_from_env
 from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_templates import DEFAULT_TEMPLATES
@@ -120,6 +120,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     scheduler = get_scheduler()
     scheduler.start()
 
+    # Recurring credential key rotation (re-encrypts rows under stale keys).
+    register_credential_rotation_job()
+
     async with async_session() as db:
         result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))
         for trigger in result.scalars():
@@ -154,12 +157,10 @@ def create_app() -> FastAPI:
         agents,
         assistant,
         builder,
-        connections,
         conversations,
         credentials,
         mcp,
         models,
-        providers,
         skills,
         templates,
         tools,
@@ -171,11 +172,9 @@ def create_app() -> FastAPI:
     app.include_router(agents.middleware_router)
     app.include_router(builder.router)
     app.include_router(assistant.router)
-    app.include_router(connections.router)
     app.include_router(conversations.router)
     app.include_router(credentials.router)
     app.include_router(mcp.router)
-    app.include_router(providers.router)
     app.include_router(models.router)
     app.include_router(templates.router)
     app.include_router(skills.router)

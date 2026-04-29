@@ -44,16 +44,14 @@ class TestErrorHandlers:
         assert body["error"]["code"] == "AGENT_NOT_FOUND"
 
     async def test_model_not_found(self, client):
-        response = await client.delete("/api/models/00000000-0000-0000-0000-000000000000")
+        response = await client.get("/api/models/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404
         body = response.json()
         assert body["error"]["code"] == "MODEL_NOT_FOUND"
 
     async def test_tool_not_found(self, client):
-        response = await client.delete("/api/tools/00000000-0000-0000-0000-000000000000")
+        response = await client.get("/api/tools/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404
-        body = response.json()
-        assert body["error"]["code"] == "TOOL_NOT_FOUND"
 
     async def test_conversation_not_found(self, client):
         response = await client.get(

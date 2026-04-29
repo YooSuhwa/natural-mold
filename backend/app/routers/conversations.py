@@ -10,7 +10,9 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
+from app.agent_runtime.model_factory import env_provider_keys
 from app.config import settings
+from app.credentials import service as credential_service
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import agent_not_found, conversation_not_found, file_not_found
 from app.schemas.conversation import (
@@ -22,8 +24,6 @@ from app.schemas.conversation import (
     ResumeRequest,
 )
 from app.services import chat_service
-from app.services.encryption import decrypt_api_key
-from app.services.provider_service import load_all_provider_api_keys
 
 logger = logging.getLogger(__name__)
 
@@ -58,15 +58,24 @@ async def _resolve_agent_context(
     if not agent:
         raise agent_not_found()
 
-    lp = agent.model.llm_provider
-    api_key = (
-        decrypt_api_key(lp.api_key_encrypted)
-        if lp and lp.api_key_encrypted
-        else decrypt_api_key(agent.model.api_key_encrypted)
-        if agent.model.api_key_encrypted
-        else None
+    api_key: str | None = None
+    if agent.llm_credential is not None:
+        try:
+            payload = await credential_service.decrypt_with_external(
+                agent.llm_credential.data_encrypted
+            )
+            api_key = payload.get("api_key") or payload.get("token")
+        except Exception:  # noqa: BLE001 — fall through to env-var fallback
+            logger.exception(
+                "LLM credential %s decryption failed for agent %s",
+                agent.llm_credential.id,
+                agent.id,
+            )
+    base_url = agent.model.base_url
+
+    tools_config = await chat_service.build_tools_config(
+        agent, db=db, conversation_id=str(conversation_id)
     )
-    base_url = lp.base_url if lp and lp.base_url else agent.model.base_url
 
     return AgentConfig(
         provider=agent.model.provider,
@@ -74,13 +83,13 @@ async def _resolve_agent_context(
         api_key=api_key,
         base_url=base_url,
         system_prompt=chat_service.build_effective_prompt(agent),
-        tools_config=chat_service.build_tools_config(agent, conversation_id=str(conversation_id)),
+        tools_config=tools_config,
         thread_id=str(conversation_id),
         model_params=agent.model_params,
         middleware_configs=agent.middleware_configs,
         agent_skills=chat_service.build_agent_skills(agent) or None,
         agent_id=str(agent.id),
-        provider_api_keys=await load_all_provider_api_keys(db),
+        provider_api_keys=env_provider_keys(),
         cost_per_input_token=(
             float(agent.model.cost_per_input_token) if agent.model.cost_per_input_token else None
         ),

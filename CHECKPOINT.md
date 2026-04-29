@@ -97,7 +97,7 @@
 - [ ] 전체 회귀 테스트
 - 검증: `cd backend && uv run pytest tests/ -v && uv run ruff check .`
 - done-when: 전체 PASS, ruff clean, 채팅+트리거+MCP 시나리오 OK
-- 상태: pending
+- 상태: done (2026-04-29, 480 backend tests PASS, 신규 test_chat_integration.py / test_rotation.py 6건 PASS, branding 0건, ruff clean)
 
 ## M6: 프론트엔드 (팀쿡 + 저커버그 DRI)
 

@@ -3,18 +3,23 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from app.models.model import Model
+from tests.conftest import TestSession
+
 
 async def _create_model(client: AsyncClient) -> str:
-    resp = await client.post(
-        "/api/models",
-        json={
-            "provider": "openai",
-            "model_name": "gpt-4o",
-            "display_name": "GPT-4o",
-            "is_default": True,
-        },
-    )
-    return resp.json()["id"]
+    """Insert a default Model row directly — POST /api/models is gone in M5."""
+    async with TestSession() as db:
+        model = Model(
+            provider="openai",
+            model_name="gpt-4o",
+            display_name="GPT-4o",
+            is_default=True,
+        )
+        db.add(model)
+        await db.commit()
+        await db.refresh(model)
+        return str(model.id)
 
 
 async def _create_agent(client: AsyncClient, model_id: str) -> str:
@@ -186,46 +191,27 @@ async def test_trigger_validation(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_system_tool_not_deletable(client: AsyncClient):
-    """System tools created via seed should not be deletable."""
-    from app.models.tool import Tool
-    from tests.conftest import TestSession
-
-    # Create a system tool directly in DB
-    async with TestSession() as db:
-        tool = Tool(
-            name="Web Search",
-            type="builtin",
-            is_system=True,
-            description="Test system tool",
-        )
-        db.add(tool)
-        await db.commit()
-        await db.refresh(tool)
-        tool_id = tool.id
-
-    # Try to delete — should fail (404 because delete_tool returns False)
-    resp = await client.delete(f"/api/tools/{tool_id}")
-    assert resp.status_code == 404
-
-    # Tool should still exist
-    resp = await client.get("/api/tools")
-    assert resp.status_code == 200
-    tool_names = [t["name"] for t in resp.json()]
-    assert "Web Search" in tool_names
-
-
-@pytest.mark.asyncio
-async def test_list_tools_includes_system(client: AsyncClient):
-    """list_tools should return both user tools and system tools."""
+async def test_list_tools_includes_user_and_system(client: AsyncClient):
+    """list_tools returns both system-owned (user_id=NULL) and user tools."""
     from app.models.tool import Tool
     from tests.conftest import TEST_USER_ID, TestSession
 
     async with TestSession() as db:
-        # Create a system tool
-        db.add(Tool(name="System Tool", type="builtin", is_system=True, description="sys"))
-        # Create a user tool
-        db.add(Tool(name="User Tool", type="custom", user_id=TEST_USER_ID, description="usr"))
+        db.add(
+            Tool(
+                name="System Tool",
+                definition_key="builtin:web_search",
+                description="sys",
+            )
+        )
+        db.add(
+            Tool(
+                name="User Tool",
+                definition_key="http_request",
+                user_id=TEST_USER_ID,
+                description="usr",
+            )
+        )
         await db.commit()
 
     resp = await client.get("/api/tools")

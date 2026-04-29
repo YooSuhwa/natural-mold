@@ -44,8 +44,7 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
     await db.flush()
     tool = Tool(
         name="Web Search",
-        type="prebuilt",
-        is_system=True,
+        definition_key="builtin:web_search",
         description="Search the web",
     )
     db.add(tool)
@@ -56,8 +55,7 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
     # Add a second tool (not linked to agent) for add_tool test
     tool2 = Tool(
         name="Web Scraper",
-        type="prebuilt",
-        is_system=True,
+        definition_key="builtin:web_scraper",
         description="Scrape web pages",
     )
     db.add(tool2)
@@ -429,8 +427,10 @@ async def _create_skill(db: AsyncSession, name: str) -> uuid.UUID:
     skill = Skill(
         user_id=TEST_USER_ID,
         name=name,
+        slug=name.lower().replace(" ", "-"),
         description=f"{name} desc",
-        content="skill content",
+        kind="text",
+        storage_path=f"/tmp/skills/{name.lower()}/SKILL.md",
     )
     db.add(skill)
     await db.commit()

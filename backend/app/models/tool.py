@@ -69,6 +69,12 @@ class Tool(Base):
         ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Eager-loadable relationship so chat_service can selectinload the
+    # credential row alongside the tool without N+1 queries.
+    credential: Mapped[Credential | None] = relationship(  # type: ignore[name-defined]  # noqa: F821
+        "Credential", lazy="select"
+    )
+
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)

@@ -10,6 +10,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import settings
+from app.database import async_session
 
 logger = logging.getLogger(__name__)
 
@@ -102,3 +103,80 @@ def resume_trigger_job(trigger_id: uuid.UUID) -> None:
         logger.info("Resumed trigger job %s", trigger_id)
     except Exception:
         logger.debug("Trigger job %s not found in scheduler", trigger_id)
+
+
+# ---------------------------------------------------------------------------
+# Credential rotation
+# ---------------------------------------------------------------------------
+
+CREDENTIAL_ROTATION_JOB_ID = "credential_rotation"
+_ROTATION_BATCH = 100
+
+
+async def rotate_credentials_to_active_key() -> int:
+    """Re-encrypt every credential whose ``key_id`` differs from the active key.
+
+    Iterates in pages of ``_ROTATION_BATCH`` so a large backlog doesn't OOM
+    a single transaction. Each row writes a ``rotate`` audit log; failures
+    log+continue so a single bad row can't stall the rotation.
+    """
+
+    from sqlalchemy import select
+
+    from app.credentials import service as credential_service
+    from app.models.credential import Credential
+    from app.security.key_provider import get_active_key_id
+
+    active_key_id = get_active_key_id()
+    rotated = 0
+
+    while True:
+        async with async_session() as db:
+            result = await db.execute(
+                select(Credential)
+                .where(Credential.key_id != active_key_id)
+                .limit(_ROTATION_BATCH)
+            )
+            rows = list(result.scalars().all())
+            if not rows:
+                return rotated
+            for cred in rows:
+                try:
+                    await credential_service.re_encrypt_with_active_key(db, cred)
+                    rotated += 1
+                except Exception:  # noqa: BLE001 — keep rotation moving
+                    logger.exception(
+                        "credential %s rotation failed; will retry next run", cred.id
+                    )
+            await db.commit()
+        if len(rows) < _ROTATION_BATCH:
+            return rotated
+
+
+def register_credential_rotation_job() -> None:
+    """Register the recurring credential rotation cron job. Idempotent."""
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        logger.debug("Scheduler not running; skipping credential rotation registration")
+        return
+    try:
+        trigger = CronTrigger.from_crontab(settings.credential_rotation_cron)
+    except ValueError:
+        logger.exception(
+            "invalid credential_rotation_cron=%r; rotation job not scheduled",
+            settings.credential_rotation_cron,
+        )
+        return
+    scheduler.add_job(
+        rotate_credentials_to_active_key,
+        trigger,
+        id=CREDENTIAL_ROTATION_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info(
+        "Scheduled credential rotation job: cron %s",
+        settings.credential_rotation_cron,
+    )

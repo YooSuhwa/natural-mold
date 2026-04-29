@@ -13,7 +13,6 @@ from app.credentials.external_secrets import (
     resolve_external_refs,
 )
 
-
 # -- EnvSecretsProvider ------------------------------------------------------
 
 

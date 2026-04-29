@@ -1,3 +1,11 @@
+"""Model catalog endpoints.
+
+The greenfield Credential domain owns LLM API keys, so model rows are now
+plain reference data. This router only exposes the read-only catalog used by
+the frontend's "default model" picker; CRUD will be reintroduced (or moved)
+in M6 once the new admin UI lands.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -6,55 +14,37 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_user, get_db
-from app.error_codes import model_not_found, provider_not_found
+from app.error_codes import model_not_found
 from app.models.user import User
-from app.schemas.model import ModelBulkCreate, ModelCreate, ModelResponse, ModelUpdate
 from app.services import model_service
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
 
-@router.get("", response_model=list[ModelResponse])
-async def list_models(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+@router.get("")
+async def list_models(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
     return await model_service.list_models(db)
 
 
-@router.post("", response_model=ModelResponse, status_code=201)
-async def create_model(
-    data: ModelCreate, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
-):
-    return await model_service.create_model(db, data)
-
-
-@router.post("/bulk", response_model=list[ModelResponse], status_code=201)
-async def bulk_create_models(
-    data: ModelBulkCreate,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    result = await model_service.bulk_create_models(db, data)
-    if result is None:
-        raise provider_not_found()
-    return result
-
-
-@router.put("/{model_id}", response_model=ModelResponse)
-async def update_model(
+@router.get("/{model_id}")
+async def get_model(
     model_id: uuid.UUID,
-    data: ModelUpdate,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    model = await model_service.update_model(db, model_id, data)
+    model = await model_service.get_model(db, model_id)
     if not model:
         raise model_not_found()
-    return model
-
-
-@router.delete("/{model_id}", status_code=204)
-async def delete_model(
-    model_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
-):
-    deleted = await model_service.delete_model(db, model_id)
-    if not deleted:
-        raise model_not_found()
+    return {
+        "id": model.id,
+        "provider": model.provider,
+        "model_name": model.model_name,
+        "display_name": model.display_name,
+        "base_url": model.base_url,
+        "is_default": model.is_default,
+        "context_window": model.context_window,
+        "input_modalities": model.input_modalities,
+        "output_modalities": model.output_modalities,
+    }

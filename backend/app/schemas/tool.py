@@ -1,14 +1,7 @@
-"""Pydantic schemas for the Tool API.
-
-Greenfield (M3) schemas live first; the legacy ``ToolType`` / ``ToolCustomCreate``
-/ legacy ``ToolResponse`` shims at the bottom of the file are retained so the
-not-yet-rewired services in ``app/services/tool_service.py`` keep importing —
-M5 deletes them along with the old service.
-"""
+"""Pydantic schemas for the Tool API (greenfield)."""
 
 from __future__ import annotations
 
-import enum
 import uuid
 from datetime import datetime
 from typing import Any
@@ -95,70 +88,3 @@ class ToolRunResponse(BaseModel):
     error: str | None = None
     http_status: int | None = None
     duration_ms: int = 0
-
-
-# ---- Legacy shims (deleted in M5) -----------------------------------------
-
-
-class ToolType(enum.StrEnum):
-    """Legacy 4-way classifier. M5 deletes this once chat_service is rewired."""
-
-    BUILTIN = "builtin"
-    PREBUILT = "prebuilt"
-    CUSTOM = "custom"
-    MCP = "mcp"
-
-
-class ToolCustomCreate(BaseModel):
-    """Legacy CUSTOM-tool create payload — kept for backward import compat."""
-
-    name: str
-    description: str | None = None
-    api_url: str
-    http_method: str = "GET"
-    parameters_schema: dict[str, Any] | None = None
-    auth_type: str | None = None
-    connection_id: uuid.UUID
-
-
-class LegacyToolResponse(BaseModel):
-    """Legacy ToolResponse — exposed under the alias ``ToolResponseLegacy``."""
-
-    id: uuid.UUID
-    type: str
-    provider_name: str | None = None
-    is_system: bool = False
-    connection_id: uuid.UUID | None = None
-    name: str
-    description: str | None = None
-    parameters_schema: dict[str, Any] | None = None
-    api_url: str | None = None
-    http_method: str | None = None
-    auth_type: str | None = None
-    tags: list[str] | None = None
-    agent_count: int = 0
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class DiscoverToolItem(BaseModel):
-    tool: LegacyToolResponse
-    status: str
-
-
-class DiscoverToolsResponse(BaseModel):
-    connection_id: uuid.UUID
-    server_info: dict[str, Any] = Field(default_factory=dict)
-    items: list[DiscoverToolItem] = Field(default_factory=list)
-
-
-class ToolUpdate(BaseModel):
-    """Legacy PATCH payload — single ``connection_id`` field. M5 deletes."""
-
-    model_config = ConfigDict(extra="forbid")
-    connection_id: uuid.UUID | None = None
-
-
-# Public alias preserved for backward compatibility — tests + legacy imports.
-ToolResponse = LegacyToolResponse

@@ -81,7 +81,7 @@ def build_write_tools(
 
             result = await session.execute(
                 select(Tool).where(
-                    or_(Tool.user_id == user_id, Tool.is_system.is_(True)),
+                    or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
                     func.lower(Tool.name).in_(lower_names),
                 )
             )

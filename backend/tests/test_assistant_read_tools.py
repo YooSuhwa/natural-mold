@@ -45,8 +45,7 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
     await db.flush()
     tool = Tool(
         name="Web Search",
-        type="prebuilt",
-        is_system=True,
+        definition_key="builtin:web_search",
         description="Search the web",
     )
     db.add(tool)
@@ -248,8 +247,10 @@ async def test_list_available_skills_returns_user_skills(db: AsyncSession, patch
     skill = Skill(
         user_id=TEST_USER_ID,
         name="MyHelper",
+        slug="myhelper",
         description="A helper skill",
-        content="content",
+        kind="text",
+        storage_path="/tmp/skills/myhelper/SKILL.md",
     )
     db.add(skill)
     await db.commit()
@@ -336,8 +337,7 @@ async def test_get_agent_required_secrets_with_naver_tool(db: AsyncSession, patc
     # Add naver tool
     naver_tool = Tool(
         name="Naver Search",
-        type="prebuilt",
-        is_system=True,
+        definition_key="naver_search_blog",
         description="Naver search",
     )
     db.add(naver_tool)
