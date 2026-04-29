@@ -11,6 +11,22 @@ import { streamResume } from '@/lib/sse/stream-resume'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
 
+const MUTATION_PREFIXES = [
+  'add_',
+  'remove_',
+  'update_',
+  'edit_',
+  'delete_',
+  'enable_',
+  'disable_',
+  'create_',
+] as const
+
+function isMutationToolName(name: string | undefined): boolean {
+  if (!name) return false
+  return MUTATION_PREFIXES.some((p) => name.startsWith(p))
+}
+
 function createOptimisticMessage(
   role: 'user' | 'assistant' | 'tool',
   content: string,
@@ -41,8 +57,8 @@ interface UseChatRuntimeOptions {
   messages: Message[]
   /** SSE 스트리밍 함수 (streamChat 또는 streamAssistant) */
   streamFn: StreamFn
-  /** 스트리밍 완료 후 호출 (쿼리 무효화 등) */
-  onStreamEnd?: () => void
+  /** 스트리밍 완료 후 호출. didMutate=true면 mutation 도구가 호출되었다는 의미 (invalidate 권장) */
+  onStreamEnd?: (didMutate: boolean) => void
   /** 스트리밍 메시지 확정 시 호출 — 로컬 히스토리 유지용 (AssistantPanel) */
   onMessagesCommit?: (messages: Message[]) => void
   /** interrupt 발생 시 호출 (HiTL UI 렌더링용) */
@@ -268,7 +284,9 @@ export function useChatRuntime({
         // interrupt(HiTL)도 그래프가 일시정지된 stream 종료 — backend는 ask_user tool_call을
         // 이미 DB에 저장한 상태이므로, onStreamEnd로 messages query를 invalidate해야
         // streaming 비운 직후 UI에서 ask_user input이 사라지지 않고 fetch된 메시지로 채워진다.
-        onStreamEnd?.()
+        // didMutate: write 도구가 호출되었나? 호출처는 이를 보고 폼 캐시 invalidate 여부 결정.
+        const didMutate = toolCalls.some((tc) => isMutationToolName(tc.name))
+        onStreamEnd?.(didMutate)
       }
     },
     [onStreamEnd, onInterrupt, onMessagesCommit, setTokenUsage],

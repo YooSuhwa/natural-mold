@@ -19,6 +19,34 @@ import { SkillsNode } from './nodes/skills-node'
 import { MiddlewaresNode } from './nodes/middlewares-node'
 import { ScheduleNode } from './nodes/schedule-node'
 
+interface ControlledVisualState {
+  name: string
+  description: string
+  systemPrompt: string
+  modelId: string
+  temperature: number
+  topP: number
+  maxTokens: number
+  selectedToolIds: Set<string>
+  selectedSkillIds: Set<string>
+  selectedSubAgentIds: Set<string>
+  selectedMiddlewareTypes: Set<string>
+}
+
+interface ControlledVisualHandlers {
+  onNameChange: (v: string) => void
+  onDescriptionChange: (v: string) => void
+  onSystemPromptChange: (v: string) => void
+  onModelIdChange: (v: string) => void
+  onTemperatureChange: (v: number) => void
+  onTopPChange: (v: number) => void
+  onMaxTokensChange: (v: number) => void
+  onToggleTool: (id: string) => void
+  onToggleSkill: (id: string) => void
+  onToggleSubAgent: (id: string) => void
+  onToggleMiddleware: (type: string) => void
+}
+
 interface VisualSettingsFlowProps {
   agent?: Agent
   agentId?: string
@@ -28,6 +56,14 @@ interface VisualSettingsFlowProps {
   middlewares?: MiddlewareRegistryItem[]
   triggers?: AgentTrigger[]
   mode?: 'create' | 'edit'
+  /**
+   * 워크벤치(`/agents/[id]/settings`) 안에서 inline 렌더할 때 true.
+   * - 내부 Toolbar(별도 Save 버튼) 숨김 → workbench 헤더 단일 Save 사용
+   * - controlledState/controlledHandlers가 함께 제공되면 모든 편집 state는 페이지 owns
+   */
+  embedded?: boolean
+  controlledState?: ControlledVisualState
+  controlledHandlers?: ControlledVisualHandlers
 }
 
 export function VisualSettingsFlow({
@@ -39,62 +75,151 @@ export function VisualSettingsFlow({
   middlewares = [],
   triggers = [],
   mode = 'edit',
+  embedded = false,
+  controlledState,
+  controlledHandlers,
 }: VisualSettingsFlowProps) {
   const router = useRouter()
   const t = useTranslations('agent.visualSettings')
   const updateAgent = useUpdateAgent(agentId ?? '')
   const createAgent = useCreateAgent()
 
-  const [name, setName] = useState(agent?.name ?? '')
-  const [description, setDescription] = useState(agent?.description ?? '')
-  const [systemPrompt, setSystemPrompt] = useState(agent?.system_prompt ?? '')
-  const [modelId, setModelId] = useState(agent?.model.id ?? models[0]?.id ?? '')
-  const [temperature, setTemperature] = useState(agent?.model_params?.temperature ?? 0.7)
-  const [topP, setTopP] = useState(agent?.model_params?.top_p ?? 1.0)
-  const [maxTokens, setMaxTokens] = useState(agent?.model_params?.max_tokens ?? 4096)
-  const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(
+  // Internal state (uncontrolled fallback). 사용되지 않을 때도 hooks 규칙상 항상 호출.
+  const [internalName, setInternalName] = useState(agent?.name ?? '')
+  const [internalDescription, setInternalDescription] = useState(agent?.description ?? '')
+  const [internalSystemPrompt, setInternalSystemPrompt] = useState(agent?.system_prompt ?? '')
+  const [internalModelId, setInternalModelId] = useState(agent?.model.id ?? models[0]?.id ?? '')
+  const [internalTemperature, setInternalTemperature] = useState(
+    agent?.model_params?.temperature ?? 0.7,
+  )
+  const [internalTopP, setInternalTopP] = useState(agent?.model_params?.top_p ?? 1.0)
+  const [internalMaxTokens, setInternalMaxTokens] = useState(
+    agent?.model_params?.max_tokens ?? 4096,
+  )
+  const [internalSelectedToolIds, setInternalSelectedToolIds] = useState<Set<string>>(
     () => new Set(agent?.tools.map((tl) => tl.id) ?? []),
   )
-  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(
+  const [internalSelectedSkillIds, setInternalSelectedSkillIds] = useState<Set<string>>(
     () => new Set(agent?.skills?.map((s) => s.id) ?? []),
   )
-  const [selectedMiddlewareTypes, setSelectedMiddlewareTypes] = useState<Set<string>>(
-    () => new Set(agent?.middleware_configs?.map((mc) => mc.type) ?? []),
+  const [internalSelectedSubAgentIds, setInternalSelectedSubAgentIds] = useState<Set<string>>(
+    () => new Set(agent?.sub_agents?.map((sa) => sa.id) ?? []),
+  )
+  const [internalSelectedMiddlewareTypes, setInternalSelectedMiddlewareTypes] = useState<
+    Set<string>
+  >(() => new Set(agent?.middleware_configs?.map((mc) => mc.type) ?? []))
+
+  // controlledState 제공 시 모든 편집 state는 페이지(workbench) owns. 그렇지 않으면 internal state.
+  const isControlled = embedded && !!controlledState && !!controlledHandlers
+  const name = isControlled ? controlledState!.name : internalName
+  const description = isControlled ? controlledState!.description : internalDescription
+  const systemPrompt = isControlled ? controlledState!.systemPrompt : internalSystemPrompt
+  const modelId = isControlled ? controlledState!.modelId : internalModelId
+  const temperature = isControlled ? controlledState!.temperature : internalTemperature
+  const topP = isControlled ? controlledState!.topP : internalTopP
+  const maxTokens = isControlled ? controlledState!.maxTokens : internalMaxTokens
+  const selectedToolIds = isControlled ? controlledState!.selectedToolIds : internalSelectedToolIds
+  const selectedSkillIds = isControlled
+    ? controlledState!.selectedSkillIds
+    : internalSelectedSkillIds
+  const selectedSubAgentIds = isControlled
+    ? controlledState!.selectedSubAgentIds
+    : internalSelectedSubAgentIds
+  const selectedMiddlewareTypes = isControlled
+    ? controlledState!.selectedMiddlewareTypes
+    : internalSelectedMiddlewareTypes
+
+  const setName = isControlled ? controlledHandlers!.onNameChange : setInternalName
+  const setDescription = isControlled
+    ? controlledHandlers!.onDescriptionChange
+    : setInternalDescription
+  const setSystemPrompt = isControlled
+    ? controlledHandlers!.onSystemPromptChange
+    : setInternalSystemPrompt
+  const setModelId = isControlled ? controlledHandlers!.onModelIdChange : setInternalModelId
+  const setTemperature = isControlled
+    ? controlledHandlers!.onTemperatureChange
+    : setInternalTemperature
+  const setTopP = isControlled ? controlledHandlers!.onTopPChange : setInternalTopP
+  const setMaxTokens = isControlled
+    ? controlledHandlers!.onMaxTokensChange
+    : setInternalMaxTokens
+
+  // Sync state from agent prop (edit mode only, uncontrolled only)
+  useEffect(() => {
+    if (isControlled) return
+    if (mode !== 'edit' || !agent) return
+    setInternalName(agent.name)
+    setInternalDescription(agent.description ?? '')
+    setInternalSystemPrompt(agent.system_prompt)
+    setInternalModelId(agent.model.id)
+    setInternalTemperature(agent.model_params?.temperature ?? 0.7)
+    setInternalTopP(agent.model_params?.top_p ?? 1.0)
+    setInternalMaxTokens(agent.model_params?.max_tokens ?? 4096)
+    setInternalSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
+    setInternalSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
+    setInternalSelectedSubAgentIds(new Set(agent.sub_agents?.map((sa) => sa.id) ?? []))
+    setInternalSelectedMiddlewareTypes(
+      new Set(agent.middleware_configs?.map((mc) => mc.type) ?? []),
+    )
+  }, [agent, mode, isControlled])
+
+  // Set default model when models load in create mode (uncontrolled only)
+  useEffect(() => {
+    if (isControlled) return
+    if (mode === 'create' && !internalModelId && models.length > 0) {
+      setInternalModelId(models[0].id)
+    }
+  }, [mode, internalModelId, models, isControlled])
+
+  const toggleTool = useCallback(
+    (toolId: string) => {
+      if (isControlled) {
+        controlledHandlers!.onToggleTool(toolId)
+      } else {
+        setInternalSelectedToolIds((prev) => toggleSetItem(prev, toolId))
+      }
+    },
+    [isControlled, controlledHandlers],
   )
 
-  // Sync state from agent prop (edit mode only)
-  useEffect(() => {
-    if (mode !== 'edit' || !agent) return
-    setName(agent.name)
-    setDescription(agent.description ?? '')
-    setSystemPrompt(agent.system_prompt)
-    setModelId(agent.model.id)
-    setTemperature(agent.model_params?.temperature ?? 0.7)
-    setTopP(agent.model_params?.top_p ?? 1.0)
-    setMaxTokens(agent.model_params?.max_tokens ?? 4096)
-    setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
-    setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
-    setSelectedMiddlewareTypes(new Set(agent.middleware_configs?.map((mc) => mc.type) ?? []))
-  }, [agent, mode])
+  const toggleSkill = useCallback(
+    (skillId: string) => {
+      if (isControlled) {
+        controlledHandlers!.onToggleSkill(skillId)
+      } else {
+        setInternalSelectedSkillIds((prev) => toggleSetItem(prev, skillId))
+      }
+    },
+    [isControlled, controlledHandlers],
+  )
 
-  // Set default model when models load in create mode
-  useEffect(() => {
-    if (mode === 'create' && !modelId && models.length > 0) {
-      setModelId(models[0].id)
-    }
-  }, [mode, modelId, models])
+  // sub-agent state pass-through (visual 모드의 노드 시각화는 후속 PR — state 일관성만 유지).
+  // 사용되진 않더라도 controlled 분기에서 toggle 호출 가능성을 유지하기 위해 필요.
+  const toggleSubAgent = useCallback(
+    (subAgentId: string) => {
+      if (isControlled) {
+        controlledHandlers!.onToggleSubAgent(subAgentId)
+      } else {
+        setInternalSelectedSubAgentIds((prev) => toggleSetItem(prev, subAgentId))
+      }
+    },
+    [isControlled, controlledHandlers],
+  )
+  // 미사용 변수 경고 회피 (후속 PR에서 노드에 연결 예정)
+  void selectedSubAgentIds
+  void toggleSubAgent
 
-  const toggleTool = useCallback((toolId: string) => {
-    setSelectedToolIds((prev) => toggleSetItem(prev, toolId))
-  }, [])
-
-  const toggleSkill = useCallback((skillId: string) => {
-    setSelectedSkillIds((prev) => toggleSetItem(prev, skillId))
-  }, [])
-
-  const toggleMiddleware = useCallback((type: string) => {
-    setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type))
-  }, [])
+  const toggleMiddleware = useCallback(
+    (type: string) => {
+      if (isControlled) {
+        controlledHandlers!.onToggleMiddleware(type)
+      } else {
+        setInternalSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type))
+      }
+    },
+    [isControlled, controlledHandlers],
+  )
 
   const currentModelName = useMemo(() => {
     const found = models.find((m) => m.id === modelId)?.display_name
@@ -120,7 +245,8 @@ export function VisualSettingsFlow({
       setTopP(data.topP)
       setMaxTokens(data.maxTokens)
     },
-    [],
+    // setX are dynamic (controlled vs internal) — recompute when they swap
+    [setName, setDescription, setModelId, setSystemPrompt, setTemperature, setTopP, setMaxTokens],
   )
 
   async function handleSave() {
@@ -131,6 +257,7 @@ export function VisualSettingsFlow({
       model_id: modelId,
       tool_ids: Array.from(selectedToolIds),
       skill_ids: Array.from(selectedSkillIds),
+      sub_agent_ids: Array.from(selectedSubAgentIds),
       middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
         type,
         params: {},
@@ -365,13 +492,15 @@ export function VisualSettingsFlow({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <Toolbar
-        agentId={agentId}
-        agentName={name}
-        onSave={handleSave}
-        isSaving={isSaving}
-        mode={mode}
-      />
+      {!embedded && (
+        <Toolbar
+          agentId={agentId}
+          agentName={name}
+          onSave={handleSave}
+          isSaving={isSaving}
+          mode={mode}
+        />
+      )}
       <div className="flex-1">
         <ReactFlow
           nodes={nodes}

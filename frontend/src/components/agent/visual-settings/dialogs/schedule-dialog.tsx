@@ -10,7 +10,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -37,6 +36,14 @@ interface ScheduleDialogProps {
   onSubmit: (data: TriggerCreateRequest | { triggerId: string; data: TriggerUpdateRequest }) => void
   trigger?: AgentTrigger | null
   isPending?: boolean
+}
+
+interface ScheduleFormProps {
+  trigger?: AgentTrigger | null
+  onSubmit: (data: TriggerCreateRequest) => void
+  onCancel: () => void
+  isPending?: boolean
+  isEdit?: boolean
 }
 
 function parseTriggerToForm(trigger: AgentTrigger) {
@@ -129,15 +136,14 @@ const TYPE_ICONS: Record<ScheduleType, typeof ClockIcon> = {
   advanced: SettingsIcon,
 }
 
-export function ScheduleDialog({
-  open,
-  onOpenChange,
-  onSubmit,
+export function ScheduleForm({
   trigger,
+  onSubmit,
+  onCancel,
   isPending,
-}: ScheduleDialogProps) {
+  isEdit,
+}: ScheduleFormProps) {
   const t = useTranslations('agent.schedule')
-  const isEdit = !!trigger
 
   const [form, setForm] = useState(getDefaultForm)
   const [inputMessage, setInputMessage] = useState('')
@@ -150,9 +156,8 @@ export function ScheduleDialog({
     { value: 'advanced', label: t('types.advanced'), icon: TYPE_ICONS.advanced },
   ]
 
-  /* eslint-disable react-hooks/set-state-in-effect -- reset form when dialog opens/trigger changes */
+  /* eslint-disable react-hooks/set-state-in-effect -- reset form when trigger changes */
   useEffect(() => {
-    if (!open) return
     if (trigger) {
       const parsed = parseTriggerToForm(trigger)
       setForm(parsed)
@@ -161,7 +166,7 @@ export function ScheduleDialog({
       setForm(getDefaultForm())
       setInputMessage('')
     }
-  }, [open, trigger])
+  }, [trigger])
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const toggleWeekday = useCallback((day: number) => {
@@ -213,25 +218,14 @@ export function ScheduleDialog({
   }
 
   function handleSubmit() {
-    const req = buildRequest()
-    if (isEdit && trigger) {
-      onSubmit({ triggerId: trigger.id, data: req })
-    } else {
-      onSubmit(req)
-    }
+    onSubmit(buildRequest())
   }
 
   const canSubmit = form.type !== 'advanced' || form.cronExpression.trim().length > 0
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
-        <DialogHeader>
-          <DialogTitle>{t('title')}</DialogTitle>
-          <DialogDescription>{t('description')}</DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-3 gap-2">
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-2">
           {typeOptions.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
@@ -360,25 +354,54 @@ export function ScheduleDialog({
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium">{t('labels.prompt')}</label>
-          <Textarea
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            placeholder={t('placeholders.prompt')}
-            rows={2}
-          />
-          <p className="text-xxs text-muted-foreground">{t('promptDefault')}</p>
-        </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t('labels.prompt')}</label>
+        <Textarea
+          value={inputMessage}
+          onChange={(e) => setInputMessage(e.target.value)}
+          placeholder={t('placeholders.prompt')}
+          rows={2}
+        />
+        <p className="text-xxs text-muted-foreground">{t('promptDefault')}</p>
+      </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t('cancel')}
-          </Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit || isPending}>
-            {isEdit ? t('update') : t('create')}
-          </Button>
-        </DialogFooter>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={onCancel}>
+          {t('cancel')}
+        </Button>
+        <Button onClick={handleSubmit} disabled={!canSubmit || isPending}>
+          {isEdit ? t('update') : t('create')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export function ScheduleDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+  trigger,
+  isPending,
+}: ScheduleDialogProps) {
+  const t = useTranslations('agent.schedule')
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle>{t('title')}</DialogTitle>
+          <DialogDescription>{t('description')}</DialogDescription>
+        </DialogHeader>
+        <ScheduleForm
+          trigger={trigger}
+          isEdit={!!trigger}
+          isPending={isPending}
+          onCancel={() => onOpenChange(false)}
+          onSubmit={(req) => {
+            if (trigger) onSubmit({ triggerId: trigger.id, data: req })
+            else onSubmit(req)
+          }}
+        />
       </DialogContent>
     </Dialog>
   )

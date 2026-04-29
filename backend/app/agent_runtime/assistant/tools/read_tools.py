@@ -1,4 +1,4 @@
-"""Assistant 읽기 도구 — 15개 Safe 도구 (DB 수정 없음).
+"""Assistant 읽기 도구 — Safe 도구 (DB 수정 없음).
 
 도구 목록:
 1. get_agent_config
@@ -6,16 +6,17 @@
 3. list_available_tools
 4. list_available_middlewares
 5. list_available_subagents
-6. list_available_models
-7. get_agent_required_secrets
-8. get_user_secrets
-9. get_chat_openers
-10. get_recursion_limit
-11. list_permanent_files
-12. get_file_content
-13. search_system_prompt
-14. list_cron_schedules
-15. get_cron_schedule
+6. list_available_skills
+7. list_available_models
+8. get_agent_required_secrets
+9. get_user_secrets
+10. get_chat_openers
+11. get_recursion_limit
+12. list_permanent_files
+13. get_file_content
+14. search_system_prompt
+15. list_cron_schedules
+16. get_cron_schedule
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from app.database import async_session as async_session_factory
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
+from app.models.skill import Skill
 from app.services.tool_service import get_tools_catalog
 
 
@@ -90,11 +92,20 @@ def build_read_tools(
                     f"{agent.model.provider}:{agent.model.model_name}" if agent.model else "unknown"
                 ),
                 "model_params": agent.model_params,
+                "opener_questions": agent.opener_questions or [],
                 "tools": tools_info,
                 "middlewares": mw_info,
                 "skills": [
                     {"name": link.skill.name, "description": link.skill.description}
                     for link in agent.skill_links
+                ],
+                "sub_agents": [
+                    {
+                        "id": str(link.sub_agent_id),
+                        "name": link.sub_agent.name,
+                        "description": link.sub_agent.description,
+                    }
+                    for link in agent.sub_agent_links
                 ],
             },
             ensure_ascii=False,
@@ -172,6 +183,25 @@ def build_read_tools(
             ]
             return json.dumps(items, ensure_ascii=False, indent=2)
 
+    # ------ 6-2. list_available_skills ------
+
+    async def list_available_skills() -> str:
+        """사용 가능한 스킬 목록을 조회합니다."""
+        async with async_session_factory() as session:
+            result = await session.execute(
+                select(Skill).where(Skill.user_id == user_id).order_by(Skill.name)
+            )
+            skills = result.scalars().all()
+            items = [
+                {
+                    "id": str(s.id),
+                    "name": s.name,
+                    "description": s.description,
+                }
+                for s in skills
+            ]
+            return json.dumps(items, ensure_ascii=False, indent=2)
+
     # ------ 7. list_available_models ------
 
     async def list_available_models() -> str:
@@ -222,13 +252,12 @@ def build_read_tools(
 
     # ------ 10. get_chat_openers ------
 
-    async def get_chat_openers() -> str:
+    async def get_chat_openers() -> str:  # noqa: D401
         """현재 에이전트의 채팅 시작 질문 목록을 조회합니다."""
         agent = await _get_agent()
         if not agent:
             return "에이전트를 찾을 수 없습니다."
-        # chat_openers는 Agent.model_params에 저장 (또는 별도 필드)
-        openers = (agent.model_params or {}).get("chat_openers", [])
+        openers = agent.opener_questions or []
         return json.dumps({"chat_openers": openers}, ensure_ascii=False)
 
     # ------ 11. get_recursion_limit ------
@@ -367,6 +396,11 @@ def build_read_tools(
             coroutine=list_available_subagents,
             name="list_available_subagents",
             description="서브에이전트로 사용 가능한 에이전트 목록 조회",
+        ),
+        StructuredTool.from_function(
+            coroutine=list_available_skills,
+            name="list_available_skills",
+            description="사용 가능한 스킬 목록 조회",
         ),
         StructuredTool.from_function(
             coroutine=list_available_models,

@@ -1,23 +1,26 @@
-"""Assistant 쓰기 도구 — 17 도구 (DB 수정, Verify First).
+"""Assistant 쓰기 도구 — DB 수정 도구 (Verify First).
 
 도구 목록:
 1. add_tool_to_agent (배치)
 2. remove_tool_from_agent (배치)
 3. add_middleware_to_agent (배치)
 4. remove_middleware_from_agent (배치)
-5. add_subagent_to_agent (배치) — PoC stub
-6. remove_subagent_from_agent (배치) — PoC stub
-7. edit_system_prompt (부분 수정)
-8. update_system_prompt (전체 교체)
-9. update_model_config
-10. update_middleware_config
-11. update_chat_openers
-12. update_recursion_limit
-13. create_cron_schedule
-14. update_cron_schedule
-15. delete_cron_schedule
-16. enable_cron_schedule
-17. disable_cron_schedule
+5. add_subagent_to_agent (배치)
+6. remove_subagent_from_agent (배치)
+7. add_skill_to_agent (배치)
+8. remove_skill_from_agent (배치)
+9. edit_system_prompt (부분 수정)
+10. update_system_prompt (전체 교체)
+11. update_model_config
+12. update_middleware_config
+13. update_chat_openers
+14. update_agent_metadata
+15. update_recursion_limit
+16. create_cron_schedule
+17. update_cron_schedule
+18. delete_cron_schedule
+19. enable_cron_schedule
+20. disable_cron_schedule
 """
 
 from __future__ import annotations
@@ -34,7 +37,9 @@ from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
 from app.database import async_session as async_session_factory
 from app.models.agent import Agent
+from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
+from app.models.skill import AgentSkillLink, Skill
 from app.models.tool import AgentToolLink, Tool
 from app.services.model_service import resolve_model
 
@@ -177,23 +182,190 @@ def build_write_tools(
             await session.commit()
             return f"미들웨어 제거 완료: {', '.join(removed)}"
 
-    # ------ 5, 6. subagent stubs ------
+    # ------ 5. add_subagent_to_agent ------
 
     async def add_subagent_to_agent(agent_ids: list[str]) -> str:
-        """에이전트에 서브에이전트를 추가합니다.
+        """에이전트에 서브에이전트를 추가합니다 (배치 지원).
 
         Args:
-            agent_ids: 추가할 서브에이전트 ID 목록
+            agent_ids: 추가할 서브에이전트 UUID 목록 (문자열)
         """
-        return "서브에이전트 기능은 아직 구현되지 않았습니다."
+        async with async_session_factory() as session:
+            agent = await _get_agent_with_session(session)
+            if not agent:
+                return "에이전트를 찾을 수 없습니다."
+
+            existing_ids = {link.sub_agent_id for link in agent.sub_agent_links}
+            added: list[str] = []
+            skipped: list[str] = []
+
+            # 1차 파싱: UUID 변환 + 자기참조/중복 즉시 분류
+            candidates: dict[uuid.UUID, str] = {}  # uuid → raw_id (검증 대상)
+            for raw_id in agent_ids:
+                try:
+                    sid = uuid.UUID(raw_id)
+                except (ValueError, TypeError):
+                    skipped.append(f"{raw_id}(잘못된 UUID)")
+                    continue
+                if sid == agent.id:
+                    skipped.append(f"{raw_id}(자기 참조)")
+                    continue
+                if sid in existing_ids:
+                    skipped.append(f"{raw_id}(이미 추가됨)")
+                    continue
+                candidates[sid] = raw_id
+
+            # 2차 일괄 검증: 단일 IN 쿼리로 소유권 확인 (N+1 제거)
+            name_by_id: dict[uuid.UUID, str] = {}
+            if candidates:
+                result = await session.execute(
+                    select(Agent.id, Agent.name).where(
+                        Agent.id.in_(candidates.keys()),
+                        Agent.user_id == user_id,
+                    )
+                )
+                name_by_id = {row.id: row.name for row in result.all()}
+
+            # 3차 append (검증 통과한 것만)
+            next_pos = (
+                max((link.position for link in agent.sub_agent_links), default=-1) + 1
+            )
+            for sid, raw_id in candidates.items():
+                if sid not in name_by_id:
+                    skipped.append(f"{raw_id}(찾을 수 없음)")
+                    continue
+                agent.sub_agent_links.append(
+                    AgentSubAgentLink(sub_agent_id=sid, position=next_pos)
+                )
+                existing_ids.add(sid)
+                added.append(name_by_id[sid])
+                next_pos += 1
+
+            if not added and not skipped:
+                return "추가할 서브에이전트가 없습니다."
+
+            if added:
+                await session.commit()
+
+            parts = []
+            if added:
+                parts.append(f"추가 완료: {', '.join(added)}")
+            if skipped:
+                parts.append(f"건너뜀: {', '.join(skipped)}")
+            return " | ".join(parts)
+
+    # ------ 6. remove_subagent_from_agent ------
 
     async def remove_subagent_from_agent(agent_ids: list[str]) -> str:
-        """에이전트에서 서브에이전트를 제거합니다.
+        """에이전트에서 서브에이전트를 제거합니다 (배치 지원).
 
         Args:
-            agent_ids: 제거할 서브에이전트 ID 목록
+            agent_ids: 제거할 서브에이전트 UUID 목록 (문자열)
         """
-        return "서브에이전트 기능은 아직 구현되지 않았습니다."
+        async with async_session_factory() as session:
+            agent = await _get_agent_with_session(session)
+            if not agent:
+                return "에이전트를 찾을 수 없습니다."
+
+            target_ids: set[uuid.UUID] = set()
+            invalid: list[str] = []
+            for raw_id in agent_ids:
+                try:
+                    target_ids.add(uuid.UUID(raw_id))
+                except (ValueError, TypeError):
+                    invalid.append(raw_id)
+
+            removed: list[str] = []
+            for link in list(agent.sub_agent_links):
+                if link.sub_agent_id in target_ids:
+                    removed.append(link.sub_agent.name)
+                    await session.delete(link)
+
+            if not removed:
+                msg = "해당 서브에이전트가 에이전트에 없습니다."
+                if invalid:
+                    msg += f" (유효하지 않은 ID: {', '.join(invalid)})"
+                return msg
+
+            await session.commit()
+            result_msg = f"서브에이전트 제거 완료: {', '.join(removed)}"
+            if invalid:
+                result_msg += f" | 유효하지 않은 ID 건너뜀: {', '.join(invalid)}"
+            return result_msg
+
+    # ------ 6-2. add_skill_to_agent ------
+
+    async def add_skill_to_agent(skill_names: list[str]) -> str:
+        """에이전트에 스킬을 추가합니다 (배치 지원).
+
+        Args:
+            skill_names: 추가할 스킬 이름 목록 (Skill.name 매칭)
+        """
+        async with async_session_factory() as session:
+            agent = await _get_agent_with_session(session)
+            if not agent:
+                return "에이전트를 찾을 수 없습니다."
+
+            existing = {link.skill.name.lower() for link in agent.skill_links}
+            lower_names = [n.lower() for n in skill_names if n.lower() not in existing]
+            if not lower_names:
+                return "모든 스킬이 이미 추가되어 있습니다."
+
+            result = await session.execute(
+                select(Skill)
+                .where(
+                    Skill.user_id == user_id,
+                    func.lower(Skill.name).in_(lower_names),
+                )
+                .order_by(Skill.created_at.asc())
+            )
+            # 동명 skill이 여러 개일 때 가장 먼저 생성된 1건만 채택 (per name dedupe)
+            unique_by_name: dict[str, Skill] = {}
+            for s in result.scalars().all():
+                key = s.name.lower()
+                if key not in unique_by_name:
+                    unique_by_name[key] = s
+            found_skills = list(unique_by_name.values())
+            if not found_skills:
+                return f"스킬을 찾을 수 없습니다: {', '.join(skill_names)}"
+
+            for s in found_skills:
+                agent.skill_links.append(AgentSkillLink(skill_id=s.id))
+            await session.commit()
+
+            added = [s.name for s in found_skills]
+            found_lower = {s.name.lower() for s in found_skills}
+            missing = [n for n in skill_names if n.lower() not in found_lower
+                       and n.lower() not in existing]
+            msg = f"스킬 추가 완료: {', '.join(added)}"
+            if missing:
+                msg += f" | 미존재 건너뜀: {', '.join(missing)}"
+            return msg
+
+    # ------ 6-3. remove_skill_from_agent ------
+
+    async def remove_skill_from_agent(skill_names: list[str]) -> str:
+        """에이전트에서 스킬을 제거합니다 (배치 지원).
+
+        Args:
+            skill_names: 제거할 스킬 이름 목록 (Skill.name 매칭)
+        """
+        async with async_session_factory() as session:
+            agent = await _get_agent_with_session(session)
+            if not agent:
+                return "에이전트를 찾을 수 없습니다."
+
+            lower_names = {n.lower() for n in skill_names}
+            removed: list[str] = []
+            for link in list(agent.skill_links):
+                if link.skill.name.lower() in lower_names:
+                    removed.append(link.skill.name)
+                    await session.delete(link)
+            if not removed:
+                return f"해당 스킬이 에이전트에 없습니다: {', '.join(skill_names)}"
+
+            await session.commit()
+            return f"스킬 제거 완료: {', '.join(removed)}"
 
     # ------ 7. edit_system_prompt ------
 
@@ -335,20 +507,59 @@ def build_write_tools(
     # ------ 12. update_chat_openers ------
 
     async def update_chat_openers(openers: list[str]) -> str:
-        """채팅 시작 질문을 변경합니다.
+        """채팅 시작 질문(오프너)을 변경합니다.
 
         Args:
-            openers: 새 채팅 시작 질문 목록
+            openers: 새 오프너 질문 목록 (최대 12개, 각 1~200자)
         """
+        cleaned = [s.strip() for s in openers]
+        if any(not s for s in cleaned):
+            return "빈 질문은 허용되지 않습니다."
+        if len(cleaned) > 12:
+            return "오프너는 최대 12개까지 설정할 수 있습니다."
+        if any(len(s) > 200 for s in cleaned):
+            return "각 질문은 200자를 초과할 수 없습니다."
         async with async_session_factory() as session:
             agent = await _get_agent_with_session(session)
             if not agent:
                 return "에이전트를 찾을 수 없습니다."
-            params = dict(agent.model_params or {})
-            params["chat_openers"] = openers
-            agent.model_params = params
+            agent.opener_questions = cleaned
             await session.commit()
-            return f"채팅 시작 질문 {len(openers)}개 설정 완료."
+            return f"오프너 {len(cleaned)}개 설정 완료."
+
+    # ------ 12-2. update_agent_metadata ------
+
+    async def update_agent_metadata(
+        name: str | None = None,
+        description: str | None = None,
+    ) -> str:
+        """에이전트의 이름과 설명을 변경합니다.
+
+        둘 중 하나만 지정해도 됩니다. 빈 description은 설명을 비웁니다.
+
+        Args:
+            name: 새 에이전트 이름 (생략하면 변경 안 함)
+            description: 새 에이전트 설명 (빈 문자열이면 설명 제거)
+        """
+        if name is None and description is None:
+            return "name 또는 description 중 하나는 지정해야 합니다."
+        async with async_session_factory() as session:
+            agent = await _get_agent_with_session(session)
+            if not agent:
+                return "에이전트를 찾을 수 없습니다."
+            changes: list[str] = []
+            if name is not None:
+                stripped = name.strip()
+                if not stripped:
+                    return "에이전트 이름은 비워둘 수 없습니다."
+                agent.name = stripped
+                changes.append(f"이름='{stripped}'")
+            if description is not None:
+                desc = description.strip()
+                agent.description = desc or None
+                changes.append("설명=(비움)" if not desc else f"설명='{desc[:30]}…'")
+            await session.commit()
+            return f"에이전트 메타데이터 변경 완료: {', '.join(changes)}"
 
     # ------ 13. update_recursion_limit ------
 
@@ -564,12 +775,22 @@ def build_write_tools(
         StructuredTool.from_function(
             coroutine=add_subagent_to_agent,
             name="add_subagent_to_agent",
-            description="에이전트에 서브에이전트 추가",
+            description="에이전트에 서브에이전트 배치 추가",
         ),
         StructuredTool.from_function(
             coroutine=remove_subagent_from_agent,
             name="remove_subagent_from_agent",
-            description="에이전트에서 서브에이전트 제거",
+            description="에이전트에서 서브에이전트 배치 제거",
+        ),
+        StructuredTool.from_function(
+            coroutine=add_skill_to_agent,
+            name="add_skill_to_agent",
+            description="에이전트에 스킬 배치 추가",
+        ),
+        StructuredTool.from_function(
+            coroutine=remove_skill_from_agent,
+            name="remove_skill_from_agent",
+            description="에이전트에서 스킬 배치 제거",
         ),
         StructuredTool.from_function(
             coroutine=edit_system_prompt,
@@ -594,7 +815,12 @@ def build_write_tools(
         StructuredTool.from_function(
             coroutine=update_chat_openers,
             name="update_chat_openers",
-            description="채팅 시작 질문 변경",
+            description="채팅 시작 질문(오프너) 변경",
+        ),
+        StructuredTool.from_function(
+            coroutine=update_agent_metadata,
+            name="update_agent_metadata",
+            description="에이전트 이름/설명 변경 (둘 중 하나 또는 둘 다)",
         ),
         StructuredTool.from_function(
             coroutine=update_recursion_limit,

@@ -1,129 +1,86 @@
-# CHECKPOINT — Builder v3 (8-phase StateGraph + Chat UI 통합)
+# CHECKPOINT — Agent Edit Workbench (통합 워크벤치 리뉴얼)
 
-**Plan**: `/Users/chester/.claude/plans/kind-squishing-shore.md`
-**Branch**: `feature/builder-v3-state-graph`
-**Base**: `main @ e5876f2`
+**Plan**: `/Users/chester/.claude/plans/image-41-ticklish-sky.md`
+**Branch**: `feature/agent-edit-workbench`
+**Base**: `main @ 0609210`
 **PO**: 사티아
-**시작**: 2026-04-26
+**시작**: 2026-04-28
 
 ---
 
 ## 목표
 
-자연어 에이전트 생성 페이지(`/agents/new/conversational`)를 LangGraph StateGraph 기반 8-phase로 재설계하고, 일반 채팅 UI(`assistant-thread.tsx`)와 통합한다. HiTL(ask_user/approval/이미지 skip-generate)을 그래프 토폴로지로 강제한다.
+`/agents/[agentId]/settings`를 기존 5개 탭 분리 구조에서 **좌(폼/비주얼 토글) / 우(Fix·테스트·오프너·스케줄·설정 5탭)** 통합 워크벤치로 리뉴얼한다. 헤더 이름·설명은 인라인 편집, 모델·서브에이전트는 다이얼로그, 도구·미들웨어는 2칸 그리드 + 모달. 백엔드는 `agents.opener_questions` JSON 컬럼 신설.
 
-## M0: 사일로 초기화
+---
 
-- [x] 새 브랜치 `feature/builder-v3-state-graph` 생성
-- [x] 이전 progress.txt 아카이브 (`tasks/lessons-m6-1-archived-*.md`)
-- [x] CHECKPOINT.md 작성
-- [x] AUDIT.log 갱신
-- 검증: `git status` 브랜치 확인
-- 상태: done
+## M1 — 백엔드 `opener_questions` (젠슨 DRI)
 
-## M1: 삭제 분석 (베조스 DRI)
+- [ ] alembic `m16_add_opener_questions.py`
+- [ ] `models/agent.py` Mapped 컬럼
+- [ ] `schemas/agent.py` Response/Update/Create + validator (≤12, 1~200자)
+- [ ] `services/agent_service.py` update 경로
+- [ ] `tests/test_agents.py` PATCH 케이스
+- 검증: `cd backend && uv run alembic upgrade head && uv run pytest && uv run ruff check .`
+- done-when: 마이그레이션 적용, 전체 pytest PASS, ruff clean
 
-- [ ] 폐기 예정 파일 목록 확정 (builder/orchestrator.py, builder/sub_agents/, _components/builder-thread.tsx, _components/phase-timeline.tsx, use-builder-runtime.ts, stream-builder.ts)
-- [ ] 보존 vs 이식 vs 삭제 분류
-- [ ] `tasks/deletion-analysis.md` 작성
-- 검증: `cat tasks/deletion-analysis.md` 존재
-- done-when: 모든 파일 분류 완료, sub_agents의 LLM 프롬프트/JSON 스키마 보존 영역 명시
-- 상태: done
+## M2 — 디자인 스펙 + 삭제 분석 (사티아 직접)
 
-## M2: 아키텍처 설계 (피차이 DRI)
+- [ ] `docs/design-docs/agent-edit-workbench.md` (레이아웃·인터페이스·인라인 편집 패턴)
+- [ ] `tasks/deletion-analysis-workbench.md` (basic-info-tab/model-tab/tools-skills-tab 폐기 분류)
+- 검증: 두 파일 존재
+- done-when: 저커버그가 spec만으로 구현 가능한 수준의 디테일
 
-- [ ] `BuilderState` TypedDict 스키마 확정
-- [ ] 8-phase StateGraph 토폴로지 다이어그램 + ADR 작성
-- [ ] interrupt payload 계약 (ask_user / approval / choice 3종)
-- [ ] SSE 이벤트 스키마 통일안 (기존 streaming.py 호환)
-- [ ] `docs/design-docs/builder-v3-architecture.md` 작성
-- 검증: `cat docs/design-docs/builder-v3-architecture.md` 존재
-- done-when: ADR + state.py 시그니처 + 노드 인터페이스 정의됨
-- 상태: done
+## M3 — 프론트엔드: 페이지 골격 + 헤더 인라인 (저커버그 DRI)
 
-## M3: 백엔드 구현 (젠슨 DRI)
+- [ ] `settings/page.tsx` 좌/우 grid 재작성, sticky save bar 제거
+- [ ] 헤더: `[←]` + 작은 `AgentAvatar` + 이름·설명 ghost-input + `[🗑] [저장]`
+- [ ] 좌측 [폼]/[비주얼] Tabs, 우측 [Fix][테스트][오프너][스케줄][설정] Tabs
+- [ ] 페이지 state에 `openerQuestions: string[]` 추가, isDirty 비교 포함
+- 검증: `cd frontend && pnpm build`
+- done-when: 빌드 PASS, 라우트 정상
 
-- [ ] `builder_v3/state.py`, `todos.py`, `image_gen.py`
-- [ ] `builder_v3/nodes/phase{1..8}_*.py`, `router.py`
-- [ ] `builder_v3/graph.py` 컴파일
-- [ ] `routers/builder.py` 신규 엔드포인트 (`/messages`, `/messages/resume`)
-- [ ] `services/builder_service.py` graph.astream 통합
-- [ ] pytest 단위 테스트 + 그래프 도달성 테스트
-- 검증: `cd backend && uv run pytest && uv run ruff check .`
-- done-when: 신규 테스트 통과, 기존 회귀 없음, ruff 0 warning
-- 상태: done
+## M4 — 프론트엔드: 좌측 폼 모드 + 다이얼로그 (저커버그 DRI)
 
-## M4: 프론트엔드 구현 (저커버그 + 팀쿡 DRI)
-
-- [ ] `lib/chat/use-chat-runtime.ts` conversationId → contextId 추상화
-- [ ] `lib/sse/stream-builder-message.ts`, `stream-builder-resume.ts`
-- [ ] Tool UI 5종 신규 (phase-timeline, recommendation-approval, prompt-approval, image-generation, draft-config)
-- [ ] `app/agents/new/conversational/page.tsx` AssistantThread 기반 재작성
-- [ ] 기존 `_components/*` 미사용 파일 제거
+- [ ] `_components/form-mode/{form-mode,section-instructions,section-sub-agents,section-model,tools-middlewares-grid}.tsx`
+- [ ] `_components/dialogs/{model-dialog,sub-agents-dialog,add-tool-modal,add-middleware-modal}.tsx`
+- [ ] 도구함/미들웨어 2칸 그리드, 행 레이아웃 (`name [⚙][🗑]`)
+- [ ] 폐기: `basic-info-tab.tsx`, `model-tab.tsx`, `tools-skills-tab.tsx`
 - 검증: `cd frontend && pnpm build && pnpm lint`
-- done-when: build 성공, lint 0 error, 기존 채팅 페이지 회귀 없음
-- 상태: done
+- done-when: 빌드/린트 PASS, 모달 4종 동작
 
-## M5: 통합 검증 (베조스 DRI)
+## M5 — 프론트엔드: 좌측 비주얼 inline + 우측 패널 (저커버그 DRI)
 
-- [ ] Backend pytest 전체 회귀
-- [ ] Frontend build + 기존 채팅 페이지 회귀 확인
-- [ ] 브라우저 E2E: mockup 이미지 1~4 흐름 재현
-- [ ] 수정 요청 분기, 이미지 skip/generate 시나리오 검증
-- done-when: 모든 시나리오 PASS
-- 상태: done
-
-## M6: 정리 + HANDOFF
-
-- [ ] 폐기 파일 제거
-- [ ] HANDOFF.md 작성
-- [ ] tasks/lessons.md 업데이트
-- [ ] PR 생성 (단계별 분리 권장)
-- 상태: done
-
----
-
-# CHECKPOINT (확장) — 채팅 화면 박스 카드 레이아웃 (Image #22)
-
-**Plan**: `/Users/chester/.claude/plans/image-22-distributed-parasol.md`
-**시작**: 2026-04-27
-**PO**: 사티아
-**팀**: 저커버그 단독 (UI 리디자인, plan이 매우 상세)
-
-## 목표
-`/agents/[agentId]/conversations/[conversationId]` 채팅 페이지를 박스 카드 레이아웃으로 재구성. 좌측 사이드바 + 메인 채팅 영역을 각각 흰색 카드(rounded-xl + shadow + border)로 분리, 페이지 배경은 muted 톤. 좌측 패널은 에이전트 카드 + 대화 목록 + 휴지통 풋터로 재구성.
-
-## M_CHAT_BOX_1: 페이지 박스 레이아웃 + 헤더 단순화 (저커버그)
-- [ ] page.tsx 루트 → bg-muted/30 + p-3 + gap-3, 두 영역 각각 rounded-xl/border/shadow-sm 카드
-- [ ] showConversationList state 제거, 헤더를 [제목 + ⋯ 드롭다운(새 대화/설정)]로 단순화
+- [ ] `tab === 'visual'`일 때 `<VisualSettingsFlow>` inline 렌더
+- [ ] `_components/right-panel/{right-panel,test-chat-panel,opener-editor,settings-panel}.tsx`
+- [ ] [Fix]는 기존 `AssistantPanel` 재사용 (`showHeader` prop 추가)
+- [ ] [스케줄]은 기존 `triggers-tab.tsx` 재사용
+- [ ] [설정]은 이미지 생성/재생성/제거 전용
 - 검증: `cd frontend && pnpm build`
-- done-when: 빌드 성공
-- 상태: done
+- done-when: 5탭 전환 동작, 비주얼 모드 노드 그래프 표시
 
-## M_CHAT_BOX_2: ConversationList 재설계 (저커버그)
-- [ ] 에이전트 카드 헤더 (아바타 md + 이름 + 설명 + 편집/설정 아이콘)
-- [ ] "대화" 라벨 + "+" 버튼 row
-- [ ] Pinned/Recent 라벨 제거 (pinned 우선 정렬은 유지)
-- [ ] 활성 항목 emerald 톤 강조
-- [ ] 휴지통 풋터 (ComingSoonButton)
-- [ ] props 추가: agentImageUrl, agentDescription
-- 검증: `cd frontend && pnpm build`
-- 상태: done
+## M6 — 프론트엔드: 새 채팅 빈 화면 오프너 + 연결 (저커버그 DRI)
 
-## M_CHAT_BOX_3: 시간 포맷 유틸 + 메시지 시간 표시 (저커버그)
-- [ ] `lib/utils/format-relative-time.ts` 신규 (오늘/어제/M.D)
-- [ ] ConversationList 시간 라벨 교체
-- [ ] AssistantThread User/Assistant 메시지에 시간 라벨 추가
-- 검증: `cd frontend && pnpm build`
-- 상태: done
+- [ ] 새 채팅 empty state에서 `agent.opener_questions` 버튼 렌더
+- [ ] 클릭 시 composer에 텍스트 주입(전송 X) — `useComposer` 훅
+- [ ] `lib/types/agent.ts` 타입 보강
+- [ ] `lib/hooks/use-agents.ts` update payload에 `opener_questions`
+- [ ] i18n 키 추가 (`messages/ko.json` 외)
+- 검증: `cd frontend && pnpm build && pnpm lint`
+- done-when: 새 대화 진입 시 오프너 버튼 표시 + 클릭 동작
 
-## M_CHAT_BOX_4: i18n 키 추가 (저커버그)
-- [ ] ko.json: `chat.conversationList.label`, `chat.conversationList.trash`, `common.yesterday`, `common.comingSoon.trash`
-- [ ] 다른 로케일 동일 추가
-- 검증: `cd frontend && pnpm build` (next-intl 누락 키 검출)
-- 상태: done
+## M7 — 통합 검증 (베조스 DRI)
 
-## M_CHAT_BOX_5: 통합 검증 (사티아 + 베조스 옵션)
-- [ ] `pnpm lint && pnpm build` 전체 PASS
-- [ ] 이미지 #22와 시각 일치 (박스 분리감, 카드 형태)
-- 상태: done
+- [ ] backend: `uv run pytest` 전체 + `uv run ruff check .`
+- [ ] frontend: `pnpm build` + `pnpm lint`
+- [ ] 회귀 시나리오: 기존 페이지(/agents 대시보드, 대화 페이지, /agents/new) 영향 없음
+- [ ] 기능 시나리오: 헤더 인라인 편집 / 폼 ↔ 비주얼 / 우측 5탭 / 오프너 추가·저장·새대화 표시
+- 검증: 종합 보고서 `tasks/verification-workbench.md`
+- done-when: 판정 GREEN
+
+## M8 — HANDOFF + 정리 (사티아)
+
+- [ ] HANDOFF.md 갱신
+- [ ] tasks/lessons.md 추가
+- [ ] AUDIT.log PROJECT_DONE
+- [ ] TeamDelete

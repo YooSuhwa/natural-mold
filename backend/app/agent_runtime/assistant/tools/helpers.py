@@ -18,10 +18,12 @@ async def get_agent_with_eager_load(
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> Agent | None:
-    """Agent를 연관 관계(model, tool_links, skill_links)와 함께 조회한다.
+    """Agent를 연관 관계(model, tool_links, skill_links, sub_agent_links)와 함께 조회한다.
 
     read_tools, write_tools 양쪽에서 공통으로 사용한다.
     """
+    # AgentSubAgentLink.sub_agent는 lazy="joined"라 link 로드 시 자동으로 함께 옴 —
+    # 여기서 추가 selectinload는 중복.
     result = await db.execute(
         select(Agent)
         .where(Agent.id == agent_id, Agent.user_id == user_id)
@@ -29,6 +31,7 @@ async def get_agent_with_eager_load(
             selectinload(Agent.model),
             selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
             selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
+            selectinload(Agent.sub_agent_links),
         )
     )
     return result.scalar_one_or_none()

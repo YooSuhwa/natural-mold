@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { Loader2Icon, Trash2Icon, PlayIcon, PauseIcon, PlusIcon } from 'lucide-react'
+import { Trash2Icon, PlayIcon, PauseIcon, PlusIcon } from 'lucide-react'
 import { useTranslations, useFormatter } from 'next-intl'
 import { useTriggers, useCreateTrigger, useUpdateTrigger } from '@/lib/hooks/use-triggers'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { ScheduleForm } from '@/components/agent/visual-settings/dialogs/schedule-dialog'
 
 interface TriggersTabProps {
   agentId: string
@@ -15,15 +14,12 @@ interface TriggersTabProps {
 
 export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
   const t = useTranslations('agent.settings')
-  const tc = useTranslations('common')
   const format = useFormatter()
   const { data: triggers } = useTriggers(agentId)
   const createTrigger = useCreateTrigger(agentId)
   const updateTrigger = useUpdateTrigger(agentId)
 
   const [showForm, setShowForm] = useState(false)
-  const [minutes, setMinutes] = useState('10')
-  const [message, setMessage] = useState('')
 
   return (
     <div className="space-y-3">
@@ -37,11 +33,17 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
                     <Badge variant={trigger.status === 'active' ? 'default' : 'secondary'}>
                       {trigger.status === 'active' ? t('trigger.active') : t('trigger.paused')}
                     </Badge>
-                    <span className="text-sm">
-                      {t('trigger.interval', {
-                        minutes: trigger.schedule_config.interval_minutes ?? 10,
-                      })}
-                    </span>
+                    {trigger.trigger_type === 'interval' ? (
+                      <span className="text-sm">
+                        {t('trigger.interval', {
+                          minutes: trigger.schedule_config.interval_minutes ?? 10,
+                        })}
+                      </span>
+                    ) : (
+                      <span className="font-mono text-xs">
+                        {trigger.schedule_config.cron_expression}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground truncate max-w-md">
                     &quot;{trigger.input_message}&quot;
@@ -103,55 +105,23 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
       ) : null}
 
       {showForm ? (
-        <div className="space-y-3 rounded-lg border p-4">
-          <div className="space-y-2">
-            <label className="text-xs font-medium">{t('trigger.intervalLabel')}</label>
-            <Input
-              type="number"
-              min="1"
-              value={minutes}
-              onChange={(e) => setMinutes(e.target.value)}
-              placeholder="10"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-xs font-medium">{t('trigger.messageLabel')}</label>
-            <Textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              placeholder={t('trigger.messagePlaceholder')}
-              rows={2}
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              disabled={createTrigger.isPending || !message.trim()}
-              onClick={async () => {
-                await createTrigger.mutateAsync({
-                  trigger_type: 'interval',
-                  schedule_config: { interval_minutes: Number(minutes) || 10 },
-                  input_message: message.trim(),
-                })
-                setShowForm(false)
-                setMessage('')
-                setMinutes('10')
-              }}
-            >
-              {createTrigger.isPending && <Loader2Icon className="mr-1 size-3 animate-spin" />}
-              {t('trigger.addButton')}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>
-              {tc('cancel')}
-            </Button>
-          </div>
+        <div className="rounded-lg border p-4">
+          <ScheduleForm
+            isPending={createTrigger.isPending}
+            onCancel={() => setShowForm(false)}
+            onSubmit={async (req) => {
+              await createTrigger.mutateAsync(req)
+              setShowForm(false)
+            }}
+          />
         </div>
       ) : (
         <Button variant="outline" size="sm" onClick={() => setShowForm(true)}>
-          <PlusIcon className="size-4" data-icon="inline-start" />
+          <PlusIcon className="size-4" />
           {t('trigger.addNew')}
         </Button>
       )}
     </div>
   )
 }
+

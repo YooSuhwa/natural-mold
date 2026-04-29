@@ -38,7 +38,8 @@ async def _seed_full(db: AsyncSession) -> tuple[uuid.UUID, uuid.UUID]:
         description="Agent for read tool tests",
         system_prompt="You are a helpful assistant.\nUse tools wisely.\nBe concise.",
         model_id=model.id,
-        model_params={"temperature": 0.7, "recursion_limit": 30, "chat_openers": ["안녕하세요"]},
+        model_params={"temperature": 0.7, "recursion_limit": 30},
+        opener_questions=["안녕하세요"],
     )
     db.add(agent)
     await db.flush()
@@ -218,6 +219,51 @@ async def test_get_recursion_limit(db: AsyncSession, patch_read_session):
     result = await tool.ainvoke({})
     data = json.loads(result)
     assert data["recursion_limit"] == 30
+
+
+# ---------------------------------------------------------------------------
+# list_available_skills
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_available_skills_empty(db: AsyncSession, patch_read_session):
+    agent_id, _ = await _seed_full(db)
+    tools = _build_tools(db, agent_id)
+    tool = _find_tool(tools, "list_available_skills")
+
+    result = await tool.ainvoke({})
+    data = json.loads(result)
+    assert isinstance(data, list)
+    assert data == []
+
+
+@pytest.mark.asyncio
+async def test_list_available_skills_returns_user_skills(db: AsyncSession, patch_read_session):
+    """User's skills should appear with id/name/description fields."""
+    agent_id, _ = await _seed_full(db)
+
+    from app.models.skill import Skill
+
+    skill = Skill(
+        user_id=TEST_USER_ID,
+        name="MyHelper",
+        description="A helper skill",
+        content="content",
+    )
+    db.add(skill)
+    await db.commit()
+
+    tools = _build_tools(db, agent_id)
+    tool = _find_tool(tools, "list_available_skills")
+
+    result = await tool.ainvoke({})
+    data = json.loads(result)
+    assert len(data) == 1
+    item = data[0]
+    assert set(item.keys()) == {"id", "name", "description"}
+    assert item["name"] == "MyHelper"
+    assert item["description"] == "A helper skill"
 
 
 # ---------------------------------------------------------------------------

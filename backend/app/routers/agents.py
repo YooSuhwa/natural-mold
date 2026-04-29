@@ -15,6 +15,7 @@ from app.error_codes import agent_not_found, image_file_not_found, image_not_fou
 from app.exceptions import ExternalServiceError, ValidationError
 from app.models.agent import Agent
 from app.schemas.agent import (
+    AgentBrief,
     AgentCreate,
     AgentResponse,
     AgentUpdate,
@@ -26,6 +27,13 @@ from app.services import agent_service, image_service
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 middleware_router = APIRouter(tags=["middlewares"])
+
+
+def _sub_agent_image_url(sub: Agent) -> str | None:
+    """Compute image_url for a sub-agent (mirrors _agent_to_response logic)."""
+    if not sub.image_path:
+        return None
+    return f"/api/agents/{sub.id}/image?t={int(sub.updated_at.timestamp())}"
 
 
 def _agent_to_response(agent: Agent) -> AgentResponse:
@@ -41,10 +49,20 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
             SkillBrief(id=link.skill_id, name=link.skill.name, description=link.skill.description)
             for link in agent.skill_links
         ],
+        sub_agents=[
+            AgentBrief(
+                id=link.sub_agent.id,
+                name=link.sub_agent.name,
+                description=link.sub_agent.description,
+                image_url=_sub_agent_image_url(link.sub_agent),
+            )
+            for link in agent.sub_agent_links
+        ],
         middleware_configs=agent.middleware_configs or [],
         status=agent.status,
         is_favorite=agent.is_favorite,
         model_params=agent.model_params,
+        opener_questions=agent.opener_questions,
         image_url=(
             f"/api/agents/{agent.id}/image?t={int(agent.updated_at.timestamp())}"
             if agent.image_path
