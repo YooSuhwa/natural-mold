@@ -2,24 +2,44 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { credentialsApi } from '@/lib/api/credentials'
-import type { Credential, CredentialCreateRequest, CredentialUpdateRequest } from '@/lib/types'
+import type {
+  CredentialCreateRequest,
+  CredentialUpdateRequest,
+} from '@/lib/types/credential'
+
+const KEY_LIST = ['credentials'] as const
+const KEY_TYPES = ['credential-types'] as const
+
+export function useCredentialTypes() {
+  return useQuery({
+    queryKey: KEY_TYPES,
+    queryFn: credentialsApi.listTypes,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useCredentialType(key: string | null | undefined) {
+  return useQuery({
+    queryKey: ['credential-types', key],
+    queryFn: () => credentialsApi.getType(key!),
+    enabled: !!key,
+    staleTime: 5 * 60_000,
+  })
+}
 
 export function useCredentials() {
-  return useQuery({ queryKey: ['credentials'], queryFn: credentialsApi.list, staleTime: 60000 })
-}
-
-/** 단일 credential lookup. id가 null/undefined면 항상 null 반환. */
-export function useCredential(id: string | null | undefined): Credential | null {
-  const { data } = useCredentials()
-  if (!id) return null
-  return data?.find((c) => c.id === id) ?? null
-}
-
-export function useCredentialProviders() {
   return useQuery({
-    queryKey: ['credential-providers'],
-    queryFn: credentialsApi.getProviders,
-    staleTime: 300000,
+    queryKey: KEY_LIST,
+    queryFn: credentialsApi.list,
+    staleTime: 30_000,
+  })
+}
+
+export function useCredential(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ['credentials', id],
+    queryFn: () => credentialsApi.get(id!),
+    enabled: !!id,
   })
 }
 
@@ -27,7 +47,7 @@ export function useCreateCredential() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: CredentialCreateRequest) => credentialsApi.create(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
   })
 }
 
@@ -36,7 +56,10 @@ export function useUpdateCredential() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: CredentialUpdateRequest }) =>
       credentialsApi.update(id, data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: KEY_LIST })
+      qc.invalidateQueries({ queryKey: ['credentials', id] })
+    },
   })
 }
 
@@ -45,8 +68,16 @@ export function useDeleteCredential() {
   return useMutation({
     mutationFn: (id: string) => credentialsApi.delete(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['credentials'] })
+      qc.invalidateQueries({ queryKey: KEY_LIST })
       qc.invalidateQueries({ queryKey: ['tools'] })
     },
+  })
+}
+
+export function useCredentialAuditLogs(id: string | null | undefined, limit = 50) {
+  return useQuery({
+    queryKey: ['credential-audit-logs', id, limit],
+    queryFn: () => credentialsApi.listAuditLogs(id!, limit),
+    enabled: !!id,
   })
 }

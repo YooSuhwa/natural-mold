@@ -150,16 +150,9 @@ export function AddSkillsDialog({
                 {previewSkill.description && (
                   <p className="mt-2 text-xs text-muted-foreground">{previewSkill.description}</p>
                 )}
-                {previewSkill.content && (
-                  <div className="mt-3">
-                    <span className="text-[10px] font-medium uppercase text-muted-foreground">
-                      {t('content')}
-                    </span>
-                    <pre className="mt-1 max-h-[280px] overflow-auto rounded-md bg-muted p-2 text-[10px] whitespace-pre-wrap">
-                      {previewSkill.content}
-                    </pre>
-                  </div>
-                )}
+                <p className="mt-3 text-[10px] uppercase text-muted-foreground">
+                  {previewSkill.kind ?? 'skill'}
+                </p>
               </div>
             ) : (
               <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

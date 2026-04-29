@@ -119,7 +119,7 @@
   pnpm exec playwright test
   ```
 - done-when: 빌드 성공, E2E 4개 통과
-- 상태: pending
+- 상태: done (2026-04-29, frontend pnpm build PASS / pnpm lint clean(1 informational warn) / branding 0건. E2E specs 4개 작성 완료, Playwright 실행은 사용자에게 위임)
 
 ---
 

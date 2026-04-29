@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   HomeIcon,
   WrenchIcon,
-  CpuIcon,
+  ServerIcon,
   BarChart3Icon,
   BookOpenIcon,
   LayoutTemplateIcon,
@@ -63,9 +63,9 @@ export function AppSidebar() {
   const navItems = [
     { label: t('nav.home'), href: '/', icon: HomeIcon },
     { label: t('nav.tools'), href: '/tools', icon: WrenchIcon },
-    { label: t('nav.connections'), href: '/connections', icon: KeyRoundIcon },
+    { label: t('nav.mcpServers'), href: '/mcp-servers', icon: ServerIcon },
     { label: t('nav.skills'), href: '/skills', icon: BookOpenIcon },
-    { label: t('nav.models'), href: '/models', icon: CpuIcon },
+    { label: t('nav.credentials'), href: '/credentials', icon: KeyRoundIcon },
     { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
     { label: t('nav.templates'), href: '/agents/new/template', icon: LayoutTemplateIcon },
   ]

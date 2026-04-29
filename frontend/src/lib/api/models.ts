@@ -1,18 +1,21 @@
+// Read-only model catalog. Greenfield: model rows are reference data; LLM API
+// keys live in Credentials. Admin CRUD intentionally absent in M6.
+
 import { apiFetch } from './client'
-import type {
-  Model,
-  ModelCreateRequest,
-  ModelUpdateRequest,
-  ModelBulkCreateRequest,
-} from '@/lib/types'
+
+export interface ModelCatalogEntry {
+  id: string
+  provider: string
+  model_name: string
+  display_name: string
+  base_url: string | null
+  is_default: boolean
+  context_window: number | null
+  input_modalities: string[] | null
+  output_modalities: string[] | null
+}
 
 export const modelsApi = {
-  list: () => apiFetch<Model[]>('/api/models'),
-  create: (data: ModelCreateRequest) =>
-    apiFetch<Model>('/api/models', { method: 'POST', body: JSON.stringify(data) }),
-  bulkCreate: (data: ModelBulkCreateRequest) =>
-    apiFetch<Model[]>('/api/models/bulk', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: ModelUpdateRequest) =>
-    apiFetch<Model>(`/api/models/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-  delete: (id: string) => apiFetch<void>(`/api/models/${id}`, { method: 'DELETE' }),
+  list: () => apiFetch<ModelCatalogEntry[]>('/api/models'),
+  get: (id: string) => apiFetch<ModelCatalogEntry>(`/api/models/${id}`),
 }

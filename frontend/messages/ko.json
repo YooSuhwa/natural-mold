@@ -28,9 +28,9 @@
     "nav": {
       "home": "홈",
       "tools": "도구",
-      "connections": "연결",
+      "mcpServers": "MCP 서버",
+      "credentials": "Credential",
       "skills": "스킬",
-      "models": "모델",
       "usage": "사용량",
       "templates": "에이전트 템플릿"
     },

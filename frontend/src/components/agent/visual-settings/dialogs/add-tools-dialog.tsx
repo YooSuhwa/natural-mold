@@ -15,12 +15,12 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import type { Tool } from '@/lib/types'
+import type { ToolInstance } from '@/lib/types/tool'
 
 interface AddToolsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  allTools: Tool[]
+  allTools: ToolInstance[]
   selectedToolIds: Set<string>
   onToggleTool: (toolId: string) => void
 }
@@ -148,27 +148,18 @@ export function AddToolsDialog({
               <div className="flex flex-1 flex-col overflow-y-auto p-4">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-medium">{previewTool.name}</h3>
-                  <Badge variant="secondary">{previewTool.type}</Badge>
+                  <Badge variant="secondary">{previewTool.definition_key}</Badge>
                 </div>
                 {previewTool.description && (
                   <p className="mt-2 text-xs text-muted-foreground">{previewTool.description}</p>
                 )}
-                {previewTool.tags && previewTool.tags.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1">
-                    {previewTool.tags.map((tag) => (
-                      <Badge key={tag} variant="outline">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-                {previewTool.parameters_schema && (
+                {previewTool.parameters && Object.keys(previewTool.parameters).length > 0 && (
                   <div className="mt-3">
                     <span className="text-[10px] font-medium uppercase text-muted-foreground">
                       {t('parameters')}
                     </span>
                     <pre className="mt-1 max-h-[200px] overflow-auto rounded-md bg-muted p-2 text-[10px]">
-                      {JSON.stringify(previewTool.parameters_schema, null, 2)}
+                      {JSON.stringify(previewTool.parameters, null, 2)}
                     </pre>
                   </div>
                 )}
