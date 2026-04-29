@@ -8,6 +8,8 @@ from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.credential_default import CredentialDefault
 from app.models.llm_provider import LLMProvider
+from app.models.mcp_server import McpServer
+from app.models.mcp_tool import McpTool
 from app.models.model import Model
 from app.models.skill import AgentSkillLink, Skill
 from app.models.template import Template
@@ -22,6 +24,8 @@ __all__ = [
     "CredentialAuditLog",
     "CredentialDefault",
     "LLMProvider",
+    "McpServer",
+    "McpTool",
     "Model",
     "Template",
     "AgentToolLink",

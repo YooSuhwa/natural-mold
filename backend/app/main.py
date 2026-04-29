@@ -277,6 +277,7 @@ def create_app() -> FastAPI:
         connections,
         conversations,
         credentials,
+        mcp,
         models,
         providers,
         skills,
@@ -293,6 +294,7 @@ def create_app() -> FastAPI:
     app.include_router(connections.router)
     app.include_router(conversations.router)
     app.include_router(credentials.router)
+    app.include_router(mcp.router)
     app.include_router(providers.router)
     app.include_router(models.router)
     app.include_router(templates.router)

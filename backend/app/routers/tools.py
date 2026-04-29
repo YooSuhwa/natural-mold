@@ -1,120 +1,228 @@
+"""Tool API — greenfield rewrite (M3).
+
+Endpoints:
+- ``GET    /api/tool-types``                 catalog of registered ToolDefinitions
+- ``GET    /api/tool-types/{key}``           single definition
+- ``GET    /api/tools``                      list user's tools
+- ``POST   /api/tools``                      create
+- ``GET    /api/tools/{id}``                 detail
+- ``PATCH  /api/tools/{id}``                 update
+- ``DELETE /api/tools/{id}``                 delete
+- ``POST   /api/tools/{id}/run``             execute the tool with optional runtime args
+"""
+
 from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.error_codes import tool_not_found
+from app.models.tool import Tool
 from app.schemas.tool import (
-    ToolCustomCreate,
-    ToolResponse,
-    ToolUpdate,
+    ToolCreate,
+    ToolDefinitionSchema,
+    ToolInstanceResponse,
+    ToolPatch,
+    ToolRunRequest,
+    ToolRunResponse,
 )
-from app.services import tool_service
+from app.tools.registry import registry as tool_registry
+from app.tools.runner import run_tool
 
-router = APIRouter(prefix="/api/tools", tags=["tools"])
+router = APIRouter(tags=["tools"])
+
+catalog_router = APIRouter(prefix="/api/tool-types", tags=["tools"])
+crud_router = APIRouter(prefix="/api/tools", tags=["tools"])
 
 
-@router.get("", response_model=list[ToolResponse])
+# -- Helpers -----------------------------------------------------------------
+
+
+def _to_response(tool: Tool) -> ToolInstanceResponse:
+    return ToolInstanceResponse(
+        id=tool.id,
+        user_id=tool.user_id,
+        definition_key=tool.definition_key,
+        name=tool.name,
+        description=tool.description,
+        parameters=tool.parameters or {},
+        credential_id=tool.credential_id,
+        enabled=tool.enabled,
+        last_used_at=tool.last_used_at,
+        created_at=tool.created_at,
+        updated_at=tool.updated_at,
+    )
+
+
+async def _load_owned(
+    db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID
+) -> Tool:
+    row = (
+        await db.execute(
+            select(Tool).where(
+                Tool.id == tool_id,
+                # Either owned by the current user or a system-owned (NULL) tool.
+                (Tool.user_id == user_id) | (Tool.user_id.is_(None)),
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="tool not found")
+    return row
+
+
+def _validate_required_parameters(definition_key: str, values: dict) -> None:
+    definition = tool_registry.get(definition_key)
+    if definition is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown tool definition '{definition_key}'",
+        )
+    missing: list[str] = []
+    for spec in definition.parameters:
+        if spec.required and (spec.name not in values or values[spec.name] in (None, "")):
+            missing.append(spec.name)
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"missing required parameters: {', '.join(missing)}",
+        )
+
+
+# -- Catalog -----------------------------------------------------------------
+
+
+@catalog_router.get("", response_model=list[ToolDefinitionSchema])
+async def list_tool_types() -> list[ToolDefinitionSchema]:
+    return [ToolDefinitionSchema(**d.serialize()) for d in tool_registry.all()]
+
+
+@catalog_router.get("/{key}", response_model=ToolDefinitionSchema)
+async def get_tool_type(key: str) -> ToolDefinitionSchema:
+    definition = tool_registry.get(key)
+    if definition is None:
+        raise HTTPException(status_code=404, detail=f"unknown definition '{key}'")
+    return ToolDefinitionSchema(**definition.serialize())
+
+
+# -- CRUD --------------------------------------------------------------------
+
+
+@crud_router.get("", response_model=list[ToolInstanceResponse])
 async def list_tools(
+    definition_key: str | None = Query(default=None),
+    enabled: bool | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
-):
-    tools = await tool_service.list_tools(db, user.id)
-    tool_ids = [t.id for t in tools]
-    counts = await tool_service.get_tool_agent_counts(db, tool_ids)
-    responses = []
-    for t in tools:
-        resp = ToolResponse.model_validate(t)
-        resp.agent_count = counts.get(t.id, 0)
-        responses.append(resp)
-    return responses
+) -> list[ToolInstanceResponse]:
+    stmt = select(Tool).where(
+        (Tool.user_id == user.id) | (Tool.user_id.is_(None))
+    )
+    if definition_key is not None:
+        stmt = stmt.where(Tool.definition_key == definition_key)
+    if enabled is not None:
+        stmt = stmt.where(Tool.enabled == enabled)
+    rows = (await db.execute(stmt.order_by(Tool.created_at.desc()))).scalars().all()
+    return [_to_response(r) for r in rows]
 
 
-@router.post("/custom", response_model=ToolResponse, status_code=201)
-async def create_custom_tool(
-    data: ToolCustomCreate,
+@crud_router.post("", response_model=ToolInstanceResponse, status_code=201)
+async def create_tool(
+    payload: ToolCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
-):
-    return await tool_service.create_custom_tool(db, data, user.id)
+) -> ToolInstanceResponse:
+    _validate_required_parameters(payload.definition_key, payload.parameters)
+    tool = Tool(
+        user_id=user.id,
+        definition_key=payload.definition_key,
+        name=payload.name,
+        description=payload.description,
+        parameters=payload.parameters,
+        credential_id=payload.credential_id,
+        enabled=payload.enabled,
+    )
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+    return _to_response(tool)
 
 
-@router.post("/{tool_id}/test")
-async def test_tool_connection(
+@crud_router.get("/{tool_id}", response_model=ToolInstanceResponse)
+async def get_tool(
     tool_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
-):
-    """Probe an MCP tool's connection (M6.1 옵션 D).
-
-    tool.connection 경유로 url/auth를 해석하므로 chat runtime과 동일한 경로를
-    공유한다. PREBUILT/CUSTOM 또는 connection 미바인딩 시 400.
-    """
-    from sqlalchemy import select
-    from sqlalchemy.orm import selectinload
-
-    from app.agent_runtime.mcp_client import test_mcp_connection as mcp_test
-    from app.models.connection import Connection
-    from app.models.tool import Tool
-    from app.schemas.tool import ToolType
-    from app.services.env_var_resolver import ToolConfigError, resolve_env_vars
-
-    result = await db.execute(
-        select(Tool)
-        .where(Tool.id == tool_id)
-        .options(selectinload(Tool.connection).selectinload(Connection.credential))
-    )
-    tool = result.scalar_one_or_none()
-    if tool is None:
-        raise tool_not_found()
-    if not tool.is_system and tool.user_id != user.id:
-        raise tool_not_found()
-    if tool.type != ToolType.MCP:
-        raise ToolConfigError(
-            f"Tool '{tool.name}' is type={tool.type}; /test only supports MCP tools."
-        )
-    if tool.connection_id is None or tool.connection is None:
-        raise ToolConfigError(
-            f"MCP tool '{tool.name}' has no connection — bind one via "
-            "PATCH /api/tools/{tool_id} before testing."
-        )
-
-    conn = tool.connection
-    extra = conn.extra_config or {}
-    url = extra.get("url")
-    if not url:
-        raise ToolConfigError(
-            f"MCP tool '{tool.name}' connection {conn.id} is missing extra_config.url"
-        )
-    from app.agent_runtime.mcp_client import extract_transport_headers
-
-    effective_auth = resolve_env_vars(
-        extra.get("env_vars"),
-        conn.credential,
-        context={"connection_id": str(conn.id), "tool_name": tool.name},
-    )
-    return await mcp_test(url, effective_auth, extra_headers=extract_transport_headers(extra))
+) -> ToolInstanceResponse:
+    return _to_response(await _load_owned(db, tool_id, user.id))
 
 
-@router.patch("/{tool_id}", response_model=ToolResponse)
-async def update_tool_endpoint(
+@crud_router.patch("/{tool_id}", response_model=ToolInstanceResponse)
+async def update_tool(
     tool_id: uuid.UUID,
-    payload: ToolUpdate,
+    payload: ToolPatch,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
-):
-    return await tool_service.update_tool(db, tool_id, user.id, payload)
+) -> ToolInstanceResponse:
+    tool = await _load_owned(db, tool_id, user.id)
+    if payload.name is not None:
+        tool.name = payload.name
+    if payload.description is not None:
+        tool.description = payload.description
+    if payload.parameters is not None:
+        _validate_required_parameters(tool.definition_key, payload.parameters)
+        tool.parameters = payload.parameters
+    if payload.credential_id is not None or "credential_id" in payload.model_fields_set:
+        tool.credential_id = payload.credential_id
+    if payload.enabled is not None:
+        tool.enabled = payload.enabled
+    await db.commit()
+    await db.refresh(tool)
+    return _to_response(tool)
 
 
-@router.delete("/{tool_id}", status_code=204)
+@crud_router.delete("/{tool_id}", status_code=204)
 async def delete_tool(
     tool_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
-):
-    deleted = await tool_service.delete_tool(db, tool_id, user.id)
-    if not deleted:
-        raise tool_not_found()
+) -> None:
+    tool = await _load_owned(db, tool_id, user.id)
+    await db.delete(tool)
+    await db.commit()
+
+
+# -- Run ---------------------------------------------------------------------
+
+
+@crud_router.post("/{tool_id}/run", response_model=ToolRunResponse)
+async def run_tool_endpoint(
+    tool_id: uuid.UUID,
+    payload: ToolRunRequest | None = None,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> ToolRunResponse:
+    tool = await _load_owned(db, tool_id, user.id)
+    runtime_args = payload.runtime_args if payload else {}
+    result = await run_tool(
+        db=db,
+        tool=tool,
+        registry=tool_registry,
+        runtime_args=runtime_args,
+    )
+    if result.success:
+        from datetime import UTC
+        from datetime import datetime as _dt
+
+        tool.last_used_at = _dt.now(UTC).replace(tzinfo=None)
+        await db.commit()
+    return ToolRunResponse(**result.to_dict())
+
+
+# -- Composition -------------------------------------------------------------
+
+router.include_router(catalog_router)
+router.include_router(crud_router)

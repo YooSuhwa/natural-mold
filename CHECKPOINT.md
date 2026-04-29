@@ -68,7 +68,7 @@
 - [ ] `backend/tests/test_{tools,mcp}.py`
 - 검증: `cd backend && uv run pytest tests/test_tools.py tests/test_mcp.py -v`
 - done-when: 도구 카탈로그/인스턴스화/HTTP 호출/MCP discover 통과
-- 상태: pending
+- 상태: done (2026-04-29, 29 신규 + 68 회귀 = 97 PASS)
 
 ## M4: Skills + 마이그레이션 m13 + 시드 (젠슨 + 피차이 DRI)
 

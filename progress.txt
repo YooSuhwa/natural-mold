@@ -55,6 +55,13 @@ Credential/Tools/Skills 그린필드 리라이트 (n8n 패턴 차용, 브랜딩 
 
 ## 실패 교훈 (누적)
 
+### M3 (Tools + MCP)
+- 옛 `services/tool_service.py` (M5에서 삭제)와 `assistant`/`builder` 경로가 `from app.schemas.tool import ToolType, ToolCustomCreate, ToolResponse, ToolUpdate`를 import — 신규 스키마는 별칭 (`ToolInstanceResponse`, `ToolPatch`) 사용하고 schemas/tool.py 하단에 레거시 클래스 + `ToolResponse = LegacyToolResponse` 별칭으로 import-time 안정성 유지. 둘 다 M5에서 폐기.
+- 새 Tool ORM은 옛 컬럼 (type/provider_name/connection_id/parameters_schema/api_url/http_method/auth_type/is_system/tags) 모두 제거 — `extend_existing=True`로 메타데이터 재정의 충돌 회피. tests는 `Base.metadata.create_all`로 신규 모델만 빌드.
+- main.py lifespan의 `existing_tools_result.where(Tool.is_system.is_(True))` 시드 호출은 신규 컬럼 없음 → 프로덕션 startup이 깨짐. M4(m13 마이그레이션) + M5(seed 재작성)에서 정리. 테스트는 ASGITransport이 lifespan 우회.
+- MCP 도메인: stdio transport는 probe 미지원으로 명시(`transport not supported by the probe yet`). 디스커버리는 streamable_http/sse만. langchain-mcp-adapters 미사용 — 직접 mcp SDK + 모듈 단위 monkeypatch로 테스트.
+- env_vars/headers 템플릿 해석은 `app.credentials.interpolation.resolve_deep` 단일 진입점 위임 (옛 `agent_runtime/env_var_resolver.py` 미터치, M5에서 삭제).
+
 ### M2 (Credential 도메인)
 - TestRequestSpec 이름이 pytest collection 경고 발생 — 후속 cleanup으로 CredentialTestSpec 등으로 rename 권장
 - aiosqlite는 FK CASCADE 자동 enforce 안 함 — PRAGMA 또는 PostgreSQL 환경에서만 검증. 테스트는 credential row 삭제만 assert
