@@ -33,8 +33,21 @@ class Settings(BaseSettings):
     mock_user_email: str = "demo@moldy.dev"
     mock_user_name: str = "Demo User"
 
-    # Encryption key for API keys in DB (Fernet)
+    # Encryption key for API keys in DB (Fernet — legacy, removed in M5)
     encryption_key: str = ""
+
+    # Cipher V2 — comma-separated 64-char hex keys. First is active.
+    # Boot fails if empty (see app/security/key_provider.py).
+    encryption_keys: str = ""
+
+    # External Secrets (Vault)
+    external_secrets_enabled: bool = False
+    vault_url: str = ""
+    vault_token: str = ""
+    vault_kv_mount: str = "secret"
+
+    # Credential rotation cron (APScheduler crontab format; default: weekly Sun 03:00)
+    credential_rotation_cron: str = "0 3 * * 0"
 
     # MCP
     mcp_connection_timeout: int = 10

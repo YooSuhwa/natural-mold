@@ -1,86 +1,130 @@
-# CHECKPOINT — Agent Edit Workbench (통합 워크벤치 리뉴얼)
+# CHECKPOINT — Credential/Tools/Skills Greenfield Rewrite
 
-**Plan**: `/Users/chester/.claude/plans/image-41-ticklish-sky.md`
-**Branch**: `feature/agent-edit-workbench`
-**Base**: `main @ 0609210`
+**Plan**: `PLAN.md` (루트), `/Users/chester/.claude/plans/plan-md-poc-lexical-bumblebee.md`
+**Branch**: `feature/greenfield-credentials` (예정)
+**Base**: `main @ 8d42ae1`
 **PO**: 사티아
-**시작**: 2026-04-28
+**시작**: 2026-04-29
+**PR 단위**: 단일 PR (마일스톤별 별도 커밋)
 
 ---
 
-## 목표
+## 결정 사항 (불변)
 
-`/agents/[agentId]/settings`를 기존 5개 탭 분리 구조에서 **좌(폼/비주얼 토글) / 우(Fix·테스트·오프너·스케줄·설정 5탭)** 통합 워크벤치로 리뉴얼한다. 헤더 이름·설명은 인라인 편집, 모델·서브에이전트는 다이얼로그, 도구·미들웨어는 2칸 그리드 + 모달. 백엔드는 `agents.opener_questions` JSON 컬럼 신설.
+1. Cipher: n8n 알고리즘 차용, HKDF-SHA256(info=`b'moldy-encryption-v1'`), 단일 블롭 Base64(`[version 1B][salt 32B][authTag 16B][ciphertext]`), 멀티키 식별은 `credentials.key_id` 별도 컬럼.
+2. LLM 모델: `models` 유지(api_key_encrypted 제거), `agents.llm_credential_id` FK 추가, `llm_providers` 폐기.
+3. 단일 PR.
+4. Vault provider 실구현 (HVAC SDK, feature flag).
 
 ---
 
-## M1 — 백엔드 `opener_questions` (젠슨 DRI)
+## M0: 거버넌스 + docs/ 초기화 (피차이 DRI)
 
-- [ ] alembic `m16_add_opener_questions.py`
-- [ ] `models/agent.py` Mapped 컬럼
-- [ ] `schemas/agent.py` Response/Update/Create + validator (≤12, 1~200자)
-- [ ] `services/agent_service.py` update 경로
-- [ ] `tests/test_agents.py` PATCH 케이스
-- 검증: `cd backend && uv run alembic upgrade head && uv run pytest && uv run ruff check .`
-- done-when: 마이그레이션 적용, 전체 pytest PASS, ruff clean
+- [ ] `docs/ARCHITECTURE.md` 신규 도메인 반영 (credentials/tools/mcp/skills)
+- [ ] `docs/design-docs/ADR-009-greenfield-credentials.md` (그린필드 결정 기록)
+- [ ] `docs/design-docs/index.md` 인덱스 업데이트
+- [ ] `tasks/deletion-analysis.md` (베조스 작성, 폐기 대상 확정)
+- 검증: `ls docs/ARCHITECTURE.md docs/design-docs/ADR-009-*.md tasks/deletion-analysis.md`
+- done-when: 4개 파일 존재, ADR 본문 작성 완료
+- 상태: done (2026-04-29)
 
-## M2 — 디자인 스펙 + 삭제 분석 (사티아 직접)
+## M1: 브랜딩 검증 + Cipher V2 (피차이 + 베조스 DRI)
 
-- [ ] `docs/design-docs/agent-edit-workbench.md` (레이아웃·인터페이스·인라인 편집 패턴)
-- [ ] `tasks/deletion-analysis-workbench.md` (basic-info-tab/model-tab/tools-skills-tab 폐기 분류)
-- 검증: 두 파일 존재
-- done-when: 저커버그가 spec만으로 구현 가능한 수준의 디테일
+- [ ] `scripts/check_branding.py` (`\bn8n\b` 0건, `@n8n/*` 패키지 0건, 로고 SHA-256 블랙리스트, 화이트리스트 `NOTICES.md`)
+- [ ] `NOTICES.md` (차용 출처 명기, 라이선스 메모)
+- [ ] `backend/app/security/cipher.py` (n8n 알고리즘, info=`moldy-encryption-v1`)
+- [ ] `backend/app/security/key_provider.py` (활성 키 + 검증 키들)
+- [ ] `backend/app/config.py` `encryption_keys: list[str]` (비면 부팅 실패)
+- [ ] `backend/.env.example` `ENCRYPTION_KEYS` 예시
+- [ ] `backend/tests/test_cipher.py` (round-trip, 다중 키, 키 ID, 손상 검증)
+- [ ] `backend/tests/test_branding.py` (스크립트 직접 호출)
+- 검증:
+  ```
+  python scripts/check_branding.py
+  cd backend && uv run pytest tests/test_cipher.py tests/test_branding.py -v
+  ```
+- done-when: branding 0건, cipher 모든 케이스 PASS
+- 상태: done (2026-04-29, 24 tests PASS)
 
-## M3 — 프론트엔드: 페이지 골격 + 헤더 인라인 (저커버그 DRI)
+## M2: Credential 도메인 + Vault + 라우터 (젠슨 DRI)
 
-- [ ] `settings/page.tsx` 좌/우 grid 재작성, sticky save bar 제거
-- [ ] 헤더: `[←]` + 작은 `AgentAvatar` + 이름·설명 ghost-input + `[🗑] [저장]`
-- [ ] 좌측 [폼]/[비주얼] Tabs, 우측 [Fix][테스트][오프너][스케줄][설정] Tabs
-- [ ] 페이지 state에 `openerQuestions: string[]` 추가, isDirty 비교 포함
-- 검증: `cd frontend && pnpm build`
-- done-when: 빌드 PASS, 라우트 정상
+- [ ] `backend/app/models/{credential,credential_audit_log,credential_default}.py` (신규 스키마)
+- [ ] `backend/app/credentials/{field,domain,interpolation,authenticate,registry,oauth2_base,tester}.py`
+- [ ] `backend/app/credentials/external_secrets/{base,env_provider,vault_provider,proxy}.py` (HVAC 실구현)
+- [ ] `backend/app/credentials/definitions/*.py` × 11
+- [ ] `backend/app/routers/credentials.py` (재작성, OAuth2 라우트 포함)
+- [ ] `backend/tests/test_{credentials,oauth2,tester,external_secrets}.py`
+- 검증: `cd backend && uv run pytest tests/test_credentials.py tests/test_oauth2.py tests/test_tester.py tests/test_external_secrets.py -v`
+- done-when: CRUD/Test/OAuth2 mock refresh/Vault env_provider 통과
+- 상태: pending
 
-## M4 — 프론트엔드: 좌측 폼 모드 + 다이얼로그 (저커버그 DRI)
+## M3: Tools 재정의 + MCP 서버 (젠슨 DRI)
 
-- [ ] `_components/form-mode/{form-mode,section-instructions,section-sub-agents,section-model,tools-middlewares-grid}.tsx`
-- [ ] `_components/dialogs/{model-dialog,sub-agents-dialog,add-tool-modal,add-middleware-modal}.tsx`
-- [ ] 도구함/미들웨어 2칸 그리드, 행 레이아웃 (`name [⚙][🗑]`)
-- [ ] 폐기: `basic-info-tab.tsx`, `model-tab.tsx`, `tools-skills-tab.tsx`
-- 검증: `cd frontend && pnpm build && pnpm lint`
-- done-when: 빌드/린트 PASS, 모달 4종 동작
+- [ ] `backend/app/models/{tool,mcp_server,mcp_tool}.py` (신규 스키마)
+- [ ] `backend/app/tools/{domain,registry,runner,parameters}.py`
+- [ ] `backend/app/tools/definitions/*.py` × 6 (http_request, naver_search, google_search, gmail_send, google_calendar_event, google_chat_message)
+- [ ] `backend/app/mcp/{domain,client,discovery,oauth}.py`
+- [ ] `backend/app/routers/{tools,mcp}.py`
+- [ ] `backend/tests/test_{tools,mcp}.py`
+- 검증: `cd backend && uv run pytest tests/test_tools.py tests/test_mcp.py -v`
+- done-when: 도구 카탈로그/인스턴스화/HTTP 호출/MCP discover 통과
+- 상태: pending
 
-## M5 — 프론트엔드: 좌측 비주얼 inline + 우측 패널 (저커버그 DRI)
+## M4: Skills + 마이그레이션 m13 + 시드 (젠슨 + 피차이 DRI)
 
-- [ ] `tab === 'visual'`일 때 `<VisualSettingsFlow>` inline 렌더
-- [ ] `_components/right-panel/{right-panel,test-chat-panel,opener-editor,settings-panel}.tsx`
-- [ ] [Fix]는 기존 `AssistantPanel` 재사용 (`showHeader` prop 추가)
-- [ ] [스케줄]은 기존 `triggers-tab.tsx` 재사용
-- [ ] [설정]은 이미지 생성/재생성/제거 전용
-- 검증: `cd frontend && pnpm build`
-- done-when: 5탭 전환 동작, 비주얼 모드 노드 그래프 표시
+- [ ] `backend/app/models/skill.py` 재작성 (content_hash, size_bytes, version 등 추가)
+- [ ] `backend/app/skills/{service,packager,inspector,runtime}.py`
+- [ ] `backend/app/routers/skills.py` 재작성
+- [ ] `backend/alembic/versions/m13_greenfield_credentials.py` (DROP+CREATE+ALTER agents.llm_credential_id, downgrade NotImplementedError)
+- [ ] `backend/app/seed/bootstrap_from_env.py` (env → mock_user Credential 자동 생성)
+- [ ] `backend/tests/test_skills.py`
+- 검증:
+  ```
+  docker-compose down -v && docker-compose up -d postgres
+  cd backend && uv run alembic upgrade head
+  uv run pytest tests/test_skills.py -v
+  ```
+- done-when: 클린 마이그레이션 성공, 시드 정상, skills 테스트 통과
+- 상태: pending
 
-## M6 — 프론트엔드: 새 채팅 빈 화면 오프너 + 연결 (저커버그 DRI)
+## M5: agent_runtime 재배선 + 키 로테이션 cron (젠슨 + 베조스 DRI)
 
-- [ ] 새 채팅 empty state에서 `agent.opener_questions` 버튼 렌더
-- [ ] 클릭 시 composer에 텍스트 주입(전송 X) — `useComposer` 훅
-- [ ] `lib/types/agent.ts` 타입 보강
-- [ ] `lib/hooks/use-agents.ts` update payload에 `opener_questions`
-- [ ] i18n 키 추가 (`messages/ko.json` 외)
-- 검증: `cd frontend && pnpm build && pnpm lint`
-- done-when: 새 대화 진입 시 오프너 버튼 표시 + 클릭 동작
+- [ ] `backend/app/services/chat_service.py` 전면 재작성 (build_tools_config + get_agent_with_tools)
+- [ ] `backend/app/agent_runtime/{executor,tool_factory,model_factory,trigger_executor,creation_agent,mcp_client}.py` 재배선 (trigger_executor L44-46 prefetch 버그 동시 수정)
+- [ ] `backend/app/scheduler.py` `rotate_credentials_to_active_key` 잡 등록
+- [ ] 폐기: `services/{encryption,credential_service,credential_registry,connection_service}.py`, `models/connection.py`, `routers/connections.py`, `agent_runtime/{naver_tools,google_tools,google_workspace_tools,env_var_resolver}.py`, `seed/prebuilt_connections.py`, `scripts/google_oauth_setup.py`
+- [ ] 전체 회귀 테스트
+- 검증: `cd backend && uv run pytest tests/ -v && uv run ruff check .`
+- done-when: 전체 PASS, ruff clean, 채팅+트리거+MCP 시나리오 OK
+- 상태: pending
 
-## M7 — 통합 검증 (베조스 DRI)
+## M6: 프론트엔드 (팀쿡 + 저커버그 DRI)
 
-- [ ] backend: `uv run pytest` 전체 + `uv run ruff check .`
-- [ ] frontend: `pnpm build` + `pnpm lint`
-- [ ] 회귀 시나리오: 기존 페이지(/agents 대시보드, 대화 페이지, /agents/new) 영향 없음
-- [ ] 기능 시나리오: 헤더 인라인 편집 / 폼 ↔ 비주얼 / 우측 5탭 / 오프너 추가·저장·새대화 표시
-- 검증: 종합 보고서 `tasks/verification-workbench.md`
-- done-when: 판정 GREEN
+**팀쿡** (디자인 시스템):
+- [ ] `frontend/src/components/ui/data-table.tsx`
+- [ ] `frontend/src/components/shared/{status-chip,icon,empty-state,dynamic-fields-form}.tsx`
 
-## M8 — HANDOFF + 정리 (사티아)
+**저커버그** (페이지/컴포넌트/API):
+- [ ] `frontend/src/app/{credentials,mcp-servers,tools,skills}/page.tsx`
+- [ ] `frontend/src/components/{credential,tool,mcp,skill}/*.tsx`
+- [ ] `frontend/src/lib/{api,hooks,types}/{credentials,tools,mcp,skills}*.ts`
+- [ ] `frontend/src/components/layout/sidebar.tsx` 네비 정리 (Connections 제거)
+- [ ] `frontend/src/app/agents/*` 도구·스킬 선택 UI 신규 hooks/api로 재배선
+- [ ] `frontend/e2e/{credentials,tools-catalog,mcp-server-wizard,skills-management}.spec.ts`
+- [ ] 폐기: `app/connections/`, `components/{tool,connection,skill}/` 옛 폴더, 옛 api/hooks 파일
+- 검증:
+  ```
+  cd frontend && pnpm lint && pnpm build
+  pnpm exec playwright test
+  ```
+- done-when: 빌드 성공, E2E 4개 통과
+- 상태: pending
 
-- [ ] HANDOFF.md 갱신
-- [ ] tasks/lessons.md 추가
-- [ ] AUDIT.log PROJECT_DONE
-- [ ] TeamDelete
+---
+
+## 게이트 정책
+
+- **브랜딩 0건**: `python scripts/check_branding.py` 통과 없이 머지 불가
+- **데이터 손실 액션** (docker volume 삭제, m13 alembic upgrade): 사용자 확인 후 실행
+- **3회 실패**: 사티아에게 에스컬레이션 → 스토리 재분해 또는 스코프 축소
+- **마일스톤 별 커밋**: 각 마일스톤 완료 시 1 커밋
