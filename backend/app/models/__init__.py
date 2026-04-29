@@ -5,6 +5,8 @@ from app.models.builder_session import BuilderSession
 from app.models.connection import Connection
 from app.models.conversation import Conversation
 from app.models.credential import Credential
+from app.models.credential_audit_log import CredentialAuditLog
+from app.models.credential_default import CredentialDefault
 from app.models.llm_provider import LLMProvider
 from app.models.model import Model
 from app.models.skill import AgentSkillLink, Skill
@@ -17,6 +19,8 @@ __all__ = [
     "User",
     "Connection",
     "Credential",
+    "CredentialAuditLog",
+    "CredentialDefault",
     "LLMProvider",
     "Model",
     "Template",

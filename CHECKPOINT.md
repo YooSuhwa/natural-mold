@@ -56,7 +56,7 @@
 - [ ] `backend/tests/test_{credentials,oauth2,tester,external_secrets}.py`
 - 검증: `cd backend && uv run pytest tests/test_credentials.py tests/test_oauth2.py tests/test_tester.py tests/test_external_secrets.py -v`
 - done-when: CRUD/Test/OAuth2 mock refresh/Vault env_provider 통과
-- 상태: pending
+- 상태: done (2026-04-29, 44 신규 tests + 24 회귀 tests = 68 PASS)
 
 ## M3: Tools 재정의 + MCP 서버 (젠슨 DRI)
 

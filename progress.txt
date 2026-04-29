@@ -53,7 +53,19 @@ Credential/Tools/Skills 그린필드 리라이트 (n8n 패턴 차용, 브랜딩 
 - mcp_client.py — env_vars 템플릿 해석을 app/credentials/interpolation.py로 위임
 - model_factory.py — agent.llm_credential 복호화 경로 추가
 
-## 실패 교훈 (누적, 비어있음 — 첫 마일스톤 진행 후 채워질 예정)
+## 실패 교훈 (누적)
+
+### M2 (Credential 도메인)
+- TestRequestSpec 이름이 pytest collection 경고 발생 — 후속 cleanup으로 CredentialTestSpec 등으로 rename 권장
+- aiosqlite는 FK CASCADE 자동 enforce 안 함 — PRAGMA 또는 PostgreSQL 환경에서만 검증. 테스트는 credential row 삭제만 assert
+- OAuth2 callback state는 in-process map (PoC 한정). 멀티프로세스 배포 시 Redis/DB 백킹 필요
+- 옛 `services/credential_service.py`, `connection_service.py`는 미터치 — M5에서 일괄 삭제 (기존 ~46 tests fail은 의도된 상태)
+- `app/main.py` lifespan에 레거시 `seed_mock_user_prebuilt_connections` 호출 잔존 — M5에서 정리
+
+## 후속 cleanup 항목 (PR 머지 전)
+- TestRequestSpec → CredentialTestSpec rename
+- OAuth2 state Redis/DB 백킹 (별도 티켓)
+- aiosqlite FK PRAGMA conftest 추가 검토
 
 ## 작업 순서
 M0(거버넌스+docs+삭제분석) → M1(브랜딩+Cipher) → M2(Credential+Vault+라우터) → M3(Tools+MCP) → M4(Skills+m13) → M5(agent_runtime 재배선+cron) → M6(프론트엔드)
