@@ -58,7 +58,8 @@ export function ModelDialog({
             <ModelSelect
               value={modelId}
               onValueChange={onModelIdChange}
-              className="rounded-lg border"
+              allowCustomId
+              className="rounded-lg border p-2"
             />
           </div>
 

@@ -71,6 +71,22 @@ Credential/Tools/Skills 그린필드 리라이트 (n8n 패턴 차용, 브랜딩 
 - 옛 `services/skill_service.py`는 미터치 (M5 정리). 옛 라우터 의존이 있던 import는 신규 `app/skills/service.py`로 완전 교체.
 - 데이터 분실 액션 (alembic upgrade head against postgres)은 사용자 확인 필요 — 본 마일스톤에서는 dry-run/모듈 검증만 수행.
 
+### M7 (모델 카탈로그 + 디스커버리, backend)
+- `model_metadata.py`는 옛 코드 그대로 복원 (LiteLLM enrich, anthropic 정적 카탈로그) — 헤더 주석에 LiteLLM 출처 + NOTICES.md 명기.
+- `model_filtering.py` 신규 — `should_include_model(provider, model_id, is_custom_api)` + `is_custom_openai_endpoint(base_url)`. OpenAI는 babbage/davinci/computer-use/dall-e/text-embedding/tts/whisper/omni-moderation/sora/-realtime/gpt-*-instruct 블록. 차용 출처 표현은 "prior art — see NOTICES.md"로 통일 (브랜딩 가드 회피).
+- `model_discovery.py` 재작성 — `discover_from_credential(db, credential)` 단일 진입점. 옛 LLMProvider 기반에서 Credential 기반으로 재배선. 복호화는 `credential_service.decrypt_with_external` 위임. dispatch table 키 = `credential.definition_key`. OpenRouter pricing 우선(source='openrouter'), LiteLLM fallback(source='litellm'), 무 데이터(source='manual').
+- `DiscoveredModel` dataclass에 `already_registered: bool` — IN 쿼리 한 번으로 N+1 회피.
+- `models` ORM에 `max_output_tokens, supports_vision, supports_function_calling, supports_reasoning, source` 컬럼 추가. 마이그레이션은 `m19_add_models_source.py` (m18 다음, ADD COLUMN nullable + drop downgrade).
+- 라우터 보강: `POST /api/credentials/{id}/discover-models` (audit log `discover` action), `POST/PATCH/DELETE /api/models` (409 unique violation, 409 used by agent).
+- Credential 정의 신규: `openrouter` (api_key + base_url default `https://openrouter.ai/api/v1`, test=GET /auth/key), `openai_compatible` (base_url required + api_key optional, test=GET `={{ $credentials.base_url }}/models` with rules [200, 401, 403]).
+- 테스트: `test_model_metadata.py`(5), `test_model_filtering.py`(36), `test_model_discovery.py`(9 — httpx.MockTransport via __init__ patch), `test_models_router.py`(13). 합계 63 신규 + 480 회귀 = 543 PASS.
+- httpx mock 패턴: `httpx.MockTransport(handler) → patch.object(httpx.AsyncClient, "__init__", ...)` 가 가장 확실. 모듈 단위 patch보다 안정적.
+- Decimal pricing → JSON으로 `to_dict()`에서 `str(Decimal)`. Pydantic Decimal 필드가 자동 파싱. FastAPI 응답은 scientific notation 가능 — 테스트는 Decimal로 비교.
+- branding 가드: 본문 docstring에 "n8n" 직접 노출 금지. 차용 출처는 "prior art — see NOTICES.md"로 적고 NOTICES.md 표에 매핑 추가.
+- frontend는 다른 작업자가 진행 — `frontend/src/lib/api/models.ts`, `frontend/src/components/model/model-select.tsx` 주석에서 'n8n resourceLocator' → 'resourceLocator pattern (see NOTICES.md)'로 정정만 했음.
+- `docs/QUALITY_SCORE.md`도 표현 정정 ("n8n 식별자 0건" → "금지 식별자 0건", "n8n 알고리즘 차용" → "차용 알고리즘 (NOTICES.md)").
+- 마이그레이션 검증: PG 5433 컨테이너에 upgrade head → 5개 컬럼 추가 확인 → downgrade -1 → upgrade head 라운드트립 모두 PASS.
+
 ### M5 (agent_runtime 재배선 + 키 로테이션)
 - chat_service.build_tools_config 시그니처가 async로 변경됨 — caller(`conversations.py`, `trigger_executor.py`)에서 `await` 필요. 기존 sync caller 검색 시 주의.
 - `Tool` ORM에 `credential` 관계 추가 (lazy="select"), `Agent`에 `llm_credential` 관계 추가. selectinload 체인은 두 관계를 명시적으로 로드.

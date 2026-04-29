@@ -11,7 +11,7 @@
 
 | 게이트 | 결과 | 비고 |
 |---|---|---|
-| `python scripts/check_branding.py` | PASS | n8n 식별자 0건, @n8n/* 0건, 자산 블랙리스트 0건 |
+| `python scripts/check_branding.py` | PASS | 금지 식별자 0건, 금지 npm scope 0건, 자산 블랙리스트 0건 |
 | `uv run ruff check .` | PASS | 0 errors |
 | `uv run pytest tests/` | PASS | **480 passed**, 1 deselected, 1 warning (TestRequestSpec collection 무해) |
 | `pnpm lint` | PASS | 0 errors, 1 informational warning (react-hooks/incompatible-library — TanStack Table) |
@@ -23,7 +23,7 @@
 
 | 도메인 | 등급 | 비고 |
 |---|:---:|---|
-| Cipher V2 (security/) | A | 23 tests, n8n 알고리즘 차용 + moldy-encryption-v1, key_id 멀티키 검증 완료 |
+| Cipher V2 (security/) | A | 23 tests, 차용 알고리즘(NOTICES.md 출처 명기) + moldy-encryption-v1, key_id 멀티키 검증 완료 |
 | Credential 도메인 (credentials/) | A | 16 tests + OAuth2 + Tester + Vault, GenericAuth + interpolation + audit log |
 | Tools 도메인 (tools/) | A | 12 도구 정의, ToolDefinition 단일 경로, GenericAuth 통일 |
 | MCP (mcp/) | B+ | 디스커버리 + OAuth, agent_mcp_servers 링크 테이블 미구현 (후속) |

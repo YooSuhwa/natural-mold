@@ -5,6 +5,7 @@ export * from './credential'
 export * from './tool'
 export * from './mcp'
 export * from './skill'
+export * from './model'
 
 // ---------- Agent ---------------------------------------------------------
 
@@ -311,17 +312,15 @@ export interface TriggerUpdateRequest {
 // components continue to compile until they migrate to domain-specific types) ---
 
 import type { ToolInstance } from './tool'
-import type { ModelCatalogEntry } from '@/lib/api/models'
 
 /**
  * @deprecated Use `ToolInstance` from `@/lib/types/tool` directly.
  */
 export type Tool = ToolInstance
 
-/**
- * @deprecated Use `ModelCatalogEntry` from `@/lib/api/models` directly.
- */
-export type Model = ModelCatalogEntry
+// `Model` is now exported from `./model` (M7 catalog overhaul). The legacy
+// alias to `ModelCatalogEntry` was removed since the canonical type lives in
+// `./model.ts` and is already re-exported above.
 
 // ---------- Middleware (catalog item from /api/middlewares) ----------------
 

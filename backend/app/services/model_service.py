@@ -72,8 +72,13 @@ def _serialize(model: Model, *, agent_count: int = 0) -> dict:
         "cost_per_input_token": model.cost_per_input_token,
         "cost_per_output_token": model.cost_per_output_token,
         "context_window": model.context_window,
+        "max_output_tokens": model.max_output_tokens,
         "input_modalities": model.input_modalities,
         "output_modalities": model.output_modalities,
+        "supports_vision": model.supports_vision,
+        "supports_function_calling": model.supports_function_calling,
+        "supports_reasoning": model.supports_reasoning,
+        "source": model.source,
         "agent_count": agent_count,
         "created_at": model.created_at,
     }

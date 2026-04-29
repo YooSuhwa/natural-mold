@@ -41,6 +41,8 @@ from app.schemas.credential import (
     OAuth2AuthStartResponse,
     PreviewTestRequest,
 )
+from app.schemas.model import DiscoveredModelSchema
+from app.services import model_discovery
 
 router = APIRouter(tags=["credentials"])
 
@@ -239,6 +241,52 @@ async def preview_test(payload: PreviewTestRequest) -> CredentialTestResponse:
         )
     result = await CredentialTester().run(definition, payload.data)
     return CredentialTestResponse(**result.to_dict())
+
+
+# -- Model discovery ---------------------------------------------------------
+
+
+@crud_router.post(
+    "/{credential_id}/discover-models",
+    response_model=list[DiscoveredModelSchema],
+)
+async def discover_models(
+    credential_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> list[DiscoveredModelSchema]:
+    """List models reachable through this Credential.
+
+    Per-provider dispatch lives in ``app.services.model_discovery``. Failures
+    bubble up as a 502 with the provider message — credential ``test`` is the
+    canonical 'is this key valid' surface, not this endpoint.
+    """
+
+    cred = await _load_owned(db, credential_id, user.id)
+    try:
+        results = await model_discovery.discover_from_credential(db, cred)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — opaque external errors
+        raise HTTPException(
+            status_code=502,
+            detail=f"model discovery failed: {exc}",
+        ) from exc
+
+    ip, user_agent = _request_meta(request)
+    await credential_service.write_audit_log(
+        db,
+        credential_id=cred.id,
+        actor_user_id=user.id,
+        action="discover",
+        source="api",
+        ip=ip,
+        user_agent=user_agent,
+        metadata={"count": len(results)},
+    )
+    await db.commit()
+    return [DiscoveredModelSchema(**m.to_dict()) for m in results]
 
 
 # -- Audit log ---------------------------------------------------------------

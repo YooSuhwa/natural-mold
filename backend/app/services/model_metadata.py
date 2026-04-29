@@ -1,5 +1,10 @@
-"""Static metadata for well-known models. Costs are in USD per token.
-Source: LiteLLM model_prices_and_context_window.json (MIT license)."""
+"""Static metadata for well-known LLM models.
+
+Costs are USD per token. The catalog is a curated snapshot of
+``model_prices_and_context_window.json`` from BerriAI/LiteLLM (MIT License) —
+see ``NOTICES.md`` for attribution. The file is loaded lazily on first call
+and kept in process memory for the lifetime of the worker.
+"""
 
 from __future__ import annotations
 

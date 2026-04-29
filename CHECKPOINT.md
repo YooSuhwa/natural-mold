@@ -123,6 +123,50 @@
 
 ---
 
+## M7: 모델 카탈로그 + 디스커버리 (LiteLLM + n8n 하이브리드)
+
+**DRI**: 젠슨 (Backend) + 팀쿡/저커버그 (Frontend) + 베조스 (검증)
+**왜**: M5에서 `models` 테이블을 read-only로 축소했으나, 신모델 추가가 시드 코드 수정+재시작으로만 가능 → 비실용적. n8n의 resourceLocator 패턴(List/Custom ID 두 모드) + 옛 LiteLLM enrichment 차용하여 UI에서 모델 추가/관리 가능하게 복원.
+
+### 차용 패턴
+- **n8n resourceLocator**: 모델 선택을 List(디스커버리) + Custom ID(직접 입력) 두 모드
+- **n8n isCustomAPI 분기**: 공식 host 화이트리스트 / 호환 endpoint 모두 노출
+- **n8n modelFiltering helper**: provider별 필터 룰 단일 진입점
+- **OpenRouter pricing 우선** + **LiteLLM 카탈로그 fallback** + **수동 override**
+- **multi-provider Gateway 정의**: OpenAI Compatible / OpenRouter (선택: Vercel AI Gateway)
+
+### 백엔드
+- [ ] `app/services/model_metadata.py` 복원 (LiteLLM enrich, 옛 코드 차용)
+- [ ] `app/services/model_filtering.py` 신규 — `should_include_model(provider, model_id, is_custom_api)` (n8n 패턴)
+- [ ] `app/services/model_discovery.py` 재작성 — Credential 기반 dispatch + isCustomAPI 분기
+- [ ] `app/credentials/definitions/` 신규 정의: `openrouter`, `openai_compatible` (vercel_ai_gateway는 후속)
+- [ ] `app/routers/models.py` 보강: POST/PATCH/DELETE 추가, Source 배지(litellm/openrouter/manual)
+- [ ] `app/routers/credentials.py` 보강: `POST /api/credentials/{id}/discover-models`
+- [ ] `app/schemas/model.py` 보강: `DiscoveredModel`, `source` 필드
+- [ ] `tests/test_model_discovery.py`, `test_model_metadata.py`, `test_model_filtering.py` 신규
+
+### 프론트엔드
+- [ ] `frontend/src/app/models/page.tsx` 신규 — DataTable + source 배지
+- [ ] `frontend/src/components/model/model-add-dialog.tsx` 신규 — Tab Discover/Custom ID
+- [ ] `frontend/src/components/model/model-edit-dialog.tsx` 신규 — 가격 override
+- [ ] `frontend/src/components/model/model-discover-panel.tsx` 신규 — Credential 선택 + 결과 리스트 + 다중 선택
+- [ ] `frontend/src/components/layout/app-sidebar.tsx` — Models 항목 추가
+- [ ] `frontend/src/components/model/model-select.tsx` 업그레이드 — resourceLocator 패턴 (List/Custom ID)
+- [ ] `frontend/src/lib/api/models.ts`, `lib/hooks/use-models.ts`, `lib/types/model.ts` 보강
+- [ ] `frontend/e2e/models-discover.spec.ts` 신규
+
+### 검증
+```bash
+cd backend && uv run pytest tests/test_model_*.py -v && uv run pytest tests/ -v && uv run ruff check .
+cd frontend && pnpm lint && pnpm build
+python scripts/check_branding.py
+```
+- done-when: 모델 디스커버리 동작, OpenRouter pricing 자동, LiteLLM fallback, Custom ID 직접 입력, 사용자 가격 override, 480+ tests PASS, 브랜딩 0건
+- 상태: backend done (2026-04-29, 63 신규 + 480 회귀 = 543 PASS, ruff clean, branding 0건, m19 upgrade/downgrade/upgrade 라운드트립 OK against PG 5433)
+- 비고: 마이그레이션 파일명은 `m19_add_models_source.py` (down_revision=m18_greenfield_credentials, ADD COLUMN nullable, drop downgrade 지원). frontend/M7 산출물은 별도 작업자(팀쿡/저커버그)가 진행 중.
+
+---
+
 ## 게이트 정책
 
 - **브랜딩 0건**: `python scripts/check_branding.py` 통과 없이 머지 불가

@@ -1,29 +1,65 @@
-"""Model catalog endpoints.
+"""Model catalog endpoints — CRUD + discovery glue.
 
-The greenfield Credential domain owns LLM API keys, so model rows are now
-plain reference data. This router only exposes the read-only catalog used by
-the frontend's "default model" picker; CRUD will be reintroduced (or moved)
-in M6 once the new admin UI lands.
+The Credential domain owns provider keys, so model rows are plain reference
+data. M7 reintroduces full CRUD on top of the read-only catalog M5 left
+behind so the frontend can register/remove/override pricing for newly
+discovered or hand-typed model identifiers.
+
+Endpoints:
+- ``GET    /api/models``                  list (with ``agent_count``)
+- ``GET    /api/models/{id}``             single
+- ``POST   /api/models``                  register
+- ``PATCH  /api/models/{id}``             update (pricing/meta override)
+- ``DELETE /api/models/{id}``             delete (refused if any agent uses it)
 """
 
 from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_current_user, get_db
 from app.error_codes import model_not_found
+from app.models.agent import Agent
+from app.models.model import Model
 from app.models.user import User
+from app.schemas.model import ModelCreate, ModelUpdate
 from app.services import model_service
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
 
+def _model_to_dict(model: Model, *, agent_count: int = 0) -> dict:
+    return {
+        "id": model.id,
+        "provider": model.provider,
+        "model_name": model.model_name,
+        "display_name": model.display_name,
+        "base_url": model.base_url,
+        "is_default": model.is_default,
+        "cost_per_input_token": model.cost_per_input_token,
+        "cost_per_output_token": model.cost_per_output_token,
+        "context_window": model.context_window,
+        "max_output_tokens": model.max_output_tokens,
+        "input_modalities": model.input_modalities,
+        "output_modalities": model.output_modalities,
+        "supports_vision": model.supports_vision,
+        "supports_function_calling": model.supports_function_calling,
+        "supports_reasoning": model.supports_reasoning,
+        "source": model.source,
+        "agent_count": agent_count,
+        "created_at": model.created_at,
+    }
+
+
 @router.get("")
 async def list_models(
-    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
     return await model_service.list_models(db)
 
@@ -37,14 +73,108 @@ async def get_model(
     model = await model_service.get_model(db, model_id)
     if not model:
         raise model_not_found()
-    return {
-        "id": model.id,
-        "provider": model.provider,
-        "model_name": model.model_name,
-        "display_name": model.display_name,
-        "base_url": model.base_url,
-        "is_default": model.is_default,
-        "context_window": model.context_window,
-        "input_modalities": model.input_modalities,
-        "output_modalities": model.output_modalities,
-    }
+    return _model_to_dict(model)
+
+
+@router.post("", status_code=201)
+async def create_model(
+    payload: ModelCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Register a new model row.
+
+    409 on duplicate ``(provider, model_name)`` so the frontend can collapse
+    "already registered" into a friendly toast.
+    """
+
+    model = Model(
+        provider=payload.provider,
+        model_name=payload.model_name,
+        display_name=payload.display_name,
+        base_url=payload.base_url,
+        is_default=payload.is_default,
+        cost_per_input_token=payload.cost_per_input_token,
+        cost_per_output_token=payload.cost_per_output_token,
+        context_window=payload.context_window,
+        max_output_tokens=payload.max_output_tokens,
+        input_modalities=payload.input_modalities,
+        output_modalities=payload.output_modalities,
+        supports_vision=payload.supports_vision,
+        supports_function_calling=payload.supports_function_calling,
+        supports_reasoning=payload.supports_reasoning,
+        source=payload.source,
+    )
+    db.add(model)
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"model '{payload.provider}:{payload.model_name}' already exists"
+            ),
+        ) from exc
+
+    # Pre-existing duplicate detection beyond the unique-index path: an explicit
+    # SELECT before INSERT would race; we let the DB win and translate above.
+    await db.commit()
+    await db.refresh(model)
+    return _model_to_dict(model)
+
+
+@router.patch("/{model_id}")
+async def update_model(
+    model_id: uuid.UUID,
+    payload: ModelUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    model = await model_service.get_model(db, model_id)
+    if not model:
+        raise model_not_found()
+
+    updated = payload.model_dump(exclude_unset=True)
+    for key, value in updated.items():
+        setattr(model, key, value)
+
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="model update would violate the (provider, model_name) uniqueness",
+        ) from exc
+
+    await db.commit()
+    await db.refresh(model)
+    return _model_to_dict(model)
+
+
+@router.delete("/{model_id}", status_code=204)
+async def delete_model(
+    model_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    model = await model_service.get_model(db, model_id)
+    if not model:
+        raise model_not_found()
+
+    # Refuse if any agent currently points at this model — the FK is non-null
+    # and the user almost never wants the cascade.
+    in_use = await db.execute(
+        select(func.count(Agent.id)).where(Agent.model_id == model_id)
+    )
+    count = in_use.scalar_one() or 0
+    if count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"model is used by {count} agent(s); rebind them before deleting",
+        )
+
+    await db.delete(model)
+    await db.commit()
+    return None

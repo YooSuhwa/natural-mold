@@ -30,8 +30,16 @@ class Model(Base):
     cost_per_input_token: Mapped[Decimal | None] = mapped_column(Numeric(12, 8), nullable=True)
     cost_per_output_token: Mapped[Decimal | None] = mapped_column(Numeric(12, 8), nullable=True)
     context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     input_modalities: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     output_modalities: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    supports_vision: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    supports_function_calling: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    supports_reasoning: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Pricing source label — ``openrouter`` | ``litellm`` | ``manual``. Drives a
+    # provenance badge in the UI and lets ``model_discovery`` tell apart
+    # provider-supplied pricing from catalog-enriched fallbacks.
+    source: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,

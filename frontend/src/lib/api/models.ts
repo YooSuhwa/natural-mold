@@ -1,21 +1,38 @@
-// Read-only model catalog. Greenfield: model rows are reference data; LLM API
-// keys live in Credentials. Admin CRUD intentionally absent in M6.
+// Model catalog client. M7 reintroduces CRUD + credential-driven discovery
+// (resourceLocator pattern: List vs Custom ID — see NOTICES.md).
 
 import { apiFetch } from './client'
-
-export interface ModelCatalogEntry {
-  id: string
-  provider: string
-  model_name: string
-  display_name: string
-  base_url: string | null
-  is_default: boolean
-  context_window: number | null
-  input_modalities: string[] | null
-  output_modalities: string[] | null
-}
+import type {
+  DiscoveredModel,
+  Model,
+  ModelCreate,
+  ModelUpdate,
+} from '@/lib/types/model'
 
 export const modelsApi = {
-  list: () => apiFetch<ModelCatalogEntry[]>('/api/models'),
-  get: (id: string) => apiFetch<ModelCatalogEntry>(`/api/models/${id}`),
+  list: () => apiFetch<Model[]>('/api/models'),
+  get: (id: string) => apiFetch<Model>(`/api/models/${id}`),
+  create: (data: ModelCreate) =>
+    apiFetch<Model>('/api/models', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: ModelUpdate) =>
+    apiFetch<Model>(`/api/models/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    apiFetch<void>(`/api/models/${id}`, { method: 'DELETE' }),
+
+  /**
+   * Ask the backend to enumerate models reachable through a saved credential
+   * (OpenRouter, OpenAI compatible, etc.). Pricing/source metadata is enriched
+   * server-side via the LiteLLM catalog or provider-native list endpoints.
+   */
+  discoverFromCredential: (credentialId: string) =>
+    apiFetch<DiscoveredModel[]>(
+      `/api/credentials/${credentialId}/discover-models`,
+      { method: 'POST' },
+    ),
 }
