@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
 from app.models.builder_session import BuilderSession
 from app.models.connection import Connection
@@ -28,4 +29,5 @@ __all__ = [
     "AgentTrigger",
     "Skill",
     "AgentSkillLink",
+    "AgentSubAgentLink",
 ]

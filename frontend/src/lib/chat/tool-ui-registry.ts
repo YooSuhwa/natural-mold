@@ -2,6 +2,7 @@ import { GenericToolFallback } from '@/components/chat/tool-ui/generic-tool-ui'
 import { PlanToolUI } from '@/components/chat/tool-ui/plan-tool-ui'
 import { UserInputUI } from '@/components/chat/tool-ui/user-input-ui'
 import { ApprovalCard } from '@/components/chat/tool-ui/approval-card'
+import { ClarifyingQuestionUI } from '@/components/chat/tool-ui/clarifying-question-ui'
 import {
   WebSearchToolUI,
   NaverBlogSearchToolUI,
@@ -31,6 +32,7 @@ export const ALL_TOOL_UI = [
   GenericToolFallback,
   UserInputUI,
   ApprovalCard,
+  ClarifyingQuestionUI,
   PlanToolUI,
   WebSearchToolUI,
   NaverBlogSearchToolUI,
@@ -42,7 +44,7 @@ export const ALL_TOOL_UI = [
   EditFileToolUI,
 ] as const
 
-/** HiTL 제외 — AssistantPanel용 */
+/** HiTL 제외 — AssistantPanel용 (ask_clarifying_question은 일반 도구라 포함) */
 export const TOOL_UI_WITHOUT_HITL = ALL_TOOL_UI.filter(
   (ui) => ui !== UserInputUI && ui !== ApprovalCard,
 )

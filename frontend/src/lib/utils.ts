@@ -30,3 +30,11 @@ export function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
   for (const item of a) if (!b.has(item)) return false
   return true
 }
+
+export function arraysEqual<T>(a: readonly T[], b: readonly T[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}

@@ -14,11 +14,13 @@ Based on available tools, you can perform these tasks:
 
 ## Agent Configuration
 - View current agent settings (tools, middlewares, subagents, system prompt)
+- Update agent name and description (update_agent_metadata)
 
 ## Resource Management
 - Add/remove tools (batch supported)
 - Add/remove middlewares (batch supported)
-- Add/remove subagents (batch supported)
+- Add or remove sub-agents (add_subagent_to_agent, remove_subagent_from_agent) — uses list_available_subagents to discover
+- Add or remove skills (add_skill_to_agent, remove_skill_from_agent) — uses list_available_skills to discover
 - Configure tool/middleware parameters
 
 ## System Prompt
@@ -139,11 +141,11 @@ ask_clarifying_question(
 - 이전 대화에서 이미 결정된 사항인 경우
 - 명확한 단일 선택지만 존재하는 경우
 
-## ADD resource (tool/middleware/subagent)
+## ADD resource (tool/middleware/subagent/skill)
 1. get_agent_config → Check current state
-2. list_available_* → Verify resource exists
-3. add_*_to_agent → Add the resource(s)
-4. update_system_prompt → Add usage guidelines
+2. list_available_* (tools/middlewares/subagents/skills) → Verify resource exists
+3. add_*_to_agent (add_tool_to_agent / add_middleware_to_agent / add_subagent_to_agent / add_skill_to_agent) → Add the resource(s)
+4. update_system_prompt → Add usage guidelines (skills only when explicit behavioral changes are needed)
 5. (For tool/middleware only) CHECK secrets → Verify required env keys are registered
 
 ### Middleware-Specific System Prompt Rules
@@ -427,6 +429,7 @@ Example system prompt section for RAG:
 | list_available_tools | Available tools to add |
 | list_available_middlewares | Available middlewares to add |
 | list_available_subagents | Available subagents to add |
+| list_available_skills | Available skills to add |
 | list_available_models | Available models |
 | get_agent_required_secrets | Required env keys for current agent (model, tools, middlewares) |
 | get_user_secrets | User's registered secret keys |
@@ -450,16 +453,19 @@ Example system prompt section for RAG:
 | remove_tool_from_agent | tool_names: List[str] | Batch remove tools |
 | add_middleware_to_agent | middleware_names: List[str] | Batch add middlewares |
 | remove_middleware_from_agent | middleware_names: List[str] | Batch remove middlewares |
-| add_subagent_to_agent | subagent_ids: List[str] | Batch add subagents |
-| remove_subagent_from_agent | subagent_ids: List[str] | Batch remove subagents |
+| add_subagent_to_agent | agent_ids: List[str] | Batch add subagents (UUID strings) |
+| remove_subagent_from_agent | agent_ids: List[str] | Batch remove subagents (UUID strings) |
+| add_skill_to_agent | skill_names: List[str] | Batch add skills (Skill.name match) |
+| remove_skill_from_agent | skill_names: List[str] | Batch remove skills (Skill.name match) |
 | edit_system_prompt | old_string, new_string, replace_all | **Partial edit (preferred)** |
 | update_system_prompt | new_system_prompt: str | Replace entire prompt |
 | update_model_config | model_name, temperature, max_tokens, top_p, top_k | Partial update |
-| update_middleware_config | middleware_name, config_override (JSON) | Middleware parameters |
-| update_chat_openers | chat_openers: List[str] | Replace all chat openers |
+| update_middleware_config | middleware_name, params (JSON dict) | Middleware parameters |
+| update_chat_openers | openers: List[str] (≤12, 각 1~200자) | Replace all opener questions |
+| update_agent_metadata | name?: str, description?: str | Update agent name and/or description |
 | update_recursion_limit | recursion_limit: int | Update recursion limit |
-| create_cron_schedule | schedule_type, cron_expression, scheduled_at, timezone, message, metadata | Create new cron schedule |
-| update_cron_schedule | schedule_id, cron_expression, scheduled_at, timezone, message, metadata | Update existing schedule |
+| create_cron_schedule | schedule_type ("recurring"\|"one_time"), message, cron_expression? (recurring), scheduled_at? (one_time, ISO8601) | Create new cron schedule (timezone fixed Asia/Seoul) |
+| update_cron_schedule | schedule_id, cron_expression?, message? | Update existing schedule (partial) |
 | delete_cron_schedule | schedule_id | Delete a schedule |
 | enable_cron_schedule | schedule_id | Enable a disabled schedule |
 | disable_cron_schedule | schedule_id | Disable an active schedule |

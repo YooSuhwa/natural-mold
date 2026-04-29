@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import uuid
 
+from fastapi import HTTPException
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
+from app.models.agent_subagent import AgentSubAgentLink
 from app.models.skill import AgentSkillLink
 from app.models.template import Template
 from app.models.tool import AgentToolLink, Tool
@@ -14,11 +16,16 @@ from app.schemas.agent import AgentCreate, AgentUpdate
 
 
 def _selectin_agent() -> list:
-    """Standard eager-loading options for Agent queries."""
+    """Standard eager-loading options for Agent queries.
+
+    AgentSubAgentLink.sub_agent는 model 측에 lazy="joined"가 걸려 있어 link 로드 시
+    같이 들어온다 — 여기서 추가 selectinload는 불필요(중복).
+    """
     return [
         selectinload(Agent.model),
         selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
         selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
+        selectinload(Agent.sub_agent_links),
     ]
 
 
@@ -46,10 +53,75 @@ def _build_tool_links(tool_ids: list[uuid.UUID]) -> list[AgentToolLink]:
     return [AgentToolLink(tool_id=tid) for tid in tool_ids]
 
 
+async def _validate_sub_agent_ids_owned(
+    db: AsyncSession, sub_agent_ids: list[uuid.UUID], user_id: uuid.UUID
+) -> None:
+    """sub_agent_ids: 실재 + 동일 사용자 소유. 누락 시 400."""
+    if not sub_agent_ids:
+        return
+    result = await db.execute(
+        select(Agent.id).where(
+            Agent.id.in_(sub_agent_ids),
+            Agent.user_id == user_id,
+        )
+    )
+    valid = {row[0] for row in result.all()}
+    invalid = [str(i) for i in sub_agent_ids if i not in valid]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid or unauthorized sub_agent_ids: {invalid}",
+        )
+
+
+async def _validate_tool_ids_owned(
+    db: AsyncSession, tool_ids: list[uuid.UUID], user_id: uuid.UUID
+) -> None:
+    """tool_ids: 실재 + (사용자 소유 OR 시스템 도구). 누락 시 400."""
+    if not tool_ids:
+        return
+    result = await db.execute(
+        select(Tool.id).where(
+            Tool.id.in_(tool_ids),
+            or_(Tool.user_id == user_id, Tool.is_system.is_(True)),
+        )
+    )
+    valid = {row[0] for row in result.all()}
+    invalid = [str(i) for i in tool_ids if i not in valid]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid or unauthorized tool_ids: {invalid}",
+        )
+
+
+async def _validate_skill_ids_owned(
+    db: AsyncSession, skill_ids: list[uuid.UUID], user_id: uuid.UUID
+) -> None:
+    """skill_ids: 실재 + 동일 사용자 소유. 누락 시 400."""
+    if not skill_ids:
+        return
+    from app.models.skill import Skill
+
+    result = await db.execute(
+        select(Skill.id).where(
+            Skill.id.in_(skill_ids),
+            Skill.user_id == user_id,
+        )
+    )
+    valid = {row[0] for row in result.all()}
+    invalid = [str(i) for i in skill_ids if i not in valid]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid or unauthorized skill_ids: {invalid}",
+        )
+
+
 async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
     agent.is_favorite = not agent.is_favorite
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "skill_links"])
+    await db.refresh(agent, ["model", "tool_links", "skill_links", "sub_agent_links"])
     return agent
 
 
@@ -64,6 +136,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         middleware_configs=[mc.model_dump() for mc in data.middleware_configs]
         if data.middleware_configs
         else None,
+        opener_questions=data.opener_questions,
         template_id=data.template_id,
     )
 
@@ -86,14 +159,23 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
             tool_ids_to_link.extend(r[0] for r in result.all())
 
     if tool_ids_to_link:
+        await _validate_tool_ids_owned(db, tool_ids_to_link, user_id)
         agent.tool_links = _build_tool_links(tool_ids_to_link)
 
     if data.skill_ids:
+        await _validate_skill_ids_owned(db, data.skill_ids, user_id)
         agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
+
+    if data.sub_agent_ids:
+        await _validate_sub_agent_ids_owned(db, data.sub_agent_ids, user_id)
+        agent.sub_agent_links = [
+            AgentSubAgentLink(sub_agent_id=sid, position=idx)
+            for idx, sid in enumerate(data.sub_agent_ids)
+        ]
 
     db.add(agent)
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "skill_links"])
+    await db.refresh(agent, ["model", "tool_links", "skill_links", "sub_agent_links"])
     return agent
 
 
@@ -112,17 +194,33 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
         agent.model_params = data.model_params
     if data.middleware_configs is not None:
         agent.middleware_configs = [mc.model_dump() for mc in data.middleware_configs]
+    if data.opener_questions is not None:
+        agent.opener_questions = data.opener_questions
     if data.tool_ids is not None:
+        await _validate_tool_ids_owned(db, data.tool_ids, agent.user_id)
         # Clear existing links first to avoid PK conflict, then add new ones
         agent.tool_links.clear()
         await db.flush()
         agent.tool_links = _build_tool_links(data.tool_ids)
     if data.skill_ids is not None:
+        await _validate_skill_ids_owned(db, data.skill_ids, agent.user_id)
         agent.skill_links.clear()
         await db.flush()
         agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
+    if data.sub_agent_ids is not None:
+        # 자기참조 방어: DB CHECK 제약과 이중 가드
+        if agent.id in data.sub_agent_ids:
+            raise HTTPException(status_code=400, detail="Cannot add self as sub-agent")
+        # 소유권/실재 검증 (cross-tenant leak + 500 IntegrityError 방지)
+        await _validate_sub_agent_ids_owned(db, data.sub_agent_ids, agent.user_id)
+        agent.sub_agent_links.clear()
+        await db.flush()
+        agent.sub_agent_links = [
+            AgentSubAgentLink(sub_agent_id=sid, position=idx)
+            for idx, sid in enumerate(data.sub_agent_ids)
+        ]
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "skill_links"])
+    await db.refresh(agent, ["model", "tool_links", "skill_links", "sub_agent_links"])
     return agent
 
 

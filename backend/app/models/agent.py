@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -10,6 +10,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink
+
+if TYPE_CHECKING:
+    from app.models.agent_subagent import AgentSubAgentLink
 
 
 class Agent(Base):
@@ -25,6 +28,9 @@ class Agent(Base):
     is_favorite: Mapped[bool] = mapped_column(default=False, nullable=False)
     model_params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     middleware_configs: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True, default=list
+    )
+    opener_questions: Mapped[list[str] | None] = mapped_column(
         JSON, nullable=True, default=list
     )
     image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -46,6 +52,13 @@ class Agent(Base):
     )
     skill_links: Mapped[list[AgentSkillLink]] = relationship(
         cascade="all, delete-orphan",
+    )
+    sub_agent_links: Mapped[list[AgentSubAgentLink]] = relationship(
+        "AgentSubAgentLink",
+        foreign_keys="[AgentSubAgentLink.parent_agent_id]",
+        cascade="all, delete-orphan",
+        order_by="AgentSubAgentLink.position",
+        lazy="selectin",
     )
     conversations: Mapped[list[Conversation]] = relationship(  # type: ignore[name-defined]
         back_populates="agent", cascade="all, delete-orphan"

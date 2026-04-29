@@ -311,28 +311,189 @@ async def test_remove_middleware_not_found(db: AsyncSession, patch_write_session
 
 
 # ---------------------------------------------------------------------------
-# add_subagent_to_agent / remove_subagent_from_agent (stubs)
+# add_subagent_to_agent / remove_subagent_from_agent
 # ---------------------------------------------------------------------------
 
 
+async def _create_sibling_agent(db: AsyncSession, name: str = "Sibling Agent") -> uuid.UUID:
+    """Create another agent owned by TEST_USER_ID. Assumes _seed_full already ran."""
+    from sqlalchemy import select
+
+    from app.models.model import Model
+
+    result = await db.execute(select(Model).limit(1))
+    model = result.scalar_one()
+
+    sibling = Agent(
+        user_id=TEST_USER_ID,
+        name=name,
+        description=f"{name} desc",
+        system_prompt="sibling prompt",
+        model_id=model.id,
+    )
+    db.add(sibling)
+    await db.commit()
+    await db.refresh(sibling)
+    return sibling.id
+
+
 @pytest.mark.asyncio
-async def test_add_subagent_stub(db: AsyncSession, patch_write_session):
+async def test_add_subagent_to_agent(db: AsyncSession, patch_write_session):
+    agent_id, _ = await _seed_full(db)
+    sibling_id = await _create_sibling_agent(db, "Helper")
+
+    tools = _build_write_tools(db, agent_id)
+    tool = _find_tool(tools, "add_subagent_to_agent")
+
+    result = await tool.ainvoke({"agent_ids": [str(sibling_id)]})
+    assert "추가 완료" in result
+    assert "Helper" in result
+
+    # Verify DB state
+    from sqlalchemy import select
+
+    from app.models.agent_subagent import AgentSubAgentLink
+
+    res = await db.execute(
+        select(AgentSubAgentLink).where(AgentSubAgentLink.parent_agent_id == agent_id)
+    )
+    links = res.scalars().all()
+    assert len(links) == 1
+    assert links[0].sub_agent_id == sibling_id
+
+
+@pytest.mark.asyncio
+async def test_add_subagent_self_reference_skipped(db: AsyncSession, patch_write_session):
+    """Passing the agent's own id should be skipped, not raise."""
     agent_id, _ = await _seed_full(db)
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "add_subagent_to_agent")
 
-    result = await tool.ainvoke({"agent_ids": ["some-id"]})
-    assert "구현되지 않았습니다" in result
+    result = await tool.ainvoke({"agent_ids": [str(agent_id)]})
+    assert "자기 참조" in result
 
 
 @pytest.mark.asyncio
-async def test_remove_subagent_stub(db: AsyncSession, patch_write_session):
+async def test_add_subagent_invalid_uuid_skipped(db: AsyncSession, patch_write_session):
+    agent_id, _ = await _seed_full(db)
+    tools = _build_write_tools(db, agent_id)
+    tool = _find_tool(tools, "add_subagent_to_agent")
+
+    result = await tool.ainvoke({"agent_ids": ["not-a-uuid"]})
+    assert "잘못된 UUID" in result
+
+
+@pytest.mark.asyncio
+async def test_remove_subagent_from_agent(db: AsyncSession, patch_write_session):
+    agent_id, _ = await _seed_full(db)
+    sibling_id = await _create_sibling_agent(db, "ToRemove")
+
+    tools = _build_write_tools(db, agent_id)
+    add_tool = _find_tool(tools, "add_subagent_to_agent")
+    await add_tool.ainvoke({"agent_ids": [str(sibling_id)]})
+
+    remove_tool = _find_tool(tools, "remove_subagent_from_agent")
+    result = await remove_tool.ainvoke({"agent_ids": [str(sibling_id)]})
+    assert "제거 완료" in result
+    assert "ToRemove" in result
+
+    # Verify DB
+    from sqlalchemy import select
+
+    from app.models.agent_subagent import AgentSubAgentLink
+
+    res = await db.execute(
+        select(AgentSubAgentLink).where(AgentSubAgentLink.parent_agent_id == agent_id)
+    )
+    assert res.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_remove_subagent_not_linked(db: AsyncSession, patch_write_session):
     agent_id, _ = await _seed_full(db)
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "remove_subagent_from_agent")
 
-    result = await tool.ainvoke({"agent_ids": ["some-id"]})
-    assert "구현되지 않았습니다" in result
+    result = await tool.ainvoke({"agent_ids": [str(uuid.uuid4())]})
+    assert "에이전트에 없습니다" in result
+
+
+# ---------------------------------------------------------------------------
+# add_skill_to_agent / remove_skill_from_agent
+# ---------------------------------------------------------------------------
+
+
+async def _create_skill(db: AsyncSession, name: str) -> uuid.UUID:
+    from app.models.skill import Skill
+
+    skill = Skill(
+        user_id=TEST_USER_ID,
+        name=name,
+        description=f"{name} desc",
+        content="skill content",
+    )
+    db.add(skill)
+    await db.commit()
+    await db.refresh(skill)
+    return skill.id
+
+
+@pytest.mark.asyncio
+async def test_add_skill_to_agent(db: AsyncSession, patch_write_session):
+    agent_id, _ = await _seed_full(db)
+    await _create_skill(db, "MySkill")
+
+    tools = _build_write_tools(db, agent_id)
+    tool = _find_tool(tools, "add_skill_to_agent")
+
+    result = await tool.ainvoke({"skill_names": ["MySkill"]})
+    assert "추가 완료" in result
+    assert "MySkill" in result
+
+    # Verify DB
+    from sqlalchemy import select
+
+    from app.models.skill import AgentSkillLink
+
+    res = await db.execute(
+        select(AgentSkillLink).where(AgentSkillLink.agent_id == agent_id)
+    )
+    assert len(res.scalars().all()) == 1
+
+
+@pytest.mark.asyncio
+async def test_add_skill_to_agent_unknown(db: AsyncSession, patch_write_session):
+    agent_id, _ = await _seed_full(db)
+    tools = _build_write_tools(db, agent_id)
+    tool = _find_tool(tools, "add_skill_to_agent")
+
+    result = await tool.ainvoke({"skill_names": ["DoesNotExist"]})
+    assert "찾을 수 없습니다" in result
+
+
+@pytest.mark.asyncio
+async def test_remove_skill_from_agent(db: AsyncSession, patch_write_session):
+    agent_id, _ = await _seed_full(db)
+    await _create_skill(db, "Removable")
+
+    tools = _build_write_tools(db, agent_id)
+    add_tool = _find_tool(tools, "add_skill_to_agent")
+    await add_tool.ainvoke({"skill_names": ["Removable"]})
+
+    remove_tool = _find_tool(tools, "remove_skill_from_agent")
+    result = await remove_tool.ainvoke({"skill_names": ["Removable"]})
+    assert "제거 완료" in result
+    assert "Removable" in result
+
+
+@pytest.mark.asyncio
+async def test_remove_skill_not_linked(db: AsyncSession, patch_write_session):
+    agent_id, _ = await _seed_full(db)
+    tools = _build_write_tools(db, agent_id)
+    tool = _find_tool(tools, "remove_skill_from_agent")
+
+    result = await tool.ainvoke({"skill_names": ["NotLinked"]})
+    assert "에이전트에 없습니다" in result
 
 
 # ---------------------------------------------------------------------------

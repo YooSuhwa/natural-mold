@@ -18,9 +18,17 @@ interface AgentAvatarProps {
   name: string
   size?: keyof typeof sizeMap
   className?: string
+  /** true이면 imageUrl을 그대로 사용 (frontend public/* 자산). 기본 false: backend API_BASE prepend */
+  publicAsset?: boolean
 }
 
-export function AgentAvatar({ imageUrl, name, size = 'sm', className }: AgentAvatarProps) {
+export function AgentAvatar({
+  imageUrl,
+  name,
+  size = 'sm',
+  className,
+  publicAsset = false,
+}: AgentAvatarProps) {
   const { container, icon, px } = sizeMap[size]
   const [hasError, setHasError] = useState(false)
   // imageUrl이 바뀌면 이전 에러 상태 리셋 (React 공식 "rendering 중 비교" 패턴).
@@ -34,7 +42,7 @@ export function AgentAvatar({ imageUrl, name, size = 'sm', className }: AgentAva
   if (imageUrl && !hasError) {
     return (
       <Image
-        src={`${API_BASE}${imageUrl}`}
+        src={publicAsset ? imageUrl : `${API_BASE}${imageUrl}`}
         alt={name}
         width={px}
         height={px}

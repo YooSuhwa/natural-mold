@@ -1,4 +1,11 @@
 // Agent
+export interface AgentBrief {
+  id: string
+  name: string
+  description?: string | null
+  image_url?: string | null
+}
+
 export interface Agent {
   id: string
   name: string
@@ -7,6 +14,7 @@ export interface Agent {
   model: ModelBrief
   tools: ToolBrief[]
   skills: SkillBrief[]
+  sub_agents: AgentBrief[]
   status: string
   is_favorite: boolean
   model_params: ModelParams | null
@@ -15,6 +23,7 @@ export interface Agent {
   created_at: string
   updated_at: string
   image_url: string | null
+  opener_questions: string[] | null
 }
 
 export interface ModelParams {
@@ -40,9 +49,11 @@ export interface AgentCreateRequest {
   model_id: string
   tool_ids?: string[]
   skill_ids?: string[]
+  sub_agent_ids?: string[]
   template_id?: string
   model_params?: ModelParams
   middleware_configs?: MiddlewareConfigEntry[]
+  opener_questions?: string[]
 }
 
 export interface AgentUpdateRequest {
@@ -52,9 +63,11 @@ export interface AgentUpdateRequest {
   model_id?: string
   tool_ids?: string[]
   skill_ids?: string[]
+  sub_agent_ids?: string[]
   is_favorite?: boolean
   model_params?: ModelParams
   middleware_configs?: MiddlewareConfigEntry[]
+  opener_questions?: string[]
 }
 
 // Provider

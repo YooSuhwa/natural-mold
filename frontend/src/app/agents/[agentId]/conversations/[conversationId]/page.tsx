@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useCallback, useMemo } from 'react'
+import { use, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
 import {
@@ -11,7 +11,8 @@ import {
   MoreHorizontalIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { AssistantRuntimeProvider } from '@assistant-ui/react'
+import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
+import type { Agent } from '@/lib/types'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useMessages, useCreateConversation, conversationKeys } from '@/lib/hooks/use-conversations'
 import { useQueryClient } from '@tanstack/react-query'
@@ -82,28 +83,8 @@ export default function ChatPage({
     router.push(`/agents/${agentId}/conversations/${conv.id}`)
   }
 
-  const emptyContent = useMemo(
-    () => (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="mb-4">
-          <AgentAvatar
-            imageUrl={agent?.image_url ?? null}
-            name={agent?.name ?? 'Agent'}
-            size="lg"
-          />
-        </div>
-        <h2 className="mb-1 text-lg font-semibold">{agent?.name ?? t('emptyState')}</h2>
-        {agent?.description && (
-          <p className="mb-4 max-w-md text-sm text-muted-foreground">{agent.description}</p>
-        )}
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <SparklesIcon className="size-3.5" />
-          <span>{t('emptyState')}</span>
-        </div>
-      </div>
-    ),
-    [agent, t],
-  )
+  const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
+
 
   return (
     <div className="flex min-h-0 flex-1 gap-3 overflow-hidden bg-muted/30 p-3">
@@ -197,6 +178,47 @@ export default function ChatPage({
           </AssistantRuntimeProvider>
         )}
       </section>
+    </div>
+  )
+}
+
+interface ChatEmptyStateProps {
+  agent: Agent | undefined
+  fallback: string
+}
+
+function ChatEmptyState({ agent, fallback }: ChatEmptyStateProps) {
+  // AssistantRuntimeProvider 컨텍스트 안에서만 동작 — emptyContent는 provider 자식
+  const composer = useComposerRuntime({ optional: true })
+  const openerQuestions = agent?.opener_questions ?? []
+
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="mb-4">
+        <AgentAvatar imageUrl={agent?.image_url ?? null} name={agent?.name ?? 'Agent'} size="lg" />
+      </div>
+      <h2 className="mb-1 text-lg font-semibold">{agent?.name ?? fallback}</h2>
+      {agent?.description && (
+        <p className="mb-4 max-w-md text-sm text-muted-foreground">{agent.description}</p>
+      )}
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <SparklesIcon className="size-3.5" />
+        <span>{fallback}</span>
+      </div>
+      {openerQuestions.length > 0 && (
+        <div className="mt-6 flex max-w-2xl flex-wrap justify-center gap-2">
+          {openerQuestions.map((q) => (
+            <button
+              key={q}
+              type="button"
+              onClick={() => composer?.setText(q)}
+              className="rounded-full border px-3 py-1.5 text-xs transition-colors hover:bg-accent"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

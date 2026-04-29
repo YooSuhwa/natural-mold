@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations, useFormatter } from 'next-intl'
-import { WrenchIcon, StarIcon, Settings2Icon, WorkflowIcon, CpuIcon } from 'lucide-react'
+import { WrenchIcon, StarIcon, Settings2Icon, CpuIcon } from 'lucide-react'
 import {
   Card,
   CardHeader,
@@ -114,17 +114,6 @@ export function AgentCard({ agent }: AgentCardProps) {
               })}
             </span>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
-              <button
-                type="button"
-                onClick={(e) => {
-                  stopProp(e)
-                  router.push(`/agents/${agent.id}/visual-settings`)
-                }}
-                className="rounded-md p-1 hover:bg-accent transition-colors"
-                aria-label={t('visualSettings')}
-              >
-                <WorkflowIcon className="size-4 text-muted-foreground hover:text-foreground transition-colors" />
-              </button>
               <button
                 type="button"
                 onClick={(e) => {

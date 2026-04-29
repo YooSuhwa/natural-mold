@@ -191,6 +191,8 @@ function CopyButton() {
 
 export interface AssistantThreadProps {
   agentImageUrl?: string | null
+  /** true이면 agentImageUrl을 frontend public 자산으로 처리 (API_BASE prepend X) */
+  agentImagePublicAsset?: boolean
   agentName?: string
   /** 토큰 바 표시에 사용할 모델명 */
   modelName?: string
@@ -208,6 +210,7 @@ export interface AssistantThreadProps {
 
 export function AssistantThread({
   agentImageUrl,
+  agentImagePublicAsset = false,
   agentName,
   modelName,
   showTokenBar = false,
@@ -261,6 +264,7 @@ export function AssistantThread({
                       imageUrl={agentImageUrl ?? null}
                       name={agentName ?? tChat('defaultAgentName')}
                       size="sm"
+                      publicAsset={agentImagePublicAsset}
                     />
                     <div className="min-w-0 flex-1">
                       <AssistantMessageParts />
