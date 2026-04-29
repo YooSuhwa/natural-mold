@@ -1,7 +1,63 @@
 # Quality Score — Moldy Agent Builder
 
-> 최종 검증일: 2026-04-17
+> 최종 검증일: 2026-04-29
 > 검증자: bezos (QA Engineer)
+
+---
+
+## Greenfield Credentials Rewrite (M0~M6) — 2026-04-29
+
+### 게이트
+
+| 게이트 | 결과 | 비고 |
+|---|---|---|
+| `python scripts/check_branding.py` | PASS | n8n 식별자 0건, @n8n/* 0건, 자산 블랙리스트 0건 |
+| `uv run ruff check .` | PASS | 0 errors |
+| `uv run pytest tests/` | PASS | **480 passed**, 1 deselected, 1 warning (TestRequestSpec collection 무해) |
+| `pnpm lint` | PASS | 0 errors, 1 informational warning (react-hooks/incompatible-library — TanStack Table) |
+| `pnpm build` | PASS | 16 routes (credentials, mcp-servers, tools, skills 신규) |
+| `alembic upgrade head` | DEFERRED | 사용자 확인 후 실행 (data-loss 액션) |
+| Playwright E2E | DEFERRED | 4 specs 작성, 백엔드 실행 필요 — 사용자 실행 |
+
+### 도메인별 등급
+
+| 도메인 | 등급 | 비고 |
+|---|:---:|---|
+| Cipher V2 (security/) | A | 23 tests, n8n 알고리즘 차용 + moldy-encryption-v1, key_id 멀티키 검증 완료 |
+| Credential 도메인 (credentials/) | A | 16 tests + OAuth2 + Tester + Vault, GenericAuth + interpolation + audit log |
+| Tools 도메인 (tools/) | A | 12 도구 정의, ToolDefinition 단일 경로, GenericAuth 통일 |
+| MCP (mcp/) | B+ | 디스커버리 + OAuth, agent_mcp_servers 링크 테이블 미구현 (후속) |
+| Skills (skills/) | A | text/package 양방향, zip-slip + symlink 방어, content_hash |
+| agent_runtime 재배선 | A | chat_service 단일 경로, prefetch 버그 수정, 480 회귀 PASS |
+| 키 로테이션 cron | A | rotate_credentials_to_active_key 잡 + audit log rotate |
+| External Secrets (Vault) | B | HVAC SDK 실구현, KV v2, AppRole/JWT 미지원(후속) |
+| 마이그레이션 m18 | A- | DROP+CREATE+ALTER, downgrade NotImplementedError, dialect-aware. 실제 PostgreSQL upgrade 미실행 |
+| 프론트엔드 디자인 시스템 | A | DataTable + dynamic-fields-form 일관 적용 |
+| 프론트엔드 페이지 (4) | A | credentials/tools/mcp-servers/skills 동작, build PASS |
+| 브랜딩/라이선스 가드 | A | NOTICES.md 출처 명기, CI 게이트 강제 |
+
+### 변경 통계
+
+- 백엔드 신규 파일: ~64 (security 2 + credentials 22 + tools 10 + mcp 4 + skills 4 + models 7 + routers 4 + seed 1 + alembic 1 + tests 10)
+- 백엔드 폐기: 21 prod + 21 tests
+- 프론트엔드 신규: ~29 (디자인 4 + 페이지 4 + 컴포넌트 14 + types/api/hooks 15 + e2e 4)
+- 프론트엔드 폐기: ~24
+- 신규 테스트: ~110 (cipher 23 + branding 1 + credentials 16 + oauth2 + tester + external_secrets + tools + mcp + skills 21 + seed 5 + migration 5 + chat_integration 3 + rotation 2)
+
+### 후속 (별도 PR/티켓)
+
+1. `alembic upgrade head` 실제 PostgreSQL 실행 — 사용자 확인 필요 (dev DB 폐기)
+2. Playwright E2E 라이브 API 실행 — 백엔드 기동 후
+3. 변호사 라이선스 검토 1회 — 외부 배포 시
+4. agent_mcp_servers 링크 테이블 도입 — MCP 도구를 에이전트에 직접 연결
+5. OAuth2 callback state Redis/DB 백킹 — 멀티프로세스 배포 시
+6. TestRequestSpec → CredentialTestSpec rename — pytest collection 경고 제거
+7. Vault AppRole/JWT 인증 추가
+8. interpolation sandbox 강화 (보안 표면)
+
+### 판정
+
+**GO** — 단일 PR로 머지 가능. 6개 마일스톤 모두 게이트 PASS. 회귀 위험 Low (480 tests 단일 사이클 PASS).
 
 ---
 
