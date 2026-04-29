@@ -190,6 +190,7 @@
       "back": "돌아가기",
       "unsavedWarning": "저장하지 않은 변경사항이 있습니다. 정말 나가시겠습니까?",
       "title": "에이전트 설정: {name}",
+      "defaultName": "새 에이전트",
       "name": "이름",
       "description": "설명",
       "descriptionPlaceholder": "에이전트에 대한 간단한 설명",

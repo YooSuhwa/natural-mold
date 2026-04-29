@@ -11,6 +11,8 @@ const sizeMap = {
   sm: { container: 'size-8', icon: 'size-4', px: 32 },
   md: { container: 'size-10', icon: 'size-5', px: 40 },
   lg: { container: 'size-14', icon: 'size-7', px: 56 },
+  // FixHero와 동일한 크기 (size-44 = 176px, sm:size-52 = 208px). px는 가장 큰 값 기준.
+  xl: { container: 'size-44 sm:size-52', icon: 'size-16', px: 208 },
 } as const
 
 interface AgentAvatarProps {

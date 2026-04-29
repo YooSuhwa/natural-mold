@@ -136,3 +136,12 @@
   80% { width: 80%; }
   100% { width: 90%; }
 }
+
+/* 스크롤은 동작하되 시각적 스크롤바는 숨김 — 대시보드 카드 영역 등에서 사용 */
+@utility scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

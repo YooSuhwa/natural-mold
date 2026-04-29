@@ -109,8 +109,8 @@ export default function DashboardPage() {
   }, [agents, search, sortBy, showFavoritesOnly])
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 overflow-auto p-6">
-      <section className="relative overflow-hidden rounded-3xl border border-emerald-100/60 bg-gradient-to-br from-emerald-50/60 via-background to-background p-6 sm:p-8 dark:border-emerald-500/10 dark:from-emerald-950/20">
+    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 overflow-hidden p-6">
+      <section className="relative shrink-0 overflow-hidden rounded-3xl border border-emerald-100/60 bg-gradient-to-br from-emerald-50/60 via-background to-background p-6 sm:p-8 dark:border-emerald-500/10 dark:from-emerald-950/20">
         <div className="flex items-center justify-between gap-4">
           <div className="flex-1 space-y-2">
             <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t('greeting')}</h1>
@@ -135,7 +135,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid shrink-0 gap-4 sm:grid-cols-3">
         {quickActions.map((action) => (
           <Link key={action.href} href={action.href} className="group">
             <Card
@@ -162,6 +162,8 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* hero/quickActions는 fixed, 카드 그리드만 자체 스크롤. px-1은 카드 ring/border 잘림 방지 여백. */}
+      <div className="scrollbar-hide flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-1">
       {agentsLoading ? (
         <div>
           <h2 className="mb-4 text-lg font-semibold tracking-tight">{t('myAgents')}</h2>
@@ -257,6 +259,7 @@ export default function DashboardPage() {
       )}
 
       <p className="pb-2 text-center text-xs text-muted-foreground">{t('tip')}</p>
+      </div>
     </div>
   )
 }
