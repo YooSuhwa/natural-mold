@@ -7,15 +7,17 @@ import {
   Trash2Icon,
   WrenchIcon,
   LayersIcon,
+  ServerIcon,
   SparklesIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTools } from '@/lib/hooks/use-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
+import { useAllMcpTools } from '@/lib/hooks/use-mcp-servers'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import { ToolsSkillsDialog } from '../dialogs/tools-skills-dialog'
-import { AddMiddlewareModal } from '../dialogs/add-middleware-modal'
+import { MiddlewaresDialog } from '../dialogs/add-middleware-modal'
 
 interface ToolsMiddlewaresGridProps {
   selectedToolIds: Set<string>
@@ -58,7 +60,7 @@ export function ToolsMiddlewaresGrid({
 
 interface ChipItem {
   key: string
-  kind: 'tool' | 'skill'
+  kind: 'tool' | 'mcp' | 'skill'
   name: string
   onRemove: () => void
 }
@@ -82,11 +84,16 @@ function ToolsSkillsBox({
   const [open, setOpen] = useState(false)
   const { data: tools } = useTools()
   const { data: skills } = useSkills()
+  const { data: mcpTools } = useAllMcpTools()
 
-  const isLoading = !tools || !skills
+  const isLoading = !tools || !skills || !mcpTools
   const selectedTools = useMemo(
     () => tools?.filter((tool) => selectedToolIds.has(tool.id)) ?? [],
     [tools, selectedToolIds],
+  )
+  const selectedMcpTools = useMemo(
+    () => mcpTools?.filter((mt) => selectedMcpToolIds.has(mt.id)) ?? [],
+    [mcpTools, selectedMcpToolIds],
   )
   const selectedSkills = useMemo(
     () => skills?.filter((skill) => selectedSkillIds.has(skill.id)) ?? [],
@@ -99,14 +106,27 @@ function ToolsSkillsBox({
       name: tool.name,
       onRemove: () => onToggleTool(tool.id),
     }))
+    const mcpItems: ChipItem[] = selectedMcpTools.map((mt) => ({
+      key: `mcp:${mt.id}`,
+      kind: 'mcp',
+      name: mt.name,
+      onRemove: () => onToggleMcpTool(mt.id),
+    }))
     const skillItems: ChipItem[] = selectedSkills.map((skill) => ({
       key: `skill:${skill.id}`,
       kind: 'skill',
       name: skill.name,
       onRemove: () => onToggleSkill(skill.id),
     }))
-    return [...toolItems, ...skillItems]
-  }, [selectedTools, selectedSkills, onToggleTool, onToggleSkill])
+    return [...toolItems, ...mcpItems, ...skillItems]
+  }, [
+    selectedTools,
+    selectedMcpTools,
+    selectedSkills,
+    onToggleTool,
+    onToggleMcpTool,
+    onToggleSkill,
+  ])
 
   const isEmpty = items.length === 0
 
@@ -119,6 +139,7 @@ function ToolsSkillsBox({
           {!isLoading && !isEmpty && (
             <span className="truncate text-xs text-muted-foreground">
               {t('toolsCount', { n: selectedTools.length })} ·{' '}
+              {t('mcpCount', { n: selectedMcpTools.length })} ·{' '}
               {t('skillsCount', { n: selectedSkills.length })}
             </span>
           )}
@@ -142,6 +163,8 @@ function ToolsSkillsBox({
               icon={
                 item.kind === 'tool' ? (
                   <WrenchIcon className="size-3.5 text-indigo-500" />
+                ) : item.kind === 'mcp' ? (
+                  <ServerIcon className="size-3.5 text-sky-500" />
                 ) : (
                   <SparklesIcon className="size-3.5 text-emerald-500" />
                 )
@@ -177,6 +200,7 @@ function MiddlewaresBox({
   onToggleMiddleware: (type: string) => void
 }) {
   const t = useTranslations('agent.settings')
+  const tc = useTranslations('common')
   const [open, setOpen] = useState(false)
   const { data: middlewares } = useMiddlewares()
 
@@ -191,7 +215,7 @@ function MiddlewaresBox({
         </div>
         <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
           <PlusIcon className="size-3.5" />
-          {t('addMiddleware')}
+          {tc('add')}
         </Button>
       </div>
       {!middlewares ? (
@@ -214,10 +238,10 @@ function MiddlewaresBox({
           ))}
         </div>
       )}
-      <AddMiddlewareModal
+      <MiddlewaresDialog
         open={open}
         onOpenChange={setOpen}
-        selectedMiddlewareTypes={selectedMiddlewareTypes}
+        selectedTypes={selectedMiddlewareTypes}
         onToggleMiddleware={onToggleMiddleware}
       />
     </div>

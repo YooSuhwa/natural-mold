@@ -8,7 +8,8 @@ import {
   ClockIcon,
   SettingsIcon,
 } from 'lucide-react'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
 import { AssistantPanel } from '@/components/agent/assistant-panel'
 import { TriggersTab } from '../triggers-tab'
 import { TestChatPanel } from './test-chat-panel'
@@ -56,43 +57,28 @@ export function RightPanel({
       className="flex min-h-0 flex-1 flex-col"
     >
       <div className="scrollbar-hide sticky top-0 z-10 flex justify-center overflow-x-auto overflow-y-hidden bg-background">
-        <TabsList variant="line" className="h-auto">
-          <TabsTrigger
-            value="fix"
-            className="px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
-          >
+        <LineTabsList>
+          <LineTabsTrigger value="fix">
             <WrenchIcon className="size-3.5" />
             {t('tabs.fix')}
-          </TabsTrigger>
-          <TabsTrigger
-            value="test"
-            className="px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
-          >
+          </LineTabsTrigger>
+          <LineTabsTrigger value="test">
             <MessageSquareIcon className="size-3.5" />
             {t('tabs.test')}
-          </TabsTrigger>
-          <TabsTrigger
-            value="opener"
-            className="px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
-          >
+          </LineTabsTrigger>
+          <LineTabsTrigger value="opener">
             <HelpCircleIcon className="size-3.5" />
             {t('tabs.opener')}
-          </TabsTrigger>
-          <TabsTrigger
-            value="schedule"
-            className="px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
-          >
+          </LineTabsTrigger>
+          <LineTabsTrigger value="schedule">
             <ClockIcon className="size-3.5" />
             {t('tabs.schedule')}
-          </TabsTrigger>
-          <TabsTrigger
-            value="settings"
-            className="px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
-          >
+          </LineTabsTrigger>
+          <LineTabsTrigger value="settings">
             <SettingsIcon className="size-3.5" />
             {t('tabs.settings')}
-          </TabsTrigger>
-        </TabsList>
+          </LineTabsTrigger>
+        </LineTabsList>
       </div>
 
       <TabsContent

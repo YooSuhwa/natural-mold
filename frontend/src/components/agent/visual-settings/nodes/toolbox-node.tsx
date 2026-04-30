@@ -116,6 +116,7 @@ export function ToolboxNode({ data }: { data: ToolboxNodeData }) {
         selectedSkillIds={skillIds}
         onToggleSkill={onToggleSkill}
         defaultTab="tools"
+        mode="tools"
       />
     </>
   )

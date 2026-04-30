@@ -7,6 +7,7 @@
     "save": "저장",
     "create": "생성",
     "cancel": "취소",
+    "add": "추가",
     "remove": "제거",
     "delete": "삭제",
     "register": "등록",
@@ -248,6 +249,7 @@
         "toolsTab": "도구",
         "skillsTab": "스킬",
         "toolsCount": "도구 {n}",
+        "mcpCount": "MCP {n}",
         "skillsCount": "스킬 {n}",
         "noSkills": "등록된 스킬이 없습니다. {link}에서 추가해주세요.",
         "skillsLink": "스킬 관리",
@@ -355,7 +357,8 @@
         "setIdentity": "ID 설정"
       },
       "subagents": {
-        "empty": "구성된 서브 에이전트 없음"
+        "empty": "구성된 서브 에이전트 없음",
+        "remove": "서브 에이전트 제거"
       },
       "comingSoon": "Coming soon",
       "toolbox": {

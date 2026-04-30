@@ -214,8 +214,6 @@ export function VisualSettingsFlow({
     [isControlled, controlledHandlers],
   )
 
-  // sub-agent state pass-through (visual 모드의 노드 시각화는 후속 PR — state 일관성만 유지).
-  // 사용되진 않더라도 controlled 분기에서 toggle 호출 가능성을 유지하기 위해 필요.
   const toggleSubAgent = useCallback(
     (subAgentId: string) => {
       if (isControlled) {
@@ -226,9 +224,6 @@ export function VisualSettingsFlow({
     },
     [isControlled, controlledHandlers],
   )
-  // 미사용 변수 경고 회피 (후속 PR에서 노드에 연결 예정)
-  void selectedSubAgentIds
-  void toggleSubAgent
 
   const toggleMiddleware = useCallback(
     (type: string) => {
@@ -365,7 +360,11 @@ export function VisualSettingsFlow({
         id: 'subagents',
         type: 'subagents',
         position: { x: 210, y: 175 },
-        data: {},
+        data: {
+          selectedSubAgentIds,
+          onToggleSubAgent: toggleSubAgent,
+          currentAgentId: agentId ?? '',
+        },
       },
       {
         id: 'skills',
@@ -391,6 +390,7 @@ export function VisualSettingsFlow({
   const hasSchedules = triggers.length > 0
   const hasTools = selectedToolIds.size > 0
   const hasSkills = selectedSkillIds.size > 0
+  const hasSubAgents = selectedSubAgentIds.size > 0
   const hasMiddlewares = selectedMiddlewareTypes.size > 0
 
   const computedEdges: Edge[] = useMemo(
@@ -423,7 +423,10 @@ export function VisualSettingsFlow({
         id: 'agent-subagents',
         source: 'agent',
         target: 'subagents',
-        style: { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
+        animated: hasSubAgents,
+        style: hasSubAgents
+          ? { stroke: '#8b5cf6', strokeWidth: 2 }
+          : { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
       },
       {
         id: 'agent-skills',
@@ -444,7 +447,7 @@ export function VisualSettingsFlow({
           : { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
       },
     ],
-    [hasSchedules, hasTools, hasSkills, hasMiddlewares],
+    [hasSchedules, hasTools, hasSkills, hasSubAgents, hasMiddlewares],
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -490,6 +493,16 @@ export function VisualSettingsFlow({
             },
           }
         }
+        if (node.id === 'subagents') {
+          return {
+            ...node,
+            data: {
+              selectedSubAgentIds,
+              onToggleSubAgent: toggleSubAgent,
+              currentAgentId: agentId ?? '',
+            },
+          }
+        }
         if (node.id === 'skills') {
           return {
             ...node,
@@ -526,11 +539,14 @@ export function VisualSettingsFlow({
     selectedToolIds,
     selectedMcpToolIds,
     selectedSkillIds,
+    selectedSubAgentIds,
     selectedMiddlewareTypes,
     toggleTool,
     toggleMcpTool,
     toggleSkill,
+    toggleSubAgent,
     toggleMiddleware,
+    agentId,
     setNodes,
   ])
 

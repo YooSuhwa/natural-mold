@@ -19,7 +19,8 @@ import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import { toggleSetItem } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { VisualSettingsFlow } from '@/components/agent/visual-settings/visual-settings-flow'
@@ -160,22 +161,16 @@ export default function ManualCreationPage() {
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="sticky top-0 z-10 flex justify-center overflow-hidden bg-background">
-            <TabsList variant="line" className="h-auto">
-              <TabsTrigger
-                value="form"
-                className="gap-1 px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
-              >
+            <LineTabsList>
+              <LineTabsTrigger value="form" className="gap-1">
                 <ClipboardListIcon className="size-3.5" />
                 {t('tabs.form')}
-              </TabsTrigger>
-              <TabsTrigger
-                value="visual"
-                className="gap-1 px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
-              >
+              </LineTabsTrigger>
+              <LineTabsTrigger value="visual" className="gap-1">
                 <WorkflowIcon className="size-3.5" />
                 {t('tabs.visual')}
-              </TabsTrigger>
-            </TabsList>
+              </LineTabsTrigger>
+            </LineTabsList>
           </div>
           <TabsContent value="form" className="flex flex-1 min-h-0 flex-col overflow-hidden">
             <FormMode

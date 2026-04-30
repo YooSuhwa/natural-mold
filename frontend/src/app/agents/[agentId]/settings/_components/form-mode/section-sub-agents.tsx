@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { SettingsIcon, UsersIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useAgents } from '@/lib/hooks/use-agents'
 import { SubAgentsDialog } from '../dialogs/sub-agents-dialog'
@@ -46,26 +47,23 @@ export function SectionSubAgents({
     return <Skeleton className="h-11 w-full rounded-lg" />
   }
 
-  const isEmpty = selected.length === 0
-
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="group flex w-full cursor-pointer items-center gap-3 rounded-lg border px-4 py-2.5 text-left transition-colors hover:bg-muted/30"
-      >
-        <UsersIcon className="size-4 shrink-0 text-muted-foreground" />
-        <span className="shrink-0 text-sm font-medium">{t('title')}</span>
-        <span
-          className={`flex-1 truncate text-[10px] ${
-            isEmpty ? 'text-muted-foreground/60' : 'text-muted-foreground'
-          }`}
+      <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <UsersIcon className="size-4 text-muted-foreground" />
+          <span className="text-sm font-medium">{t('title')}</span>
+          <span className="truncate text-sm text-muted-foreground">{summary}</span>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={() => setOpen(true)}
+          aria-label={t('manageTitle')}
         >
-          {summary}
-        </span>
-        <SettingsIcon className="size-4 shrink-0 text-foreground/80" />
-      </button>
+          <SettingsIcon className="size-4" />
+        </Button>
+      </div>
       <SubAgentsDialog
         open={open}
         onOpenChange={setOpen}
