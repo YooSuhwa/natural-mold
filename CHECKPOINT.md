@@ -226,18 +226,67 @@ python scripts/check_branding.py   # 0건
 - 프론트: 모델/MCP 페이지에 status 컬럼 + 행 클릭 시 history 차트 (후속)
 - 상태: backend done (2026-04-29, 22 신규 + 581 회귀 = 603 PASS, ruff clean, branding 0건, m20 upgrade/downgrade/upgrade 라운드트립 PG 5433 OK)
 
-## M10: Spend Queue + Dashboard + Model Fallback (예정)
+## M10: Spend Queue + Dashboard + Model Fallback
 
-**DRI**: 젠슨 + 저커버그
+**DRI**: 젠슨 (backend) + 저커버그/팀쿡 (frontend)
 **왜**: 비용 트래킹 정확도/성능 + 운영 가시성 + 안정성.
 
 ### 범위 (LiteLLM 차용)
 - `services/spend_writer.py` — DailySpendUpdateQueue (asyncio.create_task + Redis 버퍼 옵션 + batch flush)
 - 6개 daily aggregate 테이블 (user/agent/model/credential/team[추후]/tag[추후])
-- `app/usage/` 페이지 보강 — Tremor 차트 (line/bar/pie) + 시간/모델/에이전트 필터
-- `models/agent.py`: `model_fallback_list: list[UUID]` 추가 + 마이그레이션 m20
+- `app/usage/` 페이지 보강 — 자체 SVG 차트 (line/bar) + 시간/모델/에이전트 필터
+- `models/agent.py`: `model_fallback_list: list[UUID]` 추가 + 마이그레이션 m22
 - `model_factory`: try/except 체인 (primary fail → fallback)
-- 상태: pending
+
+### Frontend (저커버그/팀쿡 done, 2026-04-29)
+- `lib/types/usage.ts` 신규 — `UsageDailyEntry`, `UsageDailyParams`, `UsageTargetKind`, `UsageGroupBy`, `UsageMetric`
+- `lib/api/usage.ts` 보강 — `usageApi.daily()` + `getDailyAggregate()`
+- `lib/hooks/use-usage.ts` 보강 — `useDailyAggregate(params)` (cache key = params 객체)
+- `lib/types/index.ts` — `Agent.model_fallback_ids?: string[] | null`, `AgentCreate/UpdateRequest.model_fallback_ids` 추가
+- `app/usage/page.tsx` 전면 재작성 — 4 Summary cards (이번 달 비용/토큰/요청/평균) + 필터바(7d/30d/90d/Custom + User/Agent/Model + Date/Target + cost/tokens/requests metric) + 자체 SVG line/bar chart + raw 테이블 + CSV 다운로드 + EmptyState
+- `components/usage/{spend-line-chart,spend-bar-chart,format}.tsx` 신규 — 자체 SVG (M9 health-history-chart 패턴 차용, viewBox + path/area, status-coloured points). 차트 라이브러리 추가 의존성 0건.
+- `app/agents/[agentId]/settings/_components/dialogs/model-dialog.tsx` 보강 — Fallback Models 섹션 (details + 위/아래 버튼으로 순서 변경, dnd-kit 미도입). 최대 5개. 중복 경고. PATCH 시 `model_fallback_ids` 포함.
+- `app/agents/[agentId]/settings/_components/form-mode/{section-model,form-mode}.tsx` — fallback prop chain + section-model에 `+N fallback` 배지
+- `components/agent/agent-card.tsx` — Primary 모델 옆 `+N fallback` 배지 (있을 때만)
+- `app/agents/[agentId]/settings/page.tsx` — fallbackIds state + isDirty 추가 + save 시 model_fallback_ids 전달
+- `messages/ko.json` — `usage.filters/metric/summary/fallback`, `agent.card.fallbackTitle`, `usage.fallback.*` 추가
+- `playwright.config.ts` — `PW_SKIP_BACKEND=1` 환경변수로 backend webServer skip 가능 (fully-mocked spec용)
+- `e2e/spend-dashboard.spec.ts` 신규 — 3 시나리오 (summary cards + line/bar 토글 + CSV 활성화 + empty state)
+- `e2e/model-fallback.spec.ts` 신규 — settings 진입 → ModelDialog → Fallback 섹션 → +Add → Save → PATCH body의 `model_fallback_ids` 캡처 검증
+- 검증: `pnpm lint` clean, `pnpm build` PASS, `python scripts/check_branding.py` 0건, `PW_SKIP_BACKEND=1 pnpm exec playwright test e2e/spend-dashboard.spec.ts e2e/model-fallback.spec.ts` 4/4 PASS
+- 발견 이슈: 로컬 PG (port 5432)가 m17_add_agent_subagents에 머물러 있어 backend(m22 head) 부팅 시 `column models.max_output_tokens does not exist` 에러. PoC 단계라 `alembic upgrade head` 적용 필요(데이터 손실 액션이라 사용자 확인 후 실행).
+- 상태: frontend done (저커버그/팀쿡, 2026-04-29). backend done (젠슨, 2026-04-29).
+
+### Backend (젠슨 done, 2026-04-29)
+- `models/{daily_spend_user,daily_spend_agent,daily_spend_model}.py` 신규 — Numeric(20,8) cost, unique (date, target_id), CASCADE on FK target.
+- `alembic/versions/m21_add_daily_spend_aggregates.py` — 3개 테이블 + 인덱스 (down_revision=m20). dialect-aware, idempotent helpers, reversible.
+- `alembic/versions/m22_add_agent_model_fallback.py` — `agents.model_fallback_list JSON NULLABLE` (down_revision=m21). reversible.
+- `services/spend_writer.py` 신규 — `SpendEntry` dataclass + `DailySpendUpdateQueue` (asyncio.Queue 기반 + 백그라운드 drain task + flush_interval/batch_size 트리거 + dialect-aware ON CONFLICT UPSERT, PG/SQLite 양쪽 지원, application-level fallback 포함). 모듈 전역 `spend_queue` 싱글턴.
+- `hooks/builtin/spend_hook.py` 신규 — `agent_invoke` post hook에서 `spend_queue.add()` 호출. failure isolation (try/except + warning).
+- `hooks/{__init__,builtin/__init__}.py` 보강 — `SpendHook` 등록.
+- `main.py` lifespan — `spend_queue.start()` (lifespan 진입 시) + `spend_queue.stop()` (graceful shutdown — 잔여 flush 후 cancel).
+- `agent_runtime/streaming.py` — `stream_agent_response`에 `usage_sink: dict | None` 추가, 스트림 종료 시 `prompt_tokens/completion_tokens/estimated_cost`를 callback dict에 surface.
+- `agent_runtime/executor.py` — `_build_model_with_fallback(cfg)` 신규 헬퍼 (executor-side, DB-free 체인 walk + recoverable error 분기). `_hook_result_from_usage()` 헬퍼로 streaming-captured usage → `HookResult.tokens_in/out/cost_usd` 매핑. `AgentConfig.model_fallback_chain` 필드 추가.
+- `agent_runtime/model_factory.py` — `create_chat_model_with_fallback(agent, db, ...)` 신규. primary 시도 → recoverable 에러시 fallback 체인 walk. 각 시도마다 audit log `fallback` action (`success: bool`, `provider`, `model_name`, `model_id`, `error`). `_is_fallback_recoverable(exc)` 분류기 (401/403/404/408/409/429/5xx + TimeoutError/HTTPError/ConnectionError).
+- `routers/conversations.py` + `agent_runtime/trigger_executor.py` — `_resolve_fallback_chain(db, fallback_list)` 헬퍼로 `agent.model_fallback_list` (UUID strings) → 체인 dict 리스트로 사전 해석 후 `AgentConfig.model_fallback_chain`에 주입. 누락된 model row는 silent drop.
+- `models/agent.py` — `model_fallback_list: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)` 추가.
+- `schemas/agent.py` — `AgentCreate/Update/Response`에 `model_fallback_ids: list[uuid.UUID] | None` 추가 (Response는 default factory empty list).
+- `services/agent_service.py` — `_validate_model_fallback_ids()` 추가 (existence check), create/update에서 검증 + JSON 직렬화 (str(uuid)).
+- `routers/agents.py` — `_agent_to_response()`에서 `model_fallback_list` (str list) → `model_fallback_ids` (UUID list) 변환. 잘못된 entry는 silent drop.
+- `services/usage_aggregate.py` 신규 — `get_daily_spend(target_kind, target_id, from_date, to_date, group_by)`. tenancy: user 축은 직접 FK, agent 축은 `Agent.user_id` join, model 축은 (per-model 테이블이 cross-user) `DailySpendAgent → Agent` join으로 *현 사용자 contribution*만 집계. `group_by=target` 시 user/agent/model 별 label 자동 fill.
+- `routers/usage.py` 보강 — `GET /api/usage/daily?target_kind=&target_id=&from=&to=&group_by=` 신규.
+- `NOTICES.md` — LiteLLM 차용 표에 `spend_writer.py` (DailySpendUpdateQueue), `usage_aggregate.py` (daily aggregate read API), `create_chat_model_with_fallback` (router fallback walk) 행 추가 + 본문 단락 보강.
+- 테스트:
+  - `test_spend_writer.py` (8) — flush_batch / ON CONFLICT 누적 / target 누락 시 axis skip / loop interval / stop drain / queue full degrade / distinct dates / Decimal precision
+  - `test_usage_aggregate.py` (6) — user 축 시계열 / agent 축 group_by=target label / model 축 agent join scope / window 필터 / target_id 필터 / cross-tenant isolation
+  - `test_model_fallback.py` (9) — recoverable classifier 3종 / executor chain (primary→fallback / 모두 실패 / unrecoverable / no chain) / `create_chat_model_with_fallback` audit (성공+실패) / no chain
+  - `test_migration_m21.py` (4) + `test_migration_m22.py` (4) — module imports / metadata / round-trip / idempotent
+  - `test_hooks.py` 갱신 — `register_default_hooks_idempotent`이 spend_hook 포함 검증
+- 검증:
+  - `uv run pytest tests/ -v`: **634 PASS** (31 신규 + 603 회귀).
+  - `uv run ruff check .`: clean.
+  - `python scripts/check_branding.py`: 0건.
+  - PG 5433 round-trip: m20 → m21 → m22 → downgrade -2 → upgrade head 모두 성공. 컨테이너에서 `daily_spend_*` 3개 테이블 + `agents.model_fallback_list` 컬럼 존재 확인.
 
 ---
 

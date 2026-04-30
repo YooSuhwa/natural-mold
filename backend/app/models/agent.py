@@ -38,6 +38,13 @@ class Agent(Base):
     opener_questions: Mapped[list[str] | None] = mapped_column(
         JSON, nullable=True, default=list
     )
+    # Ordered fallback model ids (stringified UUIDs). Tried in sequence when
+    # the primary ``model_id`` raises a transient/auth error during
+    # ``create_chat_model_with_fallback``. ``None`` and ``[]`` both mean
+    # "no fallback" — the runtime then surfaces the original error.
+    model_fallback_list: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True
+    )
     image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"))
     created_at: Mapped[datetime] = mapped_column(

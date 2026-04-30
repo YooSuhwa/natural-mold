@@ -1,10 +1,26 @@
-# HANDOFF — Credential / Tools / Skills Greenfield Rewrite
+# HANDOFF — Credential/Tools/Skills/Models 그린필드 리라이트 + 운영 인프라
 
-**프로젝트**: natural-mold(Moldy) Credential·Tools·Skills 시스템 그린필드 리라이트
+**프로젝트**: natural-mold(Moldy) — Credential·Tools·Skills·Models 그린필드 + Hook + Health + Spend + Fallback
 **브랜치**: `feature/greenfield-credentials`
-**작업일**: 2026-04-29 (단일 세션)
+**작업일**: 2026-04-29 ~ 2026-04-30 (2 세션, 11 마일스톤)
 **팀**: 사티아(PO) + 피차이 + 젠슨 + 베조스 + 팀쿡 + 저커버그 (TTH 사일로)
 **참조**: `PLAN.md`, `CHECKPOINT.md`, `docs/design-docs/adr-009-greenfield-credentials.md`, `NOTICES.md`
+
+## 마일스톤 진행 (M0~M10)
+
+| | 내용 | 신규 tests | 누적 PASS |
+|---|---|:---:|:---:|
+| M0 | 거버넌스 + ADR-009 | — | — |
+| M1 | 브랜딩 검증 + Cipher V2 | 24 | 24 |
+| M2 | Credential 도메인 + Vault | 44 | 68 |
+| M3 | Tools 12개 + MCP 서버 | 29 | 97 |
+| M4 | Skills 재작성 + alembic m18 | 31 | 128 |
+| M5 | agent_runtime 재배선 + 키 로테이션 cron | 6 + 옛 21 삭제 | 480 |
+| M6 | 프론트엔드 (디자인 시스템 + 4페이지 + E2E) | E2E 4 | — |
+| M7 | 모델 카탈로그 + Discovery (LiteLLM + n8n 하이브리드) | 63 | 543 |
+| M8 | 모델 Test + Curl + MCP Registry | 38 + e2e 3 | 581 |
+| M9 | Hook 프레임워크 + Health Check + History | 22 + e2e 2 | 603 |
+| M10 | Spend Queue + Aggregate API + Model Fallback + Dashboard | 31 + e2e 4 | **634** |
 
 ---
 
@@ -95,18 +111,25 @@
 ## 6. 남은 작업 / 후속
 
 ### 즉시 (PR 머지 전)
-- [ ] **사용자 확인 후 실행**: `docker-compose down -v && docker-compose up -d postgres && cd backend && uv run alembic upgrade head` (dev DB 폐기 → m18 적용)
-- [ ] **사용자 실행**: `cd backend && uv run uvicorn app.main:app --reload --port 8001` 후 `cd frontend && pnpm exec playwright test e2e/credentials.spec.ts e2e/tools-catalog.spec.ts e2e/mcp-server-wizard.spec.ts e2e/skills-management.spec.ts`
-- [ ] **변호사 라이선스 검토 1회** (외부 배포 시 — n8n SUL/Apache-2.0 적합성)
+- [ ] **사용자 확인 후 실행**: `docker-compose down -v && docker-compose up -d postgres && cd backend && uv run alembic upgrade head` (dev DB 폐기 → m18~m22 적용)
+- [ ] **사용자 실행**: `cd backend && uv run uvicorn app.main:app --reload --port 8001` 후 `cd frontend && pnpm exec playwright test`
+- [ ] **변호사 라이선스 검토 1회** (외부 배포 시 — n8n SUL/Apache-2.0 + LiteLLM MIT 적합성)
 
 ### 별도 티켓 (후속)
-- [ ] `agent_mcp_servers` 링크 테이블 — MCP 도구를 에이전트에 직접 연결 (현재 PoC는 ToolModel만 처리)
-- [ ] OAuth2 callback state Redis/DB 백킹 (현재 in-process map, 멀티프로세스 시 필요)
-- [ ] `TestRequestSpec` → `CredentialTestSpec` rename (pytest collection 경고 제거)
-- [ ] Vault AppRole/JWT 인증 추가 (현재 토큰 인증만)
-- [ ] OAuth2 PKCE 지원 (현재 authorization code + body auth)
-- [ ] interpolation sandbox 강화 (보안 표면 최소화)
-- [ ] Skills 패키지 sandbox 실행 (현재 메타 파싱만)
+- [ ] `agent_mcp_servers` 링크 테이블 — MCP 도구를 에이전트에 직접 연결
+- [ ] OAuth2 callback state Redis/DB 백킹 (현재 in-process map)
+- [ ] `TestRequestSpec` → `CredentialTestSpec` rename (pytest collection 경고)
+- [ ] Vault AppRole/JWT 인증 추가
+- [ ] OAuth2 PKCE 지원
+- [ ] interpolation sandbox 강화
+- [ ] Skills 패키지 sandbox 실행
+- [ ] **Health check history 보존 정리 cron** (`health_check_history_retention_days=90` 컬럼만 추가됨)
+- [ ] **mcp_server_registry.json 확장**: Discord, Confluence, Asana, Trello 등
+- [ ] **Spend dashboard CSV 다운로드** (라우터에 export 엔드포인트)
+- [ ] **Model Fallback 드래그앤드롭 정렬** (현재 위/아래 화살표만)
+- [ ] **Vercel AI Gateway Credential 정의** (M7에서 후속 결정)
+- [ ] **Hook 등록 admin UI** — 사용자가 직접 hook on/off 가능
+- [ ] **Object Permission 중앙화** (LiteLLM 패턴 — 멀티테넌트 전환 시)
 
 ---
 

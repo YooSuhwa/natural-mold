@@ -38,6 +38,14 @@ def _sub_agent_image_url(sub: Agent) -> str | None:
 
 def _agent_to_response(agent: Agent) -> AgentResponse:
     """Convert Agent model to AgentResponse with tool configs."""
+    fallback_ids: list[uuid.UUID] = []
+    if agent.model_fallback_list:
+        for raw in agent.model_fallback_list:
+            try:
+                fallback_ids.append(uuid.UUID(str(raw)))
+            except (TypeError, ValueError):
+                # Skip malformed legacy entries; surface only valid UUIDs.
+                continue
     return AgentResponse(
         id=agent.id,
         name=agent.name,
@@ -63,6 +71,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         is_favorite=agent.is_favorite,
         model_params=agent.model_params,
         opener_questions=agent.opener_questions,
+        model_fallback_ids=fallback_ids,
         image_url=(
             f"/api/agents/{agent.id}/image?t={int(agent.updated_at.timestamp())}"
             if agent.image_path

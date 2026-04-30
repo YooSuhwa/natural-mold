@@ -74,6 +74,13 @@ class AgentConfig:
     user_id: str | None = None
     model_id: str | None = None
     llm_credential_id: str | None = None
+    # Optional ordered fallback chain. Each entry is
+    # ``{"provider": str, "model_name": str, "base_url": str | None,
+    #   "model_id": str | None}`` and is tried in order when the primary
+    # ``create_chat_model`` raises a recoverable error. Resolved by the
+    # caller (chat_service / trigger_executor) so the executor stays free of
+    # DB dependencies.
+    model_fallback_chain: list[dict[str, Any]] | None = None
 
 
 def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseTool:
@@ -371,6 +378,55 @@ def _resolve_middleware_model_params(
     return resolved
 
 
+def _build_model_with_fallback(cfg: AgentConfig) -> BaseChatModel:
+    """Construct the primary chat model, walking ``model_fallback_chain``
+    when the primary raises a recoverable error.
+
+    This mirrors :func:`app.agent_runtime.model_factory.create_chat_model_with_fallback`
+    but operates on the pre-resolved chain in ``AgentConfig`` so the executor
+    can stay synchronous and DB-free. The chain entries are resolved by the
+    caller (chat_service / trigger_executor) which has the DB session.
+    """
+
+    from app.agent_runtime.model_factory import _is_fallback_recoverable
+
+    last_error: BaseException | None = None
+    chain: list[dict[str, Any]] = []
+    chain.append(
+        {
+            "provider": cfg.provider,
+            "model_name": cfg.model_name,
+            "base_url": cfg.base_url,
+        }
+    )
+    for entry in cfg.model_fallback_chain or []:
+        chain.append(entry)
+
+    for idx, entry in enumerate(chain):
+        try:
+            return create_chat_model(
+                entry["provider"],
+                entry["model_name"],
+                cfg.api_key,
+                entry.get("base_url"),
+                **(cfg.model_params or {}),
+            )
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+            if idx == len(chain) - 1 or not _is_fallback_recoverable(exc):
+                raise
+            logger.info(
+                "model %s/%s failed; trying fallback (%d remaining)",
+                entry["provider"],
+                entry["model_name"],
+                len(chain) - idx - 1,
+            )
+
+    # Unreachable: the loop either returns or re-raises, but mypy isn't sure.
+    assert last_error is not None
+    raise last_error
+
+
 async def _prepare_agent(
     cfg: AgentConfig,
     *,
@@ -379,9 +435,7 @@ async def _prepare_agent(
 ) -> tuple[Any, list, dict]:
     """에이전트 빌드 + 설정. stream/invoke 공용."""
     system_prompt = cfg.system_prompt
-    model = create_chat_model(
-        cfg.provider, cfg.model_name, cfg.api_key, cfg.base_url, **(cfg.model_params or {})
-    )
+    model = _build_model_with_fallback(cfg)
 
     # 1. 도구 생성 — 단일 경로 (definition_key + credentials).
     # MCP는 향후 별도 mcp_configs 키로 전달 (PoC 단계에서는 비어있음).
@@ -520,6 +574,27 @@ def _hook_ctx_for_agent(cfg: AgentConfig) -> HookContext | None:
     )
 
 
+def _hook_result_from_usage(
+    duration_ms: int, usage_sink: dict[str, Any]
+) -> HookResult:
+    """Build a :class:`HookResult` from streaming-captured usage.
+
+    Streaming surfaces ``prompt_tokens`` / ``completion_tokens`` /
+    ``estimated_cost`` keys; the hook framework maps them to its own
+    ``tokens_in`` / ``tokens_out`` / ``cost_usd`` field names.
+    """
+
+    prompt = usage_sink.get("prompt_tokens")
+    completion = usage_sink.get("completion_tokens")
+    cost = usage_sink.get("estimated_cost")
+    return HookResult(
+        duration_ms=duration_ms,
+        tokens_in=int(prompt) if prompt is not None else None,
+        tokens_out=int(completion) if completion is not None else None,
+        cost_usd=float(cost) if cost is not None else None,
+    )
+
+
 async def execute_agent_stream(
     cfg: AgentConfig,
     messages_history: list[dict[str, str]],
@@ -534,6 +609,7 @@ async def execute_agent_stream(
     if ctx is not None:
         await hooks.run_pre(ctx)
     started = time.monotonic()
+    usage_sink: dict[str, Any] = {}
 
     try:
         async for chunk in stream_agent_response(
@@ -542,6 +618,7 @@ async def execute_agent_stream(
             config,
             cost_per_input_token=cfg.cost_per_input_token,
             cost_per_output_token=cfg.cost_per_output_token,
+            usage_sink=usage_sink,
         ):
             yield chunk
     except Exception as exc:
@@ -551,7 +628,9 @@ async def execute_agent_stream(
     if ctx is not None:
         await hooks.run_post(
             ctx,
-            HookResult(duration_ms=int((time.monotonic() - started) * 1000)),
+            _hook_result_from_usage(
+                int((time.monotonic() - started) * 1000), usage_sink
+            ),
         )
 
 
@@ -572,6 +651,7 @@ async def resume_agent_stream(
         ctx.metadata["resume"] = True
         await hooks.run_pre(ctx)
     started = time.monotonic()
+    usage_sink: dict[str, Any] = {}
 
     try:
         async for chunk in stream_agent_response(
@@ -580,6 +660,7 @@ async def resume_agent_stream(
             config,
             cost_per_input_token=cfg.cost_per_input_token,
             cost_per_output_token=cfg.cost_per_output_token,
+            usage_sink=usage_sink,
         ):
             yield chunk
     except Exception as exc:
@@ -589,7 +670,9 @@ async def resume_agent_stream(
     if ctx is not None:
         await hooks.run_post(
             ctx,
-            HookResult(duration_ms=int((time.monotonic() - started) * 1000)),
+            _hook_result_from_usage(
+                int((time.monotonic() - started) * 1000), usage_sink
+            ),
         )
 
 

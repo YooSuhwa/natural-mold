@@ -56,6 +56,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const [description, setDescription] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [modelId, setModelId] = useState('')
+  const [fallbackIds, setFallbackIds] = useState<string[]>([])
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set())
   const [selectedSubAgentIds, setSelectedSubAgentIds] = useState<Set<string>>(new Set())
@@ -104,6 +105,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       setDescription(agent.description ?? '')
       setSystemPrompt(agent.system_prompt)
       setModelId(agent.model.id)
+      setFallbackIds(agent.model_fallback_ids ?? [])
       setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
       setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
       setSelectedSubAgentIds(new Set(agent.sub_agents?.map((sa) => sa.id) ?? []))
@@ -119,6 +121,9 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       if (description === (prev.description ?? '')) setDescription(agent.description ?? '')
       if (systemPrompt === prev.system_prompt) setSystemPrompt(agent.system_prompt)
       if (modelId === prev.model.id) setModelId(agent.model.id)
+      if (arraysEqual(fallbackIds, prev.model_fallback_ids ?? [])) {
+        setFallbackIds(agent.model_fallback_ids ?? [])
+      }
 
       const prevToolIds = new Set(prev.tools.map((tl) => tl.id))
       if (setsEqual(selectedToolIds, prevToolIds)) {
@@ -175,6 +180,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     () => agent?.opener_questions ?? [],
     [agent?.opener_questions],
   )
+  const initialFallbackIds = useMemo(
+    () => agent?.model_fallback_ids ?? [],
+    [agent?.model_fallback_ids],
+  )
 
   const isDirty = useMemo(() => {
     if (!agent) return false
@@ -190,7 +199,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       !setsEqual(selectedSkillIds, initialSkillIds) ||
       !setsEqual(selectedSubAgentIds, initialSubAgentIds) ||
       !setsEqual(selectedMiddlewareTypes, initialMwTypes) ||
-      !arraysEqual(openerQuestions, initialOpenerQuestions)
+      !arraysEqual(openerQuestions, initialOpenerQuestions) ||
+      !arraysEqual(fallbackIds, initialFallbackIds)
     )
   }, [
     agent,
@@ -206,11 +216,13 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     selectedSubAgentIds,
     selectedMiddlewareTypes,
     openerQuestions,
+    fallbackIds,
     initialToolIds,
     initialSkillIds,
     initialSubAgentIds,
     initialMwTypes,
     initialOpenerQuestions,
+    initialFallbackIds,
   ])
 
   useEffect(() => {
@@ -238,6 +250,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         })),
         model_params: { temperature, top_p: topP, max_tokens: maxTokens },
         opener_questions: openerQuestions,
+        model_fallback_ids: fallbackIds.length > 0 ? fallbackIds : null,
       })
       toast.success(t('toast.saved'))
     } catch {
@@ -385,6 +398,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                   setTopP(1.0)
                   setMaxTokens(4096)
                 }}
+                fallbackIds={fallbackIds}
+                onFallbackIdsChange={setFallbackIds}
                 selectedToolIds={selectedToolIds}
                 onToggleTool={(id) =>
                   setSelectedToolIds((prev) => toggleSetItem(prev, id))

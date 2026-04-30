@@ -84,6 +84,8 @@ class AgentCreate(BaseModel):
     template_id: uuid.UUID | None = None
     model_params: dict[str, Any] | None = None
     opener_questions: list[str] | None = None
+    # Optional ordered list of fallback model ids — see model_factory.
+    model_fallback_ids: list[uuid.UUID] | None = None
 
     @field_validator("opener_questions")
     @classmethod
@@ -113,6 +115,7 @@ class AgentUpdate(BaseModel):
     is_favorite: bool | None = None
     model_params: dict[str, Any] | None = None
     opener_questions: list[str] | None = None
+    model_fallback_ids: list[uuid.UUID] | None = None
 
     @field_validator("opener_questions")
     @classmethod
@@ -164,6 +167,7 @@ class AgentResponse(BaseModel):
     is_favorite: bool = False
     model_params: dict[str, Any] | None = None
     opener_questions: list[str] | None = None
+    model_fallback_ids: list[uuid.UUID] = Field(default_factory=list)
     image_url: str | None = None
     template_id: uuid.UUID | None
     created_at: datetime

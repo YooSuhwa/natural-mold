@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 
 from app.hooks.base import CustomHook, HookContext, HookKind, HookResult
-from app.hooks.builtin import AuditHook, LoggingHook
+from app.hooks.builtin import AuditHook, LoggingHook, SpendHook
 from app.hooks.registry import HookRegistry, hooks
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,7 @@ def register_default_hooks() -> None:
 
     hooks.register(LoggingHook())
     hooks.register(AuditHook())
+    hooks.register(SpendHook())
     logger.info("registered default hooks: %s", [h.name for h in hooks.all()])
 
 
@@ -36,6 +37,7 @@ __all__ = [
     "HookRegistry",
     "HookResult",
     "LoggingHook",
+    "SpendHook",
     "hooks",
     "register_default_hooks",
 ]

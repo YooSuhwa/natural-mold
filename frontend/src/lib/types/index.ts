@@ -7,6 +7,7 @@ export * from './mcp'
 export * from './skill'
 export * from './model'
 export * from './health'
+export * from './usage'
 
 // ---------- Agent ---------------------------------------------------------
 
@@ -65,6 +66,11 @@ export interface Agent {
   image_url: string | null
   opener_questions: string[] | null
   llm_credential_id?: string | null
+  /**
+   * M10 — fallback model UUIDs tried in order when the primary model fails.
+   * Backend column is `agents.model_fallback_list` (Postgres ARRAY of UUID).
+   */
+  model_fallback_ids?: string[] | null
 }
 
 export interface AgentCreateRequest {
@@ -80,6 +86,7 @@ export interface AgentCreateRequest {
   middleware_configs?: MiddlewareConfigEntry[]
   opener_questions?: string[]
   llm_credential_id?: string | null
+  model_fallback_ids?: string[] | null
 }
 
 export interface AgentUpdateRequest {
@@ -95,6 +102,7 @@ export interface AgentUpdateRequest {
   middleware_configs?: MiddlewareConfigEntry[]
   opener_questions?: string[]
   llm_credential_id?: string | null
+  model_fallback_ids?: string[] | null
 }
 
 // ---------- Template ------------------------------------------------------

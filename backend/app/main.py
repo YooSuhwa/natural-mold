@@ -59,6 +59,7 @@ from app.scheduler import (
 from app.seed.bootstrap_from_env import bootstrap_credentials_from_env
 from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_templates import DEFAULT_TEMPLATES
+from app.services.spend_writer import spend_queue
 
 
 @asynccontextmanager
@@ -125,6 +126,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Hook framework — register built-in hooks before any runtime call.
     register_default_hooks()
 
+    # Spend writer — drain queue in the background so spend rows accumulate
+    # without blocking agent runs. Must start before any hook is invoked.
+    await spend_queue.start()
+
     # Start scheduler and reload active triggers.
     scheduler = get_scheduler()
     scheduler.start()
@@ -142,6 +147,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
     # Shutdown
     scheduler.shutdown(wait=False)
+
+    # Drain the spend queue so in-flight aggregates make it to the DB before
+    # the process exits. ``stop`` swallows its own errors.
+    await spend_queue.stop()
 
     from app.agent_runtime.checkpointer import shutdown_checkpointer
 

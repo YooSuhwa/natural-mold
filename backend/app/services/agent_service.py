@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
+from app.models.model import Model
 from app.models.skill import AgentSkillLink
 from app.models.template import Template
 from app.models.tool import AgentToolLink, Tool
@@ -95,6 +96,28 @@ async def _validate_tool_ids_owned(
         )
 
 
+async def _validate_model_fallback_ids(
+    db: AsyncSession, fallback_ids: list[uuid.UUID]
+) -> None:
+    """Every fallback id must reference a model row in the catalog.
+
+    The catalog is shared across users (no per-user ownership), so we only
+    check existence here. Ordering and deduplication are the caller's
+    responsibility — we treat the list as opaque.
+    """
+
+    if not fallback_ids:
+        return
+    result = await db.execute(select(Model.id).where(Model.id.in_(fallback_ids)))
+    valid = {row[0] for row in result.all()}
+    invalid = [str(i) for i in fallback_ids if i not in valid]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown model_fallback_ids: {invalid}",
+        )
+
+
 async def _validate_skill_ids_owned(
     db: AsyncSession, skill_ids: list[uuid.UUID], user_id: uuid.UUID
 ) -> None:
@@ -126,6 +149,10 @@ async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
 
 
 async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) -> Agent:
+    fallback_ids = data.model_fallback_ids or []
+    if fallback_ids:
+        await _validate_model_fallback_ids(db, fallback_ids)
+
     agent = Agent(
         user_id=user_id,
         name=data.name,
@@ -137,6 +164,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         if data.middleware_configs
         else None,
         opener_questions=data.opener_questions,
+        model_fallback_list=[str(fid) for fid in fallback_ids] if fallback_ids else None,
         template_id=data.template_id,
     )
 
@@ -196,6 +224,13 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
         agent.middleware_configs = [mc.model_dump() for mc in data.middleware_configs]
     if data.opener_questions is not None:
         agent.opener_questions = data.opener_questions
+    if data.model_fallback_ids is not None:
+        await _validate_model_fallback_ids(db, data.model_fallback_ids)
+        agent.model_fallback_list = (
+            [str(fid) for fid in data.model_fallback_ids]
+            if data.model_fallback_ids
+            else None
+        )
     if data.tool_ids is not None:
         await _validate_tool_ids_owned(db, data.tool_ids, agent.user_id)
         # Clear existing links first to avoid PK conflict, then add new ones

@@ -15,6 +15,7 @@ from app.config import settings
 from app.credentials import service as credential_service
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import agent_not_found, conversation_not_found, file_not_found
+from app.models.model import Model
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationResponse,
@@ -77,6 +78,8 @@ async def _resolve_agent_context(
         agent, db=db, conversation_id=str(conversation_id)
     )
 
+    fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
+
     return AgentConfig(
         provider=agent.model.provider,
         model_name=agent.model.model_name,
@@ -101,7 +104,50 @@ async def _resolve_agent_context(
         llm_credential_id=(
             str(agent.llm_credential.id) if agent.llm_credential is not None else None
         ),
+        model_fallback_chain=fallback_chain,
     )
+
+
+async def _resolve_fallback_chain(
+    db: AsyncSession,
+    fallback_list: list[str] | None,
+) -> list[dict[str, str | None]] | None:
+    """Resolve agent.model_fallback_list (UUID strings) → ordered chain dicts.
+
+    Missing rows are silently dropped — the catalog can change while an
+    agent's fallback list is stale, and we don't want a deleted fallback
+    breaking the runtime. Returns ``None`` when there are no resolvable
+    entries so the executor skips the fallback path entirely.
+    """
+
+    if not fallback_list:
+        return None
+    from sqlalchemy import select
+
+    fallback_uuids: list[uuid.UUID] = []
+    for raw in fallback_list:
+        try:
+            fallback_uuids.append(uuid.UUID(str(raw)))
+        except (TypeError, ValueError):
+            continue
+    if not fallback_uuids:
+        return None
+    result = await db.execute(select(Model).where(Model.id.in_(fallback_uuids)))
+    rows = {row.id: row for row in result.scalars().all()}
+    chain: list[dict[str, str | None]] = []
+    for fid in fallback_uuids:
+        row = rows.get(fid)
+        if row is None:
+            continue
+        chain.append(
+            {
+                "provider": row.provider,
+                "model_name": row.model_name,
+                "base_url": row.base_url,
+                "model_id": str(row.id),
+            }
+        )
+    return chain or None
 
 
 def _error_sse_pair(error_message: str) -> list[str]:

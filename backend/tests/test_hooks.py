@@ -115,7 +115,7 @@ def test_register_default_hooks_idempotent() -> None:
     register_default_hooks()
     register_default_hooks()
     names = [h.name for h in hooks.all()]
-    assert names == ["logging_hook", "audit_hook"]
+    assert names == ["logging_hook", "audit_hook", "spend_hook"]
 
 
 # ---------------------------------------------------------------------------

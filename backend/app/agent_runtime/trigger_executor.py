@@ -13,14 +13,52 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
+from sqlalchemy import select
+
 from app.agent_runtime.executor import AgentConfig, execute_agent_invoke
 from app.agent_runtime.model_factory import env_provider_keys
 from app.credentials import service as credential_service
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
+from app.models.model import Model
 from app.services import chat_service
 
 logger = logging.getLogger(__name__)
+
+
+async def _resolve_fallback_chain(db, fallback_list):
+    """Resolve ``Agent.model_fallback_list`` (UUID strings) into chain dicts.
+
+    Mirrors the conversations router helper so trigger runs and chat use the
+    same resolution rules: missing rows are silently dropped.
+    """
+
+    if not fallback_list:
+        return None
+    fallback_uuids: list[uuid.UUID] = []
+    for raw in fallback_list:
+        try:
+            fallback_uuids.append(uuid.UUID(str(raw)))
+        except (TypeError, ValueError):
+            continue
+    if not fallback_uuids:
+        return None
+    result = await db.execute(select(Model).where(Model.id.in_(fallback_uuids)))
+    rows = {row.id: row for row in result.scalars().all()}
+    chain = []
+    for fid in fallback_uuids:
+        row = rows.get(fid)
+        if row is None:
+            continue
+        chain.append(
+            {
+                "provider": row.provider,
+                "model_name": row.model_name,
+                "base_url": row.base_url,
+                "model_id": str(row.id),
+            }
+        )
+    return chain or None
 
 
 async def _resolve_llm_api_key(agent) -> str | None:
@@ -71,6 +109,8 @@ async def execute_trigger(trigger_id: str) -> None:
         api_key = await _resolve_llm_api_key(agent)
         base_url = agent.model.base_url
 
+        fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
+
         cfg = AgentConfig(
             provider=agent.model.provider,
             model_name=agent.model.model_name,
@@ -89,6 +129,7 @@ async def execute_trigger(trigger_id: str) -> None:
             llm_credential_id=(
                 str(agent.llm_credential.id) if agent.llm_credential is not None else None
             ),
+            model_fallback_chain=fallback_chain,
         )
         try:
             await execute_agent_invoke(cfg, [{"role": "user", "content": trigger.input_message}])

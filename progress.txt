@@ -87,6 +87,69 @@ Credential/Tools/Skills 그린필드 리라이트 (n8n 패턴 차용, 브랜딩 
 - `docs/QUALITY_SCORE.md`도 표현 정정 ("n8n 식별자 0건" → "금지 식별자 0건", "n8n 알고리즘 차용" → "차용 알고리즘 (NOTICES.md)").
 - 마이그레이션 검증: PG 5433 컨테이너에 upgrade head → 5개 컬럼 추가 확인 → downgrade -1 → upgrade head 라운드트립 모두 PASS.
 
+### M10 (Daily Spend Queue + Aggregate API + Model Fallback, backend)
+- `models/{daily_spend_user,daily_spend_agent,daily_spend_model}.py` 신규 — 동일 shape, FK target만 다름. Numeric(20,8) cost (Anthropic Haiku 가격까지 정확). unique (date, target_id), CASCADE on FK → user/agent/model row 삭제 시 aggregate row도 함께 사라짐 (raw token_usages는 유지).
+- `m21_add_daily_spend_aggregates` (down=m20) + `m22_add_agent_model_fallback` (down=m21). 둘 다 dialect-aware UUID/timestamp helpers + `_has_table`/`_has_column`/`_has_index` 가드(idempotent upgrade) + reversible downgrade. PG 5433 round-trip(upgrade→downgrade→upgrade) OK.
+- `services/spend_writer.py` — `SpendEntry` dataclass + `DailySpendUpdateQueue` (asyncio.Queue + 백그라운드 drain task). 핵심 결정:
+  - 단일 큐로 3개 axis 모두 처리 (분리하면 producer가 3번 enqueue 해야 함)
+  - flush 트리거: `flush_interval_sec=5.0` 또는 `batch_size=100` 도달 시
+  - drain: `wait_for(queue.get(), timeout=interval)` → greedy `get_nowait` until batch_size → `_flush_batch`
+  - `_flush_batch`: entries를 axis별 `(date, target_id)`로 group → 각 테이블에 dialect-aware `INSERT ... ON CONFLICT (date, target_id) DO UPDATE SET total_X = X + EXCLUDED.X` (PG/SQLite). 그 외 dialect는 application-level upsert fallback.
+  - producer (`add()`) 비차단: `put_nowait` (QueueFull / RuntimeError 시 warning + drop, agent 실행 막지 않음).
+  - `stop()` graceful: 큐 잔여 flush → task cancel → await (with `contextlib.suppress`).
+  - 모듈 전역 `spend_queue` 싱글턴.
+- `hooks/builtin/spend_hook.py` — `agent_invoke` post hook에서 `spend_queue.add(SpendEntry(...))`. 0 token / 0 cost row는 skip (interrupt 등 비정상 종료 가드). failure isolation은 HookRegistry + 자체 try/except 이중 가드.
+- `register_default_hooks()`에 SpendHook 추가 → 이제 `["logging_hook", "audit_hook", "spend_hook"]` (`test_hooks.py` 함께 갱신).
+- `main.py` lifespan — `spend_queue.start()` (시드+체크포인터 직후, 스케줄러 직전) + `spend_queue.stop()` (스케줄러 shutdown 직후, 체크포인터 shutdown 직전).
+- `agent_runtime/streaming.py` — `stream_agent_response`에 `usage_sink: dict | None` 추가. 스트림 종료 시 captured `prompt_tokens/completion_tokens/estimated_cost`를 sink dict에 in-place update.
+- `agent_runtime/executor.py`:
+  - `AgentConfig.model_fallback_chain: list[dict] | None` 신규 — `[{provider, model_name, base_url, model_id}]` 사전 해석된 형태 (executor는 DB-free).
+  - `_build_model_with_fallback(cfg)` — primary → fallback walk + `_is_fallback_recoverable` 분기. 마지막 시도까지 실패하면 마지막 에러 re-raise.
+  - `_hook_result_from_usage(duration_ms, usage_sink)` — streaming usage → `HookResult.tokens_in/out/cost_usd` 매핑 (None-safe).
+  - `execute_agent_stream/resume_agent_stream`이 `usage_sink={}`를 stream에 전달 → 종료 후 hook post에 매핑된 HookResult 전달 → SpendHook이 큐에 enqueue.
+- `agent_runtime/model_factory.py`:
+  - `create_chat_model_with_fallback(agent, db, *, api_key, base_url, **extra)` 신규 — primary attempt → recoverable error 시 `agent.model_fallback_list` walk + audit log. ORM-backed 경로 (executor와 별개). 실제로 executor는 `_build_model_with_fallback`를 사용하고, 이 ORM 헬퍼는 외부 호출자가 직접 사용 가능 (assistant/builder 등 후속).
+  - `_is_fallback_recoverable(exc)` — `status_code` 우선 (401/403/404/408/409/429/500/502/503/504), 타입 fallback (TimeoutError/HTTPError/HTTPStatusError/ConnectionError). string heuristic은 의도적으로 제외 (불안정).
+  - `_audit_fallback_attempt` — `credential_audit_log`에 `action='fallback'` row 기록 (`success: bool`, `provider`, `model_name`, `model_id`, `error`, `phase: 'attempt'`). agent.llm_credential_id 없으면 skip. audit 실패는 warning + 진행 (runtime 절대 안 막음).
+- `routers/conversations.py` + `agent_runtime/trigger_executor.py` — `_resolve_fallback_chain(db, fallback_list)` 헬퍼: `agent.model_fallback_list` (UUID strings) → `Model` row 조회 → `[{provider, model_name, base_url, model_id}]` 사전 해석. 누락된 row는 silent drop. `AgentConfig.model_fallback_chain`에 주입.
+- `models/agent.py` — `model_fallback_list: Mapped[list[str] | None]` (JSON, nullable). UUID 직렬화는 service 레이어에서 (Postgres 호환).
+- `schemas/agent.py` — `AgentCreate/Update/Response`에 `model_fallback_ids: list[uuid.UUID] | None` 추가. Response는 default factory `[]` (None은 안 보냄).
+- `services/agent_service.py` — `_validate_model_fallback_ids()` (existence check 한 번 — catalog는 user-shared). Create/Update에서 검증 + str(UUID) 직렬화.
+- `routers/agents.py` — `_agent_to_response()`에서 `model_fallback_list` (str list) → `model_fallback_ids` (UUID list) 변환. 잘못된 entry는 silent skip.
+- `services/usage_aggregate.py` 신규 — `get_daily_spend()` single entry-point. Tenancy:
+  - user 축: `DailySpendUser.user_id == current_user`
+  - agent 축: `DailySpendAgent → Agent` join + `Agent.user_id == current_user`
+  - model 축: per-model 테이블은 cross-user이므로 (per-agent 테이블) → Agent join → user 필터로 *현 사용자 contribution*만 집계. `group_by=target` 시 `Agent.model_id`로 추가 group_by.
+  - `_label_map(target_kind, ids)` — user/agent/model 각각의 라벨 (name / display_name / email).
+  - `_resolve_window(from, to)` — default = (today-30d, today), max lookback 365d clamp.
+- `routers/usage.py` 보강 — `GET /api/usage/daily?target_kind=user|agent|model&target_id?&from?&to?&group_by=date|target`. mock_user 격리.
+- 테스트:
+  - `test_spend_writer.py`(8 — flush_batch/ON CONFLICT 누적/axis skip/loop interval/stop drain/queue full/distinct dates/Decimal precision)
+  - `test_usage_aggregate.py`(6 — user 시계열/agent label/model agent-scope/window/target_id/cross-tenant isolation)
+  - `test_model_fallback.py`(9 — classifier 3종/executor chain 4종/with_fallback audit 2종)
+  - `test_migration_m21.py`(4) + `test_migration_m22.py`(4) — module imports/metadata/round-trip/idempotent
+- 합계 31 신규 + 603 회귀 = 634 PASS, ruff clean, branding 0건. PG 5433에서 m20 → m21 → m22 → downgrade -2 → upgrade head 라운드트립 성공.
+- 발견 이슈 / 학습:
+  - `from app.agent_runtime.model_factory import create_chat_model`는 executor 모듈의 로컬 namespace에 reference 복사 → `patch.object(model_factory, ...)`로는 안 잡힘. test에서 `patch("app.agent_runtime.executor.create_chat_model", ...)`로 사용 위치를 패치해야 함.
+  - `app.credentials.cipher`는 존재하지 않음 (실제 위치는 `app.security.cipher`). credential 암호화는 `app.credentials.service.encrypt_data()`를 통해 호출.
+  - SQLite의 ON CONFLICT는 3.24+에서 지원되며 `from sqlalchemy.dialects.sqlite import insert`의 `excluded.<col>` 표현식이 PG와 동일하게 동작. application-level fallback은 다른 dialect에 대비한 안전망.
+  - executor의 fallback walk를 ORM 의존 없이 만들기 위해 `AgentConfig.model_fallback_chain`을 caller(라우터/트리거)가 사전 해석. ORM-backed `create_chat_model_with_fallback`은 별도 외부 호출자용으로 보존 (audit log 포함).
+
+### M10 (Spend Dashboard + Model Fallback UI, frontend)
+- `lib/types/usage.ts` 신규: `UsageDailyEntry|UsageDailyParams|UsageTargetKind|UsageGroupBy|UsageMetric`. 백엔드 `/api/usage/daily` shape을 그대로 미러. `index.ts`에서 `export *`.
+- `Agent` 타입에 `model_fallback_ids?: string[] | null` 추가. `AgentCreate/UpdateRequest`에도 동일. 백엔드 컬럼명은 `agents.model_fallback_list` (Postgres ARRAY UUID), 프론트는 `model_fallback_ids` 명명을 사용 → backend sub-agent가 schema 변환 필요(우리는 frontend payload를 명세대로 보냄).
+- `useDailyAggregate(params)` cache key는 params 객체 그대로 사용 → TanStack Query가 deep-equal로 invalidation 인식.
+- 차트는 `M9 health-history-chart` 패턴 그대로 차용 — `viewBox` 기반 SVG, 자체 path/rect/area, native `<title>` 툴팁, accent 색은 emerald-500/blue-500/purple-500. 의존성 추가 0건 (Recharts/Tremor/Chart.js 모두 미사용).
+- cost 표시: `formatCostUsd` 매그니튜드 적응형 — `>=1` → 2 decimals, `>=0.01` → 4, 그 외 → 6. 토큰은 `>=1M` `M`, `>=10K` `K` 줄임.
+- `details/summary` 네이티브 disclosure로 fallback 섹션 접기/펴기. shadcn에 popover/switch/collapsible이 없는 상태라 native HTML 요소 활용으로 추가 의존 회피.
+- 순서 변경은 위/아래 화살표 버튼 (dnd-kit 미도입). 5개 cap. 중복 fallback (Primary와 또는 다른 fallback과 같음)은 amber 경고만 표시 — 저장은 허용 (백엔드가 필터링).
+- ModelDialog의 `t={tu}` prop typing은 `useTranslations<'usage.fallback'>` 반환 타입으로 typing — 일반 함수 시그니처는 next-intl의 `Translator` 제네릭과 호환 안 됨 (variants/values param이 unknown vs 정확한 union).
+- settings page의 dirty-aware sync 패턴: agent 새로 도착 시 `setFallbackIds(agent.model_fallback_ids ?? [])`. 같은 agent refetch 시 `arraysEqual(fallbackIds, prev.model_fallback_ids ?? [])` true이면만 새 server값 반영. PATCH body에는 `fallbackIds.length > 0 ? fallbackIds : null`로 변환 (백엔드 nullable column).
+- `playwright.config.ts`에 `PW_SKIP_BACKEND=1` env로 backend webServer 스킵 토글 추가. 모든 spec이 `page.route` mock이라면 backend 불필요. 새 spec(spend-dashboard, model-fallback) + M9 health-check도 fully mocked.
+- E2E 패턴: backend route 모두 mock → Playwright `page.route('**/api/...')`. UPDATE 시 PATCH body 캡처는 `route.request().postDataJSON()`. settings 페이지는 `useAgent + useModels + useTools + useSkills + useMiddlewares + useTriggers` 6 endpoints 모두 mock 필요.
+- locator 함정: `page.getByDisplayValue` 미지원 → `page.locator('input[placeholder]').first()` + `toHaveValue()`. `page.getByText('label')` strict mode 위반 (차트 + 테이블 양쪽 렌더) → `barChart.getByText('label')`로 scope.
+- 발견 이슈: 로컬 PG가 m17에 머물러 있어 backend lifespan에서 `column models.max_output_tokens does not exist` 발생 (m19에서 추가된 컬럼). e2e는 `PW_SKIP_BACKEND=1`로 우회. backend sub-agent가 head를 m22까지 가져갔으니 `alembic upgrade head` 적용 시 정상화.
+
 ### M9 (Hook/Middleware 프레임워크 + Health Check + History, backend)
 - `app/hooks/{base,registry}.py` 신규 — `CustomHook` 베이스 (concrete, 빈 메서드를 옵셔널 노옵으로 노출 → ABC 패턴 회피로 ruff B024/B027 우회), `HookRegistry`는 모듈 전역 싱글턴 `hooks` + `register/all/clear/run_pre/run_post/run_failure`. 등록은 `name` 기준 idempotent (중복 등록 시 마지막 인스턴스로 교체). 디스패치는 등록 순서대로 실행하며 hook 예외는 `logger.warning` + `continue` (failure isolation).
 - 빌트인 hook: `LoggingHook`(INFO 라인) + `AuditHook`(`credential_audit_log` `action='invoke'` row 생성, `source='runtime'`, `log_metadata.phase` ∈ {post, failure}). AuditHook은 `ctx.credential_id`가 있을 때만 row 생성 — pre는 row 미생성으로 audit 트래픽 절감.

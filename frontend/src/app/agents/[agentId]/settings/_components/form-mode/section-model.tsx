@@ -17,6 +17,8 @@ interface SectionModelProps {
   maxTokens: number
   onMaxTokensChange: (v: number) => void
   onReset: () => void
+  fallbackIds?: string[]
+  onFallbackIdsChange?: (ids: string[]) => void
 }
 
 export function SectionModel(props: SectionModelProps) {
@@ -26,6 +28,7 @@ export function SectionModel(props: SectionModelProps) {
 
   const current = models?.find((m) => m.id === props.modelId)
   const summary = current?.display_name ?? t('modelPlaceholder')
+  const fallbackCount = props.fallbackIds?.length ?? 0
 
   return (
     <>
@@ -34,6 +37,14 @@ export function SectionModel(props: SectionModelProps) {
           <CpuIcon className="size-4 text-muted-foreground" />
           <span className="text-sm font-medium">{t('model')}</span>
           <span className="truncate text-sm text-muted-foreground">{summary}</span>
+          {fallbackCount > 0 && (
+            <span
+              className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300"
+              data-testid="section-model-fallback-badge"
+            >
+              +{fallbackCount} fallback
+            </span>
+          )}
         </div>
         <Button
           variant="ghost"
