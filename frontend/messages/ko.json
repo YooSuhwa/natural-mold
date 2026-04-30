@@ -27,6 +27,7 @@
     "brand": "Moldy",
     "nav": {
       "home": "홈",
+      "connectors": "커넥터",
       "tools": "도구",
       "mcpServers": "MCP 서버",
       "models": "모델",
@@ -34,6 +35,14 @@
       "skills": "스킬",
       "usage": "사용량",
       "templates": "에이전트 템플릿"
+    },
+    "section": {
+      "capabilities": "기능",
+      "resources": "리소스"
+    },
+    "tooltip": {
+      "connectors": "외부 시스템 연결",
+      "skills": "지식·실행 절차 패키지"
     },
     "newAgent": "새 에이전트",
     "recentAgents": "최근 에이전트",
