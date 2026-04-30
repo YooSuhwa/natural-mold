@@ -50,6 +50,7 @@ dependencies = [
     "deepagents>=0.4.12",
     "langchain-mcp-adapters>=0.2.2",
     "psycopg-binary>=3.3.3",
+    "truststore>=0.10.4",
 ]
 
 [project.optional-dependencies]

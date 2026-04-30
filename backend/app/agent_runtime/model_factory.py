@@ -62,11 +62,23 @@ _ENV_FALLBACK: dict[str, str] = {
 PROVIDER_API_KEY_MAP = _ENV_FALLBACK
 
 
-# 사내 프록시 SSL — certifi 기본 인증서 + HC_SSL.pem 결합
+# SSL 컨텍스트.
+#
+# 일부 macOS / 사내 VPN 환경에서 OpenAI 인증서 체인이 strict 검증
+# (``Missing Authority Key Identifier``)에 걸린다. ``truststore``로
+# OS 네이티브 trust store(macOS Keychain / Windows CryptoAPI / Linux
+# /etc/ssl)를 사용하면 시스템이 인정한 모든 root CA를 그대로 활용해
+# CRL/AKI 같은 deep-validation 이슈를 우회할 수 있다.
+#
+# ``HC_SSL.pem`` (사내 프록시 인증서) 가 존재하면 추가 trust로 결합한다.
 _hc_cert = os.path.expanduser("~/.ssl/HC_SSL.pem")
-_ssl_ctx: ssl.SSLContext | None = None
-if os.path.exists(_hc_cert):
+try:
+    import truststore
+
+    _ssl_ctx: ssl.SSLContext = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+except ImportError:  # pragma: no cover — runtime dep, but defensive
     _ssl_ctx = ssl.create_default_context(cafile=certifi.where())
+if os.path.exists(_hc_cert):
     _ssl_ctx.load_verify_locations(_hc_cert)
 
 
@@ -105,7 +117,7 @@ def create_chat_model(
 
     kwargs["stream_usage"] = True
 
-    if _ssl_ctx and cls in (ChatOpenAI,):
+    if cls in (ChatOpenAI,):
         kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
         kwargs["http_client"] = httpx.Client(verify=_ssl_ctx)
 
@@ -118,6 +130,33 @@ def env_provider_keys() -> dict[str, str | None]:
     return {provider: key or None for provider, key in _ENV_FALLBACK.items()}
 
 
+# OpenAI's reasoning families (o1/o3/o4) and the GPT-5 family ship with the
+# Chat Completions API quirk that ``max_tokens`` is rejected — they require
+# the new ``max_completion_tokens`` field instead. The OpenAI Python SDK
+# raises ``BadRequestError(unsupported_parameter)`` and LangChain's wrapper
+# then re-emits a generic "Connection error.", which is opaque for the user.
+# Detecting these prefixes lets us pick the right cap up front.
+_GPT5_FAMILY_PREFIXES: tuple[str, ...] = ("gpt-5", "o1", "o3", "o4")
+
+
+def _completion_token_cap_kw(provider: str, model_name: str) -> dict[str, Any]:
+    """Return the right kwarg shape for ChatOpenAI's token cap.
+
+    OpenAI GPT-5 / reasoning models reject ``max_tokens`` and require
+    ``max_completion_tokens``. LangChain's ``ChatOpenAI`` does not yet
+    surface that as a top-level constructor argument, so we forward it
+    through ``model_kwargs``. Everything else keeps the legacy
+    ``max_tokens=10`` shortcut, which LangChain wires straight to OpenAI.
+    """
+
+    name = (model_name or "").lower()
+    if provider == "openai" and any(name.startswith(p) for p in _GPT5_FAMILY_PREFIXES):
+        # GPT-5 family also rejects non-default temperature; drop it and let
+        # the API use its locked default (1.0) so the request validates.
+        return {"model_kwargs": {"max_completion_tokens": 10}, "_drop_temperature": True}
+    return {"max_tokens": 10}
+
+
 def create_chat_model_for_test(
     provider: str,
     model_name: str,
@@ -127,7 +166,7 @@ def create_chat_model_for_test(
 ) -> BaseChatModel:
     """Build a deterministic, low-cost LangChain chat model for the test surface.
 
-    Locked-in defaults (``max_tokens=10`` / ``temperature=0``) keep test
+    Locked-in defaults (token cap = 10, ``temperature=0``) keep test
     invocations cheap and reproducible no matter what model row exists in the
     catalog. The caller is expected to wrap the resulting ``ainvoke`` in an
     ``asyncio.wait_for(...)`` to enforce the timeout — this factory does not
@@ -135,18 +174,22 @@ def create_chat_model_for_test(
     """
 
     cls = PROVIDER_MAP.get(provider, ChatOpenAI)
+    cap_kwargs = _completion_token_cap_kw(provider, model_name)
+    drop_temperature = cap_kwargs.pop("_drop_temperature", False)
+
     kwargs: dict[str, Any] = {
         "model": model_name,
-        "max_tokens": 10,
-        "temperature": 0,
         "stream_usage": True,
+        **cap_kwargs,
     }
+    if not drop_temperature:
+        kwargs["temperature"] = 0
     if api_key:
         kwargs["api_key"] = api_key
     if base_url:
         kwargs["base_url"] = base_url
 
-    if _ssl_ctx and cls in (ChatOpenAI,):
+    if cls in (ChatOpenAI,):
         kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
         kwargs["http_client"] = httpx.Client(verify=_ssl_ctx)
 
