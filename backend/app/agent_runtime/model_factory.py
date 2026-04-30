@@ -188,6 +188,14 @@ def create_chat_model_for_test(
         kwargs["api_key"] = api_key
     if base_url:
         kwargs["base_url"] = base_url
+    elif provider == "openai" and cls is ChatOpenAI:
+        # The OpenAI Python SDK falls back to the ``OPENAI_BASE_URL``
+        # environment variable when ``base_url`` is omitted. Some shells
+        # (Claude Code / codex helpers) set it to a third-party proxy, which
+        # silently routes our test requests to the wrong host. Pinning the
+        # canonical endpoint here keeps OpenAI-credential tests reaching the
+        # actual OpenAI API regardless of the launch environment.
+        kwargs["base_url"] = "https://api.openai.com/v1"
 
     if cls in (ChatOpenAI,):
         kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
