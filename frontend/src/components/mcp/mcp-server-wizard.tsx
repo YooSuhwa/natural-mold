@@ -255,7 +255,7 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
 
         <Separator />
 
-        <div className="min-h-[280px]">
+        <div className="min-h-[280px] min-w-0 max-h-[60vh] overflow-y-auto">
           {step === 'Basics' && (
             <Tabs
               value={tab}

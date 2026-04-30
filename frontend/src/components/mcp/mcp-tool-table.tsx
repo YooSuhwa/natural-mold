@@ -27,12 +27,12 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
     )
   }
   return (
-    <div className="rounded-lg border">
-      <Table>
+    <div className="w-full overflow-hidden rounded-lg border">
+      <Table className="w-full table-fixed">
         <TableHeader>
           <TableRow>
             {onToggle && <TableHead className="w-8" />}
-            <TableHead>Tool</TableHead>
+            <TableHead className="w-1/3">Tool</TableHead>
             <TableHead>Description</TableHead>
           </TableRow>
         </TableHeader>
@@ -47,8 +47,10 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                   />
                 </TableCell>
               )}
-              <TableCell className="font-medium">{tool.name}</TableCell>
-              <TableCell className="text-xs text-muted-foreground">
+              <TableCell className="break-words font-medium">
+                {tool.name}
+              </TableCell>
+              <TableCell className="whitespace-normal break-words text-xs text-muted-foreground">
                 {tool.description ?? '—'}
               </TableCell>
             </TableRow>
