@@ -30,6 +30,11 @@
       "type": "object",
       "description": "Provider-specific overrides keyed by 'provider/model'",
       "additionalProperties": {"$ref": "#/$defs/provider_model"}
+    },
+    "aliases": {
+      "type": "object",
+      "description": "Alias map: raw model id (date-stamped/snapshot/etc.) → canonical model name. Used by resolve_model() at request time to canonicalize user-supplied ids before catalog lookup.",
+      "additionalProperties": {"type": "string"}
     }
   },
   "$defs": {

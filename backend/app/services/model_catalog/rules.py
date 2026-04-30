@@ -22,6 +22,97 @@ def apply_aliases(model_name: str, aliases: dict[str, str]) -> str:
     return aliases.get(model_name, model_name)
 
 
+# -- Input normalization (ai-model-list pattern; see NOTICES.md) -------------
+#
+# Same model can be addressed via many surface forms:
+#   "gpt-4o"
+#   "openai/gpt-4o"
+#   "openrouter/openai/gpt-4o"
+#   "openai/gpt-4o:turbo"
+# A single normalize → alias-lookup pipeline collapses all variants to one
+# canonical key before any catalog lookup. This mirrors the algorithm in
+# ``ai-model-list/pipeline/{normalize,resolve}.py``.
+
+KNOWN_PROVIDER_SLUGS: frozenset[str] = frozenset(
+    {
+        "openai",
+        "azure",
+        "azure_openai",
+        "anthropic",
+        "google",
+        "google_genai",
+        "google_ai_studio",
+        "vertex_ai",
+        "openrouter",
+        "bedrock",
+        "fireworks_ai",
+        "together_ai",
+        "cohere",
+        "mistral",
+        "groq",
+        "deepseek",
+        "perplexity",
+        "xai",
+        "ollama",
+    }
+)
+
+DEPLOYMENT_TIER_TOKENS: frozenset[str] = frozenset(
+    {"turbo", "preview", "latest", "ga", "stable", "experimental", "fast"}
+)
+
+
+def strip_nested_provider_prefixes(model_name: str) -> str:
+    """Drop leading provider segments — ``openrouter/openai/gpt-4o`` → ``gpt-4o``.
+
+    Only known provider slugs (``KNOWN_PROVIDER_SLUGS``) are stripped so user
+    namespaces stay intact (``acme-corp/internal-llm`` is left as-is).
+    """
+
+    if not model_name:
+        return model_name
+    name = model_name
+    while "/" in name:
+        head, _, rest = name.partition("/")
+        if head not in KNOWN_PROVIDER_SLUGS:
+            break
+        name = rest or name
+        if not rest:
+            break
+    return name
+
+
+def strip_deployment_tier_suffix(model_name: str) -> str:
+    """Drop ``:turbo`` / ``:preview`` style suffixes used by some providers."""
+
+    if not model_name or ":" not in model_name:
+        return model_name
+    base, _, suffix = model_name.rpartition(":")
+    if base and suffix.lower() in DEPLOYMENT_TIER_TOKENS:
+        return base
+    return model_name
+
+
+def canonicalize_model_id(
+    model_id: str,
+    aliases: dict[str, str],
+) -> str:
+    """Normalize → alias lookup. Pure function; safe in hot paths.
+
+    1. Strip nested provider prefixes
+    2. Strip deployment-tier suffixes
+    3. Apply alias map (date-stamped/snapshot → canonical)
+
+    Returns the original id if no transformation applies.
+    """
+
+    if not model_id:
+        return model_id
+    name = strip_nested_provider_prefixes(model_id)
+    name = strip_deployment_tier_suffix(name)
+    return aliases.get(name, name)
+
+
 def derive_aliases_from_ai_model_list(payload: Any) -> dict[str, str]:
     """Auto-build an alias map from ai-model-list ``models[*].aliases``.
 

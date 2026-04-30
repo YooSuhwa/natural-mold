@@ -254,6 +254,11 @@ def build_catalog(
         "providers": _build_providers(providers_meta),
         "models": {},
         "provider_models": {},
+        # ai-model-list-style alias map persisted into the snapshot so that
+        # request-time lookups (resolve_model) can canonicalize raw inputs
+        # like ``gpt-5.5-2026-04-23`` → ``gpt-5.5`` without re-running the
+        # whole merge.
+        "aliases": dict(aliases),
     }
 
     for canonical, entry in sorted(models_layer.items()):
