@@ -20,6 +20,8 @@ import { AddMiddlewareModal } from '../dialogs/add-middleware-modal'
 interface ToolsMiddlewaresGridProps {
   selectedToolIds: Set<string>
   onToggleTool: (id: string) => void
+  selectedMcpToolIds: Set<string>
+  onToggleMcpTool: (id: string) => void
   selectedSkillIds: Set<string>
   onToggleSkill: (id: string) => void
   selectedMiddlewareTypes: Set<string>
@@ -29,6 +31,8 @@ interface ToolsMiddlewaresGridProps {
 export function ToolsMiddlewaresGrid({
   selectedToolIds,
   onToggleTool,
+  selectedMcpToolIds,
+  onToggleMcpTool,
   selectedSkillIds,
   onToggleSkill,
   selectedMiddlewareTypes,
@@ -39,6 +43,8 @@ export function ToolsMiddlewaresGrid({
       <ToolsSkillsBox
         selectedToolIds={selectedToolIds}
         onToggleTool={onToggleTool}
+        selectedMcpToolIds={selectedMcpToolIds}
+        onToggleMcpTool={onToggleMcpTool}
         selectedSkillIds={selectedSkillIds}
         onToggleSkill={onToggleSkill}
       />
@@ -60,11 +66,15 @@ interface ChipItem {
 function ToolsSkillsBox({
   selectedToolIds,
   onToggleTool,
+  selectedMcpToolIds,
+  onToggleMcpTool,
   selectedSkillIds,
   onToggleSkill,
 }: {
   selectedToolIds: Set<string>
   onToggleTool: (id: string) => void
+  selectedMcpToolIds: Set<string>
+  onToggleMcpTool: (id: string) => void
   selectedSkillIds: Set<string>
   onToggleSkill: (id: string) => void
 }) {
@@ -145,10 +155,15 @@ function ToolsSkillsBox({
       <ToolsSkillsDialog
         open={open}
         onOpenChange={setOpen}
+        allTools={tools ?? []}
         selectedToolIds={selectedToolIds}
         onToggleTool={onToggleTool}
+        selectedMcpToolIds={selectedMcpToolIds}
+        onToggleMcpTool={onToggleMcpTool}
+        allSkills={skills ?? []}
         selectedSkillIds={selectedSkillIds}
         onToggleSkill={onToggleSkill}
+        defaultTab="tools"
       />
     </div>
   )

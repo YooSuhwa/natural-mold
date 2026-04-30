@@ -28,6 +28,8 @@ interface FormModeProps {
 
   selectedToolIds: Set<string>
   onToggleTool: (id: string) => void
+  selectedMcpToolIds: Set<string>
+  onToggleMcpTool: (id: string) => void
   selectedSkillIds: Set<string>
   onToggleSkill: (id: string) => void
   selectedMiddlewareTypes: Set<string>
@@ -53,6 +55,8 @@ export function FormMode({
   onFallbackIdsChange,
   selectedToolIds,
   onToggleTool,
+  selectedMcpToolIds,
+  onToggleMcpTool,
   selectedSkillIds,
   onToggleSkill,
   selectedMiddlewareTypes,
@@ -85,6 +89,8 @@ export function FormMode({
       <ToolsMiddlewaresGrid
         selectedToolIds={selectedToolIds}
         onToggleTool={onToggleTool}
+        selectedMcpToolIds={selectedMcpToolIds}
+        onToggleMcpTool={onToggleMcpTool}
         selectedSkillIds={selectedSkillIds}
         onToggleSkill={onToggleSkill}
         selectedMiddlewareTypes={selectedMiddlewareTypes}

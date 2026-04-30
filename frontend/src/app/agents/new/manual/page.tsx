@@ -74,6 +74,7 @@ export default function ManualCreationPage() {
       system_prompt: systemPrompt,
       model_id: modelId,
       tool_ids: Array.from(selectedToolIds),
+      mcp_tool_ids: Array.from(selectedMcpToolIds),
       skill_ids: Array.from(selectedSkillIds),
       sub_agent_ids: Array.from(selectedSubAgentIds),
       middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
@@ -200,6 +201,8 @@ export default function ManualCreationPage() {
               }}
               selectedToolIds={selectedToolIds}
               onToggleTool={(id) => setSelectedToolIds((prev) => toggleSetItem(prev, id))}
+              selectedMcpToolIds={selectedMcpToolIds}
+              onToggleMcpTool={(id) => setSelectedMcpToolIds((prev) => toggleSetItem(prev, id))}
               selectedSkillIds={selectedSkillIds}
               onToggleSkill={(id) => setSelectedSkillIds((prev) => toggleSetItem(prev, id))}
               selectedMiddlewareTypes={selectedMiddlewareTypes}
