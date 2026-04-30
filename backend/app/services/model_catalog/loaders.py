@@ -32,6 +32,10 @@ SOURCES: dict[str, str] = {
     "openrouter": "https://raw.githubusercontent.com/ENTERPILOT/ai-model-price-list/main/sources/openrouter_models.json",
     "llm_prices": "https://raw.githubusercontent.com/ENTERPILOT/ai-model-price-list/main/sources/llm_prices_current.json",
     "pydantic_genai": "https://raw.githubusercontent.com/ENTERPILOT/ai-model-price-list/main/sources/pydantic_genai_prices.json",
+    # ai-model-list: pre-merged registry with LMArena / LiveBench / AA rankings.
+    # ENTERPILOT publishes this with their own AA API key, so we get rankings
+    # for free without managing keys ourselves.
+    "ai_model_list": "https://raw.githubusercontent.com/ENTERPILOT/ai-model-list/main/models.json",
 }
 
 _FILENAMES: dict[str, str] = {
@@ -39,6 +43,7 @@ _FILENAMES: dict[str, str] = {
     "openrouter": "openrouter_models.json",
     "llm_prices": "llm_prices_current.json",
     "pydantic_genai": "pydantic_genai_prices.json",
+    "ai_model_list": "ai_model_list.json",
 }
 
 # Per-request HTTP timeout. Public mirrors are fast; 30s is a generous ceiling.

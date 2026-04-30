@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-04-30T02:24:14Z",
+  "fetched_at": "2026-04-30T03:43:53Z",
   "sources": {
     "litellm": {
       "status": "ok",
@@ -10,8 +10,8 @@
     "openrouter": {
       "status": "ok",
       "http_status": 200,
-      "sha256": "e8eb9ec4d85449faf9b975c12194124534e34e4f842d62561ffbfd5d30519b68",
-      "bytes": 427134
+      "sha256": "d575ee9ab27541fc653c728eaa6d97372284f8192783f16a5b6df8b7569e6621",
+      "bytes": 426077
     },
     "llm_prices": {
       "status": "ok",
@@ -24,6 +24,12 @@
       "http_status": 200,
       "sha256": "a14b43516d2e105a728256d37e44440425b3d2f6fdc8bfd05e72f56f1c5653dd",
       "bytes": 269999
+    },
+    "ai_model_list": {
+      "status": "ok",
+      "http_status": 200,
+      "sha256": "35dc8e879b0ada44ea0e6a93f0db93985db86ec87c12c3a9ca2563c42b10cea6",
+      "bytes": 1308568
     }
   }
 }

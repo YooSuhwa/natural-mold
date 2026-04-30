@@ -38,6 +38,10 @@ SOURCE_PRIORITY: tuple[str, ...] = (
     "litellm",
     "llm_prices",
     "pydantic_genai",
+    # ai-model-list contributes rankings primarily; pricing/context are
+    # last-resort fallbacks. Lowest priority for scalar fields, but ranking
+    # fields are owned by it (no other source publishes them).
+    "ai_model_list",
 )
 
 

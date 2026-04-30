@@ -342,6 +342,8 @@ def normalize_pydantic_genai(
 
 
 # Dispatch table consumed by the merge step.
+# ``ai_model_list`` is defined later in the file; bind via name to avoid
+# forward-ref gymnastics — Python resolves at module import time.
 NORMALIZER_BY_SOURCE = {
     "litellm": normalize_litellm,
     "openrouter": normalize_openrouter,
@@ -378,3 +380,144 @@ def _safe_list(value: Any) -> list[str] | None:
     if isinstance(value, list):
         return [str(v) for v in value if v is not None]
     return None
+
+
+# --------------------------------------------------------------------------
+# ai-model-list (ENTERPILOT) — pre-merged registry with rankings
+# --------------------------------------------------------------------------
+
+
+def _extract_rankings(node: Any) -> dict[str, float] | None:
+    """Pull our three canonical ranking signals from the ai-model-list shape.
+
+    ai-model-list nests rankings as ``rankings.<board>.{elo|score|index}``.
+    We collapse the boards we care about into a flat
+    ``{lmarena, livebench, aa_index}`` dict so the rest of the catalog stays
+    source-agnostic. Missing boards stay missing — sparse/additive.
+    """
+
+    if not isinstance(node, dict):
+        return None
+    out: dict[str, float] = {}
+
+    # LMArena Chatbot Arena overall — int ELO is the headline number.
+    arena = node.get("chatbot_arena")
+    if isinstance(arena, dict):
+        elo = arena.get("elo")
+        if isinstance(elo, (int, float)):
+            out["lmarena"] = float(elo)
+
+    # LiveBench — published as a 0–100 weighted average. Field naming has
+    # varied across ENTERPILOT builds; accept either ``livebench`` or
+    # ``live_bench`` and either ``score`` or ``global``.
+    for key in ("livebench", "live_bench"):
+        live = node.get(key)
+        if isinstance(live, dict):
+            score = live.get("score") or live.get("global") or live.get("average")
+            if isinstance(score, (int, float)):
+                out["livebench"] = float(score)
+                break
+
+    # Artificial Analysis Intelligence Index — 0–100, accept several spellings.
+    for key in ("artificial_analysis", "aa", "aa_index"):
+        aa = node.get(key)
+        if isinstance(aa, dict):
+            index = aa.get("intelligence_index") or aa.get("index") or aa.get("score")
+            if isinstance(index, (int, float)):
+                out["aa_index"] = float(index)
+                break
+        elif isinstance(aa, (int, float)):
+            out["aa_index"] = float(aa)
+            break
+
+    return out or None
+
+
+def normalize_ai_model_list(
+    raw: Any,
+) -> dict[tuple[str | None, str | None], ModelEntry]:
+    """Convert ``ai-model-list/models.json`` into ModelEntry rows.
+
+    ai-model-list is the pre-merged registry that ENTERPILOT publishes; its
+    primary value to us is the ``rankings`` block (LMArena/LiveBench/AA).
+    Pricing/context fields are accepted opportunistically but are usually
+    redundant with the four price snapshots — the merge step's source
+    priority decides which wins.
+    """
+
+    out: dict[tuple[str | None, str | None], ModelEntry] = {}
+    if not isinstance(raw, dict):
+        return out
+
+    models = raw.get("models")
+    if not isinstance(models, dict):
+        return out
+
+    for model_name, node in models.items():
+        if not isinstance(node, dict):
+            continue
+        # The bare key in models.json is provider-agnostic. Aliases enumerate
+        # the provider-prefixed variants we should also tag (so resolve() can
+        # find the same rankings via either spelling).
+        bare_key = (None, str(model_name))
+        rankings = _extract_rankings(node.get("rankings"))
+
+        pricing = node.get("pricing") if isinstance(node.get("pricing"), dict) else {}
+        cost_in = _to_decimal(pricing.get("input_per_mtok"))
+        cost_out = _to_decimal(pricing.get("output_per_mtok"))
+        # Catalog stores per-token; ai-model-list publishes per-mtok.
+        if cost_in is not None:
+            cost_in = cost_in / Decimal(1_000_000)
+        if cost_out is not None:
+            cost_out = cost_out / Decimal(1_000_000)
+
+        modalities = node.get("modalities") if isinstance(node.get("modalities"), dict) else {}
+
+        display_name = node.get("display_name")
+        entry = ModelEntry(
+            provider=None,
+            model_name=str(model_name),
+            display_name=display_name if isinstance(display_name, str) else None,
+            context_window=_safe_int(node.get("context_window")),
+            max_output_tokens=_safe_int(node.get("max_output_tokens")),
+            cost_per_input_token=cost_in,
+            cost_per_output_token=cost_out,
+            input_modalities=_safe_list(modalities.get("input")),
+            output_modalities=_safe_list(modalities.get("output")),
+            rankings=rankings,
+            sources=["ai_model_list"],
+        )
+        out[bare_key] = entry
+
+        # Mirror under provider-prefixed aliases so resolve() finds rankings
+        # by either ``gpt-4o`` or ``openai/gpt-4o``.
+        aliases = node.get("aliases")
+        if isinstance(aliases, list):
+            for alias in aliases:
+                if not isinstance(alias, str) or "/" not in alias:
+                    continue
+                provider_raw, model_part = alias.split("/", 1)
+                provider = _normalize_provider(provider_raw)
+                if not provider:
+                    continue
+                # Reuse the same ranking payload — only the key differs.
+                aliased = ModelEntry(
+                    provider=provider,
+                    model_name=model_part,
+                    display_name=entry.display_name,
+                    context_window=entry.context_window,
+                    max_output_tokens=entry.max_output_tokens,
+                    cost_per_input_token=entry.cost_per_input_token,
+                    cost_per_output_token=entry.cost_per_output_token,
+                    input_modalities=entry.input_modalities,
+                    output_modalities=entry.output_modalities,
+                    rankings=rankings,
+                    sources=["ai_model_list"],
+                )
+                out[(provider, model_part)] = aliased
+
+    return out
+
+
+# Late binding — register ai-model-list now that the function exists.
+NORMALIZER_BY_SOURCE["ai_model_list"] = normalize_ai_model_list
