@@ -57,7 +57,7 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Add model</DialogTitle>
           <DialogDescription>
@@ -69,18 +69,24 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
         <Tabs
           value={tab}
           onValueChange={(v) => setTab(v as 'discover' | 'custom')}
-          className="w-full"
+          className="flex min-h-0 w-full flex-1 flex-col"
         >
           <TabsList className="w-full">
             <TabsTrigger value="discover">Discover</TabsTrigger>
             <TabsTrigger value="custom">Custom ID</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="discover" className="pt-4">
+          <TabsContent
+            value="discover"
+            className="min-w-0 flex-1 overflow-y-auto pt-4"
+          >
             <ModelDiscoverPanel onComplete={() => onOpenChange(false)} />
           </TabsContent>
 
-          <TabsContent value="custom" className="pt-4">
+          <TabsContent
+            value="custom"
+            className="min-w-0 flex-1 overflow-y-auto pt-4"
+          >
             <CustomIdForm onSaved={() => onOpenChange(false)} />
           </TabsContent>
         </Tabs>
