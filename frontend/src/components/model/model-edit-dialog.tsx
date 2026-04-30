@@ -139,7 +139,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {model.display_name}
@@ -150,7 +150,10 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="info" className="w-full">
+        <Tabs
+          defaultValue="info"
+          className="flex min-h-0 w-full flex-1 flex-col"
+        >
           <TabsList>
             <TabsTrigger value="info">Info</TabsTrigger>
             <TabsTrigger value="health" data-testid="health-tab">
@@ -158,7 +161,10 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="info" className="space-y-4 pt-3">
+          <TabsContent
+            value="info"
+            className="flex-1 space-y-4 overflow-y-auto pt-3"
+          >
             <RankingsSection
               rankings={model.rankings}
               emptyHint={
@@ -193,7 +199,12 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
               <div className="space-y-2">
                 <Select value={effectiveTestCredId} onValueChange={(v) => v && setTestCredId(v)}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select credential" />
+                    <SelectValue placeholder="Select credential">
+                      {(selected) =>
+                        llmCredentials.find((c) => c.id === selected)?.name ??
+                        'Select credential'
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {llmCredentials.map((c) => (
@@ -348,7 +359,10 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
             </div>
           </TabsContent>
 
-          <TabsContent value="health" className="space-y-3 pt-3">
+          <TabsContent
+            value="health"
+            className="flex-1 space-y-3 overflow-y-auto pt-3"
+          >
             <ModelHealthPanel modelId={model.id} provider={model.provider} />
           </TabsContent>
         </Tabs>
@@ -449,7 +463,12 @@ function ModelHealthPanel({
         <div className="flex items-center gap-2">
           <Select value={credentialId} onValueChange={(v) => setOverride(v ?? '')}>
             <SelectTrigger size="sm" className="w-[180px]">
-              <SelectValue placeholder="Select credential" />
+              <SelectValue placeholder="Select credential">
+                {(selected) =>
+                  llmCredentials.find((c) => c.id === selected)?.name ??
+                  'Select credential'
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {llmCredentials.map((c) => (
