@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # Credential rotation cron (APScheduler crontab format; default: weekly Sun 03:00)
     credential_rotation_cron: str = "0 3 * * 0"
 
+    # Daily health check sweep (APScheduler crontab format; default: 04:00 UTC)
+    health_check_cron: str = "0 4 * * *"
+    # Retention window for ``health_check_history`` rows. The cleanup job is a
+    # follow-up; the value is wired now so deployments can configure ahead.
+    health_check_history_retention_days: int = 90
+
     # MCP
     mcp_connection_timeout: int = 10
     tool_call_timeout: int = 30

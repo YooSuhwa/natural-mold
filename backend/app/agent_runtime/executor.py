@@ -7,8 +7,11 @@ import logging
 import re
 import shlex
 import sys
+import time
+import uuid as _uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -28,6 +31,7 @@ from app.agent_runtime.model_factory import create_chat_model
 from app.agent_runtime.streaming import stream_agent_response
 from app.agent_runtime.tool_factory import create_tool_for_runtime
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
+from app.hooks import HookContext, HookResult, hooks
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,10 @@ class AgentConfig:
     provider_api_keys: dict[str, str | None] | None = None
     cost_per_input_token: float | None = None
     cost_per_output_token: float | None = None
+    # Hook framework correlation — populated by router/trigger executor.
+    user_id: str | None = None
+    model_id: str | None = None
+    llm_credential_id: str | None = None
 
 
 def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseTool:
@@ -478,6 +486,40 @@ async def _prepare_agent(
     return agent, lc_messages, config
 
 
+def _hook_ctx_for_agent(cfg: AgentConfig) -> HookContext | None:
+    """Build a ``HookContext`` for an ``agent_invoke`` call.
+
+    Returns ``None`` when the caller didn't propagate a ``user_id`` (legacy
+    tests that build ``AgentConfig`` directly). Hook dispatch is a no-op in
+    that case so the runtime stays backward compatible.
+    """
+
+    if not cfg.user_id:
+        return None
+    try:
+        user_uuid = _uuid.UUID(str(cfg.user_id))
+    except (TypeError, ValueError):
+        return None
+
+    metadata: dict[str, Any] = {
+        "provider": cfg.provider,
+        "model_name": cfg.model_name,
+        "thread_id": cfg.thread_id,
+    }
+    return HookContext(
+        request_id=str(_uuid.uuid4()),
+        kind="agent_invoke",
+        user_id=user_uuid,
+        started_at=datetime.now(UTC).replace(tzinfo=None),
+        agent_id=_uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        model_id=_uuid.UUID(cfg.model_id) if cfg.model_id else None,
+        credential_id=(
+            _uuid.UUID(cfg.llm_credential_id) if cfg.llm_credential_id else None
+        ),
+        metadata=metadata,
+    )
+
+
 async def execute_agent_stream(
     cfg: AgentConfig,
     messages_history: list[dict[str, str]],
@@ -488,14 +530,29 @@ async def execute_agent_stream(
         messages_history=messages_history,
     )
 
-    async for chunk in stream_agent_response(
-        agent,
-        lc_messages,
-        config,
-        cost_per_input_token=cfg.cost_per_input_token,
-        cost_per_output_token=cfg.cost_per_output_token,
-    ):
-        yield chunk
+    ctx = _hook_ctx_for_agent(cfg)
+    if ctx is not None:
+        await hooks.run_pre(ctx)
+    started = time.monotonic()
+
+    try:
+        async for chunk in stream_agent_response(
+            agent,
+            lc_messages,
+            config,
+            cost_per_input_token=cfg.cost_per_input_token,
+            cost_per_output_token=cfg.cost_per_output_token,
+        ):
+            yield chunk
+    except Exception as exc:
+        if ctx is not None:
+            await hooks.run_failure(ctx, exc)
+        raise
+    if ctx is not None:
+        await hooks.run_post(
+            ctx,
+            HookResult(duration_ms=int((time.monotonic() - started) * 1000)),
+        )
 
 
 async def resume_agent_stream(
@@ -510,14 +567,30 @@ async def resume_agent_stream(
         messages_history=[],
     )
 
-    async for chunk in stream_agent_response(
-        agent,
-        Command(resume=resume_value),
-        config,
-        cost_per_input_token=cfg.cost_per_input_token,
-        cost_per_output_token=cfg.cost_per_output_token,
-    ):
-        yield chunk
+    ctx = _hook_ctx_for_agent(cfg)
+    if ctx is not None:
+        ctx.metadata["resume"] = True
+        await hooks.run_pre(ctx)
+    started = time.monotonic()
+
+    try:
+        async for chunk in stream_agent_response(
+            agent,
+            Command(resume=resume_value),
+            config,
+            cost_per_input_token=cfg.cost_per_input_token,
+            cost_per_output_token=cfg.cost_per_output_token,
+        ):
+            yield chunk
+    except Exception as exc:
+        if ctx is not None:
+            await hooks.run_failure(ctx, exc)
+        raise
+    if ctx is not None:
+        await hooks.run_post(
+            ctx,
+            HookResult(duration_ms=int((time.monotonic() - started) * 1000)),
+        )
 
 
 async def execute_agent_invoke(
@@ -531,8 +604,29 @@ async def execute_agent_invoke(
         include_ask_user=False,  # 트리거 실행 — 사용자 없음
     )
 
-    result = await agent.ainvoke({"messages": lc_messages}, config=config)
+    ctx = _hook_ctx_for_agent(cfg)
+    if ctx is not None:
+        await hooks.run_pre(ctx)
+    started = time.monotonic()
+
+    try:
+        result = await agent.ainvoke({"messages": lc_messages}, config=config)
+    except Exception as exc:
+        if ctx is not None:
+            await hooks.run_failure(ctx, exc)
+        raise
+
     messages = result.get("messages", [])
+    text = ""
     if messages and hasattr(messages[-1], "content"):
-        return messages[-1].content
-    return ""
+        text = messages[-1].content
+
+    if ctx is not None:
+        await hooks.run_post(
+            ctx,
+            HookResult(
+                duration_ms=int((time.monotonic() - started) * 1000),
+                output=(text[:200] if isinstance(text, str) else None),
+            ),
+        )
+    return text

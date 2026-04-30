@@ -87,6 +87,25 @@ Credential/Tools/Skills 그린필드 리라이트 (n8n 패턴 차용, 브랜딩 
 - `docs/QUALITY_SCORE.md`도 표현 정정 ("n8n 식별자 0건" → "금지 식별자 0건", "n8n 알고리즘 차용" → "차용 알고리즘 (NOTICES.md)").
 - 마이그레이션 검증: PG 5433 컨테이너에 upgrade head → 5개 컬럼 추가 확인 → downgrade -1 → upgrade head 라운드트립 모두 PASS.
 
+### M9 (Hook/Middleware 프레임워크 + Health Check + History, backend)
+- `app/hooks/{base,registry}.py` 신규 — `CustomHook` 베이스 (concrete, 빈 메서드를 옵셔널 노옵으로 노출 → ABC 패턴 회피로 ruff B024/B027 우회), `HookRegistry`는 모듈 전역 싱글턴 `hooks` + `register/all/clear/run_pre/run_post/run_failure`. 등록은 `name` 기준 idempotent (중복 등록 시 마지막 인스턴스로 교체). 디스패치는 등록 순서대로 실행하며 hook 예외는 `logger.warning` + `continue` (failure isolation).
+- 빌트인 hook: `LoggingHook`(INFO 라인) + `AuditHook`(`credential_audit_log` `action='invoke'` row 생성, `source='runtime'`, `log_metadata.phase` ∈ {post, failure}). AuditHook은 `ctx.credential_id`가 있을 때만 row 생성 — pre는 row 미생성으로 audit 트래픽 절감.
+- `register_default_hooks()` → `app/main.py` lifespan에서 호출. 시드/스케줄러 시작 직전.
+- `agent_runtime/executor.py`: `AgentConfig`에 `user_id`/`model_id`/`llm_credential_id` 추가. `_hook_ctx_for_agent`가 cfg에 user_id가 있을 때만 ctx 생성. `execute_agent_stream`/`resume_agent_stream`/`execute_agent_invoke` 셋 다 try/except로 wrap → 성공 시 `run_post(duration_ms)`, 실패 시 `run_failure` + re-raise.
+- `agent_runtime/tool_factory.py`: `tools_config` 항목당 user_id/agent_id/tool_id/credential_id를 `_safe_uuid`로 보강한 ctx 생성. `_invoke` 내부에서 pre/post/failure dispatch. `output`은 200자 cap.
+- `mcp/client.py`: `connect_and_list`에 `user_id`/`mcp_server_id`/`credential_id` keyword 추가. 모든 early-return 경로(transport unsupported / url missing / SDK import 실패) + 성공/실패 모두 hook dispatch. 기존 호출자(`test_chat_integration`)는 user_id 없이 호출 → ctx None → no-op (회귀 X).
+- `services/chat_service.py`: `build_tools_config`가 `user_id`/`agent_id`를 tools_config 항목에 추가. `routers/conversations.py` + `agent_runtime/trigger_executor.py`가 AgentConfig에 user_id/model_id/llm_credential_id 채움.
+- `models/health_check_history.py` 신규 — `id, target_kind ('model'|'mcp_server'), target_id, status ('healthy'|'unhealthy'|'degraded'), latency_ms, error_kind, error_message, raw_result, checked_at`. 인덱스 `(target_kind, target_id, checked_at)`. FK 안 검 (단순화).
+- `services/health_check.py` 신규 — `check_model`(M8 `model_test.run_model_test` 재사용 → 결과 분류 → history row), `check_mcp_server`(`mcp.client.connect_and_list` 호출 → `_classify_mcp_error`로 auth/timeout/etc 분류 → history + McpServer 상태 업데이트), `check_all_active`(모든 model + active MCP 순회). degraded는 MCP `auth_needed` 전용.
+- `routers/health.py` 신규 — `/api/health/models`, `/api/health/mcp-servers`(latest only, in-process reduce로 N+1 회피), `/api/health/history?target_kind&target_id&limit≤200`, `POST /api/health/check`(즉시 실행 + history 반환). MCP는 user 격리, model은 글로벌(공유 카탈로그).
+- `scheduler.py`: `register_health_check_job()` + `health_check_all_active()` 비동기 헬퍼. `HEALTH_CHECK_JOB_ID = "health_check_sweep"`, `coalesce=True, max_instances=1`, default cron `"0 4 * * *"`.
+- `config.py`: `health_check_cron`, `health_check_history_retention_days=90`(정리 cron은 후속).
+- `alembic/versions/m20_add_health_check_history.py`: dialect-aware UUID/timestamp helper + `_has_table`/`_has_index` 가드(idempotent upgrade). Reversible downgrade(테이블+인덱스 drop). PG 5433 라운드트립(upgrade→downgrade→upgrade) OK 확인.
+- 테스트: `test_hooks.py`(8 — registry 순서/idempotent register/failure isolation/disabled hook/LoggingHook smoke/AuditHook credential gate + failure recording), `test_health_check.py`(10 — model success/failure 분기, MCP success/auth/unreachable + 서버 상태 업데이트, sweep counters, 라우터 history/summary/check-now/404), `test_migration_m20.py`(4 — module imports/metadata/round-trip/idempotent upgrade). 합계 22 신규 + 581 회귀 = 603 PASS.
+- AuditHook은 `app.hooks.builtin.audit_hook.async_session`을 호출하므로 테스트에서 `monkeypatch.setattr(...)`로 `TestSession` 주입 필요. mock_user 패턴 답습.
+- ruff B024/B027(ABC 빈 메서드) 우회: `CustomHook`을 `ABC` 상속 안 함 — concrete base + 빈 default = 노옵. 의미적으로는 abstract 의도이나 ruff는 ABC 상속 시 명시적 `@abstractmethod` 강제.
+- NOTICES.md에 LiteLLM 차용 영역 추가 (CustomLogger 인터페이스 패턴 + `/health/history` 응답 형태).
+
 ### M8 (모델 Test + Curl 생성 + MCP Registry, backend)
 - `app/agent_runtime/model_factory.py`에 `create_chat_model_for_test(provider, model_name, *, api_key, base_url)` 추가 — `max_tokens=10`, `temperature=0` 강제 (결정론·저비용). `_ssl_ctx`는 기존 경로 재사용.
 - `app/services/model_test.py` 신규 — `run_model_test()` + `ModelTestResult`/`ModelTestError`. `asyncio.wait_for(timeout=30)` 강제, prompt = `"Reply with just the word 'pong'."`. clean error 정규식: `litellm|openai|anthropic|google|httpx`prefix 제거 + `Error code: NNN -` 제거 + 300자 cap. classify는 status_code(401/403/404/429) 우선, message hint fallback. raw_request는 SDK 미노출이라 provider별로 reconstruct (Authorization → `Bearer ***`, x-api-key → `***`, Google `?key=***`). curl은 `${API_KEY}` placeholder로 다시 치환 — 어떤 surface에도 평문 키 미노출.

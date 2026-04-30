@@ -84,6 +84,11 @@ async def execute_trigger(trigger_id: str) -> None:
             agent_skills=agent_skills or None,
             agent_id=str(agent.id),
             provider_api_keys=env_provider_keys(),
+            user_id=str(agent.user_id),
+            model_id=str(agent.model.id) if agent.model else None,
+            llm_credential_id=(
+                str(agent.llm_credential.id) if agent.llm_credential is not None else None
+            ),
         )
         try:
             await execute_agent_invoke(cfg, [{"role": "user", "content": trigger.input_message}])

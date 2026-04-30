@@ -1,7 +1,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Plus, Brain, Eye, Wrench, Lightbulb, Zap } from 'lucide-react'
+import { toast } from 'sonner'
+import { Activity, Plus, Brain, Eye, Wrench, Lightbulb, Zap } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
 import { Button } from '@/components/ui/button'
@@ -10,6 +11,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { DataTable, type FilterDef } from '@/components/ui/data-table'
 import { DomainIcon } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
+import { StatusChip } from '@/components/shared/status-chip'
 import { ModelSourceBadge } from '@/components/model/model-source-badge'
 import { ModelAddDialog } from '@/components/model/model-add-dialog'
 import { ModelEditDialog } from '@/components/model/model-edit-dialog'
@@ -17,10 +19,14 @@ import { ModelTestDialog } from '@/components/model/model-test-dialog'
 import { ModelTestBulkDialog } from '@/components/model/model-test-bulk-dialog'
 import { formatTokenPrice } from '@/components/model/model-format'
 import { useModels } from '@/lib/hooks/use-models'
+import { useModelHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 import type { Model } from '@/lib/types/model'
+import type { HealthCheckEntry } from '@/lib/types/health'
 
 export default function ModelsPage() {
   const { data: models, isLoading } = useModels()
+  const { data: healthEntries } = useModelHealth()
+  const runHealthCheck = useRunHealthCheck()
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Model | null>(null)
   const [testing, setTesting] = useState<Model | null>(null)
@@ -30,6 +36,26 @@ export default function ModelsPage() {
   // Stable reference for downstream memos. `models ?? []` would create a fresh
   // array on every render and bust the providerOptions / sourceOptions cache.
   const data = useMemo<Model[]>(() => models ?? [], [models])
+
+  // O(1) lookup of latest health entry per model_id. Falls back to "unknown"
+  // when no probe has been recorded yet (e.g. freshly added model).
+  const healthByModel = useMemo(() => {
+    const map = new Map<string, HealthCheckEntry>()
+    ;(healthEntries ?? []).forEach((h) => map.set(h.target_id, h))
+    return map
+  }, [healthEntries])
+
+  async function handleCheckNow(modelId: string) {
+    try {
+      await runHealthCheck.mutateAsync({
+        targetKind: 'model',
+        targetId: modelId,
+      })
+      toast.success('Health check complete')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Health check failed')
+    }
+  }
 
   const providerOptions = useMemo(() => {
     const set = new Set<string>()
@@ -73,18 +99,14 @@ export default function ModelsPage() {
         accessorKey: 'model_name',
         header: 'ID',
         cell: ({ row }) => (
-          <span className="font-mono text-xs text-muted-foreground">
-            {row.original.model_name}
-          </span>
+          <span className="font-mono text-xs text-muted-foreground">{row.original.model_name}</span>
         ),
       },
       {
         id: 'provider',
         accessorKey: 'provider',
         header: 'Provider',
-        cell: ({ row }) => (
-          <span className="text-xs">{row.original.provider}</span>
-        ),
+        cell: ({ row }) => <span className="text-xs">{row.original.provider}</span>,
         filterFn: 'equals',
       },
       {
@@ -131,35 +153,61 @@ export default function ModelsPage() {
         },
       },
       {
+        id: 'health',
+        accessorFn: (row) => healthByModel.get(row.id)?.status ?? 'unknown',
+        header: 'Status',
+        cell: ({ row }) => {
+          const entry = healthByModel.get(row.original.id)
+          return <HealthCell entry={entry} />
+        },
+        filterFn: (row, _columnId, filterValue) => {
+          if (filterValue === undefined || filterValue === null) return true
+          const status = healthByModel.get(row.original.id)?.status ?? 'unknown'
+          return status === filterValue
+        },
+      },
+      {
         id: 'agent_count',
         accessorKey: 'agent_count',
         header: 'Agents',
-        cell: ({ row }) => (
-          <span className="text-xs tabular-nums">
-            {row.original.agent_count}
-          </span>
-        ),
+        cell: ({ row }) => <span className="text-xs tabular-nums">{row.original.agent_count}</span>,
       },
       {
         id: 'actions',
         header: '',
         cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={`Test ${row.original.display_name}`}
-            onClick={(e) => {
-              e.stopPropagation()
-              setTesting(row.original)
-            }}
-          >
-            <Zap className="size-3.5" /> Test
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Check ${row.original.display_name}`}
+              data-testid={`check-now-${row.original.id}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleCheckNow(row.original.id)
+              }}
+              disabled={runHealthCheck.isPending}
+            >
+              <Activity className="size-3.5" /> Check
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Test ${row.original.display_name}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                setTesting(row.original)
+              }}
+            >
+              <Zap className="size-3.5" /> Test
+            </Button>
+          </div>
         ),
         enableSorting: false,
       },
     ],
-    [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [healthByModel, runHealthCheck.isPending],
   )
 
   const filters = useMemo<FilterDef[]>(
@@ -177,17 +225,23 @@ export default function ModelsPage() {
           label: s.charAt(0).toUpperCase() + s.slice(1),
         })),
       },
+      {
+        columnId: 'health',
+        label: 'Status',
+        options: [
+          { value: 'healthy', label: 'Healthy' },
+          { value: 'degraded', label: 'Degraded' },
+          { value: 'unhealthy', label: 'Unhealthy' },
+          { value: 'unknown', label: 'Unknown' },
+        ],
+      },
     ],
     [providerOptions, sourceOptions],
   )
 
   const toolbar =
     selected.length > 0 ? (
-      <Button
-        size="sm"
-        onClick={() => setBulkTestOpen(true)}
-        data-testid="test-selected"
-      >
+      <Button size="sm" onClick={() => setBulkTestOpen(true)} data-testid="test-selected">
         <Zap className="size-3.5" /> Test Selected
         <Badge variant="secondary" className="ml-1">
           {selected.length}
@@ -254,13 +308,33 @@ export default function ModelsPage() {
         open={!!testing}
         onOpenChange={(open) => !open && setTesting(null)}
       />
-      <ModelTestBulkDialog
-        models={selected}
-        open={bulkTestOpen}
-        onOpenChange={setBulkTestOpen}
-      />
+      <ModelTestBulkDialog models={selected} open={bulkTestOpen} onOpenChange={setBulkTestOpen} />
     </div>
   )
+}
+
+function HealthCell({ entry }: { entry: HealthCheckEntry | undefined }) {
+  if (!entry) {
+    return <StatusChip variant="unknown" />
+  }
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <StatusChip variant={entry.status} />
+      <span className="text-[10px] text-muted-foreground">
+        {formatRelativeTime(entry.checked_at)}
+      </span>
+    </div>
+  )
+}
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return iso
+  const deltaSec = Math.floor((Date.now() - then) / 1000)
+  if (deltaSec < 60) return `${deltaSec}s ago`
+  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}m ago`
+  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}h ago`
+  return `${Math.floor(deltaSec / 86400)}d ago`
 }
 
 function CapabilityIcons({ model }: { model: Model }) {
@@ -290,11 +364,7 @@ function CapabilityIcons({ model }: { model: Model }) {
   return (
     <div className="mt-0.5 flex items-center gap-1 text-muted-foreground">
       {items.map(({ key, icon: Icon, title }) => (
-        <Icon
-          key={key}
-          className="size-3"
-          aria-label={title}
-        />
+        <Icon key={key} className="size-3" aria-label={title} />
       ))}
     </div>
   )

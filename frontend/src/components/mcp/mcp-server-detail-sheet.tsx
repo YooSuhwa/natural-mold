@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Activity, RefreshCw, Trash2 } from 'lucide-react'
+import { Activity, Loader2, RefreshCw, Trash2 } from 'lucide-react'
 
 import {
   Sheet,
@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { StatusChip } from '@/components/shared/status-chip'
+import { HealthHistoryChart } from '@/components/shared/health-history-chart'
 import { CredentialPicker } from '@/components/credential/credential-picker'
 import { McpToolTable } from './mcp-tool-table'
 import {
@@ -23,6 +24,7 @@ import {
   useTestMcpServer,
   useUpdateMcpServer,
 } from '@/lib/hooks/use-mcp-servers'
+import { useMcpHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 
 interface McpServerDetailSheetProps {
   serverId: string | null
@@ -30,11 +32,7 @@ interface McpServerDetailSheetProps {
   onOpenChange: (open: boolean) => void
 }
 
-export function McpServerDetailSheet({
-  serverId,
-  open,
-  onOpenChange,
-}: McpServerDetailSheetProps) {
+export function McpServerDetailSheet({ serverId, open, onOpenChange }: McpServerDetailSheetProps) {
   const { data: server } = useMcpServer(serverId)
   const update = useUpdateMcpServer()
   const remove = useDeleteMcpServer()
@@ -143,11 +141,12 @@ export function McpServerDetailSheet({
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium">Credential</label>
-              <CredentialPicker
-                value={server.credential_id}
-                onChange={handleCredentialChange}
-              />
+              <CredentialPicker value={server.credential_id} onChange={handleCredentialChange} />
             </div>
+
+            <Separator />
+
+            <McpHealthSection serverId={server.id} />
 
             <Separator />
 
@@ -180,5 +179,62 @@ export function McpServerDetailSheet({
         )}
       </SheetContent>
     </Sheet>
+  )
+}
+
+function McpHealthSection({ serverId }: { serverId: string }) {
+  const { data: healthEntries } = useMcpHealth()
+  const runHealthCheck = useRunHealthCheck()
+  const latest = useMemo(
+    () => (healthEntries ?? []).find((h) => h.target_id === serverId),
+    [healthEntries, serverId],
+  )
+
+  async function handleCheck() {
+    try {
+      await runHealthCheck.mutateAsync({
+        targetKind: 'mcp_server',
+        targetId: serverId,
+      })
+      toast.success('Health check complete')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Health check failed')
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Health
+        </h3>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleCheck}
+          disabled={runHealthCheck.isPending}
+          data-testid="mcp-health-check-now"
+        >
+          {runHealthCheck.isPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Activity className="size-3.5" />
+          )}
+          Check now
+        </Button>
+      </div>
+      {latest && (
+        <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-2 text-xs">
+          <StatusChip variant={latest.status} />
+          {typeof latest.latency_ms === 'number' && (
+            <span className="text-muted-foreground">{latest.latency_ms} ms</span>
+          )}
+          <span className="text-[10px] text-muted-foreground">
+            {new Date(latest.checked_at).toLocaleString()}
+          </span>
+        </div>
+      )}
+      <HealthHistoryChart targetKind="mcp_server" targetId={serverId} />
+    </div>
   )
 }

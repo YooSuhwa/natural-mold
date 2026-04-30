@@ -9,10 +9,14 @@ syntax used elsewhere applies.
 
 from __future__ import annotations
 
+import time
+import uuid as _uuid
 from dataclasses import asdict
+from datetime import UTC, datetime
 from typing import Any
 
 from app.credentials.interpolation import resolve_deep
+from app.hooks import HookContext, HookResult, hooks
 from app.mcp.domain import McpServerInfo, McpToolDescriptor
 
 
@@ -56,27 +60,55 @@ async def connect_and_list(
     url: str | None,
     headers: dict[str, Any] | None = None,
     credentials: dict[str, Any] | None = None,
+    user_id: _uuid.UUID | None = None,
+    mcp_server_id: _uuid.UUID | None = None,
+    credential_id: _uuid.UUID | None = None,
 ) -> dict[str, Any]:
     """Probe an MCP server and return ``{success, server_info, tools, error}``.
 
     Stdio transport is reported as unsupported for now — the discover/test
-    endpoints only need network transports for the PoC.
+    endpoints only need network transports for the PoC. Hook dispatch fires
+    only when a ``user_id`` is provided so the test suite (which calls the
+    helper directly) is unaffected.
     """
 
+    hook_ctx = _build_mcp_hook_context(
+        user_id=user_id,
+        mcp_server_id=mcp_server_id,
+        credential_id=credential_id,
+        url=url,
+        transport=transport,
+    )
+    if hook_ctx is not None:
+        await hooks.run_pre(hook_ctx)
+    started = time.monotonic()
+
     if transport not in {"sse", "streamable_http"}:
-        return {
+        result = {
             "success": False,
             "server_info": {},
             "tools": [],
             "error": f"transport '{transport}' is not supported by the probe yet",
         }
+        if hook_ctx is not None:
+            await hooks.run_post(
+                hook_ctx,
+                HookResult(duration_ms=int((time.monotonic() - started) * 1000)),
+            )
+        return result
     if not url:
-        return {
+        result = {
             "success": False,
             "server_info": {},
             "tools": [],
             "error": "url is required for sse / streamable_http transports",
         }
+        if hook_ctx is not None:
+            await hooks.run_post(
+                hook_ctx,
+                HookResult(duration_ms=int((time.monotonic() - started) * 1000)),
+            )
+        return result
 
     merged_headers = build_headers(headers, credentials)
 
@@ -86,12 +118,18 @@ async def connect_and_list(
         from mcp.client.session import ClientSession
         from mcp.client.streamable_http import streamablehttp_client
     except ImportError as exc:  # pragma: no cover — runtime dep present in pyproject
-        return {
+        result = {
             "success": False,
             "server_info": {},
             "tools": [],
             "error": f"mcp client SDK unavailable: {exc}",
         }
+        if hook_ctx is not None:
+            await hooks.run_post(
+                hook_ctx,
+                HookResult(duration_ms=int((time.monotonic() - started) * 1000)),
+            )
+        return result
 
     try:
         async with (
@@ -115,19 +153,52 @@ async def connect_and_list(
                 )
                 for t in tools_result.tools
             ]
-            return {
+            result = {
                 "success": True,
                 "server_info": asdict(info),
                 "tools": [asdict(d) for d in descriptors],
                 "error": None,
             }
     except Exception as exc:  # noqa: BLE001 — surface as soft error to the UI
+        if hook_ctx is not None:
+            await hooks.run_failure(hook_ctx, exc)
         return {
             "success": False,
             "server_info": {},
             "tools": [],
             "error": str(exc),
         }
+
+    if hook_ctx is not None:
+        await hooks.run_post(
+            hook_ctx,
+            HookResult(
+                duration_ms=int((time.monotonic() - started) * 1000),
+                output=f"tools={len(result.get('tools') or [])}",
+            ),
+        )
+    return result
+
+
+def _build_mcp_hook_context(
+    *,
+    user_id: _uuid.UUID | None,
+    mcp_server_id: _uuid.UUID | None,
+    credential_id: _uuid.UUID | None,
+    url: str | None,
+    transport: str,
+) -> HookContext | None:
+    if user_id is None:
+        return None
+    return HookContext(
+        request_id=str(_uuid.uuid4()),
+        kind="mcp_call",
+        user_id=user_id,
+        started_at=datetime.now(UTC).replace(tzinfo=None),
+        mcp_server_id=mcp_server_id,
+        credential_id=credential_id,
+        metadata={"transport": transport, "url": url},
+    )
 
 
 __all__ = ["build_env_vars", "build_headers", "connect_and_list"]

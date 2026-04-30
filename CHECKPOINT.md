@@ -216,14 +216,15 @@ python scripts/check_branding.py   # 0건
 **왜**: pre/post-call hook으로 Spend/권한/감사 등 cross-cutting concerns 일관 적용 + 등록된 모델/MCP가 살아있는지 주기 검증 + 시계열 history.
 
 ### 범위 (LiteLLM 차용)
-- `app/hooks/` 신규 — `CustomLogger` ABC, `async_pre_call_hook` / `async_post_call_hook`
-- `executor.py`/`tool_factory`/`mcp_client` 호출 지점에 hook 통합
-- `models/health_check_history.py` 신규 — model_id, mcp_server_id, status, latency_ms, error, checked_at
-- `services/health_check.py` 신규 — model + MCP health check 실행 + DB 기록
-- `scheduler.py` — 주1회 health check cron 잡
-- `routers/health.py` 신규 — GET /api/health/{models,mcp-servers}, GET /api/health/history
-- 프론트: 모델/MCP 페이지에 status 컬럼 + 행 클릭 시 history 차트
-- 상태: pending
+- `app/hooks/` 신규 — `CustomHook` 베이스 + `HookRegistry` 디스패처 + `LoggingHook`/`AuditHook` 빌트인
+- `executor.py`/`tool_factory`/`mcp_client` 호출 지점에 hook 통합 (failure isolation try/except)
+- `models/health_check_history.py` 신규 — target_kind, target_id, status, latency_ms, error_kind/message, checked_at
+- `services/health_check.py` 신규 — model + MCP health check 실행 + DB 기록 (`check_model`/`check_mcp_server`/`check_all_active`)
+- `scheduler.py` — `health_check_all_active` 일일 cron 잡 (`settings.health_check_cron` 기본 `"0 4 * * *"`)
+- `alembic/versions/m20_add_health_check_history.py` 신규 — dialect-aware UUID/timestamp + 인덱스 + reversible downgrade
+- `routers/health.py` 신규 — GET /api/health/{models,mcp-servers,history}, POST /api/health/check
+- 프론트: 모델/MCP 페이지에 status 컬럼 + 행 클릭 시 history 차트 (후속)
+- 상태: backend done (2026-04-29, 22 신규 + 581 회귀 = 603 PASS, ruff clean, branding 0건, m20 upgrade/downgrade/upgrade 라운드트립 PG 5433 OK)
 
 ## M10: Spend Queue + Dashboard + Model Fallback (예정)
 

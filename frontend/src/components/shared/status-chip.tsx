@@ -13,6 +13,9 @@ export type StatusChipVariant =
   | 'error'
   | 'unreachable'
   | 'unknown'
+  | 'healthy'
+  | 'degraded'
+  | 'unhealthy'
 
 interface StatusChipProps {
   variant: StatusChipVariant | string
@@ -22,10 +25,7 @@ interface StatusChipProps {
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>
 
-const STYLES: Record<
-  StatusChipVariant,
-  { icon: Icon; classes: string; defaultLabel: string }
-> = {
+const STYLES: Record<StatusChipVariant, { icon: Icon; classes: string; defaultLabel: string }> = {
   active: {
     icon: CheckCircle2,
     classes:
@@ -52,8 +52,7 @@ const STYLES: Record<
   },
   disabled: {
     icon: Slash,
-    classes:
-      'bg-muted text-muted-foreground ring-border',
+    classes: 'bg-muted text-muted-foreground ring-border',
     defaultLabel: 'Disabled',
   },
   error: {
@@ -72,6 +71,24 @@ const STYLES: Record<
     icon: HelpCircle,
     classes: 'bg-muted text-muted-foreground ring-border',
     defaultLabel: 'Unknown',
+  },
+  healthy: {
+    icon: CheckCircle2,
+    classes:
+      'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30',
+    defaultLabel: 'Healthy',
+  },
+  degraded: {
+    icon: AlertTriangle,
+    classes:
+      'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30',
+    defaultLabel: 'Degraded',
+  },
+  unhealthy: {
+    icon: XCircle,
+    classes:
+      'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
+    defaultLabel: 'Unhealthy',
   },
 }
 

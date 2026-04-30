@@ -9,6 +9,7 @@ from app.models.conversation import Conversation
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.credential_default import CredentialDefault
+from app.models.health_check_history import HealthCheckHistory
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.model import Model
@@ -29,6 +30,7 @@ __all__ = [
     "Credential",
     "CredentialAuditLog",
     "CredentialDefault",
+    "HealthCheckHistory",
     "McpServer",
     "McpTool",
     "Model",

@@ -45,11 +45,17 @@ logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.database import async_session
+from app.hooks import register_default_hooks
 from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
 from app.models.template import Template
 from app.models.user import User
-from app.scheduler import add_trigger_job, get_scheduler, register_credential_rotation_job
+from app.scheduler import (
+    add_trigger_job,
+    get_scheduler,
+    register_credential_rotation_job,
+    register_health_check_job,
+)
 from app.seed.bootstrap_from_env import bootstrap_credentials_from_env
 from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_templates import DEFAULT_TEMPLATES
@@ -116,12 +122,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await init_checkpointer(settings.database_url_sync)
 
+    # Hook framework — register built-in hooks before any runtime call.
+    register_default_hooks()
+
     # Start scheduler and reload active triggers.
     scheduler = get_scheduler()
     scheduler.start()
 
     # Recurring credential key rotation (re-encrypts rows under stale keys).
     register_credential_rotation_job()
+    # Recurring health check for active models / MCP servers.
+    register_health_check_job()
 
     async with async_session() as db:
         result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))
@@ -159,6 +170,7 @@ def create_app() -> FastAPI:
         builder,
         conversations,
         credentials,
+        health,
         mcp,
         models,
         skills,
@@ -174,6 +186,7 @@ def create_app() -> FastAPI:
     app.include_router(assistant.router)
     app.include_router(conversations.router)
     app.include_router(credentials.router)
+    app.include_router(health.router)
     app.include_router(mcp.router)
     app.include_router(mcp.catalog_router)  # /api/mcp-server-types
     app.include_router(models.router)

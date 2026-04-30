@@ -14,8 +14,10 @@ out of the box and don't justify a registry entry of their own.
 from __future__ import annotations
 
 import logging
+import time
+import uuid as _uuid
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -23,6 +25,7 @@ import httpx
 from langchain_core.tools import BaseTool, StructuredTool
 
 from app.config import settings
+from app.hooks import HookContext, HookResult, hooks
 from app.tools.domain import ToolRunContext
 from app.tools.registry import registry as tool_registry
 
@@ -130,6 +133,53 @@ def _safe_tool_name(raw_name: str) -> str:
     return cleaned[:60]
 
 
+def _safe_uuid(value: Any) -> _uuid.UUID | None:
+    """Best-effort coercion of optional correlation IDs to ``UUID``."""
+
+    if value is None or value == "":
+        return None
+    if isinstance(value, _uuid.UUID):
+        return value
+    try:
+        return _uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _summarize_output(output: Any) -> str | None:
+    """Cap tool output to the first 200 chars for the audit trail."""
+
+    if output is None:
+        return None
+    text = output if isinstance(output, str) else str(output)
+    return text[:200]
+
+
+def _build_tool_hook_context(
+    *,
+    user_uuid: _uuid.UUID | None,
+    tool_uuid: _uuid.UUID | None,
+    credential_uuid: _uuid.UUID | None,
+    agent_uuid: _uuid.UUID | None,
+    tool_name: str,
+    definition_key: str,
+) -> HookContext | None:
+    """Build a ``HookContext`` for a tool call. Returns ``None`` without user."""
+
+    if user_uuid is None:
+        return None
+    return HookContext(
+        request_id=str(_uuid.uuid4()),
+        kind="tool_call",
+        user_id=user_uuid,
+        started_at=datetime.now(UTC).replace(tzinfo=None),
+        agent_id=agent_uuid,
+        tool_id=tool_uuid,
+        credential_id=credential_uuid,
+        metadata={"tool_name": tool_name, "definition_key": definition_key},
+    )
+
+
 def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
     """Translate a chat_service ``tools_config`` entry into a LangChain tool.
 
@@ -161,15 +211,47 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
 
     runner = definition.runner
 
+    # Resolve correlation IDs once — used by every invocation of this tool.
+    tool_uuid = _safe_uuid(tool_config.get("tool_id"))
+    credential_uuid = _safe_uuid(tool_config.get("credential_id"))
+    user_uuid = _safe_uuid(tool_config.get("user_id"))
+    agent_uuid = _safe_uuid(tool_config.get("agent_id"))
+    tool_display_name = tool_config.get("name") or definition.display_name
+
     async def _invoke(**runtime_args: Any) -> Any:
         merged = {**stored_params, **runtime_args}
-        async with httpx.AsyncClient(timeout=settings.tool_call_timeout) as client:
-            ctx = ToolRunContext(
-                parameters=merged,
-                credentials=credentials,
-                http_client=client,
+        hook_ctx = _build_tool_hook_context(
+            user_uuid=user_uuid,
+            tool_uuid=tool_uuid,
+            credential_uuid=credential_uuid,
+            agent_uuid=agent_uuid,
+            tool_name=tool_display_name,
+            definition_key=definition_key,
+        )
+        if hook_ctx is not None:
+            await hooks.run_pre(hook_ctx)
+        started = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=settings.tool_call_timeout) as client:
+                run_ctx = ToolRunContext(
+                    parameters=merged,
+                    credentials=credentials,
+                    http_client=client,
+                )
+                output = await runner(run_ctx)
+        except Exception as exc:
+            if hook_ctx is not None:
+                await hooks.run_failure(hook_ctx, exc)
+            raise
+        if hook_ctx is not None:
+            await hooks.run_post(
+                hook_ctx,
+                HookResult(
+                    duration_ms=int((time.monotonic() - started) * 1000),
+                    output=_summarize_output(output),
+                ),
             )
-            return await runner(ctx)
+        return output
 
     safe_name = _safe_tool_name(tool_config.get("name") or definition.display_name)
     description = (

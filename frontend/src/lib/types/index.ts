@@ -6,6 +6,7 @@ export * from './tool'
 export * from './mcp'
 export * from './skill'
 export * from './model'
+export * from './health'
 
 // ---------- Agent ---------------------------------------------------------
 

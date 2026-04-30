@@ -180,3 +180,53 @@ def register_credential_rotation_job() -> None:
         "Scheduled credential rotation job: cron %s",
         settings.credential_rotation_cron,
     )
+
+
+# ---------------------------------------------------------------------------
+# Health check sweep
+# ---------------------------------------------------------------------------
+
+HEALTH_CHECK_JOB_ID = "health_check_sweep"
+
+
+async def health_check_all_active() -> dict[str, int]:
+    """Probe every active model + MCP server and write history rows.
+
+    Errors during a single probe are swallowed by the service layer so the
+    sweep keeps moving — the probe itself records ``unhealthy`` rather than
+    aborting the cron run.
+    """
+
+    from app.services import health_check as health_check_service
+
+    async with async_session() as db:
+        return await health_check_service.check_all_active(db)
+
+
+def register_health_check_job() -> None:
+    """Register the recurring health check cron job. Idempotent."""
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        logger.debug("Scheduler not running; skipping health check registration")
+        return
+    try:
+        trigger = CronTrigger.from_crontab(settings.health_check_cron)
+    except ValueError:
+        logger.exception(
+            "invalid health_check_cron=%r; health check job not scheduled",
+            settings.health_check_cron,
+        )
+        return
+    scheduler.add_job(
+        health_check_all_active,
+        trigger,
+        id=HEALTH_CHECK_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info(
+        "Scheduled health check sweep: cron %s",
+        settings.health_check_cron,
+    )
