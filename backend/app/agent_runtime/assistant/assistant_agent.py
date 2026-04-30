@@ -15,6 +15,8 @@ from typing import Any
 from langchain_core.language_models import BaseChatModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from app.agent_runtime.assistant.tools.clarify_tools import build_clarify_tools
 from app.agent_runtime.assistant.tools.read_tools import build_read_tools
 from app.agent_runtime.assistant.tools.write_tools import build_write_tools
@@ -22,6 +24,8 @@ from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.executor import build_agent
 from app.agent_runtime.model_factory import PROVIDER_API_KEY_MAP, create_chat_model
 from app.config import settings
+from app.credentials import service as credential_service
+from app.models.credential import Credential
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +48,49 @@ def _load_system_prompt() -> str:
         )
 
 
-@functools.cache
-def _get_assistant_model() -> BaseChatModel:
-    """Assistant 모델 인스턴스를 캐시한다."""
-    return create_chat_model(
-        settings.assistant_model_provider,
-        settings.assistant_model_name,
-        api_key=PROVIDER_API_KEY_MAP.get(settings.assistant_model_provider),
-    )
+async def _resolve_assistant_api_key(
+    db: AsyncSession, user_id: uuid.UUID, provider: str
+) -> str | None:
+    """Tiered key lookup for the Assistant model.
+
+    1. ENV (PROVIDER_API_KEY_MAP) — preserved for self-hosted bootstrap
+       where credentials might not be seeded yet.
+    2. First user-owned Credential whose definition_key matches the
+       Assistant provider — same UX as user agents (m23 default_credential
+       binding) so a fresh install only needs one Credential row to make
+       chat AND assistant work.
+    """
+
+    env_key = PROVIDER_API_KEY_MAP.get(provider)
+    if env_key:
+        return env_key
+
+    cred = (
+        await db.execute(
+            select(Credential)
+            .where(
+                Credential.user_id == user_id,
+                Credential.definition_key == provider,
+                Credential.status == "active",
+            )
+            .order_by(Credential.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if cred is None:
+        return None
+    try:
+        payload = await credential_service.decrypt_with_external(
+            cred.data_encrypted
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("Assistant credential %s decryption failed", cred.id)
+        return None
+    api_key = payload.get("api_key") or payload.get("token")
+    return str(api_key) if api_key else None
 
 
-def build_assistant_agent(
+async def build_assistant_agent(
     db: AsyncSession,
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
@@ -71,7 +107,14 @@ def build_assistant_agent(
     Returns:
         CompiledStateGraph — build_agent의 반환값
     """
-    model = _get_assistant_model()
+    api_key = await _resolve_assistant_api_key(
+        db, user_id, settings.assistant_model_provider
+    )
+    model: BaseChatModel = create_chat_model(
+        settings.assistant_model_provider,
+        settings.assistant_model_name,
+        api_key=api_key,
+    )
 
     # 도구 35개 = 16 read + 18 write + 1 clarify
     tools = (
