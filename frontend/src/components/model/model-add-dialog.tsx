@@ -135,6 +135,9 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
         cost_per_output_token: perMillionToTokenPrice(outputPriceM),
         context_window: contextWindow ? Number(contextWindow) : null,
         source: 'manual',
+        // The credential the user chose for the test panel becomes the
+        // model's default credential — same intent as the Discover flow.
+        default_credential_id: effectiveCredId || null,
       })
       toast.success('Model added')
       onSaved()

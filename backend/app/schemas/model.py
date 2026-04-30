@@ -30,6 +30,7 @@ class ModelCreate(BaseModel):
     supports_function_calling: bool | None = None
     supports_reasoning: bool | None = None
     source: Literal["openrouter", "litellm", "manual"] | None = None
+    default_credential_id: uuid.UUID | None = None
 
 
 class ModelUpdate(BaseModel):
@@ -50,6 +51,7 @@ class ModelUpdate(BaseModel):
     supports_function_calling: bool | None = None
     supports_reasoning: bool | None = None
     source: Literal["openrouter", "litellm", "manual"] | None = None
+    default_credential_id: uuid.UUID | None = None
 
 
 class ModelResponse(BaseModel):
@@ -69,6 +71,7 @@ class ModelResponse(BaseModel):
     supports_function_calling: bool | None = None
     supports_reasoning: bool | None = None
     source: str | None = None
+    default_credential_id: uuid.UUID | None = None
     rankings: dict[str, Any] | None = None
     agent_count: int = 0
     created_at: datetime

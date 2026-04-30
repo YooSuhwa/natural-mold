@@ -37,6 +37,7 @@ export interface Model {
   supports_function_calling: boolean | null
   supports_reasoning: boolean | null
   source: ModelSource | null
+  default_credential_id: string | null
   agent_count: number
   rankings: ModelRankings | null
   created_at: string
@@ -87,6 +88,7 @@ export interface ModelCreate {
   supports_reasoning?: boolean | null
   source?: ModelSource | null
   is_default?: boolean
+  default_credential_id?: string | null
 }
 
 export interface ModelUpdate {
@@ -102,6 +104,7 @@ export interface ModelUpdate {
   supports_function_calling?: boolean | null
   supports_reasoning?: boolean | null
   is_default?: boolean
+  default_credential_id?: string | null
 }
 
 /**

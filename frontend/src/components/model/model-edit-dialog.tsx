@@ -363,7 +363,11 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
             value="health"
             className="flex-1 space-y-3 overflow-y-auto pt-3"
           >
-            <ModelHealthPanel modelId={model.id} provider={model.provider} />
+            <ModelHealthPanel
+              modelId={model.id}
+              provider={model.provider}
+              defaultCredentialId={model.default_credential_id}
+            />
           </TabsContent>
         </Tabs>
 
@@ -384,9 +388,11 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
 function ModelHealthPanel({
   modelId,
   provider,
+  defaultCredentialId,
 }: {
   modelId: string
   provider: string
+  defaultCredentialId: string | null
 }) {
   const { data: healthEntries } = useModelHealth()
   const { data: credentials } = useCredentials()
@@ -404,10 +410,18 @@ function ModelHealthPanel({
       ),
     [credentials],
   )
+  // Tiered default: the credential captured at Add-model time wins, then
+  // any credential whose definition matches the provider, then the first
+  // available LLM credential. The user explicitly chose the first one when
+  // they registered the model — surfacing anything else surprises them.
   const matchedDefault = useMemo(() => {
+    if (defaultCredentialId) {
+      const stored = llmCredentials.find((c) => c.id === defaultCredentialId)
+      if (stored) return stored.id
+    }
     const exact = llmCredentials.find((c) => c.definition_key === provider)
     return exact?.id ?? llmCredentials[0]?.id ?? ''
-  }, [llmCredentials, provider])
+  }, [llmCredentials, provider, defaultCredentialId])
   // Local override; falls back to the matched default when the user hasn't
   // explicitly picked another credential. Computed at render-time to avoid
   // the lint rule against ``setState`` inside ``useEffect``.

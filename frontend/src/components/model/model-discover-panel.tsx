@@ -138,6 +138,10 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
             supports_function_calling: m.supports_function_calling,
             supports_reasoning: m.supports_reasoning,
             source: m.source,
+            // Capture user intent: the credential they used to discover
+            // becomes the model's default credential. Health panel and
+            // future auto-binding flows will respect this.
+            default_credential_id: credentialId || null,
           }),
         ),
       )
