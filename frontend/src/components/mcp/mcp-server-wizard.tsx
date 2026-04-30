@@ -30,6 +30,7 @@ import { McpToolTable } from './mcp-tool-table'
 import {
   useCreateFromRegistry,
   useCreateMcpServer,
+  useDeleteMcpServer,
   useDiscoverMcpTools,
   useMcpRegistry,
 } from '@/lib/hooks/use-mcp-servers'
@@ -81,7 +82,9 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
   const create = useCreateMcpServer()
   const createFromRegistry = useCreateFromRegistry()
   const discover = useDiscoverMcpTools()
+  const remove = useDeleteMcpServer()
   const discoveredRef = useRef(false)
+  const committedRef = useRef(false)
 
   function reset() {
     setTab('registry')
@@ -97,10 +100,21 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
     setRegistryKey(null)
     setCredentialDefinitionFilter(null)
     discoveredRef.current = false
+    committedRef.current = false
   }
 
   function handleClose(next: boolean) {
-    if (!next) reset()
+    if (!next) {
+      // If the user dismissed the wizard without confirming with [Add],
+      // roll back the half-created server. Server delete cascades to its
+      // imported mcp_tools rows, so no manual cleanup is needed.
+      if (createdServerId && !committedRef.current) {
+        void remove.mutateAsync(createdServerId).catch(() => {
+          toast.error('Cleanup failed — server may remain in the list')
+        })
+      }
+      reset()
+    }
     onOpenChange(next)
   }
 
@@ -160,6 +174,7 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
     }
 
     if (step === 'Tools') {
+      committedRef.current = true
       toast.success('MCP server ready')
       handleClose(false)
     }
