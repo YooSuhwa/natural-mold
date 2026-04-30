@@ -438,11 +438,11 @@ function ModelHealthPanel({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
-        <div className="space-y-1">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+        <div className="min-w-0 flex-1 space-y-1">
           <p className="text-xs font-semibold">Latest probe</p>
           {latest ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <StatusChip variant={latest.status} />
               {typeof latest.latency_ms === 'number' && (
                 <span className="text-xs text-muted-foreground">{latest.latency_ms} ms</span>
@@ -455,12 +455,12 @@ function ModelHealthPanel({
             <p className="text-xs text-muted-foreground">No probes yet</p>
           )}
           {latest?.error_message && (
-            <p className="line-clamp-2 text-[10px] text-destructive">
+            <p className="line-clamp-2 break-words text-[10px] text-destructive">
               {latest.error_kind}: {latest.error_message}
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Select value={credentialId} onValueChange={(v) => setOverride(v ?? '')}>
             <SelectTrigger size="sm" className="w-[180px]">
               <SelectValue placeholder="Select credential">
