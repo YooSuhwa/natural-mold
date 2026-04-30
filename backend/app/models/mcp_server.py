@@ -13,7 +13,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import JSON, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
 class _Tx:
@@ -65,6 +65,11 @@ class McpServer(Base):
 
     credential_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True
+    )
+    # ``Credential`` ORM lives in app.models.credential — string ref avoids
+    # an import cycle (Credential → User → … may grow new back-refs).
+    credential: Mapped["Credential | None"] = relationship(  # type: ignore[name-defined]  # noqa: F821
+        "Credential", lazy="select", foreign_keys="[McpServer.credential_id]"
     )
 
     status: Mapped[str] = mapped_column(

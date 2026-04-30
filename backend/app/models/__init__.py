@@ -14,7 +14,7 @@ from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
 from app.models.health_check_history import HealthCheckHistory
 from app.models.mcp_server import McpServer
-from app.models.mcp_tool import McpTool
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.model import Model
 from app.models.skill import AgentSkillLink, Skill
 from app.models.template import Template
@@ -24,6 +24,7 @@ from app.models.user import User
 
 __all__ = [
     "Agent",
+    "AgentMcpToolLink",
     "AgentSkillLink",
     "AgentSubAgentLink",
     "AgentToolLink",

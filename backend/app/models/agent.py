@@ -8,6 +8,7 @@ from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.mcp_tool import AgentMcpToolLink
 from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink
 
@@ -66,6 +67,10 @@ class Agent(Base):
     )
     tool_links: Mapped[list[AgentToolLink]] = relationship(
         cascade="all, delete-orphan",
+    )
+    mcp_tool_links: Mapped[list[AgentMcpToolLink]] = relationship(
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
     skill_links: Mapped[list[AgentSkillLink]] = relationship(
         cascade="all, delete-orphan",

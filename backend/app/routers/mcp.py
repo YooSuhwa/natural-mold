@@ -26,6 +26,7 @@ from app.schemas.mcp import (
     McpServerUpdate,
     McpTestResponse,
     McpToolResponse,
+    McpToolWithServerResponse,
 )
 from app.credentials import service as credential_service
 from app.mcp.client import connect_and_list
@@ -285,6 +286,36 @@ async def probe_mcp_server(
         ],
         error=result.get("error"),
     )
+
+
+@router.get("/all-tools", response_model=list[McpToolWithServerResponse])
+async def list_all_user_mcp_tools(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> list[McpToolWithServerResponse]:
+    """All MCP tools across the user's servers — powers the unified Tools
+    picker (Tools tab → MCP source) so the user can bind individual tools
+    to an agent without first navigating to each server detail page."""
+
+    rows = (
+        await db.execute(
+            select(McpTool, McpServer.name)
+            .join(McpServer, McpTool.server_id == McpServer.id)
+            .where(McpServer.user_id == user.id)
+            .order_by(McpServer.name, McpTool.name)
+        )
+    ).all()
+    return [
+        McpToolWithServerResponse(
+            id=tool.id,
+            name=tool.name,
+            description=tool.description,
+            enabled=tool.enabled,
+            server_id=tool.server_id,
+            server_name=server_name,
+        )
+        for tool, server_name in rows
+    ]
 
 
 @router.get("/{server_id}", response_model=McpServerDetailResponse)

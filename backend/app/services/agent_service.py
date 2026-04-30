@@ -9,6 +9,8 @@ from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
+from app.models.mcp_server import McpServer
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.model import Model
 from app.models.skill import AgentSkillLink
 from app.models.template import Template
@@ -25,6 +27,7 @@ def _selectin_agent() -> list:
     return [
         selectinload(Agent.model),
         selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
+        selectinload(Agent.mcp_tool_links).selectinload(AgentMcpToolLink.mcp_tool),
         selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
         selectinload(Agent.sub_agent_links),
     ]
@@ -72,6 +75,27 @@ async def _validate_sub_agent_ids_owned(
         raise HTTPException(
             status_code=400,
             detail=f"Invalid or unauthorized sub_agent_ids: {invalid}",
+        )
+
+
+async def _validate_mcp_tool_ids_owned(
+    db: AsyncSession, mcp_tool_ids: list[uuid.UUID], user_id: uuid.UUID
+) -> None:
+    """mcp_tool_ids: 실재 + (서버 소유주가 user_id). 누락 시 400."""
+
+    if not mcp_tool_ids:
+        return
+    result = await db.execute(
+        select(McpTool.id)
+        .join(McpServer, McpTool.server_id == McpServer.id)
+        .where(McpTool.id.in_(mcp_tool_ids), McpServer.user_id == user_id)
+    )
+    valid = {row[0] for row in result.all()}
+    invalid = [str(i) for i in mcp_tool_ids if i not in valid]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid or unauthorized mcp_tool_ids: {invalid}",
         )
 
 
@@ -144,7 +168,7 @@ async def _validate_skill_ids_owned(
 async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
     agent.is_favorite = not agent.is_favorite
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "skill_links", "sub_agent_links"])
+    await db.refresh(agent, ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"])
     return agent
 
 
@@ -190,6 +214,12 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         await _validate_tool_ids_owned(db, tool_ids_to_link, user_id)
         agent.tool_links = _build_tool_links(tool_ids_to_link)
 
+    if data.mcp_tool_ids:
+        await _validate_mcp_tool_ids_owned(db, data.mcp_tool_ids, user_id)
+        agent.mcp_tool_links = [
+            AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids
+        ]
+
     if data.skill_ids:
         await _validate_skill_ids_owned(db, data.skill_ids, user_id)
         agent.skill_links = [AgentSkillLink(skill_id=sid) for sid in data.skill_ids]
@@ -203,7 +233,10 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
 
     db.add(agent)
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "skill_links", "sub_agent_links"])
+    await db.refresh(
+        agent,
+        ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
+    )
     return agent
 
 
@@ -237,6 +270,13 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
         agent.tool_links.clear()
         await db.flush()
         agent.tool_links = _build_tool_links(data.tool_ids)
+    if data.mcp_tool_ids is not None:
+        await _validate_mcp_tool_ids_owned(db, data.mcp_tool_ids, agent.user_id)
+        agent.mcp_tool_links.clear()
+        await db.flush()
+        agent.mcp_tool_links = [
+            AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids
+        ]
     if data.skill_ids is not None:
         await _validate_skill_ids_owned(db, data.skill_ids, agent.user_id)
         agent.skill_links.clear()
@@ -255,7 +295,7 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
             for idx, sid in enumerate(data.sub_agent_ids)
         ]
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "skill_links", "sub_agent_links"])
+    await db.refresh(agent, ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"])
     return agent
 
 

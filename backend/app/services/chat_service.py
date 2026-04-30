@@ -26,6 +26,8 @@ from sqlalchemy.orm import selectinload
 from app.credentials import service as credential_service
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.mcp_server import McpServer
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
@@ -234,6 +236,12 @@ async def get_agent_with_tools(
             selectinload(Agent.tool_links)
             .selectinload(AgentToolLink.tool)
             .selectinload(Tool.credential),
+            # MCP tool link → mcp_tool → server (server carries transport,
+            # url, headers, and credential needed to actually invoke).
+            selectinload(Agent.mcp_tool_links)
+            .selectinload(AgentMcpToolLink.mcp_tool)
+            .selectinload(McpTool.server)
+            .selectinload(McpServer.credential),
             selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
         )
     )
@@ -309,6 +317,46 @@ async def build_tools_config(
                     str(tool.credential_id) if tool.credential_id else None
                 ),
                 # Hook-framework correlation — wire down to ``tool_factory``.
+                "user_id": str(agent.user_id),
+                "agent_id": str(agent.id),
+            }
+        )
+
+    # MCP tool bindings — emit in the executor's mcp_server_url shape so
+    # ``_build_mcp_tools`` instantiates them. m25 added the link table that
+    # makes this possible (previously a m5 follow-up).
+    for mcp_link in agent.mcp_tool_links:
+        mcp_tool = mcp_link.mcp_tool
+        if mcp_tool is None or not mcp_tool.enabled:
+            continue
+        server = mcp_tool.server
+        if server is None or not server.url:
+            continue
+
+        mcp_credentials: dict[str, Any] | None = None
+        if server.credential is not None:
+            try:
+                mcp_credentials = await credential_service.decrypt_with_external(
+                    server.credential.data_encrypted
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "credential decryption failed for mcp server %s", server.id
+                )
+
+        configs.append(
+            {
+                "tool_id": f"mcp:{mcp_tool.id}",
+                "definition_key": "mcp",
+                "name": mcp_tool.name,
+                "description": mcp_tool.description,
+                "parameters": {},
+                # _build_mcp_tools branches on these keys (see executor.py
+                # ``mcp_server_url``).
+                "mcp_server_url": server.url,
+                "mcp_tool_name": mcp_tool.name,
+                "mcp_transport_headers": dict(server.headers or {}),
+                "credentials": mcp_credentials,
                 "user_id": str(agent.user_id),
                 "agent_id": str(agent.id),
             }

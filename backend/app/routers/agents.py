@@ -20,6 +20,7 @@ from app.schemas.agent import (
     AgentResponse,
     AgentUpdate,
     GenerateImageResponse,
+    McpToolBrief,
     ToolBrief,
 )
 from app.schemas.skill import SkillBrief
@@ -56,6 +57,14 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         # frontend prompts re-binding instead of crashing the agents list.
         model=agent.model if agent.model is not None else None,
         tools=[ToolBrief(id=link.tool.id, name=link.tool.name) for link in agent.tool_links],
+        mcp_tools=[
+            McpToolBrief(
+                id=link.mcp_tool.id,
+                name=link.mcp_tool.name,
+                server_id=link.mcp_tool.server_id,
+            )
+            for link in agent.mcp_tool_links
+        ],
         skills=[
             SkillBrief(id=link.skill_id, name=link.skill.name, description=link.skill.description)
             for link in agent.skill_links

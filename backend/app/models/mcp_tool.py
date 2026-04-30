@@ -11,9 +11,33 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import JSON, Boolean, ForeignKey, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+
+class AgentMcpToolLink(Base):
+    """Association object: agent <-> MCP tool.
+
+    Created in m25 to complete the m5 follow-up — until now MCP tools
+    couldn't be bound per-agent, so chat_service.build_tools_config skipped
+    them entirely. With this link the unified Tools+Skills dialog can let
+    users pick MCP tools alongside regular Tool rows.
+    """
+
+    __tablename__ = "agent_mcp_tools"
+    __table_args__ = {"extend_existing": True}
+
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    mcp_tool_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("mcp_tools.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+    mcp_tool: Mapped["McpTool"] = relationship(lazy="joined")
 
 
 class McpTool(Base):
@@ -26,6 +50,9 @@ class McpTool(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     server_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False
+    )
+    server: Mapped["McpServer"] = relationship(  # type: ignore[name-defined]  # noqa: F821
+        lazy="select"
     )
 
     name: Mapped[str] = mapped_column(String(150), nullable=False)

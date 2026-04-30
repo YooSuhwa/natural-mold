@@ -78,6 +78,7 @@ class AgentCreate(BaseModel):
     system_prompt: str
     model_id: uuid.UUID
     tool_ids: list[uuid.UUID] = []
+    mcp_tool_ids: list[uuid.UUID] = []
     skill_ids: list[uuid.UUID] = []
     sub_agent_ids: list[uuid.UUID] = Field(default_factory=list)
     middleware_configs: list[MiddlewareConfigEntry] = []
@@ -109,6 +110,7 @@ class AgentUpdate(BaseModel):
     system_prompt: str | None = None
     model_id: uuid.UUID | None = None
     tool_ids: list[uuid.UUID] | None = None
+    mcp_tool_ids: list[uuid.UUID] | None = None
     skill_ids: list[uuid.UUID] | None = None
     sub_agent_ids: list[uuid.UUID] | None = None
     middleware_configs: list[MiddlewareConfigEntry] | None = None
@@ -142,6 +144,17 @@ class ToolBrief(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class McpToolBrief(BaseModel):
+    """Per-server MCP tool reference for agent responses."""
+
+    id: uuid.UUID
+    name: str
+    server_id: uuid.UUID
+    server_name: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class AgentBrief(BaseModel):
     """가벼운 에이전트 카드용 표현 (서브에이전트 목록 등)."""
 
@@ -163,6 +176,7 @@ class AgentResponse(BaseModel):
     # The frontend renders a "no model bound" warning and prompts re-binding.
     model: ModelBrief | None = None
     tools: list[ToolBrief]
+    mcp_tools: list[McpToolBrief] = Field(default_factory=list)
     skills: list[SkillBrief] = []
     sub_agents: list[AgentBrief] = Field(default_factory=list)
     middleware_configs: list[dict[str, Any]] = []

@@ -138,6 +138,18 @@ class McpProbeResponse(BaseModel):
     error: str | None = None
 
 
+class McpToolWithServerResponse(BaseModel):
+    """Flat row used by the unified agent Tools picker — embeds the parent
+    server's id/name so the UI can group / label without an extra fetch."""
+
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+    enabled: bool
+    server_id: uuid.UUID
+    server_name: str
+
+
 # ---- Registry (curated catalog) --------------------------------------------
 
 
