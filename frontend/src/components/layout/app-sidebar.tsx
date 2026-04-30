@@ -15,6 +15,7 @@ import {
   BrainIcon,
   PlusIcon,
   Plug2Icon,
+  ShieldIcon,
   ChevronRightIcon,
   UserIcon,
   SettingsIcon,
@@ -89,6 +90,11 @@ export function AppSidebar() {
 
   const resourceItems = [
     { label: t('nav.credentials'), href: '/credentials', icon: KeyRoundIcon },
+    {
+      label: t('nav.systemCredentials'),
+      href: '/settings/system-credentials',
+      icon: ShieldIcon,
+    },
     { label: t('nav.models'), href: '/models', icon: BrainIcon },
     { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
   ]

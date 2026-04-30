@@ -23,7 +23,10 @@ import {
 } from '@/components/shared/dynamic-fields-form'
 import { CredentialTestButton } from './credential-test-button'
 import { useCredentialTypes } from '@/lib/hooks/use-credentials'
-import { useCreateCredential } from '@/lib/hooks/use-credentials'
+import {
+  useCreateCredential,
+  useCreateSystemCredential,
+} from '@/lib/hooks/use-credentials'
 import type { CredentialDefinition, FieldDef } from '@/lib/types/credential'
 
 interface CredentialCreateModalProps {
@@ -32,6 +35,11 @@ interface CredentialCreateModalProps {
   /** Optional starting definition. Skips the catalog step. */
   presetDefinitionKey?: string
   onCreated?: (credentialId: string) => void
+  /**
+   * ``'system'`` posts to ``/api/system-credentials`` so the resulting row
+   * is operator-managed (Fix Agent / builder). Defaults to ``'user'``.
+   */
+  mode?: 'user' | 'system'
 }
 
 export function CredentialCreateModal({
@@ -39,9 +47,12 @@ export function CredentialCreateModal({
   onOpenChange,
   presetDefinitionKey,
   onCreated,
+  mode = 'user',
 }: CredentialCreateModalProps) {
   const { data: definitions } = useCredentialTypes()
-  const create = useCreateCredential()
+  const createUser = useCreateCredential()
+  const createSystem = useCreateSystemCredential()
+  const create = mode === 'system' ? createSystem : createUser
 
   const [definitionKey, setDefinitionKey] = useState<string | null>(
     presetDefinitionKey ?? null,

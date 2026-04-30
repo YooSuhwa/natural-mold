@@ -49,3 +49,23 @@ export const credentialsApi = {
 
   oauth2CallbackUrl: () => `${API_BASE}/api/oauth2-credential/callback`,
 }
+
+// Operator-managed system credentials (Fix Agent / builder / image gen).
+// Same shape as user credentials but separate endpoints + storage flag so
+// the user-facing pickers never accidentally surface them.
+export const systemCredentialsApi = {
+  list: () => apiFetch<Credential[]>('/api/system-credentials'),
+  get: (id: string) => apiFetch<Credential>(`/api/system-credentials/${id}`),
+  create: (data: CredentialCreateRequest) =>
+    apiFetch<Credential>('/api/system-credentials', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  update: (id: string, data: CredentialUpdateRequest) =>
+    apiFetch<Credential>(`/api/system-credentials/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    apiFetch<void>(`/api/system-credentials/${id}`, { method: 'DELETE' }),
+}

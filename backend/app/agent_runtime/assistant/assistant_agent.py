@@ -22,6 +22,7 @@ from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.executor import build_agent
 from app.agent_runtime.model_factory import PROVIDER_API_KEY_MAP, create_chat_model
 from app.config import settings
+from app.credentials import service as credential_service
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +45,43 @@ def _load_system_prompt() -> str:
         )
 
 
-@functools.cache
-def _get_assistant_model() -> BaseChatModel:
-    """Assistant 모델 인스턴스를 캐시한다."""
-    return create_chat_model(
-        settings.assistant_model_provider,
-        settings.assistant_model_name,
-        api_key=PROVIDER_API_KEY_MAP.get(settings.assistant_model_provider),
-    )
+async def _resolve_system_api_key(
+    db: AsyncSession, provider: str
+) -> str | None:
+    """Operator-key resolution for the Assistant model.
+
+    Tiered:
+      1. ENV (PROVIDER_API_KEY_MAP) — bootstrap convenience.
+      2. ``Credential`` row with ``is_system=True`` matching ``provider`` —
+         operator manages keys via the System Credentials page instead of
+         editing .env on the server.
+      3. ``None`` — caller surfaces the resulting LLM error.
+
+    Notes:
+      - User credentials are intentionally NOT consulted. System functions
+        (Fix Agent / builder / image generation) bill the operator, not
+        whichever user happens to be logged in.
+    """
+
+    env_key = PROVIDER_API_KEY_MAP.get(provider)
+    if env_key:
+        return env_key
+
+    cred = await credential_service.find_system_by_definition(db, provider)
+    if cred is None:
+        return None
+    try:
+        payload = await credential_service.decrypt_with_external(
+            cred.data_encrypted
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("System credential %s decryption failed", cred.id)
+        return None
+    api_key = payload.get("api_key") or payload.get("token")
+    return str(api_key) if api_key else None
 
 
-def build_assistant_agent(
+async def build_assistant_agent(
     db: AsyncSession,
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
@@ -71,7 +98,14 @@ def build_assistant_agent(
     Returns:
         CompiledStateGraph — build_agent의 반환값
     """
-    model = _get_assistant_model()
+    api_key = await _resolve_system_api_key(
+        db, settings.assistant_model_provider
+    )
+    model: BaseChatModel = create_chat_model(
+        settings.assistant_model_provider,
+        settings.assistant_model_name,
+        api_key=api_key,
+    )
 
     # 도구 35개 = 16 read + 18 write + 1 clarify
     tools = (

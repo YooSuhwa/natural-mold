@@ -1,7 +1,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { credentialsApi } from '@/lib/api/credentials'
+import { credentialsApi, systemCredentialsApi } from '@/lib/api/credentials'
 import type {
   CredentialCreateRequest,
   CredentialUpdateRequest,
@@ -9,6 +9,7 @@ import type {
 
 const KEY_LIST = ['credentials'] as const
 const KEY_TYPES = ['credential-types'] as const
+const KEY_SYSTEM_LIST = ['system-credentials'] as const
 
 export function useCredentialTypes() {
   return useQuery({
@@ -79,5 +80,41 @@ export function useCredentialAuditLogs(id: string | null | undefined, limit = 50
     queryKey: ['credential-audit-logs', id, limit],
     queryFn: () => credentialsApi.listAuditLogs(id!, limit),
     enabled: !!id,
+  })
+}
+
+// -- System credentials (operator-managed) ----------------------------------
+
+export function useSystemCredentials() {
+  return useQuery({
+    queryKey: KEY_SYSTEM_LIST,
+    queryFn: systemCredentialsApi.list,
+    staleTime: 30_000,
+  })
+}
+
+export function useCreateSystemCredential() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: CredentialCreateRequest) =>
+      systemCredentialsApi.create(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_SYSTEM_LIST }),
+  })
+}
+
+export function useUpdateSystemCredential() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: CredentialUpdateRequest }) =>
+      systemCredentialsApi.update(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_SYSTEM_LIST }),
+  })
+}
+
+export function useDeleteSystemCredential() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => systemCredentialsApi.delete(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_SYSTEM_LIST }),
   })
 }

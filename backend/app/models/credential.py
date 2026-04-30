@@ -37,6 +37,13 @@ class Credential(Base):
     field_keys: Mapped[list[str] | None] = mapped_column(JSON, nullable=True, default=list)
 
     is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # ``is_system=True`` rows are operator-managed keys (Fix Agent / builder
+    # / image generation / future bootstrap flows). They never surface in
+    # user-facing pickers — see ``credential_service.list_for_user`` and
+    # the ``/api/system-credentials`` route family.
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
 
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)

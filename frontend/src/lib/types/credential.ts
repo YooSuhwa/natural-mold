@@ -71,6 +71,9 @@ export interface Credential {
   name: string
   field_keys: string[]
   is_shared: boolean
+  // True for operator-managed system credentials (Fix Agent / builder /
+  // image generation). User-facing pickers MUST hide these.
+  is_system?: boolean
   status: CredentialStatus | string
   key_id: string
   last_used_at: string | null

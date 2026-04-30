@@ -60,9 +60,18 @@ async def decrypt_with_external(blob: str) -> dict[str, Any]:
 async def list_for_user(
     db: AsyncSession, user_id: uuid.UUID
 ) -> list[Credential]:
+    """Return user-facing credentials only — system rows are hidden.
+
+    Pickers (model Health, agent settings, MCP wizard) call this so a
+    misclick doesn't bind an operator key to a user agent.
+    """
+
     result = await db.execute(
         select(Credential)
-        .where(Credential.user_id == user_id)
+        .where(
+            Credential.user_id == user_id,
+            Credential.is_system.is_(False),
+        )
         .order_by(Credential.created_at.desc())
     )
     return list(result.scalars().all())
@@ -71,11 +80,60 @@ async def list_for_user(
 async def get_for_user(
     db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
 ) -> Credential | None:
+    """Look up a user-facing credential. System rows return None here so
+    user-facing endpoints can't accidentally read them."""
+
     result = await db.execute(
         select(Credential).where(
             Credential.id == credential_id,
             Credential.user_id == user_id,
+            Credential.is_system.is_(False),
         )
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_system(db: AsyncSession) -> list[Credential]:
+    """Return operator-managed system credentials regardless of owner."""
+
+    result = await db.execute(
+        select(Credential)
+        .where(Credential.is_system.is_(True))
+        .order_by(Credential.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_system(
+    db: AsyncSession, credential_id: uuid.UUID
+) -> Credential | None:
+    """Look up a system credential by id (no user filter)."""
+
+    result = await db.execute(
+        select(Credential).where(
+            Credential.id == credential_id,
+            Credential.is_system.is_(True),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def find_system_by_definition(
+    db: AsyncSession, definition_key: str
+) -> Credential | None:
+    """First active system credential matching ``definition_key`` (e.g.
+    ``anthropic``). Powers the assistant agent's tiered ENV → system
+    credential fallback."""
+
+    result = await db.execute(
+        select(Credential)
+        .where(
+            Credential.is_system.is_(True),
+            Credential.definition_key == definition_key,
+            Credential.status == "active",
+        )
+        .order_by(Credential.created_at.desc())
+        .limit(1)
     )
     return result.scalar_one_or_none()
 
@@ -120,6 +178,7 @@ async def create(
     name: str,
     data: dict[str, Any],
     is_shared: bool = False,
+    is_system: bool = False,
     source: str = "api",
 ) -> Credential:
     blob, key_id, field_keys = encrypt_data(data)
@@ -131,6 +190,7 @@ async def create(
         key_id=key_id,
         field_keys=field_keys,
         is_shared=is_shared,
+        is_system=is_system,
         status="active",
     )
     db.add(cred)

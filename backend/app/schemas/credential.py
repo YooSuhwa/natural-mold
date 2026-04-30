@@ -76,6 +76,9 @@ class CredentialResponse(BaseModel):
     name: str
     field_keys: list[str]
     is_shared: bool
+    # ``True`` for operator-managed system keys (Fix Agent / builder /
+    # image generation). User-facing pickers MUST filter these out.
+    is_system: bool = False
     status: str
     key_id: str
     last_used_at: datetime | None = None

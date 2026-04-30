@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # _load_system_prompt — file exists
 # ---------------------------------------------------------------------------
@@ -52,15 +54,15 @@ def test_load_system_prompt_fallback(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_build_assistant_agent():
-    """build_assistant_agent calls build_agent with model, tools, prompt, checkpointer."""
+@pytest.mark.asyncio
+async def test_build_assistant_agent():
+    """build_assistant_agent wires model/tools/prompt/checkpointer into build_agent."""
     import uuid
     from unittest.mock import AsyncMock
 
     import app.agent_runtime.assistant.assistant_agent as mod
 
     mod._load_system_prompt.cache_clear()
-    mod._get_assistant_model.cache_clear()
 
     mock_model = MagicMock()
     mock_read_tools = [MagicMock()]
@@ -71,6 +73,9 @@ def test_build_assistant_agent():
 
     with (
         patch.object(mod, "_load_system_prompt", return_value="Test prompt"),
+        patch.object(
+            mod, "_resolve_system_api_key", AsyncMock(return_value="sk-test")
+        ),
         patch.object(mod, "create_chat_model", return_value=mock_model),
         patch.object(mod, "build_read_tools", return_value=mock_read_tools),
         patch.object(mod, "build_write_tools", return_value=mock_write_tools),
@@ -83,7 +88,7 @@ def test_build_assistant_agent():
         user_id = uuid.uuid4()
         thread_id = f"assistant_{agent_id}"
 
-        result = mod.build_assistant_agent(db, agent_id, user_id, thread_id)
+        result = await mod.build_assistant_agent(db, agent_id, user_id, thread_id)
 
     assert result is mock_compiled_graph
     mock_build.assert_called_once()
@@ -91,36 +96,49 @@ def test_build_assistant_agent():
     assert call_kwargs.kwargs["model"] is mock_model
     assert call_kwargs.kwargs["system_prompt"] == "Test prompt"
     assert call_kwargs.kwargs["checkpointer"] is mock_checkpointer
-    assert len(call_kwargs.kwargs["tools"]) == 3  # read + write + clarify
+    assert len(call_kwargs.kwargs["tools"]) == 3
 
     mod._load_system_prompt.cache_clear()
-    mod._get_assistant_model.cache_clear()
 
 
 # ---------------------------------------------------------------------------
-# _get_assistant_model — uses settings
+# _resolve_system_api_key — ENV → system credential → None
 # ---------------------------------------------------------------------------
 
 
-def test_get_assistant_model():
-    """_get_assistant_model creates model from settings."""
+@pytest.mark.asyncio
+async def test_resolve_system_api_key_prefers_env():
+    """ENV-supplied key wins; no DB call needed."""
+    from unittest.mock import AsyncMock
+
     import app.agent_runtime.assistant.assistant_agent as mod
 
-    mod._get_assistant_model.cache_clear()
+    db = AsyncMock()
+    with patch.object(mod, "PROVIDER_API_KEY_MAP", {"anthropic": "sk-env"}):
+        key = await mod._resolve_system_api_key(db, "anthropic")
+    assert key == "sk-env"
 
-    mock_model = MagicMock()
 
+@pytest.mark.asyncio
+async def test_resolve_system_api_key_falls_back_to_system_credential():
+    """ENV missing → DB system credential is decrypted and returned."""
+    from unittest.mock import AsyncMock
+
+    import app.agent_runtime.assistant.assistant_agent as mod
+
+    fake_cred = MagicMock(id="cred-1", data_encrypted="blob")
     with (
-        patch.object(mod, "create_chat_model", return_value=mock_model) as mock_create,
-        patch.object(mod, "settings") as mock_settings,
-        patch.object(mod, "PROVIDER_API_KEY_MAP", {"anthropic": "sk-ant-test"}),
+        patch.object(mod, "PROVIDER_API_KEY_MAP", {}),
+        patch.object(
+            mod.credential_service,
+            "find_system_by_definition",
+            AsyncMock(return_value=fake_cred),
+        ),
+        patch.object(
+            mod.credential_service,
+            "decrypt_with_external",
+            AsyncMock(return_value={"api_key": "sk-system"}),
+        ),
     ):
-        mock_settings.assistant_model_provider = "anthropic"
-        mock_settings.assistant_model_name = "claude-sonnet-4-20250514"
-        result = mod._get_assistant_model()
-
-    assert result is mock_model
-    mock_create.assert_called_once_with(
-        "anthropic", "claude-sonnet-4-20250514", api_key="sk-ant-test"
-    )
-    mod._get_assistant_model.cache_clear()
+        key = await mod._resolve_system_api_key(AsyncMock(), "anthropic")
+    assert key == "sk-system"

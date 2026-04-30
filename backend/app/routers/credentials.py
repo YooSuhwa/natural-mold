@@ -46,6 +46,11 @@ from app.services import model_discovery
 
 router = APIRouter(tags=["credentials"])
 
+# Operator-managed system credentials (Fix Agent / builder / image gen).
+# Same Cipher / definition machinery as user credentials but stored with
+# ``is_system=True`` so user-facing pickers never surface them.
+system_router = APIRouter(prefix="/api/system-credentials", tags=["credentials"])
+
 # Catalog mounts at /api/credential-types; CRUD lives under /api/credentials.
 catalog_router = APIRouter(prefix="/api/credential-types", tags=["credentials"])
 crud_router = APIRouter(prefix="/api/credentials", tags=["credentials"])
@@ -69,6 +74,7 @@ def _to_response(cred: Credential) -> CredentialResponse:
         name=cred.name,
         field_keys=cred.field_keys or [],
         is_shared=cred.is_shared,
+        is_system=cred.is_system,
         status=cred.status,
         key_id=cred.key_id,
         last_used_at=cred.last_used_at,
@@ -190,6 +196,111 @@ async def delete_credential(
     user: CurrentUser = Depends(get_current_user),
 ) -> None:
     cred = await _load_owned(db, credential_id, user.id)
+    await credential_service.write_audit_log(
+        db,
+        credential_id=cred.id,
+        actor_user_id=user.id,
+        action="delete",
+    )
+    await db.delete(cred)
+    await db.commit()
+
+
+# -- System credentials (operator-managed) ----------------------------------
+
+
+async def _load_system(
+    db: AsyncSession, credential_id: uuid.UUID
+) -> Credential:
+    cred = await credential_service.get_system(db, credential_id)
+    if cred is None:
+        raise HTTPException(
+            status_code=404, detail="system credential not found"
+        )
+    return cred
+
+
+@system_router.get("", response_model=list[CredentialResponse])
+async def list_system_credentials(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> list[CredentialResponse]:
+    """All operator system credentials. PoC: no role gate (mock user)."""
+
+    creds = await credential_service.list_system(db)
+    return [_to_response(c) for c in creds]
+
+
+@system_router.post("", response_model=CredentialResponse, status_code=201)
+async def create_system_credential(
+    payload: CredentialCreate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> CredentialResponse:
+    if registry.get(payload.definition_key) is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown definition '{payload.definition_key}'",
+        )
+    cred = await credential_service.create(
+        db,
+        user_id=user.id,
+        definition_key=payload.definition_key,
+        name=payload.normalized_name(),
+        data=payload.data,
+        is_shared=False,
+        is_system=True,
+    )
+    await db.commit()
+    await db.refresh(cred)
+    return _to_response(cred)
+
+
+@system_router.get(
+    "/{credential_id}", response_model=CredentialResponse
+)
+async def get_system_credential(
+    credential_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> CredentialResponse:
+    return _to_response(await _load_system(db, credential_id))
+
+
+@system_router.patch(
+    "/{credential_id}", response_model=CredentialResponse
+)
+async def update_system_credential(
+    credential_id: uuid.UUID,
+    payload: CredentialUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> CredentialResponse:
+    cred = await _load_system(db, credential_id)
+    if payload.name is not None:
+        from app.schemas.markers import check_reserved_marker
+
+        check_reserved_marker(payload.name, "name")
+    await credential_service.update(
+        db,
+        credential=cred,
+        actor_user_id=user.id,
+        name=payload.name,
+        data=payload.data,
+        status=payload.status,
+    )
+    await db.commit()
+    await db.refresh(cred)
+    return _to_response(cred)
+
+
+@system_router.delete("/{credential_id}", status_code=204)
+async def delete_system_credential(
+    credential_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> None:
+    cred = await _load_system(db, credential_id)
     await credential_service.write_audit_log(
         db,
         credential_id=cred.id,
@@ -450,3 +561,4 @@ async def oauth2_callback(
 router.include_router(catalog_router)
 router.include_router(crud_router)
 router.include_router(oauth_router)
+router.include_router(system_router)
