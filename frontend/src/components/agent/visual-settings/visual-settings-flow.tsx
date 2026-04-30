@@ -88,7 +88,7 @@ export function VisualSettingsFlow({
   const [internalName, setInternalName] = useState(agent?.name ?? '')
   const [internalDescription, setInternalDescription] = useState(agent?.description ?? '')
   const [internalSystemPrompt, setInternalSystemPrompt] = useState(agent?.system_prompt ?? '')
-  const [internalModelId, setInternalModelId] = useState(agent?.model.id ?? models[0]?.id ?? '')
+  const [internalModelId, setInternalModelId] = useState(agent?.model?.id ?? models[0]?.id ?? '')
   const [internalTemperature, setInternalTemperature] = useState(
     agent?.model_params?.temperature ?? 0.7,
   )
@@ -152,7 +152,7 @@ export function VisualSettingsFlow({
     setInternalName(agent.name)
     setInternalDescription(agent.description ?? '')
     setInternalSystemPrompt(agent.system_prompt)
-    setInternalModelId(agent.model.id)
+    setInternalModelId(agent.model?.id ?? '')
     setInternalTemperature(agent.model_params?.temperature ?? 0.7)
     setInternalTopP(agent.model_params?.top_p ?? 1.0)
     setInternalMaxTokens(agent.model_params?.max_tokens ?? 4096)
@@ -224,8 +224,8 @@ export function VisualSettingsFlow({
   const currentModelName = useMemo(() => {
     const found = models.find((m) => m.id === modelId)?.display_name
     if (found) return found
-    return agent?.model.display_name ?? ''
-  }, [models, modelId, agent?.model.display_name])
+    return agent?.model?.display_name ?? ''
+  }, [models, modelId, agent?.model?.display_name])
 
   const handleAgentNodeUpdate = useCallback(
     (data: {

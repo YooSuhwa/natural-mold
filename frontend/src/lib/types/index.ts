@@ -52,7 +52,11 @@ export interface Agent {
   name: string
   description: string | null
   system_prompt: string
-  model: ModelBrief
+  // Nullable to mirror the backend graceful response — agents whose
+  // model_id FK target was deleted out from under them still serialize
+  // (rather than crashing the whole list). UI surfaces "no model bound"
+  // and prompts re-binding instead of throwing on agent.model.x access.
+  model: ModelBrief | null
   tools: ToolBrief[]
   skills: SkillBrief[]
   sub_agents: AgentBrief[]

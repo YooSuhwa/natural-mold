@@ -104,7 +104,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       setName(agent.name)
       setDescription(agent.description ?? '')
       setSystemPrompt(agent.system_prompt)
-      setModelId(agent.model.id)
+      setModelId(agent.model?.id ?? '')
       setFallbackIds(agent.model_fallback_ids ?? [])
       setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
       setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
@@ -120,7 +120,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       if (name === prev.name) setName(agent.name)
       if (description === (prev.description ?? '')) setDescription(agent.description ?? '')
       if (systemPrompt === prev.system_prompt) setSystemPrompt(agent.system_prompt)
-      if (modelId === prev.model.id) setModelId(agent.model.id)
+      if (modelId === (prev.model?.id ?? '')) setModelId(agent.model?.id ?? '')
       if (arraysEqual(fallbackIds, prev.model_fallback_ids ?? [])) {
         setFallbackIds(agent.model_fallback_ids ?? [])
       }
@@ -191,7 +191,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       name !== agent.name ||
       description !== (agent.description ?? '') ||
       systemPrompt !== agent.system_prompt ||
-      modelId !== agent.model.id ||
+      modelId !== (agent.model?.id ?? '') ||
       temperature !== (agent.model_params?.temperature ?? 0.7) ||
       topP !== (agent.model_params?.top_p ?? 1.0) ||
       maxTokens !== (agent.model_params?.max_tokens ?? 4096) ||

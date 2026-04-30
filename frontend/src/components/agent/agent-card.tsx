@@ -95,7 +95,11 @@ export function AgentCard({ agent }: AgentCardProps) {
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <CpuIcon className="size-3.5" />
-              {agent.model.display_name}
+              {agent.model?.display_name ?? (
+                <span className="text-amber-600 dark:text-amber-400">
+                  no model bound
+                </span>
+              )}
             </span>
             {(agent.model_fallback_ids?.length ?? 0) > 0 && (
               <span
