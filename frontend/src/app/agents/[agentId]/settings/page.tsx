@@ -108,6 +108,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       setModelId(agent.model?.id ?? '')
       setFallbackIds(agent.model_fallback_ids ?? [])
       setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
+      setSelectedMcpToolIds(new Set(agent.mcp_tools?.map((mt) => mt.id) ?? []))
       setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
       setSelectedSubAgentIds(new Set(agent.sub_agents?.map((sa) => sa.id) ?? []))
       setSelectedMiddlewareTypes(new Set(agent.middleware_configs?.map((mc) => mc.type) ?? []))
@@ -129,6 +130,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       const prevToolIds = new Set(prev.tools.map((tl) => tl.id))
       if (setsEqual(selectedToolIds, prevToolIds)) {
         setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
+      }
+      const prevMcpToolIds = new Set(prev.mcp_tools?.map((mt) => mt.id) ?? [])
+      if (setsEqual(selectedMcpToolIds, prevMcpToolIds)) {
+        setSelectedMcpToolIds(new Set(agent.mcp_tools?.map((mt) => mt.id) ?? []))
       }
       const prevSkillIds = new Set(prev.skills?.map((s) => s.id) ?? [])
       if (setsEqual(selectedSkillIds, prevSkillIds)) {

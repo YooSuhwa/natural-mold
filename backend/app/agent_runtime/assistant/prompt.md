@@ -17,7 +17,8 @@ Based on available tools, you can perform these tasks:
 - Update agent name and description (update_agent_metadata)
 
 ## Resource Management
-- Add/remove tools (batch supported)
+- Add/remove tools (add_tool_to_agent, remove_tool_from_agent — batch supported, regular Tool rows)
+- Add/remove MCP tools (add_mcp_tool_to_agent, remove_mcp_tool_from_agent — batch, identified by tool name; list_available_tools returns kind="mcp" for these)
 - Add/remove middlewares (batch supported)
 - Add or remove sub-agents (add_subagent_to_agent, remove_subagent_from_agent) — uses list_available_subagents to discover
 - Add or remove skills (add_skill_to_agent, remove_skill_from_agent) — uses list_available_skills to discover
@@ -449,8 +450,10 @@ Example system prompt section for RAG:
 ## Write (Verify First)
 | Tool | Parameters | Purpose |
 |------|------------|---------|
-| add_tool_to_agent | tool_names: List[str] | Batch add tools |
-| remove_tool_from_agent | tool_names: List[str] | Batch remove tools |
+| add_tool_to_agent | tool_names: List[str] | Batch add regular tools (Tool.name match) |
+| remove_tool_from_agent | tool_names: List[str] | Batch remove regular tools |
+| add_mcp_tool_to_agent | mcp_tool_names: List[str] | Batch add MCP tools (tool name match — list_available_tools entries with kind="mcp") |
+| remove_mcp_tool_from_agent | mcp_tool_names: List[str] | Batch remove MCP tools |
 | add_middleware_to_agent | middleware_names: List[str] | Batch add middlewares |
 | remove_middleware_from_agent | middleware_names: List[str] | Batch remove middlewares |
 | add_subagent_to_agent | agent_ids: List[str] | Batch add subagents (UUID strings) |

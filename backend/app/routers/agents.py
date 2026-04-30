@@ -66,7 +66,13 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
             for link in agent.mcp_tool_links
         ],
         skills=[
-            SkillBrief(id=link.skill_id, name=link.skill.name, description=link.skill.description)
+            SkillBrief(
+                id=link.skill_id,
+                name=link.skill.name,
+                slug=link.skill.slug,
+                kind=link.skill.kind,
+                description=link.skill.description,
+            )
             for link in agent.skill_links
         ],
         sub_agents=[
