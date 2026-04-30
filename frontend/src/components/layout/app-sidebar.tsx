@@ -7,12 +7,16 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   HomeIcon,
   WrenchIcon,
-  CpuIcon,
+  ServerIcon,
   BarChart3Icon,
   BookOpenIcon,
   LayoutTemplateIcon,
   KeyRoundIcon,
+  BrainIcon,
   PlusIcon,
+  Plug2Icon,
+  ShieldIcon,
+  ChevronRightIcon,
   UserIcon,
   SettingsIcon,
   LogOutIcon,
@@ -23,11 +27,13 @@ import {
   MoonIcon,
   MonitorIcon,
 } from 'lucide-react'
+import { useAtom } from 'jotai'
 import { useTheme } from 'next-themes'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { useAgents } from '@/lib/hooks/use-agents'
+import { connectorsExpandedAtom } from '@/lib/stores/sidebar-store'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import {
   Sidebar,
@@ -40,6 +46,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
@@ -60,15 +69,39 @@ export function AppSidebar() {
   const { toggleSidebar } = useSidebar()
   const t = useTranslations('sidebar')
 
-  const navItems = [
+  const [connectorsExpanded, setConnectorsExpanded] = useAtom(connectorsExpandedAtom)
+
+  const buildItems = [
     { label: t('nav.home'), href: '/', icon: HomeIcon },
-    { label: t('nav.tools'), href: '/tools', icon: WrenchIcon },
-    { label: t('nav.connections'), href: '/connections', icon: KeyRoundIcon },
-    { label: t('nav.skills'), href: '/skills', icon: BookOpenIcon },
-    { label: t('nav.models'), href: '/models', icon: CpuIcon },
-    { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
     { label: t('nav.templates'), href: '/agents/new/template', icon: LayoutTemplateIcon },
   ]
+
+  const connectorChildren = [
+    { label: t('nav.tools'), href: '/tools', icon: WrenchIcon },
+    { label: t('nav.mcpServers'), href: '/mcp-servers', icon: ServerIcon },
+  ]
+
+  const skillsItem = {
+    label: t('nav.skills'),
+    href: '/skills',
+    icon: BookOpenIcon,
+    tooltip: t('tooltip.skills'),
+  }
+
+  const resourceItems = [
+    { label: t('nav.credentials'), href: '/credentials', icon: KeyRoundIcon },
+    {
+      label: t('nav.systemCredentials'),
+      href: '/settings/system-credentials',
+      icon: ShieldIcon,
+    },
+    { label: t('nav.models'), href: '/models', icon: BrainIcon },
+    { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
+  ]
+
+  const isConnectorActive = connectorChildren.some((child) =>
+    pathname.startsWith(child.href),
+  )
 
   const recentAgents = useMemo(
     () =>
@@ -150,13 +183,98 @@ export function AppSidebar() {
 
         <SidebarSeparator />
 
-        {/* Main Navigation */}
+        {/* Build group — Home, Templates */}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
-              {navItems.map((item) => {
+              {buildItems.map((item) => {
                 const isActive =
                   item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      tooltip={item.label}
+                      render={<Link href={item.href} />}
+                      className={activeMenuClass}
+                    >
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator />
+
+        {/* Capabilities group — Connectors (collapsible), Skills */}
+        <SidebarGroup>
+          <SidebarGroupLabel>{t('section.capabilities')}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-1">
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={isConnectorActive}
+                  tooltip={t('tooltip.connectors')}
+                  onClick={() => setConnectorsExpanded(!connectorsExpanded)}
+                  aria-expanded={connectorsExpanded}
+                  className={activeMenuClass}
+                >
+                  <Plug2Icon className="size-4" />
+                  <span>{t('nav.connectors')}</span>
+                  <ChevronRightIcon
+                    className={`ml-auto size-4 transition-transform ${
+                      connectorsExpanded ? 'rotate-90' : ''
+                    }`}
+                  />
+                </SidebarMenuButton>
+                {connectorsExpanded && (
+                  <SidebarMenuSub>
+                    {connectorChildren.map((child) => {
+                      const isActive = pathname.startsWith(child.href)
+                      return (
+                        <SidebarMenuSubItem key={child.href}>
+                          <SidebarMenuSubButton
+                            isActive={isActive}
+                            render={<Link href={child.href} />}
+                            className={activeMenuClass}
+                          >
+                            <child.icon className="size-4" />
+                            <span>{child.label}</span>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      )
+                    })}
+                  </SidebarMenuSub>
+                )}
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname.startsWith(skillsItem.href)}
+                  tooltip={skillsItem.tooltip}
+                  render={<Link href={skillsItem.href} />}
+                  className={activeMenuClass}
+                >
+                  <skillsItem.icon className="size-4" />
+                  <span>{skillsItem.label}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarSeparator />
+
+        {/* Resources group — Credentials, Models, Usage */}
+        <SidebarGroup>
+          <SidebarGroupLabel>{t('section.resources')}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-1">
+              {resourceItems.map((item) => {
+                const isActive = pathname.startsWith(item.href)
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton

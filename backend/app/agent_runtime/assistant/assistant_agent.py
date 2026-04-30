@@ -20,8 +20,9 @@ from app.agent_runtime.assistant.tools.read_tools import build_read_tools
 from app.agent_runtime.assistant.tools.write_tools import build_write_tools
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.executor import build_agent
-from app.agent_runtime.model_factory import PROVIDER_API_KEY_MAP, create_chat_model
+from app.agent_runtime.model_factory import create_chat_model
 from app.config import settings
+from app.services.system_credential_resolver import resolve_system_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +45,15 @@ def _load_system_prompt() -> str:
         )
 
 
-@functools.cache
-def _get_assistant_model() -> BaseChatModel:
-    """Assistant 모델 인스턴스를 캐시한다."""
-    return create_chat_model(
-        settings.assistant_model_provider,
-        settings.assistant_model_name,
-        api_key=PROVIDER_API_KEY_MAP.get(settings.assistant_model_provider),
-    )
+# ``_resolve_system_api_key`` was promoted to
+# ``app.services.system_credential_resolver.resolve_system_api_key`` so the
+# image generation flows can share the same ENV → system-credential
+# fallback policy. Re-exported under the legacy name for the test that
+# patches it via ``patch.object``.
+_resolve_system_api_key = resolve_system_api_key
 
 
-def build_assistant_agent(
+async def build_assistant_agent(
     db: AsyncSession,
     agent_id: uuid.UUID,
     user_id: uuid.UUID,
@@ -71,7 +70,14 @@ def build_assistant_agent(
     Returns:
         CompiledStateGraph — build_agent의 반환값
     """
-    model = _get_assistant_model()
+    api_key = await resolve_system_api_key(
+        db, settings.assistant_model_provider
+    )
+    model: BaseChatModel = create_chat_model(
+        settings.assistant_model_provider,
+        settings.assistant_model_name,
+        api_key=api_key,
+    )
 
     # 도구 35개 = 16 read + 18 write + 1 clarify
     tools = (

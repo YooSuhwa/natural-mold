@@ -9,10 +9,13 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
+from app.agent_runtime.model_factory import env_provider_keys
 from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import agent_not_found, conversation_not_found, file_not_found
+from app.models.model import Model
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationResponse,
@@ -22,8 +25,6 @@ from app.schemas.conversation import (
     ResumeRequest,
 )
 from app.services import chat_service
-from app.services.encryption import decrypt_api_key
-from app.services.provider_service import load_all_provider_api_keys
 
 logger = logging.getLogger(__name__)
 
@@ -58,15 +59,31 @@ async def _resolve_agent_context(
     if not agent:
         raise agent_not_found()
 
-    lp = agent.model.llm_provider
-    api_key = (
-        decrypt_api_key(lp.api_key_encrypted)
-        if lp and lp.api_key_encrypted
-        else decrypt_api_key(agent.model.api_key_encrypted)
-        if agent.model.api_key_encrypted
-        else None
+    if agent.model is None:
+        # Legacy data: agent's model_id points at a deleted Model row. Chat
+        # cannot run without a model bound — surface a clear 422 so the UI
+        # can prompt the user to re-bind in agent settings.
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "agent has no model bound — open agent settings and pick a "
+                "model before chatting."
+            ),
+        )
+
+    # Tiered: agent.llm_credential → model.default_credential_id → env fallback.
+    # Lets users skip the per-agent credential pick when their model already
+    # carries the right default.
+    api_key = await resolve_llm_api_key_for_agent(db, agent)
+    base_url = agent.model.base_url
+
+    tools_config = await chat_service.build_tools_config(
+        agent, db=db, conversation_id=str(conversation_id)
     )
-    base_url = lp.base_url if lp and lp.base_url else agent.model.base_url
+
+    fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
 
     return AgentConfig(
         provider=agent.model.provider,
@@ -74,20 +91,68 @@ async def _resolve_agent_context(
         api_key=api_key,
         base_url=base_url,
         system_prompt=chat_service.build_effective_prompt(agent),
-        tools_config=chat_service.build_tools_config(agent, conversation_id=str(conversation_id)),
+        tools_config=tools_config,
         thread_id=str(conversation_id),
         model_params=agent.model_params,
         middleware_configs=agent.middleware_configs,
         agent_skills=chat_service.build_agent_skills(agent) or None,
         agent_id=str(agent.id),
-        provider_api_keys=await load_all_provider_api_keys(db),
+        provider_api_keys=env_provider_keys(),
         cost_per_input_token=(
             float(agent.model.cost_per_input_token) if agent.model.cost_per_input_token else None
         ),
         cost_per_output_token=(
             float(agent.model.cost_per_output_token) if agent.model.cost_per_output_token else None
         ),
+        user_id=str(agent.user_id),
+        model_id=str(agent.model.id) if agent.model else None,
+        llm_credential_id=(
+            str(agent.llm_credential.id) if agent.llm_credential is not None else None
+        ),
+        model_fallback_chain=fallback_chain,
     )
+
+
+async def _resolve_fallback_chain(
+    db: AsyncSession,
+    fallback_list: list[str] | None,
+) -> list[dict[str, str | None]] | None:
+    """Resolve agent.model_fallback_list (UUID strings) → ordered chain dicts.
+
+    Missing rows are silently dropped — the catalog can change while an
+    agent's fallback list is stale, and we don't want a deleted fallback
+    breaking the runtime. Returns ``None`` when there are no resolvable
+    entries so the executor skips the fallback path entirely.
+    """
+
+    if not fallback_list:
+        return None
+    from sqlalchemy import select
+
+    fallback_uuids: list[uuid.UUID] = []
+    for raw in fallback_list:
+        try:
+            fallback_uuids.append(uuid.UUID(str(raw)))
+        except (TypeError, ValueError):
+            continue
+    if not fallback_uuids:
+        return None
+    result = await db.execute(select(Model).where(Model.id.in_(fallback_uuids)))
+    rows = {row.id: row for row in result.scalars().all()}
+    chain: list[dict[str, str | None]] = []
+    for fid in fallback_uuids:
+        row = rows.get(fid)
+        if row is None:
+            continue
+        chain.append(
+            {
+                "provider": row.provider,
+                "model_name": row.model_name,
+                "base_url": row.base_url,
+                "model_id": str(row.id),
+            }
+        )
+    return chain or None
 
 
 def _error_sse_pair(error_message: str) -> list[str]:

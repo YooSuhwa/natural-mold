@@ -49,7 +49,15 @@ async def stream_agent_response(
     *,
     cost_per_input_token: float | None = None,
     cost_per_output_token: float | None = None,
+    usage_sink: dict[str, Any] | None = None,
 ) -> AsyncGenerator[str, None]:
+    """Stream agent SSE events.
+
+    ``usage_sink`` (optional) is populated in-place when the stream finishes
+    so callers (executor, hook framework) can record the captured token /
+    cost numbers without re-parsing SSE. Keys: ``prompt_tokens``,
+    ``completion_tokens``, ``estimated_cost``.
+    """
     msg_id = str(uuid.uuid4())
 
     yield format_sse("message_start", {"id": msg_id, "role": "assistant"})
@@ -205,5 +213,9 @@ async def stream_agent_response(
         completion = usage_data.get("completion_tokens", 0)
         cost = (prompt * (cost_per_input_token or 0)) + (completion * (cost_per_output_token or 0))
         usage_data["estimated_cost"] = round(cost, 8)  # type: ignore[assignment]  # SSE payload는 float 허용
+
+    # Surface captured usage to the caller (executor → hook framework).
+    if usage_sink is not None and usage_data:
+        usage_sink.update(usage_data)
 
     yield format_sse("message_end", {"usage": usage_data, "content": full_content})

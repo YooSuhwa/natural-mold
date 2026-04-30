@@ -28,6 +28,7 @@ interface ControlledVisualState {
   topP: number
   maxTokens: number
   selectedToolIds: Set<string>
+  selectedMcpToolIds: Set<string>
   selectedSkillIds: Set<string>
   selectedSubAgentIds: Set<string>
   selectedMiddlewareTypes: Set<string>
@@ -42,6 +43,7 @@ interface ControlledVisualHandlers {
   onTopPChange: (v: number) => void
   onMaxTokensChange: (v: number) => void
   onToggleTool: (id: string) => void
+  onToggleMcpTool: (id: string) => void
   onToggleSkill: (id: string) => void
   onToggleSubAgent: (id: string) => void
   onToggleMiddleware: (type: string) => void
@@ -88,7 +90,7 @@ export function VisualSettingsFlow({
   const [internalName, setInternalName] = useState(agent?.name ?? '')
   const [internalDescription, setInternalDescription] = useState(agent?.description ?? '')
   const [internalSystemPrompt, setInternalSystemPrompt] = useState(agent?.system_prompt ?? '')
-  const [internalModelId, setInternalModelId] = useState(agent?.model.id ?? models[0]?.id ?? '')
+  const [internalModelId, setInternalModelId] = useState(agent?.model?.id ?? models[0]?.id ?? '')
   const [internalTemperature, setInternalTemperature] = useState(
     agent?.model_params?.temperature ?? 0.7,
   )
@@ -98,6 +100,9 @@ export function VisualSettingsFlow({
   )
   const [internalSelectedToolIds, setInternalSelectedToolIds] = useState<Set<string>>(
     () => new Set(agent?.tools.map((tl) => tl.id) ?? []),
+  )
+  const [internalSelectedMcpToolIds, setInternalSelectedMcpToolIds] = useState<Set<string>>(
+    () => new Set(agent?.mcp_tools?.map((mt) => mt.id) ?? []),
   )
   const [internalSelectedSkillIds, setInternalSelectedSkillIds] = useState<Set<string>>(
     () => new Set(agent?.skills?.map((s) => s.id) ?? []),
@@ -119,6 +124,9 @@ export function VisualSettingsFlow({
   const topP = isControlled ? controlledState!.topP : internalTopP
   const maxTokens = isControlled ? controlledState!.maxTokens : internalMaxTokens
   const selectedToolIds = isControlled ? controlledState!.selectedToolIds : internalSelectedToolIds
+  const selectedMcpToolIds = isControlled
+    ? controlledState!.selectedMcpToolIds
+    : internalSelectedMcpToolIds
   const selectedSkillIds = isControlled
     ? controlledState!.selectedSkillIds
     : internalSelectedSkillIds
@@ -152,11 +160,12 @@ export function VisualSettingsFlow({
     setInternalName(agent.name)
     setInternalDescription(agent.description ?? '')
     setInternalSystemPrompt(agent.system_prompt)
-    setInternalModelId(agent.model.id)
+    setInternalModelId(agent.model?.id ?? '')
     setInternalTemperature(agent.model_params?.temperature ?? 0.7)
     setInternalTopP(agent.model_params?.top_p ?? 1.0)
     setInternalMaxTokens(agent.model_params?.max_tokens ?? 4096)
     setInternalSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
+    setInternalSelectedMcpToolIds(new Set(agent.mcp_tools?.map((mt) => mt.id) ?? []))
     setInternalSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
     setInternalSelectedSubAgentIds(new Set(agent.sub_agents?.map((sa) => sa.id) ?? []))
     setInternalSelectedMiddlewareTypes(
@@ -183,6 +192,17 @@ export function VisualSettingsFlow({
     [isControlled, controlledHandlers],
   )
 
+  const toggleMcpTool = useCallback(
+    (id: string) => {
+      if (isControlled) {
+        controlledHandlers!.onToggleMcpTool(id)
+      } else {
+        setInternalSelectedMcpToolIds((prev) => toggleSetItem(prev, id))
+      }
+    },
+    [isControlled, controlledHandlers],
+  )
+
   const toggleSkill = useCallback(
     (skillId: string) => {
       if (isControlled) {
@@ -194,8 +214,6 @@ export function VisualSettingsFlow({
     [isControlled, controlledHandlers],
   )
 
-  // sub-agent state pass-through (visual 모드의 노드 시각화는 후속 PR — state 일관성만 유지).
-  // 사용되진 않더라도 controlled 분기에서 toggle 호출 가능성을 유지하기 위해 필요.
   const toggleSubAgent = useCallback(
     (subAgentId: string) => {
       if (isControlled) {
@@ -206,9 +224,6 @@ export function VisualSettingsFlow({
     },
     [isControlled, controlledHandlers],
   )
-  // 미사용 변수 경고 회피 (후속 PR에서 노드에 연결 예정)
-  void selectedSubAgentIds
-  void toggleSubAgent
 
   const toggleMiddleware = useCallback(
     (type: string) => {
@@ -224,8 +239,8 @@ export function VisualSettingsFlow({
   const currentModelName = useMemo(() => {
     const found = models.find((m) => m.id === modelId)?.display_name
     if (found) return found
-    return agent?.model.display_name ?? ''
-  }, [models, modelId, agent?.model.display_name])
+    return agent?.model?.display_name ?? ''
+  }, [models, modelId, agent?.model?.display_name])
 
   const handleAgentNodeUpdate = useCallback(
     (data: {
@@ -256,6 +271,7 @@ export function VisualSettingsFlow({
       system_prompt: systemPrompt,
       model_id: modelId,
       tool_ids: Array.from(selectedToolIds),
+      mcp_tool_ids: Array.from(selectedMcpToolIds),
       skill_ids: Array.from(selectedSkillIds),
       sub_agent_ids: Array.from(selectedSubAgentIds),
       middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
@@ -329,13 +345,26 @@ export function VisualSettingsFlow({
         id: 'toolbox',
         type: 'toolbox',
         position: { x: 210, y: 0 },
-        data: { allTools: tools, selectedToolIds, onToggleTool: toggleTool },
+        data: {
+          allTools: tools,
+          selectedToolIds,
+          onToggleTool: toggleTool,
+          selectedMcpToolIds,
+          onToggleMcpTool: toggleMcpTool,
+          allSkills: skills,
+          selectedSkillIds,
+          onToggleSkill: toggleSkill,
+        },
       },
       {
         id: 'subagents',
         type: 'subagents',
         position: { x: 210, y: 175 },
-        data: {},
+        data: {
+          selectedSubAgentIds,
+          onToggleSubAgent: toggleSubAgent,
+          currentAgentId: agentId ?? '',
+        },
       },
       {
         id: 'skills',
@@ -361,6 +390,7 @@ export function VisualSettingsFlow({
   const hasSchedules = triggers.length > 0
   const hasTools = selectedToolIds.size > 0
   const hasSkills = selectedSkillIds.size > 0
+  const hasSubAgents = selectedSubAgentIds.size > 0
   const hasMiddlewares = selectedMiddlewareTypes.size > 0
 
   const computedEdges: Edge[] = useMemo(
@@ -393,7 +423,10 @@ export function VisualSettingsFlow({
         id: 'agent-subagents',
         source: 'agent',
         target: 'subagents',
-        style: { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
+        animated: hasSubAgents,
+        style: hasSubAgents
+          ? { stroke: '#8b5cf6', strokeWidth: 2 }
+          : { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
       },
       {
         id: 'agent-skills',
@@ -414,7 +447,7 @@ export function VisualSettingsFlow({
           : { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
       },
     ],
-    [hasSchedules, hasTools, hasSkills, hasMiddlewares],
+    [hasSchedules, hasTools, hasSkills, hasSubAgents, hasMiddlewares],
   )
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
@@ -446,7 +479,29 @@ export function VisualSettingsFlow({
           }
         }
         if (node.id === 'toolbox') {
-          return { ...node, data: { allTools: tools, selectedToolIds, onToggleTool: toggleTool } }
+          return {
+            ...node,
+            data: {
+              allTools: tools,
+              selectedToolIds,
+              onToggleTool: toggleTool,
+              selectedMcpToolIds,
+              onToggleMcpTool: toggleMcpTool,
+              allSkills: skills,
+              selectedSkillIds,
+              onToggleSkill: toggleSkill,
+            },
+          }
+        }
+        if (node.id === 'subagents') {
+          return {
+            ...node,
+            data: {
+              selectedSubAgentIds,
+              onToggleSubAgent: toggleSubAgent,
+              currentAgentId: agentId ?? '',
+            },
+          }
         }
         if (node.id === 'skills') {
           return {
@@ -482,11 +537,16 @@ export function VisualSettingsFlow({
     skills,
     middlewares,
     selectedToolIds,
+    selectedMcpToolIds,
     selectedSkillIds,
+    selectedSubAgentIds,
     selectedMiddlewareTypes,
     toggleTool,
+    toggleMcpTool,
     toggleSkill,
+    toggleSubAgent,
     toggleMiddleware,
+    agentId,
     setNodes,
   ])
 

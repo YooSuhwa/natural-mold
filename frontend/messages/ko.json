@@ -7,6 +7,7 @@
     "save": "저장",
     "create": "생성",
     "cancel": "취소",
+    "add": "추가",
     "remove": "제거",
     "delete": "삭제",
     "register": "등록",
@@ -27,12 +28,23 @@
     "brand": "Moldy",
     "nav": {
       "home": "홈",
+      "connectors": "커넥터",
       "tools": "도구",
-      "connections": "연결",
-      "skills": "스킬",
+      "mcpServers": "MCP 서버",
       "models": "모델",
+      "credentials": "Credential",
+      "systemCredentials": "System Credential",
+      "skills": "스킬",
       "usage": "사용량",
       "templates": "에이전트 템플릿"
+    },
+    "section": {
+      "capabilities": "기능",
+      "resources": "리소스"
+    },
+    "tooltip": {
+      "connectors": "외부 시스템 연결",
+      "skills": "지식·실행 절차 패키지"
     },
     "newAgent": "새 에이전트",
     "recentAgents": "최근 에이전트",
@@ -181,7 +193,8 @@
       "settings": "설정",
       "modelLabel": "모델:",
       "createdAt": "{date} 생성",
-      "noDescription": "설명 없음"
+      "noDescription": "설명 없음",
+      "fallbackTitle": "Fallback 모델 {count}개 등록됨"
     },
     "detail": {
       "loadFailed": "대화를 불러오는 데 실패했습니다."
@@ -236,6 +249,7 @@
         "toolsTab": "도구",
         "skillsTab": "스킬",
         "toolsCount": "도구 {n}",
+        "mcpCount": "MCP {n}",
         "skillsCount": "스킬 {n}",
         "noSkills": "등록된 스킬이 없습니다. {link}에서 추가해주세요.",
         "skillsLink": "스킬 관리",
@@ -343,7 +357,8 @@
         "setIdentity": "ID 설정"
       },
       "subagents": {
-        "empty": "구성된 서브 에이전트 없음"
+        "empty": "구성된 서브 에이전트 없음",
+        "remove": "서브 에이전트 제거"
       },
       "comingSoon": "Coming soon",
       "toolbox": {
@@ -1127,16 +1142,59 @@
       "7d": "최근 7일",
       "30d": "최근 30일",
       "90d": "최근 90일",
-      "all": "전체"
+      "all": "전체",
+      "custom": "사용자 지정"
     },
     "table": {
       "agent": "에이전트",
       "tokens": "토큰",
-      "cost": "비용"
+      "cost": "비용",
+      "date": "날짜",
+      "target": "대상",
+      "tokensIn": "입력",
+      "tokensOut": "출력",
+      "requests": "요청"
     },
     "empty": {
       "title": "아직 사용 내역이 없습니다.",
       "description": "에이전트를 사용하면 여기에 토큰 사용량이 표시됩니다."
+    },
+    "summary": {
+      "monthCost": "이번 달 비용",
+      "monthTokens": "이번 달 토큰",
+      "monthRequests": "이번 달 요청",
+      "avgCostPerRequest": "평균 비용/요청"
+    },
+    "filters": {
+      "kind": "대상",
+      "kindUser": "사용자",
+      "kindAgent": "에이전트",
+      "kindModel": "모델",
+      "groupBy": "그룹",
+      "groupByDate": "날짜",
+      "groupByTarget": "대상",
+      "from": "시작",
+      "to": "종료"
+    },
+    "metric": {
+      "cost": "비용",
+      "tokens": "토큰",
+      "requests": "요청"
+    },
+    "downloadCsv": "CSV 다운로드",
+    "tableTitle": "원본 데이터",
+    "fallback": {
+      "sectionTitle": "Fallback 모델",
+      "sectionHint": "Primary 모델이 실패할 때 순서대로 시도됩니다",
+      "addButton": "Fallback 추가",
+      "moveUp": "위로",
+      "moveDown": "아래로",
+      "remove": "제거",
+      "duplicateWarning": "이 모델은 이미 Primary 또는 다른 Fallback에 포함되어 있습니다.",
+      "limitHint": "최대 {max}개까지 추가할 수 있습니다.",
+      "savedToast": "Fallback 모델이 저장되었습니다",
+      "saveFailedToast": "Fallback 저장에 실패했습니다",
+      "badge": "Fallback +{count}"
     }
   }
 }

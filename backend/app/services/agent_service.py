@@ -9,6 +9,9 @@ from sqlalchemy.orm import selectinload
 
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
+from app.models.mcp_server import McpServer
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
+from app.models.model import Model
 from app.models.skill import AgentSkillLink
 from app.models.template import Template
 from app.models.tool import AgentToolLink, Tool
@@ -24,6 +27,7 @@ def _selectin_agent() -> list:
     return [
         selectinload(Agent.model),
         selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
+        selectinload(Agent.mcp_tool_links).selectinload(AgentMcpToolLink.mcp_tool),
         selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
         selectinload(Agent.sub_agent_links),
     ]
@@ -74,6 +78,27 @@ async def _validate_sub_agent_ids_owned(
         )
 
 
+async def _validate_mcp_tool_ids_owned(
+    db: AsyncSession, mcp_tool_ids: list[uuid.UUID], user_id: uuid.UUID
+) -> None:
+    """mcp_tool_ids: 실재 + (서버 소유주가 user_id). 누락 시 400."""
+
+    if not mcp_tool_ids:
+        return
+    result = await db.execute(
+        select(McpTool.id)
+        .join(McpServer, McpTool.server_id == McpServer.id)
+        .where(McpTool.id.in_(mcp_tool_ids), McpServer.user_id == user_id)
+    )
+    valid = {row[0] for row in result.all()}
+    invalid = [str(i) for i in mcp_tool_ids if i not in valid]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid or unauthorized mcp_tool_ids: {invalid}",
+        )
+
+
 async def _validate_tool_ids_owned(
     db: AsyncSession, tool_ids: list[uuid.UUID], user_id: uuid.UUID
 ) -> None:
@@ -83,7 +108,7 @@ async def _validate_tool_ids_owned(
     result = await db.execute(
         select(Tool.id).where(
             Tool.id.in_(tool_ids),
-            or_(Tool.user_id == user_id, Tool.is_system.is_(True)),
+            or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
         )
     )
     valid = {row[0] for row in result.all()}
@@ -92,6 +117,28 @@ async def _validate_tool_ids_owned(
         raise HTTPException(
             status_code=400,
             detail=f"Invalid or unauthorized tool_ids: {invalid}",
+        )
+
+
+async def _validate_model_fallback_ids(
+    db: AsyncSession, fallback_ids: list[uuid.UUID]
+) -> None:
+    """Every fallback id must reference a model row in the catalog.
+
+    The catalog is shared across users (no per-user ownership), so we only
+    check existence here. Ordering and deduplication are the caller's
+    responsibility — we treat the list as opaque.
+    """
+
+    if not fallback_ids:
+        return
+    result = await db.execute(select(Model.id).where(Model.id.in_(fallback_ids)))
+    valid = {row[0] for row in result.all()}
+    invalid = [str(i) for i in fallback_ids if i not in valid]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown model_fallback_ids: {invalid}",
         )
 
 
@@ -121,11 +168,18 @@ async def _validate_skill_ids_owned(
 async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
     agent.is_favorite = not agent.is_favorite
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "skill_links", "sub_agent_links"])
+    await db.refresh(
+        agent,
+        ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
+    )
     return agent
 
 
 async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) -> Agent:
+    fallback_ids = data.model_fallback_ids or []
+    if fallback_ids:
+        await _validate_model_fallback_ids(db, fallback_ids)
+
     agent = Agent(
         user_id=user_id,
         name=data.name,
@@ -137,6 +191,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         if data.middleware_configs
         else None,
         opener_questions=data.opener_questions,
+        model_fallback_list=[str(fid) for fid in fallback_ids] if fallback_ids else None,
         template_id=data.template_id,
     )
 
@@ -152,7 +207,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
             lower_names = [n.lower() for n in template.recommended_tools]
             result = await db.execute(
                 select(Tool.id).where(
-                    or_(Tool.user_id == user_id, Tool.is_system.is_(True)),
+                    or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
                     func.lower(Tool.name).in_(lower_names),
                 )
             )
@@ -161,6 +216,12 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
     if tool_ids_to_link:
         await _validate_tool_ids_owned(db, tool_ids_to_link, user_id)
         agent.tool_links = _build_tool_links(tool_ids_to_link)
+
+    if data.mcp_tool_ids:
+        await _validate_mcp_tool_ids_owned(db, data.mcp_tool_ids, user_id)
+        agent.mcp_tool_links = [
+            AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids
+        ]
 
     if data.skill_ids:
         await _validate_skill_ids_owned(db, data.skill_ids, user_id)
@@ -175,7 +236,10 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
 
     db.add(agent)
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "skill_links", "sub_agent_links"])
+    await db.refresh(
+        agent,
+        ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
+    )
     return agent
 
 
@@ -196,12 +260,26 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
         agent.middleware_configs = [mc.model_dump() for mc in data.middleware_configs]
     if data.opener_questions is not None:
         agent.opener_questions = data.opener_questions
+    if data.model_fallback_ids is not None:
+        await _validate_model_fallback_ids(db, data.model_fallback_ids)
+        agent.model_fallback_list = (
+            [str(fid) for fid in data.model_fallback_ids]
+            if data.model_fallback_ids
+            else None
+        )
     if data.tool_ids is not None:
         await _validate_tool_ids_owned(db, data.tool_ids, agent.user_id)
         # Clear existing links first to avoid PK conflict, then add new ones
         agent.tool_links.clear()
         await db.flush()
         agent.tool_links = _build_tool_links(data.tool_ids)
+    if data.mcp_tool_ids is not None:
+        await _validate_mcp_tool_ids_owned(db, data.mcp_tool_ids, agent.user_id)
+        agent.mcp_tool_links.clear()
+        await db.flush()
+        agent.mcp_tool_links = [
+            AgentMcpToolLink(mcp_tool_id=mid) for mid in data.mcp_tool_ids
+        ]
     if data.skill_ids is not None:
         await _validate_skill_ids_owned(db, data.skill_ids, agent.user_id)
         agent.skill_links.clear()
@@ -220,7 +298,10 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
             for idx, sid in enumerate(data.sub_agent_ids)
         ]
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "skill_links", "sub_agent_links"])
+    await db.refresh(
+        agent,
+        ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
+    )
     return agent
 
 

@@ -1,0 +1,72 @@
+{
+  "github": {
+    "key": "github",
+    "display_name": "GitHub",
+    "description": "Access GitHub repositories, issues, and pull requests",
+    "icon_id": "github",
+    "transport": "streamable_http",
+    "url": "https://api.githubcopilot.com/mcp/",
+    "command": null,
+    "args": null,
+    "env_vars": {},
+    "credential_definition_key": "http_bearer",
+    "documentation_url": "https://github.com/github/github-mcp-server"
+  },
+  "linear": {
+    "key": "linear",
+    "display_name": "Linear",
+    "description": "Access Linear issues, projects, and teams",
+    "icon_id": "linear",
+    "transport": "sse",
+    "url": "https://mcp.linear.app/sse",
+    "command": null,
+    "args": null,
+    "env_vars": {},
+    "credential_definition_key": "http_bearer",
+    "documentation_url": "https://linear.app/docs/mcp"
+  },
+  "jira": {
+    "key": "jira",
+    "display_name": "Atlassian Jira",
+    "description": "Access Jira issues, sprints, and projects",
+    "icon_id": "jira",
+    "transport": "streamable_http",
+    "url": "https://mcp.atlassian.com/v1/sse",
+    "command": null,
+    "args": null,
+    "env_vars": {},
+    "credential_definition_key": "http_bearer",
+    "documentation_url": "https://www.atlassian.com/platform/mcp"
+  },
+  "slack": {
+    "key": "slack",
+    "display_name": "Slack",
+    "description": "Read messages, send DMs, manage channels",
+    "icon_id": "slack",
+    "transport": "stdio",
+    "url": null,
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-slack"],
+    "env_vars": {
+      "SLACK_BOT_TOKEN": "${credential.bot_token}",
+      "SLACK_TEAM_ID": "${credential.team_id}"
+    },
+    "credential_definition_key": "http_api_key",
+    "documentation_url": "https://github.com/modelcontextprotocol/servers/tree/main/src/slack"
+  },
+  "notion": {
+    "key": "notion",
+    "display_name": "Notion",
+    "description": "Access Notion pages, databases, and search",
+    "icon_id": "notion",
+    "transport": "stdio",
+    "url": null,
+    "command": "npx",
+    "args": ["-y", "@notionhq/notion-mcp-server"],
+    "env_vars": {
+      "OPENAPI_MCP_HEADERS": "{\"Authorization\":\"Bearer ${credential.token}\",\"Notion-Version\":\"2022-06-28\"}"
+    },
+    "credential_definition_key": "http_bearer",
+    "documentation_url": "https://github.com/makenotion/notion-mcp-server"
+  }
+}

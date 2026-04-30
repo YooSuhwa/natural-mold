@@ -95,8 +95,21 @@ export function AgentCard({ agent }: AgentCardProps) {
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <CpuIcon className="size-3.5" />
-              {agent.model.display_name}
+              {agent.model?.display_name ?? (
+                <span className="text-amber-600 dark:text-amber-400">
+                  no model bound
+                </span>
+              )}
             </span>
+            {(agent.model_fallback_ids?.length ?? 0) > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300"
+                title={t('fallbackTitle', { count: agent.model_fallback_ids?.length ?? 0 })}
+                data-testid="agent-card-fallback-badge"
+              >
+                +{agent.model_fallback_ids?.length} fallback
+              </span>
+            )}
             {agent.tools.length > 0 && (
               <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-medium">
                 <WrenchIcon className="size-3" />

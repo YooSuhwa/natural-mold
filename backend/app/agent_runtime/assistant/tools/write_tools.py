@@ -39,6 +39,8 @@ from app.database import async_session as async_session_factory
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
+from app.models.mcp_server import McpServer
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.skill import AgentSkillLink, Skill
 from app.models.tool import AgentToolLink, Tool
 from app.services.model_service import resolve_model
@@ -81,7 +83,7 @@ def build_write_tools(
 
             result = await session.execute(
                 select(Tool).where(
-                    or_(Tool.user_id == user_id, Tool.is_system.is_(True)),
+                    or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
                     func.lower(Tool.name).in_(lower_names),
                 )
             )
@@ -120,6 +122,69 @@ def build_write_tools(
 
             await session.commit()
             return f"도구 제거 완료: {', '.join(removed)}"
+
+    # ------ 2-1. add_mcp_tool_to_agent ------
+
+    async def add_mcp_tool_to_agent(mcp_tool_names: list[str]) -> str:
+        """에이전트에 MCP 도구를 추가합니다 (배치 지원).
+
+        Args:
+            mcp_tool_names: 추가할 MCP 도구 이름 목록 (서버명 아님 — 도구명).
+        """
+        async with async_session_factory() as session:
+            agent = await _get_agent_with_session(session)
+            if not agent:
+                return "에이전트를 찾을 수 없습니다."
+
+            existing = {link.mcp_tool.name.lower() for link in agent.mcp_tool_links}
+            lower_names = [n.lower() for n in mcp_tool_names if n.lower() not in existing]
+            if not lower_names:
+                return "모든 MCP 도구가 이미 추가되어 있습니다."
+
+            # MCP 도구는 사용자 소유 server에 묶여 있음 → server.user_id 필터.
+            result = await session.execute(
+                select(McpTool)
+                .join(McpServer, McpServer.id == McpTool.server_id)
+                .where(
+                    McpServer.user_id == user_id,
+                    func.lower(McpTool.name).in_(lower_names),
+                )
+            )
+            found = list(result.scalars().all())
+            if not found:
+                return f"MCP 도구를 찾을 수 없습니다: {', '.join(mcp_tool_names)}"
+
+            for mt in found:
+                agent.mcp_tool_links.append(AgentMcpToolLink(mcp_tool_id=mt.id))
+            await session.commit()
+
+            added = [mt.name for mt in found]
+            return f"MCP 도구 추가 완료: {', '.join(added)}"
+
+    # ------ 2-2. remove_mcp_tool_from_agent ------
+
+    async def remove_mcp_tool_from_agent(mcp_tool_names: list[str]) -> str:
+        """에이전트에서 MCP 도구를 제거합니다 (배치 지원).
+
+        Args:
+            mcp_tool_names: 제거할 MCP 도구 이름 목록.
+        """
+        async with async_session_factory() as session:
+            agent = await _get_agent_with_session(session)
+            if not agent:
+                return "에이전트를 찾을 수 없습니다."
+
+            lower_names = {n.lower() for n in mcp_tool_names}
+            removed = []
+            for link in agent.mcp_tool_links:
+                if link.mcp_tool.name.lower() in lower_names:
+                    removed.append(link.mcp_tool.name)
+                    await session.delete(link)
+            if not removed:
+                return f"해당 MCP 도구가 에이전트에 없습니다: {', '.join(mcp_tool_names)}"
+
+            await session.commit()
+            return f"MCP 도구 제거 완료: {', '.join(removed)}"
 
     # ------ 3. add_middleware_to_agent ------
 
@@ -761,6 +826,16 @@ def build_write_tools(
             coroutine=remove_tool_from_agent,
             name="remove_tool_from_agent",
             description="에이전트에서 도구 배치 제거",
+        ),
+        StructuredTool.from_function(
+            coroutine=add_mcp_tool_to_agent,
+            name="add_mcp_tool_to_agent",
+            description="에이전트에 MCP 도구 배치 추가 (도구 이름으로)",
+        ),
+        StructuredTool.from_function(
+            coroutine=remove_mcp_tool_from_agent,
+            name="remove_mcp_tool_from_agent",
+            description="에이전트에서 MCP 도구 배치 제거",
         ),
         StructuredTool.from_function(
             coroutine=add_middleware_to_agent,

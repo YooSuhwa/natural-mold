@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import secrets
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -7,9 +9,23 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.database import Base
-from app.dependencies import CurrentUser, get_current_user, get_db
-from app.main import create_app
+# Cipher V2 / new credential domain require ``ENCRYPTION_KEYS`` to be set
+# before ``app.config.settings`` is evaluated. Set it at import time so any
+# module that reads settings during collection sees a valid value.
+os.environ.setdefault("ENCRYPTION_KEYS", secrets.token_hex(32))
+
+from app.config import settings  # noqa: E402
+from app.database import Base  # noqa: E402
+from app.dependencies import CurrentUser, get_current_user, get_db  # noqa: E402
+from app.main import create_app  # noqa: E402
+from app.security import key_provider  # noqa: E402
+
+# Make sure the settings instance reflects the environment variable above
+# (``BaseSettings`` reads env at class-init time, but explicit assignment
+# guarantees correctness if any other test mutated ``settings``).
+if not getattr(settings, "encryption_keys", ""):
+    settings.encryption_keys = os.environ["ENCRYPTION_KEYS"]
+key_provider.reset_cache()
 
 TEST_USER_ID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 

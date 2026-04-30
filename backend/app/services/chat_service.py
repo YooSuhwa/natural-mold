@@ -1,3 +1,17 @@
+"""Chat service — conversations, messages, and agent context assembly.
+
+Greenfield M5 rewrite. The legacy PREBUILT/CUSTOM/MCP branching has been
+collapsed into a single resolution path: every tool row points at a registered
+``ToolDefinition`` (``tool.definition_key``) plus an optional credential
+(``tool.credential_id``). MCP server bindings are handled separately by the
+caller via the new ``app.mcp.client`` module.
+
+Helpers re-exported by this module are imported by the trigger executor and the
+conversations router; their public shape (``get_agent_with_tools``,
+``build_tools_config``, ``build_effective_prompt``, ``build_agent_skills``) is
+preserved to keep those callers thin.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -9,66 +23,40 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.credentials import service as credential_service
 from app.models.agent import Agent
-from app.models.connection import Connection
 from app.models.conversation import Conversation
-from app.models.model import Model
+from app.models.mcp_server import McpServer
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.conversation import ConversationUpdate
-from app.schemas.tool import ToolType
-from app.services.connection_service import (
-    get_default_connections_for_providers,
-)
-from app.services.credential_service import (
-    resolve_credential_data,
-)
-from app.services.env_var_resolver import (
-    _ENV_VAR_TEMPLATE,
-    ToolConfigError,
-    assert_connection_ownership,
-    assert_credential_ownership,
-    resolve_env_vars,
-)
+from app.skills.runtime import build_skills_for_agent
 
 logger = logging.getLogger(__name__)
 
-# Backwards-compat re-exports for existing tests that import from chat_service
-_resolve_env_vars = resolve_env_vars
+
 __all__ = [
-    "_ENV_VAR_TEMPLATE",
-    "ToolConfigError",
-    "_resolve_env_vars",
-    "_load_user_default_connection_map",
-    "_resolve_prebuilt_auth",
-    "_resolve_custom_auth",
+    "build_agent_skills",
+    "build_effective_prompt",
     "build_tools_config",
+    "create_conversation",
+    "delete_conversation",
+    "get_agent_with_tools",
+    "get_conversation",
+    "list_conversations",
+    "list_messages_from_checkpointer",
+    "maybe_set_auto_title",
+    "save_token_usage",
+    "touch_conversation",
+    "update_conversation",
 ]
 
 
-async def _load_user_default_connection_map(
-    db: AsyncSession,
-    agent: Agent,
-    user_id: uuid.UUID,
-) -> dict[str, Connection]:
-    """Build per-user default connection map for PREBUILT tools on an agent.
-
-    ADR-008 §3. Tool은 공유 행(`user_id=NULL`)이라 connection의 SOT는
-    `(current_user_id, tool.provider_name)` 조합. N+1 방지를 위해 agent의 모든
-    PREBUILT tool에서 distinct `provider_name`을 모아 IN 쿼리 1회로 로드.
-
-    **cross-tenant 가드 hook**: 내부 bulk 쿼리에 `user_id` 필터가 걸려 있으므로
-    user_A agent로 호출해도 user_B의 connection이 섞이지 않는다. S5 회귀
-    테스트가 이 함수를 직접 호출해 격리를 검증할 수 있도록 모듈-private로
-    노출.
-    """
-    provider_names: set[str] = {
-        link.tool.provider_name
-        for link in agent.tool_links
-        if link.tool.type == ToolType.PREBUILT and link.tool.provider_name
-    }
-    return await get_default_connections_for_providers(db, user_id, "prebuilt", provider_names)
+# ---------------------------------------------------------------------------
+# Conversations CRUD
+# ---------------------------------------------------------------------------
 
 
 async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conversation]:
@@ -119,28 +107,26 @@ async def list_messages_from_checkpointer(
     db: AsyncSession,
     conversation: Conversation,
 ) -> list:
-    """Checkpointer에서 대화 메시지를 조회하여 MessageResponse 리스트로 반환.
+    """Return persisted messages, attaching stable per-message timestamps.
 
-    LangChain BaseMessage에 timestamp 메타가 없으므로 idx → ISO 매핑을
-    `Conversation.message_timestamps`에 영구 저장한다. 처음 노출되는 메시지에는
-    현재 시각을 부여하고 이후엔 저장된 값을 그대로 사용 → 옛 메시지 시각이
-    송신마다 흔들리지 않는다.
+    LangChain ``BaseMessage`` carries no timestamp metadata, so we keep an
+    ``idx → ISO`` mapping in ``Conversation.message_timestamps``. The first
+    time a message is exposed we stamp it with the current time; subsequent
+    reads reuse the stored value so old messages don't drift on every fetch.
     """
+
     from app.agent_runtime.checkpointer import get_checkpointer
     from app.agent_runtime.message_utils import langchain_messages_to_response, parse_msg_id
 
     checkpointer = get_checkpointer()
     config = {"configurable": {"thread_id": str(conversation.id)}}
-    checkpoint_tuple = await checkpointer.aget_tuple(config)  # type: ignore[arg-type]  # RunnableConfig 호환 dict
+    checkpoint_tuple = await checkpointer.aget_tuple(config)  # type: ignore[arg-type]
 
     if not checkpoint_tuple:
         return []
 
     messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
 
-    # key는 message UUID. parse_msg_id가 raw id 있으면 UUID 변환, 없으면
-    # (conv_id, idx) deterministic UUID로 안정 ID를 보장하므로 idx 어긋남에도
-    # raw id 있는 메시지 매핑은 흔들리지 않는다.
     new_stored: dict[str, str] = dict(conversation.message_timestamps or {})
     timestamps: list[datetime] = []
     now = datetime.now(UTC).replace(tzinfo=None)
@@ -174,10 +160,6 @@ async def maybe_set_auto_title(
     conversation_id: uuid.UUID,
     content: str,
 ) -> None:
-    """첫 사용자 메시지일 때 대화 제목을 자동 설정.
-
-    Conversation.title이 기본값('새 대화')인 경우에만 UPDATE 실행.
-    """
     title = content.strip().replace("\n", " ")
     if len(title) > 40:
         title = title[:37] + "..."
@@ -214,12 +196,8 @@ async def save_token_usage(
 
 
 async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> None:
-    """대화의 updated_at을 현재 시각으로 갱신.
+    """Bump ``conversation.updated_at`` to anchor message-list timestamps."""
 
-    LangChain BaseMessage에 timestamp 메타가 없어 list_messages 응답의 base를
-    conv.updated_at으로 사용한다. 메시지 송신/재개 흐름이 끝날 때마다 호출하면
-    프론트엔드의 시간 라벨이 거의 정확한 시각을 표시할 수 있다.
-    """
     await db.execute(
         update(Conversation)
         .where(Conversation.id == conversation_id)
@@ -228,235 +206,160 @@ async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> No
     await db.commit()
 
 
+# ---------------------------------------------------------------------------
+# Agent context assembly (single-path, greenfield)
+# ---------------------------------------------------------------------------
+
+
 async def get_agent_with_tools(
     db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
 ) -> Agent | None:
+    """Load agent with everything needed by the runtime in one round-trip.
+
+    Eager-loads:
+    - ``Agent.model`` (no provider join — ``llm_providers`` is retired)
+    - ``Agent.tool_links → tool → credential`` (single FK path)
+    - ``Agent.skill_links → skill``
+
+    The legacy per-user "default connection map" prefetch is gone: every tool
+    row owns its own ``credential_id``. The trigger executor and conversations
+    router both call this helper, so prefetch is consistent across the two
+    callers (closing the M11 ``trigger_executor.py`` prefetch-skew bug).
+    """
+
     result = await db.execute(
         select(Agent)
         .where(Agent.id == agent_id, Agent.user_id == user_id)
         .options(
-            selectinload(Agent.model).selectinload(Model.llm_provider),
+            selectinload(Agent.model),
+            selectinload(Agent.llm_credential),
             selectinload(Agent.tool_links)
             .selectinload(AgentToolLink.tool)
-            .selectinload(Tool.connection)
-            .selectinload(Connection.credential),
+            .selectinload(Tool.credential),
+            # MCP tool link → mcp_tool → server (server carries transport,
+            # url, headers, and credential needed to actually invoke).
+            selectinload(Agent.mcp_tool_links)
+            .selectinload(AgentMcpToolLink.mcp_tool)
+            .selectinload(McpTool.server)
+            .selectinload(McpServer.credential),
             selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
         )
     )
-    agent = result.scalar_one_or_none()
-    if agent is None:
-        return None
-
-    # PREBUILT 도구의 per-user default connection 프리로드. tool별 selectinload로는
-    # 체인할 수 없는 스코프 — Connection은 (user_id, type, provider_name)로 찾고,
-    # tool.connection_id가 아니라 current_user와 tool.provider_name의 조합으로
-    # 매칭되기 때문(ADR-008 §3). 테스트에서 user_id 필터를 직접 검증할 수 있도록
-    # 모듈-private 헬퍼로 분리.
-    default_conn_map = await _load_user_default_connection_map(db, agent, user_id)
-    # build_tools_config(sync)에서 조회할 수 있도록 agent 객체에 attach.
-    # 반환 시그니처를 건드리지 않는 비침투적 경로.
-    agent._default_connection_map = default_conn_map  # type: ignore[attr-defined]
-    return agent
+    return result.scalar_one_or_none()
 
 
 def build_effective_prompt(agent: Agent) -> str:
-    """Build system prompt (skill injection handled by deepagents SkillsMiddleware)."""
+    """Build system prompt — skill bodies are injected by deepagents middleware."""
+
     return agent.system_prompt
 
 
 def build_agent_skills(agent: Agent) -> list[dict[str, Any]]:
-    """Build agent_skills list from agent's skill links (package skills with storage_path)."""
-    return [
-        {"skill_id": str(link.skill.id), "storage_path": link.skill.storage_path}
-        for link in agent.skill_links
-        if link.skill and link.skill.storage_path
-    ]
+    """Forward the agent's skill links to the runtime descriptor list."""
+
+    return build_skills_for_agent(agent.skill_links)
 
 
-def _gate_connection_active(tool: Tool, conn: Connection) -> None:
-    """Gate A: ownership + `status='active'` (kill-switch).
+async def build_tools_config(
+    agent: Agent,
+    *,
+    db: AsyncSession | None = None,
+    conversation_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Build the runtime tools_config list for an agent.
 
-    Shared by PREBUILT and CUSTOM resolvers. Must run before any credential
-    read so a disabled connection cannot be bypassed by tool-level fallback.
-    Raises `ToolConfigError` on failure.
+    The shape is intentionally minimal — every entry exposes the registry
+    ``definition_key`` (so the executor knows which runner to instantiate),
+    the user-supplied ``parameters``, and an optional decrypted
+    ``credentials`` dict.
+
+    The legacy 4-way ``ToolType`` branch + per-user default connection map +
+    cross-tenant ownership gates are gone. ``Tool.credential_id`` is the only
+    auth source; ownership is enforced by ``user_id`` filters on the writes.
+
+    MCP tools are not represented as ``Tool`` rows under the greenfield model
+    (they live in ``mcp_servers``/``mcp_tools``). Until ``agent_mcp_servers``
+    link binding ships, this function only emits regular tool entries; MCP
+    bindings will come in via a separate config list. See
+    ``app/mcp/client.py`` and the M5 follow-up note in ``progress.txt``.
     """
-    assert_connection_ownership(
-        tool_user_id=tool.user_id,
-        connection_user_id=conn.user_id,
-        connection_id=conn.id,
-        tool_name=tool.name,
-    )
-    if conn.status != "active":
-        raise ToolConfigError(
-            f"Tool '{tool.name}' connection {conn.id} is "
-            f"status='{conn.status}' — execution blocked. "
-            "Reactivate the connection to run this tool."
-        )
 
-
-def _gate_connection_credential(tool: Tool, conn: Connection) -> dict[str, Any]:
-    """Gate B: credential ownership + `credential IS NOT NULL` + decrypt.
-
-    Shared by PREBUILT and CUSTOM resolvers. Assumes Gate A has passed.
-    Returns the decrypted auth dict.
-    """
-    assert_credential_ownership(
-        connection_user_id=conn.user_id,
-        credential=conn.credential,
-        connection_id=conn.id,
-    )
-    if conn.credential is None:
-        raise ToolConfigError(
-            f"Tool '{tool.name}' connection {conn.id} has no bound "
-            "credential — execution blocked. Bind a credential or delete the "
-            "connection."
-        )
-    return resolve_credential_data(conn.credential)
-
-
-def _resolve_prebuilt_auth(
-    tool: Tool,
-    default_connection_map: dict[str, Connection],
-) -> dict[str, Any]:
-    """Resolve PREBUILT tool auth via per-user default Connection.
-
-    ADR-008 §3 + §11. PREBUILT shared rows lookup by
-    `(current_user, tool.provider_name)`. Caller: `tool.type == PREBUILT AND
-    tool.provider_name IS NOT NULL`.
-
-    - connection 자체가 없음 → `{}` (env fallback, ADR-008 §11)
-    - connection 있음 → Gate A (ownership + active) → Gate B (credential decrypt)
-    """
-    conn = default_connection_map.get(tool.provider_name or "")
-    if conn is None:
-        # env fallback — tool builder가 `settings.*`를 사용. 여기서 settings를
-        # 재조회하지 않는다 (2중 fallback 금지).
-        return {}
-    _gate_connection_active(tool, conn)
-    return _gate_connection_credential(tool, conn)
-
-
-def _resolve_custom_auth(tool: Tool) -> dict[str, Any]:
-    """Resolve CUSTOM tool auth via bound Connection (ADR-008 §4 M4).
-
-    M6 cleanup: legacy tool.credential_id / tool.auth_config 컬럼이 drop
-    되었으므로 connection_id 없는 CUSTOM tool은 fail-closed.
-
-    - `connection_id IS NULL` → `ToolConfigError` (fail-closed)
-    - `connection_id` 있으나 relationship None → FK dangling → `ToolConfigError`
-    - connection 있음 → Gate A (kill-switch) → Gate B (credential decrypt)
-    """
-    if tool.connection_id is None:
-        raise ToolConfigError(
-            f"CUSTOM tool '{tool.name}' has no connection_id — execution "
-            "blocked. Bind a connection to run this tool."
-        )
-    if tool.connection is None:
-        # async SQLAlchemy에서 lazy-load는 MissingGreenlet raise이므로 None은
-        # FK dangling(connection row 삭제) 또는 eager-load 누락.
-        raise ToolConfigError(
-            f"CUSTOM tool '{tool.name}' has connection_id={tool.connection_id} "
-            "but the connection relationship is missing — execution blocked. "
-            "Caller must eager-load Tool.connection or the connection row was "
-            "deleted out-of-band."
-        )
-
-    conn = tool.connection
-    _gate_connection_active(tool, conn)
-    return _gate_connection_credential(tool, conn)
-
-
-def build_tools_config(agent: Agent, conversation_id: str | None = None) -> list[dict[str, Any]]:
-    """Build tools_config list from agent's tool links."""
-    tools_config: list[dict[str, Any]] = []
-    # get_agent_with_tools가 attach한 per-user default connection map. prefetch
-    # 경로를 우회한 호출자(테스트 등)를 위해 getattr fallback.
-    default_connection_map: dict[str, Connection] = getattr(agent, "_default_connection_map", {})
-
+    configs: list[dict[str, Any]] = []
     for link in agent.tool_links:
         tool = link.tool
-        mcp_server_url: str | None = None
-        # auth_config는 executor의 _AuthInjectorInterceptor가 매 tool call의
-        # arguments에 주입하는 대상이므로 transport 헤더를 여기 넣으면 안 된다
-        # (Codex 6차 adversarial P1). 헤더는 별도 top-level key로 전달.
-        mcp_transport_headers: dict[str, str] | None = None
+        if tool is None or not tool.enabled:
+            continue
 
-        if tool.type == ToolType.MCP:
-            # M6.1: legacy mcp_server fallback 제거. connection 없는 MCP tool은
-            # fail-closed로 차단 (Bezos M1 §2.2 결정).
-            if tool.connection_id is None or tool.connection is None:
-                raise ToolConfigError(
-                    f"MCP tool '{tool.name}' has no connection — execution "
-                    "blocked. Bind a connection (PATCH /api/tools/{id}) to "
-                    "run this tool."
+        credentials: dict[str, Any] | None = None
+        credential = getattr(tool, "credential", None)
+        if credential is not None:
+            try:
+                credentials = await credential_service.decrypt_with_external(
+                    credential.data_encrypted
                 )
-            conn = tool.connection
-            # Cross-tenant credential leak 방어: DML/이관 실수로 user_id
-            # 불일치가 생겨도 런타임에서 타 유저 credential 복호화를 거부.
-            assert_connection_ownership(
-                tool_user_id=tool.user_id,
-                connection_user_id=conn.user_id,
-                connection_id=conn.id,
-                tool_name=tool.name,
-            )
-            assert_credential_ownership(
-                connection_user_id=conn.user_id,
-                credential=conn.credential,
-                connection_id=conn.id,
-            )
-            extra = conn.extra_config or {}
-            url = extra.get("url")
-            if not url:
-                raise ToolConfigError(
-                    f"MCP tool '{tool.name}' connection {conn.id} is missing extra_config.url"
+            except Exception:  # noqa: BLE001 — surface as missing creds, never crash chat
+                logger.exception(
+                    "credential decryption failed for tool %s (credential %s)",
+                    tool.id,
+                    credential.id,
                 )
-            cred_auth = resolve_env_vars(
-                extra.get("env_vars"),
-                conn.credential,
-                context={
-                    "connection_id": str(conn.id),
-                    "tool_name": tool.name,
-                },
-            )
-            # ConnectionExtraConfig.headers는 transport 헤더 — auth_config에
-            # 병합하지 말고 별도 필드로 executor에 전달해야 tool argument
-            # injection 대상에서 제외된다.
-            from app.agent_runtime.mcp_client import extract_transport_headers
+                credentials = None
 
-            mcp_transport_headers = extract_transport_headers(extra)
-            mcp_server_url = url
-        elif tool.type == ToolType.PREBUILT:
-            # PREBUILT 도구: provider_name 있으면 per-user default connection
-            # 경유. provider_name NULL row는 m10 백필로 이미 해소됨 — M6 이후
-            # env fallback과 동치이므로 `{}` 반환.
-            if tool.provider_name:
-                cred_auth = _resolve_prebuilt_auth(tool, default_connection_map)
-            else:
-                cred_auth = {}
-        elif tool.type == ToolType.CUSTOM:
-            # CUSTOM 도구: connection_id FK 경유 → credential 복호화 +
-            # 3-state fail-closed (M6에서 legacy fallback 제거).
-            cred_auth = _resolve_custom_auth(tool)
-        else:
-            # BUILTIN 등 나머지. env fallback도 connection도 없는 도구 —
-            # auth는 빈 dict (M6에서 legacy credential/auth_config 컬럼 제거).
-            cred_auth = {}
+        configs.append(
+            {
+                "tool_id": str(tool.id),
+                "definition_key": tool.definition_key,
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": dict(tool.parameters or {}),
+                "credentials": credentials,
+                "credential_id": (
+                    str(tool.credential_id) if tool.credential_id else None
+                ),
+                # Hook-framework correlation — wire down to ``tool_factory``.
+                "user_id": str(agent.user_id),
+                "agent_id": str(agent.id),
+            }
+        )
 
-        config_entry: dict[str, Any] = {
-            "type": tool.type,
-            "name": tool.name,
-            "description": tool.description,
-            "api_url": tool.api_url,
-            "http_method": tool.http_method,
-            "parameters_schema": tool.parameters_schema,
-            "auth_type": tool.auth_type,
-            "auth_config": cred_auth or None,
-        }
-        if tool.type == ToolType.MCP and mcp_server_url is not None:
-            config_entry["mcp_server_url"] = mcp_server_url
-            config_entry["mcp_tool_name"] = tool.name
-            if mcp_transport_headers:
-                config_entry["mcp_transport_headers"] = mcp_transport_headers
-        tools_config.append(config_entry)
+    # MCP tool bindings — emit in the executor's mcp_server_url shape so
+    # ``_build_mcp_tools`` instantiates them. m25 added the link table that
+    # makes this possible (previously a m5 follow-up).
+    for mcp_link in agent.mcp_tool_links:
+        mcp_tool = mcp_link.mcp_tool
+        if mcp_tool is None or not mcp_tool.enabled:
+            continue
+        server = mcp_tool.server
+        if server is None or not server.url:
+            continue
 
-    return tools_config
+        mcp_credentials: dict[str, Any] | None = None
+        if server.credential is not None:
+            try:
+                mcp_credentials = await credential_service.decrypt_with_external(
+                    server.credential.data_encrypted
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "credential decryption failed for mcp server %s", server.id
+                )
+
+        configs.append(
+            {
+                "tool_id": f"mcp:{mcp_tool.id}",
+                "definition_key": "mcp",
+                "name": mcp_tool.name,
+                "description": mcp_tool.description,
+                "parameters": {},
+                # _build_mcp_tools branches on these keys (see executor.py
+                # ``mcp_server_url``).
+                "mcp_server_url": server.url,
+                "mcp_tool_name": mcp_tool.name,
+                "mcp_transport_headers": dict(server.headers or {}),
+                "credentials": mcp_credentials,
+                "user_id": str(agent.user_id),
+                "agent_id": str(agent.id),
+            }
+        )
+
+    return configs

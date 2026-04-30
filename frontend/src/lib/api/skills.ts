@@ -1,15 +1,48 @@
 import { apiFetch, API_BASE, ApiError } from './client'
-import type { Skill, SkillCreateRequest, SkillUpdateRequest } from '@/lib/types'
+import type {
+  Skill,
+  SkillContentUpdateRequest,
+  SkillCreateRequest,
+  SkillFileEntry,
+  SkillKind,
+  SkillMetadataUpdateRequest,
+  SkillTextContent,
+} from '@/lib/types/skill'
 
 export const skillsApi = {
-  list: () => apiFetch<Skill[]>('/api/skills'),
+  list: (params?: { kind?: SkillKind; q?: string }) => {
+    const search = new URLSearchParams()
+    if (params?.kind) search.set('kind', params.kind)
+    if (params?.q) search.set('q', params.q)
+    const qs = search.toString()
+    return apiFetch<Skill[]>(`/api/skills${qs ? `?${qs}` : ''}`)
+  },
   get: (id: string) => apiFetch<Skill>(`/api/skills/${id}`),
-  create: (data: SkillCreateRequest) =>
-    apiFetch<Skill>('/api/skills', { method: 'POST', body: JSON.stringify(data) }),
-  update: (id: string, data: SkillUpdateRequest) =>
-    apiFetch<Skill>(`/api/skills/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  createText: (data: SkillCreateRequest) =>
+    apiFetch<Skill>('/api/skills', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  patchMetadata: (id: string, data: SkillMetadataUpdateRequest) =>
+    apiFetch<Skill>(`/api/skills/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  putContent: (id: string, data: SkillContentUpdateRequest) =>
+    apiFetch<Skill>(`/api/skills/${id}/content`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  getContent: (id: string) =>
+    apiFetch<SkillTextContent>(`/api/skills/${id}/content`),
   delete: (id: string) => apiFetch<void>(`/api/skills/${id}`, { method: 'DELETE' }),
-  upload: async (file: File): Promise<Skill> => {
+
+  listFiles: (id: string) =>
+    apiFetch<SkillFileEntry[]>(`/api/skills/${id}/files`),
+  fileUrl: (id: string, path: string) =>
+    `${API_BASE}/api/skills/${id}/files/${encodeURI(path)}`,
+
+  uploadPackage: async (file: File): Promise<Skill> => {
     const formData = new FormData()
     formData.append('file', file)
     const res = await fetch(`${API_BASE}/api/skills/upload`, {

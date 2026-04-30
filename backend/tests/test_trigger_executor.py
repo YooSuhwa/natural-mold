@@ -44,8 +44,7 @@ async def _seed_full_setup(
         if with_tools:
             tool = Tool(
                 name="Web Search",
-                type="builtin",
-                is_system=True,
+                definition_key="builtin:web_search",
                 description="Search",
             )
             db.add(tool)
@@ -280,7 +279,7 @@ async def test_execute_trigger_creates_conversation():
 
 @pytest.mark.asyncio
 async def test_execute_trigger_with_tools_config():
-    """BUILTIN tools resolve with empty auth (M6 이후 legacy 컬럼 drop)."""
+    """Greenfield tools_config carries definition_key + decrypted credentials."""
     trigger_id, _ = await _seed_full_setup(with_tools=True)
 
     captured_args: list = []
@@ -306,7 +305,10 @@ async def test_execute_trigger_with_tools_config():
     # args[0] is AgentConfig — check tools_config on it
     cfg = captured_args[0]
     assert len(cfg.tools_config) == 1
-    assert cfg.tools_config[0]["auth_config"] is None
+    entry = cfg.tools_config[0]
+    assert entry["definition_key"] == "builtin:web_search"
+    assert entry["credentials"] is None
+    assert entry["credential_id"] is None
 
 
 @pytest.mark.asyncio

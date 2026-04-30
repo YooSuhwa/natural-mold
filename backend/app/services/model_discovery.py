@@ -1,239 +1,455 @@
-"""Discover available models from LLM providers."""
+"""Discover available LLM models from a stored Credential.
+
+The discovery layer is the bridge between the Credential domain (which owns
+provider keys) and the Model catalog (which stores per-row pricing/metadata).
+Each provider has a different way of listing models — OpenAI exposes
+``/v1/models``, Anthropic uses a static catalog, Google returns generative
+methods, OpenRouter ships pricing inline, and OpenAI-compatible endpoints are
+the user's responsibility.
+
+The dispatch by ``definition_key`` keeps the per-provider quirks isolated;
+common output is the :class:`DiscoveredModel` dataclass with a ``source``
+("openrouter" | "litellm" | "manual") indicating where the pricing came from.
+
+The List/Custom-ID resourceLocator pattern (and the host-based ``is_custom_api``
+branch driving filter strictness) is borrowed from prior art — see
+``NOTICES.md`` for attribution. Implementation, identifiers, and string
+contents are Moldy-native.
+"""
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
+from decimal import Decimal
+from typing import Any, Literal
 
 import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.llm_provider import LLMProvider
-from app.schemas.llm_provider import DiscoveredModel
-from app.services.encryption import decrypt_api_key
+from app.credentials import service as credential_service
+from app.models.credential import Credential
+from app.models.model import Model
+from app.services.model_filtering import (
+    is_custom_openai_endpoint,
+    should_include_model,
+)
 from app.services.model_metadata import enrich_model, get_anthropic_models
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT = 15
-_OPENAI_CHAT_PREFIXES = ("gpt-", "o1-", "o3-", "o4-", "chatgpt-")
+# Per-request HTTP timeout. Chosen short enough to fail fast in the UI yet
+# generous enough for first-call provider warm-ups.
+_TIMEOUT = 15.0
+
+# Provider source labels (kept loose to ease future provider additions).
+PricingSource = Literal["openrouter", "litellm", "manual"]
 
 
-async def discover_models(provider: LLMProvider) -> list[DiscoveredModel]:
-    """Discover available models for a given provider."""
-    api_key = decrypt_api_key(provider.api_key_encrypted) if provider.api_key_encrypted else None
+@dataclass
+class DiscoveredModel:
+    """A single model surfaced from a discovery call.
 
-    dispatch = {
-        "openai": _discover_openai,
-        "anthropic": _discover_anthropic,
-        "google": _discover_google,
-        "openrouter": _discover_openrouter,
-        "openai_compatible": _discover_openai_compatible,
-    }
-    fn = dispatch.get(provider.provider_type)
-    if not fn:
-        return []
-    return await fn(api_key=api_key, base_url=provider.base_url)
+    ``source`` records where the pricing/meta came from so the UI can show a
+    badge: ``openrouter`` for inline OpenRouter pricing, ``litellm`` for
+    catalog-enriched values, ``manual`` for "no pricing data available".
+    """
 
+    model_name: str
+    display_name: str
+    provider: str
+    source: PricingSource
+    context_window: int | None = None
+    max_output_tokens: int | None = None
+    cost_per_input_token: Decimal | None = None
+    cost_per_output_token: Decimal | None = None
+    input_modalities: list[str] | None = None
+    output_modalities: list[str] | None = None
+    supports_vision: bool | None = None
+    supports_function_calling: bool | None = None
+    supports_reasoning: bool | None = None
+    already_registered: bool = False
 
-async def test_connection(provider: LLMProvider) -> tuple[bool, str, int | None]:
-    """Test provider connection. Returns (success, message, models_count)."""
-    try:
-        models = await discover_models(provider)
-        return True, f"{len(models)}개 모델 검색 성공", len(models)
-    except httpx.HTTPStatusError as e:
-        status = e.response.status_code
-        if status == 401:
-            return False, "인증 실패: API 키를 확인하세요", None
-        if status == 403:
-            return False, "접근 거부: API 키 권한을 확인하세요", None
-        return False, f"HTTP {status} 오류", None
-    except httpx.ConnectError:
-        return False, "연결 실패: URL을 확인하세요", None
-    except Exception as e:
-        logger.warning("Provider connection test failed: %s", e)
-        return False, "연결 테스트에 실패했습니다. 서버 로그를 확인하세요.", None
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-friendly representation for the API surface."""
 
-
-async def _discover_openai(
-    api_key: str | None = None, base_url: str | None = None
-) -> list[DiscoveredModel]:
-    url = (base_url or "https://api.openai.com/v1").rstrip("/") + "/models"
-    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
-    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.get(url, headers=headers)
-        resp.raise_for_status()
-    data = resp.json().get("data", [])
-    models = []
-    for m in data:
-        mid = m.get("id", "")
-        if any(mid.startswith(p) for p in _OPENAI_CHAT_PREFIXES):
-            enriched = enrich_model(mid)
-            models.append(
-                DiscoveredModel(
-                    model_name=mid,
-                    display_name=enriched.get("display_name", mid),
-                    context_window=enriched.get("context_window"),
-                    input_modalities=enriched.get("input_modalities"),
-                    output_modalities=enriched.get("output_modalities"),
-                    cost_per_input_token=enriched.get("cost_per_input_token"),
-                    cost_per_output_token=enriched.get("cost_per_output_token"),
-                    max_output_tokens=enriched.get("max_output_tokens"),
-                    supports_vision=enriched.get("supports_vision"),
-                    supports_function_calling=enriched.get("supports_function_calling"),
-                    supports_reasoning=enriched.get("supports_reasoning"),
-                )
-            )
-    return sorted(models, key=lambda m: m.model_name)
-
-
-async def _discover_anthropic(
-    api_key: str | None = None, base_url: str | None = None
-) -> list[DiscoveredModel]:
-    # Anthropic has no /models endpoint — use static list + verify key.
-    # NOTE: Key verification calls the actual API with max_tokens=1, which may incur minimal cost.
-    if api_key:
-        url = (base_url or "https://api.anthropic.com").rstrip("/") + "/v1/messages"
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
+        return {
+            "model_name": self.model_name,
+            "display_name": self.display_name,
+            "provider": self.provider,
+            "source": self.source,
+            "context_window": self.context_window,
+            "max_output_tokens": self.max_output_tokens,
+            "cost_per_input_token": (
+                str(self.cost_per_input_token)
+                if self.cost_per_input_token is not None
+                else None
+            ),
+            "cost_per_output_token": (
+                str(self.cost_per_output_token)
+                if self.cost_per_output_token is not None
+                else None
+            ),
+            "input_modalities": self.input_modalities,
+            "output_modalities": self.output_modalities,
+            "supports_vision": self.supports_vision,
+            "supports_function_calling": self.supports_function_calling,
+            "supports_reasoning": self.supports_reasoning,
+            "already_registered": self.already_registered,
         }
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.post(
-                url,
-                headers=headers,
-                json={
-                    "model": "claude-haiku-4-20250514",
-                    "max_tokens": 1,
-                    "messages": [{"role": "user", "content": "hi"}],
-                },
-            )
-            # 200 or 400 (valid key), 401 (invalid key)
-            if resp.status_code == 401:
-                resp.raise_for_status()
-
-    models = []
-    for mid in get_anthropic_models():
-        enriched = enrich_model(mid)
-        models.append(
-            DiscoveredModel(
-                model_name=mid,
-                display_name=enriched.get("display_name", mid),
-                context_window=enriched.get("context_window"),
-                input_modalities=enriched.get("input_modalities"),
-                output_modalities=enriched.get("output_modalities"),
-                cost_per_input_token=enriched.get("cost_per_input_token"),
-                cost_per_output_token=enriched.get("cost_per_output_token"),
-                max_output_tokens=enriched.get("max_output_tokens"),
-                supports_vision=enriched.get("supports_vision"),
-                supports_function_calling=enriched.get("supports_function_calling"),
-                supports_reasoning=enriched.get("supports_reasoning"),
-            )
-        )
-    return models
 
 
-async def _discover_google(
-    api_key: str | None = None, base_url: str | None = None
+@dataclass
+class _DispatchEntry:
+    """Provider-specific dispatch metadata."""
+
+    provider: str
+    handler: Any
+    fields: tuple[str, ...] = field(default_factory=tuple)
+
+
+# Map ``credential.definition_key`` → discovery handler + provider label.
+# Handlers are looked up below after their function definitions.
+
+
+# -- Public API --------------------------------------------------------------
+
+
+async def discover_from_credential(
+    db: AsyncSession,
+    credential: Credential,
 ) -> list[DiscoveredModel]:
-    url = "https://generativelanguage.googleapis.com/v1beta/models"
-    params = {}
+    """Discover models reachable with the given Credential.
+
+    Dispatches by ``credential.definition_key``. The Credential is decrypted
+    via the service layer (handles ``__external__`` markers); the resulting
+    payload is destructured per-provider. Raises ``ValueError`` if the
+    Credential's definition is not a known LLM provider.
+    """
+
+    data = await credential_service.decrypt_with_external(credential.data_encrypted)
+    handler, provider = _DISPATCH.get(credential.definition_key, (None, None))
+    if handler is None:
+        raise ValueError(
+            f"definition '{credential.definition_key}' is not a discoverable LLM provider"
+        )
+
+    discovered = await handler(data)
+    await _mark_already_registered(db, provider, discovered)
+    return discovered
+
+
+# -- Per-provider handlers ---------------------------------------------------
+
+
+async def _discover_openai(data: dict[str, Any]) -> list[DiscoveredModel]:
+    api_key = data.get("api_key")
+    base_url = data.get("base_url") or "https://api.openai.com/v1"
+    is_custom = is_custom_openai_endpoint(base_url)
+    url = f"{base_url.rstrip('/')}/models"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+    items = response.json().get("data", []) or []
+
+    out: list[DiscoveredModel] = []
+    for item in items:
+        model_id = item.get("id") or ""
+        if not model_id or not should_include_model("openai", model_id, is_custom):
+            continue
+        enriched = enrich_model(model_id)
+        out.append(_from_enriched("openai", model_id, enriched, is_custom))
+
+    out.sort(key=lambda m: m.model_name)
+    return out
+
+
+async def _discover_anthropic(data: dict[str, Any]) -> list[DiscoveredModel]:
+    """Anthropic has no /models endpoint — use the static catalog.
+
+    The API key is *not* round-tripped against the messages endpoint here;
+    that probe lives in the credential `test` recipe to keep discovery cheap
+    and side-effect-free (the live test would consume tokens).
+    """
+
+    out: list[DiscoveredModel] = []
+    for model_id in get_anthropic_models():
+        enriched = enrich_model(model_id)
+        out.append(_from_enriched("anthropic", model_id, enriched, False))
+    out.sort(key=lambda m: m.model_name)
+    return out
+
+
+async def _discover_google(data: dict[str, Any]) -> list[DiscoveredModel]:
+    api_key = data.get("api_key")
+    base_url = (
+        data.get("base_url") or "https://generativelanguage.googleapis.com/v1beta"
+    )
+    url = f"{base_url.rstrip('/')}/models"
+    params: dict[str, str] = {}
     if api_key:
         params["key"] = api_key
+
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.get(url, params=params)
-        resp.raise_for_status()
-    data = resp.json().get("models", [])
-    models = []
-    for m in data:
-        methods = m.get("supportedGenerationMethods", [])
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+    items = response.json().get("models", []) or []
+
+    out: list[DiscoveredModel] = []
+    for item in items:
+        methods = item.get("supportedGenerationMethods") or []
         if "generateContent" not in methods:
             continue
-        # name format: "models/gemini-2.0-flash"
-        full_name = m.get("name", "")
-        mid = full_name.removeprefix("models/")
-        enriched = enrich_model(mid)
-        models.append(
+        full_name = item.get("name") or ""
+        model_id = full_name.removeprefix("models/")
+        if not model_id:
+            continue
+        enriched = enrich_model(model_id)
+        # Display name from the Google response wins if the catalog is silent.
+        display = enriched.get("display_name") or item.get("displayName") or model_id
+        context = enriched.get("context_window") or item.get("inputTokenLimit")
+        max_output = enriched.get("max_output_tokens") or item.get("outputTokenLimit")
+        cost_in = _to_decimal(enriched.get("cost_per_input_token"))
+        cost_out = _to_decimal(enriched.get("cost_per_output_token"))
+        source: PricingSource = (
+            "litellm" if (cost_in is not None or cost_out is not None) else "manual"
+        )
+        out.append(
             DiscoveredModel(
-                model_name=mid,
-                display_name=enriched.get("display_name", m.get("displayName", mid)),
-                context_window=enriched.get("context_window") or m.get("inputTokenLimit"),
+                model_name=model_id,
+                display_name=display,
+                provider="google_genai",
+                source=source,
+                context_window=context,
+                max_output_tokens=max_output,
+                cost_per_input_token=cost_in,
+                cost_per_output_token=cost_out,
                 input_modalities=enriched.get("input_modalities"),
                 output_modalities=enriched.get("output_modalities"),
-                cost_per_input_token=enriched.get("cost_per_input_token"),
-                cost_per_output_token=enriched.get("cost_per_output_token"),
-                max_output_tokens=enriched.get("max_output_tokens"),
                 supports_vision=enriched.get("supports_vision"),
                 supports_function_calling=enriched.get("supports_function_calling"),
                 supports_reasoning=enriched.get("supports_reasoning"),
             )
         )
-    return sorted(models, key=lambda m: m.model_name)
+    out.sort(key=lambda m: m.model_name)
+    return out
 
 
-async def _discover_openrouter(
-    api_key: str | None = None, base_url: str | None = None
-) -> list[DiscoveredModel]:
-    url = "https://openrouter.ai/api/v1/models"
+async def _discover_openrouter(data: dict[str, Any]) -> list[DiscoveredModel]:
+    """OpenRouter ships pricing inline; trust it but fall back to the catalog."""
+
+    api_key = data.get("api_key")
+    base_url = data.get("base_url") or "https://openrouter.ai/api/v1"
+    url = f"{base_url.rstrip('/')}/models"
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-        resp = await client.get(url, headers=headers)
-        resp.raise_for_status()
-    data = resp.json().get("data", [])
-    models = []
-    for m in data:
-        mid = m.get("id", "")
-        pricing = m.get("pricing", {})
-        arch = m.get("architecture", {})
-        top = m.get("top_provider", {})
-        supported = m.get("supported_parameters", [])
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+    items = response.json().get("data", []) or []
+
+    out: list[DiscoveredModel] = []
+    for item in items:
+        model_id = item.get("id") or ""
+        if not model_id:
+            continue
+        if not should_include_model("openrouter", model_id, False):
+            continue
+
+        pricing = item.get("pricing") or {}
+        arch = item.get("architecture") or {}
+        top = item.get("top_provider") or {}
+        supported = item.get("supported_parameters") or []
         input_mod = arch.get("input_modalities")
         output_mod = arch.get("output_modalities")
-        models.append(
+
+        cost_in = _to_decimal(pricing.get("prompt"))
+        cost_out = _to_decimal(pricing.get("completion"))
+
+        if cost_in is None and cost_out is None:
+            # Fall back to the catalog when OpenRouter omits pricing.
+            enriched = enrich_model(model_id)
+            cost_in = _to_decimal(enriched.get("cost_per_input_token"))
+            cost_out = _to_decimal(enriched.get("cost_per_output_token"))
+            source: PricingSource = (
+                "litellm" if (cost_in is not None or cost_out is not None) else "manual"
+            )
+        else:
+            source = "openrouter"
+
+        out.append(
             DiscoveredModel(
-                model_name=mid,
-                display_name=m.get("name", mid),
-                context_window=m.get("context_length"),
+                model_name=model_id,
+                display_name=item.get("name") or model_id,
+                provider="openrouter",
+                source=source,
+                context_window=item.get("context_length"),
+                max_output_tokens=top.get("max_completion_tokens"),
+                cost_per_input_token=cost_in,
+                cost_per_output_token=cost_out,
                 input_modalities=input_mod,
                 output_modalities=output_mod,
-                cost_per_input_token=pricing.get("prompt") if pricing else None,
-                cost_per_output_token=pricing.get("completion") if pricing else None,
-                max_output_tokens=top.get("max_completion_tokens"),
-                supports_vision="image" in (input_mod or []),
-                supports_function_calling="tools" in supported,
-                supports_reasoning="reasoning" in supported,
+                supports_vision="image" in (input_mod or []) if input_mod else None,
+                supports_function_calling="tools" in supported if supported else None,
+                supports_reasoning="reasoning" in supported if supported else None,
             )
         )
-    return sorted(models, key=lambda m: m.model_name)
+
+    out.sort(key=lambda m: m.model_name)
+    return out
 
 
-async def _discover_openai_compatible(
-    api_key: str | None = None, base_url: str | None = None
-) -> list[DiscoveredModel]:
+async def _discover_openai_compatible(data: dict[str, Any]) -> list[DiscoveredModel]:
+    """Catch-all for self-hosted / OpenAI-compatible deployments.
+
+    No filtering is applied (``is_custom_api=True``) and the catalog is only
+    consulted opportunistically — most local deployments ship custom model
+    IDs the catalog has never heard of.
+    """
+
+    base_url = data.get("base_url")
     if not base_url:
-        return []
+        raise ValueError("openai_compatible credential requires a base_url")
 
-    url = base_url.rstrip("/") + "/models"
+    api_key = data.get("api_key")
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    primary_url = f"{base_url.rstrip('/')}/models"
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
         try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json().get("data", [])
+            response = await client.get(primary_url, headers=headers)
+            response.raise_for_status()
+            items = response.json().get("data", []) or []
         except httpx.HTTPStatusError:
-            # Fallback: Ollama /api/tags
-            ollama_url = base_url.rstrip("/").removesuffix("/v1") + "/api/tags"
-            resp = await client.get(ollama_url, headers=headers)
-            resp.raise_for_status()
-            data = [{"id": m["name"]} for m in resp.json().get("models", [])]
+            # Ollama-style fallback: /api/tags returns ``{"models": [{"name": ...}]}``.
+            stripped = base_url.rstrip("/").removesuffix("/v1")
+            fallback_url = f"{stripped}/api/tags"
+            response = await client.get(fallback_url, headers=headers)
+            response.raise_for_status()
+            items = [
+                {"id": m.get("name") or ""}
+                for m in (response.json().get("models", []) or [])
+            ]
 
-    models = []
-    for m in data:
-        mid = m.get("id", m.get("name", ""))
-        models.append(
+    out: list[DiscoveredModel] = []
+    for item in items:
+        model_id = item.get("id") or item.get("name") or ""
+        if not model_id:
+            continue
+        enriched = enrich_model(model_id)
+        cost_in = _to_decimal(enriched.get("cost_per_input_token"))
+        cost_out = _to_decimal(enriched.get("cost_per_output_token"))
+        source: PricingSource = (
+            "litellm" if (cost_in is not None or cost_out is not None) else "manual"
+        )
+        out.append(
             DiscoveredModel(
-                model_name=mid,
-                display_name=mid,
+                model_name=model_id,
+                display_name=enriched.get("display_name") or model_id,
+                provider="openai_compatible",
+                source=source,
+                context_window=enriched.get("context_window"),
+                max_output_tokens=enriched.get("max_output_tokens"),
+                cost_per_input_token=cost_in,
+                cost_per_output_token=cost_out,
+                input_modalities=enriched.get("input_modalities"),
+                output_modalities=enriched.get("output_modalities"),
+                supports_vision=enriched.get("supports_vision"),
+                supports_function_calling=enriched.get("supports_function_calling"),
+                supports_reasoning=enriched.get("supports_reasoning"),
             )
         )
-    return sorted(models, key=lambda m: m.model_name)
+
+    out.sort(key=lambda m: m.model_name)
+    return out
+
+
+# -- Helpers -----------------------------------------------------------------
+
+
+def _to_decimal(value: Any) -> Decimal | None:
+    """Coerce numbers/strings to ``Decimal`` while accepting None/empty."""
+
+    if value is None or value == "":
+        return None
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _from_enriched(
+    provider: str,
+    model_id: str,
+    enriched: dict[str, Any],
+    is_custom: bool,
+) -> DiscoveredModel:
+    cost_in = _to_decimal(enriched.get("cost_per_input_token"))
+    cost_out = _to_decimal(enriched.get("cost_per_output_token"))
+    source: PricingSource = (
+        "litellm" if (cost_in is not None or cost_out is not None) else "manual"
+    )
+    return DiscoveredModel(
+        model_name=model_id,
+        display_name=enriched.get("display_name") or model_id,
+        provider=provider,
+        source=source,
+        context_window=enriched.get("context_window"),
+        max_output_tokens=enriched.get("max_output_tokens"),
+        cost_per_input_token=cost_in,
+        cost_per_output_token=cost_out,
+        input_modalities=enriched.get("input_modalities"),
+        output_modalities=enriched.get("output_modalities"),
+        supports_vision=enriched.get("supports_vision"),
+        supports_function_calling=enriched.get("supports_function_calling"),
+        supports_reasoning=enriched.get("supports_reasoning"),
+    )
+
+
+async def _mark_already_registered(
+    db: AsyncSession,
+    provider: str,
+    discovered: list[DiscoveredModel],
+) -> None:
+    """Set ``already_registered`` on any model that already lives in ``models``.
+
+    Single IN query keyed by ``(provider, model_name)`` to avoid the obvious
+    N+1 trap.
+    """
+
+    if not discovered:
+        return
+    names = [m.model_name for m in discovered]
+    result = await db.execute(
+        select(Model.model_name).where(
+            Model.provider == provider, Model.model_name.in_(names)
+        )
+    )
+    seen = {row[0] for row in result.all()}
+    for model in discovered:
+        if model.model_name in seen:
+            model.already_registered = True
+
+
+# -- Dispatch table ----------------------------------------------------------
+
+
+_DISPATCH: dict[str, tuple[Any, str]] = {
+    "openai": (_discover_openai, "openai"),
+    "anthropic": (_discover_anthropic, "anthropic"),
+    "google_genai": (_discover_google, "google_genai"),
+    "openrouter": (_discover_openrouter, "openrouter"),
+    "openai_compatible": (_discover_openai_compatible, "openai_compatible"),
+}
+
+
+__all__ = [
+    "DiscoveredModel",
+    "PricingSource",
+    "discover_from_credential",
+]

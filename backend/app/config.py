@@ -33,8 +33,29 @@ class Settings(BaseSettings):
     mock_user_email: str = "demo@moldy.dev"
     mock_user_name: str = "Demo User"
 
-    # Encryption key for API keys in DB (Fernet)
+    # Encryption key for API keys in DB (Fernet — legacy, removed in M5)
     encryption_key: str = ""
+
+    # Cipher V2 — comma-separated 64-char hex keys. First is active.
+    # Boot fails if empty (see app/security/key_provider.py).
+    encryption_keys: str = ""
+
+    # External Secrets (Vault)
+    external_secrets_enabled: bool = False
+    vault_url: str = ""
+    vault_token: str = ""
+    vault_kv_mount: str = "secret"
+
+    # Credential rotation cron (APScheduler crontab format; default: weekly Sun 03:00)
+    credential_rotation_cron: str = "0 3 * * 0"
+
+    # Daily health check sweep (APScheduler crontab format; default: 04:00 UTC)
+    health_check_cron: str = "0 4 * * *"
+    # Model catalog refresh (APScheduler crontab format; default: every 6 hours)
+    catalog_update_cron: str = "0 */6 * * *"
+    # Retention window for ``health_check_history`` rows. The cleanup job is a
+    # follow-up; the value is wired now so deployments can configure ahead.
+    health_check_history_retention_days: int = 90
 
     # MCP
     mcp_connection_timeout: int = 10

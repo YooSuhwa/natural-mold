@@ -3,18 +3,23 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from app.models.model import Model
+from tests.conftest import TestSession
+
 
 async def _create_model(client: AsyncClient) -> str:
-    resp = await client.post(
-        "/api/models",
-        json={
-            "provider": "openai",
-            "model_name": "gpt-4o",
-            "display_name": "GPT-4o",
-            "is_default": True,
-        },
-    )
-    return resp.json()["id"]
+    """Insert a default Model row directly — POST /api/models is gone in M5."""
+    async with TestSession() as db:
+        model = Model(
+            provider="openai",
+            model_name="gpt-4o",
+            display_name="GPT-4o",
+            is_default=True,
+        )
+        db.add(model)
+        await db.commit()
+        await db.refresh(model)
+        return str(model.id)
 
 
 @pytest.mark.asyncio

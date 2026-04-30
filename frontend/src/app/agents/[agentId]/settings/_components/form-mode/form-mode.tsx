@@ -23,9 +23,13 @@ interface FormModeProps {
   maxTokens: number
   onMaxTokensChange: (v: number) => void
   onResetModelParams: () => void
+  fallbackIds?: string[]
+  onFallbackIdsChange?: (ids: string[]) => void
 
   selectedToolIds: Set<string>
   onToggleTool: (id: string) => void
+  selectedMcpToolIds: Set<string>
+  onToggleMcpTool: (id: string) => void
   selectedSkillIds: Set<string>
   onToggleSkill: (id: string) => void
   selectedMiddlewareTypes: Set<string>
@@ -47,8 +51,12 @@ export function FormMode({
   maxTokens,
   onMaxTokensChange,
   onResetModelParams,
+  fallbackIds,
+  onFallbackIdsChange,
   selectedToolIds,
   onToggleTool,
+  selectedMcpToolIds,
+  onToggleMcpTool,
   selectedSkillIds,
   onToggleSkill,
   selectedMiddlewareTypes,
@@ -75,10 +83,14 @@ export function FormMode({
         maxTokens={maxTokens}
         onMaxTokensChange={onMaxTokensChange}
         onReset={onResetModelParams}
+        fallbackIds={fallbackIds}
+        onFallbackIdsChange={onFallbackIdsChange}
       />
       <ToolsMiddlewaresGrid
         selectedToolIds={selectedToolIds}
         onToggleTool={onToggleTool}
+        selectedMcpToolIds={selectedMcpToolIds}
+        onToggleMcpTool={onToggleMcpTool}
         selectedSkillIds={selectedSkillIds}
         onToggleSkill={onToggleSkill}
         selectedMiddlewareTypes={selectedMiddlewareTypes}

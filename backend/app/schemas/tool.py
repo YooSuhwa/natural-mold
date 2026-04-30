@@ -1,72 +1,90 @@
+"""Pydantic schemas for the Tool API (greenfield)."""
+
 from __future__ import annotations
 
-import enum
 import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+# ---- Catalog ---------------------------------------------------------------
 
 
-class ToolType(enum.StrEnum):
-    """도구 타입 열거형. DB 컬럼은 String(20) — StrEnum은 str 호환."""
+class ToolFieldSchema(BaseModel):
+    name: str
+    display_name: str
+    kind: str
+    default: Any = None
+    required: bool = False
+    description: str | None = None
+    options: list[dict[str, Any]] = Field(default_factory=list)
+    placeholder: str | None = None
+    type_options: dict[str, Any] = Field(default_factory=dict)
+    display_options: dict[str, Any] = Field(default_factory=dict)
 
-    BUILTIN = "builtin"
-    PREBUILT = "prebuilt"
-    CUSTOM = "custom"
-    MCP = "mcp"
+
+class ToolDefinitionSchema(BaseModel):
+    key: str
+    display_name: str
+    description: str
+    icon_id: str | None = None
+    category: str = "general"
+    parameters: list[ToolFieldSchema] = Field(default_factory=list)
+    credential_definition_keys: list[str] = Field(default_factory=list)
+    requires_credential: bool = False
 
 
-class ToolCustomCreate(BaseModel):
+# ---- CRUD ------------------------------------------------------------------
+
+
+class ToolCreate(BaseModel):
+    definition_key: str
     name: str
     description: str | None = None
-    api_url: str
-    http_method: str = "GET"
-    parameters_schema: dict[str, Any] | None = None
-    auth_type: str | None = None
-    # M6: connection은 필수. chat_service._resolve_custom_auth가 NULL connection_id
-    # CUSTOM tool을 fail-closed로 거부하므로, 생성 시점에 invariant를 강제한다.
-    # "인증 없는 공개 API" 사용처도 credential이 비어있는 connection을 명시적으로
-    # 바인딩해 의도를 DB에 남긴다.
-    connection_id: uuid.UUID
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    credential_id: uuid.UUID | None = None
+    enabled: bool = True
 
 
-class ToolResponse(BaseModel):
-    id: uuid.UUID
-    type: str
-    provider_name: str | None = None
-    is_system: bool
-    connection_id: uuid.UUID | None = None
-    name: str
-    description: str | None
-    parameters_schema: dict[str, Any] | None
-    api_url: str | None
-    http_method: str | None
-    auth_type: str | None
-    tags: list[str] | None = None
-    agent_count: int = 0
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class ToolUpdate(BaseModel):
-    """PATCH /api/tools/{id} payload — connection_id 단일 필드 (M6.1 옵션 D).
-
-    `extra="forbid"`로 알 수 없는 필드는 422로 거부 (스코프 보호).
-    명시적 None 전송 시 connection 해제로 해석된다.
-    """
+class ToolPatch(BaseModel):
+    """Greenfield PATCH payload for ``PATCH /api/tools/{id}``."""
 
     model_config = ConfigDict(extra="forbid")
-    connection_id: uuid.UUID | None = None
+
+    name: str | None = None
+    description: str | None = None
+    parameters: dict[str, Any] | None = None
+    credential_id: uuid.UUID | None = None
+    enabled: bool | None = None
 
 
-class DiscoverToolItem(BaseModel):
-    tool: ToolResponse
-    status: str  # "created" | "existing"
+class ToolInstanceResponse(BaseModel):
+    """Greenfield response for ``GET /api/tools/...``."""
+
+    id: uuid.UUID
+    user_id: uuid.UUID | None = None
+    definition_key: str
+    name: str
+    description: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    credential_id: uuid.UUID | None = None
+    enabled: bool = True
+    last_used_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
-class DiscoverToolsResponse(BaseModel):
-    connection_id: uuid.UUID
-    server_info: dict[str, Any] = {}
-    items: list[DiscoverToolItem]
+# ---- Run -------------------------------------------------------------------
+
+
+class ToolRunRequest(BaseModel):
+    runtime_args: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolRunResponse(BaseModel):
+    success: bool
+    result: Any = None
+    error: str | None = None
+    http_status: int | None = None
+    duration_ms: int = 0

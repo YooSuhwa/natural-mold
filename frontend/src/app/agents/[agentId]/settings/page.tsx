@@ -56,7 +56,9 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const [description, setDescription] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [modelId, setModelId] = useState('')
+  const [fallbackIds, setFallbackIds] = useState<string[]>([])
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
+  const [selectedMcpToolIds, setSelectedMcpToolIds] = useState<Set<string>>(new Set())
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set())
   const [selectedSubAgentIds, setSelectedSubAgentIds] = useState<Set<string>>(new Set())
   const [temperature, setTemperature] = useState(0.7)
@@ -103,8 +105,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       setName(agent.name)
       setDescription(agent.description ?? '')
       setSystemPrompt(agent.system_prompt)
-      setModelId(agent.model.id)
+      setModelId(agent.model?.id ?? '')
+      setFallbackIds(agent.model_fallback_ids ?? [])
       setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
+      setSelectedMcpToolIds(new Set(agent.mcp_tools?.map((mt) => mt.id) ?? []))
       setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
       setSelectedSubAgentIds(new Set(agent.sub_agents?.map((sa) => sa.id) ?? []))
       setSelectedMiddlewareTypes(new Set(agent.middleware_configs?.map((mc) => mc.type) ?? []))
@@ -118,11 +122,18 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       if (name === prev.name) setName(agent.name)
       if (description === (prev.description ?? '')) setDescription(agent.description ?? '')
       if (systemPrompt === prev.system_prompt) setSystemPrompt(agent.system_prompt)
-      if (modelId === prev.model.id) setModelId(agent.model.id)
+      if (modelId === (prev.model?.id ?? '')) setModelId(agent.model?.id ?? '')
+      if (arraysEqual(fallbackIds, prev.model_fallback_ids ?? [])) {
+        setFallbackIds(agent.model_fallback_ids ?? [])
+      }
 
       const prevToolIds = new Set(prev.tools.map((tl) => tl.id))
       if (setsEqual(selectedToolIds, prevToolIds)) {
         setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
+      }
+      const prevMcpToolIds = new Set(prev.mcp_tools?.map((mt) => mt.id) ?? [])
+      if (setsEqual(selectedMcpToolIds, prevMcpToolIds)) {
+        setSelectedMcpToolIds(new Set(agent.mcp_tools?.map((mt) => mt.id) ?? []))
       }
       const prevSkillIds = new Set(prev.skills?.map((s) => s.id) ?? [])
       if (setsEqual(selectedSkillIds, prevSkillIds)) {
@@ -175,6 +186,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     () => agent?.opener_questions ?? [],
     [agent?.opener_questions],
   )
+  const initialFallbackIds = useMemo(
+    () => agent?.model_fallback_ids ?? [],
+    [agent?.model_fallback_ids],
+  )
 
   const isDirty = useMemo(() => {
     if (!agent) return false
@@ -182,7 +197,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       name !== agent.name ||
       description !== (agent.description ?? '') ||
       systemPrompt !== agent.system_prompt ||
-      modelId !== agent.model.id ||
+      modelId !== (agent.model?.id ?? '') ||
       temperature !== (agent.model_params?.temperature ?? 0.7) ||
       topP !== (agent.model_params?.top_p ?? 1.0) ||
       maxTokens !== (agent.model_params?.max_tokens ?? 4096) ||
@@ -190,7 +205,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       !setsEqual(selectedSkillIds, initialSkillIds) ||
       !setsEqual(selectedSubAgentIds, initialSubAgentIds) ||
       !setsEqual(selectedMiddlewareTypes, initialMwTypes) ||
-      !arraysEqual(openerQuestions, initialOpenerQuestions)
+      !arraysEqual(openerQuestions, initialOpenerQuestions) ||
+      !arraysEqual(fallbackIds, initialFallbackIds)
     )
   }, [
     agent,
@@ -206,11 +222,13 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     selectedSubAgentIds,
     selectedMiddlewareTypes,
     openerQuestions,
+    fallbackIds,
     initialToolIds,
     initialSkillIds,
     initialSubAgentIds,
     initialMwTypes,
     initialOpenerQuestions,
+    initialFallbackIds,
   ])
 
   useEffect(() => {
@@ -230,6 +248,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         system_prompt: systemPrompt,
         model_id: modelId,
         tool_ids: Array.from(selectedToolIds),
+        mcp_tool_ids: Array.from(selectedMcpToolIds),
         skill_ids: Array.from(selectedSkillIds),
         sub_agent_ids: Array.from(selectedSubAgentIds),
         middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
@@ -238,6 +257,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         })),
         model_params: { temperature, top_p: topP, max_tokens: maxTokens },
         opener_questions: openerQuestions,
+        model_fallback_ids: fallbackIds.length > 0 ? fallbackIds : null,
       })
       toast.success(t('toast.saved'))
     } catch {
@@ -385,9 +405,15 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                   setTopP(1.0)
                   setMaxTokens(4096)
                 }}
+                fallbackIds={fallbackIds}
+                onFallbackIdsChange={setFallbackIds}
                 selectedToolIds={selectedToolIds}
                 onToggleTool={(id) =>
                   setSelectedToolIds((prev) => toggleSetItem(prev, id))
+                }
+                selectedMcpToolIds={selectedMcpToolIds}
+                onToggleMcpTool={(id) =>
+                  setSelectedMcpToolIds((prev) => toggleSetItem(prev, id))
                 }
                 selectedSkillIds={selectedSkillIds}
                 onToggleSkill={(id) =>
@@ -420,6 +446,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                       topP,
                       maxTokens,
                       selectedToolIds,
+                      selectedMcpToolIds,
                       selectedSkillIds,
                       selectedSubAgentIds,
                       selectedMiddlewareTypes,
@@ -434,6 +461,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                       onMaxTokensChange: setMaxTokens,
                       onToggleTool: (id) =>
                         setSelectedToolIds((prev) => toggleSetItem(prev, id)),
+                      onToggleMcpTool: (id) =>
+                        setSelectedMcpToolIds((prev) => toggleSetItem(prev, id)),
                       onToggleSkill: (id) =>
                         setSelectedSkillIds((prev) => toggleSetItem(prev, id)),
                       onToggleSubAgent: (id) =>

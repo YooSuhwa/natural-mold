@@ -1,219 +1,213 @@
-# progress.txt — Agent Edit Workbench (통합 워크벤치 리뉴얼)
+# progress.txt — TTH 팀 공유 메모리
 
-## 프로젝트 컨텍스트
+## 프로젝트
+Credential/Tools/Skills 그린필드 리라이트 (n8n 패턴 차용, 브랜딩 제거)
+- 참조: `PLAN.md` (루트), `/Users/chester/.claude/plans/plan-md-poc-lexical-bumblebee.md`, `CHECKPOINT.md`
+- PoC 단계 → dev DB 폐기 OK
+- 단일 PR, 마일스톤별 별도 커밋
+- 시작: 2026-04-29
 
-- **목표**: `/agents/[agentId]/settings`를 단일 통합 화면(좌측 폼/비주얼 토글 + 우측 Fix·테스트·오프너·스케줄·설정 5탭)으로 재설계
-- **Base**: main @ 0609210 (PR #77 머지)
-- **브랜치**: `feature/agent-edit-workbench`
-- **계획**: `/Users/chester/.claude/plans/image-41-ticklish-sky.md`
-- **CHECKPOINT**: `/Users/chester/dev/natural-mold/CHECKPOINT.md`
+## 결정 사항 (불변)
+1. Cipher: n8n 알고리즘 차용, HKDF-SHA256(info=`b'moldy-encryption-v1'`), 단일 블롭 Base64(`[version 1B][salt 32B][authTag 16B][ciphertext]`), key_id별도 컬럼
+2. LLM 모델: `models` 유지 + api_key_encrypted 제거, `agents.llm_credential_id` 추가, `llm_providers` 폐기
+3. 단일 PR
+4. Vault provider 실구현 (HVAC SDK, feature flag)
 
-## 핵심 설계 결정
+## Codebase Patterns (확인 완료)
+- backend: FastAPI + SQLAlchemy async + Alembic. uv. ruff line-length=100 py312
+- frontend: Next.js 16 + React 19 + Tailwind v4 + shadcn/ui. pnpm. TanStack Query (서버) + Jotai (클라)
+- 테스트: backend pytest + aiosqlite in-memory (DB 불필요). frontend playwright e2e
+- 마이그레이션 번호: m12_drop_legacy_columns가 이미 존재 → 신규는 m13_greenfield_credentials
+- mock_user 패턴: 인증 없음, get_current_user가 mock 반환
+- agent_runtime은 chat_service.build_tools_config()를 통해 인증 해석
+- 현 trigger_executor.py L44-46 prefetch 누락 버그 (M5에서 동시 수정)
 
-1. **좌/우 분할 + 인라인 헤더**: sticky save bar 폐기. 헤더에 이름/설명 ghost-input 인라인 편집 + 작은 AgentAvatar + [🗑]/[저장]
-2. **모델·서브에이전트는 다이얼로그**: 행에 `[⚙]` 클릭 시 `<ModelDialog>`/`<SubAgentsDialog>` 오픈
-3. **도구·미들웨어는 2칸 그리드 + 모달**: 상단 `[+도구]`/`[+미들웨어]` 버튼이 모달 오픈, 모달 안에서 기존 Checkbox 리스트 재사용
-4. **우측 [Fix 에이전트]는 기존 `AssistantPanel` 재사용**: 이미 "어떻게 수정할까요?" empty state + suggestion 칩이 구현됨. `showHeader` prop만 추가
-5. **우측 [테스트]는 신규 컴포넌트**: 일반 conversation API 재사용, 일회성 세션
-6. **우측 [오프너]는 신규**: 행 추가/삭제, 카운터 `n/12`, 항목 1~200자
-7. **우측 [스케줄]은 기존 `triggers-tab.tsx`을 그대로 import** (라벨만 "스케줄"로)
-8. **우측 [설정]은 이미지 전용**: 생성/재생성/제거 버튼만
-9. **비주얼 모드는 inline 렌더**: 별도 `/visual-settings` 라우트는 deprecate(이번 PR에서는 유지)
-10. **백엔드는 컬럼 1개 추가**: `agents.opener_questions` JSON, validator로 ≤12개·1~200자
+## n8n 차용 핵심 (NOTICES.md 출처 명기 필수)
+- Cipher V2: `packages/core/src/encryption/{cipher,aes-256-gcm}.ts` (Apache-2.0 영역)
+- ICredentialType: `packages/workflow/src/interfaces.ts`
+- GenericAuth/CredentialsHelper: `packages/cli/src/credentials-helper.ts`
+- INodeProperties 동적 폼: `packages/frontend/editor-ui/src/features/ndv/parameters/components/ParameterInput.vue`
+- OAuth2 preAuthentication: `packages/cli/src/controllers/oauth/oauth2-credential.controller.ts`
+- External Secrets ABC: `packages/cli/src/modules/external-secrets.ee/types.ts`
 
-## 코드베이스 발견
+## 브랜딩 가드 (필수)
+- 코드/주석/문서/UI 어디에도 `n8n` 문자열 0건. `\bn8n\b` 정규식이 CI 게이트.
+- 패키지 `@n8n/*` import 금지. 동등 generic 라이브러리 (cryptography, httpx, authlib, hvac)
+- HKDF info: 절대 `'n8n-encryption-v1'` 쓰지 말고 `'moldy-encryption-v1'`
+- frontend 아이콘/로고: Lucide + 자체 SVG. n8n 자산 SHA-256 블랙리스트.
+- 화이트리스트: `NOTICES.md` (출처 명기 목적의 단일 파일)
 
-### 기존 자산 (재사용)
-- `components/agent/visual-settings/visual-settings-flow.tsx` — `VisualSettingsFlowProps`로 inline 렌더 가능
-- `components/agent/assistant-panel.tsx` — Fix 탭으로 직결 (showHeader prop만 추가)
-- `_components/triggers-tab.tsx` — 스케줄 탭으로 직결
-- `lib/hooks/use-agents.ts` `useGenerateAgentImage` — 설정 탭에서 재사용
-- `lib/chat/use-chat-runtime.ts` + `streamAssistant` — Fix 탭은 기존 그대로
-- `messages/ko.json` 등 i18n 사전 — `agent.assistant.*` 등 패턴
+## 파일 경계 (DRI별)
+- 피차이: docs/, app/security/cipher.py + key_provider.py, app/models/* (도메인 모델), alembic/versions/m13
+- 젠슨: app/{credentials,tools,mcp,skills}/ (도메인 로직), app/routers/, app/services/chat_service.py, app/agent_runtime/, scheduler.py, app/seed/, backend/tests/
+- 팀쿡: frontend/src/components/ui/, frontend/src/components/shared/{status-chip,icon,empty-state,dynamic-fields-form}, 디자인 토큰
+- 저커버그: frontend/src/app/{credentials,tools,mcp-servers,skills}/, components/{credential,tool,mcp,skill}/, lib/{api,hooks,types}/, frontend/e2e/, sidebar.tsx
+- 베조스: scripts/check_branding.py, NOTICES.md, tasks/deletion-analysis.md, 마일스톤 검증, docs/QUALITY_SCORE.md, 회귀 테스트 감독
 
-### 폐기
-- `_components/basic-info-tab.tsx` (헤더 + section-instructions로 분해)
-- `_components/model-tab.tsx` (model-dialog로 흡수)
-- `_components/tools-skills-tab.tsx` (모달들로 분해)
+## 핵심 코드 경로 (재배선 대상)
+- chat_service.py:231-259 get_agent_with_tools() — selectinload chain 재작성
+- chat_service.py:369-462 build_tools_config() — PREBUILT/CUSTOM 분기 → 단일 경로(definition + credential_id)
+- chat_service.py:317-336 _resolve_prebuilt_auth() — 폐기
+- chat_service.py:339-366 _resolve_custom_auth() — 폐기 (단일 경로로 흡수)
+- trigger_executor.py:44-46 — prefetch 누락 버그 동시 수정
+- mcp_client.py — env_vars 템플릿 해석을 app/credentials/interpolation.py로 위임
+- model_factory.py — agent.llm_credential 복호화 경로 추가
 
-### DB 패턴
-- `agents.model_params: JSON | null` 패턴 그대로 사용
-- 마이그레이션 m15까지 진행됨 → 신규는 m16
+## 실패 교훈 (누적)
 
-## 인터페이스 계약
+### M3 (Tools + MCP)
+- 옛 `services/tool_service.py` (M5에서 삭제)와 `assistant`/`builder` 경로가 `from app.schemas.tool import ToolType, ToolCustomCreate, ToolResponse, ToolUpdate`를 import — 신규 스키마는 별칭 (`ToolInstanceResponse`, `ToolPatch`) 사용하고 schemas/tool.py 하단에 레거시 클래스 + `ToolResponse = LegacyToolResponse` 별칭으로 import-time 안정성 유지. 둘 다 M5에서 폐기.
+- 새 Tool ORM은 옛 컬럼 (type/provider_name/connection_id/parameters_schema/api_url/http_method/auth_type/is_system/tags) 모두 제거 — `extend_existing=True`로 메타데이터 재정의 충돌 회피. tests는 `Base.metadata.create_all`로 신규 모델만 빌드.
+- main.py lifespan의 `existing_tools_result.where(Tool.is_system.is_(True))` 시드 호출은 신규 컬럼 없음 → 프로덕션 startup이 깨짐. M4(m13 마이그레이션) + M5(seed 재작성)에서 정리. 테스트는 ASGITransport이 lifespan 우회.
+- MCP 도메인: stdio transport는 probe 미지원으로 명시(`transport not supported by the probe yet`). 디스커버리는 streamable_http/sse만. langchain-mcp-adapters 미사용 — 직접 mcp SDK + 모듈 단위 monkeypatch로 테스트.
+- env_vars/headers 템플릿 해석은 `app.credentials.interpolation.resolve_deep` 단일 진입점 위임 (옛 `agent_runtime/env_var_resolver.py` 미터치, M5에서 삭제).
 
-### Agent 타입 (FE/BE 공유)
-```ts
-interface Agent {
-  // ... 기존 필드
-  opener_questions: string[] | null  // 신규, ≤12, 각 1~200자
-}
-```
+### M4 (Skills + m18 + 시드)
+- 마이그레이션 번호: 기존 체인에 이미 `m13_drop_mcp_legacy.py`가 있어 `m18_greenfield_credentials`로 명명. down_revision=`m17_add_agent_subagents`. PLAN.md 본문은 m13 가정이므로 후속 마일스톤 문서에서 m18로 통일 필요.
+- `LLMProvider` 모델은 폐기 대상이지만 `services/{model_service,model_discovery,provider_service}.py`가 임포트 — M5에서 일괄 삭제. 그 전까지는 `back_populates` 관계만 제거하고 metadata 등록은 유지(임포트 호환성).
+- `Model` ORM에서 `api_key_encrypted` + `provider_id` 제거. 기존 `default_models.py` dict는 두 키를 안 가지므로 lifespan 시드는 추가 처리 없이 그대로 동작 (방어적으로 lifespan에서 그래도 strip 처리).
+- 옛 `tests/test_skill_package.py`는 chat_service의 `build_effective_prompt`/`build_tools_config` 시그니처에 의존 → 신규 Skill 도메인 테스트로 대체 (`test_skills.py` 재작성).
+- alembic 마이그레이션 모듈은 `alembic/versions/`에 `__init__.py`가 없어 `importlib.import_module`로 로드 불가 — 테스트는 `importlib.util.spec_from_file_location`로 직접 로드.
+- 옛 `services/skill_service.py`는 미터치 (M5 정리). 옛 라우터 의존이 있던 import는 신규 `app/skills/service.py`로 완전 교체.
+- 데이터 분실 액션 (alembic upgrade head against postgres)은 사용자 확인 필요 — 본 마일스톤에서는 dry-run/모듈 검증만 수행.
 
-### AgentUpdate payload
-```ts
-interface AgentUpdate {
-  // ... 기존 필드
-  opener_questions?: string[]
-}
-```
+### M7 (모델 카탈로그 + 디스커버리, backend)
+- `model_metadata.py`는 옛 코드 그대로 복원 (LiteLLM enrich, anthropic 정적 카탈로그) — 헤더 주석에 LiteLLM 출처 + NOTICES.md 명기.
+- `model_filtering.py` 신규 — `should_include_model(provider, model_id, is_custom_api)` + `is_custom_openai_endpoint(base_url)`. OpenAI는 babbage/davinci/computer-use/dall-e/text-embedding/tts/whisper/omni-moderation/sora/-realtime/gpt-*-instruct 블록. 차용 출처 표현은 "prior art — see NOTICES.md"로 통일 (브랜딩 가드 회피).
+- `model_discovery.py` 재작성 — `discover_from_credential(db, credential)` 단일 진입점. 옛 LLMProvider 기반에서 Credential 기반으로 재배선. 복호화는 `credential_service.decrypt_with_external` 위임. dispatch table 키 = `credential.definition_key`. OpenRouter pricing 우선(source='openrouter'), LiteLLM fallback(source='litellm'), 무 데이터(source='manual').
+- `DiscoveredModel` dataclass에 `already_registered: bool` — IN 쿼리 한 번으로 N+1 회피.
+- `models` ORM에 `max_output_tokens, supports_vision, supports_function_calling, supports_reasoning, source` 컬럼 추가. 마이그레이션은 `m19_add_models_source.py` (m18 다음, ADD COLUMN nullable + drop downgrade).
+- 라우터 보강: `POST /api/credentials/{id}/discover-models` (audit log `discover` action), `POST/PATCH/DELETE /api/models` (409 unique violation, 409 used by agent).
+- Credential 정의 신규: `openrouter` (api_key + base_url default `https://openrouter.ai/api/v1`, test=GET /auth/key), `openai_compatible` (base_url required + api_key optional, test=GET `={{ $credentials.base_url }}/models` with rules [200, 401, 403]).
+- 테스트: `test_model_metadata.py`(5), `test_model_filtering.py`(36), `test_model_discovery.py`(9 — httpx.MockTransport via __init__ patch), `test_models_router.py`(13). 합계 63 신규 + 480 회귀 = 543 PASS.
+- httpx mock 패턴: `httpx.MockTransport(handler) → patch.object(httpx.AsyncClient, "__init__", ...)` 가 가장 확실. 모듈 단위 patch보다 안정적.
+- Decimal pricing → JSON으로 `to_dict()`에서 `str(Decimal)`. Pydantic Decimal 필드가 자동 파싱. FastAPI 응답은 scientific notation 가능 — 테스트는 Decimal로 비교.
+- branding 가드: 본문 docstring에 "n8n" 직접 노출 금지. 차용 출처는 "prior art — see NOTICES.md"로 적고 NOTICES.md 표에 매핑 추가.
+- frontend는 다른 작업자가 진행 — `frontend/src/lib/api/models.ts`, `frontend/src/components/model/model-select.tsx` 주석에서 'n8n resourceLocator' → 'resourceLocator pattern (see NOTICES.md)'로 정정만 했음.
+- `docs/QUALITY_SCORE.md`도 표현 정정 ("n8n 식별자 0건" → "금지 식별자 0건", "n8n 알고리즘 차용" → "차용 알고리즘 (NOTICES.md)").
+- 마이그레이션 검증: PG 5433 컨테이너에 upgrade head → 5개 컬럼 추가 확인 → downgrade -1 → upgrade head 라운드트립 모두 PASS.
 
-## Codebase Patterns
+### M10 (Daily Spend Queue + Aggregate API + Model Fallback, backend)
+- `models/{daily_spend_user,daily_spend_agent,daily_spend_model}.py` 신규 — 동일 shape, FK target만 다름. Numeric(20,8) cost (Anthropic Haiku 가격까지 정확). unique (date, target_id), CASCADE on FK → user/agent/model row 삭제 시 aggregate row도 함께 사라짐 (raw token_usages는 유지).
+- `m21_add_daily_spend_aggregates` (down=m20) + `m22_add_agent_model_fallback` (down=m21). 둘 다 dialect-aware UUID/timestamp helpers + `_has_table`/`_has_column`/`_has_index` 가드(idempotent upgrade) + reversible downgrade. PG 5433 round-trip(upgrade→downgrade→upgrade) OK.
+- `services/spend_writer.py` — `SpendEntry` dataclass + `DailySpendUpdateQueue` (asyncio.Queue + 백그라운드 drain task). 핵심 결정:
+  - 단일 큐로 3개 axis 모두 처리 (분리하면 producer가 3번 enqueue 해야 함)
+  - flush 트리거: `flush_interval_sec=5.0` 또는 `batch_size=100` 도달 시
+  - drain: `wait_for(queue.get(), timeout=interval)` → greedy `get_nowait` until batch_size → `_flush_batch`
+  - `_flush_batch`: entries를 axis별 `(date, target_id)`로 group → 각 테이블에 dialect-aware `INSERT ... ON CONFLICT (date, target_id) DO UPDATE SET total_X = X + EXCLUDED.X` (PG/SQLite). 그 외 dialect는 application-level upsert fallback.
+  - producer (`add()`) 비차단: `put_nowait` (QueueFull / RuntimeError 시 warning + drop, agent 실행 막지 않음).
+  - `stop()` graceful: 큐 잔여 flush → task cancel → await (with `contextlib.suppress`).
+  - 모듈 전역 `spend_queue` 싱글턴.
+- `hooks/builtin/spend_hook.py` — `agent_invoke` post hook에서 `spend_queue.add(SpendEntry(...))`. 0 token / 0 cost row는 skip (interrupt 등 비정상 종료 가드). failure isolation은 HookRegistry + 자체 try/except 이중 가드.
+- `register_default_hooks()`에 SpendHook 추가 → 이제 `["logging_hook", "audit_hook", "spend_hook"]` (`test_hooks.py` 함께 갱신).
+- `main.py` lifespan — `spend_queue.start()` (시드+체크포인터 직후, 스케줄러 직전) + `spend_queue.stop()` (스케줄러 shutdown 직후, 체크포인터 shutdown 직전).
+- `agent_runtime/streaming.py` — `stream_agent_response`에 `usage_sink: dict | None` 추가. 스트림 종료 시 captured `prompt_tokens/completion_tokens/estimated_cost`를 sink dict에 in-place update.
+- `agent_runtime/executor.py`:
+  - `AgentConfig.model_fallback_chain: list[dict] | None` 신규 — `[{provider, model_name, base_url, model_id}]` 사전 해석된 형태 (executor는 DB-free).
+  - `_build_model_with_fallback(cfg)` — primary → fallback walk + `_is_fallback_recoverable` 분기. 마지막 시도까지 실패하면 마지막 에러 re-raise.
+  - `_hook_result_from_usage(duration_ms, usage_sink)` — streaming usage → `HookResult.tokens_in/out/cost_usd` 매핑 (None-safe).
+  - `execute_agent_stream/resume_agent_stream`이 `usage_sink={}`를 stream에 전달 → 종료 후 hook post에 매핑된 HookResult 전달 → SpendHook이 큐에 enqueue.
+- `agent_runtime/model_factory.py`:
+  - `create_chat_model_with_fallback(agent, db, *, api_key, base_url, **extra)` 신규 — primary attempt → recoverable error 시 `agent.model_fallback_list` walk + audit log. ORM-backed 경로 (executor와 별개). 실제로 executor는 `_build_model_with_fallback`를 사용하고, 이 ORM 헬퍼는 외부 호출자가 직접 사용 가능 (assistant/builder 등 후속).
+  - `_is_fallback_recoverable(exc)` — `status_code` 우선 (401/403/404/408/409/429/500/502/503/504), 타입 fallback (TimeoutError/HTTPError/HTTPStatusError/ConnectionError). string heuristic은 의도적으로 제외 (불안정).
+  - `_audit_fallback_attempt` — `credential_audit_log`에 `action='fallback'` row 기록 (`success: bool`, `provider`, `model_name`, `model_id`, `error`, `phase: 'attempt'`). agent.llm_credential_id 없으면 skip. audit 실패는 warning + 진행 (runtime 절대 안 막음).
+- `routers/conversations.py` + `agent_runtime/trigger_executor.py` — `_resolve_fallback_chain(db, fallback_list)` 헬퍼: `agent.model_fallback_list` (UUID strings) → `Model` row 조회 → `[{provider, model_name, base_url, model_id}]` 사전 해석. 누락된 row는 silent drop. `AgentConfig.model_fallback_chain`에 주입.
+- `models/agent.py` — `model_fallback_list: Mapped[list[str] | None]` (JSON, nullable). UUID 직렬화는 service 레이어에서 (Postgres 호환).
+- `schemas/agent.py` — `AgentCreate/Update/Response`에 `model_fallback_ids: list[uuid.UUID] | None` 추가. Response는 default factory `[]` (None은 안 보냄).
+- `services/agent_service.py` — `_validate_model_fallback_ids()` (existence check 한 번 — catalog는 user-shared). Create/Update에서 검증 + str(UUID) 직렬화.
+- `routers/agents.py` — `_agent_to_response()`에서 `model_fallback_list` (str list) → `model_fallback_ids` (UUID list) 변환. 잘못된 entry는 silent skip.
+- `services/usage_aggregate.py` 신규 — `get_daily_spend()` single entry-point. Tenancy:
+  - user 축: `DailySpendUser.user_id == current_user`
+  - agent 축: `DailySpendAgent → Agent` join + `Agent.user_id == current_user`
+  - model 축: per-model 테이블은 cross-user이므로 (per-agent 테이블) → Agent join → user 필터로 *현 사용자 contribution*만 집계. `group_by=target` 시 `Agent.model_id`로 추가 group_by.
+  - `_label_map(target_kind, ids)` — user/agent/model 각각의 라벨 (name / display_name / email).
+  - `_resolve_window(from, to)` — default = (today-30d, today), max lookback 365d clamp.
+- `routers/usage.py` 보강 — `GET /api/usage/daily?target_kind=user|agent|model&target_id?&from?&to?&group_by=date|target`. mock_user 격리.
+- 테스트:
+  - `test_spend_writer.py`(8 — flush_batch/ON CONFLICT 누적/axis skip/loop interval/stop drain/queue full/distinct dates/Decimal precision)
+  - `test_usage_aggregate.py`(6 — user 시계열/agent label/model agent-scope/window/target_id/cross-tenant isolation)
+  - `test_model_fallback.py`(9 — classifier 3종/executor chain 4종/with_fallback audit 2종)
+  - `test_migration_m21.py`(4) + `test_migration_m22.py`(4) — module imports/metadata/round-trip/idempotent
+- 합계 31 신규 + 603 회귀 = 634 PASS, ruff clean, branding 0건. PG 5433에서 m20 → m21 → m22 → downgrade -2 → upgrade head 라운드트립 성공.
+- 발견 이슈 / 학습:
+  - `from app.agent_runtime.model_factory import create_chat_model`는 executor 모듈의 로컬 namespace에 reference 복사 → `patch.object(model_factory, ...)`로는 안 잡힘. test에서 `patch("app.agent_runtime.executor.create_chat_model", ...)`로 사용 위치를 패치해야 함.
+  - `app.credentials.cipher`는 존재하지 않음 (실제 위치는 `app.security.cipher`). credential 암호화는 `app.credentials.service.encrypt_data()`를 통해 호출.
+  - SQLite의 ON CONFLICT는 3.24+에서 지원되며 `from sqlalchemy.dialects.sqlite import insert`의 `excluded.<col>` 표현식이 PG와 동일하게 동작. application-level fallback은 다른 dialect에 대비한 안전망.
+  - executor의 fallback walk를 ORM 의존 없이 만들기 위해 `AgentConfig.model_fallback_chain`을 caller(라우터/트리거)가 사전 해석. ORM-backed `create_chat_model_with_fallback`은 별도 외부 호출자용으로 보존 (audit log 포함).
 
-- Backend: Router → Service → Model, async SQLAlchemy 2.0
-- Frontend: lib/api/<domain>.ts + lib/hooks/use-<domain>.ts + lib/types/index.ts
-- Tool UI는 components/chat/tool-ui/*.tsx
-- 새 마이그레이션은 backend/alembic/versions/m{N}_<name>.py
-- shadcn Tabs는 `Tabs/TabsList/TabsTrigger/TabsContent` 사용
-- `params: Promise<{ agentId: string }>` + `use(params)` 패턴 (Next.js 16)
+### M10 (Spend Dashboard + Model Fallback UI, frontend)
+- `lib/types/usage.ts` 신규: `UsageDailyEntry|UsageDailyParams|UsageTargetKind|UsageGroupBy|UsageMetric`. 백엔드 `/api/usage/daily` shape을 그대로 미러. `index.ts`에서 `export *`.
+- `Agent` 타입에 `model_fallback_ids?: string[] | null` 추가. `AgentCreate/UpdateRequest`에도 동일. 백엔드 컬럼명은 `agents.model_fallback_list` (Postgres ARRAY UUID), 프론트는 `model_fallback_ids` 명명을 사용 → backend sub-agent가 schema 변환 필요(우리는 frontend payload를 명세대로 보냄).
+- `useDailyAggregate(params)` cache key는 params 객체 그대로 사용 → TanStack Query가 deep-equal로 invalidation 인식.
+- 차트는 `M9 health-history-chart` 패턴 그대로 차용 — `viewBox` 기반 SVG, 자체 path/rect/area, native `<title>` 툴팁, accent 색은 emerald-500/blue-500/purple-500. 의존성 추가 0건 (Recharts/Tremor/Chart.js 모두 미사용).
+- cost 표시: `formatCostUsd` 매그니튜드 적응형 — `>=1` → 2 decimals, `>=0.01` → 4, 그 외 → 6. 토큰은 `>=1M` `M`, `>=10K` `K` 줄임.
+- `details/summary` 네이티브 disclosure로 fallback 섹션 접기/펴기. shadcn에 popover/switch/collapsible이 없는 상태라 native HTML 요소 활용으로 추가 의존 회피.
+- 순서 변경은 위/아래 화살표 버튼 (dnd-kit 미도입). 5개 cap. 중복 fallback (Primary와 또는 다른 fallback과 같음)은 amber 경고만 표시 — 저장은 허용 (백엔드가 필터링).
+- ModelDialog의 `t={tu}` prop typing은 `useTranslations<'usage.fallback'>` 반환 타입으로 typing — 일반 함수 시그니처는 next-intl의 `Translator` 제네릭과 호환 안 됨 (variants/values param이 unknown vs 정확한 union).
+- settings page의 dirty-aware sync 패턴: agent 새로 도착 시 `setFallbackIds(agent.model_fallback_ids ?? [])`. 같은 agent refetch 시 `arraysEqual(fallbackIds, prev.model_fallback_ids ?? [])` true이면만 새 server값 반영. PATCH body에는 `fallbackIds.length > 0 ? fallbackIds : null`로 변환 (백엔드 nullable column).
+- `playwright.config.ts`에 `PW_SKIP_BACKEND=1` env로 backend webServer 스킵 토글 추가. 모든 spec이 `page.route` mock이라면 backend 불필요. 새 spec(spend-dashboard, model-fallback) + M9 health-check도 fully mocked.
+- E2E 패턴: backend route 모두 mock → Playwright `page.route('**/api/...')`. UPDATE 시 PATCH body 캡처는 `route.request().postDataJSON()`. settings 페이지는 `useAgent + useModels + useTools + useSkills + useMiddlewares + useTriggers` 6 endpoints 모두 mock 필요.
+- locator 함정: `page.getByDisplayValue` 미지원 → `page.locator('input[placeholder]').first()` + `toHaveValue()`. `page.getByText('label')` strict mode 위반 (차트 + 테이블 양쪽 렌더) → `barChart.getByText('label')`로 scope.
+- 발견 이슈: 로컬 PG가 m17에 머물러 있어 backend lifespan에서 `column models.max_output_tokens does not exist` 발생 (m19에서 추가된 컬럼). e2e는 `PW_SKIP_BACKEND=1`로 우회. backend sub-agent가 head를 m22까지 가져갔으니 `alembic upgrade head` 적용 시 정상화.
 
-## 팀원 간 계약
+### M9 (Hook/Middleware 프레임워크 + Health Check + History, backend)
+- `app/hooks/{base,registry}.py` 신규 — `CustomHook` 베이스 (concrete, 빈 메서드를 옵셔널 노옵으로 노출 → ABC 패턴 회피로 ruff B024/B027 우회), `HookRegistry`는 모듈 전역 싱글턴 `hooks` + `register/all/clear/run_pre/run_post/run_failure`. 등록은 `name` 기준 idempotent (중복 등록 시 마지막 인스턴스로 교체). 디스패치는 등록 순서대로 실행하며 hook 예외는 `logger.warning` + `continue` (failure isolation).
+- 빌트인 hook: `LoggingHook`(INFO 라인) + `AuditHook`(`credential_audit_log` `action='invoke'` row 생성, `source='runtime'`, `log_metadata.phase` ∈ {post, failure}). AuditHook은 `ctx.credential_id`가 있을 때만 row 생성 — pre는 row 미생성으로 audit 트래픽 절감.
+- `register_default_hooks()` → `app/main.py` lifespan에서 호출. 시드/스케줄러 시작 직전.
+- `agent_runtime/executor.py`: `AgentConfig`에 `user_id`/`model_id`/`llm_credential_id` 추가. `_hook_ctx_for_agent`가 cfg에 user_id가 있을 때만 ctx 생성. `execute_agent_stream`/`resume_agent_stream`/`execute_agent_invoke` 셋 다 try/except로 wrap → 성공 시 `run_post(duration_ms)`, 실패 시 `run_failure` + re-raise.
+- `agent_runtime/tool_factory.py`: `tools_config` 항목당 user_id/agent_id/tool_id/credential_id를 `_safe_uuid`로 보강한 ctx 생성. `_invoke` 내부에서 pre/post/failure dispatch. `output`은 200자 cap.
+- `mcp/client.py`: `connect_and_list`에 `user_id`/`mcp_server_id`/`credential_id` keyword 추가. 모든 early-return 경로(transport unsupported / url missing / SDK import 실패) + 성공/실패 모두 hook dispatch. 기존 호출자(`test_chat_integration`)는 user_id 없이 호출 → ctx None → no-op (회귀 X).
+- `services/chat_service.py`: `build_tools_config`가 `user_id`/`agent_id`를 tools_config 항목에 추가. `routers/conversations.py` + `agent_runtime/trigger_executor.py`가 AgentConfig에 user_id/model_id/llm_credential_id 채움.
+- `models/health_check_history.py` 신규 — `id, target_kind ('model'|'mcp_server'), target_id, status ('healthy'|'unhealthy'|'degraded'), latency_ms, error_kind, error_message, raw_result, checked_at`. 인덱스 `(target_kind, target_id, checked_at)`. FK 안 검 (단순화).
+- `services/health_check.py` 신규 — `check_model`(M8 `model_test.run_model_test` 재사용 → 결과 분류 → history row), `check_mcp_server`(`mcp.client.connect_and_list` 호출 → `_classify_mcp_error`로 auth/timeout/etc 분류 → history + McpServer 상태 업데이트), `check_all_active`(모든 model + active MCP 순회). degraded는 MCP `auth_needed` 전용.
+- `routers/health.py` 신규 — `/api/health/models`, `/api/health/mcp-servers`(latest only, in-process reduce로 N+1 회피), `/api/health/history?target_kind&target_id&limit≤200`, `POST /api/health/check`(즉시 실행 + history 반환). MCP는 user 격리, model은 글로벌(공유 카탈로그).
+- `scheduler.py`: `register_health_check_job()` + `health_check_all_active()` 비동기 헬퍼. `HEALTH_CHECK_JOB_ID = "health_check_sweep"`, `coalesce=True, max_instances=1`, default cron `"0 4 * * *"`.
+- `config.py`: `health_check_cron`, `health_check_history_retention_days=90`(정리 cron은 후속).
+- `alembic/versions/m20_add_health_check_history.py`: dialect-aware UUID/timestamp helper + `_has_table`/`_has_index` 가드(idempotent upgrade). Reversible downgrade(테이블+인덱스 drop). PG 5433 라운드트립(upgrade→downgrade→upgrade) OK 확인.
+- 테스트: `test_hooks.py`(8 — registry 순서/idempotent register/failure isolation/disabled hook/LoggingHook smoke/AuditHook credential gate + failure recording), `test_health_check.py`(10 — model success/failure 분기, MCP success/auth/unreachable + 서버 상태 업데이트, sweep counters, 라우터 history/summary/check-now/404), `test_migration_m20.py`(4 — module imports/metadata/round-trip/idempotent upgrade). 합계 22 신규 + 581 회귀 = 603 PASS.
+- AuditHook은 `app.hooks.builtin.audit_hook.async_session`을 호출하므로 테스트에서 `monkeypatch.setattr(...)`로 `TestSession` 주입 필요. mock_user 패턴 답습.
+- ruff B024/B027(ABC 빈 메서드) 우회: `CustomHook`을 `ABC` 상속 안 함 — concrete base + 빈 default = 노옵. 의미적으로는 abstract 의도이나 ruff는 ABC 상속 시 명시적 `@abstractmethod` 강제.
+- NOTICES.md에 LiteLLM 차용 영역 추가 (CustomLogger 인터페이스 패턴 + `/health/history` 응답 형태).
 
-- **사티아 M2 → 전원**: design spec + deletion analysis 완성되면 M3~M6 착수 가능
-- **젠슨 M1 → 저커버그 M6**: opener_questions 스키마 확정 후 FE 타입 동기화
-- **저커버그 M3 → M4 → M5 → M6**: 순차 진행, 각 단계 build PASS 확인 후 다음 단계
-- **베조스 M7**: M1+M6 완료 후 통합 회귀
+### M8 (모델 Test + Curl 생성 + MCP Registry, backend)
+- `app/agent_runtime/model_factory.py`에 `create_chat_model_for_test(provider, model_name, *, api_key, base_url)` 추가 — `max_tokens=10`, `temperature=0` 강제 (결정론·저비용). `_ssl_ctx`는 기존 경로 재사용.
+- `app/services/model_test.py` 신규 — `run_model_test()` + `ModelTestResult`/`ModelTestError`. `asyncio.wait_for(timeout=30)` 강제, prompt = `"Reply with just the word 'pong'."`. clean error 정규식: `litellm|openai|anthropic|google|httpx`prefix 제거 + `Error code: NNN -` 제거 + 300자 cap. classify는 status_code(401/403/404/429) 우선, message hint fallback. raw_request는 SDK 미노출이라 provider별로 reconstruct (Authorization → `Bearer ***`, x-api-key → `***`, Google `?key=***`). curl은 `${API_KEY}` placeholder로 다시 치환 — 어떤 surface에도 평문 키 미노출.
+- 응답 스키마(`app/schemas/model.py`): `ModelTestPreviewRequest`, `ModelTestErrorSchema`, `ModelTestResponse`. `model_config = ConfigDict(protected_namespaces=())`로 `model_*` 필드 경고 회피.
+- 라우터(`app/routers/models.py`): `POST /api/models/{model_id}/test?credential_id=...` (등록된 모델 + cost lookup), `POST /api/models/test-preview` (Custom ID flow, body로 provider/model/credential_id 받음). 둘 다 `credential_audit_log` `action='test'`에 metadata.success/model_id/preview 기록.
+- `app/data/mcp_server_registry.json` 신규 (5개 entry: github, linear, jira, slack, notion). 순수 JSON, 주석 미포함. stdio entry는 `${credential.<field>}` env_var 템플릿 사용.
+- `app/services/mcp_registry.py` 신규 — `_load_registry()` lazy + cached, `list_registry()` 알파벳 정렬, `get_registry_entry(key)`, `reset_cache()` (테스트용).
+- `app/schemas/mcp.py`: `McpRegistryEntry`, `McpServerCreateFromRegistry` 추가.
+- `app/routers/mcp.py`: `catalog_router = APIRouter(prefix="/api/mcp-server-types")` + `GET /` `GET /{key}` 2건. `POST /api/mcp-servers/from-registry`는 기존 router에 추가 — registry entry로 transport/url/command/args/env_vars pre-fill. unknown key는 400.
+- `app/main.py`: `app.include_router(mcp.catalog_router)` 추가 (mcp.router와 별도 mount).
+- `NOTICES.md`: LiteLLM 섹션에 `model_test.py` 추가 (probe + clean error + curl 패턴), 신규 "MCP Server Catalog" 섹션 추가 (자체 작성).
+- 테스트: `test_model_test.py`(27건 — clean error/classify/curl/timeout/auth/not_found/rate_limit/router 성공·404·credential required·preview·audit log·leak detector), `test_mcp_registry.py`(11건 — service 4 + catalog router 3 + from-registry 4). 합계 38 신규 + 543 회귀 = 581 PASS, ruff clean, branding 0건.
+- mock 패턴: LangChain 레이어에서 stub. `patch.object(ChatOpenAI, "ainvoke", _stub)`. usage_metadata 인스턴스 속성으로 set (`AIMessage.usage_metadata = {...}`). PROVIDER_MAP 모두 ChatOpenAI fallback이라 한 곳만 패치하면 충분.
+- 보안 가드: `_REDACTED = "***"`, `_CURL_PLACEHOLDER = "${API_KEY}"`. raw_request 헤더에는 마스킹된 값이 들어가고 curl은 placeholder로 한 번 더 치환. test에서 `sk-LEAK-DETECTOR` 키로 응답 전체를 스캔해 평문 누출 검증.
 
-## Gotchas
+### M5 (agent_runtime 재배선 + 키 로테이션)
+- chat_service.build_tools_config 시그니처가 async로 변경됨 — caller(`conversations.py`, `trigger_executor.py`)에서 `await` 필요. 기존 sync caller 검색 시 주의.
+- `Tool` ORM에 `credential` 관계 추가 (lazy="select"), `Agent`에 `llm_credential` 관계 추가. selectinload 체인은 두 관계를 명시적으로 로드.
+- agent_runtime/mcp_client.py는 thin compat wrapper로 변환됨 — 진짜 로직은 `app.mcp.client.connect_and_list`. 신규 코드는 후자를 직접 import.
+- model_factory.PROVIDER_API_KEY_MAP은 backwards-compat alias로만 유지 (Builder/Assistant sub-agent helpers가 사용). 새 chat runtime은 Agent.llm_credential 복호화 경로 사용.
+- 키 로테이션 cron: APScheduler 잡 ID `credential_rotation`, default `0 3 * * 0`. `rotate_credentials_to_active_key`는 100건 배치 페이지네이션, 실패 row는 log 후 다음 회차 재시도. `re_encrypt_with_active_key` 헬퍼는 `app.credentials.service`에 거주.
+- `tool_service.py` / `model_service.py`는 read-only 슬림화 (Builder/Assistant catalog 한정). CRUD/Provider/Discovery 경로는 모두 폐기.
+- 옛 `m13` 마이그레이션 번호는 M4가 `m18`로 받음. M5는 마이그레이션 미터치.
+- 회귀 시나리오: tests/test_chat_integration.py 3종(get_agent_with_tools 단일 경로 / trigger prefetch 일치 / MCP 인터폴레이션) + tests/test_rotation.py 2종.
+- 옛 `provider_id` / `api_key_encrypted` Model 컬럼은 M4 ORM에서 이미 사라졌고 `default_models.py`는 lifespan에서 strip 처리. tests/`test_models.py`/`test_providers.py`/`test_model_*` 등은 모두 삭제.
 
-- **Next.js 16**: `frontend/AGENTS.md` 확인 필수. `params: Promise<...>` 처리, `use(params)` 패턴 유지
-- **assistant-ui 패턴**: composer 텍스트 주입은 `useComposer().setText` (TODO가 이미 AssistantPanel에 남아 있음 — 같이 처리)
-- **i18n**: 사용 중인 사전 위치는 `frontend/src/messages/ko.json` (또는 동등) — grep으로 확인 후 키 추가
-- **DropdownMenu/Dialog**: shadcn 패턴 — `import from '@/components/ui/dialog'`
-- **isDirty**: 모든 변경(이름/설명/지침/모델/도구/미들웨어/오프너/모델 파라미터)이 같은 페이지 state로 흘러야 함
+### M2 (Credential 도메인)
+- TestRequestSpec 이름이 pytest collection 경고 발생 — 후속 cleanup으로 CredentialTestSpec 등으로 rename 권장
+- aiosqlite는 FK CASCADE 자동 enforce 안 함 — PRAGMA 또는 PostgreSQL 환경에서만 검증. 테스트는 credential row 삭제만 assert
+- OAuth2 callback state는 in-process map (PoC 한정). 멀티프로세스 배포 시 Redis/DB 백킹 필요
+- 옛 `services/credential_service.py`, `connection_service.py`는 미터치 — M5에서 일괄 삭제 (기존 ~46 tests fail은 의도된 상태)
+- `app/main.py` lifespan에 레거시 `seed_mock_user_prebuilt_connections` 호출 잔존 — M5에서 정리
 
-## 실패 교훈
+## 후속 cleanup 항목 (PR 머지 전)
+- TestRequestSpec → CredentialTestSpec rename
+- OAuth2 state Redis/DB 백킹 (별도 티켓)
+- aiosqlite FK PRAGMA conftest 추가 검토
 
-(아직 없음 — Ralph Loop 진행 중 누적)
+## 작업 순서
+M0(거버넌스+docs+삭제분석) → M1(브랜딩+Cipher) → M2(Credential+Vault+라우터) → M3(Tools+MCP) → M4(Skills+m13) → M5(agent_runtime 재배선+cron) → M6(프론트엔드)
 
-## M1 (jensen) — 백엔드 opener_questions
-
-### 구현 결과
-- 마이그레이션: `m16_add_opener_questions` (m15 → m16). `agents.opener_questions JSON nullable`. 라운드트립 OK.
-- 모델: `Agent.opener_questions: Mapped[list[str] | None]` (`JSON, nullable=True, default=list`) — `middleware_configs` 패턴 그대로.
-- 스키마: `AgentCreate`/`AgentUpdate`/`AgentResponse` 3곳 모두 `opener_questions: list[str] | None`. 공유 validator `_validate_opener_questions`로 ≤12개 + strip 후 1~200자 검증. validator는 빈 문자열/공백 strip 후 reject(빈 항목 차단). 정상 항목은 strip된 값으로 정규화.
-- 서비스: `create_agent`/`update_agent`에 한 줄씩 반영.
-- 라우터: `_agent_to_response`에 `opener_questions` 필드 추가.
-- 테스트: 4개 추가 (create+update+roundtrip / 13개 reject / 빈 문자열 reject / 201자 reject). 전체 pytest 628 PASS, ruff clean.
-
-### 패턴/주의점
-- **AgentCreate/Update는 `extra='forbid'`**: 새 필드 추가 시 두 클래스 모두에 등록 안 하면 422가 난다. 둘 다 등록 필수.
-- **Pydantic v2 `field_validator` + `@classmethod`** 데코레이터 순서: `@field_validator(...)` 위, `@classmethod` 아래.
-- **공유 validator**: 동일 검증 로직을 `Create`/`Update`에서 모두 쓸 때, 모듈 레벨 helper로 분리하고 두 클래스에서 호출하면 DRY.
-- **라우터**: `_agent_to_response()`가 ORM → Response 변환의 단일 통로. 새 응답 필드 추가 시 여기 빠뜨리면 응답에 안 실린다.
-- **PUT API**: 라우터는 `PUT /api/agents/{id}` (PATCH 아님). 테스트도 PUT 사용.
-- **ruff I001**: 모듈 레벨 상수를 import 블록 직후에 추가하면 빈 줄 2개가 1개로 정리됨(`--fix`로 해결).
-- **빈 리스트 `[]`로 PUT** 시 `is not None`이라 정상적으로 빈 리스트로 클리어됨. JSON 컬럼 default=list라 신규 row는 `[]`이 아닌 `None`(DB column nullable)이 될 수 있음 — 응답에서 `null` 그대로 노출.
-
-### FE 계약
-- `Agent.opener_questions: string[] | null` (저커버그 M6에서 동기화)
-- `AgentUpdate { opener_questions?: string[] }` — undefined 보내면 변경 없음, `[]` 보내면 클리어, `null`은 PATCH로 클리어 가능(현재는 server-side validator가 `None`을 통과시키므로 무변경)
-
-## M3 (zuckerberg)
-
-- 페이지 골격 완료: header(인라인) + main grid lg:grid-cols-2, 좌(Tabs form/visual) / 우(Tabs fix/test/opener/schedule/settings) — 콘텐츠는 placeholder
-- `lib/utils.ts`에 `arraysEqual<T>` 추가. opener_questions 비교용
-- `lib/types/index.ts` Agent에 `opener_questions?: string[] | null`, AgentUpdateRequest에 `opener_questions?: string[]` 추가 (M6 종속 제거)
-- 헤더 인라인 편집: ghost variant Input 직접 사용 (border-0 bg-transparent + focus-visible:bg-muted/40), 별도 컴포넌트로 추출하지 않음 — 두 줄짜리 패턴이라 인라인이 가장 단순
-- AlertDialogTrigger render={...} 패턴 그대로 유지 (기존 코드베이스 컨벤션)
-- 기존 sticky save bar 제거. delete + save 모두 헤더 우측으로 이동
-- TriggersTab의 onRequestDelete 콜백/`DeleteConfirmDialog`은 M5에서 우측 [스케줄] 탭과 함께 재도입 예정 (M3은 placeholder만)
-- i18n: `agent.settings.tabs.{form,visual,fix,test,opener,schedule,settings}` + `agent.settings.namePlaceholder` 추가
-- `pnpm build` PASS — 타입 에러 0
-
-## M4 (zuckerberg)
-
-- 폐기 3건 삭제 완료: basic-info-tab.tsx, model-tab.tsx, tools-skills-tab.tsx — grep으로 잔존 import 0 확인
-- 신규 9개 컴포넌트:
-  - `_components/dialogs/{model-dialog,sub-agents-dialog,add-tool-modal,add-middleware-modal}.tsx`
-  - `_components/form-mode/{form-mode,section-instructions,section-sub-agents,section-model,tools-middlewares-grid}.tsx`
-- Collapsible은 기존 ui 컴포넌트가 없어서 useState + ChevronDown/Right 토글로 inline 구현 (의존성 추가 회피)
-- Dialog는 base-ui 기반 — DialogClose에 `render={<Button>...</Button>}` 패턴 사용
-- 다이얼로그 모두 controlled — 페이지 state(`selectedToolIds` 등)를 직접 토글
-- ToolsMiddlewaresGrid는 grid-cols-1 md:grid-cols-2 — 좌측 패널이 좁아질 때 stack
-- 행 [⚙] (도구별 config)는 디자인 스펙 §10대로 placeholder (Row.onConfig 옵셔널 prop)
-- i18n 키 추가: `agent.settings.{instruction,instructionPlaceholder,instructionFullscreen,characterCount,subAgents,subAgentsEmpty,subAgentsConfig,subAgentsDialogTitle,modelConfig,modelDialogTitle,addTool,addMiddleware,toolsEmpty,middlewaresEmpty,addToolDialogTitle,addMiddlewareDialogTitle,selectedCount}` + `common.done`
-- `pnpm build && pnpm lint` PASS
-
-## M5 (zuckerberg)
-
-- 우측 패널 5탭 + 좌측 비주얼 inline 완료
-- 신규 컴포넌트:
-  - `_components/right-panel/{right-panel,test-chat-panel,opener-editor,settings-panel}.tsx`
-- AssistantPanel: `showHeader?: boolean = true` prop 추가, SUGGESTIONS empty state는 `EmptyContent` 분리 함수로 추출 → `useComposerRuntime({ optional: true }).setText(suggestion)` 직접 호출
-- `useComposerRuntime`은 `AssistantRuntimeProvider` 컨텍스트 내부에서만 동작하므로 EmptyContent를 별도 컴포넌트로 분리해 provider 자식으로 렌더 (assistant-ui v0.12 deprecated 경고는 있지만 내부 API는 동작)
-- VisualSettingsFlow는 inline 렌더 — `<ReactFlowProvider>` 래핑 + props는 useModels/useTools/useSkills/useMiddlewares/useTriggers로 가져옴. 자체 Toolbar/state는 그대로 (이중 save 가능성 — 다음 PR에서 단일화 검토)
-- TestChatPanel은 MVP: streamAssistant(Fix endpoint) 재사용 + 별도 sessionId. ephemeral conversation 엔드포인트 생기면 streamFn만 교체
-- OpenerEditor: 행 추가/삭제, 1~200자 maxLength, n/12 카운터, 가득 차면 `+추가` disabled
-- SettingsPanel: 이미지 생성/재생성 `useGenerateAgentImage`, "이미지 제거"는 backend API 부재 → toast(comingSoon)으로 placeholder
-- TriggersTab은 그대로 import (라벨만 "스케줄"). DeleteConfirmDialog는 page.tsx 최하단으로 복귀
-- i18n 키 추가: `agent.settings.{openerTitle,openerDescription,openerCounter,openerAdd,openerPlaceholder,openerEmpty,openerMaxReached,imageRemove}`
-- `pnpm build && pnpm lint` PASS
-
-## M6 (zuckerberg)
-
-- 새 채팅 빈 화면 오프너 버튼 완료 (`app/agents/[agentId]/conversations/[conversationId]/page.tsx`)
-- 기존 inline `useMemo` emptyContent를 `ChatEmptyState` 컴포넌트로 추출 (`useComposerRuntime` 훅 사용을 위해 AssistantRuntimeProvider 자식 컴포넌트로 이동)
-- `agent.opener_questions?.length > 0`일 때 rounded-full pill 버튼 그룹 렌더 → 클릭 시 `composer.setText(q)` (전송 X)
-- 타입(`opener_questions?: string[] | null`) 및 update payload(`opener_questions?: string[]`)는 M3에서 미리 추가됨 — M6에서 별도 작업 없음
-- i18n: opener 관련 키는 M5에서 이미 ko.json에 추가됨 (`agent.settings.opener*`). 별도 `agent.opener.*` 네임스페이스는 spec 권고였으나 i18n 분류 단순화를 위해 settings 하위로 통합. 다른 로케일 사전 없음(ko 전용 프로젝트)
-- `pnpm build && pnpm lint` PASS
-
-## 전체 회귀 체크 (zuckerberg M3~M6 종료 시)
-
-- 폐기 파일 잔존 import 0 — `grep -r "basic-info-tab\|model-tab\|tools-skills-tab" frontend/src` 결과 없음
-- `/agents/[id]/visual-settings` 라우트 빌드 PASS (deprecate 미적용 — 다음 PR)
-- `/agents/[id]/conversations/[cid]` 빌드 PASS — opener 버튼 추가만, 회귀 X
-- AssistantPanel `showHeader` 옵셔널 default true → 호출처 영향 X
-
----
-## M7 (2026-04-28, bezos) — 통합 검증 결과
-
-### 자동 게이트 (전부 PASS)
-- backend: pytest 628 passed, ruff clean, alembic head 멱등 OK
-- frontend: pnpm build PASS (4.0s compile, 14/14 pages), pnpm lint clean
-
-### 발견 회귀 (사용자 노출, 데이터 손실 X)
-1. **MAJOR — VisualSettingsFlow inline dual-save**: page.tsx의 비주얼 탭이 VisualSettingsFlow를 그대로 inline 렌더하면서 내부 Toolbar(자체 Save)도 같이 렌더됨. 헤더 Save 와 중복 노출. isDirty 신호 분리로 비주얼 모드 변경이 페이지 dirty 상태에 반영 안 됨.
-   - 수정 방향: VisualSettingsFlow에 `embedded` prop 추가 → Toolbar 숨기고 controlled state로 전환
-2. **MAJOR — TestChatPanel이 Fix endpoint 재사용**: streamAssistant(Fix) 사용. [테스트] 탭이 메타 응답을 보여주므로 실제 에이전트 동작 검증 불가. 컴포넌트 주석에 "MVP" 명시.
-   - 수정 방향: ephemeral conversation endpoint 신설 후 streamFn 교체
-3. MINOR — SettingsPanel 이미지 제거 버튼이 toast만 뜨는 placeholder. 사용자 confusion 가능.
-
-### 폐기 검증
-- `grep -rn "basic-info-tab|model-tab|tools-skills-tab"` → 0 hits
-- 3개 파일 git status에서 D 표시 — 깨끗하게 제거됨
-
-### 패턴
-- 페이지 state를 단일 source로 두고 자식 컴포넌트는 controlled로 만드는 것이 워크벤치형 UI의 핵심. inline 사용을 위해서는 reusable component에 embedded/standalone 모드 분기가 필요하다.
-
-## M7 HOTFIX (zuckerberg)
-
-### MAJOR 1 — VisualSettingsFlow dual-save 차단
-- `embedded?: boolean` prop 추가. `embedded=true`일 때 내부 `<Toolbar>` 자체를 렌더하지 않음 (Toolbar 내 Save 버튼 + 뒤로가기/Undo/Redo 모두 숨김 — workbench 헤더가 단일 Save 보유)
-- `controlledState`/`controlledHandlers` props 신설. 둘 다 제공되면 `isControlled = true` → 내부 useState fallback 대신 props 사용
-- 패턴: `const name = isControlled ? controlledState!.name : internalName` + `const setName = isControlled ? controlledHandlers!.onNameChange : setInternalName`. hooks 규칙상 useState는 항상 호출(unused 변수가 되어도 OK)
-- agent prop sync useEffect는 `isControlled`일 때 early return — 페이지 owns이므로 무시
-- 비주얼 모드에서 도구/스킬/미들웨어 토글, 모델/이름/설명/지침/파라미터 변경이 모두 워크벤치 page state로 흐름 → 단일 Save가 모든 변경을 PUT
-- 별도 라우트 `/agents/[id]/visual-settings/page.tsx`는 `embedded` 미전달 → 기존 internal state + Toolbar 동작 그대로 (회귀 X)
-
-### MAJOR 2 — TestChatPanel 안내 배너
-- 컴포넌트 상단에 amber 톤 info 배너 추가 (border-amber-200 + bg-amber-50, dark mode 대응)
-- 한국어 하드코딩 (스코프 한정). 동작은 streamAssistant 그대로
-
-### Gotcha
-- `useState`는 hooks 규칙상 isControlled 분기 전에 항상 호출돼야 함 → 내부 state는 controlled mode에서도 메모리에 존재(ignored). 미세한 메모리 비용 vs early-return 분기 복잡도 트레이드오프 → 단순함 선택
-- `handleAgentNodeUpdate`의 deps에 `setX` 함수들을 넣음. controlled 변경 시 이 함수가 재계산되며 AgentNode가 리렌더되지만, 함수 참조 변경은 isControlled 토글 시에만 발생하므로 빈도 낮음
-
-- `pnpm build && pnpm lint` PASS (warnings 0)
-
-## M7 재검증 (2026-04-28, bezos) — GREEN
-
-### Hotfix 검증 결과
-- pnpm build PASS (14/14 pages), pnpm lint 0 error/0 warn
-- VisualSettingsFlow `embedded + controlledState + controlledHandlers` 패턴이 hooks 규칙을 위반하지 않으면서 controlled/uncontrolled 모두 지원하는 깨끗한 해결책. 모든 read/write/useEffect/callback 경로에 `isControlled` 분기 적용. `embedded && !!controlledState && !!controlledHandlers` 명시적 가드로 불완전 prop 사고 차단.
-- 워크벤치(`/agents/[id]/settings`)는 embedded=true 전달 → Toolbar 숨김 + page state owns. 기존 단독 라우트(`/agents/[id]/visual-settings`)는 embedded 미전달 → 기존 동작 100% 유지.
-- TestChatPanel amber 배너로 MVP limitation 명시 — light/dark 모두 대응.
-
-### 패턴 (재사용 가능)
-- 같은 컴포넌트를 standalone vs embedded로 양쪽에서 쓸 때 `embedded?: boolean + controlledState? + controlledHandlers?` 트리오 + `isControlled = embedded && !!controlledState && !!controlledHandlers` 가드 + 모든 setter/effect 분기. internal state는 항상 useState로 호출(hooks 규칙) 하되 useEffect 안에서 `if (isControlled) return`으로 비활성화.
+각 마일스톤 PASS 후 다음 진입. 단일 PR이지만 마일스톤별 커밋.

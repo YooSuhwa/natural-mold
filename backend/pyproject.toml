@@ -39,6 +39,8 @@ dependencies = [
     "psycopg2-binary>=2.9",
     # Encryption (API keys)
     "cryptography>=43.0",
+    # External secrets (Vault)
+    "hvac>=2.3",
     # Google Workspace API
     "google-auth>=2.0",
     "google-auth-oauthlib>=1.0",
@@ -48,6 +50,7 @@ dependencies = [
     "deepagents>=0.4.12",
     "langchain-mcp-adapters>=0.2.2",
     "psycopg-binary>=3.3.3",
+    "truststore>=0.10.4",
 ]
 
 [project.optional-dependencies]

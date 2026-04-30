@@ -1,110 +1,230 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { SearchIcon, CheckIcon } from 'lucide-react'
-import { useTranslations } from 'next-intl'
-import { Badge } from '@/components/ui/badge'
+import { useMemo, useState } from 'react'
+import { Pencil, Zap } from 'lucide-react'
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { useModels } from '@/lib/hooks/use-models'
-import { Skeleton } from '@/components/ui/skeleton'
-import { getProviderIcon, formatContextWindow } from '@/lib/utils/provider'
-import type { Model } from '@/lib/types'
+import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
+import { ModelConnectionTest } from './model-connection-test'
+import type { ModelPick, ModelTestResponse } from '@/lib/types/model'
 
 interface ModelSelectProps {
-  value: string
-  onValueChange: (value: string) => void
+  /** Current model id (List mode). */
+  value?: string
+  /** Back-compat: id-only handler. Kept so existing dialogs need no migration. */
+  onValueChange?: (id: string) => void
+  /**
+   * Resource-locator handler. When supplied, the component emits either a
+   * List pick or a Custom-ID pick. Callers that opt in must persist both
+   * shapes themselves.
+   */
+  onChange?: (pick: ModelPick) => void
+  /** Enables the Custom-ID toggle (resourceLocator id mode — see NOTICES.md). */
+  allowCustomId?: boolean
   className?: string
+  placeholder?: string
 }
 
-export function ModelSelect({ value, onValueChange, className }: ModelSelectProps) {
+/**
+ * Two-mode model picker (resourceLocator pattern — see NOTICES.md).
+ *
+ * - **List** (default): shows the catalog from `/api/models`, returns a
+ *   `model_id`. Existing callers using `onValueChange` keep working.
+ * - **Custom ID** (when `allowCustomId={true}`): provider + model_name typed
+ *   directly. Not persisted to DB; the parent decides how to encode it.
+ */
+export function ModelSelect({
+  value,
+  onValueChange,
+  onChange,
+  allowCustomId = false,
+  className,
+  placeholder = 'Select a model',
+}: ModelSelectProps) {
   const { data: models, isLoading } = useModels()
-  const t = useTranslations('agent.settings')
-  const tm = useTranslations('model')
-  const [search, setSearch] = useState('')
+  const { data: credentials } = useCredentials()
+  const { data: definitions } = useCredentialTypes()
+  const [mode, setMode] = useState<'list' | 'custom'>('list')
+  const [customProvider, setCustomProvider] = useState('openai')
+  const [customModelName, setCustomModelName] = useState('')
+  const [customTestCredId, setCustomTestCredId] = useState<string>('')
+  const [showTest, setShowTest] = useState(false)
+  const [lastTestResult, setLastTestResult] = useState<ModelTestResponse | null>(
+    null,
+  )
 
-  const filteredModels = useMemo(() => {
+  const sortedModels = useMemo(() => {
     if (!models) return []
-    const q = search.toLowerCase()
-    return q
-      ? models.filter(
-          (m) =>
-            m.display_name.toLowerCase().includes(q) ||
-            m.model_name.toLowerCase().includes(q) ||
-            m.provider.toLowerCase().includes(q),
-        )
-      : models
-  }, [models, search])
+    return [...models].sort((a, b) => {
+      if (a.is_default !== b.is_default) return a.is_default ? -1 : 1
+      return a.display_name.localeCompare(b.display_name)
+    })
+  }, [models])
 
-  if (isLoading) return <Skeleton className="h-[200px] w-full" />
+  const llmCredentials = useMemo(() => {
+    if (!credentials || !definitions) return []
+    const llmKeys = new Set(
+      definitions.filter((d) => d.category === 'llm').map((d) => d.key),
+    )
+    return credentials.filter((c) => llmKeys.has(c.definition_key))
+  }, [credentials, definitions])
+
+  const effectiveCustomCredId =
+    customTestCredId || llmCredentials[0]?.id || ''
+
+  function emitList(id: string) {
+    onValueChange?.(id)
+    onChange?.({ mode: 'list', model_id: id })
+  }
+
+  function emitCustom(provider: string, modelName: string) {
+    if (!modelName.trim()) return
+    onChange?.({
+      mode: 'custom',
+      provider: provider.trim(),
+      model_name: modelName.trim(),
+    })
+  }
+
+  if (mode === 'custom') {
+    const canTest =
+      customProvider.trim() !== '' &&
+      customModelName.trim() !== '' &&
+      effectiveCustomCredId !== ''
+
+    return (
+      <div className={className}>
+        <p className="mb-2 text-[11px] text-muted-foreground">
+          Custom IDs skip catalog pricing — register frequently used models on
+          the Models page for accurate cost tracking.
+        </p>
+        <div className="flex gap-2">
+          <Input
+            value={customProvider}
+            onChange={(e) => setCustomProvider(e.target.value)}
+            onBlur={() => emitCustom(customProvider, customModelName)}
+            placeholder="provider"
+            className="w-32"
+            aria-label="Custom provider"
+          />
+          <Input
+            value={customModelName}
+            onChange={(e) => setCustomModelName(e.target.value)}
+            onBlur={() => emitCustom(customProvider, customModelName)}
+            placeholder="model id"
+            className="flex-1"
+            aria-label="Custom model id"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowTest((v) => !v)}
+            disabled={!canTest}
+            data-testid="model-select-test"
+          >
+            <Zap className="size-3.5" /> Test
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setMode('list')}
+          >
+            From list
+          </Button>
+        </div>
+
+        {showTest && canTest && (
+          <div className="mt-2 space-y-2">
+            <Select
+              value={effectiveCustomCredId}
+              onValueChange={(v) => v && setCustomTestCredId(v)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select credential" />
+              </SelectTrigger>
+              <SelectContent>
+                {llmCredentials.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <ModelConnectionTest
+              key={`${customProvider}-${customModelName}-${effectiveCustomCredId}`}
+              mode="preview"
+              provider={customProvider.trim()}
+              modelName={customModelName.trim()}
+              credentialId={effectiveCustomCredId}
+              modelLabel={customModelName.trim()}
+              autoStart
+              onComplete={(r) => {
+                setLastTestResult(r)
+                if (r.success) {
+                  // Test passed → emit immediately so the parent can rely on it.
+                  emitCustom(customProvider, customModelName)
+                }
+              }}
+            />
+            {lastTestResult && !lastTestResult.success && (
+              <p className="text-[11px] text-destructive">
+                Test failed — fix the error above before relying on this model.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className={className}>
-      <div className="flex items-center gap-2 border-b px-3 py-2">
-        <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
-        <input
-          className="h-7 flex-1 border-0 bg-transparent text-sm shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:outline-none focus:ring-0"
-          placeholder={tm('searchModels')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-      <div className="max-h-[240px] overflow-auto p-1.5" role="listbox">
-        {filteredModels.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">{t('modelPlaceholder')}</p>
-        ) : (
-          filteredModels.map((model) => (
-            <ModelSelectItem
-              key={model.id}
-              model={model}
-              selected={value === model.id}
-              onSelect={() => onValueChange(model.id)}
-            />
-          ))
+      <div className="flex items-center gap-2">
+        <Select
+          value={value}
+          onValueChange={(v) => v && emitList(v)}
+          disabled={isLoading}
+        >
+          <SelectTrigger className="flex-1">
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {sortedModels.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                <span className="flex items-center gap-2">
+                  <span>{m.display_name}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {m.provider}
+                  </span>
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {allowCustomId && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setMode('custom')}
+            aria-label="Use a custom model id"
+          >
+            <Pencil className="size-3.5" />
+            Custom
+          </Button>
         )}
       </div>
     </div>
-  )
-}
-
-function ModelSelectItem({
-  model,
-  selected,
-  onSelect,
-}: {
-  model: Model
-  selected: boolean
-  onSelect: () => void
-}) {
-  return (
-    <button
-      type="button"
-      role="option"
-      aria-selected={selected}
-      onClick={onSelect}
-      className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm ${
-        selected ? 'bg-muted/60' : 'hover:bg-muted/30'
-      }`}
-    >
-      {selected ? (
-        <CheckIcon className="size-3.5 shrink-0 text-primary" />
-      ) : (
-        <span className="size-3.5 shrink-0" />
-      )}
-      <div className="flex size-5 items-center justify-center rounded bg-muted text-[8px] font-bold text-muted-foreground">
-        {getProviderIcon(model.provider)}
-      </div>
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="truncate text-xs font-medium">{model.display_name}</span>
-        {model.context_window && (
-          <Badge variant="outline" className="shrink-0 text-[10px]">
-            {formatContextWindow(model.context_window)}
-          </Badge>
-        )}
-        {model.input_modalities?.map((m) => (
-          <Badge key={m} variant="secondary" className="shrink-0 text-[10px]">
-            {m}
-          </Badge>
-        ))}
-      </div>
-    </button>
   )
 }

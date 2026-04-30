@@ -145,7 +145,7 @@ function AvailableColumn({
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder={t('searchPlaceholder')}
           aria-label={t('searchPlaceholder')}
-          className="pl-9"
+          className="pl-9 focus-visible:border-input focus-visible:ring-0"
         />
       </div>
       <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1 sm:h-[60vh]">

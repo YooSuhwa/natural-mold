@@ -6,7 +6,7 @@ import { PlusIcon, TrashIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
-import { AddMiddlewaresDialog } from '../dialogs/add-middlewares-dialog'
+import { MiddlewaresDialog } from '../dialogs/middlewares-dialog'
 import type { MiddlewareRegistryItem } from '@/lib/types'
 
 export interface MiddlewaresNodeData {
@@ -66,7 +66,7 @@ export function MiddlewaresNode({ data }: { data: MiddlewaresNodeData }) {
         </div>
       </div>
 
-      <AddMiddlewaresDialog
+      <MiddlewaresDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         allMiddlewares={allMiddlewares}

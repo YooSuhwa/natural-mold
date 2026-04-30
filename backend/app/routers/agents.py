@@ -20,6 +20,7 @@ from app.schemas.agent import (
     AgentResponse,
     AgentUpdate,
     GenerateImageResponse,
+    McpToolBrief,
     ToolBrief,
 )
 from app.schemas.skill import SkillBrief
@@ -38,15 +39,40 @@ def _sub_agent_image_url(sub: Agent) -> str | None:
 
 def _agent_to_response(agent: Agent) -> AgentResponse:
     """Convert Agent model to AgentResponse with tool configs."""
+    fallback_ids: list[uuid.UUID] = []
+    if agent.model_fallback_list:
+        for raw in agent.model_fallback_list:
+            try:
+                fallback_ids.append(uuid.UUID(str(raw)))
+            except (TypeError, ValueError):
+                # Skip malformed legacy entries; surface only valid UUIDs.
+                continue
     return AgentResponse(
         id=agent.id,
         name=agent.name,
         description=agent.description,
         system_prompt=agent.system_prompt,
-        model=agent.model,
+        # ``agent.model`` may be None when the FK target was deleted (legacy
+        # rows from before the m18 wipe). The schema accepts None and the
+        # frontend prompts re-binding instead of crashing the agents list.
+        model=agent.model if agent.model is not None else None,
         tools=[ToolBrief(id=link.tool.id, name=link.tool.name) for link in agent.tool_links],
+        mcp_tools=[
+            McpToolBrief(
+                id=link.mcp_tool.id,
+                name=link.mcp_tool.name,
+                server_id=link.mcp_tool.server_id,
+            )
+            for link in agent.mcp_tool_links
+        ],
         skills=[
-            SkillBrief(id=link.skill_id, name=link.skill.name, description=link.skill.description)
+            SkillBrief(
+                id=link.skill_id,
+                name=link.skill.name,
+                slug=link.skill.slug,
+                kind=link.skill.kind,
+                description=link.skill.description,
+            )
             for link in agent.skill_links
         ],
         sub_agents=[
@@ -63,6 +89,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         is_favorite=agent.is_favorite,
         model_params=agent.model_params,
         opener_questions=agent.opener_questions,
+        model_fallback_ids=fallback_ids,
         image_url=(
             f"/api/agents/{agent.id}/image?t={int(agent.updated_at.timestamp())}"
             if agent.image_path

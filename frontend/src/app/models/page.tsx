@@ -1,508 +1,480 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { Activity, Plus, Brain, Eye, Wrench, Lightbulb, Zap } from 'lucide-react'
+import type { ColumnDef } from '@tanstack/react-table'
+
+import { announceHealthResult } from '@/lib/health-check-toast'
+import { useCredentials } from '@/lib/hooks/use-credentials'
 import {
-  PlusIcon,
-  CpuIcon,
-  Trash2Icon,
-  PencilIcon,
-  Loader2Icon,
-  StarIcon,
-  ServerIcon,
-  InfoIcon,
-  EyeIcon,
-  WrenchIcon,
-  BrainIcon,
-} from 'lucide-react'
-import { useTranslations } from 'next-intl'
-import { useModels, useUpdateModel, useDeleteModel } from '@/lib/hooks/use-models'
-import { useProviders, useDeleteProvider } from '@/lib/hooks/use-providers'
+  filterLlmCredentials,
+  resolveCredentialForModel,
+} from '@/lib/utils/credential-resolution'
+
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Input } from '@/components/ui/input'
-import { SearchInput } from '@/components/shared/search-input'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog'
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '@/components/ui/alert-dialog'
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
-import { ProviderCard } from '@/components/model/provider-card'
-import { ProviderForm } from '@/components/model/provider-form'
+import { DataTable, type FilterDef } from '@/components/ui/data-table'
+import { DomainIcon } from '@/components/shared/icon'
+import { EmptyState } from '@/components/shared/empty-state'
+import { StatusChip } from '@/components/shared/status-chip'
+import { ModelSourceBadge } from '@/components/model/model-source-badge'
 import { ModelAddDialog } from '@/components/model/model-add-dialog'
-import { ModelDetailModal } from '@/components/model/model-detail-modal'
-import { getProviderIcon, formatContextWindow } from '@/lib/utils/provider'
-import type { Model, Provider } from '@/lib/types'
+import { ModelEditDialog } from '@/components/model/model-edit-dialog'
+import { ModelTestDialog } from '@/components/model/model-test-dialog'
+import { ModelTestBulkDialog } from '@/components/model/model-test-bulk-dialog'
+import { formatTokenPrice } from '@/components/model/model-format'
+import {
+  RANKING_META,
+  RankingCell,
+  RankingHeader,
+} from '@/components/model/model-rankings'
+import { Checkbox } from '@/components/ui/checkbox'
+import { useModels } from '@/lib/hooks/use-models'
+import { useModelHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
+import type { Model } from '@/lib/types/model'
+import type { HealthCheckEntry } from '@/lib/types/health'
 
 export default function ModelsPage() {
-  const { data: models, isLoading: modelsLoading } = useModels()
-  const { data: providers, isLoading: providersLoading } = useProviders()
-  const updateModel = useUpdateModel()
-  const deleteModel = useDeleteModel()
-  const deleteProvider = useDeleteProvider()
-  const t = useTranslations('model')
-  const tp = useTranslations('provider')
-  const tc = useTranslations('common')
+  const { data: models, isLoading } = useModels()
+  const { data: healthEntries } = useModelHealth()
+  const { data: credentials } = useCredentials()
+  const runHealthCheck = useRunHealthCheck()
+  const [addOpen, setAddOpen] = useState(false)
+  const [editing, setEditing] = useState<Model | null>(null)
+  const [testing, setTesting] = useState<Model | null>(null)
+  const [bulkTestOpen, setBulkTestOpen] = useState(false)
+  const [selected, setSelected] = useState<Model[]>([])
+  const [onlyWithRanking, setOnlyWithRanking] = useState(false)
 
-  // Provider form state
-  const [providerFormOpen, setProviderFormOpen] = useState(false)
-  const [editingProvider, setEditingProvider] = useState<Provider | null>(null)
+  // Stable reference for downstream memos. `models ?? []` would create a fresh
+  // array on every render and bust the providerOptions / sourceOptions cache.
+  const allModels = useMemo<Model[]>(() => models ?? [], [models])
 
-  // Model add dialog state
-  const [modelAddOpen, setModelAddOpen] = useState(false)
+  // Optional "Has ranking" filter — narrows the catalog to models with at
+  // least one populated benchmark score. Applied before the DataTable so the
+  // pagination/empty-state reflect the filtered set.
+  const data = useMemo<Model[]>(() => {
+    if (!onlyWithRanking) return allModels
+    return allModels.filter((m) => modelHasAnyRanking(m))
+  }, [allModels, onlyWithRanking])
 
-  // Model edit dialog state
-  const [editDialogOpen, setEditDialogOpen] = useState(false)
-  const [editingModel, setEditingModel] = useState<Model | null>(null)
-  const [editDisplayName, setEditDisplayName] = useState('')
+  // O(1) lookup of latest health entry per model_id. Falls back to "unknown"
+  // when no probe has been recorded yet (e.g. freshly added model).
+  const healthByModel = useMemo(() => {
+    const map = new Map<string, HealthCheckEntry>()
+    ;(healthEntries ?? []).forEach((h) => map.set(h.target_id, h))
+    return map
+  }, [healthEntries])
 
-  // Model search & filter
-  const [modelSearch, setModelSearch] = useState('')
-  const [providerFilter, setProviderFilter] = useState('all')
-  const [capabilityFilter, setCapabilityFilter] = useState('all')
+  const llmCredentials = useMemo(
+    () => filterLlmCredentials(credentials),
+    [credentials],
+  )
 
-  // Model detail modal state
-  const [detailModel, setDetailModel] = useState<Model | null>(null)
-
-  // Model delete confirm dialog state
-  const [deletingModelTarget, setDeletingModelTarget] = useState<Model | null>(null)
-
-  const filteredModels = useMemo(() => {
-    if (!models) return []
-    let result = models
-    if (providerFilter !== 'all') {
-      result = result.filter((m) => m.provider_id === providerFilter)
+  async function handleCheckNow(model: Model) {
+    // Tiered fallback (default_credential_id → provider match → first LLM)
+    // shared with ModelHealthPanel and ModelTestDialog so all three surfaces
+    // pick the same credential for the same model.
+    const credentialId = resolveCredentialForModel(model, llmCredentials)
+    if (!credentialId) {
+      toast.error('No LLM credential available — register one first.')
+      return
     }
-    if (capabilityFilter !== 'all') {
-      result = result.filter((m) => {
-        if (capabilityFilter === 'vision') return m.supports_vision
-        if (capabilityFilter === 'function_calling') return m.supports_function_calling
-        if (capabilityFilter === 'reasoning') return m.supports_reasoning
-        return true
+    try {
+      const result = await runHealthCheck.mutateAsync({
+        targetKind: 'model',
+        targetId: model.id,
+        credentialId,
       })
+      announceHealthResult(result)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Health check failed')
     }
-    const q = modelSearch.toLowerCase()
-    if (q) {
-      result = result.filter(
-        (m) =>
-          m.display_name.toLowerCase().includes(q) ||
-          m.model_name.toLowerCase().includes(q) ||
-          m.provider.toLowerCase().includes(q),
-      )
-    }
-    return result
-  }, [models, modelSearch, providerFilter, capabilityFilter])
-
-  // Provider delete confirm dialog state
-  const [deletingProviderTarget, setDeletingProviderTarget] = useState<Provider | null>(null)
-
-  function openEditProvider(provider: Provider) {
-    setEditingProvider(provider)
-    setProviderFormOpen(true)
   }
 
-  function openEditModel(model: Model) {
-    setEditingModel(model)
-    setEditDisplayName(model.display_name)
-    setEditDialogOpen(true)
-  }
+  const providerOptions = useMemo(() => {
+    const set = new Set<string>()
+    data.forEach((m) => set.add(m.provider))
+    return Array.from(set).sort()
+  }, [data])
 
-  async function handleEditModelSubmit() {
-    if (!editingModel) return
-    await updateModel.mutateAsync({
-      id: editingModel.id,
-      data: { display_name: editDisplayName },
+  const sourceOptions = useMemo(() => {
+    const set = new Set<string>()
+    data.forEach((m) => {
+      if (m.source) set.add(m.source)
     })
-    setEditDialogOpen(false)
-    setEditingModel(null)
-  }
+    return Array.from(set).sort()
+  }, [data])
+
+  const columns = useMemo<ColumnDef<Model>[]>(
+    () => [
+      {
+        id: 'display_name',
+        accessorKey: 'display_name',
+        header: 'Model',
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <DomainIcon iconId={row.original.provider} className="size-4" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">
+                {row.original.display_name}
+                {row.original.is_default && (
+                  <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
+                    default
+                  </span>
+                )}
+              </p>
+              <CapabilityIcons model={row.original} />
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: 'model_name',
+        accessorKey: 'model_name',
+        header: 'ID',
+        cell: ({ row }) => (
+          <span className="font-mono text-xs text-muted-foreground">{row.original.model_name}</span>
+        ),
+      },
+      {
+        id: 'provider',
+        accessorKey: 'provider',
+        header: 'Provider',
+        cell: ({ row }) => <span className="text-xs">{row.original.provider}</span>,
+        filterFn: 'equals',
+      },
+      {
+        id: 'cost_in',
+        accessorFn: (row) => row.cost_per_input_token ?? 0,
+        header: 'Input',
+        cell: ({ row }) => (
+          <span className="font-mono text-xs tabular-nums">
+            {formatTokenPrice(row.original.cost_per_input_token)}
+          </span>
+        ),
+      },
+      {
+        id: 'cost_out',
+        accessorFn: (row) => row.cost_per_output_token ?? 0,
+        header: 'Output',
+        cell: ({ row }) => (
+          <span className="font-mono text-xs tabular-nums">
+            {formatTokenPrice(row.original.cost_per_output_token)}
+          </span>
+        ),
+      },
+      {
+        id: 'context_window',
+        accessorFn: (row) => row.context_window ?? 0,
+        header: 'Context',
+        cell: ({ row }) =>
+          row.original.context_window ? (
+            <span className="font-mono text-xs tabular-nums">
+              {row.original.context_window.toLocaleString()}
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          ),
+      },
+      // M11 — Benchmark rankings. Missing scores are normalised to
+      // `undefined` so TanStack's `sortUndefined: 'last'` keeps them pinned
+      // to the bottom regardless of sort direction. Headers carry an ⓘ
+      // tooltip explaining what each score represents.
+      {
+        id: 'lmarena',
+        accessorFn: (row) => row.rankings?.lmarena ?? undefined,
+        header: () => <RankingHeader rankingKey="lmarena" />,
+        cell: ({ row }) => (
+          <RankingCell
+            value={row.original.rankings?.lmarena}
+            format={RANKING_META.lmarena.format}
+          />
+        ),
+        sortingFn: 'basic',
+        sortUndefined: 'last',
+      },
+      {
+        id: 'livebench',
+        accessorFn: (row) => row.rankings?.livebench ?? undefined,
+        header: () => <RankingHeader rankingKey="livebench" />,
+        cell: ({ row }) => (
+          <RankingCell
+            value={row.original.rankings?.livebench}
+            format={RANKING_META.livebench.format}
+          />
+        ),
+        sortingFn: 'basic',
+        sortUndefined: 'last',
+      },
+      {
+        id: 'aa_index',
+        accessorFn: (row) => row.rankings?.aa_index ?? undefined,
+        header: () => <RankingHeader rankingKey="aa_index" />,
+        cell: ({ row }) => (
+          <RankingCell
+            value={row.original.rankings?.aa_index}
+            format={RANKING_META.aa_index.format}
+          />
+        ),
+        sortingFn: 'basic',
+        sortUndefined: 'last',
+      },
+      {
+        id: 'source',
+        accessorKey: 'source',
+        header: 'Source',
+        cell: ({ row }) => <ModelSourceBadge source={row.original.source} />,
+        filterFn: (row, _columnId, filterValue) => {
+          if (filterValue === undefined || filterValue === null) return true
+          return row.original.source === filterValue
+        },
+      },
+      {
+        id: 'health',
+        accessorFn: (row) => healthByModel.get(row.id)?.status ?? 'unknown',
+        header: 'Status',
+        cell: ({ row }) => {
+          const entry = healthByModel.get(row.original.id)
+          return <HealthCell entry={entry} />
+        },
+        filterFn: (row, _columnId, filterValue) => {
+          if (filterValue === undefined || filterValue === null) return true
+          const status = healthByModel.get(row.original.id)?.status ?? 'unknown'
+          return status === filterValue
+        },
+      },
+      {
+        id: 'agent_count',
+        accessorKey: 'agent_count',
+        header: 'Agents',
+        cell: ({ row }) => <span className="text-xs tabular-nums">{row.original.agent_count}</span>,
+      },
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Check ${row.original.display_name}`}
+              data-testid={`check-now-${row.original.id}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleCheckNow(row.original)
+              }}
+              disabled={runHealthCheck.isPending}
+            >
+              <Activity className="size-3.5" /> Check
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Test ${row.original.display_name}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                setTesting(row.original)
+              }}
+            >
+              <Zap className="size-3.5" /> Test
+            </Button>
+          </div>
+        ),
+        enableSorting: false,
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [healthByModel, runHealthCheck.isPending],
+  )
+
+  const filters = useMemo<FilterDef[]>(
+    () => [
+      {
+        columnId: 'provider',
+        label: 'Provider',
+        options: providerOptions.map((p) => ({ value: p, label: p })),
+      },
+      {
+        columnId: 'source',
+        label: 'Source',
+        options: sourceOptions.map((s) => ({
+          value: s,
+          label: s.charAt(0).toUpperCase() + s.slice(1),
+        })),
+      },
+      {
+        columnId: 'health',
+        label: 'Status',
+        options: [
+          { value: 'healthy', label: 'Healthy' },
+          { value: 'degraded', label: 'Degraded' },
+          { value: 'unhealthy', label: 'Unhealthy' },
+          { value: 'unknown', label: 'Unknown' },
+        ],
+      },
+    ],
+    [providerOptions, sourceOptions],
+  )
+
+  const toolbar = (
+    <div className="flex items-center gap-3">
+      <label
+        htmlFor="only-with-ranking"
+        className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"
+      >
+        <Checkbox
+          id="only-with-ranking"
+          data-testid="only-with-ranking"
+          checked={onlyWithRanking}
+          onCheckedChange={(v) => setOnlyWithRanking(Boolean(v))}
+        />
+        Has ranking
+      </label>
+      {selected.length > 0 && (
+        <Button size="sm" onClick={() => setBulkTestOpen(true)} data-testid="test-selected">
+          <Zap className="size-3.5" /> Test Selected
+          <Badge variant="secondary" className="ml-1">
+            {selected.length}
+          </Badge>
+        </Button>
+      )}
+    </div>
+  )
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
-      <PageHeader title={t('pageTitle')} />
-
-      <Tabs defaultValue="providers">
-        <TabsList variant="line">
-          <TabsTrigger value="providers">{t('tab.providers')}</TabsTrigger>
-          <TabsTrigger value="models">{t('tab.models')}</TabsTrigger>
-        </TabsList>
-
-        {/* Providers Tab */}
-        <TabsContent value="providers">
-          <div className="space-y-4">
-            <div className="flex justify-end">
-              <Button
-                onClick={() => {
-                  setEditingProvider(null)
-                  setProviderFormOpen(true)
-                }}
-              >
-                <PlusIcon className="size-4" data-icon="inline-start" />
-                {tp('addProvider')}
-              </Button>
-            </div>
-
-            {providersLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-16 w-full" />
-                ))}
-              </div>
-            ) : providers && providers.length > 0 ? (
-              <div className="space-y-2">
-                {providers.map((provider) => (
-                  <ProviderCard
-                    key={provider.id}
-                    provider={provider}
-                    onEdit={openEditProvider}
-                    onDelete={() => setDeletingProviderTarget(provider)}
-                    isDeleting={deleteProvider.isPending}
-                    deletingId={deleteProvider.variables}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                icon={<ServerIcon className="size-6" />}
-                title={tp('empty.title')}
-                description={tp('empty.description')}
-              />
-            )}
-          </div>
-        </TabsContent>
-
-        {/* Models Tab */}
-        <TabsContent value="models">
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <SearchInput
-                containerClassName="flex-1 min-w-[200px]"
-                value={modelSearch}
-                onChange={(e) => setModelSearch(e.target.value)}
-                placeholder={t('searchModels')}
-              />
-              <Select
-                value={providerFilter}
-                onValueChange={(val) => {
-                  if (val) setProviderFilter(val)
-                }}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder={t('allProviders')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('allProviders')}</SelectItem>
-                  {providers?.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={capabilityFilter}
-                onValueChange={(val) => {
-                  if (val) setCapabilityFilter(val)
-                }}
-              >
-                <SelectTrigger className="w-[160px]">
-                  <SelectValue placeholder={t('allCapabilities')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t('allCapabilities')}</SelectItem>
-                  <SelectItem value="vision">{t('vision')}</SelectItem>
-                  <SelectItem value="function_calling">{t('functionCalling')}</SelectItem>
-                  <SelectItem value="reasoning">{t('reasoning')}</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button onClick={() => setModelAddOpen(true)}>
-                <PlusIcon className="size-4" data-icon="inline-start" />
-                {t('addModel')}
-              </Button>
-            </div>
-
-            {modelsLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-16 w-full" />
-                ))}
-              </div>
-            ) : filteredModels.length > 0 ? (
-              <div className="space-y-2">
-                {filteredModels.map((model) => (
-                  <Card key={model.id}>
-                    <CardContent className="flex items-center justify-between py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex size-9 items-center justify-center rounded-lg bg-muted text-xs font-bold text-muted-foreground">
-                          {getProviderIcon(model.provider)}
-                        </div>
-                        <div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-medium">{model.display_name}</span>
-                            <Badge variant="outline">{model.provider}</Badge>
-                            {model.context_window && (
-                              <Badge variant="secondary" className="text-[10px]">
-                                {formatContextWindow(model.context_window)}
-                              </Badge>
-                            )}
-                            {model.supports_vision && (
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <EyeIcon className="size-3.5 text-blue-500" />
-                                </TooltipTrigger>
-                                <TooltipContent>{t('vision')}</TooltipContent>
-                              </Tooltip>
-                            )}
-                            {model.supports_function_calling && (
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <WrenchIcon className="size-3.5 text-green-500" />
-                                </TooltipTrigger>
-                                <TooltipContent>{t('functionCalling')}</TooltipContent>
-                              </Tooltip>
-                            )}
-                            {model.supports_reasoning && (
-                              <Tooltip>
-                                <TooltipTrigger>
-                                  <BrainIcon className="size-3.5 text-purple-500" />
-                                </TooltipTrigger>
-                                <TooltipContent>{t('reasoning')}</TooltipContent>
-                              </Tooltip>
-                            )}
-                            {model.agent_count > 0 && (
-                              <Badge className="border-blue-200 bg-blue-50 text-blue-700 text-[10px] dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                                {t('agentCount', { count: model.agent_count })}
-                              </Badge>
-                            )}
-                            {model.is_default && (
-                              <Badge variant="secondary">
-                                <StarIcon className="mr-0.5 size-3" />
-                                {t('defaultBadge')}
-                              </Badge>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground">{model.model_name}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                aria-label={
-                                  model.is_default ? t('alreadyDefault') : t('setDefault')
-                                }
-                                onClick={() => {
-                                  if (!model.is_default) {
-                                    updateModel.mutate({
-                                      id: model.id,
-                                      data: { is_default: true },
-                                    })
-                                  }
-                                }}
-                              >
-                                <StarIcon
-                                  className={`size-4 ${model.is_default ? 'fill-yellow-400 text-yellow-500' : 'text-muted-foreground'}`}
-                                />
-                              </Button>
-                            }
-                          />
-                          <TooltipContent>
-                            {model.is_default ? t('alreadyDefault') : t('setDefault')}
-                          </TooltipContent>
-                        </Tooltip>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t('modelDetail')}
-                          onClick={() => setDetailModel(model)}
-                        >
-                          <InfoIcon className="size-4 text-muted-foreground" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={t('editLabel', { name: model.display_name })}
-                          onClick={() => openEditModel(model)}
-                        >
-                          <PencilIcon className="size-4 text-muted-foreground" />
-                        </Button>
-                        {model.agent_count > 0 ? (
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <span className="inline-flex size-8 items-center justify-center rounded-md opacity-40">
-                                  <Trash2Icon className="size-4 text-muted-foreground" />
-                                </span>
-                              }
-                              aria-label={t('cannotDeleteInUse')}
-                            />
-                            <TooltipContent>{t('cannotDeleteInUse')}</TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t('deleteLabel', { name: model.display_name })}
-                            onClick={() => setDeletingModelTarget(model)}
-                            disabled={deleteModel.isPending && deleteModel.variables === model.id}
-                          >
-                            {deleteModel.isPending && deleteModel.variables === model.id ? (
-                              <Loader2Icon className="size-4 animate-spin" />
-                            ) : (
-                              <Trash2Icon className="size-4 text-muted-foreground" />
-                            )}
-                          </Button>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                icon={<CpuIcon className="size-6" />}
-                title={t('empty.title')}
-                description={t('empty.description')}
-              />
-            )}
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Provider Form Dialog */}
-      <ProviderForm
-        open={providerFormOpen}
-        onOpenChange={(v) => {
-          setProviderFormOpen(v)
-          if (!v) setEditingProvider(null)
-        }}
-        editingProvider={editingProvider}
+      <PageHeader
+        title="Models"
+        description="LLM catalog with pricing, capability flags, and per-credential discovery."
+        action={
+          <Button onClick={() => setAddOpen(true)}>
+            <Plus className="size-4" />
+            New model
+          </Button>
+        }
       />
 
-      {/* Model Add Dialog */}
-      <ModelAddDialog
-        open={modelAddOpen}
-        onOpenChange={setModelAddOpen}
-        providers={providers ?? []}
-      />
-
-      {/* Model Edit Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t('dialogTitle.edit')}</DialogTitle>
-            <DialogDescription>{t('dialogDescription.edit')}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{t('displayName')}</label>
-              <Input value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              onClick={handleEditModelSubmit}
-              disabled={!editDisplayName.trim() || updateModel.isPending}
-            >
-              {updateModel.isPending && <Loader2Icon className="mr-1 size-4 animate-spin" />}
-              {tc('save')}
+      {!isLoading && allModels.length === 0 ? (
+        <EmptyState
+          icon={<Brain className="size-6" />}
+          title="No models yet"
+          description="Discover models from a saved LLM credential, or enter a custom ID."
+          action={
+            <Button onClick={() => setAddOpen(true)}>
+              <Plus className="size-4" />
+              Add model
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Model Detail Modal */}
-      {detailModel && (
-        <ModelDetailModal
-          model={detailModel}
-          open={!!detailModel}
-          onClose={() => setDetailModel(null)}
+          }
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={data}
+          loading={isLoading}
+          searchable
+          searchPlaceholder="Search by name or model ID"
+          globalFilterFn={(row, query) => {
+            const m = row as Model
+            return (
+              m.display_name.toLowerCase().includes(query) ||
+              m.model_name.toLowerCase().includes(query)
+            )
+          }}
+          filters={filters}
+          enableRowSelection
+          onRowSelectionChange={setSelected}
+          toolbar={toolbar}
+          onRowClick={(row) => setEditing(row)}
+          emptyTitle="No models match your filters"
         />
       )}
 
-      {/* Model Delete Confirm */}
-      <AlertDialog
-        open={!!deletingModelTarget}
-        onOpenChange={(v) => !v && setDeletingModelTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('deleteConfirm')}</AlertDialogTitle>
-            <AlertDialogDescription>{deletingModelTarget?.display_name}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                if (deletingModelTarget) {
-                  deleteModel.mutate(deletingModelTarget.id)
-                  setDeletingModelTarget(null)
-                }
-              }}
-            >
-              {tc('delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ModelAddDialog open={addOpen} onOpenChange={setAddOpen} />
+      <ModelEditDialog
+        model={editing}
+        open={!!editing}
+        onOpenChange={(open) => !open && setEditing(null)}
+      />
+      <ModelTestDialog
+        model={testing}
+        open={!!testing}
+        onOpenChange={(open) => !open && setTesting(null)}
+      />
+      <ModelTestBulkDialog models={selected} open={bulkTestOpen} onOpenChange={setBulkTestOpen} />
+    </div>
+  )
+}
 
-      {/* Provider Delete Confirm */}
-      <AlertDialog
-        open={!!deletingProviderTarget}
-        onOpenChange={(v) => !v && setDeletingProviderTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{tp('deleteConfirm')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('deleteProviderWarning', { count: deletingProviderTarget?.model_count ?? 0 })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{tc('cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() => {
-                if (deletingProviderTarget) {
-                  deleteProvider.mutate(deletingProviderTarget.id)
-                  setDeletingProviderTarget(null)
-                }
-              }}
-            >
-              {tc('delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+function HealthCell({ entry }: { entry: HealthCheckEntry | undefined }) {
+  if (!entry) {
+    return <StatusChip variant="unknown" />
+  }
+  return (
+    <div className="flex flex-col items-start gap-0.5">
+      <StatusChip variant={entry.status} />
+      <span className="text-[10px] text-muted-foreground">
+        {formatRelativeTime(entry.checked_at)}
+      </span>
+    </div>
+  )
+}
+
+function formatRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  if (Number.isNaN(then)) return iso
+  const deltaSec = Math.floor((Date.now() - then) / 1000)
+  if (deltaSec < 60) return `${deltaSec}s ago`
+  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}m ago`
+  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}h ago`
+  return `${Math.floor(deltaSec / 86400)}d ago`
+}
+
+/**
+ * True when at least one benchmark score is present. Used by the "Has
+ * ranking" toggle so we can hide unmatched/Custom-ID models on demand.
+ */
+function modelHasAnyRanking(model: Model): boolean {
+  const r = model.rankings
+  if (!r) return false
+  return (
+    typeof r.lmarena === 'number' ||
+    typeof r.livebench === 'number' ||
+    typeof r.aa_index === 'number'
+  )
+}
+
+function CapabilityIcons({ model }: { model: Model }) {
+  const items = [
+    {
+      key: 'vision',
+      icon: Eye,
+      enabled: Boolean(model.supports_vision),
+      title: 'Vision',
+    },
+    {
+      key: 'tools',
+      icon: Wrench,
+      enabled: Boolean(model.supports_function_calling),
+      title: 'Function calling',
+    },
+    {
+      key: 'reasoning',
+      icon: Lightbulb,
+      enabled: Boolean(model.supports_reasoning),
+      title: 'Reasoning',
+    },
+  ].filter((i) => i.enabled)
+
+  if (items.length === 0) return null
+
+  return (
+    <div className="mt-0.5 flex items-center gap-1 text-muted-foreground">
+      {items.map(({ key, icon: Icon, title }) => (
+        <Icon key={key} className="size-3" aria-label={title} />
+      ))}
     </div>
   )
 }

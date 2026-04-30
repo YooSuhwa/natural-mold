@@ -67,7 +67,7 @@ def build_read_tools(
             {
                 "name": link.tool.name,
                 "description": link.tool.description,
-                "type": link.tool.type,
+                "type": link.tool.definition_key,
             }
             for link in agent.tool_links
         ]

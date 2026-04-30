@@ -1,0 +1,87 @@
+[2026-04-24T07:20:40Z] satya PROJECT_START "백로그 E M6.1 — 옵션 D + MCP legacy drop"
+[2026-04-24T07:21:00Z] satya WORKTREE_READY feature/backlog-e-m6-1 @ 18d98be
+[2026-04-24T07:21:00Z] satya ARCHIVE_M6 이전 M6 state 파일 → tasks/archive/*-backlog-e-m6.*
+[2026-04-24T07:21:00Z] satya MILESTONE_CREATED M1,M2,M3,M4,M5,M6
+[2026-04-24T07:21:00Z] satya TEAM_COMPOSITION 풀스택 리팩토링 → 피차이 PO-support 제외, 4인(베조스/젠슨/저커버그/사티아). 팀쿡 제외(UX 기존 유지), 피차이는 이미 M6에서 m12 스펙 종결 — M6.1 계획서가 그 역할 대신
+[2026-04-24T07:31:39Z] bezos MILESTONE_DONE M1 deletion-analysis → tasks/deletion-analysis-e-m6-1.md (판정=GREEN, BE 제거 8파일 / FE 제거 2파일+cleanup / R 2건 / N 3건 / 순감 ~-326 LOC, scope creep 4건 플래그)
+[2026-04-24T07:35:00Z] bezos MILESTONE_DONE M1 deletion-analysis → tasks/deletion-analysis-e-m6-1.md (판정=GREEN, backend 57건/9파일 + frontend 53건/10파일, 순감소 -326 LOC 예상)
+[2026-04-24T07:35:00Z] satya M1_ACK 판정=GREEN 수용. 젠슨 M2 단독 착수. 저커버그 M4는 M2 PR 직후 병렬. M3/M5는 각각 M2/M4 이후.
+[2026-04-24T07:38:37Z] jensen MILESTONE_DONE M2 patch-tool-connection-id → schemas/tool.py(ToolUpdate +extra=forbid) + services/tool_service.py(update_tool, 검증 5단) + routers/tools.py(PATCH /{tool_id}) + tests/test_tools.py(+9 PATCH 테스트). pytest 633 PASS (baseline 624 → 633), ruff clean. 저커버그 M4 착수 가능.
+[2026-04-24T07:42:00Z] jensen MILESTONE_DONE M2 patch-tool-connection-id → commit 10c55dc (ruff clean, pytest 633 PASS +9 / baseline 624, 회귀 0)
+[2026-04-24T07:42:00Z] satya M2_ACK 병렬 착수: 젠슨 M3 (백엔드 MCP drop), 저커버그 M4 (프론트 옵션 D + first-bind)
+[2026-04-24T07:55:00Z] zuckerberg MILESTONE_DONE M4 custom-first-bind → frontend/src/lib/api/tools.ts(+update PATCH), frontend/src/lib/hooks/use-tools.ts(+useUpdateTool), frontend/src/components/connection/connection-binding-dialog.tsx(CustomBody: needsOptionDFirstBind 가드 제거, first-bind 시 findOrCreate→updateTool 체인). pnpm lint PASS 0 warnings, pnpm build PASS 15 routes. McpBody는 스코프 외 보존 (M5 담당).
+[2026-04-24T07:50:00Z] zuckerberg MILESTONE_DONE M4 custom-first-bind → commit 87b173e (pnpm lint 0 warnings, build 15 routes PASS). 스코프 경계 준수.
+[2026-04-24T07:50:00Z] satya M4_ACK M5는 M3 완료 대기 (저커버그 idle).
+[2026-04-24T08:25:00Z] jensen MILESTONE_DONE M3 backend-mcp-legacy-drop → alembic m13_drop_mcp_legacy(preflight + FK + 컬럼 + 테이블 drop) + models/tool.py MCPServer/mcp_server_id/mcp_server 제거 + schemas/tool.py MCPServer* + ToolResponse.mcp_server_id 제거 + services/tool_service.py 6개 MCP CRUD 제거 + services/credential_service.py resolve_server_auth + mcp_server_count 제거 + services/chat_service.py MCP fallback fail-closed (ToolConfigError) + routers/tools.py 4개 mcp-server 라우트 제거 + POST /{tool_id}/test 신설(connection 경유) + error_codes mcp_server_not_found 제거 + legacy_invariants m13 invariant + main.py startup guard 확장 + frontend types CredentialUsage.mcp_server_count 제거. pytest 621 PASS, ruff clean.
+[2026-04-24T08:25:00Z] jensen NOTE_DEV_DB_BLOCKED dev PG에 m9-skip된 stale MCP tools 7건(Hancom-GW 서버) 존재 → m13 preflight가 정확히 abort. credential_auth_recoverable=False였던 이관 실패분이라 backfill 불가; 사티아 결정 필요(삭제 vs 수동 connection 생성). 코드/테스트는 영향 없음.
+[2026-04-25T01:55:00Z] satya DEV_DB_CLEANUP 사용자가 psql로 stale 7 tools + Hancom-GW mcp_server 삭제 완료. stale_mcp_tools=0 확인. m13 round-trip 준비 완료.
+[2026-04-25T02:05:00Z] satya COURSE_CORRECTION M5 저커버그 scope 확인 — MCP 신규 등록 경로(POST /api/tools/mcp-servers)는 M3에서 drop됨. 옵션 1 승인: AddToolDialog MCP 탭 + /connections "연결 추가" 비활성화, useRegisterMCPServer 제거. MCP 신규 등록 UI는 M6.1 이후 후속 PR. 기존 MCP tool credential rotate 경로는 유지.
+[2026-04-25T13:30] 저커버그 MILESTONE_START M5 프론트 MCP re-wire + BindingDialogShell 추출 + MCP 파일 정리
+[2026-04-25T15:45] 저커버그 ESCALATION AddToolDialog MCP 탭 scope 확인 요청 (backend /mcp-server/* drop 여파)
+[2026-04-25T16:00] team-lead DECISION 옵션 1 승인 — MCP 탭 제거 + McpSection "연결 추가" 비활성화 + 신규 등록 경로는 후속 작업 이월
+[2026-04-25T16:30] 저커* MILESTONE_DONE M5 lint+build PASS, grep residue 0
+[2026-04-25T02:10:00Z] zuckerberg MILESTONE_DONE M5 frontend-mcp-rewire → commit b24ef1b (pnpm lint clean, build 14 pages PASS, residue 0, AddToolDialog MCP 탭 + /connections McpSection 버튼 비활성화, BindingDialogShell 추출, triggerContext 제거)
+[2026-04-25T02:10:00Z] satya M5_ACK 베조스 M6 통합 검증 착수 지시. dev PG round-trip 준비 완료.
+[2026-04-25T08:15:00Z] bezos MILESTONE_DONE M6 integration-verification → tasks/verification-report-e-m6-1.md (판정=GREEN). ruff clean / pytest 621 / lint 0 / build 14 pages / alembic m12↔m13 round-trip PASS / DB schema 3 invariant PASS (mcp_server_id 없음, mcp_servers 없음, FK 2건 only) / backend residue 6건 의도 / frontend residue 0 / PATCH tool 9건 + fail-closed 2건 회귀 PASS / scope creep 0.
+[2026-04-25T08:15:00Z] bezos DELIVERABLES HANDOFF.md 전면 갱신 + tasks/manual-e2e-e-m6-1.md (5 시나리오) + tasks/verification-report-e-m6-1.md. 사용자 다음 작업: 시나리오 1/2 브라우저 확인 + git push + PR 생성.
+[2026-04-25T02:20:00Z] satya FINAL_REVIEW 스태프 엔지니어 승인 가능 — 판정 GREEN 수용. 문서 커밋 + 팀 해산 진행.
+
+[2026-04-26T18:00] satya PROJECT_START "Builder v3 — 8-phase StateGraph + Chat UI 통합"
+[2026-04-26T18:00] satya BRANCH_CREATED feature/builder-v3-state-graph from main@e5876f2
+[2026-04-26T18:00] satya MILESTONE_CREATED M0,M1,M2,M3,M4,M5,M6
+[2026-04-26T18:00] satya MILESTONE_DONE M0 사일로 초기화 (브랜치+CHECKPOINT+progress.txt)
+[2026-04-26T18:15] bezos MILESTONE_DONE M1 deletion-analysis.md 완료 (GREEN, 23K)
+[2026-04-26T18:15] pichai MILESTONE_DONE M2 builder-v3-architecture.md ADR 완료 (GREEN)
+[2026-04-26T18:15] jensen MILESTONE_START M3-1 builder_v3 핵심 인프라 구현
+[2026-04-26T18:45] jensen MILESTONE_DONE M3-1,2,3 백엔드 builder_v3 구현 완료 (graph.py, 8 nodes, router, image_gen)
+[2026-04-26T18:50] jensen MILESTONE_DONE M3-4 pytest 12 passed, 전체 668 passed (회귀 0)
+[2026-04-26T18:50] zuckerberg MILESTONE_START M4-1 use-chat-runtime 추상화
+[2026-04-26T19:30] zuckerberg MILESTONE_DONE M4-1 use-chat-runtime resumeFn 추상화 + SSE 함수 신규
+[2026-04-26T19:30] timcook+zuckerberg MILESTONE_DONE M4-2 Tool UI 5종 (phase-timeline, recommendation-approval, prompt-approval, image-generation, draft-config)
+[2026-04-26T19:30] zuckerberg MILESTONE_DONE M4-3 conversational/page.tsx AssistantThread 기반 재작성
+[2026-04-26T19:30] bezos VERIFICATION_PASS frontend pnpm build 성공, lint 0 error
+[2026-04-26T19:30] bezos VERIFICATION_PASS backend 668 passed, 회귀 0
+[2026-04-26T19:30] satya MILESTONE_DONE M5 통합 검증 (수동 브라우저 E2E는 사용자 실행 대상)
+[2026-04-26T19:35] satya CLEANUP frontend v2 _components/* + use-builder-runtime + stream-builder 제거
+[2026-04-26T19:35] satya MILESTONE_DONE M6 정리 (backend v2는 별도 PR에서 제거 예정)
+[2026-04-26T19:35] satya PROJECT_DONE Builder v3 구현 완료
+[2026-04-27T05:04:19Z] satya PROJECT_START 메인 대시보드 디자인 개선 (Hero 캐릭터 + Quick Action 색상 + 팁 박스)
+[2026-04-27T05:04:19Z] satya MILESTONE_CREATED M_DASH_1=구현 M_DASH_2=verify
+[2026-04-27T05:08:00Z] zuckerberg MILESTONE_DONE M_DASH_1 page.tsx + ko.json 수정 (lint+build PASS)
+[2026-04-27T05:08:00Z] satya VERIFICATION_PASS M_DASH_2 git diff 검토 완료, plan과 일치
+
+[2026-04-27T10:00] satya PROJECT_START "채팅 화면 박스 카드 레이아웃 (Image #22)"
+[2026-04-27T10:00] satya MILESTONE_CREATED M_CHAT_BOX_1,2,3,4,5
+[2026-04-27T10:00] satya TEAM_FORMED 저커버그 단독 (UI 리디자인 + plan 매우 상세)
+[2026-04-27T10:00] satya REFERENCE plan=~/.claude/plans/image-22-distributed-parasol.md
+[2026-04-27T10:30] satya FALLBACK 자식 agent가 plan mode 상속 → 메인에서 직접 구현 진행
+[2026-04-27T10:45] satya MILESTONE_DONE M_CHAT_BOX_4 ko.json i18n 키 4개 추가 (yesterday, comingSoon.trash, page.menu, conversationList.{label,trash})
+[2026-04-27T10:50] satya MILESTONE_DONE M_CHAT_BOX_3 format-relative-time.ts 신규 + AssistantThread MessageTimestamp 컴포넌트 + showMessageTimestamp prop
+[2026-04-27T10:55] satya MILESTONE_DONE M_CHAT_BOX_2 ConversationList 4-zone 재구성 (에이전트 카드 + 대화 라벨 + 목록 + 휴지통 풋터), agentImageUrl/agentDescription props 추가
+[2026-04-27T11:00] satya MILESTONE_DONE M_CHAT_BOX_1 page.tsx 박스 레이아웃 (bg-muted/30+p-3+gap-3, rounded-xl 카드 2개) + 헤더 단순화 (⋯ 드롭다운)
+[2026-04-27T11:05] satya VERIFICATION_PASS pnpm build PASS (16 routes, type-check 0 error), pnpm lint PASS (exit 0)
+[2026-04-27T11:05] satya MILESTONE_DONE M_CHAT_BOX_5 통합 검증 완료
+[2026-04-27T11:05] satya PROJECT_DONE 채팅 화면 박스 카드 레이아웃 (Image #22) — 5개 마일스톤 단일 build cycle로 완료. 타입 에러 1건(use-intl Formatter ↔ Intl 호환) 즉시 fix.
+
+[2026-04-28T00:00] satya PROJECT_START "Agent Edit Workbench — 통합 워크벤치 리뉴얼"
+[2026-04-28T00:00] satya BRANCH_CREATED feature/agent-edit-workbench from main@0609210
+[2026-04-28T00:00] satya MILESTONE_CREATED M1,M2,M3,M4,M5,M6,M7,M8
+[2026-04-28T00:00] satya TEAM_COMPOSITION 풀스택 → 젠슨(BE m16) + 저커버그(FE 4 마일스톤) + 베조스(verify) + 사티아(design+deletion)
+[2026-04-28T00:00] satya REFERENCE plan=~/.claude/plans/image-41-ticklish-sky.md
+[2026-04-28T11:35] jensen MILESTONE_DONE M1 backend opener_questions — m16 migration applied, 4 tests added, 628/628 pytest PASS, ruff clean
+[2026-04-28T00:30] satya M1_ACK 젠슨 M1 PASS 수용. 628 pytest passed (회귀 0), ruff clean, m16 라운드트립 OK. BE 계약 저커버그에게 forward (PUT 메서드 + 빈 배열 클리어).
+[2026-04-28T11:36:55Z] zuckerberg MILESTONE_DONE M3 페이지 골격 + 헤더 인라인 (pnpm build PASS)
+[2026-04-28T11:41:58Z] zuckerberg MILESTONE_DONE M4 좌측 폼 모드 + 다이얼로그 4종 (build+lint PASS, 폐기 3건 제거)
+[2026-04-28T11:47:08Z] zuckerberg MILESTONE_DONE M5 좌측 비주얼 inline + 우측 5탭 (build+lint PASS)
+[2026-04-28T11:49:09Z] zuckerberg MILESTONE_DONE M6 새 채팅 오프너 + 타입/훅/i18n (build+lint PASS)
+[2026-04-28T11:49:09Z] zuckerberg DRI_COMPLETE M3~M6 4개 마일스톤 모두 완료
+[2026-04-28T01:00] satya M3~M6_ACK 저커버그 4 마일스톤 PASS 수용. pnpm build/lint PASS, 폐기 파일 잔존 import 0, AssistantPanel showHeader prop / TriggersTab 재배치 / VisualSettingsFlow inline 모두 회귀 위험 없음. 잔여 5건은 베조스 M7에서 평가.
+[2026-04-28T11:54:14Z] zuckerberg COURSE_CORRECTION Agent.opener_questions를 optional → required(string[]|null)로 타이트닝 (젠슨 BE 계약 일치)
+[2026-04-28T00:00] bezos VERIFICATION_PASS M7 자동 게이트 전체 PASS (backend pytest 628, ruff clean, alembic OK, frontend build OK, lint clean)
+[2026-04-28T00:00] bezos MILESTONE_DONE M7 통합 검증 완료 — 판정 YELLOW, BLOCKER 0 / MAJOR 2 (visual dual-save, test panel uses Fix endpoint) / MINOR 1 (image remove placeholder), 산출물 tasks/verification-workbench.md
+[2026-04-28T12:00:35Z] zuckerberg HOTFIX_DONE M7 dual-save+test-banner (build+lint PASS)
+[2026-04-28T01:30] satya HOTFIX_ACK 저커버그 MAJOR 2건 fix 완료. dual-save → embedded+controlled hybrid 패턴, TestChatPanel amber MVP 배너. pnpm build/lint PASS. 베조스 재검증 지시.
+[2026-04-28T01:00] bezos VERIFICATION_PASS M7 GREEN — hotfix 재검증 완료 (visual dual-save 해소: embedded+controlled props, test panel banner 추가). 자동 게이트 PASS, MINOR 1건만 이연.
+[2026-04-28T01:00] bezos MILESTONE_DONE M7 통합 검증 GREEN — M8 진행 가능
+[2026-04-28T02:00] satya MILESTONE_DONE M8 HANDOFF.md 갱신 (세션 6 + 세션 5 보존), tasks/lessons.md 신규 작성, 베조스/저커버그 shutdown 요청
+[2026-04-28T02:00] satya PROJECT_DONE Agent Edit Workbench — 8 마일스톤 모두 done. 자동 게이트 GREEN, MAJOR 0/MINOR 1(이미지 제거 placeholder, follow-up). 사용자 수동 검증 + 커밋/PR 대기.

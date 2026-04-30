@@ -8,6 +8,7 @@ from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.mcp_tool import AgentMcpToolLink
 from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink
 
@@ -24,6 +25,11 @@ class Agent(Base):
     description: Mapped[str | None] = mapped_column(Text)
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id"), nullable=False)
+    # Optional FK to the Credential supplying the LLM API key. SET NULL on
+    # credential delete so the agent stays editable but inactive until rebound.
+    llm_credential_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     is_favorite: Mapped[bool] = mapped_column(default=False, nullable=False)
     model_params: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -32,6 +38,13 @@ class Agent(Base):
     )
     opener_questions: Mapped[list[str] | None] = mapped_column(
         JSON, nullable=True, default=list
+    )
+    # Ordered fallback model ids (stringified UUIDs). Tried in sequence when
+    # the primary ``model_id`` raises a transient/auth error during
+    # ``create_chat_model_with_fallback``. ``None`` and ``[]`` both mean
+    # "no fallback" — the runtime then surfaces the original error.
+    model_fallback_list: Mapped[list[str] | None] = mapped_column(
+        JSON, nullable=True
     )
     image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("templates.id"))
@@ -47,8 +60,17 @@ class Agent(Base):
 
     user: Mapped[User] = relationship(back_populates="agents")  # type: ignore[name-defined]
     model: Mapped[Model] = relationship()  # type: ignore[name-defined]
+    # The Credential providing the LLM API key. ``lazy='select'`` so callers
+    # explicitly opt into the join via ``selectinload``.
+    llm_credential: Mapped[Credential | None] = relationship(  # type: ignore[name-defined]  # noqa: F821
+        "Credential", lazy="select", foreign_keys="[Agent.llm_credential_id]"
+    )
     tool_links: Mapped[list[AgentToolLink]] = relationship(
         cascade="all, delete-orphan",
+    )
+    mcp_tool_links: Mapped[list[AgentMcpToolLink]] = relationship(
+        cascade="all, delete-orphan",
+        lazy="selectin",
     )
     skill_links: Mapped[list[AgentSkillLink]] = relationship(
         cascade="all, delete-orphan",

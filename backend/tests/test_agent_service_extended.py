@@ -24,17 +24,18 @@ async def _seed_all(db: AsyncSession) -> tuple[Model, Tool, Skill, Template]:
 
     tool = Tool(
         name="Web Search",
-        type="prebuilt",
-        is_system=True,
+        definition_key="builtin:web_search",
         description="Search the web",
     )
     db.add(tool)
 
     skill = Skill(
         name="test_skill",
+        slug="test-skill",
         user_id=TEST_USER_ID,
         description="A test skill",
-        content="skill content here",
+        kind="text",
+        storage_path="/tmp/skills/test/SKILL.md",
     )
     db.add(skill)
 

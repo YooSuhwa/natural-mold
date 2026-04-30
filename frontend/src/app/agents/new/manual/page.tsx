@@ -19,7 +19,8 @@ import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import { toggleSetItem } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { VisualSettingsFlow } from '@/components/agent/visual-settings/visual-settings-flow'
@@ -45,6 +46,7 @@ export default function ManualCreationPage() {
   const [systemPrompt, setSystemPrompt] = useState('')
   const [modelId, setModelId] = useState('')
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
+  const [selectedMcpToolIds, setSelectedMcpToolIds] = useState<Set<string>>(new Set())
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set())
   const [selectedSubAgentIds, setSelectedSubAgentIds] = useState<Set<string>>(new Set())
   const [temperature, setTemperature] = useState(0.7)
@@ -73,6 +75,7 @@ export default function ManualCreationPage() {
       system_prompt: systemPrompt,
       model_id: modelId,
       tool_ids: Array.from(selectedToolIds),
+      mcp_tool_ids: Array.from(selectedMcpToolIds),
       skill_ids: Array.from(selectedSkillIds),
       sub_agent_ids: Array.from(selectedSubAgentIds),
       middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
@@ -158,22 +161,16 @@ export default function ManualCreationPage() {
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="sticky top-0 z-10 flex justify-center overflow-hidden bg-background">
-            <TabsList variant="line" className="h-auto">
-              <TabsTrigger
-                value="form"
-                className="gap-1 px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
-              >
+            <LineTabsList>
+              <LineTabsTrigger value="form" className="gap-1">
                 <ClipboardListIcon className="size-3.5" />
                 {t('tabs.form')}
-              </TabsTrigger>
-              <TabsTrigger
-                value="visual"
-                className="gap-1 px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
-              >
+              </LineTabsTrigger>
+              <LineTabsTrigger value="visual" className="gap-1">
                 <WorkflowIcon className="size-3.5" />
                 {t('tabs.visual')}
-              </TabsTrigger>
-            </TabsList>
+              </LineTabsTrigger>
+            </LineTabsList>
           </div>
           <TabsContent value="form" className="flex flex-1 min-h-0 flex-col overflow-hidden">
             <FormMode
@@ -199,6 +196,8 @@ export default function ManualCreationPage() {
               }}
               selectedToolIds={selectedToolIds}
               onToggleTool={(id) => setSelectedToolIds((prev) => toggleSetItem(prev, id))}
+              selectedMcpToolIds={selectedMcpToolIds}
+              onToggleMcpTool={(id) => setSelectedMcpToolIds((prev) => toggleSetItem(prev, id))}
               selectedSkillIds={selectedSkillIds}
               onToggleSkill={(id) => setSelectedSkillIds((prev) => toggleSetItem(prev, id))}
               selectedMiddlewareTypes={selectedMiddlewareTypes}
@@ -225,6 +224,7 @@ export default function ManualCreationPage() {
                   topP,
                   maxTokens,
                   selectedToolIds,
+                  selectedMcpToolIds,
                   selectedSkillIds,
                   selectedSubAgentIds,
                   selectedMiddlewareTypes,
@@ -239,6 +239,8 @@ export default function ManualCreationPage() {
                   onMaxTokensChange: setMaxTokens,
                   onToggleTool: (id) =>
                     setSelectedToolIds((prev) => toggleSetItem(prev, id)),
+                  onToggleMcpTool: (id) =>
+                    setSelectedMcpToolIds((prev) => toggleSetItem(prev, id)),
                   onToggleSkill: (id) =>
                     setSelectedSkillIds((prev) => toggleSetItem(prev, id)),
                   onToggleSubAgent: (id) =>

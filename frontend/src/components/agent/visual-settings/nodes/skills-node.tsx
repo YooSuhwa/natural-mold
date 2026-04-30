@@ -6,7 +6,7 @@ import { PlusIcon, TrashIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
-import { AddSkillsDialog } from '../dialogs/add-skills-dialog'
+import { ToolsSkillsDialog } from '../dialogs/tools-skills-dialog'
 import type { Skill } from '@/lib/types'
 
 export interface SkillsNodeData {
@@ -69,12 +69,19 @@ export function SkillsNode({ data }: { data: SkillsNodeData }) {
         </div>
       </div>
 
-      <AddSkillsDialog
+      <ToolsSkillsDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        allTools={[]}
+        selectedToolIds={new Set()}
+        onToggleTool={() => {}}
+        selectedMcpToolIds={new Set()}
+        onToggleMcpTool={() => {}}
         allSkills={allSkills}
         selectedSkillIds={skillIds}
         onToggleSkill={onToggleSkill}
+        defaultTab="skills"
+        mode="skills"
       />
     </>
   )

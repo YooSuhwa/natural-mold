@@ -1,469 +1,184 @@
-# Builder v2 → v3 마이그레이션: 삭제 분석 (Musk Step 2)
+# Deletion Analysis — Greenfield Credentials Rewrite
 
-**분석 수행자**: 베조스 (Bezos — QA/Quality DRI)  
-**분석일**: 2026-04-26  
-**상태**: GREEN ✓ (분석 완료, 분류 명확)
-
----
-
-## 요약
-
-Builder v2 (7-phase 자동 파이프라인)에서 v3 (LangGraph StateGraph 8-phase + 채팅 UI 통합)로 마이그레이션할 때:
-
-- **보존 (K)**: 11개 항목 — LLM 프롬프트, JSON 스키마, 공통 헬퍼, 카탈로그 로직
-- **이식 (M)**: 8개 항목 — 서브에이전트 로직, UI 패턴, 라우터/서비스 구조
-- **삭제 (D)**: 5개 항목 — orchestrator.py, phase-timeline, stream-builder 등 v2 전용 인프라
-
-**즉시 삭제 불가 항목**: 0개 (모두 v3 구현 완료 후)  
-**추가 조사 필요**: 0개 (의존성 명확)
+**DRI**: 베조스
+**날짜**: 2026-04-29
+**참조**: `PLAN.md`, `docs/design-docs/adr-009-greenfield-credentials.md`
+**판정**: **GREEN** — 폐기 대상이 명확하고, 신규 코드와 분리되어 충돌 위험 낮음
 
 ---
 
-## 상세 분석
+## 1. 백엔드 폐기 대상
 
-### BACKEND
+### 1.1 서비스 / 모델 / 라우터 (대량 폐기)
 
-#### 1. `backend/app/agent_runtime/builder/orchestrator.py`
-**상태**: **D (삭제 예정)**
+| 파일 | LOC | 폐기 사유 | 의존성 |
+|---|---:|---|---|
+| `backend/app/services/encryption.py` | ~80 | Fernet → Cipher V2 교체 | `app/security/cipher.py` 신규로 흡수 |
+| `backend/app/services/credential_service.py` | ~250 | 신규 도메인으로 재작성 | M2에서 `app/credentials/` 도메인 모듈로 분산 |
+| `backend/app/services/credential_registry.py` | ~120 | 신규 `CredentialRegistry`로 교체 | `app/credentials/registry.py` |
+| `backend/app/services/connection_service.py` | ~350 | Connection 이원화 폐기 | Tool이 직접 credential_id FK 보유 |
+| `backend/app/models/connection.py` | ~70 | Connection 테이블 폐기 | m13에서 DROP |
+| `backend/app/routers/connections.py` | ~180 | Connection 라우터 폐기 | UI에서 Credentials 페이지로 통합 |
+| `backend/app/seed/prebuilt_connections.py` | ~150 | env→Connection 시드 폐기 | `app/seed/bootstrap_from_env.py`로 교체 |
+| `backend/scripts/google_oauth_setup.py` | ~100 | OAuth2 매뉴얼 스크립트 폐기 | OAuth2 라우터로 통합 |
 
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | D | 7-phase StateGraph 파이프라인. v3에서 8-phase로 완전 재설계됨. |
-| 라인 43-70: `BuilderState` TypedDict | D | v3는 `BuilderState` (state.py)로 이동하며 필드 확대 (image_url, todos, last_revision_message 추가). |
-| 라인 77-97: `phase1_init()` | M(부분) | 로직은 유사하지만, v3에서 진입/완료 메시지 + 진행 상황 카드 emit 추가. |
-| 라인 100-140: `phase2_intent()` | M(부분) | intent_analyzer 호출 로직 재사용, 하지만 v3에서는 ask_user 루프 추가. |
-| 라인 143-197: `phase3_tools()` | M(부분) | tool_recommender 호출 재사용, 하지만 v3에서는 승인/수정 interrupt 루프 추가. |
-| 라인 200-257: `phase4_middlewares()` | M(부분) | middleware_recommender 호출 재사용, v3에서 승인/수정 루프 추가. |
-| 라인 260-305: `phase5_prompt()` | M(부분) | prompt_generator 호출 재사용, v3에서 승인/수정 루프 추가. |
-| 라인 308-338: `phase6_config()` + `phase7_preview()` | M(부분) | draft_config 조립 로직 재사용, v3의 phase7 + phase8 분리. |
-| 라인 373-408: `build_builder_graph()` | D | StateGraph 토폴로지는 v3에서 새로 정의 (phase1→...→8 + router 분기). |
-| 라인 419-462: `run_builder_pipeline()` | M(부분) | SSE 이벤트 yield 패턴은 v3에서도 유사하지만, 노드 구조 변경됨. |
+**소계**: ~1,300 LOC 감소
 
-**의존성 정리**:
-- `builder_service.py` L14에서 `run_builder_pipeline` import → v3 graph.astream으로 대체
-- `tests/test_builder_sub_agents.py`는 서브에이전트만 테스트하므로 영향 최소
+### 1.2 Agent Runtime 도구 모듈 (재배선/이전)
 
-**폐기 시점**: v3 graph.py 구현 + 라우터 통합 완료 후
+| 파일 | LOC | 폐기 사유 |
+|---|---:|---|
+| `backend/app/agent_runtime/naver_tools.py` | ~150 | `app/tools/definitions/naver_search.py`로 이전 |
+| `backend/app/agent_runtime/google_tools.py` | ~120 | `app/tools/definitions/google_search.py`로 이전 |
+| `backend/app/agent_runtime/google_workspace_tools.py` | ~280 | `gmail_send/google_calendar_event/google_chat_message.py`로 분할 |
+| `backend/app/agent_runtime/env_var_resolver.py` | ~90 | `app/credentials/interpolation.py`가 통합 처리 |
 
----
+**소계**: ~640 LOC 감소
 
-#### 2. `backend/app/agent_runtime/builder/sub_agents/intent_analyzer.py`
-**상태**: **K (보존) + 프롬프트 재사용**
+### 1.3 Agent Runtime 재배선 (수정, 폐기 아님)
 
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | K | 의도 분석 로직 그대로 보존. |
-| 라인 21: `SYSTEM_PROMPT` 로드 | K | `builder/prompts/intent_analyzer.md` 프롬프트 텍스트 완전 보존. v3 phase2 노드에서 동일하게 호출. |
-| 라인 37-58: `analyze_intent()` 함수 | K | 함수 시그니처, JSON 스키마 (AgentCreationIntent), fallback 로직 모두 보존. v3 phase2_intent.py에서 직접 import 재사용. |
-| 라인 24-34: `_build_task_description()` | K | 프롬프트 작성 로직 보존. v3에서도 동일 사용. |
+| 파일 | 변경 내용 |
+|---|---|
+| `backend/app/services/chat_service.py` | `build_tools_config`, `get_agent_with_tools` 전면 재작성 |
+| `backend/app/agent_runtime/executor.py` | import 정리 |
+| `backend/app/agent_runtime/tool_factory.py` | `app/tools/runner.py` 위임 |
+| `backend/app/agent_runtime/model_factory.py` | `agent.llm_credential` 복호화 경로 추가 |
+| `backend/app/agent_runtime/trigger_executor.py` | 신규 chat_service 호출 + **L44-46 prefetch 누락 버그 동시 수정** |
+| `backend/app/agent_runtime/creation_agent.py` | 의존성만 따라감 |
+| `backend/app/agent_runtime/mcp_client.py` | `${credential.<field>}` 템플릿을 `app/credentials/interpolation.py` 위임 |
 
-**위치 변경 필요 없음**: helpers.py의 `invoke_with_json_retry()` 호출은 v3에서도 동일하게 사용.
+### 1.4 신규 파일 요약
 
----
+- Security: 2 (`cipher`, `key_provider`)
+- Credential 도메인: 7 + External Secrets 4 + 정의 11 = **22**
+- Tools: 4 + 정의 6 = **10**
+- MCP: 4
+- Skills: 4
+- 모델: 7
+- 라우터: 4
+- 시드: 1
+- 마이그레이션: 1 (m13)
+- 테스트: 9
 
-#### 3. `backend/app/agent_runtime/builder/sub_agents/tool_recommender.py`
-**상태**: **K (보존) + 프롬프트 재사용**
+**소계**: ~64 신규 파일
 
-| 항목 | 분류 | 설명 |
-|-----|------|------|
-| **파일 전체** | K | 도구 추천 로직 그대로 보존. |
-| 라인 22: `SYSTEM_PROMPT` | K | `builder/prompts/tool_recommender.md` 프롬프트 완전 보존. v3 phase3_tools.py에서 동일 호출. |
-| 라인 52-85: `recommend_tools()` | K | 함수 시그니처, ToolRecommendation JSON 스키마, 카탈로그 필터링 로직 모두 보존. |
-| 라인 25-49: 헬퍼 함수들 | K | 카탈로그 포맷팅, 작업 설명 생성 로직 보존. |
+### 1.5 백엔드 LOC 변화 예상
 
-**의존성**: v3 phase3_tools.py에서 직접 import하여 재사용.
+- 폐기: −1,940
+- 신규: +5,200 (도메인 + 테스트 포함)
+- **순증**: +3,260
 
----
-
-#### 4. `backend/app/agent_runtime/builder/sub_agents/middleware_recommender.py`
-**상태**: **K (보존) + 프롬프트 재사용**
-
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | K | 미들웨어 추천 로직 그대로 보존. |
-| 라인 27: `SYSTEM_PROMPT` | K | `builder/prompts/middleware_recommender.md` 프롬프트 완전 보존. v3 phase4_middlewares.py에서 동일 호출. |
-| 라인 64-96: `recommend_middlewares()` | K | 함수 시그니처, MiddlewareRecommendation 스키마, 카탈로그 검증 로직 보존. |
+순증 사유: OAuth2 자동 refresh, External Secrets, 키 로테이션, audit log, 정의 카탈로그 11개, 도구 정의 6개 등 **신규 기능 도입**.
 
 ---
 
-#### 5. `backend/app/agent_runtime/builder/sub_agents/prompt_generator.py`
-**상태**: **K (보존) + 프롬프트 재사용**
+## 2. 프론트엔드 폐기 대상
 
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | K | 시스템 프롬프트 생성 로직 그대로 보존. |
-| 라인 25: `SYSTEM_PROMPT` | K | `builder/prompts/prompt_generator.md` 프롬프트 완전 보존. v3 phase5_prompt.py에서 동일 호출. |
-| 라인 88-163: `generate_system_prompt()` | K | 함수 시그니처, 프롬프트 검증 (필수 섹션), fallback 로직 모두 보존. |
-| 라인 79-85: `_has_required_sections()` | K | 프롬프트 품질 검증 로직 보존. |
+| 파일/폴더 | 폐기 사유 |
+|---|---|
+| `frontend/src/app/connections/page.tsx` | Credentials로 통합 |
+| `frontend/src/components/connection/` (전체) | 폐기 |
+| `frontend/src/components/tool/` (옛 내용) | 신규로 재작성 |
+| `frontend/src/components/skill/` (옛 내용) | 신규로 재작성 |
+| `frontend/src/lib/api/connections.ts` | 폐기 |
+| `frontend/src/lib/api/{tools,credentials,skills}.ts` (옛) | 신규로 재작성 |
+| `frontend/src/lib/hooks/use-connections*.ts` | 폐기 |
+| `frontend/src/lib/hooks/use-{tools,credentials,skills}*.ts` (옛) | 신규로 재작성 |
 
-**중요 메모**: LLM 출력 구조(마크다운 형식, 8+1 섹션)는 반드시 보존해야 함. v3 phase5에서도 동일 검증 사용.
+### 2.1 사이드바 변경
 
----
+`frontend/src/components/layout/sidebar.tsx`:
+- 제거: `Connections`
+- 유지: `Agents`, `Tools`, `Skills`, `Credentials`, `Usage`
+- 신규: `MCP Servers`
 
-#### 6. `backend/app/agent_runtime/builder/sub_agents/helpers.py`
-**상태**: **K (보존, 공통 인프라)**
+### 2.2 신규 프론트엔드 파일
 
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | K | 모든 서브에이전트가 공유하는 공통 헬퍼. v3에서도 필수. |
-| 라인 36-46: `load_prompt()` | K | 프롬프트 파일 로더, 캐싱. v3에서도 동일 사용. |
-| 라인 144-192: `invoke_with_json_retry()` | K | LLM 호출 + JSON 파싱 + API 재시도 로직. v3 intent, tool, middleware 노드에서 직접 호출. |
-| 라인 195-247: `invoke_for_text()` | K | 텍스트 응답(프롬프트) 생성 로직. v3 phase5_prompt.py에서 동일 호출. |
-| 라인 66-92: `_get_builder_model()`, `_get_fallback_model()` | K | 모델 팩토리. v3에서도 동일 사용. |
-| 라인 94-141: `_invoke_with_api_retry()` | K | API 오류 재시도 로직. v3 all nodes에서 사용. |
+- 페이지 4 (`credentials, mcp-servers, tools, skills`)
+- 공통 컴포넌트 5 (`data-table, status-chip, icon, empty-state, dynamic-fields-form`)
+- Credential/Tool/MCP/Skill 컴포넌트 = 4+4+3+3 = **14**
+- API 4, Hooks 5, Types 4
+- E2E 4
 
-**의존성**: 
-- `app.agent_runtime.model_factory.create_chat_model` import → 변경 없음
-- `app.config.settings` import → 변경 없음
-
----
-
-#### 7. `backend/app/agent_runtime/builder/prompts/` (4개 파일)
-**상태**: **K (완전 보존, LLM 프롬프트 텍스트)**
-
-| 파일 | 라인 | 상태 | 설명 |
-|------|------|------|------|
-| intent_analyzer.md | 58 | K | AgentCreationIntent JSON 스키마와 매칭하는 LLM 지침. v3 phase2에서 직접 재사용. |
-| tool_recommender.md | 43 | K | ToolRecommendation 배열 생성 지침. v3 phase3에서 직접 재사용. |
-| middleware_recommender.md | 45 | K | MiddlewareRecommendation 배열 생성 지침. v3 phase4에서 직접 재사용. |
-| prompt_generator.md | 126 | K | 8-section 마크다운 프롬프트 구조 지침. v3 phase5에서 직접 재사용. |
-
-**주의**: 프롬프트 텍스트는 **절대 수정 금지**. v3 노드가 동일한 LLM 입력/출력 구조를 기대함.
+**소계**: ~40 신규 파일
 
 ---
 
-#### 8. `backend/app/services/builder_service.py`
-**상태**: **M (대부분 이식, 일부 교체)**
+## 3. DB 테이블 폐기 (m13에서 일괄)
 
-| 라인 범위 | 항목 | 분류 | 설명 |
-|---------|------|------|------|
-| 34-56 | 세션 CRUD (create_session, get_session) | K | 그대로 재사용. 스키마 동일. |
-| 64-102 | 원자적 상태 전환 (claim_for_streaming, claim_for_confirming) | K | 동시성 제어 로직 재사용. |
-| 115-157 | 카탈로그 조회, 모델 조회 | K | 서브에이전트 동적 주입 로직 보존. v3에서도 필요. |
-| 160-197 | `_save_phase_result()` | M | 로직 재사용하지만, v3에서는 LangGraph checkpoint가 상태 관리 → DB 저장은 phase7/8에서만. |
-| 213-341 | `run_build_stream()` | D | 함수 전체 교체. v3에서는 `graph.astream()` 직접 호출로 대체. |
-| 344-362 | `_detect_event_type()` | M | SSE 이벤트 타입 추론 로직 재사용, v3 Tool UI 이벤트로 확대. |
-| 370-446 | `confirm_build()` | K | 에이전트 생성 로직 그대로 재사용. draft_config → Agent 변환. |
-| 449-468 | `_resolve_tools()` | K | 도구 이름 → DB Tool 매칭 로직 보존. |
+| 테이블 | 처리 | 사유 |
+|---|---|---|
+| `connections` | DROP | Credential 단일화 |
+| `credentials` | DROP + CREATE 신규 | `key_id`, `definition_key`, status enum |
+| `credential_audit_logs` | CREATE 신규 | hook |
+| `credential_defaults` | CREATE 신규 | scope별 default |
+| `tools` | DROP + CREATE 신규 | `definition_key + credential_id` 단일 경로 |
+| `agent_tools` | DROP + CREATE | tool FK 새 스키마 |
+| `mcp_servers` | DROP + CREATE 신규 | credential_id FK + transport enum |
+| `mcp_tools` | DROP + CREATE | discovery 캐시 |
+| `skills` | DROP + CREATE 신규 | content_hash, package_metadata 등 |
+| `agent_skills` | DROP + CREATE | skill FK 새 스키마 |
+| `models` | DROP + CREATE | api_key_encrypted 컬럼 제거 |
+| `llm_providers` | DROP | provider 레벨 키 폐기 |
+| `agents` | ALTER ADD `llm_credential_id UUID FK credentials` | LLM 키도 Credential 통합 |
 
-**교체 전략**:
-- `run_build_stream()`: v3에서는 `builder_v3/graph.py`에서 `graph = build_builder_graph(); async for msg in graph.astream(...)`로 대체
-- 나머지 함수는 대부분 보존 또는 경미한 수정
-
----
-
-#### 9. `backend/app/routers/builder.py`
-**상태**: **M (주요 교체 + 신규 엔드포인트)**
-
-| 라인 범위 | 항목 | 분류 | 설명 |
-|---------|------|------|------|
-| 32-40 | `POST /api/builder` | K | 세션 생성 엔드포인트 보존. |
-| 43-53 | `GET /{session_id}` | K | 세션 조회 엔드포인트 보존. |
-| 56-86 | `GET /{session_id}/stream` | D | **v3에서는 제거 후 `POST /api/builder/{id}/messages`(SSE)로 교체**. 기존 conversations.py 패턴 재사용. |
-| **신규** | `POST /api/builder/{id}/messages` | M(신규) | SSE 스트리밍 엔드포인트 (v3 graph.astream 호출). conversations.py 패턴 차용. |
-| **신규** | `POST /api/builder/{id}/messages/resume` | M(신규) | HiTL 응답 엔드포인트. `Command(resume=...)` 전달. |
-| 89-148 | `POST /{session_id}/confirm` | K | 확인 엔드포인트 보존. 로직 동일. |
-
-**마이그레이션**:
-- 기존 `GET /stream` 호출을 `POST /messages` + SSE로 통합
-- `POST /messages/resume` 신규 추가 (ask_user, approval 응답 처리)
+**downgrade**: `raise NotImplementedError("m13 is intentionally non-reversible — restore from backup")`
 
 ---
 
-### FRONTEND
+## 4. 영향받는 테스트
 
-#### 10. `frontend/src/app/agents/new/conversational/page.tsx`
-**상태**: **D (완전 교체)**
+기존 테스트 중 폐기 대상 모듈을 직접 import하는 케이스:
+- `tests/test_credentials.py` (기존) — 신규 스키마로 전면 재작성
+- `tests/test_connections.py` — 폐기
+- `tests/test_tools.py` (기존) — 신규 스키마로 재작성
+- `tests/test_skills.py` (기존) — 신규 스키마로 재작성
+- `tests/test_chat_service.py` (있다면) — `build_tools_config` 신규 시그니처 반영
 
-| 라인 범위 | 항목 | 분류 | 설명 |
-|---------|------|------|------|
-| **파일 전체** | 전체 구현 | D | v2 전용 페이지. v3에서는 `<AssistantThread>` + `<HiTLContext>` 기반으로 완전 재작성. |
-| 60-230 | 상태 관리 (phases, intent, tools, etc.) | D | v2의 로컬 상태 관리는 v3에서 assistant-ui runtime + LangGraph checkpoint로 통합. |
-| 99-187 | `handleBuild()` 로직 | M(부분) | 기본 흐름은 유사하지만, SSE 파싱 대신 `send_message` + `resume` API로 단순화. |
-
-**v3 구조**:
-```tsx
-<AssistantRuntimeProvider runtime={...}>
-  <HiTLContext.Provider value={hitlCallbacks}>
-    <AssistantThread />
-  </HiTLContext.Provider>
-</AssistantRuntimeProvider>
-```
-
-폐기 이유: v3은 일반 채팅과 동일한 UI 패턴 사용 → 기존 `page.tsx`의 커스텀 상태 관리 불필요.
+기존 fixture (`mock_user`, `db_session`)는 변경 없음.
 
 ---
 
-#### 11. `frontend/src/app/agents/new/conversational/_components/builder-thread.tsx`
-**상태**: **D (제거)**
+## 5. Scope Creep 후보 (별도 티켓)
 
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | D | v2 전용 스레드 컴포넌트. v3에서는 `<AssistantThread>` (일반 채팅 컴포넌트)로 통합. |
-| 라인 25-63 | BuilderThread 컴포넌트 | D | custom composer, message primitives → 일반 AssistantThread 대체. |
+본 PR에 포함하지 않음:
 
-**이유**: v3은 채팅과 동일한 메시지 구조 사용 → 빌더 전용 커스텀 불필요.
+1. **interpolation.py 보안 강화 (sandbox)** — 단순 문자열 치환만 본 PR. sandbox는 후속.
+2. **MCP discovery 캐시 TTL 정책** — 본 PR은 영구 저장만.
+3. **OAuth2 PKCE** — 본 PR은 authorization code + body auth.
+4. **Skills 패키지 검증/sandbox** — 본 PR은 메타 파싱만.
+5. **Vault AppRole/JWT 인증** — 본 PR은 토큰 인증만.
 
----
-
-#### 12. `frontend/src/app/agents/new/conversational/_components/phase-timeline.tsx`
-**상태**: **M(개념 이식, 파일 제거)**
-
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | D(파일) | v2 전용 타임라인 컴포넌트. |
-| 라인 17-51: `PhaseIcon`, `PhaseStatusBadge` 컴포넌트 | M(UI 패턴 이식) | v3 `phase-timeline-ui.tsx`에서 동일한 아이콘(체크/시계/경고) + 뱃지 스타일 재사용. |
-| 라인 69-156: `PhaseTimeline` 메인 컴포넌트 | M(UI 패턴 이식) | v3에서 **8-phase로 확대**하되, 렌더링 로직(연결선, 상태 표시) 같은 패턴 사용. |
-
-**v3 변경**:
-- Phase 개수: 7 → 8 (이미지 생성 추가)
-- 진행 상황 카드는 **메시지 내 ToolMessage**로 emit (매 phase 전환 시 누적)
-
-**폐기 시점**: v3 phase-timeline-ui.tsx 구현 완료 후.
+**예외**: `trigger_executor.py L44-46 prefetch 누락 버그`는 M5에서 동시 수정 (재배선과 분리 불가).
 
 ---
 
-#### 13. `frontend/src/app/agents/new/conversational/_components/intent-card.tsx`
-**상태**: **M(UI 패턴 이식)**
+## 6. 위험 평가
 
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | M | v3에서도 Phase 2 완료 결과 표시 필요. |
-| 라인 8-52: IntentCard 컴포넌트 | M | v3 phase2에서 동일한 정보(agent_name_ko, agent_description, use_cases 등) 표시. 스타일 유지. |
-
-**폐기 시점**: 별도 파일로 유지하거나 `message-content.tsx`로 통합 (tool UI registry).
-
----
-
-#### 14. `frontend/src/app/agents/new/conversational/_components/recommendation-card.tsx`
-**상태**: **M(UI 패턴 이식)**
-
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | M | v3 Phase 3/4 결과 표시. 하지만 v3에서는 **승인/수정 버튼 추가**. |
-| 라인 19-49: RecommendationCard 컴포넌트 | M(기능 확대) | v3에서는 `recommendation-approval-ui.tsx`로 확대: 추천 리스트 + 수정 의견 textarea + "수정요청"/"승인" 버튼. |
-
-**v3 변경**:
-- 현재 카드는 읽기 전용
-- v3는 interactive approval UI 필요 (hitl.onResume 콜백)
+| 위험 | 확률 | 영향 | 대응 |
+|---|:---:|:---:|---|
+| 채팅/트리거 회귀 | 중 | 높음 | M5 후 즉시 회귀 시나리오 |
+| n8n 식별자 누락 | 낮음 | 중 | `scripts/check_branding.py` CI 게이트 |
+| OAuth refresh 동시성 | 중 | 중 | `SELECT ... FOR UPDATE` |
+| Vault dev 환경 부재 | 낮음 | 낮음 | feature flag 기본 off |
+| dev DB 데이터 소실 | 확정 | 낮음 (PoC) | README 명기 |
+| 단일 PR 리뷰 부담 | 높음 | 중 | 마일스톤별 커밋 |
+| 라이선스 적합성 | 낮음 | 중 | NOTICES.md + 변호사 1회 검토 |
 
 ---
 
-#### 15. `frontend/src/app/agents/new/conversational/_components/draft-config-card.tsx`
-**상태**: **M(UI 패턴 이식)**
+## 7. 판정
 
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | M | v3 Phase 8 최종 승인 카드로 확대. |
-| 라인 18-126: DraftConfigCard 컴포넌트 | M(기능 확대) | v3에서는 수정 의견 textarea + "승인"/"수정요청" 버튼 추가. router로 phase 2/3/4/5/6 분기. |
+**GREEN** — 진행 가능.
 
-**v3 변경**: 현재는 "확인" 버튼만 → v3는 approval interrupt UI 통합.
+**근거**:
+- 폐기 대상 명확, 의존 그래프 추적 완료
+- 신규 파일 위주라 기존 코드 충돌 위험 낮음
+- m13 단일 마이그레이션으로 DB 일관성 확보
+- 브랜딩 검증 자동화 완료(M1 산출물)
+- agent_runtime 재배선 경로가 chat_service 한 곳에 수렴
 
----
-
-#### 16. `frontend/src/lib/chat/use-builder-runtime.ts`
-**상태**: **D (파일 제거, 로직 일부 통합)**
-
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | D | v2 전용 ExternalStoreRuntime 어댑터. |
-| 라인 27-74: `buildVirtualMessages()` 함수 | D | 상태 → ThreadMessageLike 변환. v3에서는 LangGraph 메시지가 이미 올바른 형식. |
-| 라인 89-120+: `useBuilderRuntime()` hook | D | v3에서는 `useAssistantRuntime` (일반 채팅) 사용 가능. |
-
-**폐기 이유**: v3은 일반 채팅 runtime과 통합되므로 별도 어댑터 불필요.
-
----
-
-#### 17. `frontend/src/lib/sse/stream-builder.ts`
-**상태**: **D (제거, 로직 통합)**
-
-| 항목 | 분류 | 설명 |
-|------|------|------|
-| **파일 전체** | D | v2 전용 SSE 스트림 파서. |
-| 라인 5-26: `streamBuilder()` 함수 | D | v3에서는 `stream-builder-message.ts` + `stream-builder-resume.ts`로 분리. |
-
-**v3 변경**:
-- 기존: `GET /stream` (SSE)
-- v3: `POST /messages` (SSE, conversations.py 패턴) + `POST /messages/resume`
-
----
-
-#### 18. `frontend/src/lib/api/builder.ts`
-**상태**: **M(확대 및 수정)**
-
-| 라인 범위 | 항목 | 분류 | 설명 |
-|---------|------|------|------|
-| 5-9 | `start()` 메서드 | K | `POST /api/builder` 그대로 재사용. |
-| 11 | `getSession()` 메서드 | K | `GET /api/builder/{id}` 그대로 재사용. |
-| 13-14 | `confirm()` 메서드 | K | `POST /api/builder/{id}/confirm` 그대로 재사용. |
-| **신규** | `sendMessage()` 메서드 | M(신규) | `POST /api/builder/{id}/messages` (SSE). conversations.ts 패턴 차용. |
-| **신규** | `resume()` 메서드 | M(신규) | `POST /api/builder/{id}/messages/resume`. ask_user/approval 응답 전송. |
-
-**마이그레이션**:
-```typescript
-// 기존 (v2)
-// streamBuilder(sessionId, signal)로 SSE 직접 구독
-
-// v3
-// await builderApi.sendMessage(sessionId, { ... })로 메시지 전송
-// await builderApi.resume(sessionId, { approved: true/false, ... })로 응답
-```
-
----
-
-## 불필요한 의존성 & 데드 코드
-
-### Backend
-
-1. **`orchestrator.py`의 `build_builder_graph()` 함수** (라인 373-408)
-   - 더 이상 호출되지 않음 (v3에서 제거됨)
-   - `_COMPILED_GRAPH = build_builder_graph()` (라인 416)도 불필요
-
-2. **`builder_service.py`의 `run_build_stream()` 함수** (라인 213-341)
-   - v3에서 `graph.astream()` 직접 호출로 대체
-   - `_detect_event_type()` (라인 344-362)는 부분 재사용 (Tool UI 이벤트 추가)
-
-3. **`routers/builder.py`의 `GET /stream` 엔드포인트** (라인 56-86)
-   - v3에서는 `POST /messages` (SSE)로 통합
-
-### Frontend
-
-1. **`conversational/page.tsx`의 상태 관리** (라인 60-230)
-   - v2 전용 phase/intent/tools 로컬 상태
-   - v3에서는 assistant-ui runtime + LangGraph checkpoint 사용
-
-2. **`use-builder-runtime.ts` 전체**
-   - ExternalStoreRuntime은 v3의 HiTL context와 충돌 가능
-   - 일반 `useAssistantRuntime` 사용으로 대체
-
-3. **`stream-builder.ts` 전체**
-   - v2 전용 SSE 파서
-   - v3은 `conversations.ts`의 동일한 구조 사용
-
----
-
-## 중복 패턴 (Deduplication 기회)
-
-### Backend
-
-1. **프롬프트 로딩 + LLM 호출 패턴**
-   - 4개 서브에이전트 모두 동일: `load_prompt()` → `invoke_with_json_retry()` 또는 `invoke_for_text()`
-   - `helpers.py`에 이미 통합됨 ✓ (중복 제거 완료)
-
-2. **카탈로그 포맷팅**
-   - `tool_recommender.py`의 `_format_catalog()` (라인 25-35)
-   - `middleware_recommender.py`의 `_format_catalog()` (라인 30-42)
-   - 비슷한 로직, 별도 추출 함수 고려 가능 (v3에서 개선)
-
-### Frontend
-
-1. **ApprovalCard 패턴** (v3에서 신규)
-   - Phase 3, 4, 5, 8에서 반복: "추천 항목 + 수정 의견 textarea + 승인/수정 버튼"
-   - `recommendation-approval-ui.tsx` 하나로 통합 가능 (prop으로 제목/아이템 전달)
-
-2. **Icon 재사용**
-   - `PhaseTimeline`의 체크/시계/경고 아이콘 → `phase-timeline-ui.tsx`에서도 동일
-   - 아이콘 라이브러리 컴포넌트화 고려
-
----
-
-## 마이그레이션 체크리스트
-
-### 삭제 금지 (v3 구현 완료까지)
-
-- [ ] `builder/sub_agents/intent_analyzer.py` — 보존, phase2에서 import
-- [ ] `builder/sub_agents/tool_recommender.py` — 보존, phase3에서 import
-- [ ] `builder/sub_agents/middleware_recommender.py` — 보존, phase4에서 import
-- [ ] `builder/sub_agents/prompt_generator.py` — 보존, phase5에서 import
-- [ ] `builder/sub_agents/helpers.py` — 보존, 모든 phase에서 import
-- [ ] `builder/prompts/*.md` — 보존, 프롬프트 텍스트 변경 금지
-- [ ] `services/builder_service.py` 중 `confirm_build()`, `_resolve_tools()` — 보존
-
-### 교체할 항목 (v3 구현 후)
-
-- [ ] `orchestrator.py` → `builder_v3/graph.py`, `builder_v3/nodes/*.py`
-- [ ] `builder_service.run_build_stream()` → `builder_v3/graph.astream()`
-- [ ] `routers/builder.py GET /stream` → `POST /messages` (conversations.py 패턴)
-- [ ] `conversational/page.tsx` → AssistantThread + HiTLContext 기반 재작성
-- [ ] `use-builder-runtime.ts` → 제거 또는 `useAssistantRuntime` 사용
-- [ ] `stream-builder.ts` → 제거 또는 `stream-builder-message.ts` + `resume.ts`로 분리
-
-### 삭제할 항목 (v3 안정화 후, 점진 전환)
-
-- [ ] `builder/orchestrator.py` (라인 1-463)
-- [ ] `conversational/_components/builder-thread.tsx`
-- [ ] `conversational/_components/phase-timeline.tsx` (v3 `phase-timeline-ui.tsx` 구현 후)
-- [ ] `lib/sse/stream-builder.ts`
-- [ ] `lib/chat/use-builder-runtime.ts`
-
-### UI 컴포넌트 이식 (concept + 기능 확대)
-
-- [ ] `intent-card.tsx` → v3에서도 사용 (Phase 2 결과)
-- [ ] `recommendation-card.tsx` → v3 `recommendation-approval-ui.tsx` (승인/수정 버튼 추가)
-- [ ] `draft-config-card.tsx` → v3 `draft-config-ui.tsx` (승인/수정 버튼 + router 분기)
-- [ ] Phase 2/3/4/5/8의 공통 approval UI 통합
-
----
-
-## 리스크 및 주의사항
-
-### 높음 (Critical)
-
-1. **프롬프트 텍스트 변경 금지**
-   - `builder/prompts/*.md`의 내용은 **절대 수정하지 말 것**
-   - v3 노드가 동일한 JSON 스키마와 마크다운 구조를 기대함
-   - 변경 필요 시 v3 노드도 함께 업데이트
-
-2. **`helpers.py` 함수 시그니처 보존**
-   - `invoke_with_json_retry()`, `invoke_for_text()` 파라미터 변경 금지
-   - 4개 서브에이전트 + v3 노드 모두 의존
-
-3. **라우터 migration 순서**
-   - `routers/builder.py`의 GET `/stream` 제거 전에 v3 POST `/messages` 엔드포인트 반드시 완성
-   - 그 사이 dual-support 필요할 수 있음
-
-### 중간 (Medium)
-
-4. **상태 머신 일관성**
-   - BuilderStatus enum (BUILDING → STREAMING → PREVIEW → CONFIRMING → COMPLETED)
-   - v3의 phase7(PREVIEW 전환), phase8(COMPLETED 전환) 타이밍 명확히
-   - 기존 confirm_build() 로직과 일치 필수
-
-5. **이미지 저장 위치 결정**
-   - Phase 6에서 생성한 이미지 URL 저장처: 로컬 파일 vs S3 vs base64
-   - `builders_sessions.draft_config.image_url`에 저장 후 agents 테이블로 이전
-   - agents 테이블에 `image_url` 컬럼 없으면 알렘빅 마이그레이션 필요
-
-### 낮음 (Low)
-
-6. **프론트엔드 빌드 회귀**
-   - `use-chat-runtime.ts` 추상화로 기존 conversations 페이지 영향 가능성
-   - Step 3에서 회귀 테스트 필수
-
----
-
-## 최종 판정
-
-| 판정 | 상태 | 설명 |
-|------|------|------|
-| **GREEN** ✓ | ANALYSIS_COMPLETE | 모든 파일 분류 명확, 의존성 정리 완료, 삭제 항목 확정. |
-| | RISK_LOW | 프롬프트/스키마 보존, helpers.py 안정화로 리스크 최소화. |
-| | READY_FOR_IMPLEMENTATION | v3 implementation 단계로 즉시 진행 가능. |
-
----
-
-## 산출물
-
-- **분석 파일**: `/Users/chester/dev/natural-mold/tasks/deletion-analysis.md` ✓
-- **분류 완료**:
-  - 보존 (K): 11개 항목
-  - 이식 (M): 8개 항목
-  - 삭제 (D): 5개 항목
-- **추가 조사 필요**: 0개
-- **블로커**: 0개
-
----
-
-**분석 수행자**: 베조스 (Bezos)  
-**분석 완료**: 2026-04-26  
-**상태**: ANALYSIS_COMPLETE, GREEN ✓
+**조건**:
+- M5 완료 후 채팅/트리거/MCP 통합 회귀 우선 검증
+- m13 alembic upgrade는 사용자 확인 후 실행
+- 머지 전 변호사 라이선스 검토 1회

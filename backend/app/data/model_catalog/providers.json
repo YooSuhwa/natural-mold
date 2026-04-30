@@ -1,0 +1,109 @@
+{
+  "openai": {
+    "display_name": "OpenAI",
+    "website": "https://openai.com",
+    "docs_url": "https://platform.openai.com/docs",
+    "pricing_url": "https://openai.com/api/pricing",
+    "status_url": "https://status.openai.com",
+    "api_type": "openai",
+    "default_base_url": "https://api.openai.com/v1",
+    "default_rate_limits": {"rpm": 10000, "tpm": 30000000}
+  },
+  "anthropic": {
+    "display_name": "Anthropic",
+    "website": "https://anthropic.com",
+    "docs_url": "https://docs.anthropic.com",
+    "pricing_url": "https://anthropic.com/pricing",
+    "status_url": "https://status.anthropic.com",
+    "api_type": "anthropic",
+    "default_base_url": "https://api.anthropic.com/v1",
+    "default_rate_limits": {"rpm": 4000, "tpm": 400000}
+  },
+  "google": {
+    "display_name": "Google",
+    "website": "https://ai.google.dev",
+    "docs_url": "https://ai.google.dev/docs",
+    "pricing_url": "https://ai.google.dev/pricing",
+    "api_type": "gemini",
+    "default_base_url": "https://generativelanguage.googleapis.com/v1beta",
+    "default_rate_limits": {"rpm": 1000, "tpm": 4000000}
+  },
+  "google_genai": {
+    "display_name": "Google AI (Gemini)",
+    "website": "https://ai.google.dev",
+    "docs_url": "https://ai.google.dev/docs",
+    "pricing_url": "https://ai.google.dev/pricing",
+    "api_type": "gemini",
+    "default_base_url": "https://generativelanguage.googleapis.com/v1beta",
+    "default_rate_limits": {"rpm": 1000, "tpm": 4000000}
+  },
+  "azure_openai": {
+    "display_name": "Azure OpenAI",
+    "website": "https://azure.microsoft.com/en-us/products/ai-services/openai-service",
+    "docs_url": "https://learn.microsoft.com/en-us/azure/ai-services/openai/",
+    "pricing_url": "https://azure.microsoft.com/en-us/pricing/details/cognitive-services/openai-service/",
+    "status_url": "https://status.azure.com",
+    "api_type": "openai"
+  },
+  "openrouter": {
+    "display_name": "OpenRouter",
+    "website": "https://openrouter.ai",
+    "docs_url": "https://openrouter.ai/docs",
+    "pricing_url": "https://openrouter.ai/models",
+    "api_type": "openai",
+    "default_base_url": "https://openrouter.ai/api/v1"
+  },
+  "openai_compatible": {
+    "display_name": "OpenAI Compatible",
+    "api_type": "openai"
+  },
+  "groq": {
+    "display_name": "Groq",
+    "website": "https://groq.com",
+    "docs_url": "https://console.groq.com/docs",
+    "pricing_url": "https://groq.com/pricing",
+    "api_type": "openai",
+    "default_base_url": "https://api.groq.com/openai/v1"
+  },
+  "mistral": {
+    "display_name": "Mistral AI",
+    "website": "https://mistral.ai",
+    "docs_url": "https://docs.mistral.ai",
+    "pricing_url": "https://mistral.ai/products/la-plateforme#pricing",
+    "api_type": "mistral",
+    "default_base_url": "https://api.mistral.ai/v1"
+  },
+  "cohere": {
+    "display_name": "Cohere",
+    "website": "https://cohere.com",
+    "docs_url": "https://docs.cohere.com",
+    "pricing_url": "https://cohere.com/pricing",
+    "api_type": "cohere",
+    "default_base_url": "https://api.cohere.com/v2"
+  },
+  "deepseek": {
+    "display_name": "DeepSeek",
+    "website": "https://deepseek.com",
+    "docs_url": "https://api-docs.deepseek.com",
+    "pricing_url": "https://api-docs.deepseek.com/quick_start/pricing",
+    "api_type": "openai",
+    "default_base_url": "https://api.deepseek.com/v1"
+  },
+  "xai": {
+    "display_name": "xAI",
+    "website": "https://x.ai",
+    "docs_url": "https://docs.x.ai",
+    "api_type": "openai",
+    "default_base_url": "https://api.x.ai/v1"
+  },
+  "amazon": {
+    "display_name": "Amazon",
+    "website": "https://aws.amazon.com/bedrock/",
+    "api_type": "openai"
+  },
+  "meta": {
+    "display_name": "Meta",
+    "website": "https://llama.com",
+    "api_type": "openai"
+  }
+}

@@ -16,11 +16,13 @@ from pathlib import Path
 import httpx
 
 from app.config import settings
+from app.database import async_session
 from app.services.image_service import (
     IMAGE_GEN_SYSTEM_PROMPT,
     _extract_image_data,
     _load_reference_image_base64,
 )
+from app.services.system_credential_resolver import resolve_system_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +37,17 @@ def _builder_image_dir(session_id: str) -> Path:
     return base
 
 
-def is_image_generation_available() -> bool:
-    """OpenRouter API 키가 설정되어 있는지 확인."""
-    return bool(settings.openrouter_api_key)
+async def is_image_generation_available() -> bool:
+    """OpenRouter 키 사용 가능 여부.
+
+    ENV ``OPENROUTER_API_KEY`` 또는 ``is_system=True`` credential 중 하나
+    라도 있으면 True. node가 이 결과로 phase 진입을 결정한다.
+    """
+    if settings.openrouter_api_key:
+        return True
+    async with async_session() as db:
+        key = await resolve_system_api_key(db, "openrouter")
+    return bool(key)
 
 
 def build_default_prompt(
@@ -82,9 +92,13 @@ async def generate_agent_image(
     Raises:
         ImageGenerationError: provider 미설정 또는 호출 실패
     """
-    if not settings.openrouter_api_key:
+    async with async_session() as db:
+        api_key = await resolve_system_api_key(db, "openrouter")
+    if not api_key:
         raise ImageGenerationError(
-            "OPENROUTER_API_KEY가 설정되지 않았습니다. .env에 추가하세요."
+            "OpenRouter system credential이 없습니다. "
+            "/settings/system-credentials에 등록하거나 .env에 "
+            "OPENROUTER_API_KEY를 설정하세요."
         )
 
     try:
@@ -118,7 +132,7 @@ async def generate_agent_image(
             resp = await client.post(
                 f"{settings.image_gen_base_url}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {settings.openrouter_api_key}",
+                    "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
                 json=body,

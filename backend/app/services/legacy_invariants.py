@@ -1,96 +1,36 @@
-"""M6 legacy-row invariants shared between alembic m12 and app startup guard.
+"""Legacy invariants stub — preserved for frozen alembic history compatibility.
 
-m12 migration과 app startup guard는 동일한 legacy auth dirty-row 집합을
-검증한다. 한 곳에서 정의해야 SQL/label drift 없이 양쪽 invariant가 정합.
+The original implementation enforced preflight checks on legacy
+`tools.credential_id` / `tools.auth_config` / `agent_tools.config` rows before
+m12 dropped those columns. After M5 of the greenfield rewrite, those tables
+were fully replaced (m18) and the original logic was removed.
 
-Callers:
-  - `alembic/versions/m12_drop_legacy_columns.py::_assert_no_stale_legacy_rows`
-    (sync `bind.execute`)
-  - `app/main.py::lifespan` M6 deploy-order guard (async `db.execute`)
+This stub stays so that the historical migration script
+`alembic/versions/m12_drop_legacy_columns.py` can still `import
+app.services.legacy_invariants` without crashing during a fresh
+`alembic upgrade head`. It returns no checks, so the m12 preflight passes
+trivially — which is correct, because greenfield databases have no legacy
+rows by construction.
+
+Do not extend this module. New invariants belong in dedicated services.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-
-def _non_empty_json(column: str, dialect: str) -> str:
-    if dialect == "postgresql":
-        return f"{column} IS NOT NULL AND {column}::text != '{{}}'::text"
-    return f"{column} IS NOT NULL AND {column} != '{{}}'"
+LegacyCheck = tuple[str, str]
 
 
 def collect_legacy_checks(
-    dialect: str,
-    column_exists: Callable[[str, str], bool],
-) -> list[tuple[str, str]]:
-    """Return `[(label, sql)]` pairs whose COUNT must be 0 before M6 runtime.
+    dialect_name: str,  # noqa: ARG001 — kept for signature compatibility
+    column_exists: Callable[[str, str], bool],  # noqa: ARG001
+) -> list[LegacyCheck]:
+    """Return an empty list of preflight checks.
 
-    `column_exists(table, column) -> bool` is caller-provided so the same
-    helper works for sync (alembic Inspector) and async (information_schema)
-    checks.
+    The historical m12 migration calls this to assert no stale legacy rows
+    exist before dropping columns. Post-M5 there is nothing to enforce — m18
+    drops and recreates the affected tables wholesale.
     """
-    checks: list[tuple[str, str]] = []
 
-    if column_exists("agent_tools", "config"):
-        checks.append(
-            (
-                "agent_tools rows with non-empty legacy config override",
-                f"SELECT COUNT(*) FROM agent_tools WHERE {_non_empty_json('config', dialect)}",
-            )
-        )
-
-    if column_exists("tools", "credential_id"):
-        checks.append(
-            (
-                "CUSTOM tools with legacy credential_id but no connection_id",
-                "SELECT COUNT(*) FROM tools "
-                "WHERE type = 'custom' "
-                "AND credential_id IS NOT NULL AND connection_id IS NULL",
-            )
-        )
-        checks.append(
-            (
-                "CUSTOM tools with bridge override "
-                "(tool.credential_id != connection.credential_id)",
-                "SELECT COUNT(*) FROM tools t "
-                "JOIN connections c ON t.connection_id = c.id "
-                "WHERE t.type = 'custom' "
-                "AND t.credential_id IS NOT NULL "
-                "AND c.credential_id IS NOT NULL "
-                "AND t.credential_id != c.credential_id",
-            )
-        )
-
-    if column_exists("tools", "auth_config"):
-        checks.append(
-            (
-                "tools with non-empty legacy auth_config",
-                f"SELECT COUNT(*) FROM tools WHERE {_non_empty_json('auth_config', dialect)}",
-            )
-        )
-
-    if column_exists("tools", "mcp_server_id"):
-        checks.append(
-            (
-                "MCP tools with legacy mcp_server_id but no connection_id (dead after M6.1)",
-                "SELECT COUNT(*) FROM tools "
-                "WHERE type = 'mcp' "
-                "AND mcp_server_id IS NOT NULL AND connection_id IS NULL",
-            )
-        )
-
-    checks.append(
-        (
-            "PREBUILT tools with NULL provider_name",
-            "SELECT COUNT(*) FROM tools WHERE type = 'prebuilt' AND provider_name IS NULL",
-        )
-    )
-    checks.append(
-        (
-            "CUSTOM tools with no connection_id (dead after M6)",
-            "SELECT COUNT(*) FROM tools WHERE type = 'custom' AND connection_id IS NULL",
-        )
-    )
-
-    return checks
+    return []

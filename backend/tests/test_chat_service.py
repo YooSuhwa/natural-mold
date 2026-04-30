@@ -217,8 +217,7 @@ async def test_get_agent_with_tools_found(db: AsyncSession):
 
     tool = Tool(
         name="Web Search",
-        type="builtin",
-        is_system=True,
+        definition_key="builtin:web_search",
         description="Search the web",
     )
     db.add(tool)

@@ -1,439 +1,192 @@
 'use client'
 
-import { useState, useRef, useMemo } from 'react'
-import {
-  PlusIcon,
-  Loader2Icon,
-  Trash2Icon,
-  PencilIcon,
-  BookOpenIcon,
-  SaveIcon,
-  XIcon,
-  UploadIcon,
-  PackageIcon,
-} from 'lucide-react'
-import { toast } from 'sonner'
-import { useTranslations, useFormatter } from 'next-intl'
-import {
-  useSkills,
-  useCreateSkill,
-  useUpdateSkill,
-  useDeleteSkill,
-  useUploadSkill,
-} from '@/lib/hooks/use-skills'
+import { useMemo, useState } from 'react'
+import type { ColumnDef } from '@tanstack/react-table'
+import { Plus, BookOpen, Upload, LayoutGrid, Rows } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { SearchInput } from '@/components/shared/search-input'
-import { Textarea } from '@/components/ui/textarea'
-import { Skeleton } from '@/components/ui/skeleton'
-import { EmptyState } from '@/components/shared/empty-state'
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { PageHeader } from '@/components/shared/page-header'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@/components/ui/select'
+import { DataTable, type FilterDef } from '@/components/ui/data-table'
+import { EmptyState } from '@/components/shared/empty-state'
+import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
+import { SkillUploadDialog } from '@/components/skill/skill-upload-dialog'
+import { SkillDetailSheet } from '@/components/skill/skill-detail-sheet'
+import { useSkills } from '@/lib/hooks/use-skills'
+import type { Skill } from '@/lib/types/skill'
 
-function SkillFormDialog({
-  trigger,
-  initialData,
-  onSubmit,
-  isPending,
-  title,
-}: {
-  trigger: React.ReactElement
-  initialData?: { name: string; description: string; content: string }
-  onSubmit: (data: { name: string; description: string; content: string }) => void
-  isPending: boolean
-  title: string
-}) {
-  const t = useTranslations('skill')
-  const tc = useTranslations('common')
-  const [open, setOpen] = useState(false)
-  const [name, setName] = useState(initialData?.name ?? '')
-  const [description, setDescription] = useState(initialData?.description ?? '')
-  const [content, setContent] = useState(initialData?.content ?? '')
-
-  function handleOpen(isOpen: boolean) {
-    setOpen(isOpen)
-    if (isOpen && initialData) {
-      setName(initialData.name)
-      setDescription(initialData.description)
-      setContent(initialData.content)
-    } else if (isOpen) {
-      setName('')
-      setDescription('')
-      setContent('')
-    }
-  }
-
-  function handleSubmit() {
-    if (!name.trim() || !content.trim()) return
-    onSubmit({ name: name.trim(), description: description.trim(), content: content.trim() })
-    setOpen(false)
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpen}>
-      <DialogTrigger render={trigger} />
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{t('dialogDescription')}</DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 pt-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">{t('form.name')}</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('form.namePlaceholder')}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">{t('form.description')}</label>
-            <Input
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t('form.descriptionPlaceholder')}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">{t('form.content')}</label>
-            <Textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder={t('form.contentPlaceholder')}
-              rows={10}
-              className="font-mono text-xs"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setOpen(false)}>
-              <XIcon className="size-4" data-icon="inline-start" />
-              {tc('cancel')}
-            </Button>
-            <Button onClick={handleSubmit} disabled={isPending || !name.trim() || !content.trim()}>
-              {isPending ? (
-                <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
-              ) : (
-                <SaveIcon className="size-4" data-icon="inline-start" />
-              )}
-              {tc('save')}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
+function formatDate(value: string | null): string {
+  if (!value) return '—'
+  return new Date(value).toLocaleString()
 }
 
 export default function SkillsPage() {
   const { data: skills, isLoading } = useSkills()
-  const createSkill = useCreateSkill()
-  const deleteSkill = useDeleteSkill()
-  const uploadSkill = useUploadSkill()
-  const t = useTranslations('skill')
-  const tc = useTranslations('common')
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [typeFilter, setTypeFilter] = useState<'all' | 'text' | 'package'>('all')
-  const [deletingSkillTarget, setDeletingSkillTarget] = useState<{
-    id: string
-    name: string
-  } | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [uploadOpen, setUploadOpen] = useState(false)
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [view, setView] = useState<'table' | 'grid'>('table')
 
-  const filteredSkills = useMemo(() => {
-    if (!skills) return []
-    let result = skills
-    if (typeFilter !== 'all') {
-      result = result.filter((s) => s.type === typeFilter)
-    }
-    const q = searchQuery.toLowerCase()
-    if (q) {
-      result = result.filter(
-        (s) =>
-          s.name.toLowerCase().includes(q) ||
-          (s.description && s.description.toLowerCase().includes(q)),
-      )
-    }
-    return result
-  }, [skills, searchQuery, typeFilter])
+  const columns = useMemo<ColumnDef<Skill>[]>(
+    () => [
+      {
+        accessorKey: 'name',
+        header: 'Name',
+        cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+      },
+      {
+        id: 'kind',
+        accessorKey: 'kind',
+        header: 'Kind',
+        cell: ({ row }) => (
+          <Badge variant="secondary" className="text-[10px]">
+            {row.original.kind}
+          </Badge>
+        ),
+        filterFn: 'equals',
+      },
+      {
+        accessorKey: 'used_by_count',
+        header: 'Agents',
+        cell: ({ row }) => row.original.used_by_count,
+      },
+      {
+        accessorKey: 'size_bytes',
+        header: 'Size',
+        cell: ({ row }) => `${row.original.size_bytes}b`,
+      },
+      {
+        accessorKey: 'version',
+        header: 'Version',
+        cell: ({ row }) => row.original.version ?? '—',
+      },
+      {
+        accessorKey: 'updated_at',
+        header: 'Updated',
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground">
+            {formatDate(row.original.updated_at)}
+          </span>
+        ),
+      },
+    ],
+    [],
+  )
 
-  async function handleCreate(data: { name: string; description: string; content: string }) {
-    try {
-      await createSkill.mutateAsync(data)
-      toast.success(t('toast.created'))
-    } catch {
-      toast.error(t('toast.createFailed'))
-    }
-  }
+  const filters = useMemo<FilterDef[]>(
+    () => [
+      {
+        columnId: 'kind',
+        label: 'Kind',
+        options: [
+          { value: 'text', label: 'Text' },
+          { value: 'package', label: 'Package' },
+        ],
+      },
+    ],
+    [],
+  )
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    try {
-      await uploadSkill.mutateAsync(file)
-      toast.success(t('toast.uploaded'))
-    } catch {
-      toast.error(t('toast.uploadFailed'))
-    }
-    // reset input so same file can be re-selected
-    e.target.value = ''
-  }
+  const data = skills ?? []
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
-        title={t('pageTitle')}
+        title="Skills"
+        description="Markdown snippets and packages attached to agents."
         action={
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadSkill.isPending}
-            >
-              {uploadSkill.isPending ? (
-                <Loader2Icon className="size-4 animate-spin" data-icon="inline-start" />
-              ) : (
-                <UploadIcon className="size-4" data-icon="inline-start" />
-              )}
-              {t('uploadSkill')}
+            <Button variant="outline" onClick={() => setUploadOpen(true)}>
+              <Upload className="size-4" />
+              Upload package
             </Button>
-            <input ref={fileInputRef} type="file" accept=".skill" onChange={handleUpload} hidden />
-            <SkillFormDialog
-              title={t('dialogTitle.new')}
-              trigger={
-                <Button>
-                  <PlusIcon className="size-4" data-icon="inline-start" />
-                  {t('addSkill')}
-                </Button>
-              }
-              onSubmit={handleCreate}
-              isPending={createSkill.isPending}
-            />
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="size-4" />
+              New skill
+            </Button>
           </div>
         }
       />
 
-      {/* Search & Filter */}
-      {skills && skills.length > 0 && (
-        <div className="flex items-center gap-3">
-          <SearchInput
-            containerClassName="flex-1"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('searchPlaceholder')}
-          />
-          <Select
-            value={typeFilter}
-            onValueChange={(val) => {
-              if (val) setTypeFilter(val)
-            }}
+      {!isLoading && data.length > 0 && (
+        <div className="flex items-center justify-end gap-1 text-xs">
+          <button
+            type="button"
+            onClick={() => setView('table')}
+            className={`rounded p-1.5 ${view === 'table' ? 'bg-muted' : 'text-muted-foreground'}`}
+            aria-label="Table view"
           >
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t('typeFilter.all')}</SelectItem>
-              <SelectItem value="text">{t('typeFilter.text')}</SelectItem>
-              <SelectItem value="package">{t('typeFilter.package')}</SelectItem>
-            </SelectContent>
-          </Select>
+            <Rows className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('grid')}
+            className={`rounded p-1.5 ${view === 'grid' ? 'bg-muted' : 'text-muted-foreground'}`}
+            aria-label="Grid view"
+          >
+            <LayoutGrid className="size-4" />
+          </button>
         </div>
       )}
 
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i}>
+      {!isLoading && data.length === 0 ? (
+        <EmptyState
+          icon={<BookOpen className="size-6" />}
+          title="No skills yet"
+          description="Create a text snippet or upload a .skill package."
+          action={
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="size-4" />
+              Create first skill
+            </Button>
+          }
+        />
+      ) : view === 'table' ? (
+        <DataTable
+          columns={columns}
+          data={data}
+          loading={isLoading}
+          searchable
+          searchPlaceholder="Search skills"
+          filters={filters}
+          onRowClick={(row) => setDetailId(row.id)}
+          emptyTitle="No skills match your filters"
+        />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {data.map((s) => (
+            <Card
+              key={s.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => setDetailId(s.id)}
+              onKeyDown={(e) => (e.key === 'Enter' ? setDetailId(s.id) : null)}
+              className="cursor-pointer transition-colors hover:border-primary/40"
+            >
               <CardHeader>
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-4 w-full" />
+                <div className="flex items-center gap-2">
+                  <CardTitle className="text-sm">{s.name}</CardTitle>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {s.kind}
+                  </Badge>
+                </div>
+                <CardDescription className="line-clamp-2 text-xs">
+                  {s.description ?? s.slug}
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <Skeleton className="h-20 w-full" />
-              </CardContent>
             </Card>
           ))}
         </div>
-      ) : filteredSkills.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredSkills.map((skill) => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              onDelete={() => setDeletingSkillTarget({ id: skill.id, name: skill.name })}
-              isDeleting={deleteSkill.isPending}
-            />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={<BookOpenIcon className="size-6" />}
-          title={t('empty.title')}
-          description={t('empty.description')}
-          action={
-            <SkillFormDialog
-              title={t('dialogTitle.new')}
-              trigger={
-                <Button>
-                  <PlusIcon className="size-4" data-icon="inline-start" />
-                  {t('firstSkill')}
-                </Button>
-              }
-              onSubmit={async (data) => {
-                try {
-                  await createSkill.mutateAsync(data)
-                  toast.success(t('toast.created'))
-                } catch {
-                  toast.error(t('toast.createFailed'))
-                }
-              }}
-              isPending={createSkill.isPending}
-            />
-          }
-        />
       )}
 
-      {/* Skill Delete Confirm */}
-      <DeleteConfirmDialog
-        open={!!deletingSkillTarget}
-        onOpenChange={(v) => !v && setDeletingSkillTarget(null)}
-        title={t('deleteConfirm')}
-        description={deletingSkillTarget?.name}
-        cancelLabel={tc('cancel')}
-        confirmLabel={tc('delete')}
-        isPending={deleteSkill.isPending}
-        onConfirm={() => {
-          if (deletingSkillTarget) {
-            deleteSkill.mutate(deletingSkillTarget.id, {
-              onSuccess: () => {
-                toast.success(t('toast.deleted'))
-                setDeletingSkillTarget(null)
-              },
-              onError: () => toast.error(t('toast.deleteFailed')),
-            })
-          }
-        }}
+      <SkillCreateDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <SkillUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
+      <SkillDetailSheet
+        skillId={detailId}
+        open={!!detailId}
+        onOpenChange={(open) => !open && setDetailId(null)}
       />
     </div>
-  )
-}
-
-function SkillCard({
-  skill,
-  onDelete,
-  isDeleting,
-}: {
-  skill: {
-    id: string
-    name: string
-    description: string | null
-    content: string
-    type: 'text' | 'package'
-    has_scripts: boolean
-    updated_at: string
-  }
-  onDelete: () => void
-  isDeleting: boolean
-}) {
-  const updateSkill = useUpdateSkill(skill.id)
-  const t = useTranslations('skill')
-  const format = useFormatter()
-  const isPackage = skill.type === 'package'
-
-  return (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <div className="flex items-center gap-2">
-          <CardTitle className="text-sm">{skill.name}</CardTitle>
-          {isPackage && (
-            <Badge variant="secondary" className="text-[10px] gap-1">
-              <PackageIcon className="size-3" />
-              {t('packageBadge')}
-            </Badge>
-          )}
-        </div>
-        {skill.description && (
-          <CardDescription className="line-clamp-2 text-xs">{skill.description}</CardDescription>
-        )}
-      </CardHeader>
-      <CardContent className="flex-1">
-        <pre className="rounded bg-muted p-2 text-[11px] text-muted-foreground line-clamp-4 whitespace-pre-wrap font-mono">
-          {skill.content}
-        </pre>
-      </CardContent>
-      <CardFooter className="justify-between">
-        <span className="text-[10px] text-muted-foreground">
-          {t('modified', {
-            date: format.dateTime(new Date(skill.updated_at), { dateStyle: 'medium' }),
-          })}
-        </span>
-        <div className="flex gap-1">
-          {!isPackage && (
-            <SkillFormDialog
-              title={t('dialogTitle.edit')}
-              initialData={{
-                name: skill.name,
-                description: skill.description ?? '',
-                content: skill.content,
-              }}
-              trigger={
-                <Button variant="ghost" size="icon-sm">
-                  <PencilIcon className="size-3.5" />
-                </Button>
-              }
-              onSubmit={async (data) => {
-                try {
-                  await updateSkill.mutateAsync(data)
-                  toast.success(t('toast.updated'))
-                } catch {
-                  toast.error(t('toast.updateFailed'))
-                }
-              }}
-              isPending={updateSkill.isPending}
-            />
-          )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onDelete}
-            disabled={isDeleting}
-            className="text-muted-foreground hover:text-destructive"
-          >
-            {isDeleting ? (
-              <Loader2Icon className="size-3.5 animate-spin" />
-            ) : (
-              <Trash2Icon className="size-3.5" />
-            )}
-          </Button>
-        </div>
-      </CardFooter>
-    </Card>
   )
 }

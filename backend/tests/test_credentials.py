@@ -1,178 +1,314 @@
-"""Tests for credential CRUD + field_keys cache (백로그 C)."""
+"""Tests for the greenfield credential domain — CRUD, encryption round-trip,
+audit logging, and per-user isolation."""
 
 from __future__ import annotations
 
-import json
 import uuid
-from unittest.mock import patch
 
 import pytest
-from cryptography.fernet import Fernet
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.credentials import registry
+from app.credentials import service as credential_service
 from app.models.credential import Credential
-from app.services import credential_service
+from app.models.user import User
+from app.security.key_provider import get_active_key_id
 from tests.conftest import TEST_USER_ID
 
 
 @pytest.fixture(autouse=True)
-def _encryption_key(monkeypatch):
-    """Provide a valid Fernet key so credential_service.create_credential is not 503'd."""
-    import app.services.encryption as enc_mod
-    from app.config import settings
+async def _ensure_test_user(db: AsyncSession):
+    """Ensure the mock test user exists for FK constraints."""
 
-    key = Fernet.generate_key().decode()
-    monkeypatch.setattr(settings, "encryption_key", key, raising=False)
-    original_fernet = enc_mod._fernet
-    enc_mod._fernet = None
-    yield
-    enc_mod._fernet = original_fernet
+    existing = await db.execute(select(User).where(User.id == TEST_USER_ID))
+    if existing.scalar_one_or_none() is None:
+        db.add(User(id=TEST_USER_ID, email="test@test.com", name="Test User"))
+        await db.commit()
 
 
-def _make_legacy_credential(
-    *,
-    user_id: uuid.UUID = TEST_USER_ID,
-    name: str = "Legacy Key",
-    data: dict | None = None,
-) -> Credential:
-    """Build a Credential row with field_keys explicitly None (pre-M2 legacy shape)."""
-    return Credential(
-        user_id=user_id,
-        name=name,
-        credential_type="api_key",
-        provider_name="custom",
-        data_encrypted=json.dumps(data or {"api_key": "secret"}),
-        field_keys=None,
-    )
+# -- Catalog -----------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_create_credential_populates_field_keys(client: AsyncClient, db: AsyncSession):
-    """POST /api/credentials stores field_keys cache matching the input payload keys."""
-    resp = await client.post(
+async def test_credential_types_catalog(client: AsyncClient) -> None:
+    response = await client.get("/api/credential-types")
+    assert response.status_code == 200
+    body = response.json()
+    keys = {item["key"] for item in body}
+    assert {"naver_search", "openai", "anthropic", "http_bearer"} <= keys
+
+
+@pytest.mark.asyncio
+async def test_credential_type_detail(client: AsyncClient) -> None:
+    response = await client.get("/api/credential-types/naver_search")
+    assert response.status_code == 200
+    body = response.json()
+    field_names = [p["name"] for p in body["properties"]]
+    assert field_names == ["client_id", "client_secret"]
+    assert body["has_test"] is True
+
+
+@pytest.mark.asyncio
+async def test_credential_type_unknown(client: AsyncClient) -> None:
+    response = await client.get("/api/credential-types/does-not-exist")
+    assert response.status_code == 404
+
+
+# -- CRUD --------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_credential_round_trip(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    response = await client.post(
         "/api/credentials",
         json={
-            "name": "My Key",
-            "credential_type": "api_key",
-            "provider_name": "custom",
-            "data": {"api_key": "secret-123"},
+            "definition_key": "naver_search",
+            "name": "Naver Test",
+            "data": {"client_id": "id-123", "client_secret": "secret-xyz"},
         },
     )
-    assert resp.status_code == 201
-    body = resp.json()
-    assert body["field_keys"] == ["api_key"]
+    assert response.status_code == 201, response.text
+    body = response.json()
+    cred_id = uuid.UUID(body["id"])
 
+    assert body["definition_key"] == "naver_search"
+    assert sorted(body["field_keys"]) == ["client_id", "client_secret"]
+    assert body["key_id"] == get_active_key_id()
+    assert body["status"] == "active"
+
+    # Decrypt and verify the original payload survives the round-trip.
     row = (
-        await db.execute(select(Credential).where(Credential.id == uuid.UUID(body["id"])))
+        await db.execute(select(Credential).where(Credential.id == cred_id))
     ).scalar_one()
-    assert row.field_keys == ["api_key"]
+    decrypted = credential_service.decrypt_data(row.data_encrypted)
+    assert decrypted == {"client_id": "id-123", "client_secret": "secret-xyz"}
+    assert row.key_id == get_active_key_id()
 
 
 @pytest.mark.asyncio
-async def test_update_credential_data_syncs_field_keys(client: AsyncClient, db: AsyncSession):
-    """PUT with new data regenerates the field_keys cache."""
-    create_resp = await client.post(
+async def test_create_credential_unknown_definition(client: AsyncClient) -> None:
+    response = await client.post(
         "/api/credentials",
         json={
-            "name": "Rotate Me",
-            "credential_type": "oauth",
-            "provider_name": "custom",
+            "definition_key": "definitely_not_a_thing",
+            "name": "x",
+            "data": {},
+        },
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_list_credentials_does_not_leak_data(client: AsyncClient) -> None:
+    await client.post(
+        "/api/credentials",
+        json={
+            "definition_key": "openai",
+            "name": "OpenAI",
+            "data": {"api_key": "sk-secret"},
+        },
+    )
+    response = await client.get("/api/credentials")
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) >= 1
+    item = next(b for b in body if b["definition_key"] == "openai")
+    assert item["field_keys"] == ["api_key"]
+    # The decrypted payload must NEVER appear in a list response.
+    assert "data" not in item
+    assert "data_encrypted" not in item
+
+
+@pytest.mark.asyncio
+async def test_get_credential_omits_data(client: AsyncClient) -> None:
+    create = await client.post(
+        "/api/credentials",
+        json={
+            "definition_key": "anthropic",
+            "name": "Anth",
+            "data": {"api_key": "k"},
+        },
+    )
+    cred_id = create.json()["id"]
+    response = await client.get(f"/api/credentials/{cred_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert "data" not in body
+    assert body["field_keys"] == ["api_key"]
+
+
+@pytest.mark.asyncio
+async def test_patch_credential_updates_data_and_key_id(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    create = await client.post(
+        "/api/credentials",
+        json={
+            "definition_key": "openai",
+            "name": "Old",
             "data": {"api_key": "old"},
         },
     )
-    credential_id = create_resp.json()["id"]
+    cred_id = create.json()["id"]
 
-    update_resp = await client.put(
-        f"/api/credentials/{credential_id}",
-        json={"data": {"client_id": "abc", "client_secret": "xyz"}},
+    patch = await client.patch(
+        f"/api/credentials/{cred_id}",
+        json={
+            "name": "New",
+            "data": {"api_key": "rotated", "organization": "org-1"},
+        },
     )
-    assert update_resp.status_code == 200
-    assert sorted(update_resp.json()["field_keys"]) == ["client_id", "client_secret"]
+    assert patch.status_code == 200
+    body = patch.json()
+    assert body["name"] == "New"
+    assert sorted(body["field_keys"]) == ["api_key", "organization"]
 
     row = (
-        await db.execute(select(Credential).where(Credential.id == uuid.UUID(credential_id)))
+        await db.execute(
+            select(Credential).where(Credential.id == uuid.UUID(cred_id))
+        )
     ).scalar_one()
-    assert row.field_keys is not None
-    assert sorted(row.field_keys) == ["client_id", "client_secret"]
+    decrypted = credential_service.decrypt_data(row.data_encrypted)
+    assert decrypted == {"api_key": "rotated", "organization": "org-1"}
 
 
 @pytest.mark.asyncio
-async def test_update_credential_name_only_preserves_field_keys(
+async def test_patch_name_only_preserves_data(
     client: AsyncClient, db: AsyncSession
-):
-    """PUT with name-only must NOT touch field_keys cache."""
-    create_resp = await client.post(
+) -> None:
+    create = await client.post(
         "/api/credentials",
         json={
+            "definition_key": "openai",
             "name": "Before",
-            "credential_type": "api_key",
-            "provider_name": "custom",
             "data": {"api_key": "stay"},
         },
     )
-    credential_id = create_resp.json()["id"]
+    cred_id = create.json()["id"]
+    initial = (
+        await db.execute(
+            select(Credential).where(Credential.id == uuid.UUID(cred_id))
+        )
+    ).scalar_one()
+    initial_blob = initial.data_encrypted
 
-    update_resp = await client.put(
-        f"/api/credentials/{credential_id}",
-        json={"name": "After"},
+    patch = await client.patch(
+        f"/api/credentials/{cred_id}", json={"name": "After"}
     )
-    assert update_resp.status_code == 200
-    assert update_resp.json()["name"] == "After"
-    assert update_resp.json()["field_keys"] == ["api_key"]
+    assert patch.status_code == 200
+    assert patch.json()["name"] == "After"
 
     row = (
-        await db.execute(select(Credential).where(Credential.id == uuid.UUID(credential_id)))
-    ).scalar_one()
-    assert row.field_keys == ["api_key"]
-
-
-@pytest.mark.asyncio
-async def test_list_credentials_avoids_decryption(client: AsyncClient, db: AsyncSession):
-    """GET /api/credentials serves field_keys from the cache without any Fernet decryption."""
-    # Seed a few credentials via the real API so the field_keys cache is populated.
-    for i in range(3):
-        resp = await client.post(
-            "/api/credentials",
-            json={
-                "name": f"Key-{i}",
-                "credential_type": "api_key",
-                "provider_name": "custom",
-                "data": {f"field_{i}": f"value-{i}"},
-            },
+        await db.execute(
+            select(Credential).where(Credential.id == uuid.UUID(cred_id))
         )
-        assert resp.status_code == 201
-
-    with patch(
-        "app.services.credential_service.decrypt_api_key",
-        side_effect=AssertionError(
-            "decrypt_api_key must not be called on list when cache is populated"
-        ),
-    ) as spy:
-        list_resp = await client.get("/api/credentials")
-        assert list_resp.status_code == 200
-        assert len(list_resp.json()) == 3
-        for item in list_resp.json():
-            assert len(item["field_keys"]) == 1
-
-    assert spy.call_count == 0
+    ).scalar_one()
+    assert row.data_encrypted == initial_blob
 
 
 @pytest.mark.asyncio
-async def test_extract_field_keys_fallback_for_legacy_row(db: AsyncSession):
-    """Legacy rows with field_keys=None fall back to the decryption path."""
-    legacy = _make_legacy_credential(data={"api_key": "legacy-secret"})
-    db.add(legacy)
+async def test_delete_credential(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    create = await client.post(
+        "/api/credentials",
+        json={
+            "definition_key": "openai",
+            "name": "Delete Me",
+            "data": {"api_key": "k"},
+        },
+    )
+    cred_id = uuid.UUID(create.json()["id"])
+
+    response = await client.delete(f"/api/credentials/{cred_id}")
+    assert response.status_code == 204
+
+    row = (
+        await db.execute(select(Credential).where(Credential.id == cred_id))
+    ).scalar_one_or_none()
+    assert row is None
+
+
+# -- Audit log ---------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_audit_log_records_create_and_update(
+    client: AsyncClient,
+) -> None:
+    create = await client.post(
+        "/api/credentials",
+        json={
+            "definition_key": "openai",
+            "name": "Audit Me",
+            "data": {"api_key": "x"},
+        },
+    )
+    cred_id = create.json()["id"]
+    await client.patch(
+        f"/api/credentials/{cred_id}",
+        json={"data": {"api_key": "y"}},
+    )
+
+    logs = await client.get(f"/api/credentials/{cred_id}/audit-logs")
+    assert logs.status_code == 200
+    actions = [log["action"] for log in logs.json()]
+    # Newest-first ordering — update precedes create.
+    assert actions[0] == "update"
+    assert actions[-1] == "create"
+
+
+# -- Per-user isolation ------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_other_user_cannot_access(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    """A credential created by another user is invisible via the API."""
+
+    other_id = uuid.uuid4()
+    db.add(User(id=other_id, email="other@test.com", name="Other"))
     await db.commit()
-    await db.refresh(legacy)
-    assert legacy.field_keys is None
+    await credential_service.create(
+        db,
+        user_id=other_id,
+        definition_key="openai",
+        name="Other's key",
+        data={"api_key": "secret"},
+    )
+    await db.commit()
 
-    with patch(
-        "app.services.credential_service.decrypt_api_key",
-        return_value=json.dumps({"api_key": "legacy-secret"}),
-    ) as spy:
-        keys = credential_service.extract_field_keys(legacy)
+    listing = await client.get("/api/credentials")
+    body = listing.json()
+    assert all(item["user_id"] != str(other_id) for item in body)
 
-    assert keys == ["api_key"]
-    assert spy.call_count == 1
+
+# -- Reserved marker ---------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reserved_marker_rejected(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/credentials",
+        json={
+            "definition_key": "openai",
+            "name": "[m10-auto-seed] custom",
+            "data": {"api_key": "x"},
+        },
+    )
+    assert response.status_code in (400, 422)
+
+
+# -- Registry sanity ---------------------------------------------------------
+
+
+def test_registry_lookup() -> None:
+    naver = registry.get("naver_search")
+    assert naver is not None
+    assert naver.test is not None
+    assert naver.authenticate is not None
