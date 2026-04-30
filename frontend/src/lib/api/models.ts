@@ -5,6 +5,7 @@
 import { apiFetch } from './client'
 import type {
   DiscoveredModel,
+  ListModelsOptions,
   Model,
   ModelCreate,
   ModelTestPreviewRequest,
@@ -12,8 +13,18 @@ import type {
   ModelUpdate,
 } from '@/lib/types/model'
 
+function buildListQuery(options?: ListModelsOptions): string {
+  if (!options) return ''
+  const params = new URLSearchParams()
+  if (options.sort_by) params.set('sort_by', options.sort_by)
+  if (options.order) params.set('order', options.order)
+  const qs = params.toString()
+  return qs ? `?${qs}` : ''
+}
+
 export const modelsApi = {
-  list: () => apiFetch<Model[]>('/api/models'),
+  list: (options?: ListModelsOptions) =>
+    apiFetch<Model[]>(`/api/models${buildListQuery(options)}`),
   get: (id: string) => apiFetch<Model>(`/api/models/${id}`),
   create: (data: ModelCreate) =>
     apiFetch<Model>('/api/models', {

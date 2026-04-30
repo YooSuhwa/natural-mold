@@ -53,6 +53,7 @@ from app.models.user import User
 from app.scheduler import (
     add_trigger_job,
     get_scheduler,
+    register_catalog_update_job,
     register_credential_rotation_job,
     register_health_check_job,
 )
@@ -138,6 +139,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     register_credential_rotation_job()
     # Recurring health check for active models / MCP servers.
     register_health_check_job()
+    # Recurring multi-source model catalog rebuild (LiteLLM/OpenRouter/llm-prices/pydantic).
+    register_catalog_update_job()
 
     async with async_session() as db:
         result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))

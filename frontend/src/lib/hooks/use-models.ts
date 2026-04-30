@@ -13,7 +13,9 @@ const KEY_LIST = ['models'] as const
 export function useModels() {
   return useQuery({
     queryKey: KEY_LIST,
-    queryFn: modelsApi.list,
+    // Wrap so the QueryFunction signature stays compatible after `list`
+    // gained an optional `ListModelsOptions` argument in M11.
+    queryFn: () => modelsApi.list(),
     staleTime: 60_000,
   })
 }

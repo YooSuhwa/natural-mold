@@ -1,8 +1,24 @@
 // Model catalog domain types — mirrors backend `app/schemas/model.py`.
 // M7: extended with `source` (litellm/openrouter/manual), `agent_count`,
 // `max_output_tokens`, capability flags, and discovery payload.
+// M11: adds `rankings` (LMArena ELO, LiveBench, Artificial Analysis Index)
+// surfaced from the catalog enrichment cron.
 
 export type ModelSource = 'litellm' | 'openrouter' | 'manual'
+
+/**
+ * External benchmark ranking snapshot for a model. Backend cron refreshes
+ * these every ~6h. All values may be missing for new/private/Custom-ID
+ * models that haven't been matched to a public benchmark yet.
+ */
+export interface ModelRankings {
+  /** LMArena Chatbot Arena ELO (higher = better, e.g. 1234). */
+  lmarena?: number
+  /** LiveBench score 0–100 (higher = better, e.g. 78.2). */
+  livebench?: number
+  /** Artificial Analysis Intelligence Index 0–100 (higher = better). */
+  aa_index?: number
+}
 
 export interface Model {
   id: string
@@ -22,6 +38,7 @@ export interface Model {
   supports_reasoning: boolean | null
   source: ModelSource | null
   agent_count: number
+  rankings: ModelRankings | null
   created_at: string
 }
 
@@ -40,6 +57,18 @@ export interface DiscoveredModel {
   supports_function_calling: boolean | null
   supports_reasoning: boolean | null
   already_registered: boolean
+  rankings: ModelRankings | null
+}
+
+export type ModelRankingKey = keyof ModelRankings
+
+/** Sort options forwarded to `GET /api/models?sort_by=...&order=...`. */
+export type ModelSortKey = ModelRankingKey | 'display_name'
+export type ModelSortOrder = 'asc' | 'desc'
+
+export interface ListModelsOptions {
+  sort_by?: ModelSortKey
+  order?: ModelSortOrder
 }
 
 export interface ModelCreate {

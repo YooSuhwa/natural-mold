@@ -69,6 +69,7 @@ class ModelResponse(BaseModel):
     supports_function_calling: bool | None = None
     supports_reasoning: bool | None = None
     source: str | None = None
+    rankings: dict[str, Any] | None = None
     agent_count: int = 0
     created_at: datetime
 

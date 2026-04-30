@@ -77,7 +77,29 @@ const FAKE_MODELS = [
 
 const AGENT_ID = 'agent-fb-1'
 
-const FAKE_AGENT = {
+type FakeAgent = {
+  id: string
+  name: string
+  description: string | null
+  system_prompt: string
+  model: { id: string; display_name: string }
+  tools: unknown[]
+  skills: unknown[]
+  sub_agents: unknown[]
+  status: string
+  is_favorite: boolean
+  model_params: { temperature: number; top_p: number; max_tokens: number }
+  middleware_configs: unknown[]
+  template_id: string | null
+  created_at: string
+  updated_at: string
+  image_url: string | null
+  opener_questions: string[]
+  llm_credential_id: string | null
+  model_fallback_ids: string[] | null
+}
+
+const FAKE_AGENT: FakeAgent = {
   id: AGENT_ID,
   name: 'Research Assistant',
   description: null,
@@ -171,8 +193,9 @@ test.describe('Model Fallback', () => {
     await expect(page.getByText(/저장되었습니다|saved/i).first()).toBeVisible()
 
     expect(lastPatchBody, 'PATCH body should have been captured').not.toBeNull()
-    expect(lastPatchBody?.model_fallback_ids, 'fallback_ids field present').toBeTruthy()
-    const ids = (lastPatchBody?.model_fallback_ids as string[]) ?? []
+    const patched = lastPatchBody as Record<string, unknown> | null
+    expect(patched?.['model_fallback_ids'], 'fallback_ids field present').toBeTruthy()
+    const ids = (patched?.['model_fallback_ids'] as string[]) ?? []
     expect(ids.length).toBeGreaterThan(0)
     // Whichever default the dialog picked must be a known fallback model id.
     expect(['model-fallback-a', 'model-fallback-b']).toContain(ids[0])

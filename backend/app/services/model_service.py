@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
 from app.models.model import Model
+from app.services.model_metadata import enrich_model
 
 
 async def resolve_model(
@@ -62,7 +63,7 @@ async def get_model(db: AsyncSession, model_id: uuid.UUID) -> Model | None:
 
 
 def _serialize(model: Model, *, agent_count: int = 0) -> dict:
-    return {
+    payload: dict = {
         "id": model.id,
         "provider": model.provider,
         "model_name": model.model_name,
@@ -82,6 +83,17 @@ def _serialize(model: Model, *, agent_count: int = 0) -> dict:
         "agent_count": agent_count,
         "created_at": model.created_at,
     }
+    # Surface catalog-only metadata (rankings, etc.) sparsely. The DB row
+    # always wins for the columns above; rankings has no ORM home so we
+    # source it from the merged catalog when available.
+    try:
+        enriched = enrich_model(f"{model.provider}/{model.model_name}")
+        rankings = enriched.get("rankings")
+        if rankings:
+            payload["rankings"] = rankings
+    except Exception:  # noqa: BLE001 — enrichment is best-effort
+        pass
+    return payload
 
 
 __all__ = ["get_model", "list_models", "resolve_model"]

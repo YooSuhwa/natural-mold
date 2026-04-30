@@ -1,0 +1,4 @@
+{
+  "exact_model_ids": ["sample_spec", "search_api", "model_router"],
+  "prefixes": ["1024-x-1024/", "512-x-512/", "256-x-256/"]
+}

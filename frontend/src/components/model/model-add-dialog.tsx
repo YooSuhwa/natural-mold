@@ -142,6 +142,9 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
       <p className="rounded border bg-muted/40 p-3 text-xs text-muted-foreground">
         Use this for new or private models that don&apos;t show up in
         discovery. Without explicit pricing, cost tracking will be inaccurate.
+        Benchmark rankings are not auto-fetched for Custom IDs — they will be
+        populated by the next catalog cron cycle if the model joins a public
+        catalog.
       </p>
 
       <div className="grid grid-cols-2 gap-3">

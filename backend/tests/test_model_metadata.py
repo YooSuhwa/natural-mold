@@ -25,11 +25,13 @@ def test_get_anthropic_models_is_cached() -> None:
 
 
 def test_enrich_model_known_model_fills_pricing_and_meta() -> None:
-    """A model present in the catalog gets pricing + meta from LiteLLM keys."""
+    """A model present in the catalog gets pricing + meta from the merged catalog."""
 
     enriched = model_metadata.enrich_model("claude-haiku-4-5")
-    # Static catalog entry: ensure the field-name mapping fired.
-    assert enriched["display_name"] == "claude-haiku-4-5"
+    # Display name may be source-supplied (e.g. "Anthropic: Claude Haiku 4.5")
+    # or fall back to the bare model id — either is acceptable so long as
+    # something usable comes back.
+    assert isinstance(enriched.get("display_name"), str) and enriched["display_name"]
     assert enriched.get("context_window") == 200000
     assert enriched.get("max_output_tokens") == 64000
     assert enriched.get("cost_per_input_token") is not None

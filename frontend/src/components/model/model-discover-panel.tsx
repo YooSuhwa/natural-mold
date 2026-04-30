@@ -11,6 +11,7 @@ import { DomainIcon } from '@/components/shared/icon'
 import { ModelSourceBadge } from './model-source-badge'
 import { ModelConnectionTest } from './model-connection-test'
 import { formatTokenPrice } from './model-format'
+import { RankingBadge, rankingScoreFor } from './model-rankings'
 import {
   Select,
   SelectContent,
@@ -65,12 +66,17 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
   const filteredResults = useMemo(() => {
     if (!results) return []
     const q = search.trim().toLowerCase()
-    if (!q) return results
-    return results.filter(
-      (r) =>
-        r.model_name.toLowerCase().includes(q) ||
-        r.display_name.toLowerCase().includes(q),
-    )
+    const matched = q
+      ? results.filter(
+          (r) =>
+            r.model_name.toLowerCase().includes(q) ||
+            r.display_name.toLowerCase().includes(q),
+        )
+      : results
+    // M11 — Float models with at least one benchmark score above unranked
+    // ones so users see the strongest options first. We don't mutate the
+    // upstream array; `toSorted` is intentionally avoided for older runtimes.
+    return [...matched].sort((a, b) => rankingScoreFor(b.rankings) - rankingScoreFor(a.rankings))
   }, [results, search])
 
   async function handleDiscover() {
@@ -287,6 +293,13 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                         </span>
                       )}
                     </div>
+                    {m.rankings && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
+                        <RankingBadge rankingKey="lmarena" value={m.rankings.lmarena} />
+                        <RankingBadge rankingKey="livebench" value={m.rankings.livebench} />
+                        <RankingBadge rankingKey="aa_index" value={m.rankings.aa_index} />
+                      </div>
+                    )}
                     {testRow === m.model_name && credentialId && (
                       <div className="mt-2">
                         <ModelConnectionTest

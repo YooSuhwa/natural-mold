@@ -18,6 +18,12 @@ import { ModelEditDialog } from '@/components/model/model-edit-dialog'
 import { ModelTestDialog } from '@/components/model/model-test-dialog'
 import { ModelTestBulkDialog } from '@/components/model/model-test-bulk-dialog'
 import { formatTokenPrice } from '@/components/model/model-format'
+import {
+  RANKING_META,
+  RankingCell,
+  RankingHeader,
+} from '@/components/model/model-rankings'
+import { Checkbox } from '@/components/ui/checkbox'
 import { useModels } from '@/lib/hooks/use-models'
 import { useModelHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 import type { Model } from '@/lib/types/model'
@@ -32,10 +38,19 @@ export default function ModelsPage() {
   const [testing, setTesting] = useState<Model | null>(null)
   const [bulkTestOpen, setBulkTestOpen] = useState(false)
   const [selected, setSelected] = useState<Model[]>([])
+  const [onlyWithRanking, setOnlyWithRanking] = useState(false)
 
   // Stable reference for downstream memos. `models ?? []` would create a fresh
   // array on every render and bust the providerOptions / sourceOptions cache.
-  const data = useMemo<Model[]>(() => models ?? [], [models])
+  const allModels = useMemo<Model[]>(() => models ?? [], [models])
+
+  // Optional "Has ranking" filter — narrows the catalog to models with at
+  // least one populated benchmark score. Applied before the DataTable so the
+  // pagination/empty-state reflect the filtered set.
+  const data = useMemo<Model[]>(() => {
+    if (!onlyWithRanking) return allModels
+    return allModels.filter((m) => modelHasAnyRanking(m))
+  }, [allModels, onlyWithRanking])
 
   // O(1) lookup of latest health entry per model_id. Falls back to "unknown"
   // when no probe has been recorded yet (e.g. freshly added model).
@@ -142,6 +157,49 @@ export default function ModelsPage() {
             <span className="text-xs text-muted-foreground">—</span>
           ),
       },
+      // M11 — Benchmark rankings. Missing scores are normalised to
+      // `undefined` so TanStack's `sortUndefined: 'last'` keeps them pinned
+      // to the bottom regardless of sort direction. Headers carry an ⓘ
+      // tooltip explaining what each score represents.
+      {
+        id: 'lmarena',
+        accessorFn: (row) => row.rankings?.lmarena ?? undefined,
+        header: () => <RankingHeader rankingKey="lmarena" />,
+        cell: ({ row }) => (
+          <RankingCell
+            value={row.original.rankings?.lmarena}
+            format={RANKING_META.lmarena.format}
+          />
+        ),
+        sortingFn: 'basic',
+        sortUndefined: 'last',
+      },
+      {
+        id: 'livebench',
+        accessorFn: (row) => row.rankings?.livebench ?? undefined,
+        header: () => <RankingHeader rankingKey="livebench" />,
+        cell: ({ row }) => (
+          <RankingCell
+            value={row.original.rankings?.livebench}
+            format={RANKING_META.livebench.format}
+          />
+        ),
+        sortingFn: 'basic',
+        sortUndefined: 'last',
+      },
+      {
+        id: 'aa_index',
+        accessorFn: (row) => row.rankings?.aa_index ?? undefined,
+        header: () => <RankingHeader rankingKey="aa_index" />,
+        cell: ({ row }) => (
+          <RankingCell
+            value={row.original.rankings?.aa_index}
+            format={RANKING_META.aa_index.format}
+          />
+        ),
+        sortingFn: 'basic',
+        sortUndefined: 'last',
+      },
       {
         id: 'source',
         accessorKey: 'source',
@@ -239,15 +297,30 @@ export default function ModelsPage() {
     [providerOptions, sourceOptions],
   )
 
-  const toolbar =
-    selected.length > 0 ? (
-      <Button size="sm" onClick={() => setBulkTestOpen(true)} data-testid="test-selected">
-        <Zap className="size-3.5" /> Test Selected
-        <Badge variant="secondary" className="ml-1">
-          {selected.length}
-        </Badge>
-      </Button>
-    ) : null
+  const toolbar = (
+    <div className="flex items-center gap-3">
+      <label
+        htmlFor="only-with-ranking"
+        className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"
+      >
+        <Checkbox
+          id="only-with-ranking"
+          data-testid="only-with-ranking"
+          checked={onlyWithRanking}
+          onCheckedChange={(v) => setOnlyWithRanking(Boolean(v))}
+        />
+        Has ranking
+      </label>
+      {selected.length > 0 && (
+        <Button size="sm" onClick={() => setBulkTestOpen(true)} data-testid="test-selected">
+          <Zap className="size-3.5" /> Test Selected
+          <Badge variant="secondary" className="ml-1">
+            {selected.length}
+          </Badge>
+        </Button>
+      )}
+    </div>
+  )
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
@@ -262,7 +335,7 @@ export default function ModelsPage() {
         }
       />
 
-      {!isLoading && data.length === 0 ? (
+      {!isLoading && allModels.length === 0 ? (
         <EmptyState
           icon={<Brain className="size-6" />}
           title="No models yet"
@@ -335,6 +408,20 @@ function formatRelativeTime(iso: string): string {
   if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}m ago`
   if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}h ago`
   return `${Math.floor(deltaSec / 86400)}d ago`
+}
+
+/**
+ * True when at least one benchmark score is present. Used by the "Has
+ * ranking" toggle so we can hide unmatched/Custom-ID models on demand.
+ */
+function modelHasAnyRanking(model: Model): boolean {
+  const r = model.rankings
+  if (!r) return false
+  return (
+    typeof r.lmarena === 'number' ||
+    typeof r.livebench === 'number' ||
+    typeof r.aa_index === 'number'
+  )
 }
 
 function CapabilityIcons({ model }: { model: Model }) {

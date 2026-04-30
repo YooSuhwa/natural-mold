@@ -183,6 +183,54 @@ def register_credential_rotation_job() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Model catalog updater
+# ---------------------------------------------------------------------------
+
+CATALOG_UPDATE_JOB_ID = "catalog_update"
+
+
+async def update_model_catalog() -> dict[str, Any]:
+    """Run the multi-source catalog refresh + 3-layer merge build."""
+
+    from app.services.model_catalog_updater import update_catalog
+
+    try:
+        return await update_catalog()
+    except Exception:  # noqa: BLE001 — keep cron alive
+        logger.exception("model catalog update failed; will retry next run")
+        return {"status": "error"}
+
+
+def register_catalog_update_job() -> None:
+    """Register the recurring catalog rebuild cron job. Idempotent."""
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        logger.debug("Scheduler not running; skipping catalog update registration")
+        return
+    try:
+        trigger = CronTrigger.from_crontab(settings.catalog_update_cron)
+    except ValueError:
+        logger.exception(
+            "invalid catalog_update_cron=%r; catalog update job not scheduled",
+            settings.catalog_update_cron,
+        )
+        return
+    scheduler.add_job(
+        update_model_catalog,
+        trigger,
+        id=CATALOG_UPDATE_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info(
+        "Scheduled model catalog update: cron %s",
+        settings.catalog_update_cron,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Health check sweep
 # ---------------------------------------------------------------------------
 

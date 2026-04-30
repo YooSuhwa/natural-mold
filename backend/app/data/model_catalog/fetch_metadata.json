@@ -1,0 +1,29 @@
+{
+  "fetched_at": "2026-04-30T02:24:14Z",
+  "sources": {
+    "litellm": {
+      "status": "ok",
+      "http_status": 200,
+      "sha256": "b94d7486221308a5b84808ea243f37dbc590a0d4a109ce5c9ccb11bd7dc5ff03",
+      "bytes": 1413378
+    },
+    "openrouter": {
+      "status": "ok",
+      "http_status": 200,
+      "sha256": "e8eb9ec4d85449faf9b975c12194124534e34e4f842d62561ffbfd5d30519b68",
+      "bytes": 427134
+    },
+    "llm_prices": {
+      "status": "ok",
+      "http_status": 200,
+      "sha256": "b0c09f7f24f44632f5ec6c9ca10a46bb906bbeca821a78e25b976ff5ad0e00b6",
+      "bytes": 19235
+    },
+    "pydantic_genai": {
+      "status": "ok",
+      "http_status": 200,
+      "sha256": "a14b43516d2e105a728256d37e44440425b3d2f6fdc8bfd05e72f56f1c5653dd",
+      "bytes": 269999
+    }
+  }
+}

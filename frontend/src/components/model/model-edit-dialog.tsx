@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/select'
 import { ModelSourceBadge } from './model-source-badge'
 import { ModelConnectionTest } from './model-connection-test'
+import { RankingsSection } from './model-rankings'
 import { StatusChip } from '@/components/shared/status-chip'
 import { HealthHistoryChart } from '@/components/shared/health-history-chart'
 import { perMillionToTokenPrice, tokenPriceToPerMillion } from './model-format'
@@ -156,6 +157,15 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
           </TabsList>
 
           <TabsContent value="info" className="space-y-4 pt-3">
+            <RankingsSection
+              rankings={model.rankings}
+              emptyHint={
+                model.source === 'manual'
+                  ? 'Custom ID models are not auto-matched to public benchmarks. Discovery will populate scores when the model joins a public catalog.'
+                  : undefined
+              }
+            />
+
             <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 p-2">
               <span className="text-xs text-muted-foreground">
                 Verify the credential reaches this model end-to-end.
