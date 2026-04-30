@@ -158,7 +158,10 @@ class AgentResponse(BaseModel):
     name: str
     description: str | None
     system_prompt: str
-    model: ModelBrief
+    # Optional so agents whose ``model_id`` FK target was deleted out from
+    # under them (legacy data, manual cleanup, m18 wipe) still serialize.
+    # The frontend renders a "no model bound" warning and prompts re-binding.
+    model: ModelBrief | None = None
     tools: list[ToolBrief]
     skills: list[SkillBrief] = []
     sub_agents: list[AgentBrief] = Field(default_factory=list)

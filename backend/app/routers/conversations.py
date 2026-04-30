@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
 from app.agent_runtime.model_factory import env_provider_keys
 from app.config import settings
@@ -59,19 +60,24 @@ async def _resolve_agent_context(
     if not agent:
         raise agent_not_found()
 
-    api_key: str | None = None
-    if agent.llm_credential is not None:
-        try:
-            payload = await credential_service.decrypt_with_external(
-                agent.llm_credential.data_encrypted
-            )
-            api_key = payload.get("api_key") or payload.get("token")
-        except Exception:  # noqa: BLE001 — fall through to env-var fallback
-            logger.exception(
-                "LLM credential %s decryption failed for agent %s",
-                agent.llm_credential.id,
-                agent.id,
-            )
+    if agent.model is None:
+        # Legacy data: agent's model_id points at a deleted Model row. Chat
+        # cannot run without a model bound — surface a clear 422 so the UI
+        # can prompt the user to re-bind in agent settings.
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "agent has no model bound — open agent settings and pick a "
+                "model before chatting."
+            ),
+        )
+
+    # Tiered: agent.llm_credential → model.default_credential_id → env fallback.
+    # Lets users skip the per-agent credential pick when their model already
+    # carries the right default.
+    api_key = await resolve_llm_api_key_for_agent(db, agent)
     base_url = agent.model.base_url
 
     tools_config = await chat_service.build_tools_config(

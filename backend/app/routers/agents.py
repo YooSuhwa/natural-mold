@@ -51,7 +51,10 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         name=agent.name,
         description=agent.description,
         system_prompt=agent.system_prompt,
-        model=agent.model,
+        # ``agent.model`` may be None when the FK target was deleted (legacy
+        # rows from before the m18 wipe). The schema accepts None and the
+        # frontend prompts re-binding instead of crashing the agents list.
+        model=agent.model if agent.model is not None else None,
         tools=[ToolBrief(id=link.tool.id, name=link.tool.name) for link in agent.tool_links],
         skills=[
             SkillBrief(id=link.skill_id, name=link.skill.name, description=link.skill.description)

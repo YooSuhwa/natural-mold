@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
+from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.executor import AgentConfig, execute_agent_invoke
 from app.agent_runtime.model_factory import env_provider_keys
 from app.credentials import service as credential_service
@@ -61,22 +62,10 @@ async def _resolve_fallback_chain(db, fallback_list):
     return chain or None
 
 
-async def _resolve_llm_api_key(agent) -> str | None:
-    """Decrypt ``Agent.llm_credential`` and return ``api_key``.
-
-    Returns ``None`` when no credential is bound (env-var fallback handles it).
-    """
-
-    cred = getattr(agent, "llm_credential", None)
-    if cred is None:
-        return None
-    try:
-        payload = await credential_service.decrypt_with_external(cred.data_encrypted)
-    except Exception:  # noqa: BLE001 — surface as missing key
-        logger.exception("LLM credential %s decryption failed", cred.id)
-        return None
-    api_key = payload.get("api_key") or payload.get("token")
-    return str(api_key) if api_key else None
+# ``_resolve_llm_api_key`` was inlined here; the shared resolver in
+# ``app.agent_runtime.credential_resolution.resolve_llm_api_key_for_agent``
+# now owns the policy (agent.llm_credential → model.default_credential_id →
+# None).
 
 
 async def execute_trigger(trigger_id: str) -> None:
@@ -106,7 +95,12 @@ async def execute_trigger(trigger_id: str) -> None:
         tools_config = await chat_service.build_tools_config(agent, db=db)
         agent_skills = chat_service.build_agent_skills(agent)
 
-        api_key = await _resolve_llm_api_key(agent)
+        if agent.model is None:
+            logger.warning(
+                "Trigger %s: agent has no model bound — skipping run", trigger_id
+            )
+            return
+        api_key = await resolve_llm_api_key_for_agent(db, agent)
         base_url = agent.model.base_url
 
         fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
