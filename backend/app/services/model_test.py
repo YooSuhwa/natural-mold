@@ -129,10 +129,17 @@ async def run_model_test(
     """
 
     api_key = _extract_api_key(credential_data)
+    # The credential payload may carry its own ``base_url`` (OpenRouter,
+    # Azure OpenAI, openai_compatible). That always wins over a row-level
+    # value because it's what the user authenticated against — the row-level
+    # ``base_url`` only exists for legacy OpenAI Compatible registrations.
+    cred_base_url = credential_data.get("base_url") if credential_data else None
+    has_cred_url = isinstance(cred_base_url, str) and bool(cred_base_url)
+    effective_base_url = cred_base_url if has_cred_url else base_url
     raw_request = _reconstruct_request(
         provider=provider,
         model_name=model_name,
-        base_url=base_url,
+        base_url=effective_base_url,
         api_key=api_key,
     )
     # The curl command never sees the real key — placeholder substitution is
@@ -144,7 +151,7 @@ async def run_model_test(
             provider=provider,
             model_name=model_name,
             api_key=api_key,
-            base_url=base_url,
+            base_url=effective_base_url,
         )
     except Exception as exc:  # noqa: BLE001 — provider SDK init failures
         logger.warning(

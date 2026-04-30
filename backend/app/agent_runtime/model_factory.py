@@ -188,20 +188,33 @@ def create_chat_model_for_test(
         kwargs["api_key"] = api_key
     if base_url:
         kwargs["base_url"] = base_url
-    elif provider == "openai" and cls is ChatOpenAI:
-        # The OpenAI Python SDK falls back to the ``OPENAI_BASE_URL``
-        # environment variable when ``base_url`` is omitted. Some shells
-        # (Claude Code / codex helpers) set it to a third-party proxy, which
-        # silently routes our test requests to the wrong host. Pinning the
-        # canonical endpoint here keeps OpenAI-credential tests reaching the
-        # actual OpenAI API regardless of the launch environment.
-        kwargs["base_url"] = "https://api.openai.com/v1"
+    elif cls is ChatOpenAI:
+        # ChatOpenAI is the wrapper for every OpenAI-compatible provider in our
+        # PROVIDER_MAP (openai itself, OpenRouter, generic openai_compatible).
+        # The underlying OpenAI Python SDK falls back to ``OPENAI_BASE_URL``
+        # env when ``base_url`` is omitted, which routes the request to the
+        # *wrong* host whenever a shell has set it for an unrelated tool
+        # (Claude Code / codex helpers do this). Pin the canonical endpoint
+        # per-provider so each credential reaches its own gateway.
+        default_base = _OPENAI_FAMILY_BASE_URLS.get(provider)
+        if default_base:
+            kwargs["base_url"] = default_base
 
     if cls in (ChatOpenAI,):
         kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
         kwargs["http_client"] = httpx.Client(verify=_ssl_ctx)
 
     return cls(**kwargs)
+
+
+# Default base URL per OpenAI-compatible provider. Used only when the caller
+# (credential payload, model row, or preview body) didn't supply one.
+_OPENAI_FAMILY_BASE_URLS: dict[str, str] = {
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    # ``openai_compatible`` is a self-hosted catch-all; we never know the
+    # right host without the credential telling us, so don't guess.
+}
 
 
 # ---------------------------------------------------------------------------
