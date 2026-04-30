@@ -101,7 +101,14 @@ export function ModelTestBulkDialog({
                     ? 'No LLM credential available'
                     : 'Select credential'
                 }
-              />
+              >
+                {(selected) =>
+                  llmCredentials.find((c) => c.id === selected)?.name ??
+                  (llmCredentials.length === 0
+                    ? 'No LLM credential available'
+                    : 'Select credential')
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {llmCredentials.map((c) => (

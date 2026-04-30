@@ -91,13 +91,24 @@ export function ModelTestDialog({
             disabled={llmCredentials.length === 0}
           >
             <SelectTrigger id="test-cred" className="w-full">
+              {/* base-ui Select can't auto-extract a label from JSX-wrapped
+                  SelectItem children, so it falls back to the raw value
+                  (UUID). Function children let us render the credential's
+                  name directly. */}
               <SelectValue
                 placeholder={
                   llmCredentials.length === 0
                     ? 'No LLM credential available'
                     : 'Select credential'
                 }
-              />
+              >
+                {(selected) =>
+                  llmCredentials.find((c) => c.id === selected)?.name ??
+                  (llmCredentials.length === 0
+                    ? 'No LLM credential available'
+                    : 'Select credential')
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {llmCredentials.map((c) => (

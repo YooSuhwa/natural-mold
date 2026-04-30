@@ -297,7 +297,12 @@ function FallbackSection({
                       className="flex-1"
                       data-testid={`fallback-select-${index}`}
                     >
-                      <SelectValue />
+                      <SelectValue>
+                        {(selected) =>
+                          candidateModels.find((m) => m.id === selected)
+                            ?.display_name ?? ''
+                        }
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {candidateModels.map((m) => (
