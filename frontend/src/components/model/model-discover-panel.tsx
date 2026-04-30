@@ -163,13 +163,37 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
             disabled={llmCredentials.length === 0}
           >
             <SelectTrigger id="discover-cred" className="w-full">
+              {/*
+                Base-UI Select.Value receives a function child for custom
+                rendering of the selected item — without it, the raw `value`
+                (credential UUID) leaks through because our SelectItem
+                children are JSX rather than a plain string.
+              */}
               <SelectValue
                 placeholder={
                   llmCredentials.length === 0
                     ? 'No LLM credential available'
                     : 'Select credential'
                 }
-              />
+              >
+                {(value: string) => {
+                  const selected = llmCredentials.find((c) => c.id === value)
+                  if (!selected) {
+                    return llmCredentials.length === 0
+                      ? 'No LLM credential available'
+                      : 'Select credential'
+                  }
+                  return (
+                    <span className="inline-flex items-center gap-2">
+                      <DomainIcon iconId={selected.definition_key} className="size-4" />
+                      <span>{selected.name}</span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {definitionLabel(selected.definition_key)}
+                      </span>
+                    </span>
+                  )
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {llmCredentials.map((c) => (
