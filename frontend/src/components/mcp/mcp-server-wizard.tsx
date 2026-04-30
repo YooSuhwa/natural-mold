@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ArrowLeft, ArrowRight, Loader2, Check } from 'lucide-react'
 
@@ -44,18 +44,21 @@ interface McpServerWizardProps {
   onOpenChange: (open: boolean) => void
 }
 
-const STEPS = ['Basics', 'Auth', 'Discover', 'Confirm'] as const
+const STEPS = ['Basics', 'Auth', 'Tools'] as const
 type Step = (typeof STEPS)[number]
 type SourceTab = 'registry' | 'manual'
 
 /**
- * 4-step MCP server wizard with two entry modes:
+ * 3-step MCP server wizard with two entry modes:
  *
  * - **From Registry**: pick a preset (GitHub/Linear/...) → auto-fills name,
  *   transport, URL/command, env vars and a credential filter — saves through
  *   `POST /api/mcp-servers/from-registry`.
  * - **Manual**: existing behaviour — free-form fields, saves via
  *   `POST /api/mcp-servers`.
+ *
+ * Step 3 (Tools) auto-runs discovery on entry so the user sees the imported
+ * tool list immediately and can finalize with a single [Add] click.
  */
 export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
   const { data: registry } = useMcpRegistry()
@@ -78,6 +81,7 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
   const create = useCreateMcpServer()
   const createFromRegistry = useCreateFromRegistry()
   const discover = useDiscoverMcpTools()
+  const discoveredRef = useRef(false)
 
   function reset() {
     setTab('registry')
@@ -92,6 +96,7 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
     setCreatedServerId(null)
     setRegistryKey(null)
     setCredentialDefinitionFilter(null)
+    discoveredRef.current = false
   }
 
   function handleClose(next: boolean) {
@@ -147,30 +152,14 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
                 credential_id: credentialId,
               })
         setCreatedServerId(server.id)
-        setStep('Discover')
+        setStep('Tools')
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Create failed')
       }
       return
     }
 
-    if (step === 'Discover') {
-      if (!createdServerId) return
-      try {
-        const result = await discover.mutateAsync(createdServerId)
-        if (!result.success) {
-          toast.error(result.error ?? 'Discovery failed')
-          return
-        }
-        setDiscoveredTools(result.tools)
-        setStep('Confirm')
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Discovery failed')
-      }
-      return
-    }
-
-    if (step === 'Confirm') {
+    if (step === 'Tools') {
       toast.success('MCP server ready')
       handleClose(false)
     }
@@ -178,9 +167,36 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
 
   function handleBack() {
     if (step === 'Auth') setStep('Basics')
-    else if (step === 'Discover') setStep('Auth')
-    else if (step === 'Confirm') setStep('Discover')
+    else if (step === 'Tools') setStep('Auth')
   }
+
+  // Auto-run discovery once when the user lands on Step 3 (Tools).
+  // The ref guard prevents duplicate calls from React strict-mode double-invoke
+  // or from the user navigating Back → Next within the same modal session.
+  useEffect(() => {
+    if (step !== 'Tools') {
+      if (step === 'Basics' || step === 'Auth') {
+        discoveredRef.current = false
+      }
+      return
+    }
+    if (!createdServerId || discoveredRef.current || discover.isPending) return
+    discoveredRef.current = true
+    void (async () => {
+      try {
+        const result = await discover.mutateAsync(createdServerId)
+        if (!result.success) {
+          toast.error(result.error ?? 'Discovery failed')
+          discoveredRef.current = false
+          return
+        }
+        setDiscoveredTools(result.tools)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Discovery failed')
+        discoveredRef.current = false
+      }
+    })()
+  }, [step, createdServerId, discover])
 
   // If user switches between tabs at Step 1, reset the in-flight values that
   // belong to the *other* tab so we don't ship a half-filled payload.
@@ -324,34 +340,36 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
             </div>
           )}
 
-          {step === 'Discover' && (
+          {step === 'Tools' && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                We&apos;ll connect to the server and import its tools. Click{' '}
-                <em>Next</em> to start.
-              </p>
-              {discover.isPending && (
+              {discover.isPending ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" /> Discovering tools...
                 </div>
+              ) : discoveredTools.length > 0 ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    {discoveredTools.length} tool
+                    {discoveredTools.length === 1 ? '' : 's'} imported.
+                  </p>
+                  <McpToolTable tools={discoveredTools} />
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No tools imported. The server may be empty or unreachable.
+                </p>
               )}
-            </div>
-          )}
-
-          {step === 'Confirm' && (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                {discoveredTools.length} tool
-                {discoveredTools.length === 1 ? '' : 's'} imported.
-              </p>
-              <McpToolTable tools={discoveredTools} />
             </div>
           )}
         </div>
 
         <DialogFooter>
-          {step !== 'Basics' && step !== 'Confirm' && (
-            <Button variant="outline" onClick={handleBack}>
+          {step !== 'Basics' && (
+            <Button
+              variant="outline"
+              onClick={handleBack}
+              disabled={discover.isPending}
+            >
               <ArrowLeft className="size-4" /> Back
             </Button>
           )}
@@ -369,8 +387,8 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
               discover.isPending) && (
               <Loader2 className="size-4 animate-spin" />
             )}
-            {step === 'Confirm' ? 'Done' : 'Next'}
-            {step !== 'Confirm' && <ArrowRight className="size-4" />}
+            {step === 'Tools' ? 'Add' : 'Next'}
+            {step !== 'Tools' && <ArrowRight className="size-4" />}
           </Button>
         </DialogFooter>
       </DialogContent>
