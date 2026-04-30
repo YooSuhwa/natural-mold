@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { mcpApi } from '@/lib/api/mcp'
 import type {
   McpFromRegistryRequest,
+  McpProbeRequest,
   McpServerCreateRequest,
   McpServerUpdateRequest,
 } from '@/lib/types/mcp'
@@ -74,6 +75,12 @@ export function useDiscoverMcpTools() {
       qc.invalidateQueries({ queryKey: KEY_LIST })
       qc.invalidateQueries({ queryKey: ['mcp-servers', id] })
     },
+  })
+}
+
+export function useProbeMcpServer() {
+  return useMutation({
+    mutationFn: (data: McpProbeRequest) => mcpApi.probe(data),
   })
 }
 

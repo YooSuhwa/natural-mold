@@ -15,6 +15,9 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.schemas.mcp import (
     McpDiscoverResponse,
+    McpProbeRequest,
+    McpProbeResponse,
+    McpProbeTool,
     McpRegistryEntry,
     McpServerCreate,
     McpServerCreateFromRegistry,
@@ -24,6 +27,9 @@ from app.schemas.mcp import (
     McpTestResponse,
     McpToolResponse,
 )
+from app.credentials import service as credential_service
+from app.mcp.client import connect_and_list
+from app.models.credential import Credential
 from app.services import mcp_registry as mcp_registry_service
 
 router = APIRouter(prefix="/api/mcp-servers", tags=["mcp"])
@@ -202,6 +208,83 @@ async def create_server_from_registry(
     await db.commit()
     await db.refresh(server)
     return _server_to_response(server)
+
+
+@router.post("/probe", response_model=McpProbeResponse)
+async def probe_mcp_server(
+    payload: McpProbeRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> McpProbeResponse:
+    """Connect to an MCP server without persisting it.
+
+    Powers the wizard's "preview before commit" flow — returns the same
+    tool descriptors the regular discover path would import, so the UI can
+    render results identically. No DB writes happen here, so a user who
+    abandons the wizard leaves no orphan rows.
+    """
+
+    transport = payload.transport
+    url = payload.url
+    headers: dict[str, Any] = dict(payload.headers or {})
+
+    if payload.registry_key:
+        entry = mcp_registry_service.get_registry_entry(payload.registry_key)
+        if entry is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown registry entry '{payload.registry_key}'",
+            )
+        transport = transport or entry.get("transport")
+        url = url or entry.get("url")
+        registry_headers = entry.get("headers") or {}
+        headers = {**headers, **registry_headers}
+
+    if transport is None:
+        raise HTTPException(
+            status_code=422,
+            detail="transport is required (or provide registry_key)",
+        )
+    _validate_payload_consistency(transport, url, payload.command)
+
+    credentials: dict[str, Any] | None = None
+    if payload.credential_id is not None:
+        credential = (
+            await db.execute(
+                select(Credential).where(
+                    Credential.id == payload.credential_id,
+                    Credential.user_id == user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        if credential is None:
+            raise HTTPException(status_code=404, detail="credential not found")
+        credentials = await credential_service.decrypt_with_external(
+            credential.data_encrypted
+        )
+
+    result = await connect_and_list(
+        transport=transport,
+        url=url,
+        headers=headers,
+        credentials=credentials,
+        user_id=user.id,
+        credential_id=payload.credential_id,
+    )
+
+    return McpProbeResponse(
+        success=bool(result.get("success")),
+        server_info=result.get("server_info") or {},
+        tools=[
+            McpProbeTool(
+                name=t["name"],
+                description=t.get("description"),
+                input_schema=t.get("input_schema") or {},
+            )
+            for t in (result.get("tools") or [])
+        ],
+        error=result.get("error"),
+    )
 
 
 @router.get("/{server_id}", response_model=McpServerDetailResponse)

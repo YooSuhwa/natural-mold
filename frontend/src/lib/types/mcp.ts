@@ -78,6 +78,30 @@ export interface McpDiscoverResult {
   error: string | null
 }
 
+// -- Probe (preview without persistence, used by the wizard) ----------------
+
+export interface McpProbeRequest {
+  transport?: McpTransport
+  url?: string | null
+  command?: string | null
+  headers?: Record<string, unknown>
+  credential_id?: string | null
+  registry_key?: string | null
+}
+
+export interface McpProbeTool {
+  name: string
+  description: string | null
+  input_schema: Record<string, unknown>
+}
+
+export interface McpProbeResult {
+  success: boolean
+  server_info: Record<string, unknown>
+  tools: McpProbeTool[]
+  error: string | null
+}
+
 export interface McpServerWizardData {
   name: string
   description: string

@@ -2,6 +2,8 @@ import { apiFetch } from './client'
 import type {
   McpDiscoverResult,
   McpFromRegistryRequest,
+  McpProbeRequest,
+  McpProbeResult,
   McpRegistryEntry,
   McpServer,
   McpServerCreateRequest,
@@ -30,6 +32,12 @@ export const mcpApi = {
   discover: (id: string) =>
     apiFetch<McpDiscoverResult>(`/api/mcp-servers/${id}/discover`, {
       method: 'POST',
+    }),
+  /** Preview a server's tool list without creating any DB rows. */
+  probe: (data: McpProbeRequest) =>
+    apiFetch<McpProbeResult>('/api/mcp-servers/probe', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 
   // -- M8: Registry -----------------------------------------------------------

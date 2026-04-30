@@ -10,10 +10,20 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Checkbox } from '@/components/ui/checkbox'
-import type { McpTool } from '@/lib/types/mcp'
+
+/**
+ * Minimal shape both ``McpTool`` (persisted) and ``McpProbeTool`` (preview)
+ * satisfy — lets the same table render results from either source.
+ */
+interface McpToolLike {
+  id?: string
+  name: string
+  description: string | null
+  enabled?: boolean
+}
 
 interface McpToolTableProps {
-  tools: McpTool[]
+  tools: McpToolLike[]
   /** Optional toggler — local state in wizard mode. */
   selected?: Set<string>
   onToggle?: (toolName: string) => void

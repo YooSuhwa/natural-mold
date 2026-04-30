@@ -105,6 +105,39 @@ class McpDiscoverResponse(BaseModel):
     error: str | None = None
 
 
+# ---- Probe (preview without persistence) -----------------------------------
+
+
+class McpProbeRequest(BaseModel):
+    """Body for ``POST /api/mcp-servers/probe``.
+
+    Connects to an MCP server and lists its tools without persisting anything.
+    Used by the wizard's Step 3 to preview tools before the user commits with
+    [Add]. Either provide manual fields or a ``registry_key`` to hydrate from
+    the curated catalog.
+    """
+
+    transport: Transport | None = None
+    url: str | None = None
+    command: str | None = None
+    headers: dict[str, Any] = Field(default_factory=dict)
+    credential_id: uuid.UUID | None = None
+    registry_key: str | None = None
+
+
+class McpProbeTool(BaseModel):
+    name: str
+    description: str | None = None
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+
+
+class McpProbeResponse(BaseModel):
+    success: bool
+    server_info: dict[str, Any] = Field(default_factory=dict)
+    tools: list[McpProbeTool] = Field(default_factory=list)
+    error: str | None = None
+
+
 # ---- Registry (curated catalog) --------------------------------------------
 
 

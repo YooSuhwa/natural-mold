@@ -30,13 +30,13 @@ import { McpToolTable } from './mcp-tool-table'
 import {
   useCreateFromRegistry,
   useCreateMcpServer,
-  useDeleteMcpServer,
   useDiscoverMcpTools,
   useMcpRegistry,
+  useProbeMcpServer,
 } from '@/lib/hooks/use-mcp-servers'
 import type {
+  McpProbeTool,
   McpRegistryEntry,
-  McpTool,
   McpTransport,
 } from '@/lib/types/mcp'
 
@@ -72,8 +72,7 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
   const [url, setUrl] = useState('')
   const [command, setCommand] = useState('')
   const [credentialId, setCredentialId] = useState<string | null>(null)
-  const [discoveredTools, setDiscoveredTools] = useState<McpTool[]>([])
-  const [createdServerId, setCreatedServerId] = useState<string | null>(null)
+  const [discoveredTools, setDiscoveredTools] = useState<McpProbeTool[]>([])
   const [registryKey, setRegistryKey] = useState<string | null>(null)
   const [credentialDefinitionFilter, setCredentialDefinitionFilter] = useState<
     string | null
@@ -82,9 +81,8 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
   const create = useCreateMcpServer()
   const createFromRegistry = useCreateFromRegistry()
   const discover = useDiscoverMcpTools()
-  const remove = useDeleteMcpServer()
-  const discoveredRef = useRef(false)
-  const committedRef = useRef(false)
+  const probe = useProbeMcpServer()
+  const probedRef = useRef(false)
 
   function reset() {
     setTab('registry')
@@ -96,25 +94,13 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
     setCommand('')
     setCredentialId(null)
     setDiscoveredTools([])
-    setCreatedServerId(null)
     setRegistryKey(null)
     setCredentialDefinitionFilter(null)
-    discoveredRef.current = false
-    committedRef.current = false
+    probedRef.current = false
   }
 
   function handleClose(next: boolean) {
-    if (!next) {
-      // If the user dismissed the wizard without confirming with [Add],
-      // roll back the half-created server. Server delete cascades to its
-      // imported mcp_tools rows, so no manual cleanup is needed.
-      if (createdServerId && !committedRef.current) {
-        void remove.mutateAsync(createdServerId).catch(() => {
-          toast.error('Cleanup failed — server may remain in the list')
-        })
-      }
-      reset()
-    }
+    if (!next) reset()
     onOpenChange(next)
   }
 
@@ -149,6 +135,15 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
     }
 
     if (step === 'Auth') {
+      // No server INSERT here — wizard stays purely in-memory until [Add].
+      // Step 3 will probe the live server to preview its tools without
+      // touching the database.
+      setStep('Tools')
+      return
+    }
+
+    if (step === 'Tools') {
+      // Final commit: now we actually create the server + import its tools.
       try {
         const server =
           tab === 'registry' && registryKey
@@ -165,18 +160,21 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
                 command: transport === 'stdio' ? command.trim() : null,
                 credential_id: credentialId,
               })
-        setCreatedServerId(server.id)
-        setStep('Tools')
+        // Trigger discovery so the imported mcp_tools rows are populated.
+        // Soft-fail: if discover fails the server itself is still useful and
+        // the user can retry from the detail sheet.
+        try {
+          await discover.mutateAsync(server.id)
+        } catch {
+          toast.warning(
+            'Server added, but tool import failed. Retry from the detail page.',
+          )
+        }
+        toast.success('MCP server added')
+        handleClose(false)
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Create failed')
+        toast.error(e instanceof Error ? e.message : 'Failed to add server')
       }
-      return
-    }
-
-    if (step === 'Tools') {
-      committedRef.current = true
-      toast.success('MCP server ready')
-      handleClose(false)
     }
   }
 
@@ -185,33 +183,51 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
     else if (step === 'Tools') setStep('Auth')
   }
 
-  // Auto-run discovery once when the user lands on Step 3 (Tools).
+  // Auto-probe (preview-only, no DB writes) when the user lands on Step 3.
   // The ref guard prevents duplicate calls from React strict-mode double-invoke
   // or from the user navigating Back → Next within the same modal session.
   useEffect(() => {
     if (step !== 'Tools') {
       if (step === 'Basics' || step === 'Auth') {
-        discoveredRef.current = false
+        probedRef.current = false
       }
       return
     }
-    if (!createdServerId || discoveredRef.current || discover.isPending) return
-    discoveredRef.current = true
+    if (probedRef.current || probe.isPending) return
+    probedRef.current = true
     void (async () => {
       try {
-        const result = await discover.mutateAsync(createdServerId)
+        const result = await probe.mutateAsync(
+          tab === 'registry' && registryKey
+            ? { registry_key: registryKey, credential_id: credentialId }
+            : {
+                transport,
+                url: transport === 'stdio' ? null : url.trim(),
+                command: transport === 'stdio' ? command.trim() : null,
+                credential_id: credentialId,
+              },
+        )
         if (!result.success) {
-          toast.error(result.error ?? 'Discovery failed')
-          discoveredRef.current = false
+          toast.error(result.error ?? 'Preview failed')
+          probedRef.current = false
           return
         }
         setDiscoveredTools(result.tools)
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Discovery failed')
-        discoveredRef.current = false
+        toast.error(e instanceof Error ? e.message : 'Preview failed')
+        probedRef.current = false
       }
     })()
-  }, [step, createdServerId, discover])
+  }, [
+    step,
+    tab,
+    registryKey,
+    transport,
+    url,
+    command,
+    credentialId,
+    probe,
+  ])
 
   // If user switches between tabs at Step 1, reset the in-flight values that
   // belong to the *other* tab so we don't ship a half-filled payload.
@@ -357,21 +373,22 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
 
           {step === 'Tools' && (
             <div className="space-y-3">
-              {discover.isPending ? (
+              {probe.isPending ? (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> Discovering tools...
+                  <Loader2 className="size-4 animate-spin" /> Loading tools...
                 </div>
               ) : discoveredTools.length > 0 ? (
                 <>
                   <p className="text-sm text-muted-foreground">
-                    {discoveredTools.length} tool
-                    {discoveredTools.length === 1 ? '' : 's'} imported.
+                    Preview: {discoveredTools.length} tool
+                    {discoveredTools.length === 1 ? '' : 's'} found. Click [Add]
+                    to register the server.
                   </p>
                   <McpToolTable tools={discoveredTools} />
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
-                  No tools imported. The server may be empty or unreachable.
+                  No tools found. The server may be empty or unreachable.
                 </p>
               )}
             </div>
@@ -383,7 +400,12 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
             <Button
               variant="outline"
               onClick={handleBack}
-              disabled={discover.isPending}
+              disabled={
+                probe.isPending ||
+                create.isPending ||
+                createFromRegistry.isPending ||
+                discover.isPending
+              }
             >
               <ArrowLeft className="size-4" /> Back
             </Button>
@@ -392,6 +414,7 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
             onClick={handleNext}
             disabled={
               (step === 'Basics' && !basicsValid) ||
+              probe.isPending ||
               create.isPending ||
               createFromRegistry.isPending ||
               discover.isPending
