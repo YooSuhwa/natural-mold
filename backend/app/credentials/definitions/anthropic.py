@@ -30,17 +30,15 @@ definition = CredentialDefinition(
         }
     ),
     test=TestRequestSpec(
+        # ``/v1/models`` is a cheap auth probe — no token consumption, no
+        # per-model access gating. The earlier ``/v1/messages`` recipe with
+        # a hardcoded ``claude-3-5-haiku-latest`` would 404 / 403 for keys
+        # whose org doesn't have the Haiku family enabled, even when the
+        # key itself is valid.
         request={
-            "method": "POST",
-            "url": "https://api.anthropic.com/v1/messages",
-            "headers": {"content-type": "application/json"},
-            "json": {
-                "model": "claude-3-5-haiku-latest",
-                "max_tokens": 1,
-                "messages": [{"role": "user", "content": "ping"}],
-            },
+            "method": "GET",
+            "url": "https://api.anthropic.com/v1/models",
         },
-        # 200 = OK, 400 = bad request but auth ok (e.g. unknown model on org)
-        rules=[{"type": "responseCode", "value": [200, 400]}],
+        rules=[{"type": "responseCode", "value": [200]}],
     ),
 )
