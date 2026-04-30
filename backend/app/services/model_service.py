@@ -80,6 +80,7 @@ def _serialize(model: Model, *, agent_count: int = 0) -> dict:
         "supports_function_calling": model.supports_function_calling,
         "supports_reasoning": model.supports_reasoning,
         "source": model.source,
+        "default_credential_id": model.default_credential_id,
         "agent_count": agent_count,
         "created_at": model.created_at,
     }
