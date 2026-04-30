@@ -46,7 +46,17 @@ export function CredentialPicker({
       disabled={disabled || isLoading}
     >
       <SelectTrigger className="w-full">
-        <SelectValue placeholder={placeholder} />
+        {/* base-ui Select can't auto-extract a label from JSX children of
+            SelectItem, so it falls back to the raw value (UUID). The
+            function-children form receives the current value and lets us
+            render the correct human label ourselves. */}
+        <SelectValue placeholder={placeholder}>
+          {(selected) => {
+            if (!selected || selected === '__none__') return placeholder
+            const match = filtered.find((c) => c.id === selected)
+            return match ? match.name : placeholder
+          }}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {clearable && <SelectItem value="__none__">(no credential)</SelectItem>}
