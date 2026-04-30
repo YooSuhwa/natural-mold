@@ -249,7 +249,10 @@ async def test_discover_google_filters_to_generate_content(
     names = {m.model_name for m in results}
     assert names == {"gemini-2.0-flash"}
     assert results[0].provider == "google_genai"
-    assert results[0].context_window == 1048576
+    # context_window comes from the live ai-model-list snapshot (curated
+    # registry, 1st-priority source). Older LiteLLM-only fixtures reported
+    # the raw 1_048_576 token figure; the curated value rounds to 1M.
+    assert results[0].context_window in {1_048_576, 1_000_000}
     assert results[0].max_output_tokens == 8192
 
 

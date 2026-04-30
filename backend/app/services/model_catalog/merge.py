@@ -26,7 +26,12 @@ from decimal import Decimal
 from typing import Any
 
 from .normalize import NORMALIZER_BY_SOURCE, ModelEntry
-from .rules import apply_aliases, is_excluded, merge_override
+from .rules import (
+    apply_aliases,
+    derive_aliases_from_ai_model_list,
+    is_excluded,
+    merge_override,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,14 +39,16 @@ logger = logging.getLogger(__name__)
 # Source priority — first wins for non-null fields. Curated layer is applied
 # separately as the final overlay; this list governs upstream-fetched sources.
 SOURCE_PRIORITY: tuple[str, ...] = (
+    # ai-model-list is the curated registry — ENTERPILOT already merged the
+    # four raw price feeds with their own dedup + alias rules and added the
+    # ranking signals. We trust it as the authoritative base. The raw feeds
+    # below fill *only* the gaps (models the curated registry hasn't picked
+    # up yet — usually brand-new releases between ENTERPILOT builds).
+    "ai_model_list",
     "openrouter",
     "litellm",
     "llm_prices",
     "pydantic_genai",
-    # ai-model-list contributes rankings primarily; pricing/context are
-    # last-resort fallbacks. Lowest priority for scalar fields, but ranking
-    # fields are owned by it (no other source publishes them).
-    "ai_model_list",
 )
 
 
@@ -175,9 +182,18 @@ def build_catalog(
     """
 
     curated = curated or {}
-    aliases = curated.get("aliases", {}) or {}
+    aliases = dict(curated.get("aliases", {}) or {})
     overrides = curated.get("overrides", {}) or {}
     excluded = curated.get("excluded", {}) or {}
+
+    # Auto-derive aliases from the ai-model-list snapshot so date-stamped /
+    # provider-prefixed raw-source ids collapse onto the curated canonical
+    # name. ``setdefault`` semantics in derive_aliases_* mean curated
+    # aliases.json still wins for any explicit override.
+    aml_payload = snapshots.get("ai_model_list")
+    if aml_payload is not None:
+        for alias_key, canonical_name in derive_aliases_from_ai_model_list(aml_payload).items():
+            aliases.setdefault(alias_key, canonical_name)
 
     by_source = normalize_all(snapshots)
 
