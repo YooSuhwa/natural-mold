@@ -27,7 +27,7 @@ async def stream_assistant_message(
     기존 채팅 인프라(stream_agent_response)를 그대로 재사용한다 (ADR-005 AD-6).
     checkpointer가 히스토리를 자동 관리하므로 별도 세션 테이블 불필요.
     """
-    agent = await build_assistant_agent(db, agent_id, user_id, thread_id)
+    agent = build_assistant_agent(db, agent_id, user_id, thread_id)
 
     messages = [HumanMessage(content=user_message)]
     config = {"configurable": {"thread_id": thread_id}}
