@@ -84,6 +84,14 @@ export function useProbeMcpServer() {
   })
 }
 
+export function useAllMcpTools() {
+  return useQuery({
+    queryKey: ['mcp-tools', 'all'],
+    queryFn: mcpApi.listAllTools,
+    staleTime: 30_000,
+  })
+}
+
 // -- M8: Registry -----------------------------------------------------------
 
 /** One-click MCP server templates. Cached for 5 min — registry rarely changes. */

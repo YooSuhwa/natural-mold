@@ -58,6 +58,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const [modelId, setModelId] = useState('')
   const [fallbackIds, setFallbackIds] = useState<string[]>([])
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
+  const [selectedMcpToolIds, setSelectedMcpToolIds] = useState<Set<string>>(new Set())
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set())
   const [selectedSubAgentIds, setSelectedSubAgentIds] = useState<Set<string>>(new Set())
   const [temperature, setTemperature] = useState(0.7)
@@ -435,6 +436,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                       topP,
                       maxTokens,
                       selectedToolIds,
+                      selectedMcpToolIds,
                       selectedSkillIds,
                       selectedSubAgentIds,
                       selectedMiddlewareTypes,
@@ -449,6 +451,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                       onMaxTokensChange: setMaxTokens,
                       onToggleTool: (id) =>
                         setSelectedToolIds((prev) => toggleSetItem(prev, id)),
+                      onToggleMcpTool: (id) =>
+                        setSelectedMcpToolIds((prev) => toggleSetItem(prev, id)),
                       onToggleSkill: (id) =>
                         setSelectedSkillIds((prev) => toggleSetItem(prev, id)),
                       onToggleSubAgent: (id) =>

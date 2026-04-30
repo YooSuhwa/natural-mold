@@ -102,6 +102,15 @@ export interface McpProbeResult {
   error: string | null
 }
 
+export interface McpToolWithServer {
+  id: string
+  name: string
+  description: string | null
+  enabled: boolean
+  server_id: string
+  server_name: string
+}
+
 export interface McpServerWizardData {
   name: string
   description: string

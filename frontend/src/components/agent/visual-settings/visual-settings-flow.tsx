@@ -28,6 +28,7 @@ interface ControlledVisualState {
   topP: number
   maxTokens: number
   selectedToolIds: Set<string>
+  selectedMcpToolIds: Set<string>
   selectedSkillIds: Set<string>
   selectedSubAgentIds: Set<string>
   selectedMiddlewareTypes: Set<string>
@@ -42,6 +43,7 @@ interface ControlledVisualHandlers {
   onTopPChange: (v: number) => void
   onMaxTokensChange: (v: number) => void
   onToggleTool: (id: string) => void
+  onToggleMcpTool: (id: string) => void
   onToggleSkill: (id: string) => void
   onToggleSubAgent: (id: string) => void
   onToggleMiddleware: (type: string) => void
@@ -99,6 +101,9 @@ export function VisualSettingsFlow({
   const [internalSelectedToolIds, setInternalSelectedToolIds] = useState<Set<string>>(
     () => new Set(agent?.tools.map((tl) => tl.id) ?? []),
   )
+  const [internalSelectedMcpToolIds, setInternalSelectedMcpToolIds] = useState<Set<string>>(
+    () => new Set(agent?.mcp_tools?.map((mt) => mt.id) ?? []),
+  )
   const [internalSelectedSkillIds, setInternalSelectedSkillIds] = useState<Set<string>>(
     () => new Set(agent?.skills?.map((s) => s.id) ?? []),
   )
@@ -119,6 +124,9 @@ export function VisualSettingsFlow({
   const topP = isControlled ? controlledState!.topP : internalTopP
   const maxTokens = isControlled ? controlledState!.maxTokens : internalMaxTokens
   const selectedToolIds = isControlled ? controlledState!.selectedToolIds : internalSelectedToolIds
+  const selectedMcpToolIds = isControlled
+    ? controlledState!.selectedMcpToolIds
+    : internalSelectedMcpToolIds
   const selectedSkillIds = isControlled
     ? controlledState!.selectedSkillIds
     : internalSelectedSkillIds
@@ -157,6 +165,7 @@ export function VisualSettingsFlow({
     setInternalTopP(agent.model_params?.top_p ?? 1.0)
     setInternalMaxTokens(agent.model_params?.max_tokens ?? 4096)
     setInternalSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
+    setInternalSelectedMcpToolIds(new Set(agent.mcp_tools?.map((mt) => mt.id) ?? []))
     setInternalSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
     setInternalSelectedSubAgentIds(new Set(agent.sub_agents?.map((sa) => sa.id) ?? []))
     setInternalSelectedMiddlewareTypes(
@@ -178,6 +187,17 @@ export function VisualSettingsFlow({
         controlledHandlers!.onToggleTool(toolId)
       } else {
         setInternalSelectedToolIds((prev) => toggleSetItem(prev, toolId))
+      }
+    },
+    [isControlled, controlledHandlers],
+  )
+
+  const toggleMcpTool = useCallback(
+    (id: string) => {
+      if (isControlled) {
+        controlledHandlers!.onToggleMcpTool(id)
+      } else {
+        setInternalSelectedMcpToolIds((prev) => toggleSetItem(prev, id))
       }
     },
     [isControlled, controlledHandlers],
@@ -256,6 +276,7 @@ export function VisualSettingsFlow({
       system_prompt: systemPrompt,
       model_id: modelId,
       tool_ids: Array.from(selectedToolIds),
+      mcp_tool_ids: Array.from(selectedMcpToolIds),
       skill_ids: Array.from(selectedSkillIds),
       sub_agent_ids: Array.from(selectedSubAgentIds),
       middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
@@ -329,7 +350,16 @@ export function VisualSettingsFlow({
         id: 'toolbox',
         type: 'toolbox',
         position: { x: 210, y: 0 },
-        data: { allTools: tools, selectedToolIds, onToggleTool: toggleTool },
+        data: {
+          allTools: tools,
+          selectedToolIds,
+          onToggleTool: toggleTool,
+          selectedMcpToolIds,
+          onToggleMcpTool: toggleMcpTool,
+          allSkills: skills,
+          selectedSkillIds,
+          onToggleSkill: toggleSkill,
+        },
       },
       {
         id: 'subagents',
@@ -446,7 +476,19 @@ export function VisualSettingsFlow({
           }
         }
         if (node.id === 'toolbox') {
-          return { ...node, data: { allTools: tools, selectedToolIds, onToggleTool: toggleTool } }
+          return {
+            ...node,
+            data: {
+              allTools: tools,
+              selectedToolIds,
+              onToggleTool: toggleTool,
+              selectedMcpToolIds,
+              onToggleMcpTool: toggleMcpTool,
+              allSkills: skills,
+              selectedSkillIds,
+              onToggleSkill: toggleSkill,
+            },
+          }
         }
         if (node.id === 'skills') {
           return {
@@ -482,9 +524,11 @@ export function VisualSettingsFlow({
     skills,
     middlewares,
     selectedToolIds,
+    selectedMcpToolIds,
     selectedSkillIds,
     selectedMiddlewareTypes,
     toggleTool,
+    toggleMcpTool,
     toggleSkill,
     toggleMiddleware,
     setNodes,

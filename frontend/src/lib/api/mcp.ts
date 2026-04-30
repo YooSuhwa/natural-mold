@@ -10,6 +10,7 @@ import type {
   McpServerDetail,
   McpServerUpdateRequest,
   McpTestResult,
+  McpToolWithServer,
 } from '@/lib/types/mcp'
 
 export const mcpApi = {
@@ -39,6 +40,10 @@ export const mcpApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  /** Flat list of every MCP tool the user owns across all servers — used
+   *  by the unified agent Tools picker (MCP tab). */
+  listAllTools: () =>
+    apiFetch<McpToolWithServer[]>('/api/mcp-servers/all-tools'),
 
   // -- M8: Registry -----------------------------------------------------------
   /** Catalog of one-click MCP server templates (icon + transport + env vars). */

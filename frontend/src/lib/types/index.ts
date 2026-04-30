@@ -23,6 +23,13 @@ export interface ModelBrief {
   display_name: string
 }
 
+export interface McpToolBrief {
+  id: string
+  name: string
+  server_id: string
+  server_name?: string | null
+}
+
 export interface ToolBrief {
   id: string
   name: string
@@ -58,6 +65,7 @@ export interface Agent {
   // and prompts re-binding instead of throwing on agent.model.x access.
   model: ModelBrief | null
   tools: ToolBrief[]
+  mcp_tools: McpToolBrief[]
   skills: SkillBrief[]
   sub_agents: AgentBrief[]
   status: string
@@ -83,6 +91,7 @@ export interface AgentCreateRequest {
   system_prompt: string
   model_id: string
   tool_ids?: string[]
+  mcp_tool_ids?: string[]
   skill_ids?: string[]
   sub_agent_ids?: string[]
   template_id?: string
@@ -99,6 +108,7 @@ export interface AgentUpdateRequest {
   system_prompt?: string
   model_id?: string
   tool_ids?: string[]
+  mcp_tool_ids?: string[]
   skill_ids?: string[]
   sub_agent_ids?: string[]
   is_favorite?: boolean
