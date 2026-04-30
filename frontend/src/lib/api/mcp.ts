@@ -1,6 +1,8 @@
 import { apiFetch } from './client'
 import type {
   McpDiscoverResult,
+  McpFromRegistryRequest,
+  McpRegistryEntry,
   McpServer,
   McpServerCreateRequest,
   McpServerDetail,
@@ -28,5 +30,15 @@ export const mcpApi = {
   discover: (id: string) =>
     apiFetch<McpDiscoverResult>(`/api/mcp-servers/${id}/discover`, {
       method: 'POST',
+    }),
+
+  // -- M8: Registry -----------------------------------------------------------
+  /** Catalog of one-click MCP server templates (icon + transport + env vars). */
+  listRegistry: () => apiFetch<McpRegistryEntry[]>('/api/mcp-server-types'),
+  /** Materialize a registry entry as a real MCP server row. */
+  createFromRegistry: (data: McpFromRegistryRequest) =>
+    apiFetch<McpServer>('/api/mcp-servers/from-registry', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 }

@@ -15,15 +15,21 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.schemas.mcp import (
     McpDiscoverResponse,
+    McpRegistryEntry,
     McpServerCreate,
+    McpServerCreateFromRegistry,
     McpServerDetailResponse,
     McpServerResponse,
     McpServerUpdate,
     McpTestResponse,
     McpToolResponse,
 )
+from app.services import mcp_registry as mcp_registry_service
 
 router = APIRouter(prefix="/api/mcp-servers", tags=["mcp"])
+# Catalog of well-known MCP servers — separate prefix so router mount paths
+# stay parallel to the credentials catalog (``/api/credential-types``).
+catalog_router = APIRouter(prefix="/api/mcp-server-types", tags=["mcp"])
 
 
 # -- Helpers -----------------------------------------------------------------
@@ -151,6 +157,53 @@ async def create_server(
     return _server_to_response(server)
 
 
+@router.post(
+    "/from-registry", response_model=McpServerResponse, status_code=201
+)
+async def create_server_from_registry(
+    payload: McpServerCreateFromRegistry,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> McpServerResponse:
+    """Create a server from a curated catalog entry.
+
+    Pre-fills transport / URL / stdio command / env_var template from the
+    registry, then sticks the user-supplied name and (optional)
+    ``credential_id`` on top. Unknown ``registry_key`` is a 400 — the
+    catalog is the source of truth.
+    """
+
+    entry = mcp_registry_service.get_registry_entry(payload.registry_key)
+    if entry is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown registry entry '{payload.registry_key}'",
+        )
+
+    transport = entry.get("transport")
+    url = entry.get("url")
+    command = entry.get("command")
+    _validate_payload_consistency(transport, url, command)
+
+    server = McpServer(
+        user_id=user.id,
+        name=payload.name,
+        description=entry.get("description"),
+        transport=transport,
+        url=url,
+        command=command,
+        args=list(entry.get("args") or []),
+        env_vars=dict(entry.get("env_vars") or {}),
+        headers={},
+        credential_id=payload.credential_id,
+        status="unknown",
+    )
+    db.add(server)
+    await db.commit()
+    await db.refresh(server)
+    return _server_to_response(server)
+
+
 @router.get("/{server_id}", response_model=McpServerDetailResponse)
 async def get_server(
     server_id: uuid.UUID,
@@ -253,3 +306,23 @@ async def discover_server_tools(
         tools=[_tool_to_response(t) for t in tools],
         error=probe.get("error"),
     )
+
+
+# -- Registry catalog --------------------------------------------------------
+
+
+@catalog_router.get("", response_model=list[McpRegistryEntry])
+async def list_registry_entries() -> list[McpRegistryEntry]:
+    """Return every entry from the curated MCP server catalog."""
+
+    return [McpRegistryEntry(**e) for e in mcp_registry_service.list_registry()]
+
+
+@catalog_router.get("/{key}", response_model=McpRegistryEntry)
+async def get_registry_entry(key: str) -> McpRegistryEntry:
+    entry = mcp_registry_service.get_registry_entry(key)
+    if entry is None:
+        raise HTTPException(
+            status_code=404, detail=f"unknown registry entry '{key}'"
+        )
+    return McpRegistryEntry(**entry)

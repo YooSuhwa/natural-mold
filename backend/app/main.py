@@ -175,6 +175,7 @@ def create_app() -> FastAPI:
     app.include_router(conversations.router)
     app.include_router(credentials.router)
     app.include_router(mcp.router)
+    app.include_router(mcp.catalog_router)  # /api/mcp-server-types
     app.include_router(models.router)
     app.include_router(templates.router)
     app.include_router(skills.router)

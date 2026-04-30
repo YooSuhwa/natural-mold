@@ -3,11 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { mcpApi } from '@/lib/api/mcp'
 import type {
+  McpFromRegistryRequest,
   McpServerCreateRequest,
   McpServerUpdateRequest,
 } from '@/lib/types/mcp'
 
 const KEY_LIST = ['mcp-servers'] as const
+const KEY_REGISTRY = ['mcp-server-types'] as const
 
 export function useMcpServers() {
   return useQuery({
@@ -72,5 +74,24 @@ export function useDiscoverMcpTools() {
       qc.invalidateQueries({ queryKey: KEY_LIST })
       qc.invalidateQueries({ queryKey: ['mcp-servers', id] })
     },
+  })
+}
+
+// -- M8: Registry -----------------------------------------------------------
+
+/** One-click MCP server templates. Cached for 5 min — registry rarely changes. */
+export function useMcpRegistry() {
+  return useQuery({
+    queryKey: KEY_REGISTRY,
+    queryFn: mcpApi.listRegistry,
+    staleTime: 5 * 60_000,
+  })
+}
+
+export function useCreateFromRegistry() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: McpFromRegistryRequest) => mcpApi.createFromRegistry(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
   })
 }

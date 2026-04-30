@@ -103,4 +103,44 @@ def env_provider_keys() -> dict[str, str | None]:
     return {provider: key or None for provider, key in _ENV_FALLBACK.items()}
 
 
-__all__ = ["PROVIDER_MAP", "create_chat_model", "env_provider_keys"]
+def create_chat_model_for_test(
+    provider: str,
+    model_name: str,
+    *,
+    api_key: str | None,
+    base_url: str | None = None,
+) -> BaseChatModel:
+    """Build a deterministic, low-cost LangChain chat model for the test surface.
+
+    Locked-in defaults (``max_tokens=10`` / ``temperature=0``) keep test
+    invocations cheap and reproducible no matter what model row exists in the
+    catalog. The caller is expected to wrap the resulting ``ainvoke`` in an
+    ``asyncio.wait_for(...)`` to enforce the timeout — this factory does not
+    schedule timers itself.
+    """
+
+    cls = PROVIDER_MAP.get(provider, ChatOpenAI)
+    kwargs: dict[str, Any] = {
+        "model": model_name,
+        "max_tokens": 10,
+        "temperature": 0,
+        "stream_usage": True,
+    }
+    if api_key:
+        kwargs["api_key"] = api_key
+    if base_url:
+        kwargs["base_url"] = base_url
+
+    if _ssl_ctx and cls in (ChatOpenAI,):
+        kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
+        kwargs["http_client"] = httpx.Client(verify=_ssl_ctx)
+
+    return cls(**kwargs)
+
+
+__all__ = [
+    "PROVIDER_MAP",
+    "create_chat_model",
+    "create_chat_model_for_test",
+    "env_provider_keys",
+]

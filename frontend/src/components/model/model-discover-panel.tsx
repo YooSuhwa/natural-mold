@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Search, Sparkles } from 'lucide-react'
+import { Loader2, Search, Sparkles, Zap } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { SearchInput } from '@/components/shared/search-input'
 import { DomainIcon } from '@/components/shared/icon'
 import { ModelSourceBadge } from './model-source-badge'
+import { ModelConnectionTest } from './model-connection-test'
 import { formatTokenPrice } from './model-format'
 import {
   Select,
@@ -45,6 +46,8 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
+  // model_name → bool: whether the per-row preview test is shown.
+  const [testRow, setTestRow] = useState<string | null>(null)
 
   const llmCredentials = useMemo<Credential[]>(() => {
     if (!credentials || !definitions) return []
@@ -252,6 +255,21 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                           already registered
                         </span>
                       )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        className="ml-auto"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setTestRow((prev) =>
+                            prev === m.model_name ? null : m.model_name,
+                          )
+                        }}
+                        aria-label={`Test ${m.display_name}`}
+                      >
+                        <Zap className="size-3" /> Test
+                      </Button>
                     </div>
                     <p className="truncate font-mono text-[11px] text-muted-foreground">
                       {m.provider} · {m.model_name}
@@ -269,6 +287,20 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                         </span>
                       )}
                     </div>
+                    {testRow === m.model_name && credentialId && (
+                      <div className="mt-2">
+                        <ModelConnectionTest
+                          key={`${m.model_name}-${credentialId}`}
+                          mode="preview"
+                          provider={m.provider}
+                          modelName={m.model_name}
+                          credentialId={credentialId}
+                          modelLabel={m.display_name}
+                          autoStart
+                          showCostBanner={false}
+                        />
+                      </div>
+                    )}
                   </div>
                 </label>
               )

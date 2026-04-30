@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Zap } from 'lucide-react'
 
 import {
   Dialog,
@@ -23,8 +23,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { ModelDiscoverPanel } from './model-discover-panel'
+import { ModelConnectionTest } from './model-connection-test'
 import { perMillionToTokenPrice } from './model-format'
 import { useCreateModel } from '@/lib/hooks/use-models'
+import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 
 interface ModelAddDialogProps {
   open: boolean
@@ -89,6 +91,8 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
 
 function CustomIdForm({ onSaved }: { onSaved: () => void }) {
   const create = useCreateModel()
+  const { data: credentials } = useCredentials()
+  const { data: definitions } = useCredentialTypes()
   const [provider, setProvider] = useState('openai')
   const [modelName, setModelName] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -96,8 +100,22 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
   const [inputPriceM, setInputPriceM] = useState('')
   const [outputPriceM, setOutputPriceM] = useState('')
   const [contextWindow, setContextWindow] = useState('')
+  const [testCredId, setTestCredId] = useState<string>('')
+  const [testOpen, setTestOpen] = useState(false)
 
   const canSubmit = provider.trim() !== '' && modelName.trim() !== ''
+
+  // Filter to LLM credentials so the test panel only offers API keys.
+  const llmCredentials = useMemo(() => {
+    if (!credentials || !definitions) return []
+    const llmKeys = new Set(
+      definitions.filter((d) => d.category === 'llm').map((d) => d.key),
+    )
+    return credentials.filter((c) => llmKeys.has(c.definition_key))
+  }, [credentials, definitions])
+
+  // Default to the first LLM credential — minimizes clicks for the common case.
+  const effectiveCredId = testCredId || llmCredentials[0]?.id || ''
 
   async function handleSave() {
     if (!canSubmit) return
@@ -228,7 +246,58 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
         </div>
       </div>
 
+      {testOpen && effectiveCredId && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs font-medium" htmlFor="custom-test-cred">
+              Test with credential
+            </label>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTestOpen(false)}
+            >
+              Hide test
+            </Button>
+          </div>
+          <Select
+            value={effectiveCredId}
+            onValueChange={(v) => v && setTestCredId(v)}
+          >
+            <SelectTrigger id="custom-test-cred" className="w-full">
+              <SelectValue placeholder="Select credential" />
+            </SelectTrigger>
+            <SelectContent>
+              {llmCredentials.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <ModelConnectionTest
+            key={`${provider}-${modelName}-${effectiveCredId}`}
+            mode="preview"
+            provider={provider.trim()}
+            modelName={modelName.trim()}
+            baseUrl={baseUrl.trim() || null}
+            credentialId={effectiveCredId}
+            modelLabel={displayName.trim() || modelName.trim()}
+            autoStart
+          />
+        </div>
+      )}
+
       <DialogFooter>
+        <Button
+          variant="outline"
+          onClick={() => setTestOpen(true)}
+          disabled={!canSubmit || llmCredentials.length === 0}
+          data-testid="custom-test-button"
+        >
+          <Zap className="size-3.5" />
+          Test
+        </Button>
         <Button onClick={handleSave} disabled={!canSubmit || create.isPending}>
           {create.isPending && <Loader2 className="size-4 animate-spin" />}
           Save model

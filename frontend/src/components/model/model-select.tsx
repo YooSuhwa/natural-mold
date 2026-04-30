@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Pencil } from 'lucide-react'
+import { Pencil, Zap } from 'lucide-react'
 
 import {
   Select,
@@ -13,7 +13,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useModels } from '@/lib/hooks/use-models'
-import type { ModelPick } from '@/lib/types/model'
+import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
+import { ModelConnectionTest } from './model-connection-test'
+import type { ModelPick, ModelTestResponse } from '@/lib/types/model'
 
 interface ModelSelectProps {
   /** Current model id (List mode). */
@@ -49,9 +51,16 @@ export function ModelSelect({
   placeholder = 'Select a model',
 }: ModelSelectProps) {
   const { data: models, isLoading } = useModels()
+  const { data: credentials } = useCredentials()
+  const { data: definitions } = useCredentialTypes()
   const [mode, setMode] = useState<'list' | 'custom'>('list')
   const [customProvider, setCustomProvider] = useState('openai')
   const [customModelName, setCustomModelName] = useState('')
+  const [customTestCredId, setCustomTestCredId] = useState<string>('')
+  const [showTest, setShowTest] = useState(false)
+  const [lastTestResult, setLastTestResult] = useState<ModelTestResponse | null>(
+    null,
+  )
 
   const sortedModels = useMemo(() => {
     if (!models) return []
@@ -60,6 +69,17 @@ export function ModelSelect({
       return a.display_name.localeCompare(b.display_name)
     })
   }, [models])
+
+  const llmCredentials = useMemo(() => {
+    if (!credentials || !definitions) return []
+    const llmKeys = new Set(
+      definitions.filter((d) => d.category === 'llm').map((d) => d.key),
+    )
+    return credentials.filter((c) => llmKeys.has(c.definition_key))
+  }, [credentials, definitions])
+
+  const effectiveCustomCredId =
+    customTestCredId || llmCredentials[0]?.id || ''
 
   function emitList(id: string) {
     onValueChange?.(id)
@@ -76,6 +96,11 @@ export function ModelSelect({
   }
 
   if (mode === 'custom') {
+    const canTest =
+      customProvider.trim() !== '' &&
+      customModelName.trim() !== '' &&
+      effectiveCustomCredId !== ''
+
     return (
       <div className={className}>
         <p className="mb-2 text-[11px] text-muted-foreground">
@@ -101,6 +126,16 @@ export function ModelSelect({
           />
           <Button
             type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowTest((v) => !v)}
+            disabled={!canTest}
+            data-testid="model-select-test"
+          >
+            <Zap className="size-3.5" /> Test
+          </Button>
+          <Button
+            type="button"
             variant="ghost"
             size="sm"
             onClick={() => setMode('list')}
@@ -108,6 +143,47 @@ export function ModelSelect({
             From list
           </Button>
         </div>
+
+        {showTest && canTest && (
+          <div className="mt-2 space-y-2">
+            <Select
+              value={effectiveCustomCredId}
+              onValueChange={(v) => v && setCustomTestCredId(v)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select credential" />
+              </SelectTrigger>
+              <SelectContent>
+                {llmCredentials.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <ModelConnectionTest
+              key={`${customProvider}-${customModelName}-${effectiveCustomCredId}`}
+              mode="preview"
+              provider={customProvider.trim()}
+              modelName={customModelName.trim()}
+              credentialId={effectiveCustomCredId}
+              modelLabel={customModelName.trim()}
+              autoStart
+              onComplete={(r) => {
+                setLastTestResult(r)
+                if (r.success) {
+                  // Test passed → emit immediately so the parent can rely on it.
+                  emitCustom(customProvider, customModelName)
+                }
+              }}
+            />
+            {lastTestResult && !lastTestResult.success && (
+              <p className="text-[11px] text-destructive">
+                Test failed — fix the error above before relying on this model.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     )
   }

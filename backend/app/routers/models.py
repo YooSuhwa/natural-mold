@@ -17,18 +17,26 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_current_user, get_db
+from app.credentials import service as credential_service
+from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import model_not_found
 from app.models.agent import Agent
+from app.models.credential import Credential
 from app.models.model import Model
 from app.models.user import User
-from app.schemas.model import ModelCreate, ModelUpdate
+from app.schemas.model import (
+    ModelCreate,
+    ModelTestPreviewRequest,
+    ModelTestResponse,
+    ModelUpdate,
+)
 from app.services import model_service
+from app.services.model_test import run_model_test
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -178,3 +186,125 @@ async def delete_model(
     await db.delete(model)
     await db.commit()
     return None
+
+
+# -- Test surface ------------------------------------------------------------
+
+
+async def _load_owned_credential(
+    db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
+) -> Credential:
+    cred = await credential_service.get_for_user(db, credential_id, user_id)
+    if cred is None:
+        raise HTTPException(status_code=404, detail="credential not found")
+    return cred
+
+
+def _request_meta(request: Request) -> tuple[str | None, str | None]:
+    client = request.client.host if request.client else None
+    return client, request.headers.get("user-agent")
+
+
+@router.post("/{model_id}/test", response_model=ModelTestResponse)
+async def test_registered_model(
+    model_id: uuid.UUID,
+    request: Request,
+    credential_id: uuid.UUID = Query(
+        ..., description="Stored credential whose decrypted payload supplies the API key."
+    ),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> ModelTestResponse:
+    """Probe a registered ``Model`` row using the named ``Credential``.
+
+    The credential is required up front — there is no implicit "use my default"
+    fallback because the user may have several keys for the same provider and
+    we want the audit log to identify which one was tested.
+    """
+
+    model = await model_service.get_model(db, model_id)
+    if model is None:
+        raise model_not_found()
+
+    cred = await _load_owned_credential(db, credential_id, user.id)
+    data = await credential_service.decrypt_with_external(cred.data_encrypted)
+
+    result = await run_model_test(
+        provider=model.provider,
+        model_name=model.model_name,
+        base_url=model.base_url,
+        credential_data=data,
+        cost_per_input_token=model.cost_per_input_token,
+        cost_per_output_token=model.cost_per_output_token,
+    )
+
+    payload = result.to_dict()
+    ip, user_agent = _request_meta(request)
+    await credential_service.write_audit_log(
+        db,
+        credential_id=cred.id,
+        actor_user_id=user.id,
+        action="test",
+        source="api",
+        ip=ip,
+        user_agent=user_agent,
+        metadata={
+            "model_id": str(model.id),
+            "provider": model.provider,
+            "model_name": model.model_name,
+            "success": payload["success"],
+        },
+        error=None if payload["success"] else (
+            payload["error"]["message"] if payload.get("error") else None
+        ),
+    )
+    await db.commit()
+    return ModelTestResponse(**payload)
+
+
+@router.post("/test-preview", response_model=ModelTestResponse)
+async def test_preview_model(
+    payload: ModelTestPreviewRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> ModelTestResponse:
+    """Probe an unregistered ``provider:model_name`` combo (Custom ID flow).
+
+    Same semantics as ``test_registered_model`` minus the catalog lookup — the
+    request body carries the model identity inline so the user can validate a
+    pasted-in ID before committing it to the table.
+    """
+
+    cred = await _load_owned_credential(db, payload.credential_id, user.id)
+    data = await credential_service.decrypt_with_external(cred.data_encrypted)
+
+    result = await run_model_test(
+        provider=payload.provider,
+        model_name=payload.model_name,
+        base_url=payload.base_url,
+        credential_data=data,
+    )
+
+    body = result.to_dict()
+    ip, user_agent = _request_meta(request)
+    await credential_service.write_audit_log(
+        db,
+        credential_id=cred.id,
+        actor_user_id=user.id,
+        action="test",
+        source="api",
+        ip=ip,
+        user_agent=user_agent,
+        metadata={
+            "preview": True,
+            "provider": payload.provider,
+            "model_name": payload.model_name,
+            "success": body["success"],
+        },
+        error=None if body["success"] else (
+            body["error"]["message"] if body.get("error") else None
+        ),
+    )
+    await db.commit()
+    return ModelTestResponse(**body)

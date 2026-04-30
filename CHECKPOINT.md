@@ -167,6 +167,79 @@ python scripts/check_branding.py
 
 ---
 
+## M8: 모델 Test + Curl 생성 + MCP Registry (LiteLLM 차용)
+
+**DRI**: 젠슨 (Backend) + 팀쿡/저커버그 (Frontend)
+**왜**: 등록된/신규 모델이 실제로 호출 가능한지 즉시 검증 (Credential test ≠ Model test). MCP 서버는 GitHub/Linear/Jira/Slack/Notion 카탈로그에서 1클릭 추가.
+
+### 차용 패턴 (LiteLLM)
+- **`POST /health/test_connection`**: 모델 단독 검증 (LangChain ainvoke + usage_metadata)
+- **`model_connection_test.tsx`**: 자동 실행 + raw req/resp + Curl 명령어 + Clean error
+- **`mcp_registry.json`**: 미리 등록된 MCP 서버 카탈로그 (GitHub/Jira/Linear/Slack/Notion)
+
+### 백엔드
+- [x] `services/model_test.py` 신규 — `run_model_test()`, clean-error 정규식, classify, masked curl
+- [x] `services/mcp_registry.py` 신규 — JSON lazy 로더
+- [x] `data/mcp_server_registry.json` 신규 — 5종 (github, linear, jira, slack, notion)
+- [x] `agent_runtime/model_factory.create_chat_model_for_test()` (max_tokens=10, temp=0)
+- [x] `schemas/model.py`: ModelTestPreviewRequest/ModelTestResponse
+- [x] `schemas/mcp.py`: McpRegistryEntry, McpServerCreateFromRegistry
+- [x] `routers/models.py`: POST /test, POST /test-preview
+- [x] `routers/mcp.py`: GET /api/mcp-server-types, POST /api/mcp-servers/from-registry
+- [x] `tests/test_model_test.py` (27), `test_mcp_registry.py` (11)
+
+### 프론트엔드
+- [x] `components/model/model-connection-test.tsx` — autoStart + Show Details (Request/Response/Curl) + Copy
+- [x] `components/model/model-test-dialog.tsx` (행 액션) + `model-test-bulk-dialog.tsx` (일괄)
+- [x] 5군데 통합: 행 Test / 다중 선택 Test Selected / ModelAddDialog Custom ID / ModelEditDialog / ModelSelect Custom ID
+- [x] `components/mcp/mcp-server-wizard.tsx` — Step 1에 From Registry/Manual 탭
+- [x] `components/ui/data-table.tsx` — enableRowSelection, toolbar 지원
+- [x] lib/{api,hooks,types}/{model,mcp} 보강
+- [x] `e2e/model-test.spec.ts` + `e2e/mcp-registry.spec.ts` (3/3 PASS)
+
+### 검증
+```bash
+cd backend && uv run pytest tests/test_model_test.py tests/test_mcp_registry.py -v   # 38 PASS
+uv run pytest tests/ -v   # 581 PASS (38 신규 + 543 회귀)
+uv run ruff check .       # clean
+cd ../frontend && pnpm lint && pnpm build && pnpm exec playwright test e2e/model-test.spec.ts e2e/mcp-registry.spec.ts
+python scripts/check_branding.py   # 0건
+```
+- done-when: 38 신규 PASS + 회귀 0, e2e PASS, branding 0건
+- 상태: done (2026-04-30, 38 신규 + 543 회귀 = 581 PASS, e2e 3/3 PASS, build PASS)
+
+---
+
+## M9: Hook/Middleware 프레임워크 + Health Check + History (예정)
+
+**DRI**: 젠슨
+**왜**: pre/post-call hook으로 Spend/권한/감사 등 cross-cutting concerns 일관 적용 + 등록된 모델/MCP가 살아있는지 주기 검증 + 시계열 history.
+
+### 범위 (LiteLLM 차용)
+- `app/hooks/` 신규 — `CustomLogger` ABC, `async_pre_call_hook` / `async_post_call_hook`
+- `executor.py`/`tool_factory`/`mcp_client` 호출 지점에 hook 통합
+- `models/health_check_history.py` 신규 — model_id, mcp_server_id, status, latency_ms, error, checked_at
+- `services/health_check.py` 신규 — model + MCP health check 실행 + DB 기록
+- `scheduler.py` — 주1회 health check cron 잡
+- `routers/health.py` 신규 — GET /api/health/{models,mcp-servers}, GET /api/health/history
+- 프론트: 모델/MCP 페이지에 status 컬럼 + 행 클릭 시 history 차트
+- 상태: pending
+
+## M10: Spend Queue + Dashboard + Model Fallback (예정)
+
+**DRI**: 젠슨 + 저커버그
+**왜**: 비용 트래킹 정확도/성능 + 운영 가시성 + 안정성.
+
+### 범위 (LiteLLM 차용)
+- `services/spend_writer.py` — DailySpendUpdateQueue (asyncio.create_task + Redis 버퍼 옵션 + batch flush)
+- 6개 daily aggregate 테이블 (user/agent/model/credential/team[추후]/tag[추후])
+- `app/usage/` 페이지 보강 — Tremor 차트 (line/bar/pie) + 시간/모델/에이전트 필터
+- `models/agent.py`: `model_fallback_list: list[UUID]` 추가 + 마이그레이션 m20
+- `model_factory`: try/except 체인 (primary fail → fallback)
+- 상태: pending
+
+---
+
 ## 게이트 정책
 
 - **브랜딩 0건**: `python scripts/check_branding.py` 통과 없이 머지 불가

@@ -82,3 +82,51 @@ export interface ModelUpdate {
 export type ModelPick =
   | { mode: 'list'; model_id: string }
   | { mode: 'custom'; provider: string; model_name: string }
+
+// -- M8: Model connection test ----------------------------------------------
+
+export type ModelTestErrorKind =
+  | 'auth'
+  | 'not_found'
+  | 'rate_limit'
+  | 'timeout'
+  | 'other'
+
+export interface ModelTestError {
+  kind: ModelTestErrorKind
+  message: string
+  raw: string | null
+}
+
+export interface ModelTestRawRequest {
+  url: string
+  method: string
+  headers: Record<string, string>
+  body: unknown
+}
+
+export interface ModelTestRawResponse {
+  status_code: number
+  headers: Record<string, string>
+  body: unknown
+}
+
+export interface ModelTestResponse {
+  success: boolean
+  response: string | null
+  latency_ms: number
+  tokens_in: number | null
+  tokens_out: number | null
+  estimated_cost_usd: number | null
+  error: ModelTestError | null
+  raw_request: ModelTestRawRequest | null
+  raw_response: ModelTestRawResponse | null
+  curl_command: string | null
+}
+
+export interface ModelTestPreviewRequest {
+  provider: string
+  model_name: string
+  base_url?: string | null
+  credential_id: string
+}

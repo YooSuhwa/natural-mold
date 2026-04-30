@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   type ColumnDef,
   type ColumnFiltersState,
+  type RowSelectionState,
   type SortingState,
   flexRender,
   getCoreRowModel,
@@ -15,6 +16,7 @@ import {
 import { ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -58,6 +60,20 @@ export interface DataTableProps<T> {
   emptyTitle?: string
   emptyDescription?: string
   emptyAction?: ReactNode
+  /**
+   * When true, the leading column becomes a per-row checkbox and the header
+   * gets a select-all checkbox. The parent receives selection updates via
+   * `onRowSelectionChange`.
+   */
+  enableRowSelection?: boolean
+  onRowSelectionChange?: (rows: T[]) => void
+  /** Stable row identifier for selection state. Defaults to `row.id`. */
+  getRowId?: (row: T, index: number) => string
+  /**
+   * Optional toolbar slot rendered on the right of the search/filter row.
+   * Use it to render bulk actions ("Test Selected", "Delete selected"...).
+   */
+  toolbar?: ReactNode
 }
 
 export function DataTable<T>({
@@ -73,10 +89,15 @@ export function DataTable<T>({
   emptyTitle = 'No items',
   emptyDescription,
   emptyAction,
+  enableRowSelection = false,
+  onRowSelectionChange,
+  getRowId,
+  toolbar,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [search, setSearch] = useState('')
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
 
   const filtered = search
     ? data.filter((row) => {
@@ -89,12 +110,53 @@ export function DataTable<T>({
       })
     : data
 
+  // Inject the leading selection column when requested. Wrapped in a separate
+  // const so the original `columns` prop is preserved for downstream use.
+  const tableColumns = enableRowSelection
+    ? ([
+        {
+          id: '__select',
+          header: ({ table }) => (
+            <Checkbox
+              aria-label="Select all rows"
+              checked={table.getIsAllPageRowsSelected()}
+              indeterminate={table.getIsSomePageRowsSelected()}
+              onCheckedChange={(value) =>
+                table.toggleAllPageRowsSelected(Boolean(value))
+              }
+              onClick={(e) => e.stopPropagation()}
+            />
+          ),
+          cell: ({ row }) => (
+            <Checkbox
+              aria-label="Select row"
+              checked={row.getIsSelected()}
+              disabled={!row.getCanSelect()}
+              onCheckedChange={(value) => row.toggleSelected(Boolean(value))}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ),
+          enableSorting: false,
+          size: 32,
+        } as ColumnDef<T, unknown>,
+        ...columns,
+      ] as ColumnDef<T, unknown>[])
+    : columns
+
   const table = useReactTable({
     data: filtered,
-    columns,
-    state: { sorting, columnFilters },
+    columns: tableColumns,
+    state: { sorting, columnFilters, rowSelection },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onRowSelectionChange: setRowSelection,
+    enableRowSelection,
+    getRowId: getRowId
+      ? (row, index) => getRowId(row, index)
+      : (row, index) => {
+          const r = row as unknown as { id?: string }
+          return r.id ?? String(index)
+        },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -102,9 +164,21 @@ export function DataTable<T>({
     initialState: { pagination: { pageSize } },
   })
 
+  // Notify parent when the selection changes. We map back to the source rows
+  // so callers receive the original objects (not table-wrapper rows).
+  useEffect(() => {
+    if (!enableRowSelection || !onRowSelectionChange) return
+    const selectedRows = table
+      .getSelectedRowModel()
+      .rows.map((r) => r.original)
+    onRowSelectionChange(selectedRows)
+    // We depend on rowSelection (the actual key map) — table is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowSelection, enableRowSelection])
+
   return (
     <div className="space-y-3">
-      {(searchable || filters?.length) && (
+      {(searchable || filters?.length || toolbar) && (
         <div className="flex flex-wrap items-center gap-2">
           {searchable && (
             <SearchInput
@@ -128,6 +202,7 @@ export function DataTable<T>({
               }
             />
           ))}
+          {toolbar && <div className="ml-auto flex items-center gap-2">{toolbar}</div>}
         </div>
       )}
 
@@ -168,7 +243,7 @@ export function DataTable<T>({
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <TableRow key={`skeleton-${i}`}>
-                  {columns.map((_col, j) => (
+                  {tableColumns.map((_col, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-4 w-full" />
                     </TableCell>
@@ -177,7 +252,7 @@ export function DataTable<T>({
               ))
             ) : table.getRowModel().rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="p-0">
+                <TableCell colSpan={tableColumns.length} className="p-0">
                   <EmptyState
                     title={emptyTitle}
                     description={emptyDescription}

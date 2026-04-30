@@ -87,6 +87,21 @@ Credential/Tools/Skills 그린필드 리라이트 (n8n 패턴 차용, 브랜딩 
 - `docs/QUALITY_SCORE.md`도 표현 정정 ("n8n 식별자 0건" → "금지 식별자 0건", "n8n 알고리즘 차용" → "차용 알고리즘 (NOTICES.md)").
 - 마이그레이션 검증: PG 5433 컨테이너에 upgrade head → 5개 컬럼 추가 확인 → downgrade -1 → upgrade head 라운드트립 모두 PASS.
 
+### M8 (모델 Test + Curl 생성 + MCP Registry, backend)
+- `app/agent_runtime/model_factory.py`에 `create_chat_model_for_test(provider, model_name, *, api_key, base_url)` 추가 — `max_tokens=10`, `temperature=0` 강제 (결정론·저비용). `_ssl_ctx`는 기존 경로 재사용.
+- `app/services/model_test.py` 신규 — `run_model_test()` + `ModelTestResult`/`ModelTestError`. `asyncio.wait_for(timeout=30)` 강제, prompt = `"Reply with just the word 'pong'."`. clean error 정규식: `litellm|openai|anthropic|google|httpx`prefix 제거 + `Error code: NNN -` 제거 + 300자 cap. classify는 status_code(401/403/404/429) 우선, message hint fallback. raw_request는 SDK 미노출이라 provider별로 reconstruct (Authorization → `Bearer ***`, x-api-key → `***`, Google `?key=***`). curl은 `${API_KEY}` placeholder로 다시 치환 — 어떤 surface에도 평문 키 미노출.
+- 응답 스키마(`app/schemas/model.py`): `ModelTestPreviewRequest`, `ModelTestErrorSchema`, `ModelTestResponse`. `model_config = ConfigDict(protected_namespaces=())`로 `model_*` 필드 경고 회피.
+- 라우터(`app/routers/models.py`): `POST /api/models/{model_id}/test?credential_id=...` (등록된 모델 + cost lookup), `POST /api/models/test-preview` (Custom ID flow, body로 provider/model/credential_id 받음). 둘 다 `credential_audit_log` `action='test'`에 metadata.success/model_id/preview 기록.
+- `app/data/mcp_server_registry.json` 신규 (5개 entry: github, linear, jira, slack, notion). 순수 JSON, 주석 미포함. stdio entry는 `${credential.<field>}` env_var 템플릿 사용.
+- `app/services/mcp_registry.py` 신규 — `_load_registry()` lazy + cached, `list_registry()` 알파벳 정렬, `get_registry_entry(key)`, `reset_cache()` (테스트용).
+- `app/schemas/mcp.py`: `McpRegistryEntry`, `McpServerCreateFromRegistry` 추가.
+- `app/routers/mcp.py`: `catalog_router = APIRouter(prefix="/api/mcp-server-types")` + `GET /` `GET /{key}` 2건. `POST /api/mcp-servers/from-registry`는 기존 router에 추가 — registry entry로 transport/url/command/args/env_vars pre-fill. unknown key는 400.
+- `app/main.py`: `app.include_router(mcp.catalog_router)` 추가 (mcp.router와 별도 mount).
+- `NOTICES.md`: LiteLLM 섹션에 `model_test.py` 추가 (probe + clean error + curl 패턴), 신규 "MCP Server Catalog" 섹션 추가 (자체 작성).
+- 테스트: `test_model_test.py`(27건 — clean error/classify/curl/timeout/auth/not_found/rate_limit/router 성공·404·credential required·preview·audit log·leak detector), `test_mcp_registry.py`(11건 — service 4 + catalog router 3 + from-registry 4). 합계 38 신규 + 543 회귀 = 581 PASS, ruff clean, branding 0건.
+- mock 패턴: LangChain 레이어에서 stub. `patch.object(ChatOpenAI, "ainvoke", _stub)`. usage_metadata 인스턴스 속성으로 set (`AIMessage.usage_metadata = {...}`). PROVIDER_MAP 모두 ChatOpenAI fallback이라 한 곳만 패치하면 충분.
+- 보안 가드: `_REDACTED = "***"`, `_CURL_PLACEHOLDER = "${API_KEY}"`. raw_request 헤더에는 마스킹된 값이 들어가고 curl은 placeholder로 한 번 더 치환. test에서 `sk-LEAK-DETECTOR` 키로 응답 전체를 스캔해 평문 누출 검증.
+
 ### M5 (agent_runtime 재배선 + 키 로테이션)
 - chat_service.build_tools_config 시그니처가 async로 변경됨 — caller(`conversations.py`, `trigger_executor.py`)에서 `await` 필요. 기존 sync caller 검색 시 주의.
 - `Tool` ORM에 `credential` 관계 추가 (lazy="select"), `Agent`에 `llm_credential` 관계 추가. selectinload 체인은 두 관계를 명시적으로 로드.

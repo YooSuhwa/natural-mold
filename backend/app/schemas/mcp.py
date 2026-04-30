@@ -103,3 +103,37 @@ class McpDiscoverResponse(BaseModel):
     status: str
     tools: list[McpToolResponse] = Field(default_factory=list)
     error: str | None = None
+
+
+# ---- Registry (curated catalog) --------------------------------------------
+
+
+class McpRegistryEntry(BaseModel):
+    """A single entry from ``app/data/mcp_server_registry.json``."""
+
+    key: str
+    display_name: str
+    description: str | None = None
+    icon_id: str | None = None
+    transport: Transport
+    url: str | None = None
+    command: str | None = None
+    args: list[str] | None = None
+    env_vars: dict[str, str] = Field(default_factory=dict)
+    credential_definition_key: str | None = None
+    documentation_url: str | None = None
+
+
+class McpServerCreateFromRegistry(BaseModel):
+    """Body for ``POST /api/mcp-servers/from-registry``.
+
+    Hydrates a :class:`McpServer` row from a registry entry. ``name`` lets
+    the user override the display name (defaults to the registry's
+    ``display_name`` when omitted on the client side); ``credential_id`` is
+    optional — users can register the server first and bind a credential
+    later via PATCH.
+    """
+
+    registry_key: str
+    name: str
+    credential_id: uuid.UUID | None = None

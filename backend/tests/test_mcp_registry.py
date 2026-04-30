@@ -1,0 +1,176 @@
+"""Tests for the curated MCP server registry + ``/from-registry`` route."""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.mcp_server import McpServer
+from app.models.user import User
+from app.services import mcp_registry
+from tests.conftest import TEST_USER_ID
+
+
+@pytest.fixture(autouse=True)
+async def _ensure_test_user(db: AsyncSession):
+    existing = await db.execute(select(User).where(User.id == TEST_USER_ID))
+    if existing.scalar_one_or_none() is None:
+        db.add(User(id=TEST_USER_ID, email="reg@test", name="reg"))
+        await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Registry service
+# ---------------------------------------------------------------------------
+
+
+def test_list_registry_exposes_all_curated_entries() -> None:
+    entries = mcp_registry.list_registry()
+    keys = {e["key"] for e in entries}
+    assert {"github", "linear", "jira", "slack", "notion"}.issubset(keys)
+    assert len(entries) >= 5
+
+
+def test_get_registry_entry_returns_full_payload() -> None:
+    entry = mcp_registry.get_registry_entry("github")
+    assert entry is not None
+    assert entry["key"] == "github"
+    assert entry["transport"] == "streamable_http"
+    assert entry["url"] == "https://api.githubcopilot.com/mcp/"
+    assert entry["credential_definition_key"] == "http_bearer"
+
+
+def test_get_registry_entry_unknown_returns_none() -> None:
+    assert mcp_registry.get_registry_entry("definitely-not-a-real-server") is None
+
+
+def test_stdio_entries_carry_command_and_args() -> None:
+    slack = mcp_registry.get_registry_entry("slack")
+    assert slack is not None
+    assert slack["transport"] == "stdio"
+    assert slack["command"] == "npx"
+    assert slack["args"] and slack["args"][0] == "-y"
+    # env_vars use the ``${credential.<field>}`` template syntax.
+    assert any("${credential." in v for v in slack["env_vars"].values())
+
+
+# ---------------------------------------------------------------------------
+# Catalog router: GET /api/mcp-server-types
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_router_lists_registry_entries(client: AsyncClient) -> None:
+    response = await client.get("/api/mcp-server-types")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    keys = {e["key"] for e in body}
+    assert {"github", "linear", "jira", "slack", "notion"}.issubset(keys)
+
+
+@pytest.mark.asyncio
+async def test_router_get_single_registry_entry(client: AsyncClient) -> None:
+    response = await client.get("/api/mcp-server-types/notion")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["key"] == "notion"
+    assert body["transport"] == "stdio"
+    assert body["command"] == "npx"
+
+
+@pytest.mark.asyncio
+async def test_router_unknown_registry_entry_returns_404(
+    client: AsyncClient,
+) -> None:
+    response = await client.get("/api/mcp-server-types/nope")
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Router: POST /api/mcp-servers/from-registry
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_from_registry_streamable_http(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    response = await client.post(
+        "/api/mcp-servers/from-registry",
+        json={"registry_key": "github", "name": "My GitHub"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["transport"] == "streamable_http"
+    assert body["url"] == "https://api.githubcopilot.com/mcp/"
+    assert body["name"] == "My GitHub"
+    assert body["credential_id"] is None
+
+    server_id = uuid.UUID(body["id"])
+    row = (
+        await db.execute(select(McpServer).where(McpServer.id == server_id))
+    ).scalar_one()
+    assert row.transport == "streamable_http"
+    assert row.url == "https://api.githubcopilot.com/mcp/"
+
+
+@pytest.mark.asyncio
+async def test_create_from_registry_stdio_carries_command_and_env(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    response = await client.post(
+        "/api/mcp-servers/from-registry",
+        json={"registry_key": "slack", "name": "Team Slack"},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["transport"] == "stdio"
+    assert body["command"] == "npx"
+    assert body["args"][0] == "-y"
+    assert "SLACK_BOT_TOKEN" in body["env_vars"]
+
+
+@pytest.mark.asyncio
+async def test_create_from_registry_with_credential(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    """``credential_id`` is wired through verbatim (FK validity checked at PG)."""
+
+    # Create a credential first via the credentials API so the FK lands valid.
+    create = await client.post(
+        "/api/credentials",
+        json={
+            "definition_key": "http_bearer",
+            "name": "github-token",
+            "data": {"token": "ghp-x"},
+        },
+    )
+    assert create.status_code == 201
+    cred_id = create.json()["id"]
+
+    response = await client.post(
+        "/api/mcp-servers/from-registry",
+        json={
+            "registry_key": "github",
+            "name": "My GitHub",
+            "credential_id": cred_id,
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["credential_id"] == cred_id
+
+
+@pytest.mark.asyncio
+async def test_create_from_registry_unknown_key_returns_400(
+    client: AsyncClient,
+) -> None:
+    response = await client.post(
+        "/api/mcp-servers/from-registry",
+        json={"registry_key": "fictional-server", "name": "n"},
+    )
+    assert response.status_code == 400
+    assert "fictional-server" in response.json()["detail"]

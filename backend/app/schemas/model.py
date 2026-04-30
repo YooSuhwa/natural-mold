@@ -3,9 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelCreate(BaseModel):
@@ -107,3 +107,52 @@ class ModelBulkItem(BaseModel):
 class ModelBulkCreate(BaseModel):
     provider: str = Field(..., description="LLM provider key shared by every item.")
     models: list[ModelBulkItem]
+
+
+# ---- Model test surface ----------------------------------------------------
+#
+# The ``test`` and ``test-preview`` endpoints share a response shape so the UI
+# can reuse the same renderer between "registered model" and "before save"
+# flows. ``raw_request`` always carries a redacted Authorization value; the
+# real key never lands in the JSON payload.
+
+
+class ModelTestPreviewRequest(BaseModel):
+    """Body for ``POST /api/models/test-preview``.
+
+    The model row may not exist yet (Custom ID / Discover preview), so the
+    caller passes the wire shape inline plus a stored Credential reference.
+    """
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    provider: str = Field(..., description="Canonical provider key.")
+    model_name: str = Field(..., description="Wire model id sent to the provider.")
+    base_url: str | None = Field(
+        default=None, description="Override; falls back to provider default."
+    )
+    credential_id: uuid.UUID = Field(
+        ..., description="Stored Credential whose decrypted payload supplies the API key."
+    )
+
+
+class ModelTestErrorSchema(BaseModel):
+    kind: Literal["auth", "not_found", "rate_limit", "timeout", "other"]
+    message: str
+    raw: str | None = None
+
+
+class ModelTestResponse(BaseModel):
+    """Mirror of ``app.services.model_test.ModelTestResult``."""
+
+    success: bool
+    response: str | None = None
+    latency_ms: int = 0
+    tokens_in: int | None = None
+    tokens_out: int | None = None
+    estimated_cost_usd: float | None = None
+    error: ModelTestErrorSchema | None = None
+    raw_request: dict[str, Any] | None = None
+    raw_response: dict[str, Any] | None = None
+    curl_command: str | None = None
+    metadata: dict[str, Any] | None = None

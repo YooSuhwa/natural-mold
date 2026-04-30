@@ -1,10 +1,11 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Plus, Brain, Eye, Wrench, Lightbulb } from 'lucide-react'
+import { Plus, Brain, Eye, Wrench, Lightbulb, Zap } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/shared/page-header'
 import { DataTable, type FilterDef } from '@/components/ui/data-table'
 import { DomainIcon } from '@/components/shared/icon'
@@ -12,6 +13,8 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { ModelSourceBadge } from '@/components/model/model-source-badge'
 import { ModelAddDialog } from '@/components/model/model-add-dialog'
 import { ModelEditDialog } from '@/components/model/model-edit-dialog'
+import { ModelTestDialog } from '@/components/model/model-test-dialog'
+import { ModelTestBulkDialog } from '@/components/model/model-test-bulk-dialog'
 import { formatTokenPrice } from '@/components/model/model-format'
 import { useModels } from '@/lib/hooks/use-models'
 import type { Model } from '@/lib/types/model'
@@ -20,6 +23,9 @@ export default function ModelsPage() {
   const { data: models, isLoading } = useModels()
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Model | null>(null)
+  const [testing, setTesting] = useState<Model | null>(null)
+  const [bulkTestOpen, setBulkTestOpen] = useState(false)
+  const [selected, setSelected] = useState<Model[]>([])
 
   // Stable reference for downstream memos. `models ?? []` would create a fresh
   // array on every render and bust the providerOptions / sourceOptions cache.
@@ -134,6 +140,24 @@ export default function ModelsPage() {
           </span>
         ),
       },
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Test ${row.original.display_name}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              setTesting(row.original)
+            }}
+          >
+            <Zap className="size-3.5" /> Test
+          </Button>
+        ),
+        enableSorting: false,
+      },
     ],
     [],
   )
@@ -156,6 +180,20 @@ export default function ModelsPage() {
     ],
     [providerOptions, sourceOptions],
   )
+
+  const toolbar =
+    selected.length > 0 ? (
+      <Button
+        size="sm"
+        onClick={() => setBulkTestOpen(true)}
+        data-testid="test-selected"
+      >
+        <Zap className="size-3.5" /> Test Selected
+        <Badge variant="secondary" className="ml-1">
+          {selected.length}
+        </Badge>
+      </Button>
+    ) : null
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
@@ -197,6 +235,9 @@ export default function ModelsPage() {
             )
           }}
           filters={filters}
+          enableRowSelection
+          onRowSelectionChange={setSelected}
+          toolbar={toolbar}
           onRowClick={(row) => setEditing(row)}
           emptyTitle="No models match your filters"
         />
@@ -207,6 +248,16 @@ export default function ModelsPage() {
         model={editing}
         open={!!editing}
         onOpenChange={(open) => !open && setEditing(null)}
+      />
+      <ModelTestDialog
+        model={testing}
+        open={!!testing}
+        onOpenChange={(open) => !open && setTesting(null)}
+      />
+      <ModelTestBulkDialog
+        models={selected}
+        open={bulkTestOpen}
+        onOpenChange={setBulkTestOpen}
       />
     </div>
   )

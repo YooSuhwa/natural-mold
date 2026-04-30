@@ -89,3 +89,25 @@ export interface McpServerWizardData {
   env_vars: Record<string, string>
   headers: Record<string, string>
 }
+
+// -- M8: Server-Type Registry (one-click catalog) ---------------------------
+
+export interface McpRegistryEntry {
+  key: string
+  display_name: string
+  description: string | null
+  icon_id: string | null
+  transport: McpTransport
+  url: string | null
+  command: string | null
+  args: string[] | null
+  env_vars: Record<string, string>
+  credential_definition_key: string | null
+  documentation_url: string | null
+}
+
+export interface McpFromRegistryRequest {
+  registry_key: string
+  name: string
+  credential_id?: string | null
+}

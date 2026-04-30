@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Trash2, Zap } from 'lucide-react'
 
 import {
   Dialog,
@@ -16,12 +16,21 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { ModelSourceBadge } from './model-source-badge'
+import { ModelConnectionTest } from './model-connection-test'
 import {
   perMillionToTokenPrice,
   tokenPriceToPerMillion,
 } from './model-format'
 import { useDeleteModel, useUpdateModel } from '@/lib/hooks/use-models'
+import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import type { Model } from '@/lib/types/model'
 
 interface ModelEditDialogProps {
@@ -37,6 +46,8 @@ export function ModelEditDialog({
 }: ModelEditDialogProps) {
   const update = useUpdateModel()
   const remove = useDeleteModel()
+  const { data: credentials } = useCredentials()
+  const { data: definitions } = useCredentialTypes()
 
   const [displayName, setDisplayName] = useState('')
   const [inputPriceM, setInputPriceM] = useState<string>('')
@@ -48,6 +59,18 @@ export function ModelEditDialog({
   const [supportsReasoning, setSupportsReasoning] = useState(false)
   const [isDefault, setIsDefault] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [testCredId, setTestCredId] = useState<string>('')
+  const [testOpen, setTestOpen] = useState(false)
+
+  const llmCredentials = useMemo(() => {
+    if (!credentials || !definitions) return []
+    const llmKeys = new Set(
+      definitions.filter((d) => d.category === 'llm').map((d) => d.key),
+    )
+    return credentials.filter((c) => llmKeys.has(c.definition_key))
+  }, [credentials, definitions])
+
+  const effectiveTestCredId = testCredId || llmCredentials[0]?.id || ''
 
   // Re-seed the form whenever a different model is opened. Sync from props
   // (parent owns the canonical Model row) is the textbook valid use of an
@@ -71,6 +94,8 @@ export function ModelEditDialog({
     setSupportsReasoning(Boolean(model.supports_reasoning))
     setIsDefault(model.is_default)
     setConfirmDelete(false)
+    setTestOpen(false)
+    setTestCredId('')
   }, [model])
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -130,6 +155,59 @@ export function ModelEditDialog({
             {model.provider} · {model.model_name}
           </DialogDescription>
         </DialogHeader>
+
+        <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 p-2">
+          <span className="text-xs text-muted-foreground">
+            Verify the credential reaches this model end-to-end.
+          </span>
+          {!testOpen ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTestOpen(true)}
+              disabled={llmCredentials.length === 0}
+              data-testid="edit-test-button"
+            >
+              <Zap className="size-3.5" /> Test Connection
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTestOpen(false)}
+            >
+              Hide test
+            </Button>
+          )}
+        </div>
+
+        {testOpen && effectiveTestCredId && (
+          <div className="space-y-2">
+            <Select
+              value={effectiveTestCredId}
+              onValueChange={(v) => v && setTestCredId(v)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select credential" />
+              </SelectTrigger>
+              <SelectContent>
+                {llmCredentials.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <ModelConnectionTest
+              key={`${model.id}-${effectiveTestCredId}`}
+              mode="registered"
+              modelId={model.id}
+              credentialId={effectiveTestCredId}
+              modelLabel={model.display_name}
+              autoStart
+            />
+          </div>
+        )}
 
         <div className="space-y-4">
           <div className="space-y-1.5">
