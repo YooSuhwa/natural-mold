@@ -1,5 +1,5 @@
 {
-  "fetched_at": "2026-04-30T03:54:32Z",
+  "fetched_at": "2026-04-30T15:00:01Z",
   "sources": {
     "litellm": {
       "status": "ok",
@@ -10,8 +10,8 @@
     "openrouter": {
       "status": "ok",
       "http_status": 200,
-      "sha256": "d575ee9ab27541fc653c728eaa6d97372284f8192783f16a5b6df8b7569e6621",
-      "bytes": 426077
+      "sha256": "9276742f43c499ba4426d8770c4c4e10d879a9a67f3bdc712bda1af9bc60996e",
+      "bytes": 426065
     },
     "llm_prices": {
       "status": "ok",

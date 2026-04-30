@@ -18,7 +18,6 @@ from sqlalchemy import select
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.executor import AgentConfig, execute_agent_invoke
 from app.agent_runtime.model_factory import env_provider_keys
-from app.credentials import service as credential_service
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model

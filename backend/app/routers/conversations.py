@@ -13,7 +13,6 @@ from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agen
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
 from app.agent_runtime.model_factory import env_provider_keys
 from app.config import settings
-from app.credentials import service as credential_service
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import agent_not_found, conversation_not_found, file_not_found
 from app.models.model import Model

@@ -20,9 +20,8 @@ from app.agent_runtime.assistant.tools.read_tools import build_read_tools
 from app.agent_runtime.assistant.tools.write_tools import build_write_tools
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.executor import build_agent
-from app.agent_runtime.model_factory import PROVIDER_API_KEY_MAP, create_chat_model
+from app.agent_runtime.model_factory import create_chat_model
 from app.config import settings
-from app.credentials import service as credential_service
 from app.services.system_credential_resolver import resolve_system_api_key
 
 logger = logging.getLogger(__name__)

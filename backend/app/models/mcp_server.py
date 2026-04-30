@@ -68,7 +68,7 @@ class McpServer(Base):
     )
     # ``Credential`` ORM lives in app.models.credential — string ref avoids
     # an import cycle (Credential → User → … may grow new back-refs).
-    credential: Mapped["Credential | None"] = relationship(  # type: ignore[name-defined]  # noqa: F821
+    credential: Mapped[Credential | None] = relationship(  # type: ignore[name-defined]  # noqa: F821
         "Credential", lazy="select", foreign_keys="[McpServer.credential_id]"
     )
 

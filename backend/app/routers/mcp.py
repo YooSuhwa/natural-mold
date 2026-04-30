@@ -9,8 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.credentials import service as credential_service
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.mcp import discovery
+from app.mcp.client import connect_and_list
+from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.schemas.mcp import (
@@ -28,9 +31,6 @@ from app.schemas.mcp import (
     McpToolResponse,
     McpToolWithServerResponse,
 )
-from app.credentials import service as credential_service
-from app.mcp.client import connect_and_list
-from app.models.credential import Credential
 from app.services import mcp_registry as mcp_registry_service
 
 router = APIRouter(prefix="/api/mcp-servers", tags=["mcp"])

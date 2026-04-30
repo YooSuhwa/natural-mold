@@ -168,7 +168,10 @@ async def _validate_skill_ids_owned(
 async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
     agent.is_favorite = not agent.is_favorite
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"])
+    await db.refresh(
+        agent,
+        ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
+    )
     return agent
 
 
@@ -295,7 +298,10 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
             for idx, sid in enumerate(data.sub_agent_ids)
         ]
     await db.commit()
-    await db.refresh(agent, ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"])
+    await db.refresh(
+        agent,
+        ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
+    )
     return agent
 
 

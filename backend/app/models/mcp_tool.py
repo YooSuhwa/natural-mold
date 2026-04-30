@@ -37,7 +37,7 @@ class AgentMcpToolLink(Base):
         primary_key=True,
     )
 
-    mcp_tool: Mapped["McpTool"] = relationship(lazy="joined")
+    mcp_tool: Mapped[McpTool] = relationship(lazy="joined")
 
 
 class McpTool(Base):
@@ -51,7 +51,7 @@ class McpTool(Base):
     server_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=False
     )
-    server: Mapped["McpServer"] = relationship(  # type: ignore[name-defined]  # noqa: F821
+    server: Mapped[McpServer] = relationship(  # type: ignore[name-defined]  # noqa: F821
         lazy="select"
     )
 
