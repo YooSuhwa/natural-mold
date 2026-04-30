@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.agent import Agent
+from app.services.system_credential_resolver import resolve_system_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +99,12 @@ async def generate_agent_image(
 
     Returns the API URL for the generated image.
     """
-    if not settings.openrouter_api_key:
-        raise ValueError("OPENROUTER_API_KEY is not configured")
+    api_key = await resolve_system_api_key(db, "openrouter")
+    if not api_key:
+        raise ValueError(
+            "No OpenRouter system credential — register one at "
+            "/settings/system-credentials or set OPENROUTER_API_KEY in .env."
+        )
 
     ref_b64 = _load_reference_image_base64()
 
@@ -113,7 +118,7 @@ async def generate_agent_image(
         resp = await client.post(
             f"{settings.image_gen_base_url}/chat/completions",
             headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={

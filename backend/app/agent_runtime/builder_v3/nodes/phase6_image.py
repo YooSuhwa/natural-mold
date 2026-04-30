@@ -47,7 +47,7 @@ def _get_image_prompt_seed(state: BuilderState) -> str:
 
 async def phase6_choice_propose(state: BuilderState) -> dict:
     """1차: image_choice 카드 emit. provider 없으면 image_skipped=True로 fall-through."""
-    if not is_image_generation_available():
+    if not await is_image_generation_available():
         info_msgs, _ = make_tool_card(
             "image_choice",
             {

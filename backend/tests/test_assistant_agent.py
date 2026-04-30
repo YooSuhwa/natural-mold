@@ -74,7 +74,7 @@ async def test_build_assistant_agent():
     with (
         patch.object(mod, "_load_system_prompt", return_value="Test prompt"),
         patch.object(
-            mod, "_resolve_system_api_key", AsyncMock(return_value="sk-test")
+            mod, "resolve_system_api_key", AsyncMock(return_value="sk-test")
         ),
         patch.object(mod, "create_chat_model", return_value=mock_model),
         patch.object(mod, "build_read_tools", return_value=mock_read_tools),
@@ -102,7 +102,8 @@ async def test_build_assistant_agent():
 
 
 # ---------------------------------------------------------------------------
-# _resolve_system_api_key — ENV → system credential → None
+# resolve_system_api_key — ENV → system credential → None
+# (Lives in app.services.system_credential_resolver; patch that module.)
 # ---------------------------------------------------------------------------
 
 
@@ -111,11 +112,11 @@ async def test_resolve_system_api_key_prefers_env():
     """ENV-supplied key wins; no DB call needed."""
     from unittest.mock import AsyncMock
 
-    import app.agent_runtime.assistant.assistant_agent as mod
+    import app.services.system_credential_resolver as resolver
 
     db = AsyncMock()
-    with patch.object(mod, "PROVIDER_API_KEY_MAP", {"anthropic": "sk-env"}):
-        key = await mod._resolve_system_api_key(db, "anthropic")
+    with patch.object(resolver, "PROVIDER_API_KEY_MAP", {"anthropic": "sk-env"}):
+        key = await resolver.resolve_system_api_key(db, "anthropic")
     assert key == "sk-env"
 
 
@@ -124,21 +125,21 @@ async def test_resolve_system_api_key_falls_back_to_system_credential():
     """ENV missing → DB system credential is decrypted and returned."""
     from unittest.mock import AsyncMock
 
-    import app.agent_runtime.assistant.assistant_agent as mod
+    import app.services.system_credential_resolver as resolver
 
     fake_cred = MagicMock(id="cred-1", data_encrypted="blob")
     with (
-        patch.object(mod, "PROVIDER_API_KEY_MAP", {}),
+        patch.object(resolver, "PROVIDER_API_KEY_MAP", {}),
         patch.object(
-            mod.credential_service,
+            resolver.credential_service,
             "find_system_by_definition",
             AsyncMock(return_value=fake_cred),
         ),
         patch.object(
-            mod.credential_service,
+            resolver.credential_service,
             "decrypt_with_external",
             AsyncMock(return_value={"api_key": "sk-system"}),
         ),
     ):
-        key = await mod._resolve_system_api_key(AsyncMock(), "anthropic")
+        key = await resolver.resolve_system_api_key(AsyncMock(), "anthropic")
     assert key == "sk-system"
