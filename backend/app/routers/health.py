@@ -24,6 +24,7 @@ from app.models.health_check_history import HealthCheckHistory
 from app.models.mcp_server import McpServer
 from app.models.model import Model
 from app.services import health_check as health_check_service
+from app.services.credential_resolver import resolve_credential_for_model
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 
@@ -177,22 +178,44 @@ async def check_now(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """Run a probe immediately and return the resulting history row."""
+    """Run a probe immediately and return the resulting history row.
 
-    credential: Credential | None = None
-    if credential_id is not None:
-        credential = await db.get(Credential, credential_id)
-        if credential is None or credential.user_id != user.id:
-            raise HTTPException(status_code=404, detail="credential not found")
+    For model targets, ``credential_id`` is optional — when omitted, the
+    model's ``default_credential_id`` is used. This keeps the row [Check]
+    button on the models page calling the credential the user picked at
+    Add-model time, instead of a provider-matched fallback.
+    """
 
     if target_kind == "model":
         model = await db.get(Model, target_id)
         if model is None:
             raise HTTPException(status_code=404, detail="model not found")
+        credential = await resolve_credential_for_model(
+            db, model, credential_id, user.id
+        )
+        if credential is None:
+            if credential_id is not None:
+                raise HTTPException(
+                    status_code=404, detail="credential not found"
+                )
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "no usable credential — pass credential_id or set the "
+                    "model's default_credential_id."
+                ),
+            )
         history = await health_check_service.check_model(
             db, model=model, credential=credential
         )
     else:
+        # MCP servers carry their own credential reference; fall back to
+        # the manual lookup we used before.
+        credential: Credential | None = None
+        if credential_id is not None:
+            credential = await db.get(Credential, credential_id)
+            if credential is None or credential.user_id != user.id:
+                raise HTTPException(status_code=404, detail="credential not found")
         server = await db.get(McpServer, target_id)
         if server is None or server.user_id != user.id:
             raise HTTPException(status_code=404, detail="mcp server not found")

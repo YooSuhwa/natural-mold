@@ -36,33 +36,17 @@ from app.schemas.model import (
     ModelUpdate,
 )
 from app.services import model_service
+from app.services.credential_resolver import resolve_credential_for_model
+from app.services.model_service import serialize_model
 from app.services.model_test import run_model_test
 
 router = APIRouter(prefix="/api/models", tags=["models"])
 
 
-def _model_to_dict(model: Model, *, agent_count: int = 0) -> dict:
-    return {
-        "id": model.id,
-        "provider": model.provider,
-        "model_name": model.model_name,
-        "display_name": model.display_name,
-        "base_url": model.base_url,
-        "is_default": model.is_default,
-        "cost_per_input_token": model.cost_per_input_token,
-        "cost_per_output_token": model.cost_per_output_token,
-        "context_window": model.context_window,
-        "max_output_tokens": model.max_output_tokens,
-        "input_modalities": model.input_modalities,
-        "output_modalities": model.output_modalities,
-        "supports_vision": model.supports_vision,
-        "supports_function_calling": model.supports_function_calling,
-        "supports_reasoning": model.supports_reasoning,
-        "source": model.source,
-        "default_credential_id": model.default_credential_id,
-        "agent_count": agent_count,
-        "created_at": model.created_at,
-    }
+# Single source of truth for the model wire shape lives in
+# ``app.services.model_service.serialize_model`` — keeping list/single/POST
+# response shapes in lock-step automatically picks up new ORM columns
+# (e.g. ``default_credential_id``) without requiring two separate edits.
 
 
 @router.get("")
@@ -82,7 +66,7 @@ async def get_model(
     model = await model_service.get_model(db, model_id)
     if not model:
         raise model_not_found()
-    return _model_to_dict(model)
+    return serialize_model(model)
 
 
 @router.post("", status_code=201)
@@ -131,7 +115,7 @@ async def create_model(
     # SELECT before INSERT would race; we let the DB win and translate above.
     await db.commit()
     await db.refresh(model)
-    return _model_to_dict(model)
+    return serialize_model(model)
 
 
 @router.patch("/{model_id}")
@@ -160,7 +144,7 @@ async def update_model(
 
     await db.commit()
     await db.refresh(model)
-    return _model_to_dict(model)
+    return serialize_model(model)
 
 
 @router.delete("/{model_id}", status_code=204)
@@ -211,24 +195,42 @@ def _request_meta(request: Request) -> tuple[str | None, str | None]:
 async def test_registered_model(
     model_id: uuid.UUID,
     request: Request,
-    credential_id: uuid.UUID = Query(
-        ..., description="Stored credential whose decrypted payload supplies the API key."
+    credential_id: uuid.UUID | None = Query(
+        None,
+        description=(
+            "Stored credential whose decrypted payload supplies the API key. "
+            "If omitted, falls back to the model's default_credential_id "
+            "(captured at Add-model time)."
+        ),
     ),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> ModelTestResponse:
-    """Probe a registered ``Model`` row using the named ``Credential``.
+    """Probe a registered ``Model`` row using a Credential.
 
-    The credential is required up front — there is no implicit "use my default"
-    fallback because the user may have several keys for the same provider and
-    we want the audit log to identify which one was tested.
+    Tiered credential lookup: explicit ``credential_id`` query param > model's
+    ``default_credential_id``. 422 if neither resolves (user has no usable
+    credential for this model).
     """
 
     model = await model_service.get_model(db, model_id)
     if model is None:
         raise model_not_found()
 
-    cred = await _load_owned_credential(db, credential_id, user.id)
+    cred = await resolve_credential_for_model(db, model, credential_id, user.id)
+    if cred is None:
+        # Disambiguate so existing 404-on-invalid-credential clients keep
+        # working while still giving a useful 422 when the user simply has
+        # no default bound.
+        if credential_id is not None:
+            raise HTTPException(status_code=404, detail="credential not found")
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "no usable credential — pass credential_id or set the model's "
+                "default_credential_id."
+            ),
+        )
     data = await credential_service.decrypt_with_external(cred.data_encrypted)
 
     result = await run_model_test(

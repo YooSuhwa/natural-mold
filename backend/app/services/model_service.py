@@ -54,7 +54,7 @@ async def list_models(db: AsyncSession) -> list[dict]:
         .group_by(Model.id)
         .order_by(Model.is_default.desc(), Model.display_name)
     )
-    return [_serialize(row[0], agent_count=row[1]) for row in result.all()]
+    return [serialize_model(row[0], agent_count=row[1]) for row in result.all()]
 
 
 async def get_model(db: AsyncSession, model_id: uuid.UUID) -> Model | None:
@@ -62,7 +62,7 @@ async def get_model(db: AsyncSession, model_id: uuid.UUID) -> Model | None:
     return result.scalar_one_or_none()
 
 
-def _serialize(model: Model, *, agent_count: int = 0) -> dict:
+def serialize_model(model: Model, *, agent_count: int = 0) -> dict:
     payload: dict = {
         "id": model.id,
         "provider": model.provider,
@@ -97,4 +97,4 @@ def _serialize(model: Model, *, agent_count: int = 0) -> dict:
     return payload
 
 
-__all__ = ["get_model", "list_models", "resolve_model"]
+__all__ = ["get_model", "list_models", "resolve_model", "serialize_model"]

@@ -38,11 +38,14 @@ async def _seed_user_and_model() -> Model:
             provider="openai",
             model_name="gpt-4o",
             display_name="GPT-4o",
+            # Bind the credential at the model level so the row [Check] flow
+            # (and ``check_now`` without explicit credential_id) resolves it.
+            default_credential_id=cred.id,
         )
         db.add(model)
         await db.commit()
         await db.refresh(model)
-        # Bind the credential through an Agent so the sweep picks it up.
+        # Also bind through an Agent so the sweep picks it up.
         from app.models.agent import Agent
 
         agent = Agent(

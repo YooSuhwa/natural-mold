@@ -7,6 +7,10 @@ import type { ColumnDef } from '@tanstack/react-table'
 
 import { announceHealthResult } from '@/lib/health-check-toast'
 import { useCredentials } from '@/lib/hooks/use-credentials'
+import {
+  filterLlmCredentials,
+  resolveCredentialForModel,
+} from '@/lib/utils/credential-resolution'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -64,27 +68,16 @@ export default function ModelsPage() {
     return map
   }, [healthEntries])
 
-  // Pick the LLM credential whose definition matches the model's provider.
-  // Without this the backend falls back to the env ``OPENAI_API_KEY``, which
-  // is usually a different (wrong) key.
-  const credentialForProvider = useMemo(() => {
-    const llmKeys = new Set([
-      'openai',
-      'anthropic',
-      'google_genai',
-      'azure_openai',
-      'openrouter',
-      'openai_compatible',
-    ])
-    return (provider: string): string | undefined => {
-      const llmCreds = (credentials ?? []).filter((c) => llmKeys.has(c.definition_key))
-      const exact = llmCreds.find((c) => c.definition_key === provider)
-      return (exact ?? llmCreds[0])?.id
-    }
-  }, [credentials])
+  const llmCredentials = useMemo(
+    () => filterLlmCredentials(credentials),
+    [credentials],
+  )
 
   async function handleCheckNow(model: Model) {
-    const credentialId = credentialForProvider(model.provider)
+    // Tiered fallback (default_credential_id → provider match → first LLM)
+    // shared with ModelHealthPanel and ModelTestDialog so all three surfaces
+    // pick the same credential for the same model.
+    const credentialId = resolveCredentialForModel(model, llmCredentials)
     if (!credentialId) {
       toast.error('No LLM credential available — register one first.')
       return

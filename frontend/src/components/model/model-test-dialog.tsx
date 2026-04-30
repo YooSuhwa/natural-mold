@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/select'
 import { ModelConnectionTest } from './model-connection-test'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
+import { resolveCredentialForModel } from '@/lib/utils/credential-resolution'
 import type { Model } from '@/lib/types/model'
 
 interface ModelTestDialogProps {
@@ -49,14 +50,16 @@ export function ModelTestDialog({
     return credentials.filter((c) => llmKeys.has(c.definition_key))
   }, [credentials, definitions])
 
-  // Pre-select the first LLM credential (UX: minimize clicks).
+  // Pre-select the credential the user picked at Add-model time
+  // (default_credential_id), with provider-match / first-LLM as fallbacks.
+  // Mirrors the picks made by /models row [Check] and the Health panel.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!open) return
-    if (!credentialId && llmCredentials.length > 0) {
-      setCredentialId(llmCredentials[0].id)
-    }
-  }, [open, credentialId, llmCredentials])
+    if (!open || !model) return
+    if (credentialId) return
+    const picked = resolveCredentialForModel(model, llmCredentials)
+    if (picked) setCredentialId(picked)
+  }, [open, model, credentialId, llmCredentials])
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Reset when the dialog closes so the next open doesn't re-show a stale test.

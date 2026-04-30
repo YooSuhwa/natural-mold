@@ -35,6 +35,10 @@ import { perMillionToTokenPrice, tokenPriceToPerMillion } from './model-format'
 import { useDeleteModel, useUpdateModel } from '@/lib/hooks/use-models'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { useModelHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
+import {
+  filterLlmCredentials,
+  resolveCredentialForModel,
+} from '@/lib/utils/credential-resolution'
 import type { Model } from '@/lib/types/model'
 
 interface ModelEditDialogProps {
@@ -398,30 +402,19 @@ function ModelHealthPanel({
   const { data: credentials } = useCredentials()
   const runHealthCheck = useRunHealthCheck()
 
-  // Filter LLM credentials and prefer the one whose definition matches the
-  // model's provider — without this the backend falls back to the env
-  // ``OPENAI_API_KEY``, which is usually a different (wrong) key.
   const llmCredentials = useMemo(
-    () =>
-      (credentials ?? []).filter((c) =>
-        ['openai', 'anthropic', 'google_genai', 'azure_openai', 'openrouter', 'openai_compatible'].includes(
-          c.definition_key,
-        ),
-      ),
+    () => filterLlmCredentials(credentials),
     [credentials],
   )
-  // Tiered default: the credential captured at Add-model time wins, then
-  // any credential whose definition matches the provider, then the first
-  // available LLM credential. The user explicitly chose the first one when
-  // they registered the model — surfacing anything else surprises them.
-  const matchedDefault = useMemo(() => {
-    if (defaultCredentialId) {
-      const stored = llmCredentials.find((c) => c.id === defaultCredentialId)
-      if (stored) return stored.id
-    }
-    const exact = llmCredentials.find((c) => c.definition_key === provider)
-    return exact?.id ?? llmCredentials[0]?.id ?? ''
-  }, [llmCredentials, provider, defaultCredentialId])
+  // Shared resolver — same picks as /models row [Check] and the Test dialog.
+  const matchedDefault = useMemo(
+    () =>
+      resolveCredentialForModel(
+        { default_credential_id: defaultCredentialId, provider },
+        llmCredentials,
+      ) ?? '',
+    [llmCredentials, provider, defaultCredentialId],
+  )
   // Local override; falls back to the matched default when the user hasn't
   // explicitly picked another credential. Computed at render-time to avoid
   // the lint rule against ``setState`` inside ``useEffect``.
