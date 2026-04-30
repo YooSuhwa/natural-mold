@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Activity, Plus, Server } from 'lucide-react'
 
+import { announceHealthResult } from '@/lib/health-check-toast'
+
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { DataTable } from '@/components/ui/data-table'
@@ -39,11 +41,11 @@ export default function McpServersPage() {
 
   async function handleCheckNow(serverId: string) {
     try {
-      await runHealthCheck.mutateAsync({
+      const result = await runHealthCheck.mutateAsync({
         targetKind: 'mcp_server',
         targetId: serverId,
       })
-      toast.success('Health check complete')
+      announceHealthResult(result)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Health check failed')
     }

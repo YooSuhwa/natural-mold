@@ -5,6 +5,9 @@ import { toast } from 'sonner'
 import { Activity, Plus, Brain, Eye, Wrench, Lightbulb, Zap } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
+import { announceHealthResult } from '@/lib/health-check-toast'
+import { useCredentials } from '@/lib/hooks/use-credentials'
+
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/shared/page-header'
@@ -32,6 +35,7 @@ import type { HealthCheckEntry } from '@/lib/types/health'
 export default function ModelsPage() {
   const { data: models, isLoading } = useModels()
   const { data: healthEntries } = useModelHealth()
+  const { data: credentials } = useCredentials()
   const runHealthCheck = useRunHealthCheck()
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState<Model | null>(null)
@@ -60,13 +64,38 @@ export default function ModelsPage() {
     return map
   }, [healthEntries])
 
-  async function handleCheckNow(modelId: string) {
+  // Pick the LLM credential whose definition matches the model's provider.
+  // Without this the backend falls back to the env ``OPENAI_API_KEY``, which
+  // is usually a different (wrong) key.
+  const credentialForProvider = useMemo(() => {
+    const llmKeys = new Set([
+      'openai',
+      'anthropic',
+      'google_genai',
+      'azure_openai',
+      'openrouter',
+      'openai_compatible',
+    ])
+    return (provider: string): string | undefined => {
+      const llmCreds = (credentials ?? []).filter((c) => llmKeys.has(c.definition_key))
+      const exact = llmCreds.find((c) => c.definition_key === provider)
+      return (exact ?? llmCreds[0])?.id
+    }
+  }, [credentials])
+
+  async function handleCheckNow(model: Model) {
+    const credentialId = credentialForProvider(model.provider)
+    if (!credentialId) {
+      toast.error('No LLM credential available — register one first.')
+      return
+    }
     try {
-      await runHealthCheck.mutateAsync({
+      const result = await runHealthCheck.mutateAsync({
         targetKind: 'model',
-        targetId: modelId,
+        targetId: model.id,
+        credentialId,
       })
-      toast.success('Health check complete')
+      announceHealthResult(result)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Health check failed')
     }
@@ -242,7 +271,7 @@ export default function ModelsPage() {
               data-testid={`check-now-${row.original.id}`}
               onClick={(e) => {
                 e.stopPropagation()
-                handleCheckNow(row.original.id)
+                handleCheckNow(row.original)
               }}
               disabled={runHealthCheck.isPending}
             >

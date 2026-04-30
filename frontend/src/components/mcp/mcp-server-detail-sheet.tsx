@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Activity, Loader2, RefreshCw, Trash2 } from 'lucide-react'
 
+import { announceHealthResult } from '@/lib/health-check-toast'
+
 import {
   Sheet,
   SheetContent,
@@ -192,11 +194,11 @@ function McpHealthSection({ serverId }: { serverId: string }) {
 
   async function handleCheck() {
     try {
-      await runHealthCheck.mutateAsync({
+      const result = await runHealthCheck.mutateAsync({
         targetKind: 'mcp_server',
         targetId: serverId,
       })
-      toast.success('Health check complete')
+      announceHealthResult(result)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Health check failed')
     }

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Activity, Loader2, Trash2, Zap } from 'lucide-react'
 
+import { announceHealthResult } from '@/lib/health-check-toast'
+
 import {
   Dialog,
   DialogContent,
@@ -347,7 +349,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
           </TabsContent>
 
           <TabsContent value="health" className="space-y-3 pt-3">
-            <ModelHealthPanel modelId={model.id} />
+            <ModelHealthPanel modelId={model.id} provider={model.provider} />
           </TabsContent>
         </Tabs>
 
@@ -365,21 +367,56 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
   )
 }
 
-function ModelHealthPanel({ modelId }: { modelId: string }) {
+function ModelHealthPanel({
+  modelId,
+  provider,
+}: {
+  modelId: string
+  provider: string
+}) {
   const { data: healthEntries } = useModelHealth()
+  const { data: credentials } = useCredentials()
   const runHealthCheck = useRunHealthCheck()
+
+  // Filter LLM credentials and prefer the one whose definition matches the
+  // model's provider — without this the backend falls back to the env
+  // ``OPENAI_API_KEY``, which is usually a different (wrong) key.
+  const llmCredentials = useMemo(
+    () =>
+      (credentials ?? []).filter((c) =>
+        ['openai', 'anthropic', 'google_genai', 'azure_openai', 'openrouter', 'openai_compatible'].includes(
+          c.definition_key,
+        ),
+      ),
+    [credentials],
+  )
+  const matchedDefault = useMemo(() => {
+    const exact = llmCredentials.find((c) => c.definition_key === provider)
+    return exact?.id ?? llmCredentials[0]?.id ?? ''
+  }, [llmCredentials, provider])
+  // Local override; falls back to the matched default when the user hasn't
+  // explicitly picked another credential. Computed at render-time to avoid
+  // the lint rule against ``setState`` inside ``useEffect``.
+  const [override, setOverride] = useState<string>('')
+  const credentialId = override || matchedDefault
+
   const latest = useMemo(
     () => (healthEntries ?? []).find((h) => h.target_id === modelId),
     [healthEntries, modelId],
   )
 
   async function handleCheck() {
+    if (!credentialId) {
+      toast.error('No LLM credential available — register one first.')
+      return
+    }
     try {
-      await runHealthCheck.mutateAsync({
+      const result = await runHealthCheck.mutateAsync({
         targetKind: 'model',
         targetId: modelId,
+        credentialId,
       })
-      toast.success('Health check complete')
+      announceHealthResult(result)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Health check failed')
     }
@@ -409,20 +446,34 @@ function ModelHealthPanel({ modelId }: { modelId: string }) {
             </p>
           )}
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleCheck}
-          disabled={runHealthCheck.isPending}
-          data-testid="health-check-now"
-        >
-          {runHealthCheck.isPending ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Activity className="size-3.5" />
-          )}
-          Check now
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select value={credentialId} onValueChange={(v) => setOverride(v ?? '')}>
+            <SelectTrigger size="sm" className="w-[180px]">
+              <SelectValue placeholder="Select credential" />
+            </SelectTrigger>
+            <SelectContent>
+              {llmCredentials.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleCheck}
+            disabled={runHealthCheck.isPending || !credentialId}
+            data-testid="health-check-now"
+          >
+            {runHealthCheck.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Activity className="size-3.5" />
+            )}
+            Check now
+          </Button>
+        </div>
       </div>
 
       <HealthHistoryChart targetKind="model" targetId={modelId} />

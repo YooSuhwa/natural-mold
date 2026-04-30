@@ -2,7 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { healthApi } from '@/lib/api/health'
-import type { HealthTargetKind, RunHealthCheckInput } from '@/lib/types/health'
+import type {
+  HealthCheckEntry,
+  HealthTargetKind,
+  RunHealthCheckInput,
+} from '@/lib/types/health'
 
 const KEY_MODELS = ['health', 'models'] as const
 const KEY_MCP = ['health', 'mcp-servers'] as const
@@ -49,13 +53,28 @@ export function useHealthHistory(
 /**
  * Run a probe and refresh both the latest-snapshot list (so the table chip
  * updates) and the history feed (so the chart redraws with the new point).
+ *
+ * The mutation also writes the fresh entry directly into the list cache so
+ * the chip updates synchronously — invalidate + refetch alone leaves a
+ * brief staleness window where the prior "unhealthy" status flickers.
  */
 export function useRunHealthCheck() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: RunHealthCheckInput) => healthApi.runCheck(input),
-    onSuccess: (_data, input) => {
+    onSuccess: (data, input) => {
       const listKey = input.targetKind === 'model' ? KEY_MODELS : KEY_MCP
+      // Optimistic write: replace this target's row with the fresh probe so
+      // the UI reflects the new status immediately, before the refetch lands.
+      qc.setQueryData<HealthCheckEntry[] | undefined>(listKey, (prev) => {
+        if (!prev) return prev
+        const idx = prev.findIndex((row) => row.target_id === data.target_id)
+        const fresh = { ...data, name: idx >= 0 ? prev[idx].name : data.name }
+        if (idx === -1) return [...prev, fresh]
+        const next = prev.slice()
+        next[idx] = fresh
+        return next
+      })
       qc.invalidateQueries({ queryKey: listKey })
       qc.invalidateQueries({
         queryKey: ['health', 'history', input.targetKind, input.targetId],

@@ -15,6 +15,13 @@ export interface HealthCheckEntry {
   error_kind: string | null
   error_message: string | null
   checked_at: string
+  /**
+   * Display name of the target (model display_name or MCP server name).
+   * Present on the list-summary endpoints (`/api/health/{models,mcp-servers}`)
+   * so the table can render alongside the chip without a second fetch;
+   * absent on the single-probe response and the time-series history feed.
+   */
+  name?: string | null
 }
 
 export interface RunHealthCheckInput {
