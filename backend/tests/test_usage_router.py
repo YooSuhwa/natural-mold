@@ -52,6 +52,34 @@ async def _seed_agent_with_usage() -> uuid.UUID:
             estimated_cost=Decimal("0.005"),
         )
         db.add(usage)
+
+        # Mirror to daily_spend_* — get_usage_summary now reads from there.
+        from datetime import date as date_type
+
+        from app.models.daily_spend_agent import DailySpendAgent
+        from app.models.daily_spend_user import DailySpendUser
+
+        today = date_type.today()
+        db.add(
+            DailySpendAgent(
+                date=today,
+                agent_id=agent.id,
+                total_tokens_in=100,
+                total_tokens_out=50,
+                total_cost_usd=Decimal("0.005"),
+                request_count=1,
+            )
+        )
+        db.add(
+            DailySpendUser(
+                date=today,
+                user_id=user.id,
+                total_tokens_in=100,
+                total_tokens_out=50,
+                total_cost_usd=Decimal("0.005"),
+                request_count=1,
+            )
+        )
         await db.commit()
         return agent.id
 

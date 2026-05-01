@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
@@ -20,11 +20,14 @@ from app.schemas.conversation import (
     ConversationCreate,
     ConversationResponse,
     ConversationUpdate,
+    EditMessageRequest,
     MessageCreate,
-    MessageResponse,
+    MessagesEnvelope,
+    RegenerateMessageRequest,
     ResumeRequest,
+    SwitchBranchRequest,
 )
-from app.services import chat_service
+from app.services import chat_service, thread_branch_service
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,8 @@ async def _resolve_agent_context(
     db: AsyncSession,
     conversation_id: uuid.UUID,
     user: CurrentUser,
+    *,
+    checkpoint_id: str | None = None,
 ) -> AgentConfig:
     """conversation + agent 조회 → AgentConfig 생성.
 
@@ -110,6 +115,7 @@ async def _resolve_agent_context(
             str(agent.llm_credential.id) if agent.llm_credential is not None else None
         ),
         model_fallback_chain=fallback_chain,
+        checkpoint_id=checkpoint_id,
     )
 
 
@@ -168,6 +174,31 @@ def _error_sse_pair(error_message: str) -> list[str]:
 def _sse_response(generator: AsyncGenerator[str, None]) -> StreamingResponse:
     """StreamingResponse 래퍼."""  # noqa: D401
     return StreamingResponse(generator, media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+def _sse_handler(
+    executor_fn: Callable[[], AsyncGenerator[str, None]],
+    *,
+    log_msg: str,
+    user_msg: str,
+) -> StreamingResponse:
+    """4개 stream endpoint(send/resume/edit/regenerate)가 공유하는 SSE 래퍼.
+
+    - executor_fn: lazy factory — 매 호출마다 새 AsyncGenerator를 생성해야 함.
+    - log_msg: logger.exception 메시지 (서버 사이드).
+    - user_msg: 클라이언트로 전달되는 user-facing 에러 메시지.
+    """
+
+    async def generate() -> AsyncGenerator[str, None]:
+        try:
+            async for chunk in executor_fn():
+                yield chunk
+        except Exception:
+            logger.exception(log_msg)
+            for chunk in _error_sse_pair(user_msg):
+                yield chunk
+
+    return _sse_response(generate())
 
 
 # ---------------------------------------------------------------------------
@@ -235,16 +266,68 @@ async def delete_conversation(
 
 @router.get(
     "/api/conversations/{conversation_id}/messages",
-    response_model=list[MessageResponse],
+    response_model=MessagesEnvelope,
 )
 async def list_messages(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
+    """Return all branches as a tree-shaped envelope.
+
+    M-CHAT1b: previously returned a flat ``list[MessageResponse]``. The new
+    envelope wraps the same list with ``active_tip_message_id`` /
+    ``active_checkpoint_id`` so the frontend can build assistant-ui's
+    ``messageRepository``. Threads with no branching still return a single
+    linear chain — only ``messages[].siblings`` carries the new info.
+    """
+
     conv = await chat_service.get_conversation(db, conversation_id)
     if not conv:
         raise conversation_not_found()
-    return await chat_service.list_messages_from_checkpointer(db, conv)
+
+    # P0-D: build tree once and reuse — pass into list_messages_from_checkpointer
+    # so it doesn't repeat the _collect_checkpoints + tree build.
+    from app.agent_runtime.checkpointer import get_checkpointer
+
+    tree = None
+    try:
+        checkpointer = get_checkpointer()
+        tree = await thread_branch_service.build_message_tree(
+            checkpointer,
+            str(conversation_id),
+            active_checkpoint_id=conv.active_branch_checkpoint_id,
+        )
+    except RuntimeError:
+        # checkpointer not initialized (e.g. unit tests that never spin up
+        # PostgreSQL). list_messages_from_checkpointer will rebuild on its own
+        # path or return [] — either way, we degrade to a flat envelope.
+        tree = None
+
+    messages = await chat_service.list_messages_from_checkpointer(
+        db, conv, user_id=user.id, tree=tree
+    )
+
+    if tree is None:
+        return MessagesEnvelope(messages=messages)
+
+    active_tip: uuid.UUID | None = None
+    if tree.active_tip_message_id:
+        from app.agent_runtime.message_utils import parse_msg_id
+
+        # parse_msg_id is deterministic over the raw langchain id so the
+        # uuid it produces here matches the one already on every
+        # MessageResponse. The idx arg is only used as a synthetic-id
+        # fallback (the tip always carries a real id), so 0 is fine.
+        active_tip = parse_msg_id(
+            tree.active_tip_message_id, conversation_id, 0
+        )
+    return MessagesEnvelope(
+        messages=messages,
+        active_tip_message_id=active_tip,
+        active_checkpoint_id=conv.active_branch_checkpoint_id
+        or tree.active_checkpoint_id,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -265,19 +348,25 @@ async def send_message(
     # generate() 안에서 호출하면 SSE 응답 후 db session이 close되어 실패 가능.
     await chat_service.touch_conversation(db, conversation_id)
 
-    async def generate() -> AsyncGenerator[str, None]:
-        try:
-            async for chunk in execute_agent_stream(
-                cfg,
-                [{"role": "user", "content": data.content}],
-            ):
-                yield chunk
-        except Exception:
-            logger.exception("Agent stream failed for conversation %s", conversation_id)
-            for chunk in _error_sse_pair("에이전트 실행 중 오류가 발생했습니다."):
-                yield chunk
+    # P1-7 — link uploaded attachments to this conversation. We don't yet
+    # know the LangGraph user-message id, so we stamp ``conversation_id``
+    # only; ``message_id`` is filled in once the message is committed in a
+    # follow-up (frontend currently displays attachments by upload id).
+    if data.attachments:
+        await chat_service.link_attachments_to_conversation(
+            db,
+            conversation_id=conversation_id,
+            user_id=user.id,
+            attachment_ids=[a.id for a in data.attachments],
+        )
 
-    return _sse_response(generate())
+    return _sse_handler(
+        lambda: execute_agent_stream(
+            cfg, [{"role": "user", "content": data.content}]
+        ),
+        log_msg=f"Agent stream failed for conversation {conversation_id}",
+        user_msg="에이전트 실행 중 오류가 발생했습니다.",
+    )
 
 
 @router.post("/api/conversations/{conversation_id}/messages/resume")
@@ -291,16 +380,201 @@ async def resume_message(
     cfg = await _resolve_agent_context(db, conversation_id, user)
     await chat_service.touch_conversation(db, conversation_id)
 
-    async def generate() -> AsyncGenerator[str, None]:
-        try:
-            async for chunk in resume_agent_stream(cfg, data.response):
-                yield chunk
-        except Exception:
-            logger.exception("Agent resume failed for conversation %s", conversation_id)
-            for chunk in _error_sse_pair("에이전트 재개 중 오류가 발생했습니다."):
-                yield chunk
+    return _sse_handler(
+        lambda: resume_agent_stream(cfg, data.response),
+        log_msg=f"Agent resume failed for conversation {conversation_id}",
+        user_msg="에이전트 재개 중 오류가 발생했습니다.",
+    )
 
-    return _sse_response(generate())
+
+# ---------------------------------------------------------------------------
+# Branch operations: edit / regenerate / switch
+# ---------------------------------------------------------------------------
+
+
+async def _resolve_branch_checkpoint(
+    conversation_id: uuid.UUID,
+    target_message_id: uuid.UUID,
+    *,
+    checkpoints: list | None = None,
+) -> str | None:
+    """Translate ``target_message_id`` (UUID) → LangGraph checkpoint to fork from.
+
+    The frontend hands back the same UUID we exposed via ``MessageResponse.id``.
+    That UUID was either the raw langchain message id (when it parsed cleanly)
+    or a deterministic uuid5 derived from the raw id. To rewind we need the
+    raw id again — we recover it by walking checkpoints and matching the
+    parsed UUID against ``parse_msg_id(raw, conversation_id, idx)``.
+
+    P0-D: ``checkpoints`` can be passed in by callers that already collected
+    them (avoids the duplicate ``_collect_checkpoints`` round-trip on
+    edit/regenerate paths).
+    """
+
+    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.message_utils import parse_msg_id
+    from app.services.thread_branch_service import (
+        _collect_checkpoints,  # noqa: PLC2701 — internal helper, controlled use
+        rewind_to_checkpoint_before_message,
+    )
+
+    checkpointer = get_checkpointer()
+    if checkpoints is None:
+        checkpoints = await _collect_checkpoints(checkpointer, str(conversation_id))
+    target_uuid_str = str(target_message_id)
+    raw_id: str | None = None
+    for ck in checkpoints:
+        for idx, msg in enumerate(ck.messages):
+            raw = getattr(msg, "id", None)
+            if str(parse_msg_id(raw, conversation_id, idx)) == target_uuid_str:
+                raw_id = str(raw or f"synthetic-{idx}")
+                break
+        if raw_id is not None:
+            break
+    if raw_id is None:
+        return None
+    return await rewind_to_checkpoint_before_message(
+        checkpointer, str(conversation_id), raw_id
+    )
+
+
+@router.post("/api/conversations/{conversation_id}/messages/edit")
+async def edit_message(
+    conversation_id: uuid.UUID,
+    data: EditMessageRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Replace a previous user message and re-run.
+
+    Implementation: rewind to the checkpoint *before* ``message_id`` and
+    invoke the agent with ``new_content`` while passing that checkpoint_id as
+    ``configurable.checkpoint_id`` — LangGraph forks a sibling subtree.
+    """
+
+    checkpoint_id = await _resolve_branch_checkpoint(conversation_id, data.message_id)
+    cfg = await _resolve_agent_context(
+        db, conversation_id, user, checkpoint_id=checkpoint_id
+    )
+    await chat_service.touch_conversation(db, conversation_id)
+    # Edit creates a new leaf — drop any prior user-pinned branch so the
+    # newest (just-edited) branch becomes the displayed one on next list.
+    await chat_service.clear_active_branch_override(db, conversation_id)
+
+    return _sse_handler(
+        lambda: execute_agent_stream(
+            cfg, [{"role": "user", "content": data.new_content}]
+        ),
+        log_msg=f"Agent edit failed for conversation {conversation_id}",
+        user_msg="메시지 편집 중 오류가 발생했습니다.",
+    )
+
+
+@router.post("/api/conversations/{conversation_id}/messages/regenerate")
+async def regenerate_message(
+    conversation_id: uuid.UUID,
+    data: RegenerateMessageRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Regenerate an assistant message in place by replaying its parent user turn."""
+
+    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.agent_runtime.message_utils import parse_msg_id
+    from app.services.thread_branch_service import _collect_checkpoints  # noqa: PLC2701
+
+    conv = await chat_service.get_conversation(db, conversation_id)
+    if not conv:
+        raise conversation_not_found()
+
+    checkpointer = get_checkpointer()
+    checkpoints = await _collect_checkpoints(checkpointer, str(conversation_id))
+    if not checkpoints:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=422, detail="conversation has no history yet.")
+
+    # Pick the active branch tip (or the named assistant message) and find
+    # the user message that precedes it.
+    active = checkpoints[0]
+    msgs = active.messages
+    target_idx: int | None = None
+    if data.message_id is None:
+        # Walk back from the tip to the latest assistant message.
+        for i in range(len(msgs) - 1, -1, -1):
+            if getattr(msgs[i], "type", None) == "ai":
+                target_idx = i
+                break
+    else:
+        target_uuid_str = str(data.message_id)
+        for i, m in enumerate(msgs):
+            raw = getattr(m, "id", None)
+            if str(parse_msg_id(raw, conversation_id, i)) == target_uuid_str:
+                target_idx = i
+                break
+
+    if target_idx is None or target_idx == 0:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=422, detail="cannot regenerate — no parent user message."
+        )
+
+    # B5 fix — rewind to the checkpoint that contains the parent user turn
+    # but NOT the assistant reply we're regenerating, then resume the graph
+    # with NO new input. LangGraph re-runs from that state and produces a
+    # sibling assistant message. Passing the user content as input (the old
+    # behaviour) caused the user turn to be appended a second time, so the
+    # frontend rendered "[user, user, ai_new]" instead of "[user, ai_new]".
+    from app.services.thread_branch_service import rewind_to_checkpoint_before_message
+
+    target_msg = msgs[target_idx]
+    target_msg_raw = getattr(target_msg, "id", None) or f"synthetic-{target_idx}"
+    checkpoint_id = await rewind_to_checkpoint_before_message(
+        checkpointer, str(conversation_id), target_msg_raw
+    )
+
+    cfg = await _resolve_agent_context(
+        db, conversation_id, user, checkpoint_id=checkpoint_id
+    )
+    await chat_service.touch_conversation(db, conversation_id)
+    # Regenerate creates a new leaf — drop any prior user-pinned branch.
+    await chat_service.clear_active_branch_override(db, conversation_id)
+
+    # Empty messages_history → executor passes None to LangGraph,
+    # resuming from the rewound checkpoint state without duplicating
+    # the user message.
+    return _sse_handler(
+        lambda: execute_agent_stream(cfg, []),
+        log_msg=f"Agent regenerate failed for conversation {conversation_id}",
+        user_msg="메시지 재생성 중 오류가 발생했습니다.",
+    )
+
+
+@router.post(
+    "/api/conversations/{conversation_id}/messages/switch-branch",
+    status_code=204,
+)
+async def switch_branch(
+    conversation_id: uuid.UUID,
+    data: SwitchBranchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Record the user's branch choice on the conversation row."""
+
+    conv = await chat_service.get_conversation(db, conversation_id)
+    if not conv:
+        raise conversation_not_found()
+    from sqlalchemy import update as _update
+
+    from app.models.conversation import Conversation as _Conv
+
+    await db.execute(
+        _update(_Conv)
+        .where(_Conv.id == conversation_id)
+        .values(active_branch_checkpoint_id=data.checkpoint_id)
+    )
+    await db.commit()
 
 
 # ---------------------------------------------------------------------------

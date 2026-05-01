@@ -199,7 +199,7 @@ function FileToolWrapper({
         onClick={() => setExpanded(!expanded)}
       >
         {isRunning ? (
-          <Loader2Icon className="size-3.5 shrink-0 animate-spin text-primary" />
+          <Loader2Icon className="size-3.5 shrink-0 animate-spin text-primary-strong" />
         ) : (
           <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500" />
         )}

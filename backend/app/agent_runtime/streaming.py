@@ -44,7 +44,7 @@ def _is_tool_selector_json(text: str) -> bool:
 
 async def stream_agent_response(
     agent: Any,
-    input_: list[Any] | Command | dict[str, Any],
+    input_: list[Any] | Command | dict[str, Any] | None,
     config: dict[str, Any],
     *,
     cost_per_input_token: float | None = None,
@@ -62,12 +62,20 @@ async def stream_agent_response(
 
     yield format_sse("message_start", {"id": msg_id, "role": "assistant"})
 
+    # None → LangGraph time-travel resume (no new input, just re-run from
+    #   the configured checkpoint state). Used by regenerate to produce a
+    #   sibling assistant turn from the same user message without duplicating
+    #   that user message into the thread history.
     # Command(resume=...) → 직접 전달
     # dict → 그대로 (Builder v3 초기 state inject용)
     # list → {"messages": ...} 래핑
-    actual_input: Any = (
-        input_ if isinstance(input_, (Command, dict)) else {"messages": input_}
-    )
+    actual_input: Any
+    if input_ is None:
+        actual_input = None
+    elif isinstance(input_, (Command, dict)):
+        actual_input = input_
+    else:
+        actual_input = {"messages": input_}
 
     full_content = ""
     was_interrupted = False

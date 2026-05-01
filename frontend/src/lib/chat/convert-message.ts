@@ -4,6 +4,21 @@ import { parseTimestamp } from '@/lib/utils/format-relative-time'
 
 type ConvertedMessage = useExternalMessageConverter.Message
 
+/** P1-A — branch metadata is identical for user/assistant. Returns ``null``
+ * when the message has no branching info so callers can skip the metadata
+ * write entirely. */
+function buildBranchMeta(message: Message): Record<string, unknown> | null {
+  if (!message.siblings || message.siblings.length <= 1) return null
+  return {
+    branches: message.siblings,
+    siblingCheckpointIds: message.sibling_checkpoint_ids ?? [],
+    activeBranchId: message.id,
+    branchCheckpointId: message.branch_checkpoint_id ?? null,
+    branchIndex: message.branch_index ?? null,
+    branchTotal: message.branch_total ?? null,
+  }
+}
+
 /**
  * Message (backend) → ThreadMessageLike (assistant-ui) 변환 콜백.
  * useExternalMessageConverter에 전달하여 사용한다.
@@ -23,14 +38,37 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
     }
   }
 
-  // user 메시지 → 텍스트만
+  // user 메시지 → 텍스트 (+ 첨부)
   if (message.role === 'user') {
-    return {
+    const userMsg: ConvertedMessage = {
       role: 'user' as const,
       id: message.id,
       content: message.content,
       createdAt: parseTimestamp(message.created_at),
     }
+    if (message.attachments && message.attachments.length > 0) {
+      // assistant-ui expects CompleteAttachment shape; we tag content with the
+      // upload URL so any UI in the message body can render previews.
+      ;(userMsg as unknown as { attachments: unknown }).attachments = message.attachments.map(
+        (att) => ({
+          id: att.id,
+          type: att.mime_type.startsWith('image/') ? 'image' : 'file',
+          name: att.filename,
+          contentType: att.mime_type,
+          status: { type: 'complete' },
+          content: [{ type: 'text', text: `[attachment: ${att.filename}](${att.url})` }],
+        }),
+      )
+    }
+    // M-CHAT1b — surface branch info via metadata.custom so the inline
+    // BranchPicker UI can read it from useAssistantState.
+    const userBranchMeta = buildBranchMeta(message)
+    if (userBranchMeta) {
+      ;(userMsg as unknown as { metadata: unknown }).metadata = {
+        custom: userBranchMeta,
+      }
+    }
+    return userMsg
   }
 
   // assistant 메시지 → 텍스트 + tool-call 파트 배열
@@ -54,10 +92,26 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
     }
   }
 
-  return {
+  const result: ConvertedMessage = {
     role: 'assistant' as const,
     id: message.id,
     content: parts.length > 0 ? (parts as ThreadMessageLike['content']) : '',
     createdAt: new Date(message.created_at),
   }
+  // M-CHAT1b — branch info on assistant messages (sibling regenerations).
+  const assistantBranchMeta = buildBranchMeta(message)
+
+  if (message.feedback || assistantBranchMeta) {
+    // assistant-ui treats `metadata.submittedFeedback.type` as the active
+    // rating — the FeedbackPositive/Negative buttons render highlighted when
+    // it matches their type. We co-locate branch info in `metadata.custom`.
+    const meta: Record<string, unknown> = { custom: assistantBranchMeta ?? {} }
+    if (message.feedback) {
+      meta.submittedFeedback = {
+        type: message.feedback.rating === 'up' ? 'positive' : 'negative',
+      }
+    }
+    ;(result as unknown as { metadata: unknown }).metadata = meta
+  }
+  return result
 }

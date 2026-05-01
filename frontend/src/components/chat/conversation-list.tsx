@@ -32,6 +32,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
+import { SearchInput } from '@/components/shared/search-input'
 import {
   Dialog,
   DialogContent,
@@ -69,14 +70,23 @@ export function ConversationList({
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [renameTarget, setRenameTarget] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
-  // pinned 우선 정렬, 단일 배열로 결합 (섹션 라벨 없음)
+  // 검색어가 있으면 핀/일반 구분 없이 단일 필터, 없으면 핀 우선 정렬
   const orderedConversations = useMemo(() => {
     if (!conversations) return []
+    const query = searchQuery.trim().toLowerCase()
+    if (query) {
+      return conversations.filter((c) =>
+        (c.title ?? '').toLowerCase().includes(query),
+      )
+    }
     const pinned = conversations.filter((c) => c.is_pinned)
     const unpinned = conversations.filter((c) => !c.is_pinned)
     return [...pinned, ...unpinned]
-  }, [conversations])
+  }, [conversations, searchQuery])
+
+  const isSearching = searchQuery.trim().length > 0
 
   async function handleNewConversation() {
     const conv = await createConversation.mutateAsync(undefined)
@@ -204,6 +214,17 @@ export function ConversationList({
         </Button>
       </div>
 
+      {/* 검색 입력 */}
+      <div className="border-b px-3 py-2">
+        <SearchInput
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={t('searchPlaceholder')}
+          aria-label={t('searchPlaceholder')}
+          className="h-8 text-sm"
+        />
+      </div>
+
       {/* Conversation list */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
@@ -215,7 +236,9 @@ export function ConversationList({
         ) : orderedConversations.length > 0 ? (
           <div className="space-y-0.5 p-2">{orderedConversations.map(renderItem)}</div>
         ) : (
-          <div className="p-4 text-center text-xs text-muted-foreground">{t('empty')}</div>
+          <div className="p-4 text-center text-xs text-muted-foreground">
+            {isSearching ? t('searchEmpty') : t('empty')}
+          </div>
         )}
       </div>
 

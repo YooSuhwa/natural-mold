@@ -140,12 +140,19 @@ async def test_list_messages_empty(client: AsyncClient):
     agent_id, _ = await _seed_agent()
     conv_id = await _seed_conversation(agent_id)
 
+    async def _empty_alist(_config):
+        # Empty async generator — no checkpoints persisted yet.
+        return
+        yield  # pragma: no cover — required to make this a generator
+
     with patch("app.agent_runtime.checkpointer.get_checkpointer") as mock_cp:
         mock_cp.return_value.aget_tuple = AsyncMock(return_value=None)
+        mock_cp.return_value.alist = _empty_alist
         resp = await client.get(f"/api/conversations/{conv_id}/messages")
 
     assert resp.status_code == 200
-    assert resp.json() == []
+    body = resp.json()
+    assert body["messages"] == []
 
 
 @pytest.mark.asyncio
@@ -155,22 +162,34 @@ async def test_list_messages_with_data(client: AsyncClient):
     agent_id, _ = await _seed_agent()
     conv_id = await _seed_conversation(agent_id)
 
-    mock_checkpoint = {
-        "channel_values": {
-            "messages": [
-                HumanMessage(content="Hello", id=str(uuid.uuid4())),
-                AIMessage(content="Hi!", id=str(uuid.uuid4())),
-            ]
-        }
-    }
+    msgs_list = [
+        HumanMessage(content="Hello", id=str(uuid.uuid4())),
+        AIMessage(content="Hi!", id=str(uuid.uuid4())),
+    ]
+    mock_checkpoint = {"channel_values": {"messages": msgs_list}}
     mock_tuple = type("CT", (), {"checkpoint": mock_checkpoint})()
+
+    # M-CHAT1b — list_messages now drives off ``alist`` (the branch tree
+    # builder). Provide a single checkpoint covering both messages.
+    async def _alist(_config):
+        yield type(
+            "CT",
+            (),
+            {
+                "config": {"configurable": {"checkpoint_id": "ck1"}},
+                "parent_config": None,
+                "checkpoint": {"channel_values": {"messages": msgs_list}},
+            },
+        )()
 
     with patch("app.agent_runtime.checkpointer.get_checkpointer") as mock_cp:
         mock_cp.return_value.aget_tuple = AsyncMock(return_value=mock_tuple)
+        mock_cp.return_value.alist = _alist
         resp = await client.get(f"/api/conversations/{conv_id}/messages")
 
     assert resp.status_code == 200
-    msgs = resp.json()
+    body = resp.json()
+    msgs = body["messages"]
     assert len(msgs) == 2
     assert msgs[0]["role"] == "user"
     assert msgs[1]["role"] == "assistant"

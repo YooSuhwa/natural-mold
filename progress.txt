@@ -351,3 +351,95 @@ M0(거버넌스+docs+삭제분석) → M1(브랜딩+Cipher) → M2(Credential+Va
 - **mcp-server-detail-dialog 헤더**: actions에 is_system "System" 배지(`bg-status-info/15`) + StatusChip은 health_status를 우선 표시(없으면 server.status fallback).
 - 함정/패턴: per-tool enable PATCH 훅이 wizard 단계에 없어 toDisable는 toast.info로 안내(detail 페이지에서 fine-tune). React Fragment에 두 TableRow를 한 키로 묶을 때 `<Fragment key>` 명시 필수.
 - 검증: pnpm lint clean, pnpm build PASS (16 라우트, TS 4.3s).
+
+## ── 2026-05-01 야간 — M-CHAT1 채팅 UI 고도화 ──
+
+### 결정 사항 (불변)
+- Sheet 사용 금지(이전에 모두 Dialog로 전환). 대신 **ChatRightRail** 도입 — inline split layout (portal 아님). 모드: subagent | tool-result | outline | none.
+- 채팅 페이지 grid 재구성: [좌 사이드바 | 메시지+composer | 우 right rail (collapsible)]
+- 한 번에 한 right rail 모드만 활성. 닫기 시 width 0 transition.
+- HITL approval은 right rail 아니라 메시지 영역 내부 (banner 또는 하단)
+- 9번 (Share) 제외. 별도 PR.
+
+### 작업 순서
+1. P0-4 (Right Rail 인프라 + Sub-agent) ← 다른 작업의 토대
+2. P0-1, P0-2, P0-3 병렬
+3. P1-5, P1-6, P1-7 병렬
+4. P2-8, P2-10, P2-11, P2-12 병렬
+
+### S-CHAT P0-4 저커버그 완료 (2026-05-01) — ChatRightRail 인프라 + Sub-agent 카드
+- chat-right-rail.ts (Jotai atom) — RightRailState union: none/subagent/tool-result/outline. 한 번에 한 모드.
+- ChatRightRail: 데스크톱은 inline split aside (width 0↔380px transition), 모바일은 fixed inset-0 overlay (Sheet 사용 X — 백드롭 button + 오른쪽 패널). page.tsx 외부 className으로 카드 외관(rounded-xl border bg-card shadow-sm) 주입 → 기존 두 카드와 시각적 일관성.
+- subagent-panel-content.tsx: Agent / Input / Output 섹션. Output은 placeholder ("will appear as it streams") — 후속에서 tool_call result 구독 보강.
+- sub-agent-ui.tsx: makeAssistantToolUI({toolName: 'task'}). deepagents 표준. agent_name/subagent_type, input/prompt/description fallback. phase별 status-warn(running) / status-success(complete) / status-danger(incomplete) 색. 카드 클릭 → setRail({mode:'subagent', subagent:{toolCallId,agentName,input}}).
+- 함정: makeAssistantToolUI의 inline render에서 useSetAtom 직접 호출 시 react-hooks/rules-of-hooks 위반(함수명 'render' 소문자). → SubAgentCard 컴포넌트로 분리하고 render는 단순 위임.
+- 도구 이름 확정: backend executor.py L505 "task 도구의 subagent_type" — deepagents 표준 task 도구. agent_name 키 외에도 subagent_type fallback 처리.
+- 검증: pnpm lint clean + pnpm build PASS (16 라우트, 4.3s).
+
+### S-CHAT P0-2 + P1-6 저커버그 완료 (2026-05-01)
+- P0-2 conversation 검색: SearchInput을 conversation-list 헤더 아래 추가. searchQuery state로 client-side filter (`title.toLowerCase().includes(query)`); 검색 중에는 핀/일반 그룹 통합, 비어있으면 기존 "pinned 우선" 정렬 유지. 결과 0건이면 i18n `searchEmpty` 메시지 (기존 `empty`와 분리).
+- P1-6 Mermaid: `pnpm add mermaid` (11.14.0). `mermaid-diagram.tsx` 신규 — `mermaid.initialize` 모듈-스코프 1회만(initialized flag), `useEffect`에서 `mermaid.render(id, code)` → SVG state. `useId()` 콜론 sanitize 필수 (`/[^a-zA-Z0-9-]/g → -`). `markdown-content.tsx`에서 `lazy(() => import("./mermaid-diagram"))`로 dynamic import → 메인 번들 보호 (mermaid는 별도 chunk). `MarkdownContent`에 `isStreaming?: boolean` prop 추가; 스트리밍 중에는 `language === "mermaid"`여도 raw CodeBlock fallback (불완전 mermaid 파싱 회피). 에러/로딩 시 raw code blocks fallback. `useMemo`로 components 생성 — isStreaming 변경 시에만 재계산.
+- 검증: pnpm lint clean + pnpm build PASS (16 라우트, 5.5s). mermaid는 `.next/static/chunks/`에 별도 청크로 분리됨 확인.
+
+### S-CHAT P2-10+11+12 저커버그 완료 (2026-05-01) — Skill row + ToolResult/Outline panels
+- agent-skills-row.tsx: Agent.skills 배열을 chip row로 렌더 (BookOpenIcon + bg-primary-strong/10 chip). 0개면 row 자체 렌더 안함. chat page header 바로 아래(thread 위)에 배치.
+- chat-right-rail.ts: ToolResultPayload에 args/result/status 추가, OutlinePayload에 content 추가 (parent에서 setRail 호출 시 전체 페이로드 전달 — 패널이 self-contained하게 렌더).
+- tool-result-panel-content.tsx: tool name + StatusBadge(running/complete/incomplete) + Args/Result 섹션. ResultRenderer는 string→{이미지URL→ChatImage / URL→링크 / JSON→pretty pre / 일반텍스트→pre}, object→JSON pretty.
+- 함정: react-hooks/error-boundaries 룰이 try/catch 안에서 JSX 생성을 금지함. → safeParseJson 헬퍼로 분리(try 내부는 parsed value 반환, JSX는 try 밖에서 렌더).
+- outline-panel-content.tsx: markdown content에서 ATX 헤딩(# ~ ######) 추출. fenced code block(```/~~~) 안 라인은 스킵. 클릭 시 window CustomEvent('moldy:outline-jump') dispatch — 실제 scroll target은 P0-1 작업자가 후속.
+- outline-trigger.tsx: 재사용 가능한 트리거(icon/compact 두 variant). MessageMetaRow 작업자가 import해서 사용. 본 작업에서는 컴포넌트만 신설, assistant-thread.tsx는 손대지 않음.
+- generic-tool-ui.tsx: 헤더 row를 button → div로 재구성 후 (1) toolName 클릭 (확장 토글) (2) PanelRightOpenIcon (right rail로) (3) ChevronDown (기존 토글) 3개 액션 분리. toolCallId가 있을 때만 expand 버튼 표시. makeAssistantToolUI render에서 toolCallId 추가 전달.
+- 검증: pnpm lint clean(내 코드), pnpm build PASS 16 routes 5.8s. use-approval-deadline.ts의 lint 에러는 HITL worker 영역이라 손대지 않음(pre-existing).
+
+[2026-05-01 jensen P1-5 HITL Countdown + Auto-Extend]
+- 백엔드 변경 없음 (client-side deadline 관리 결정). DB 스키마/엔드포인트 추가 안 함. interrupt 페이로드에 timeout_seconds/approval_id가 있다면 활용하도록 ApprovalArgs에 옵션 필드만 추가.
+- frontend/src/lib/hooks/use-approval-deadline.ts 신설: deadlineRef + 1초 setInterval tick, 60초 이하 isUrgent, 30s cooldown으로 +60s extend, 만료 시 onExpire 1회. React 19 룰(react-hooks/purity) 회피: Date.now()는 effect 내부에서만 호출(useRef 초기값 X), set-state-in-effect 회피: setState는 setTimeout(tick, 0) 콜백 안에서 호출.
+- approval-card.tsx 확장: 헤더 우측에 ClockIcon + MM:SS 카운트다운 배지(urgent면 animate-pulse + bg-status-warn). reject reason / edit args textarea의 onChange/onFocus에 extend() 연결. 만료 시 handleDecision('rejected', { reasonOverride: '시간 초과로 자동 거부' }).
+- 다른 HITL 도구(user-input-ui, clarifying-question-ui)는 후속 PR로 분리 — 동일 패턴(useApprovalDeadline + onInteract prop)으로 적용 가능. 다중 approval 페이지네이션은 현재 시스템에서 한 번에 하나만 interrupt 처리하는 구조라 미적용.
+- 검증: pnpm lint clean (이전 jensen 노트의 use-approval-deadline pre-existing lint 에러 = 본 작업으로 해소), pnpm build PASS 5.5s.
+
+[2026-05-01 zuckerberg P0-1 메시지 편집·재생성·피드백 + P1-7 파일 첨부]
+- assistant-ui 빌트인 primitive 활용으로 코드량 최소화: ActionBarPrimitive.Edit/Reload/FeedbackPositive/FeedbackNegative + ThreadPrimitive.Messages.UserEditComposer + ComposerPrimitive.AddAttachment/Attachments + AttachmentPrimitive.Root/Name/Remove. 직접 hover 로직 X.
+- useChatRuntime에 onEdit/onReload/adapters.feedback/adapters.attachments 추가. onEdit는 새 user 메시지로 재스트리밍(LangGraph 분기 미지원이라 PoC 트레이드오프). onReload는 마지막 user 메시지를 다시 send. attachments는 onNew의 AppendMessage.attachments에서 id 추출 → streamChat options.attachmentIds → backend POST body.attachments.
+- 백엔드: m27 message_feedbacks(uniq user+message), m28 message_attachments(orphan→링크). 라우터 POST/DELETE /api/messages/{id}/feedback (upsert toggle), POST /api/uploads (multipart, 20MiB cap, image/text/pdf만), GET /api/uploads/{id}. MessageResponse에 feedback + attachments 필드 추가. message_id는 LangGraph checkpoint id 문자열(FK 없음 — messages 테이블 자체가 없음).
+- chat_service.list_messages_from_checkpointer가 user_id를 받아 feedback/attachments 동시 hydrate. 매 list 호출마다 2개 추가 쿼리(conversation 단위, 메시지 ID dict 매칭).
+- attachment-adapter.ts: Pending(local UUID, requires-action) → send 시 uploadFile() → Complete(서버 upload id). assistant-ui가 send 시 자동 호출. content는 [attachment: name](url) markdown 링크.
+- feedback-adapter.ts: useChatFeedbackAdapter 훅. submit 콜백에서 getActiveRating(messageId)으로 현재 상태 lookup → 같으면 DELETE, 다르면 POST. metadata.submittedFeedback 동기화는 convertMessage에서 message.feedback → metadata.submittedFeedback 매핑으로 처리(서버 → UI 반영).
+- P0-3 (Composer Model 토글): 사용자 지시로 SKIP. 백엔드 messages POST에 model_id override 추가 안 함. composer dropdown 신설 안 함.
+- P2-8 (Virtuoso 가상화): assistant-ui ThreadPrimitive.Messages가 자체 가상화를 제공하지 않으나, MessageByIndexProvider/edit composer/auto-scroll/streaming reorder 등이 inner에 깊이 통합되어 있어 react-virtuoso로 외부 교체 시 회귀 위험 큼. SKIP, 후속 PR로 분리. 마일스톤 권고: (1) ThreadPrimitive.Messages 자체에 virtualize prop 요청 issue (2) 임계 N(예: 100메시지) 초과 시 react-virtuoso fork 도입.
+- 검증: backend ruff clean + pytest 688 passed (회귀 0), frontend pnpm lint clean + pnpm build PASS 5.6s 16 routes. 신규 테스트: test_feedback_router.py(2), test_uploads_router.py(2).
+- 파일 경계 준수: conversation-list/markdown-content/approval-card/right-rail/tool-ui 미수정.
+
+### M-CHAT1 핫픽스 (2026-05-01)
+- 사용자 보고: 채팅 메시지가 쌓이지 않고 갱신됨
+- 핫픽스: use-chat-runtime.ts의 useExternalStoreRuntime에 onEdit/onReload 전달 제거. assistant-thread.tsx에서 EditButton/RegenerateButton 호출 제거 (함수 정의는 보존).
+- Copy + Feedback + 첨부 + 대화검색 + Mermaid + Right Rail + Sub-agent + Skill row + HITL countdown 기능은 그대로 유지
+- 추후 M-CHAT1b에서 정식 복원 (LangGraph 분기 또는 새 user turn stamp 패턴)
+
+[2026-05-01 zuckerberg M-CHAT1b LangGraph thread fork + BranchPicker]
+- LangGraph CheckpointTuple 구조: NamedTuple(config, checkpoint, metadata, parent_config, pending_writes). config["configurable"]["checkpoint_id"]가 fork point. parent_config가 부모 체크포인트 추적 키. ainvoke({...}, config={"configurable": {"thread_id": tid, "checkpoint_id": cid}})로 호출하면 그 시점에서 새 branch 형성.
+- 분기 트리 빌드 알고리즘: 모든 leaf 체크포인트(다른 체크포인트의 parent가 아닌 것)의 messages 리스트를 순회 → 같은 message id = 공유 노드, 같은 parent_id에 다른 message id = sibling. langchain BaseMessage.id가 stable한 점이 핵심 — 같은 invoke의 메시지는 동일 id 유지.
+- assistant-ui branch wiring 옵션 3가지 평가: (1) ExternalStoreAdapter.messageRepository = ExportedMessageRepository (정식 트리), (2) onEdit/onReload + setMessages로 분기 (반평면), (3) 커스텀 BranchPicker (메타데이터 기반). PoC 시간 압박으로 (3) 채택 — convertMessage에서 message.siblings → metadata.custom.branches로 노출, 커스텀 BranchPicker가 useAssistantState로 읽고 conversationsApi.switchBranch + queryClient.invalidateQueries 호출. 정식 (1)로의 마이그레이션은 후속 PR(per-sibling checkpoint id 매핑 필요).
+- 회귀 0: GET /messages 응답이 list → MessagesEnvelope({messages, active_tip_message_id, active_checkpoint_id})로 변경됐지만 conversationsApi.messages가 envelope.messages를 unwrap해서 기존 호출자 영향 없음.
+
+[2026-05-01 zuckerberg M-CHAT1b HOTFIX active branch chain 표시 + sibling switch]
+- 버그: _build_tree_from_checkpoints가 모든 leaf의 messages를 한 list로 DFS-emit → 편집 후 화면에 [old-user, old-ai, new-user, new-ai] 4개 모두 표시(기대: new 2개만). switch 클릭은 활성 branch의 같은 checkpoint를 보내 무반응.
+- 수정: nodes는 active leaf의 root→leaf chain만 emit. 다른 leaf의 같은 idx 메시지는 BranchSibling(message_id, checkpoint_id)로 branches_by_message[active_mid]에 sibling 후보로 채움. active_checkpoint_id 인자 → Conversation.active_branch_checkpoint_id로 결정 (없으면 newest leaf fallback).
+- 스키마: MessageResponse에 sibling_checkpoint_ids 필드 추가 (siblings와 동일 순서). 프론트는 BranchPicker가 currentIdx ± 1의 checkpoint_id로 switchBranch 호출 → invalidateQueries로 refetch.
+- edit/regenerate 후 active_branch_checkpoint_id를 None으로 클리어 → 새 leaf가 자동으로 newest fallback에 의해 활성. 사용자가 명시적으로 ◀ 누르기 전엔 항상 최신 branch가 보이는 자연스러운 UX.
+
+[2026-05-01 zuckerberg M-CHAT1b HOTFIX2 sibling order + index + flicker]
+- 버그: (B1) edit/regenerate 동안 옛 메시지 + 스트리밍 새 메시지가 같이 보이다가 refetch 후에야 정리됨 = 깜빡임. (B2/B3) 새 분기 만들면 active=newest sibling인데 BranchPicker가 indexOf로 1/N(◀ 비활성) 표시 — 사실은 N/N(◀ 활성, ▶ 비활성)이 맞음. (B4) 3+ sibling 시 ◀▶가 최근 2개만 토글.
+- 백엔드 수정: thread_branch_service에서 siblings를 checkpoint_id ASC(=oldest→newest, LangGraph checkpoint id가 시간순 sortable)로 정렬. active node에 branch_index/branch_total 직접 stamp → MessageResponse 두 필드 추가. 프론트가 indexOf로 위치 추정 안 해도 됨 → race condition 제거.
+- 프론트엔드 수정: Message 타입 + convertMessage가 branch_index/branch_total 메타 노출. BranchPicker가 indexOf 제거하고 backend index 직접 사용. use-chat-runtime이 useQueryClient로 onEdit/onReload 시작 시점에 messages 캐시 truncate(편집된 message idx부터) → 스트리밍 동안 [잘려나간 chain] + 새 streaming만 보임, 깜빡임 0. onStreamEnd의 invalidateQueries가 정확한 active branch chain으로 최종 sync.
+- 검증: backend 700 passed (회귀 0, +1 새 3-sibling 테스트), ruff clean, frontend lint clean + build PASS 16 routes.
+
+[2026-05-01 zuckerberg M-CHAT1b HOTFIX3 regenerate user 중복 fix]
+- 버그(B5): regenerate 후 화면이 [user, user, ai_new] — user 메시지가 두 번 표시. 원인은 regenerate 라우터가 rewind 후에도 user content를 messages_history로 재주입 → LangGraph add_messages reducer가 user를 또 append. (B6): user 두 번 들어가니 sibling 트리가 깨져 BranchPicker 미표시.
+- 수정: regenerate는 rewind_to_checkpoint_before_message(target_assistant_id)로 "user는 있고 assistant는 없는" checkpoint로 fork → execute_agent_stream(cfg, [])로 빈 history 전달. executor가 lc_messages 비면 stream_input=None, streaming.py가 None을 그대로 agent.astream(None, config)로 통과 → LangGraph time-travel resume으로 새 assistant만 생성. 결과 [..., user, ai_new] (user 1회), ai_new는 기존 ai와 같은 user 부모를 공유 → 기존 thread_branch_service가 자동으로 sibling으로 묶음 + branch_index/total stamp.
+- 검증: backend 701 passed (회귀 0, +2 신규: test_regenerate_does_not_duplicate_user_message + test_regenerate_targeted_assistant_uses_correct_checkpoint), ruff clean, frontend lint clean + build PASS.
+
+[2026-05-01 zuckerberg SIMPLIFY P0+P1 일괄 fix]
+- P0-A/B/C: SSE/executor/stream-runner 3종이 모두 같은 (prep → stream → try/except → cleanup) 패턴 → 각 레이어에 헬퍼 1개씩 추출(_sse_handler, _run_agent_stream + _USE_PREPPED_LC_MESSAGES sentinel, _runStream). 4개 endpoint × 3 layers = 12 함수의 중복 약 -180 LOC.
+- P0-D: build_message_tree가 GET /messages 한 요청에 router + chat_service에서 2회 호출 → tree 빌드 1회 후 chat_service에 인자로 주입. _build_tree_from_checkpoints는 leaf×messages마다 ancestor chain을 매번 다시 walk → leaf별 chain 1회 빌드 후 _checkpoint_for_message_in_chain로 lookup. O(L×D×M) → O(L×D) + O(L×M).
+- 패턴: 같은 try/except 보일러플레이트가 3+ 곳 반복되면 lazy factory(callable) 헬퍼로 추출. AsyncGenerator는 generator factory를 람다로 감싸 _sse_handler에 넘기는 패턴이 가장 깔끔.

@@ -107,7 +107,7 @@ export function AssistantPanel({
     <div className="flex h-full min-h-0 flex-col rounded-xl border bg-background">
       {showHeader && (
         <div className="flex items-center gap-2 border-b px-4 py-3">
-          <SparklesIcon className="size-4 text-primary" />
+          <SparklesIcon className="size-4 text-primary-strong" />
           <h3 className="text-sm font-semibold">{t('title')}</h3>
           <span className="text-xs text-muted-foreground">
             {t('description', { agentName: agentName || ' ' })}

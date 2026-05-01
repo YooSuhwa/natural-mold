@@ -75,6 +75,10 @@ export interface Agent {
   template_id: string | null
   created_at: string
   updated_at: string
+  /** Most recent conversation activity (max(conv.updated_at)). Set by the
+   * list endpoint only — single-row responses leave this null. Sidebar uses
+   * this with a fallback to ``updated_at`` so chatting floats agents up. */
+  last_used_at?: string | null
   image_url: string | null
   opener_questions: string[] | null
   llm_credential_id?: string | null
@@ -155,6 +159,18 @@ export interface ToolCallInfo {
   args: Record<string, unknown>
 }
 
+export interface MessageFeedbackBrief {
+  rating: 'up' | 'down'
+}
+
+export interface MessageAttachmentBrief {
+  id: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  url: string
+}
+
 export interface Message {
   id: string
   conversation_id: string
@@ -162,6 +178,59 @@ export interface Message {
   content: string
   tool_calls: ToolCallInfo[] | null
   tool_call_id: string | null
+  created_at: string
+  feedback?: MessageFeedbackBrief | null
+  attachments?: MessageAttachmentBrief[] | null
+  /**
+   * M-CHAT1b — parent message id in the LangGraph branch tree.
+   * `null` for the very first message. Used to build assistant-ui's
+   * `messageRepository` so the BranchPicker auto-detects siblings.
+   */
+  parent_id?: string | null
+  /** LangGraph checkpoint id this message was first emitted from. Sent back
+   * via `/switch-branch` when the user picks a sibling. */
+  branch_checkpoint_id?: string | null
+  /** Sibling message ids (same role, same parent). The active message id is
+   * always included. Empty/length-1 when this message has no siblings. */
+  siblings?: string[]
+  /** Per-sibling checkpoint ids — same order as ``siblings``. Frontend posts
+   * the chosen sibling's checkpoint_id to ``/switch-branch`` to flip the
+   * active branch. */
+  sibling_checkpoint_ids?: string[]
+  /** M-CHAT1b HOTFIX2 — 0-based position of *this* (active) message inside
+   * ``siblings``. Backend sorts siblings oldest→newest by checkpoint id, so
+   * BranchPicker just renders ``<branch_index+1 / branch_total>`` directly
+   * instead of indexOf'ing the active id. ``null`` for messages with no
+   * siblings. */
+  branch_index?: number | null
+  branch_total?: number | null
+}
+
+/**
+ * Envelope returned by `GET /api/conversations/:id/messages` post-M-CHAT1b.
+ * Wraps the message list with branch/active-tip metadata.
+ */
+export interface MessagesEnvelope {
+  messages: Message[]
+  active_tip_message_id?: string | null
+  active_checkpoint_id?: string | null
+}
+
+export interface MessageFeedbackRow {
+  id: string
+  message_id: string
+  conversation_id: string
+  rating: 'up' | 'down'
+  comment: string | null
+  created_at: string
+}
+
+export interface UploadResponse {
+  id: string
+  filename: string
+  mime_type: string
+  size_bytes: number
+  url: string
   created_at: string
 }
 

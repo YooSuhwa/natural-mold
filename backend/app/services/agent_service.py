@@ -34,13 +34,43 @@ def _selectin_agent() -> list:
 
 
 async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
+    """List user's agents with ``last_used_at`` set on each row.
+
+    ``last_used_at`` is derived from ``max(conversations.updated_at)`` per
+    agent so the sidebar can surface "most-recently chatted with" without
+    needing a dedicated column. The value is attached as a transient
+    attribute (not persisted) so the response serializer picks it up.
+    """
+
+    from sqlalchemy import func
+
+    from app.models.conversation import Conversation
+
+    last_used_subq = (
+        select(
+            Conversation.agent_id.label("agent_id"),
+            func.max(Conversation.updated_at).label("last_used_at"),
+        )
+        .group_by(Conversation.agent_id)
+        .subquery()
+    )
+
     result = await db.execute(
-        select(Agent)
+        select(Agent, last_used_subq.c.last_used_at)
+        .outerjoin(last_used_subq, Agent.id == last_used_subq.c.agent_id)
         .where(Agent.user_id == user_id)
         .options(*_selectin_agent())
-        .order_by(Agent.created_at.desc())
+        .order_by(
+            func.coalesce(last_used_subq.c.last_used_at, Agent.created_at).desc()
+        )
     )
-    return list(result.scalars().all())
+    rows = result.all()
+    agents: list[Agent] = []
+    for agent, last_used in rows:
+        # Stash on the ORM instance — picked up by ``_agent_to_response``.
+        agent._last_used_at = last_used
+        agents.append(agent)
+    return agents
 
 
 async def get_agent(db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -> Agent | None:

@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     # Conversation outputs
     conversation_output_dir: str = "./data/conversations"
 
+    # Chat message uploads (P1-7 attachments). Files served via
+    # /api/uploads/{id}; max bytes default 20 MiB.
+    upload_dir: str = "./data/uploads"
+    upload_max_bytes: int = 20 * 1024 * 1024
+
     # Builder / Assistant sub-agent model defaults (서비스 내부용)
     builder_model_provider: str = "anthropic"
     builder_model_name: str = "claude-sonnet-4-6"

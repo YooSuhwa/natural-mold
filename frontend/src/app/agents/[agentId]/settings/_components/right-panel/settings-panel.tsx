@@ -36,7 +36,7 @@ export function SettingsPanel({ agentId, imageUrl, name }: SettingsPanelProps) {
         <AgentAvatar imageUrl={imageUrl} name={name} size="xl" />
         {isPending && (
           <div className="absolute inset-0 flex items-center justify-center rounded-full bg-background/60">
-            <Loader2Icon className="size-10 animate-spin text-primary" />
+            <Loader2Icon className="size-10 animate-spin text-primary-strong" />
           </div>
         )}
       </div>

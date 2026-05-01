@@ -56,7 +56,10 @@ function Header({ icon, title, description, actions, className }: HeaderProps) {
   return (
     <div
       className={cn(
-        'flex items-start gap-4 border-b border-border/60 px-6 py-5',
+        // pr-12 leaves space for the absolute close (X) button rendered by
+        // shadcn DialogContent in the top-right corner — without it, action
+        // chips (StatusChip etc.) overlap the X.
+        'flex items-start gap-4 border-b border-border/60 py-5 pl-6 pr-12',
         className,
       )}
     >

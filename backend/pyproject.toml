@@ -99,6 +99,7 @@ ignore = [
 "app/models/*.py" = ["F821"]                      # SQLAlchemy forward refs with __future__ annotations
 "app/seed/default_tools.py" = ["E501"]            # long lines in JSON seed data
 "app/routers/skills.py" = ["ASYNC240"]            # sync pathlib for file serving (trivial I/O)
+"app/routers/uploads.py" = ["ASYNC240"]           # sync pathlib for upload write/read (bounded I/O)
 "app/services/skill_service.py" = ["ASYNC240"]    # sync pathlib for ZIP extraction (bounded I/O)
 
 [tool.ruff.format]

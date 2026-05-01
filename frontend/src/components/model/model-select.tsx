@@ -188,6 +188,10 @@ export function ModelSelect({
     )
   }
 
+  // base-ui's <Select.Value> renders the raw value (UUID) when no children
+  // are provided, so we look up the picked model and project a friendly label.
+  const selectedModel = sortedModels.find((m) => m.id === value)
+
   return (
     <div className={className}>
       <div className="flex items-center gap-2">
@@ -197,7 +201,16 @@ export function ModelSelect({
           disabled={isLoading}
         >
           <SelectTrigger className="flex-1">
-            <SelectValue placeholder={placeholder} />
+            <SelectValue placeholder={placeholder}>
+              {selectedModel ? (
+                <span className="flex items-center gap-2">
+                  <span>{selectedModel.display_name}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {selectedModel.provider}
+                  </span>
+                </span>
+              ) : null}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {sortedModels.map((m) => (

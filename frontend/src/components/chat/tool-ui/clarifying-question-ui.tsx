@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 const STATE_CLASS = {
   idle: 'cursor-pointer border-border hover:border-primary/50 hover:bg-accent',
-  selected: 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30',
+  selected: 'border-primary bg-primary/10 text-primary-strong ring-1 ring-primary/30',
   dimmed: 'cursor-default opacity-40',
 } as const
 
@@ -82,7 +82,7 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
     return (
       <div className="mt-2 rounded-xl border bg-background p-4 shadow-sm">
         <div className="mb-3 flex items-start gap-2">
-          <MessageCircleQuestionIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+          <MessageCircleQuestionIcon className="mt-0.5 size-4 shrink-0 text-primary-strong" />
           <p className="text-sm font-medium">{question}</p>
         </div>
         <div className="flex flex-wrap gap-2">

@@ -72,7 +72,7 @@ export default function AgentNewPage() {
           <Link href="/agents/new/manual" className="group">
             <Card className="cursor-pointer transition-colors hover:border-primary/40">
               <CardContent className="flex flex-col items-center gap-2 p-6">
-                <PenLineIcon className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                <PenLineIcon className="size-5 text-muted-foreground group-hover:text-primary-strong transition-colors" />
                 <span className="text-sm font-medium">{t('manual.title')}</span>
               </CardContent>
             </Card>
@@ -81,7 +81,7 @@ export default function AgentNewPage() {
           <Link href="/agents/new/template" className="group">
             <Card className="cursor-pointer transition-colors hover:border-primary/40">
               <CardContent className="flex flex-col items-center gap-2 p-6">
-                <LayoutTemplateIcon className="size-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                <LayoutTemplateIcon className="size-5 text-muted-foreground group-hover:text-primary-strong transition-colors" />
                 <span className="text-sm font-medium">{t('template.title')}</span>
               </CardContent>
             </Card>

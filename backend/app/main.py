@@ -185,6 +185,7 @@ def create_app() -> FastAPI:
         builder,
         conversations,
         credentials,
+        feedback,
         health,
         mcp,
         models,
@@ -192,6 +193,7 @@ def create_app() -> FastAPI:
         templates,
         tools,
         triggers,
+        uploads,
         usage,
     )
 
@@ -209,6 +211,8 @@ def create_app() -> FastAPI:
     app.include_router(skills.router)
     app.include_router(tools.router)
     app.include_router(triggers.router)
+    app.include_router(uploads.router)
+    app.include_router(feedback.router)
     app.include_router(usage.router)
 
     # ---- Exception handlers ----

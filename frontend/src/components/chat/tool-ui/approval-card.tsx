@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import {
   ShieldCheckIcon,
@@ -10,10 +10,12 @@ import {
   Loader2Icon,
   ChevronDownIcon,
   WrenchIcon,
+  ClockIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { useHiTL } from '@/lib/chat/hitl-context'
+import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
 
 interface ApprovalArgs {
   /** 승인 대상 도구명 */
@@ -24,6 +26,10 @@ interface ApprovalArgs {
   description?: string
   /** 메시지 (description 대체) */
   message?: string
+  /** 승인 만료 timeout (초) — 미지정 시 5분 */
+  timeout_seconds?: number
+  /** 승인 식별자 — deadline 리셋 키로 사용 */
+  approval_id?: string
 }
 
 type Decision = 'approved' | 'modified' | 'rejected'
@@ -122,6 +128,40 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   )
 }
 
+interface CountdownBadgeProps {
+  formatted: string
+  isUrgent: boolean
+  expired: boolean
+  label: string
+  expiredLabel: string
+}
+
+function CountdownBadge({
+  formatted,
+  isUrgent,
+  expired,
+  label,
+  expiredLabel,
+}: CountdownBadgeProps) {
+  return (
+    <div
+      className={cn(
+        'ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums',
+        expired
+          ? 'bg-status-warn/15 text-status-warn'
+          : isUrgent
+            ? 'animate-pulse bg-status-warn/15 text-status-warn'
+            : 'bg-muted text-muted-foreground',
+      )}
+      aria-live="polite"
+      aria-label={`${label}: ${expired ? expiredLabel : formatted}`}
+    >
+      <ClockIcon className="size-3" />
+      <span>{expired ? expiredLabel : formatted}</span>
+    </div>
+  )
+}
+
 export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
   toolName: 'request_approval',
   render: function ApprovalRender({ args, result, status, addResult }) {
@@ -135,15 +175,24 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const [submitting, setSubmitting] = useState(false)
     const [jsonError, setJsonError] = useState<string | null>(null)
 
+    // 카드 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
+    const fallbackIdRef = useRef<string>(`approval-${Math.random().toString(36).slice(2)}`)
+    const approvalId = args?.approval_id ?? fallbackIdRef.current
+
+    // requires-action 상태일 때만 timer 활성
+    const isPending =
+      status.type !== 'complete' && status.type !== 'running' && result === undefined
+
     const handleDecision = useCallback(
-      async (d: Decision) => {
+      async (d: Decision, opts?: { reasonOverride?: string }) => {
         setDecision(d)
         setSubmitting(true)
 
+        const reason = opts?.reasonOverride ?? (d === 'rejected' ? rejectReason : undefined)
         const response: ApprovalResult = { decision: d }
 
-        if (d === 'rejected' && rejectReason) {
-          response.reason = rejectReason
+        if (reason) {
+          response.reason = reason
         }
 
         if (d === 'modified' && editedArgs) {
@@ -164,6 +213,22 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
       [addResult, hitl, rejectReason, editedArgs, t, styles],
     )
 
+    // 만료 시 자동 reject — handleDecision 변동에 영향받지 않도록 ref로 보관
+    const expireMessage = t('autoRejected')
+    const handleExpire = useCallback(() => {
+      if (submitting || decision !== null) return
+      void handleDecision('rejected', { reasonOverride: expireMessage })
+    }, [handleDecision, submitting, decision, expireMessage])
+
+    const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
+      approvalId,
+      initialTimeoutSeconds: args?.timeout_seconds,
+      onExpire: handleExpire,
+      active: isPending,
+    })
+
+    const onInteract = useMemo(() => extend, [extend])
+
     // ── 완료 상태 ──
     if (status.type === 'complete' || result !== undefined) {
       return <ApprovalBadge result={result} />
@@ -173,7 +238,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     if (status.type === 'running') {
       return (
         <div className="flex items-center gap-2 rounded-xl border bg-muted/20 px-3 py-2 text-xs">
-          <Loader2Icon className="size-3.5 animate-spin text-primary" />
+          <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
           <span className="text-muted-foreground">{t('preparing')}</span>
         </div>
       )
@@ -190,6 +255,13 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
         <div className="flex items-center gap-2 border-b border-amber-200/50 px-4 py-3 dark:border-amber-900/50">
           <ShieldCheckIcon className="size-4 text-amber-600 dark:text-amber-400" />
           <span className="text-sm font-medium">{t('approvalRequired')}</span>
+          <CountdownBadge
+            formatted={formatted}
+            isUrgent={isUrgent}
+            expired={remaining <= 0}
+            label={t('expiresIn')}
+            expiredLabel={t('expired')}
+          />
         </div>
 
         <div className="space-y-3 p-4">
@@ -209,7 +281,11 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
           {decision === 'rejected' && !submitting && (
             <textarea
               value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
+              onChange={(e) => {
+                setRejectReason(e.target.value)
+                onInteract()
+              }}
+              onFocus={onInteract}
               placeholder={t('rejectReasonPlaceholder')}
               className="w-full resize-none rounded-lg border border-red-200 bg-background px-3 py-2 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-red-300 dark:border-red-900"
               rows={2}
@@ -224,7 +300,9 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                 onChange={(e) => {
                   setEditedArgs(e.target.value)
                   setJsonError(null)
+                  onInteract()
                 }}
+                onFocus={onInteract}
                 placeholder={t('editArgsPlaceholder')}
                 className="w-full resize-none rounded-lg border border-blue-200 bg-background px-3 py-2 font-mono text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-blue-300 dark:border-blue-900"
                 rows={4}

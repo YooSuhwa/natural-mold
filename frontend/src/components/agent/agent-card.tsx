@@ -57,7 +57,7 @@ export function AgentCard({ agent }: AgentCardProps) {
             <div className="flex items-start gap-3 min-w-0">
               <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="md" />
               <div className="flex-1 min-w-0">
-                <CardTitle className="truncate group-hover:text-primary transition-colors">
+                <CardTitle className="truncate group-hover:text-primary-strong transition-colors">
                   {agent.name}
                 </CardTitle>
               </div>

@@ -1,15 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import {
   ThreadPrimitive,
   MessagePrimitive,
   ComposerPrimitive,
+  AttachmentPrimitive,
   ActionBarPrimitive,
   useThreadViewport,
   useAssistantState,
   type AssistantToolUI,
 } from '@assistant-ui/react'
+import { useQueryClient } from '@tanstack/react-query'
+import { conversationsApi } from '@/lib/api/conversations'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { code } from '@streamdown/code'
 import { math } from '@streamdown/math'
@@ -24,12 +27,20 @@ import {
   PaperclipIcon,
   ArrowDownToLineIcon,
   ArrowUpFromLineIcon,
+  PencilIcon,
+  RotateCcwIcon,
+  ThumbsUpIcon,
+  ThumbsDownIcon,
+  XIcon,
+  FileIcon,
+  ImageIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useAtomValue } from 'jotai'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { ComingSoonButton } from '@/components/shared/coming-soon-button'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
@@ -189,6 +200,203 @@ function CopyButton() {
   )
 }
 
+/** P0-1a — pencil icon that flips a user message into an inline edit composer. */
+function EditButton() {
+  const t = useTranslations('chat.message')
+  return (
+    <ActionBarPrimitive.Edit
+      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      aria-label={t('edit')}
+    >
+      <PencilIcon className="size-3" />
+      <span>{t('edit')}</span>
+    </ActionBarPrimitive.Edit>
+  )
+}
+
+/** P0-1b — regenerate the latest assistant turn. */
+function RegenerateButton() {
+  const t = useTranslations('chat.message')
+  return (
+    <ActionBarPrimitive.Reload
+      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+      aria-label={t('regenerate')}
+    >
+      <RotateCcwIcon className="size-3" />
+      <span>{t('regenerate')}</span>
+    </ActionBarPrimitive.Reload>
+  )
+}
+
+/** M-CHAT1b — wraps the thread so child BranchPicker buttons know which
+ * conversation to switch branches on. Optional — when absent the picker
+ * hides itself. */
+const ConversationContext = createContext<string | null>(null)
+
+interface BranchMeta {
+  branches?: string[]
+  siblingCheckpointIds?: string[]
+  activeBranchId?: string
+  branchCheckpointId?: string | null
+  branchIndex?: number | null
+  branchTotal?: number | null
+}
+
+/** M-CHAT1b — `<1/2>` style branch picker.
+ *
+ * Backend (``thread_branch_service``) sorts siblings oldest→newest by
+ * checkpoint id and stamps the active message with explicit
+ * ``branchIndex/branchTotal`` so we never have to ``indexOf(activeId)``
+ * (that path miscounted when the active message wasn't lex-first; HOTFIX2).
+ *
+ * Hidden when a message has no siblings. */
+/** P1-B — true when this message has a renderable branch picker (>=2 siblings
+ * + matching checkpoint count). Pulled out so the guard intent is named. */
+function canRenderBranchPicker(
+  conversationId: string | null,
+  meta: BranchMeta,
+): meta is BranchMeta & {
+  branchIndex: number
+  branchTotal: number
+  siblingCheckpointIds: string[]
+} {
+  const siblingCheckpoints = meta.siblingCheckpointIds ?? []
+  const { branchIndex, branchTotal } = meta
+  return (
+    !!conversationId &&
+    branchIndex != null &&
+    branchTotal != null &&
+    branchTotal >= 2 &&
+    siblingCheckpoints.length === branchTotal
+  )
+}
+
+function BranchPicker() {
+  const conversationId = useContext(ConversationContext)
+  const queryClient = useQueryClient()
+  const meta = useAssistantState(
+    (s) =>
+      ((s.message?.metadata as { custom?: BranchMeta } | undefined)?.custom ?? {}) as BranchMeta,
+  )
+  if (!canRenderBranchPicker(conversationId, meta)) return null
+  // canRenderBranchPicker guarantees conversationId is non-null + the index/
+  // total/checkpoint counts line up. The casts below are narrowing helpers
+  // because the type guard only narrows ``meta``.
+  const convId = conversationId as string
+  const siblingCheckpoints = meta.siblingCheckpointIds ?? []
+  const branchTotal = meta.branchTotal as number
+  const currentIdx = meta.branchIndex as number
+
+  const switchTo = async (targetIdx: number) => {
+    const checkpointId = siblingCheckpoints[targetIdx]
+    if (!checkpointId) {
+      console.warn('[BranchPicker] missing checkpoint id for sibling idx', targetIdx)
+      return
+    }
+    await conversationsApi
+      .switchBranch(convId, checkpointId)
+      .catch((err) => console.error('[BranchPicker] switch failed', err))
+    await queryClient.invalidateQueries({
+      queryKey: ['conversations', convId, 'messages'],
+    })
+  }
+
+  const total = branchTotal
+  const display = currentIdx + 1
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[10px] tabular-nums text-muted-foreground">
+      <button
+        type="button"
+        className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
+        disabled={currentIdx <= 0}
+        onClick={() => void switchTo(currentIdx - 1)}
+        aria-label="previous branch"
+      >
+        <ChevronLeftIcon className="size-3" />
+      </button>
+      <span className="px-1">
+        {display}/{total}
+      </span>
+      <button
+        type="button"
+        className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
+        disabled={currentIdx >= total - 1}
+        onClick={() => void switchTo(currentIdx + 1)}
+        aria-label="next branch"
+      >
+        <ChevronRightIcon className="size-3" />
+      </button>
+    </span>
+  )
+}
+
+/** P0-1c — thumbs up/down. The active state pulls from
+ * ``message.metadata.submittedFeedback`` which we hydrate in ``convertMessage``
+ * (and assistant-ui keeps in sync after each ``adapter.feedback.submit``). */
+function FeedbackButtons() {
+  const t = useTranslations('chat.message')
+  const submitted = useAssistantState(
+    (s) =>
+      (
+        s.message?.metadata as
+          | { submittedFeedback?: { type: 'positive' | 'negative' } }
+          | undefined
+      )?.submittedFeedback?.type,
+  )
+  return (
+    <>
+      <ActionBarPrimitive.FeedbackPositive
+        className={cn(
+          'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-colors hover:bg-accent',
+          submitted === 'positive'
+            ? 'text-primary-strong'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+        aria-label={t('feedbackUp')}
+      >
+        <ThumbsUpIcon className="size-3" />
+      </ActionBarPrimitive.FeedbackPositive>
+      <ActionBarPrimitive.FeedbackNegative
+        className={cn(
+          'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-colors hover:bg-accent',
+          submitted === 'negative'
+            ? 'text-status-warn'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+        aria-label={t('feedbackDown')}
+      >
+        <ThumbsDownIcon className="size-3" />
+      </ActionBarPrimitive.FeedbackNegative>
+    </>
+  )
+}
+
+/** P0-1a — inline editor for a user message (replaces the bubble while
+ * ``MessagePrimitive.If editing`` is true). */
+function UserMessageEditor() {
+  const t = useTranslations('chat.message')
+  return (
+    <ComposerPrimitive.Root className="flex flex-col gap-2 rounded-2xl border bg-background p-2 shadow-sm">
+      <ComposerPrimitive.Input
+        className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-none"
+        autoFocus
+      />
+      <div className="flex items-center justify-end gap-1">
+        <ComposerPrimitive.Cancel asChild>
+          <Button type="button" size="sm" variant="ghost">
+            {t('editCancel')}
+          </Button>
+        </ComposerPrimitive.Cancel>
+        <ComposerPrimitive.Send asChild>
+          <Button type="submit" size="sm">
+            {t('editSave')}
+          </Button>
+        </ComposerPrimitive.Send>
+      </div>
+    </ComposerPrimitive.Root>
+  )
+}
+
 export interface AssistantThreadProps {
   agentImageUrl?: string | null
   /** true이면 agentImageUrl을 frontend public 자산으로 처리 (API_BASE prepend X) */
@@ -206,6 +414,14 @@ export interface AssistantThreadProps {
   emptyContent?: React.ReactNode
   /** 추가 도구 UI */
   toolUI?: readonly AssistantToolUI[]
+  /** P1-7 — true이면 composer에 첨부 파일 버튼/미리보기 표시.
+   * AttachmentAdapter는 useChatRuntime에 별도로 전달되어야 한다. */
+  enableAttachments?: boolean
+  /** M-CHAT1b — when set, BranchPicker (`<1/2>`) renders inside the meta row
+   * for any message whose backend payload reported sibling branches. The id
+   * is used to POST `/messages/switch-branch` and invalidate the messages
+   * query on click. */
+  conversationId?: string
 }
 
 export function AssistantThread({
@@ -218,11 +434,14 @@ export function AssistantThread({
   showMessageTimestamp = false,
   emptyContent,
   toolUI,
+  enableAttachments = false,
+  conversationId,
 }: AssistantThreadProps) {
   const tChat = useTranslations('chat')
   const tPage = useTranslations('chat.page')
 
   return (
+    <ConversationContext.Provider value={conversationId ?? null}>
     <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
       <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto">
         <ThreadPrimitive.Empty>
@@ -239,14 +458,28 @@ export function AssistantThread({
               UserMessage: function UserMsg() {
                 return (
                   <div className="group relative flex justify-end gap-3">
-                    <div className="flex max-w-[80%] flex-col items-end">
+                    <div className="flex w-full max-w-[80%] flex-col items-end">
                       <div className="rounded-2xl bg-emerald-100 px-4 py-2.5 text-sm leading-relaxed text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100">
                         <MessagePrimitive.Content />
                       </div>
                       <MessageMetaRow>
+                        <BranchPicker />
+                        <EditButton />
                         <CopyButton />
                         {showMessageTimestamp && <MessageTimestamp />}
                       </MessageMetaRow>
+                    </div>
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                      <UserIcon className="size-4" />
+                    </div>
+                  </div>
+                )
+              },
+              UserEditComposer: function UserEdit() {
+                return (
+                  <div className="flex justify-end gap-3">
+                    <div className="flex w-full max-w-[80%] flex-col items-end">
+                      <UserMessageEditor />
                     </div>
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
                       <UserIcon className="size-4" />
@@ -270,7 +503,10 @@ export function AssistantThread({
                       <AssistantMessageParts />
                       <MessageMetaRow>
                         {showMessageTimestamp && <MessageTimestamp />}
+                        <BranchPicker />
                         <CopyButton />
+                        <RegenerateButton />
+                        <FeedbackButtons />
                       </MessageMetaRow>
                     </div>
                   </div>
@@ -292,9 +528,15 @@ export function AssistantThread({
 
       {/* Composer */}
       <div className="mx-auto w-full max-w-3xl px-4 pb-4">
-        <ThreadComposer modelName={modelName} showTokenBar={showTokenBar} compact={compact} />
+        <ThreadComposer
+          modelName={modelName}
+          showTokenBar={showTokenBar}
+          compact={compact}
+          enableAttachments={enableAttachments}
+        />
       </div>
     </ThreadPrimitive.Root>
+    </ConversationContext.Provider>
   )
 }
 
@@ -319,13 +561,15 @@ function ThreadComposer({
   modelName,
   showTokenBar,
   compact,
+  enableAttachments = false,
 }: {
   modelName?: string
   showTokenBar?: boolean
   compact?: boolean
+  enableAttachments?: boolean
 }) {
-  const tc = useTranslations('common')
   const t = useTranslations('chat.input')
+  const tMsg = useTranslations('chat.message')
   const tokenUsage = useAtomValue(sessionTokenUsageAtom)
   const hasTokens = showTokenBar && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)
 
@@ -339,6 +583,16 @@ function ThreadComposer({
             <TokenBar tokenUsage={tokenUsage} showDivider={false} className="ml-auto" />
           )}
         </div>
+      )}
+
+      {/* Attachment preview row (P1-7) — only renders when at least one
+          attachment is staged; hidden otherwise so the composer stays compact. */}
+      {enableAttachments && (
+        <ComposerPrimitive.Attachments
+          components={{
+            Attachment: AttachmentChip,
+          }}
+        />
       )}
 
       {/* Textarea */}
@@ -357,10 +611,19 @@ function ThreadComposer({
       {/* Toolbar */}
       <div className="flex items-center justify-between px-2 py-1.5">
         <div className="flex items-center gap-1">
-          <ComingSoonButton message={tc('comingSoon.fileAttach')} className="text-muted-foreground">
-            <PaperclipIcon className="size-4" />
-            <span className="sr-only">{tc('comingSoon.fileAttach')}</span>
-          </ComingSoonButton>
+          {enableAttachments && (
+            <ComposerPrimitive.AddAttachment asChild>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                aria-label={tMsg('attach')}
+              >
+                <PaperclipIcon className="size-4" />
+              </Button>
+            </ComposerPrimitive.AddAttachment>
+          )}
         </div>
         <ComposerPrimitive.Send asChild>
           <Button type="submit" size="icon-sm" className="rounded-full">
@@ -370,6 +633,46 @@ function ThreadComposer({
         </ComposerPrimitive.Send>
       </div>
     </ComposerPrimitive.Root>
+  )
+}
+
+/** P1-7 — preview chip for one staged attachment. Renders inside the
+ * ``ComposerPrimitive.Attachments`` slot which already provides per-attachment
+ * context, so we just read from ``useAssistantState(s.attachment)``. */
+function AttachmentChip() {
+  const tMsg = useTranslations('chat.message')
+  const attachment = useAssistantState(
+    (s) =>
+      (s as { attachment?: { name: string; contentType?: string; status?: { type: string } } })
+        .attachment,
+  )
+  if (!attachment) return null
+  const isImage = attachment.contentType?.startsWith('image/')
+  const isUploading = attachment.status?.type === 'running'
+
+  return (
+    <AttachmentPrimitive.Root className="m-1 inline-flex min-w-0 items-center gap-2 rounded-md border bg-muted/40 px-2 py-1 text-xs">
+      <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">
+        {isImage ? <ImageIcon className="size-3.5" /> : <FileIcon className="size-3.5" />}
+      </span>
+      <span className="max-w-[180px] truncate">
+        <AttachmentPrimitive.Name />
+      </span>
+      {isUploading && (
+        <span className="text-[10px] text-muted-foreground">
+          {tMsg('attachmentUploading')}
+        </span>
+      )}
+      <AttachmentPrimitive.Remove asChild>
+        <button
+          type="button"
+          className="ml-1 inline-flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label="Remove attachment"
+        >
+          <XIcon className="size-3" />
+        </button>
+      </AttachmentPrimitive.Remove>
+    </AttachmentPrimitive.Root>
   )
 }
 

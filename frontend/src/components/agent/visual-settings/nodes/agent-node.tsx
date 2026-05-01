@@ -136,7 +136,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                         }`}
                       >
                         {editModelId === model.id ? (
-                          <CheckIcon className="size-3.5 shrink-0 text-primary" />
+                          <CheckIcon className="size-3.5 shrink-0 text-primary-strong" />
                         ) : (
                           <span className="size-3.5 shrink-0" />
                         )}

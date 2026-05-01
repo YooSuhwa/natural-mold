@@ -5,13 +5,13 @@ from typing import Any
 
 import anyio
 import httpx
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.error_codes import agent_not_found, image_file_not_found, image_not_found
+from app.error_codes import agent_not_found, image_not_found
 from app.exceptions import ExternalServiceError, ValidationError
 from app.models.agent import Agent
 from app.schemas.agent import (
@@ -98,6 +98,10 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         template_id=agent.template_id,
         created_at=agent.created_at,
         updated_at=agent.updated_at,
+        # Set by ``list_agents`` (max conversations.updated_at). For single-row
+        # endpoints the attribute is missing → schema defaults to None and the
+        # sidebar falls back to ``updated_at`` for sort.
+        last_used_at=getattr(agent, "_last_used_at", None),
     )
 
 
@@ -196,11 +200,20 @@ async def get_agent_image(
     user: CurrentUser = Depends(get_current_user),
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
-    if not agent or not agent.image_path:
+    if not agent:
         raise image_not_found()
+    if not agent.image_path:
+        # Agent has no image — silent 204 keeps the browser console clean
+        # (AgentAvatar falls back to the BotIcon).
+        return Response(status_code=204)
     apath = anyio.Path(agent.image_path)
     if not await apath.is_file():
-        raise image_file_not_found()
+        # File got deleted out from under us. Clean up the orphan path so the
+        # next list_agents call returns ``image_url: null`` and the frontend
+        # stops requesting this URL altogether.
+        agent.image_path = None
+        await db.commit()
+        return Response(status_code=204)
     media_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
     media = media_map.get(apath.suffix, "image/png")
     return FileResponse(str(apath), media_type=media)

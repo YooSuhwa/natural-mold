@@ -40,35 +40,49 @@ async def get_usage_summary(
     user_id: uuid.UUID,
     period: str | None = None,
 ) -> dict:
-    # Get totals
-    query = (
-        select(
-            func.coalesce(func.sum(TokenUsage.prompt_tokens), 0).label("prompt_tokens"),
-            func.coalesce(func.sum(TokenUsage.completion_tokens), 0).label("completion_tokens"),
-            func.coalesce(func.sum(TokenUsage.total_tokens), 0).label("total_tokens"),
-            func.coalesce(func.sum(TokenUsage.estimated_cost), Decimal("0")).label(
-                "estimated_cost"
-            ),
-        )
-        .join(Agent, TokenUsage.agent_id == Agent.id)
-        .where(Agent.user_id == user_id)
-    )
-    result = await db.execute(query)
-    totals = result.one()
+    # Totals come from ``daily_spend_user`` so summary numbers match the daily
+    # chart/table. The legacy ``token_usages`` rows are still written but the
+    # spend writer (m21) is now the single source of truth for aggregate views.
+    from app.models.daily_spend_user import DailySpendUser
 
-    # Get per-agent breakdown
+    spend_query = select(
+        func.coalesce(func.sum(DailySpendUser.total_tokens_in), 0).label("prompt_tokens"),
+        func.coalesce(func.sum(DailySpendUser.total_tokens_out), 0).label(
+            "completion_tokens"
+        ),
+        func.coalesce(
+            func.sum(DailySpendUser.total_tokens_in + DailySpendUser.total_tokens_out),
+            0,
+        ).label("total_tokens"),
+        func.coalesce(func.sum(DailySpendUser.total_cost_usd), Decimal("0")).label(
+            "estimated_cost"
+        ),
+    ).where(DailySpendUser.user_id == user_id)
+    spend_result = await db.execute(spend_query)
+    totals = spend_result.one()
+
+    # Per-agent breakdown — same source as totals so the cards match the
+    # daily chart's per-agent slice.
+    from app.models.daily_spend_agent import DailySpendAgent
+
     by_agent_query = (
         select(
-            TokenUsage.agent_id,
+            DailySpendAgent.agent_id,
             Agent.name.label("agent_name"),
-            func.coalesce(func.sum(TokenUsage.total_tokens), 0).label("total_tokens"),
-            func.coalesce(func.sum(TokenUsage.estimated_cost), Decimal("0")).label(
-                "estimated_cost"
-            ),
+            func.coalesce(
+                func.sum(
+                    DailySpendAgent.total_tokens_in
+                    + DailySpendAgent.total_tokens_out
+                ),
+                0,
+            ).label("total_tokens"),
+            func.coalesce(
+                func.sum(DailySpendAgent.total_cost_usd), Decimal("0")
+            ).label("estimated_cost"),
         )
-        .join(Agent, TokenUsage.agent_id == Agent.id)
+        .join(Agent, DailySpendAgent.agent_id == Agent.id)
         .where(Agent.user_id == user_id)
-        .group_by(TokenUsage.agent_id, Agent.name)
+        .group_by(DailySpendAgent.agent_id, Agent.name)
     )
     by_agent_result = await db.execute(by_agent_query)
 
