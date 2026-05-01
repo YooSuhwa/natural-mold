@@ -1,0 +1,71 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv/
+ENV/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Node / Next.js
+node_modules
+frontend/node_modules
+frontend/.next
+frontend/out
+.pnpm-store
+package-lock.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Tests / coverage
+tests/
+backend/tests
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/
+.mypy_cache/
+.ruff_cache/
+
+# Docs & misc
+docs/
+*.md
+!README.md
+.env
+.env.*
+*.log
+logs/
+
+# Claude / agent harness artifacts
+.claude/
+.codex/
+.playwright-mcp/
+workspace/
+
+# Docker / deploy (image build context only needs source + lockfiles)
+Dockerfile
+docker-compose*.yml
+deploy/
+nginx/
+k8s/
+scripts/
+
+# Runtime data + uploads (must NOT be baked into image)
+backend/data/
+*.tar.gz
+dump.rdb
