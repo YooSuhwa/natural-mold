@@ -99,12 +99,11 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
     createdAt: new Date(message.created_at),
   }
   // M-CHAT1b — branch info on assistant messages (sibling regenerations).
+  // ``message.usage`` (W7)도 같은 metadata.custom 슬롯에 함께 hoist하여 ActionBar
+  // 옆 TokenUsagePopover가 ``useAssistantState``로 직접 읽는다.
   const assistantBranchMeta = buildBranchMeta(message)
-  // W7 — message_end에서 흘러온 4종 토큰 사용량을 metadata.custom.usage에
-  // 박아 ActionBar 옆 TokenUsagePopover가 직접 읽을 수 있게 한다.
-  const hasUsage = !!message.usage
 
-  if (message.feedback || assistantBranchMeta || hasUsage) {
+  if (message.feedback || assistantBranchMeta || message.usage) {
     // assistant-ui treats `metadata.submittedFeedback.type` as the active
     // rating — the FeedbackPositive/Negative buttons render highlighted when
     // it matches their type. We co-locate branch info + usage in `metadata.custom`.

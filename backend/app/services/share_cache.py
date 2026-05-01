@@ -74,9 +74,24 @@ def put_snapshot(token: str, checkpoint_id: str | None, value: Any) -> None:
     _cache.put((token, checkpoint_id), value)
 
 
+def get_envelope(token: str, checkpoint_id: str | None) -> Any | None:
+    """``MessagesEnvelope`` 모양의 캐시 entry. ``SharedConversationView``와
+    같은 token이라도 shape이 달라 별도 namespace로 분리한다."""
+    return _cache.get((_envelope_key(token), checkpoint_id))
+
+
+def put_envelope(token: str, checkpoint_id: str | None, value: Any) -> None:
+    _cache.put((_envelope_key(token), checkpoint_id), value)
+
+
+def _envelope_key(token: str) -> str:
+    return f"{token}:envelope"
+
+
 def invalidate_token(token: str) -> None:
-    """Drop every snapshot for the given token (any checkpoint)."""
+    """View 와 envelope 양쪽의 token-prefix entry 모두 폐기."""
     _cache.invalidate_prefix(token)
+    _cache.invalidate_prefix(_envelope_key(token))
 
 
 def clear_all() -> None:

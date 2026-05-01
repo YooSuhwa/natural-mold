@@ -172,10 +172,9 @@ async def get_public_share_messages(
     _, conversation, _ = bundle
 
     checkpoint_id = conversation.active_branch_checkpoint_id
-    # Reuse the SharedConversationView snapshot's messages when present, but
-    # the envelope shape differs — so cache under a distinct key.
-    cache_key = f"{share_token}:envelope"
-    cached = share_cache.get_snapshot(cache_key, checkpoint_id)
+    # ``SharedConversationView``와 같은 token이지만 envelope은 shape이 다르므로
+    # share_cache가 별도 namespace key로 캡슐화한다.
+    cached = share_cache.get_envelope(share_token, checkpoint_id)
     if cached is not None:
         return cached
 
@@ -187,5 +186,5 @@ async def get_public_share_messages(
         active_tip_message_id=None,
         active_checkpoint_id=checkpoint_id,
     )
-    share_cache.put_snapshot(cache_key, checkpoint_id, envelope)
+    share_cache.put_envelope(share_token, checkpoint_id, envelope)
     return envelope

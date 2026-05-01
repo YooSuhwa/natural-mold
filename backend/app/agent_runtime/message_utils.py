@@ -77,7 +77,7 @@ def langchain_messages_to_response(
 
         # W7 — AIMessage가 들고 다니는 ``usage_metadata``를 평탄화. user/tool
         # 메시지는 None. cache_* 필드가 없으면 0으로 채움.
-        usage = _extract_usage(
+        usage = extract_usage_breakdown(
             msg,
             cost_per_input_token=cost_per_input_token,
             cost_per_output_token=cost_per_output_token,
@@ -99,7 +99,7 @@ def langchain_messages_to_response(
     return results
 
 
-def _extract_usage(
+def extract_usage_breakdown(
     msg: BaseMessage,
     *,
     cost_per_input_token: float | None = None,

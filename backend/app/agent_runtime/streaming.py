@@ -10,7 +10,7 @@ import orjson
 from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 
-from app.agent_runtime.message_utils import content_to_text
+from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
 
 logger = logging.getLogger(__name__)
 
@@ -190,18 +190,17 @@ async def stream_agent_response(
                         },
                     )
 
-            if hasattr(msg, "usage_metadata") and msg.usage_metadata:
-                # LangChain ``usage_metadata``는 input/output 외에
-                # ``input_token_details``로 cache_creation/cache_read를 분리해
-                # 전달한다 (Anthropic prompt caching, OpenAI prompt caching 모두).
-                # 클라이언트가 메시지별 hover 팝오버에서 4종을 표시할 수 있게
-                # 평탄화해서 발행.
-                input_details = msg.usage_metadata.get("input_token_details") or {}
+            # LangChain ``usage_metadata``는 input/output 외에
+            # ``input_token_details``로 cache_creation/cache_read를 분리해 전달
+            # (Anthropic / OpenAI prompt caching). fetch 경로(``message_utils``)와
+            # 동일한 평탄화 헬퍼를 재사용해 두 경로의 shape을 통일한다.
+            extracted = extract_usage_breakdown(msg)
+            if extracted is not None:
                 usage_data = {
-                    "prompt_tokens": msg.usage_metadata.get("input_tokens", 0),
-                    "completion_tokens": msg.usage_metadata.get("output_tokens", 0),
-                    "cache_creation_tokens": input_details.get("cache_creation", 0),
-                    "cache_read_tokens": input_details.get("cache_read", 0),
+                    "prompt_tokens": extracted.prompt_tokens,
+                    "completion_tokens": extracted.completion_tokens,
+                    "cache_creation_tokens": extracted.cache_creation_tokens,
+                    "cache_read_tokens": extracted.cache_read_tokens,
                 }
 
     except GraphInterrupt:

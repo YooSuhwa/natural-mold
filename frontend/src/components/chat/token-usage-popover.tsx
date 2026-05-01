@@ -5,6 +5,7 @@ import { InfoIcon } from 'lucide-react'
 import { useAssistantState } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
+import { formatCostUsd } from '@/components/usage/format'
 import type { TokenUsageBreakdown } from '@/lib/types'
 
 interface AssistantMetadataCustom {
@@ -13,13 +14,6 @@ interface AssistantMetadataCustom {
 
 function formatNumber(n: number): string {
   return n.toLocaleString('en-US')
-}
-
-function formatCost(usd: number): string {
-  if (usd === 0) return '$0'
-  if (usd < 0.0001) return '<$0.0001'
-  if (usd < 1) return `$${usd.toFixed(4)}`
-  return `$${usd.toFixed(3)}`
 }
 
 /**
@@ -87,7 +81,7 @@ export function TokenUsagePopover() {
           {usage.estimated_cost !== undefined && usage.estimated_cost > 0 && (
             <div className="mt-1.5 flex items-center justify-between border-t pt-1.5 text-foreground">
               <span>{t('cost')}</span>
-              <span className="tabular-nums">{formatCost(usage.estimated_cost)}</span>
+              <span className="tabular-nums">{formatCostUsd(usage.estimated_cost)}</span>
             </div>
           )}
         </div>
