@@ -18,6 +18,7 @@ from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.message_attachment import MessageAttachment
 from app.models.message_feedback import MessageFeedback
 from app.models.model import Model
+from app.models.share_link import ShareLink
 from app.models.skill import AgentSkillLink, Skill
 from app.models.template import Template
 from app.models.token_usage import TokenUsage
@@ -45,6 +46,7 @@ __all__ = [
     "MessageAttachment",
     "MessageFeedback",
     "Model",
+    "ShareLink",
     "Skill",
     "Template",
     "TokenUsage",
