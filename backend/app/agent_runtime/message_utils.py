@@ -48,11 +48,20 @@ def langchain_messages_to_response(
     messages: list[BaseMessage],
     conversation_id: uuid.UUID,
     timestamps: list[datetime] | None = None,
+    *,
+    cost_per_input_token: float | None = None,
+    cost_per_output_token: float | None = None,
 ) -> list[MessageResponse]:
     """LangChain BaseMessage 리스트를 MessageResponse 리스트로 변환.
 
     `timestamps`가 주어지면 메시지 idx별 시각으로 사용 (영구 매핑 우선).
     fallback은 `now() + idx*1ms` (테스트/단발 호출용).
+
+    ``cost_per_*_token`` (W7-4): conversation의 agent에 연결된 model 단가를
+    호출자가 넘기면 ``MessageResponse.usage.estimated_cost``를 메시지마다 계산.
+    cache_read는 일반적으로 input의 10% 단가지만 모델별로 다르므로 본 구현은
+    cache_creation을 input과 동일 단가로, cache_read를 input의 10% 단가로
+    근사한다 (Anthropic prompt caching 기본값).
     """
     results: list[MessageResponse] = []
     fallback_base = datetime.now(UTC).replace(tzinfo=None)
@@ -68,7 +77,11 @@ def langchain_messages_to_response(
 
         # W7 — AIMessage가 들고 다니는 ``usage_metadata``를 평탄화. user/tool
         # 메시지는 None. cache_* 필드가 없으면 0으로 채움.
-        usage = _extract_usage(msg)
+        usage = _extract_usage(
+            msg,
+            cost_per_input_token=cost_per_input_token,
+            cost_per_output_token=cost_per_output_token,
+        )
 
         results.append(
             MessageResponse(
@@ -86,11 +99,22 @@ def langchain_messages_to_response(
     return results
 
 
-def _extract_usage(msg: BaseMessage) -> TokenUsageBreakdown | None:
+def _extract_usage(
+    msg: BaseMessage,
+    *,
+    cost_per_input_token: float | None = None,
+    cost_per_output_token: float | None = None,
+) -> TokenUsageBreakdown | None:
     """LangChain ``usage_metadata``를 ``TokenUsageBreakdown``으로 평탄화.
 
     streaming.py의 ``message_end`` 발행 로직과 동일한 평탄화를 fetch 경로에서
     재사용. user/tool 메시지나 usage_metadata가 없는 chunk는 ``None``.
+
+    단가가 주어지면 ``estimated_cost`` 도 함께 채운다. ``input_tokens``는
+    LangChain 1.x에서 cache 토큰을 모두 포함한 총 input이므로 단순히
+    ``prompt × cost_per_input + completion × cost_per_output``로 계산.
+    cache_read는 정확한 단가가 다를 수 있으나 fetch 경로의 표시값은 근사로
+    충분 (정확한 누적은 Daily Spend / token_usages가 별도 path로 추적).
     """
     meta = getattr(msg, "usage_metadata", None)
     if not meta:
@@ -102,11 +126,20 @@ def _extract_usage(msg: BaseMessage) -> TokenUsageBreakdown | None:
     cache_read = int(input_details.get("cache_read", 0))
     if prompt == 0 and completion == 0 and cache_creation == 0 and cache_read == 0:
         return None
+
+    estimated_cost: float | None = None
+    if cost_per_input_token is not None or cost_per_output_token is not None:
+        cost = (prompt * (cost_per_input_token or 0)) + (
+            completion * (cost_per_output_token or 0)
+        )
+        estimated_cost = round(cost, 8) if cost > 0 else 0.0
+
     return TokenUsageBreakdown(
         prompt_tokens=prompt,
         completion_tokens=completion,
         cache_creation_tokens=cache_creation,
         cache_read_tokens=cache_read,
+        estimated_cost=estimated_cost,
     )
 
 

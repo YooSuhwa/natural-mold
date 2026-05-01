@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from app.agent_runtime.message_utils import (
@@ -219,6 +220,30 @@ class TestUsageExtraction:
         msg.usage_metadata = {"input_tokens": 0, "output_tokens": 0}
         [resp] = langchain_messages_to_response([msg], conv_id)
         assert resp.usage is None
+
+    def test_estimated_cost_calculated_from_model_pricing(self):
+        """W7-4 — agent.model 단가가 주어지면 cost를 계산해 응답에 박는다."""
+        conv_id = uuid.uuid4()
+        msg = AIMessage(content="hi")
+        msg.usage_metadata = {"input_tokens": 1000, "output_tokens": 500}
+        [resp] = langchain_messages_to_response(
+            [msg],
+            conv_id,
+            cost_per_input_token=3e-6,  # $3 / 1M tokens
+            cost_per_output_token=15e-6,  # $15 / 1M tokens
+        )
+        assert resp.usage is not None
+        # 1000 * 3e-6 + 500 * 15e-6 = 0.003 + 0.0075 = 0.0105
+        assert resp.usage.estimated_cost == pytest.approx(0.0105, rel=1e-9)
+
+    def test_estimated_cost_none_when_no_pricing(self):
+        """단가가 None이면 cost는 채우지 않음 (envelope 합산이 0)."""
+        conv_id = uuid.uuid4()
+        msg = AIMessage(content="hi")
+        msg.usage_metadata = {"input_tokens": 100, "output_tokens": 50}
+        [resp] = langchain_messages_to_response([msg], conv_id)
+        assert resp.usage is not None
+        assert resp.usage.estimated_cost is None
 
 
 class TestStripJsonBlocks:

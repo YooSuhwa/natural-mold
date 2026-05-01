@@ -201,8 +201,17 @@ async def list_messages_from_checkpointer(
         )
         await db.commit()
 
+    # W7-4 — conversation의 agent에 연결된 model 단가를 한 번 조회해 넘긴다.
+    # 메시지마다 model이 다를 수 있으나(fallback chain) 단순화 — 95% 케이스인
+    # default model 단가만 사용해 근사. 정확한 누적은 Daily Spend가 별도로 추적.
+    cost_per_input, cost_per_output = await _resolve_agent_model_pricing(db, conversation)
+
     responses = langchain_messages_to_response(
-        messages, conversation.id, timestamps=timestamps
+        messages,
+        conversation.id,
+        timestamps=timestamps,
+        cost_per_input_token=cost_per_input,
+        cost_per_output_token=cost_per_output,
     )
 
     # Attach branch tree info — parent_id, siblings, branch_checkpoint_id.
@@ -307,6 +316,36 @@ async def maybe_set_auto_title(
         .values(title=title)
     )
     await db.commit()
+
+
+async def _resolve_agent_model_pricing(
+    db: AsyncSession, conversation: Conversation
+) -> tuple[float | None, float | None]:
+    """W7-4 — conversation.agent.model의 ``cost_per_*_token`` 단가를 조회.
+
+    Decimal → float 변환. Agent/Model row가 사라졌거나 단가가 NULL이면
+    ``(None, None)``. 호출자(``langchain_messages_to_response``)는 None을
+    받으면 ``estimated_cost``를 채우지 않는다.
+    """
+    from sqlalchemy import select as _select
+
+    from app.models.agent import Agent
+    from app.models.model import Model
+
+    result = await db.execute(
+        _select(Model.cost_per_input_token, Model.cost_per_output_token)
+        .join(Agent, Agent.model_id == Model.id)
+        .where(Agent.id == conversation.agent_id)
+        .limit(1)
+    )
+    row = result.first()
+    if row is None:
+        return None, None
+    cost_in, cost_out = row
+    return (
+        float(cost_in) if cost_in is not None else None,
+        float(cost_out) if cost_out is not None else None,
+    )
 
 
 async def save_token_usage(

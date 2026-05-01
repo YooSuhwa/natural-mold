@@ -308,10 +308,14 @@ async def list_messages(
         db, conv, user_id=user.id, tree=tree
     )
 
-    # W7-4 — conversation 누적 cost. ``token_usages`` 테이블의 turn 단위 cost를
-    # 합산해 envelope에 박는다. checkpoint 메시지에는 model_id가 없어서 message
-    # 단위로 cost를 발행할 수 없으므로 합계만 노출.
-    total_cost = await _sum_conversation_cost(db, conversation_id)
+    # W7-4 — conversation 누적 cost. agent.model의 단가로 메시지마다 계산된
+    # ``estimated_cost``를 합산. ``token_usages`` 테이블은 사실상 unused
+    # (Daily Spend가 별도 path로 누적)이라 신뢰할 수 없음.
+    total_cost = sum(
+        (m.usage.estimated_cost or 0.0)
+        for m in messages
+        if m.usage and m.usage.estimated_cost is not None
+    )
 
     if tree is None:
         return MessagesEnvelope(messages=messages, total_estimated_cost=total_cost)
@@ -336,22 +340,6 @@ async def list_messages(
     )
 
 
-async def _sum_conversation_cost(
-    db: AsyncSession, conversation_id: uuid.UUID
-) -> float:
-    """``token_usages``의 ``estimated_cost``를 conversation 별 합산. NULL은
-    0으로 간주. ``Decimal``을 ``float``로 변환해 JSON 직렬화 가능하게."""
-    from sqlalchemy import func, select
-
-    from app.models.token_usage import TokenUsage
-
-    result = await db.execute(
-        select(func.coalesce(func.sum(TokenUsage.estimated_cost), 0)).where(
-            TokenUsage.conversation_id == conversation_id
-        )
-    )
-    total = result.scalar_one()
-    return float(total or 0)
 
 
 # ---------------------------------------------------------------------------
