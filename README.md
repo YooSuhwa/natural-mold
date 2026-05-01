@@ -12,7 +12,9 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[Overview](#-overview) · [Quick Start](#-quick-start) · [기능](#-주요-기능) · [아키텍처](#-아키텍처) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[한국어](README.md) · [English](README_EN.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+
+[Overview](#-overview) · [Quick Start](#-quick-start) · [기능](#-주요-기능) · [아키텍처](#-아키텍처)
 
 </div>
 
