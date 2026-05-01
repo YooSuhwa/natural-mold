@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/images/moldy-mascot.png" alt="Moldy 마스코트" width="160">
+<img src="docs/images/moldy-mascot.webp" alt="Moldy 마스코트" width="160">
 
 # Moldy
 
