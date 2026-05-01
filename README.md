@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🍞 Moldy
+<img src="docs/images/moldy-mascot.png" alt="Moldy 마스코트" width="160">
+
+# Moldy
 
 **대화로 만드는 AI 에이전트 빌더 — FastAPI + LangGraph + deepagents**
 

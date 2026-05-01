@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🍞 Moldy
+<img src="docs/images/moldy-mascot.png" alt="Moldy mascot" width="160">
+
+# Moldy
 
 **A no-code AI agent builder you talk to — FastAPI + LangGraph + deepagents**
 
