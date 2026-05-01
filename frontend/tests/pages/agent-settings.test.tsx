@@ -44,9 +44,12 @@ const mockUpdateAgent = vi.fn().mockResolvedValue({})
 const mockDeleteAgent = vi.fn().mockResolvedValue({})
 
 vi.mock('@/lib/hooks/use-agents', () => ({
+  useAgents: () => ({ data: [], isLoading: false }),
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
+  useCreateAgent: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateAgent: () => ({ mutateAsync: mockUpdateAgent, isPending: false }),
   useDeleteAgent: () => ({ mutateAsync: mockDeleteAgent, isPending: false }),
+  useToggleFavorite: () => ({ mutate: vi.fn() }),
   useGenerateAgentImage: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 

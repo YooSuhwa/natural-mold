@@ -69,6 +69,27 @@ vi.mock('@/components/ui/sidebar', () => ({
     return <button {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}>{children}</button>
   },
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
+  SidebarMenuSub: ({ children }: { children: React.ReactNode }) => <ul>{children}</ul>,
+  SidebarMenuSubItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
+  SidebarMenuSubButton: ({
+    children,
+    render: renderProp,
+    ...props
+  }: {
+    children: React.ReactNode
+    render?: React.ReactElement
+    [key: string]: unknown
+  }) => {
+    if (renderProp && typeof renderProp === 'object' && 'props' in renderProp) {
+      const linkProps = renderProp.props as Record<string, unknown>
+      return (
+        <a href={linkProps.href as string} {...props}>
+          {children}
+        </a>
+      )
+    }
+    return <button {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}>{children}</button>
+  },
   SidebarSeparator: () => <hr />,
   useSidebar: () => ({ toggleSidebar: vi.fn(), isMobile: false, state: 'expanded', openMobile: false, setOpenMobile: vi.fn() }),
 }))

@@ -23,11 +23,16 @@ const mockDeleteTool = vi.fn()
 
 vi.mock('@/lib/hooks/use-tools', () => ({
   useTools: () => mockUseTools(),
+  useTool: () => ({ data: undefined, isLoading: false }),
+  useToolTypes: () => ({ data: [], isLoading: false }),
+  useToolType: () => ({ data: undefined, isLoading: false }),
   useDeleteTool: () => ({
     mutate: mockDeleteTool,
     isPending: false,
   }),
-  useCreateCustomTool: () => ({
+  // ``useCreateCustomTool``은 ``useCreateTool``로 통합되어 사라짐 — 테스트
+  // 셋업이 stale이라 mock은 보존하되 실제 hook으로 alias.
+  useCreateTool: () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
@@ -35,6 +40,7 @@ vi.mock('@/lib/hooks/use-tools', () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
+  useRunTool: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useToolsByConnection: () => [],
 }))
 

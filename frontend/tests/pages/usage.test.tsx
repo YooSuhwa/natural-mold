@@ -20,13 +20,17 @@ vi.mock('next/link', () => ({
 
 const mockUseUsageSummary = vi.fn()
 
+const mockUseDailyAggregate = vi.fn()
+
 vi.mock('@/lib/hooks/use-usage', () => ({
   useUsageSummary: () => mockUseUsageSummary(),
+  useDailyAggregate: () => mockUseDailyAggregate(),
 }))
 
 describe('UsagePage', () => {
   beforeEach(() => {
     mockUseUsageSummary.mockReturnValue({ data: undefined, isLoading: false })
+    mockUseDailyAggregate.mockReturnValue({ data: undefined, isLoading: false })
   })
 
   it('renders page header', () => {
