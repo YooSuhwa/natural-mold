@@ -160,8 +160,8 @@ pnpm build                            # 프로덕션 빌드
 <details>
 <summary><b>🔐 크리덴셜 · 모델 관리</b></summary>
 
-- **Cipher V2 암호화** — Fernet + HKDF-SHA256, 단일 블롭 Base64 (n8n 알고리즘
-  차용, 브랜딩 제거)
+- **Cipher V2 암호화** — Fernet + HKDF-SHA256, 단일 블롭 Base64 (외부 OSS
+  알고리즘 차용, 자세한 출처는 [NOTICES.md](./NOTICES.md) 참조)
 - **Vault 통합** — `hvac` 기반 external secrets 지원
 - **System / User 크리덴셜 분리** — 운영자 관리 vs 사용자 개인 키
 - **모델 discovery** — 크리덴셜로 LLM API에 직접 질의해 사용 가능 모델 + 가격

@@ -162,7 +162,7 @@ pnpm build                            # production build
 <summary><b>🔐 Credentials · model management</b></summary>
 
 - **Cipher V2 encryption** — Fernet + HKDF-SHA256 single-blob Base64 (algorithm
-  borrowed from n8n, branding stripped)
+  borrowed from upstream OSS — see [NOTICES.md](./NOTICES.md) for attribution)
 - **Vault integration** — `hvac`-based external secrets
 - **System / user split** — Operator-managed credentials vs. per-user keys
 - **Model discovery** — Probe LLM APIs through a credential to auto-pull the
