@@ -81,6 +81,10 @@ class AgentConfig:
     # caller (chat_service / trigger_executor) so the executor stays free of
     # DB dependencies.
     model_fallback_chain: list[dict[str, Any]] | None = None
+    # M-CHAT1b — when set, agent runs are forked off this LangGraph checkpoint
+    # (used by edit / regenerate to branch off an earlier message instead of
+    # appending to the thread tip).
+    checkpoint_id: str | None = None
 
 
 def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseTool:
@@ -508,6 +512,15 @@ async def _prepare_agent(
             "![image](/api/conversations/" + cfg.thread_id + "/files/<파일명>) 형식으로 표시하세요."
         )
 
+        # LambChat-style "Available Skills" listing — gives the model the
+        # name/description/slug for each attached skill so it knows which
+        # SKILL.md to open via read_file.
+        from app.skills.prompt import build_skills_prompt
+
+        skills_block = build_skills_prompt(cfg.agent_skills)
+        if skills_block:
+            system_prompt += "\n" + skills_block
+
     memory_sources: list[str] | None = None
     if cfg.agent_id:
         (_DATA_DIR / "agents" / cfg.agent_id).mkdir(parents=True, exist_ok=True)
@@ -535,7 +548,12 @@ async def _prepare_agent(
     )
 
     lc_messages = convert_to_langchain_messages(messages_history)
-    config = {"configurable": {"thread_id": cfg.thread_id}}
+    config: dict[str, Any] = {"configurable": {"thread_id": cfg.thread_id}}
+    if cfg.checkpoint_id:
+        # LangGraph time-travel: invoking with an explicit checkpoint_id forks
+        # a new branch from that point. The new run's checkpoints chain back to
+        # this id, and `alist` reveals both branches as siblings of the parent.
+        config["configurable"]["checkpoint_id"] = cfg.checkpoint_id
 
     return agent, lc_messages, config
 
@@ -595,18 +613,38 @@ def _hook_result_from_usage(
     )
 
 
-async def execute_agent_stream(
+async def _run_agent_stream(
     cfg: AgentConfig,
+    *,
     messages_history: list[dict[str, str]],
+    stream_input: Any,
+    hook_metadata_extra: dict[str, Any] | None = None,
 ) -> AsyncGenerator[str, None]:
-    """스트리밍 실행 (채팅용)."""
+    """공용 stream runner — execute/resume의 prep + hook + 예외 처리 통합 (P0-B).
+
+    - ``messages_history``는 ``_prepare_agent``에 전달 (lc_messages 변환에만 사용).
+    - ``stream_input``은 ``stream_agent_response``에 전달할 입력. ``None`` 이면
+      execute_agent_stream가 변환한 lc_messages를 그대로 쓴다 (즉 execute는
+      stream_input=None 또는 명시 list, resume은 ``Command(resume=...)``).
+    - ``hook_metadata_extra``: HookContext.metadata에 추가로 머지(resume용).
+    """
+
     agent, lc_messages, config = await _prepare_agent(
         cfg,
         messages_history=messages_history,
     )
 
+    # stream_input이 ``_USE_PREPPED_LC_MESSAGES`` sentinel이면 변환된 lc_messages를
+    # 그대로 입력으로 사용 (execute path). 빈 리스트는 None으로 폴백 — LangGraph
+    # time-travel resume 모드.
+    actual_input = stream_input
+    if actual_input is _USE_PREPPED_LC_MESSAGES:
+        actual_input = lc_messages if lc_messages else None
+
     ctx = _hook_ctx_for_agent(cfg)
     if ctx is not None:
+        if hook_metadata_extra:
+            ctx.metadata.update(hook_metadata_extra)
         await hooks.run_pre(ctx)
     started = time.monotonic()
     usage_sink: dict[str, Any] = {}
@@ -614,7 +652,7 @@ async def execute_agent_stream(
     try:
         async for chunk in stream_agent_response(
             agent,
-            lc_messages,
+            actual_input,
             config,
             cost_per_input_token=cfg.cost_per_input_token,
             cost_per_output_token=cfg.cost_per_output_token,
@@ -632,6 +670,32 @@ async def execute_agent_stream(
                 int((time.monotonic() - started) * 1000), usage_sink
             ),
         )
+
+
+# Sentinel that tells ``_run_agent_stream`` to feed its prepped lc_messages
+# straight into ``stream_agent_response`` (execute path). Resume path passes a
+# concrete ``Command(resume=...)`` instead.
+_USE_PREPPED_LC_MESSAGES: Any = object()
+
+
+async def execute_agent_stream(
+    cfg: AgentConfig,
+    messages_history: list[dict[str, str]],
+) -> AsyncGenerator[str, None]:
+    """스트리밍 실행 (채팅용).
+
+    빈 ``messages_history``는 LangGraph time-travel resume 모드 — 새 입력
+    없이 ``cfg.checkpoint_id`` 시점 state에서 그래프를 다시 돌린다.
+    Regenerate가 부모 user 메시지를 중복 주입하지 않고 새 assistant sibling
+    만 만들어내는 데 사용한다.
+    """
+
+    async for chunk in _run_agent_stream(
+        cfg,
+        messages_history=messages_history,
+        stream_input=_USE_PREPPED_LC_MESSAGES,
+    ):
+        yield chunk
 
 
 async def resume_agent_stream(
@@ -641,39 +705,13 @@ async def resume_agent_stream(
     """인터럽트 재개 스트리밍 (HiTL resume)."""
     from langgraph.types import Command
 
-    agent, _, config = await _prepare_agent(
+    async for chunk in _run_agent_stream(
         cfg,
         messages_history=[],
-    )
-
-    ctx = _hook_ctx_for_agent(cfg)
-    if ctx is not None:
-        ctx.metadata["resume"] = True
-        await hooks.run_pre(ctx)
-    started = time.monotonic()
-    usage_sink: dict[str, Any] = {}
-
-    try:
-        async for chunk in stream_agent_response(
-            agent,
-            Command(resume=resume_value),
-            config,
-            cost_per_input_token=cfg.cost_per_input_token,
-            cost_per_output_token=cfg.cost_per_output_token,
-            usage_sink=usage_sink,
-        ):
-            yield chunk
-    except Exception as exc:
-        if ctx is not None:
-            await hooks.run_failure(ctx, exc)
-        raise
-    if ctx is not None:
-        await hooks.run_post(
-            ctx,
-            _hook_result_from_usage(
-                int((time.monotonic() - started) * 1000), usage_sink
-            ),
-        )
+        stream_input=Command(resume=resume_value),
+        hook_metadata_extra={"resume": True},
+    ):
+        yield chunk
 
 
 async def execute_agent_invoke(

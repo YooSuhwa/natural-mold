@@ -3,11 +3,15 @@
 import { useRef, useState, useCallback, useMemo } from 'react'
 import { useExternalStoreRuntime, useExternalMessageConverter } from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
+import { useQueryClient } from '@tanstack/react-query'
 import type { Message, SSEEvent, ToolCallInfo, InterruptPayload } from '@/lib/types'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
 import { streamResume } from '@/lib/sse/stream-resume'
+import { streamEdit } from '@/lib/sse/stream-edit'
+import { streamRegenerate } from '@/lib/sse/stream-regenerate'
+import type { FeedbackAdapter, AttachmentAdapter } from '@assistant-ui/react'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
 
@@ -44,7 +48,16 @@ function createOptimisticMessage(
   }
 }
 
-type StreamFn = (content: string, signal: AbortSignal) => AsyncGenerator<SSEEvent>
+interface StreamFnOptions {
+  /** Pre-uploaded attachment ids that should ride along with this message. */
+  attachmentIds?: string[]
+}
+
+type StreamFn = (
+  content: string,
+  signal: AbortSignal,
+  options?: StreamFnOptions,
+) => AsyncGenerator<SSEEvent>
 type ResumeFn = (
   response: unknown,
   signal: AbortSignal,
@@ -67,6 +80,10 @@ interface UseChatRuntimeOptions {
   conversationId?: string
   /** 커스텀 resume 함수 (Builder v3 등 conversationId가 없는 컨텍스트용) */
   resumeFn?: ResumeFn
+  /** Optional thumbs up/down adapter (P0-1c). */
+  feedbackAdapter?: FeedbackAdapter
+  /** Optional attachment adapter (P1-7). */
+  attachmentAdapter?: AttachmentAdapter
 }
 
 /**
@@ -84,6 +101,8 @@ export function useChatRuntime({
   onMessagesCommit,
   conversationId,
   resumeFn,
+  feedbackAdapter,
+  attachmentAdapter,
 }: UseChatRuntimeOptions) {
   const [isRunning, setIsRunning] = useState(false)
   const [streamingMessages, setStreamingMessages] = useState<Message[]>([])
@@ -96,6 +115,24 @@ export function useChatRuntime({
   // 가장 최근에 emit된 interrupt_id (resume 시 stale 검증용)
   const lastInterruptIdRef = useRef<string | null>(null)
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
+  const queryClient = useQueryClient()
+
+  /** B1 fix — when the user edits/regenerates we already know the new turn
+   * will replace messages from ``truncateAtIndex`` onward. Optimistically
+   * shorten the messages query cache so the UI doesn't show
+   * ``[old chain ... + streaming new turn]`` simultaneously (the visual
+   * "flicker" before refetch). The post-stream ``invalidateQueries`` from
+   * ``onStreamEnd`` then re-syncs against the new active branch. */
+  const truncateMessagesCache = useCallback(
+    (truncateAtIndex: number) => {
+      if (!conversationId) return
+      queryClient.setQueryData<Message[] | undefined>(
+        ['conversations', conversationId, 'messages'],
+        (prev) => (prev ? prev.slice(0, truncateAtIndex) : prev),
+      )
+    },
+    [queryClient, conversationId],
+  )
 
   // useCallback 불필요 — abortRef/setIsRunning은 안정 참조, 이벤트 핸들러 내부에서만 호출
   function prepareStream(): AbortSignal {
@@ -302,58 +339,155 @@ export function useChatRuntime({
     }
   }
 
-  const onNew = useCallback(
-    async (appendMessage: { content: readonly { type: string; text?: string }[] }) => {
-      const content = extractText(appendMessage.content)
-      if (!content) return
-
+  /** P0-C — shared stream runner for new/edit/reload/resume.
+   *
+   * - ``streamFactory`` builds the SSE generator lazily so each handler can
+   *   close over its own args (signal, conversationId, attachments, ...).
+   * - ``optimisticMsg`` is the user bubble injected immediately for visual
+   *   responsiveness; ``null`` for reload (assistant-only).
+   * - ``truncateAtIdx`` drops cached messages from that index onward (B1 fix)
+   *   to prevent the "old chain underneath new" flicker on edit/reload.
+   */
+  const _runStream = useCallback(
+    async (
+      streamFactory: (signal: AbortSignal) => AsyncGenerator<SSEEvent>,
+      optimisticMsg: Message | null,
+      truncateAtIdx?: number,
+    ) => {
+      if (truncateAtIdx !== undefined && truncateAtIdx >= 0) {
+        truncateMessagesCache(truncateAtIdx)
+      }
       const signal = prepareStream()
-      const userMsg = createOptimisticMessage('user', content)
-
       try {
-        await consumeStream(streamFn(content, signal), userMsg)
+        await consumeStream(streamFactory(signal), optimisticMsg)
       } catch (err) {
         console.error('[useChatRuntime] Stream error:', err)
       }
     },
-    [streamFn, consumeStream],
+    [consumeStream, truncateMessagesCache],
+  )
+
+  const onNew = useCallback(
+    async (appendMessage: {
+      content: readonly { type: string; text?: string }[]
+      attachments?: readonly { id: string }[]
+    }) => {
+      const content = extractText(appendMessage.content)
+      if (!content && (!appendMessage.attachments || appendMessage.attachments.length === 0)) {
+        return
+      }
+      const userMsg = createOptimisticMessage('user', content)
+      const attachmentIds = appendMessage.attachments?.map((a) => a.id)
+      await _runStream(
+        (signal) => streamFn(content, signal, { attachmentIds }),
+        userMsg,
+      )
+    },
+    [streamFn, _runStream],
   )
 
   /** HiTL: interrupt 응답 후 그래프 재개 */
   const onResume = useCallback(
     async (response: unknown, displayText?: string) => {
-      const signal = prepareStream()
       const userMsg = displayText ? createOptimisticMessage('user', displayText) : null
-
-      // resumeFn 우선, 없으면 conversationId 기반 streamResume fallback
       const intrId = lastInterruptIdRef.current
-      let stream: AsyncGenerator<SSEEvent> | null = null
-      if (resumeFn) {
-        stream = resumeFn(response, signal, displayText, intrId)
-      } else if (conversationId) {
-        stream = streamResume(conversationId, response, signal)
-      }
-
-      if (!stream) return
-
-      try {
-        await consumeStream(stream, userMsg)
-      } catch (err) {
-        console.error('[useChatRuntime] Resume error:', err)
-      }
+      // resumeFn 우선, 없으면 conversationId 기반 streamResume fallback.
+      // 둘 다 없으면 noop (이전 동작 유지).
+      if (!resumeFn && !conversationId) return
+      await _runStream(
+        (signal) =>
+          resumeFn
+            ? resumeFn(response, signal, displayText, intrId)
+            : streamResume(conversationId as string, response, signal),
+        userMsg,
+      )
     },
-    [conversationId, resumeFn, consumeStream],
+    [conversationId, resumeFn, _runStream],
   )
 
   const onCancel = useCallback(async () => {
     abortRef.current?.abort()
   }, [])
 
+  /** M-CHAT1b — edit a user message in place via LangGraph thread fork. */
+  const onEdit = useCallback(
+    async (message: {
+      content: readonly { type: string; text?: string }[]
+      sourceId?: string | null
+      parentId?: string | null
+    }) => {
+      const content = extractText(message.content)
+      if (!content) return
+      const userMsg = createOptimisticMessage('user', content)
+      // B1 fix — drop everything from the edited message onward.
+      const editIdx =
+        conversationId && message.sourceId
+          ? messages.findIndex((m) => m.id === message.sourceId)
+          : -1
+      const useFork = conversationId && message.sourceId
+      await _runStream(
+        (signal) =>
+          useFork
+            ? streamEdit(conversationId as string, message.sourceId as string, content, signal)
+            : streamFn(content, signal),
+        userMsg,
+        useFork ? editIdx : undefined,
+      )
+    },
+    [streamFn, _runStream, conversationId, messages],
+  )
+
+  /** M-CHAT1b — regenerate an assistant turn in place via LangGraph fork. */
+  const onReload = useCallback(
+    async (parentId: string | null) => {
+      if (conversationId) {
+        // Find the assistant message that is a direct child of ``parentId``
+        // in the active branch — that's the one BranchPicker should treat as
+        // a sibling of the new turn.
+        let targetMessageId: string | undefined
+        let assistantIdxInMessages = -1
+        if (parentId) {
+          const merged = [...messages, ...streamingMessages]
+          const idx = merged.findIndex((m) => m.id === parentId)
+          const next = idx >= 0 ? merged[idx + 1] : undefined
+          if (next?.role === 'assistant') {
+            targetMessageId = next.id
+            // Index inside ``messages`` (not merged) for the cache truncate.
+            assistantIdxInMessages = messages.findIndex((m) => m.id === next.id)
+          }
+        }
+        await _runStream(
+          (signal) => streamRegenerate(conversationId, targetMessageId, signal),
+          null,
+          assistantIdxInMessages >= 0 ? assistantIdxInMessages : undefined,
+        )
+        return
+      }
+      // No conversation context — replay the last user message.
+      const merged = [...messages, ...streamingMessages]
+      const lastUser = [...merged].reverse().find((m) => m.role === 'user')
+      if (!lastUser?.content) return
+      await _runStream((signal) => streamFn(lastUser.content, signal), null)
+    },
+    [messages, streamingMessages, streamFn, _runStream, conversationId],
+  )
+
+  const adapters = useMemo(() => {
+    if (!feedbackAdapter && !attachmentAdapter) return undefined
+    return {
+      ...(feedbackAdapter ? { feedback: feedbackAdapter } : {}),
+      ...(attachmentAdapter ? { attachments: attachmentAdapter } : {}),
+    }
+  }, [feedbackAdapter, attachmentAdapter])
+
   const runtime = useExternalStoreRuntime({
     messages: threadMessages,
     isRunning,
     onNew,
+    onEdit,
+    onReload,
     onCancel,
+    adapters,
   })
 
   /** 외부에서 자동으로 첫 메시지를 전송할 때 사용 (e.g., URL ?initialMessage=...) */

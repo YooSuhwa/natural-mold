@@ -18,6 +18,11 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.schemas.mcp import (
     McpDiscoverResponse,
+    McpExportEntry,
+    McpExportResponse,
+    McpImportError,
+    McpImportRequest,
+    McpImportResult,
     McpProbeRequest,
     McpProbeResponse,
     McpProbeTool,
@@ -59,6 +64,10 @@ def _server_to_response(server: McpServer) -> McpServerResponse:
         last_pinged_at=server.last_pinged_at,
         last_tool_count=server.last_tool_count,
         last_error=server.last_error,
+        is_system=bool(getattr(server, "is_system", False)),
+        health_status=getattr(server, "health_status", None),
+        health_polled_at=getattr(server, "health_polled_at", None),
+        health_message=getattr(server, "health_message", None),
         created_at=server.created_at,
         updated_at=server.updated_at,
     )
@@ -72,6 +81,7 @@ def _tool_to_response(tool: McpTool) -> McpToolResponse:
         description=tool.description,
         input_schema=tool.input_schema or {},
         enabled=tool.enabled,
+        last_seen_at=getattr(tool, "last_seen_at", None),
         created_at=tool.created_at,
         updated_at=tool.updated_at,
     )
@@ -316,6 +326,175 @@ async def list_all_user_mcp_tools(
         )
         for tool, server_name in rows
     ]
+
+
+# -- Import / Export ---------------------------------------------------------
+# NOTE: must be declared before ``/{server_id}`` so the literal path segments
+# don't get matched as a UUID and bounced with 422.
+
+
+@router.post("/import", response_model=McpImportResult)
+async def import_servers(
+    payload: McpImportRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> McpImportResult:
+    """Bulk import MCP server definitions.
+
+    Accepts the Claude Desktop ``{mcpServers: {<name>: {...}}}`` shape. Each
+    entry can use ``command`` / ``args`` / ``env`` (stdio, inferred when
+    ``transport`` is omitted) or ``transport`` + ``url`` + ``headers``
+    (Moldy network extension). ``credential_id`` is honoured when present
+    and owned by the caller.
+
+    With ``overwrite=false`` (default) duplicates are skipped; with
+    ``overwrite=true`` an existing same-named server is updated in place
+    (its tool links are preserved because the row keeps its id).
+    """
+
+    result = McpImportResult()
+
+    # Pre-load existing servers by name so we don't re-query inside the loop.
+    existing_rows = (
+        await db.execute(
+            select(McpServer).where(McpServer.user_id == user.id)
+        )
+    ).scalars().all()
+    by_name: dict[str, McpServer] = {row.name: row for row in existing_rows}
+
+    # Validate referenced credentials up-front (a 400 is friendlier than
+    # silently committing rows with a dangling FK).
+    referenced_creds: set[uuid.UUID] = {
+        e.credential_id
+        for e in payload.mcpServers.values()
+        if e.credential_id is not None
+    }
+    valid_creds: set[uuid.UUID] = set()
+    if referenced_creds:
+        owned = (
+            await db.execute(
+                select(Credential.id).where(
+                    Credential.user_id == user.id,
+                    Credential.id.in_(referenced_creds),
+                )
+            )
+        ).scalars().all()
+        valid_creds = set(owned)
+
+    for name, entry in payload.mcpServers.items():
+        try:
+            transport = entry.transport
+            if transport is None and entry.command:
+                transport = "stdio"
+            if transport is None:
+                result.errors.append(
+                    McpImportError(
+                        name=name,
+                        reason="transport could not be inferred (provide transport or command)",
+                    )
+                )
+                continue
+
+            # Mirror create-server validation so import doesn't smuggle in
+            # rows that wouldn't survive POST /api/mcp-servers.
+            if transport in {"sse", "streamable_http"} and not entry.url:
+                result.errors.append(
+                    McpImportError(
+                        name=name,
+                        reason=f"transport '{transport}' requires url",
+                    )
+                )
+                continue
+            if transport == "stdio" and not entry.command:
+                result.errors.append(
+                    McpImportError(
+                        name=name,
+                        reason="stdio transport requires command",
+                    )
+                )
+                continue
+
+            credential_id = entry.credential_id
+            if credential_id is not None and credential_id not in valid_creds:
+                result.errors.append(
+                    McpImportError(
+                        name=name,
+                        reason=f"credential_id {credential_id} not found",
+                    )
+                )
+                continue
+
+            existing = by_name.get(name)
+            if existing is not None and not payload.overwrite:
+                result.skipped += 1
+                continue
+
+            if existing is None:
+                server = McpServer(
+                    user_id=user.id,
+                    name=name,
+                    description=entry.description,
+                    transport=transport,
+                    url=entry.url,
+                    command=entry.command,
+                    args=list(entry.args or []),
+                    env_vars=dict(entry.env or {}),
+                    headers=dict(entry.headers or {}),
+                    credential_id=credential_id,
+                    status="unknown",
+                )
+                db.add(server)
+                by_name[name] = server
+                result.created += 1
+            else:
+                existing.description = entry.description
+                existing.transport = transport
+                existing.url = entry.url
+                existing.command = entry.command
+                existing.args = list(entry.args or [])
+                existing.env_vars = dict(entry.env or {})
+                existing.headers = dict(entry.headers or {})
+                existing.credential_id = credential_id
+                result.updated += 1
+        except Exception as exc:  # noqa: BLE001 — record + continue
+            result.errors.append(McpImportError(name=name, reason=str(exc)))
+
+    await db.commit()
+    return result
+
+
+@router.get("/export", response_model=McpExportResponse)
+async def export_servers(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> McpExportResponse:
+    """Dump every server owned by the caller in import-compatible shape.
+
+    Secrets are never inlined — ``env`` / ``headers`` keep their pre-resolution
+    template strings, and ``credential_id`` is exported as a bare reference.
+    """
+
+    rows = (
+        await db.execute(
+            select(McpServer)
+            .where(McpServer.user_id == user.id)
+            .order_by(McpServer.name)
+        )
+    ).scalars().all()
+
+    out: dict[str, McpExportEntry] = {}
+    for row in rows:
+        out[row.name] = McpExportEntry(
+            transport=row.transport,
+            command=row.command,
+            args=list(row.args or []),
+            env=dict(row.env_vars or {}),
+            url=row.url,
+            headers=dict(row.headers or {}),
+            credential_id=row.credential_id,
+            description=row.description,
+        )
+    return McpExportResponse(mcpServers=out)
 
 
 @router.get("/{server_id}", response_model=McpServerDetailResponse)

@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useCallback } from 'react'
+import { use, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
 import {
@@ -19,11 +19,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import { streamChat } from '@/lib/sse/stream-chat'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
+import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
+import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { HiTLContext } from '@/lib/chat/hitl-context'
 import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
 import { Button } from '@/components/ui/button'
 import { ConversationList } from '@/components/chat/conversation-list'
 import { AssistantThread } from '@/components/chat/assistant-thread'
+import { AgentSkillsRow } from '@/components/chat/agent-skills-row'
+import { ChatRightRail } from '@/components/chat/right-rail/chat-right-rail'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -58,7 +62,8 @@ export default function ChatPage({
   }, [conversationId, setSessionTokenUsage])
 
   const streamFn = useCallback(
-    (content: string, signal: AbortSignal) => streamChat(conversationId, content, signal),
+    (content: string, signal: AbortSignal, options?: { attachmentIds?: string[] }) =>
+      streamChat(conversationId, content, signal, options),
     [conversationId],
   )
 
@@ -71,11 +76,31 @@ export default function ChatPage({
     })
   }, [queryClient, conversationId, agentId])
 
+  // P0-1c — current feedback per message id, derived from the messages query.
+  // Looked up by ``feedback-adapter`` to decide between POST(upsert) vs DELETE.
+  const ratingByMessage = useMemo(() => {
+    const map = new Map<string, 'up' | 'down'>()
+    for (const m of messages) {
+      if (m.feedback?.rating) map.set(m.id, m.feedback.rating)
+    }
+    return map
+  }, [messages])
+  const getActiveRating = useCallback(
+    (mid: string) => ratingByMessage.get(mid),
+    [ratingByMessage],
+  )
+
+  const feedbackAdapter = useChatFeedbackAdapter(conversationId, getActiveRating, () => {
+    queryClient.invalidateQueries({ queryKey: conversationKeys.messages(conversationId) })
+  })
+
   const { runtime, onResume } = useChatRuntime({
     messages,
     streamFn,
     onStreamEnd,
     conversationId,
+    feedbackAdapter,
+    attachmentAdapter: moldyAttachmentAdapter,
   })
 
   async function handleNewConversation() {
@@ -150,6 +175,9 @@ export default function ChatPage({
           </DropdownMenu>
         </div>
 
+        {/* Agent skills row (P2-10 — visualizes attached skills) */}
+        <AgentSkillsRow skills={agent?.skills} />
+
         {/* Thread */}
         {messagesLoading ? (
           <div className="flex-1 px-4 py-4">
@@ -171,13 +199,18 @@ export default function ChatPage({
                 modelName={agent?.model?.display_name}
                 showTokenBar
                 showMessageTimestamp
+                enableAttachments
                 emptyContent={emptyContent}
                 toolUI={ALL_TOOL_UI}
+                conversationId={conversationId}
               />
             </HiTLContext.Provider>
           </AssistantRuntimeProvider>
         )}
       </section>
+
+      {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
+      <ChatRightRail className="overflow-hidden rounded-xl border bg-card shadow-sm" />
     </div>
   )
 }

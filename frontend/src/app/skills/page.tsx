@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Plus, BookOpen, Upload, LayoutGrid, Rows } from 'lucide-react'
+import { Plus, BookOpen, LayoutGrid, Rows } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,10 +11,11 @@ import { PageHeader } from '@/components/shared/page-header'
 import { DataTable, type FilterDef } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
-import { SkillUploadDialog } from '@/components/skill/skill-upload-dialog'
-import { SkillDetailSheet } from '@/components/skill/skill-detail-sheet'
+import { SkillDetailDialog } from '@/components/skill/skill-detail-dialog'
 import { useSkills } from '@/lib/hooks/use-skills'
 import type { Skill } from '@/lib/types/skill'
+
+type CreateTab = 'text' | 'package' | 'scratch'
 
 function formatDate(value: string | null): string {
   if (!value) return '—'
@@ -24,9 +25,14 @@ function formatDate(value: string | null): string {
 export default function SkillsPage() {
   const { data: skills, isLoading } = useSkills()
   const [createOpen, setCreateOpen] = useState(false)
-  const [uploadOpen, setUploadOpen] = useState(false)
+  const [createTab, setCreateTab] = useState<CreateTab>('text')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [view, setView] = useState<'table' | 'grid'>('table')
+
+  function openCreate(tab: CreateTab) {
+    setCreateTab(tab)
+    setCreateOpen(true)
+  }
 
   const columns = useMemo<ColumnDef<Skill>[]>(
     () => [
@@ -96,16 +102,10 @@ export default function SkillsPage() {
         title="Skills"
         description="Markdown snippets and packages attached to agents."
         action={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setUploadOpen(true)}>
-              <Upload className="size-4" />
-              Upload package
-            </Button>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="size-4" />
-              New skill
-            </Button>
-          </div>
+          <Button onClick={() => openCreate('text')}>
+            <Plus className="size-4" />
+            New skill
+          </Button>
         }
       />
 
@@ -136,7 +136,7 @@ export default function SkillsPage() {
           title="No skills yet"
           description="Create a text snippet or upload a .skill package."
           action={
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button onClick={() => openCreate('text')}>
               <Plus className="size-4" />
               Create first skill
             </Button>
@@ -180,9 +180,14 @@ export default function SkillsPage() {
         </div>
       )}
 
-      <SkillCreateDialog open={createOpen} onOpenChange={setCreateOpen} />
-      <SkillUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
-      <SkillDetailSheet
+      <SkillCreateDialog
+        key={`create-${createTab}`}
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        initialTab={createTab}
+        onCreated={(id) => setDetailId(id)}
+      />
+      <SkillDetailDialog
         skillId={detailId}
         open={!!detailId}
         onOpenChange={(open) => !open && setDetailId(null)}

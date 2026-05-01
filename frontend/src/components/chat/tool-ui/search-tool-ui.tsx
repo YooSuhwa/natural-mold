@@ -72,7 +72,7 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="truncate text-[11px] font-medium text-primary hover:underline"
+                  className="truncate text-[11px] font-medium text-primary-strong hover:underline"
                 >
                   {title}
                 </a>
@@ -115,7 +115,7 @@ function SearchRender({
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2">
         {isRunning ? (
-          <Loader2Icon className="size-3.5 animate-spin text-primary" />
+          <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
         ) : (
           <SearchIcon className="size-3.5 text-emerald-500" />
         )}

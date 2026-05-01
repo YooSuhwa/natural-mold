@@ -545,7 +545,10 @@
       "rejectConfirm": "거부 확인",
       "args": "실행 인자",
       "argsCount": "{count}개",
-      "edit": "수정"
+      "edit": "수정",
+      "expiresIn": "남은 시간",
+      "autoRejected": "시간 초과로 자동 거부",
+      "expired": "만료됨"
     },
     "userInput": {
       "placeholder": "답변을 입력하세요…",
@@ -578,7 +581,17 @@
       "copy": "복사",
       "copied": "복사됨",
       "copyLabel": "복사",
-      "tokens": "토큰"
+      "tokens": "토큰",
+      "edit": "편집",
+      "editSave": "저장",
+      "editCancel": "취소",
+      "regenerate": "재생성",
+      "feedbackUp": "도움이 됨",
+      "feedbackDown": "도움이 안 됨",
+      "attach": "파일 첨부",
+      "attachmentTooLarge": "파일이 너무 큽니다",
+      "attachmentRejected": "이 파일 형식은 지원되지 않습니다",
+      "attachmentUploading": "업로드 중..."
     },
     "toolCall": {
       "calling": "호출 중...",
@@ -627,6 +640,8 @@
       "newConversation": "새 대화",
       "fallbackTitle": "새 대화",
       "empty": "대화가 없습니다",
+      "searchPlaceholder": "대화 검색",
+      "searchEmpty": "검색 결과 없음",
       "editAgent": "에이전트 설정",
       "close": "대화 목록 닫기",
       "pinned": "즐겨찾기",

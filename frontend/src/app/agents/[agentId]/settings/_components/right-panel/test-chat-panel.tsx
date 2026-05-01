@@ -45,7 +45,7 @@ export function TestChatPanel({ agentId, agentName, agentImageUrl }: TestChatPan
 
   const emptyContent = (
     <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
-      <MessageSquareIcon className="mb-3 size-8 text-primary/40" />
+      <MessageSquareIcon className="mb-3 size-8 text-primary-strong/40" />
       <p className="text-sm font-medium">{t('tabs.test')}</p>
     </div>
   )

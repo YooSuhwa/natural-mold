@@ -240,7 +240,7 @@ function AvailableEmpty({ hasQuery }: { hasQuery: boolean }) {
       {emptyHintParts.length === 2 && (
         <p>
           {emptyHintParts[0]}
-          <Link href="/" className="text-primary hover:underline">
+          <Link href="/" className="text-primary-strong hover:underline">
             {t('dashboardLink')}
           </Link>
           {emptyHintParts[1]}

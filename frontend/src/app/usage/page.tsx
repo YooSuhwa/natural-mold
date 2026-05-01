@@ -364,7 +364,7 @@ function renderTargetLink(entry: UsageDailyEntry, kind: UsageTargetKind) {
     return (
       <Link
         href={`/agents/${entry.target_id}`}
-        className="text-primary hover:underline"
+        className="text-primary-strong hover:underline"
       >
         {label}
       </Link>

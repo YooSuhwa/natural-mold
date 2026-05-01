@@ -31,7 +31,7 @@ const STATUS_MAP = {
   },
   in_progress: {
     Icon: CircleDotIcon,
-    color: 'text-primary',
+    color: 'text-primary-strong',
     bg: 'bg-primary/10',
     label: '진행중',
   },
@@ -66,7 +66,7 @@ export const PlanToolUI = makeAssistantToolUI<WriteTodosArgs, string>({
             </span>
           )}
           {isRunning && (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary-strong">
               계획 수립 중…
             </span>
           )}

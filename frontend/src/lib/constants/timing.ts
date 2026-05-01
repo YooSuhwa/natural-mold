@@ -1,0 +1,3 @@
+export const COPY_FEEDBACK_MS = 2000
+export const WITTY_LOADING_ROTATE_MS = 3000
+export const HEALTH_POLL_INTERVAL_MS = 5000

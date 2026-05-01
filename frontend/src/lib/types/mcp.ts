@@ -19,6 +19,11 @@ export interface McpServer {
   last_pinged_at: string | null
   last_tool_count: number | null
   last_error: string | null
+  // S17 backend additions (m26 migration).
+  is_system: boolean
+  health_status: string | null
+  health_polled_at: string | null
+  health_message: string | null
   created_at: string
   updated_at: string
 }
@@ -30,6 +35,9 @@ export interface McpTool {
   description: string | null
   input_schema: Record<string, unknown>
   enabled: boolean
+  // S17 backend addition — null until first discovery run, refreshed each
+  // probe so we can flag stale (unseen) tools without deleting their row.
+  last_seen_at: string | null
   created_at: string
   updated_at: string
 }
@@ -143,4 +151,40 @@ export interface McpFromRegistryRequest {
   registry_key: string
   name: string
   credential_id?: string | null
+}
+
+// -- Import / Export (Claude Desktop compatible) ----------------------------
+
+/** One server entry inside a `{mcpServers: {...}}` JSON file. Mirrors the
+ *  Claude Desktop config format with our extensions (`transport`, `credential_id`). */
+export interface McpImportEntry {
+  transport?: McpTransport
+  command?: string
+  args?: string[]
+  env?: Record<string, string>
+  url?: string
+  headers?: Record<string, string>
+  credential_id?: string | null
+  description?: string | null
+}
+
+export interface McpImportRequest {
+  mcpServers: Record<string, McpImportEntry>
+  overwrite?: boolean
+}
+
+export interface McpImportError {
+  name: string
+  reason: string
+}
+
+export interface McpImportResult {
+  created: number
+  updated: number
+  skipped: number
+  errors: McpImportError[]
+}
+
+export interface McpExportResponse {
+  mcpServers: Record<string, McpImportEntry>
 }

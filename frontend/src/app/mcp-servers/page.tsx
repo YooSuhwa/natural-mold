@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Activity, Plus, Server } from 'lucide-react'
+import { Activity, Download, Plus, Server, Upload } from 'lucide-react'
 
 import { announceHealthResult } from '@/lib/health-check-toast'
 
@@ -13,8 +13,12 @@ import { DataTable } from '@/components/ui/data-table'
 import { StatusChip } from '@/components/shared/status-chip'
 import { EmptyState } from '@/components/shared/empty-state'
 import { McpServerWizard } from '@/components/mcp/mcp-server-wizard'
-import { McpServerDetailSheet } from '@/components/mcp/mcp-server-detail-sheet'
-import { useMcpServers } from '@/lib/hooks/use-mcp-servers'
+import { McpServerDetailDialog } from '@/components/mcp/mcp-server-detail-dialog'
+import { McpImportDialog } from '@/components/mcp/mcp-import-dialog'
+import {
+  useExportMcpServers,
+  useMcpServers,
+} from '@/lib/hooks/use-mcp-servers'
 import { useMcpHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 import type { McpServer } from '@/lib/types/mcp'
 import type { HealthCheckEntry } from '@/lib/types/health'
@@ -29,7 +33,30 @@ export default function McpServersPage() {
   const { data: healthEntries } = useMcpHealth()
   const runHealthCheck = useRunHealthCheck()
   const [wizardOpen, setWizardOpen] = useState(false)
+  const [importOpen, setImportOpen] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const exportMutation = useExportMcpServers()
+
+  async function handleExport() {
+    try {
+      const data = await exportMutation.mutateAsync()
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: 'application/json',
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `mcp-servers-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      const count = Object.keys(data.mcpServers).length
+      toast.success(`Exported ${count} server${count === 1 ? '' : 's'}`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Export failed')
+    }
+  }
 
   // Latest health probe per server. Falls back to the server's own
   // `status` field when no probe row exists yet.
@@ -131,10 +158,27 @@ export default function McpServersPage() {
         title="MCP Servers"
         description="Connect to Model Context Protocol servers to expose remote tools."
         action={
-          <Button onClick={() => setWizardOpen(true)}>
-            <Plus className="size-4" />
-            New MCP server
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setImportOpen(true)}
+            >
+              <Download className="size-4" />
+              Import
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleExport}
+              disabled={exportMutation.isPending}
+            >
+              <Upload className="size-4" />
+              Export
+            </Button>
+            <Button onClick={() => setWizardOpen(true)}>
+              <Plus className="size-4" />
+              New MCP server
+            </Button>
+          </div>
         }
       />
 
@@ -163,7 +207,8 @@ export default function McpServersPage() {
       )}
 
       <McpServerWizard open={wizardOpen} onOpenChange={setWizardOpen} />
-      <McpServerDetailSheet
+      <McpImportDialog open={importOpen} onOpenChange={setImportOpen} />
+      <McpServerDetailDialog
         serverId={detailId}
         open={!!detailId}
         onOpenChange={(open) => !open && setDetailId(null)}

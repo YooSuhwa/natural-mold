@@ -62,6 +62,7 @@ class McpToolResponse(BaseModel):
     description: str | None = None
     input_schema: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
+    last_seen_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -82,6 +83,10 @@ class McpServerResponse(BaseModel):
     last_pinged_at: datetime | None = None
     last_tool_count: int | None = None
     last_error: str | None = None
+    is_system: bool = False
+    health_status: str | None = None
+    health_polled_at: datetime | None = None
+    health_message: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -167,6 +172,67 @@ class McpRegistryEntry(BaseModel):
     env_vars: dict[str, str] = Field(default_factory=dict)
     credential_definition_key: str | None = None
     documentation_url: str | None = None
+
+
+# ---- Import / Export ------------------------------------------------------
+
+
+class McpImportEntry(BaseModel):
+    """One entry inside ``mcpServers`` map.
+
+    Matches Claude Desktop's ``claude_desktop_config.json`` shape — when
+    ``transport`` is omitted, ``stdio`` is inferred from ``command`` /
+    ``args``. ``url`` + ``transport`` (``sse`` / ``streamable_http``) is the
+    Moldy extension for network-bound servers; ``credential_id`` lets the
+    caller bind a previously stored credential by id.
+    """
+
+    # Inferred to ``stdio`` when missing and ``command`` is present.
+    transport: Transport | None = None
+    command: str | None = None
+    args: list[Any] = Field(default_factory=list)
+    env: dict[str, Any] = Field(default_factory=dict)
+    url: str | None = None
+    headers: dict[str, Any] = Field(default_factory=dict)
+    credential_id: uuid.UUID | None = None
+    description: str | None = None
+
+
+class McpImportRequest(BaseModel):
+    """Body for ``POST /api/mcp-servers/import``."""
+
+    mcpServers: dict[str, McpImportEntry] = Field(default_factory=dict)
+    overwrite: bool = False
+
+
+class McpImportError(BaseModel):
+    name: str
+    reason: str
+
+
+class McpImportResult(BaseModel):
+    created: int = 0
+    updated: int = 0
+    skipped: int = 0
+    errors: list[McpImportError] = Field(default_factory=list)
+
+
+class McpExportEntry(BaseModel):
+    """A single entry in the export payload — credentials are referenced
+    by id only (the secret payload itself is never exported)."""
+
+    transport: str
+    command: str | None = None
+    args: list[Any] = Field(default_factory=list)
+    env: dict[str, Any] = Field(default_factory=dict)
+    url: str | None = None
+    headers: dict[str, Any] = Field(default_factory=dict)
+    credential_id: uuid.UUID | None = None
+    description: str | None = None
+
+
+class McpExportResponse(BaseModel):
+    mcpServers: dict[str, McpExportEntry] = Field(default_factory=dict)
 
 
 class McpServerCreateFromRegistry(BaseModel):

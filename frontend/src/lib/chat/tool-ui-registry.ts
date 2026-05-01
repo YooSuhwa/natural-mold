@@ -26,6 +26,7 @@ import {
   DraftConfigCardToolUI,
   DraftApprovalToolUI,
 } from '@/components/chat/tool-ui/draft-config-ui'
+import { SubAgentToolUI } from '@/components/chat/tool-ui/sub-agent-ui'
 
 /** 모든 도구 UI — HiTL 포함 */
 export const ALL_TOOL_UI = [
@@ -34,6 +35,7 @@ export const ALL_TOOL_UI = [
   ApprovalCard,
   ClarifyingQuestionUI,
   PlanToolUI,
+  SubAgentToolUI,
   WebSearchToolUI,
   NaverBlogSearchToolUI,
   NaverNewsSearchToolUI,

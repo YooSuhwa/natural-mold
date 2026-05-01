@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { mcpApi } from '@/lib/api/mcp'
 import type {
   McpFromRegistryRequest,
+  McpImportRequest,
   McpProbeRequest,
   McpServerCreateRequest,
   McpServerUpdateRequest,
@@ -108,5 +109,24 @@ export function useCreateFromRegistry() {
   return useMutation({
     mutationFn: (data: McpFromRegistryRequest) => mcpApi.createFromRegistry(data),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
+  })
+}
+
+// -- Import / Export --------------------------------------------------------
+
+/** Bulk-import MCP servers from a Claude Desktop config. Invalidates the
+ *  list so newly-created rows appear immediately. */
+export function useImportMcpServers() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: McpImportRequest) => mcpApi.importServers(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
+  })
+}
+
+/** Lazy export — caller fetches on click and triggers a browser download. */
+export function useExportMcpServers() {
+  return useMutation({
+    mutationFn: () => mcpApi.exportServers(),
   })
 }

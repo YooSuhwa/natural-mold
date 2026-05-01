@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # MCP
     mcp_connection_timeout: int = 10
     tool_call_timeout: int = 30
+    # Interval (minutes) for the lightweight per-server health polling job
+    # registered by ``scheduler.register_mcp_health_job``.
+    mcp_health_check_interval_minutes: int = 5
 
     # Skills (package)
     skill_storage_dir: str = "./data/skills"
@@ -67,6 +70,11 @@ class Settings(BaseSettings):
 
     # Conversation outputs
     conversation_output_dir: str = "./data/conversations"
+
+    # Chat message uploads (P1-7 attachments). Files served via
+    # /api/uploads/{id}; max bytes default 20 MiB.
+    upload_dir: str = "./data/uploads"
+    upload_max_bytes: int = 20 * 1024 * 1024
 
     # Builder / Assistant sub-agent model defaults (서비스 내부용)
     builder_model_provider: str = "anthropic"

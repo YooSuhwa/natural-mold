@@ -40,7 +40,7 @@ function SingleSelectInput({
             className={cn(
               'rounded-full border px-3 py-1.5 text-xs transition-all',
               selected === opt.label
-                ? 'border-primary bg-primary/10 text-primary ring-1 ring-primary/30'
+                ? 'border-primary bg-primary/10 text-primary-strong ring-1 ring-primary/30'
                 : 'border-border hover:border-primary/50 hover:bg-accent',
             )}
           >
@@ -224,7 +224,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     if (status.type === 'running') {
       return (
         <div className="flex items-center gap-2 rounded-xl border bg-muted/20 px-3 py-2 text-xs">
-          <Loader2Icon className="size-3.5 animate-spin text-primary" />
+          <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
           <span className="text-muted-foreground">{t('preparing')}</span>
         </div>
       )
@@ -241,7 +241,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
       <div className="w-full rounded-xl border bg-background p-4 shadow-sm">
         {/* Header */}
         <div className="mb-3 flex items-center gap-2">
-          <MessageSquareQuoteIcon className="size-4 text-primary" />
+          <MessageSquareQuoteIcon className="size-4 text-primary-strong" />
           <span className="text-sm font-medium">{t('inputRequired')}</span>
         </div>
 

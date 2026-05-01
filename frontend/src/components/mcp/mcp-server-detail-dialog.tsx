@@ -2,21 +2,15 @@
 
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Activity, Loader2, RefreshCw, Trash2 } from 'lucide-react'
+import { Activity, Loader2, RefreshCw, Server, Trash2 } from 'lucide-react'
 
 import { announceHealthResult } from '@/lib/health-check-toast'
-
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
+import { Skeleton } from '@/components/ui/skeleton'
 import { StatusChip } from '@/components/shared/status-chip'
 import { HealthHistoryChart } from '@/components/shared/health-history-chart'
+import { DialogShell } from '@/components/shared/dialog-shell'
+import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
 import { CredentialPicker } from '@/components/credential/credential-picker'
 import { McpToolTable } from './mcp-tool-table'
 import {
@@ -28,14 +22,18 @@ import {
 } from '@/lib/hooks/use-mcp-servers'
 import { useMcpHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 
-interface McpServerDetailSheetProps {
+interface Props {
   serverId: string | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function McpServerDetailSheet({ serverId, open, onOpenChange }: McpServerDetailSheetProps) {
-  const { data: server } = useMcpServer(serverId)
+export function McpServerDetailDialog(props: Props) {
+  return <McpServerDetailDialogInner key={props.serverId ?? 'closed'} {...props} />
+}
+
+function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
+  const { data: server, isLoading } = useMcpServer(serverId)
   const update = useUpdateMcpServer()
   const remove = useDeleteMcpServer()
   const test = useTestMcpServer()
@@ -92,24 +90,39 @@ export function McpServerDetailSheet({ serverId, open, onOpenChange }: McpServer
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-md flex flex-col gap-4 overflow-y-auto p-0">
-        <SheetHeader className="border-b">
-          {server ? (
-            <>
-              <SheetTitle>{server.name}</SheetTitle>
-              <SheetDescription className="flex items-center gap-2">
-                <StatusChip variant={server.status} />
-                <span className="text-xs">{server.transport}</span>
-              </SheetDescription>
-            </>
-          ) : (
-            <SheetTitle>Loading...</SheetTitle>
-          )}
-        </SheetHeader>
-
-        {server && (
-          <div className="flex-1 px-4 pb-4 space-y-4">
+    <DialogShell open={open} onOpenChange={onOpenChange} size="lg" height="tall">
+      {isLoading || !server ? (
+        <>
+          <DialogShell.Header title="Loading MCP server…" />
+          <DialogShell.Body>
+            <Skeleton className="h-40 w-full rounded-lg" />
+          </DialogShell.Body>
+          <DialogShell.Footer>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </DialogShell.Footer>
+        </>
+      ) : (
+        <>
+          <DialogShell.Header
+            icon={<Server className="size-5" />}
+            title={server.name}
+            description={server.transport}
+            actions={
+              <div className="flex items-center gap-2">
+                {server.is_system ? (
+                  <span className="inline-flex items-center rounded-full bg-status-info/15 px-2 py-0.5 text-xs font-medium text-status-info">
+                    System
+                  </span>
+                ) : null}
+                <StatusChip
+                  variant={server.health_status ?? server.status}
+                />
+              </div>
+            }
+          />
+          <DialogShell.Body>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={handleTest} disabled={test.isPending}>
                 <Activity className="size-3.5" /> Test
@@ -122,35 +135,24 @@ export function McpServerDetailSheet({ serverId, open, onOpenChange }: McpServer
               >
                 <RefreshCw className="size-3.5" /> Refresh tools
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-destructive hover:text-destructive"
-                onClick={() => setConfirming(true)}
-              >
-                <Trash2 className="size-3.5" /> Delete
-              </Button>
             </div>
-
-            <Separator />
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium">Endpoint</label>
-              <div className="rounded border bg-muted/40 p-2 text-xs font-mono break-all">
+              <div className="rounded-md border border-border/60 bg-muted/40 p-2 font-mono text-xs break-all">
                 {server.transport === 'stdio' ? server.command : server.url}
               </div>
             </div>
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium">Credential</label>
-              <CredentialPicker value={server.credential_id} onChange={handleCredentialChange} />
+              <CredentialPicker
+                value={server.credential_id}
+                onChange={handleCredentialChange}
+              />
             </div>
 
-            <Separator />
-
             <McpHealthSection serverId={server.id} />
-
-            <Separator />
 
             <div className="space-y-1.5">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -158,29 +160,35 @@ export function McpServerDetailSheet({ serverId, open, onOpenChange }: McpServer
               </h3>
               <McpToolTable tools={server.tools} />
             </div>
-
-            {confirming && (
-              <div className="rounded border border-destructive/40 bg-destructive/5 p-3 text-xs">
-                <p className="font-medium text-destructive">Delete this server?</p>
-                <div className="mt-2 flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={handleDelete}
-                    disabled={remove.isPending}
-                  >
-                    Confirm delete
-                  </Button>
-                </div>
+          </DialogShell.Body>
+          <DialogShell.Footer>
+            {confirming ? (
+              <div className="flex-1">
+                <DeleteConfirmInline
+                  entity="server"
+                  onCancel={() => setConfirming(false)}
+                  onConfirm={handleDelete}
+                  pending={remove.isPending}
+                />
               </div>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mr-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setConfirming(true)}
+              >
+                <Trash2 className="size-3.5" />
+                Delete
+              </Button>
             )}
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>
+              Close
+            </Button>
+          </DialogShell.Footer>
+        </>
+      )}
+    </DialogShell>
   )
 }
 
@@ -225,17 +233,17 @@ function McpHealthSection({ serverId }: { serverId: string }) {
           Check now
         </Button>
       </div>
-      {latest && (
-        <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-2 text-xs">
+      {latest ? (
+        <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 p-2 text-xs">
           <StatusChip variant={latest.status} />
-          {typeof latest.latency_ms === 'number' && (
+          {typeof latest.latency_ms === 'number' ? (
             <span className="text-muted-foreground">{latest.latency_ms} ms</span>
-          )}
+          ) : null}
           <span className="text-[10px] text-muted-foreground">
             {new Date(latest.checked_at).toLocaleString()}
           </span>
         </div>
-      )}
+      ) : null}
       <HealthHistoryChart targetKind="mcp_server" targetId={serverId} />
     </div>
   )

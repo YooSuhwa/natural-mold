@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -278,3 +279,93 @@ def register_health_check_job() -> None:
         "Scheduled health check sweep: cron %s",
         settings.health_check_cron,
     )
+
+
+# ---------------------------------------------------------------------------
+# Lightweight MCP health polling
+# ---------------------------------------------------------------------------
+
+MCP_HEALTH_JOB_ID = "mcp_health_poll"
+
+
+async def poll_mcp_servers_health() -> dict[str, int]:
+    """Run a quick connectivity probe against every enabled MCP server.
+
+    Distinct from ``health_check_all_active`` (which writes a persistent
+    history row): this job only refreshes the lightweight
+    ``health_status`` / ``health_polled_at`` / ``health_message`` columns
+    so the list view can show a fresh dot without paying for a full sweep.
+    """
+
+    from sqlalchemy import or_, select
+
+    from app.mcp import discovery as mcp_discovery
+    from app.models.mcp_server import McpServer
+
+    counters = {"checked": 0, "ok": 0, "error": 0}
+    polled_at = datetime.now(UTC).replace(tzinfo=None)
+
+    async with async_session() as db:
+        rows = (
+            await db.execute(
+                select(McpServer).where(
+                    or_(
+                        McpServer.is_system.is_(True),
+                        McpServer.status != "disabled",
+                    )
+                )
+            )
+        ).scalars().all()
+
+        for server in rows:
+            counters["checked"] += 1
+            try:
+                probe = await mcp_discovery.test_server(db, server)
+            except Exception as exc:  # noqa: BLE001 — keep the sweep alive
+                logger.exception(
+                    "mcp health poll failed for server %s", server.id
+                )
+                server.health_status = "error"
+                server.health_polled_at = polled_at
+                server.health_message = str(exc)
+                counters["error"] += 1
+                continue
+
+            server.health_polled_at = polled_at
+            if probe.get("success"):
+                server.health_status = "ok"
+                server.health_message = None
+                counters["ok"] += 1
+            else:
+                server.health_status = "error"
+                server.health_message = probe.get("error")
+                counters["error"] += 1
+
+        await db.commit()
+
+    logger.info("mcp health poll finished: %s", counters)
+    return counters
+
+
+def register_mcp_health_job() -> None:
+    """Register the lightweight MCP health polling job. Idempotent.
+
+    Interval is taken from ``settings.mcp_health_check_interval_minutes``;
+    values <1 are clamped up so the scheduler doesn't degenerate into a busy
+    loop on misconfiguration.
+    """
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        logger.debug("Scheduler not running; skipping mcp health job registration")
+        return
+    minutes = max(int(settings.mcp_health_check_interval_minutes or 5), 1)
+    scheduler.add_job(
+        poll_mcp_servers_health,
+        IntervalTrigger(minutes=minutes),
+        id=MCP_HEALTH_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info("Scheduled mcp health poll: every %d minutes", minutes)

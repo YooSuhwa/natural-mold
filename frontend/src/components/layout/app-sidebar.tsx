@@ -107,7 +107,14 @@ export function AppSidebar() {
     () =>
       agents
         ?.slice()
-        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .sort((a, b) => {
+          // Prefer last_used_at (max conversation.updated_at) so chatting with
+          // an agent floats it to the top. Fall back to updated_at for agents
+          // that have never been used.
+          const aTime = new Date(a.last_used_at ?? a.updated_at).getTime()
+          const bTime = new Date(b.last_used_at ?? b.updated_at).getTime()
+          return bTime - aTime
+        })
         .slice(0, 5),
     [agents],
   )
@@ -136,7 +143,7 @@ export function AppSidebar() {
           <button
             type="button"
             onClick={toggleSidebar}
-            className="rounded-md p-1.5 text-primary hover:bg-sidebar-accent transition-colors"
+            className="rounded-md p-1.5 text-primary-strong hover:bg-sidebar-accent transition-colors"
             aria-label={t('toggleSidebar')}
           >
             <ToggleRightIcon className="size-5" />

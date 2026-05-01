@@ -41,10 +41,12 @@ __all__ = [
     "build_agent_skills",
     "build_effective_prompt",
     "build_tools_config",
+    "clear_active_branch_override",
     "create_conversation",
     "delete_conversation",
     "get_agent_with_tools",
     "get_conversation",
+    "link_attachments_to_conversation",
     "list_conversations",
     "list_messages_from_checkpointer",
     "maybe_set_auto_title",
@@ -106,6 +108,9 @@ async def delete_conversation(db: AsyncSession, conv: Conversation) -> None:
 async def list_messages_from_checkpointer(
     db: AsyncSession,
     conversation: Conversation,
+    user_id: uuid.UUID | None = None,
+    *,
+    tree: Any = None,
 ) -> list:
     """Return persisted messages, attaching stable per-message timestamps.
 
@@ -113,19 +118,42 @@ async def list_messages_from_checkpointer(
     ``idx → ISO`` mapping in ``Conversation.message_timestamps``. The first
     time a message is exposed we stamp it with the current time; subsequent
     reads reuse the stored value so old messages don't drift on every fetch.
+
+    M-CHAT1b: when the conversation has multiple branches we now walk the
+    full checkpoint tree (not just the latest checkpoint) so each
+    ``MessageResponse`` carries ``parent_id`` / ``branch_checkpoint_id`` /
+    ``siblings`` for assistant-ui's BranchPicker. The legacy callers (and
+    legacy tests) that expect a flat list are unaffected — for a thread with
+    no branching this returns the same active linear list as before.
+
+    When ``user_id`` is provided, each ``MessageResponse`` is hydrated with
+    the caller's existing feedback rating (P0-1c) and any attachments linked
+    by message id (P1-7).
     """
 
-    from app.agent_runtime.checkpointer import get_checkpointer
     from app.agent_runtime.message_utils import langchain_messages_to_response, parse_msg_id
+    from app.models.message_attachment import MessageAttachment
+    from app.models.message_feedback import MessageFeedback
+    from app.schemas.conversation import MessageAttachmentBrief, MessageFeedbackBrief
 
-    checkpointer = get_checkpointer()
-    config = {"configurable": {"thread_id": str(conversation.id)}}
-    checkpoint_tuple = await checkpointer.aget_tuple(config)  # type: ignore[arg-type]
+    # P0-D: tree를 호출자가 미리 만들어 넘기면 build_message_tree 중복 호출
+    # (= _collect_checkpoints + alist 전체 walk)을 피한다. 단독으로 부르면
+    # 하위호환 유지를 위해 직접 build.
+    if tree is None:
+        from app.agent_runtime.checkpointer import get_checkpointer
+        from app.services.thread_branch_service import build_message_tree
 
-    if not checkpoint_tuple:
+        checkpointer = get_checkpointer()
+        tree = await build_message_tree(
+            checkpointer,
+            str(conversation.id),
+            active_checkpoint_id=conversation.active_branch_checkpoint_id,
+        )
+
+    if not tree.nodes:
         return []
 
-    messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
+    messages = [node.message for node in tree.nodes]
 
     new_stored: dict[str, str] = dict(conversation.message_timestamps or {})
     timestamps: list[datetime] = []
@@ -152,7 +180,96 @@ async def list_messages_from_checkpointer(
         )
         await db.commit()
 
-    return langchain_messages_to_response(messages, conversation.id, timestamps=timestamps)
+    responses = langchain_messages_to_response(
+        messages, conversation.id, timestamps=timestamps
+    )
+
+    # Attach branch tree info — parent_id, siblings, branch_checkpoint_id.
+    # We pre-compute msg id → response idx so parent/sibling lookups are O(1).
+    raw_to_uuid: dict[str, uuid.UUID] = {}
+    for idx, msg in enumerate(messages):
+        raw = str(getattr(msg, "id", None) or f"synthetic-{idx}")
+        raw_to_uuid[raw] = parse_msg_id(getattr(msg, "id", None), conversation.id, idx)
+
+    # Pre-compute uuids for *every* sibling raw id we may reference (siblings
+    # for the active node may live on non-active leaves whose raw ids don't
+    # appear in ``raw_to_uuid`` yet — derive them with the same parse_msg_id
+    # logic so the frontend ids are consistent).
+    def _sibling_uuid(raw: str, idx: int) -> uuid.UUID:
+        if raw in raw_to_uuid:
+            return raw_to_uuid[raw]
+        # Synthesize using the same fallback rule as the active chain.
+        synth = None if raw.startswith("synthetic-") else raw
+        return parse_msg_id(synth, conversation.id, idx)
+
+    for idx, (resp, node) in enumerate(zip(responses, tree.nodes, strict=False)):
+        resp.branch_checkpoint_id = node.introduced_by_checkpoint_id
+        if node.parent_id:
+            resp.parent_id = raw_to_uuid.get(node.parent_id)
+        # Sibling map keyed by the raw langchain id.
+        raw_id = str(getattr(node.message, "id", None) or f"synthetic-{idx}")
+        sibling_entries = tree.branches_by_message.get(raw_id, [])
+        resp.siblings = [
+            _sibling_uuid(s.message_id, idx) for s in sibling_entries
+        ]
+        resp.sibling_checkpoint_ids = [s.checkpoint_id for s in sibling_entries]
+        resp.branch_index = node.branch_index
+        resp.branch_total = node.branch_total
+
+    # Hydrate per-message feedback (current user) + attachments. Wrapped in
+    # broad try/except so a missing migration (m27/m28 not yet applied) or
+    # any other query glitch degrades gracefully — the message list still
+    # renders, just without the feedback/attachment metadata.
+    feedback_by_msg: dict[str, str] = {}
+    attachments_by_msg: dict[str, list[MessageAttachmentBrief]] = {}
+
+    if user_id is not None:
+        try:
+            result = await db.execute(
+                select(MessageFeedback).where(
+                    MessageFeedback.user_id == user_id,
+                    MessageFeedback.conversation_id == conversation.id,
+                )
+            )
+            for fb in result.scalars().all():
+                feedback_by_msg[fb.message_id] = fb.rating
+        except Exception:  # noqa: BLE001 — non-critical hydration
+            logger.warning(
+                "feedback hydrate failed for conversation %s — skipping",
+                conversation.id,
+                exc_info=True,
+            )
+
+    try:
+        attach_result = await db.execute(
+            select(MessageAttachment).where(
+                MessageAttachment.conversation_id == conversation.id,
+                MessageAttachment.message_id.is_not(None),
+            )
+        )
+        for att in attach_result.scalars().all():
+            if att.message_id is None:
+                continue
+            attachments_by_msg.setdefault(att.message_id, []).append(
+                MessageAttachmentBrief.model_validate(att)
+            )
+    except Exception:  # noqa: BLE001 — non-critical hydration
+        logger.warning(
+            "attachment hydrate failed for conversation %s — skipping",
+            conversation.id,
+            exc_info=True,
+        )
+
+    for resp in responses:
+        mid = str(resp.id)
+        rating = feedback_by_msg.get(mid)
+        if rating:
+            resp.feedback = MessageFeedbackBrief(rating=rating)
+        atts = attachments_by_msg.get(mid)
+        if atts:
+            resp.attachments = atts
+
+    return responses
 
 
 async def maybe_set_auto_title(
@@ -195,6 +312,35 @@ async def save_token_usage(
     return usage
 
 
+async def link_attachments_to_conversation(
+    db: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+    user_id: uuid.UUID,
+    attachment_ids: list[uuid.UUID],
+) -> None:
+    """Stamp orphan ``MessageAttachment`` rows with their conversation id.
+
+    ``message_id`` stays null at send time (LangGraph hands the id back
+    inside the SSE stream); the frontend currently keys previews on the
+    upload id directly, so leaving it null doesn't block rendering.
+    """
+
+    if not attachment_ids:
+        return
+    from app.models.message_attachment import MessageAttachment
+
+    await db.execute(
+        update(MessageAttachment)
+        .where(
+            MessageAttachment.id.in_(attachment_ids),
+            MessageAttachment.user_id == user_id,
+        )
+        .values(conversation_id=conversation_id)
+    )
+    await db.commit()
+
+
 async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> None:
     """Bump ``conversation.updated_at`` to anchor message-list timestamps."""
 
@@ -202,6 +348,21 @@ async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> No
         update(Conversation)
         .where(Conversation.id == conversation_id)
         .values(updated_at=datetime.now(UTC).replace(tzinfo=None))
+    )
+    await db.commit()
+
+
+async def clear_active_branch_override(
+    db: AsyncSession, conversation_id: uuid.UUID
+) -> None:
+    """Reset ``active_branch_checkpoint_id`` so the next list call falls back
+    to the newest leaf — used after edit/regenerate where the new branch is
+    the most recent and should automatically become active."""
+
+    await db.execute(
+        update(Conversation)
+        .where(Conversation.id == conversation_id)
+        .values(active_branch_checkpoint_id=None)
     )
     await db.commit()
 

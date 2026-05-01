@@ -48,7 +48,7 @@ export default function SystemCredentialsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
         title="System Credentials"
         description="Operator-managed keys used by Fix Agent, agent builder, and image generation. Hidden from user-facing pickers."

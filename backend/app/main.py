@@ -56,6 +56,7 @@ from app.scheduler import (
     register_catalog_update_job,
     register_credential_rotation_job,
     register_health_check_job,
+    register_mcp_health_job,
 )
 from app.seed.bootstrap_from_env import bootstrap_credentials_from_env
 from app.seed.default_models import DEFAULT_MODELS
@@ -141,6 +142,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     register_health_check_job()
     # Recurring multi-source model catalog rebuild (LiteLLM/OpenRouter/llm-prices/pydantic).
     register_catalog_update_job()
+    # Lightweight per-server MCP health polling (refreshes health_status only).
+    register_mcp_health_job()
 
     async with async_session() as db:
         result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))
@@ -182,6 +185,7 @@ def create_app() -> FastAPI:
         builder,
         conversations,
         credentials,
+        feedback,
         health,
         mcp,
         models,
@@ -189,6 +193,7 @@ def create_app() -> FastAPI:
         templates,
         tools,
         triggers,
+        uploads,
         usage,
     )
 
@@ -206,6 +211,8 @@ def create_app() -> FastAPI:
     app.include_router(skills.router)
     app.include_router(tools.router)
     app.include_router(triggers.router)
+    app.include_router(uploads.router)
+    app.include_router(feedback.router)
     app.include_router(usage.router)
 
     # ---- Exception handlers ----

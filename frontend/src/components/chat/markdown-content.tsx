@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { lazy, Suspense, useState, useCallback, useMemo } from 'react'
 import type { Components } from 'react-markdown'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -14,6 +14,11 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 
 import 'katex/dist/katex.min.css'
 import './markdown-styles.css'
+
+// mermaid는 무거우니 동적 import — 메인 번들 보호
+const MermaidDiagram = lazy(() =>
+  import('./mermaid-diagram').then((m) => ({ default: m.MermaidDiagram })),
+)
 
 /** Allow sandbox: and file: URLs that LLMs prepend, then delegate to default. */
 function urlTransform(url: string): string {
@@ -120,65 +125,84 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
   )
 }
 
-const markdownComponents: Components = {
-  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-  em: ({ children }) => <em className="italic">{children}</em>,
-  ul: ({ children }) => <ul className="mb-2 ml-4 list-disc space-y-0.5 last:mb-0">{children}</ul>,
-  ol: ({ children }) => (
-    <ol className="mb-2 ml-4 list-decimal space-y-0.5 last:mb-0">{children}</ol>
-  ),
-  code: ({ children, className: codeClassName }) => {
-    const match = codeClassName?.match(/language-(\w+)/)
-    if (match) {
-      const code = String(children).replace(/\n$/, '')
-      return <CodeBlock language={match[1]} code={code} />
-    }
-    return (
-      <code className="rounded bg-foreground/10 px-1 py-0.5 text-xs font-mono">{children}</code>
-    )
-  },
-  pre: ({ children }) => <pre className="mb-2 last:mb-0 [&>div]:!mb-0">{children}</pre>,
-  blockquote: ({ children }) => (
-    <blockquote className="mb-2 border-l-2 border-foreground/20 pl-3 text-muted-foreground last:mb-0">
-      {children}
-    </blockquote>
-  ),
-  img: ({ src, alt }) => {
-    if (!src || typeof src !== 'string') return null
-    return <ChatImage src={src} alt={alt ?? ''} />
-  },
-  a: ({ href, children }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-primary underline underline-offset-2 hover:text-primary/80"
-    >
-      {children}
-    </a>
-  ),
-  table: ({ children }) => (
-    <div className="overflow-x-auto mb-2 last:mb-0">
-      <table>{children}</table>
-    </div>
-  ),
-  h1: ({ children }) => <p className="mb-2 text-base font-bold last:mb-0">{children}</p>,
-  h2: ({ children }) => <p className="mb-2 text-base font-bold last:mb-0">{children}</p>,
-  h3: ({ children }) => <p className="mb-1.5 font-semibold last:mb-0">{children}</p>,
-  hr: () => <hr className="my-3 border-foreground/10" />,
+function buildMarkdownComponents({ isStreaming }: { isStreaming: boolean }): Components {
+  return {
+    p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+    em: ({ children }) => <em className="italic">{children}</em>,
+    ul: ({ children }) => (
+      <ul className="mb-2 ml-4 list-disc space-y-0.5 last:mb-0">{children}</ul>
+    ),
+    ol: ({ children }) => (
+      <ol className="mb-2 ml-4 list-decimal space-y-0.5 last:mb-0">{children}</ol>
+    ),
+    code: ({ children, className: codeClassName }) => {
+      const match = codeClassName?.match(/language-(\w+)/)
+      if (match) {
+        const language = match[1]
+        const code = String(children).replace(/\n$/, '')
+        // mermaid 다이어그램: 스트리밍 중에는 raw code(불완전 파싱 방지), 완료 후 SVG 렌더
+        if (language === 'mermaid' && !isStreaming) {
+          return (
+            <Suspense fallback={<CodeBlock language="mermaid" code={code} />}>
+              <MermaidDiagram code={code} />
+            </Suspense>
+          )
+        }
+        return <CodeBlock language={language} code={code} />
+      }
+      return (
+        <code className="rounded bg-foreground/10 px-1 py-0.5 text-xs font-mono">{children}</code>
+      )
+    },
+    pre: ({ children }) => <pre className="mb-2 last:mb-0 [&>div]:!mb-0">{children}</pre>,
+    blockquote: ({ children }) => (
+      <blockquote className="mb-2 border-l-2 border-foreground/20 pl-3 text-muted-foreground last:mb-0">
+        {children}
+      </blockquote>
+    ),
+    img: ({ src, alt }) => {
+      if (!src || typeof src !== 'string') return null
+      return <ChatImage src={src} alt={alt ?? ''} />
+    },
+    a: ({ href, children }) => (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary-strong underline underline-offset-2 hover:text-primary-strong/80"
+      >
+        {children}
+      </a>
+    ),
+    table: ({ children }) => (
+      <div className="overflow-x-auto mb-2 last:mb-0">
+        <table>{children}</table>
+      </div>
+    ),
+    h1: ({ children }) => <p className="mb-2 text-base font-bold last:mb-0">{children}</p>,
+    h2: ({ children }) => <p className="mb-2 text-base font-bold last:mb-0">{children}</p>,
+    h3: ({ children }) => <p className="mb-1.5 font-semibold last:mb-0">{children}</p>,
+    hr: () => <hr className="my-3 border-foreground/10" />,
+  }
 }
 
 interface MarkdownContentProps {
   content: string
   className?: string
+  isStreaming?: boolean
 }
 
-export function MarkdownContent({ content, className }: MarkdownContentProps) {
+export function MarkdownContent({
+  content,
+  className,
+  isStreaming = false,
+}: MarkdownContentProps) {
+  const components = useMemo(() => buildMarkdownComponents({ isStreaming }), [isStreaming])
   return (
     <div className={cn('prose-chat', className)}>
       <Markdown
-        components={markdownComponents}
+        components={components}
         urlTransform={urlTransform}
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}

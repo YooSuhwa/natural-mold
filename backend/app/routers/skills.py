@@ -5,7 +5,7 @@ from __future__ import annotations
 import mimetypes
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, Form, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
@@ -19,6 +19,7 @@ from app.schemas.skill import (
     SkillContentUpdate,
     SkillCreate,
     SkillFileEntry,
+    SkillFileUpdate,
     SkillMetadataUpdate,
     SkillResponse,
     SkillTextContentResponse,
@@ -196,3 +197,93 @@ async def get_skill_file(
         raise invalid_file_path() from None
     media_type, _ = mimetypes.guess_type(file_path)
     return Response(content=data, media_type=media_type or "application/octet-stream")
+
+
+# -- file-level mutations (M-SKILL1) ----------------------------------------
+
+
+@router.put("/{skill_id}/files/{file_path:path}", response_model=SkillResponse)
+async def put_skill_file(
+    skill_id: uuid.UUID,
+    file_path: str,
+    data: SkillFileUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Create or overwrite a single file in a package skill."""
+
+    skill = await skill_service.get_skill(db, skill_id, user.id)
+    if not skill:
+        raise skill_not_found()
+    if skill.kind != "package":
+        raise invalid_skill_package(
+            "file-level mutations are only valid for package skills"
+        )
+    try:
+        updated = await skill_service.set_skill_file(
+            db,
+            skill=skill,
+            rel_path=file_path,
+            content=data.content.encode("utf-8"),
+        )
+    except ValueError as exc:
+        raise invalid_file_path() from exc
+    await db.commit()
+    await db.refresh(updated)
+    return updated
+
+
+@router.delete("/{skill_id}/files/{file_path:path}", response_model=SkillResponse)
+async def delete_skill_file(
+    skill_id: uuid.UUID,
+    file_path: str,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Delete a file (or directory) from a package skill. SKILL.md is protected."""
+
+    skill = await skill_service.get_skill(db, skill_id, user.id)
+    if not skill:
+        raise skill_not_found()
+    if skill.kind != "package":
+        raise invalid_skill_package(
+            "file-level mutations are only valid for package skills"
+        )
+    try:
+        updated = await skill_service.delete_skill_file(
+            db, skill=skill, rel_path=file_path
+        )
+    except ValueError as exc:
+        raise invalid_file_path() from exc
+    await db.commit()
+    await db.refresh(updated)
+    return updated
+
+
+@router.post("/{skill_id}/files", response_model=SkillResponse, status_code=201)
+async def upload_skill_file(
+    skill_id: uuid.UUID,
+    file: UploadFile,
+    rel_path: str = Form(..., description="Relative path inside the skill, eg 'scripts/run.py'"),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Upload a binary or text file (multipart) into a package skill."""
+
+    skill = await skill_service.get_skill(db, skill_id, user.id)
+    if not skill:
+        raise skill_not_found()
+    if skill.kind != "package":
+        raise invalid_skill_package(
+            "file-level mutations are only valid for package skills"
+        )
+    body = await file.read()
+    try:
+        updated = await skill_service.set_skill_file(
+            db, skill=skill, rel_path=rel_path, content=body
+        )
+    except ValueError as exc:
+        raise invalid_file_path() from exc
+    await db.commit()
+    await db.refresh(updated)
+    return updated

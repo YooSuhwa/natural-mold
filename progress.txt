@@ -211,3 +211,235 @@ Credential/Tools/Skills 그린필드 리라이트 (n8n 패턴 차용, 브랜딩 
 M0(거버넌스+docs+삭제분석) → M1(브랜딩+Cipher) → M2(Credential+Vault+라우터) → M3(Tools+MCP) → M4(Skills+m13) → M5(agent_runtime 재배선+cron) → M6(프론트엔드)
 
 각 마일스톤 PASS 후 다음 진입. 단일 PR이지만 마일스톤별 커밋.
+
+## ── 2026-05-01 새 프로젝트: UI Refactor (Sprint 1~4) ──
+
+### 컨텍스트
+- Plan: ~/.claude/plans/buzzing-prancing-cloud.md
+- Scope: frontend/만. 백엔드/DB 변경 없음.
+- 핵심 동기:
+  1) 다이얼로그 크기·디자인 일관성 부재 (27곳 산재, 8곳은 콘텐츠에 따라 늘어남)
+  2) Sheet 4종(credential/skill/tool/mcp) → Dialog로 전면 전환 요구
+  3) 강조색이 emerald raw로 58곳 박힘 → `--primary`로 토큰화. 채팅 사용자 메시지(`bg-emerald-100/dark:bg-emerald-900`)가 새 primary가 됨
+  4) 포커스 링 진한 테두리 거슬림 → `border-ring` 제거 + ring-3→ring-2 + ring/50 알파 토큰화
+  5) 다이얼로그 비주얼 정비 (헤더 아이콘 슬롯, 푸터 subtle bg, rounded-2xl, X 버튼 통일)
+  6) 부수: PageShell, BaseDetailDialog, agents settings RHF+Zod, bundle splitting, 임의값 350+개 정리
+
+### 사일로 구성 (사티아 결정)
+- 팀쿡: DialogShell 비주얼 스펙 + 디자인 토큰 oklch 픽스 (Sprint 1-1, 1-3, 1-4 디자인 부분)
+- 저커버그: 모든 코드 구현 (Sprint 1~4)
+- 베조스: Sheet 사용처 검증 + 삭제 분석 + 마일스톤 게이트 검증
+
+### 결정 사항 (불변)
+- Sheet은 모바일 사이드바(`ui/sidebar.tsx:178`)와 대화목록(`conversations/[conversationId]/page.tsx:118`) 2곳만 유지. 나머지 4 detail은 Dialog로 변환.
+- 새 `--primary`는 채팅 사용자 메시지 박스 색을 그대로 사용 (라이트 emerald-100 / 다크 emerald-900). `--primary-strong`는 텍스트/링크/탭 인디케이터용 (emerald-600/400).
+- 포커스 링: `focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50` → `focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0` + `--ring` 자체에 알파.
+- DialogShell이 모든 다이얼로그의 비주얼 일관성 강제. 27개 DialogContent 사용처는 모두 마이그레이션 대상.
+- DIALOG_SIZE: sm(400) / md(560) / lg(720) / xl(920) / console(1080). DIALOG_HEIGHT: auto(480) / fixed(640) / tall(760). 콘텐츠 무관 고정.
+
+### S1 베조스 발견 (2026-05-01)
+- Sheet 사용처: 6곳 (4 detail + sidebar mobile + conversation list) + ui/sheet.tsx 정의. 추가 없음.
+- 4 detail-sheet prop 시그니처 동일 패턴 `{<entity>Id, open, onOpenChange}`. mcp만 `serverId`로 도메인 명명 유지.
+- ⚠ **[정정]** `components/shared/page-header.tsx` 9개 페이지에서 사용 중(settings, settings/system-credentials, tools, agents/new/template, usage, models, skills, mcp-servers, credentials). 절대 삭제 금지. (이전 분석의 grep "PageHeader" 결과 오류였음 — 실사용 9건)
+- ⚠ skill-detail-sheet 이중 SheetContent 구조: 외부 wrapper(L42) + 내부 SkillDetailBody(L108) `key={skillId}` 리셋 패턴. Dialog 변환 시 단일 BaseDetailDialog로 통합 + key 패턴은 컴포넌트 내부에서 maintain.
+- 4개 detail의 삭제 인라인 UI 클래스 100% 동일 → DeleteConfirmInline 공용화 안전.
+- 보고서: tasks/sheet-deletion-analysis.md
+
+### S2 팀쿡 결정 (2026-05-01) — ADR-010
+- oklch 정확값 (Tailwind v4 emerald palette 그대로):
+  - 라이트: --primary=oklch(0.95 0.052 163.051), --primary-foreground=oklch(0.262 0.051 172.552), --primary-strong=oklch(0.596 0.145 163.225), --ring=oklch(0.596 0.145 163.225 / 0.4)
+  - 다크: --primary=oklch(0.378 0.077 168.94), --primary-foreground=oklch(0.95 0.052 163.051), --primary-strong=oklch(0.765 0.177 163.223), --ring=oklch(0.765 0.177 163.223 / 0.45)
+- 상태색: success=primary-strong, info=sky-500/400, warn=amber-500/400, danger=red-500/400, accent=violet-500/400
+- 포커스 링: `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring` (border-ring 제거, ring/50 알파 토큰 내장)
+- 트레이드오프: 사용자 메시지를 `--user-bubble` 별도로 분리하지 않고 `--primary`로 승격. `bg-primary text-white` 가정 코드 발견 시 `text-primary-foreground`로 교정.
+- 상세 스펙: docs/design-docs/ADR-010-ui-tokens-and-dialog-shell.md
+
+### S3 저커버그(직접 구현) 완료 (2026-05-01)
+- globals.css에 emerald primary + primary-strong + status-* 토큰 추가. @theme inline 매핑 완료. pnpm build 1차 PASS.
+- focus 링 완화 5개 파일 (input/textarea/select/button/checkbox): `focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50` → `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`. border 변경 X.
+- ui/dialog: rounded-xl→rounded-2xl, ring-foreground/10→ring-border/60, shadow-2xl 추가, backdrop bg-black/40 + backdrop-blur-sm. DialogFooter도 muted/50→muted/30.
+- ui/sheet: 백드롭만 통일 (bg-black/40 + backdrop-blur-sm). 변환 후 사이드 모서리는 사용처에서 적용.
+- shared/ 신규 6개: error-state, dialog-shell, delete-confirm-inline, form-footer, page-shell, base-detail-dialog. 모두 build PASS.
+- DialogShell은 Object.assign으로 namespace 패턴 (Header/Body/Footer/Sidebar/Split). 사용 시 `<DialogShell.Header />` 식.
+- BaseDetailDialog: id 변경 시 useEffect로 confirming false 자동 리셋 (베조스 ⚠ skill-detail key={skillId} 패턴 흡수).
+- 핵심 발견: shadcn이 아니라 base-ui (`@base-ui/react/dialog`). API 호환되지만 클래스 패턴이 `data-open:` `data-closed:` 식.
+- Button에 이미 `emerald`/`emeraldStrong` variant 존재 → Sprint 2에서 `default`로 흡수 후 제거.
+
+### S4 저커버그(직접 구현) 완료 (2026-05-01)
+- 4개 detail-dialog 신설 (credential/skill/tool/mcp-server-detail-dialog.tsx). 각각 DialogShell 직접 사용. 비즈니스 로직 많아 BaseDetailDialog 슬롯에 끼우는 것보다 직접 작성이 더 깔끔.
+- 호출부 4 페이지 import + 컴포넌트명 교체. 기존 *-detail-sheet.tsx 4 파일 삭제.
+- ⚠ react-19 ESLint 룰 `react-hooks/set-state-in-effect`: useEffect에서 setState 직접 호출 금지. 해결: Inner 컴포넌트 분리 + 상위에서 `key={id ?? 'closed'}` remount 패턴. 4개 detail-dialog + base-detail-dialog 모두 적용.
+- SheetContent 잔존 검증: ui/sidebar.tsx + conversations/[conversationId]/page.tsx 두 곳만. 베조스 명세와 일치.
+- pnpm lint clean + pnpm build PASS.
+- 다이얼로그 size: credential/tool/mcp=lg(720), skill=xl(920). 높이는 모두 fixed(640) 또는 mcp만 tall(760).
+
+### M-UI1 부분 done (2026-05-01)
+- 핵심 가치(사용자 요구) 달성: 시트→다이얼로그 전환 + emerald primary 토큰 + 포커스 링 완화 + 다이얼로그 비주얼 일관성(rounded-2xl, ring-border/60, shadow-2xl, backdrop-blur, X 버튼).
+- 잔여 작업: 27개 DialogContent → DialogShell 마이그레이션 (M-UI1b로 분리). 점진적 가능. 새 다이얼로그는 DialogShell만 쓰면 자동 일관성.
+- Plans are Disposable: 한 번에 27개 변환은 컨텍스트/회귀 위험. 핵심 인프라 + 4개 detail까지가 1세션 한계.
+
+## ── 2026-05-01 후반 — MCP/Skill 고도화 (M-MCP1/M-SKILL1 시작) ──
+
+### Plan
+- 위치: ~/.claude/plans/buzzing-prancing-cloud.md (덮어쓴 새 plan)
+- 동기: LambChat(`/Users/chester/dev/ref/LambChat`) 코드 분석 후 우리 MCP/Skill의 5가지 격차 식별:
+  1) stdio transport 미지원
+  2) Import/Export 부재
+  3) health polling 부재
+  4) Skill 파일 단위 API 부재 (content 통째로만)
+  5) frontmatter 자동 동기화 부재
+
+### S16 백엔드 기초 (이번 세션 완료)
+- **alembic m26_mcp_health_and_system.py**:
+  - mcp_servers: is_system(bool, default false) + health_status + health_polled_at + health_message
+  - mcp_tools: last_seen_at (stale 도구 마킹용)
+- **app/skills/service.py**: set_skill_file / delete_skill_file 추가 (package skill 한정), inspector._resolve_safely 재사용으로 zip-slip 동일 방어, _refresh_package_metadata로 size/files 자동 갱신, _sync_frontmatter로 SKILL.md 변경 시 description/version/name 자동 동기화
+- **app/schemas/skill.py**: SkillFileUpdate
+- **app/routers/skills.py**: PUT /api/skills/{id}/files/{path} (텍스트 갱신/생성), DELETE /api/skills/{id}/files/{path} (SKILL.md 보호), POST /api/skills/{id}/files (multipart 업로드)
+- 검증: pytest 674 passed (회귀 0), ruff clean, alembic upgrade head 성공
+- 발견: inspector.py에 이미 `parse_skill_md(frontmatter 라이브러리 사용)` 있어서 별도 parser.py 신설 불필요. `_resolve_safely` private 함수를 service에서 재사용
+
+### 다음 세션 우선순위 (남은 4개)
+- #17 (백엔드): stdio transport (mcp/client.py:86-92 unsupported 분기 제거), discovery stale 마킹, mcp import/export 엔드포인트(Claude Desktop 호환), scheduler.register_mcp_health_job
+- #18 (프론트): skill-detail-dialog DialogShell.Sidebar + 멀티파일 에디터 (좌 SkillPackageTree, 우 에디터, dirty 마킹)
+- #19 (프론트): mcp-server-wizard 3탭(Basics/Auth/Tools) + transport별 조건부 + 도구 stale 배지 + Import 다이얼로그
+- #20 (검증): backend pytest + frontend lint/build + 시각 회귀
+
+## ── 2026-05-01 후반(2) — MCP/Skill 잔여 작업 (/tth 풀스택) ──
+
+### 사일로 구성 (사티아 결정)
+- 젠슨(백엔드 DRI): #17 stdio + discovery stale + import/export + health polling + agent_runtime enabled 필터 + skill prompt 주입
+- 저커버그(프론트 DRI): #18 skill 멀티파일 에디터 + #19 mcp wizard 재설계 + mcp import dialog
+- 베조스(QA DRI): #20 최종 검증 (pytest + lint + build + 시각 회귀)
+
+### 결정 사항 (불변)
+- 브랜치: feature/dialog-shell-and-mcp-skill-base 위에 추가 커밋
+- DialogShell + 디자인 토큰 인프라(Sprint 1 완료)를 본격 사용
+- 백엔드 m26 마이그레이션 + skill file-level CRUD는 ed6ba50에서 이미 완료 → 이번엔 위에 빌드
+- import/export JSON은 Claude Desktop `{mcpServers: {...}}` 호환 + 우리 확장(transport, credential_id) 허용
+- stdio transport는 mcp.client.stdio.stdio_client 사용 (mcp SDK)
+- mcp-upload-dialog는 skill-create-dialog의 Package 탭으로 흡수 후 삭제
+
+### 파일 경계
+- 젠슨: backend/app/{models,schemas,routers,mcp,services,scheduler,agent_runtime,skills}/* 만 수정
+- 저커버그: frontend/src/* 만 수정 (백엔드 호출만, ts 타입 추가는 OK)
+- 베조스: 검증만, 코드 수정 X (발견 이슈는 ? 프로토콜)
+
+### S18 저커버그(직접 구현) 완료 (2026-05-01) — Skill 멀티파일 에디터 + Create 3탭
+- skill-detail-dialog: DialogShell.Split + Sidebar(260px) + Body로 패키지 skill 멀티파일 편집. text skill은 단일 Textarea 유지(분기). dirty Map<path,content> + remoteCache Map으로 파일별 저장 상태 관리, 다른 파일 클릭 시 unsaved 있으면 confirm. 텍스트/이미지/PDF/binary 분기, SKILL.md는 protected(삭제 hide).
+- skill-create-dialog: DialogShell size=lg height=fixed + 3탭 Tabs(line variant). Text/Package/From-scratch. Scratch 탭은 jszip으로 SKILL.md만 든 zip을 in-browser 빌드 후 /api/skills/upload → onCreated(id) 콜백으로 detail-dialog 자동 오픈.
+- skill-upload-dialog.tsx 삭제, skills/page.tsx의 호출부 단일화(`openCreate('text')` + onCreated→setDetailId).
+- React 19 useEffect setState 회피: loadingFile은 derived(`!cache.has(path)`), 비동기 fetch then/catch 내 setState만 사용.
+- 의존성: jszip 3.10.1 + @types/jszip 추가. cn() 함정 회피용 명시 sm:max-w-none 불필요(DialogShell이 흡수).
+- 검증: pnpm lint clean, pnpm build PASS (16 라우트).
+
+### S17 젠슨(백엔드) 완료 (2026-05-01)
+- **stdio transport (S17a)**: app/mcp/client.py에 _connect_stdio 헬퍼 추가 (asyncio.wait_for + settings.mcp_connection_timeout). discovery._probe가 server.command/args/env_vars도 같이 forward.
+- **stale 도구 보존 (S17b)**: discovery.discover_tools — 사라진 도구 row는 삭제하지 않고 last_seen_at만 stale (agent_mcp_tools 링크 보호). McpToolResponse에 last_seen_at, McpServerResponse에 is_system/health_status/health_polled_at/health_message 노출.
+- **import/export (S17c)**: POST /api/mcp-servers/import (Claude Desktop {mcpServers:{...}} 호환, command만 있으면 stdio 추론, overwrite=false면 skip 카운트). GET /api/mcp-servers/export (credential_id만 노출, 비밀값 미포함, 헤더 템플릿 보존). 라우트는 /{server_id} 위에 등록 (UUID 매칭 충돌 회피).
+- **health polling job (S17d)**: scheduler.poll_mcp_servers_health + register_mcp_health_job (interval 5분, settings.mcp_health_check_interval_minutes). main.lifespan에 등록 추가. discovery.test_server를 host 함수로 호출 → health_status/health_polled_at/health_message 갱신.
+- **runtime + skill prompt (S17e)**: chat_service의 MCP enabled=False 필터는 이미 존재 (line 330-331). app/skills/prompt.py 신설(build_skills_prompt, dict/ORM 모두 수용). executor가 cfg.agent_skills 있을 때 "## Available Skills" 블록을 system_prompt에 append. service.to_runtime_dict에 description 추가.
+- 핵심 발견: import 라우트는 반드시 /{server_id} 동적 라우트 **위에** 두어야 함 (FastAPI는 import/export 문자열을 UUID로 파싱 시도 → 422). 기존 test_discover_drops_stale_tools는 새 동작에 맞게 preserves_stale_tools_and_marks_last_seen으로 재작성 + test_chat_integration의 stdio=unsupported 가정 테스트도 websocket으로 변경.
+- 검증: ruff clean + pytest 684 passed (base 674 + 신규 10개, 회귀 0).
+
+### S19 저커버그(직접 구현) 완료 (2026-05-01) — MCP wizard 재설계 + Import dialog + tools 확장
+- **타입/api/hooks**: McpServer에 is_system/health_status/health_polled_at/health_message 추가, McpTool에 last_seen_at 추가. 신규 McpImportEntry/Request/Result/ExportResponse. mcpApi.importServers/exportServers + useImportMcpServers/useExportMcpServers 추가.
+- **mcp-server-wizard 재설계**: 586→760줄, DialogShell size=lg height=tall로 변환. shadcn Tabs variant=line 3탭(1·Basics / 2·Auth / 3·Tools). 자유 전환(step gate 제거). Header에 ProbeBadge — Probe needed → Probing → OK · N tools → Failed 라이프사이클. Basics 탭: registry quick-start grid + manual section(transport 라디오 3종, stdio면 args TagInput + envVars KV rows, http면 headers KV rows). Auth 탭: CredentialPicker + interpolation 도움말 박스 + Test connection 버튼. Tools 탭: 자동 probe(useEffect+ref guard) + per-tool Checkbox 카드 + parameters count badge + Re-probe.
+- **mcp-import-dialog 신설**: DialogShell size=md height=fixed. Textarea(font-mono) + .json 업로드 + Overwrite Checkbox + 파싱 미리보기(서버 이름 리스트) + import 결과 카운터 칩(created/updated/skipped/errors).
+- **mcp-servers/page.tsx 헤더**: Import + Export + New MCP server 3-button row. Export는 mutation으로 fetch 후 Blob+anchor click 다운로드(파일명 `mcp-servers-YYYY-MM-DD.json`).
+- **mcp-tool-table 확장**: Schema 컬럼 추가(toggle로 row 아래 `<pre>JSON</pre>` expand). disabled 시 row dim + "disabled" 배지. last_seen_at 7일 이전 또는 null이면 "stale" 배지(`bg-status-warn/15`). React.Fragment로 row+schema 묶음.
+- **mcp-server-detail-dialog 헤더**: actions에 is_system "System" 배지(`bg-status-info/15`) + StatusChip은 health_status를 우선 표시(없으면 server.status fallback).
+- 함정/패턴: per-tool enable PATCH 훅이 wizard 단계에 없어 toDisable는 toast.info로 안내(detail 페이지에서 fine-tune). React Fragment에 두 TableRow를 한 키로 묶을 때 `<Fragment key>` 명시 필수.
+- 검증: pnpm lint clean, pnpm build PASS (16 라우트, TS 4.3s).
+
+## ── 2026-05-01 야간 — M-CHAT1 채팅 UI 고도화 ──
+
+### 결정 사항 (불변)
+- Sheet 사용 금지(이전에 모두 Dialog로 전환). 대신 **ChatRightRail** 도입 — inline split layout (portal 아님). 모드: subagent | tool-result | outline | none.
+- 채팅 페이지 grid 재구성: [좌 사이드바 | 메시지+composer | 우 right rail (collapsible)]
+- 한 번에 한 right rail 모드만 활성. 닫기 시 width 0 transition.
+- HITL approval은 right rail 아니라 메시지 영역 내부 (banner 또는 하단)
+- 9번 (Share) 제외. 별도 PR.
+
+### 작업 순서
+1. P0-4 (Right Rail 인프라 + Sub-agent) ← 다른 작업의 토대
+2. P0-1, P0-2, P0-3 병렬
+3. P1-5, P1-6, P1-7 병렬
+4. P2-8, P2-10, P2-11, P2-12 병렬
+
+### S-CHAT P0-4 저커버그 완료 (2026-05-01) — ChatRightRail 인프라 + Sub-agent 카드
+- chat-right-rail.ts (Jotai atom) — RightRailState union: none/subagent/tool-result/outline. 한 번에 한 모드.
+- ChatRightRail: 데스크톱은 inline split aside (width 0↔380px transition), 모바일은 fixed inset-0 overlay (Sheet 사용 X — 백드롭 button + 오른쪽 패널). page.tsx 외부 className으로 카드 외관(rounded-xl border bg-card shadow-sm) 주입 → 기존 두 카드와 시각적 일관성.
+- subagent-panel-content.tsx: Agent / Input / Output 섹션. Output은 placeholder ("will appear as it streams") — 후속에서 tool_call result 구독 보강.
+- sub-agent-ui.tsx: makeAssistantToolUI({toolName: 'task'}). deepagents 표준. agent_name/subagent_type, input/prompt/description fallback. phase별 status-warn(running) / status-success(complete) / status-danger(incomplete) 색. 카드 클릭 → setRail({mode:'subagent', subagent:{toolCallId,agentName,input}}).
+- 함정: makeAssistantToolUI의 inline render에서 useSetAtom 직접 호출 시 react-hooks/rules-of-hooks 위반(함수명 'render' 소문자). → SubAgentCard 컴포넌트로 분리하고 render는 단순 위임.
+- 도구 이름 확정: backend executor.py L505 "task 도구의 subagent_type" — deepagents 표준 task 도구. agent_name 키 외에도 subagent_type fallback 처리.
+- 검증: pnpm lint clean + pnpm build PASS (16 라우트, 4.3s).
+
+### S-CHAT P0-2 + P1-6 저커버그 완료 (2026-05-01)
+- P0-2 conversation 검색: SearchInput을 conversation-list 헤더 아래 추가. searchQuery state로 client-side filter (`title.toLowerCase().includes(query)`); 검색 중에는 핀/일반 그룹 통합, 비어있으면 기존 "pinned 우선" 정렬 유지. 결과 0건이면 i18n `searchEmpty` 메시지 (기존 `empty`와 분리).
+- P1-6 Mermaid: `pnpm add mermaid` (11.14.0). `mermaid-diagram.tsx` 신규 — `mermaid.initialize` 모듈-스코프 1회만(initialized flag), `useEffect`에서 `mermaid.render(id, code)` → SVG state. `useId()` 콜론 sanitize 필수 (`/[^a-zA-Z0-9-]/g → -`). `markdown-content.tsx`에서 `lazy(() => import("./mermaid-diagram"))`로 dynamic import → 메인 번들 보호 (mermaid는 별도 chunk). `MarkdownContent`에 `isStreaming?: boolean` prop 추가; 스트리밍 중에는 `language === "mermaid"`여도 raw CodeBlock fallback (불완전 mermaid 파싱 회피). 에러/로딩 시 raw code blocks fallback. `useMemo`로 components 생성 — isStreaming 변경 시에만 재계산.
+- 검증: pnpm lint clean + pnpm build PASS (16 라우트, 5.5s). mermaid는 `.next/static/chunks/`에 별도 청크로 분리됨 확인.
+
+### S-CHAT P2-10+11+12 저커버그 완료 (2026-05-01) — Skill row + ToolResult/Outline panels
+- agent-skills-row.tsx: Agent.skills 배열을 chip row로 렌더 (BookOpenIcon + bg-primary-strong/10 chip). 0개면 row 자체 렌더 안함. chat page header 바로 아래(thread 위)에 배치.
+- chat-right-rail.ts: ToolResultPayload에 args/result/status 추가, OutlinePayload에 content 추가 (parent에서 setRail 호출 시 전체 페이로드 전달 — 패널이 self-contained하게 렌더).
+- tool-result-panel-content.tsx: tool name + StatusBadge(running/complete/incomplete) + Args/Result 섹션. ResultRenderer는 string→{이미지URL→ChatImage / URL→링크 / JSON→pretty pre / 일반텍스트→pre}, object→JSON pretty.
+- 함정: react-hooks/error-boundaries 룰이 try/catch 안에서 JSX 생성을 금지함. → safeParseJson 헬퍼로 분리(try 내부는 parsed value 반환, JSX는 try 밖에서 렌더).
+- outline-panel-content.tsx: markdown content에서 ATX 헤딩(# ~ ######) 추출. fenced code block(```/~~~) 안 라인은 스킵. 클릭 시 window CustomEvent('moldy:outline-jump') dispatch — 실제 scroll target은 P0-1 작업자가 후속.
+- outline-trigger.tsx: 재사용 가능한 트리거(icon/compact 두 variant). MessageMetaRow 작업자가 import해서 사용. 본 작업에서는 컴포넌트만 신설, assistant-thread.tsx는 손대지 않음.
+- generic-tool-ui.tsx: 헤더 row를 button → div로 재구성 후 (1) toolName 클릭 (확장 토글) (2) PanelRightOpenIcon (right rail로) (3) ChevronDown (기존 토글) 3개 액션 분리. toolCallId가 있을 때만 expand 버튼 표시. makeAssistantToolUI render에서 toolCallId 추가 전달.
+- 검증: pnpm lint clean(내 코드), pnpm build PASS 16 routes 5.8s. use-approval-deadline.ts의 lint 에러는 HITL worker 영역이라 손대지 않음(pre-existing).
+
+[2026-05-01 jensen P1-5 HITL Countdown + Auto-Extend]
+- 백엔드 변경 없음 (client-side deadline 관리 결정). DB 스키마/엔드포인트 추가 안 함. interrupt 페이로드에 timeout_seconds/approval_id가 있다면 활용하도록 ApprovalArgs에 옵션 필드만 추가.
+- frontend/src/lib/hooks/use-approval-deadline.ts 신설: deadlineRef + 1초 setInterval tick, 60초 이하 isUrgent, 30s cooldown으로 +60s extend, 만료 시 onExpire 1회. React 19 룰(react-hooks/purity) 회피: Date.now()는 effect 내부에서만 호출(useRef 초기값 X), set-state-in-effect 회피: setState는 setTimeout(tick, 0) 콜백 안에서 호출.
+- approval-card.tsx 확장: 헤더 우측에 ClockIcon + MM:SS 카운트다운 배지(urgent면 animate-pulse + bg-status-warn). reject reason / edit args textarea의 onChange/onFocus에 extend() 연결. 만료 시 handleDecision('rejected', { reasonOverride: '시간 초과로 자동 거부' }).
+- 다른 HITL 도구(user-input-ui, clarifying-question-ui)는 후속 PR로 분리 — 동일 패턴(useApprovalDeadline + onInteract prop)으로 적용 가능. 다중 approval 페이지네이션은 현재 시스템에서 한 번에 하나만 interrupt 처리하는 구조라 미적용.
+- 검증: pnpm lint clean (이전 jensen 노트의 use-approval-deadline pre-existing lint 에러 = 본 작업으로 해소), pnpm build PASS 5.5s.
+
+[2026-05-01 zuckerberg P0-1 메시지 편집·재생성·피드백 + P1-7 파일 첨부]
+- assistant-ui 빌트인 primitive 활용으로 코드량 최소화: ActionBarPrimitive.Edit/Reload/FeedbackPositive/FeedbackNegative + ThreadPrimitive.Messages.UserEditComposer + ComposerPrimitive.AddAttachment/Attachments + AttachmentPrimitive.Root/Name/Remove. 직접 hover 로직 X.
+- useChatRuntime에 onEdit/onReload/adapters.feedback/adapters.attachments 추가. onEdit는 새 user 메시지로 재스트리밍(LangGraph 분기 미지원이라 PoC 트레이드오프). onReload는 마지막 user 메시지를 다시 send. attachments는 onNew의 AppendMessage.attachments에서 id 추출 → streamChat options.attachmentIds → backend POST body.attachments.
+- 백엔드: m27 message_feedbacks(uniq user+message), m28 message_attachments(orphan→링크). 라우터 POST/DELETE /api/messages/{id}/feedback (upsert toggle), POST /api/uploads (multipart, 20MiB cap, image/text/pdf만), GET /api/uploads/{id}. MessageResponse에 feedback + attachments 필드 추가. message_id는 LangGraph checkpoint id 문자열(FK 없음 — messages 테이블 자체가 없음).
+- chat_service.list_messages_from_checkpointer가 user_id를 받아 feedback/attachments 동시 hydrate. 매 list 호출마다 2개 추가 쿼리(conversation 단위, 메시지 ID dict 매칭).
+- attachment-adapter.ts: Pending(local UUID, requires-action) → send 시 uploadFile() → Complete(서버 upload id). assistant-ui가 send 시 자동 호출. content는 [attachment: name](url) markdown 링크.
+- feedback-adapter.ts: useChatFeedbackAdapter 훅. submit 콜백에서 getActiveRating(messageId)으로 현재 상태 lookup → 같으면 DELETE, 다르면 POST. metadata.submittedFeedback 동기화는 convertMessage에서 message.feedback → metadata.submittedFeedback 매핑으로 처리(서버 → UI 반영).
+- P0-3 (Composer Model 토글): 사용자 지시로 SKIP. 백엔드 messages POST에 model_id override 추가 안 함. composer dropdown 신설 안 함.
+- P2-8 (Virtuoso 가상화): assistant-ui ThreadPrimitive.Messages가 자체 가상화를 제공하지 않으나, MessageByIndexProvider/edit composer/auto-scroll/streaming reorder 등이 inner에 깊이 통합되어 있어 react-virtuoso로 외부 교체 시 회귀 위험 큼. SKIP, 후속 PR로 분리. 마일스톤 권고: (1) ThreadPrimitive.Messages 자체에 virtualize prop 요청 issue (2) 임계 N(예: 100메시지) 초과 시 react-virtuoso fork 도입.
+- 검증: backend ruff clean + pytest 688 passed (회귀 0), frontend pnpm lint clean + pnpm build PASS 5.6s 16 routes. 신규 테스트: test_feedback_router.py(2), test_uploads_router.py(2).
+- 파일 경계 준수: conversation-list/markdown-content/approval-card/right-rail/tool-ui 미수정.
+
+### M-CHAT1 핫픽스 (2026-05-01)
+- 사용자 보고: 채팅 메시지가 쌓이지 않고 갱신됨
+- 핫픽스: use-chat-runtime.ts의 useExternalStoreRuntime에 onEdit/onReload 전달 제거. assistant-thread.tsx에서 EditButton/RegenerateButton 호출 제거 (함수 정의는 보존).
+- Copy + Feedback + 첨부 + 대화검색 + Mermaid + Right Rail + Sub-agent + Skill row + HITL countdown 기능은 그대로 유지
+- 추후 M-CHAT1b에서 정식 복원 (LangGraph 분기 또는 새 user turn stamp 패턴)
+
+[2026-05-01 zuckerberg M-CHAT1b LangGraph thread fork + BranchPicker]
+- LangGraph CheckpointTuple 구조: NamedTuple(config, checkpoint, metadata, parent_config, pending_writes). config["configurable"]["checkpoint_id"]가 fork point. parent_config가 부모 체크포인트 추적 키. ainvoke({...}, config={"configurable": {"thread_id": tid, "checkpoint_id": cid}})로 호출하면 그 시점에서 새 branch 형성.
+- 분기 트리 빌드 알고리즘: 모든 leaf 체크포인트(다른 체크포인트의 parent가 아닌 것)의 messages 리스트를 순회 → 같은 message id = 공유 노드, 같은 parent_id에 다른 message id = sibling. langchain BaseMessage.id가 stable한 점이 핵심 — 같은 invoke의 메시지는 동일 id 유지.
+- assistant-ui branch wiring 옵션 3가지 평가: (1) ExternalStoreAdapter.messageRepository = ExportedMessageRepository (정식 트리), (2) onEdit/onReload + setMessages로 분기 (반평면), (3) 커스텀 BranchPicker (메타데이터 기반). PoC 시간 압박으로 (3) 채택 — convertMessage에서 message.siblings → metadata.custom.branches로 노출, 커스텀 BranchPicker가 useAssistantState로 읽고 conversationsApi.switchBranch + queryClient.invalidateQueries 호출. 정식 (1)로의 마이그레이션은 후속 PR(per-sibling checkpoint id 매핑 필요).
+- 회귀 0: GET /messages 응답이 list → MessagesEnvelope({messages, active_tip_message_id, active_checkpoint_id})로 변경됐지만 conversationsApi.messages가 envelope.messages를 unwrap해서 기존 호출자 영향 없음.
+
+[2026-05-01 zuckerberg M-CHAT1b HOTFIX active branch chain 표시 + sibling switch]
+- 버그: _build_tree_from_checkpoints가 모든 leaf의 messages를 한 list로 DFS-emit → 편집 후 화면에 [old-user, old-ai, new-user, new-ai] 4개 모두 표시(기대: new 2개만). switch 클릭은 활성 branch의 같은 checkpoint를 보내 무반응.
+- 수정: nodes는 active leaf의 root→leaf chain만 emit. 다른 leaf의 같은 idx 메시지는 BranchSibling(message_id, checkpoint_id)로 branches_by_message[active_mid]에 sibling 후보로 채움. active_checkpoint_id 인자 → Conversation.active_branch_checkpoint_id로 결정 (없으면 newest leaf fallback).
+- 스키마: MessageResponse에 sibling_checkpoint_ids 필드 추가 (siblings와 동일 순서). 프론트는 BranchPicker가 currentIdx ± 1의 checkpoint_id로 switchBranch 호출 → invalidateQueries로 refetch.
+- edit/regenerate 후 active_branch_checkpoint_id를 None으로 클리어 → 새 leaf가 자동으로 newest fallback에 의해 활성. 사용자가 명시적으로 ◀ 누르기 전엔 항상 최신 branch가 보이는 자연스러운 UX.
+
+[2026-05-01 zuckerberg M-CHAT1b HOTFIX2 sibling order + index + flicker]
+- 버그: (B1) edit/regenerate 동안 옛 메시지 + 스트리밍 새 메시지가 같이 보이다가 refetch 후에야 정리됨 = 깜빡임. (B2/B3) 새 분기 만들면 active=newest sibling인데 BranchPicker가 indexOf로 1/N(◀ 비활성) 표시 — 사실은 N/N(◀ 활성, ▶ 비활성)이 맞음. (B4) 3+ sibling 시 ◀▶가 최근 2개만 토글.
+- 백엔드 수정: thread_branch_service에서 siblings를 checkpoint_id ASC(=oldest→newest, LangGraph checkpoint id가 시간순 sortable)로 정렬. active node에 branch_index/branch_total 직접 stamp → MessageResponse 두 필드 추가. 프론트가 indexOf로 위치 추정 안 해도 됨 → race condition 제거.
+- 프론트엔드 수정: Message 타입 + convertMessage가 branch_index/branch_total 메타 노출. BranchPicker가 indexOf 제거하고 backend index 직접 사용. use-chat-runtime이 useQueryClient로 onEdit/onReload 시작 시점에 messages 캐시 truncate(편집된 message idx부터) → 스트리밍 동안 [잘려나간 chain] + 새 streaming만 보임, 깜빡임 0. onStreamEnd의 invalidateQueries가 정확한 active branch chain으로 최종 sync.
+- 검증: backend 700 passed (회귀 0, +1 새 3-sibling 테스트), ruff clean, frontend lint clean + build PASS 16 routes.
+
+[2026-05-01 zuckerberg M-CHAT1b HOTFIX3 regenerate user 중복 fix]
+- 버그(B5): regenerate 후 화면이 [user, user, ai_new] — user 메시지가 두 번 표시. 원인은 regenerate 라우터가 rewind 후에도 user content를 messages_history로 재주입 → LangGraph add_messages reducer가 user를 또 append. (B6): user 두 번 들어가니 sibling 트리가 깨져 BranchPicker 미표시.
+- 수정: regenerate는 rewind_to_checkpoint_before_message(target_assistant_id)로 "user는 있고 assistant는 없는" checkpoint로 fork → execute_agent_stream(cfg, [])로 빈 history 전달. executor가 lc_messages 비면 stream_input=None, streaming.py가 None을 그대로 agent.astream(None, config)로 통과 → LangGraph time-travel resume으로 새 assistant만 생성. 결과 [..., user, ai_new] (user 1회), ai_new는 기존 ai와 같은 user 부모를 공유 → 기존 thread_branch_service가 자동으로 sibling으로 묶음 + branch_index/total stamp.
+- 검증: backend 701 passed (회귀 0, +2 신규: test_regenerate_does_not_duplicate_user_message + test_regenerate_targeted_assistant_uses_correct_checkpoint), ruff clean, frontend lint clean + build PASS.
+
+[2026-05-01 zuckerberg SIMPLIFY P0+P1 일괄 fix]
+- P0-A/B/C: SSE/executor/stream-runner 3종이 모두 같은 (prep → stream → try/except → cleanup) 패턴 → 각 레이어에 헬퍼 1개씩 추출(_sse_handler, _run_agent_stream + _USE_PREPPED_LC_MESSAGES sentinel, _runStream). 4개 endpoint × 3 layers = 12 함수의 중복 약 -180 LOC.
+- P0-D: build_message_tree가 GET /messages 한 요청에 router + chat_service에서 2회 호출 → tree 빌드 1회 후 chat_service에 인자로 주입. _build_tree_from_checkpoints는 leaf×messages마다 ancestor chain을 매번 다시 walk → leaf별 chain 1회 빌드 후 _checkpoint_for_message_in_chain로 lookup. O(L×D×M) → O(L×D) + O(L×M).
+- 패턴: 같은 try/except 보일러플레이트가 3+ 곳 반복되면 lazy factory(callable) 헬퍼로 추출. AsyncGenerator는 generator factory를 람다로 감싸 _sse_handler에 넘기는 패턴이 가장 깔끔.

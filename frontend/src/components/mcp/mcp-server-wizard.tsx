@@ -2,31 +2,23 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { ArrowLeft, ArrowRight, Loader2, Check } from 'lucide-react'
-
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+  Activity,
+  CheckCircle2,
+  Loader2,
+  Plus,
+  Server,
+  X,
+  XCircle,
+} from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Separator } from '@/components/ui/separator'
+import { Checkbox } from '@/components/ui/checkbox'
 import { CredentialPicker } from '@/components/credential/credential-picker'
 import { DomainIcon } from '@/components/shared/icon'
-import { McpToolTable } from './mcp-tool-table'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import {
   useCreateFromRegistry,
   useCreateMcpServer,
@@ -45,73 +37,63 @@ interface McpServerWizardProps {
   onOpenChange: (open: boolean) => void
 }
 
-const STEPS = ['Basics', 'Auth', 'Tools'] as const
-type Step = (typeof STEPS)[number]
-type SourceTab = 'registry' | 'manual'
+type TabKey = 'basics' | 'auth' | 'tools'
+type ProbeState =
+  | { kind: 'idle' }
+  | { kind: 'pending' }
+  | { kind: 'ok'; toolCount: number }
+  | { kind: 'error'; message: string }
 
 /**
- * 3-step MCP server wizard with two entry modes:
- *
- * - **From Registry**: pick a preset (GitHub/Linear/...) → auto-fills name,
- *   transport, URL/command, env vars and a credential filter — saves through
- *   `POST /api/mcp-servers/from-registry`.
- * - **Manual**: existing behaviour — free-form fields, saves via
- *   `POST /api/mcp-servers`.
- *
- * Step 3 (Tools) auto-runs discovery on entry so the user sees the imported
- * tool list immediately and can finalize with a single [Add] click.
+ * Compact 3-tab MCP wizard. Tabs are freely navigable (no step gates), so
+ * the user can flip back-and-forth while configuring; the actual save only
+ * happens from the Tools tab once a probe + tool selection are in hand.
  */
 export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
-  const { data: registry } = useMcpRegistry()
+  return (
+    <DialogShell open={open} onOpenChange={onOpenChange} size="lg" height="tall">
+      {open ? <McpWizardBody onClose={() => onOpenChange(false)} /> : null}
+    </DialogShell>
+  )
+}
 
-  const [tab, setTab] = useState<SourceTab>('registry')
-  const [step, setStep] = useState<Step>('Basics')
+function McpWizardBody({ onClose }: { onClose: () => void }) {
+  const { data: registry } = useMcpRegistry()
+  const create = useCreateMcpServer()
+  const createFromRegistry = useCreateFromRegistry()
+  const discover = useDiscoverMcpTools()
+  const probe = useProbeMcpServer()
+
+  const [tab, setTab] = useState<TabKey>('basics')
+
+  // -- form state ----------------------------------------------------------
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [transport, setTransport] = useState<McpTransport>('streamable_http')
   const [url, setUrl] = useState('')
   const [command, setCommand] = useState('')
+  const [args, setArgs] = useState<string[]>([])
+  const [argDraft, setArgDraft] = useState('')
+  const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>([])
+  const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([])
   const [credentialId, setCredentialId] = useState<string | null>(null)
-  const [discoveredTools, setDiscoveredTools] = useState<McpProbeTool[]>([])
   const [registryKey, setRegistryKey] = useState<string | null>(null)
   const [credentialDefinitionFilter, setCredentialDefinitionFilter] = useState<
     string | null
   >(null)
 
-  const create = useCreateMcpServer()
-  const createFromRegistry = useCreateFromRegistry()
-  const discover = useDiscoverMcpTools()
-  const probe = useProbeMcpServer()
+  // -- preview state -------------------------------------------------------
+  const [discoveredTools, setDiscoveredTools] = useState<McpProbeTool[]>([])
+  const [enabledNames, setEnabledNames] = useState<Set<string>>(new Set())
+  const [probeState, setProbeState] = useState<ProbeState>({ kind: 'idle' })
   const probedRef = useRef(false)
-
-  function reset() {
-    setTab('registry')
-    setStep('Basics')
-    setName('')
-    setDescription('')
-    setTransport('streamable_http')
-    setUrl('')
-    setCommand('')
-    setCredentialId(null)
-    setDiscoveredTools([])
-    setRegistryKey(null)
-    setCredentialDefinitionFilter(null)
-    probedRef.current = false
-  }
-
-  function handleClose(next: boolean) {
-    if (!next) reset()
-    onOpenChange(next)
-  }
-
-  const stepIndex = STEPS.indexOf(step)
 
   const basicsValid = useMemo(() => {
     if (!name.trim()) return false
-    if (tab === 'registry') return registryKey !== null
+    if (registryKey) return true
     if (transport === 'stdio') return command.trim().length > 0
     return url.trim().length > 0
-  }, [name, transport, url, command, tab, registryKey])
+  }, [name, transport, url, command, registryKey])
 
   function handlePickRegistryEntry(entry: McpRegistryEntry) {
     setRegistryKey(entry.key)
@@ -120,392 +102,309 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
     setTransport(entry.transport)
     setUrl(entry.url ?? '')
     setCommand(entry.command ?? '')
+    setArgs(entry.args ?? [])
+    setEnvVars(
+      Object.entries(entry.env_vars ?? {}).map(([key, value]) => ({
+        key,
+        value: String(value),
+      })),
+    )
+    setHeaders([])
     setCredentialDefinitionFilter(entry.credential_definition_key)
     setCredentialId(null)
+    // Force re-probe on next visit to Tools tab.
+    probedRef.current = false
+    setProbeState({ kind: 'idle' })
   }
 
-  async function handleNext() {
-    if (step === 'Basics') {
-      if (!basicsValid) {
-        toast.error('Fill the required fields')
-        return
-      }
-      setStep('Auth')
-      return
-    }
-
-    if (step === 'Auth') {
-      // No server INSERT here — wizard stays purely in-memory until [Add].
-      // Step 3 will probe the live server to preview its tools without
-      // touching the database.
-      setStep('Tools')
-      return
-    }
-
-    if (step === 'Tools') {
-      // Final commit: now we actually create the server + import its tools.
-      try {
-        const server =
-          tab === 'registry' && registryKey
-            ? await createFromRegistry.mutateAsync({
-                registry_key: registryKey,
-                name: name.trim(),
-                credential_id: credentialId,
-              })
-            : await create.mutateAsync({
-                name: name.trim(),
-                description: description.trim() || null,
-                transport,
-                url: transport === 'stdio' ? null : url.trim(),
-                command: transport === 'stdio' ? command.trim() : null,
-                credential_id: credentialId,
-              })
-        // Trigger discovery so the imported mcp_tools rows are populated.
-        // Soft-fail: if discover fails the server itself is still useful and
-        // the user can retry from the detail sheet.
-        try {
-          await discover.mutateAsync(server.id)
-        } catch {
-          toast.warning(
-            'Server added, but tool import failed. Retry from the detail page.',
-          )
-        }
-        toast.success('MCP server added')
-        handleClose(false)
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Failed to add server')
-      }
-    }
-  }
-
-  function handleBack() {
-    if (step === 'Auth') setStep('Basics')
-    else if (step === 'Tools') setStep('Auth')
-  }
-
-  // Auto-probe (preview-only, no DB writes) when the user lands on Step 3.
-  // The ref guard prevents duplicate calls from React strict-mode double-invoke
-  // or from the user navigating Back → Next within the same modal session.
-  useEffect(() => {
-    if (step !== 'Tools') {
-      if (step === 'Basics' || step === 'Auth') {
-        probedRef.current = false
-      }
-      return
-    }
-    if (probedRef.current || probe.isPending) return
-    probedRef.current = true
-    void (async () => {
-      try {
-        const result = await probe.mutateAsync(
-          tab === 'registry' && registryKey
-            ? { registry_key: registryKey, credential_id: credentialId }
-            : {
-                transport,
-                url: transport === 'stdio' ? null : url.trim(),
-                command: transport === 'stdio' ? command.trim() : null,
-                credential_id: credentialId,
-              },
-        )
-        if (!result.success) {
-          toast.error(result.error ?? 'Preview failed')
-          probedRef.current = false
-          return
-        }
-        setDiscoveredTools(result.tools)
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Preview failed')
-        probedRef.current = false
-      }
-    })()
-  }, [
-    step,
-    tab,
-    registryKey,
-    transport,
-    url,
-    command,
-    credentialId,
-    probe,
-  ])
-
-  // If user switches between tabs at Step 1, reset the in-flight values that
-  // belong to the *other* tab so we don't ship a half-filled payload.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (step !== 'Basics') return
+  function clearRegistry() {
     setRegistryKey(null)
     setCredentialDefinitionFilter(null)
-    setName('')
-    setUrl('')
-    setCommand('')
-    setDescription('')
-  }, [tab, step])
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>New MCP server</DialogTitle>
-          <DialogDescription>
-            Step {stepIndex + 1} of {STEPS.length} — {step}
-          </DialogDescription>
-        </DialogHeader>
-
-        {/* Stepper */}
-        <ol className="flex items-center gap-2 text-xs">
-          {STEPS.map((s, i) => (
-            <li key={s} className="flex items-center gap-2">
-              <span
-                className={`flex size-5 items-center justify-center rounded-full ${
-                  i < stepIndex
-                    ? 'bg-emerald-500 text-white'
-                    : i === stepIndex
-                      ? 'bg-foreground text-background'
-                      : 'bg-muted text-muted-foreground'
-                }`}
-              >
-                {i < stepIndex ? <Check className="size-3" /> : i + 1}
-              </span>
-              <span
-                className={
-                  i === stepIndex
-                    ? 'font-medium'
-                    : 'text-muted-foreground'
-                }
-              >
-                {s}
-              </span>
-              {i < STEPS.length - 1 && (
-                <span className="text-muted-foreground">→</span>
-              )}
-            </li>
-          ))}
-        </ol>
-
-        <Separator />
-
-        <div className="min-h-[280px] min-w-0 max-h-[60vh] overflow-y-auto">
-          {step === 'Basics' && (
-            <Tabs
-              value={tab}
-              onValueChange={(v) => setTab(v as SourceTab)}
-              className="w-full"
-            >
-              <TabsList className="w-full">
-                <TabsTrigger value="registry">From Registry</TabsTrigger>
-                <TabsTrigger value="manual">Manual</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="registry" className="pt-3">
-                <RegistryGrid
-                  entries={registry ?? []}
-                  selected={registryKey}
-                  onSelect={handlePickRegistryEntry}
-                />
-                {registryKey && (
-                  <div className="mt-4 space-y-2">
-                    <label
-                      htmlFor="registry-name"
-                      className="text-xs font-medium"
-                    >
-                      Name <span className="text-destructive">*</span>
-                    </label>
-                    <Input
-                      id="registry-name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      Pre-filled from the catalog — rename if you want.
-                    </p>
-                  </div>
-                )}
-              </TabsContent>
-
-              <TabsContent value="manual" className="pt-3">
-                <ManualBasicsForm
-                  name={name}
-                  setName={setName}
-                  description={description}
-                  setDescription={setDescription}
-                  transport={transport}
-                  setTransport={setTransport}
-                  url={url}
-                  setUrl={setUrl}
-                  command={command}
-                  setCommand={setCommand}
-                />
-              </TabsContent>
-            </Tabs>
-          )}
-
-          {step === 'Auth' && (
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Optionally bind a credential. The MCP client will resolve{' '}
-                <code className="rounded bg-muted px-1">
-                  {'${credential.<field>}'}
-                </code>{' '}
-                templates in headers and env vars.
-              </p>
-              <CredentialPicker
-                value={credentialId}
-                onChange={setCredentialId}
-                definitionKeys={
-                  credentialDefinitionFilter
-                    ? [credentialDefinitionFilter]
-                    : undefined
-                }
-              />
-              {credentialDefinitionFilter && (
-                <p className="text-[11px] text-muted-foreground">
-                  Filtered to credentials of type{' '}
-                  <code className="rounded bg-muted px-1">
-                    {credentialDefinitionFilter}
-                  </code>
-                  .
-                </p>
-              )}
-            </div>
-          )}
-
-          {step === 'Tools' && (
-            <div className="space-y-3">
-              {probe.isPending ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" /> Loading tools...
-                </div>
-              ) : discoveredTools.length > 0 ? (
-                <>
-                  <p className="text-sm text-muted-foreground">
-                    Preview: {discoveredTools.length} tool
-                    {discoveredTools.length === 1 ? '' : 's'} found. Click [Add]
-                    to register the server.
-                  </p>
-                  <McpToolTable tools={discoveredTools} />
-                </>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No tools found. The server may be empty or unreachable.
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          {step !== 'Basics' && (
-            <Button
-              variant="outline"
-              onClick={handleBack}
-              disabled={
-                probe.isPending ||
-                create.isPending ||
-                createFromRegistry.isPending ||
-                discover.isPending
-              }
-            >
-              <ArrowLeft className="size-4" /> Back
-            </Button>
-          )}
-          <Button
-            onClick={handleNext}
-            disabled={
-              (step === 'Basics' && !basicsValid) ||
-              probe.isPending ||
-              create.isPending ||
-              createFromRegistry.isPending ||
-              discover.isPending
-            }
-          >
-            {(create.isPending ||
-              createFromRegistry.isPending ||
-              discover.isPending) && (
-              <Loader2 className="size-4 animate-spin" />
-            )}
-            {step === 'Tools' ? 'Add' : 'Next'}
-            {step !== 'Tools' && <ArrowRight className="size-4" />}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// -- Subcomponents ---------------------------------------------------------
-
-function RegistryGrid({
-  entries,
-  selected,
-  onSelect,
-}: {
-  entries: McpRegistryEntry[]
-  selected: string | null
-  onSelect: (entry: McpRegistryEntry) => void
-}) {
-  if (entries.length === 0) {
-    return (
-      <p className="rounded border border-dashed p-6 text-center text-xs text-muted-foreground">
-        No registry entries available — switch to the Manual tab.
-      </p>
-    )
+    probedRef.current = false
+    setProbeState({ kind: 'idle' })
   }
 
-  return (
-    <div
-      role="list"
-      className="grid max-h-[300px] grid-cols-1 gap-2 overflow-auto sm:grid-cols-2"
-    >
-      {entries.map((entry) => {
-        const isSelected = selected === entry.key
-        return (
-          <button
-            key={entry.key}
-            type="button"
-            role="listitem"
-            onClick={() => onSelect(entry)}
-            data-testid={`registry-card-${entry.key}`}
-            className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all hover:bg-muted/50 ${
-              isSelected
-                ? 'border-foreground/40 bg-muted shadow-sm'
-                : 'border-border'
-            }`}
-          >
-            <DomainIcon iconId={entry.icon_id ?? 'server'} className="size-5" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">
-                {entry.display_name}
-              </p>
-              {entry.description && (
-                <p className="line-clamp-2 text-[11px] text-muted-foreground">
-                  {entry.description}
-                </p>
-              )}
-              <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                {entry.transport}
-              </p>
-            </div>
-          </button>
+  function buildProbePayload() {
+    if (registryKey) {
+      return { registry_key: registryKey, credential_id: credentialId }
+    }
+    return {
+      transport,
+      url: transport === 'stdio' ? null : url.trim(),
+      command: transport === 'stdio' ? command.trim() : null,
+      headers: kvToObject(headers),
+      credential_id: credentialId,
+    }
+  }
+
+  async function runProbe() {
+    if (!basicsValid) {
+      toast.error('Fill the required fields first')
+      return
+    }
+    setProbeState({ kind: 'pending' })
+    try {
+      const result = await probe.mutateAsync(buildProbePayload())
+      if (!result.success) {
+        const msg = result.error ?? 'Probe failed'
+        setProbeState({ kind: 'error', message: msg })
+        toast.error(msg)
+        return
+      }
+      setDiscoveredTools(result.tools)
+      // Default: enable everything we found.
+      setEnabledNames(new Set(result.tools.map((t) => t.name)))
+      setProbeState({ kind: 'ok', toolCount: result.tools.length })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Probe failed'
+      setProbeState({ kind: 'error', message: msg })
+      toast.error(msg)
+    }
+  }
+
+  // Auto-run probe on first Tools tab visit (when basics are valid). The ref
+  // guard prevents duplicate calls under React strict-mode + tab flipping.
+  useEffect(() => {
+    if (tab !== 'tools') return
+    if (!basicsValid) return
+    if (probedRef.current) return
+    if (probe.isPending) return
+    probedRef.current = true
+    void runProbe()
+    // We intentionally exclude `runProbe` (recreated each render) — the ref
+    // guard handles dedupe across renders within the same tab visit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, basicsValid])
+
+  function toggleTool(name: string) {
+    setEnabledNames((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  function handleAddArg() {
+    const trimmed = argDraft.trim()
+    if (!trimmed) return
+    // Allow space/comma-separated bulk add.
+    const parts = trimmed.split(/[\s,]+/).filter(Boolean)
+    setArgs((prev) => [...prev, ...parts])
+    setArgDraft('')
+  }
+
+  async function handleSave() {
+    if (!basicsValid) {
+      toast.error('Fill the required fields first')
+      setTab('basics')
+      return
+    }
+    try {
+      const server =
+        registryKey
+          ? await createFromRegistry.mutateAsync({
+              registry_key: registryKey,
+              name: name.trim(),
+              credential_id: credentialId,
+            })
+          : await create.mutateAsync({
+              name: name.trim(),
+              description: description.trim() || null,
+              transport,
+              url: transport === 'stdio' ? null : url.trim(),
+              command: transport === 'stdio' ? command.trim() : null,
+              args: transport === 'stdio' ? args : [],
+              env_vars: transport === 'stdio' ? kvToObject(envVars) : {},
+              headers: transport === 'stdio' ? {} : kvToObject(headers),
+              credential_id: credentialId,
+            })
+
+      // Import the discovered tool rows.
+      let discoveredCount = 0
+      try {
+        const result = await discover.mutateAsync(server.id)
+        if (result.success) discoveredCount = result.tools.length
+      } catch {
+        toast.warning(
+          'Server added, but tool import failed. Retry from the detail page.',
         )
-      })}
-    </div>
+      }
+
+      // Inform the user if they pre-selected fewer tools than discovered —
+      // per-tool enable PATCH isn't surfaced via a wizard mutation yet, so
+      // they should fine-tune from the detail page.
+      if (discoveredCount > 0 && discoveredTools.length > 0) {
+        const toDisableCount = discoveredTools.filter(
+          (t) => !enabledNames.has(t.name),
+        ).length
+        if (toDisableCount > 0) {
+          toast.info(
+            `Server saved. Toggle off ${toDisableCount} tool(s) from the detail page if needed.`,
+          )
+        }
+      }
+
+      toast.success('MCP server added')
+      onClose()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to add server')
+    }
+  }
+
+  const saving =
+    create.isPending || createFromRegistry.isPending || discover.isPending
+
+  return (
+    <>
+      <DialogShell.Header
+        icon={<Server className="size-5" />}
+        title="New MCP server"
+        description="Pick a registry preset or wire one up manually, then preview its tools before saving."
+        actions={<ProbeBadge state={probeState} />}
+      />
+      <DialogShell.Body>
+        <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
+          <TabsList variant="line">
+            <TabsTrigger value="basics">1 · Basics</TabsTrigger>
+            <TabsTrigger value="auth">2 · Auth</TabsTrigger>
+            <TabsTrigger value="tools">3 · Tools</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="basics" className="pt-4">
+            <BasicsTab
+              registry={registry ?? []}
+              registryKey={registryKey}
+              onPickRegistry={handlePickRegistryEntry}
+              onClearRegistry={clearRegistry}
+              name={name}
+              setName={setName}
+              description={description}
+              setDescription={setDescription}
+              transport={transport}
+              setTransport={(t) => {
+                setTransport(t)
+                probedRef.current = false
+                setProbeState({ kind: 'idle' })
+              }}
+              url={url}
+              setUrl={setUrl}
+              command={command}
+              setCommand={setCommand}
+              args={args}
+              setArgs={setArgs}
+              argDraft={argDraft}
+              setArgDraft={setArgDraft}
+              onAddArg={handleAddArg}
+              envVars={envVars}
+              setEnvVars={setEnvVars}
+              headers={headers}
+              setHeaders={setHeaders}
+            />
+            <div className="mt-6 flex justify-end">
+              <Button
+                onClick={() => setTab('auth')}
+                disabled={!basicsValid}
+              >
+                Continue to Auth →
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="auth" className="pt-4">
+            <AuthTab
+              credentialId={credentialId}
+              setCredentialId={setCredentialId}
+              credentialDefinitionFilter={credentialDefinitionFilter}
+              probeState={probeState}
+              onTest={runProbe}
+              testing={probe.isPending}
+            />
+            <div className="mt-6 flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setTab('basics')}>
+                Back
+              </Button>
+              <Button onClick={() => setTab('tools')}>
+                Continue to Tools →
+              </Button>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="tools" className="pt-4">
+            <ToolsTab
+              probeState={probeState}
+              tools={discoveredTools}
+              enabledNames={enabledNames}
+              onToggle={toggleTool}
+              onRetry={() => {
+                probedRef.current = false
+                void runProbe()
+              }}
+            />
+          </TabsContent>
+        </Tabs>
+      </DialogShell.Body>
+      <DialogShell.Footer>
+        <Button variant="outline" onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSave}
+          disabled={saving || !basicsValid}
+        >
+          {saving ? <Loader2 className="size-4 animate-spin" /> : null}
+          Save server
+        </Button>
+      </DialogShell.Footer>
+    </>
   )
 }
 
-function ManualBasicsForm({
-  name,
-  setName,
-  description,
-  setDescription,
-  transport,
-  setTransport,
-  url,
-  setUrl,
-  command,
-  setCommand,
-}: {
+// ──────────────────────────────────────────────────────────────────────────
+// ProbeBadge — header status pill mirroring the live probe outcome.
+// ──────────────────────────────────────────────────────────────────────────
+
+function ProbeBadge({ state }: { state: ProbeState }) {
+  if (state.kind === 'idle') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-status-warn/15 px-2 py-0.5 text-xs font-medium text-status-warn">
+        Probe needed
+      </span>
+    )
+  }
+  if (state.kind === 'pending') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-status-info/15 px-2 py-0.5 text-xs font-medium text-status-info">
+        <Loader2 className="size-3 animate-spin" />
+        Probing…
+      </span>
+    )
+  }
+  if (state.kind === 'ok') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-status-success/15 px-2 py-0.5 text-xs font-medium text-status-success">
+        <CheckCircle2 className="size-3" />
+        OK · {state.toolCount} tool{state.toolCount === 1 ? '' : 's'}
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-status-danger/15 px-2 py-0.5 text-xs font-medium text-status-danger">
+      <XCircle className="size-3" />
+      Failed
+    </span>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Basics tab — registry quick-start + manual transport-aware form.
+// ──────────────────────────────────────────────────────────────────────────
+
+interface BasicsTabProps {
+  registry: McpRegistryEntry[]
+  registryKey: string | null
+  onPickRegistry: (entry: McpRegistryEntry) => void
+  onClearRegistry: () => void
   name: string
   setName: (v: string) => void
   description: string
@@ -516,71 +415,518 @@ function ManualBasicsForm({
   setUrl: (v: string) => void
   command: string
   setCommand: (v: string) => void
-}) {
+  args: string[]
+  setArgs: React.Dispatch<React.SetStateAction<string[]>>
+  argDraft: string
+  setArgDraft: (v: string) => void
+  onAddArg: () => void
+  envVars: Array<{ key: string; value: string }>
+  setEnvVars: React.Dispatch<
+    React.SetStateAction<Array<{ key: string; value: string }>>
+  >
+  headers: Array<{ key: string; value: string }>
+  setHeaders: React.Dispatch<
+    React.SetStateAction<Array<{ key: string; value: string }>>
+  >
+}
+
+function BasicsTab(props: BasicsTabProps) {
   return (
-    <div className="space-y-3">
-      <div className="space-y-1.5">
-        <label htmlFor="mcp-name" className="text-xs font-medium">
-          Name <span className="text-destructive">*</span>
-        </label>
-        <Input
-          id="mcp-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <label htmlFor="mcp-desc" className="text-xs font-medium">
-          Description
-        </label>
-        <Textarea
-          id="mcp-desc"
-          value={description}
-          rows={2}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <label className="text-xs font-medium">Transport</label>
-        <Select
-          value={transport}
-          onValueChange={(v) => setTransport(v as McpTransport)}
-        >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="streamable_http">Streamable HTTP</SelectItem>
-            <SelectItem value="sse">SSE</SelectItem>
-            <SelectItem value="stdio">stdio</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      {transport === 'stdio' ? (
-        <div className="space-y-1.5">
-          <label htmlFor="mcp-command" className="text-xs font-medium">
-            Command <span className="text-destructive">*</span>
-          </label>
-          <Input
-            id="mcp-command"
-            value={command}
-            placeholder="/usr/local/bin/my-mcp-server"
-            onChange={(e) => setCommand(e.target.value)}
-          />
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          <label htmlFor="mcp-url" className="text-xs font-medium">
-            URL <span className="text-destructive">*</span>
-          </label>
-          <Input
-            id="mcp-url"
-            value={url}
-            placeholder="https://example.com/mcp"
-            onChange={(e) => setUrl(e.target.value)}
-          />
-        </div>
-      )}
+    <div className="space-y-6">
+      <RegistrySection
+        entries={props.registry}
+        selected={props.registryKey}
+        onSelect={props.onPickRegistry}
+        onClear={props.onClearRegistry}
+      />
+
+      <ManualSection {...props} />
     </div>
   )
+}
+
+function RegistrySection({
+  entries,
+  selected,
+  onSelect,
+  onClear,
+}: {
+  entries: McpRegistryEntry[]
+  selected: string | null
+  onSelect: (entry: McpRegistryEntry) => void
+  onClear: () => void
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Quick start
+        </h3>
+        {selected ? (
+          <Button size="sm" variant="ghost" onClick={onClear}>
+            Clear preset
+          </Button>
+        ) : null}
+      </div>
+      {entries.length === 0 ? (
+        <p className="rounded border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground">
+          No registry presets configured — fill the manual form below.
+        </p>
+      ) : (
+        <div
+          role="list"
+          className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3"
+        >
+          {entries.map((entry) => {
+            const isSelected = selected === entry.key
+            return (
+              <button
+                key={entry.key}
+                type="button"
+                role="listitem"
+                onClick={() => onSelect(entry)}
+                data-testid={`registry-card-${entry.key}`}
+                className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-left transition-all hover:bg-muted/50 ${
+                  isSelected
+                    ? 'border-primary-strong/60 bg-primary-strong/10 shadow-sm'
+                    : 'border-border'
+                }`}
+              >
+                <DomainIcon
+                  iconId={entry.icon_id ?? 'server'}
+                  className="size-5"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">
+                    {entry.display_name}
+                  </p>
+                  {entry.description ? (
+                    <p className="line-clamp-1 text-[11px] text-muted-foreground">
+                      {entry.description}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {entry.transport}
+                  </p>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function ManualSection({
+  registryKey,
+  name,
+  setName,
+  description,
+  setDescription,
+  transport,
+  setTransport,
+  url,
+  setUrl,
+  command,
+  setCommand,
+  args,
+  setArgs,
+  argDraft,
+  setArgDraft,
+  onAddArg,
+  envVars,
+  setEnvVars,
+  headers,
+  setHeaders,
+}: BasicsTabProps) {
+  const isHttp = transport === 'sse' || transport === 'streamable_http'
+  return (
+    <section className="space-y-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {registryKey ? 'Override' : 'Manual'}
+      </h3>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <label htmlFor="mcp-name">
+            Name <span className="text-destructive">*</span>
+          </label>
+          <Input
+            id="mcp-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="mcp-desc">Description</label>
+          <Input
+            id="mcp-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Transport radios */}
+      <div className="space-y-1.5">
+        <label>Transport</label>
+        <div className="flex flex-wrap gap-2">
+          {(['stdio', 'sse', 'streamable_http'] as const).map((t) => {
+            const active = transport === t
+            return (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTransport(t)}
+                className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  active
+                    ? 'border-primary-strong/60 bg-primary-strong/10 text-primary-strong'
+                    : 'border-border hover:bg-muted/50'
+                }`}
+              >
+                {t === 'streamable_http' ? 'Streamable HTTP' : t === 'sse' ? 'SSE' : 'stdio'}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Transport-specific fields */}
+      {transport === 'stdio' ? (
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label htmlFor="mcp-command">
+              Command <span className="text-destructive">*</span>
+            </label>
+            <Input
+              id="mcp-command"
+              value={command}
+              placeholder="npx"
+              onChange={(e) => setCommand(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label>Arguments</label>
+            <div className="flex flex-wrap gap-1.5">
+              {args.map((arg, i) => (
+                <span
+                  key={`${arg}-${i}`}
+                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-mono text-[11px]"
+                >
+                  {arg}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${arg}`}
+                    onClick={() =>
+                      setArgs((prev) => prev.filter((_, idx) => idx !== i))
+                    }
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={argDraft}
+                placeholder="-y @modelcontextprotocol/server-github"
+                onChange={(e) => setArgDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    onAddArg()
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" onClick={onAddArg}>
+                Add
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Press Enter or comma/space to add multiple args at once.
+            </p>
+          </div>
+
+          <KeyValueRows
+            label="Environment variables"
+            rows={envVars}
+            setRows={setEnvVars}
+            keyPlaceholder="GITHUB_TOKEN"
+            valuePlaceholder="{{ $credentials.token }}"
+          />
+        </div>
+      ) : null}
+
+      {isHttp ? (
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label htmlFor="mcp-url">
+              URL <span className="text-destructive">*</span>
+            </label>
+            <Input
+              id="mcp-url"
+              value={url}
+              placeholder="https://example.com/mcp"
+              onChange={(e) => setUrl(e.target.value)}
+            />
+          </div>
+          <KeyValueRows
+            label="Headers"
+            rows={headers}
+            setRows={setHeaders}
+            keyPlaceholder="Authorization"
+            valuePlaceholder="Bearer {{ $credentials.token }}"
+          />
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+function KeyValueRows({
+  label,
+  rows,
+  setRows,
+  keyPlaceholder,
+  valuePlaceholder,
+}: {
+  label: string
+  rows: Array<{ key: string; value: string }>
+  setRows: React.Dispatch<
+    React.SetStateAction<Array<{ key: string; value: string }>>
+  >
+  keyPlaceholder?: string
+  valuePlaceholder?: string
+}) {
+  function update(idx: number, patch: Partial<{ key: string; value: string }>) {
+    setRows((prev) =>
+      prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)),
+    )
+  }
+  function remove(idx: number) {
+    setRows((prev) => prev.filter((_, i) => i !== idx))
+  }
+  function add() {
+    setRows((prev) => [...prev, { key: '', value: '' }])
+  }
+  return (
+    <div className="space-y-1.5">
+      <label>{label}</label>
+      <div className="space-y-1.5">
+        {rows.map((row, i) => (
+          <div key={i} className="flex gap-2">
+            <Input
+              value={row.key}
+              placeholder={keyPlaceholder}
+              onChange={(e) => update(i, { key: e.target.value })}
+              className="font-mono text-xs"
+            />
+            <Input
+              value={row.value}
+              placeholder={valuePlaceholder}
+              onChange={(e) => update(i, { value: e.target.value })}
+              className="font-mono text-xs"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => remove(i)}
+              aria-label="Remove row"
+            >
+              <X className="size-3.5" />
+            </Button>
+          </div>
+        ))}
+        <Button type="button" size="sm" variant="outline" onClick={add}>
+          <Plus className="size-3.5" /> Add row
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Auth tab
+// ──────────────────────────────────────────────────────────────────────────
+
+function AuthTab({
+  credentialId,
+  setCredentialId,
+  credentialDefinitionFilter,
+  probeState,
+  onTest,
+  testing,
+}: {
+  credentialId: string | null
+  setCredentialId: (v: string | null) => void
+  credentialDefinitionFilter: string | null
+  probeState: ProbeState
+  onTest: () => void
+  testing: boolean
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <label>Credential</label>
+        <CredentialPicker
+          value={credentialId}
+          onChange={setCredentialId}
+          definitionKeys={
+            credentialDefinitionFilter ? [credentialDefinitionFilter] : undefined
+          }
+        />
+      </div>
+
+      <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+        <p className="font-medium text-foreground">Credential interpolation</p>
+        <p className="mt-1">
+          Reference fields from the bound credential anywhere in headers or env
+          vars using{' '}
+          <code className="rounded bg-background px-1 py-0.5 font-mono">
+            {'{{ $credentials.<field> }}'}
+          </code>
+          . The MCP client substitutes them at connect time.
+        </p>
+        {credentialDefinitionFilter ? (
+          <p className="mt-2">
+            Filtered to credentials of type{' '}
+            <code className="rounded bg-background px-1 py-0.5 font-mono">
+              {credentialDefinitionFilter}
+            </code>
+            .
+          </p>
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button onClick={onTest} disabled={testing} variant="outline">
+          {testing ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Activity className="size-3.5" />
+          )}
+          Test connection
+        </Button>
+        {probeState.kind === 'ok' ? (
+          <span className="text-xs text-status-success">
+            Connected — discovered {probeState.toolCount} tool
+            {probeState.toolCount === 1 ? '' : 's'}.
+          </span>
+        ) : null}
+        {probeState.kind === 'error' ? (
+          <span className="text-xs text-status-danger">{probeState.message}</span>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Tools tab — preview + per-tool enable selection.
+// ──────────────────────────────────────────────────────────────────────────
+
+function ToolsTab({
+  probeState,
+  tools,
+  enabledNames,
+  onToggle,
+  onRetry,
+}: {
+  probeState: ProbeState
+  tools: McpProbeTool[]
+  enabledNames: Set<string>
+  onToggle: (name: string) => void
+  onRetry: () => void
+}) {
+  if (probeState.kind === 'pending') {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="size-4 animate-spin" /> Discovering tools…
+      </div>
+    )
+  }
+  if (probeState.kind === 'error') {
+    return (
+      <div className="space-y-3 rounded-md border border-status-danger/40 bg-status-danger/10 p-3 text-sm text-status-danger">
+        <p className="font-medium">Probe failed</p>
+        <p className="text-xs">{probeState.message}</p>
+        <Button size="sm" variant="outline" onClick={onRetry}>
+          Retry
+        </Button>
+      </div>
+    )
+  }
+  if (tools.length === 0) {
+    return (
+      <p className="rounded border border-dashed border-border/60 p-6 text-center text-xs text-muted-foreground">
+        No tools advertised by this server yet.
+      </p>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>
+          {enabledNames.size} of {tools.length} tool
+          {tools.length === 1 ? '' : 's'} enabled
+        </span>
+        <Button size="sm" variant="ghost" onClick={onRetry}>
+          Re-probe
+        </Button>
+      </div>
+      <div className="space-y-1.5">
+        {tools.map((tool) => {
+          const checked = enabledNames.has(tool.name)
+          const paramCount = countParameters(tool.input_schema)
+          return (
+            <label
+              key={tool.name}
+              className="flex cursor-pointer items-start gap-2.5 rounded-md border border-border/60 p-2.5 transition-colors hover:bg-muted/40"
+            >
+              <Checkbox
+                checked={checked}
+                onCheckedChange={() => onToggle(tool.name)}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-mono text-xs font-medium">
+                    {tool.name}
+                  </span>
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {paramCount} param{paramCount === 1 ? '' : 's'}
+                  </span>
+                </div>
+                {tool.description ? (
+                  <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
+                    {tool.description}
+                  </p>
+                ) : null}
+              </div>
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function countParameters(schema: Record<string, unknown> | null | undefined): number {
+  if (!schema || typeof schema !== 'object') return 0
+  const props = (schema as Record<string, unknown>).properties
+  if (!props || typeof props !== 'object') return 0
+  return Object.keys(props as Record<string, unknown>).length
+}
+
+function kvToObject(rows: Array<{ key: string; value: string }>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const { key, value } of rows) {
+    const k = key.trim()
+    if (!k) continue
+    out[k] = value
+  }
+  return out
 }

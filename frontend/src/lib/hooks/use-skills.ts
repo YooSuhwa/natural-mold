@@ -91,3 +91,28 @@ export function useDeleteSkill() {
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
   })
 }
+
+export function useSetSkillFile(skillId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ path, content }: { path: string; content: string }) =>
+      skillsApi.setFile(skillId, path, content),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY_LIST })
+      qc.invalidateQueries({ queryKey: ['skills', skillId] })
+      qc.invalidateQueries({ queryKey: ['skills', skillId, 'files'] })
+    },
+  })
+}
+
+export function useDeleteSkillFile(skillId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (path: string) => skillsApi.deleteFile(skillId, path),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY_LIST })
+      qc.invalidateQueries({ queryKey: ['skills', skillId] })
+      qc.invalidateQueries({ queryKey: ['skills', skillId, 'files'] })
+    },
+  })
+}
