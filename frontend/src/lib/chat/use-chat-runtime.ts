@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState, useCallback, useMemo } from 'react'
+import { useRef, useState, useCallback, useMemo, useEffect } from 'react'
 import { useExternalStoreRuntime, useExternalMessageConverter } from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
 import { useQueryClient } from '@tanstack/react-query'
@@ -161,6 +161,25 @@ export function useChatRuntime({
     () => [...messages, ...streamingMessages],
     [messages, streamingMessages],
   )
+
+  // W7-2 — Composer 토큰 바는 ``allMessages``의 usage 합으로 derive한다.
+  // 이전 동작은 SSE ``message_end``에서만 누적했으므로 새로고침/대화 전환
+  // 후 atom이 0으로 reset되어 토큰 바가 사라졌다. messages가 fetch되면
+  // ``MessageResponse.usage``(W7-2)에 4종이 들어 있으므로 절대값을 다시 계산.
+  // 스트리밍 중에도 ``streamingMessages``의 ``messageUsage``가 합산되어 같은
+  // 값이 유지된다.
+  useEffect(() => {
+    let inputTokens = 0
+    let outputTokens = 0
+    let cost = 0
+    for (const m of allMessages) {
+      if (!m.usage) continue
+      inputTokens += m.usage.prompt_tokens
+      outputTokens += m.usage.completion_tokens
+      cost += m.usage.estimated_cost ?? 0
+    }
+    setTokenUsage({ inputTokens, outputTokens, cost })
+  }, [allMessages, setTokenUsage])
 
   // Message[] → ThreadMessage[] 변환 (tool 메시지 자동 병합)
   const threadMessages = useExternalMessageConverter({
@@ -331,12 +350,11 @@ export function useChatRuntime({
                   estimated_cost: usage.estimated_cost,
                 }
                 messageUsage = breakdown
+                // streamingMessages에 박힌 후 위쪽 useEffect가 토큰 바를
+                // 자동 갱신한다 (allMessages.usage 합산). 별도 누적 호출
+                // 불필요 — 누적 로직은 새로고침 시 atom이 0으로 reset되어
+                // 토큰 바가 사라지는 회귀를 일으켰음.
                 setStreamingMessages(buildStreamState())
-                setTokenUsage((prev) => ({
-                  inputTokens: prev.inputTokens + breakdown.prompt_tokens,
-                  outputTokens: prev.outputTokens + breakdown.completion_tokens,
-                  cost: prev.cost + (breakdown.estimated_cost ?? 0),
-                }))
               }
               break
             }
@@ -364,7 +382,7 @@ export function useChatRuntime({
         onStreamEnd?.(didMutate)
       }
     },
-    [onStreamEnd, onInterrupt, onMessagesCommit, setTokenUsage],
+    [onStreamEnd, onInterrupt, onMessagesCommit],
   )
 
   // messages가 새로 fetch되면(refetch 완료) streaming messages를 clear.
