@@ -228,6 +228,10 @@ export interface MessagesEnvelope {
   messages: Message[]
   active_tip_message_id?: string | null
   active_checkpoint_id?: string | null
+  /** W7-4 — conversation 누적 비용 (USD). ``token_usages`` 테이블 합산. 메시지
+   * 단위로 cost를 채울 수 없는 fetch 경로(model_id 없음)에서 Composer 토큰 바
+   * 가 cost를 표시할 수 있게 envelope에 발행. */
+  total_estimated_cost?: number
 }
 
 export interface MessageFeedbackRow {

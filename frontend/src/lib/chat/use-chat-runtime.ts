@@ -75,6 +75,10 @@ type ResumeFn = (
 interface UseChatRuntimeOptions {
   /** TanStack Query에서 가져온 메시지 목록 */
   messages: Message[]
+  /** W7-4 — 서버가 ``token_usages`` 합으로 발행한 conversation 누적 비용(USD).
+   *  fetch 경로의 ``MessageResponse.usage``에는 ``estimated_cost``가 비어 있어서
+   *  여기로 흘려야 Composer 토큰 바의 가격이 새로고침 후에도 유지된다. */
+  totalCost?: number
   /** SSE 스트리밍 함수 (streamChat 또는 streamAssistant) */
   streamFn: StreamFn
   /** 스트리밍 완료 후 호출. didMutate=true면 mutation 도구가 호출되었다는 의미 (invalidate 권장) */
@@ -102,6 +106,7 @@ interface UseChatRuntimeOptions {
  */
 export function useChatRuntime({
   messages,
+  totalCost,
   streamFn,
   onStreamEnd,
   onInterrupt,
@@ -171,15 +176,20 @@ export function useChatRuntime({
   useEffect(() => {
     let inputTokens = 0
     let outputTokens = 0
-    let cost = 0
+    let perMessageCost = 0
     for (const m of allMessages) {
       if (!m.usage) continue
       inputTokens += m.usage.prompt_tokens
       outputTokens += m.usage.completion_tokens
-      cost += m.usage.estimated_cost ?? 0
+      perMessageCost += m.usage.estimated_cost ?? 0
     }
+    // server-side 합산값(``token_usages`` 테이블)이 있으면 우선. 없으면 메시지
+    // 별 cost를 합산. fetch 경로의 메시지엔 보통 ``estimated_cost``가 비어 있어
+    // 0이지만, streaming.py가 ``message_end``에 cost를 박은 streaming 메시지는
+    // 살아있어 실시간 표시에도 약간 도움.
+    const cost = totalCost ?? perMessageCost
     setTokenUsage({ inputTokens, outputTokens, cost })
-  }, [allMessages, setTokenUsage])
+  }, [allMessages, totalCost, setTokenUsage])
 
   // Message[] → ThreadMessage[] 변환 (tool 메시지 자동 병합)
   const threadMessages = useExternalMessageConverter({

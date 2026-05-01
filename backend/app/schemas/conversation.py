@@ -152,6 +152,11 @@ class MessagesEnvelope(BaseModel):
     messages: list[MessageResponse]
     active_tip_message_id: uuid.UUID | None = None
     active_checkpoint_id: str | None = None
+    # W7-4 — conversation 단위 누적 비용 (USD). 메시지 단위는 model_id를 추적
+    # 하지 않으므로 ``MessageResponse.usage.estimated_cost``를 채울 수 없는데,
+    # ``token_usages`` 테이블이 turn마다 cost를 누적하므로 합산해 envelope에
+    # 발행한다. 클라이언트의 Composer 토큰 바가 새로고침 후에도 cost를 표시.
+    total_estimated_cost: float = 0.0
 
 
 class EditMessageRequest(BaseModel):
