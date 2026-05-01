@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { parseSSEStream, streamSSEPost } from '@/lib/sse/parse-sse'
+import { createEventDeduper, parseSSEStream, streamSSEPost } from '@/lib/sse/parse-sse'
 
 const API_BASE = 'http://localhost:8001'
 
@@ -38,8 +38,8 @@ function createChunkedStream(chunks: string[]): ReadableStream<Uint8Array> {
 async function collectEvents<T extends string>(
   body: ReadableStream<Uint8Array>,
   defaultEvent: T,
-): Promise<Array<{ event: T; data: unknown }>> {
-  const events: Array<{ event: T; data: unknown }> = []
+): Promise<Array<{ event: T; data: unknown; id?: string }>> {
+  const events: Array<{ event: T; data: unknown; id?: string }> = []
   for await (const event of parseSSEStream<T>(body, defaultEvent)) {
     events.push(event)
   }
@@ -137,6 +137,92 @@ describe('parseSSEStream', () => {
     const events = await collectEvents(body, 'content_delta')
 
     expect(events).toEqual([])
+  })
+
+  it('id 라인을 파싱하여 이벤트에 포함한다', async () => {
+    const body = createSSEStream([
+      'event: content_delta',
+      'id: msg-abc-1',
+      'data: {"delta":"hi"}',
+      '',
+      'event: content_delta',
+      'id: msg-abc-2',
+      'data: {"delta":" there"}',
+      '',
+    ])
+
+    const events = await collectEvents(body, 'content_delta')
+
+    expect(events).toHaveLength(2)
+    expect(events[0].id).toBe('msg-abc-1')
+    expect(events[1].id).toBe('msg-abc-2')
+  })
+
+  it('id 라인이 없는 이벤트는 id가 undefined이다', async () => {
+    const body = createSSEStream([
+      'event: content_delta',
+      'data: {"delta":"hi"}',
+      '',
+    ])
+
+    const events = await collectEvents(body, 'content_delta')
+
+    expect(events[0].id).toBeUndefined()
+  })
+
+  it('이전 이벤트의 id가 다음 이벤트로 이월되지 않는다', async () => {
+    const body = createSSEStream([
+      'event: content_delta',
+      'id: msg-1',
+      'data: {"delta":"a"}',
+      '',
+      'event: content_delta',
+      'data: {"delta":"b"}',
+      '',
+    ])
+
+    const events = await collectEvents(body, 'content_delta')
+
+    expect(events[0].id).toBe('msg-1')
+    expect(events[1].id).toBeUndefined()
+  })
+})
+
+describe('createEventDeduper', () => {
+  it('같은 id가 두 번째로 들어오면 중복으로 판정한다', () => {
+    const dedup = createEventDeduper()
+
+    expect(dedup.isDuplicate('msg-1')).toBe(false)
+    expect(dedup.isDuplicate('msg-1')).toBe(true)
+  })
+
+  it('서로 다른 id는 모두 통과한다', () => {
+    const dedup = createEventDeduper()
+
+    expect(dedup.isDuplicate('msg-1')).toBe(false)
+    expect(dedup.isDuplicate('msg-2')).toBe(false)
+    expect(dedup.isDuplicate('msg-3')).toBe(false)
+    expect(dedup.size()).toBe(3)
+  })
+
+  it('id가 undefined이면 항상 통과한다 (구버전 백엔드 호환)', () => {
+    const dedup = createEventDeduper()
+
+    expect(dedup.isDuplicate(undefined)).toBe(false)
+    expect(dedup.isDuplicate(undefined)).toBe(false)
+    expect(dedup.size()).toBe(0)
+  })
+
+  it('reset()은 누적된 id를 비운다', () => {
+    const dedup = createEventDeduper()
+
+    dedup.isDuplicate('msg-1')
+    dedup.isDuplicate('msg-2')
+    dedup.reset()
+
+    expect(dedup.size()).toBe(0)
+    // reset 후 같은 id 다시 통과
+    expect(dedup.isDuplicate('msg-1')).toBe(false)
   })
 })
 
