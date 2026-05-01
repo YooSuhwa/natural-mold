@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # MCP
     mcp_connection_timeout: int = 10
     tool_call_timeout: int = 30
+    # Interval (minutes) for the lightweight per-server health polling job
+    # registered by ``scheduler.register_mcp_health_job``.
+    mcp_health_check_interval_minutes: int = 5
 
     # Skills (package)
     skill_storage_dir: str = "./data/skills"

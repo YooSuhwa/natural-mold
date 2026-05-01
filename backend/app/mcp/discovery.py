@@ -37,6 +37,9 @@ async def _probe(
         url=server.url,
         headers=server.headers,
         credentials=credentials,
+        command=server.command,
+        args=server.args,
+        env_vars=server.env_vars,
     )
 
 
@@ -83,6 +86,7 @@ async def discover_tools(
     ).scalars().all()
     by_name = {t.name: t for t in existing}
 
+    now = datetime.now(UTC).replace(tzinfo=None)
     seen_names: set[str] = set()
     persisted: list[McpTool] = []
     for descriptor in probe["tools"]:
@@ -96,18 +100,18 @@ async def discover_tools(
                 description=descriptor.get("description") or None,
                 input_schema=descriptor.get("input_schema") or {},
                 enabled=True,
+                last_seen_at=now,
             )
             db.add(row)
         else:
             row.description = descriptor.get("description") or row.description
             row.input_schema = descriptor.get("input_schema") or {}
+            row.last_seen_at = now
         persisted.append(row)
 
-    # Drop tools that are no longer reported by the server. The unique
-    # constraint on (server_id, name) ensures we don't double up.
-    for name, row in by_name.items():
-        if name not in seen_names:
-            await db.delete(row)
+    # Tools no longer reported by the server are NOT deleted — they may still
+    # be linked to agents (``agent_mcp_tools``). Their stale state can be
+    # detected via ``last_seen_at`` lagging behind the server's last poll.
 
     await db.flush()
     return probe, persisted

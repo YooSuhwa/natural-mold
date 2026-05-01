@@ -279,9 +279,15 @@ async def test_discover_persists_tools(
 
 
 @pytest.mark.asyncio
-async def test_discover_drops_stale_tools(
+async def test_discover_preserves_stale_tools_and_marks_last_seen(
     client: AsyncClient, db: AsyncSession, monkeypatch
 ) -> None:
+    """Stale tools are kept (M26) so agent_mcp_tools links don't dangle.
+
+    Fresh tools get ``last_seen_at`` populated; stale rows keep their
+    pre-existing (or NULL) timestamp so the UI can flag them.
+    """
+
     server = McpServer(
         user_id=TEST_USER_ID,
         name="Stale",
@@ -309,7 +315,12 @@ async def test_discover_drops_stale_tools(
     rows = (
         await db.execute(select(McpTool).where(McpTool.server_id == sid))
     ).scalars().all()
-    assert {r.name for r in rows} == {"fresh"}
+    by_name = {r.name: r for r in rows}
+    # Both rows are still present — the stale "old" one survives so any
+    # agent_mcp_tools link to it isn't broken.
+    assert set(by_name) == {"fresh", "old"}
+    assert by_name["fresh"].last_seen_at is not None
+    assert by_name["old"].last_seen_at is None
 
 
 # -- Interpolation -----------------------------------------------------------
@@ -337,6 +348,326 @@ def test_build_env_vars_resolves_credential_template() -> None:
 def test_build_headers_skips_when_empty() -> None:
     assert build_headers(None, None) == {}
     assert build_headers({}, None) == {}
+
+
+# -- stdio transport ---------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_connect_and_list_stdio_invokes_sdk(monkeypatch) -> None:
+    """``transport='stdio'`` must run through ``stdio_client`` instead of
+    returning the legacy "unsupported" error."""
+
+    captured: dict[str, Any] = {}
+
+    class _StubInit:
+        serverInfo = type("SI", (), {"name": "stub", "version": "0.0.1"})()
+
+    class _StubTool:
+        name = "ping"
+        description = "ping"
+        inputSchema = {"type": "object"}
+
+    class _StubTools:
+        tools = [_StubTool()]
+
+    class _StubSession:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a) -> None:
+            return None
+
+        async def initialize(self):
+            return _StubInit()
+
+        async def list_tools(self):
+            return _StubTools()
+
+    class _StubStdioCtx:
+        def __init__(self, params) -> None:
+            captured["params"] = params
+
+        async def __aenter__(self):
+            return ("read", "write")
+
+        async def __aexit__(self, *_a) -> None:
+            return None
+
+    def _stub_stdio_client(params):
+        return _StubStdioCtx(params)
+
+    # Monkey-patch via the lazy import path used inside _connect_stdio.
+    import mcp.client.session as _session_mod
+    import mcp.client.stdio as _stdio_mod
+
+    monkeypatch.setattr(_stdio_mod, "stdio_client", _stub_stdio_client)
+    monkeypatch.setattr(_session_mod, "ClientSession", _StubSession)
+
+    result = await mcp_client.connect_and_list(
+        transport="stdio",
+        url=None,
+        command="echo",
+        args=["hi"],
+        env_vars={"FOO": "bar"},
+    )
+
+    assert result["success"] is True
+    assert result["tools"] == [
+        {"name": "ping", "description": "ping", "input_schema": {"type": "object"}}
+    ]
+    # StdioServerParameters carries the resolved command/args/env so the SDK
+    # spawns the right child process.
+    assert captured["params"].command == "echo"
+    assert captured["params"].args == ["hi"]
+    assert captured["params"].env == {"FOO": "bar"}
+
+
+@pytest.mark.asyncio
+async def test_connect_and_list_stdio_requires_command() -> None:
+    result = await mcp_client.connect_and_list(
+        transport="stdio", url=None, command=None
+    )
+    assert result["success"] is False
+    assert "command" in (result["error"] or "").lower()
+
+
+# -- Import / Export ---------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_import_mcp_servers_creates_and_skips(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    # Pre-existing server with the same name to test skip vs overwrite.
+    existing = McpServer(
+        user_id=TEST_USER_ID,
+        name="dup",
+        transport="streamable_http",
+        url="https://old.example.com",
+    )
+    db.add(existing)
+    await db.commit()
+
+    payload = {
+        "mcpServers": {
+            "filesystem": {
+                "command": "npx",
+                "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+                "env": {"FOO": "bar"},
+            },
+            "supabase": {
+                "transport": "streamable_http",
+                "url": "https://supabase.example.com/mcp",
+                "headers": {"Authorization": "Bearer X"},
+            },
+            "dup": {
+                "transport": "streamable_http",
+                "url": "https://new.example.com",
+            },
+            "broken": {
+                # No command, no transport — should be reported as an error.
+                "args": ["x"],
+            },
+        },
+        "overwrite": False,
+    }
+    response = await client.post("/api/mcp-servers/import", json=payload)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["created"] == 2  # filesystem + supabase
+    assert body["updated"] == 0
+    assert body["skipped"] == 1  # dup
+    assert any(e["name"] == "broken" for e in body["errors"])
+
+    # Filesystem entry was inferred to stdio.
+    rows = (
+        await db.execute(select(McpServer).where(McpServer.user_id == TEST_USER_ID))
+    ).scalars().all()
+    by_name = {r.name: r for r in rows}
+    assert by_name["filesystem"].transport == "stdio"
+    assert by_name["filesystem"].command == "npx"
+    assert by_name["filesystem"].env_vars == {"FOO": "bar"}
+    # Existing dup row was NOT overwritten.
+    assert by_name["dup"].url == "https://old.example.com"
+
+
+@pytest.mark.asyncio
+async def test_import_mcp_servers_overwrite_updates_in_place(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    existing = McpServer(
+        user_id=TEST_USER_ID,
+        name="dup",
+        transport="streamable_http",
+        url="https://old.example.com",
+    )
+    db.add(existing)
+    await db.commit()
+    original_id = existing.id
+
+    payload = {
+        "mcpServers": {
+            "dup": {
+                "transport": "streamable_http",
+                "url": "https://new.example.com",
+                "description": "updated",
+            }
+        },
+        "overwrite": True,
+    }
+    response = await client.post("/api/mcp-servers/import", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["updated"] == 1
+    assert body["created"] == 0
+
+    await db.refresh(existing)
+    assert existing.id == original_id  # row preserved → tool links survive
+    assert existing.url == "https://new.example.com"
+    assert existing.description == "updated"
+
+
+@pytest.mark.asyncio
+async def test_export_mcp_servers_omits_secrets(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    cred = await credential_service.create(
+        db,
+        user_id=TEST_USER_ID,
+        definition_key="http_bearer",
+        name="export-bearer",
+        data={"token": "SECRET"},
+    )
+    server = McpServer(
+        user_id=TEST_USER_ID,
+        name="exp",
+        transport="streamable_http",
+        url="https://exp.example.com",
+        headers={"Authorization": "=Bearer {{ $credentials.token }}"},
+        credential_id=cred.id,
+    )
+    db.add(server)
+    await db.commit()
+
+    response = await client.get("/api/mcp-servers/export")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert "exp" in payload["mcpServers"]
+    entry = payload["mcpServers"]["exp"]
+    assert entry["transport"] == "streamable_http"
+    assert entry["url"] == "https://exp.example.com"
+    # Headers preserve the template (NOT the resolved bearer value).
+    assert entry["headers"]["Authorization"] == "=Bearer {{ $credentials.token }}"
+    # credential_id is exposed; the secret payload itself is never serialized.
+    assert entry["credential_id"] == str(cred.id)
+    assert "SECRET" not in response.text
+
+
+# -- Health polling job ------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_mcp_health_job_skips_when_scheduler_idle() -> None:
+    """The job is idempotent and a no-op when the scheduler isn't running."""
+
+    from app.scheduler import MCP_HEALTH_JOB_ID, get_scheduler, register_mcp_health_job
+
+    scheduler = get_scheduler()
+    assert not scheduler.running
+    register_mcp_health_job()
+    assert scheduler.get_job(MCP_HEALTH_JOB_ID) is None
+
+
+@pytest.mark.asyncio
+async def test_poll_mcp_servers_health_updates_columns(
+    db: AsyncSession, monkeypatch
+) -> None:
+    """One sweep populates ``health_status`` / ``health_polled_at`` for every
+    enabled server, regardless of probe success."""
+
+    from app.scheduler import poll_mcp_servers_health
+
+    ok_server = McpServer(
+        user_id=TEST_USER_ID,
+        name="ok",
+        transport="streamable_http",
+        url="https://ok.example.com",
+    )
+    bad_server = McpServer(
+        user_id=TEST_USER_ID,
+        name="bad",
+        transport="streamable_http",
+        url="https://bad.example.com",
+    )
+    db.add_all([ok_server, bad_server])
+    await db.commit()
+    ok_id = ok_server.id
+    bad_id = bad_server.id
+
+    async def _stub_test_server(_db, server):
+        if server.name == "ok":
+            return {"success": True, "tools": [], "server_info": {}, "error": None}
+        return {
+            "success": False,
+            "tools": [],
+            "server_info": {},
+            "error": "boom",
+        }
+
+    from app.mcp import discovery as mcp_discovery
+
+    monkeypatch.setattr(mcp_discovery, "test_server", _stub_test_server)
+
+    # The job opens its own session via ``async_session()`` — point that at
+    # the test's in-memory engine.
+    from app import scheduler as scheduler_module
+    from tests.conftest import TestSession
+
+    monkeypatch.setattr(scheduler_module, "async_session", TestSession)
+
+    counters = await poll_mcp_servers_health()
+    assert counters["checked"] == 2
+    assert counters["ok"] == 1
+    assert counters["error"] == 1
+
+    # Re-fetch via a fresh session — the job committed its own transaction.
+    async with TestSession() as fresh:
+        ok_row = await fresh.get(McpServer, ok_id)
+        bad_row = await fresh.get(McpServer, bad_id)
+        assert ok_row is not None and ok_row.health_status == "ok"
+        assert ok_row.health_polled_at is not None
+        assert bad_row is not None and bad_row.health_status == "error"
+        assert bad_row.health_message == "boom"
+
+
+# -- Skill prompt ------------------------------------------------------------
+
+
+def test_build_skills_prompt_renders_block() -> None:
+    from app.skills.prompt import build_skills_prompt
+
+    out = build_skills_prompt(
+        [
+            {"name": "Slides", "slug": "slides", "description": "make decks"},
+            {"name": "PDF", "slug": "pdf"},
+        ]
+    )
+    assert "## Available Skills" in out
+    assert "**Slides**: make decks" in out
+    assert "/skills/slides/SKILL.md" in out
+    # Missing description falls back to the placeholder so the line is never empty.
+    assert "**PDF**: (no description)" in out
+
+
+def test_build_skills_prompt_empty_returns_blank() -> None:
+    from app.skills.prompt import build_skills_prompt
+
+    assert build_skills_prompt([]) == ""
+    assert build_skills_prompt([None, None]) == ""  # type: ignore[list-item]
 
 
 @pytest.mark.asyncio

@@ -508,6 +508,15 @@ async def _prepare_agent(
             "![image](/api/conversations/" + cfg.thread_id + "/files/<파일명>) 형식으로 표시하세요."
         )
 
+        # LambChat-style "Available Skills" listing — gives the model the
+        # name/description/slug for each attached skill so it knows which
+        # SKILL.md to open via read_file.
+        from app.skills.prompt import build_skills_prompt
+
+        skills_block = build_skills_prompt(cfg.agent_skills)
+        if skills_block:
+            system_prompt += "\n" + skills_block
+
     memory_sources: list[str] | None = None
     if cfg.agent_id:
         (_DATA_DIR / "agents" / cfg.agent_id).mkdir(parents=True, exist_ok=True)

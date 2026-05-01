@@ -42,6 +42,37 @@ export const skillsApi = {
   fileUrl: (id: string, path: string) =>
     `${API_BASE}/api/skills/${id}/files/${encodeURI(path)}`,
 
+  setFile: (id: string, path: string, content: string) =>
+    apiFetch<Skill>(`/api/skills/${id}/files/${encodeURI(path)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    }),
+
+  deleteFile: (id: string, path: string) =>
+    apiFetch<Skill>(`/api/skills/${id}/files/${encodeURI(path)}`, {
+      method: 'DELETE',
+    }),
+
+  uploadFile: async (id: string, relPath: string, file: File): Promise<Skill> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('rel_path', relPath)
+    const res = await fetch(`${API_BASE}/api/skills/${id}/files`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      const err = body.error ?? {}
+      throw new ApiError(
+        res.status,
+        err.code ?? 'UPLOAD_ERROR',
+        err.message ?? body.detail ?? 'Upload failed',
+      )
+    }
+    return res.json()
+  },
+
   uploadPackage: async (file: File): Promise<Skill> => {
     const formData = new FormData()
     formData.append('file', file)

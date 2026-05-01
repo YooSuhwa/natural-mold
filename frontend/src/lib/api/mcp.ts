@@ -1,7 +1,10 @@
 import { apiFetch } from './client'
 import type {
   McpDiscoverResult,
+  McpExportResponse,
   McpFromRegistryRequest,
+  McpImportRequest,
+  McpImportResult,
   McpProbeRequest,
   McpProbeResult,
   McpRegistryEntry,
@@ -54,4 +57,17 @@ export const mcpApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // -- Import / Export (Claude Desktop compatible) -------------------------
+  /** Bulk-create or upsert MCP servers from a `{mcpServers:{...}}` payload. */
+  importServers: (payload: McpImportRequest) =>
+    apiFetch<McpImportResult>('/api/mcp-servers/import', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  /** Dump all owned MCP servers as a Claude Desktop-compatible JSON. Secrets
+   *  are NOT included — `credential_id` references survive but resolved
+   *  values do not. */
+  exportServers: () =>
+    apiFetch<McpExportResponse>('/api/mcp-servers/export'),
 }

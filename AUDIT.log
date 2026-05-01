@@ -59,3 +59,15 @@
 [2026-05-01T03:45:00Z] satya TOKEN_ROLE_SPLIT button.tsx default variant 재정의 — `bg-primary` (옅은 emerald-100/900, 어두워 보임) → `bg-primary-strong text-white hover:bg-primary-strong/90` (라이트 emerald-600, 다크 emerald-400). 새 `soft` variant 추가 (메시지 박스 톤). 토큰 역할 분리: --primary=surface(메시지 배경), --primary-strong=action(버튼/링크/탭).
 [2026-05-01T04:30:00Z] satya M-MCP1/M-SKILL1_PARTIAL backend 기초 완료 — alembic m26 (mcp_servers: is_system + health_*, mcp_tools: last_seen_at), Skill service set_skill_file/delete_skill_file + frontmatter sync, routers/skills.py PUT/DELETE/POST per-file 엔드포인트. uv run pytest: 674 passed (회귀 0). ruff clean.
 [2026-05-01T04:30:00Z] satya MILESTONE_DEFER 잔여 작업(stdio transport, mcp import/export, health polling, frontend wizard 재설계, skill 멀티파일 에디터)는 후속 PR로 분리 — 한 세션에 안전하게 끝낼 수 없는 규모.
+[2026-05-01T05:00:00Z] satya PROJECT_START "MCP/Skill 고도화 잔여 (M-MCP1/M-SKILL1 완성)" — branch: feature/dialog-shell-and-mcp-skill-base, prev commit ed6ba50
+[2026-05-01T05:00:00Z] satya MILESTONE_CREATED M-MCP1c (#17 stdio+import-export+health+runtime), M-SKILL1c (#18 skill 멀티파일 에디터), M-MCP1d (#19 wizard 재설계+import dialog), M-VERIFY (#20)
+[2026-05-01T05:00:00Z] satya TEAM_SPAWN 젠슨(백엔드) + 저커버그(프론트) + 베조스(QA) — 풀스택, Opus x3
+[2026-05-01T06:25:22Z] zuckerberg S18_DONE Skill 멀티파일 에디터 + Create 3탭 — pnpm build PASS
+[2026-05-01T06:55:00Z] jensen S17_DONE M-MCP1c 백엔드 완성 — stdio + stale + import/export + health job + runtime filter + skill prompt
+[2026-05-01T06:25:00Z] zuckerberg S18_DONE Skill 멀티파일 에디터 (DialogShell.Split + Sidebar) + Create 3탭 (Text/Package/From scratch) — pnpm build PASS, jszip 추가, skill-upload-dialog 삭제
+[2026-05-01T07:30:00Z] jensen S17_DONE M-MCP1c — stdio + stale 보존 + import/export + health job + skill prompt — pytest 684 passed (회귀 0), ruff clean. 라우트 순서 함정(/import,/export를 /{uuid} 위에).
+[2026-05-01T07:30:00Z] satya VERIFICATION_PASS S17,S18 — 백엔드/프론트 둘 다 그린. S19(MCP wizard 재설계) 진행.
+[2026-05-01T07:45:00Z] zuckerberg S19_DONE MCP wizard 재설계 + import dialog + tools 확장 — pnpm build PASS
+[2026-05-01T08:30:00Z] zuckerberg S19_DONE MCP wizard 재설계 (586줄 → DialogShell 3탭 자유 전환) + mcp-import-dialog 신설 + tools 확장(input schema preview + stale 배지) + detail 헤더 is_system/health 표시 — pnpm build PASS
+[2026-05-01T08:35:00Z] bezos VERIFICATION_PASS S20 — backend ruff clean + pytest 684 passed (회귀 0), frontend pnpm lint clean + pnpm build PASS (16 라우트). 모든 마일스톤 그린.
+[2026-05-01T08:35:00Z] satya MILESTONE_DONE M-MCP1 + M-SKILL1 — LambChat 패턴 도입 완료. stdio transport, import/export, health polling, skill 멀티파일 에디터, mcp wizard 재설계 모두 머지 가능 상태.

@@ -242,8 +242,23 @@ async def test_mcp_connect_and_list_interpolates_credentials() -> None:
 
 @pytest.mark.asyncio
 async def test_mcp_connect_and_list_handles_unknown_transport() -> None:
-    """``stdio`` transport returns the documented unsupported error."""
+    """Truly unknown transports surface the documented unsupported error.
+
+    ``stdio`` is now wired up (M-MCP1c S17a) so probe it with a real
+    ``connect_and_list`` call by passing an unsupported transport string
+    instead.
+    """
+
+    result = await mcp_client.connect_and_list(transport="websocket", url=None)
+    assert result["success"] is False
+    assert "not supported" in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_connect_and_list_stdio_requires_command() -> None:
+    """The new stdio branch surfaces a friendly error when ``command`` is
+    missing rather than spawning a half-configured subprocess."""
 
     result = await mcp_client.connect_and_list(transport="stdio", url=None)
     assert result["success"] is False
-    assert "not supported" in result["error"]
+    assert "command" in (result["error"] or "").lower()

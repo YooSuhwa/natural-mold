@@ -109,7 +109,18 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
             icon={<Server className="size-5" />}
             title={server.name}
             description={server.transport}
-            actions={<StatusChip variant={server.status} />}
+            actions={
+              <div className="flex items-center gap-2">
+                {server.is_system ? (
+                  <span className="inline-flex items-center rounded-full bg-status-info/15 px-2 py-0.5 text-xs font-medium text-status-info">
+                    System
+                  </span>
+                ) : null}
+                <StatusChip
+                  variant={server.health_status ?? server.status}
+                />
+              </div>
+            }
           />
           <DialogShell.Body>
             <div className="flex flex-wrap gap-2">

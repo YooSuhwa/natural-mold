@@ -304,3 +304,50 @@ M0(거버넌스+docs+삭제분석) → M1(브랜딩+Cipher) → M2(Credential+Va
 - #18 (프론트): skill-detail-dialog DialogShell.Sidebar + 멀티파일 에디터 (좌 SkillPackageTree, 우 에디터, dirty 마킹)
 - #19 (프론트): mcp-server-wizard 3탭(Basics/Auth/Tools) + transport별 조건부 + 도구 stale 배지 + Import 다이얼로그
 - #20 (검증): backend pytest + frontend lint/build + 시각 회귀
+
+## ── 2026-05-01 후반(2) — MCP/Skill 잔여 작업 (/tth 풀스택) ──
+
+### 사일로 구성 (사티아 결정)
+- 젠슨(백엔드 DRI): #17 stdio + discovery stale + import/export + health polling + agent_runtime enabled 필터 + skill prompt 주입
+- 저커버그(프론트 DRI): #18 skill 멀티파일 에디터 + #19 mcp wizard 재설계 + mcp import dialog
+- 베조스(QA DRI): #20 최종 검증 (pytest + lint + build + 시각 회귀)
+
+### 결정 사항 (불변)
+- 브랜치: feature/dialog-shell-and-mcp-skill-base 위에 추가 커밋
+- DialogShell + 디자인 토큰 인프라(Sprint 1 완료)를 본격 사용
+- 백엔드 m26 마이그레이션 + skill file-level CRUD는 ed6ba50에서 이미 완료 → 이번엔 위에 빌드
+- import/export JSON은 Claude Desktop `{mcpServers: {...}}` 호환 + 우리 확장(transport, credential_id) 허용
+- stdio transport는 mcp.client.stdio.stdio_client 사용 (mcp SDK)
+- mcp-upload-dialog는 skill-create-dialog의 Package 탭으로 흡수 후 삭제
+
+### 파일 경계
+- 젠슨: backend/app/{models,schemas,routers,mcp,services,scheduler,agent_runtime,skills}/* 만 수정
+- 저커버그: frontend/src/* 만 수정 (백엔드 호출만, ts 타입 추가는 OK)
+- 베조스: 검증만, 코드 수정 X (발견 이슈는 ? 프로토콜)
+
+### S18 저커버그(직접 구현) 완료 (2026-05-01) — Skill 멀티파일 에디터 + Create 3탭
+- skill-detail-dialog: DialogShell.Split + Sidebar(260px) + Body로 패키지 skill 멀티파일 편집. text skill은 단일 Textarea 유지(분기). dirty Map<path,content> + remoteCache Map으로 파일별 저장 상태 관리, 다른 파일 클릭 시 unsaved 있으면 confirm. 텍스트/이미지/PDF/binary 분기, SKILL.md는 protected(삭제 hide).
+- skill-create-dialog: DialogShell size=lg height=fixed + 3탭 Tabs(line variant). Text/Package/From-scratch. Scratch 탭은 jszip으로 SKILL.md만 든 zip을 in-browser 빌드 후 /api/skills/upload → onCreated(id) 콜백으로 detail-dialog 자동 오픈.
+- skill-upload-dialog.tsx 삭제, skills/page.tsx의 호출부 단일화(`openCreate('text')` + onCreated→setDetailId).
+- React 19 useEffect setState 회피: loadingFile은 derived(`!cache.has(path)`), 비동기 fetch then/catch 내 setState만 사용.
+- 의존성: jszip 3.10.1 + @types/jszip 추가. cn() 함정 회피용 명시 sm:max-w-none 불필요(DialogShell이 흡수).
+- 검증: pnpm lint clean, pnpm build PASS (16 라우트).
+
+### S17 젠슨(백엔드) 완료 (2026-05-01)
+- **stdio transport (S17a)**: app/mcp/client.py에 _connect_stdio 헬퍼 추가 (asyncio.wait_for + settings.mcp_connection_timeout). discovery._probe가 server.command/args/env_vars도 같이 forward.
+- **stale 도구 보존 (S17b)**: discovery.discover_tools — 사라진 도구 row는 삭제하지 않고 last_seen_at만 stale (agent_mcp_tools 링크 보호). McpToolResponse에 last_seen_at, McpServerResponse에 is_system/health_status/health_polled_at/health_message 노출.
+- **import/export (S17c)**: POST /api/mcp-servers/import (Claude Desktop {mcpServers:{...}} 호환, command만 있으면 stdio 추론, overwrite=false면 skip 카운트). GET /api/mcp-servers/export (credential_id만 노출, 비밀값 미포함, 헤더 템플릿 보존). 라우트는 /{server_id} 위에 등록 (UUID 매칭 충돌 회피).
+- **health polling job (S17d)**: scheduler.poll_mcp_servers_health + register_mcp_health_job (interval 5분, settings.mcp_health_check_interval_minutes). main.lifespan에 등록 추가. discovery.test_server를 host 함수로 호출 → health_status/health_polled_at/health_message 갱신.
+- **runtime + skill prompt (S17e)**: chat_service의 MCP enabled=False 필터는 이미 존재 (line 330-331). app/skills/prompt.py 신설(build_skills_prompt, dict/ORM 모두 수용). executor가 cfg.agent_skills 있을 때 "## Available Skills" 블록을 system_prompt에 append. service.to_runtime_dict에 description 추가.
+- 핵심 발견: import 라우트는 반드시 /{server_id} 동적 라우트 **위에** 두어야 함 (FastAPI는 import/export 문자열을 UUID로 파싱 시도 → 422). 기존 test_discover_drops_stale_tools는 새 동작에 맞게 preserves_stale_tools_and_marks_last_seen으로 재작성 + test_chat_integration의 stdio=unsupported 가정 테스트도 websocket으로 변경.
+- 검증: ruff clean + pytest 684 passed (base 674 + 신규 10개, 회귀 0).
+
+### S19 저커버그(직접 구현) 완료 (2026-05-01) — MCP wizard 재설계 + Import dialog + tools 확장
+- **타입/api/hooks**: McpServer에 is_system/health_status/health_polled_at/health_message 추가, McpTool에 last_seen_at 추가. 신규 McpImportEntry/Request/Result/ExportResponse. mcpApi.importServers/exportServers + useImportMcpServers/useExportMcpServers 추가.
+- **mcp-server-wizard 재설계**: 586→760줄, DialogShell size=lg height=tall로 변환. shadcn Tabs variant=line 3탭(1·Basics / 2·Auth / 3·Tools). 자유 전환(step gate 제거). Header에 ProbeBadge — Probe needed → Probing → OK · N tools → Failed 라이프사이클. Basics 탭: registry quick-start grid + manual section(transport 라디오 3종, stdio면 args TagInput + envVars KV rows, http면 headers KV rows). Auth 탭: CredentialPicker + interpolation 도움말 박스 + Test connection 버튼. Tools 탭: 자동 probe(useEffect+ref guard) + per-tool Checkbox 카드 + parameters count badge + Re-probe.
+- **mcp-import-dialog 신설**: DialogShell size=md height=fixed. Textarea(font-mono) + .json 업로드 + Overwrite Checkbox + 파싱 미리보기(서버 이름 리스트) + import 결과 카운터 칩(created/updated/skipped/errors).
+- **mcp-servers/page.tsx 헤더**: Import + Export + New MCP server 3-button row. Export는 mutation으로 fetch 후 Blob+anchor click 다운로드(파일명 `mcp-servers-YYYY-MM-DD.json`).
+- **mcp-tool-table 확장**: Schema 컬럼 추가(toggle로 row 아래 `<pre>JSON</pre>` expand). disabled 시 row dim + "disabled" 배지. last_seen_at 7일 이전 또는 null이면 "stale" 배지(`bg-status-warn/15`). React.Fragment로 row+schema 묶음.
+- **mcp-server-detail-dialog 헤더**: actions에 is_system "System" 배지(`bg-status-info/15`) + StatusChip은 health_status를 우선 표시(없으면 server.status fallback).
+- 함정/패턴: per-tool enable PATCH 훅이 wizard 단계에 없어 toDisable는 toast.info로 안내(detail 페이지에서 fine-tune). React Fragment에 두 TableRow를 한 키로 묶을 때 `<Fragment key>` 명시 필수.
+- 검증: pnpm lint clean, pnpm build PASS (16 라우트, TS 4.3s).

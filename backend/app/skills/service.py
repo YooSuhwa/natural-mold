@@ -387,7 +387,12 @@ __all__: list[str] = [
 
 # Used by the runtime / agent prep — kept here to avoid a circular import.
 def to_runtime_dict(skill: Skill) -> dict[str, Any]:
-    """Serialize a skill to the dict deep-agents expects."""
+    """Serialize a skill to the dict deep-agents expects.
+
+    ``description`` is included so :func:`app.skills.prompt.build_skills_prompt`
+    can render a meaningful "Available Skills" block without re-fetching the
+    ORM rows.
+    """
 
     return {
         "id": str(skill.id),
@@ -395,4 +400,5 @@ def to_runtime_dict(skill: Skill) -> dict[str, Any]:
         "slug": skill.slug,
         "kind": skill.kind,
         "storage_path": skill.storage_path or "",
+        "description": skill.description or "",
     }
