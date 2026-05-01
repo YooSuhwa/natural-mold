@@ -11,6 +11,7 @@ import { extractText } from './utils'
 import { streamResume } from '@/lib/sse/stream-resume'
 import { streamEdit } from '@/lib/sse/stream-edit'
 import { streamRegenerate } from '@/lib/sse/stream-regenerate'
+import { createStreamGuard } from '@/lib/sse/stream-guard'
 import type { FeedbackAdapter, AttachmentAdapter } from '@assistant-ui/react'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
@@ -114,6 +115,10 @@ export function useChatRuntime({
   const abortRef = useRef<AbortController | null>(null)
   // 가장 최근에 emit된 interrupt_id (resume 시 stale 검증용)
   const lastInterruptIdRef = useRef<string | null>(null)
+  // SSE stream race 차단 — Edit/Regenerate fork 도중 이전 generator의 stale
+  // chunk가 새 stream에 끼어드는 것을 막고, 같은 id 중복 chunk를 dedup한다.
+  // ``createStreamGuard``는 순수 함수라 useState 초기값으로 안전.
+  const streamGuardRef = useRef(createStreamGuard())
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
   const queryClient = useQueryClient()
 
@@ -135,12 +140,14 @@ export function useChatRuntime({
   )
 
   // useCallback 불필요 — abortRef/setIsRunning은 안정 참조, 이벤트 핸들러 내부에서만 호출
-  function prepareStream(): AbortSignal {
+  function prepareStream(): { signal: AbortSignal; token: number } {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
     setIsRunning(true)
-    return controller.signal
+    // stream version 발급 — 이전 stream의 stale event는 이 token 비교로 폐기.
+    const token = streamGuardRef.current.begin()
+    return { signal: controller.signal, token }
   }
 
   // 로드된 메시지 + 스트리밍 중인 메시지 병합
@@ -156,9 +163,19 @@ export function useChatRuntime({
     isRunning,
   })
 
-  /** SSE 스트림 소비 공통 로직 (onNew, onResume 공유) */
+  /** SSE 스트림 소비 공통 로직 (onNew, onResume 공유)
+   *
+   * ``token`` — ``prepareStream()``이 발급한 stream version. 이 stream이 진행
+   * 중인 사이 사용자가 새 stream을 시작하면 (Edit/Regenerate/cancel) version이
+   * 바뀌어 ``isStale(token) === true``가 되고, 이후 chunk는 모두 폐기된다.
+   * AbortController로 fetch는 끊지만 이미 buffer에 yield된 chunk는 막지 못하므로
+   * caller side에서 한 번 더 거른다. */
   const consumeStream = useCallback(
-    async (stream: AsyncGenerator<SSEEvent>, optimisticUserMsg: Message | null) => {
+    async (
+      stream: AsyncGenerator<SSEEvent>,
+      optimisticUserMsg: Message | null,
+      token: number,
+    ) => {
       let accumulated = ''
       const toolCalls: ToolCallInfo[] = []
       const toolResults: Message[] = []
@@ -195,6 +212,12 @@ export function useChatRuntime({
 
       try {
         for await (const event of stream) {
+          // 이 stream이 stale이면(새 stream이 시작됨) 즉시 종료. AbortController로
+          // fetch는 끊지만 이미 yield된 chunk는 막지 못하므로 caller side gate가 필요.
+          if (streamGuardRef.current.isStale(token)) return
+          // 동일 stream 내 같은 id 중복 chunk는 무시 (백엔드가 매 chunk마다
+          // ``{msg_id}-{seq}`` 형식의 unique id를 발행).
+          if (streamGuardRef.current.isDuplicate(event.id)) continue
           switch (event.event) {
             case 'content_delta': {
               accumulated += event.data.content ?? event.data.delta ?? ''
@@ -357,9 +380,9 @@ export function useChatRuntime({
       if (truncateAtIdx !== undefined && truncateAtIdx >= 0) {
         truncateMessagesCache(truncateAtIdx)
       }
-      const signal = prepareStream()
+      const { signal, token } = prepareStream()
       try {
-        await consumeStream(streamFactory(signal), optimisticMsg)
+        await consumeStream(streamFactory(signal), optimisticMsg, token)
       } catch (err) {
         console.error('[useChatRuntime] Stream error:', err)
       }
@@ -495,10 +518,10 @@ export function useChatRuntime({
     async (content: string) => {
       const trimmed = content.trim()
       if (!trimmed) return
-      const signal = prepareStream()
+      const { signal, token } = prepareStream()
       const userMsg = createOptimisticMessage('user', trimmed)
       try {
-        await consumeStream(streamFn(trimmed, signal), userMsg)
+        await consumeStream(streamFn(trimmed, signal), userMsg, token)
       } catch (err) {
         console.error('[useChatRuntime] sendMessage error:', err)
       }

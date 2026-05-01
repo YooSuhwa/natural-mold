@@ -250,7 +250,9 @@ export interface InterruptPayload {
   value: Record<string, unknown>
 }
 
-export type SSEEvent =
+// ``id``: 백엔드가 발행하는 SSE id (``{msg_id}-{seq}`` 형식). caller side에서
+// dedup/stale 폐기에 사용한다. 모든 variant에 공통으로 optional.
+export type SSEEvent = { id?: string } & (
   | { event: 'message_start'; data: { id: string; role: string } }
   | { event: 'content_delta'; data: { delta?: string; content?: string } }
   | { event: 'tool_call_start'; data: { tool_name: string; parameters: Record<string, unknown> } }
@@ -258,6 +260,7 @@ export type SSEEvent =
   | { event: 'message_end'; data: { content: string; usage: Record<string, number> } }
   | { event: 'error'; data: { message: string } }
   | { event: 'interrupt'; data: InterruptPayload }
+)
 
 export interface UserInputQuestion {
   question: string
