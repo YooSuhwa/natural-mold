@@ -6,6 +6,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
+import orjson
 from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 
@@ -15,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 def format_sse(event: str, data: dict[str, Any]) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+    # orjson은 stdlib json 대비 3~5x 빠르고 ensure_ascii 비활성이 기본 (UTF-8
+    # bytes 그대로). SSE는 매 토큰 chunk마다 호출되는 hot path.
+    return f"event: {event}\ndata: {orjson.dumps(data).decode()}\n\n"
 
 
 # Middleware-internal schema names (LLMToolSelectorMiddleware 등) — UI 노출 X.

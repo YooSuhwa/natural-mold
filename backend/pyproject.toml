@@ -11,6 +11,7 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "sse-starlette>=2.0",
     "python-multipart>=0.0.18",  # uploads 라우터의 multipart 폼 파싱 (FastAPI 명시)
+    "orjson>=3.10",  # default_response_class — Rust 기반 빠른 JSON
     # Database
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.30",
