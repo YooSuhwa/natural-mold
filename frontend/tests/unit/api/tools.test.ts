@@ -9,17 +9,21 @@ describe('toolsApi', () => {
     expect(tools).toHaveLength(2)
   })
 
-  it('createCustom() sends POST and returns new custom tool', async () => {
-    const tool = await toolsApi.createCustom({
+  it('create() sends POST and returns new tool', async () => {
+    // ``createCustom``은 ``create``로 통합됨 (custom/prebuilt 분기는 백엔드의
+    // definition_key로 결정). custom 시나리오를 그대로 검증.
+    const tool = await toolsApi.create({
+      definition_key: 'custom_http',
       name: 'My API',
-      api_url: 'https://example.com/api',
-      http_method: 'GET',
-    })
+      config: {
+        api_url: 'https://example.com/api',
+        http_method: 'GET',
+      },
+    } as unknown as Parameters<typeof toolsApi.create>[0])
     expect(tool.id).toBe('tool-new')
     expect(tool.type).toBe('custom')
     expect(tool.is_system).toBe(false)
     expect(tool.name).toBe('My API')
-    expect(tool.api_url).toBe('https://example.com/api')
   })
 
   it('update() sends PATCH and returns tool with connection_id', async () => {

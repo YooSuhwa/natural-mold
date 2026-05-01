@@ -88,15 +88,17 @@ export const handlers = [
     return HttpResponse.json(mockToolList)
   }),
 
-  http.post(`${API_BASE}/api/tools/custom`, async ({ request }) => {
+  // ``POST /api/tools`` (이전 ``/api/tools/custom``)로 통합. definition_key 기반.
+  http.post(`${API_BASE}/api/tools`, async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
+    const config = (body.config ?? {}) as Record<string, unknown>
     return HttpResponse.json({
       ...mockTool,
       id: 'tool-new',
       type: 'custom',
       is_system: false,
       name: body.name,
-      api_url: body.api_url,
+      api_url: config.api_url ?? body.api_url,
     })
   }),
 

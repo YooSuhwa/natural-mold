@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import {
   useTools,
-  useCreateCustomTool,
+  useCreateTool,
   useUpdateTool,
   useDeleteTool,
 } from '@/lib/hooks/use-tools'
@@ -33,17 +33,18 @@ describe('useTools', () => {
   })
 })
 
-describe('useCreateCustomTool', () => {
-  it('creates a custom tool and returns response', async () => {
+describe('useCreateTool', () => {
+  it('creates a tool and returns response', async () => {
     const wrapper = createWrapper()
-    const { result } = renderHook(() => useCreateCustomTool(), { wrapper })
+    const { result } = renderHook(() => useCreateTool(), { wrapper })
     let response: unknown
 
     await act(async () => {
       response = await result.current.mutateAsync({
+        definition_key: 'custom_http',
         name: 'My Tool',
-        api_url: 'https://api.example.com',
-      })
+        config: { api_url: 'https://api.example.com' },
+      } as unknown as Parameters<typeof result.current.mutateAsync>[0])
     })
 
     expect(response).toMatchObject({ id: 'tool-new', type: 'custom' })
