@@ -88,15 +88,17 @@ export const handlers = [
     return HttpResponse.json(mockToolList)
   }),
 
-  http.post(`${API_BASE}/api/tools/custom`, async ({ request }) => {
+  // ``POST /api/tools`` (이전 ``/api/tools/custom``)로 통합. definition_key 기반.
+  http.post(`${API_BASE}/api/tools`, async ({ request }) => {
     const body = (await request.json()) as Record<string, unknown>
+    const config = (body.config ?? {}) as Record<string, unknown>
     return HttpResponse.json({
       ...mockTool,
       id: 'tool-new',
       type: 'custom',
       is_system: false,
       name: body.name,
-      api_url: body.api_url,
+      api_url: config.api_url ?? body.api_url,
     })
   }),
 
@@ -212,7 +214,13 @@ export const handlers = [
   }),
 
   http.get(`${API_BASE}/api/conversations/:id/messages`, () => {
-    return HttpResponse.json(mockMessageList)
+    // ``conversationsApi.messages``는 MessagesEnvelope를 받아 ``messages``만
+    // 반환하므로 mock도 envelope 형태로 맞춰 transform 경로까지 검증되게 한다.
+    return HttpResponse.json({
+      messages: mockMessageList,
+      active_tip_message_id: null,
+      active_checkpoint_id: null,
+    })
   }),
 
   // ── Triggers ───────────────────────────────────────────────────

@@ -1,0 +1,26 @@
+#!/usr/bin/env sh
+
+# Pre-push gate — backend pytest + frontend vitest must both be green before
+# code leaves the laptop. Without this, frontend test debt accumulates silently
+# (47 commits between two "일괄 수정" rounds shipped 67 failing tests in the
+# past — see HANDOFF for the analysis). pnpm lint + pnpm build do NOT catch
+# rendering regressions.
+#
+# 우회가 정말 필요한 경우 ``git push --no-verify`` (예: WIP 브랜치 push) — 단,
+# main으로 머지되는 PR 브랜치에서는 절대 우회 금지.
+
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+echo "▶ backend pytest"
+cd "$ROOT/backend"
+uv run pytest tests/ -q --tb=line
+
+echo ""
+echo "▶ frontend vitest"
+cd "$ROOT/frontend"
+pnpm test --run --reporter=dot
+
+echo ""
+echo "✓ pre-push gate passed"

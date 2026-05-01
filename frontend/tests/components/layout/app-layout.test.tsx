@@ -43,6 +43,11 @@ vi.mock('@/components/ui/sidebar', () => ({
   SidebarMenu: ({ children }: { children: React.ReactNode }) => <ul>{children}</ul>,
   SidebarMenuButton: ({ children }: { children: React.ReactNode }) => <button>{children}</button>,
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
+  SidebarMenuSub: ({ children }: { children: React.ReactNode }) => <ul>{children}</ul>,
+  SidebarMenuSubItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
+  SidebarMenuSubButton: ({ children }: { children: React.ReactNode }) => (
+    <button>{children}</button>
+  ),
   SidebarSeparator: () => <hr />,
   SidebarTrigger: () => <button />,
   useSidebar: () => ({ toggleSidebar: vi.fn(), isMobile: false, state: 'expanded', openMobile: false, setOpenMobile: vi.fn() }),

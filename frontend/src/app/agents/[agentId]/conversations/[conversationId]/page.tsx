@@ -14,7 +14,12 @@ import { useTranslations } from 'next-intl'
 import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
 import type { Agent } from '@/lib/types'
 import { useAgent } from '@/lib/hooks/use-agents'
-import { useMessages, useCreateConversation, conversationKeys } from '@/lib/hooks/use-conversations'
+import {
+  useMessages,
+  useMessagesEnvelope,
+  useCreateConversation,
+  conversationKeys,
+} from '@/lib/hooks/use-conversations'
 import { useQueryClient } from '@tanstack/react-query'
 import { streamChat } from '@/lib/sse/stream-chat'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
@@ -48,6 +53,9 @@ export default function ChatPage({
   const queryClient = useQueryClient()
   const { data: agent } = useAgent(agentId)
   const { data: messages = [], isLoading: messagesLoading } = useMessages(conversationId)
+  // W7-4 — envelope에서 conversation 누적 비용을 가져와 토큰 바에 흘림. 같은
+  // queryKey를 공유하므로 useMessages 외에 추가 fetch 비용은 없다.
+  const { data: envelope } = useMessagesEnvelope(conversationId)
   const createConversation = useCreateConversation(agentId)
   const t = useTranslations('chat.page')
   const setSessionTokenUsage = useSetAtom(sessionTokenUsageAtom)
@@ -96,6 +104,7 @@ export default function ChatPage({
 
   const { runtime, onResume } = useChatRuntime({
     messages,
+    totalCost: envelope?.total_estimated_cost,
     streamFn,
     onStreamEnd,
     conversationId,

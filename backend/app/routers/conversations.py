@@ -308,8 +308,17 @@ async def list_messages(
         db, conv, user_id=user.id, tree=tree
     )
 
+    # W7-4 — conversation 누적 cost. agent.model의 단가로 메시지마다 계산된
+    # ``estimated_cost``를 합산. ``token_usages`` 테이블은 사실상 unused
+    # (Daily Spend가 별도 path로 누적)이라 신뢰할 수 없음.
+    total_cost = sum(
+        (m.usage.estimated_cost or 0.0)
+        for m in messages
+        if m.usage and m.usage.estimated_cost is not None
+    )
+
     if tree is None:
-        return MessagesEnvelope(messages=messages)
+        return MessagesEnvelope(messages=messages, total_estimated_cost=total_cost)
 
     active_tip: uuid.UUID | None = None
     if tree.active_tip_message_id:
@@ -327,7 +336,10 @@ async def list_messages(
         active_tip_message_id=active_tip,
         active_checkpoint_id=conv.active_branch_checkpoint_id
         or tree.active_checkpoint_id,
+        total_estimated_cost=total_cost,
     )
+
+
 
 
 # ---------------------------------------------------------------------------

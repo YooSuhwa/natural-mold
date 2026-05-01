@@ -75,11 +75,11 @@ describe('DashboardPage', () => {
     expect(templateLink).toHaveAttribute('href', '/agents/new/template')
   })
 
-  it('shows hero section with new agent button', () => {
+  it('shows hero greeting + subtitle', () => {
     render(<DashboardPage />)
     expect(screen.getByText('안녕하세요! 👋')).toBeInTheDocument()
-    const newAgentLink = screen.getByText('새 에이전트').closest('a')
-    expect(newAgentLink).toHaveAttribute('href', '/agents/new')
+    // "새 에이전트" 진입은 사이드바로 옮겨졌고 hero에는 quickAction 카드만 노출.
+    expect(screen.getByText('대화로 만들기')).toBeInTheDocument()
   })
 
   it('shows usage summary when data is available', () => {

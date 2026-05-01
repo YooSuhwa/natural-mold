@@ -55,6 +55,7 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     messages: (conversationId: string) => ['messages', conversationId] as const,
   },
   useMessages: (...args: unknown[]) => mockUseMessages(...args),
+  useMessagesEnvelope: () => ({ data: undefined, isLoading: false }),
   useCreateConversation: () => ({
     mutateAsync: vi.fn(),
     isPending: false,
@@ -247,8 +248,14 @@ describe('ChatPage', () => {
     const sendButton = screen.getByRole('button', { name: /전송/ })
     await user.click(sendButton)
 
-    // streamChat should have been called with conversationId and message
-    expect(mockStreamChat).toHaveBeenCalledWith('conv-1', 'Test message', expect.any(AbortSignal))
+    // streamChat: (conversationId, content, signal, options).
+    // P1-7 첨부 도입 후 chat-input이 빈 attachmentIds 배열을 항상 전달.
+    expect(mockStreamChat).toHaveBeenCalledWith(
+      'conv-1',
+      'Test message',
+      expect.any(AbortSignal),
+      expect.objectContaining({ attachmentIds: expect.any(Array) }),
+    )
   })
 
   it('handles stream with tool calls', async () => {

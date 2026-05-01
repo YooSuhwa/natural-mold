@@ -559,10 +559,15 @@
       "completed": "답변 완료",
       "preparing": "질문 준비 중…",
       "inputRequired": "입력이 필요합니다",
-      "confirm": "확인"
+      "confirm": "확인",
+      "expiresIn": "남은 시간",
+      "expired": "만료됨",
+      "autoSkipped": "시간 초과로 건너뜀"
     },
     "clarifying": {
-      "directInput": "직접 입력"
+      "directInput": "직접 입력",
+      "expiresIn": "남은 시간",
+      "expired": "만료됨"
     },
     "page": {
       "settings": "설정",
@@ -575,6 +580,16 @@
     "input": {
       "placeholder": "메시지 입력...",
       "sendButton": "전송"
+    },
+    "tokenUsage": {
+      "title": "토큰 사용량",
+      "total": "합계",
+      "input": "입력",
+      "output": "출력",
+      "cacheCreation": "캐시 생성",
+      "cacheRead": "캐시 적중",
+      "cost": "추정 비용",
+      "toggleAria": "토큰 사용량 보기"
     },
     "message": {
       "toolResult": "도구 결과: ",

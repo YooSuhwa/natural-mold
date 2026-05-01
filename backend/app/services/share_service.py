@@ -79,20 +79,30 @@ async def create_or_get_active_share(
     return link
 
 
-async def revoke_share(db: AsyncSession, conversation_id: uuid.UUID) -> bool:
+async def revoke_share(db: AsyncSession, conversation_id: uuid.UUID) -> list[str]:
     """Soft-delete every active share link for the conversation.
 
-    Single UPDATE — atomic, race-safe, one round-trip. Returns ``True`` when
-    at least one row was revoked.
+    Returns the list of tokens that were just revoked so the caller can drop
+    them from any auth-free snapshot cache. Empty list means the conversation
+    had no active share to begin with (idempotent).
     """
-    result = await db.execute(
+    token_result = await db.execute(
+        select(ShareLink.share_token)
+        .where(ShareLink.conversation_id == conversation_id)
+        .where(ShareLink.revoked_at.is_(None))
+    )
+    tokens = [token for (token,) in token_result.all()]
+    if not tokens:
+        return []
+
+    await db.execute(
         update(ShareLink)
         .where(ShareLink.conversation_id == conversation_id)
         .where(ShareLink.revoked_at.is_(None))
         .values(revoked_at=datetime.now(UTC).replace(tzinfo=None))
     )
     await db.commit()
-    return (result.rowcount or 0) > 0
+    return tokens
 
 
 async def get_share_by_token(db: AsyncSession, token: str) -> ShareLink | None:

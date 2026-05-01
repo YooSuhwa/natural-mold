@@ -10,15 +10,21 @@ import orjson
 from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 
-from app.agent_runtime.message_utils import content_to_text
+from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
 
 logger = logging.getLogger(__name__)
 
 
-def format_sse(event: str, data: dict[str, Any]) -> str:
+def format_sse(event: str, data: dict[str, Any], *, event_id: str | None = None) -> str:
     # orjson은 stdlib json 대비 3~5x 빠르고 ensure_ascii 비활성이 기본 (UTF-8
     # bytes 그대로). SSE는 매 토큰 chunk마다 호출되는 hot path.
-    return f"event: {event}\ndata: {orjson.dumps(data).decode()}\n\n"
+    #
+    # ``event_id`` (선택): SSE 표준 ``id:`` 필드. 클라이언트가 동일 stream 재시도
+    # 시 중복 이벤트를 dedup하거나 stale 이벤트를 폐기할 수 있게 한다.
+    payload = orjson.dumps(data).decode()
+    if event_id:
+        return f"event: {event}\nid: {event_id}\ndata: {payload}\n\n"
+    return f"event: {event}\ndata: {payload}\n\n"
 
 
 # Middleware-internal schema names (LLMToolSelectorMiddleware 등) — UI 노출 X.
@@ -63,7 +69,17 @@ async def stream_agent_response(
     """
     msg_id = str(uuid.uuid4())
 
-    yield format_sse("message_start", {"id": msg_id, "role": "assistant"})
+    # 시퀀스 카운터 — SSE id 필드를 ``{msg_id}-{seq}``로 발행해서 같은 stream
+    # 내 dedup이 가능하게 한다. seq는 closure로 주입되어 emit 헬퍼 안에서만
+    # mutate된다.
+    seq = 0
+
+    def emit(event: str, data: dict[str, Any]) -> str:
+        nonlocal seq
+        seq += 1
+        return format_sse(event, data, event_id=f"{msg_id}-{seq}")
+
+    yield emit("message_start", {"id": msg_id, "role": "assistant"})
 
     # None → LangGraph time-travel resume (no new input, just re-run from
     #   the configured checkpoint state). Used by regenerate to produce a
@@ -113,7 +129,7 @@ async def stream_agent_response(
                             # Flush pending text before entering JSON buffering
                             if _pending:
                                 full_content += _pending
-                                yield format_sse("content_delta", {"delta": _pending})
+                                yield emit("content_delta", {"delta": _pending})
                                 _pending = ""
                             _brace_depth = 1
                             _buf = ch
@@ -129,14 +145,14 @@ async def stream_agent_response(
                                         _buf = ""
                                     else:
                                         full_content += _buf
-                                        yield format_sse("content_delta", {"delta": _buf})
+                                        yield emit("content_delta", {"delta": _buf})
                                         _buf = ""
                         else:
                             _pending += ch
                     # Flush remaining pending text from this LLM chunk
                     if _pending:
                         full_content += _pending
-                        yield format_sse("content_delta", {"delta": _pending})
+                        yield emit("content_delta", {"delta": _pending})
 
             if hasattr(msg, "tool_calls") and msg.tool_calls:
                 for tc in msg.tool_calls:
@@ -152,7 +168,7 @@ async def stream_agent_response(
                         if key in emitted_tool_call_keys:
                             continue
                         emitted_tool_call_keys.add(key)
-                    yield format_sse(
+                    yield emit(
                         "tool_call_start",
                         {
                             "tool_name": tc_name,
@@ -164,7 +180,7 @@ async def stream_agent_response(
                 tool_name = msg.name if hasattr(msg, "name") else ""
                 # Internal middleware tool result도 UI 노출 X (start와 대칭)
                 if tool_name not in _INTERNAL_TOOL_NAMES:
-                    yield format_sse(
+                    yield emit(
                         "tool_call_result",
                         {
                             "tool_name": tool_name,
@@ -174,10 +190,17 @@ async def stream_agent_response(
                         },
                     )
 
-            if hasattr(msg, "usage_metadata") and msg.usage_metadata:
+            # LangChain ``usage_metadata``는 input/output 외에
+            # ``input_token_details``로 cache_creation/cache_read를 분리해 전달
+            # (Anthropic / OpenAI prompt caching). fetch 경로(``message_utils``)와
+            # 동일한 평탄화 헬퍼를 재사용해 두 경로의 shape을 통일한다.
+            extracted = extract_usage_breakdown(msg)
+            if extracted is not None:
                 usage_data = {
-                    "prompt_tokens": msg.usage_metadata.get("input_tokens", 0),
-                    "completion_tokens": msg.usage_metadata.get("output_tokens", 0),
+                    "prompt_tokens": extracted.prompt_tokens,
+                    "completion_tokens": extracted.completion_tokens,
+                    "cache_creation_tokens": extracted.cache_creation_tokens,
+                    "cache_read_tokens": extracted.cache_read_tokens,
                 }
 
     except GraphInterrupt:
@@ -185,7 +208,7 @@ async def stream_agent_response(
         # 아래 aget_state에서 interrupt 이벤트를 emit
         was_interrupted = True
     except Exception as e:
-        yield format_sse("error", {"message": str(e)})
+        yield emit("error", {"message": str(e)})
 
     # Flush any remaining buffer (incomplete JSON = not middleware output)
     if _buf:
@@ -198,7 +221,7 @@ async def stream_agent_response(
             for task in state.tasks:
                 if task.interrupts:
                     for intr in task.interrupts:
-                        yield format_sse(
+                        yield emit(
                             "interrupt",
                             {
                                 "interrupt_id": str(getattr(intr, "ns", "")),
@@ -210,7 +233,7 @@ async def stream_agent_response(
     except Exception:
         logger.warning("aget_state failed (interrupt check)", exc_info=True)
         if was_interrupted:
-            yield format_sse(
+            yield emit(
                 "interrupt",
                 {
                     "interrupt_id": "",
@@ -229,4 +252,4 @@ async def stream_agent_response(
     if usage_sink is not None and usage_data:
         usage_sink.update(usage_data)
 
-    yield format_sse("message_end", {"usage": usage_data, "content": full_content})
+    yield emit("message_end", {"usage": usage_data, "content": full_content})

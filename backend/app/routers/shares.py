@@ -8,6 +8,10 @@ Two shapes:
 - ``/api/shares/{token}`` and ``/api/shares/{token}/messages`` (no auth) —
   public visitor surface returning a sanitized snapshot. ``404`` is returned
   for revoked / unknown tokens to avoid leaking link existence.
+
+Public endpoints are rate-limited per IP (``slowapi``) and back the response
+with a tiny TTL snapshot cache keyed on the conversation's active branch
+checkpoint — new turns naturally bust the cache without manual invalidation.
 """
 
 from __future__ import annotations
@@ -15,18 +19,20 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import conversation_not_found, share_not_found
+from app.rate_limit import limiter
 from app.schemas.conversation import MessagesEnvelope
 from app.schemas.share import (
     SharedAgentBrief,
     SharedConversationView,
     ShareLinkResponse,
 )
-from app.services import chat_service, share_service
+from app.services import chat_service, share_cache, share_service
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +97,11 @@ async def revoke_share(
 ) -> None:
     """Revoke any active share link for the conversation. Idempotent."""
     await _require_owned_conversation(db, conversation_id, user)
-    await share_service.revoke_share(db, conversation_id)
+    revoked_tokens = await share_service.revoke_share(db, conversation_id)
+    # Drop cached snapshots so a stale (token, checkpoint) within TTL can't
+    # outlive the revoke. Cheap: at most one active token per conversation.
+    for token in revoked_tokens:
+        share_cache.invalidate_token(token)
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +110,9 @@ async def revoke_share(
 
 
 @router.get("/api/shares/{share_token}", response_model=SharedConversationView)
+@limiter.limit(settings.share_public_rate_limit)
 async def get_public_share(
+    request: Request,
     share_token: str,
     db: AsyncSession = Depends(get_db),
 ) -> SharedConversationView:
@@ -115,11 +127,16 @@ async def get_public_share(
         raise share_not_found()
     link, conversation, agent = bundle
 
+    checkpoint_id = conversation.active_branch_checkpoint_id
+    cached = share_cache.get_snapshot(share_token, checkpoint_id)
+    if cached is not None:
+        return cached
+
     messages = await chat_service.list_messages_from_checkpointer(
         db, conversation, user_id=None
     )
 
-    return SharedConversationView(
+    snapshot = SharedConversationView(
         share_token=link.share_token,
         conversation_title=conversation.title,
         conversation_created_at=conversation.created_at,
@@ -135,10 +152,14 @@ async def get_public_share(
         messages=messages,
         shared_at=link.created_at,
     )
+    share_cache.put_snapshot(share_token, checkpoint_id, snapshot)
+    return snapshot
 
 
 @router.get("/api/shares/{share_token}/messages", response_model=MessagesEnvelope)
+@limiter.limit(settings.share_public_rate_limit)
 async def get_public_share_messages(
+    request: Request,
     share_token: str,
     db: AsyncSession = Depends(get_db),
 ) -> MessagesEnvelope:
@@ -149,11 +170,21 @@ async def get_public_share_messages(
     if bundle is None:
         raise share_not_found()
     _, conversation, _ = bundle
+
+    checkpoint_id = conversation.active_branch_checkpoint_id
+    # ``SharedConversationView``와 같은 token이지만 envelope은 shape이 다르므로
+    # share_cache가 별도 namespace key로 캡슐화한다.
+    cached = share_cache.get_envelope(share_token, checkpoint_id)
+    if cached is not None:
+        return cached
+
     messages = await chat_service.list_messages_from_checkpointer(
         db, conversation, user_id=None
     )
-    return MessagesEnvelope(
+    envelope = MessagesEnvelope(
         messages=messages,
         active_tip_message_id=None,
-        active_checkpoint_id=conversation.active_branch_checkpoint_id,
+        active_checkpoint_id=checkpoint_id,
     )
+    share_cache.put_envelope(share_token, checkpoint_id, envelope)
+    return envelope

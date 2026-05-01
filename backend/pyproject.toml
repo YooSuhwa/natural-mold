@@ -55,6 +55,8 @@ dependencies = [
     "langchain-mcp-adapters>=0.2.2",
     "psycopg-binary>=3.3.3",
     "truststore>=0.10.4",
+    # Rate limiting (public share endpoints)
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]

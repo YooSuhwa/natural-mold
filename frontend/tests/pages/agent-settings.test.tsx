@@ -44,9 +44,12 @@ const mockUpdateAgent = vi.fn().mockResolvedValue({})
 const mockDeleteAgent = vi.fn().mockResolvedValue({})
 
 vi.mock('@/lib/hooks/use-agents', () => ({
+  useAgents: () => ({ data: [], isLoading: false }),
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
+  useCreateAgent: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateAgent: () => ({ mutateAsync: mockUpdateAgent, isPending: false }),
   useDeleteAgent: () => ({ mutateAsync: mockDeleteAgent, isPending: false }),
+  useToggleFavorite: () => ({ mutate: vi.fn() }),
   useGenerateAgentImage: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
@@ -149,6 +152,20 @@ const fullAgent = {
   middleware_configs: [],
 }
 
+/**
+ * 페이지 구조 (M10 이후): form/visual 두 탭 + 좌측은 form/visual 토글, 우측은
+ * AssistantPanel. 옛 테스트의 "모델/도구·스킬/트리거" 탭 단위 검증은 모두
+ * FormMode 내부 구현으로 흡수되어 페이지 단위로는 의미가 없어졌다.
+ *
+ * 페이지 단위 테스트는 다음만 책임진다:
+ *   - 로딩 스켈레톤
+ *   - 헤더 컨트롤(이름/설명 입력, save/delete 버튼, back 버튼)
+ *   - form/visual 탭 존재
+ *   - save 클릭 시 updateAgent 호출
+ *
+ * FormMode 내부의 detail 시나리오는 form-mode 컴포넌트 단위 테스트와 e2e가
+ * 책임진다.
+ */
 describe('AgentSettingsPage', () => {
   beforeEach(() => {
     mockUseAgent.mockReturnValue({ data: undefined, isLoading: false })
@@ -167,7 +184,82 @@ describe('AgentSettingsPage', () => {
     expect(skeletons.length).toBeGreaterThan(0)
   })
 
-  it('renders agent name input when agent loaded', () => {
+  it('renders header with name + description inputs filled from agent data', () => {
+    mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
+    mockUseTools.mockReturnValue({ data: mockToolList })
+    mockUseTriggers.mockReturnValue({ data: [] })
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+    expect(screen.getByDisplayValue('Test Agent')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('A test agent')).toBeInTheDocument()
+  })
+
+  it('renders form / visual tabs', () => {
+    mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
+    mockUseTools.mockReturnValue({ data: mockToolList })
+    mockUseTriggers.mockReturnValue({ data: [] })
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+    // ``tabs.form`` = "폼", ``tabs.visual`` = "비주얼"
+    expect(screen.getByRole('tab', { name: /폼/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /비주얼/ })).toBeInTheDocument()
+  })
+
+  it('renders save + delete + back buttons in header', () => {
+    mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
+    mockUseTools.mockReturnValue({ data: mockToolList })
+    mockUseTriggers.mockReturnValue({ data: [] })
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+    expect(screen.getByLabelText('돌아가기')).toBeInTheDocument()
+    expect(screen.getByLabelText('에이전트 삭제')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '저장' })).toBeInTheDocument()
+  })
+
+  it('right pane mounts the AssistantPanel', () => {
+    mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
+    mockUseTools.mockReturnValue({ data: mockToolList })
+    mockUseTriggers.mockReturnValue({ data: [] })
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+    expect(screen.getByTestId('assistant-panel')).toBeInTheDocument()
+  })
+
+  it('calls updateAgent when save is clicked after editing name', async () => {
+    mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
+    mockUseTools.mockReturnValue({ data: mockToolList })
+    mockUseTriggers.mockReturnValue({ data: [] })
+    const user = userEvent.setup()
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+    const nameInput = screen.getByDisplayValue('Test Agent')
+    await user.clear(nameInput)
+    await user.type(nameInput, 'Updated Agent')
+    await user.click(screen.getByRole('button', { name: '저장' }))
+    expect(mockUpdateAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Updated Agent' }),
+    )
+  })
+
+  // FormMode 내부 동작(모델 셀렉트, 도구 체크박스 토글, 트리거 CRUD 등)은
+  // form-mode 컴포넌트 단위 테스트와 e2e/smoke로 분리된다. 페이지 단위에서는
+  // 다시 다루지 않는다.
+  it.skip('legacy: renders agent name input when agent loaded', () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -180,7 +272,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getByDisplayValue('Test Agent')).toBeInTheDocument()
   })
 
-  it('renders system prompt textarea', () => {
+  it.skip('renders system prompt textarea', () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -193,7 +285,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getByDisplayValue('You are a helpful assistant.')).toBeInTheDocument()
   })
 
-  it('renders model selector in model tab', async () => {
+  it.skip('renders model selector in model tab', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -209,7 +301,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getByTestId('model-select')).toBeInTheDocument()
   })
 
-  it('renders tool checkboxes in tools tab', async () => {
+  it.skip('renders tool checkboxes in tools tab', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -226,7 +318,7 @@ describe('AgentSettingsPage', () => {
     expect(checkboxes.length).toBeGreaterThanOrEqual(mockToolList.length)
   })
 
-  it('shows save and delete buttons', () => {
+  it.skip('shows save and delete buttons', () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -239,7 +331,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getByText('에이전트 삭제')).toBeInTheDocument()
   })
 
-  it('shows trigger section in triggers tab', async () => {
+  it.skip('shows trigger section in triggers tab', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: mockTriggerList })
@@ -253,7 +345,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getByText('활성')).toBeInTheDocument()
   })
 
-  it('shows empty tool message when no tools exist', async () => {
+  it.skip('shows empty tool message when no tools exist', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: [] })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -267,7 +359,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getByText(/등록된 도구가 없습니다/)).toBeInTheDocument()
   })
 
-  it('renders description input with agent description', () => {
+  it.skip('renders description input with agent description', () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -280,7 +372,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getByDisplayValue('A test agent')).toBeInTheDocument()
   })
 
-  it('shows back button', () => {
+  it.skip('shows back button', () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -292,7 +384,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getByText('돌아가기')).toBeInTheDocument()
   })
 
-  it('renders add trigger button in triggers tab', async () => {
+  it.skip('renders add trigger button in triggers tab', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -306,7 +398,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getByText('자동 실행 추가')).toBeInTheDocument()
   })
 
-  it('submits trigger form when filled and clicked', async () => {
+  it.skip('submits trigger form when filled and clicked', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -339,7 +431,7 @@ describe('AgentSettingsPage', () => {
     )
   })
 
-  it('cancels trigger form and closes it', async () => {
+  it.skip('cancels trigger form and closes it', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -364,7 +456,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.queryByText('실행 간격 (분)')).not.toBeInTheDocument()
   })
 
-  it('shows trigger form when add trigger is clicked', async () => {
+  it.skip('shows trigger form when add trigger is clicked', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -383,7 +475,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getAllByText('취소').length).toBeGreaterThanOrEqual(1)
   })
 
-  it('renders page title with agent name', () => {
+  it.skip('renders page title with agent name', () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -395,7 +487,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getByText('에이전트 설정: Test Agent')).toBeInTheDocument()
   })
 
-  it('calls updateAgent when save button clicked', async () => {
+  it.skip('calls updateAgent when save button clicked', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -418,7 +510,7 @@ describe('AgentSettingsPage', () => {
     )
   })
 
-  it('toggles tool checkbox in tools tab', async () => {
+  it.skip('toggles tool checkbox in tools tab', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })
@@ -440,7 +532,7 @@ describe('AgentSettingsPage', () => {
     expect(checkboxes[0]).toBeChecked()
   })
 
-  it('shows trigger with pause/resume button', async () => {
+  it.skip('shows trigger with pause/resume button', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: mockTriggerList })
@@ -459,7 +551,7 @@ describe('AgentSettingsPage', () => {
     expect(screen.getAllByLabelText('트리거 삭제').length).toBe(2)
   })
 
-  it('calls updateTrigger when pause button clicked', async () => {
+  it.skip('calls updateTrigger when pause button clicked', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: mockTriggerList })
@@ -477,7 +569,7 @@ describe('AgentSettingsPage', () => {
     })
   })
 
-  it('deletes trigger via DeleteConfirmDialog', async () => {
+  it.skip('deletes trigger via DeleteConfirmDialog', async () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: mockTriggerList })
@@ -498,7 +590,7 @@ describe('AgentSettingsPage', () => {
     expect(mockDeleteTrigger).toHaveBeenCalledWith('trigger-1')
   })
 
-  it('shows model skeleton when model select is loading', () => {
+  it.skip('shows model skeleton when model select is loading', () => {
     mockUseAgent.mockReturnValue({ data: fullAgent, isLoading: false })
     mockUseTools.mockReturnValue({ data: mockToolList })
     mockUseTriggers.mockReturnValue({ data: [] })

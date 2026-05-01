@@ -37,6 +37,23 @@ def test_format_sse_complex_data():
     assert data["usage"]["prompt_tokens"] == 10
 
 
+def test_format_sse_with_event_id_emits_id_line():
+    result = format_sse("content_delta", {"delta": "hi"}, event_id="msg-1-3")
+    assert "id: msg-1-3\n" in result
+    # event/id/data 순서 — 클라이언트 파서가 라인 단위로 처리하므로 무관하지만
+    # 서버 형식 일관성을 위해 검증.
+    lines = result.strip().split("\n")
+    assert lines[0] == "event: content_delta"
+    assert lines[1] == "id: msg-1-3"
+    assert lines[2].startswith("data: ")
+
+
+def test_format_sse_without_event_id_omits_id_line():
+    result = format_sse("content_delta", {"delta": "hi"})
+    assert "id: " not in result
+    assert result.startswith("event: content_delta\ndata: ")
+
+
 # ---------------------------------------------------------------------------
 # Helpers for mock agent
 # ---------------------------------------------------------------------------
@@ -177,6 +194,66 @@ async def test_stream_usage_metadata():
     end_data = json.loads(end_event.split("data: ")[1].strip())
     assert end_data["usage"]["prompt_tokens"] == 100
     assert end_data["usage"]["completion_tokens"] == 50
+    # cache_creation/cache_read는 details가 없으면 0으로 채워진다.
+    assert end_data["usage"]["cache_creation_tokens"] == 0
+    assert end_data["usage"]["cache_read_tokens"] == 0
+
+
+@pytest.mark.asyncio
+async def test_stream_usage_metadata_with_cache_tokens():
+    """LangChain ``usage_metadata.input_token_details``의 cache 토큰을 평탄화한다."""
+    usage = {
+        "input_tokens": 1200,
+        "output_tokens": 80,
+        "input_token_details": {
+            "cache_creation": 800,
+            "cache_read": 300,
+        },
+    }
+    ai_chunk = _make_ai_chunk("done", usage_metadata=usage)
+    agent = MockAgent([(ai_chunk, {})])
+
+    events = [e async for e in stream_agent_response(agent, [], {})]
+    end_event = [e for e in events if "message_end" in e][0]
+    end_data = json.loads(end_event.split("data: ")[1].strip())
+
+    assert end_data["usage"]["prompt_tokens"] == 1200
+    assert end_data["usage"]["completion_tokens"] == 80
+    assert end_data["usage"]["cache_creation_tokens"] == 800
+    assert end_data["usage"]["cache_read_tokens"] == 300
+
+
+@pytest.mark.asyncio
+async def test_stream_emits_unique_event_ids_per_chunk():
+    """모든 SSE chunk는 ``id: {msg_id}-{seq}`` 형태의 고유 id를 갖는다.
+
+    클라이언트가 dedup 또는 stale 폐기에 사용. seq는 단조 증가.
+    """
+    chunks = [
+        (_make_ai_chunk("Hello "), {}),
+        (_make_tool_call_chunk("web_search", {"q": "weather"}), {}),
+        (_make_tool_result_chunk("web_search", "result"), {}),
+        (_make_ai_chunk("done", usage_metadata={"input_tokens": 5, "output_tokens": 3}), {}),
+    ]
+    agent = MockAgent(chunks)
+    events = [e async for e in stream_agent_response(agent, [], {})]
+
+    ids: list[str] = []
+    for raw in events:
+        for line in raw.split("\n"):
+            if line.startswith("id: "):
+                ids.append(line[4:])
+
+    # 모든 SSE 이벤트가 id를 갖고, 모두 unique
+    assert len(ids) == len(events), "every emitted SSE event must carry an id line"
+    assert len(set(ids)) == len(ids), "event ids must be unique across the stream"
+
+    # 형식: ``{uuid}-{seq}``, seq는 1..N
+    msg_id = ids[0].rsplit("-", 1)[0]
+    seqs = [int(i.rsplit("-", 1)[1]) for i in ids]
+    assert seqs == list(range(1, len(ids) + 1))
+    # 모두 같은 message id 접두사
+    assert all(i.startswith(f"{msg_id}-") for i in ids)
 
 
 @pytest.mark.asyncio

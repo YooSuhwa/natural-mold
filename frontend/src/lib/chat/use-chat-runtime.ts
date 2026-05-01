@@ -1,16 +1,23 @@
 'use client'
 
-import { useRef, useState, useCallback, useMemo } from 'react'
+import { useRef, useState, useCallback, useMemo, useEffect } from 'react'
 import { useExternalStoreRuntime, useExternalMessageConverter } from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
 import { useQueryClient } from '@tanstack/react-query'
-import type { Message, SSEEvent, ToolCallInfo, InterruptPayload } from '@/lib/types'
+import type {
+  Message,
+  SSEEvent,
+  ToolCallInfo,
+  InterruptPayload,
+  TokenUsageBreakdown,
+} from '@/lib/types'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
 import { streamResume } from '@/lib/sse/stream-resume'
 import { streamEdit } from '@/lib/sse/stream-edit'
 import { streamRegenerate } from '@/lib/sse/stream-regenerate'
+import { createStreamGuard } from '@/lib/sse/stream-guard'
 import type { FeedbackAdapter, AttachmentAdapter } from '@assistant-ui/react'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
@@ -68,6 +75,10 @@ type ResumeFn = (
 interface UseChatRuntimeOptions {
   /** TanStack Query에서 가져온 메시지 목록 */
   messages: Message[]
+  /** W7-4 — 서버가 ``token_usages`` 합으로 발행한 conversation 누적 비용(USD).
+   *  fetch 경로의 ``MessageResponse.usage``에는 ``estimated_cost``가 비어 있어서
+   *  여기로 흘려야 Composer 토큰 바의 가격이 새로고침 후에도 유지된다. */
+  totalCost?: number
   /** SSE 스트리밍 함수 (streamChat 또는 streamAssistant) */
   streamFn: StreamFn
   /** 스트리밍 완료 후 호출. didMutate=true면 mutation 도구가 호출되었다는 의미 (invalidate 권장) */
@@ -95,6 +106,7 @@ interface UseChatRuntimeOptions {
  */
 export function useChatRuntime({
   messages,
+  totalCost,
   streamFn,
   onStreamEnd,
   onInterrupt,
@@ -114,6 +126,10 @@ export function useChatRuntime({
   const abortRef = useRef<AbortController | null>(null)
   // 가장 최근에 emit된 interrupt_id (resume 시 stale 검증용)
   const lastInterruptIdRef = useRef<string | null>(null)
+  // SSE stream race 차단 — Edit/Regenerate fork 도중 이전 generator의 stale
+  // chunk가 새 stream에 끼어드는 것을 막고, 같은 id 중복 chunk를 dedup한다.
+  // ``createStreamGuard``는 순수 함수라 useState 초기값으로 안전.
+  const streamGuardRef = useRef(createStreamGuard())
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
   const queryClient = useQueryClient()
 
@@ -135,12 +151,14 @@ export function useChatRuntime({
   )
 
   // useCallback 불필요 — abortRef/setIsRunning은 안정 참조, 이벤트 핸들러 내부에서만 호출
-  function prepareStream(): AbortSignal {
+  function prepareStream(): { signal: AbortSignal; token: number } {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
     setIsRunning(true)
-    return controller.signal
+    // stream version 발급 — 이전 stream의 stale event는 이 token 비교로 폐기.
+    const token = streamGuardRef.current.begin()
+    return { signal: controller.signal, token }
   }
 
   // 로드된 메시지 + 스트리밍 중인 메시지 병합
@@ -149,6 +167,30 @@ export function useChatRuntime({
     [messages, streamingMessages],
   )
 
+  // W7-2 — Composer 토큰 바는 ``allMessages``의 usage 합으로 derive한다.
+  // 이전 동작은 SSE ``message_end``에서만 누적했으므로 새로고침/대화 전환
+  // 후 atom이 0으로 reset되어 토큰 바가 사라졌다. messages가 fetch되면
+  // ``MessageResponse.usage``(W7-2)에 4종이 들어 있으므로 절대값을 다시 계산.
+  // 스트리밍 중에도 ``streamingMessages``의 ``messageUsage``가 합산되어 같은
+  // 값이 유지된다.
+  useEffect(() => {
+    let inputTokens = 0
+    let outputTokens = 0
+    let perMessageCost = 0
+    for (const m of allMessages) {
+      if (!m.usage) continue
+      inputTokens += m.usage.prompt_tokens
+      outputTokens += m.usage.completion_tokens
+      perMessageCost += m.usage.estimated_cost ?? 0
+    }
+    // server-side 합산값(``token_usages`` 테이블)이 있으면 우선. 없으면 메시지
+    // 별 cost를 합산. fetch 경로의 메시지엔 보통 ``estimated_cost``가 비어 있어
+    // 0이지만, streaming.py가 ``message_end``에 cost를 박은 streaming 메시지는
+    // 살아있어 실시간 표시에도 약간 도움.
+    const cost = totalCost ?? perMessageCost
+    setTokenUsage({ inputTokens, outputTokens, cost })
+  }, [allMessages, totalCost, setTokenUsage])
+
   // Message[] → ThreadMessage[] 변환 (tool 메시지 자동 병합)
   const threadMessages = useExternalMessageConverter({
     callback: convertMessage,
@@ -156,14 +198,27 @@ export function useChatRuntime({
     isRunning,
   })
 
-  /** SSE 스트림 소비 공통 로직 (onNew, onResume 공유) */
+  /** SSE 스트림 소비 공통 로직 (onNew, onResume 공유)
+   *
+   * ``token`` — ``prepareStream()``이 발급한 stream version. 이 stream이 진행
+   * 중인 사이 사용자가 새 stream을 시작하면 (Edit/Regenerate/cancel) version이
+   * 바뀌어 ``isStale(token) === true``가 되고, 이후 chunk는 모두 폐기된다.
+   * AbortController로 fetch는 끊지만 이미 buffer에 yield된 chunk는 막지 못하므로
+   * caller side에서 한 번 더 거른다. */
   const consumeStream = useCallback(
-    async (stream: AsyncGenerator<SSEEvent>, optimisticUserMsg: Message | null) => {
+    async (
+      stream: AsyncGenerator<SSEEvent>,
+      optimisticUserMsg: Message | null,
+      token: number,
+    ) => {
       let accumulated = ''
       const toolCalls: ToolCallInfo[] = []
       const toolResults: Message[] = []
       const assistantId = `stream-${crypto.randomUUID()}`
       const assistantCreatedAt = new Date().toISOString()
+      // W7 — message_end 시점에 채워지는 4종 토큰 사용량. assistant 메시지에
+      // 박혀 푸터 hover 팝오버가 직접 참조한다.
+      let messageUsage: TokenUsageBreakdown | null = null
 
       // tool_calls 배열은 토큰 단위로 재생성하지 않고 dirty 시점에만 스냅샷.
       // content_delta가 빈번해도 cachedToolCalls 참조가 유지되어 React.memo 자식이
@@ -184,6 +239,7 @@ export function useChatRuntime({
           tool_calls: cachedToolCalls,
           tool_call_id: null,
           created_at: assistantCreatedAt,
+          usage: messageUsage,
         }
         const msgs: Message[] = []
         if (optimisticUserMsg) msgs.push(optimisticUserMsg)
@@ -195,6 +251,12 @@ export function useChatRuntime({
 
       try {
         for await (const event of stream) {
+          // 이 stream이 stale이면(새 stream이 시작됨) 즉시 종료. AbortController로
+          // fetch는 끊지만 이미 yield된 chunk는 막지 못하므로 caller side gate가 필요.
+          if (streamGuardRef.current.isStale(token)) return
+          // 동일 stream 내 같은 id 중복 chunk는 무시 (백엔드가 매 chunk마다
+          // ``{msg_id}-{seq}`` 형식의 unique id를 발행).
+          if (streamGuardRef.current.isDuplicate(event.id)) continue
           switch (event.event) {
             case 'content_delta': {
               accumulated += event.data.content ?? event.data.delta ?? ''
@@ -283,22 +345,26 @@ export function useChatRuntime({
               break
             }
             case 'message_end': {
-              // 토큰 사용량 업데이트
+              // 토큰 사용량 업데이트 — 세션 누적 + 메시지 단위 4종 모두.
               const usage = (
                 event.data as {
-                  usage?: {
-                    prompt_tokens?: number
-                    completion_tokens?: number
-                    estimated_cost?: number
-                  }
+                  usage?: Partial<TokenUsageBreakdown>
                 }
               ).usage
               if (usage) {
-                setTokenUsage((prev) => ({
-                  inputTokens: prev.inputTokens + (usage.prompt_tokens ?? 0),
-                  outputTokens: prev.outputTokens + (usage.completion_tokens ?? 0),
-                  cost: prev.cost + (usage.estimated_cost ?? 0),
-                }))
+                const breakdown: TokenUsageBreakdown = {
+                  prompt_tokens: usage.prompt_tokens ?? 0,
+                  completion_tokens: usage.completion_tokens ?? 0,
+                  cache_creation_tokens: usage.cache_creation_tokens ?? 0,
+                  cache_read_tokens: usage.cache_read_tokens ?? 0,
+                  estimated_cost: usage.estimated_cost,
+                }
+                messageUsage = breakdown
+                // streamingMessages에 박힌 후 위쪽 useEffect가 토큰 바를
+                // 자동 갱신한다 (allMessages.usage 합산). 별도 누적 호출
+                // 불필요 — 누적 로직은 새로고침 시 atom이 0으로 reset되어
+                // 토큰 바가 사라지는 회귀를 일으켰음.
+                setStreamingMessages(buildStreamState())
               }
               break
             }
@@ -326,7 +392,7 @@ export function useChatRuntime({
         onStreamEnd?.(didMutate)
       }
     },
-    [onStreamEnd, onInterrupt, onMessagesCommit, setTokenUsage],
+    [onStreamEnd, onInterrupt, onMessagesCommit],
   )
 
   // messages가 새로 fetch되면(refetch 완료) streaming messages를 clear.
@@ -357,9 +423,9 @@ export function useChatRuntime({
       if (truncateAtIdx !== undefined && truncateAtIdx >= 0) {
         truncateMessagesCache(truncateAtIdx)
       }
-      const signal = prepareStream()
+      const { signal, token } = prepareStream()
       try {
-        await consumeStream(streamFactory(signal), optimisticMsg)
+        await consumeStream(streamFactory(signal), optimisticMsg, token)
       } catch (err) {
         console.error('[useChatRuntime] Stream error:', err)
       }
@@ -495,10 +561,10 @@ export function useChatRuntime({
     async (content: string) => {
       const trimmed = content.trim()
       if (!trimmed) return
-      const signal = prepareStream()
+      const { signal, token } = prepareStream()
       const userMsg = createOptimisticMessage('user', trimmed)
       try {
-        await consumeStream(streamFn(trimmed, signal), userMsg)
+        await consumeStream(streamFn(trimmed, signal), userMsg, token)
       } catch (err) {
         console.error('[useChatRuntime] sendMessage error:', err)
       }

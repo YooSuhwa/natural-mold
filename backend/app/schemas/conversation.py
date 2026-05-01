@@ -87,6 +87,22 @@ class MessageFeedbackBrief(BaseModel):
     rating: str  # 'up' | 'down'
 
 
+class TokenUsageBreakdown(BaseModel):
+    """W7 — 메시지별 4종 토큰 분해 (LangChain ``usage_metadata`` 평탄화).
+
+    LangChain은 ``input_token_details``로 cache_creation/cache_read를 분리해
+    전달한다. 클라이언트 hover 팝오버가 직접 참조하므로 평탄한 4 필드 + 비용
+    형태로 직렬화. 모든 필드 0이면 응답에서 ``null`` 자리를 반환하고 클라이언트는
+    렌더 자체를 건너뛴다.
+    """
+
+    prompt_tokens: int
+    completion_tokens: int
+    cache_creation_tokens: int
+    cache_read_tokens: int
+    estimated_cost: float | None = None
+
+
 class MessageResponse(BaseModel):
     id: uuid.UUID
     conversation_id: uuid.UUID
@@ -97,6 +113,9 @@ class MessageResponse(BaseModel):
     created_at: UtcDatetime
     feedback: MessageFeedbackBrief | None = None
     attachments: list[MessageAttachmentBrief] | None = None
+    # W7 — assistant 메시지에서만 채워진다. user/tool 메시지나 LangChain이
+    # ``usage_metadata``를 emit하지 않은 chunk는 ``None``.
+    usage: TokenUsageBreakdown | None = None
     # M-CHAT1b — parent message id in the branch tree. ``None`` for the root
     # (first message). Frontend uses this to build assistant-ui's
     # ``messageRepository`` so BranchPicker auto-detects siblings.
@@ -133,6 +152,11 @@ class MessagesEnvelope(BaseModel):
     messages: list[MessageResponse]
     active_tip_message_id: uuid.UUID | None = None
     active_checkpoint_id: str | None = None
+    # W7-4 — conversation 단위 누적 비용 (USD). 메시지 단위는 model_id를 추적
+    # 하지 않으므로 ``MessageResponse.usage.estimated_cost``를 채울 수 없는데,
+    # ``token_usages`` 테이블이 turn마다 cost를 누적하므로 합산해 envelope에
+    # 발행한다. 클라이언트의 Composer 토큰 바가 새로고침 후에도 cost를 표시.
+    total_estimated_cost: float = 0.0
 
 
 class EditMessageRequest(BaseModel):

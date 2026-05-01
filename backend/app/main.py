@@ -43,6 +43,9 @@ from app.exceptions import AppError
 
 logger = logging.getLogger(__name__)
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
 from app.config import settings
 from app.database import async_session
 from app.hooks import register_default_hooks
@@ -50,6 +53,7 @@ from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
 from app.models.template import Template
 from app.models.user import User
+from app.rate_limit import limiter
 from app.scheduler import (
     add_trigger_job,
     get_scheduler,
@@ -170,6 +174,12 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+
+    # slowapi attaches per-request state via app.state.limiter. The handler
+    # converts ``RateLimitExceeded`` into a 429 JSONResponse with a
+    # ``Retry-After`` header.
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     app.add_middleware(
         CORSMiddleware,

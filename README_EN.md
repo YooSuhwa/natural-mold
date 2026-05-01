@@ -104,8 +104,13 @@ uv run pytest -m integration          # integration tests (Postgres required)
 cd frontend
 pnpm lint                             # ESLint
 pnpm exec tsc --noEmit                # type check
+pnpm test --run                       # vitest (jsdom)
 pnpm build                            # production build
 ```
+
+> **Pre-push hook**: `git push` triggers `.husky/pre-push`, which runs backend
+> pytest + frontend vitest. Failing tests block the push so regressions cannot
+> reach the remote. Bypass with `git push --no-verify` for WIP branches only.
 
 ## 📸 Screenshots
 
@@ -161,8 +166,7 @@ pnpm build                            # production build
 <details>
 <summary><b>🔐 Credentials · model management</b></summary>
 
-- **Cipher V2 encryption** — Fernet + HKDF-SHA256 single-blob Base64 (algorithm
-  borrowed from n8n, branding stripped)
+- **Cipher V2 encryption** — Fernet + HKDF-SHA256 single-blob Base64
 - **Vault integration** — `hvac`-based external secrets
 - **System / user split** — Operator-managed credentials vs. per-user keys
 - **Model discovery** — Probe LLM APIs through a credential to auto-pull the
