@@ -66,6 +66,10 @@ def credential_not_found() -> NotFoundError:
     return NotFoundError("CREDENTIAL_NOT_FOUND", "크리덴셜을 찾을 수 없습니다")
 
 
+def share_not_found() -> NotFoundError:
+    return NotFoundError("SHARE_NOT_FOUND", "공유 링크를 찾을 수 없습니다")
+
+
 # ---------------------------------------------------------------------------
 # ValidationError (422)
 # ---------------------------------------------------------------------------

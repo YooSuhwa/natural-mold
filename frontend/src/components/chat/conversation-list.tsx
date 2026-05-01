@@ -9,6 +9,7 @@ import {
   PencilIcon,
   PlusIcon,
   Settings2Icon,
+  Share2Icon,
   PinIcon,
   PinOffIcon,
   Trash2Icon,
@@ -33,6 +34,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { DialogShell } from '@/components/shared/dialog-shell'
+import { ShareDialog } from '@/components/chat/share-dialog'
 import { SearchInput } from '@/components/shared/search-input'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
@@ -64,6 +66,7 @@ export function ConversationList({
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
   const [renameTarget, setRenameTarget] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [shareTarget, setShareTarget] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
 
   // 검색어가 있으면 핀/일반 구분 없이 단일 필터, 없으면 핀 우선 정렬
@@ -154,6 +157,10 @@ export function ConversationList({
             <DropdownMenuItem onClick={() => openRenameDialog(conv)}>
               <PencilIcon />
               {t('menu.rename')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShareTarget(conv.id)}>
+              <Share2Icon />
+              공유
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handlePin(conv)}>
               {conv.is_pinned ? <PinOffIcon /> : <PinIcon />}
@@ -283,6 +290,14 @@ export function ConversationList({
           </Button>
         </DialogShell.Footer>
       </DialogShell>
+
+      {shareTarget ? (
+        <ShareDialog
+          open={!!shareTarget}
+          onOpenChange={(open) => !open && setShareTarget(null)}
+          conversationId={shareTarget}
+        />
+      ) : null}
     </div>
   )
 }

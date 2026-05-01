@@ -20,6 +20,20 @@ const monthDayFmt = new Intl.DateTimeFormat(LOCALE, {
   day: 'numeric',
 })
 
+const longDateFmt = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: TIMEZONE,
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+})
+
+const mediumDateFmt = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: TIMEZONE,
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+})
+
 function dayKey(d: Date): string {
   return dayKeyFmt.format(d)
 }
@@ -62,4 +76,18 @@ export function formatRelativeShort(
   }
 
   return monthDayFmt.format(d)
+}
+
+/**
+ * "2026년 5월 1일" — KST-anchored long date for editorial / hero surfaces.
+ * Backend returns timezone-naive UTC; ``parseTimestamp`` normalizes that
+ * before formatting so visitors in any TZ see the same date the author saw.
+ */
+export function formatLongDate(date: Date | string): string {
+  return longDateFmt.format(parseTimestamp(date))
+}
+
+/** "2026. 5. 1." — KST-anchored short date for footer / meta strips. */
+export function formatMediumDate(date: Date | string): string {
+  return mediumDateFmt.format(parseTimestamp(date))
 }
