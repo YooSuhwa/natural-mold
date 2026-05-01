@@ -18,7 +18,13 @@ from app.config import settings  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.dependencies import CurrentUser, get_current_user, get_db  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.rate_limit import limiter  # noqa: E402
 from app.security import key_provider  # noqa: E402
+from app.services import share_cache  # noqa: E402
+
+# Rate limiting is meaningful in production but not in unit tests — keeping
+# it on would couple assertions to slowapi's internal counters.
+limiter.enabled = False
 
 # Make sure the settings instance reflects the environment variable above
 # (``BaseSettings`` reads env at class-init time, but explicit assignment
@@ -37,6 +43,8 @@ TestSession = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=F
 async def setup_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Snapshot cache leaks across tests otherwise — clear at boundary.
+    share_cache.clear_all()
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

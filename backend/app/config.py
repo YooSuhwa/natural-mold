@@ -94,5 +94,17 @@ class Settings(BaseSettings):
     image_gen_model: str = "google/gemini-3.1-flash-image-preview"
     agent_image_dir: str = "./data/agents"
 
+    # Rate limiting (slowapi). Public endpoints (/api/shares/{token}*) are
+    # auth-free + walk LangGraph state, so cap per-IP throughput. Disable in
+    # tests to avoid coupling timing to assertions.
+    rate_limit_enabled: bool = True
+    share_public_rate_limit: str = "60/minute"
+
+    # Snapshot cache for public share GETs. Keyed by
+    # ``(token, conversation.active_branch_checkpoint_id)`` — bumping the
+    # active branch (new turn / fork) yields a new cache key automatically.
+    share_snapshot_cache_ttl_s: float = 60.0
+    share_snapshot_cache_max: int = 1024
+
 
 settings = Settings()
