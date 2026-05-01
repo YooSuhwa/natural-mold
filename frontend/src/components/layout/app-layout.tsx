@@ -9,7 +9,7 @@ import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 
 /** Routes that must render bare (no sidebar/header) — public visitor pages. */
-const BARE_ROUTE_PREFIXES = ['/shared/']
+const BARE_ROUTE_PREFIXES = ['/shared/'] as const
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()

@@ -16,12 +16,10 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import conversation_not_found, share_not_found
-from app.models.agent import Agent
 from app.schemas.conversation import MessagesEnvelope
 from app.schemas.share import (
     SharedAgentBrief,
@@ -40,20 +38,14 @@ router = APIRouter(tags=["shares"])
 # ---------------------------------------------------------------------------
 
 
-async def _get_owned_conversation(
+async def _require_owned_conversation(
     db: AsyncSession, conversation_id: uuid.UUID, user: CurrentUser
 ):
-    conv = await chat_service.get_conversation(db, conversation_id)
+    """Same 404-on-foreign-owner contract as ``chat_service.get_owned_conversation``."""
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if conv is None:
         raise conversation_not_found()
-    # Ownership check via the conversation's agent. We return the same
-    # ``conversation_not_found`` for "other user owns it" so the existence of
-    # the row isn't leaked to the API caller.
-    result = await db.execute(select(Agent).where(Agent.id == conv.agent_id))
-    agent = result.scalar_one_or_none()
-    if agent is None or agent.user_id != user.id:
-        raise conversation_not_found()
-    return conv, agent
+    return conv
 
 
 @router.get(
@@ -66,7 +58,7 @@ async def get_active_share(
     user: CurrentUser = Depends(get_current_user),
 ) -> ShareLinkResponse | None:
     """Return the active share link, or ``None`` when the conversation is private."""
-    await _get_owned_conversation(db, conversation_id, user)
+    await _require_owned_conversation(db, conversation_id, user)
     link = await share_service.get_active_share_for_conversation(db, conversation_id)
     if link is None:
         return None
@@ -83,7 +75,7 @@ async def create_share(
     user: CurrentUser = Depends(get_current_user),
 ) -> ShareLinkResponse:
     """Make the conversation public. Returns the existing token if already shared."""
-    conv, _ = await _get_owned_conversation(db, conversation_id, user)
+    conv = await _require_owned_conversation(db, conversation_id, user)
     link = await share_service.create_or_get_active_share(db, conv, user.id)
     return ShareLinkResponse.model_validate(link)
 
@@ -98,7 +90,7 @@ async def revoke_share(
     user: CurrentUser = Depends(get_current_user),
 ) -> None:
     """Revoke any active share link for the conversation. Idempotent."""
-    await _get_owned_conversation(db, conversation_id, user)
+    await _require_owned_conversation(db, conversation_id, user)
     await share_service.revoke_share(db, conversation_id)
 
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CheckIcon, CopyIcon, GlobeIcon, Trash2Icon } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -46,8 +46,17 @@ function ShareDialogBody({ conversationId }: { conversationId: string }) {
   const create = useCreateShare(conversationId)
   const revoke = useRevokeShare(conversationId)
   const [copied, setCopied] = useState(false)
+  // Tracks the "copied" indicator timeout so rapid re-clicks reset cleanly
+  // and an unmount during the 2s window doesn't leak a pending setState.
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(
+    () => () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+    },
+    [],
+  )
 
-  const isShared = link !== null && link !== undefined
+  const isShared = link != null
   const url = isShared ? buildShareUrl(link.share_token) : ''
 
   async function handleCopy() {
@@ -56,7 +65,8 @@ function ShareDialogBody({ conversationId }: { conversationId: string }) {
       await navigator.clipboard.writeText(url)
       setCopied(true)
       toast.success('공유 링크를 복사했어요.')
-      setTimeout(() => setCopied(false), 2000)
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
+      copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
     } catch {
       toast.error('복사에 실패했습니다.')
     }

@@ -46,6 +46,7 @@ __all__ = [
     "delete_conversation",
     "get_agent_with_tools",
     "get_conversation",
+    "get_owned_conversation",
     "link_attachments_to_conversation",
     "list_conversations",
     "list_messages_from_checkpointer",
@@ -82,6 +83,26 @@ async def create_conversation(
 
 async def get_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> Conversation | None:
     result = await db.execute(select(Conversation).where(Conversation.id == conversation_id))
+    return result.scalar_one_or_none()
+
+
+async def get_owned_conversation(
+    db: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID
+) -> Conversation | None:
+    """Conversation lookup gated by ownership through Agent.user_id.
+
+    Single SELECT joining ``conversations -> agents`` so callers don't have to
+    issue two queries (conversation, then agent ownership check). Returns
+    ``None`` when the conversation doesn't exist *or* belongs to another user
+    — callers should map both to ``conversation_not_found`` so existence
+    isn't leaked via 403/404 differences.
+    """
+    result = await db.execute(
+        select(Conversation)
+        .join(Agent, Conversation.agent_id == Agent.id)
+        .where(Conversation.id == conversation_id)
+        .where(Agent.user_id == user_id)
+    )
     return result.scalar_one_or_none()
 
 

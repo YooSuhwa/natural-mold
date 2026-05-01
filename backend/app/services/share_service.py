@@ -15,7 +15,8 @@ import secrets
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -62,23 +63,36 @@ async def create_or_get_active_share(
         created_by=user_id,
     )
     db.add(link)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Concurrent POST raced with us — partial unique index
+        # ``uq_share_links_active_per_conversation`` (m30) blocks the second
+        # active row. Roll back, return the winning row.
+        await db.rollback()
+        winner = await get_active_share_for_conversation(db, conversation.id)
+        if winner is None:
+            # Vanishingly unlikely (race + immediate revoke); re-raise.
+            raise
+        return winner
     await db.refresh(link)
     return link
 
 
 async def revoke_share(db: AsyncSession, conversation_id: uuid.UUID) -> bool:
-    """Mark every active share link for the conversation as revoked.
+    """Soft-delete every active share link for the conversation.
 
-    Returns ``True`` when at least one row was revoked, ``False`` when there
-    was no active link (router decides whether to 404 or treat as no-op).
+    Single UPDATE — atomic, race-safe, one round-trip. Returns ``True`` when
+    at least one row was revoked.
     """
-    active = await get_active_share_for_conversation(db, conversation_id)
-    if active is None:
-        return False
-    active.revoked_at = datetime.now(UTC).replace(tzinfo=None)
+    result = await db.execute(
+        update(ShareLink)
+        .where(ShareLink.conversation_id == conversation_id)
+        .where(ShareLink.revoked_at.is_(None))
+        .values(revoked_at=datetime.now(UTC).replace(tzinfo=None))
+    )
     await db.commit()
-    return True
+    return (result.rowcount or 0) > 0
 
 
 async def get_share_by_token(db: AsyncSession, token: str) -> ShareLink | None:

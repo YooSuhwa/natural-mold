@@ -42,9 +42,11 @@ export function usePublicShare(shareToken: string) {
     queryKey: shareKeys.public(shareToken),
     queryFn: () => sharesApi.getPublic(shareToken),
     enabled: !!shareToken,
-    // Public pages render once per visit; refetch on window focus would
-    // surprise visitors with content shifts and bumps load on the public
-    // endpoint for no benefit.
+    // The public snapshot is immutable per token — owner revocation is a
+    // hard 404 rather than stale data — so caching forever avoids an
+    // expensive checkpoint walk on every back-button / re-mount.
     refetchOnWindowFocus: false,
+    staleTime: Infinity,
+    gcTime: Infinity,
   })
 }

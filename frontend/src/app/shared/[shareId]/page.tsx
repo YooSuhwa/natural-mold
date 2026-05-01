@@ -6,11 +6,14 @@ import { AlertCircleIcon, ArrowLeftIcon, MessageSquareIcon } from 'lucide-react'
 
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { MarkdownContent } from '@/components/chat/markdown-content'
+import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePublicShare } from '@/lib/hooks/use-share'
-import { cn } from '@/lib/utils'
+import { formatLongDate, formatMediumDate } from '@/lib/utils/format-relative-time'
 import type { Message } from '@/lib/types'
 import type { SharedConversationView } from '@/lib/types/share'
+
+const isVisibleInPublic = (m: Message): boolean => m.role !== 'tool'
 
 interface PageProps {
   params: Promise<{ shareId: string }>
@@ -25,14 +28,9 @@ export default function SharedConversationPage({ params }: PageProps) {
   return <SharedArticle data={data} />
 }
 
-// ---------------------------------------------------------------------------
-// Editorial article layout (LambChat-inspired hero + conversation history).
-// ---------------------------------------------------------------------------
-
 function SharedArticle({ data }: { data: SharedConversationView }) {
   const visibleMessages = useMemo(
-    () =>
-      data.messages.filter((m) => m.role === 'user' || m.role === 'assistant'),
+    () => data.messages.filter(isVisibleInPublic),
     [data.messages],
   )
 
@@ -56,10 +54,6 @@ function SharedArticle({ data }: { data: SharedConversationView }) {
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Top bar — fixed brand strip. No sidebar in this layout (AppLayout bare mode).
-// ---------------------------------------------------------------------------
 
 function SharedHeader() {
   return (
@@ -85,10 +79,6 @@ function SharedHeader() {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Hero — overline label, large title, author block, meta chip row.
-// ---------------------------------------------------------------------------
-
 function Hero({
   data,
   messageCount,
@@ -98,12 +88,7 @@ function Hero({
 }) {
   const readingMinutes = useReadingMinutes(data.messages)
   const dateLabel = useMemo(
-    () =>
-      new Date(data.conversation_created_at).toLocaleDateString('ko-KR', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      }),
+    () => formatLongDate(data.conversation_created_at),
     [data.conversation_created_at],
   )
 
@@ -132,49 +117,27 @@ function Hero({
         </div>
       </div>
 
-      <ul className="mt-6 flex flex-wrap items-center justify-center gap-2">
-        <MetaChip>
-          <MessageSquareIcon className="size-3" />
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+        <Badge variant="secondary">
+          <MessageSquareIcon />
           {messageCount}개 메시지
-        </MetaChip>
+        </Badge>
         {data.agent.description ? (
-          <MetaChip className="max-w-[260px] truncate" title={data.agent.description}>
+          <Badge
+            variant="secondary"
+            className="max-w-[260px] truncate"
+            title={data.agent.description}
+          >
             {data.agent.description}
-          </MetaChip>
+          </Badge>
         ) : null}
-        <MetaChip>
+        <Badge variant="secondary">
           {readingMinutes < 1 ? '1분 이내' : `약 ${readingMinutes}분 읽기`}
-        </MetaChip>
-      </ul>
+        </Badge>
+      </div>
     </section>
   )
 }
-
-function MetaChip({
-  className,
-  title,
-  children,
-}: {
-  className?: string
-  title?: string
-  children: React.ReactNode
-}) {
-  return (
-    <li
-      title={title}
-      className={cn(
-        'inline-flex items-center gap-1.5 rounded-full bg-muted/80 px-2.5 py-1 text-[11px] font-medium text-muted-foreground',
-        className,
-      )}
-    >
-      {children}
-    </li>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Conversation body — divider + messages.
-// ---------------------------------------------------------------------------
 
 function ConversationBody({
   messages,
@@ -254,10 +217,6 @@ function EmptyConversation() {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Footer — CTA card + meta bar.
-// ---------------------------------------------------------------------------
-
 function SharedFooter({
   messageCount,
   createdAt,
@@ -265,15 +224,7 @@ function SharedFooter({
   messageCount: number
   createdAt: string
 }) {
-  const dateLabel = useMemo(
-    () =>
-      new Date(createdAt).toLocaleDateString('ko-KR', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      }),
-    [createdAt],
-  )
+  const dateLabel = useMemo(() => formatMediumDate(createdAt), [createdAt])
 
   return (
     <footer className="mx-auto mt-10 w-full max-w-3xl px-5 pb-12 sm:px-6">
@@ -305,10 +256,6 @@ function SharedFooter({
     </footer>
   )
 }
-
-// ---------------------------------------------------------------------------
-// States
-// ---------------------------------------------------------------------------
 
 function SharedSkeleton() {
   return (
@@ -364,11 +311,10 @@ function SharedError() {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Reading time — naive 200 wpm estimate based on rendered message text.
-// Tool calls / non-string content count as 0 to avoid wild over-estimates.
-// ---------------------------------------------------------------------------
-
+/**
+ * Naive 200 wpm estimate. Tool calls / non-string content count as 0 to
+ * avoid wild over-estimates from serialized payloads.
+ */
 function useReadingMinutes(messages: Message[]): number {
   return useMemo(() => {
     const totalWords = messages.reduce((acc, m) => {
