@@ -204,6 +204,20 @@ export interface Message {
    * siblings. */
   branch_index?: number | null
   branch_total?: number | null
+  /** W7 — assistant 메시지 끝(``message_end``)에서 채워지는 토큰 사용량.
+   * 4종 분리: input/output 외에 cache_creation/cache_read까지. 메시지 푸터의
+   * hover 팝오버가 직접 참조한다. 백엔드가 발행하지 않거나 user/tool 메시지
+   * 인 경우 ``null``. */
+  usage?: TokenUsageBreakdown | null
+}
+
+/** W7 — 메시지별 토큰 사용량 4종 분해. */
+export interface TokenUsageBreakdown {
+  prompt_tokens: number
+  completion_tokens: number
+  cache_creation_tokens: number
+  cache_read_tokens: number
+  estimated_cost?: number
 }
 
 /**
@@ -257,7 +271,15 @@ export type SSEEvent = { id?: string } & (
   | { event: 'content_delta'; data: { delta?: string; content?: string } }
   | { event: 'tool_call_start'; data: { tool_name: string; parameters: Record<string, unknown> } }
   | { event: 'tool_call_result'; data: { tool_name: string; result: string } }
-  | { event: 'message_end'; data: { content: string; usage: Record<string, number> } }
+  | {
+      event: 'message_end'
+      data: {
+        content: string
+        // W7 — usage 4종(input/output/cache_creation/cache_read) + 선택적 비용.
+        // 비어 있을 수 있어 모든 필드 optional로 둔다.
+        usage: Partial<TokenUsageBreakdown> & Record<string, number>
+      }
+    }
   | { event: 'error'; data: { message: string } }
   | { event: 'interrupt'; data: InterruptPayload }
 )

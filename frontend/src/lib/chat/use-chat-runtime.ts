@@ -4,7 +4,13 @@ import { useRef, useState, useCallback, useMemo } from 'react'
 import { useExternalStoreRuntime, useExternalMessageConverter } from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
 import { useQueryClient } from '@tanstack/react-query'
-import type { Message, SSEEvent, ToolCallInfo, InterruptPayload } from '@/lib/types'
+import type {
+  Message,
+  SSEEvent,
+  ToolCallInfo,
+  InterruptPayload,
+  TokenUsageBreakdown,
+} from '@/lib/types'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
@@ -181,6 +187,9 @@ export function useChatRuntime({
       const toolResults: Message[] = []
       const assistantId = `stream-${crypto.randomUUID()}`
       const assistantCreatedAt = new Date().toISOString()
+      // W7 — message_end 시점에 채워지는 4종 토큰 사용량. assistant 메시지에
+      // 박혀 푸터 hover 팝오버가 직접 참조한다.
+      let messageUsage: TokenUsageBreakdown | null = null
 
       // tool_calls 배열은 토큰 단위로 재생성하지 않고 dirty 시점에만 스냅샷.
       // content_delta가 빈번해도 cachedToolCalls 참조가 유지되어 React.memo 자식이
@@ -201,6 +210,7 @@ export function useChatRuntime({
           tool_calls: cachedToolCalls,
           tool_call_id: null,
           created_at: assistantCreatedAt,
+          usage: messageUsage,
         }
         const msgs: Message[] = []
         if (optimisticUserMsg) msgs.push(optimisticUserMsg)
@@ -306,21 +316,26 @@ export function useChatRuntime({
               break
             }
             case 'message_end': {
-              // 토큰 사용량 업데이트
+              // 토큰 사용량 업데이트 — 세션 누적 + 메시지 단위 4종 모두.
               const usage = (
                 event.data as {
-                  usage?: {
-                    prompt_tokens?: number
-                    completion_tokens?: number
-                    estimated_cost?: number
-                  }
+                  usage?: Partial<TokenUsageBreakdown>
                 }
               ).usage
               if (usage) {
+                const breakdown: TokenUsageBreakdown = {
+                  prompt_tokens: usage.prompt_tokens ?? 0,
+                  completion_tokens: usage.completion_tokens ?? 0,
+                  cache_creation_tokens: usage.cache_creation_tokens ?? 0,
+                  cache_read_tokens: usage.cache_read_tokens ?? 0,
+                  estimated_cost: usage.estimated_cost,
+                }
+                messageUsage = breakdown
+                setStreamingMessages(buildStreamState())
                 setTokenUsage((prev) => ({
-                  inputTokens: prev.inputTokens + (usage.prompt_tokens ?? 0),
-                  outputTokens: prev.outputTokens + (usage.completion_tokens ?? 0),
-                  cost: prev.cost + (usage.estimated_cost ?? 0),
+                  inputTokens: prev.inputTokens + breakdown.prompt_tokens,
+                  outputTokens: prev.outputTokens + breakdown.completion_tokens,
+                  cost: prev.cost + (breakdown.estimated_cost ?? 0),
                 }))
               }
               break

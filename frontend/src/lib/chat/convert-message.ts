@@ -100,12 +100,19 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
   }
   // M-CHAT1b — branch info on assistant messages (sibling regenerations).
   const assistantBranchMeta = buildBranchMeta(message)
+  // W7 — message_end에서 흘러온 4종 토큰 사용량을 metadata.custom.usage에
+  // 박아 ActionBar 옆 TokenUsagePopover가 직접 읽을 수 있게 한다.
+  const hasUsage = !!message.usage
 
-  if (message.feedback || assistantBranchMeta) {
+  if (message.feedback || assistantBranchMeta || hasUsage) {
     // assistant-ui treats `metadata.submittedFeedback.type` as the active
     // rating — the FeedbackPositive/Negative buttons render highlighted when
-    // it matches their type. We co-locate branch info in `metadata.custom`.
-    const meta: Record<string, unknown> = { custom: assistantBranchMeta ?? {} }
+    // it matches their type. We co-locate branch info + usage in `metadata.custom`.
+    const customMeta: Record<string, unknown> = { ...(assistantBranchMeta ?? {}) }
+    if (message.usage) {
+      customMeta.usage = message.usage
+    }
+    const meta: Record<string, unknown> = { custom: customMeta }
     if (message.feedback) {
       meta.submittedFeedback = {
         type: message.feedback.rating === 'up' ? 'positive' : 'negative',

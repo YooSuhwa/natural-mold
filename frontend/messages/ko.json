@@ -581,6 +581,16 @@
       "placeholder": "메시지 입력...",
       "sendButton": "전송"
     },
+    "tokenUsage": {
+      "title": "토큰 사용량",
+      "total": "합계",
+      "input": "입력",
+      "output": "출력",
+      "cacheCreation": "캐시 생성",
+      "cacheRead": "캐시 적중",
+      "cost": "추정 비용",
+      "toggleAria": "토큰 사용량 보기"
+    },
     "message": {
       "toolResult": "도구 결과: ",
       "copy": "복사",

@@ -191,9 +191,17 @@ async def stream_agent_response(
                     )
 
             if hasattr(msg, "usage_metadata") and msg.usage_metadata:
+                # LangChain ``usage_metadata``는 input/output 외에
+                # ``input_token_details``로 cache_creation/cache_read를 분리해
+                # 전달한다 (Anthropic prompt caching, OpenAI prompt caching 모두).
+                # 클라이언트가 메시지별 hover 팝오버에서 4종을 표시할 수 있게
+                # 평탄화해서 발행.
+                input_details = msg.usage_metadata.get("input_token_details") or {}
                 usage_data = {
                     "prompt_tokens": msg.usage_metadata.get("input_tokens", 0),
                     "completion_tokens": msg.usage_metadata.get("output_tokens", 0),
+                    "cache_creation_tokens": input_details.get("cache_creation", 0),
+                    "cache_read_tokens": input_details.get("cache_read", 0),
                 }
 
     except GraphInterrupt:

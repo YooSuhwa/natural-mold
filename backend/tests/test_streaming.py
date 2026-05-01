@@ -194,6 +194,33 @@ async def test_stream_usage_metadata():
     end_data = json.loads(end_event.split("data: ")[1].strip())
     assert end_data["usage"]["prompt_tokens"] == 100
     assert end_data["usage"]["completion_tokens"] == 50
+    # cache_creation/cache_read는 details가 없으면 0으로 채워진다.
+    assert end_data["usage"]["cache_creation_tokens"] == 0
+    assert end_data["usage"]["cache_read_tokens"] == 0
+
+
+@pytest.mark.asyncio
+async def test_stream_usage_metadata_with_cache_tokens():
+    """LangChain ``usage_metadata.input_token_details``의 cache 토큰을 평탄화한다."""
+    usage = {
+        "input_tokens": 1200,
+        "output_tokens": 80,
+        "input_token_details": {
+            "cache_creation": 800,
+            "cache_read": 300,
+        },
+    }
+    ai_chunk = _make_ai_chunk("done", usage_metadata=usage)
+    agent = MockAgent([(ai_chunk, {})])
+
+    events = [e async for e in stream_agent_response(agent, [], {})]
+    end_event = [e for e in events if "message_end" in e][0]
+    end_data = json.loads(end_event.split("data: ")[1].strip())
+
+    assert end_data["usage"]["prompt_tokens"] == 1200
+    assert end_data["usage"]["completion_tokens"] == 80
+    assert end_data["usage"]["cache_creation_tokens"] == 800
+    assert end_data["usage"]["cache_read_tokens"] == 300
 
 
 @pytest.mark.asyncio

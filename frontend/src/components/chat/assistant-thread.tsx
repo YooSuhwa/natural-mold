@@ -46,6 +46,7 @@ import { sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
 import { WittyLoadingMessage } from '@/components/chat/witty-loading'
 import { ChatImage } from '@/components/chat/markdown-content'
+import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 
 export { GenericToolFallback }
@@ -507,6 +508,7 @@ export function AssistantThread({
                         <CopyButton />
                         <RegenerateButton />
                         <FeedbackButtons />
+                        <TokenUsagePopover />
                       </MessageMetaRow>
                     </div>
                   </div>
