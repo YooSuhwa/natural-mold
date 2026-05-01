@@ -58,12 +58,23 @@ build/
 # Alembic
 *.pyc
 
+# Logs
+*.log
+logs/
+
+# Editor backups
+*~
+
 # Runtime data (conversations, skills, uploads)
 backend/data/
 
-# Claude
-.claude/plans/
-.claude/scheduled_tasks.lock
+# DeepAgent / Codex / Playwright workspaces
+workspace/
+.codex/
+.playwright-mcp/
 
-# Claude Code worktrees
-.claude/worktrees/
+# Redis dump (M-MCP2)
+dump.rdb
+
+# Claude — 전체 ignore (이미 트래킹된 .claude/skills/ 등은 영향 없음)
+.claude/
