@@ -12,7 +12,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[Overview](#-overview) · [기능](#-주요-기능) · [Quick Start](#-quick-start) · [아키텍처](#-아키텍처) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[Overview](#-overview) · [Quick Start](#-quick-start) · [기능](#-주요-기능) · [아키텍처](#-아키텍처) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
 </div>
 
@@ -48,10 +48,6 @@
 PoC 단계 — 인증 없이 **Mock User**로 동작합니다. 실서비스 배포 시
 [`SECURITY.md`](SECURITY.md)의 운영 하드닝 가이드를 따라 진짜 auth + Cipher 키
 회전 + rate limit을 적용해야 합니다.
-
-## 📸 Screenshots
-
-> 준비 중. 주요 화면은 `docs/PRD-screens.md`에 와이어프레임으로 정리되어 있습니다.
 
 ## 🚀 Quick Start
 
@@ -111,6 +107,10 @@ pnpm lint                             # ESLint
 pnpm exec tsc --noEmit                # 타입체크
 pnpm build                            # 프로덕션 빌드
 ```
+
+## 📸 Screenshots
+
+> 준비 중. 주요 화면은 `docs/PRD-screens.md`에 와이어프레임으로 정리되어 있습니다.
 
 ## ✨ 주요 기능
 
