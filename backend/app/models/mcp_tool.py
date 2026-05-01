@@ -63,6 +63,11 @@ class McpTool(Base):
 
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # M26: refreshed by every successful discovery. The row is preserved when
+    # a tool disappears between runs so the UI can flag it as ``stale`` instead
+    # of dropping it (and any agent links it carries) immediately.
+    last_seen_at: Mapped[datetime | None] = mapped_column(nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,

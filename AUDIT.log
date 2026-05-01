@@ -40,3 +40,22 @@
 [2026-04-30T15:30:00Z] satya M11_INTEGRATION_VERIFY 665 PASS + ruff/branding clean + frontend build PASS + catalog.json 2.3MB (2998 models) + 백엔드 8002 + 프론트 3000 재시작.
 [2026-04-30T14:30:00Z] jensen MILESTONE_DONE M11 backend (모델 카탈로그 다중 소스 파이프라인) — services/model_catalog/{loaders,normalize,merge,resolve,rules,validate}.py + services/model_catalog_updater.py + data/model_catalog/{providers,schema,fetch_metadata,curated/{aliases,overrides,excluded}}.json + sources/{litellm,openrouter,llm_prices,pydantic_genai}_*.json + scheduler.register_catalog_update_job (6시간 cron) + main.py lifespan + config.catalog_update_cron + services/model_metadata.py 재작성 (3-layer resolve) + schemas/model.ModelResponse.rankings + services/model_service._serialize에 sparse rankings 주입 + NOTICES.md ENTERPILOT/ai-model-* 출처 명기. 31 신규 + 634 회귀 = 665 PASS, ruff/branding clean. 라이브 fetch (4 소스 ok 200) + dry-run build (providers=14, models=2998, provider_models=3912) 모두 검증 통과.
 [2026-04-30T23:00:00Z] satya HANDOFF UI 통합(ToolsSkills/Middlewares dialog mode prop, line-tabs, sub-agent 노드 활성화) + bugfix(SkillBrief slug/kind 직렬화 500, selectedMcpToolIds sync 누락, /mnt 하드코딩, MCP catalog/write tool 누락) + 분석: sub-agents가 deepagents subagents= 인자에 전달되지 않음 (큰 누락, 다음 PR 후보).
+[2026-05-01T00:00:00Z] satya PROJECT_START "UI Refactor — Design tokens + DialogShell + Sheet→Dialog + 통합 비주얼" — plan: ~/.claude/plans/buzzing-prancing-cloud.md
+[2026-05-01T00:00:00Z] satya MILESTONE_CREATED M-UI1,M-UI2,M-UI3,M-UI4 (Sprint 1~4)
+[2026-05-01T00:30:00Z] bezos S1_DONE Sheet 사용처/삭제 분석 — tasks/sheet-deletion-analysis.md (Sheet 6+1=7곳, prop {Id,open,onOpenChange} 동일, mcp만 serverId)
+[2026-05-01T00:30:00Z] bezos ? PRD-page-header-zero — page-header.tsx 9개 페이지 사용 중. 삭제 금지. PRD "사용처 0건" 오인.
+[2026-05-01T00:30:00Z] bezos ? skill-detail-sheet 이중 SheetContent — wrapper(L42) + body(L108) key={skillId}. Dialog 변환 시 통합 필요.
+[2026-05-01T00:50:00Z] timcook S2_DONE ADR-010-ui-tokens-and-dialog-shell.md — emerald palette 그대로 oklch 매핑, primary=emerald-100/900, primary-foreground=emerald-950/100, primary-strong=emerald-600/400, ring=emerald-600@40%/400@45%. WCAG AA pass(라이트 14:1, 다크 8:1).
+[2026-05-01T00:50:00Z] timcook DECISION 사용자 메시지 색 → --primary 승격. bg-primary text-white 가정 코드 발견 시 text-primary-foreground로 교정 필요.
+[2026-05-01T01:30:00Z] zuckerberg S3_DONE 디자인 토큰 + UI 베이스 정비 + DialogShell 등 6개 shared 컴포넌트 신설 — pnpm build PASS
+[2026-05-01T01:30:00Z] satya VERIFICATION_PASS S3 1차 (build clean, 16개 라우트 정상)
+[2026-05-01T02:30:00Z] zuckerberg S4_DONE Sheet→Dialog 4종 변환 완료 — credential/skill/tool/mcp-server detail-dialog.tsx 신설, 호출부 4 페이지 교체, 기존 *-detail-sheet.tsx 4 파일 삭제
+[2026-05-01T02:30:00Z] zuckerberg S4_NOTE id 변경 시 state 리셋은 react-19 key remount 패턴 (Inner 컴포넌트 분리 + key={id ?? 'closed'}). useEffect setState 안티패턴 회피.
+[2026-05-01T02:30:00Z] satya VERIFICATION_PASS S4 — pnpm lint clean + pnpm build PASS, 16 라우트 정상. SheetContent 잔존 = ui/sidebar.tsx + conversations/[conversationId] (베조스 명시 2곳 외 0).
+[2026-05-01T02:30:00Z] satya MILESTONE_PARTIAL M-UI1 — 핵심(토큰/베이스/Sheet→Dialog) PASS. 잔여(27 DialogContent → DialogShell 마이그레이션)는 M-UI1b로 분리.
+[2026-05-01T03:00:00Z] satya REVIEW_PATCH P0+P1 — DialogShell sm:max-w-none(384px clamp 버그 수정), header icon dark 시인성(bg-primary-strong/15). pnpm lint clean + build PASS.
+[2026-05-01T03:10:00Z] satya RULES_DOCUMENTED frontend/AGENTS.md — Tailwind cn() 반응형 함정 + react-19 set-state-in-effect 패턴 + DialogShell/디자인 토큰 사용 가이드 추가.
+[2026-05-01T03:30:00Z] satya RAW_EMERALD_PURGE button.tsx — variant emerald/emeraldStrong 제거. 사용처 2곳(app/page.tsx 새 에이전트 버튼, assistant-thread.tsx 채팅 전송 버튼) → variant default 통일. link variant도 text-primary-strong로 정리. pnpm lint clean + build PASS.
+[2026-05-01T03:45:00Z] satya TOKEN_ROLE_SPLIT button.tsx default variant 재정의 — `bg-primary` (옅은 emerald-100/900, 어두워 보임) → `bg-primary-strong text-white hover:bg-primary-strong/90` (라이트 emerald-600, 다크 emerald-400). 새 `soft` variant 추가 (메시지 박스 톤). 토큰 역할 분리: --primary=surface(메시지 배경), --primary-strong=action(버튼/링크/탭).
+[2026-05-01T04:30:00Z] satya M-MCP1/M-SKILL1_PARTIAL backend 기초 완료 — alembic m26 (mcp_servers: is_system + health_*, mcp_tools: last_seen_at), Skill service set_skill_file/delete_skill_file + frontmatter sync, routers/skills.py PUT/DELETE/POST per-file 엔드포인트. uv run pytest: 674 passed (회귀 0). ruff clean.
+[2026-05-01T04:30:00Z] satya MILESTONE_DEFER 잔여 작업(stdio transport, mcp import/export, health polling, frontend wizard 재설계, skill 멀티파일 에디터)는 후속 PR로 분리 — 한 세션에 안전하게 끝낼 수 없는 규모.

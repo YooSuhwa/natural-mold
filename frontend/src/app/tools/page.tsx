@@ -13,7 +13,7 @@ import { StatusChip } from '@/components/shared/status-chip'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ToolCatalog } from '@/components/tool/tool-catalog'
 import { ToolCreateDialog } from '@/components/tool/tool-create-dialog'
-import { ToolDetailSheet } from '@/components/tool/tool-detail-sheet'
+import { ToolDetailDialog } from '@/components/tool/tool-detail-dialog'
 import { useTools, useToolTypes } from '@/lib/hooks/use-tools'
 import { useCredentials } from '@/lib/hooks/use-credentials'
 import type { ToolDefinition, ToolInstance } from '@/lib/types/tool'
@@ -152,7 +152,7 @@ export default function ToolsPage() {
         onOpenChange={(open) => !open && setPickedDefinition(null)}
         onCreated={() => setTab('manage')}
       />
-      <ToolDetailSheet
+      <ToolDetailDialog
         toolId={detailId}
         open={!!detailId}
         onOpenChange={(open) => !open && setDetailId(null)}

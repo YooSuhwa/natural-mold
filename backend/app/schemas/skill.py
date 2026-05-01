@@ -35,6 +35,12 @@ class SkillContentUpdate(BaseModel):
     content: str
 
 
+class SkillFileUpdate(BaseModel):
+    """PUT body for setting a single file inside a package skill."""
+
+    content: str = Field(..., description="UTF-8 text body. Binary files use upload endpoint.")
+
+
 class SkillFileEntry(BaseModel):
     path: str
     size: int

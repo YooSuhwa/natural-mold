@@ -363,7 +363,7 @@ function ThreadComposer({
           </ComingSoonButton>
         </div>
         <ComposerPrimitive.Send asChild>
-          <Button type="submit" size="icon-sm" variant="emerald" className="rounded-full">
+          <Button type="submit" size="icon-sm" className="rounded-full">
             <SendIcon className="size-4" />
             <span className="sr-only">{t('sendButton')}</span>
           </Button>

@@ -296,3 +296,51 @@ python scripts/check_branding.py   # 0건
 - **데이터 손실 액션** (docker volume 삭제, m13 alembic upgrade): 사용자 확인 후 실행
 - **3회 실패**: 사티아에게 에스컬레이션 → 스토리 재분해 또는 스코프 축소
 - **마일스톤 별 커밋**: 각 마일스톤 완료 시 1 커밋
+
+---
+
+# CHECKPOINT — UI Refactor (Sprint 1~4)
+
+**Plan**: `~/.claude/plans/buzzing-prancing-cloud.md`
+**Started**: 2026-05-01
+**PO**: 사티아 / DRI(디자인): 팀쿡 / DRI(구현): 저커버그 / DRI(검증): 베조스
+**Scope**: frontend/ 전용. 백엔드 변경 없음.
+
+## M-UI1: Sprint 1 — 디자인 토큰 + DialogShell + Sheet→Dialog 전환 + UI 베이스 정비
+- [ ] `src/app/globals.css` `--primary`/`--ring` emerald 매핑 + `--primary-strong` 신설
+- [ ] `src/components/ui/{input,textarea,select,button,checkbox}.tsx` focus-visible 완화 (border-ring 제거, ring-3→ring-2)
+- [ ] `src/components/ui/dialog.tsx`/`sheet.tsx` 베이스 톤 정비 (rounded-2xl, ring-border/60, X 버튼, 백드롭)
+- [ ] `src/lib/design-tokens.ts` (DIALOG_SIZE 5단계 + DIALOG_HEIGHT 3단계)
+- [ ] `src/lib/constants/{model,timing,usage}.ts`
+- [ ] `src/components/shared/dialog-shell.tsx` (Header/Body/Footer/Sidebar 슬롯, 비주얼 강제)
+- [ ] `src/components/shared/{page-shell,error-state,delete-confirm-inline,form-footer}.tsx`
+- [ ] `src/components/shared/base-detail-dialog.tsx`
+- [ ] Sheet→Dialog 변환 4종: credential/skill/tool/mcp `*-detail-dialog.tsx` 신설 + 호출부 교체 + 기존 `*-detail-sheet.tsx` 삭제
+- 검증: `cd frontend && pnpm lint && pnpm build` (TS 에러 0, 빌드 성공)
+- done-when: 위 8개 항목 + Sheet 잔존 사용처 = 모바일 사이드바 + 대화목록 2건만
+- 상태: pending
+
+## M-UI2: Sprint 2 — 페이지 마이그레이션 + raw color 토큰화 + i18n
+- [ ] 5개 page.tsx (tools/models/skills/mcp-servers/credentials) → PageShell + isError 분기
+- [ ] raw `bg-emerald-*` 등 58회 → `bg-primary`/`text-primary-strong` 등 토큰
+- [ ] 한글 4건 + 영문 헤더 4건 → next-intl 메시지
+- 검증: `pnpm lint && pnpm build`
+- done-when: 페이지 5개에서 `flex flex-1 flex-col gap-6 ... p-6` 인라인 0건
+- 상태: pending
+
+## M-UI3: Sprint 3 — 에이전트 폼 RHF + Zod
+- [ ] `app/agents/[agentId]/settings/page.tsx` (518줄, useState 21개) → RHF + Zod
+- [ ] `app/agents/new/manual/page.tsx` 동일 스키마 재사용
+- 검증: `pnpm build` + 시각 회귀 (저장/Dirty/취소 동작)
+- done-when: useState 21→1 (form), 수동 dirty 195줄 삭제
+- 상태: pending
+
+## M-UI4: Sprint 4 — 성능 (번들/리렌더/Suspense)
+- [ ] `app/agents/[agentId]/visual-settings/page.tsx` xyflow `next/dynamic`
+- [ ] `components/chat/markdown-content.tsx` syntax-highlighter lazy
+- [ ] `components/agent/visual-settings/visual-settings-flow.tsx` useEffect 분할 + initialNodes 호이스팅
+- [ ] `components/chat/assistant-thread.tsx:289` key 수정
+- [ ] Suspense 경계 도입 (채팅/visual-settings/usage)
+- 검증: `pnpm build` 청크 크기 비교 + 시각 회귀
+- done-when: visual-settings 청크가 메인 라우트보다 작음, key 안티패턴 0건
+- 상태: pending

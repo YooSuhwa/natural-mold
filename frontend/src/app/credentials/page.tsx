@@ -11,7 +11,7 @@ import { StatusChip } from '@/components/shared/status-chip'
 import { DomainIcon } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
 import { CredentialCreateModal } from '@/components/credential/credential-create-modal'
-import { CredentialDetailSheet } from '@/components/credential/credential-detail-sheet'
+import { CredentialDetailDialog } from '@/components/credential/credential-detail-dialog'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import type { Credential } from '@/lib/types/credential'
 
@@ -153,7 +153,7 @@ export default function CredentialsPage() {
       )}
 
       <CredentialCreateModal open={createOpen} onOpenChange={setCreateOpen} />
-      <CredentialDetailSheet
+      <CredentialDetailDialog
         credentialId={detailId}
         open={!!detailId}
         onOpenChange={(open) => !open && setDetailId(null)}

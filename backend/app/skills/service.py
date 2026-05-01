@@ -20,7 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.skill import Skill
-from app.skills.inspector import FileInfo, list_files, read_file_safe
+from app.skills.inspector import (
+    FileInfo,
+    _resolve_safely,
+    list_files,
+    parse_skill_md,
+    read_file_safe,
+)
 from app.skills.packager import PackageError, extract_package
 
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
@@ -201,8 +207,105 @@ async def update_text_content(
     skill.content_hash = hashlib.sha256(body_bytes).hexdigest()
     skill.size_bytes = len(body_bytes)
     skill.last_modified_at = _now()
+    _sync_frontmatter(skill, body_bytes)
     await db.flush()
     return skill
+
+
+# -- file-level mutations (M-SKILL1) -----------------------------------------
+
+
+def _package_root(skill: Skill) -> Path:
+    """Resolve the package skill's storage root, raising if misconfigured."""
+
+    if skill.kind != "package" or not skill.storage_path:
+        raise ValueError("file-level mutations require a package skill")
+    return Path(skill.storage_path)
+
+
+async def set_skill_file(
+    db: AsyncSession,
+    *,
+    skill: Skill,
+    rel_path: str,
+    content: bytes,
+) -> Skill:
+    """Create or overwrite a file inside a package skill's storage root.
+
+    Path is resolved through :func:`_resolve_safely` so traversal / absolute
+    paths are rejected. Parent directories are created on demand.
+    """
+
+    root = _package_root(skill)
+    target = _resolve_safely(root, rel_path)
+    await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
+    await asyncio.to_thread(target.write_bytes, content)
+    _refresh_package_metadata(skill)
+    skill.last_modified_at = _now()
+    # If the edit touched SKILL.md, propagate frontmatter into model fields.
+    if rel_path.lstrip("./").lower() in {"skill.md", "skill.markdown"}:
+        _sync_frontmatter(skill, content)
+    await db.flush()
+    return skill
+
+
+async def delete_skill_file(
+    db: AsyncSession,
+    *,
+    skill: Skill,
+    rel_path: str,
+) -> Skill:
+    """Delete a file inside a package skill's storage root.
+
+    SKILL.md is protected — refuse the request to keep the package valid.
+    """
+
+    cleaned = rel_path.lstrip("./").lower()
+    if cleaned in {"skill.md", "skill.markdown"}:
+        raise ValueError("SKILL.md cannot be deleted")
+    root = _package_root(skill)
+    target = _resolve_safely(root, rel_path)
+    if target.is_dir():
+        await asyncio.to_thread(shutil.rmtree, target, ignore_errors=True)
+    else:
+        await asyncio.to_thread(target.unlink, missing_ok=True)
+    _refresh_package_metadata(skill)
+    skill.last_modified_at = _now()
+    await db.flush()
+    return skill
+
+
+def _refresh_package_metadata(skill: Skill) -> None:
+    """Recompute size + cached file list after a file mutation."""
+
+    if skill.kind != "package" or not skill.storage_path:
+        return
+    files = list_files(skill.storage_path)
+    skill.size_bytes = sum(f.size for f in files if not f.is_dir)
+    meta = dict(skill.package_metadata or {})
+    meta["files"] = [f.path for f in files if not f.is_dir]
+    skill.package_metadata = meta
+
+
+def _sync_frontmatter(skill: Skill, body: bytes) -> None:
+    """Parse SKILL.md frontmatter into model fields (best-effort)."""
+
+    try:
+        parsed = parse_skill_md(body)
+    except Exception:  # noqa: BLE001 — malformed frontmatter is user data
+        return
+    metadata = parsed.get("metadata") or {}
+    if not isinstance(metadata, dict):
+        return
+    if isinstance(metadata.get("description"), str):
+        skill.description = metadata["description"]
+    if isinstance(metadata.get("version"), str):
+        skill.version = metadata["version"]
+    if isinstance(metadata.get("name"), str) and not skill.name.strip():
+        skill.name = metadata["name"]
+    pkg = dict(skill.package_metadata or {})
+    pkg["frontmatter"] = metadata
+    skill.package_metadata = pkg
 
 
 async def delete_skill(db: AsyncSession, skill: Skill) -> None:
@@ -269,11 +372,13 @@ __all__: list[str] = [
     "create_package_skill",
     "create_text_skill",
     "delete_skill",
+    "delete_skill_file",
     "get_file_bytes",
     "get_skill",
     "get_skill_files",
     "list_skills",
     "read_text_content",
+    "set_skill_file",
     "slugify",
     "update_metadata",
     "update_text_content",

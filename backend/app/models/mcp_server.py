@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
@@ -78,6 +78,19 @@ class McpServer(Base):
     last_pinged_at: Mapped[datetime | None] = mapped_column(nullable=True)
     last_tool_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # M26: system-managed flag (seed/registry promoted entries are protected
+    # from user-side deletion and can be styled with a "system" badge).
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    # M26: health polling — independent from the status that probe/test set.
+    # Populated by the scheduler job ``register_mcp_health_job`` so the list
+    # endpoint can surface up-to-date connectivity without blocking on probe.
+    health_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    health_polled_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    health_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),

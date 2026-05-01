@@ -12,7 +12,7 @@ import { DataTable, type FilterDef } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
 import { SkillUploadDialog } from '@/components/skill/skill-upload-dialog'
-import { SkillDetailSheet } from '@/components/skill/skill-detail-sheet'
+import { SkillDetailDialog } from '@/components/skill/skill-detail-dialog'
 import { useSkills } from '@/lib/hooks/use-skills'
 import type { Skill } from '@/lib/types/skill'
 
@@ -182,7 +182,7 @@ export default function SkillsPage() {
 
       <SkillCreateDialog open={createOpen} onOpenChange={setCreateOpen} />
       <SkillUploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
-      <SkillDetailSheet
+      <SkillDetailDialog
         skillId={detailId}
         open={!!detailId}
         onOpenChange={(open) => !open && setDetailId(null)}

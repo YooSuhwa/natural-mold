@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import {
-  PlusIcon,
   SparklesIcon,
   MessageSquareIcon,
   LayoutTemplateIcon,
@@ -126,12 +125,6 @@ export default function DashboardPage() {
               className="object-contain"
             />
           </div>
-          <Link href="/agents/new" className="shrink-0">
-            <Button variant="emeraldStrong">
-              <PlusIcon className="size-4" data-icon="inline-start" />
-              {t('newAgent')}
-            </Button>
-          </Link>
         </div>
       </section>
 

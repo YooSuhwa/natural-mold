@@ -211,3 +211,96 @@ Credential/Tools/Skills 그린필드 리라이트 (n8n 패턴 차용, 브랜딩 
 M0(거버넌스+docs+삭제분석) → M1(브랜딩+Cipher) → M2(Credential+Vault+라우터) → M3(Tools+MCP) → M4(Skills+m13) → M5(agent_runtime 재배선+cron) → M6(프론트엔드)
 
 각 마일스톤 PASS 후 다음 진입. 단일 PR이지만 마일스톤별 커밋.
+
+## ── 2026-05-01 새 프로젝트: UI Refactor (Sprint 1~4) ──
+
+### 컨텍스트
+- Plan: ~/.claude/plans/buzzing-prancing-cloud.md
+- Scope: frontend/만. 백엔드/DB 변경 없음.
+- 핵심 동기:
+  1) 다이얼로그 크기·디자인 일관성 부재 (27곳 산재, 8곳은 콘텐츠에 따라 늘어남)
+  2) Sheet 4종(credential/skill/tool/mcp) → Dialog로 전면 전환 요구
+  3) 강조색이 emerald raw로 58곳 박힘 → `--primary`로 토큰화. 채팅 사용자 메시지(`bg-emerald-100/dark:bg-emerald-900`)가 새 primary가 됨
+  4) 포커스 링 진한 테두리 거슬림 → `border-ring` 제거 + ring-3→ring-2 + ring/50 알파 토큰화
+  5) 다이얼로그 비주얼 정비 (헤더 아이콘 슬롯, 푸터 subtle bg, rounded-2xl, X 버튼 통일)
+  6) 부수: PageShell, BaseDetailDialog, agents settings RHF+Zod, bundle splitting, 임의값 350+개 정리
+
+### 사일로 구성 (사티아 결정)
+- 팀쿡: DialogShell 비주얼 스펙 + 디자인 토큰 oklch 픽스 (Sprint 1-1, 1-3, 1-4 디자인 부분)
+- 저커버그: 모든 코드 구현 (Sprint 1~4)
+- 베조스: Sheet 사용처 검증 + 삭제 분석 + 마일스톤 게이트 검증
+
+### 결정 사항 (불변)
+- Sheet은 모바일 사이드바(`ui/sidebar.tsx:178`)와 대화목록(`conversations/[conversationId]/page.tsx:118`) 2곳만 유지. 나머지 4 detail은 Dialog로 변환.
+- 새 `--primary`는 채팅 사용자 메시지 박스 색을 그대로 사용 (라이트 emerald-100 / 다크 emerald-900). `--primary-strong`는 텍스트/링크/탭 인디케이터용 (emerald-600/400).
+- 포커스 링: `focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50` → `focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0` + `--ring` 자체에 알파.
+- DialogShell이 모든 다이얼로그의 비주얼 일관성 강제. 27개 DialogContent 사용처는 모두 마이그레이션 대상.
+- DIALOG_SIZE: sm(400) / md(560) / lg(720) / xl(920) / console(1080). DIALOG_HEIGHT: auto(480) / fixed(640) / tall(760). 콘텐츠 무관 고정.
+
+### S1 베조스 발견 (2026-05-01)
+- Sheet 사용처: 6곳 (4 detail + sidebar mobile + conversation list) + ui/sheet.tsx 정의. 추가 없음.
+- 4 detail-sheet prop 시그니처 동일 패턴 `{<entity>Id, open, onOpenChange}`. mcp만 `serverId`로 도메인 명명 유지.
+- ⚠ **[정정]** `components/shared/page-header.tsx` 9개 페이지에서 사용 중(settings, settings/system-credentials, tools, agents/new/template, usage, models, skills, mcp-servers, credentials). 절대 삭제 금지. (이전 분석의 grep "PageHeader" 결과 오류였음 — 실사용 9건)
+- ⚠ skill-detail-sheet 이중 SheetContent 구조: 외부 wrapper(L42) + 내부 SkillDetailBody(L108) `key={skillId}` 리셋 패턴. Dialog 변환 시 단일 BaseDetailDialog로 통합 + key 패턴은 컴포넌트 내부에서 maintain.
+- 4개 detail의 삭제 인라인 UI 클래스 100% 동일 → DeleteConfirmInline 공용화 안전.
+- 보고서: tasks/sheet-deletion-analysis.md
+
+### S2 팀쿡 결정 (2026-05-01) — ADR-010
+- oklch 정확값 (Tailwind v4 emerald palette 그대로):
+  - 라이트: --primary=oklch(0.95 0.052 163.051), --primary-foreground=oklch(0.262 0.051 172.552), --primary-strong=oklch(0.596 0.145 163.225), --ring=oklch(0.596 0.145 163.225 / 0.4)
+  - 다크: --primary=oklch(0.378 0.077 168.94), --primary-foreground=oklch(0.95 0.052 163.051), --primary-strong=oklch(0.765 0.177 163.223), --ring=oklch(0.765 0.177 163.223 / 0.45)
+- 상태색: success=primary-strong, info=sky-500/400, warn=amber-500/400, danger=red-500/400, accent=violet-500/400
+- 포커스 링: `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring` (border-ring 제거, ring/50 알파 토큰 내장)
+- 트레이드오프: 사용자 메시지를 `--user-bubble` 별도로 분리하지 않고 `--primary`로 승격. `bg-primary text-white` 가정 코드 발견 시 `text-primary-foreground`로 교정.
+- 상세 스펙: docs/design-docs/ADR-010-ui-tokens-and-dialog-shell.md
+
+### S3 저커버그(직접 구현) 완료 (2026-05-01)
+- globals.css에 emerald primary + primary-strong + status-* 토큰 추가. @theme inline 매핑 완료. pnpm build 1차 PASS.
+- focus 링 완화 5개 파일 (input/textarea/select/button/checkbox): `focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50` → `focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`. border 변경 X.
+- ui/dialog: rounded-xl→rounded-2xl, ring-foreground/10→ring-border/60, shadow-2xl 추가, backdrop bg-black/40 + backdrop-blur-sm. DialogFooter도 muted/50→muted/30.
+- ui/sheet: 백드롭만 통일 (bg-black/40 + backdrop-blur-sm). 변환 후 사이드 모서리는 사용처에서 적용.
+- shared/ 신규 6개: error-state, dialog-shell, delete-confirm-inline, form-footer, page-shell, base-detail-dialog. 모두 build PASS.
+- DialogShell은 Object.assign으로 namespace 패턴 (Header/Body/Footer/Sidebar/Split). 사용 시 `<DialogShell.Header />` 식.
+- BaseDetailDialog: id 변경 시 useEffect로 confirming false 자동 리셋 (베조스 ⚠ skill-detail key={skillId} 패턴 흡수).
+- 핵심 발견: shadcn이 아니라 base-ui (`@base-ui/react/dialog`). API 호환되지만 클래스 패턴이 `data-open:` `data-closed:` 식.
+- Button에 이미 `emerald`/`emeraldStrong` variant 존재 → Sprint 2에서 `default`로 흡수 후 제거.
+
+### S4 저커버그(직접 구현) 완료 (2026-05-01)
+- 4개 detail-dialog 신설 (credential/skill/tool/mcp-server-detail-dialog.tsx). 각각 DialogShell 직접 사용. 비즈니스 로직 많아 BaseDetailDialog 슬롯에 끼우는 것보다 직접 작성이 더 깔끔.
+- 호출부 4 페이지 import + 컴포넌트명 교체. 기존 *-detail-sheet.tsx 4 파일 삭제.
+- ⚠ react-19 ESLint 룰 `react-hooks/set-state-in-effect`: useEffect에서 setState 직접 호출 금지. 해결: Inner 컴포넌트 분리 + 상위에서 `key={id ?? 'closed'}` remount 패턴. 4개 detail-dialog + base-detail-dialog 모두 적용.
+- SheetContent 잔존 검증: ui/sidebar.tsx + conversations/[conversationId]/page.tsx 두 곳만. 베조스 명세와 일치.
+- pnpm lint clean + pnpm build PASS.
+- 다이얼로그 size: credential/tool/mcp=lg(720), skill=xl(920). 높이는 모두 fixed(640) 또는 mcp만 tall(760).
+
+### M-UI1 부분 done (2026-05-01)
+- 핵심 가치(사용자 요구) 달성: 시트→다이얼로그 전환 + emerald primary 토큰 + 포커스 링 완화 + 다이얼로그 비주얼 일관성(rounded-2xl, ring-border/60, shadow-2xl, backdrop-blur, X 버튼).
+- 잔여 작업: 27개 DialogContent → DialogShell 마이그레이션 (M-UI1b로 분리). 점진적 가능. 새 다이얼로그는 DialogShell만 쓰면 자동 일관성.
+- Plans are Disposable: 한 번에 27개 변환은 컨텍스트/회귀 위험. 핵심 인프라 + 4개 detail까지가 1세션 한계.
+
+## ── 2026-05-01 후반 — MCP/Skill 고도화 (M-MCP1/M-SKILL1 시작) ──
+
+### Plan
+- 위치: ~/.claude/plans/buzzing-prancing-cloud.md (덮어쓴 새 plan)
+- 동기: LambChat(`/Users/chester/dev/ref/LambChat`) 코드 분석 후 우리 MCP/Skill의 5가지 격차 식별:
+  1) stdio transport 미지원
+  2) Import/Export 부재
+  3) health polling 부재
+  4) Skill 파일 단위 API 부재 (content 통째로만)
+  5) frontmatter 자동 동기화 부재
+
+### S16 백엔드 기초 (이번 세션 완료)
+- **alembic m26_mcp_health_and_system.py**:
+  - mcp_servers: is_system(bool, default false) + health_status + health_polled_at + health_message
+  - mcp_tools: last_seen_at (stale 도구 마킹용)
+- **app/skills/service.py**: set_skill_file / delete_skill_file 추가 (package skill 한정), inspector._resolve_safely 재사용으로 zip-slip 동일 방어, _refresh_package_metadata로 size/files 자동 갱신, _sync_frontmatter로 SKILL.md 변경 시 description/version/name 자동 동기화
+- **app/schemas/skill.py**: SkillFileUpdate
+- **app/routers/skills.py**: PUT /api/skills/{id}/files/{path} (텍스트 갱신/생성), DELETE /api/skills/{id}/files/{path} (SKILL.md 보호), POST /api/skills/{id}/files (multipart 업로드)
+- 검증: pytest 674 passed (회귀 0), ruff clean, alembic upgrade head 성공
+- 발견: inspector.py에 이미 `parse_skill_md(frontmatter 라이브러리 사용)` 있어서 별도 parser.py 신설 불필요. `_resolve_safely` private 함수를 service에서 재사용
+
+### 다음 세션 우선순위 (남은 4개)
+- #17 (백엔드): stdio transport (mcp/client.py:86-92 unsupported 분기 제거), discovery stale 마킹, mcp import/export 엔드포인트(Claude Desktop 호환), scheduler.register_mcp_health_job
+- #18 (프론트): skill-detail-dialog DialogShell.Sidebar + 멀티파일 에디터 (좌 SkillPackageTree, 우 에디터, dirty 마킹)
+- #19 (프론트): mcp-server-wizard 3탭(Basics/Auth/Tools) + transport별 조건부 + 도구 stale 배지 + Import 다이얼로그
+- #20 (검증): backend pytest + frontend lint/build + 시각 회귀

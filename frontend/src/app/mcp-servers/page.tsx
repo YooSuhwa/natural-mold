@@ -13,7 +13,7 @@ import { DataTable } from '@/components/ui/data-table'
 import { StatusChip } from '@/components/shared/status-chip'
 import { EmptyState } from '@/components/shared/empty-state'
 import { McpServerWizard } from '@/components/mcp/mcp-server-wizard'
-import { McpServerDetailSheet } from '@/components/mcp/mcp-server-detail-sheet'
+import { McpServerDetailDialog } from '@/components/mcp/mcp-server-detail-dialog'
 import { useMcpServers } from '@/lib/hooks/use-mcp-servers'
 import { useMcpHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 import type { McpServer } from '@/lib/types/mcp'
@@ -163,7 +163,7 @@ export default function McpServersPage() {
       )}
 
       <McpServerWizard open={wizardOpen} onOpenChange={setWizardOpen} />
-      <McpServerDetailSheet
+      <McpServerDetailDialog
         serverId={detailId}
         open={!!detailId}
         onOpenChange={(open) => !open && setDetailId(null)}
