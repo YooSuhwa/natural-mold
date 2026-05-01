@@ -2,17 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2 } from 'lucide-react'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
+import { DialogShell } from '@/components/shared/dialog-shell'
+import { FormFooter } from '@/components/shared/form-footer'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -89,19 +81,16 @@ export function ToolCreateDialog({
   if (!definition) return null
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <DomainIcon iconId={definition.icon_id ?? definition.key} className="size-5" />
-            New {definition.display_name}
-          </DialogTitle>
-          <DialogDescription>{definition.description}</DialogDescription>
-        </DialogHeader>
-
+    <DialogShell open={open} onOpenChange={handleClose} size="lg" height="fixed">
+      <DialogShell.Header
+        icon={<DomainIcon iconId={definition.icon_id ?? definition.key} className="size-5" />}
+        title={`New ${definition.display_name}`}
+        description={definition.description}
+      />
+      <DialogShell.Body>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <label htmlFor="tool-name" className="text-xs font-medium">
+            <label htmlFor="tool-name">
               Name <span className="text-destructive">*</span>
             </label>
             <Input
@@ -113,9 +102,7 @@ export function ToolCreateDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="tool-desc" className="text-xs font-medium">
-              Description
-            </label>
+            <label htmlFor="tool-desc">Description</label>
             <Textarea
               id="tool-desc"
               value={description}
@@ -127,7 +114,7 @@ export function ToolCreateDialog({
 
           {definition.credential_definition_keys.length > 0 && (
             <div className="space-y-1.5">
-              <label htmlFor="tool-credential" className="text-xs font-medium">
+              <label htmlFor="tool-credential">
                 Credential{' '}
                 {definition.requires_credential && (
                   <span className="text-destructive">*</span>
@@ -150,17 +137,16 @@ export function ToolCreateDialog({
             />
           )}
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => handleClose(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSubmit} disabled={!canSubmit || create.isPending}>
-            {create.isPending && <Loader2 className="size-4 animate-spin" />}
-            Create tool
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </DialogShell.Body>
+      <DialogShell.Footer>
+        <FormFooter
+          onCancel={() => handleClose(false)}
+          onSubmit={handleSubmit}
+          submitLabel="Create tool"
+          pending={create.isPending}
+          disabled={!canSubmit}
+        />
+      </DialogShell.Footer>
+    </DialogShell>
   )
 }

@@ -10,7 +10,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { CopyIcon, CheckIcon, ImageOffIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 
 import 'katex/dist/katex.min.css'
 import './markdown-styles.css'
@@ -110,17 +110,17 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
         />
       </span>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-4xl p-2" showCloseButton>
-          <DialogTitle className="sr-only">{alt || 'Image preview'}</DialogTitle>
+      <DialogShell open={open} onOpenChange={setOpen} size="xl" height="auto">
+        <DialogShell.Header srOnly title={alt || 'Image preview'} />
+        <DialogShell.Body className="p-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={resolvedSrc}
             alt={alt}
             className="w-full h-auto max-h-[80vh] object-contain rounded-lg"
           />
-        </DialogContent>
-      </Dialog>
+        </DialogShell.Body>
+      </DialogShell>
     </>
   )
 }

@@ -8,13 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import {
   Select,
   SelectContent,
@@ -72,19 +66,18 @@ export function ModelTestDialog({
   if (!model) return null
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Test {model.display_name}</DialogTitle>
-          <DialogDescription className="font-mono text-xs">
+    <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
+      <DialogShell.Header
+        title={`Test ${model.display_name}`}
+        description={
+          <span className="font-mono text-xs">
             {model.provider} · {model.model_name}
-          </DialogDescription>
-        </DialogHeader>
-
+          </span>
+        }
+      />
+      <DialogShell.Body>
         <div className="space-y-1.5">
-          <label htmlFor="test-cred" className="text-xs font-medium">
-            LLM credential
-          </label>
+          <label htmlFor="test-cred">LLM credential</label>
           <Select
             value={credentialId}
             onValueChange={(v) => v && setCredentialId(v)}
@@ -136,7 +129,7 @@ export function ModelTestDialog({
             Add an LLM credential first on the Credentials page.
           </p>
         )}
-      </DialogContent>
-    </Dialog>
+      </DialogShell.Body>
+    </DialogShell>
   )
 }

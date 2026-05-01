@@ -2,16 +2,10 @@
 
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Loader2, ArrowLeft, Search } from 'lucide-react'
+import { ArrowLeft, Search } from 'lucide-react'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
+import { FormFooter } from '@/components/shared/form-footer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SearchInput } from '@/components/shared/search-input'
@@ -117,19 +111,16 @@ export function CredentialCreateModal({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>
-            {definition ? `New ${definition.display_name} credential` : 'New credential'}
-          </DialogTitle>
-          <DialogDescription>
-            {definition
-              ? 'Fill the required fields and test before saving.'
-              : 'Pick a credential type from the catalog.'}
-          </DialogDescription>
-        </DialogHeader>
-
+    <DialogShell open={open} onOpenChange={handleClose} size="lg" height="fixed">
+      <DialogShell.Header
+        title={definition ? `New ${definition.display_name} credential` : 'New credential'}
+        description={
+          definition
+            ? 'Fill the required fields and test before saving.'
+            : 'Pick a credential type from the catalog.'
+        }
+      />
+      <DialogShell.Body>
         {!definition ? (
           <div className="space-y-3">
             <SearchInput
@@ -211,26 +202,31 @@ export function CredentialCreateModal({
             />
           </div>
         )}
-
-        <DialogFooter>
+      </DialogShell.Body>
+      <DialogShell.Footer>
+        {definition ? (
+          <FormFooter
+            onCancel={() => handleClose(false)}
+            onSubmit={handleSubmit}
+            submitLabel="Save credential"
+            pending={create.isPending}
+            disabled={!canSubmit}
+            extraActions={
+              definition.has_test ? (
+                <CredentialTestButton
+                  preview={{ definition_key: definition.key, data }}
+                  variant="outline"
+                  size="default"
+                />
+              ) : undefined
+            }
+          />
+        ) : (
           <Button variant="outline" onClick={() => handleClose(false)}>
             Cancel
           </Button>
-          {definition && definition.has_test && (
-            <CredentialTestButton
-              preview={{ definition_key: definition.key, data }}
-              variant="outline"
-              size="default"
-            />
-          )}
-          {definition && (
-            <Button onClick={handleSubmit} disabled={!canSubmit || create.isPending}>
-              {create.isPending && <Loader2 className="size-4 animate-spin" />}
-              Save credential
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        )}
+      </DialogShell.Footer>
+    </DialogShell>
   )
 }

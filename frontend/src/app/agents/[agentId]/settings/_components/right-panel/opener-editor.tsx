@@ -5,13 +5,7 @@ import { useTranslations } from 'next-intl'
 import { CheckIcon, PencilIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 
 interface OpenerEditorProps {
   questions: string[]
@@ -166,11 +160,9 @@ export function OpenerEditor({ questions, onChange, max = 12 }: OpenerEditorProp
         <p className="text-xs text-muted-foreground">{t('openerMaxReached', { max })}</p>
       )}
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t('openerAddDialogTitle')}</DialogTitle>
-          </DialogHeader>
+      <DialogShell open={addOpen} onOpenChange={setAddOpen} size="sm" height="auto">
+        <DialogShell.Header title={t('openerAddDialogTitle')} />
+        <DialogShell.Body>
           <Input
             value={addValue}
             onChange={(e) => setAddValue(e.target.value)}
@@ -182,16 +174,16 @@ export function OpenerEditor({ questions, onChange, max = 12 }: OpenerEditorProp
             }}
             className="shadow-none focus-visible:border-input focus-visible:ring-0 focus-visible:ring-offset-0"
           />
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setAddOpen(false)}>
-              {tc('cancel')}
-            </Button>
-            <Button onClick={confirmAdd} disabled={!addValue.trim()}>
-              {t('openerAdd')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </DialogShell.Body>
+        <DialogShell.Footer>
+          <Button variant="ghost" onClick={() => setAddOpen(false)}>
+            {tc('cancel')}
+          </Button>
+          <Button onClick={confirmAdd} disabled={!addValue.trim()}>
+            {t('openerAdd')}
+          </Button>
+        </DialogShell.Footer>
+      </DialogShell>
     </div>
   )
 }

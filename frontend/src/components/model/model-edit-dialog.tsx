@@ -6,14 +6,8 @@ import { Activity, Loader2, Trash2, Zap } from 'lucide-react'
 
 import { announceHealthResult } from '@/lib/health-check-toast'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
+import { FormFooter } from '@/components/shared/form-footer'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -142,18 +136,21 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="fixed">
+      <DialogShell.Header
+        title={
+          <span className="flex items-center gap-2">
             {model.display_name}
             <ModelSourceBadge source={model.source} />
-          </DialogTitle>
-          <DialogDescription className="font-mono text-xs">
+          </span>
+        }
+        description={
+          <span className="font-mono text-xs">
             {model.provider} · {model.model_name}
-          </DialogDescription>
-        </DialogHeader>
-
+          </span>
+        }
+      />
+      <DialogShell.Body className="flex flex-col">
         <Tabs
           defaultValue="info"
           className="flex min-h-0 w-full flex-1 flex-col"
@@ -374,18 +371,16 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
             />
           </TabsContent>
         </Tabs>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={update.isPending}>
-            {update.isPending && <Loader2 className="size-4 animate-spin" />}
-            Save changes
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </DialogShell.Body>
+      <DialogShell.Footer>
+        <FormFooter
+          onCancel={() => onOpenChange(false)}
+          onSubmit={handleSave}
+          submitLabel="Save changes"
+          pending={update.isPending}
+        />
+      </DialogShell.Footer>
+    </DialogShell>
   )
 }
 

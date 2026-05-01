@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import { ChevronDownIcon, ChevronRightIcon, MaximizeIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 
 interface SectionInstructionsProps {
   systemPrompt: string
@@ -61,22 +61,20 @@ export function SectionInstructions({
         </div>
       )}
 
-      <Dialog open={fullscreen} onOpenChange={setFullscreen}>
-        <DialogContent className="sm:max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>{t('instruction')}</DialogTitle>
-          </DialogHeader>
+      <DialogShell open={fullscreen} onOpenChange={setFullscreen} size="console" height="tall">
+        <DialogShell.Header title={t('instruction')} />
+        <DialogShell.Body className="flex flex-col">
           <Textarea
             value={systemPrompt}
             onChange={(e) => onSystemPromptChange(e.target.value)}
-            className="h-[70vh] resize-none font-mono text-xs shadow-none [field-sizing:fixed] focus-visible:border-input focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="min-h-0 flex-1 resize-none font-mono text-xs shadow-none [field-sizing:fixed] focus-visible:border-input focus-visible:ring-0 focus-visible:ring-offset-0"
             placeholder={t('instructionPlaceholder')}
           />
-          <div className="text-right text-xs text-muted-foreground">
+          <div className="mt-2 text-right text-xs text-muted-foreground">
             {t('characterCount', { count })}
           </div>
-        </DialogContent>
-      </Dialog>
+        </DialogShell.Body>
+      </DialogShell>
     </div>
   )
 }

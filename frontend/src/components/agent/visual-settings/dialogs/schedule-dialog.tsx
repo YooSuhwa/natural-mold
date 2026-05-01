@@ -4,13 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ClockIcon, CalendarIcon, SettingsIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -386,12 +380,9 @@ export function ScheduleDialog({
 }: ScheduleDialogProps) {
   const t = useTranslations('agent.schedule')
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
-        <DialogHeader>
-          <DialogTitle>{t('title')}</DialogTitle>
-          <DialogDescription>{t('description')}</DialogDescription>
-        </DialogHeader>
+    <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
+      <DialogShell.Header title={t('title')} description={t('description')} />
+      <DialogShell.Body>
         <ScheduleForm
           trigger={trigger}
           isEdit={!!trigger}
@@ -402,7 +393,7 @@ export function ScheduleDialog({
             else onSubmit(req)
           }}
         />
-      </DialogContent>
-    </Dialog>
+      </DialogShell.Body>
+    </DialogShell>
   )
 }
