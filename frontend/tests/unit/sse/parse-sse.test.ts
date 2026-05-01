@@ -256,11 +256,15 @@ describe('streamSSEPost', () => {
     expect(events[0].event).toBe('content_delta')
     expect(events[1].event).toBe('message_end')
 
+    // fetchEventSource는 SSE 표준에 따라 ``Accept: text/event-stream``을 추가
+    // 발행하므로 헤더는 partial 매칭으로 검증한다.
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${API_BASE}/api/test/stream`,
       expect.objectContaining({
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+        }),
         body: JSON.stringify({ message: 'hi' }),
       }),
     )
@@ -275,16 +279,6 @@ describe('streamSSEPost', () => {
     await expect(gen.next()).rejects.toThrow('Stream failed: 500')
   })
 
-  it('response body가 null이면 예외를 던진다', async () => {
-    const mockResponse = {
-      ok: true,
-      status: 200,
-      body: null,
-    } as unknown as Response
-
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockResponse)
-
-    const gen = streamSSEPost('/api/test/stream', {}, undefined, 'content_delta')
-    await expect(gen.next()).rejects.toThrow('No response body')
-  })
+  // body가 null인 응답 처리는 fetchEventSource 라이브러리 내부 로직이 담당하게
+  // 됐으므로 caller side 단위 테스트는 더 이상 의미 없음 → 삭제.
 })

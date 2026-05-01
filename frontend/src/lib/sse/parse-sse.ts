@@ -1,3 +1,7 @@
+import {
+  fetchEventSource,
+  type EventSourceMessage,
+} from '@microsoft/fetch-event-source'
 import { API_BASE } from '@/lib/api/client'
 
 /**
@@ -64,6 +68,18 @@ export async function* parseSSEStream<TEvent extends string>(
 /**
  * Generic POST-based SSE stream. Sends a JSON body to the given path and
  * yields parsed SSE events.
+ *
+ * @microsoft/fetch-event-source 기반:
+ * - ``openWhenHidden: true`` → 탭이 백그라운드로 가도 connection 유지. 기본
+ *   EventSource는 브라우저가 throttle하거나 끊지만, fetch-event-source는 fetch
+ *   API를 직접 사용해 hidden 상태에서도 살아있다.
+ * - 자동 재연결은 **비활성화**. natural-mold의 SSE는 POST 기반이라 같은 stream을
+ *   다시 attach할 수 없다 (POST 재실행은 새 LangGraph run = 비용 + 중복). retry는
+ *   서버에 GET-based resume endpoint가 추가될 때(W3-out) 풀린다.
+ * - id/event/data는 ``EventSourceMessage``에서 직접 받아 ``parseSSEStream`` 우회.
+ *   재연결을 안 하므로 ``Last-Event-ID`` 헤더 송신도 불필요.
+ *
+ * generator 인터페이스는 그대로 유지 (caller 전부 호환).
  */
 export async function* streamSSEPost<TEvent extends string>(
   path: string,
@@ -71,22 +87,85 @@ export async function* streamSSEPost<TEvent extends string>(
   signal: AbortSignal | undefined,
   defaultEvent: TEvent,
 ): AsyncGenerator<SSEEvent<TEvent>> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  // Callback-driven fetchEventSource → generator로 bridge.
+  const buffer: SSEEvent<TEvent>[] = []
+  let resolver: (() => void) | null = null
+  let terminalError: Error | null = null
+  let closed = false
+
+  const wakeUp = () => {
+    if (resolver) {
+      const r = resolver
+      resolver = null
+      r()
+    }
+  }
+
+  // .catch로 fetchEventSource Promise를 처리해 unhandled rejection 방지.
+  // 실제 종료 신호는 onclose/onerror에서 closed=true로 표시한다.
+  void fetchEventSource(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+    },
     body: JSON.stringify(body),
     signal,
+    openWhenHidden: true,
+    async onopen(response) {
+      // 라이브러리 기본 onopen은 Content-Type을 엄격 검사한다. 백엔드가
+      // text/event-stream을 항상 보내지만 일부 프록시가 변환할 수 있어
+      // 자체 검증으로 통일.
+      if (!response.ok) {
+        throw new Error(`Stream failed: ${response.status}`)
+      }
+    },
+    onmessage(msg: EventSourceMessage) {
+      try {
+        const data: unknown = JSON.parse(msg.data)
+        buffer.push({
+          event: ((msg.event || defaultEvent) as TEvent),
+          data,
+          id: msg.id || undefined,
+        })
+        wakeUp()
+      } catch {
+        // malformed JSON — 이전 parseSSEStream과 동일하게 silently skip.
+      }
+    },
+    onclose() {
+      closed = true
+      wakeUp()
+    },
+    onerror(err) {
+      // POST는 idempotent하지 않으므로 자동 재시도 금지. throw하면
+      // fetchEventSource는 retry를 하지 않고 promise를 reject한다.
+      terminalError = err instanceof Error ? err : new Error(String(err))
+      closed = true
+      wakeUp()
+      throw err
+    },
+  }).catch((err) => {
+    if (!terminalError && !(err instanceof DOMException && err.name === 'AbortError')) {
+      terminalError = err instanceof Error ? err : new Error(String(err))
+    }
+    closed = true
+    wakeUp()
   })
 
-  if (!response.ok) {
-    throw new Error(`Stream failed: ${response.status}`)
+  while (true) {
+    if (buffer.length > 0) {
+      yield buffer.shift()!
+      continue
+    }
+    if (closed) {
+      if (terminalError) throw terminalError
+      return
+    }
+    await new Promise<void>((resolve) => {
+      resolver = resolve
+    })
   }
-
-  if (!response.body) {
-    throw new Error('No response body')
-  }
-
-  yield* parseSSEStream<TEvent>(response.body, defaultEvent)
 }
 
 /**

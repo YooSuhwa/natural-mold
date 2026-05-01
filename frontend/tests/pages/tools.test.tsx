@@ -1,6 +1,5 @@
 import { render, screen, userEvent } from '../test-utils'
 import ToolsPage from '@/app/tools/page'
-import { mockToolList } from '../mocks/fixtures'
 
 vi.mock('next/link', () => ({
   default: ({
