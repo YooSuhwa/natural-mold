@@ -103,8 +103,13 @@ uv run pytest -m integration          # 통합 테스트 (Postgres 필요)
 cd frontend
 pnpm lint                             # ESLint
 pnpm exec tsc --noEmit                # 타입체크
+pnpm test --run                       # vitest (jsdom)
 pnpm build                            # 프로덕션 빌드
 ```
+
+> **Pre-push hook**: `git push` 시점에 `.husky/pre-push`가 backend pytest +
+> frontend vitest를 자동 실행하여 회귀가 push되지 않도록 차단합니다. 우회는
+> `git push --no-verify` (WIP 브랜치 한정).
 
 ## 📸 Screenshots
 

@@ -104,8 +104,13 @@ uv run pytest -m integration          # integration tests (Postgres required)
 cd frontend
 pnpm lint                             # ESLint
 pnpm exec tsc --noEmit                # type check
+pnpm test --run                       # vitest (jsdom)
 pnpm build                            # production build
 ```
+
+> **Pre-push hook**: `git push` triggers `.husky/pre-push`, which runs backend
+> pytest + frontend vitest. Failing tests block the push so regressions cannot
+> reach the remote. Bypass with `git push --no-verify` for WIP branches only.
 
 ## 📸 Screenshots
 
