@@ -1,10 +1,12 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { makeAssistantToolUI, useAui } from '@assistant-ui/react'
 import { MessageCircleQuestionIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
+import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
+import { CountdownBadge } from './countdown-badge'
 
 const STATE_CLASS = {
   idle: 'cursor-pointer border-border hover:border-primary/50 hover:bg-accent',
@@ -17,6 +19,10 @@ interface ClarifyingArgs {
   option_1?: string
   option_2?: string
   option_3?: string
+  /** 선택 만료 timeout (초) — 미지정 시 5분 */
+  timeout_seconds?: number
+  /** 식별자 — deadline 리셋 키로 사용 */
+  approval_id?: string
 }
 
 interface ClarifyingResult {
@@ -29,6 +35,9 @@ interface ClarifyingResult {
  * Fix 에이전트 `ask_clarifying_question` 도구 UI.
  * Backend는 일반 LLM tool로 옵션 3개 + "직접 입력"을 반환.
  * 사용자가 옵션 클릭 시 setText + send로 새 사용자 메시지를 보낸다.
+ *
+ * HITL이 아니라 backend pause가 없으므로 만료 시 별도 액션 없이
+ * 옵션 버튼만 disabled 처리하여 시각적 urgency만 표현.
  */
 export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>({
   toolName: 'ask_clarifying_question',
@@ -56,13 +65,33 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
         Boolean,
       ) as string[])
 
+    // 카드 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
+    const fallbackIdRef = useRef<string>(`clarifying-${Math.random().toString(36).slice(2)}`)
+    const approvalId = args?.approval_id ?? fallbackIdRef.current
+
+    // 만료는 시각적 신호만 — backend가 paused 상태가 아니므로 별도 resume 불필요
+    const handleExpire = useCallback(() => {
+      // no-op: remaining<=0이 picked===null과 함께 disabled 트리거
+    }, [])
+
+    const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
+      approvalId,
+      initialTimeoutSeconds: args?.timeout_seconds,
+      onExpire: handleExpire,
+      active: picked === null,
+    })
+
     if (status.type === 'running' && !args?.question) {
       // tool 호출 중 args 아직 없음 — 빈 상태
       return null
     }
 
+    const expired = remaining <= 0
+    const disabled = picked !== null || expired
+
     const handleClick = (opt: string) => {
-      if (picked) return
+      if (disabled) return
+      extend()
       setPicked(opt)
       if (opt === directInputLabel) {
         // 사용자가 직접 입력 — disabled 처리만, 입력창에 직접 타이핑
@@ -83,17 +112,27 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
       <div className="mt-2 rounded-xl border bg-background p-4 shadow-sm">
         <div className="mb-3 flex items-start gap-2">
           <MessageCircleQuestionIcon className="mt-0.5 size-4 shrink-0 text-primary-strong" />
-          <p className="text-sm font-medium">{question}</p>
+          <p className="flex-1 text-sm font-medium">{question}</p>
+          <CountdownBadge
+            formatted={formatted}
+            isUrgent={isUrgent}
+            expired={expired}
+            label={t('expiresIn')}
+            expiredLabel={t('expired')}
+          />
         </div>
         <div className="flex flex-wrap gap-2">
           {options.map((opt) => {
-            const state: 'idle' | 'selected' | 'dimmed' =
-              picked === null ? 'idle' : picked === opt ? 'selected' : 'dimmed'
+            const state: 'idle' | 'selected' | 'dimmed' = disabled
+              ? picked === opt
+                ? 'selected'
+                : 'dimmed'
+              : 'idle'
             return (
               <button
                 key={opt}
                 type="button"
-                disabled={picked !== null}
+                disabled={disabled}
                 onClick={() => handleClick(opt)}
                 className={cn(
                   'rounded-full border px-3 py-1.5 text-xs transition-all',

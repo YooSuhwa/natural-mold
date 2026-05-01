@@ -10,12 +10,12 @@ import {
   Loader2Icon,
   ChevronDownIcon,
   WrenchIcon,
-  ClockIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { useHiTL } from '@/lib/chat/hitl-context'
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
+import { CountdownBadge } from './countdown-badge'
 
 interface ApprovalArgs {
   /** 승인 대상 도구명 */
@@ -128,40 +128,6 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
   )
 }
 
-interface CountdownBadgeProps {
-  formatted: string
-  isUrgent: boolean
-  expired: boolean
-  label: string
-  expiredLabel: string
-}
-
-function CountdownBadge({
-  formatted,
-  isUrgent,
-  expired,
-  label,
-  expiredLabel,
-}: CountdownBadgeProps) {
-  return (
-    <div
-      className={cn(
-        'ml-auto flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums',
-        expired
-          ? 'bg-status-warn/15 text-status-warn'
-          : isUrgent
-            ? 'animate-pulse bg-status-warn/15 text-status-warn'
-            : 'bg-muted text-muted-foreground',
-      )}
-      aria-live="polite"
-      aria-label={`${label}: ${expired ? expiredLabel : formatted}`}
-    >
-      <ClockIcon className="size-3" />
-      <span>{expired ? expiredLabel : formatted}</span>
-    </div>
-  )
-}
-
 export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
   toolName: 'request_approval',
   render: function ApprovalRender({ args, result, status, addResult }) {
@@ -261,6 +227,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
             expired={remaining <= 0}
             label={t('expiresIn')}
             expiredLabel={t('expired')}
+            className="ml-auto"
           />
         </div>
 

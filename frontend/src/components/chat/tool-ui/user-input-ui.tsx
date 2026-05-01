@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { MessageSquareQuoteIcon, CheckCircle2Icon, SendIcon, Loader2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn, toggleSetItem } from '@/lib/utils'
 import { useHiTL } from '@/lib/chat/hitl-context'
+import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
 import type { UserInputQuestion } from '@/lib/types'
+import { CountdownBadge } from './countdown-badge'
 
 interface AskUserArgs {
   /** 복수 질문 */
@@ -15,6 +17,10 @@ interface AskUserArgs {
   question?: string
   type?: UserInputQuestion['type']
   options?: UserInputQuestion['options']
+  /** 입력 만료 timeout (초) — 미지정 시 5분 */
+  timeout_seconds?: number
+  /** 입력 식별자 — deadline 리셋 키로 사용 */
+  approval_id?: string
 }
 
 type Answers = Record<number, unknown>
@@ -95,11 +101,13 @@ function TextInput({
   question,
   value,
   onChange,
+  onFocus,
   placeholder,
 }: {
   question: UserInputQuestion
   value: string
   onChange: (value: string) => void
+  onFocus: () => void
   placeholder: string
 }) {
   return (
@@ -108,6 +116,7 @@ function TextInput({
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        onFocus={onFocus}
         placeholder={placeholder}
         className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
         rows={3}
@@ -171,49 +180,85 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
 
     const questions = useMemo(() => normalizeQuestions(args ?? {}), [args])
 
+    // 입력 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
+    const fallbackIdRef = useRef<string>(`ask-user-${Math.random().toString(36).slice(2)}`)
+    const approvalId = args?.approval_id ?? fallbackIdRef.current
+
+    // requires-action 상태일 때만 timer 활성
+    const isPending =
+      submitState === 'idle' &&
+      result === undefined &&
+      status.type !== 'complete' &&
+      status.type !== 'running'
+
+    const handleSubmit = useCallback(
+      async (opts?: { skipReason?: string }) => {
+        // 응답 직렬화
+        const response: Record<string, unknown> = {}
+        questions.forEach((q, i) => {
+          const val = answers[i]
+          if (val instanceof Set) {
+            response[q.question] = Array.from(val)
+          } else {
+            response[q.question] = val ?? ''
+          }
+        })
+
+        setSubmitState('submitting')
+
+        // 질문이 1개면 값만 전송, 복수면 객체 전송
+        const payload = questions.length === 1 ? Object.values(response)[0] : response
+
+        // 화면 표시용 텍스트
+        const displayText =
+          opts?.skipReason ??
+          questions
+            .map((_, i) => {
+              const val = answers[i]
+              if (val instanceof Set) return Array.from(val).join(', ')
+              return String(val ?? '')
+            })
+            .join(' | ')
+
+        // onResume으로 백엔드 그래프 재개
+        await hitl?.onResume(payload, displayText)
+        setSubmitState('submitted')
+      },
+      [answers, questions, hitl],
+    )
+
+    // 만료 시 빈 답변으로 자동 제출 — 에이전트 graph가 무한히 paused되지 않도록
+    const expireMessage = t('autoSkipped')
+    const handleExpire = useCallback(() => {
+      if (submitState !== 'idle') return
+      void handleSubmit({ skipReason: expireMessage })
+    }, [handleSubmit, submitState, expireMessage])
+
+    const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
+      approvalId,
+      initialTimeoutSeconds: args?.timeout_seconds,
+      onExpire: handleExpire,
+      active: isPending,
+    })
+
     const updateAnswer = useCallback(
-      (idx: number, value: unknown) => setAnswers((prev) => ({ ...prev, [idx]: value })),
-      [],
+      (idx: number, value: unknown) => {
+        setAnswers((prev) => ({ ...prev, [idx]: value }))
+        extend()
+      },
+      [extend],
     )
 
     const toggleMulti = useCallback(
-      (idx: number, label: string) =>
+      (idx: number, label: string) => {
         setAnswers((prev) => {
           const current = (prev[idx] as Set<string>) ?? new Set<string>()
           return { ...prev, [idx]: toggleSetItem(current, label) }
-        }),
-      [],
+        })
+        extend()
+      },
+      [extend],
     )
-
-    const handleSubmit = useCallback(async () => {
-      // 응답 직렬화
-      const response: Record<string, unknown> = {}
-      questions.forEach((q, i) => {
-        const val = answers[i]
-        if (val instanceof Set) {
-          response[q.question] = Array.from(val)
-        } else {
-          response[q.question] = val ?? ''
-        }
-      })
-
-      setSubmitState('submitting')
-
-      // 질문이 1개면 값만 전송, 복수면 객체 전송
-      const payload = questions.length === 1 ? Object.values(response)[0] : response
-
-      // 화면 표시용 텍스트
-      const displayParts = questions.map((_, i) => {
-        const val = answers[i]
-        if (val instanceof Set) return Array.from(val).join(', ')
-        return String(val ?? '')
-      })
-      const displayText = displayParts.join(' | ')
-
-      // onResume으로 백엔드 그래프 재개
-      await hitl?.onResume(payload, displayText)
-      setSubmitState('submitted')
-    }, [answers, questions, hitl])
 
     // ── 완료 상태 ──
     if (status.type === 'complete' || result !== undefined || submitState === 'submitted') {
@@ -243,6 +288,14 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
         <div className="mb-3 flex items-center gap-2">
           <MessageSquareQuoteIcon className="size-4 text-primary-strong" />
           <span className="text-sm font-medium">{t('inputRequired')}</span>
+          <CountdownBadge
+            formatted={formatted}
+            isUrgent={isUrgent}
+            expired={remaining <= 0}
+            label={t('expiresIn')}
+            expiredLabel={t('expired')}
+            className="ml-auto"
+          />
         </div>
 
         {/* Questions */}
@@ -282,6 +335,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
                     question={q}
                     value={(answers[i] as string) ?? ''}
                     onChange={(v) => updateAnswer(i, v)}
+                    onFocus={extend}
                     placeholder={t('placeholder')}
                   />
                 )
@@ -293,11 +347,11 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
         <div className="mt-4 flex justify-end">
           <button
             type="button"
-            onClick={handleSubmit}
+            onClick={() => handleSubmit()}
             disabled={!allAnswered || submitState === 'submitting'}
             className={cn(
               'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-all',
-              allAnswered && submitState !== 'submitting'
+              allAnswered && submitState === 'idle'
                 ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                 : 'cursor-not-allowed bg-muted text-muted-foreground',
             )}
