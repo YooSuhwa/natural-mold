@@ -130,6 +130,7 @@ async def get_public_share(
     return SharedConversationView(
         share_token=link.share_token,
         conversation_title=conversation.title,
+        conversation_created_at=conversation.created_at,
         agent=SharedAgentBrief(
             name=agent.name,
             description=agent.description,

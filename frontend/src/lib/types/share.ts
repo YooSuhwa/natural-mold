@@ -27,6 +27,7 @@ export interface SharedAgentBrief {
 export interface SharedConversationView {
   share_token: string
   conversation_title: string | null
+  conversation_created_at: string
   agent: SharedAgentBrief
   messages: Message[]
   shared_at: string

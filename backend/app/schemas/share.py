@@ -41,6 +41,7 @@ class SharedConversationView(BaseModel):
 
     share_token: str
     conversation_title: str | None = None
+    conversation_created_at: UtcDatetime
     agent: SharedAgentBrief
     messages: list[MessageResponse]
     shared_at: UtcDatetime
