@@ -176,6 +176,51 @@ class TestLangchainMessagesToResponse:
         assert result[0].tool_call_id == "toolu_1"
 
 
+class TestUsageExtraction:
+    """W7 — AIMessage.usage_metadata가 MessageResponse.usage로 평탄화된다."""
+
+    def test_ai_message_with_usage_metadata(self):
+        conv_id = uuid.uuid4()
+        msg = AIMessage(content="hi")
+        msg.usage_metadata = {
+            "input_tokens": 1200,
+            "output_tokens": 80,
+            "input_token_details": {"cache_creation": 800, "cache_read": 300},
+        }
+        [resp] = langchain_messages_to_response([msg], conv_id)
+        assert resp.usage is not None
+        assert resp.usage.prompt_tokens == 1200
+        assert resp.usage.completion_tokens == 80
+        assert resp.usage.cache_creation_tokens == 800
+        assert resp.usage.cache_read_tokens == 300
+
+    def test_ai_message_without_cache_details(self):
+        """``input_token_details`` 없으면 cache_*는 0으로 채워진다."""
+        conv_id = uuid.uuid4()
+        msg = AIMessage(content="hi")
+        msg.usage_metadata = {"input_tokens": 100, "output_tokens": 50}
+        [resp] = langchain_messages_to_response([msg], conv_id)
+        assert resp.usage is not None
+        assert resp.usage.prompt_tokens == 100
+        assert resp.usage.completion_tokens == 50
+        assert resp.usage.cache_creation_tokens == 0
+        assert resp.usage.cache_read_tokens == 0
+
+    def test_user_message_has_no_usage(self):
+        conv_id = uuid.uuid4()
+        msg = HumanMessage(content="hi")
+        [resp] = langchain_messages_to_response([msg], conv_id)
+        assert resp.usage is None
+
+    def test_ai_message_with_zero_tokens_has_no_usage(self):
+        """모든 필드 0이면 ``None`` — 클라이언트가 hover 팝오버 자체를 렌더 안 함."""
+        conv_id = uuid.uuid4()
+        msg = AIMessage(content="")
+        msg.usage_metadata = {"input_tokens": 0, "output_tokens": 0}
+        [resp] = langchain_messages_to_response([msg], conv_id)
+        assert resp.usage is None
+
+
 class TestStripJsonBlocks:
     def test_removes_json_blocks(self):
         content = 'Before\n```json\n{"key": "value"}\n```\nAfter'

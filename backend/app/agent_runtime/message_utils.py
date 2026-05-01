@@ -8,7 +8,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
-from app.schemas.conversation import MessageResponse
+from app.schemas.conversation import MessageResponse, TokenUsageBreakdown
 
 _TYPE_TO_ROLE = {"human": "user", "ai": "assistant", "tool": "tool"}
 
@@ -66,6 +66,10 @@ def langchain_messages_to_response(
         else:
             created_at = fallback_base + timedelta(milliseconds=idx)
 
+        # W7 — AIMessage가 들고 다니는 ``usage_metadata``를 평탄화. user/tool
+        # 메시지는 None. cache_* 필드가 없으면 0으로 채움.
+        usage = _extract_usage(msg)
+
         results.append(
             MessageResponse(
                 id=parse_msg_id(msg.id, conversation_id, idx),
@@ -75,10 +79,35 @@ def langchain_messages_to_response(
                 tool_calls=getattr(msg, "tool_calls", None) or None,
                 tool_call_id=getattr(msg, "tool_call_id", None),
                 created_at=created_at,
+                usage=usage,
             )
         )
 
     return results
+
+
+def _extract_usage(msg: BaseMessage) -> TokenUsageBreakdown | None:
+    """LangChain ``usage_metadata``를 ``TokenUsageBreakdown``으로 평탄화.
+
+    streaming.py의 ``message_end`` 발행 로직과 동일한 평탄화를 fetch 경로에서
+    재사용. user/tool 메시지나 usage_metadata가 없는 chunk는 ``None``.
+    """
+    meta = getattr(msg, "usage_metadata", None)
+    if not meta:
+        return None
+    input_details = meta.get("input_token_details") or {}
+    prompt = int(meta.get("input_tokens", 0))
+    completion = int(meta.get("output_tokens", 0))
+    cache_creation = int(input_details.get("cache_creation", 0))
+    cache_read = int(input_details.get("cache_read", 0))
+    if prompt == 0 and completion == 0 and cache_creation == 0 and cache_read == 0:
+        return None
+    return TokenUsageBreakdown(
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        cache_creation_tokens=cache_creation,
+        cache_read_tokens=cache_read,
+    )
 
 
 def convert_to_langchain_messages(messages: list[dict[str, str]]) -> list[BaseMessage]:
