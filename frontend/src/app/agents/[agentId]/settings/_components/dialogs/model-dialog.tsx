@@ -4,14 +4,7 @@ import { useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 import { ArrowDownIcon, ArrowUpIcon, PlusIcon, Trash2Icon } from 'lucide-react'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
@@ -126,110 +119,102 @@ export function ModelDialog({
   }, [modelId, fallbackIds])
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{t('modelDialogTitle')}</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-6 py-2">
-          {/* Model Select */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">{t('model')}</label>
-            <ModelSelect
-              value={modelId}
-              onValueChange={onModelIdChange}
-              allowCustomId
-              className="rounded-lg border p-2"
-            />
-          </div>
-
-          {/* Model Parameters */}
-          <div className="space-y-5 rounded-lg border p-4">
-            <label className="text-sm font-medium">{t('modelParams')}</label>
-
-            {/* Temperature */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{t('temperatureLabel')}</span>
-                <span className="font-mono text-xs tabular-nums">{temperature.toFixed(1)}</span>
-              </div>
-              <Slider
-                value={[temperature]}
-                onValueChange={(val) =>
-                  onTemperatureChange(Array.isArray(val) ? val[0] : (val as number))
-                }
-                min={0}
-                max={2}
-                step={0.1}
-              />
-              <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>{t('temperature.accurate')}</span>
-                <span>{t('temperature.creative')}</span>
-              </div>
-            </div>
-
-            {/* Top P */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{t('topPLabel')}</span>
-                <span className="font-mono text-xs tabular-nums">{topP.toFixed(1)}</span>
-              </div>
-              <Slider
-                value={[topP]}
-                onValueChange={(val) =>
-                  onTopPChange(Array.isArray(val) ? val[0] : (val as number))
-                }
-                min={0}
-                max={1}
-                step={0.1}
-              />
-            </div>
-
-            {/* Max Tokens */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{t('maxTokensLabel')}</span>
-              </div>
-              <Input
-                type="number"
-                min="256"
-                max="32768"
-                step="256"
-                value={maxTokens}
-                onChange={(e) => onMaxTokensChange(Number(e.target.value) || 4096)}
-              />
-            </div>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs text-muted-foreground"
-              onClick={onReset}
-            >
-              {t('resetToDefault')}
-            </Button>
-          </div>
-
-          {fallbackEnabled && (
-            <FallbackSection
-              fallbackIds={fallbackIds}
-              candidateModels={candidateModels}
-              duplicateIndexes={duplicateIndexes}
-              t={tu}
-              onAdd={handleAdd}
-              onChangeAt={handleChangeAt}
-              onRemoveAt={handleRemoveAt}
-              onMove={handleMove}
-            />
-          )}
+    <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="fixed">
+      <DialogShell.Header title={t('modelDialogTitle')} />
+      <DialogShell.Body>
+        {/* Model Select */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium">{t('model')}</label>
+          <ModelSelect
+            value={modelId}
+            onValueChange={onModelIdChange}
+            allowCustomId
+            className="rounded-lg border p-2"
+          />
         </div>
 
-        <DialogFooter>
-          <DialogClose render={<Button>{tc('done')}</Button>} />
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {/* Model Parameters */}
+        <div className="space-y-5 rounded-lg border p-4">
+          <label className="text-sm font-medium">{t('modelParams')}</label>
+
+          {/* Temperature */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">{t('temperatureLabel')}</span>
+              <span className="font-mono text-xs tabular-nums">{temperature.toFixed(1)}</span>
+            </div>
+            <Slider
+              value={[temperature]}
+              onValueChange={(val) =>
+                onTemperatureChange(Array.isArray(val) ? val[0] : (val as number))
+              }
+              min={0}
+              max={2}
+              step={0.1}
+            />
+            <div className="flex justify-between text-[10px] text-muted-foreground">
+              <span>{t('temperature.accurate')}</span>
+              <span>{t('temperature.creative')}</span>
+            </div>
+          </div>
+
+          {/* Top P */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">{t('topPLabel')}</span>
+              <span className="font-mono text-xs tabular-nums">{topP.toFixed(1)}</span>
+            </div>
+            <Slider
+              value={[topP]}
+              onValueChange={(val) => onTopPChange(Array.isArray(val) ? val[0] : (val as number))}
+              min={0}
+              max={1}
+              step={0.1}
+            />
+          </div>
+
+          {/* Max Tokens */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">{t('maxTokensLabel')}</span>
+            </div>
+            <Input
+              type="number"
+              min="256"
+              max="32768"
+              step="256"
+              value={maxTokens}
+              onChange={(e) => onMaxTokensChange(Number(e.target.value) || 4096)}
+            />
+          </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground"
+            onClick={onReset}
+          >
+            {t('resetToDefault')}
+          </Button>
+        </div>
+
+        {fallbackEnabled && (
+          <FallbackSection
+            fallbackIds={fallbackIds}
+            candidateModels={candidateModels}
+            duplicateIndexes={duplicateIndexes}
+            t={tu}
+            onAdd={handleAdd}
+            onChangeAt={handleChangeAt}
+            onRemoveAt={handleRemoveAt}
+            onMove={handleMove}
+          />
+        )}
+      </DialogShell.Body>
+      <DialogShell.Footer>
+        <Button onClick={() => onOpenChange(false)}>{tc('done')}</Button>
+      </DialogShell.Footer>
+    </DialogShell>
   )
 }
 
@@ -265,9 +250,7 @@ function FallbackSection({
       <summary className="cursor-pointer text-sm font-medium">
         {t('sectionTitle')}
         {fallbackIds.length > 0 && (
-          <span className="ml-2 text-xs text-muted-foreground">
-            ({fallbackIds.length})
-          </span>
+          <span className="ml-2 text-xs text-muted-foreground">({fallbackIds.length})</span>
         )}
       </summary>
       <div className="mt-3 space-y-3">
@@ -293,14 +276,10 @@ function FallbackSection({
                     {index + 1}
                   </span>
                   <Select value={id} onValueChange={(v) => v && onChangeAt(index, v)}>
-                    <SelectTrigger
-                      className="flex-1"
-                      data-testid={`fallback-select-${index}`}
-                    >
+                    <SelectTrigger className="flex-1" data-testid={`fallback-select-${index}`}>
                       <SelectValue>
                         {(selected) =>
-                          candidateModels.find((m) => m.id === selected)
-                            ?.display_name ?? ''
+                          candidateModels.find((m) => m.id === selected)?.display_name ?? ''
                         }
                       </SelectValue>
                     </SelectTrigger>
@@ -309,9 +288,7 @@ function FallbackSection({
                         <SelectItem key={m.id} value={m.id}>
                           <span className="flex items-center gap-2">
                             <span>{m.display_name}</span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {m.provider}
-                            </span>
+                            <span className="text-[10px] text-muted-foreground">{m.provider}</span>
                           </span>
                         </SelectItem>
                       ))}
@@ -365,9 +342,7 @@ function FallbackSection({
           variant="outline"
           size="sm"
           onClick={onAdd}
-          disabled={
-            fallbackIds.length >= MAX_FALLBACKS || candidateModels.length === 0
-          }
+          disabled={fallbackIds.length >= MAX_FALLBACKS || candidateModels.length === 0}
           data-testid="fallback-add-button"
         >
           <PlusIcon className="size-3.5" />

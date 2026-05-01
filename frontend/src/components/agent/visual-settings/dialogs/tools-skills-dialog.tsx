@@ -11,13 +11,7 @@ import {
   Trash2Icon,
   WrenchIcon,
 } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
 import { Button } from '@/components/ui/button'
@@ -134,16 +128,13 @@ export function ToolsSkillsDialog({
     (showSkills ? selectedSkills.length : 0)
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-5xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <IconComponent className="size-5" />
-            {title}
-          </DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
-
+    <DialogShell open={open} onOpenChange={onOpenChange} size="console" height="tall">
+      <DialogShell.Header
+        icon={<IconComponent className="size-5" />}
+        title={title}
+        description={description}
+      />
+      <DialogShell.Body className="flex flex-col">
         <div className="grid min-h-0 flex-1 gap-6 md:grid-cols-2">
           <CurrentColumn
             total={totalSelected}
@@ -217,8 +208,8 @@ export function ToolsSkillsDialog({
             )}
           </section>
         </div>
-      </DialogContent>
-    </Dialog>
+      </DialogShell.Body>
+    </DialogShell>
   )
 }
 

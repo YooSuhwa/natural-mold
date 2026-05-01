@@ -8,13 +8,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import { Badge } from '@/components/ui/badge'
 import {
   Select,
@@ -76,19 +70,14 @@ export function ModelTestBulkDialog({
   const allDone = total > 0 && completed === total
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Test {total} model{total === 1 ? '' : 's'}</DialogTitle>
-          <DialogDescription>
-            Each row runs in parallel against the selected credential.
-          </DialogDescription>
-        </DialogHeader>
-
+    <DialogShell open={open} onOpenChange={onOpenChange} size="xl" height="fixed">
+      <DialogShell.Header
+        title={`Test ${total} model${total === 1 ? '' : 's'}`}
+        description="Each row runs in parallel against the selected credential."
+      />
+      <DialogShell.Body>
         <div className="space-y-1.5">
-          <label htmlFor="bulk-cred" className="text-xs font-medium">
-            LLM credential
-          </label>
+          <label htmlFor="bulk-cred">LLM credential</label>
           <Select
             value={credentialId}
             onValueChange={(v) => v && setCredentialId(v)}
@@ -137,7 +126,7 @@ export function ModelTestBulkDialog({
         )}
 
         {credentialId && (
-          <div className="max-h-[55vh] space-y-3 overflow-auto pr-1">
+          <div className="space-y-3">
             {models.map((m) => (
               <div key={m.id} className="space-y-1.5">
                 <p className="text-xs font-medium">
@@ -166,7 +155,7 @@ export function ModelTestBulkDialog({
             Add an LLM credential first on the Credentials page.
           </p>
         )}
-      </DialogContent>
-    </Dialog>
+      </DialogShell.Body>
+    </DialogShell>
   )
 }

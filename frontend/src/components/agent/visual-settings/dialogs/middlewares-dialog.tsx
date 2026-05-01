@@ -3,13 +3,7 @@
 import { useMemo, useState } from 'react'
 import { LayersIcon, PlusIcon, SearchIcon, Trash2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -86,18 +80,13 @@ export function MiddlewaresDialog({
   }, [allMiddlewares, selectedTypes, category, query])
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <LayersIcon className="size-5" />
-            미들웨어 추가
-          </DialogTitle>
-          <DialogDescription>
-            에이전트 호출에 끼워 넣을 미들웨어를 선택합니다.
-          </DialogDescription>
-        </DialogHeader>
-
+    <DialogShell open={open} onOpenChange={onOpenChange} size="xl" height="tall">
+      <DialogShell.Header
+        icon={<LayersIcon className="size-5" />}
+        title="미들웨어 추가"
+        description="에이전트 호출에 끼워 넣을 미들웨어를 선택합니다."
+      />
+      <DialogShell.Body>
         <div className="grid gap-6 md:grid-cols-2">
           <CurrentColumn
             isLoading={isLoading}
@@ -115,8 +104,8 @@ export function MiddlewaresDialog({
             tc={tc}
           />
         </div>
-      </DialogContent>
-    </Dialog>
+      </DialogShell.Body>
+    </DialogShell>
   )
 }
 

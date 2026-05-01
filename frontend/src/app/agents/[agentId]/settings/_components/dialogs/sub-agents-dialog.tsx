@@ -5,13 +5,7 @@ import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { PlusIcon, SearchIcon, Trash2Icon, UsersIcon } from 'lucide-react'
 import { useAgents } from '@/lib/hooks/use-agents'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -60,16 +54,13 @@ export function SubAgentsDialog({
   }, [candidates, selectedSubAgentIds, query])
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UsersIcon className="size-5" />
-            {t('manageTitle')}
-          </DialogTitle>
-          <DialogDescription>{t('manageDescription')}</DialogDescription>
-        </DialogHeader>
-
+    <DialogShell open={open} onOpenChange={onOpenChange} size="xl" height="tall">
+      <DialogShell.Header
+        icon={<UsersIcon className="size-5" />}
+        title={t('manageTitle')}
+        description={t('manageDescription')}
+      />
+      <DialogShell.Body>
         <div className="grid gap-6 md:grid-cols-2">
           <CurrentColumn
             isLoading={!agents}
@@ -84,8 +75,8 @@ export function SubAgentsDialog({
             onAdd={onToggleSubAgent}
           />
         </div>
-      </DialogContent>
-    </Dialog>
+      </DialogShell.Body>
+    </DialogShell>
   )
 }
 

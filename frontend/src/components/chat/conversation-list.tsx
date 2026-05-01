@@ -32,14 +32,8 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import { SearchInput } from '@/components/shared/search-input'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 import { cn } from '@/lib/utils'
@@ -265,11 +259,14 @@ export function ConversationList({
         onConfirm={handleDeleteConfirm}
       />
 
-      <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('renameDialog.title')}</DialogTitle>
-          </DialogHeader>
+      <DialogShell
+        open={!!renameTarget}
+        onOpenChange={(open) => !open && setRenameTarget(null)}
+        size="md"
+        height="auto"
+      >
+        <DialogShell.Header title={t('renameDialog.title')} />
+        <DialogShell.Body>
           <Input
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
@@ -279,13 +276,13 @@ export function ConversationList({
             }}
             autoFocus
           />
-          <DialogFooter>
-            <Button onClick={handleRenameConfirm} disabled={!renameValue.trim()}>
-              {t('renameDialog.save')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </DialogShell.Body>
+        <DialogShell.Footer>
+          <Button onClick={handleRenameConfirm} disabled={!renameValue.trim()}>
+            {t('renameDialog.save')}
+          </Button>
+        </DialogShell.Footer>
+      </DialogShell>
     </div>
   )
 }

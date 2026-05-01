@@ -4,14 +4,7 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2, Zap } from 'lucide-react'
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { DialogShell } from '@/components/shared/dialog-shell'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -56,16 +49,12 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
   const [tab, setTab] = useState<'discover' | 'custom'>('discover')
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] flex-col overflow-hidden sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Add model</DialogTitle>
-          <DialogDescription>
-            Discover models from a credential, or enter a custom ID for
-            previews and private deployments.
-          </DialogDescription>
-        </DialogHeader>
-
+    <DialogShell open={open} onOpenChange={onOpenChange} size="lg" height="fixed">
+      <DialogShell.Header
+        title="Add model"
+        description="Discover models from a credential, or enter a custom ID for previews and private deployments."
+      />
+      <DialogShell.Body className="flex flex-col">
         <Tabs
           value={tab}
           onValueChange={(v) => setTab(v as 'discover' | 'custom')}
@@ -90,8 +79,8 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
             <CustomIdForm onSaved={() => onOpenChange(false)} />
           </TabsContent>
         </Tabs>
-      </DialogContent>
-    </Dialog>
+      </DialogShell.Body>
+    </DialogShell>
   )
 }
 
@@ -300,7 +289,7 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
         </div>
       )}
 
-      <DialogFooter>
+      <div className="flex items-center justify-end gap-2">
         <Button
           variant="outline"
           onClick={() => setTestOpen(true)}
@@ -314,7 +303,7 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
           {create.isPending && <Loader2 className="size-4 animate-spin" />}
           Save model
         </Button>
-      </DialogFooter>
+      </div>
     </div>
   )
 }

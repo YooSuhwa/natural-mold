@@ -50,9 +50,23 @@ interface HeaderProps {
   description?: ReactNode
   actions?: ReactNode
   className?: string
+  /**
+   * Render the title visually hidden while keeping it for a11y.
+   * Use for lightbox-style dialogs (image preview) or dialogs whose visible
+   * heading is custom JSX outside the standard Header layout.
+   */
+  srOnly?: boolean
 }
 
-function Header({ icon, title, description, actions, className }: HeaderProps) {
+function Header({ icon, title, description, actions, className, srOnly }: HeaderProps) {
+  if (srOnly) {
+    return (
+      <div className="sr-only">
+        <DialogTitle>{title}</DialogTitle>
+        {description ? <DialogDescription>{description}</DialogDescription> : null}
+      </div>
+    )
+  }
   return (
     <div
       className={cn(
