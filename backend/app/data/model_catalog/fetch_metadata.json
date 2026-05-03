@@ -1,17 +1,17 @@
 {
-  "fetched_at": "2026-04-30T15:00:01Z",
+  "fetched_at": "2026-05-03T09:00:00Z",
   "sources": {
     "litellm": {
       "status": "ok",
       "http_status": 200,
-      "sha256": "b94d7486221308a5b84808ea243f37dbc590a0d4a109ce5c9ccb11bd7dc5ff03",
-      "bytes": 1413378
+      "sha256": "4cc9e1a33ef6f2c1f8310b58c24beb97a29fc7f60bac05f2dce7890dd7a0067b",
+      "bytes": 1417019
     },
     "openrouter": {
       "status": "ok",
       "http_status": 200,
-      "sha256": "9276742f43c499ba4426d8770c4c4e10d879a9a67f3bdc712bda1af9bc60996e",
-      "bytes": 426065
+      "sha256": "4f62410689e10d33a34d69b25d34de81c7ba89684c798ae1aa709b352f758ad2",
+      "bytes": 429796
     },
     "llm_prices": {
       "status": "ok",
@@ -22,14 +22,14 @@
     "pydantic_genai": {
       "status": "ok",
       "http_status": 200,
-      "sha256": "a14b43516d2e105a728256d37e44440425b3d2f6fdc8bfd05e72f56f1c5653dd",
-      "bytes": 269999
+      "sha256": "68e98e992941bcf9f19ae0dd49e17a3276fa65e69e2ea79612e085a145ba57ea",
+      "bytes": 270607
     },
     "ai_model_list": {
       "status": "ok",
       "http_status": 200,
-      "sha256": "35dc8e879b0ada44ea0e6a93f0db93985db86ec87c12c3a9ca2563c42b10cea6",
-      "bytes": 1308568
+      "sha256": "85db4e07016a21ae20b51e827d161597e9b73e34209bc377502e4c30f47def96",
+      "bytes": 1325738
     }
   }
 }

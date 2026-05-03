@@ -14804,6 +14804,222 @@
         "per_image": 0.133
       }
     },
+    "gpt-image-2": {
+      "aliases": [
+        "azure/gpt-image-2",
+        "openai/gpt-image-2"
+      ],
+      "capabilities": {
+        "pdf_input": true,
+        "vision": true
+      },
+      "display_name": "GPT Image 2",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "modes": [
+        "image_generation",
+        "image_edit"
+      ],
+      "pricing": {
+        "cached_input_image_per_mtok": 2.0,
+        "cached_input_per_mtok": 1.25,
+        "currency": "USD",
+        "image_generation_prices": [
+          {
+            "price": 0.211
+          },
+          {
+            "price": 0.211,
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.211,
+            "quality": "high"
+          },
+          {
+            "price": 0.211,
+            "quality": "high",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.006,
+            "quality": "low"
+          },
+          {
+            "price": 0.006,
+            "quality": "low",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1536x1024"
+          }
+        ],
+        "input_image_per_mtok": 8.0,
+        "input_per_mtok": 5.0,
+        "output_image_per_mtok": 30.0,
+        "output_per_mtok": 10.0,
+        "per_image": 0.211
+      }
+    },
+    "gpt-image-2-2026-04-21": {
+      "aliases": [
+        "azure/gpt-image-2-2026-04-21",
+        "openai/gpt-image-2-2026-04-21"
+      ],
+      "capabilities": {
+        "pdf_input": true,
+        "vision": true
+      },
+      "display_name": "GPT Image 2 2026 04 21",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "image"
+        ]
+      },
+      "modes": [
+        "image_generation",
+        "image_edit"
+      ],
+      "pricing": {
+        "cached_input_image_per_mtok": 2.0,
+        "cached_input_per_mtok": 1.25,
+        "currency": "USD",
+        "image_generation_prices": [
+          {
+            "price": 0.211
+          },
+          {
+            "price": 0.211,
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.211,
+            "quality": "high"
+          },
+          {
+            "price": 0.211,
+            "quality": "high",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.006,
+            "quality": "low"
+          },
+          {
+            "price": 0.006,
+            "quality": "low",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1536x1024"
+          }
+        ],
+        "input_image_per_mtok": 8.0,
+        "input_per_mtok": 5.0,
+        "output_image_per_mtok": 30.0,
+        "output_per_mtok": 10.0,
+        "per_image": 0.211
+      }
+    },
     "gpt-latest": {
       "aliases": [
         "~openai/gpt-latest",
@@ -15438,6 +15654,40 @@
         "currency": "USD",
         "input_per_mtok": 0.017,
         "output_per_mtok": 0.11
+      }
+    },
+    "granite-4.1-8b": {
+      "aliases": [
+        "ibm-granite/granite-4.1-8b",
+        "ibm-granite/granite-4.1-8b-20260429",
+        "openrouter/ibm-granite/granite-4.1-8b",
+        "openrouter/ibm-granite/granite-4.1-8b-20260429"
+      ],
+      "capabilities": {
+        "function_calling": true,
+        "response_schema": true,
+        "structured_output": true,
+        "tool_choice": true
+      },
+      "context_window": 131072,
+      "display_name": "IBM: Granite 4.1 8B",
+      "max_output_tokens": 131072,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "modes": [
+        "chat"
+      ],
+      "pricing": {
+        "cached_input_per_mtok": 0.05,
+        "currency": "USD",
+        "input_per_mtok": 0.05,
+        "output_per_mtok": 0.1
       }
     },
     "grok-2": {
@@ -16746,17 +16996,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -16874,17 +17124,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -16927,17 +17177,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -16983,6 +17233,58 @@
           "rank": 105,
           "score": 25.6
         }
+      },
+      "source_url": "https://docs.x.ai/developers/models?cluster=us-east-1"
+    },
+    "grok-4.3": {
+      "aliases": [
+        "grok-4.3-latest",
+        "xai/grok-4.3",
+        "x-ai/grok-4.3",
+        "xai/grok-4.3-latest",
+        "x-ai/grok-4.3-20260430",
+        "openrouter/x-ai/grok-4.3",
+        "openrouter/x-ai/grok-4.3-20260430"
+      ],
+      "capabilities": {
+        "function_calling": true,
+        "reasoning": true,
+        "response_schema": true,
+        "structured_output": true,
+        "tool_choice": true
+      },
+      "context_window": 1000000,
+      "display_name": "Grok 4.3",
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "modes": [
+        "chat"
+      ],
+      "owned_by": "xai",
+      "pricing": {
+        "cached_input_per_mtok": 0.2,
+        "currency": "USD",
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
+        "tiers": [
+          {
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
+            "up_to_tokens": 200000
+          },
+          {
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
+            "up_to_tokens": 1000000
+          }
+        ]
       },
       "source_url": "https://docs.x.ai/developers/models?cluster=us-east-1"
     },
@@ -18196,9 +18498,9 @@
         "structured_output": true,
         "tool_choice": true
       },
-      "context_window": 256000,
+      "context_window": 262142,
       "display_name": "MoonshotAI: Kimi K2.6",
-      "max_output_tokens": 65536,
+      "max_output_tokens": 262142,
       "modalities": {
         "input": [
           "text",
@@ -18212,10 +18514,10 @@
         "chat"
       ],
       "pricing": {
-        "cached_input_per_mtok": 0.1463,
+        "cached_input_per_mtok": 0.14,
         "currency": "USD",
-        "input_per_mtok": 0.7448,
-        "output_per_mtok": 4.655
+        "input_per_mtok": 0.74,
+        "output_per_mtok": 3.49
       },
       "rankings": {
         "livebench": {
@@ -18299,9 +18601,9 @@
         "structured_output": true,
         "tool_choice": true
       },
-      "context_window": 256000,
+      "context_window": 262142,
       "display_name": "MoonshotAI Kimi Latest",
-      "max_output_tokens": 65536,
+      "max_output_tokens": 262142,
       "modalities": {
         "input": [
           "text",
@@ -18315,10 +18617,10 @@
         "chat"
       ],
       "pricing": {
-        "cached_input_per_mtok": 0.1463,
+        "cached_input_per_mtok": 0.14,
         "currency": "USD",
-        "input_per_mtok": 0.7448,
-        "output_per_mtok": 4.655
+        "input_per_mtok": 0.74,
+        "output_per_mtok": 3.49
       }
     },
     "l3-euryale-70b": {
@@ -21803,37 +22105,6 @@
         "output_per_mtok": 0.2
       }
     },
-    "mistral-small-creative": {
-      "aliases": [
-        "mistralai/mistral-small-creative",
-        "mistralai/mistral-small-creative-20251216",
-        "openrouter/mistralai/mistral-small-creative",
-        "openrouter/mistralai/mistral-small-creative-20251216"
-      ],
-      "capabilities": {
-        "function_calling": true,
-        "tool_choice": true
-      },
-      "context_window": 32768,
-      "display_name": "Mistral: Mistral Small Creative",
-      "modalities": {
-        "input": [
-          "text"
-        ],
-        "output": [
-          "text"
-        ]
-      },
-      "modes": [
-        "chat"
-      ],
-      "pricing": {
-        "cached_input_per_mtok": 0.01,
-        "currency": "USD",
-        "input_per_mtok": 0.1,
-        "output_per_mtok": 0.3
-      }
-    },
     "mistral-small-latest": {
       "aliases": [
         "mistral/mistral-small-latest"
@@ -23780,6 +24051,35 @@
         "output_per_mtok": 6.0
       }
     },
+    "owl-alpha": {
+      "aliases": [
+        "openrouter/owl-alpha"
+      ],
+      "capabilities": {
+        "function_calling": true,
+        "response_schema": true,
+        "structured_output": true
+      },
+      "context_window": 1048756,
+      "display_name": "Owl Alpha",
+      "max_output_tokens": 262144,
+      "modalities": {
+        "input": [
+          "text"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "modes": [
+        "chat"
+      ],
+      "pricing": {
+        "currency": "USD",
+        "input_per_mtok": 0.0,
+        "output_per_mtok": 0.0
+      }
+    },
     "palmyra-x5": {
       "aliases": [
         "writer/palmyra-x5",
@@ -25273,9 +25573,9 @@
         "chat"
       ],
       "pricing": {
-        "cached_input_per_mtok": 0.09,
+        "cached_input_per_mtok": 0.07,
         "currency": "USD",
-        "input_per_mtok": 0.14,
+        "input_per_mtok": 0.12,
         "output_per_mtok": 0.8
       }
     },
@@ -26156,9 +26456,9 @@
         "structured_output": true,
         "tool_choice": true
       },
-      "context_window": 256000,
+      "context_window": 262144,
       "display_name": "Qwen: Qwen3.6 27B",
-      "max_output_tokens": 65536,
+      "max_output_tokens": 81920,
       "modalities": {
         "input": [
           "text",
@@ -26174,8 +26474,8 @@
       ],
       "pricing": {
         "currency": "USD",
-        "input_per_mtok": 0.325,
-        "output_per_mtok": 3.25
+        "input_per_mtok": 0.32,
+        "output_per_mtok": 3.2
       }
     },
     "qwen3.6-35b-a3b": {
@@ -31835,6 +32135,190 @@
         "input_image_per_mtok": 8.0,
         "input_per_mtok": 5.0,
         "output_image_per_mtok": 32.0
+      }
+    },
+    "azure/gpt-image-2": {
+      "enabled": true,
+      "endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ],
+      "model_ref": "gpt-image-2",
+      "pricing": {
+        "cached_input_image_per_mtok": 2.0,
+        "cached_input_per_mtok": 1.25,
+        "currency": "USD",
+        "image_generation_prices": [
+          {
+            "price": 0.211
+          },
+          {
+            "price": 0.211,
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.211,
+            "quality": "high"
+          },
+          {
+            "price": 0.211,
+            "quality": "high",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.006,
+            "quality": "low"
+          },
+          {
+            "price": 0.006,
+            "quality": "low",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1536x1024"
+          }
+        ],
+        "input_image_per_mtok": 8.0,
+        "input_per_mtok": 5.0,
+        "output_image_per_mtok": 30.0,
+        "output_per_mtok": 10.0,
+        "per_image": 0.211
+      }
+    },
+    "azure/gpt-image-2-2026-04-21": {
+      "enabled": true,
+      "endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ],
+      "model_ref": "gpt-image-2-2026-04-21",
+      "pricing": {
+        "cached_input_image_per_mtok": 2.0,
+        "cached_input_per_mtok": 1.25,
+        "currency": "USD",
+        "image_generation_prices": [
+          {
+            "price": 0.211
+          },
+          {
+            "price": 0.211,
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.211,
+            "quality": "high"
+          },
+          {
+            "price": 0.211,
+            "quality": "high",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.006,
+            "quality": "low"
+          },
+          {
+            "price": 0.006,
+            "quality": "low",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1536x1024"
+          }
+        ],
+        "input_image_per_mtok": 8.0,
+        "input_per_mtok": 5.0,
+        "output_image_per_mtok": 30.0,
+        "output_per_mtok": 10.0,
+        "per_image": 0.211
       }
     },
     "azure/gpt-realtime": {
@@ -39202,6 +39686,190 @@
         "per_image": 0.133
       }
     },
+    "openai/gpt-image-2": {
+      "enabled": true,
+      "endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ],
+      "model_ref": "gpt-image-2",
+      "pricing": {
+        "cached_input_image_per_mtok": 2.0,
+        "cached_input_per_mtok": 1.25,
+        "currency": "USD",
+        "image_generation_prices": [
+          {
+            "price": 0.211
+          },
+          {
+            "price": 0.211,
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.211,
+            "quality": "high"
+          },
+          {
+            "price": 0.211,
+            "quality": "high",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.006,
+            "quality": "low"
+          },
+          {
+            "price": 0.006,
+            "quality": "low",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1536x1024"
+          }
+        ],
+        "input_image_per_mtok": 8.0,
+        "input_per_mtok": 5.0,
+        "output_image_per_mtok": 30.0,
+        "output_per_mtok": 10.0,
+        "per_image": 0.211
+      }
+    },
+    "openai/gpt-image-2-2026-04-21": {
+      "enabled": true,
+      "endpoints": [
+        "/v1/images/generations",
+        "/v1/images/edits"
+      ],
+      "model_ref": "gpt-image-2-2026-04-21",
+      "pricing": {
+        "cached_input_image_per_mtok": 2.0,
+        "cached_input_per_mtok": 1.25,
+        "currency": "USD",
+        "image_generation_prices": [
+          {
+            "price": 0.211
+          },
+          {
+            "price": 0.211,
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.211,
+            "quality": "high"
+          },
+          {
+            "price": 0.211,
+            "quality": "high",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.165,
+            "quality": "high",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium"
+          },
+          {
+            "price": 0.053,
+            "quality": "medium",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.041,
+            "quality": "medium",
+            "size": "1536x1024"
+          },
+          {
+            "price": 0.006,
+            "quality": "low"
+          },
+          {
+            "price": 0.006,
+            "quality": "low",
+            "size": "1024x1024"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1024x1536"
+          },
+          {
+            "price": 0.005,
+            "quality": "low",
+            "size": "1536x1024"
+          }
+        ],
+        "input_image_per_mtok": 8.0,
+        "input_per_mtok": 5.0,
+        "output_image_per_mtok": 30.0,
+        "output_per_mtok": 10.0,
+        "per_image": 0.211
+      }
+    },
     "openai/gpt-realtime": {
       "context_window": 32000,
       "enabled": true,
@@ -41840,6 +42508,19 @@
       },
       "provider_model_id": "ibm-granite/granite-4.0-h-micro"
     },
+    "openrouter/granite-4.1-8b": {
+      "context_window": 131072,
+      "enabled": true,
+      "max_output_tokens": 131072,
+      "model_ref": "granite-4.1-8b",
+      "pricing": {
+        "cached_input_per_mtok": 0.05,
+        "currency": "USD",
+        "input_per_mtok": 0.05,
+        "output_per_mtok": 0.1
+      },
+      "provider_model_id": "ibm-granite/granite-4.1-8b"
+    },
     "openrouter/gryphe/mythomax-l2-13b": {
       "context_window": 4096,
       "enabled": true,
@@ -41940,6 +42621,18 @@
         "currency": "USD",
         "input_per_mtok": 0.017,
         "output_per_mtok": 0.11
+      }
+    },
+    "openrouter/ibm-granite/granite-4.1-8b": {
+      "context_window": 131072,
+      "enabled": true,
+      "max_output_tokens": 131072,
+      "model_ref": "granite-4.1-8b",
+      "pricing": {
+        "cached_input_per_mtok": 0.05,
+        "currency": "USD",
+        "input_per_mtok": 0.05,
+        "output_per_mtok": 0.1
       }
     },
     "openrouter/inception/mercury-2": {
@@ -42098,28 +42791,28 @@
       "provider_model_id": "moonshotai/kimi-k2.5"
     },
     "openrouter/kimi-k2.6": {
-      "context_window": 256000,
+      "context_window": 262142,
       "enabled": true,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 262142,
       "model_ref": "kimi-k2.6",
       "pricing": {
-        "cached_input_per_mtok": 0.1463,
+        "cached_input_per_mtok": 0.14,
         "currency": "USD",
-        "input_per_mtok": 0.7448,
-        "output_per_mtok": 4.655
+        "input_per_mtok": 0.74,
+        "output_per_mtok": 3.49
       },
       "provider_model_id": "moonshotai/kimi-k2.6"
     },
     "openrouter/kimi-latest": {
-      "context_window": 256000,
+      "context_window": 262142,
       "enabled": true,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 262142,
       "model_ref": "kimi-latest",
       "pricing": {
-        "cached_input_per_mtok": 0.1463,
+        "cached_input_per_mtok": 0.14,
         "currency": "USD",
-        "input_per_mtok": 0.7448,
-        "output_per_mtok": 4.655
+        "input_per_mtok": 0.74,
+        "output_per_mtok": 3.49
       },
       "provider_model_id": "~moonshotai/kimi-latest"
     },
@@ -43003,18 +43696,6 @@
       },
       "provider_model_id": "mistralai/mistral-small-3.2-24b-instruct"
     },
-    "openrouter/mistral-small-creative": {
-      "context_window": 32768,
-      "enabled": true,
-      "model_ref": "mistral-small-creative",
-      "pricing": {
-        "cached_input_per_mtok": 0.01,
-        "currency": "USD",
-        "input_per_mtok": 0.1,
-        "output_per_mtok": 0.3
-      },
-      "provider_model_id": "mistralai/mistral-small-creative"
-    },
     "openrouter/mistralai/codestral-2508": {
       "context_window": 256000,
       "enabled": true,
@@ -43232,17 +43913,6 @@
         "output_per_mtok": 0.2
       }
     },
-    "openrouter/mistralai/mistral-small-creative": {
-      "context_window": 32768,
-      "enabled": true,
-      "model_ref": "mistral-small-creative",
-      "pricing": {
-        "cached_input_per_mtok": 0.01,
-        "currency": "USD",
-        "input_per_mtok": 0.1,
-        "output_per_mtok": 0.3
-      }
-    },
     "openrouter/mistralai/mixtral-8x22b-instruct": {
       "context_window": 65536,
       "enabled": true,
@@ -43346,15 +44016,15 @@
       }
     },
     "openrouter/moonshotai/kimi-k2.6": {
-      "context_window": 256000,
+      "context_window": 262142,
       "enabled": true,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 262142,
       "model_ref": "kimi-k2.6",
       "pricing": {
-        "cached_input_per_mtok": 0.1463,
+        "cached_input_per_mtok": 0.14,
         "currency": "USD",
-        "input_per_mtok": 0.7448,
-        "output_per_mtok": 4.655
+        "input_per_mtok": 0.74,
+        "output_per_mtok": 3.49
       }
     },
     "openrouter/morph-v3-fast": {
@@ -44353,7 +45023,7 @@
       "pricing": {
         "currency": "USD",
         "input_per_mtok": 0.039,
-        "output_per_mtok": 0.19
+        "output_per_mtok": 0.18
       }
     },
     "openrouter/openai/gpt-oss-120b:free": {
@@ -44517,6 +45187,17 @@
         "currency": "USD",
         "input_per_mtok": 1.1,
         "output_per_mtok": 4.4
+      }
+    },
+    "openrouter/owl-alpha": {
+      "context_window": 1048756,
+      "enabled": true,
+      "max_output_tokens": 262144,
+      "model_ref": "owl-alpha",
+      "pricing": {
+        "currency": "USD",
+        "input_per_mtok": 0.0,
+        "output_per_mtok": 0.0
       }
     },
     "openrouter/palmyra-x5": {
@@ -45006,9 +45687,9 @@
       "max_output_tokens": 262144,
       "model_ref": "qwen3-coder-next",
       "pricing": {
-        "cached_input_per_mtok": 0.09,
+        "cached_input_per_mtok": 0.07,
         "currency": "USD",
-        "input_per_mtok": 0.14,
+        "input_per_mtok": 0.12,
         "output_per_mtok": 0.8
       }
     },
@@ -45261,14 +45942,14 @@
       }
     },
     "openrouter/qwen/qwen3.6-27b": {
-      "context_window": 256000,
+      "context_window": 262144,
       "enabled": true,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 81920,
       "model_ref": "qwen3.6-27b",
       "pricing": {
         "currency": "USD",
-        "input_per_mtok": 0.325,
-        "output_per_mtok": 3.25
+        "input_per_mtok": 0.32,
+        "output_per_mtok": 3.2
       }
     },
     "openrouter/qwen/qwen3.6-35b-a3b": {
@@ -45459,9 +46140,9 @@
       "max_output_tokens": 262144,
       "model_ref": "qwen3-coder-next",
       "pricing": {
-        "cached_input_per_mtok": 0.09,
+        "cached_input_per_mtok": 0.07,
         "currency": "USD",
-        "input_per_mtok": 0.14,
+        "input_per_mtok": 0.12,
         "output_per_mtok": 0.8
       },
       "provider_model_id": "qwen/qwen3-coder-next"
@@ -45713,14 +46394,14 @@
       "provider_model_id": "qwen/qwen3.5-plus-20260420"
     },
     "openrouter/qwen3.6-27b": {
-      "context_window": 256000,
+      "context_window": 262144,
       "enabled": true,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 81920,
       "model_ref": "qwen3.6-27b",
       "pricing": {
         "currency": "USD",
-        "input_per_mtok": 0.325,
-        "output_per_mtok": 3.25
+        "input_per_mtok": 0.32,
+        "output_per_mtok": 3.2
       },
       "provider_model_id": "qwen/qwen3.6-27b"
     },
@@ -46453,8 +47134,8 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5
       }
     },
     "openrouter/x-ai/grok-4.20-multi-agent": {
@@ -46466,6 +47147,17 @@
         "currency": "USD",
         "input_per_mtok": 2.0,
         "output_per_mtok": 6.0
+      }
+    },
+    "openrouter/x-ai/grok-4.3": {
+      "context_window": 1000000,
+      "enabled": true,
+      "model_ref": "grok-4.3",
+      "pricing": {
+        "cached_input_per_mtok": 0.2,
+        "currency": "USD",
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5
       }
     },
     "openrouter/x-ai/grok-code-fast-1": {
@@ -46756,15 +47448,15 @@
       }
     },
     "openrouter/~moonshotai/kimi-latest": {
-      "context_window": 256000,
+      "context_window": 262142,
       "enabled": true,
-      "max_output_tokens": 65536,
+      "max_output_tokens": 262142,
       "model_ref": "kimi-latest",
       "pricing": {
-        "cached_input_per_mtok": 0.1463,
+        "cached_input_per_mtok": 0.14,
         "currency": "USD",
-        "input_per_mtok": 0.7448,
-        "output_per_mtok": 4.655
+        "input_per_mtok": 0.74,
+        "output_per_mtok": 3.49
       }
     },
     "openrouter/~openai/gpt-latest": {
@@ -48823,17 +49515,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -48846,17 +49538,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -48869,17 +49561,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -48904,17 +49596,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -48927,17 +49619,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -48951,17 +49643,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -48975,17 +49667,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -48998,17 +49690,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49021,17 +49713,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49044,17 +49736,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49067,17 +49759,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49090,17 +49782,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49113,17 +49805,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49136,17 +49828,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49159,17 +49851,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49182,17 +49874,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49205,17 +49897,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49228,17 +49920,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49252,17 +49944,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49275,17 +49967,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49299,17 +49991,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49322,17 +50014,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49345,17 +50037,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49368,17 +50060,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49391,17 +50083,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49415,17 +50107,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49438,17 +50130,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49461,17 +50153,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49484,17 +50176,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49507,17 +50199,17 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
           }
         ]
@@ -49530,18 +50222,65 @@
       "pricing": {
         "cached_input_per_mtok": 0.2,
         "currency": "USD",
-        "input_per_mtok": 2.0,
-        "output_per_mtok": 6.0,
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
         "tiers": [
           {
-            "input_per_mtok": 2.0,
-            "output_per_mtok": 6.0,
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
             "up_to_tokens": 200000
           },
           {
-            "input_per_mtok": 4.0,
-            "output_per_mtok": 12.0,
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
             "up_to_tokens": 2000000
+          }
+        ]
+      }
+    },
+    "xai/grok-4.3": {
+      "context_window": 1000000,
+      "enabled": true,
+      "model_ref": "grok-4.3",
+      "pricing": {
+        "cached_input_per_mtok": 0.2,
+        "currency": "USD",
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
+        "tiers": [
+          {
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
+            "up_to_tokens": 200000
+          },
+          {
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
+            "up_to_tokens": 1000000
+          }
+        ]
+      },
+      "provider_model_id": "grok-4.3-latest"
+    },
+    "xai/grok-4.3-latest": {
+      "context_window": 1000000,
+      "enabled": true,
+      "model_ref": "grok-4.3",
+      "pricing": {
+        "cached_input_per_mtok": 0.2,
+        "currency": "USD",
+        "input_per_mtok": 1.25,
+        "output_per_mtok": 2.5,
+        "tiers": [
+          {
+            "input_per_mtok": 1.25,
+            "output_per_mtok": 2.5,
+            "up_to_tokens": 200000
+          },
+          {
+            "input_per_mtok": 2.5,
+            "output_per_mtok": 5.0,
+            "up_to_tokens": 1000000
           }
         ]
       }
@@ -49954,6 +50693,6 @@
       "website": "https://x.ai"
     }
   },
-  "updated_at": "2026-04-29T08:24:01Z",
+  "updated_at": "2026-05-02T19:04:59Z",
   "version": 1
 }
