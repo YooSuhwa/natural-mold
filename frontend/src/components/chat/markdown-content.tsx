@@ -3,6 +3,7 @@
 import { lazy, Suspense, useState, useCallback, useMemo } from 'react'
 import type { Components } from 'react-markdown'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
@@ -50,8 +51,8 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         >
           {copied ? (
             <>
-              <CheckIcon className="size-3 text-emerald-500" />
-              <span className="text-emerald-500">copied</span>
+              <CheckIcon className="size-3 text-status-success" />
+              <span className="text-status-success">copied</span>
             </>
           ) : (
             <>
@@ -204,7 +205,10 @@ export function MarkdownContent({
       <Markdown
         components={components}
         urlTransform={urlTransform}
-        remarkPlugins={[remarkGfm, remarkMath]}
+        // remarkBreaks: 단일 newline을 <br>로 변환. LLM 응답이 종종 단일 줄바꿈으로
+        // 줄을 나눠 쓰는데 GitHub Markdown은 빈 줄(double newline)만 단락 분기로
+        // 인식해서 시각적으로 합쳐져 보이는 문제를 해소.
+        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
         rehypePlugins={[rehypeKatex]}
       >
         {content}
