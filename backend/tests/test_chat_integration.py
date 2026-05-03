@@ -216,10 +216,10 @@ async def test_mcp_connect_and_list_interpolates_credentials() -> None:
         captured_headers.update(headers or {})
 
         class _Conn:
-            async def __aenter__(self_inner):
+            async def __aenter__(self):
                 return (None, None, None)
 
-            async def __aexit__(self_inner, *_exc):
+            async def __aexit__(self, *_exc):
                 return None
 
         return _Conn()
