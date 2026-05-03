@@ -33,12 +33,12 @@ function ImageChoice({
 
   if (!available) {
     return (
-      <div className="my-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950">
-        <div className="flex items-center gap-2 font-medium text-amber-700 dark:text-amber-300">
+      <div className="my-3 rounded-xl border border-status-warn/30 bg-status-warn/10 px-4 py-3 text-sm">
+        <div className="flex items-center gap-2 font-medium text-status-warn">
           <ImageIcon className="size-4" />
           이미지 생성 비활성화
         </div>
-        <p className="mt-1 text-amber-700 dark:text-amber-300">{args.auto_prompt}</p>
+        <p className="mt-1 text-status-warn">{args.auto_prompt}</p>
       </div>
     )
   }
@@ -84,7 +84,7 @@ function ImageChoice({
             type="button"
             onClick={() => handle('generate')}
             disabled={!!submitted || !isRunning}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-primary-strong px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <SparklesIcon className="size-3.5" />
             생성하기
@@ -140,7 +140,7 @@ function ImageApproval({
       </div>
       <div className="px-4 py-3">
         {args.error ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          <div className="rounded-lg border border-status-danger/30 bg-status-danger/10 px-3 py-2 text-sm text-status-danger">
             {args.error}
           </div>
         ) : args.image_url ? (
@@ -189,7 +189,7 @@ function ImageApproval({
             onClick={() => handle('confirm')}
             disabled={!!submitted || !isRunning || !args.image_url}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50',
+              'inline-flex items-center gap-1.5 rounded-lg bg-primary-strong px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50',
               submitted === 'confirm' && 'opacity-60',
             )}
           >

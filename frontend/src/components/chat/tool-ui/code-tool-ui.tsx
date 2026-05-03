@@ -2,17 +2,8 @@
 
 import { useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import {
-  FileIcon,
-  FileEditIcon,
-  FilePlusIcon,
-  ChevronDownIcon,
-  CheckCircle2Icon,
-  Loader2Icon,
-  CopyIcon,
-  CheckIcon,
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { CopyIcon, CheckIcon } from 'lucide-react'
+import { CollapsiblePill, type PillStatus } from './collapsible-pill'
 
 // ──────────────────────────────────────────────
 // Types
@@ -70,6 +61,18 @@ function guessLanguage(filename: string): string {
   return ext ? (map[ext] ?? ext) : 'text'
 }
 
+// assistant-ui의 status.type union을 PillStatus로 매핑.
+// incomplete = HiTL reject 등으로 미완 → cancelled가 의미상 정확.
+// (다른 tool-ui 파일들의 매핑 함수와 미세하게 다름 — Sprint 2 후속에서 통일 예정)
+type AssistantUiStatusType = 'running' | 'complete' | 'incomplete' | 'requires-action'
+
+function statusToPill(statusType: AssistantUiStatusType | string): PillStatus {
+  if (statusType === 'running' || statusType === 'requires-action') return 'loading'
+  if (statusType === 'incomplete') return 'cancelled'
+  if (statusType === 'complete') return 'success'
+  return 'error'
+}
+
 // ──────────────────────────────────────────────
 // CodeBlock — 코드 미리보기 (Shiki 없이 기본 스타일)
 // ──────────────────────────────────────────────
@@ -108,7 +111,7 @@ function CodeBlock({
             className="text-zinc-500 transition-colors hover:text-zinc-300"
           >
             {copied ? (
-              <CheckIcon className="size-3 text-emerald-400" />
+              <CheckIcon className="size-3 text-status-success" />
             ) : (
               <CopyIcon className="size-3" />
             )}
@@ -155,14 +158,14 @@ function DiffBlock({
       </div>
       <div className="overflow-x-auto p-3 font-mono leading-relaxed">
         {oldStr.split('\n').map((line, i) => (
-          <div key={`old-${i}`} className="bg-red-950/40 text-red-300">
-            <span className="mr-2 select-none text-red-500/60">-</span>
+          <div key={`old-${i}`} className="bg-status-danger/15 text-status-danger">
+            <span className="mr-2 select-none opacity-60">-</span>
             {line || ' '}
           </div>
         ))}
         {newStr.split('\n').map((line, i) => (
-          <div key={`new-${i}`} className="bg-emerald-950/40 text-emerald-300">
-            <span className="mr-2 select-none text-emerald-500/60">+</span>
+          <div key={`new-${i}`} className="bg-status-success/15 text-status-success">
+            <span className="mr-2 select-none opacity-60">+</span>
             {line || ' '}
           </div>
         ))}
@@ -172,52 +175,31 @@ function DiffBlock({
 }
 
 // ──────────────────────────────────────────────
-// FileToolWrapper — 공통 레이아웃
+// FileToolPill — Read/Write/Edit 공통 래퍼. file kind 시각 구분은 텍스트
+// label("Read"/"Write"/"Edit")로 위임 (CollapsiblePill kind는 tool 고정).
 // ──────────────────────────────────────────────
 
-function FileToolWrapper({
-  icon: Icon,
+function FileToolPill({
   label,
   filePath,
-  isRunning,
+  status,
   children,
 }: {
-  icon: typeof FileIcon
   label: string
   filePath?: string
-  isRunning: boolean
+  status: PillStatus
   children?: React.ReactNode
 }) {
-  const [expanded, setExpanded] = useState(!isRunning)
-  const filename = extractFilename(filePath)
-
   return (
-    <div className="w-full rounded-xl border bg-muted/20 text-xs">
-      <button
-        type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {isRunning ? (
-          <Loader2Icon className="size-3.5 shrink-0 animate-spin text-primary-strong" />
-        ) : (
-          <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500" />
-        )}
-        <Icon className="size-3 shrink-0 text-muted-foreground" />
-        <span className="truncate font-medium">{label}</span>
-        <span className="truncate text-muted-foreground">{filename}</span>
-        <span className="ml-auto" />
-        {children && (
-          <ChevronDownIcon
-            className={cn(
-              'size-3.5 shrink-0 text-muted-foreground transition-transform duration-200',
-              expanded && 'rotate-180',
-            )}
-          />
-        )}
-      </button>
-      {expanded && children && <div className="px-3 pb-3">{children}</div>}
-    </div>
+    <CollapsiblePill
+      kind="tool"
+      status={status}
+      title={label}
+      meta={extractFilename(filePath)}
+      defaultExpanded={status !== 'loading' && Boolean(children)}
+    >
+      {children}
+    </CollapsiblePill>
   )
 }
 
@@ -228,15 +210,14 @@ function FileToolWrapper({
 export const ReadFileToolUI = makeAssistantToolUI<ReadFileArgs, unknown>({
   toolName: 'read_file',
   render: ({ args, result, status }) => {
-    const isRunning = status.type === 'running'
     const filePath = args?.file_path ?? args?.path
     const filename = extractFilename(filePath)
     const content = typeof result === 'string' ? result : null
 
     return (
-      <FileToolWrapper icon={FileIcon} label="Read" filePath={filePath} isRunning={isRunning}>
+      <FileToolPill label="Read" filePath={filePath} status={statusToPill(status.type)}>
         {content && <CodeBlock code={content} filename={filename} />}
-      </FileToolWrapper>
+      </FileToolPill>
     )
   },
 })
@@ -248,14 +229,13 @@ export const ReadFileToolUI = makeAssistantToolUI<ReadFileArgs, unknown>({
 export const WriteFileToolUI = makeAssistantToolUI<WriteFileArgs, unknown>({
   toolName: 'write_file',
   render: ({ args, status }) => {
-    const isRunning = status.type === 'running'
     const filePath = args?.file_path ?? args?.path
     const filename = extractFilename(filePath)
 
     return (
-      <FileToolWrapper icon={FilePlusIcon} label="Write" filePath={filePath} isRunning={isRunning}>
+      <FileToolPill label="Write" filePath={filePath} status={statusToPill(status.type)}>
         {args?.content && <CodeBlock code={args.content} filename={filename} />}
-      </FileToolWrapper>
+      </FileToolPill>
     )
   },
 })
@@ -267,17 +247,16 @@ export const WriteFileToolUI = makeAssistantToolUI<WriteFileArgs, unknown>({
 export const EditFileToolUI = makeAssistantToolUI<EditFileArgs, unknown>({
   toolName: 'edit_file',
   render: ({ args, status }) => {
-    const isRunning = status.type === 'running'
     const filePath = args?.file_path ?? args?.path
     const filename = extractFilename(filePath)
     const hasEdit = args?.old_string && args?.new_string
 
     return (
-      <FileToolWrapper icon={FileEditIcon} label="Edit" filePath={filePath} isRunning={isRunning}>
+      <FileToolPill label="Edit" filePath={filePath} status={statusToPill(status.type)}>
         {hasEdit && (
           <DiffBlock oldStr={args.old_string!} newStr={args.new_string!} filename={filename} />
         )}
-      </FileToolWrapper>
+      </FileToolPill>
     )
   },
 })

@@ -92,7 +92,7 @@ function DraftConfigSummary({
             {middlewares.map((m) => (
               <span
                 key={m}
-                className="rounded-full bg-violet-100 px-2.5 py-0.5 font-mono text-xs text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+                className="rounded-full bg-status-accent/15 px-2.5 py-0.5 font-mono text-xs text-status-accent"
               >
                 {m}
               </span>
@@ -144,16 +144,16 @@ function DraftApprovalView({
   const image = args.image_url ?? draft.image_url ?? null
 
   return (
-    <div className="my-3 rounded-xl border-2 border-violet-200 bg-white shadow-sm dark:border-violet-800 dark:bg-zinc-900">
-      <div className="flex items-center gap-2 border-b border-violet-200 bg-violet-50/50 px-4 py-3 text-sm font-semibold dark:border-violet-800 dark:bg-violet-950/30">
-        <FileTextIcon className="size-4 text-violet-600 dark:text-violet-400" />
+    <div className="my-3 rounded-xl border-2 border-status-accent/30 bg-white shadow-sm dark:bg-zinc-900">
+      <div className="flex items-center gap-2 border-b border-status-accent/30 bg-status-accent/5 px-4 py-3 text-sm font-semibold">
+        <FileTextIcon className="size-4 text-status-accent" />
         {args.title || '최종 확인'}
       </div>
       <div className="px-4 py-3">
         <DraftConfigSummary draft={draft} image_url={image} />
       </div>
       {args.summary && (
-        <div className="border-t border-violet-200 px-4 py-3 text-sm text-zinc-700 dark:border-violet-800 dark:text-zinc-300">
+        <div className="border-t border-status-accent/30 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300">
           {args.summary}
         </div>
       )}
