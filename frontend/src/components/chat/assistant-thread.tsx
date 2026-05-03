@@ -65,18 +65,27 @@ function MessageTimestamp() {
   )
 }
 
-// MarkdownContent와 동일한 components 재사용해서 디자인을 한 곳에서 유지.
-// streamdown이 fence가 닫혀야 code block을 emit하므로 isStreaming=false 고정으로
-// 안전 (부분 mermaid가 렌더 시도해도 MermaidDiagram의 catch 블록이 raw fallback).
-const MARKDOWN_COMPONENTS = buildMarkdownComponents({ isStreaming: false })
 // reference 안정화 — react/streamdown이 prop 변화 시 processor를 재구성하지 않게.
 const REMARK_PLUGINS = [remarkBreaks]
 // streamdown의 syntax highlight(@streamdown/code)는 우리 SyntaxHighlighter와
 // 출력이 충돌하므로 제거 — math plugin만 유지.
 const STREAMDOWN_PLUGINS = { math }
+// 두 번 빌드해두고 useMemo 없이 isRunning에 따라 분기 — 매 렌더에서 새 객체를
+// 만들지 않으면서도 isStreaming 동적으로 적용 가능. (true→partial mermaid를
+// raw로 렌더, false→ message 종료 후 SVG 시도)
+const MARKDOWN_COMPONENTS_STREAMING = buildMarkdownComponents({ isStreaming: true })
+const MARKDOWN_COMPONENTS_FINAL = buildMarkdownComponents({ isStreaming: false })
 
-/** StreamdownTextPrimitive는 MessagePrimitive 컨텍스트에서 자동으로 텍스트를 읽는다. */
+/** StreamdownTextPrimitive는 MessagePrimitive 컨텍스트에서 자동으로 텍스트를 읽는다.
+ *
+ * isStreaming은 message status로 동적 detect — running 중에는 mermaid 등
+ * 무거운 fenced 블록을 raw로 두고, message 종료 후에야 다이어그램 렌더 시도.
+ */
 function AssistantTextPart() {
+  const isRunning = useAssistantState(
+    (s) => (s.message?.status as { type?: string } | undefined)?.type === 'running',
+  )
+  const components = isRunning ? MARKDOWN_COMPONENTS_STREAMING : MARKDOWN_COMPONENTS_FINAL
   return (
     <div className="prose-chat py-1 text-sm leading-relaxed text-foreground">
       <StreamdownTextPrimitive
@@ -84,7 +93,7 @@ function AssistantTextPart() {
         remarkPlugins={REMARK_PLUGINS}
         // Components 타입(react-markdown)과 streamdown 내부 타입이 호환되지 않아
         // never로 우회 — 런타임 동작은 동일.
-        components={MARKDOWN_COMPONENTS as never}
+        components={components as never}
       />
     </div>
   )
