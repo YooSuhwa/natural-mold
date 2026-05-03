@@ -10,7 +10,7 @@ import {
   FilePlusIcon,
   type LucideIcon,
 } from 'lucide-react'
-import { CollapsiblePill, type PillStatus } from './collapsible-pill'
+import { CollapsiblePill, pillStatusFromAssistantUi, type PillStatus } from './collapsible-pill'
 
 // ──────────────────────────────────────────────
 // Types
@@ -66,18 +66,6 @@ function guessLanguage(filename: string): string {
     toml: 'toml',
   }
   return ext ? (map[ext] ?? ext) : 'text'
-}
-
-// assistant-ui의 status.type union을 PillStatus로 매핑.
-// incomplete = HiTL reject 등으로 미완 → cancelled가 의미상 정확.
-// (다른 tool-ui 파일들의 매핑 함수와 미세하게 다름 — Sprint 2 후속에서 통일 예정)
-type AssistantUiStatusType = 'running' | 'complete' | 'incomplete' | 'requires-action'
-
-function statusToPill(statusType: AssistantUiStatusType | string): PillStatus {
-  if (statusType === 'running' || statusType === 'requires-action') return 'loading'
-  if (statusType === 'incomplete') return 'cancelled'
-  if (statusType === 'complete') return 'success'
-  return 'error'
 }
 
 // ──────────────────────────────────────────────
@@ -229,7 +217,7 @@ export const ReadFileToolUI = makeAssistantToolUI<ReadFileArgs, unknown>({
         icon={FileIcon}
         label="Read"
         filePath={filePath}
-        status={statusToPill(status.type)}
+        status={pillStatusFromAssistantUi(status.type)}
       >
         {content && <CodeBlock code={content} filename={filename} />}
       </FileToolPill>
@@ -252,7 +240,7 @@ export const WriteFileToolUI = makeAssistantToolUI<WriteFileArgs, unknown>({
         icon={FilePlusIcon}
         label="Write"
         filePath={filePath}
-        status={statusToPill(status.type)}
+        status={pillStatusFromAssistantUi(status.type)}
       >
         {args?.content && <CodeBlock code={args.content} filename={filename} />}
       </FileToolPill>
@@ -276,7 +264,7 @@ export const EditFileToolUI = makeAssistantToolUI<EditFileArgs, unknown>({
         icon={FileEditIcon}
         label="Edit"
         filePath={filePath}
-        status={statusToPill(status.type)}
+        status={pillStatusFromAssistantUi(status.type)}
       >
         {hasEdit && (
           <DiffBlock oldStr={args.old_string!} newStr={args.new_string!} filename={filename} />

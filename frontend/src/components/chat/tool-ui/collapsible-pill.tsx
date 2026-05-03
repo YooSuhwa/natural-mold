@@ -25,6 +25,22 @@ import { cn } from '@/lib/utils'
 export type PillStatus = 'loading' | 'success' | 'error' | 'cancelled'
 export type PillKind = 'tool' | 'subagent' | 'thinking'
 
+/**
+ * assistant-ui의 ``status.type``을 PillStatus로 매핑하는 표준 헬퍼.
+ *
+ * 5개 tool-ui 파일에 흩어져 있던 매핑 함수를 통합 (PR #103 review에서 발견된
+ * 미스매치). HiTL reject 등의 ``incomplete``는 의미상 cancelled가 정확.
+ */
+export function pillStatusFromAssistantUi(
+  statusType: 'running' | 'complete' | 'incomplete' | 'requires-action' | string | undefined,
+): PillStatus {
+  if (statusType === 'running' || statusType === 'requires-action') return 'loading'
+  if (statusType === 'incomplete') return 'cancelled'
+  if (statusType === 'complete') return 'success'
+  if (statusType === undefined) return 'loading'
+  return 'error'
+}
+
 interface CollapsiblePillProps {
   status: PillStatus
   kind?: PillKind

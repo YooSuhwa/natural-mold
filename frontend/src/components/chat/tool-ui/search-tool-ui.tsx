@@ -2,7 +2,7 @@
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { ExternalLinkIcon, GlobeIcon } from 'lucide-react'
-import { CollapsiblePill } from './collapsible-pill'
+import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 
 // ──────────────────────────────────────────────
 // Types
@@ -125,7 +125,7 @@ function SearchRender({
   return (
     <CollapsiblePill
       kind="tool"
-      status={isRunning ? 'loading' : 'success'}
+      status={pillStatusFromAssistantUi(status.type)}
       title={title}
       meta={meta}
       defaultExpanded={!isRunning && items.length > 0}

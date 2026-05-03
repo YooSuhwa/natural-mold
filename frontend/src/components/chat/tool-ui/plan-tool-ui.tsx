@@ -2,7 +2,7 @@
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { CheckCircle2Icon, CircleDotIcon, CircleIcon } from 'lucide-react'
-import { CollapsiblePill } from './collapsible-pill'
+import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 import { cn } from '@/lib/utils'
 
 // ──────────────────────────────────────────────
@@ -109,7 +109,7 @@ export const PlanToolUI = makeAssistantToolUI<WriteTodosArgs, string>({
     return (
       <CollapsiblePill
         kind="tool"
-        status={isRunning ? 'loading' : 'success'}
+        status={pillStatusFromAssistantUi(status.type)}
         title="Plan"
         meta={meta}
         defaultExpanded={items.length > 0}

@@ -4,7 +4,7 @@ import { PanelRightOpenIcon } from 'lucide-react'
 import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import { CollapsiblePill, type PillStatus } from './collapsible-pill'
+import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 import { ChatImage } from '@/components/chat/markdown-content'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 
@@ -74,12 +74,6 @@ function extractImageUrls(data: unknown): string[] {
   }
 
   return urls
-}
-
-function toPillStatus(status: 'running' | 'complete' | 'error'): PillStatus {
-  if (status === 'running') return 'loading'
-  if (status === 'error') return 'error'
-  return 'success'
 }
 
 export function ToolFallbackPanel({
@@ -154,7 +148,7 @@ export function ToolFallbackPanel({
     <div className="space-y-2">
       <CollapsiblePill
         kind="tool"
-        status={toPillStatus(status)}
+        status={pillStatusFromAssistantUi(status)}
         title={toolName}
         meta={status === 'running' ? t('calling') : t('completed')}
         trailing={trailing}
