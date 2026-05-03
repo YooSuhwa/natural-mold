@@ -32,6 +32,12 @@ interface CollapsiblePillProps {
   title: string
   /** 라벨 우측의 보조 텍스트 또는 카운트 ("검색 중…", "5건" 등). */
   meta?: ReactNode
+  /**
+   * kind 아이콘 자리에 표시할 커스텀 아이콘. file 도구 종류 구분
+   * (FileIcon/FileEditIcon/FilePlusIcon)처럼 같은 ``kind="tool"``이지만
+   * 시각적으로 더 좁히고 싶을 때. ``kind`` icon보다 우선 적용된다.
+   */
+  leadingIcon?: LucideIcon
   /** 확장 시 보일 본문. 미지정 시 chevron 자체를 숨긴다. */
   children?: ReactNode
   defaultExpanded?: boolean
@@ -90,6 +96,7 @@ export function CollapsiblePill({
   kind,
   title,
   meta,
+  leadingIcon,
   children,
   defaultExpanded = false,
   trailing,
@@ -98,14 +105,15 @@ export function CollapsiblePill({
 }: CollapsiblePillProps) {
   const [expanded, setExpanded] = useState(defaultExpanded)
   const { Icon: StatusIcon, iconClass, containerClass, spin } = STATUS_META[status]
-  const KindIcon = kind ? KIND_ICON[kind] : null
+  // leadingIcon이 명시되면 그것을 사용, 없으면 kind 매핑 폴백
+  const HeaderIcon = leadingIcon ?? (kind ? KIND_ICON[kind] : null)
   const expandable = children !== undefined && children !== null && children !== false
 
   const headerInner = (
     <>
       <StatusIcon className={cn('size-3.5 shrink-0', iconClass, spin && 'animate-spin')} />
-      {KindIcon ? (
-        <KindIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+      {HeaderIcon ? (
+        <HeaderIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
       ) : null}
       <span className="truncate font-medium">{title}</span>
       {meta ? <span className="shrink-0 text-muted-foreground">{meta}</span> : null}

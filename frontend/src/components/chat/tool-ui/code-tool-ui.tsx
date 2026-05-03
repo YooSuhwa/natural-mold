@@ -2,7 +2,14 @@
 
 import { useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import { CopyIcon, CheckIcon } from 'lucide-react'
+import {
+  CopyIcon,
+  CheckIcon,
+  FileIcon,
+  FileEditIcon,
+  FilePlusIcon,
+  type LucideIcon,
+} from 'lucide-react'
 import { CollapsiblePill, type PillStatus } from './collapsible-pill'
 
 // ──────────────────────────────────────────────
@@ -175,16 +182,18 @@ function DiffBlock({
 }
 
 // ──────────────────────────────────────────────
-// FileToolPill — Read/Write/Edit 공통 래퍼. file kind 시각 구분은 텍스트
-// label("Read"/"Write"/"Edit")로 위임 (CollapsiblePill kind는 tool 고정).
+// FileToolPill — Read/Write/Edit 공통 래퍼. leadingIcon으로 file 종류
+// (Read/Write/Edit)을 시각적으로도 구분 (textual label과 함께 빠른 스캔성 확보).
 // ──────────────────────────────────────────────
 
 function FileToolPill({
+  icon,
   label,
   filePath,
   status,
   children,
 }: {
+  icon: LucideIcon
   label: string
   filePath?: string
   status: PillStatus
@@ -193,6 +202,7 @@ function FileToolPill({
   return (
     <CollapsiblePill
       kind="tool"
+      leadingIcon={icon}
       status={status}
       title={label}
       meta={extractFilename(filePath)}
@@ -215,7 +225,12 @@ export const ReadFileToolUI = makeAssistantToolUI<ReadFileArgs, unknown>({
     const content = typeof result === 'string' ? result : null
 
     return (
-      <FileToolPill label="Read" filePath={filePath} status={statusToPill(status.type)}>
+      <FileToolPill
+        icon={FileIcon}
+        label="Read"
+        filePath={filePath}
+        status={statusToPill(status.type)}
+      >
         {content && <CodeBlock code={content} filename={filename} />}
       </FileToolPill>
     )
@@ -233,7 +248,12 @@ export const WriteFileToolUI = makeAssistantToolUI<WriteFileArgs, unknown>({
     const filename = extractFilename(filePath)
 
     return (
-      <FileToolPill label="Write" filePath={filePath} status={statusToPill(status.type)}>
+      <FileToolPill
+        icon={FilePlusIcon}
+        label="Write"
+        filePath={filePath}
+        status={statusToPill(status.type)}
+      >
         {args?.content && <CodeBlock code={args.content} filename={filename} />}
       </FileToolPill>
     )
@@ -252,7 +272,12 @@ export const EditFileToolUI = makeAssistantToolUI<EditFileArgs, unknown>({
     const hasEdit = args?.old_string && args?.new_string
 
     return (
-      <FileToolPill label="Edit" filePath={filePath} status={statusToPill(status.type)}>
+      <FileToolPill
+        icon={FileEditIcon}
+        label="Edit"
+        filePath={filePath}
+        status={statusToPill(status.type)}
+      >
         {hasEdit && (
           <DiffBlock oldStr={args.old_string!} newStr={args.new_string!} filename={filename} />
         )}
