@@ -28,6 +28,7 @@ from app.schemas.conversation import (
     RegenerateMessageRequest,
     ResumeRequest,
     SwitchBranchRequest,
+    TurnTraceResponse,
 )
 from app.services import chat_service, thread_branch_service, trace_storage
 
@@ -292,6 +293,26 @@ async def delete_conversation(
     if not conv:
         raise conversation_not_found()
     await chat_service.delete_conversation(db, conv)
+
+
+@router.get(
+    "/api/conversations/{conversation_id}/traces",
+    response_model=list[TurnTraceResponse],
+)
+async def list_traces(
+    conversation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """W5 — return all turn traces (SSE event arrays) for a conversation.
+
+    Each row is one assistant turn captured by ``stream_agent_response``,
+    ordered by ``created_at`` ascending. Used by W6 shared page chip
+    rendering and (later) W3-out for resume.
+    """
+    conv = await chat_service.get_conversation(db, conversation_id)
+    if not conv:
+        raise conversation_not_found()
+    return await trace_storage.get_traces_for_conversation(db, conversation_id)
 
 
 @router.get(
