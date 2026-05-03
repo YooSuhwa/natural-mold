@@ -169,12 +169,11 @@ function ConversationBody({
   agent: SharedConversationView['agent']
   traces: TurnTrace[]
 }) {
-  // turn별 chips를 메시지에 미리 매핑 — trace의 assistant_msg_id는 stream
-  // 시작 시 발급된 UUID4라 langchain message id (MessageResponse.id)와 다르
-  // 므로 직접 매칭 불가능. 대신 conversation의 turn 경계(user → 첫 assistant)
-  // 를 따라 traces[]를 시간순으로 1:1 매핑한다.
-  const chipsByMessageId = useMemo(
-    () => mapTurnChipsToMessages(messages, traces),
+  // 라이브 채팅 UX와 동일하게: 연속된 assistant 메시지는 한 그룹으로 묶고
+  // 그룹의 첫 메시지에 chips를 붙인다 ("도우미"가 같은 turn에서 여러 번
+  // 말하더라도 헤더는 한 번만, 도구 칩도 그 위에 한 번만).
+  const turnGroups = useMemo(
+    () => groupMessagesIntoTurns(messages, traces),
     [messages, traces],
   )
 
@@ -182,46 +181,63 @@ function ConversationBody({
     <section className="py-10 sm:py-14">
       <DividerLabel>대화 기록</DividerLabel>
       <ol className="mt-10 flex flex-col gap-8">
-        {messages.map((message) => (
-          <SharedMessage
-            key={message.id}
-            message={message}
-            agent={agent}
-            chips={chipsByMessageId.get(message.id) ?? []}
-          />
-        ))}
+        {turnGroups.map((group, i) =>
+          group.kind === 'user' ? (
+            <UserMessageItem key={group.message.id} message={group.message} />
+          ) : (
+            <AssistantTurnItem
+              key={group.messages[0]?.id ?? `turn-${i}`}
+              messages={group.messages}
+              chips={group.chips}
+              agent={agent}
+            />
+          ),
+        )}
       </ol>
     </section>
   )
 }
 
+/** 한 turn = (user message) | (assistant 메시지 그룹 + 그 turn의 chips). */
+type TurnGroup =
+  | { kind: 'user'; message: Message }
+  | { kind: 'assistant'; messages: Message[]; chips: ChipInfo[] }
+
 /**
- * conversation의 user→assistant turn 경계마다 trace 1건씩 chronological
- * 매칭해서 "이 turn의 첫 assistant 메시지에 표시할 chips" 매핑을 만든다.
+ * 메시지를 user / assistant-group으로 평탄화하면서 trace를 1:1 매핑.
  *
- * branch가 있는 conversation(edit/regenerate)은 trace가 더 많을 수 있는데,
- * 공개 페이지는 active 브랜치만 노출하므로 trace 일부가 매핑되지 않을 수
- * 있다. 그 경우는 자연스럽게 칩이 안 보임 (graceful).
+ * trace 매칭은 ``user → assistant 그룹 시작`` 경계마다 traces[turnIdx]를
+ * chronological 1:1로 가져온다. trace.assistant_msg_id와 langchain
+ * MessageResponse.id가 별개라 직접 비교 불가능. branch가 있는 대화는
+ * trace가 더 많을 수 있고, 공개 페이지는 active 브랜치만 노출하므로
+ * 일부 trace가 매핑되지 않을 수 있다 (graceful).
  */
-function mapTurnChipsToMessages(
+function groupMessagesIntoTurns(
   messages: Message[],
   traces: TurnTrace[],
-): Map<string, ChipInfo[]> {
-  const map = new Map<string, ChipInfo[]>()
+): TurnGroup[] {
+  const groups: TurnGroup[] = []
   let turnIdx = 0
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i]
-    const prev = messages[i - 1]
-    if (m.role === 'assistant' && prev?.role === 'user') {
-      const trace = traces[turnIdx]
-      turnIdx += 1
-      if (trace) {
-        const chips = extractChips(trace)
-        if (chips.length > 0) map.set(m.id, chips)
-      }
+    if (m.role === 'user') {
+      groups.push({ kind: 'user', message: m })
+      continue
     }
+    if (m.role !== 'assistant') continue
+
+    const lastGroup = groups[groups.length - 1]
+    if (lastGroup && lastGroup.kind === 'assistant') {
+      lastGroup.messages.push(m)
+      continue
+    }
+
+    const trace = traces[turnIdx]
+    turnIdx += 1
+    const chips = trace ? extractChips(trace) : []
+    groups.push({ kind: 'assistant', messages: [m], chips })
   }
-  return map
+  return groups
 }
 
 function DividerLabel({ children }: { children: React.ReactNode }) {
@@ -236,27 +252,27 @@ function DividerLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function SharedMessage({
-  message,
-  agent,
-  chips,
-}: {
-  message: Message
-  agent: SharedConversationView['agent']
-  chips: ChipInfo[]
-}) {
-  if (message.role === 'user') {
-    return (
-      <li className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl bg-muted/60 px-4 py-3 text-sm text-foreground">
-          <p className="whitespace-pre-wrap break-words leading-relaxed">
-            {message.content}
-          </p>
-        </div>
-      </li>
-    )
-  }
+function UserMessageItem({ message }: { message: Message }) {
+  return (
+    <li className="flex justify-end">
+      <div className="max-w-[85%] rounded-2xl bg-muted/60 px-4 py-3 text-sm text-foreground">
+        <p className="whitespace-pre-wrap break-words leading-relaxed">
+          {message.content}
+        </p>
+      </div>
+    </li>
+  )
+}
 
+function AssistantTurnItem({
+  messages,
+  chips,
+  agent,
+}: {
+  messages: Message[]
+  chips: ChipInfo[]
+  agent: SharedConversationView['agent']
+}) {
   return (
     <li className="space-y-3">
       <div className="flex items-center gap-2">
@@ -279,7 +295,9 @@ function SharedMessage({
             ))}
           </div>
         )}
-        <MarkdownContent content={message.content} />
+        {messages.map((m) => (
+          <MarkdownContent key={m.id} content={m.content} />
+        ))}
       </div>
     </li>
   )
