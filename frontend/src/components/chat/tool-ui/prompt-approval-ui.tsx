@@ -31,27 +31,27 @@ function PromptApproval({
   const display = truncated ? prompt.slice(0, 400) + '...' : prompt
 
   return (
-    <div className="my-3 rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex items-center gap-2 border-b border-zinc-200 px-4 py-3 text-sm font-semibold dark:border-zinc-800">
-        <FileTextIcon className="size-4 text-zinc-500" />
+    <div className="my-3 rounded-xl border border-border bg-card shadow-sm">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3 text-sm font-semibold">
+        <FileTextIcon className="size-4 text-muted-foreground" />
         {args.title || '시스템 프롬프트'}
       </div>
       <div className="px-4 py-3">
-        <pre className="whitespace-pre-wrap rounded-lg bg-zinc-50 p-3 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+        <pre className="whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs text-foreground">
           {display}
         </pre>
         {truncated && (
           <button
             type="button"
             onClick={() => setExpanded(true)}
-            className="mt-2 text-xs text-blue-600 hover:underline dark:text-blue-400"
+            className="mt-2 text-xs text-primary-strong hover:underline"
           >
             전체 보기
           </button>
         )}
       </div>
       {args.summary && (
-        <div className="border-t border-zinc-200 px-4 py-3 text-sm text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
+        <div className="border-t border-border px-4 py-3 text-sm text-foreground">
           {args.summary}
         </div>
       )}
