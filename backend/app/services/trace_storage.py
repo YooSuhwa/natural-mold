@@ -45,11 +45,16 @@ async def record_turn(
     *,
     conversation_id: uuid.UUID,
     events: list[dict[str, Any]],
+    raw_msg_ids: list[str] | None = None,
 ) -> MessageEvent | None:
     """Persist all events emitted during one assistant turn.
 
     No-op when ``events`` is empty (interrupt before message_start, etc.).
     Caller commits the session.
+
+    ``raw_msg_ids`` (W6 정확도): 이 turn 동안 노출된 langchain 메시지 raw id
+    목록 (중복 제거됨, streaming 순서 보존). ``parse_msg_id``로 UUID 변환 후
+    ``linked_message_ids`` 컬럼에 저장. None이면 컬럼은 NULL.
     """
     if not events:
         return None
@@ -60,11 +65,21 @@ async def record_turn(
         last_event_id if isinstance(last_event_id, str) and last_event_id else None
     )
 
+    linked_ids: list[str] | None = None
+    if raw_msg_ids:
+        from app.agent_runtime.message_utils import parse_msg_id
+
+        linked_ids = [
+            str(parse_msg_id(raw, conversation_id, idx))
+            for idx, raw in enumerate(raw_msg_ids)
+        ]
+
     record = MessageEvent(
         conversation_id=conversation_id,
         assistant_msg_id=msg_id,
         events=events,
         last_event_id=last_id,
+        linked_message_ids=linked_ids,
         completed_at=datetime.now(UTC).replace(tzinfo=None),
     )
     db.add(record)

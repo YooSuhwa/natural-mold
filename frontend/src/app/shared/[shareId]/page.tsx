@@ -206,18 +206,27 @@ type TurnGroup =
 /**
  * 메시지를 user / assistant-group으로 평탄화하면서 trace를 1:1 매핑.
  *
- * trace 매칭은 ``user → assistant 그룹 시작`` 경계마다 traces[turnIdx]를
- * chronological 1:1로 가져온다. trace.assistant_msg_id와 langchain
- * MessageResponse.id가 별개라 직접 비교 불가능. branch가 있는 대화는
- * trace가 더 많을 수 있고, 공개 페이지는 active 브랜치만 노출하므로
- * 일부 trace가 매핑되지 않을 수 있다 (graceful).
+ * 매칭 우선순위:
+ *  1. ``trace.linked_message_ids``에 그룹의 첫 message.id 포함 → 직접 매칭 (W6 정확도, m33+)
+ *  2. 폴백: chronological turn 순서 (linked_message_ids가 NULL인 m32 이전 row)
+ *
+ * branch가 있는 대화는 active 외 trace가 매핑되지 않을 수 있다 (graceful).
  */
 function groupMessagesIntoTurns(
   messages: Message[],
   traces: TurnTrace[],
 ): TurnGroup[] {
   const groups: TurnGroup[] = []
+  // 직접 매칭용 인덱스 — assistant_msg_id가 아니라 linked_message_ids 펼침.
+  const traceByMsgId = new Map<string, TurnTrace>()
+  for (const t of traces) {
+    if (!t.linked_message_ids) continue
+    for (const id of t.linked_message_ids) traceByMsgId.set(id, t)
+  }
+  // 직접 매칭에 쓰인 trace는 폴백 큐에서 제외.
+  const usedTraces = new Set<TurnTrace>()
   let turnIdx = 0
+
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i]
     if (m.role === 'user') {
@@ -232,8 +241,21 @@ function groupMessagesIntoTurns(
       continue
     }
 
-    const trace = traces[turnIdx]
-    turnIdx += 1
+    // 우선 직접 매칭 시도
+    let trace = traceByMsgId.get(m.id)
+    if (trace) {
+      usedTraces.add(trace)
+    } else {
+      // 폴백: 직접 매칭에 쓰이지 않은 trace 중에서 chronological 다음
+      while (turnIdx < traces.length && usedTraces.has(traces[turnIdx])) {
+        turnIdx += 1
+      }
+      trace = traces[turnIdx]
+      if (trace) {
+        usedTraces.add(trace)
+        turnIdx += 1
+      }
+    }
     const chips = trace ? extractChips(trace) : []
     groups.push({ kind: 'assistant', messages: [m], chips })
   }

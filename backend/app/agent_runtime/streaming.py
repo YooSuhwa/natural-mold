@@ -60,6 +60,7 @@ async def stream_agent_response(
     cost_per_output_token: float | None = None,
     usage_sink: dict[str, Any] | None = None,
     trace_sink: list[dict[str, Any]] | None = None,
+    msg_id_sink: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream agent SSE events.
 
@@ -115,6 +116,10 @@ async def stream_agent_response(
     _buf = ""
     _brace_depth = 0
 
+    # W6 정확도 — 이 turn에 노출된 AI 메시지의 raw langchain id를 수집.
+    # streaming 동안 같은 메시지가 chunk 여러 개로 쪼개져 들어오므로 dedup.
+    _seen_ai_msg_ids: set[str] = set()
+
     try:
         async for chunk in agent.astream(
             actual_input,
@@ -126,6 +131,12 @@ async def stream_agent_response(
             chunk_tags = (metadata or {}).get("tags") or []
             if "builder:internal" in chunk_tags:
                 continue
+            # W6: AI 메시지의 raw id 수집 (caller가 sink 제공 시).
+            if msg_id_sink is not None and msg.type in ("ai", "AIMessageChunk"):
+                raw_id = getattr(msg, "id", None)
+                if isinstance(raw_id, str) and raw_id and raw_id not in _seen_ai_msg_ids:
+                    _seen_ai_msg_ids.add(raw_id)
+                    msg_id_sink.append(raw_id)
             if hasattr(msg, "content") and msg.content and msg.type in ("ai", "AIMessageChunk"):
                 # Anthropic은 multi-block content (text + tool_use 등)를 list[dict]로
                 # 보내므로 text 블록만 평탄화. message_utils의 공유 헬퍼 사용.

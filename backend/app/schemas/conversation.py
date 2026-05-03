@@ -212,11 +212,16 @@ class TurnTraceResponse(BaseModel):
 
     Used by W6 (shared page chip rendering) and the future W3-out resume
     endpoint to read the full event sequence.
+
+    ``linked_message_ids``: 이 turn에 노출된 assistant 메시지의 parsed UUID
+    (``MessageResponse.id``와 동일 형식). 빈 배열/None이면 frontend는
+    chronological turn 순서로 폴백.
     """
 
     assistant_msg_id: str
     events: list[TraceEvent]
     last_event_id: str | None
+    linked_message_ids: list[str] | None = None
     created_at: UtcDatetime
     completed_at: UtcDatetime | None
 

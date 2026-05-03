@@ -18,6 +18,10 @@ export interface TurnTrace {
   assistant_msg_id: string
   events: TraceEvent[]
   last_event_id: string | null
+  /** 이 turn에서 노출된 assistant 메시지의 parsed UUID 목록.
+   * MessageResponse.id와 동일 형식이라 직접 매칭 가능 (W6 정확도).
+   * null이면 m33 이전 row → chronological 폴백. */
+  linked_message_ids: string[] | null
   created_at: string
   completed_at: string | null
 }

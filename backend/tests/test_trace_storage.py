@@ -215,6 +215,42 @@ async def test_get_traces_endpoint_empty_when_no_turns_recorded(
 
 
 @pytest.mark.asyncio
+async def test_record_turn_persists_linked_message_ids() -> None:
+    """W6 정확도 — raw_msg_ids → parsed UUID로 linked_message_ids에 저장."""
+    from app.agent_runtime.message_utils import parse_msg_id
+
+    conv_id = await _seed_conversation()
+    raw_ids = ["run-abc-1", "run-abc-2"]
+    expected_uuids = [str(parse_msg_id(raw, conv_id, idx)) for idx, raw in enumerate(raw_ids)]
+
+    async with TestSession() as db:
+        record = await trace_storage.record_turn(
+            db,
+            conversation_id=conv_id,
+            events=_events_for_msg("turn-with-linked"),
+            raw_msg_ids=raw_ids,
+        )
+        await db.commit()
+        assert record is not None
+        assert record.linked_message_ids == expected_uuids
+
+
+@pytest.mark.asyncio
+async def test_record_turn_linked_ids_default_none() -> None:
+    """raw_msg_ids 미전달 시 linked_message_ids는 None (m32 호환 폴백)."""
+    conv_id = await _seed_conversation()
+    async with TestSession() as db:
+        record = await trace_storage.record_turn(
+            db,
+            conversation_id=conv_id,
+            events=_events_for_msg("no-linked"),
+        )
+        await db.commit()
+        assert record is not None
+        assert record.linked_message_ids is None
+
+
+@pytest.mark.asyncio
 async def test_record_turn_appends_to_session_without_committing() -> None:
     """record_turn 자체는 commit 안 함 — caller가 commit 책임."""
     conv_id = await _seed_conversation()

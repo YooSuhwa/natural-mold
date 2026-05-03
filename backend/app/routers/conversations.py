@@ -215,19 +215,26 @@ def _sse_handler(
 
 
 async def _persist_trace(
-    conversation_id: uuid.UUID, trace_sink: list[dict[str, Any]]
+    conversation_id: uuid.UUID,
+    trace_sink: list[dict[str, Any]],
+    msg_id_sink: list[str] | None = None,
 ) -> None:
     """W5 — record_turn을 fresh session으로 호출.
 
     SSE generate() 안에서는 request-scoped db session이 close되어 있을 수
     있어 ``async_session()``으로 새로 연다. 이벤트 0건이면 service에서
     no-op으로 처리.
+
+    ``msg_id_sink`` (W6 정확도): 이 turn 동안 노출된 langchain raw msg id.
     """
     if not trace_sink:
         return
     async with async_session() as session:
         await trace_storage.record_turn(
-            session, conversation_id=conversation_id, events=trace_sink
+            session,
+            conversation_id=conversation_id,
+            events=trace_sink,
+            raw_msg_ids=msg_id_sink,
         )
         await session.commit()
 
@@ -424,13 +431,17 @@ async def send_message(
         )
 
     trace_sink: list[dict[str, Any]] = []
+    msg_id_sink: list[str] = []
     return _sse_handler(
         lambda: execute_agent_stream(
-            cfg, [{"role": "user", "content": data.content}], trace_sink=trace_sink
+            cfg,
+            [{"role": "user", "content": data.content}],
+            trace_sink=trace_sink,
+            msg_id_sink=msg_id_sink,
         ),
         log_msg=f"Agent stream failed for conversation {conversation_id}",
         user_msg="에이전트 실행 중 오류가 발생했습니다.",
-        on_complete=lambda: _persist_trace(conversation_id, trace_sink),
+        on_complete=lambda: _persist_trace(conversation_id, trace_sink, msg_id_sink),
     )
 
 
@@ -446,11 +457,14 @@ async def resume_message(
     await chat_service.touch_conversation(db, conversation_id)
 
     trace_sink: list[dict[str, Any]] = []
+    msg_id_sink: list[str] = []
     return _sse_handler(
-        lambda: resume_agent_stream(cfg, data.response, trace_sink=trace_sink),
+        lambda: resume_agent_stream(
+            cfg, data.response, trace_sink=trace_sink, msg_id_sink=msg_id_sink
+        ),
         log_msg=f"Agent resume failed for conversation {conversation_id}",
         user_msg="에이전트 재개 중 오류가 발생했습니다.",
-        on_complete=lambda: _persist_trace(conversation_id, trace_sink),
+        on_complete=lambda: _persist_trace(conversation_id, trace_sink, msg_id_sink),
     )
 
 
@@ -529,13 +543,17 @@ async def edit_message(
     await chat_service.clear_active_branch_override(db, conversation_id)
 
     trace_sink: list[dict[str, Any]] = []
+    msg_id_sink: list[str] = []
     return _sse_handler(
         lambda: execute_agent_stream(
-            cfg, [{"role": "user", "content": data.new_content}], trace_sink=trace_sink
+            cfg,
+            [{"role": "user", "content": data.new_content}],
+            trace_sink=trace_sink,
+            msg_id_sink=msg_id_sink,
         ),
         log_msg=f"Agent edit failed for conversation {conversation_id}",
         user_msg="메시지 편집 중 오류가 발생했습니다.",
-        on_complete=lambda: _persist_trace(conversation_id, trace_sink),
+        on_complete=lambda: _persist_trace(conversation_id, trace_sink, msg_id_sink),
     )
 
 
@@ -614,11 +632,14 @@ async def regenerate_message(
     # resuming from the rewound checkpoint state without duplicating
     # the user message.
     trace_sink: list[dict[str, Any]] = []
+    msg_id_sink: list[str] = []
     return _sse_handler(
-        lambda: execute_agent_stream(cfg, [], trace_sink=trace_sink),
+        lambda: execute_agent_stream(
+            cfg, [], trace_sink=trace_sink, msg_id_sink=msg_id_sink
+        ),
         log_msg=f"Agent regenerate failed for conversation {conversation_id}",
         user_msg="메시지 재생성 중 오류가 발생했습니다.",
-        on_complete=lambda: _persist_trace(conversation_id, trace_sink),
+        on_complete=lambda: _persist_trace(conversation_id, trace_sink, msg_id_sink),
     )
 
 

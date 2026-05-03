@@ -620,6 +620,7 @@ async def _run_agent_stream(
     stream_input: Any,
     hook_metadata_extra: dict[str, Any] | None = None,
     trace_sink: list[dict[str, Any]] | None = None,
+    msg_id_sink: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """공용 stream runner — execute/resume의 prep + hook + 예외 처리 통합 (P0-B).
 
@@ -659,6 +660,7 @@ async def _run_agent_stream(
             cost_per_output_token=cfg.cost_per_output_token,
             usage_sink=usage_sink,
             trace_sink=trace_sink,
+            msg_id_sink=msg_id_sink,
         ):
             yield chunk
     except Exception as exc:
@@ -685,6 +687,7 @@ async def execute_agent_stream(
     messages_history: list[dict[str, str]],
     *,
     trace_sink: list[dict[str, Any]] | None = None,
+    msg_id_sink: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """스트리밍 실행 (채팅용).
 
@@ -703,6 +706,7 @@ async def execute_agent_stream(
         messages_history=messages_history,
         stream_input=_USE_PREPPED_LC_MESSAGES,
         trace_sink=trace_sink,
+        msg_id_sink=msg_id_sink,
     ):
         yield chunk
 
@@ -712,6 +716,7 @@ async def resume_agent_stream(
     resume_value: Any,
     *,
     trace_sink: list[dict[str, Any]] | None = None,
+    msg_id_sink: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """인터럽트 재개 스트리밍 (HiTL resume)."""
     from langgraph.types import Command
@@ -722,6 +727,7 @@ async def resume_agent_stream(
         stream_input=Command(resume=resume_value),
         hook_metadata_extra={"resume": True},
         trace_sink=trace_sink,
+        msg_id_sink=msg_id_sink,
     ):
         yield chunk
 
