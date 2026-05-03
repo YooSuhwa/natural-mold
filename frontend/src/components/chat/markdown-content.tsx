@@ -7,6 +7,10 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+
+// 모듈 레벨 상수 — 매 렌더에서 새 배열 만드는 것 회피.
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkBreaks]
+const REHYPE_PLUGINS = [rehypeKatex]
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { CopyIcon, CheckIcon, ImageOffIcon } from 'lucide-react'
@@ -209,11 +213,8 @@ export function MarkdownContent({
       <Markdown
         components={components}
         urlTransform={urlTransform}
-        // remarkBreaks: 단일 newline을 <br>로 변환. LLM 응답이 종종 단일 줄바꿈으로
-        // 줄을 나눠 쓰는데 GitHub Markdown은 빈 줄(double newline)만 단락 분기로
-        // 인식해서 시각적으로 합쳐져 보이는 문제를 해소.
-        remarkPlugins={[remarkGfm, remarkMath, remarkBreaks]}
-        rehypePlugins={[rehypeKatex]}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
       >
         {content}
       </Markdown>

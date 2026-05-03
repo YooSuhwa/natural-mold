@@ -65,25 +65,26 @@ function MessageTimestamp() {
   )
 }
 
-// 라이브 스트리밍은 chunk 단위라 mermaid 같은 다이어그램은 streaming=true 단계에선
-// raw code block, message 종료 후 SVG로 fallback. MarkdownContent(공유 페이지)와
-// 동일한 buildMarkdownComponents를 재사용해 디자인을 한 곳에서 유지.
-const _MARKDOWN_COMPONENTS = buildMarkdownComponents({ isStreaming: false })
+// MarkdownContent와 동일한 components 재사용해서 디자인을 한 곳에서 유지.
+// streamdown이 fence가 닫혀야 code block을 emit하므로 isStreaming=false 고정으로
+// 안전 (부분 mermaid가 렌더 시도해도 MermaidDiagram의 catch 블록이 raw fallback).
+const MARKDOWN_COMPONENTS = buildMarkdownComponents({ isStreaming: false })
+// reference 안정화 — react/streamdown이 prop 변화 시 processor를 재구성하지 않게.
+const REMARK_PLUGINS = [remarkBreaks]
+// streamdown의 syntax highlight(@streamdown/code)는 우리 SyntaxHighlighter와
+// 출력이 충돌하므로 제거 — math plugin만 유지.
+const STREAMDOWN_PLUGINS = { math }
 
 /** StreamdownTextPrimitive는 MessagePrimitive 컨텍스트에서 자동으로 텍스트를 읽는다. */
 function AssistantTextPart() {
   return (
     <div className="prose-chat py-1 text-sm leading-relaxed text-foreground">
       <StreamdownTextPrimitive
-        // streamdown의 syntax highlight(@streamdown/code)와 우리 SyntaxHighlighter가
-        // 충돌하므로 code plugin은 빼고 math만 유지. 코드 블록은
-        // buildMarkdownComponents의 SyntaxHighlighter가 처리.
-        plugins={{ math }}
-        // remarkBreaks: 단일 newline → <br>. LLM이 줄바꿈 의도해도 GitHub
-        // Markdown은 빈 줄(double newline)만 단락 분기로 인식해 시각적으로
-        // 합쳐 보이는 문제 해소. MarkdownContent(공유 페이지)와 일치.
-        remarkPlugins={[remarkBreaks]}
-        components={_MARKDOWN_COMPONENTS as never}
+        plugins={STREAMDOWN_PLUGINS}
+        remarkPlugins={REMARK_PLUGINS}
+        // Components 타입(react-markdown)과 streamdown 내부 타입이 호환되지 않아
+        // never로 우회 — 런타임 동작은 동일.
+        components={MARKDOWN_COMPONENTS as never}
       />
     </div>
   )
@@ -193,8 +194,8 @@ function CopyButton() {
     >
       {copied ? (
         <>
-          <CheckIcon className="size-3 text-emerald-500" />
-          <span className="text-emerald-500">{t('copied')}</span>
+          <CheckIcon className="size-3 text-status-success" />
+          <span className="text-status-success">{t('copied')}</span>
         </>
       ) : (
         <>
