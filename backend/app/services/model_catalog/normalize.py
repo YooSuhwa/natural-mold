@@ -462,7 +462,8 @@ def normalize_ai_model_list(
         bare_key = (None, str(model_name))
         rankings = _extract_rankings(node.get("rankings"))
 
-        pricing = node.get("pricing") if isinstance(node.get("pricing"), dict) else {}
+        pricing_raw = node.get("pricing")
+        pricing: dict[str, Any] = pricing_raw if isinstance(pricing_raw, dict) else {}
         cost_in = _to_decimal(pricing.get("input_per_mtok"))
         cost_out = _to_decimal(pricing.get("output_per_mtok"))
         # Catalog stores per-token; ai-model-list publishes per-mtok.
@@ -471,7 +472,8 @@ def normalize_ai_model_list(
         if cost_out is not None:
             cost_out = cost_out / Decimal(1_000_000)
 
-        modalities = node.get("modalities") if isinstance(node.get("modalities"), dict) else {}
+        modalities_raw = node.get("modalities")
+        modalities: dict[str, Any] = modalities_raw if isinstance(modalities_raw, dict) else {}
 
         display_name = node.get("display_name")
         entry = ModelEntry(

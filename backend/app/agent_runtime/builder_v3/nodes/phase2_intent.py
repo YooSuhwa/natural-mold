@@ -121,12 +121,12 @@ async def phase2_analyze_intent(state: BuilderState) -> dict:
     # 사용자가 이미 이름을 확인한 경우 → 완료 메시지만 emit
     # 단, last_revision_message가 set이면 (router로 phase 8에서 재진입한 경우)
     # 다시 LLM 분석 + ask_user 흐름으로 (intent_confirmed=False로 reset)
+    intent_dict = state.get("intent")
     if (
         state.get("intent_confirmed")
-        and state.get("intent")
+        and intent_dict
         and not state.get("last_revision_message")
     ):
-        intent_dict = state["intent"]  # type: ignore[index]
         complete_msgs = build_phase_complete(
             2,
             ensure_todos(state),

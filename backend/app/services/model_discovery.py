@@ -129,11 +129,12 @@ async def discover_from_credential(
     """
 
     data = await credential_service.decrypt_with_external(credential.data_encrypted)
-    handler, provider = _DISPATCH.get(credential.definition_key, (None, None))
-    if handler is None:
+    entry = _DISPATCH.get(credential.definition_key)
+    if entry is None:
         raise ValueError(
             f"definition '{credential.definition_key}' is not a discoverable LLM provider"
         )
+    handler, provider = entry
 
     discovered = await handler(data)
     await _mark_already_registered(db, provider, discovered)

@@ -179,7 +179,9 @@ def create_app() -> FastAPI:
     # converts ``RateLimitExceeded`` into a 429 JSONResponse with a
     # ``Retry-After`` header.
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    # slowapi's handler signature is narrower than FastAPI's ExceptionHandler
+    # protocol (RateLimitExceeded vs Exception). Cast satisfies pyright.
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
     app.add_middleware(
         CORSMiddleware,

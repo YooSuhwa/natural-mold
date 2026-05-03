@@ -17,6 +17,7 @@ from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableConfig
 
 from app.agent_runtime.model_factory import PROVIDER_API_KEY_MAP, create_chat_model
 from app.config import settings
@@ -112,7 +113,7 @@ async def _invoke_with_api_retry(
     chunk를 사용자 화면 stream에서 제외할 수 있도록 한다.
     """
     last_exc: Exception | None = None
-    invoke_config: dict[str, Any] = {"tags": ["builder:internal"]}
+    invoke_config: RunnableConfig = {"tags": ["builder:internal"]}
 
     for attempt in range(_API_MAX_RETRIES):
         try:
