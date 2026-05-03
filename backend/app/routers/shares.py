@@ -32,7 +32,7 @@ from app.schemas.share import (
     SharedConversationView,
     ShareLinkResponse,
 )
-from app.services import chat_service, share_cache, share_service
+from app.services import chat_service, share_cache, share_service, trace_storage
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +135,9 @@ async def get_public_share(
     messages = await chat_service.list_messages_from_checkpointer(
         db, conversation, user_id=None
     )
+    # W6: turn별 SSE event trace를 함께 노출 → 공개 페이지에서 도구/Skill
+    # 칩 렌더용. trace가 없는(W5 이전에 만든) 대화는 빈 list로 응답.
+    traces = await trace_storage.get_traces_for_conversation(db, conversation.id)
 
     snapshot = SharedConversationView(
         share_token=link.share_token,
@@ -150,6 +153,7 @@ async def get_public_share(
             ),
         ),
         messages=messages,
+        traces=traces,  # type: ignore[arg-type]  # ORM rows → Pydantic via from_attributes
         shared_at=link.created_at,
     )
     share_cache.put_snapshot(share_token, checkpoint_id, snapshot)
