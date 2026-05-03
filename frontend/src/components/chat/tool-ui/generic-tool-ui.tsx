@@ -1,17 +1,10 @@
 'use client'
 
-import { useState } from 'react'
-import {
-  ChevronDownIcon,
-  WrenchIcon,
-  Loader2Icon,
-  CircleCheckIcon,
-  PanelRightOpenIcon,
-} from 'lucide-react'
+import { PanelRightOpenIcon } from 'lucide-react'
 import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import { cn } from '@/lib/utils'
+import { CollapsiblePill, type PillStatus } from './collapsible-pill'
 import { ChatImage } from '@/components/chat/markdown-content'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 
@@ -83,6 +76,12 @@ function extractImageUrls(data: unknown): string[] {
   return urls
 }
 
+function toPillStatus(status: 'running' | 'complete' | 'error'): PillStatus {
+  if (status === 'running') return 'loading'
+  if (status === 'error') return 'error'
+  return 'success'
+}
+
 export function ToolFallbackPanel({
   toolName,
   args,
@@ -90,7 +89,6 @@ export function ToolFallbackPanel({
   status,
   toolCallId,
 }: ToolFallbackPanelProps) {
-  const [expanded, setExpanded] = useState(false)
   const t = useTranslations('chat.toolCall')
   const setRail = useSetAtom(chatRightRailAtom)
   const hasArgs = args && Object.keys(args).length > 0
@@ -114,89 +112,61 @@ export function ToolFallbackPanel({
     })
   }
 
-  return (
-    <div
-      className={cn(
-        'w-full rounded-xl border border-border/50 text-xs transition-colors',
-        status === 'error' && 'border-destructive/20 bg-destructive/5',
-      )}
+  const trailing = toolCallId ? (
+    <button
+      type="button"
+      onClick={handleExpandToPanel}
+      aria-label="Expand to panel"
+      title="Expand to panel"
+      className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
-      <div className="flex w-full items-center gap-2 px-3 py-2">
-        <button
-          type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
-          onClick={() => setExpanded(!expanded)}
-        >
-          {status === 'running' ? (
-            <Loader2Icon className="size-3.5 shrink-0 animate-spin text-primary-strong" />
-          ) : (
-            <CircleCheckIcon className="size-3.5 shrink-0 text-emerald-500" />
-          )}
-          <WrenchIcon className="size-3 shrink-0 text-muted-foreground" />
-          <span className="truncate font-medium">{toolName}</span>
-          <span className="shrink-0 text-muted-foreground">
-            {status === 'running' ? t('calling') : t('completed')}
-          </span>
-        </button>
-        {toolCallId ? (
-          <button
-            type="button"
-            onClick={handleExpandToPanel}
-            aria-label="Expand to panel"
-            title="Expand to panel"
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <PanelRightOpenIcon className="size-3.5" aria-hidden />
-          </button>
-        ) : null}
-        {(hasArgs || hasResult) && (
-          <button
-            type="button"
-            onClick={() => setExpanded(!expanded)}
-            aria-label={expanded ? 'Collapse' : 'Expand'}
-            className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
-            <ChevronDownIcon
-              className={cn(
-                'size-3.5 transition-transform duration-200',
-                expanded && 'rotate-180',
-              )}
-            />
-          </button>
+      <PanelRightOpenIcon className="size-3.5" aria-hidden />
+    </button>
+  ) : null
+
+  const body =
+    hasArgs || hasResult ? (
+      <div className="space-y-2">
+        {hasArgs && (
+          <div className="rounded-lg border border-border/40 bg-background p-2.5">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {t('parameters')}
+            </div>
+            <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
+              {JSON.stringify(args, null, 2)}
+            </pre>
+          </div>
+        )}
+        {hasResult && (
+          <div className="rounded-lg border border-border/40 bg-background p-2.5">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {t('results')}
+            </div>
+            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
+              {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
+            </pre>
+          </div>
         )}
       </div>
+    ) : undefined
 
-      {/* 이미지 URL이 있으면 패널 바깥에 바로 표시 */}
+  return (
+    <div className="space-y-2">
+      <CollapsiblePill
+        kind="tool"
+        status={toPillStatus(status)}
+        title={toolName}
+        meta={status === 'running' ? t('calling') : t('completed')}
+        trailing={trailing}
+      >
+        {body}
+      </CollapsiblePill>
+      {/* 이미지는 pill 바깥에 노출 — 채팅 흐름에서 즉시 보이게. */}
       {imageUrls.length > 0 && (
-        <div className="px-3 pb-2 space-y-2">
+        <div className="space-y-2">
           {imageUrls.map((url) => (
             <ChatImage key={url} src={url} alt={toolName} />
           ))}
-        </div>
-      )}
-
-      {expanded && (
-        <div className="space-y-2 px-3 pb-3">
-          {hasArgs && (
-            <div className="rounded-lg border border-border/40 bg-background p-2.5">
-              <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {t('parameters')}
-              </div>
-              <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-                {JSON.stringify(args, null, 2)}
-              </pre>
-            </div>
-          )}
-          {hasResult && (
-            <div className="rounded-lg border border-border/40 bg-background p-2.5">
-              <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {t('results')}
-              </div>
-              <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-                {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
-              </pre>
-            </div>
-          )}
         </div>
       )}
     </div>

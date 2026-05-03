@@ -1,7 +1,8 @@
 'use client'
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import { SearchIcon, ExternalLinkIcon, GlobeIcon, Loader2Icon } from 'lucide-react'
+import { ExternalLinkIcon, GlobeIcon } from 'lucide-react'
+import { CollapsiblePill } from './collapsible-pill'
 
 // ──────────────────────────────────────────────
 // Types
@@ -109,32 +110,28 @@ function SearchRender({
 }) {
   const isRunning = status.type === 'running'
   const items = parseSearchResults(result)
+  const title = args?.query ? `"${args.query}"` : '웹 검색'
+  const meta = isRunning ? '검색 중…' : items.length > 0 ? `${items.length}건` : undefined
+
+  const body =
+    !isRunning && items.length > 0 ? (
+      <div className="space-y-1.5">
+        {items.slice(0, 5).map((item, i) => (
+          <SearchResultCard key={i} item={item} />
+        ))}
+      </div>
+    ) : undefined
 
   return (
-    <div className="w-full rounded-xl border bg-muted/20 text-xs">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-2">
-        {isRunning ? (
-          <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
-        ) : (
-          <SearchIcon className="size-3.5 text-emerald-500" />
-        )}
-        <span className="truncate font-medium">{args?.query ? `"${args.query}"` : '웹 검색'}</span>
-        {isRunning && <span className="text-muted-foreground">검색 중…</span>}
-        {!isRunning && items.length > 0 && (
-          <span className="text-muted-foreground">{items.length}건</span>
-        )}
-      </div>
-
-      {/* Results */}
-      {!isRunning && items.length > 0 && (
-        <div className="space-y-1.5 border-t px-3 pb-2 pt-1.5">
-          {items.slice(0, 5).map((item, i) => (
-            <SearchResultCard key={i} item={item} />
-          ))}
-        </div>
-      )}
-    </div>
+    <CollapsiblePill
+      kind="tool"
+      status={isRunning ? 'loading' : 'success'}
+      title={title}
+      meta={meta}
+      defaultExpanded={!isRunning && items.length > 0}
+    >
+      {body}
+    </CollapsiblePill>
   )
 }
 
