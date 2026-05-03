@@ -1,11 +1,11 @@
-# 작업 인계 — main (PR #105~#108·#110 머지 후)
+# 작업 인계 — main (PR #110·#112 머지 후)
 
 > 새 세션은 본 파일 + `progress.txt` 마지막 4-5 섹션만 읽으면 충분.
 > 디자인 시스템은 `docs/design-docs/ADR-010-ui-tokens-and-dialog-shell.md`.
 
 ## 마지막 상태
 
-- 브랜치 **`main`** (HEAD `8373004`, PR #110 머지 commit)
+- 브랜치 **`main`** (HEAD `31e9f49`, PR #112 머지 commit)
 - alembic head **m33** — `cd backend && uv run alembic upgrade head` 필수
 - backend **735 pass** / frontend **249 pass** + 43 skip / lint·build clean
 - pyright **0 errors / 0 warnings**, pytest 수집 경고 0건
@@ -17,13 +17,21 @@
 | PR | 트랙 | 임팩트 |
 |----|------|--------|
 | **#110** | **HITL 컴포넌트 zinc → 토큰화** (Sprint 3) | 5개 파일 53/53줄. raw zinc 제거 |
+| **#111** | HANDOFF 갱신 (PR #110 후) | 문서 |
+| **#112** | **mermaid 다크모드** | useTheme로 동적 theme 전환 |
 
 ### #110 핵심
 - 대상: `approval-footer / image-generation-ui / draft-config-ui / prompt-approval-ui / recommendation-approval-ui`
 - 매핑: `border-zinc-*` → `border-border`, `bg-white dark:bg-zinc-900` → `bg-card`, `bg-zinc-50/100 dark:bg-zinc-800` → `bg-muted`, `text-zinc-500/400` → `text-muted-foreground`, `text-zinc-700 dark:text-zinc-300` → `text-foreground`, `bg-zinc-900 text-white dark:bg-white dark:text-zinc-900` → `bg-foreground text-background`, `focus:ring-zinc-400` → `focus:ring-2 focus:ring-ring`
-- approval-footer accent type: `'zinc'` → `'neutral'` (의미 정정. 기존 사용처는 default라 무영향)
-- prompt-approval "전체 보기": `text-blue-*` → `text-primary-strong` (ADR-010 매핑 따름)
+- approval-footer accent type: `'zinc'` → `'neutral'`
+- prompt-approval "전체 보기": `text-blue-*` → `text-primary-strong`
 - 제외: `code-tool-ui` (의도된 다크 코드 블록), `phase-timeline-ui` (HITL 외)
+
+### #112 핵심
+- `mermaid-diagram.tsx`: `useTheme().resolvedTheme` 구독, `'dark' ? 'dark' : 'default'` 매핑
+- `useEffect` deps에 `mermaidTheme` 추가, 모듈 레벨 `currentTheme` 캐시로 같은 테마 중복 init 방지
+- SSR hydration: `resolvedTheme === undefined` → `'default'` 폴백
+- mermaid built-in `'dark'` 테마 사용. 디자인 토큰 oklch 매핑(`themeVariables`)은 향후 트랙
 
 ## 직전 세션 머지된 트랙 (참고)
 
@@ -38,19 +46,19 @@
 ## 다음 작업 후보
 
 1. **W3-out** GET-based stream resume — background task + event broker + `GET /stream?run_id=&last_event_id=` (5-7일). W5 활용. **메인 UX 트랙**
-2. ~~**HITL 컴포넌트 zinc → border/muted 토큰화**~~ → **PR #110에서 처리**
-3. **phase-timeline-ui zinc 토큰화** (0.5일) — HITL 외이지만 같은 패턴, 별도 PR
-4. **approval-card raw color 매핑** — emerald/blue/red/amber → primary/status-* (ADR-010 매핑표 미적용 잔여)
+2. **phase-timeline-ui zinc 토큰화** (0.5일) — HITL 외이지만 같은 패턴, 별도 PR
+3. **approval-card raw color 매핑** — emerald/blue/red/amber → primary/status-* (ADR-010 매핑표 미적용 잔여)
+4. **mermaid `themeVariables` 디자인 토큰 매핑** — built-in dark 대신 `'base'` + ADR-010 oklch로 카드 톤 일치
 5. **Frontend 43 skipped 테스트 정리** (Sprint 2/3) — agent-settings 20 / tools 9 / models 8 / assistant-panel 4 / chat 2건
 6. **Outdated deps**: FastAPI 0.135→0.136 / Pydantic 2.12→2.13 (minor) / cryptography 46→47 / marshmallow 3→4 / protobuf 6→7 (major) — 위험도별 분리 PR
-7. **mermaid 다크모드** — `mermaid-diagram.tsx`의 `theme: 'default'` → `useTheme` 동적
-8. M-MCP2 / M-SKILL2 / Sprint 2~4
+7. M-MCP2 / M-SKILL2 / Sprint 2~4
 
 ## 알려진 이슈 / 한계
 
 - **base-ui 1.3.0 SliderThumb script 경고**: React 19 + Next 16.2 새 정책. mui/base-ui#4373 패치 대기
 - **W6 trace 매핑**: PR #108로 정확도 개선됐으나, m32 이전 row는 `linked_message_ids = NULL`이라 chronological 폴백 (graceful)
 - **assistant-thread mermaid streaming**: PR #107로 streaming 중 raw 표시 → 메시지 종료 후 SVG 변환
+- **mermaid 다크 톤**: PR #112로 동적 전환 적용. 단 mermaid built-in `'dark'` 테마라 카드(`bg-card`)와 완벽 일치는 아님. `themeVariables`로 oklch 매핑하면 정합 (다음 작업 #4)
 
 ## 코드 컨벤션 (정착분)
 
