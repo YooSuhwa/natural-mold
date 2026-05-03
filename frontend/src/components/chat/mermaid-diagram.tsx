@@ -2,17 +2,21 @@
 
 import { useEffect, useId, useState } from 'react'
 import mermaid from 'mermaid'
+import { useTheme } from 'next-themes'
 
-let initialized = false
-function ensureInitialized() {
-  if (initialized) return
+type MermaidTheme = 'default' | 'dark'
+
+let currentTheme: MermaidTheme | null = null
+
+function ensureInitialized(theme: MermaidTheme) {
+  if (currentTheme === theme) return
   mermaid.initialize({
     startOnLoad: false,
-    theme: 'default',
+    theme,
     securityLevel: 'loose',
     fontFamily: 'inherit',
   })
-  initialized = true
+  currentTheme = theme
 }
 
 interface MermaidDiagramProps {
@@ -22,11 +26,16 @@ interface MermaidDiagramProps {
 export function MermaidDiagram({ code }: MermaidDiagramProps) {
   const rawId = useId()
   const id = rawId.replace(/[^a-zA-Z0-9-]/g, '-')
+  const { resolvedTheme } = useTheme()
   const [svg, setSvg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // resolvedTheme이 hydration 직전엔 undefined → 'default'로 폴백 (SSR과 일치).
+  // mounted 후 'dark'로 바뀌면 effect deps 변경으로 자연스럽게 재렌더.
+  const mermaidTheme: MermaidTheme = resolvedTheme === 'dark' ? 'dark' : 'default'
+
   useEffect(() => {
-    ensureInitialized()
+    ensureInitialized(mermaidTheme)
     let cancelled = false
     // P1-C polish — explicit promise handle so cleanup can also rely on the
     // cancelled flag for any in-flight tail callbacks. mermaid.render returns
@@ -45,7 +54,7 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
     return () => {
       cancelled = true
     }
-  }, [id, code])
+  }, [id, code, mermaidTheme])
 
   if (error) {
     return (
