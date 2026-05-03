@@ -8,6 +8,7 @@ function _turn(events: TurnTrace['events'], msgId = 'm1'): TurnTrace {
     assistant_msg_id: msgId,
     events,
     last_event_id: events[events.length - 1]?.id ?? null,
+    linked_message_ids: null,
     created_at: '2026-05-03T00:00:00Z',
     completed_at: '2026-05-03T00:00:01Z',
   }

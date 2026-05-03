@@ -35,6 +35,10 @@ class MessageEvent(Base):
     events: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
     # 마지막으로 발행된 SSE event id — W3-out resume 시 ``> last_event_id`` 필터의 기준.
     last_event_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # W6 정확도 — 이 turn에서 생성된 assistant 메시지의 parsed UUID 목록.
+    # ``MessageResponse.id``와 동일 형식이라 frontend가 직접 매칭 가능.
+    # NULL은 m33 이전 row 또는 streaming이 메시지 id를 노출 안 한 경우.
+    linked_message_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,
