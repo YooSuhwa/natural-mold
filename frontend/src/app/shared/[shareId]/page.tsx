@@ -6,12 +6,14 @@ import { AlertCircleIcon, ArrowLeftIcon, MessageSquareIcon } from 'lucide-react'
 
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { MarkdownContent } from '@/components/chat/markdown-content'
+import { CollapsiblePill } from '@/components/chat/tool-ui/collapsible-pill'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePublicShare } from '@/lib/hooks/use-share'
+import { extractChips, findTurnForMessage } from '@/lib/share/extract-chips'
 import { formatLongDate, formatMediumDate } from '@/lib/utils/format-relative-time'
 import type { Message } from '@/lib/types'
-import type { SharedConversationView } from '@/lib/types/share'
+import type { SharedConversationView, TurnTrace } from '@/lib/types/share'
 
 const isVisibleInPublic = (m: Message): boolean => m.role !== 'tool'
 
@@ -45,7 +47,11 @@ function SharedArticle({ data }: { data: SharedConversationView }) {
           {visibleMessages.length === 0 ? (
             <EmptyConversation />
           ) : (
-            <ConversationBody messages={visibleMessages} agent={data.agent} />
+            <ConversationBody
+              messages={visibleMessages}
+              agent={data.agent}
+              traces={data.traces}
+            />
           )}
         </article>
       </main>
@@ -142,16 +148,23 @@ function Hero({
 function ConversationBody({
   messages,
   agent,
+  traces,
 }: {
   messages: Message[]
   agent: SharedConversationView['agent']
+  traces: TurnTrace[]
 }) {
   return (
     <section className="py-10 sm:py-14">
       <DividerLabel>대화 기록</DividerLabel>
       <ol className="mt-10 flex flex-col gap-8">
         {messages.map((message) => (
-          <SharedMessage key={message.id} message={message} agent={agent} />
+          <SharedMessage
+            key={message.id}
+            message={message}
+            agent={agent}
+            traces={traces}
+          />
         ))}
       </ol>
     </section>
@@ -173,10 +186,18 @@ function DividerLabel({ children }: { children: React.ReactNode }) {
 function SharedMessage({
   message,
   agent,
+  traces,
 }: {
   message: Message
   agent: SharedConversationView['agent']
+  traces: TurnTrace[]
 }) {
+  const chips = useMemo(() => {
+    if (message.role !== 'assistant') return []
+    const turn = findTurnForMessage(traces, message.id)
+    return turn ? extractChips(turn) : []
+  }, [message, traces])
+
   if (message.role === 'user') {
     return (
       <li className="flex justify-end">
@@ -197,7 +218,20 @@ function SharedMessage({
           {agent.name}
         </span>
       </div>
-      <div className="pl-8">
+      <div className="pl-8 space-y-3">
+        {chips.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {chips.map((chip, i) => (
+              <CollapsiblePill
+                key={i}
+                kind={chip.kind}
+                status={chip.status}
+                title={chip.title}
+                meta={chip.meta}
+              />
+            ))}
+          </div>
+        )}
         <MarkdownContent content={message.content} />
       </div>
     </li>
