@@ -91,4 +91,36 @@ describe('MarkdownContent', () => {
     render(<MarkdownContent content="### Heading 3" />)
     expect(screen.getByText('Heading 3')).toBeInTheDocument()
   })
+
+  it('renders KaTeX math via remark-math + rehype-katex', () => {
+    // inline 수식 — $E=mc^2$
+    const { container } = render(<MarkdownContent content={'$E=mc^2$'} />)
+    // rehype-katex가 .katex 클래스를 가진 span을 만든다.
+    expect(container.querySelector('.katex')).toBeInTheDocument()
+  })
+
+  it('renders mermaid code as a passthrough during streaming', () => {
+    const code = 'graph TD\nA --> B'
+    const { container } = render(
+      <MarkdownContent content={`\`\`\`mermaid\n${code}\n\`\`\``} isStreaming />,
+    )
+    // 스트리밍 중에는 raw code block으로 떨어진다 (불완전 파싱 방지).
+    expect(container.textContent).toContain('graph TD')
+  })
+
+  it('remark-breaks: 단일 줄바꿈을 <br>로 변환한다', () => {
+    // GitHub markdown 표준은 single newline을 무시(공백)하지만 remarkBreaks가
+    // <br>로 바꿔 LLM의 줄바꿈 의도를 보존한다.
+    const content = 'first line\nsecond line'
+    const { container } = render(<MarkdownContent content={content} />)
+    const br = container.querySelector('br')
+    expect(br).toBeInTheDocument()
+  })
+
+  it('remark-breaks: 빈 줄(double newline)은 단락 분기로 그대로 유지', () => {
+    const content = 'paragraph one\n\nparagraph two'
+    const { container } = render(<MarkdownContent content={content} />)
+    const ps = container.querySelectorAll('p')
+    expect(ps.length).toBe(2)
+  })
 })

@@ -3,9 +3,14 @@
 import { lazy, Suspense, useState, useCallback, useMemo } from 'react'
 import type { Components } from 'react-markdown'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
+import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+
+// 모듈 레벨 상수 — 매 렌더에서 새 배열 만드는 것 회피.
+const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkBreaks]
+const REHYPE_PLUGINS = [rehypeKatex]
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { CopyIcon, CheckIcon, ImageOffIcon } from 'lucide-react'
@@ -50,8 +55,8 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
         >
           {copied ? (
             <>
-              <CheckIcon className="size-3 text-emerald-500" />
-              <span className="text-emerald-500">copied</span>
+              <CheckIcon className="size-3 text-status-success" />
+              <span className="text-status-success">copied</span>
             </>
           ) : (
             <>
@@ -125,7 +130,11 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
   )
 }
 
-function buildMarkdownComponents({ isStreaming }: { isStreaming: boolean }): Components {
+export function buildMarkdownComponents({
+  isStreaming,
+}: {
+  isStreaming: boolean
+}): Components {
   return {
     p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
     strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
@@ -204,8 +213,8 @@ export function MarkdownContent({
       <Markdown
         components={components}
         urlTransform={urlTransform}
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        remarkPlugins={REMARK_PLUGINS}
+        rehypePlugins={REHYPE_PLUGINS}
       >
         {content}
       </Markdown>

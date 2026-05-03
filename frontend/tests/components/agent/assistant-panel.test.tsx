@@ -7,6 +7,10 @@ import type { SSEEvent } from '@/lib/types'
 
 vi.mock('@/components/chat/markdown-content', () => ({
   MarkdownContent: ({ content }: { content: string }) => <span>{content}</span>,
+  // assistant-thread가 buildMarkdownComponents를 import하므로 mock도 노출
+  // (테스트 자체는 markdown 렌더 검증 안 함 — 빈 객체 stub).
+  buildMarkdownComponents: () => ({}),
+  ChatImage: () => null,
 }))
 
 vi.mock('sonner', () => ({
