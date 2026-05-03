@@ -2,7 +2,7 @@
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
-import { CollapsiblePill, type PillStatus } from './collapsible-pill'
+import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 
 interface SubagentArgs {
@@ -11,12 +11,6 @@ interface SubagentArgs {
   description?: string
   input?: string
   prompt?: string
-}
-
-function resolveStatus(statusType: string | undefined): PillStatus {
-  if (statusType === 'complete') return 'success'
-  if (statusType === 'incomplete') return 'error'
-  return 'loading'
 }
 
 function resolveAgentName(args: SubagentArgs | undefined): string {
@@ -43,7 +37,7 @@ function SubAgentCard({ toolCallId, args, statusType }: SubAgentCardProps) {
   return (
     <CollapsiblePill
       kind="subagent"
-      status={resolveStatus(statusType)}
+      status={pillStatusFromAssistantUi(statusType)}
       title={agentName}
       meta={input || 'Sub-agent invocation'}
       onClick={() =>
