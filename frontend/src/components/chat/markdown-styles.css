@@ -97,12 +97,19 @@
   margin-left: 1rem;
 }
 
-/* KaTeX overrides */
+/* KaTeX overrides — 본문 글자 대비 살짝 큼지막하게 (1em은 기본보다 작게 보여서
+ * LLM이 자주 쓰는 inline / display math가 답답해 보이는 문제). */
 .prose-chat .katex-display {
-  margin: 0.5rem 0;
+  margin: 0.75rem 0;
   overflow-x: auto;
+  font-size: 1.15em;
 }
 
 .prose-chat .katex {
-  font-size: 1em;
+  font-size: 1.1em;
+}
+
+.prose-chat .katex-display > .katex {
+  /* display math는 더 크게 — 본문 흐름 안에서 강조 */
+  font-size: 1.2em;
 }

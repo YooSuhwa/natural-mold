@@ -14,9 +14,9 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
-import { code } from '@streamdown/code'
 import { math } from '@streamdown/math'
 import remarkBreaks from 'remark-breaks'
+import { buildMarkdownComponents } from '@/components/chat/markdown-content'
 import 'katex/dist/katex.min.css'
 import './markdown-styles.css'
 import {
@@ -46,7 +46,6 @@ import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
 import { WittyLoadingMessage } from '@/components/chat/witty-loading'
-import { ChatImage } from '@/components/chat/markdown-content'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 
@@ -66,24 +65,25 @@ function MessageTimestamp() {
   )
 }
 
+// 라이브 스트리밍은 chunk 단위라 mermaid 같은 다이어그램은 streaming=true 단계에선
+// raw code block, message 종료 후 SVG로 fallback. MarkdownContent(공유 페이지)와
+// 동일한 buildMarkdownComponents를 재사용해 디자인을 한 곳에서 유지.
+const _MARKDOWN_COMPONENTS = buildMarkdownComponents({ isStreaming: false })
+
 /** StreamdownTextPrimitive는 MessagePrimitive 컨텍스트에서 자동으로 텍스트를 읽는다. */
 function AssistantTextPart() {
   return (
     <div className="prose-chat py-1 text-sm leading-relaxed text-foreground">
       <StreamdownTextPrimitive
-        plugins={{ code, math }}
+        // streamdown의 syntax highlight(@streamdown/code)와 우리 SyntaxHighlighter가
+        // 충돌하므로 code plugin은 빼고 math만 유지. 코드 블록은
+        // buildMarkdownComponents의 SyntaxHighlighter가 처리.
+        plugins={{ math }}
         // remarkBreaks: 단일 newline → <br>. LLM이 줄바꿈 의도해도 GitHub
         // Markdown은 빈 줄(double newline)만 단락 분기로 인식해 시각적으로
         // 합쳐 보이는 문제 해소. MarkdownContent(공유 페이지)와 일치.
         remarkPlugins={[remarkBreaks]}
-        shikiTheme={['github-light', 'github-dark']}
-        components={{
-          img: ((props: React.ImgHTMLAttributes<HTMLImageElement>) => {
-            const src = typeof props.src === 'string' ? props.src : undefined
-            if (!src) return null
-            return <ChatImage src={src} alt={props.alt ?? ''} />
-          }) as never,
-        }}
+        components={_MARKDOWN_COMPONENTS as never}
       />
     </div>
   )

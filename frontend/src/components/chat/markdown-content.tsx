@@ -126,7 +126,11 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
   )
 }
 
-function buildMarkdownComponents({ isStreaming }: { isStreaming: boolean }): Components {
+export function buildMarkdownComponents({
+  isStreaming,
+}: {
+  isStreaming: boolean
+}): Components {
   return {
     p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
     strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
