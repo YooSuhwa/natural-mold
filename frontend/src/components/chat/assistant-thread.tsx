@@ -16,6 +16,7 @@ import { conversationsApi } from '@/lib/api/conversations'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { code } from '@streamdown/code'
 import { math } from '@streamdown/math'
+import remarkBreaks from 'remark-breaks'
 import 'katex/dist/katex.min.css'
 import './markdown-styles.css'
 import {
@@ -71,6 +72,10 @@ function AssistantTextPart() {
     <div className="prose-chat py-1 text-sm leading-relaxed text-foreground">
       <StreamdownTextPrimitive
         plugins={{ code, math }}
+        // remarkBreaks: 단일 newline → <br>. LLM이 줄바꿈 의도해도 GitHub
+        // Markdown은 빈 줄(double newline)만 단락 분기로 인식해 시각적으로
+        // 합쳐 보이는 문제 해소. MarkdownContent(공유 페이지)와 일치.
+        remarkPlugins={[remarkBreaks]}
         shikiTheme={['github-light', 'github-dark']}
         components={{
           img: ((props: React.ImgHTMLAttributes<HTMLImageElement>) => {
