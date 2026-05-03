@@ -97,6 +97,7 @@ class TestTextSkill:
 
         assert skill.content_hash != old_hash
         assert skill.size_bytes == len(b"v2 longer")
+        assert skill.storage_path is not None
         assert Path(skill.storage_path).read_text() == "v2 longer"  # noqa: ASYNC240
 
     @pytest.mark.asyncio
@@ -113,6 +114,7 @@ class TestTextSkill:
                 content="bye",
             )
             await db.commit()
+            assert skill.storage_path is not None
             skill_dir = Path(skill.storage_path).parent
             assert skill_dir.is_dir()
             await skill_service.delete_skill(db, skill)
