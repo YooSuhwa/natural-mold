@@ -38,21 +38,21 @@ function ItemCard({ item, kind }: { item: ToolItem; kind: ItemKind }) {
   const name = getItemName(item, kind)
   const Icon = kind === 'middleware' ? BlocksIcon : WrenchIcon
   return (
-    <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+    <div className="rounded-lg border border-border p-3">
       <div className="flex items-start gap-2">
-        <Icon className="mt-0.5 size-4 text-zinc-500" />
+        <Icon className="mt-0.5 size-4 text-muted-foreground" />
         <div className="flex-1">
           <div className="font-mono text-sm font-semibold">{name}</div>
           {(item.path || name) && (
-            <div className="mt-1 text-xs text-zinc-500">
+            <div className="mt-1 text-xs text-muted-foreground">
               경로:{' '}
-              <code className="rounded bg-zinc-100 px-1 py-0.5 dark:bg-zinc-800">
+              <code className="rounded bg-muted px-1 py-0.5">
                 {getItemPath(item, kind)}
               </code>
             </div>
           )}
           {item.reason && (
-            <p className="mt-2 text-sm text-zinc-700 dark:text-zinc-300">사유: {item.reason}</p>
+            <p className="mt-2 text-sm text-foreground">사유: {item.reason}</p>
           )}
         </div>
       </div>
@@ -71,18 +71,18 @@ function RecommendationApproval({
   const items = args.items ?? []
 
   return (
-    <div className="my-3 rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="border-b border-zinc-200 px-4 py-3 text-sm font-semibold dark:border-zinc-800">
+    <div className="my-3 rounded-xl border border-border bg-card shadow-sm">
+      <div className="border-b border-border px-4 py-3 text-sm font-semibold">
         {args.title || '추천 결과'}
       </div>
       <div className="space-y-2 px-4 py-3">
         {items.map((item, idx) => (
           <ItemCard key={idx} item={item} kind={args.item_kind ?? 'tool'} />
         ))}
-        {items.length === 0 && <p className="text-sm text-zinc-500">추천된 항목이 없습니다.</p>}
+        {items.length === 0 && <p className="text-sm text-muted-foreground">추천된 항목이 없습니다.</p>}
       </div>
       {args.summary && (
-        <div className="border-t border-zinc-200 px-4 py-3 text-sm text-zinc-700 dark:border-zinc-800 dark:text-zinc-300">
+        <div className="border-t border-border px-4 py-3 text-sm text-foreground">
           {args.summary}
         </div>
       )}

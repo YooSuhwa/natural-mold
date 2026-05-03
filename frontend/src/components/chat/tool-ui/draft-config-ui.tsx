@@ -47,26 +47,26 @@ function DraftConfigSummary({
           <img
             src={resolveImageUrl(image_url) ?? ''}
             alt="agent"
-            className="size-16 flex-shrink-0 rounded-lg border border-zinc-200 object-contain dark:border-zinc-800"
+            className="size-16 flex-shrink-0 rounded-lg border border-border object-contain"
           />
         ) : (
-          <div className="flex size-16 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-zinc-300 text-zinc-400 dark:border-zinc-700">
+          <div className="flex size-16 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-border text-muted-foreground">
             <BotIcon className="size-6" />
           </div>
         )}
         <div className="flex-1">
           <div className="font-semibold">{draft.name_ko || draft.name}</div>
           {draft.name && draft.name_ko !== draft.name && (
-            <div className="text-xs text-zinc-500">{draft.name}</div>
+            <div className="text-xs text-muted-foreground">{draft.name}</div>
           )}
           {draft.description && (
-            <p className="mt-1 text-sm text-zinc-700 dark:text-zinc-300">{draft.description}</p>
+            <p className="mt-1 text-sm text-foreground">{draft.description}</p>
           )}
         </div>
       </div>
       {tools.length > 0 && (
         <div>
-          <div className="mb-1 flex items-center gap-1 text-xs font-medium text-zinc-500">
+          <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
             <WrenchIcon className="size-3.5" />
             도구 ({tools.length})
           </div>
@@ -74,7 +74,7 @@ function DraftConfigSummary({
             {tools.map((t) => (
               <span
                 key={t}
-                className="rounded-full bg-zinc-100 px-2.5 py-0.5 font-mono text-xs dark:bg-zinc-800"
+                className="rounded-full bg-muted px-2.5 py-0.5 font-mono text-xs"
               >
                 {t}
               </span>
@@ -84,7 +84,7 @@ function DraftConfigSummary({
       )}
       {middlewares.length > 0 && (
         <div>
-          <div className="mb-1 flex items-center gap-1 text-xs font-medium text-zinc-500">
+          <div className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
             <BlocksIcon className="size-3.5" />
             미들웨어 ({middlewares.length})
           </div>
@@ -108,9 +108,9 @@ function DraftConfigCardView({ args }: { args: DraftConfigArgs }) {
   const draft = args.draft || {}
   const image = args.image_url ?? draft.image_url ?? null
   return (
-    <div className="my-3 rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex items-center gap-2 border-b border-zinc-200 px-4 py-3 text-sm font-semibold dark:border-zinc-800">
-        <FileTextIcon className="size-4 text-zinc-500" />
+    <div className="my-3 rounded-xl border border-border bg-card shadow-sm">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3 text-sm font-semibold">
+        <FileTextIcon className="size-4 text-muted-foreground" />
         {args.title || '에이전트 설정 미리보기'}
       </div>
       <div className="px-4 py-3">
@@ -144,7 +144,7 @@ function DraftApprovalView({
   const image = args.image_url ?? draft.image_url ?? null
 
   return (
-    <div className="my-3 rounded-xl border-2 border-status-accent/30 bg-white shadow-sm dark:bg-zinc-900">
+    <div className="my-3 rounded-xl border-2 border-status-accent/30 bg-card shadow-sm">
       <div className="flex items-center gap-2 border-b border-status-accent/30 bg-status-accent/5 px-4 py-3 text-sm font-semibold">
         <FileTextIcon className="size-4 text-status-accent" />
         {args.title || '최종 확인'}
@@ -153,7 +153,7 @@ function DraftApprovalView({
         <DraftConfigSummary draft={draft} image_url={image} />
       </div>
       {args.summary && (
-        <div className="border-t border-status-accent/30 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-300">
+        <div className="border-t border-status-accent/30 px-4 py-3 text-sm text-foreground">
           {args.summary}
         </div>
       )}

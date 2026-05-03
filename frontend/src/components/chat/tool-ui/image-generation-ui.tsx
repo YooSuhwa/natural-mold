@@ -54,13 +54,13 @@ function ImageChoice({
   }
 
   return (
-    <div className="my-3 rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex items-center gap-2 border-b border-zinc-200 px-4 py-3 text-sm font-semibold dark:border-zinc-800">
-        <ImageIcon className="size-4 text-zinc-500" />
+    <div className="my-3 rounded-xl border border-border bg-card shadow-sm">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3 text-sm font-semibold">
+        <ImageIcon className="size-4 text-muted-foreground" />
         {args.title || '에이전트 이미지를 생성하시겠습니까?'}
       </div>
       <div className="px-4 py-3">
-        <label className="mb-1 block text-xs font-medium text-zinc-500">
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">
           자동 생성 프롬프트 (편집 가능)
         </label>
         <textarea
@@ -68,14 +68,14 @@ function ImageChoice({
           onChange={(e) => setEditPrompt(e.target.value)}
           rows={3}
           disabled={!!submitted || !isRunning}
-          className="w-full resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          className="w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <div className="mt-3 flex justify-end gap-2">
           <button
             type="button"
             onClick={() => handle('skip')}
             disabled={!!submitted || !isRunning}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             <SkipForwardIcon className="size-3.5" />
             넘어가기
@@ -133,9 +133,9 @@ function ImageApproval({
   }
 
   return (
-    <div className="my-3 rounded-xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex items-center gap-2 border-b border-zinc-200 px-4 py-3 text-sm font-semibold dark:border-zinc-800">
-        <ImageIcon className="size-4 text-zinc-500" />
+    <div className="my-3 rounded-xl border border-border bg-card shadow-sm">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3 text-sm font-semibold">
+        <ImageIcon className="size-4 text-muted-foreground" />
         {args.title || '이미지 미리보기'}
       </div>
       <div className="px-4 py-3">
@@ -148,13 +148,13 @@ function ImageApproval({
           <img
             src={resolveImageUrl(args.image_url) ?? ''}
             alt="에이전트 이미지"
-            className="mx-auto h-48 w-48 rounded-xl border border-zinc-200 object-contain dark:border-zinc-800"
+            className="mx-auto h-48 w-48 rounded-xl border border-border object-contain"
           />
         ) : (
-          <p className="text-sm text-zinc-500">이미지가 없습니다.</p>
+          <p className="text-sm text-muted-foreground">이미지가 없습니다.</p>
         )}
         <div className="mt-3">
-          <label className="mb-1 block text-xs font-medium text-zinc-500">
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">
             재생성 프롬프트 (편집 가능)
           </label>
           <textarea
@@ -162,7 +162,7 @@ function ImageApproval({
             onChange={(e) => setEditPrompt(e.target.value)}
             rows={3}
             disabled={!!submitted || !isRunning}
-            className="w-full resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+            className="w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
         <div className="mt-3 flex flex-wrap justify-end gap-2">
@@ -170,7 +170,7 @@ function ImageApproval({
             type="button"
             onClick={() => handle('skip')}
             disabled={!!submitted || !isRunning}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             <SkipForwardIcon className="size-3.5" />
             넘어가기
@@ -179,7 +179,7 @@ function ImageApproval({
             type="button"
             onClick={() => handle('regenerate')}
             disabled={!!submitted || !isRunning}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RotateCwIcon className="size-3.5" />
             재생성

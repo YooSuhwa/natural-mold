@@ -4,21 +4,21 @@ import { CheckIcon, XIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { ApprovalFormState } from './use-approval-form'
 
-type Accent = 'zinc' | 'violet'
+type Accent = 'neutral' | 'violet'
 
 const APPROVE_BUTTON_BY_ACCENT: Record<Accent, string> = {
-  zinc: 'bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-100',
-  violet: 'bg-violet-600 text-white hover:bg-violet-700',
+  neutral: 'bg-foreground text-background hover:bg-foreground/90',
+  violet: 'bg-status-accent text-white hover:bg-status-accent/90',
 }
 
 const CONTAINER_BY_ACCENT: Record<Accent, string> = {
-  zinc: 'border-t border-zinc-200 px-4 py-3 dark:border-zinc-800',
-  violet: 'border-t border-violet-200 px-4 py-3 dark:border-violet-800',
+  neutral: 'border-t border-border px-4 py-3',
+  violet: 'border-t border-status-accent/30 px-4 py-3',
 }
 
 interface ApprovalFooterProps {
   form: ApprovalFormState
-  /** 카드 톤. 기본 zinc, Phase 8 같은 강조 카드는 violet */
+  /** 카드 톤. 기본 neutral, Phase 8 같은 강조 카드는 violet */
   accent?: Accent
   /** textarea placeholder */
   placeholder?: string
@@ -38,7 +38,7 @@ interface ApprovalFooterProps {
  */
 export function ApprovalFooter({
   form,
-  accent = 'zinc',
+  accent = 'neutral',
   placeholder = '수정 의견을 입력하세요...',
   rows = 3,
   approvedStatusText = '승인되었습니다. 다음 단계로 진행합니다...',
@@ -55,7 +55,7 @@ export function ApprovalFooter({
         placeholder={placeholder}
         disabled={isLocked}
         rows={rows}
-        className="w-full resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-400 dark:border-zinc-700 dark:bg-zinc-800"
+        className="w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
       />
       <div className="mt-3 flex justify-end gap-2">
         <button
@@ -63,8 +63,8 @@ export function ApprovalFooter({
           onClick={handleRevision}
           disabled={isLocked}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 px-3 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800',
-            submitted === 'revision' && 'bg-zinc-50 dark:bg-zinc-800',
+            'inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50',
+            submitted === 'revision' && 'bg-muted',
           )}
         >
           <XIcon className="size-3.5" />
@@ -85,7 +85,7 @@ export function ApprovalFooter({
         </button>
       </div>
       {showStatusMessage && submitted && (
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs text-muted-foreground">
           {submitted === 'approved' ? approvedStatusText : revisionStatusText}
         </p>
       )}
