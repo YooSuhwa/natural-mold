@@ -1,13 +1,13 @@
-# 작업 인계 — main (PR #110·#112 머지 후)
+# 작업 인계 — main (PR #110·#112·#114 머지 후)
 
 > 새 세션은 본 파일 + `progress.txt` 마지막 4-5 섹션만 읽으면 충분.
 > 디자인 시스템은 `docs/design-docs/ADR-010-ui-tokens-and-dialog-shell.md`.
 
 ## 마지막 상태
 
-- 브랜치 **`main`** (HEAD `31e9f49`, PR #112 머지 commit)
+- 브랜치 **`main`** (HEAD `d14539d`, PR #114 머지 commit)
 - alembic head **m33** — `cd backend && uv run alembic upgrade head` 필수
-- backend **735 pass** / frontend **249 pass** + 43 skip / lint·build clean
+- backend **735 pass** / frontend **249 pass** + **0 skip** / lint·build clean
 - pyright **0 errors / 0 warnings**, pytest 수집 경고 0건
 - `uvx pip-audit` clean (CVE 0)
 - `.husky/pre-push`가 backend pytest + frontend vitest 자동 게이트
@@ -19,6 +19,8 @@
 | **#110** | **HITL 컴포넌트 zinc → 토큰화** (Sprint 3) | 5개 파일 53/53줄. raw zinc 제거 |
 | **#111** | HANDOFF 갱신 (PR #110 후) | 문서 |
 | **#112** | **mermaid 다크모드** | useTheme로 동적 theme 전환 |
+| **#113** | HANDOFF 갱신 (PR #112 후) | 문서 |
+| **#114** | **frontend skipped 테스트 43건 정리** | 5 파일 −547줄. 0 skip 달성 |
 
 ### #110 핵심
 - 대상: `approval-footer / image-generation-ui / draft-config-ui / prompt-approval-ui / recommendation-approval-ui`
@@ -32,6 +34,12 @@
 - `useEffect` deps에 `mermaidTheme` 추가, 모듈 레벨 `currentTheme` 캐시로 같은 테마 중복 init 방지
 - SSR hydration: `resolvedTheme === undefined` → `'default'` 폴백
 - mermaid built-in `'dark'` 테마 사용. 디자인 토큰 oklch 매핑(`themeVariables`)은 향후 트랙
+
+### #114 핵심
+- `it.skip` 43건 → 0건. 모두 의도적 deprecate (단위 + e2e/smoke로 책임 분리)
+- 대상: agent-settings 19 / tools 9 / models 8 / assistant-panel 4 / chat 2
+- 사유 코멘트는 보존 ("왜 페이지 단위 테스트 없는지" 컨텍스트)
+- unused import 5건도 함께 정리 (waitFor/userEvent/fakeStream/SSEEvent/mockTriggerList)
 
 ## 직전 세션 머지된 트랙 (참고)
 
@@ -49,9 +57,8 @@
 2. **phase-timeline-ui zinc 토큰화** (0.5일) — HITL 외이지만 같은 패턴, 별도 PR
 3. **approval-card raw color 매핑** — emerald/blue/red/amber → primary/status-* (ADR-010 매핑표 미적용 잔여)
 4. **mermaid `themeVariables` 디자인 토큰 매핑** — built-in dark 대신 `'base'` + ADR-010 oklch로 카드 톤 일치
-5. **Frontend 43 skipped 테스트 정리** (Sprint 2/3) — agent-settings 20 / tools 9 / models 8 / assistant-panel 4 / chat 2건
-6. **Outdated deps**: FastAPI 0.135→0.136 / Pydantic 2.12→2.13 (minor) / cryptography 46→47 / marshmallow 3→4 / protobuf 6→7 (major) — 위험도별 분리 PR
-7. M-MCP2 / M-SKILL2 / Sprint 2~4
+5. **Outdated deps**: FastAPI 0.135→0.136 / Pydantic 2.12→2.13 (minor) / cryptography 46→47 / marshmallow 3→4 / protobuf 6→7 (major) — 위험도별 분리 PR
+6. M-MCP2 / M-SKILL2 / Sprint 2~4
 
 ## 알려진 이슈 / 한계
 
