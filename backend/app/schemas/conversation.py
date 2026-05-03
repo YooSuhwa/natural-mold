@@ -191,3 +191,33 @@ class SwitchBranchRequest(BaseModel):
     """
 
     checkpoint_id: str
+
+
+class TraceEvent(BaseModel):
+    """Single SSE event captured during one assistant turn.
+
+    Mirrors the shape ``stream_agent_response`` accumulates in ``trace_sink``:
+    ``id`` is the SSE id ``"<msg_id>-<seq>"``, ``event`` is the event name
+    (``message_start`` / ``content_delta`` / ``tool_call_start`` / ...), and
+    ``data`` is the original JSON payload.
+    """
+
+    id: str | None = None
+    event: str
+    data: dict[str, Any]
+
+
+class TurnTraceResponse(BaseModel):
+    """One assistant turn's trace — events array + bookkeeping.
+
+    Used by W6 (shared page chip rendering) and the future W3-out resume
+    endpoint to read the full event sequence.
+    """
+
+    assistant_msg_id: str
+    events: list[TraceEvent]
+    last_event_id: str | None
+    created_at: UtcDatetime
+    completed_at: UtcDatetime | None
+
+    model_config = {"from_attributes": True}

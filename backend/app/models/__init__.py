@@ -16,6 +16,7 @@ from app.models.health_check_history import HealthCheckHistory
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.message_attachment import MessageAttachment
+from app.models.message_event import MessageEvent
 from app.models.message_feedback import MessageFeedback
 from app.models.model import Model
 from app.models.share_link import ShareLink
@@ -44,6 +45,7 @@ __all__ = [
     "McpServer",
     "McpTool",
     "MessageAttachment",
+    "MessageEvent",
     "MessageFeedback",
     "Model",
     "ShareLink",

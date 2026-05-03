@@ -298,7 +298,7 @@ async def test_edit_message_streams_with_checkpoint_fork(client: AsyncClient):
 
     captured: list = []
 
-    async def mock_stream(cfg, messages_history):
+    async def mock_stream(cfg, messages_history, **_kw):
         captured.append((cfg, messages_history))
         yield 'event: message_end\ndata: {"content": "edited reply", "usage": {}}\n\n'
 
@@ -347,7 +347,7 @@ async def test_regenerate_does_not_duplicate_user_message(client: AsyncClient):
 
     captured: list = []
 
-    async def mock_stream(cfg, messages_history):
+    async def mock_stream(cfg, messages_history, **_kw):
         captured.append((cfg, messages_history))
         yield 'event: message_end\ndata: {"content": "regen reply", "usage": {}}\n\n'
 
@@ -404,7 +404,7 @@ async def test_regenerate_targeted_assistant_uses_correct_checkpoint(
 
     captured: list = []
 
-    async def mock_stream(cfg, messages_history):
+    async def mock_stream(cfg, messages_history, **_kw):
         captured.append((cfg, messages_history))
         yield 'event: message_end\ndata: {"content": "regen", "usage": {}}\n\n'
 

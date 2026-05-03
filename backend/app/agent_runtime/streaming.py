@@ -59,6 +59,7 @@ async def stream_agent_response(
     cost_per_input_token: float | None = None,
     cost_per_output_token: float | None = None,
     usage_sink: dict[str, Any] | None = None,
+    trace_sink: list[dict[str, Any]] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream agent SSE events.
 
@@ -66,6 +67,10 @@ async def stream_agent_response(
     so callers (executor, hook framework) can record the captured token /
     cost numbers without re-parsing SSE. Keys: ``prompt_tokens``,
     ``completion_tokens``, ``estimated_cost``.
+
+    ``trace_sink`` (optional, W5) is appended to with the dict form of each
+    SSE event ``{"id", "event", "data"}`` so callers can persist the full
+    trace at end-of-turn without re-parsing SSE strings.
     """
     msg_id = str(uuid.uuid4())
 
@@ -77,7 +82,10 @@ async def stream_agent_response(
     def emit(event: str, data: dict[str, Any]) -> str:
         nonlocal seq
         seq += 1
-        return format_sse(event, data, event_id=f"{msg_id}-{seq}")
+        event_id = f"{msg_id}-{seq}"
+        if trace_sink is not None:
+            trace_sink.append({"id": event_id, "event": event, "data": data})
+        return format_sse(event, data, event_id=event_id)
 
     yield emit("message_start", {"id": msg_id, "role": "assistant"})
 

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, StreamingResponse
@@ -13,6 +14,7 @@ from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agen
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
 from app.agent_runtime.model_factory import env_provider_keys
 from app.config import settings
+from app.database import async_session
 from app.dependencies import CurrentUser, get_current_user, get_db
 from app.error_codes import agent_not_found, conversation_not_found, file_not_found
 from app.models.model import Model
@@ -26,8 +28,9 @@ from app.schemas.conversation import (
     RegenerateMessageRequest,
     ResumeRequest,
     SwitchBranchRequest,
+    TurnTraceResponse,
 )
-from app.services import chat_service, thread_branch_service
+from app.services import chat_service, thread_branch_service, trace_storage
 
 logger = logging.getLogger(__name__)
 
@@ -181,12 +184,16 @@ def _sse_handler(
     *,
     log_msg: str,
     user_msg: str,
+    on_complete: Callable[[], Awaitable[None]] | None = None,
 ) -> StreamingResponse:
     """4개 stream endpoint(send/resume/edit/regenerate)가 공유하는 SSE 래퍼.
 
     - executor_fn: lazy factory — 매 호출마다 새 AsyncGenerator를 생성해야 함.
     - log_msg: logger.exception 메시지 (서버 사이드).
     - user_msg: 클라이언트로 전달되는 user-facing 에러 메시지.
+    - on_complete: 스트림 종료 후(성공/실패 무관) 1회 호출되는 hook. W5
+      trace 영속화처럼 stream-end side effect에 사용. 실패해도 client에는
+      영향 없도록 swallow + log.
     """
 
     async def generate() -> AsyncGenerator[str, None]:
@@ -197,8 +204,32 @@ def _sse_handler(
             logger.exception(log_msg)
             for chunk in _error_sse_pair(user_msg):
                 yield chunk
+        finally:
+            if on_complete is not None:
+                try:
+                    await on_complete()
+                except Exception:
+                    logger.exception("on_complete hook failed (%s)", log_msg)
 
     return _sse_response(generate())
+
+
+async def _persist_trace(
+    conversation_id: uuid.UUID, trace_sink: list[dict[str, Any]]
+) -> None:
+    """W5 — record_turn을 fresh session으로 호출.
+
+    SSE generate() 안에서는 request-scoped db session이 close되어 있을 수
+    있어 ``async_session()``으로 새로 연다. 이벤트 0건이면 service에서
+    no-op으로 처리.
+    """
+    if not trace_sink:
+        return
+    async with async_session() as session:
+        await trace_storage.record_turn(
+            session, conversation_id=conversation_id, events=trace_sink
+        )
+        await session.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +293,26 @@ async def delete_conversation(
     if not conv:
         raise conversation_not_found()
     await chat_service.delete_conversation(db, conv)
+
+
+@router.get(
+    "/api/conversations/{conversation_id}/traces",
+    response_model=list[TurnTraceResponse],
+)
+async def list_traces(
+    conversation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """W5 — return all turn traces (SSE event arrays) for a conversation.
+
+    Each row is one assistant turn captured by ``stream_agent_response``,
+    ordered by ``created_at`` ascending. Used by W6 shared page chip
+    rendering and (later) W3-out for resume.
+    """
+    conv = await chat_service.get_conversation(db, conversation_id)
+    if not conv:
+        raise conversation_not_found()
+    return await trace_storage.get_traces_for_conversation(db, conversation_id)
 
 
 @router.get(
@@ -372,12 +423,14 @@ async def send_message(
             attachment_ids=[a.id for a in data.attachments],
         )
 
+    trace_sink: list[dict[str, Any]] = []
     return _sse_handler(
         lambda: execute_agent_stream(
-            cfg, [{"role": "user", "content": data.content}]
+            cfg, [{"role": "user", "content": data.content}], trace_sink=trace_sink
         ),
         log_msg=f"Agent stream failed for conversation {conversation_id}",
         user_msg="에이전트 실행 중 오류가 발생했습니다.",
+        on_complete=lambda: _persist_trace(conversation_id, trace_sink),
     )
 
 
@@ -392,10 +445,12 @@ async def resume_message(
     cfg = await _resolve_agent_context(db, conversation_id, user)
     await chat_service.touch_conversation(db, conversation_id)
 
+    trace_sink: list[dict[str, Any]] = []
     return _sse_handler(
-        lambda: resume_agent_stream(cfg, data.response),
+        lambda: resume_agent_stream(cfg, data.response, trace_sink=trace_sink),
         log_msg=f"Agent resume failed for conversation {conversation_id}",
         user_msg="에이전트 재개 중 오류가 발생했습니다.",
+        on_complete=lambda: _persist_trace(conversation_id, trace_sink),
     )
 
 
@@ -473,12 +528,14 @@ async def edit_message(
     # newest (just-edited) branch becomes the displayed one on next list.
     await chat_service.clear_active_branch_override(db, conversation_id)
 
+    trace_sink: list[dict[str, Any]] = []
     return _sse_handler(
         lambda: execute_agent_stream(
-            cfg, [{"role": "user", "content": data.new_content}]
+            cfg, [{"role": "user", "content": data.new_content}], trace_sink=trace_sink
         ),
         log_msg=f"Agent edit failed for conversation {conversation_id}",
         user_msg="메시지 편집 중 오류가 발생했습니다.",
+        on_complete=lambda: _persist_trace(conversation_id, trace_sink),
     )
 
 
@@ -556,10 +613,12 @@ async def regenerate_message(
     # Empty messages_history → executor passes None to LangGraph,
     # resuming from the rewound checkpoint state without duplicating
     # the user message.
+    trace_sink: list[dict[str, Any]] = []
     return _sse_handler(
-        lambda: execute_agent_stream(cfg, []),
+        lambda: execute_agent_stream(cfg, [], trace_sink=trace_sink),
         log_msg=f"Agent regenerate failed for conversation {conversation_id}",
         user_msg="메시지 재생성 중 오류가 발생했습니다.",
+        on_complete=lambda: _persist_trace(conversation_id, trace_sink),
     )
 
 

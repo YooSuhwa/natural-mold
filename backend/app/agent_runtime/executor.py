@@ -619,6 +619,7 @@ async def _run_agent_stream(
     messages_history: list[dict[str, str]],
     stream_input: Any,
     hook_metadata_extra: dict[str, Any] | None = None,
+    trace_sink: list[dict[str, Any]] | None = None,
 ) -> AsyncGenerator[str, None]:
     """공용 stream runner — execute/resume의 prep + hook + 예외 처리 통합 (P0-B).
 
@@ -657,6 +658,7 @@ async def _run_agent_stream(
             cost_per_input_token=cfg.cost_per_input_token,
             cost_per_output_token=cfg.cost_per_output_token,
             usage_sink=usage_sink,
+            trace_sink=trace_sink,
         ):
             yield chunk
     except Exception as exc:
@@ -681,6 +683,8 @@ _USE_PREPPED_LC_MESSAGES: Any = object()
 async def execute_agent_stream(
     cfg: AgentConfig,
     messages_history: list[dict[str, str]],
+    *,
+    trace_sink: list[dict[str, Any]] | None = None,
 ) -> AsyncGenerator[str, None]:
     """스트리밍 실행 (채팅용).
 
@@ -688,12 +692,17 @@ async def execute_agent_stream(
     없이 ``cfg.checkpoint_id`` 시점 state에서 그래프를 다시 돌린다.
     Regenerate가 부모 user 메시지를 중복 주입하지 않고 새 assistant sibling
     만 만들어내는 데 사용한다.
+
+    ``trace_sink`` (W5): 호출자가 list를 넘기면 emit된 SSE 이벤트 dict가 차곡
+    차곡 누적된다. 스트림 종료 시점에 caller가 ``trace_storage.record_turn``
+    으로 영속화.
     """
 
     async for chunk in _run_agent_stream(
         cfg,
         messages_history=messages_history,
         stream_input=_USE_PREPPED_LC_MESSAGES,
+        trace_sink=trace_sink,
     ):
         yield chunk
 
@@ -701,6 +710,8 @@ async def execute_agent_stream(
 async def resume_agent_stream(
     cfg: AgentConfig,
     resume_value: Any,
+    *,
+    trace_sink: list[dict[str, Any]] | None = None,
 ) -> AsyncGenerator[str, None]:
     """인터럽트 재개 스트리밍 (HiTL resume)."""
     from langgraph.types import Command
@@ -710,6 +721,7 @@ async def resume_agent_stream(
         messages_history=[],
         stream_input=Command(resume=resume_value),
         hook_metadata_extra={"resume": True},
+        trace_sink=trace_sink,
     ):
         yield chunk
 
