@@ -107,14 +107,5 @@ describe('ToolsPage', () => {
   })
 
   // 카탈로그/검색/필터/뱃지/삭제 버튼 등 detail UI는 모두 tool-catalog 및
-  // DataTable 단위 테스트와 e2e가 책임진다.
-  it.skip('legacy: filter buttons (catalog 칩 → ToolCatalog 내부)', () => {})
-  it.skip('legacy: search input', () => {})
-  it.skip('legacy: search empty state', () => {})
-  it.skip('legacy: tool type badges', () => {})
-  it.skip('legacy: tool descriptions', () => {})
-  it.skip('legacy: system tool indicator', () => {})
-  it.skip('legacy: delete button', () => {})
-  it.skip('legacy: filter count', () => {})
-  it.skip('legacy: loading skeletons', () => {})
+  // DataTable 단위 테스트와 e2e가 책임진다 (페이지 단위에서 제외).
 })
