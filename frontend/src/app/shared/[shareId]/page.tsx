@@ -10,12 +10,27 @@ import { CollapsiblePill } from '@/components/chat/tool-ui/collapsible-pill'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePublicShare } from '@/lib/hooks/use-share'
-import { extractChips, findTurnForMessage } from '@/lib/share/extract-chips'
+import { extractChips, type ChipInfo } from '@/lib/share/extract-chips'
 import { formatLongDate, formatMediumDate } from '@/lib/utils/format-relative-time'
 import type { Message } from '@/lib/types'
 import type { SharedConversationView, TurnTrace } from '@/lib/types/share'
 
-const isVisibleInPublic = (m: Message): boolean => m.role !== 'tool'
+/** 공개 페이지에서 노출할 메시지 판정.
+ *
+ * 제외:
+ * - tool role 전체 (도구 결과 메시지는 chips로 합쳐 표시)
+ * - 본문이 빈 assistant (도구 호출만 담은 placeholder AIMessage. 라이브
+ *   채팅 UI는 chips로 합쳐서 보여주지만 공개 페이지에선 별도 블록으로 나가
+ *   "사내 위치 안내 도우미" 같은 헤더가 반복되는 시각 노이즈 발생)
+ */
+const isVisibleInPublic = (m: Message): boolean => {
+  if (m.role === 'tool') return false
+  if (m.role === 'assistant') {
+    const content = typeof m.content === 'string' ? m.content : ''
+    if (!content.trim()) return false
+  }
+  return true
+}
 
 interface PageProps {
   params: Promise<{ shareId: string }>
@@ -154,6 +169,15 @@ function ConversationBody({
   agent: SharedConversationView['agent']
   traces: TurnTrace[]
 }) {
+  // turn별 chips를 메시지에 미리 매핑 — trace의 assistant_msg_id는 stream
+  // 시작 시 발급된 UUID4라 langchain message id (MessageResponse.id)와 다르
+  // 므로 직접 매칭 불가능. 대신 conversation의 turn 경계(user → 첫 assistant)
+  // 를 따라 traces[]를 시간순으로 1:1 매핑한다.
+  const chipsByMessageId = useMemo(
+    () => mapTurnChipsToMessages(messages, traces),
+    [messages, traces],
+  )
+
   return (
     <section className="py-10 sm:py-14">
       <DividerLabel>대화 기록</DividerLabel>
@@ -163,12 +187,41 @@ function ConversationBody({
             key={message.id}
             message={message}
             agent={agent}
-            traces={traces}
+            chips={chipsByMessageId.get(message.id) ?? []}
           />
         ))}
       </ol>
     </section>
   )
+}
+
+/**
+ * conversation의 user→assistant turn 경계마다 trace 1건씩 chronological
+ * 매칭해서 "이 turn의 첫 assistant 메시지에 표시할 chips" 매핑을 만든다.
+ *
+ * branch가 있는 conversation(edit/regenerate)은 trace가 더 많을 수 있는데,
+ * 공개 페이지는 active 브랜치만 노출하므로 trace 일부가 매핑되지 않을 수
+ * 있다. 그 경우는 자연스럽게 칩이 안 보임 (graceful).
+ */
+function mapTurnChipsToMessages(
+  messages: Message[],
+  traces: TurnTrace[],
+): Map<string, ChipInfo[]> {
+  const map = new Map<string, ChipInfo[]>()
+  let turnIdx = 0
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
+    const prev = messages[i - 1]
+    if (m.role === 'assistant' && prev?.role === 'user') {
+      const trace = traces[turnIdx]
+      turnIdx += 1
+      if (trace) {
+        const chips = extractChips(trace)
+        if (chips.length > 0) map.set(m.id, chips)
+      }
+    }
+  }
+  return map
 }
 
 function DividerLabel({ children }: { children: React.ReactNode }) {
@@ -186,18 +239,12 @@ function DividerLabel({ children }: { children: React.ReactNode }) {
 function SharedMessage({
   message,
   agent,
-  traces,
+  chips,
 }: {
   message: Message
   agent: SharedConversationView['agent']
-  traces: TurnTrace[]
+  chips: ChipInfo[]
 }) {
-  const chips = useMemo(() => {
-    if (message.role !== 'assistant') return []
-    const turn = findTurnForMessage(traces, message.id)
-    return turn ? extractChips(turn) : []
-  }, [message, traces])
-
   if (message.role === 'user') {
     return (
       <li className="flex justify-end">
