@@ -621,6 +621,9 @@ async def _run_agent_stream(
     hook_metadata_extra: dict[str, Any] | None = None,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
+    broker: Any | None = None,
+    persist_callback: Any | None = None,
+    run_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """공용 stream runner — execute/resume의 prep + hook + 예외 처리 통합 (P0-B).
 
@@ -629,6 +632,9 @@ async def _run_agent_stream(
       execute_agent_stream가 변환한 lc_messages를 그대로 쓴다 (즉 execute는
       stream_input=None 또는 명시 list, resume은 ``Command(resume=...)``).
     - ``hook_metadata_extra``: HookContext.metadata에 추가로 머지(resume용).
+    - ``broker`` / ``persist_callback`` / ``run_id`` (W3-out M2): SSE dual-write
+      + partial flush 파이프라인. router가 EventBroker, fresh-session-bound
+      append_events 콜백, run_id(=assistant_msg_id) 를 주입.
     """
 
     agent, lc_messages, config = await _prepare_agent(
@@ -661,6 +667,9 @@ async def _run_agent_stream(
             usage_sink=usage_sink,
             trace_sink=trace_sink,
             msg_id_sink=msg_id_sink,
+            broker=broker,
+            persist_callback=persist_callback,
+            run_id=run_id,
         ):
             yield chunk
     except Exception as exc:
@@ -688,6 +697,9 @@ async def execute_agent_stream(
     *,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
+    broker: Any | None = None,
+    persist_callback: Any | None = None,
+    run_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """스트리밍 실행 (채팅용).
 
@@ -699,6 +711,9 @@ async def execute_agent_stream(
     ``trace_sink`` (W5): 호출자가 list를 넘기면 emit된 SSE 이벤트 dict가 차곡
     차곡 누적된다. 스트림 종료 시점에 caller가 ``trace_storage.record_turn``
     으로 영속화.
+
+    ``broker`` / ``persist_callback`` / ``run_id`` (W3-out M2): GET resume
+    파이프라인. router가 주입하면 dual-write + partial flush 활성화.
     """
 
     async for chunk in _run_agent_stream(
@@ -707,6 +722,9 @@ async def execute_agent_stream(
         stream_input=_USE_PREPPED_LC_MESSAGES,
         trace_sink=trace_sink,
         msg_id_sink=msg_id_sink,
+        broker=broker,
+        persist_callback=persist_callback,
+        run_id=run_id,
     ):
         yield chunk
 
@@ -717,6 +735,9 @@ async def resume_agent_stream(
     *,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
+    broker: Any | None = None,
+    persist_callback: Any | None = None,
+    run_id: str | None = None,
 ) -> AsyncGenerator[str, None]:
     """인터럽트 재개 스트리밍 (HiTL resume)."""
     from langgraph.types import Command
@@ -728,6 +749,9 @@ async def resume_agent_stream(
         hook_metadata_extra={"resume": True},
         trace_sink=trace_sink,
         msg_id_sink=msg_id_sink,
+        broker=broker,
+        persist_callback=persist_callback,
+        run_id=run_id,
     ):
         yield chunk
 

@@ -50,6 +50,20 @@ async def setup_db():
         await conn.run_sync(Base.metadata.drop_all)
 
 
+@pytest.fixture(autouse=True)
+def _clear_event_broker_registry():
+    """W3-out M2 — module-level ``event_broker.registry`` is process-local and
+    persists across tests. Without this fixture, any test that creates a
+    broker (test_chat_integration, test_conversations_router, etc.) leaks
+    state to the next test, causing random-order failures.
+    """
+    from app.agent_runtime import event_broker
+
+    event_broker.registry.clear()
+    yield
+    event_broker.registry.clear()
+
+
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
     async with TestSession() as session:
         yield session

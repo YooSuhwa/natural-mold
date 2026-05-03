@@ -425,3 +425,120 @@ async def test_stream_flushes_incomplete_json():
     end_data = json.loads(end_event.split("data: ")[1].strip())
     # The incomplete JSON buffer should be in the final content
     assert "Text{incomplete" in end_data["content"]
+
+
+# ---------------------------------------------------------------------------
+# W3-out M2 — broker dual-write + partial flush + run_id injection
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_stream_run_id_injection_uses_external_id():
+    """``run_id`` 가 주어지면 message_start의 ``id`` 와 SSE event id 의 prefix
+    가 그 값으로 강제된다."""
+    agent = MockAgent([(_make_ai_chunk("hi"), {})])
+    forced_run_id = "deadbeef-1234"
+
+    events = [
+        e async for e in stream_agent_response(agent, [], {}, run_id=forced_run_id)
+    ]
+
+    start_event = [e for e in events if "message_start" in e][0]
+    start_data = json.loads(start_event.split("data: ")[1].strip())
+    assert start_data["id"] == forced_run_id
+    # SSE id 라인도 ``{run_id}-<seq>`` 패턴.
+    assert f"id: {forced_run_id}-1" in start_event
+
+
+@pytest.mark.asyncio
+async def test_stream_dual_writes_to_broker_and_trace_sink():
+    """broker.publish_nowait + trace_sink.append 가 같은 이벤트 시퀀스를 받는다."""
+    from app.agent_runtime.event_broker import EventBroker
+
+    chunks = [
+        (_make_ai_chunk("a"), {}),
+        (_make_ai_chunk("b"), {}),
+    ]
+    agent = MockAgent(chunks)
+    broker = EventBroker("run-x")
+    trace_sink: list[dict[str, Any]] = []
+
+    events = [
+        e
+        async for e in stream_agent_response(
+            agent,
+            [],
+            {},
+            trace_sink=trace_sink,
+            broker=broker,
+            run_id="run-x",
+        )
+    ]
+    assert len(events) >= 2  # message_start + message_end at minimum
+
+    # Broker is closed in finally.
+    assert broker.is_closed is True
+    # last_event_id is the message_end event.
+    assert broker.last_event_id is not None
+    assert broker.last_event_id.startswith("run-x-")
+
+    # trace_sink and broker buffer agree on event ids (subset; broker buffer
+    # is bounded, but sink stores all).
+    sink_ids = [e["id"] for e in trace_sink]
+    buffer_ids = [e["id"] for e in broker._buffer]  # noqa: SLF001
+    # Every buffered id is in trace_sink (trace_sink is the source of truth).
+    assert set(buffer_ids).issubset(set(sink_ids))
+
+
+@pytest.mark.asyncio
+async def test_stream_persist_callback_final_flush_in_finally():
+    """persist_callback 이 주어지면 stream 종료 시 최소한 한 번은 호출된다
+    (final flush in finally block)."""
+    agent = MockAgent([(_make_ai_chunk("hi"), {})])
+    captured_chunks: list[list[dict[str, Any]]] = []
+
+    async def callback(chunk: list[dict[str, Any]]) -> None:
+        captured_chunks.append(list(chunk))
+
+    _ = [
+        e
+        async for e in stream_agent_response(
+            agent, [], {}, persist_callback=callback, run_id="run-y"
+        )
+    ]
+
+    # 짧은 stream (이벤트 < 32, 시간 < 2s) 이라 fire-and-forget partial flush
+    # 는 안 트리거되지만 finally 의 final flush 가 한 번은 호출되어야 한다.
+    assert len(captured_chunks) >= 1
+    # 모든 캡처된 이벤트 id 는 ``run-y-`` 프리픽스.
+    flat_ids = [evt["id"] for chunk in captured_chunks for evt in chunk]
+    assert all(eid.startswith("run-y-") for eid in flat_ids)
+
+
+@pytest.mark.asyncio
+async def test_stream_broker_close_called_even_on_exception():
+    """astream 이 예외를 던져도 broker.close() 가 finally 에서 실행된다."""
+    from app.agent_runtime.event_broker import EventBroker
+
+    class FailingAgent:
+        async def astream(self, *args: Any, **kwargs: Any):
+            yield (_make_ai_chunk("partial"), {})
+            raise RuntimeError("boom")
+
+        async def aget_state(self, *args: Any, **kwargs: Any):
+            state = MagicMock()
+            state.tasks = []
+            return state
+
+    agent = FailingAgent()
+    broker = EventBroker("run-fail")
+
+    # streaming.py 는 예외를 emit("error") 로 변환하므로 generator 가 깔끔하게
+    # 종료된다. 우리는 finally 의 broker.close 만 검증.
+    _ = [
+        e
+        async for e in stream_agent_response(
+            agent, [], {}, broker=broker, run_id="run-fail"
+        )
+    ]
+    assert broker.is_closed is True

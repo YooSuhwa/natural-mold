@@ -4,10 +4,15 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, ForeignKey, String
+from sqlalchemy import JSON, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import func
 
 from app.database import Base
+
+# W3-out M2: SSE turn lifecycle status. CHECK 제약으로 Postgres ENUM 대신
+# 문자열 + 제약 조합 (alembic-friendly + dialect-agnostic).
+STREAMING_STATUS_VALUES = ("streaming", "completed", "failed")
 
 
 class MessageEvent(Base):
@@ -46,3 +51,23 @@ class MessageEvent(Base):
     # 스트림 종료 시각. None이면 진행 중(Phase 1은 종료 시점에만 한 번 기록하므로
     # 항상 생성과 동시에 set되지만, W3-out 진행형 영속화 도입 시 의미가 갈라진다).
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # W3-out M2 — turn lifecycle:
+    #   'streaming'  : 진행 중. partial flush로 events가 점진적 추가됨.
+    #   'completed'  : 정상 종료 (message_end 도달).
+    #   'failed'     : 예외/abort. last_event_id는 마지막으로 받은 이벤트.
+    # 기존 row(m34 이전)는 server_default 'completed'로 채워져 회귀 0.
+    status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default="completed",
+        default="completed",
+    )
+    # 진행 중 partial flush마다 갱신. completed_at과 달리 streaming 동안
+    # 매번 NOW()로 bump (heartbeat 역할 — stale broker GC 판정에도 활용 가능).
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False),
+        nullable=False,
+        server_default=func.now(),
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
