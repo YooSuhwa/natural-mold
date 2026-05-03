@@ -36,7 +36,7 @@ def _utc_now_default() -> sa.TextClause:
     return sa.text("CURRENT_TIMESTAMP")
 
 
-def _uuid_type():
+def _uuid_type() -> sa.types.TypeEngine:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
         from sqlalchemy.dialects import postgresql
