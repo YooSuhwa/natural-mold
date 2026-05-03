@@ -150,13 +150,5 @@ describe('ModelsPage', () => {
   })
 
   // 페이지 안의 DataTable / 모델 detail / provider 카드 / delete 흐름은
-  // model-* 컴포넌트 단위 테스트와 e2e가 책임진다.
-  it.skip('legacy: renders loading skeletons for models', () => {})
-  it.skip('legacy: shows default badge', () => {})
-  it.skip('legacy: shows model name under display name', () => {})
-  it.skip('legacy: provider icon abbreviations', () => {})
-  it.skip('legacy: delete button per row', () => {})
-  it.skip('legacy: Google provider icon', () => {})
-  it.skip('legacy: AI icon for custom provider', () => {})
-  it.skip('legacy: add model button label', () => {})
+  // model-* 컴포넌트 단위 테스트와 e2e가 책임진다 (페이지 단위에서 제외).
 })
