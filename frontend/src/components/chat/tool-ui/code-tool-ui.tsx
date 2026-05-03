@@ -61,11 +61,16 @@ function guessLanguage(filename: string): string {
   return ext ? (map[ext] ?? ext) : 'text'
 }
 
-function statusToPill(statusType: string): PillStatus {
-  if (statusType === 'running') return 'loading'
+// assistant-ui의 status.type union을 PillStatus로 매핑.
+// incomplete = HiTL reject 등으로 미완 → cancelled가 의미상 정확.
+// (다른 tool-ui 파일들의 매핑 함수와 미세하게 다름 — Sprint 2 후속에서 통일 예정)
+type AssistantUiStatusType = 'running' | 'complete' | 'incomplete' | 'requires-action'
+
+function statusToPill(statusType: AssistantUiStatusType | string): PillStatus {
+  if (statusType === 'running' || statusType === 'requires-action') return 'loading'
   if (statusType === 'incomplete') return 'cancelled'
-  if (statusType === 'error') return 'error'
-  return 'success'
+  if (statusType === 'complete') return 'success'
+  return 'error'
 }
 
 // ──────────────────────────────────────────────
@@ -170,11 +175,8 @@ function DiffBlock({
 }
 
 // ──────────────────────────────────────────────
-// FileToolPill — CollapsiblePill 기반 공통 래퍼.
-//
-// CollapsiblePill의 kind 옵션은 tool/subagent/thinking 3종으로 한정되므로
-// 파일 작업(Read/Write/Edit)도 일반 ``tool``로 매핑한다. 작업 종류는
-// title("Read"/"Write"/"Edit"), 파일명은 meta로 자연스럽게 구분된다.
+// FileToolPill — Read/Write/Edit 공통 래퍼. file kind 시각 구분은 텍스트
+// label("Read"/"Write"/"Edit")로 위임 (CollapsiblePill kind는 tool 고정).
 // ──────────────────────────────────────────────
 
 function FileToolPill({
