@@ -7,7 +7,6 @@ Create Date: 2026-04-17
 
 from __future__ import annotations
 
-import json
 import logging
 
 import sqlalchemy as sa
@@ -28,34 +27,20 @@ def upgrade() -> None:
         sa.Column("field_keys", sa.JSON(), nullable=True),
     )
 
-    from app.config import settings
-
-    if not settings.encryption_key:
-        logger.warning(
-            "ENCRYPTION_KEY not set — skipping field_keys backfill; "
-            "legacy rows will be filled lazily via fallback path"
-        )
-        return
-
-    from app.services.encryption import decrypt_api_key
-
+    # Legacy ``app.services.encryption`` was removed in M5 along with the in-DB
+    # Fernet keys. Fresh DB roll-ups iterate zero credential rows here, and any
+    # production DB has already executed this migration (head is past m7).
+    # Keeping the backfill loop as a self-contained inline Fernet would only be
+    # exercised by a hypothetical DB stuck pre-m7 with legacy ciphertext — at
+    # which point the lazy fallback path in ``credential_resolution`` recovers
+    # the keys on first use anyway.
     bind = op.get_bind()
-    rows = bind.execute(sa.text("SELECT id, data_encrypted FROM credentials")).fetchall()
-
-    for row in rows:
-        cred_id = row[0]
-        ciphertext = row[1]
-        try:
-            plaintext = decrypt_api_key(ciphertext)
-            payload = json.loads(plaintext)
-            keys = list(payload.keys()) if isinstance(payload, dict) else []
-        except Exception as exc:  # noqa: BLE001 — tolerant backfill
-            logger.warning("Failed to backfill field_keys for credential %s: %s", cred_id, exc)
-            keys = []
-
-        bind.execute(
-            sa.text("UPDATE credentials SET field_keys = :keys WHERE id = :id"),
-            {"keys": json.dumps(keys), "id": cred_id},
+    row_count = bind.execute(sa.text("SELECT COUNT(*) FROM credentials")).scalar() or 0
+    if row_count:
+        logger.warning(
+            "m7: %s credential rows present pre-backfill — field_keys will be "
+            "populated lazily on first decrypt via credential_resolution",
+            row_count,
         )
 
 

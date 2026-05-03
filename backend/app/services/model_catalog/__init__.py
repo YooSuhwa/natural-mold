@@ -14,6 +14,8 @@ Moldy-native.
 
 from __future__ import annotations
 
+from . import loaders, merge, normalize, resolve, rules, validate
+
 __all__ = [
     "loaders",
     "merge",

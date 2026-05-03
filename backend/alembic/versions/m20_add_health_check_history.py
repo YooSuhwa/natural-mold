@@ -38,7 +38,7 @@ def _uuid_col() -> sa.types.TypeEngine:
     return sa.String(36)
 
 
-def _utc_now_default() -> sa.sql.elements.TextClause:
+def _utc_now_default() -> sa.TextClause:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
         return sa.text("now()")

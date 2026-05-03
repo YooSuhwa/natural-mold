@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal, cast
 
 import anyio
 import httpx
@@ -70,7 +70,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
                 id=link.skill_id,
                 name=link.skill.name,
                 slug=link.skill.slug,
-                kind=link.skill.kind,
+                kind=cast(Literal["text", "package"], link.skill.kind),
                 description=link.skill.description,
             )
             for link in agent.skill_links

@@ -187,16 +187,9 @@ def upgrade() -> None:
                         field_keys_raw = None
                 if isinstance(field_keys_raw, list) and field_keys_raw:
                     field_keys_list = [str(k) for k in field_keys_raw]
-                else:
-                    data_encrypted = cred_row[1]
-                    try:
-                        from app.services.encryption import decrypt_api_key
-
-                        decoded = json.loads(decrypt_api_key(data_encrypted))
-                        if isinstance(decoded, dict) and decoded:
-                            field_keys_list = [str(k) for k in decoded]
-                    except Exception:  # noqa: BLE001 — migration 경계
-                        field_keys_list = None
+                # else: legacy data_encrypted decrypt fallback removed in M5
+                # along with ``app.services.encryption``. Surviving rows
+                # without field_keys take the legacy mcp_server_id path below.
 
             if field_keys_list:
                 env_vars_out = {k: f"${{credential.{k}}}" for k in field_keys_list}

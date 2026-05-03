@@ -30,6 +30,10 @@ class TestRequestSpec:
     ``[{"type": "responseSuccessBody", "key": "ok", "value": True}]``.
     """
 
+    # Class name starts with "Test"; opt out of pytest collection — it's a
+    # credential-test *recipe*, not a unit test.
+    __test__ = False
+
     request: dict[str, Any]
     rules: list[dict[str, Any]] = field(default_factory=list)
 

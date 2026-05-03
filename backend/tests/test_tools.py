@@ -102,6 +102,7 @@ async def test_create_tool_round_trip(client: AsyncClient, db: AsyncSession) -> 
     row = (
         await db.execute(select(Tool).where(Tool.id == tool_id))
     ).scalar_one()
+    assert row.parameters is not None
     assert row.parameters["url"] == "https://example.com"
     assert row.user_id == TEST_USER_ID
 
@@ -383,6 +384,7 @@ async def test_run_tool_returns_error_envelope_on_missing_credential(
 
     result = await run_tool(db=db, tool=tool, registry=tool_registry)
     assert result.success is False
+    assert result.error is not None
     assert "credential" in result.error.lower()
 
 

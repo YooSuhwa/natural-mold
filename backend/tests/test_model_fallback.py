@@ -268,6 +268,7 @@ async def test_with_fallback_records_audit_on_each_attempt() -> None:
         failures = [r for r in rows if (r.log_metadata or {}).get("success") is False]
         assert len(successes) == 1
         assert len(failures) == 1
+        assert successes[0].log_metadata is not None
         assert successes[0].log_metadata["model_name"] == "claude-sonnet"
         assert failures[0].error is not None
 

@@ -15,7 +15,7 @@ from app.models.mcp_server import McpServer
 from app.models.model import Model
 from app.models.user import User
 from app.services import health_check as health_check_service
-from app.services.model_test import ModelTestError, ModelTestResult
+from app.services.model_test import ErrorKind, ModelTestError, ModelTestResult
 from tests.conftest import TEST_USER_ID, TestSession
 
 # ---------------------------------------------------------------------------
@@ -86,7 +86,9 @@ async def _seed_mcp_server(*, transport: str = "streamable_http") -> McpServer:
         return server
 
 
-def _stub_model_test(success: bool, *, kind: str = "auth") -> ModelTestResult:
+def _stub_model_test(
+    success: bool, *, kind: ErrorKind = "auth"
+) -> ModelTestResult:
     if success:
         return ModelTestResult(
             success=True,
@@ -171,11 +173,14 @@ async def test_check_mcp_server_success_updates_server_status() -> None:
 
     with patch("app.services.health_check.mcp_client.connect_and_list", _fake_probe):
         async with TestSession() as db:
+            fetched = await db.get(McpServer, server.id)
+            assert fetched is not None
             history = await health_check_service.check_mcp_server(
-                db, server=await db.get(McpServer, server.id), credential=None
+                db, server=fetched, credential=None
             )
             await db.commit()
             refreshed = await db.get(McpServer, server.id)
+            assert refreshed is not None
             assert history.status == "healthy"
             assert refreshed.status == "connected"
             assert refreshed.last_tool_count == 1
@@ -195,13 +200,16 @@ async def test_check_mcp_server_auth_error_marks_degraded() -> None:
 
     with patch("app.services.health_check.mcp_client.connect_and_list", _fake_probe):
         async with TestSession() as db:
+            fetched = await db.get(McpServer, server.id)
+            assert fetched is not None
             history = await health_check_service.check_mcp_server(
-                db, server=await db.get(McpServer, server.id), credential=None
+                db, server=fetched, credential=None
             )
             await db.commit()
             assert history.status == "degraded"
             assert history.error_kind == "auth"
             refreshed = await db.get(McpServer, server.id)
+            assert refreshed is not None
             assert refreshed.status == "auth_needed"
 
 
@@ -219,13 +227,16 @@ async def test_check_mcp_server_unreachable_marks_unhealthy() -> None:
 
     with patch("app.services.health_check.mcp_client.connect_and_list", _fake_probe):
         async with TestSession() as db:
+            fetched = await db.get(McpServer, server.id)
+            assert fetched is not None
             history = await health_check_service.check_mcp_server(
-                db, server=await db.get(McpServer, server.id), credential=None
+                db, server=fetched, credential=None
             )
             await db.commit()
             assert history.status == "unhealthy"
             assert history.error_kind == "timeout"
             refreshed = await db.get(McpServer, server.id)
+            assert refreshed is not None
             assert refreshed.status == "unreachable"
 
 
