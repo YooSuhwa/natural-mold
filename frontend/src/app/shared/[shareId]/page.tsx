@@ -6,14 +6,31 @@ import { AlertCircleIcon, ArrowLeftIcon, MessageSquareIcon } from 'lucide-react'
 
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { MarkdownContent } from '@/components/chat/markdown-content'
+import { CollapsiblePill } from '@/components/chat/tool-ui/collapsible-pill'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePublicShare } from '@/lib/hooks/use-share'
+import { extractChips, type ChipInfo } from '@/lib/share/extract-chips'
 import { formatLongDate, formatMediumDate } from '@/lib/utils/format-relative-time'
 import type { Message } from '@/lib/types'
-import type { SharedConversationView } from '@/lib/types/share'
+import type { SharedConversationView, TurnTrace } from '@/lib/types/share'
 
-const isVisibleInPublic = (m: Message): boolean => m.role !== 'tool'
+/** 공개 페이지에서 노출할 메시지 판정.
+ *
+ * 제외:
+ * - tool role 전체 (도구 결과 메시지는 chips로 합쳐 표시)
+ * - 본문이 빈 assistant (도구 호출만 담은 placeholder AIMessage. 라이브
+ *   채팅 UI는 chips로 합쳐서 보여주지만 공개 페이지에선 별도 블록으로 나가
+ *   "사내 위치 안내 도우미" 같은 헤더가 반복되는 시각 노이즈 발생)
+ */
+const isVisibleInPublic = (m: Message): boolean => {
+  if (m.role === 'tool') return false
+  if (m.role === 'assistant') {
+    const content = typeof m.content === 'string' ? m.content : ''
+    if (!content.trim()) return false
+  }
+  return true
+}
 
 interface PageProps {
   params: Promise<{ shareId: string }>
@@ -45,7 +62,11 @@ function SharedArticle({ data }: { data: SharedConversationView }) {
           {visibleMessages.length === 0 ? (
             <EmptyConversation />
           ) : (
-            <ConversationBody messages={visibleMessages} agent={data.agent} />
+            <ConversationBody
+              messages={visibleMessages}
+              agent={data.agent}
+              traces={data.traces}
+            />
           )}
         </article>
       </main>
@@ -142,20 +163,81 @@ function Hero({
 function ConversationBody({
   messages,
   agent,
+  traces,
 }: {
   messages: Message[]
   agent: SharedConversationView['agent']
+  traces: TurnTrace[]
 }) {
+  // 라이브 채팅 UX와 동일하게: 연속된 assistant 메시지는 한 그룹으로 묶고
+  // 그룹의 첫 메시지에 chips를 붙인다 ("도우미"가 같은 turn에서 여러 번
+  // 말하더라도 헤더는 한 번만, 도구 칩도 그 위에 한 번만).
+  const turnGroups = useMemo(
+    () => groupMessagesIntoTurns(messages, traces),
+    [messages, traces],
+  )
+
   return (
     <section className="py-10 sm:py-14">
       <DividerLabel>대화 기록</DividerLabel>
       <ol className="mt-10 flex flex-col gap-8">
-        {messages.map((message) => (
-          <SharedMessage key={message.id} message={message} agent={agent} />
-        ))}
+        {turnGroups.map((group, i) =>
+          group.kind === 'user' ? (
+            <UserMessageItem key={group.message.id} message={group.message} />
+          ) : (
+            <AssistantTurnItem
+              key={group.messages[0]?.id ?? `turn-${i}`}
+              messages={group.messages}
+              chips={group.chips}
+              agent={agent}
+            />
+          ),
+        )}
       </ol>
     </section>
   )
+}
+
+/** 한 turn = (user message) | (assistant 메시지 그룹 + 그 turn의 chips). */
+type TurnGroup =
+  | { kind: 'user'; message: Message }
+  | { kind: 'assistant'; messages: Message[]; chips: ChipInfo[] }
+
+/**
+ * 메시지를 user / assistant-group으로 평탄화하면서 trace를 1:1 매핑.
+ *
+ * trace 매칭은 ``user → assistant 그룹 시작`` 경계마다 traces[turnIdx]를
+ * chronological 1:1로 가져온다. trace.assistant_msg_id와 langchain
+ * MessageResponse.id가 별개라 직접 비교 불가능. branch가 있는 대화는
+ * trace가 더 많을 수 있고, 공개 페이지는 active 브랜치만 노출하므로
+ * 일부 trace가 매핑되지 않을 수 있다 (graceful).
+ */
+function groupMessagesIntoTurns(
+  messages: Message[],
+  traces: TurnTrace[],
+): TurnGroup[] {
+  const groups: TurnGroup[] = []
+  let turnIdx = 0
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
+    if (m.role === 'user') {
+      groups.push({ kind: 'user', message: m })
+      continue
+    }
+    if (m.role !== 'assistant') continue
+
+    const lastGroup = groups[groups.length - 1]
+    if (lastGroup && lastGroup.kind === 'assistant') {
+      lastGroup.messages.push(m)
+      continue
+    }
+
+    const trace = traces[turnIdx]
+    turnIdx += 1
+    const chips = trace ? extractChips(trace) : []
+    groups.push({ kind: 'assistant', messages: [m], chips })
+  }
+  return groups
 }
 
 function DividerLabel({ children }: { children: React.ReactNode }) {
@@ -170,25 +252,27 @@ function DividerLabel({ children }: { children: React.ReactNode }) {
   )
 }
 
-function SharedMessage({
-  message,
+function UserMessageItem({ message }: { message: Message }) {
+  return (
+    <li className="flex justify-end">
+      <div className="max-w-[85%] rounded-2xl bg-muted/60 px-4 py-3 text-sm text-foreground">
+        <p className="whitespace-pre-wrap break-words leading-relaxed">
+          {message.content}
+        </p>
+      </div>
+    </li>
+  )
+}
+
+function AssistantTurnItem({
+  messages,
+  chips,
   agent,
 }: {
-  message: Message
+  messages: Message[]
+  chips: ChipInfo[]
   agent: SharedConversationView['agent']
 }) {
-  if (message.role === 'user') {
-    return (
-      <li className="flex justify-end">
-        <div className="max-w-[85%] rounded-2xl bg-muted/60 px-4 py-3 text-sm text-foreground">
-          <p className="whitespace-pre-wrap break-words leading-relaxed">
-            {message.content}
-          </p>
-        </div>
-      </li>
-    )
-  }
-
   return (
     <li className="space-y-3">
       <div className="flex items-center gap-2">
@@ -197,8 +281,23 @@ function SharedMessage({
           {agent.name}
         </span>
       </div>
-      <div className="pl-8">
-        <MarkdownContent content={message.content} />
+      <div className="pl-8 space-y-3">
+        {chips.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {chips.map((chip, i) => (
+              <CollapsiblePill
+                key={i}
+                kind={chip.kind}
+                status={chip.status}
+                title={chip.title}
+                meta={chip.meta}
+              />
+            ))}
+          </div>
+        )}
+        {messages.map((m) => (
+          <MarkdownContent key={m.id} content={m.content} />
+        ))}
       </div>
     </li>
   )

@@ -139,6 +139,59 @@ async def test_public_share_view_returns_snapshot(client: AsyncClient):
     assert body["agent"]["name"] == "Share Agent"
     assert body["agent"]["description"] == "An agent for share tests"
     assert body["messages"] == []
+    # W6: trace 영속화 이전 대화는 빈 배열
+    assert body["traces"] == []
+
+
+@pytest.mark.asyncio
+async def test_public_share_view_includes_persisted_traces(client: AsyncClient):
+    """W6 — record_turn으로 시드된 trace가 share 응답에 포함된다."""
+    from app.services import trace_storage
+
+    conv_id = await _seed_conversation()
+    create = await client.post(f"/api/conversations/{conv_id}/share")
+    token = create.json()["share_token"]
+
+    msg_id = "shared-turn-1"
+    events = [
+        {"id": f"{msg_id}-1", "event": "message_start", "data": {"id": msg_id}},
+        {
+            "id": f"{msg_id}-2",
+            "event": "tool_call_start",
+            "data": {"tool_name": "web_search", "parameters": {"q": "moldy"}},
+        },
+        {
+            "id": f"{msg_id}-3",
+            "event": "tool_call_result",
+            "data": {"tool_name": "web_search", "result": "..."},
+        },
+        {
+            "id": f"{msg_id}-4",
+            "event": "message_end",
+            "data": {"usage": {}, "content": "result"},
+        },
+    ]
+    async with TestSession() as db:
+        await trace_storage.record_turn(db, conversation_id=conv_id, events=events)
+        await db.commit()
+
+    with patch(
+        "app.routers.shares.chat_service.list_messages_from_checkpointer",
+        new=AsyncMock(return_value=[]),
+    ):
+        resp = await client.get(f"/api/shares/{token}")
+    body = resp.json()
+    assert len(body["traces"]) == 1
+    trace = body["traces"][0]
+    assert trace["assistant_msg_id"] == msg_id
+    # 도구 호출 chip 추출에 필요한 모든 이벤트가 그대로 노출
+    assert [e["event"] for e in trace["events"]] == [
+        "message_start",
+        "tool_call_start",
+        "tool_call_result",
+        "message_end",
+    ]
+    assert trace["events"][1]["data"]["tool_name"] == "web_search"
 
 
 @pytest.mark.asyncio
