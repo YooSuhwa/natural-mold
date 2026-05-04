@@ -415,12 +415,13 @@ def test_registry_evict_expired_skips_recent_live() -> None:
 
 
 @pytest.mark.asyncio
-async def test_subscribe_after_close_during_register_emits_sentinel() -> None:
-    """close가 subscribe register 직전에 일어나도 subscriber가 sentinel을 받고 종료.
+async def test_subscribe_when_already_closed_emits_sentinel() -> None:
+    """이미 closed된 broker에 subscribe해도 sentinel 분기로 즉시 종료.
 
-    B1 race 보강 회귀 가드 — ``listeners.add`` 분기에서 ``self._closed`` 가
-    True일 때 self-sentinel을 큐에 넣어 subscriber가 무한 await에 갇히지
-    않도록 한 변경의 회귀 테스트.
+    B1 fix의 already-closed-at-subscribe 분기 회귀 가드 — ``listeners.add``
+    가 skip되면서 self-sentinel을 큐에 넣어 ``await queue.get()`` 단계에서
+    무한 대기에 갇히지 않도록 한 변경의 검증. (실제 race 시뮬은 monkey
+    patch가 필요하지만 본 케이스가 fix된 분기를 그대로 통과한다.)
     """
     broker = EventBroker("race-test")
     broker.close()  # already closed before subscribe

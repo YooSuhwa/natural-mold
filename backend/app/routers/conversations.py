@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
+from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
 from app.agent_runtime.model_factory import env_provider_keys
@@ -243,7 +244,7 @@ class _StreamCtx(NamedTuple):
     """
 
     run_id: str
-    broker: Any  # EventBroker — 순환 import 회피 위해 Any
+    broker: EventBroker
     persist_cb: Callable[[list[dict[str, Any]]], Awaitable[None]]
     trace_sink: list[dict[str, Any]]
     msg_id_sink: list[str]

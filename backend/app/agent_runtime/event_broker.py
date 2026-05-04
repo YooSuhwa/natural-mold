@@ -125,6 +125,17 @@ class EventBroker:
                 q.put_nowait(evt)
             except asyncio.QueueFull:
                 self._listeners.discard(q)
+                # Slow listener detected — disconnect for backpressure
+                # protection. 운영 가시성을 위해 logging (악의적 slow consumer
+                # 감지 + 정상 운영 disconnect 빈도 추적). evt id는 마지막
+                # publish 시점의 SSE id라 대략적 위치 추정 용도.
+                logger.warning(
+                    "EventBroker slow listener disconnected run_id=%s "
+                    "(queue maxsize=%d). last_event_id=%s",
+                    self.run_id,
+                    self._listener_queue_maxsize,
+                    self._last_event_id,
+                )
                 # Make room for the sentinel so the subscriber's `queue.get()`
                 # eventually wakes up and exits cleanly. Drop one buffered
                 # event — the listener already lost causality.
@@ -276,6 +287,11 @@ class BrokerRegistry:
         """
         broker = self._brokers.get(run_id)
         if broker is None or broker.is_closed:
+            # 같은 run_id 재사용(closed) 케이스에서 자기 자신을 LRU eviction
+            # 후보로 만들지 않도록 먼저 pop. 그 후 capacity 검사 → 새 broker
+            # 등록. _enforce_capacity가 자기 자신의 dict slot을 evict하는
+            # 우연한 정합성에 의존하지 않게 한다.
+            self._brokers.pop(run_id, None)
             self._enforce_capacity()
             broker = EventBroker(
                 run_id,
@@ -288,10 +304,17 @@ class BrokerRegistry:
     def _enforce_capacity(self) -> None:
         """Drop oldest closed (or oldest live) brokers until under the cap.
 
-        Insertion order(=Python 3.7+ dict ordering)가 LRU 근사로 충분.
-        가장 먼저 들어온 broker부터 검사하여 closed면 즉시 pop, live면
-        강제 close 후 pop. ``max_brokers - 1`` 까지 비워야 새 entry가
-        들어갈 자리 확보.
+        실제로는 insertion-order 기반 FIFO + closed-우선 정책 (true LRU
+        아님 — 같은 broker가 ``get_or_create`` 재호출되어도 dict 순서는
+        안 바뀐다). 가장 먼저 들어온 broker부터 검사하여 closed면 즉시
+        pop, live면 강제 close 후 pop. ``max_brokers - 1`` 까지 비워야
+        새 entry가 들어갈 자리 확보.
+
+        ⚠️ 정상 운영 중 live broker 강제 close는 진행 중인 stream을
+        끊는다 (subscriber는 sentinel 받음). 메모리 보호가 turn 보존보다
+        우선. 멀티 테넌트 도입 시 per-user/conversation sub-cap을 추가
+        해야 한 사용자가 다른 사용자의 stream을 끊는 cross-tenant
+        eviction을 방지할 수 있다 (M3+ 후속 트랙).
         """
         if len(self._brokers) < self._max_brokers:
             return

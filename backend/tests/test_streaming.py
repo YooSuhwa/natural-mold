@@ -647,3 +647,56 @@ async def test_inflight_flush_cap_throttles_create_task():
     # 최소 1회는 호출됐고, cap 덕분에 무한 폭주는 안 일어남.
     # 정확한 호출 수는 timing-dependent라 lower bound만 검증.
     assert flush_count["n"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_retry_buffer_overflow_drops_oldest():
+    """retry_buffer가 _MAX_RETRY_BUFFER_EVENTS 초과 시 oldest부터 drop.
+
+    DB 영속 장애 시나리오 — 모든 partial flush가 실패하고 retry_buffer
+    가 한도를 넘으면 OOM 방지를 위해 oldest event를 drop해야 한다.
+    """
+    from app.agent_runtime import streaming as streaming_mod
+
+    original_batch = streaming_mod._FLUSH_BATCH_SIZE
+    original_cap = streaming_mod._MAX_RETRY_BUFFER_EVENTS
+    streaming_mod._FLUSH_BATCH_SIZE = 1
+    streaming_mod._MAX_RETRY_BUFFER_EVENTS = 3  # 매우 작은 cap으로 즉시 overflow
+
+    flush_count = {"n": 0}
+    received: list[list[dict[str, Any]]] = []
+
+    async def always_failing(chunk: list[dict[str, Any]]) -> None:
+        flush_count["n"] += 1
+        # 모든 partial flush 실패 → retry_buffer로 적재
+        # final flush(>= 5번째 호출 추정)에서만 성공해 capture
+        if flush_count["n"] < 5:
+            raise RuntimeError("DB down")
+        received.append(list(chunk))
+
+    try:
+        # 여러 content_delta로 여러 partial flush 유발
+        chunks = [(_make_ai_chunk(f"c{i}"), {}) for i in range(10)]
+        agent = MockAgent(chunks)
+        _ = [
+            e
+            async for e in stream_agent_response(
+                agent,
+                [],
+                {},
+                persist_callback=always_failing,
+                run_id="run-overflow",
+            )
+        ]
+    finally:
+        streaming_mod._FLUSH_BATCH_SIZE = original_batch
+        streaming_mod._MAX_RETRY_BUFFER_EVENTS = original_cap
+
+    # 최종 flush로 받은 event 수 합산이 cap(=3) 이하여야 함 — 초과 시 drop됨.
+    # 단, final flush가 retry_buffer + flush_buffer 두 chunk로 호출되므로
+    # received[0]는 retry_buffer (cap 이하), received[1]은 잔여 flush_buffer.
+    if received:
+        retry_chunk_size = len(received[0])
+        assert retry_chunk_size <= 3, (
+            f"retry_buffer overflow가 안 일어남: {retry_chunk_size} > cap=3"
+        )

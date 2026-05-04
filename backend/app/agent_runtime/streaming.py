@@ -23,9 +23,16 @@ logger = logging.getLogger(__name__)
 _FLUSH_BATCH_SIZE = 32
 _FLUSH_INTERVAL_SECONDS = 2.0
 # Backpressure cap on in-flight partial flushes. DB가 느려져도 task /
-# DB connection 폭주 방지. 한도 도달 시 새 chunk는 retry buffer에
-# 모이고 finally의 final flush가 한 번 더 시도한다.
+# connection 폭주 방지. 4 = async DB pool(보통 10~20)의 보수적 1/3로
+# 다른 라우트의 DB 작업과 풀 공유 여지 확보. 한도 도달 시 새 chunk는
+# flush_buffer 에 그대로 보관되고 다음 임계치에서 재검사 → in-flight
+# 가 비면 flush 재개. 최악의 경우 finally 의 final flush 가 잔여 처리.
 _MAX_INFLIGHT_FLUSHES = 4
+# retry_buffer 메모리 한도 (events 수). 평균 200B × 5000 = ~1MB.
+# DB 영속 장애로 한 turn 동안 모든 partial flush 가 실패하더라도 OOM
+# 보호. 초과 시 oldest chunk부터 drop + log (정상 turn 길이 0~수백
+# events 가정 시 한도 도달은 이상 신호).
+_MAX_RETRY_BUFFER_EVENTS = 5000
 
 
 PersistCallback = Callable[[list[dict[str, Any]]], Awaitable[None]]
@@ -122,7 +129,11 @@ async def stream_agent_response(
     async def _safe_persist(chunk: list[dict[str, Any]]) -> None:
         """Background task wrapper — swallow exceptions so a DB hiccup
         doesn't kill the live stream. 실패한 chunk는 retry_buffer에 보관
-        해서 finally의 final flush에서 한 번 더 시도한다."""
+        해서 finally의 final flush에서 한 번 더 시도한다.
+
+        retry_buffer 가 한도(``_MAX_RETRY_BUFFER_EVENTS``) 를 초과하면
+        oldest 부터 drop + log (event 한 개 수준의 손실은 stream 유지
+        보다 낮은 우선순위)."""
         if persist_callback is None:
             return
         try:
@@ -133,6 +144,16 @@ async def stream_agent_response(
                 msg_id,
             )
             retry_buffer.extend(chunk)
+            if len(retry_buffer) > _MAX_RETRY_BUFFER_EVENTS:
+                overflow = len(retry_buffer) - _MAX_RETRY_BUFFER_EVENTS
+                del retry_buffer[:overflow]
+                logger.warning(
+                    "retry_buffer overflow (run_id=%s) — dropped %d oldest "
+                    "events to stay under cap=%d",
+                    msg_id,
+                    overflow,
+                    _MAX_RETRY_BUFFER_EVENTS,
+                )
 
     def emit(event: str, data: dict[str, Any]) -> str:
         nonlocal seq, last_flush_at
