@@ -443,3 +443,83 @@ M0(거버넌스+docs+삭제분석) → M1(브랜딩+Cipher) → M2(Credential+Va
 - P0-A/B/C: SSE/executor/stream-runner 3종이 모두 같은 (prep → stream → try/except → cleanup) 패턴 → 각 레이어에 헬퍼 1개씩 추출(_sse_handler, _run_agent_stream + _USE_PREPPED_LC_MESSAGES sentinel, _runStream). 4개 endpoint × 3 layers = 12 함수의 중복 약 -180 LOC.
 - P0-D: build_message_tree가 GET /messages 한 요청에 router + chat_service에서 2회 호출 → tree 빌드 1회 후 chat_service에 인자로 주입. _build_tree_from_checkpoints는 leaf×messages마다 ancestor chain을 매번 다시 walk → leaf별 chain 1회 빌드 후 _checkpoint_for_message_in_chain로 lookup. O(L×D×M) → O(L×D) + O(L×M).
 - 패턴: 같은 try/except 보일러플레이트가 3+ 곳 반복되면 lazy factory(callable) 헬퍼로 추출. AsyncGenerator는 generator factory를 람다로 감싸 _sse_handler에 넘기는 패턴이 가장 깔끔.
+
+[2026-05-03 satya W3-out M1+M2 시작 — backend foundation]
+- 트랙: GET-based stream resume. 클라이언트 끊김 → broker live면 attach + replay, dead면 DB replay.
+- 첫 사이클 스코프: M1(EventBroker primitive) + M2(streaming.py 통합 + batched persistence + m34 status enum). M3+M4(GET endpoint, lifecycle), M5+M6(frontend, e2e)는 별도 세션.
+- 사용자 결정: m34에 status ENUM('streaming','completed','failed') + updated_at 추가 (DEFAULT 'completed' NOT NULL → PG11+ 메타데이터만 변경). 재연결 인디케이터는 M5에서.
+- 이미 결정된 설계 (plan 파일 참조: ~/.claude/plans/1-ux-quirky-canyon.md):
+  - run_id = 기존 assistant_msg_id (UUID) 그대로. POST 응답 헤더 X-Run-Id 노출.
+  - emit() 내부에서 trace_sink.append → broker.publish → flush_buffer.append. 임계치 32 events 또는 2초 도래 시 persist_callback(flush_buffer) → trace_storage.append_events UPSERT.
+  - finalize_turn은 _persist_trace의 final-write 책임 흡수. 기존 record_turn은 backward-compat shim.
+  - per-run EventBroker(buffer_size=2000, deque maxlen) + listeners=set[asyncio.Queue(maxsize=512)] + closed flag.
+  - BrokerRegistry는 process-local singleton dict. evict_expired(ttl=300) APScheduler가 60s마다 호출(M4).
+- 호환성: POST는 기존처럼 generator yield + dual-write (broker publish). 끊지 않으면 기존 동작 100% 유지.
+- 핵심 회피: 같은 conversation 동시 2 turn 금지(checkpointer가 이미 lock). 같은 run에 동시 listener는 허용.
+- M1+M2 검증 게이트: backend ruff + pytest(기존 회귀 0) + pyright(0/0) + alembic upgrade head 성공.
+
+[2026-05-03 jensen S2 DONE — M1 EventBroker primitive]
+- 신규: backend/app/agent_runtime/event_broker.py (BrokeredEvent TypedDict, EventBroker, BrokerRegistry, module-level `registry` singleton).
+- 신규: backend/tests/agent_runtime/test_event_broker.py (21 tests, 모두 PASS, 회귀 0 — 기존 756 backend tests 통과).
+- 핵심 설계 결정:
+  - asyncio single-threaded 보장 활용: subscribe()에서 `listeners.add(queue)` → `list(buffer)` snapshot 사이에 await 없음 → race-free without lock. publish()도 await 없이 buffer.append + put_nowait.
+  - listener_queue_maxsize는 per-broker 상수 (기본 512). 테스트에서 작은 값으로 slow listener 시뮬 가능.
+  - QueueFull시: discard(q) → get_nowait()로 자리 비우기 → put_nowait(None) sentinel → subscriber AsyncIterator 깔끔하게 종료.
+  - close()는 idempotent (closed_at은 첫 호출만 set). Closed broker에 publish는 silently drop.
+  - subscribe(after_id)에서 after_id가 buffer에 없으면 (eviction 또는 미래 id) replay 단계는 비고, 라이브만 emit. 라우터 레이어가 "buffer에 last_event_id가 없는데 last_event_id는 받음" 케이스를 감지해 stale 마커 발행 또는 DB replay 위임 (M3 책임).
+- gotcha 발견:
+  - test_slow_listener_disconnect: queue maxsize는 *모든* listener 공통 → publish loop 사이에 `await asyncio.sleep(0)`을 넣어 fast listener가 drain할 시간을 줘야 fast가 backpressure 회피. 이게 production 의미: 빠른 listener는 자체 코루틴이 publish와 인터리브되므로 자연스럽게 drain됨, slow listener만 대기열에 쌓임.
+  - subscribe()는 async generator라 호출 시점이 아니라 `__anext__()` 시점에 `listeners.add()`가 실행됨 → consumer task 시작 후 `await asyncio.sleep(0)`으로 등록 보장 필요.
+- 다음 (S3 jensen): m34 마이그레이션 + trace_storage.append_events / finalize_turn. status ENUM이 SQLite aiosqlite와 호환 (CHECK 제약으로 폴백).
+
+[2026-05-03 jensen S3 DONE — M2 m34 migration + trace_storage 확장]
+- 신규 alembic/versions/m34_message_events_status.py: status VARCHAR(20) NOT NULL DEFAULT 'completed' + CHECK (streaming/completed/failed) + updated_at TIMESTAMP NOT NULL DEFAULT now() + idx_message_events_status(conversation_id, status). PG/SQLite 양쪽 호환 (now_default 분기).
+- gotcha: alembic_version.version_num은 VARCHAR(32). revision id `m34_message_events_streaming_status` (35자) → StringDataRightTruncation. 단축: `m34_message_events_status`. 다음부터 revision id 30자 이내 권장.
+- 모델 message_event.py: status + updated_at 추가. status는 기본 'completed' (m33 이전 row + record_turn 호환), updated_at은 onupdate=lambda 으로 ORM flush 시 갱신.
+- trace_storage.py 확장:
+  - `append_events(db, *, conversation_id, assistant_msg_id, events_chunk, status='streaming')`: SELECT existing → application-side dedup-by-id → INSERT 또는 events 컬럼에 새 id만 concat → UPDATE. last_event_id 갱신, status='streaming' 기본.
+  - `finalize_turn(db, *, assistant_msg_id, status='completed', raw_msg_ids=None, conversation_id=None)`: 기존 row의 status/completed_at/linked_message_ids 갱신. row 없으면 None (caller가 record_turn fallback 결정).
+  - `record_turn`은 backward-compat 유지 + 신규 컬럼 status='completed' 명시.
+  - `_resolve_linked_ids` 헬퍼로 raw_msg_ids → parse_msg_id 변환 중복 제거.
+- 테스트: 신규 backend/tests/test_trace_storage_partial.py 10건 PASS (insert/merge/dedup/overlap/empty/finalize completed/failed/linked/missing/record_turn status). 기존 trace_storage 11건 회귀 0.
+- 검증: backend 766 passed (회귀 0), ruff clean, pyright 0/0, alembic upgrade/downgrade 양방향 PASS (PG).
+- 다음 (S4 jensen): streaming.py에 broker + persist_callback 시그니처 추가, conversations.py _sse_handler에 run_id 파라미터 + X-Run-Id 헤더, _persist_trace를 finalize_turn 호출로 단순화. 4 POST 핸들러는 broker registry.get_or_create.
+
+[2026-05-03 jensen S4 DONE — M2-3+M2-4 streaming.py + conversations.py 통합]
+- streaming.py:
+  - 시그니처 추가: broker / persist_callback / run_id (모두 Optional). emit() 클로저에 trace_sink → broker.publish_nowait → flush_buffer.append + 임계치(32 events 또는 2초) 도래 시 asyncio.create_task로 fire-and-forget persist_callback. background_persist_tasks set 추적.
+  - msg_id_sink로 외부 주입된 run_id 우선 사용 (없으면 자체 uuid4 생성 — legacy/단위 테스트 호환).
+  - message_start emit 직후부터 message_end 까지를 outer try/finally 로 감쌈 → finally 에서 (a) flush_buffer 잔여 → 동기 await persist_callback (final flush), (b) background tasks gather(return_exceptions=True), (c) broker.close(). 클라이언트 disconnect(generator aclose) 에서도 finally 실행 보장.
+- event_broker.py: publish_nowait sync 메서드 추가. publish는 async wrapper로 publish_nowait 호출 (기존 단위 테스트 호환).
+- executor.py: _run_agent_stream + execute_agent_stream + resume_agent_stream 시그니처에 broker/persist_callback/run_id 패스스루.
+- conversations.py:
+  - _sse_response: extra_headers 파라미터 추가 (X-Run-Id 노출용).
+  - _sse_handler: run_id 파라미터로 X-Run-Id 헤더 자동 부착. on_complete 시그니처를 Callable[[bool], Awaitable[None]]로 변경 — generator success/failure 정보를 finalize_turn 의 status('completed' vs 'failed') 결정에 사용.
+  - _persist_trace 폐기 → _build_persist_callback (factory) + _finalize_trace (dual-path: 1순위 finalize_turn, fallback record_turn for zero-flush 케이스).
+  - 4 POST 핸들러 (send/resume/edit/regenerate) 모두: run_id = uuid4(), broker = broker_registry.get_or_create(run_id, conversation_id), persist_cb = _build_persist_callback(...), executor에 broker/persist_cb/run_id 전달, _sse_handler(run_id=, on_complete=lambda success: _finalize_trace(...)).
+- gotcha:
+  - emit()는 sync. broker.publish는 async지만 내부 await가 없어 publish_nowait로 분리 호출.
+  - asyncio.create_task로 fire-and-forget partial flush 시 task ref를 set에 잡아둬야 GC 안 됨. add_done_callback(set.discard) 패턴 활용.
+  - generator finally는 client disconnect 시에도 실행되지만 단, 이미 yield된 이후의 finally는 실행됨. 첫 yield 이전에서 예외 발생 시 stream_agent_response의 외부 try/finally 가 처음부터 active이 아니라는 점 — message_start emit 자체에서 실패하면 broker.close 안 됨. 이 케이스는 broker_registry.evict_expired (M4 책임)가 처리.
+  - on_complete 의 success bool 은 _sse_handler 가 제공 — generator가 except 분기 안 타고 정상 끝나면 True. error_sse_pair emit 후 → False. 이게 status='completed' vs 'failed' 의 source-of-truth.
+- 신규 테스트 (tests/test_streaming.py 4건 추가): run_id 주입 / broker dual-write / persist_callback final flush / 예외 시 broker.close.
+- 검증: backend 770 passed (회귀 0 — 756 + S2 21 + S3 10 - 17 → 새 테스트 14건 추가 with overlap), ruff clean, pyright app/ 0/0.
+- 다음 (S5 bezos): 최종 통합 검증 — alembic upgrade head, full pytest, pyright. 그 후 PR.
+
+[2026-05-03 jensen S2~S4 후속 보강 — satya bezos 분석 반영]
+- conftest.py: autouse `_clear_event_broker_registry` fixture 추가. broker registry는 process-local singleton이라 test 간 상태 누수 가능 → 매 테스트 전후로 registry.clear(). 양방향 정렬 (broker-touching tests 4개 파일 정/역순) 검증 PASS.
+- m34: PG 분기에서 CREATE/DROP INDEX CONCURRENTLY 사용 (autocommit_block 으로 트랜잭션 종료 후 실행). SQLite는 일반 create_index. PG에서 long-table 락 회피 + IF NOT EXISTS / IF EXISTS 로 partial-apply 안전. alembic up/down 양방향 PASS.
+- record_turn 위임 보류: `test_record_turn_unique_assistant_msg_id` 가 같은 assistant_msg_id 두 번 호출 시 IntegrityError 를 명시적으로 검증. append_events는 의도적으로 UPSERT라 위임하면 invariant 깨짐 → 직접 INSERT 유지, 코멘트로 명시. _resolve_linked_ids 헬퍼만 공용. satya 노트 #7 완전 위임은 contract 변경이라 보류 보고 필요.
+- 신규 테스트 1건 추가: test_append_events_sets_updated_at_on_insert_and_update — server_default(now) 가 INSERT/UPDATE 양쪽에 적용되는지 회귀 가드.
+- 검증: backend 771 PASS (회귀 0 + 후속 1건), ruff clean, alembic up/down PG PASS.
+
+[2026-05-03 jensen — record_turn 보존 사유 코멘트 강화 (satya 요청)]
+- trace_storage.py:record_turn docstring 의 "위임 안 하는 이유" 블록을 future-facing 시그널로 보강: "M5/M6 후속에서 contract 재평가 — legacy 호출자(test_shares_router 시드, test_trace_storage 12건)를 모두 finalize_turn 경로로 이전 가능해지면 record_turn 자체를 deprecate."
+- ruff/pytest 회귀 0 (trace_storage 22 PASS).
+
+[2026-05-03 satya M1+M2 사이클 종료]
+- 결과: 4-stories(S2~S4 jensen + S5 bezos) 1회 통과(zero retries). S1(bezos 분석) 1회 통과. 총 5 stories all-pass.
+- 회귀 0건 검증. 773 backend tests (baseline 735 + M1+M2 신규 38건). ruff clean, pyright 0/0, alembic 양방향 PASS.
+- 발견 패턴 1건 (jensen 보고): record_turn은 IntegrityError invariant(unique assistant_msg_id 보장)가 있으므로 UPSERT인 append_events로 위임 불가. shim 보존 + _resolve_linked_ids 헬퍼만 공용. M5/M6 후속에서 contract 재평가.
+- 베조스 1순위 함정(BrokerRegistry process-local 누수) 사전 차단: tests/conftest.py:53 _clear_event_broker_registry autouse fixture. 3회 연속 실행에서 flaky 0.
+- 다음 사이클(M3+M4): GET /stream endpoint + APScheduler lifecycle + close_for_conversation. backend 자체 완결, frontend는 M5 별도 사이클.

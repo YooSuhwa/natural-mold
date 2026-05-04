@@ -10,3 +10,5 @@
 | ADR-007 | [Credentials field_keys 캐시 컬럼](adr-007-credentials-field-keys-cache.md) | 승인됨 | 2026-04-17 |
 | ADR-008 | [Connection 엔티티 — Credential 바인딩 통합](adr-008-connection-entity.md) | 폐기 (ADR-009로 승계) | 2026-04-18 |
 | ADR-009 | [Credential / Tools / Skills 그린필드 리라이트](adr-009-greenfield-credentials.md) | 승인됨 | 2026-04-29 |
+| ADR-010 | [UI 토큰 + DialogShell 비주얼 스펙](ADR-010-ui-tokens-and-dialog-shell.md) | 승인됨 | 2026-04-30 |
+| ADR-011 | [SSE Stream Resume (W3-out)](adr-011-sse-stream-resume.md) | 진행 중 (M1+M2) | 2026-05-03 |

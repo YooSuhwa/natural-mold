@@ -1,0 +1,148 @@
+"""M34: ``message_events.status`` + ``updated_at`` — W3-out streaming lifecycle.
+
+Revision ID: m34_message_events_streaming_status
+Revises: m33_add_linked_message_ids
+Create Date: 2026-05-03
+
+W3-out M2 — partial flush 도입에 따른 turn 상태 추적.
+
+Schema 변경
+- ``status VARCHAR(20) NOT NULL DEFAULT 'completed'`` + CHECK 제약
+  (``status IN ('streaming','completed','failed')``).
+  CHECK는 alembic-friendly + SQLite/Postgres 양쪽에서 동일하게 동작 (PG ENUM은
+  in-flight ALTER 비용이 비싸고 SQLite에는 없어서 회피).
+- ``updated_at TIMESTAMP NOT NULL DEFAULT now()`` — partial flush 마다 갱신.
+- ``idx_message_events_status (conversation_id, status)`` — in-flight turn
+  조회(M3 GET resume) 최적화.
+
+기존 row 안전성
+- ``DEFAULT 'completed' NOT NULL`` 추가는 PG 11+ 메타데이터 변경만으로 끝남
+  (테이블 rewrite 없음). 기존 m33 이전 row는 ``status='completed'``,
+  ``updated_at=now()`` 로 채워져 W6 / 기존 trace 조회 코드와 호환.
+
+Production note
+- 큰 운영 테이블에 적용 시 인덱스는 ``CREATE INDEX CONCURRENTLY`` 로 바꿔서
+  락을 피해야 한다. alembic transactional context는 CONCURRENTLY를 지원하지
+  않으므로 여기서는 일반 CREATE INDEX. 운영 절차에서 별도 처리 권장.
+"""
+
+from __future__ import annotations
+
+import sqlalchemy as sa
+
+from alembic import op
+
+revision = "m34_message_events_status"
+down_revision = "m33_add_linked_message_ids"
+branch_labels = None
+depends_on = None
+
+
+_STATUS_VALUES = ("streaming", "completed", "failed")
+_CHECK_NAME = "ck_message_events_status"
+_INDEX_NAME = "idx_message_events_status"
+
+
+def _now_default() -> sa.TextClause:
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        return sa.text("now()")
+    return sa.text("CURRENT_TIMESTAMP")
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        # PG: native ALTER TABLE — fast default(메타데이터만) + CHECK 제약 +
+        # CONCURRENTLY index. autocommit_block으로 트랜잭션을 일시 종료해야
+        # CREATE INDEX CONCURRENTLY 가 허용된다.
+        op.add_column(
+            "message_events",
+            sa.Column(
+                "status",
+                sa.String(20),
+                nullable=False,
+                server_default=sa.text("'completed'"),
+            ),
+        )
+        op.add_column(
+            "message_events",
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=False),
+                nullable=False,
+                server_default=_now_default(),
+            ),
+        )
+        op.create_check_constraint(
+            _CHECK_NAME,
+            "message_events",
+            sa.column("status").in_(_STATUS_VALUES),
+        )
+        with op.get_context().autocommit_block():
+            op.execute(
+                sa.text(
+                    f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {_INDEX_NAME} "
+                    "ON message_events (conversation_id, status)"
+                )
+            )
+    else:
+        # SQLite: ALTER TABLE 은 ADD COLUMN 만 native 지원. CHECK 제약과
+        # nullable 컬럼 추가 일부는 ``batch_alter_table`` 의 copy-and-move
+        # 로 우회. 인덱스는 일반 create_index (CONCURRENTLY 미지원).
+        with op.batch_alter_table("message_events") as batch_op:
+            batch_op.add_column(
+                sa.Column(
+                    "status",
+                    sa.String(20),
+                    nullable=False,
+                    server_default=sa.text("'completed'"),
+                )
+            )
+            batch_op.add_column(
+                sa.Column(
+                    "updated_at",
+                    sa.DateTime(timezone=False),
+                    nullable=False,
+                    server_default=_now_default(),
+                )
+            )
+            batch_op.create_check_constraint(
+                _CHECK_NAME,
+                sa.column("status").in_(_STATUS_VALUES),
+            )
+        op.create_index(
+            _INDEX_NAME,
+            "message_events",
+            ["conversation_id", "status"],
+        )
+
+
+def downgrade() -> None:
+    """Downgrade — drops status, updated_at, CHECK, and index.
+
+    ⚠️ NON-RECOVERABLE DATA LOSS: 'streaming'/'failed' 상태로 남은 row의
+    상태 정보가 영구 소실된다. partial flush 진행 중 머지된 운영 환경에서
+    이 downgrade를 호출하면 해당 row들의 status가 사라져 W3-out resume
+    경로의 stale 마커 분기가 무효화된다. forward-only 운영을 권장.
+
+    SQLite 호환: ``op.drop_constraint`` 와 ``op.drop_column`` 은 SQLite의
+    ALTER TABLE 한계를 ``batch_alter_table`` 로 우회한다. PG는 native
+    ALTER 사용.
+    """
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        with op.get_context().autocommit_block():
+            op.execute(sa.text(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX_NAME}"))
+        op.drop_constraint(_CHECK_NAME, "message_events", type_="check")
+        op.drop_column("message_events", "updated_at")
+        op.drop_column("message_events", "status")
+    else:
+        # SQLite는 ALTER TABLE DROP CONSTRAINT / DROP COLUMN을 지원하지
+        # 않으므로 batch_alter_table로 테이블 재생성. 인덱스는 CONCURRENTLY
+        # 미지원이라 일반 drop.
+        op.drop_index(_INDEX_NAME, table_name="message_events")
+        with op.batch_alter_table("message_events") as batch_op:
+            batch_op.drop_constraint(_CHECK_NAME, type_="check")
+            batch_op.drop_column("updated_at")
+            batch_op.drop_column("status")

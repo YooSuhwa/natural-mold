@@ -4,13 +4,15 @@ import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
+from app.agent_runtime.event_broker import EventBroker
+from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
 from app.agent_runtime.model_factory import env_provider_keys
 from app.config import settings
@@ -174,9 +176,20 @@ def _error_sse_pair(error_message: str) -> list[str]:
     ]
 
 
-def _sse_response(generator: AsyncGenerator[str, None]) -> StreamingResponse:
-    """StreamingResponse 래퍼."""  # noqa: D401
-    return StreamingResponse(generator, media_type="text/event-stream", headers=_SSE_HEADERS)
+def _sse_response(
+    generator: AsyncGenerator[str, None],
+    *,
+    extra_headers: dict[str, str] | None = None,
+) -> StreamingResponse:
+    """StreamingResponse 래퍼.
+
+    ``extra_headers`` 는 W3-out M2의 ``X-Run-Id`` 처럼 stream-specific 헤더를
+    추가하기 위한 hook. 기본 _SSE_HEADERS 와 머지된다.
+    """  # noqa: D401
+    headers = dict(_SSE_HEADERS)
+    if extra_headers:
+        headers.update(extra_headers)
+    return StreamingResponse(generator, media_type="text/event-stream", headers=headers)
 
 
 def _sse_handler(
@@ -184,7 +197,8 @@ def _sse_handler(
     *,
     log_msg: str,
     user_msg: str,
-    on_complete: Callable[[], Awaitable[None]] | None = None,
+    on_complete: Callable[[bool], Awaitable[None]] | None = None,
+    run_id: str | None = None,
 ) -> StreamingResponse:
     """4개 stream endpoint(send/resume/edit/regenerate)가 공유하는 SSE 래퍼.
 
@@ -192,14 +206,20 @@ def _sse_handler(
     - log_msg: logger.exception 메시지 (서버 사이드).
     - user_msg: 클라이언트로 전달되는 user-facing 에러 메시지.
     - on_complete: 스트림 종료 후(성공/실패 무관) 1회 호출되는 hook. W5
-      trace 영속화처럼 stream-end side effect에 사용. 실패해도 client에는
+      trace 영속화 / W3-out M2 finalize_turn 호출에 사용. ``success`` bool
+      인자는 generator가 예외 없이 끝났는지(=`completed`) 또는 예외로 SSE
+      error 페어를 emit했는지(=`failed`) 를 알려준다. 실패해도 client에는
       영향 없도록 swallow + log.
+    - run_id: W3-out M2 — 응답 헤더 ``X-Run-Id`` 노출. 클라이언트가 이 id를
+      들고 GET ``/stream?run_id=`` 로 재연결한다.
     """
 
     async def generate() -> AsyncGenerator[str, None]:
+        success = False
         try:
             async for chunk in executor_fn():
                 yield chunk
+            success = True
         except Exception:
             logger.exception(log_msg)
             for chunk in _error_sse_pair(user_msg):
@@ -207,35 +227,121 @@ def _sse_handler(
         finally:
             if on_complete is not None:
                 try:
-                    await on_complete()
+                    await on_complete(success)
                 except Exception:
                     logger.exception("on_complete hook failed (%s)", log_msg)
 
-    return _sse_response(generate())
+    extra: dict[str, str] | None = (
+        {"X-Run-Id": run_id} if run_id else None
+    )
+    return _sse_response(generate(), extra_headers=extra)
 
 
-async def _persist_trace(
+class _StreamCtx(NamedTuple):
+    """W3-out M2 — 4개 POST 핸들러가 공통으로 만드는 streaming 컨텍스트.
+
+    ``_prepare_stream_context`` 가 한 번에 생성, 핸들러는 unpack해서 사용.
+    """
+
+    run_id: str
+    broker: EventBroker
+    persist_cb: Callable[[list[dict[str, Any]]], Awaitable[None]]
+    trace_sink: list[dict[str, Any]]
+    msg_id_sink: list[str]
+
+
+def _prepare_stream_context(conversation_id: uuid.UUID) -> _StreamCtx:
+    """W3-out M2 — 4 POST 핸들러 공통 셋업 (run_id + broker + sinks + persist_cb).
+
+    핸들러는 ``ctx = _prepare_stream_context(conversation_id)`` 한 줄로 받고,
+    executor 호출 시 ``ctx.broker`` / ``ctx.persist_cb`` / ``ctx.run_id`` 등을
+    keyword로 전달, ``_sse_handler(... run_id=ctx.run_id, on_complete=lambda
+    success: _finalize_trace(conversation_id, ctx.run_id, ctx.trace_sink,
+    ctx.msg_id_sink, success=success))`` 로 마감.
+
+    같은 conversation 의 직전 turn 이 disconnect 등으로 broker 가 미정리
+    상태로 남아 있으면 즉시 회수 (M4 APScheduler GC 도래 전 ghost broker
+    누적 차단). 새 turn 진입은 동시 2 turn 금지 정책의 명시 신호.
+    """
+    broker_registry.close_for_conversation(str(conversation_id))
+    run_id = str(uuid.uuid4())
+    broker = broker_registry.get_or_create(
+        run_id, conversation_id=str(conversation_id)
+    )
+    persist_cb = _build_persist_callback(conversation_id, run_id)
+    return _StreamCtx(
+        run_id=run_id,
+        broker=broker,
+        persist_cb=persist_cb,
+        trace_sink=[],
+        msg_id_sink=[],
+    )
+
+
+def _build_persist_callback(
+    conversation_id: uuid.UUID, run_id: str
+) -> Callable[[list[dict[str, Any]]], Awaitable[None]]:
+    """W3-out M2 — partial flush 콜백 팩토리.
+
+    ``stream_agent_response`` 가 32 events 또는 2초마다 fire-and-forget 으로
+    호출. 매 호출마다 fresh ``async_session()`` 을 열어 commit. SSE generate()
+    의 request-scoped db session 과 분리되어 있어야 한다.
+    """
+
+    async def _callback(events_chunk: list[dict[str, Any]]) -> None:
+        if not events_chunk:
+            return
+        async with async_session() as session:
+            await trace_storage.append_events(
+                session,
+                conversation_id=conversation_id,
+                assistant_msg_id=run_id,
+                events_chunk=events_chunk,
+                status="streaming",
+            )
+            await session.commit()
+
+    return _callback
+
+
+async def _finalize_trace(
     conversation_id: uuid.UUID,
+    run_id: str,
     trace_sink: list[dict[str, Any]],
     msg_id_sink: list[str] | None = None,
+    *,
+    success: bool,
 ) -> None:
-    """W5 — record_turn을 fresh session으로 호출.
+    """W3-out M2 — 스트림 종료 후 한 번 호출되는 dual-path persist hook.
 
-    SSE generate() 안에서는 request-scoped db session이 close되어 있을 수
-    있어 ``async_session()``으로 새로 연다. 이벤트 0건이면 service에서
-    no-op으로 처리.
+    1순위: ``finalize_turn`` 으로 partial flush로 이미 만들어진 row를
+        ``status='completed' | 'failed'`` 로 마감하고 ``linked_message_ids`` 를
+        부착한다.
+    2순위 (fallback): 한 번도 ``append_events`` 가 호출되지 않은 경우(예: 즉시
+        에러로 message_start 이전에 종료) row가 없다. trace_sink 에 모인
+        이벤트로 ``record_turn`` 을 호출해 적어도 한 row를 남긴다.
 
-    ``msg_id_sink`` (W6 정확도): 이 turn 동안 노출된 langchain raw msg id.
+    SSE generate() 의 request-scoped session 과 분리하기 위해
+    ``async_session()`` 으로 새 session 을 연다.
     """
-    if not trace_sink:
-        return
+    final_status: trace_storage.TraceStatus = "completed" if success else "failed"
     async with async_session() as session:
-        await trace_storage.record_turn(
+        finalized = await trace_storage.finalize_turn(
             session,
-            conversation_id=conversation_id,
-            events=trace_sink,
+            assistant_msg_id=run_id,
+            status=final_status,
             raw_msg_ids=msg_id_sink,
+            conversation_id=conversation_id,
         )
+        if finalized is None and trace_sink:
+            # No partial flush happened (e.g. immediate failure). Persist via
+            # legacy shim so traces aren't lost.
+            await trace_storage.record_turn(
+                session,
+                conversation_id=conversation_id,
+                events=trace_sink,
+                raw_msg_ids=msg_id_sink,
+            )
         await session.commit()
 
 
@@ -430,18 +536,23 @@ async def send_message(
             attachment_ids=[a.id for a in data.attachments],
         )
 
-    trace_sink: list[dict[str, Any]] = []
-    msg_id_sink: list[str] = []
+    ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: execute_agent_stream(
             cfg,
             [{"role": "user", "content": data.content}],
-            trace_sink=trace_sink,
-            msg_id_sink=msg_id_sink,
+            trace_sink=ctx.trace_sink,
+            msg_id_sink=ctx.msg_id_sink,
+            broker=ctx.broker,
+            persist_callback=ctx.persist_cb,
+            run_id=ctx.run_id,
         ),
         log_msg=f"Agent stream failed for conversation {conversation_id}",
         user_msg="에이전트 실행 중 오류가 발생했습니다.",
-        on_complete=lambda: _persist_trace(conversation_id, trace_sink, msg_id_sink),
+        run_id=ctx.run_id,
+        on_complete=lambda success: _finalize_trace(
+            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
+        ),
     )
 
 
@@ -456,15 +567,23 @@ async def resume_message(
     cfg = await _resolve_agent_context(db, conversation_id, user)
     await chat_service.touch_conversation(db, conversation_id)
 
-    trace_sink: list[dict[str, Any]] = []
-    msg_id_sink: list[str] = []
+    ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: resume_agent_stream(
-            cfg, data.response, trace_sink=trace_sink, msg_id_sink=msg_id_sink
+            cfg,
+            data.response,
+            trace_sink=ctx.trace_sink,
+            msg_id_sink=ctx.msg_id_sink,
+            broker=ctx.broker,
+            persist_callback=ctx.persist_cb,
+            run_id=ctx.run_id,
         ),
         log_msg=f"Agent resume failed for conversation {conversation_id}",
         user_msg="에이전트 재개 중 오류가 발생했습니다.",
-        on_complete=lambda: _persist_trace(conversation_id, trace_sink, msg_id_sink),
+        run_id=ctx.run_id,
+        on_complete=lambda success: _finalize_trace(
+            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
+        ),
     )
 
 
@@ -542,18 +661,23 @@ async def edit_message(
     # newest (just-edited) branch becomes the displayed one on next list.
     await chat_service.clear_active_branch_override(db, conversation_id)
 
-    trace_sink: list[dict[str, Any]] = []
-    msg_id_sink: list[str] = []
+    ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: execute_agent_stream(
             cfg,
             [{"role": "user", "content": data.new_content}],
-            trace_sink=trace_sink,
-            msg_id_sink=msg_id_sink,
+            trace_sink=ctx.trace_sink,
+            msg_id_sink=ctx.msg_id_sink,
+            broker=ctx.broker,
+            persist_callback=ctx.persist_cb,
+            run_id=ctx.run_id,
         ),
         log_msg=f"Agent edit failed for conversation {conversation_id}",
         user_msg="메시지 편집 중 오류가 발생했습니다.",
-        on_complete=lambda: _persist_trace(conversation_id, trace_sink, msg_id_sink),
+        run_id=ctx.run_id,
+        on_complete=lambda success: _finalize_trace(
+            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
+        ),
     )
 
 
@@ -631,15 +755,23 @@ async def regenerate_message(
     # Empty messages_history → executor passes None to LangGraph,
     # resuming from the rewound checkpoint state without duplicating
     # the user message.
-    trace_sink: list[dict[str, Any]] = []
-    msg_id_sink: list[str] = []
+    ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: execute_agent_stream(
-            cfg, [], trace_sink=trace_sink, msg_id_sink=msg_id_sink
+            cfg,
+            [],
+            trace_sink=ctx.trace_sink,
+            msg_id_sink=ctx.msg_id_sink,
+            broker=ctx.broker,
+            persist_callback=ctx.persist_cb,
+            run_id=ctx.run_id,
         ),
         log_msg=f"Agent regenerate failed for conversation {conversation_id}",
         user_msg="메시지 재생성 중 오류가 발생했습니다.",
-        on_complete=lambda: _persist_trace(conversation_id, trace_sink, msg_id_sink),
+        run_id=ctx.run_id,
+        on_complete=lambda success: _finalize_trace(
+            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
+        ),
     )
 
 
