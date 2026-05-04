@@ -169,6 +169,34 @@ async def test_close_terminates_subscribe() -> None:
     assert broker.closed_at is not None
 
 
+async def test_subscribe_aclose_releases_listener_slot() -> None:
+    """N-3: subscribe AsyncGenerator 가 끊기면 ``_listeners.discard`` 가 실행되어
+    broker._listeners 가 0 으로 수렴해야 한다.
+
+    그렇지 않으면 publish path 가 dead queue 에 ``put_nowait`` 를 시도하다
+    backpressure 가 잘못 작동하거나 메모리 누수. router 통합에서는 httpx ASGI
+    disconnect 타이밍이 비결정적이라 이 invariant 는 unit 으로 잡는다.
+    """
+    broker = EventBroker("run-1")
+    await broker.publish(_make_event(1))
+
+    agen = broker.subscribe()
+    first = await agen.__anext__()
+    assert first["id"] == "run-1-1"
+    # listener 가 등록된 상태.
+    assert len(broker._listeners) == 1  # noqa: SLF001 — invariant probe
+
+    # client disconnect 시뮬레이션 — generator close.
+    await agen.aclose()
+
+    assert len(broker._listeners) == 0, (  # noqa: SLF001
+        "subscribe finally 블록이 listener 를 정리하지 않음"
+    )
+    # broker 는 살아있어야 (다른 listener 등록 가능).
+    assert not broker.is_closed
+    broker.close()
+
+
 async def test_subscribe_after_close_drains_buffer() -> None:
     broker = EventBroker("run-1")
     for i in range(1, 4):
@@ -342,6 +370,38 @@ def test_registry_close_for_conversation_skips_already_closed() -> None:
     assert closed == 0  # already closed → not double-counted
 
 
+def test_registry_close_for_conversation_logs_when_count_positive(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """M-6: 정상 운영 중 발생 빈도 추적용 — closed > 0 이면 logger.info."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger="app.agent_runtime.event_broker")
+    reg = BrokerRegistry()
+    reg.get_or_create("run-1", conversation_id="conv-A")
+    reg.get_or_create("run-2", conversation_id="conv-A")
+    reg.close_for_conversation("conv-A")
+    assert any(
+        "close_for_conversation conv=conv-A closed=2" in r.message
+        for r in caplog.records
+    )
+
+
+def test_registry_close_for_conversation_silent_when_no_match(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """매치 없으면 로그 안 남김 (cron noise 방지)."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger="app.agent_runtime.event_broker")
+    reg = BrokerRegistry()
+    reg.get_or_create("run-1", conversation_id="conv-A")
+    reg.close_for_conversation("conv-B")
+    assert not any(
+        "close_for_conversation" in r.message for r in caplog.records
+    )
+
+
 # --------------------------------------------------------------------------
 # Smoke: ensure module-level singleton exists and is the right type.
 # --------------------------------------------------------------------------
@@ -412,6 +472,58 @@ def test_registry_evict_expired_skips_recent_live() -> None:
     reg.evict_expired()
     assert not broker.is_closed
     assert reg.get("recent-live") is broker
+
+
+def test_registry_evict_expired_uses_naive_datetime_comparison() -> None:
+    """M-4: 시스템 timezone 이 UTC 가 아니어도 cutoff 가 정확해야 함.
+
+    이전 구현은 ``naive_dt.timestamp()`` 가 로컬 tz 로 해석되는 함정 — 이
+    함수에 의존하지 않고 timedelta 차이로만 비교하는지 검증.
+    """
+    from datetime import timedelta
+
+    reg = BrokerRegistry()
+    b = reg.get_or_create("run-x")
+    b.close()
+    # closed_at 을 정확히 ttl + 1초 과거로 — 로컬 tz 와 무관하게 evict 되어야.
+    assert b.closed_at is not None
+    b.closed_at = b.closed_at - timedelta(seconds=301)
+    evicted = reg.evict_expired(ttl_seconds=300)
+    assert evicted == 1
+    assert reg.get("run-x") is None
+
+
+# ---------------------------------------------------------------------------
+# W3-out M4 — close_all (shutdown hook)
+# ---------------------------------------------------------------------------
+
+
+def test_registry_close_all_closes_only_live_brokers() -> None:
+    reg = BrokerRegistry()
+    b1 = reg.get_or_create("r1")
+    b2 = reg.get_or_create("r2")
+    b3 = reg.get_or_create("r3")
+    b2.close()  # already closed before close_all
+
+    closed = reg.close_all()
+    assert closed == 2  # only b1 + b3 newly closed
+    assert b1.is_closed
+    assert b2.is_closed
+    assert b3.is_closed
+
+
+def test_registry_close_all_is_idempotent() -> None:
+    reg = BrokerRegistry()
+    reg.get_or_create("r1")
+    reg.get_or_create("r2")
+    assert reg.close_all() == 2
+    # 두 번째 호출은 모두 이미 closed → 0 반환
+    assert reg.close_all() == 0
+
+
+def test_registry_close_all_on_empty_registry_returns_zero() -> None:
+    reg = BrokerRegistry()
+    assert reg.close_all() == 0
 
 
 @pytest.mark.asyncio

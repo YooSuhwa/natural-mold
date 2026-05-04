@@ -369,3 +369,57 @@ def register_mcp_health_job() -> None:
         max_instances=1,
     )
     logger.info("Scheduled mcp health poll: every %d minutes", minutes)
+
+
+# ---------------------------------------------------------------------------
+# W3-out M4 — EventBroker eviction
+# ---------------------------------------------------------------------------
+
+BROKER_EVICTION_JOB_ID = "broker_eviction"
+_BROKER_EVICTION_INTERVAL_SECONDS = 60
+_BROKER_EVICTION_TTL_SECONDS = 300
+
+
+def evict_expired_brokers() -> None:
+    """Drop closed brokers past TTL + force-close stale live brokers.
+
+    Wraps ``event_broker.registry.evict_expired`` so APScheduler can target a
+    module-level callable (lambda 는 SQLAlchemyJobStore 직렬화 불가).
+    """
+    from app.agent_runtime.event_broker import registry as broker_registry
+
+    try:
+        evicted = broker_registry.evict_expired(
+            ttl_seconds=_BROKER_EVICTION_TTL_SECONDS
+        )
+        if evicted:
+            logger.info("EventBroker GC evicted %d closed brokers", evicted)
+    except Exception:  # noqa: BLE001 — keep cron alive
+        logger.exception("EventBroker eviction failed; will retry next run")
+
+
+def register_broker_eviction_job() -> None:
+    """Register the recurring EventBroker GC job (W3-out M4). Idempotent.
+
+    60s interval. ``evict_expired`` 가 (a) closed broker 중 TTL 경과한 것
+    (b) 30분 초과 live broker 강제 close 두 단계를 수행한다 — 정상적인
+    finally 블록 미수행으로 누락된 broker 가 메모리에 누적되는 것을 막는다.
+    """
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        logger.debug("Scheduler not running; skipping broker eviction registration")
+        return
+    scheduler.add_job(
+        evict_expired_brokers,
+        IntervalTrigger(seconds=_BROKER_EVICTION_INTERVAL_SECONDS),
+        id=BROKER_EVICTION_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info(
+        "Scheduled EventBroker eviction: every %ds (TTL=%ds)",
+        _BROKER_EVICTION_INTERVAL_SECONDS,
+        _BROKER_EVICTION_TTL_SECONDS,
+    )

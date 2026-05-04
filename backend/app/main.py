@@ -57,6 +57,7 @@ from app.rate_limit import limiter
 from app.scheduler import (
     add_trigger_job,
     get_scheduler,
+    register_broker_eviction_job,
     register_catalog_update_job,
     register_credential_rotation_job,
     register_health_check_job,
@@ -148,6 +149,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     register_catalog_update_job()
     # Lightweight per-server MCP health polling (refreshes health_status only).
     register_mcp_health_job()
+    # W3-out M4 — EventBroker GC (60s interval, TTL 300s).
+    register_broker_eviction_job()
 
     async with async_session() as db:
         result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))
@@ -155,11 +158,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             add_trigger_job(trigger.id, trigger.trigger_type, trigger.schedule_config)
 
     yield
-    # Shutdown
+    # Shutdown — order matters (rules/async-lifespan.md):
+    # 1. in-flight consumer (SSE listener) 에 sentinel 송신
+    # 2. asyncio.sleep(0) 으로 task switch 보장 → subscribe finally 실행
+    # 3. scheduler / background task 종료
+    # 4. persistent layer (DB / checkpointer) flush
+    import asyncio
+
+    from app.agent_runtime.event_broker import registry as broker_registry
+
+    # 1. SSE listener 들에 sentinel 먼저. 이 순서가 뒤집히면 scheduler GC가
+    # 먼저 죽은 채로 listener 가 ``queue.get()`` 에 영원히 블록될 수 있다.
+    closed = broker_registry.close_all()
+    if closed:
+        logger.info("Shutdown: closed %d live EventBroker(s)", closed)
+    # 2. subscribe task 의 ``finally: listeners.discard(queue)`` 가 실제로
+    # 실행될 event loop 기회 보장. 한 번의 yield 면 충분하다.
+    await asyncio.sleep(0)
+
+    # 3. background scheduler 종료.
     scheduler.shutdown(wait=False)
 
-    # Drain the spend queue so in-flight aggregates make it to the DB before
-    # the process exits. ``stop`` swallows its own errors.
+    # 4. Drain the spend queue so in-flight aggregates make it to the DB
+    # before the process exits. ``stop`` swallows its own errors.
     await spend_queue.stop()
 
     from app.agent_runtime.checkpointer import shutdown_checkpointer

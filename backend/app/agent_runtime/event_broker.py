@@ -24,8 +24,8 @@ import asyncio
 import contextlib
 import logging
 from collections import deque
-from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from collections.abc import AsyncGenerator, Iterable, Iterator, Mapping
+from datetime import UTC, datetime, timedelta
 from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,30 @@ class BrokeredEvent(TypedDict):
 
 _DEFAULT_BUFFER_SIZE = 2000
 _DEFAULT_LISTENER_QUEUE_MAXSIZE = 512
+
+
+def slice_events_after[E: Mapping[str, Any]](
+    events: Iterable[E], after_id: str | None
+) -> Iterator[E]:
+    """Yield events strictly after the one whose ``id`` matches ``after_id``.
+
+    Shared invariant for two replay paths:
+    - ``EventBroker.subscribe`` 의 buffer snapshot 슬라이싱 (live broker)
+    - ``routers/conversations._replay_resume_generator`` 의 DB events 슬라이싱
+
+    Semantics:
+    - ``after_id is None`` → yield 모든 evt.
+    - ``after_id`` 와 일치하는 evt 가 있으면 그 evt 까지(포함) skip 후 yield 시작.
+    - ``after_id`` 가 events 안에 없으면(이미 evict 됐거나 newer) 아무것도 yield X.
+      caller 가 이 의미("evicted/missing")를 분리 해석.
+    """
+    seen_after = after_id is None
+    for evt in events:
+        if not seen_after:
+            if evt.get("id") == after_id:
+                seen_after = True
+            continue
+        yield evt
 
 # Memory-protection caps. APScheduler GC (M4) is the primary defense, but these
 # in-band limits prevent runaway accumulation in the M1+M2 release window.
@@ -154,7 +178,7 @@ class EventBroker:
 
     async def subscribe(
         self, after_id: str | None = None
-    ) -> AsyncIterator[BrokeredEvent]:
+    ) -> AsyncGenerator[BrokeredEvent, None]:
         """Subscribe to events, optionally replaying buffered events past ``after_id``.
 
         Behavior:
@@ -186,15 +210,9 @@ class EventBroker:
         already_closed = self._closed
 
         try:
-            seen_after = after_id is None
             yielded_ids: set[str] = set()
-            for evt in snapshot:
+            for evt in slice_events_after(snapshot, after_id):
                 evt_id = evt.get("id")
-                if not seen_after:
-                    if evt_id == after_id:
-                        seen_after = True
-                    # Skip events up to and including after_id.
-                    continue
                 if isinstance(evt_id, str):
                     yielded_ids.add(evt_id)
                 yield evt
@@ -208,10 +226,15 @@ class EventBroker:
                 if item is None:
                     return
                 evt_id = item.get("id")
-                # Defensive dedup: if the buffer snapshot included an event
-                # that also reached the listener via fan-out, skip it. In
-                # practice this shouldn't happen (queue is created after
-                # buffer events were published) but guarantees idempotency.
+                # Defensive dedup vs buffer snapshot — keep, do not remove.
+                # asyncio single-threaded 이라 ``listeners.add`` 와 ``buffer
+                # snapshot`` 사이에 await 가 없어 race 가 사실상 발생하지 않지만,
+                # (a) 미래에 누군가 그 구간에 await 를 끼워 넣으면 race 윈도우가
+                # 열리고, (b) ``publish_nowait`` 가 sync 라 ``put_nowait`` 직후
+                # 같은 evt 가 buffer snapshot 에도 들어갈 가능성이 ABI 변경 시
+                # 미세하게 생긴다. yielded_ids set 은 평균 turn 200 events
+                # 기준 ~10KB 비용으로 idempotency 를 강제 — invariant 보장이
+                # 비용보다 가치 있다.
                 if isinstance(evt_id, str) and evt_id in yielded_ids:
                     continue
                 yield item
@@ -351,25 +374,30 @@ class BrokerRegistry:
             Number of brokers evicted (closed broker pops only — force-closed
             live brokers는 다음 호출에서 evict).
         """
-        now = datetime.now(UTC).replace(tzinfo=None)
-        now_ts = now.timestamp()
-        closed_cutoff = now_ts - ttl_seconds
-        live_cutoff = now_ts - self._max_live_age_seconds
+        # M-4 fix — created_at/closed_at 은 ``datetime.now(UTC).replace(tzinfo=
+        # None)`` 으로 naive UTC 저장. naive datetime 의 ``.timestamp()`` 는
+        # **로컬 tz 로 해석** (Python docs) 되어 시스템 timezone 이 UTC 가 아니면
+        # cutoff 가 어긋남. naive datetime 끼리 직접 비교하면 timezone 가정과
+        # 무관하게 정확.
+        now_dt = datetime.now(UTC).replace(tzinfo=None)
+        closed_cutoff_dt = now_dt - timedelta(seconds=ttl_seconds)
+        live_cutoff_dt = now_dt - timedelta(seconds=self._max_live_age_seconds)
         to_remove: list[str] = []
         for run_id, broker in self._brokers.items():
             if broker.closed_at is None:
                 # Force-close stale live broker. Will be evicted on next call.
-                if broker.created_at.timestamp() <= live_cutoff:
+                if broker.created_at <= live_cutoff_dt:
+                    age_seconds = int((now_dt - broker.created_at).total_seconds())
                     logger.warning(
                         "Force-closing stale live broker run_id=%s "
                         "(age %ds > max %ds)",
                         run_id,
-                        int(now_ts - broker.created_at.timestamp()),
+                        age_seconds,
                         self._max_live_age_seconds,
                     )
                     broker.close()
                 continue
-            if broker.closed_at.timestamp() <= closed_cutoff:
+            if broker.closed_at <= closed_cutoff_dt:
                 to_remove.append(run_id)
         for run_id in to_remove:
             self._brokers.pop(run_id, None)
@@ -382,25 +410,54 @@ class BrokerRegistry:
         (동시 2 turn은 checkpointer lock으로 이미 금지되지만, 이전 turn의
         broker가 여전히 라이브 listener를 들고 있는 경우를 정리).
 
+        M-6: count > 0 이면 logger.info — 정상 운영 중 발생 빈도 추적이
+        디버깅에 도움 (frontend race 로 turn 두 번 보내는 케이스 식별).
+
         Returns:
             Number of brokers closed.
         """
-        count = 0
+        closed_run_ids: list[str] = []
         for broker in list(self._brokers.values()):
             if broker.conversation_id == conversation_id and not broker.is_closed:
                 broker.close()
-                count += 1
-        return count
+                closed_run_ids.append(broker.run_id)
+        if closed_run_ids:
+            logger.info(
+                "BrokerRegistry close_for_conversation conv=%s closed=%d "
+                "run_ids=%s",
+                conversation_id, len(closed_run_ids), closed_run_ids,
+            )
+        return len(closed_run_ids)
 
     def all_brokers(self) -> list[EventBroker]:
         """Snapshot list of all registered brokers (live + closed)."""
         return list(self._brokers.values())
 
-    def clear(self) -> None:
-        """Test helper — drop all brokers without closing.
+    def close_all(self) -> int:
+        """Force-close every live broker (shutdown hook).
 
-        Production code should not call this; use ``evict_expired`` /
-        ``close_for_conversation`` instead.
+        APScheduler 의 ``evict_expired`` GC 보다 더 강한 동작 — TTL 무시하고
+        지금 살아있는 모든 broker 의 listener 에 sentinel 을 보내 그래스풀
+        종료. lifespan shutdown 단계에서 호출되어 in-flight stream consumer
+        가 hang 되지 않게 한다. Idempotent: 이미 closed 인 broker 는 skip.
+
+        Returns:
+            Number of brokers actually closed in this call.
+        """
+        count = 0
+        for broker in list(self._brokers.values()):
+            if not broker.is_closed:
+                broker.close()
+                count += 1
+        return count
+
+    def _clear(self) -> None:
+        """Test-only helper — drop all brokers without closing.
+
+        N-4: underscore prefix 로 production import 표면에서 빼서 실수로
+        호출하면 active broker 들이 close 없이 leak (listener task 들이
+        영원히 ``queue.get()`` 에 대기) 되는 사고를 방지. Production code 는
+        ``evict_expired`` 또는 ``close_for_conversation`` / ``close_all`` 사용.
         """
         self._brokers.clear()
 

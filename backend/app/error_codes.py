@@ -3,7 +3,13 @@
 Exception 인스턴스는 생성 시점에 traceback을 캡처하므로, 상수가 아닌 팩토리 함수로 제공한다.
 """
 
-from app.exceptions import AppError, ConflictError, NotFoundError, ValidationError
+from app.exceptions import (
+    AppError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+    ValidationError,
+)
 
 # ---------------------------------------------------------------------------
 # NotFoundError (404)
@@ -70,6 +76,12 @@ def share_not_found() -> NotFoundError:
     return NotFoundError("SHARE_NOT_FOUND", "공유 링크를 찾을 수 없습니다")
 
 
+def resume_not_found() -> NotFoundError:
+    return NotFoundError(
+        "RESUME_NOT_FOUND", "재개할 스트림을 찾을 수 없습니다"
+    )
+
+
 # ---------------------------------------------------------------------------
 # ValidationError (422)
 # ---------------------------------------------------------------------------
@@ -121,6 +133,26 @@ def session_confirming() -> ConflictError:
         "SESSION_CONFIRMING",
         "에이전트 생성이 이미 진행 중입니다",
     )
+
+
+def resume_interrupt_pending() -> ConflictError:
+    return ConflictError(
+        "RESUME_INTERRUPT_PENDING",
+        "HiTL 인터럽트 응답 대기 중입니다 — /messages/resume 으로 재개하세요",
+    )
+
+
+# ---------------------------------------------------------------------------
+# ForbiddenError (403)
+# ---------------------------------------------------------------------------
+
+
+def resume_forbidden() -> ForbiddenError:
+    return ForbiddenError(
+        "RESUME_FORBIDDEN", "이 대화의 스트림에 접근할 수 없습니다"
+    )
+
+
 
 
 # ---------------------------------------------------------------------------
