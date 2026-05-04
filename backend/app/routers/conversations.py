@@ -539,9 +539,12 @@ def _is_pending_interrupt(events: list[dict[str, Any]] | None) -> bool:
 
 
 def _format_brokered(evt: BrokeredEvent) -> str:
-    return format_sse(
-        evt["event"], evt["data"], event_id=evt.get("id") or None
-    )
+    # event_id 가 빈 문자열이면 SSE ``id:`` 라인 자체를 생략 (None 처리). 일반
+    # 케이스에서는 ``streaming.py`` emit 클로저가 항상 ``{msg_id}-{seq}`` 형태로
+    # 채우지만, 빈 문자열도 SSE 표준상 의미 없는 id 라 None 으로 정규화.
+    raw_id = evt.get("id")
+    event_id = raw_id if isinstance(raw_id, str) and raw_id else None
+    return format_sse(evt["event"], evt["data"], event_id=event_id)
 
 
 async def _broker_resume_generator(

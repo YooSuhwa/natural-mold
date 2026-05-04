@@ -39,13 +39,6 @@ class ForbiddenError(AppError):
         super().__init__(code, message, status=403)
 
 
-class GoneError(AppError):
-    """Gone (410)."""
-
-    def __init__(self, code: str, message: str):
-        super().__init__(code, message, status=410)
-
-
 class ExternalServiceError(AppError):
     """External service error (502)."""
 

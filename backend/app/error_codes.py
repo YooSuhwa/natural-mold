@@ -7,7 +7,6 @@ from app.exceptions import (
     AppError,
     ConflictError,
     ForbiddenError,
-    GoneError,
     NotFoundError,
     ValidationError,
 )
@@ -154,15 +153,6 @@ def resume_forbidden() -> ForbiddenError:
     )
 
 
-# ---------------------------------------------------------------------------
-# GoneError (410)
-# ---------------------------------------------------------------------------
-
-
-def resume_gone() -> GoneError:
-    return GoneError(
-        "RESUME_GONE", "스트림이 종료되어 더 이상 재개할 수 없습니다"
-    )
 
 
 # ---------------------------------------------------------------------------

@@ -59,9 +59,9 @@ def _clear_event_broker_registry():
     """
     from app.agent_runtime import event_broker
 
-    event_broker.registry.clear()
+    event_broker.registry._clear()  # noqa: SLF001 — test-only reset
     yield
-    event_broker.registry.clear()
+    event_broker.registry._clear()  # noqa: SLF001 — test-only reset
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:

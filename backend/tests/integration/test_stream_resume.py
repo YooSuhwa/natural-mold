@@ -690,3 +690,14 @@ async def test_resume_logs_reject_reason(
         "stream_resume reject" in r.message and "reason=row_missing" in r.message
         for r in caplog.records
     )
+
+
+# N-3 (client disconnect → listener cleanup), 갭 (multi-listener fan-out /
+# ring buffer overflow + after_id evict) 는 모두 unit-level 의존이라
+# tests/agent_runtime/test_event_broker.py 에서 broker AsyncGenerator 를
+# 직접 검증한다 (httpx ASGITransport 의 disconnect 타이밍은 결정적이지 않아
+# router 통합 테스트로 잡으면 hang 위험). multi-listener fan-out 과 ring
+# overflow 후 subscribe 는 이미 기존 broker unit test 가 보장:
+# - test_multiple_listeners_broadcast
+# - test_ring_buffer_drops_oldest
+# - test_subscribe_after_ring_eviction_returns_buffer_only

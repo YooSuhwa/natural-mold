@@ -169,6 +169,34 @@ async def test_close_terminates_subscribe() -> None:
     assert broker.closed_at is not None
 
 
+async def test_subscribe_aclose_releases_listener_slot() -> None:
+    """N-3: subscribe AsyncGenerator 가 끊기면 ``_listeners.discard`` 가 실행되어
+    broker._listeners 가 0 으로 수렴해야 한다.
+
+    그렇지 않으면 publish path 가 dead queue 에 ``put_nowait`` 를 시도하다
+    backpressure 가 잘못 작동하거나 메모리 누수. router 통합에서는 httpx ASGI
+    disconnect 타이밍이 비결정적이라 이 invariant 는 unit 으로 잡는다.
+    """
+    broker = EventBroker("run-1")
+    await broker.publish(_make_event(1))
+
+    agen = broker.subscribe()
+    first = await agen.__anext__()
+    assert first["id"] == "run-1-1"
+    # listener 가 등록된 상태.
+    assert len(broker._listeners) == 1  # noqa: SLF001 — invariant probe
+
+    # client disconnect 시뮬레이션 — generator close.
+    await agen.aclose()
+
+    assert len(broker._listeners) == 0, (  # noqa: SLF001
+        "subscribe finally 블록이 listener 를 정리하지 않음"
+    )
+    # broker 는 살아있어야 (다른 listener 등록 가능).
+    assert not broker.is_closed
+    broker.close()
+
+
 async def test_subscribe_after_close_drains_buffer() -> None:
     broker = EventBroker("run-1")
     for i in range(1, 4):

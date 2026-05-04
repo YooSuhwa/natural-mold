@@ -208,10 +208,15 @@ class EventBroker:
                 if item is None:
                     return
                 evt_id = item.get("id")
-                # Defensive dedup: if the buffer snapshot included an event
-                # that also reached the listener via fan-out, skip it. In
-                # practice this shouldn't happen (queue is created after
-                # buffer events were published) but guarantees idempotency.
+                # Defensive dedup vs buffer snapshot — keep, do not remove.
+                # asyncio single-threaded 이라 ``listeners.add`` 와 ``buffer
+                # snapshot`` 사이에 await 가 없어 race 가 사실상 발생하지 않지만,
+                # (a) 미래에 누군가 그 구간에 await 를 끼워 넣으면 race 윈도우가
+                # 열리고, (b) ``publish_nowait`` 가 sync 라 ``put_nowait`` 직후
+                # 같은 evt 가 buffer snapshot 에도 들어갈 가능성이 ABI 변경 시
+                # 미세하게 생긴다. yielded_ids set 은 평균 turn 200 events
+                # 기준 ~10KB 비용으로 idempotency 를 강제 — invariant 보장이
+                # 비용보다 가치 있다.
                 if isinstance(evt_id, str) and evt_id in yielded_ids:
                     continue
                 yield item
@@ -428,11 +433,13 @@ class BrokerRegistry:
                 count += 1
         return count
 
-    def clear(self) -> None:
-        """Test helper — drop all brokers without closing.
+    def _clear(self) -> None:
+        """Test-only helper — drop all brokers without closing.
 
-        Production code should not call this; use ``evict_expired`` /
-        ``close_for_conversation`` instead.
+        N-4: underscore prefix 로 production import 표면에서 빼서 실수로
+        호출하면 active broker 들이 close 없이 leak (listener task 들이
+        영원히 ``queue.get()`` 에 대기) 되는 사고를 방지. Production code 는
+        ``evict_expired`` 또는 ``close_for_conversation`` / ``close_all`` 사용.
         """
         self._brokers.clear()
 
