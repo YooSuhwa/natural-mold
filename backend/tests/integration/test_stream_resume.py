@@ -9,10 +9,15 @@
   events emit 후 ``event: stale`` 마커 발행
 - 시나리오 D: HiTL interrupt pending → ``409 RESUME_INTERRUPT_PENDING``
 
-추가 가드:
-- run_id 미존재 → ``404 RESUME_NOT_FOUND``
-- run_id 가 다른 conversation 소속 → ``403 RESUME_FORBIDDEN``
-- ``Last-Event-ID`` 헤더 fallback (query 우선)
+가드 분기는 모두 ``404 RESUME_NOT_FOUND`` 단일 응답으로 통일 (rules/security.md
+— enumeration oracle 방지). 분기 구분은 서버 로그로만:
+- conv 없음
+- ownership 실패 (다른 user 의 agent)
+- DB row 없음
+- broker live 인데 conv_id 불일치 (cross-tenant)
+- DB row 가 다른 conversation 소속
+
+``Last-Event-ID`` 헤더는 query 가 비면 fallback.
 """
 
 from __future__ import annotations
@@ -405,7 +410,7 @@ async def test_resume_interrupt_pending_returns_409(
 
 
 # ---------------------------------------------------------------------------
-# Error gates
+# Error gates — 모두 단일 RESUME_NOT_FOUND (enumeration oracle 방지)
 # ---------------------------------------------------------------------------
 
 
@@ -421,10 +426,10 @@ async def test_resume_missing_run_id_returns_404(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_resume_run_id_belongs_to_other_conversation_returns_403(
+async def test_resume_db_row_belongs_to_other_conversation_returns_404(
     client: AsyncClient,
 ) -> None:
-    """A row whose ``conversation_id`` differs from the URL → 403."""
+    """DB row 의 ``conversation_id`` 가 URL 과 다르면 404 (oracle 방지)."""
     conv_a = await _seed_conv()
     conv_b = await _seed_conv()
     run_id = str(uuid.uuid4())
@@ -446,17 +451,80 @@ async def test_resume_run_id_belongs_to_other_conversation_returns_403(
         f"/api/conversations/{conv_b}/stream",
         params={"run_id": run_id},
     )
-    assert resp.status_code == 403
-    assert resp.json()["error"]["code"] == "RESUME_FORBIDDEN"
+    # 응답은 row 미존재 케이스와 외부적으로 동일 (RESUME_NOT_FOUND).
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "RESUME_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_resume_live_broker_belongs_to_other_conversation_returns_404(
+    client: AsyncClient,
+) -> None:
+    """broker live 인데 broker.conversation_id 가 URL 과 다르면 404."""
+    conv_a = await _seed_conv()
+    conv_b = await _seed_conv()
+    run_id = str(uuid.uuid4())
+    # conv_a 에 live broker 등록.
+    event_broker.registry.get_or_create(
+        run_id, conversation_id=str(conv_a)
+    )
+    # conv_b URL 로 GET → broker live 분기에서 conv_id mismatch.
+    resp = await client.get(
+        f"/api/conversations/{conv_b}/stream",
+        params={"run_id": run_id},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "RESUME_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_resume_live_broker_with_none_conversation_id_returns_404(
+    client: AsyncClient,
+) -> None:
+    """broker.conversation_id 가 None 이면 fail-closed → 404."""
+    conv_id = await _seed_conv()
+    run_id = str(uuid.uuid4())
+    # 일부러 conv_id 생략한 broker — 비정상 등록 path 시뮬레이션.
+    event_broker.registry.get_or_create(run_id, conversation_id=None)
+
+    resp = await client.get(
+        f"/api/conversations/{conv_id}/stream",
+        params={"run_id": run_id},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "RESUME_NOT_FOUND"
 
 
 @pytest.mark.asyncio
 async def test_resume_unknown_conversation_returns_404(
     client: AsyncClient,
 ) -> None:
+    """Unknown conv_id → 404 RESUME_NOT_FOUND (역시 단일 응답)."""
     resp = await client.get(
         f"/api/conversations/{uuid.uuid4()}/stream",
         params={"run_id": str(uuid.uuid4())},
     )
     assert resp.status_code == 404
-    assert resp.json()["error"]["code"] == "CONVERSATION_NOT_FOUND"
+    assert resp.json()["error"]["code"] == "RESUME_NOT_FOUND"
+
+
+@pytest.mark.asyncio
+async def test_resume_logs_reject_reason(
+    client: AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """가드 분기는 외부 응답 통일하되 서버 로그로 reason 구분 가능해야 함."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger="app.routers.conversations")
+    conv_id = await _seed_conv()
+    resp = await client.get(
+        f"/api/conversations/{conv_id}/stream",
+        params={"run_id": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 404
+    # reason=row_missing 분기 로그가 남아야 함 (conv 존재 + DB row 없음).
+    assert any(
+        "stream_resume reject" in r.message and "reason=row_missing" in r.message
+        for r in caplog.records
+    )

@@ -24,7 +24,6 @@ from app.error_codes import (
     agent_not_found,
     conversation_not_found,
     file_not_found,
-    resume_forbidden,
     resume_interrupt_pending,
     resume_not_found,
 )
@@ -610,35 +609,54 @@ async def stream_resume(
        header ``X-Resume-Mode: replay``. ``status='streaming'`` 인 row 는
        ``event: stale`` 을 마지막에 발행 (broker 가 끊긴 채로 message_end 가
        오지 않은 케이스).
-    3. broker miss + DB row 없음 → ``404 RESUME_NOT_FOUND``.
-    4. row 가 다른 conversation 소속 → ``403 RESUME_FORBIDDEN``
-       (cross-tenant run_id 방어).
-    5. row 의 마지막 이벤트가 HiTL interrupt → ``409
+    3. row 의 마지막 이벤트가 HiTL interrupt → ``409
        RESUME_INTERRUPT_PENDING``. client 는 ``/messages/resume`` 으로 다시
        와야 한다.
+    4. 그 외 (conv 없음, ownership 실패, DB row 없음, broker 가 다른 conv
+       소속, broker conv_id 가 None) → ``404 RESUME_NOT_FOUND`` 단일 응답.
+       각 분기는 ``logger.info`` 로만 구분 (rules/security.md —
+       enumeration oracle 방지: 외부 응답을 통일하고 내부 로그로 분기).
 
     ``last_event_id`` 는 query 우선, ``Last-Event-ID`` 헤더 fallback. SSE
     표준 헤더를 지원해서 EventSource 같은 brower native 도 호환.
     """
     after_id = last_event_id or last_event_id_header
+    run_id_str = str(run_id)
 
     conv = await chat_service.get_conversation(db, conversation_id)
     if conv is None:
-        raise conversation_not_found()
+        logger.info(
+            "stream_resume reject reason=conversation_missing conv=%s run_id=%s",
+            conversation_id, run_id_str,
+        )
+        raise resume_not_found()
 
     agent_row = (
         await db.execute(select(Agent).where(Agent.id == conv.agent_id))
     ).scalar_one_or_none()
     if agent_row is None or agent_row.user_id != user.id:
-        raise resume_forbidden()
+        logger.info(
+            "stream_resume reject reason=ownership conv=%s run_id=%s user=%s",
+            conversation_id, run_id_str, user.id,
+        )
+        raise resume_not_found()
 
-    run_id_str = str(run_id)
     broker = broker_registry.get(run_id_str)
     if broker is not None and not broker.is_closed:
-        # broker 가 다른 conversation 의 turn 일 가능성 차단 (process-local
-        # singleton 이라 실수로 cross-conversation run_id 가 hit 할 수 있음).
-        if broker.conversation_id and broker.conversation_id != str(conversation_id):
-            raise resume_forbidden()
+        # broker.conversation_id 가 URL conv 와 다르면 (None 포함) cross-conv
+        # 누설 가능 — fail-closed (rules/security.md). _prepare_stream_context
+        # 가 항상 conv_id 를 전달하므로 None 은 비정상 신호.
+        if broker.conversation_id != str(conversation_id):
+            logger.info(
+                "stream_resume reject reason=broker_conv_mismatch conv=%s "
+                "run_id=%s broker_conv=%s",
+                conversation_id, run_id_str, broker.conversation_id,
+            )
+            raise resume_not_found()
+        logger.info(
+            "stream_resume mode=live conv=%s run_id=%s after_id=%s",
+            conversation_id, run_id_str, after_id,
+        )
         return _sse_response(
             _broker_resume_generator(broker, after_id),
             extra_headers={
@@ -649,16 +667,38 @@ async def stream_resume(
 
     record = await trace_storage.get_trace_by_msg_id(db, run_id_str)
     if record is None:
+        logger.info(
+            "stream_resume reject reason=row_missing conv=%s run_id=%s",
+            conversation_id, run_id_str,
+        )
         raise resume_not_found()
     if record.conversation_id != conversation_id:
-        raise resume_forbidden()
+        logger.info(
+            "stream_resume reject reason=row_conv_mismatch conv=%s run_id=%s "
+            "row_conv=%s",
+            conversation_id, run_id_str, record.conversation_id,
+        )
+        raise resume_not_found()
     if _is_pending_interrupt(record.events):
+        logger.info(
+            "stream_resume reject reason=interrupt_pending conv=%s run_id=%s",
+            conversation_id, run_id_str,
+        )
         raise resume_interrupt_pending()
 
+    is_stale = record.status == "streaming"
+    if is_stale:
+        logger.warning(
+            "stream_resume stale conv=%s run_id=%s last_event_id=%s "
+            "(broker lost while turn streaming)",
+            conversation_id, run_id_str, record.last_event_id,
+        )
+    logger.info(
+        "stream_resume mode=replay conv=%s run_id=%s after_id=%s status=%s",
+        conversation_id, run_id_str, after_id, record.status,
+    )
     return _sse_response(
-        _replay_resume_generator(
-            record, after_id, mark_stale=record.status == "streaming"
-        ),
+        _replay_resume_generator(record, after_id, mark_stale=is_stale),
         extra_headers={
             "X-Run-Id": run_id_str,
             "X-Resume-Mode": "replay",
