@@ -22,6 +22,7 @@ from typing import Any, Literal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.message_utils import parse_msg_id
 from app.models.message_event import MessageEvent
 
 # Status enum for message_events.status — DB CHECK 제약과 일치.
@@ -50,9 +51,6 @@ def _resolve_linked_ids(
 ) -> list[str] | None:
     if not raw_msg_ids:
         return None
-    # 지연 import — agent_runtime → services 역방향 import 경로 회피.
-    from app.agent_runtime.message_utils import parse_msg_id
-
     return [
         str(parse_msg_id(raw, conversation_id, idx))
         for idx, raw in enumerate(raw_msg_ids)

@@ -258,7 +258,12 @@ def _prepare_stream_context(conversation_id: uuid.UUID) -> _StreamCtx:
     keyword로 전달, ``_sse_handler(... run_id=ctx.run_id, on_complete=lambda
     success: _finalize_trace(conversation_id, ctx.run_id, ctx.trace_sink,
     ctx.msg_id_sink, success=success))`` 로 마감.
+
+    같은 conversation 의 직전 turn 이 disconnect 등으로 broker 가 미정리
+    상태로 남아 있으면 즉시 회수 (M4 APScheduler GC 도래 전 ghost broker
+    누적 차단). 새 turn 진입은 동시 2 turn 금지 정책의 명시 신호.
     """
+    broker_registry.close_for_conversation(str(conversation_id))
     run_id = str(uuid.uuid4())
     broker = broker_registry.get_or_create(
         run_id, conversation_id=str(conversation_id)
@@ -319,7 +324,7 @@ async def _finalize_trace(
     SSE generate() 의 request-scoped session 과 분리하기 위해
     ``async_session()`` 으로 새 session 을 연다.
     """
-    final_status = "completed" if success else "failed"
+    final_status: trace_storage.TraceStatus = "completed" if success else "failed"
     async with async_session() as session:
         finalized = await trace_storage.finalize_turn(
             session,

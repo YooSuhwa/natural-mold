@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 import orjson
 from langgraph.errors import GraphInterrupt
@@ -159,11 +159,16 @@ async def stream_agent_response(
         nonlocal seq, last_flush_at
         seq += 1
         event_id = f"{msg_id}-{seq}"
+        # 단일 dict 인스턴스를 trace_sink/broker/flush_buffer 가 공유. 구조가
+        # ``BrokeredEvent`` TypedDict(id/event/data 3 키)와 동일해 broker 측
+        # 에서 추가 변환 불필요. emit 이후 누구도 mutate하지 않으므로 공유
+        # 안전 (리뷰: dict 1개만 allocate해서 메모리 절반). pyright invariant
+        # 한계로 BrokeredEvent → dict[str, Any] cast 명시.
         evt_dict: dict[str, Any] = {"id": event_id, "event": event, "data": data}
         if trace_sink is not None:
             trace_sink.append(evt_dict)
         if broker is not None:
-            broker.publish_nowait(BrokeredEvent(id=event_id, event=event, data=data))
+            broker.publish_nowait(cast(BrokeredEvent, evt_dict))
         if persist_callback is not None:
             flush_buffer.append(evt_dict)
             now = time.monotonic()
