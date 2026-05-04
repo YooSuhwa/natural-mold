@@ -396,6 +396,24 @@ class BrokerRegistry:
         """Snapshot list of all registered brokers (live + closed)."""
         return list(self._brokers.values())
 
+    def close_all(self) -> int:
+        """Force-close every live broker (shutdown hook).
+
+        APScheduler 의 ``evict_expired`` GC 보다 더 강한 동작 — TTL 무시하고
+        지금 살아있는 모든 broker 의 listener 에 sentinel 을 보내 그래스풀
+        종료. lifespan shutdown 단계에서 호출되어 in-flight stream consumer
+        가 hang 되지 않게 한다. Idempotent: 이미 closed 인 broker 는 skip.
+
+        Returns:
+            Number of brokers actually closed in this call.
+        """
+        count = 0
+        for broker in list(self._brokers.values()):
+            if not broker.is_closed:
+                broker.close()
+                count += 1
+        return count
+
     def clear(self) -> None:
         """Test helper — drop all brokers without closing.
 

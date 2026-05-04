@@ -414,6 +414,39 @@ def test_registry_evict_expired_skips_recent_live() -> None:
     assert reg.get("recent-live") is broker
 
 
+# ---------------------------------------------------------------------------
+# W3-out M4 — close_all (shutdown hook)
+# ---------------------------------------------------------------------------
+
+
+def test_registry_close_all_closes_only_live_brokers() -> None:
+    reg = BrokerRegistry()
+    b1 = reg.get_or_create("r1")
+    b2 = reg.get_or_create("r2")
+    b3 = reg.get_or_create("r3")
+    b2.close()  # already closed before close_all
+
+    closed = reg.close_all()
+    assert closed == 2  # only b1 + b3 newly closed
+    assert b1.is_closed
+    assert b2.is_closed
+    assert b3.is_closed
+
+
+def test_registry_close_all_is_idempotent() -> None:
+    reg = BrokerRegistry()
+    reg.get_or_create("r1")
+    reg.get_or_create("r2")
+    assert reg.close_all() == 2
+    # 두 번째 호출은 모두 이미 closed → 0 반환
+    assert reg.close_all() == 0
+
+
+def test_registry_close_all_on_empty_registry_returns_zero() -> None:
+    reg = BrokerRegistry()
+    assert reg.close_all() == 0
+
+
 @pytest.mark.asyncio
 async def test_subscribe_when_already_closed_emits_sentinel() -> None:
     """이미 closed된 broker에 subscribe해도 sentinel 분기로 즉시 종료.

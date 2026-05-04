@@ -10,8 +10,11 @@ from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.scheduler import (
+    BROKER_EVICTION_JOB_ID,
     add_trigger_job,
+    evict_expired_brokers,
     pause_trigger_job,
+    register_broker_eviction_job,
     remove_trigger_job,
     resume_trigger_job,
 )
@@ -167,6 +170,69 @@ async def test_resume_job(running_scheduler: AsyncIOScheduler):
 async def test_resume_nonexistent_job_no_error():
     """Resuming a non-existent job should not raise."""
     resume_trigger_job(uuid.uuid4())
+
+
+# ---------------------------------------------------------------------------
+# W3-out M4 — EventBroker eviction job
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_register_broker_eviction_job_adds_60s_interval(
+    running_scheduler: AsyncIOScheduler,
+) -> None:
+    register_broker_eviction_job()
+    job = running_scheduler.get_job(BROKER_EVICTION_JOB_ID)
+    assert job is not None
+    assert job.trigger.interval.total_seconds() == 60
+
+
+@pytest.mark.asyncio
+async def test_register_broker_eviction_job_replaces_existing(
+    running_scheduler: AsyncIOScheduler,
+) -> None:
+    """Idempotent: 두 번 호출해도 job 이 하나만 존재."""
+    register_broker_eviction_job()
+    register_broker_eviction_job()
+    jobs = [j for j in running_scheduler.get_jobs() if j.id == BROKER_EVICTION_JOB_ID]
+    assert len(jobs) == 1
+
+
+@pytest.mark.asyncio
+async def test_register_broker_eviction_job_skips_when_scheduler_stopped() -> None:
+    stopped = AsyncIOScheduler(jobstores={"default": MemoryJobStore()})
+    with patch("app.scheduler.get_scheduler", return_value=stopped):
+        register_broker_eviction_job()  # must not raise
+    assert stopped.get_jobs() == []
+
+
+def test_evict_expired_brokers_drops_closed_past_ttl() -> None:
+    """Job 본체 — closed_at 이 충분히 과거면 dict 에서 pop."""
+    from datetime import timedelta
+
+    from app.agent_runtime.event_broker import BrokerRegistry
+
+    custom = BrokerRegistry()
+    b = custom.get_or_create("run-x")
+    b.close()
+    assert b.closed_at is not None
+    b.closed_at = b.closed_at - timedelta(seconds=600)  # > 300s TTL
+
+    with patch("app.agent_runtime.event_broker.registry", custom):
+        evict_expired_brokers()
+
+    assert custom.get("run-x") is None
+
+
+def test_evict_expired_brokers_swallows_exceptions() -> None:
+    """예외가 cron loop 를 죽이면 안 됨 — broad-except 가 다음 호출 보장."""
+
+    class Boom:
+        def evict_expired(self, ttl_seconds: int = 300) -> int:
+            raise RuntimeError("boom")
+
+    with patch("app.agent_runtime.event_broker.registry", Boom()):
+        evict_expired_brokers()  # must not raise
 
 
 # ---------------------------------------------------------------------------
