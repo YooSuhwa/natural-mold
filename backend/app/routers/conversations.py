@@ -8,9 +8,9 @@ from typing import Any, NamedTuple
 
 from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import FileResponse, StreamingResponse
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime import event_names
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
@@ -27,7 +27,6 @@ from app.error_codes import (
     resume_interrupt_pending,
     resume_not_found,
 )
-from app.models.agent import Agent
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.schemas.conversation import (
@@ -181,8 +180,8 @@ def _error_sse_pair(error_message: str) -> list[str]:
     from app.agent_runtime.streaming import format_sse
 
     return [
-        format_sse("error", {"message": error_message}),
-        format_sse("message_end", {"usage": {}, "content": ""}),
+        format_sse(event_names.ERROR, {"message": error_message}),
+        format_sse(event_names.MESSAGE_END, {"usage": {}, "content": ""}),
     ]
 
 
@@ -531,10 +530,12 @@ def _is_pending_interrupt(events: list[dict[str, Any]] | None) -> bool:
     """
     if not events:
         return False
-    has_message_end = any(evt.get("event") == "message_end" for evt in events)
+    has_message_end = any(
+        evt.get("event") == event_names.MESSAGE_END for evt in events
+    )
     if has_message_end:
         return False
-    return events[-1].get("event") == "interrupt"
+    return events[-1].get("event") == event_names.INTERRUPT
 
 
 def _format_brokered(evt: BrokeredEvent) -> str:
@@ -567,26 +568,45 @@ async def _replay_resume_generator(
     이면 마지막에 ``event: stale`` 을 발행해 client 에 broker 손실을 알린다.
     client 는 이 이벤트를 받으면 turn 이 backend 에서 끊겼음을 인지하고
     자동 재시도를 멈춘다.
+
+    M-2: ``event`` 필드가 비어있는 corrupt row 항목은 silent default 로
+    내보내지 않고 skip + warning. SSE 표준상 빈 이벤트 type 은 ``"message"``
+    채널로 라우팅되어 client 가 정체불명의 데이터를 normal message 로
+    오해할 수 있다.
+
+    M-3: stale payload 의 ``last_event_id`` 가 None 인 경우 fallback 으로
+    events 의 마지막 항목 id 를 사용. 그래도 없으면 ``reason``을
+    ``"broker_lost_no_id"`` 로 분기해 client 가 NPE 없이 처리할 수 있게.
     """
     seen_after = after_id is None
+    last_emitted_id: str | None = None
     for evt in record.events or []:
         evt_id = evt.get("id")
         if not seen_after:
             if evt_id == after_id:
                 seen_after = True
             continue
-        yield format_sse(
-            str(evt.get("event") or "message"),
-            evt.get("data") or {},
-            event_id=evt_id if isinstance(evt_id, str) and evt_id else None,
-        )
+        evt_name = evt.get("event")
+        if not isinstance(evt_name, str) or not evt_name:
+            logger.warning(
+                "stream_resume skip corrupt evt msg_id=%s evt_id=%s",
+                record.assistant_msg_id, evt_id,
+            )
+            continue
+        emitted_id = evt_id if isinstance(evt_id, str) and evt_id else None
+        yield format_sse(evt_name, evt.get("data") or {}, event_id=emitted_id)
+        if emitted_id:
+            last_emitted_id = emitted_id
 
     if mark_stale:
+        # M-3: row.last_event_id 우선, 없으면 방금 yield 한 마지막 evt id,
+        # 둘 다 없으면 reason 으로 분기해 None payload 회피.
+        stale_id = record.last_event_id or last_emitted_id
         yield format_sse(
-            "stale",
+            event_names.STALE,
             {
-                "reason": "broker_lost",
-                "last_event_id": record.last_event_id,
+                "reason": "broker_lost" if stale_id else "broker_lost_no_id",
+                "last_event_id": stale_id,
             },
         )
 
@@ -631,10 +651,13 @@ async def stream_resume(
         )
         raise resume_not_found()
 
-    agent_row = (
-        await db.execute(select(Agent).where(Agent.id == conv.agent_id))
-    ).scalar_one_or_none()
-    if agent_row is None or agent_row.user_id != user.id:
+    # M-7: chat_service.get_agent_for_user 가 ownership 검증의 단일 source.
+    # POST 핸들러는 get_agent_with_tools (eager-load) 를 쓰지만 같은 user_id
+    # 필터를 공유한다.
+    agent_row = await chat_service.get_agent_for_user(
+        db, conv.agent_id, user.id
+    )
+    if agent_row is None:
         logger.info(
             "stream_resume reject reason=ownership conv=%s run_id=%s user=%s",
             conversation_id, run_id_str, user.id,

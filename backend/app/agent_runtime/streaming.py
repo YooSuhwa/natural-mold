@@ -12,6 +12,7 @@ import orjson
 from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 
+from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
 from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
 
@@ -223,7 +224,7 @@ async def stream_agent_response(
     # 실행되도록 message_start emit 직후부터 message_end 도달까지 outer
     # try/finally 로 감싼다. 클라이언트 disconnect 시(generator aclose)에도
     # finally 가 동작해 broker.close 가 보장된다.
-    yield emit("message_start", {"id": msg_id, "role": "assistant"})
+    yield emit(event_names.MESSAGE_START, {"id": msg_id, "role": "assistant"})
     try:
         try:
             async for chunk in agent.astream(
@@ -253,7 +254,7 @@ async def stream_agent_response(
                                 # Flush pending text before entering JSON buffering
                                 if _pending:
                                     full_content += _pending
-                                    yield emit("content_delta", {"delta": _pending})
+                                    yield emit(event_names.CONTENT_DELTA, {"delta": _pending})
                                     _pending = ""
                                 _brace_depth = 1
                                 _buf = ch
@@ -269,14 +270,14 @@ async def stream_agent_response(
                                             _buf = ""
                                         else:
                                             full_content += _buf
-                                            yield emit("content_delta", {"delta": _buf})
+                                            yield emit(event_names.CONTENT_DELTA, {"delta": _buf})
                                             _buf = ""
                             else:
                                 _pending += ch
                         # Flush remaining pending text from this LLM chunk
                         if _pending:
                             full_content += _pending
-                            yield emit("content_delta", {"delta": _pending})
+                            yield emit(event_names.CONTENT_DELTA, {"delta": _pending})
 
                 if hasattr(msg, "tool_calls") and msg.tool_calls:
                     for tc in msg.tool_calls:
@@ -332,7 +333,7 @@ async def stream_agent_response(
             # 아래 aget_state에서 interrupt 이벤트를 emit
             was_interrupted = True
         except Exception as e:
-            yield emit("error", {"message": str(e)})
+            yield emit(event_names.ERROR, {"message": str(e)})
 
         # Flush any remaining buffer (incomplete JSON = not middleware output)
         if _buf:
@@ -346,7 +347,7 @@ async def stream_agent_response(
                     if task.interrupts:
                         for intr in task.interrupts:
                             yield emit(
-                                "interrupt",
+                                event_names.INTERRUPT,
                                 {
                                     "interrupt_id": str(getattr(intr, "ns", "")),
                                     "value": intr.value
@@ -358,7 +359,7 @@ async def stream_agent_response(
             logger.warning("aget_state failed (interrupt check)", exc_info=True)
             if was_interrupted:
                 yield emit(
-                    "interrupt",
+                    event_names.INTERRUPT,
                     {
                         "interrupt_id": "",
                         "value": {"message": "Interrupt detected but state unavailable"},
@@ -378,7 +379,7 @@ async def stream_agent_response(
         if usage_sink is not None and usage_data:
             usage_sink.update(usage_data)
 
-        yield emit("message_end", {"usage": usage_data, "content": full_content})
+        yield emit(event_names.MESSAGE_END, {"usage": usage_data, "content": full_content})
     finally:
         # W3-out M2 — final flush + background flush join + broker close.
         # 무조건 실행되어야 함 (정상 종료 / GraphInterrupt / Exception / 클라이언트

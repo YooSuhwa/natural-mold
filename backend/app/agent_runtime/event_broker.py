@@ -25,7 +25,7 @@ import contextlib
 import logging
 from collections import deque
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, TypedDict
 
 logger = logging.getLogger(__name__)
@@ -351,25 +351,30 @@ class BrokerRegistry:
             Number of brokers evicted (closed broker pops only — force-closed
             live brokers는 다음 호출에서 evict).
         """
-        now = datetime.now(UTC).replace(tzinfo=None)
-        now_ts = now.timestamp()
-        closed_cutoff = now_ts - ttl_seconds
-        live_cutoff = now_ts - self._max_live_age_seconds
+        # M-4 fix — created_at/closed_at 은 ``datetime.now(UTC).replace(tzinfo=
+        # None)`` 으로 naive UTC 저장. naive datetime 의 ``.timestamp()`` 는
+        # **로컬 tz 로 해석** (Python docs) 되어 시스템 timezone 이 UTC 가 아니면
+        # cutoff 가 어긋남. naive datetime 끼리 직접 비교하면 timezone 가정과
+        # 무관하게 정확.
+        now_dt = datetime.now(UTC).replace(tzinfo=None)
+        closed_cutoff_dt = now_dt - timedelta(seconds=ttl_seconds)
+        live_cutoff_dt = now_dt - timedelta(seconds=self._max_live_age_seconds)
         to_remove: list[str] = []
         for run_id, broker in self._brokers.items():
             if broker.closed_at is None:
                 # Force-close stale live broker. Will be evicted on next call.
-                if broker.created_at.timestamp() <= live_cutoff:
+                if broker.created_at <= live_cutoff_dt:
+                    age_seconds = int((now_dt - broker.created_at).total_seconds())
                     logger.warning(
                         "Force-closing stale live broker run_id=%s "
                         "(age %ds > max %ds)",
                         run_id,
-                        int(now_ts - broker.created_at.timestamp()),
+                        age_seconds,
                         self._max_live_age_seconds,
                     )
                     broker.close()
                 continue
-            if broker.closed_at.timestamp() <= closed_cutoff:
+            if broker.closed_at <= closed_cutoff_dt:
                 to_remove.append(run_id)
         for run_id in to_remove:
             self._brokers.pop(run_id, None)
@@ -382,15 +387,24 @@ class BrokerRegistry:
         (동시 2 turn은 checkpointer lock으로 이미 금지되지만, 이전 turn의
         broker가 여전히 라이브 listener를 들고 있는 경우를 정리).
 
+        M-6: count > 0 이면 logger.info — 정상 운영 중 발생 빈도 추적이
+        디버깅에 도움 (frontend race 로 turn 두 번 보내는 케이스 식별).
+
         Returns:
             Number of brokers closed.
         """
-        count = 0
+        closed_run_ids: list[str] = []
         for broker in list(self._brokers.values()):
             if broker.conversation_id == conversation_id and not broker.is_closed:
                 broker.close()
-                count += 1
-        return count
+                closed_run_ids.append(broker.run_id)
+        if closed_run_ids:
+            logger.info(
+                "BrokerRegistry close_for_conversation conv=%s closed=%d "
+                "run_ids=%s",
+                conversation_id, len(closed_run_ids), closed_run_ids,
+            )
+        return len(closed_run_ids)
 
     def all_brokers(self) -> list[EventBroker]:
         """Snapshot list of all registered brokers (live + closed)."""

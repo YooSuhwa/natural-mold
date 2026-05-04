@@ -44,6 +44,7 @@ __all__ = [
     "clear_active_branch_override",
     "create_conversation",
     "delete_conversation",
+    "get_agent_for_user",
     "get_agent_with_tools",
     "get_conversation",
     "get_owned_conversation",
@@ -430,6 +431,25 @@ async def clear_active_branch_override(
 # ---------------------------------------------------------------------------
 # Agent context assembly (single-path, greenfield)
 # ---------------------------------------------------------------------------
+
+
+async def get_agent_for_user(
+    db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
+) -> Agent | None:
+    """Lightweight ownership check — no eager loads.
+
+    M-7: GET ``/stream`` resume endpoint 같이 agent 의 runtime 상세
+    (model/tool/skill) 가 필요 없는 경로용. ownership 검증을
+    ``get_agent_with_tools`` 와 동일한 ``user_id`` 필터로 수행하여
+    검증 로직 분산을 막는다 (chat_service 가 단일 source of truth).
+
+    Returns:
+        Agent if owned by ``user_id``, else None.
+    """
+    result = await db.execute(
+        select(Agent).where(Agent.id == agent_id, Agent.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def get_agent_with_tools(

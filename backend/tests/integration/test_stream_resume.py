@@ -287,6 +287,49 @@ async def test_resume_replay_after_id_slices_correctly(
 
 
 @pytest.mark.asyncio
+async def test_resume_replay_header_is_case_insensitive(
+    client: AsyncClient,
+) -> None:
+    """일부 reverse proxy 가 헤더를 lowercase 로 전달 — alias 매칭 회귀."""
+    conv_id = await _seed_conv()
+    run_id = str(uuid.uuid4())
+    events_payload = [
+        {"id": f"{run_id}-1", "event": "message_start", "data": {"id": run_id}},
+        {"id": f"{run_id}-2", "event": "content_delta", "data": {"delta": "a"}},
+        {"id": f"{run_id}-3", "event": "content_delta", "data": {"delta": "b"}},
+    ]
+    async with TestSession() as db:
+        db.add(
+            MessageEvent(
+                conversation_id=conv_id,
+                assistant_msg_id=run_id,
+                events=events_payload,
+                last_event_id=f"{run_id}-3",
+                status="completed",
+                completed_at=datetime.now(UTC).replace(tzinfo=None),
+            )
+        )
+        await db.commit()
+
+    async with client.stream(
+        "GET",
+        f"/api/conversations/{conv_id}/stream",
+        params={"run_id": run_id},
+        headers={"last-event-id": f"{run_id}-2"},  # lowercase
+    ) as resp:
+        assert resp.status_code == 200
+        body = await resp.aread()
+
+    events = _parse_sse_events(body.decode())
+    deltas = [
+        json.loads(e["data"]).get("delta")
+        for e in events
+        if e.get("event") == "content_delta"
+    ]
+    assert deltas == ["b"]
+
+
+@pytest.mark.asyncio
 async def test_resume_replay_uses_last_event_id_header_fallback(
     client: AsyncClient,
 ) -> None:
@@ -332,6 +375,125 @@ async def test_resume_replay_uses_last_event_id_header_fallback(
 # ---------------------------------------------------------------------------
 # Scenario C — stale streaming
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_resume_replay_skips_corrupt_event_without_name(
+    client: AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """M-2: ``event`` 필드가 비어있는 corrupt row 항목은 silent emit 금지."""
+    import logging
+
+    caplog.set_level(logging.WARNING, logger="app.routers.conversations")
+    conv_id = await _seed_conv()
+    run_id = str(uuid.uuid4())
+    events_payload = [
+        {"id": f"{run_id}-1", "event": "message_start", "data": {"id": run_id}},
+        # corrupt row — event 필드 누락
+        {"id": f"{run_id}-2", "data": {"delta": "??"}},
+        {"id": f"{run_id}-3", "event": "content_delta", "data": {"delta": "ok"}},
+    ]
+    async with TestSession() as db:
+        db.add(
+            MessageEvent(
+                conversation_id=conv_id,
+                assistant_msg_id=run_id,
+                events=events_payload,
+                last_event_id=f"{run_id}-3",
+                status="completed",
+                completed_at=datetime.now(UTC).replace(tzinfo=None),
+            )
+        )
+        await db.commit()
+
+    async with client.stream(
+        "GET",
+        f"/api/conversations/{conv_id}/stream",
+        params={"run_id": run_id},
+    ) as resp:
+        assert resp.status_code == 200
+        body = await resp.aread()
+
+    events = _parse_sse_events(body.decode())
+    # corrupt evt 는 emit 안 됨 — message_start + content_delta(ok) 만.
+    assert [e.get("event") for e in events] == ["message_start", "content_delta"]
+    assert any(
+        "stream_resume skip corrupt evt" in r.message for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_resume_stale_payload_falls_back_when_last_event_id_null(
+    client: AsyncClient,
+) -> None:
+    """M-3: row.last_event_id 가 None 이면 events 마지막 id 로 fallback.
+
+    둘 다 없으면 ``reason='broker_lost_no_id'`` 로 분기해 client NPE 회피.
+    """
+    conv_id = await _seed_conv()
+    run_id = str(uuid.uuid4())
+    events_payload = [
+        {"id": f"{run_id}-1", "event": "message_start", "data": {"id": run_id}},
+    ]
+    async with TestSession() as db:
+        db.add(
+            MessageEvent(
+                conversation_id=conv_id,
+                assistant_msg_id=run_id,
+                events=events_payload,
+                last_event_id=None,  # corrupt row — last_event_id 안 채워짐
+                status="streaming",
+            )
+        )
+        await db.commit()
+
+    async with client.stream(
+        "GET",
+        f"/api/conversations/{conv_id}/stream",
+        params={"run_id": run_id},
+    ) as resp:
+        body = await resp.aread()
+
+    events = _parse_sse_events(body.decode())
+    stale = next(e for e in events if e.get("event") == "stale")
+    stale_data = json.loads(stale["data"])
+    # events 마지막 id 로 fallback 성공.
+    assert stale_data["last_event_id"] == f"{run_id}-1"
+    assert stale_data["reason"] == "broker_lost"
+
+
+@pytest.mark.asyncio
+async def test_resume_stale_payload_no_id_when_events_empty_after_slice(
+    client: AsyncClient,
+) -> None:
+    """events 가 빈 채로 stale → ``broker_lost_no_id`` reason."""
+    conv_id = await _seed_conv()
+    run_id = str(uuid.uuid4())
+    async with TestSession() as db:
+        db.add(
+            MessageEvent(
+                conversation_id=conv_id,
+                assistant_msg_id=run_id,
+                events=[],  # 빈 events
+                last_event_id=None,
+                status="streaming",
+            )
+        )
+        await db.commit()
+
+    async with client.stream(
+        "GET",
+        f"/api/conversations/{conv_id}/stream",
+        params={"run_id": run_id},
+    ) as resp:
+        body = await resp.aread()
+
+    events = _parse_sse_events(body.decode())
+    stale = next(e for e in events if e.get("event") == "stale")
+    stale_data = json.loads(stale["data"])
+    assert stale_data["last_event_id"] is None
+    assert stale_data["reason"] == "broker_lost_no_id"
 
 
 @pytest.mark.asyncio

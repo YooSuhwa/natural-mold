@@ -342,6 +342,38 @@ def test_registry_close_for_conversation_skips_already_closed() -> None:
     assert closed == 0  # already closed → not double-counted
 
 
+def test_registry_close_for_conversation_logs_when_count_positive(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """M-6: 정상 운영 중 발생 빈도 추적용 — closed > 0 이면 logger.info."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger="app.agent_runtime.event_broker")
+    reg = BrokerRegistry()
+    reg.get_or_create("run-1", conversation_id="conv-A")
+    reg.get_or_create("run-2", conversation_id="conv-A")
+    reg.close_for_conversation("conv-A")
+    assert any(
+        "close_for_conversation conv=conv-A closed=2" in r.message
+        for r in caplog.records
+    )
+
+
+def test_registry_close_for_conversation_silent_when_no_match(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """매치 없으면 로그 안 남김 (cron noise 방지)."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger="app.agent_runtime.event_broker")
+    reg = BrokerRegistry()
+    reg.get_or_create("run-1", conversation_id="conv-A")
+    reg.close_for_conversation("conv-B")
+    assert not any(
+        "close_for_conversation" in r.message for r in caplog.records
+    )
+
+
 # --------------------------------------------------------------------------
 # Smoke: ensure module-level singleton exists and is the right type.
 # --------------------------------------------------------------------------
@@ -412,6 +444,25 @@ def test_registry_evict_expired_skips_recent_live() -> None:
     reg.evict_expired()
     assert not broker.is_closed
     assert reg.get("recent-live") is broker
+
+
+def test_registry_evict_expired_uses_naive_datetime_comparison() -> None:
+    """M-4: 시스템 timezone 이 UTC 가 아니어도 cutoff 가 정확해야 함.
+
+    이전 구현은 ``naive_dt.timestamp()`` 가 로컬 tz 로 해석되는 함정 — 이
+    함수에 의존하지 않고 timedelta 차이로만 비교하는지 검증.
+    """
+    from datetime import timedelta
+
+    reg = BrokerRegistry()
+    b = reg.get_or_create("run-x")
+    b.close()
+    # closed_at 을 정확히 ttl + 1초 과거로 — 로컬 tz 와 무관하게 evict 되어야.
+    assert b.closed_at is not None
+    b.closed_at = b.closed_at - timedelta(seconds=301)
+    evicted = reg.evict_expired(ttl_seconds=300)
+    assert evicted == 1
+    assert reg.get("run-x") is None
 
 
 # ---------------------------------------------------------------------------
