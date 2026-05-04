@@ -1,5 +1,5 @@
 import type { SSEEvent, SSEEventType } from '@/lib/types'
-import { streamSSEPost } from './parse-sse'
+import { streamSSEPost, type StreamSSEPostOptions } from './parse-sse'
 
 /**
  * M-CHAT1b — POST `/messages/regenerate`. Replays the parent user turn from
@@ -11,6 +11,7 @@ export async function* streamRegenerate(
   conversationId: string,
   messageId?: string,
   signal?: AbortSignal,
+  options?: StreamSSEPostOptions,
 ): AsyncGenerator<SSEEvent> {
   const body: Record<string, unknown> = {}
   if (messageId) body.message_id = messageId
@@ -19,5 +20,6 @@ export async function* streamRegenerate(
     body,
     signal,
     'content_delta',
+    options,
   ) as AsyncGenerator<SSEEvent>
 }

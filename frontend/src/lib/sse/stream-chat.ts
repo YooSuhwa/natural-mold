@@ -1,7 +1,7 @@
 import type { SSEEvent, SSEEventType } from '@/lib/types'
-import { streamSSEPost } from './parse-sse'
+import { streamSSEPost, type StreamSSEPostOptions } from './parse-sse'
 
-export interface StreamChatOptions {
+export interface StreamChatOptions extends StreamSSEPostOptions {
   /** Pre-uploaded attachment ids to link to this message (P1-7). */
   attachmentIds?: string[]
 }
@@ -21,5 +21,6 @@ export async function* streamChat(
     body,
     signal,
     'content_delta',
+    options,
   ) as AsyncGenerator<SSEEvent>
 }

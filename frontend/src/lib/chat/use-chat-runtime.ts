@@ -4,19 +4,24 @@ import { useRef, useState, useCallback, useMemo, useEffect } from 'react'
 import { useExternalStoreRuntime, useExternalMessageConverter } from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
 import { useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { useTranslations } from 'next-intl'
 import type {
   Message,
+  MessagesEnvelope,
   SSEEvent,
   ToolCallInfo,
   InterruptPayload,
   TokenUsageBreakdown,
 } from '@/lib/types'
-import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
+import { sessionTokenUsageAtom, reconnectStateAtom } from '@/lib/stores/chat-store'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
 import { streamResume } from '@/lib/sse/stream-resume'
 import { streamEdit } from '@/lib/sse/stream-edit'
 import { streamRegenerate } from '@/lib/sse/stream-regenerate'
+import { streamResumeAttach } from '@/lib/sse/stream-resume-attach'
+import { withAutoResume } from '@/lib/sse/with-auto-resume'
 import { createStreamGuard } from '@/lib/sse/stream-guard'
 import type { FeedbackAdapter, AttachmentAdapter } from '@assistant-ui/react'
 
@@ -58,6 +63,11 @@ function createOptimisticMessage(
 interface StreamFnOptions {
   /** Pre-uploaded attachment ids that should ride along with this message. */
   attachmentIds?: string[]
+  /** W3-out M5 — primary POST 응답 헤더 ``X-Run-Id`` 가 도착하면 1회 호출.
+   *  conversation 라우터(``streamChat`` / ``streamEdit`` / ``streamRegenerate`` /
+   *  ``streamResume``) 만 지원. 그 외 streamFn 은 무시 → resume 시도 자체가
+   *  비활성. */
+  onRunId?: (runId: string) => void
 }
 
 type StreamFn = (
@@ -126,12 +136,19 @@ export function useChatRuntime({
   const abortRef = useRef<AbortController | null>(null)
   // 가장 최근에 emit된 interrupt_id (resume 시 stale 검증용)
   const lastInterruptIdRef = useRef<string | null>(null)
+  // W3-out M5 — primary POST 응답 헤더 ``X-Run-Id`` 와 마지막 SSE event id.
+  // GET ``/stream?run_id=&last_event_id=`` 재연결에 사용. stream 이 끝나거나
+  // 새 stream 이 시작되면 ``prepareStream`` 에서 reset.
+  const runIdRef = useRef<string | null>(null)
+  const lastEventIdRef = useRef<string | null>(null)
   // SSE stream race 차단 — Edit/Regenerate fork 도중 이전 generator의 stale
   // chunk가 새 stream에 끼어드는 것을 막고, 같은 id 중복 chunk를 dedup한다.
   // ``createStreamGuard``는 순수 함수라 useState 초기값으로 안전.
   const streamGuardRef = useRef(createStreamGuard())
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
+  const setReconnectState = useSetAtom(reconnectStateAtom)
   const queryClient = useQueryClient()
+  const tReconnect = useTranslations('chat.reconnect')
 
   /** B1 fix — when the user edits/regenerates we already know the new turn
    * will replace messages from ``truncateAtIndex`` onward. Optimistically
@@ -142,24 +159,31 @@ export function useChatRuntime({
   const truncateMessagesCache = useCallback(
     (truncateAtIndex: number) => {
       if (!conversationId) return
-      queryClient.setQueryData<Message[] | undefined>(
+      // 캐시는 ``MessagesEnvelope`` ({messages, active_tip_message_id, ...}) 형태.
+      // ``useMessages`` 가 ``select`` 로 ``messages`` 만 노출하므로 setQueryData
+      // 는 envelope 통째로 갱신해야 한다 (이전엔 ``Message[]`` 로 가정해 prev.slice
+      // TypeError 발생).
+      queryClient.setQueryData<MessagesEnvelope | undefined>(
         ['conversations', conversationId, 'messages'],
-        (prev) => (prev ? prev.slice(0, truncateAtIndex) : prev),
+        (prev) =>
+          prev ? { ...prev, messages: prev.messages.slice(0, truncateAtIndex) } : prev,
       )
     },
     [queryClient, conversationId],
   )
 
-  // useCallback 불필요 — abortRef/setIsRunning은 안정 참조, 이벤트 핸들러 내부에서만 호출
-  function prepareStream(): { signal: AbortSignal; token: number } {
+  const prepareStream = useCallback((): { signal: AbortSignal; token: number } => {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
     setIsRunning(true)
+    runIdRef.current = null
+    lastEventIdRef.current = null
+    setReconnectState('idle')
     // stream version 발급 — 이전 stream의 stale event는 이 token 비교로 폐기.
     const token = streamGuardRef.current.begin()
     return { signal: controller.signal, token }
-  }
+  }, [setReconnectState])
 
   // 로드된 메시지 + 스트리밍 중인 메시지 병합
   const allMessages = useMemo(
@@ -255,8 +279,12 @@ export function useChatRuntime({
           // fetch는 끊지만 이미 yield된 chunk는 막지 못하므로 caller side gate가 필요.
           if (streamGuardRef.current.isStale(token)) return
           // 동일 stream 내 같은 id 중복 chunk는 무시 (백엔드가 매 chunk마다
-          // ``{msg_id}-{seq}`` 형식의 unique id를 발행).
+          // ``{msg_id}-{seq}`` 형식의 unique id를 발행). resume 시 boundary
+          // 1개 중복도 같은 dedup 으로 거른다.
           if (streamGuardRef.current.isDuplicate(event.id)) continue
+          // W3-out M5 — 가장 최근에 본 event id 를 기억. 끊김 시 GET
+          // ``/stream?last_event_id=`` 로 그 다음부터 이어 받는다.
+          if (event.id) lastEventIdRef.current = event.id
           switch (event.event) {
             case 'content_delta': {
               accumulated += event.data.content ?? event.data.delta ?? ''
@@ -397,11 +425,27 @@ export function useChatRuntime({
 
   // messages가 새로 fetch되면(refetch 완료) streaming messages를 clear.
   // streaming 직후 messages → effective 전환에서 깜박임 방지.
+  //
+  // W3-out M5 회귀 가드: turn 이 mid-stream 끊긴 경우 backend 가 finalize_turn /
+  // checkpointer commit 을 못 해 ``messages`` API 에 해당 row 가 없다. 그 상태로
+  // streamingMessages 를 비우면 사용자가 받은 partial 토큰이 화면에서 사라진다.
+  // run_id (= assistant_msg_id) 가 refetch 결과에 있는지로 "정말 persist 됐는지"
+  // 를 판정해 미커밋이면 streaming 을 그대로 유지한다.
   const prevMessagesRef = useRef(messages)
   if (prevMessagesRef.current !== messages) {
     prevMessagesRef.current = messages
     if (!isRunning && streamingMessages.length > 0) {
-      setStreamingMessages([])
+      const runId = runIdRef.current
+      const wasPersisted = runId ? messages.some((m) => m.id === runId) : true
+      if (wasPersisted) {
+        setStreamingMessages([])
+      } else {
+        // assistant 미커밋(끊긴 turn) — partial assistant + tool 결과는 유지하되,
+        // user 메시지는 보통 backend 가 POST 진입 직후 저장하므로 ``messages`` 에
+        // 이미 들어있다. optimistic user copy 를 그대로 두면 user 버블이 중복으로
+        // 보인다 (id 가 ``opt-{uuid}`` vs backend UUID 라 매칭 불가).
+        setStreamingMessages((prev) => prev.filter((m) => m.role !== 'user'))
+      }
     }
   }
 
@@ -416,7 +460,10 @@ export function useChatRuntime({
    */
   const _runStream = useCallback(
     async (
-      streamFactory: (signal: AbortSignal) => AsyncGenerator<SSEEvent>,
+      streamFactory: (
+        signal: AbortSignal,
+        onRunId: (id: string) => void,
+      ) => AsyncGenerator<SSEEvent>,
       optimisticMsg: Message | null,
       truncateAtIdx?: number,
     ) => {
@@ -424,13 +471,60 @@ export function useChatRuntime({
         truncateMessagesCache(truncateAtIdx)
       }
       const { signal, token } = prepareStream()
+      const onRunId = (id: string) => {
+        runIdRef.current = id
+      }
+      const primary = () => streamFactory(signal, onRunId)
+      // GET ``/stream`` resume 은 conversations 라우터만 지원. builder/assistant
+      // 같은 다른 streamFn 은 conversationId 가 없거나 runId 가 비어 있어
+      // resumeFactory 가 ``null`` → withAutoResume 가 재시도하지 않고 throw.
+      const resumeFactory = (lastEventId: string | undefined) => {
+        if (!conversationId) return null
+        const runId = runIdRef.current
+        if (!runId) return null
+        return streamResumeAttach(
+          conversationId,
+          runId,
+          lastEventId,
+          signal,
+        ) as AsyncGenerator<SSEEvent>
+      }
+      const wrapped = withAutoResume(primary, resumeFactory, {
+        signal,
+        onReconnecting: () => {
+          // stale stream(이미 새 turn 이 시작됨)의 retry 알림은 무시 — 새 turn
+          // 의 prepareStream 이 idle 로 reset 한 상태를 다시 reconnecting 으로
+          // 덮어쓰지 않게.
+          if (streamGuardRef.current.isStale(token)) return
+          setReconnectState('reconnecting')
+        },
+        onReconnected: () => {
+          if (streamGuardRef.current.isStale(token)) return
+          setReconnectState('idle')
+        },
+        onFailed: (err) => {
+          // 사용자 cancel(AbortError) 또는 stale stream(Edit/Regenerate/새 turn)
+          // 은 toast 무음. 두 가드 모두 통과한 진짜 실패만 사용자 알림.
+          setReconnectState('idle')
+          if (signal.aborted || streamGuardRef.current.isStale(token)) return
+          toast.error(tReconnect('failed'))
+          console.error('[useChatRuntime] Stream resume failed:', err)
+        },
+      })
       try {
-        await consumeStream(streamFactory(signal), optimisticMsg, token)
+        await consumeStream(wrapped, optimisticMsg, token)
       } catch (err) {
         console.error('[useChatRuntime] Stream error:', err)
       }
     },
-    [consumeStream, truncateMessagesCache],
+    [
+      consumeStream,
+      truncateMessagesCache,
+      conversationId,
+      setReconnectState,
+      tReconnect,
+      prepareStream,
+    ],
   )
 
   const onNew = useCallback(
@@ -445,7 +539,7 @@ export function useChatRuntime({
       const userMsg = createOptimisticMessage('user', content)
       const attachmentIds = appendMessage.attachments?.map((a) => a.id)
       await _runStream(
-        (signal) => streamFn(content, signal, { attachmentIds }),
+        (signal, onRunId) => streamFn(content, signal, { attachmentIds, onRunId }),
         userMsg,
       )
     },
@@ -461,10 +555,10 @@ export function useChatRuntime({
       // 둘 다 없으면 noop (이전 동작 유지).
       if (!resumeFn && !conversationId) return
       await _runStream(
-        (signal) =>
+        (signal, onRunId) =>
           resumeFn
             ? resumeFn(response, signal, displayText, intrId)
-            : streamResume(conversationId as string, response, signal),
+            : streamResume(conversationId as string, response, signal, { onRunId }),
         userMsg,
       )
     },
@@ -492,10 +586,16 @@ export function useChatRuntime({
           : -1
       const useFork = conversationId && message.sourceId
       await _runStream(
-        (signal) =>
+        (signal, onRunId) =>
           useFork
-            ? streamEdit(conversationId as string, message.sourceId as string, content, signal)
-            : streamFn(content, signal),
+            ? streamEdit(
+                conversationId as string,
+                message.sourceId as string,
+                content,
+                signal,
+                { onRunId },
+              )
+            : streamFn(content, signal, { onRunId }),
         userMsg,
         useFork ? editIdx : undefined,
       )
@@ -523,7 +623,8 @@ export function useChatRuntime({
           }
         }
         await _runStream(
-          (signal) => streamRegenerate(conversationId, targetMessageId, signal),
+          (signal, onRunId) =>
+            streamRegenerate(conversationId, targetMessageId, signal, { onRunId }),
           null,
           assistantIdxInMessages >= 0 ? assistantIdxInMessages : undefined,
         )
@@ -533,7 +634,10 @@ export function useChatRuntime({
       const merged = [...messages, ...streamingMessages]
       const lastUser = [...merged].reverse().find((m) => m.role === 'user')
       if (!lastUser?.content) return
-      await _runStream((signal) => streamFn(lastUser.content, signal), null)
+      await _runStream(
+        (signal, onRunId) => streamFn(lastUser.content, signal, { onRunId }),
+        null,
+      )
     },
     [messages, streamingMessages, streamFn, _runStream, conversationId],
   )
@@ -561,15 +665,12 @@ export function useChatRuntime({
     async (content: string) => {
       const trimmed = content.trim()
       if (!trimmed) return
-      const { signal, token } = prepareStream()
-      const userMsg = createOptimisticMessage('user', trimmed)
-      try {
-        await consumeStream(streamFn(trimmed, signal), userMsg, token)
-      } catch (err) {
-        console.error('[useChatRuntime] sendMessage error:', err)
-      }
+      await _runStream(
+        (signal, onRunId) => streamFn(trimmed, signal, { onRunId }),
+        createOptimisticMessage('user', trimmed),
+      )
     },
-    [streamFn, consumeStream],
+    [streamFn, _runStream],
   )
 
   return { runtime, onResume, sendMessage }
