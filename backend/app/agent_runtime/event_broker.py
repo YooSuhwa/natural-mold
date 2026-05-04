@@ -24,7 +24,7 @@ import asyncio
 import contextlib
 import logging
 from collections import deque
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Any, TypedDict
 
@@ -154,7 +154,7 @@ class EventBroker:
 
     async def subscribe(
         self, after_id: str | None = None
-    ) -> AsyncIterator[BrokeredEvent]:
+    ) -> AsyncGenerator[BrokeredEvent, None]:
         """Subscribe to events, optionally replaying buffered events past ``after_id``.
 
         Behavior:
