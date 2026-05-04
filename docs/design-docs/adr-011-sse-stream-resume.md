@@ -1,11 +1,11 @@
 # ADR-011: SSE Stream Resume (W3-out)
 
-## 상태: M1-M5 머지 완료, M6 통합 테스트 + 문서화 진행 중
+## 상태: M1-M6 구현 완료 (M6 PR 머지 대기)
 
 관련 문서:
 - 실행 계획: `~/.claude/plans/1-ux-quirky-canyon.md`
 - 마일스톤 진행: `HANDOFF.md` (루트)
-- 머지 PR: #116 (M1+M2), #117 (M3+M4), #118 (M5)
+- 머지 PR: #116 (M1+M2), #117 (M3+M4), #118 (M5), 본 PR (M6 통합 테스트 + ADR 정리)
 
 ---
 
@@ -166,7 +166,7 @@ POST 응답 헤더의 `X-Run-Id` + 매 SSE event 의 `id:` 필드 (parseSSEStrea
 | M3 | GET `/stream` endpoint + 4가지 분기 + replay 슬라이스 + 보안 oracle 통일 | ~6h | #117 | ✅ |
 | M4 | APScheduler lifecycle + close_for_conversation + shutdown 순서 정비 | ~3h | #117 | ✅ |
 | M5 | Frontend lastEventId + GET resume + 명시적 인디케이터 UI | ~10h | #118 | ✅ |
-| M6 | E2E POST→GET 통합 테스트 + ADR-011 정리 | ~6h | (현 PR) | ⏳ |
+| M6 | E2E POST→GET 통합 테스트 + ADR-011 정리 | ~6h | (본 PR) | ✅ |
 
 마일스톤별 PR 분리 — 각 PR마다 회귀 위험 분산 + pre-push 게이트 통과. M3+M4 머지 시점까지 frontend 통합 전이라 사용자 무영향 — M5 머지 시 노출.
 
