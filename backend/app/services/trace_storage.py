@@ -17,12 +17,15 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.message_event import MessageEvent
+
+# Status enum for message_events.status — DB CHECK 제약과 일치.
+TraceStatus = Literal["streaming", "completed", "failed"]
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +65,7 @@ async def append_events(
     conversation_id: uuid.UUID,
     assistant_msg_id: str,
     events_chunk: list[dict[str, Any]],
-    status: str = "streaming",
+    status: TraceStatus = "streaming",
 ) -> MessageEvent | None:
     """Partial flush — UPSERT a chunk of events into the turn's row.
 
@@ -143,7 +146,7 @@ async def finalize_turn(
     db: AsyncSession,
     *,
     assistant_msg_id: str,
-    status: str = "completed",
+    status: TraceStatus = "completed",
     raw_msg_ids: list[str] | None = None,
     conversation_id: uuid.UUID | None = None,
 ) -> MessageEvent | None:
@@ -218,6 +221,7 @@ async def record_turn(
 
     linked_ids = _resolve_linked_ids(conversation_id, raw_msg_ids)
 
+    now = datetime.now(UTC).replace(tzinfo=None)
     record = MessageEvent(
         conversation_id=conversation_id,
         assistant_msg_id=msg_id,
@@ -225,7 +229,11 @@ async def record_turn(
         last_event_id=last_id,
         linked_message_ids=linked_ids,
         status="completed",
-        completed_at=datetime.now(UTC).replace(tzinfo=None),
+        completed_at=now,
+        # ORM-level explicit set — server_default(now())와 별도로 SQLite/PG
+        # 일관성과 회귀 가드. (model의 default lambda + server_default가
+        # 채우지만 이중 안전망.)
+        updated_at=now,
     )
     db.add(record)
     return record

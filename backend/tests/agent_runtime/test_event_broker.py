@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 
+import pytest
+
 from app.agent_runtime.event_broker import (
     BrokeredEvent,
     BrokerRegistry,
@@ -349,5 +351,83 @@ def test_module_level_registry_singleton() -> None:
     from app.agent_runtime import event_broker as eb
 
     assert isinstance(eb.registry, BrokerRegistry)
+
+
+# ---------------------------------------------------------------------------
+# In-band memory caps (M2 보강 — M4 APScheduler GC 도래 전 안전망)
+# ---------------------------------------------------------------------------
+
+
+def test_registry_lru_cap_evicts_oldest_closed() -> None:
+    """``max_brokers`` 도달 시 가장 오래된 closed broker가 먼저 evict."""
+    reg = BrokerRegistry(max_brokers=3)
+    b1 = reg.get_or_create("r1")
+    b2 = reg.get_or_create("r2")
+    b3 = reg.get_or_create("r3")
+    b1.close()
+    b2.close()  # b1, b2 closed; b3 live
+    # 4번째 broker 등록 — b1(가장 먼저 들어온 closed) 이 빠져야 함
+    reg.get_or_create("r4")
+    assert reg.get("r1") is None  # evicted
+    assert reg.get("r2") is b2  # closed but still under cap
+    assert reg.get("r3") is b3
+    assert reg.get("r4") is not None
+
+
+def test_registry_lru_cap_force_closes_live_when_all_live() -> None:
+    """모든 broker가 live여도 cap 도달 시 가장 오래된 live를 강제 close + pop."""
+    reg = BrokerRegistry(max_brokers=2)
+    b1 = reg.get_or_create("r1")
+    reg.get_or_create("r2")
+    # b1, b2 모두 live. 새 broker 추가 시 b1이 강제 close + pop.
+    reg.get_or_create("r3")
+    assert reg.get("r1") is None
+    assert b1.is_closed  # 강제 close됨
+    assert reg.get("r2") is not None
+    assert reg.get("r3") is not None
+
+
+def test_registry_evict_expired_force_closes_stale_live() -> None:
+    """``max_live_age_seconds`` 초과한 live broker는 강제 close되고 다음 호출에서 evict."""
+    from datetime import timedelta
+
+    reg = BrokerRegistry(max_live_age_seconds=10)
+    broker = reg.get_or_create("stale-live")
+    # created_at을 인위적으로 과거로 조작
+    broker.created_at = broker.created_at - timedelta(seconds=20)
+    # 1차 호출: 강제 close (return 0 — 아직 closed_at + ttl 미경과)
+    evicted = reg.evict_expired(ttl_seconds=300)
+    assert evicted == 0
+    assert broker.is_closed
+    # 2차 호출: ttl=0이면 즉시 pop
+    evicted = reg.evict_expired(ttl_seconds=0)
+    assert evicted == 1
+    assert reg.get("stale-live") is None
+
+
+def test_registry_evict_expired_skips_recent_live() -> None:
+    """방금 생성된 live broker는 강제 close 대상 아님."""
+    reg = BrokerRegistry(max_live_age_seconds=1800)
+    broker = reg.get_or_create("recent-live")
+    reg.evict_expired()
+    assert not broker.is_closed
+    assert reg.get("recent-live") is broker
+
+
+@pytest.mark.asyncio
+async def test_subscribe_after_close_during_register_emits_sentinel() -> None:
+    """close가 subscribe register 직전에 일어나도 subscriber가 sentinel을 받고 종료.
+
+    B1 race 보강 회귀 가드 — ``listeners.add`` 분기에서 ``self._closed`` 가
+    True일 때 self-sentinel을 큐에 넣어 subscriber가 무한 await에 갇히지
+    않도록 한 변경의 회귀 테스트.
+    """
+    broker = EventBroker("race-test")
+    broker.close()  # already closed before subscribe
+    received: list[BrokeredEvent] = []
+    async for evt in broker.subscribe():
+        received.append(evt)
+    # close 후 subscribe → buffer 비었으니 0개 받고 즉시 종료. 무한 대기 X.
+    assert received == []
 
 

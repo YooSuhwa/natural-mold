@@ -22,6 +22,10 @@ logger = logging.getLogger(__name__)
 # persist_callback을 fire-and-forget으로 호출. plan 결정 #4 참조.
 _FLUSH_BATCH_SIZE = 32
 _FLUSH_INTERVAL_SECONDS = 2.0
+# Backpressure cap on in-flight partial flushes. DB가 느려져도 task /
+# DB connection 폭주 방지. 한도 도달 시 새 chunk는 retry buffer에
+# 모이고 finally의 final flush가 한 번 더 시도한다.
+_MAX_INFLIGHT_FLUSHES = 4
 
 
 PersistCallback = Callable[[list[dict[str, Any]]], Awaitable[None]]
@@ -110,17 +114,25 @@ async def stream_agent_response(
     flush_buffer: list[dict[str, Any]] = []
     last_flush_at = time.monotonic()
     background_persist_tasks: set[asyncio.Task[None]] = set()
+    # Failed-chunk retry buffer — partial flush가 실패하면 final flush에서
+    # 한 번 더 시도. DB 일시 장애로 chunk가 silently 사라지는 것을 막는
+    # safety net. final flush도 실패하면 그때만 영구 손실 (log).
+    retry_buffer: list[dict[str, Any]] = []
 
     async def _safe_persist(chunk: list[dict[str, Any]]) -> None:
         """Background task wrapper — swallow exceptions so a DB hiccup
-        doesn't kill the live stream. partial flush is best-effort; the
-        finally block performs a final flush as a safety net."""
+        doesn't kill the live stream. 실패한 chunk는 retry_buffer에 보관
+        해서 finally의 final flush에서 한 번 더 시도한다."""
         if persist_callback is None:
             return
         try:
             await persist_callback(chunk)
         except Exception:
-            logger.exception("partial flush persist_callback failed (run_id=%s)", msg_id)
+            logger.exception(
+                "partial flush persist_callback failed (run_id=%s) — chunk queued for final retry",
+                msg_id,
+            )
+            retry_buffer.extend(chunk)
 
     def emit(event: str, data: dict[str, Any]) -> str:
         nonlocal seq, last_flush_at
@@ -134,10 +146,15 @@ async def stream_agent_response(
         if persist_callback is not None:
             flush_buffer.append(evt_dict)
             now = time.monotonic()
-            if (
+            # Backpressure: in-flight task 한도 초과 시 새 chunk를 flush 하지
+            # 않고 buffer에 그대로 둔다. 다음 emit에서 다시 임계치 검사 →
+            # in-flight가 비면 flush 재개. 최악의 경우 finally의 final flush가
+            # 모든 잔여를 한꺼번에 처리.
+            should_flush = (
                 len(flush_buffer) >= _FLUSH_BATCH_SIZE
                 or (now - last_flush_at) >= _FLUSH_INTERVAL_SECONDS
-            ):
+            ) and len(background_persist_tasks) < _MAX_INFLIGHT_FLUSHES
+            if should_flush:
                 chunk = flush_buffer.copy()
                 flush_buffer.clear()
                 last_flush_at = now
@@ -340,16 +357,32 @@ async def stream_agent_response(
         # W3-out M2 — final flush + background flush join + broker close.
         # 무조건 실행되어야 함 (정상 종료 / GraphInterrupt / Exception / 클라이언트
         # disconnect 시 generator aclose() 모두). 실패는 swallow + log.
-        if persist_callback is not None and flush_buffer:
-            try:
-                await persist_callback(flush_buffer.copy())
-            except Exception:
-                logger.exception("final flush persist_callback failed (run_id=%s)", msg_id)
-            flush_buffer.clear()
+        # 순서가 중요: (1) background tasks join → 진행 중 partial flush가
+        # 끝나서 retry_buffer가 확정. (2) retry_buffer + flush_buffer 합쳐서
+        # 한 번에 final flush → DB 일시 장애로 누락된 chunk 회복 마지막 기회.
         if background_persist_tasks:
-            # 진행 중 fire-and-forget 태스크들 회수. return_exceptions=True 라
-            # 개별 실패는 silently swallow (개별 태스크는 _safe_persist 안에서
-            # 이미 log된 상태).
+            # 진행 중 fire-and-forget 태스크들 회수. 이 시점 이후로
+            # retry_buffer에 새로 추가될 일은 없다.
             await asyncio.gather(*background_persist_tasks, return_exceptions=True)
+        if persist_callback is not None and (retry_buffer or flush_buffer):
+            # retry 우선 → 그 후 마지막으로 buffer에 남은 신규 chunk.
+            # 두 번 호출하면 dedup-by-id가 idempotency를 보장.
+            final_chunks: list[list[dict[str, Any]]] = []
+            if retry_buffer:
+                final_chunks.append(retry_buffer.copy())
+                retry_buffer.clear()
+            if flush_buffer:
+                final_chunks.append(flush_buffer.copy())
+                flush_buffer.clear()
+            for chunk in final_chunks:
+                try:
+                    await persist_callback(chunk)
+                except Exception:
+                    logger.exception(
+                        "final flush persist_callback failed "
+                        "(run_id=%s) — %d events permanently lost",
+                        msg_id,
+                        len(chunk),
+                    )
         if broker is not None:
             broker.close()

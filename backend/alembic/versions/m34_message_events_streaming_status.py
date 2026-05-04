@@ -97,12 +97,30 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Downgrade — drops status, updated_at, CHECK, and index.
+
+    ⚠️ NON-RECOVERABLE DATA LOSS: 'streaming'/'failed' 상태로 남은 row의
+    상태 정보가 영구 소실된다. partial flush 진행 중 머지된 운영 환경에서
+    이 downgrade를 호출하면 해당 row들의 status가 사라져 W3-out resume
+    경로의 stale 마커 분기가 무효화된다. forward-only 운영을 권장.
+
+    SQLite 호환: ``op.drop_constraint`` 와 ``op.drop_column`` 은 SQLite의
+    ALTER TABLE 한계를 ``batch_alter_table`` 로 우회한다. PG는 native
+    ALTER 사용.
+    """
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
         with op.get_context().autocommit_block():
             op.execute(sa.text(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX_NAME}"))
+        op.drop_constraint(_CHECK_NAME, "message_events", type_="check")
+        op.drop_column("message_events", "updated_at")
+        op.drop_column("message_events", "status")
     else:
+        # SQLite는 ALTER TABLE DROP CONSTRAINT / DROP COLUMN을 지원하지
+        # 않으므로 batch_alter_table로 테이블 재생성. 인덱스는 CONCURRENTLY
+        # 미지원이라 일반 drop.
         op.drop_index(_INDEX_NAME, table_name="message_events")
-    op.drop_constraint(_CHECK_NAME, "message_events", type_="check")
-    op.drop_column("message_events", "updated_at")
-    op.drop_column("message_events", "status")
+        with op.batch_alter_table("message_events") as batch_op:
+            batch_op.drop_constraint(_CHECK_NAME, type_="check")
+            batch_op.drop_column("updated_at")
+            batch_op.drop_column("status")

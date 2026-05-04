@@ -113,3 +113,6 @@
 [2026-05-03T14:39:36Z] jensen DOC_ENHANCE record_turn 보존 사유 + M5/M6 deprecate 시그널 명시
 [2026-05-03T14:40:00Z] bezos S5_DONE 통합 검증 PASS — 6/6 게이트 통과, 773 PASS (3회 연속 flaky 0), alembic 양방향 PASS, BrokerRegistry 누수 차단 확인. 신규 통합 테스트 2건 추가(test_send_message_exposes_x_run_id_header + test_send_message_registers_broker_for_run_id).
 [2026-05-03T14:40:30Z] satya MILESTONE_DONE M1+M2 backend foundation — 모든 done-when 충족. PR 진행.
+[2026-05-03T14:43:00Z] satya PROJECT_DONE M1+M2 — PR #116 open. 팀 해산. zero retries. 다음 세션에서 M3+M4 새 팀.
+[2026-05-04T00:30:00Z] satya REVIEW_FIXUP — code/security 리뷰 결과 일괄 반영. B1 subscribe race 보강(self-sentinel), HIGH-1 BrokerRegistry LRU cap(max=256, oldest closed/live eviction), HIGH-2 in-flight flush cap(_MAX_INFLIGHT_FLUSHES=4 backpressure), C2 m34 SQLite downgrade batch_alter_table, C5 silent data loss → retry_buffer + final retry, C6 live broker max_age(_MAX_LIVE_AGE_SECONDS=1800 강제 close), B2 record_turn updated_at 명시. NIT: status TraceStatus Literal 타입, downgrade NON-RECOVERABLE 명시, 4 POST 보일러플레이트 → _StreamCtx + _prepare_stream_context 헬퍼.
+[2026-05-04T00:30:30Z] satya VERIFICATION_PASS backend 780 PASS (회귀 0 + 신규 7), ruff clean, pyright 0/0, alembic 양방향 PASS. PR #116 amend 진행.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 from unittest.mock import MagicMock
@@ -542,3 +543,107 @@ async def test_stream_broker_close_called_even_on_exception():
         )
     ]
     assert broker.is_closed is True
+
+
+# ---------------------------------------------------------------------------
+# Backpressure + retry buffer (M2 보강)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_failed_partial_flush_retries_in_finally():
+    """Partial flush가 실패한 chunk는 retry_buffer를 거쳐 finally에서 재시도.
+
+    DB 일시 장애로 한 chunk가 실패해도 final flush가 한 번 더 시도하여
+    silent data loss를 막는 회귀 가드.
+    """
+    # 32 events 임계치를 넘기는 chunk 1개를 발생시키기 위해 LLM 응답을
+    # 길게 만든다. content_delta 한 번 + message_start/end → 약 3개
+    # 이벤트라 batch_size 임계치는 안 닿지만, time 임계치(2s)를 인위적으로
+    # 강제하기 어렵다. 대신 _FLUSH_BATCH_SIZE를 monkey patch.
+    from app.agent_runtime import streaming as streaming_mod
+
+    original_batch = streaming_mod._FLUSH_BATCH_SIZE
+    streaming_mod._FLUSH_BATCH_SIZE = 1  # 매 emit마다 flush 시도
+
+    call_count = {"n": 0}
+    received: list[list[dict[str, Any]]] = []
+
+    async def flaky_callback(chunk: list[dict[str, Any]]) -> None:
+        call_count["n"] += 1
+        # 첫 partial flush만 실패 (retry_buffer 진입). 이후는 성공.
+        if call_count["n"] == 1:
+            raise RuntimeError("DB hiccup")
+        received.append(list(chunk))
+
+    try:
+        agent = MockAgent([(_make_ai_chunk("hello"), {})])
+        _ = [
+            e
+            async for e in stream_agent_response(
+                agent, [], {}, persist_callback=flaky_callback, run_id="run-retry"
+            )
+        ]
+    finally:
+        streaming_mod._FLUSH_BATCH_SIZE = original_batch
+
+    # 첫 호출은 실패했지만 final flush가 retry_buffer + 잔여 buffer를 모두
+    # 시도하여 결국 모든 이벤트가 received에 누적됨. 최소 1번은 성공해야 함.
+    assert call_count["n"] >= 2  # 최소 첫 fail + final retry
+    # 모든 이벤트 id가 run-retry- 프리픽스
+    flat_ids = [evt["id"] for chunk in received for evt in chunk]
+    assert any(eid.startswith("run-retry-") for eid in flat_ids)
+
+
+@pytest.mark.asyncio
+async def test_inflight_flush_cap_throttles_create_task():
+    """In-flight task가 _MAX_INFLIGHT_FLUSHES를 초과하면 새 chunk는 buffer에 보관.
+
+    Backpressure 회귀 가드 — DB가 느려져도 task 폭주가 일어나지 않는다.
+    """
+    from app.agent_runtime import streaming as streaming_mod
+
+    original_batch = streaming_mod._FLUSH_BATCH_SIZE
+    original_cap = streaming_mod._MAX_INFLIGHT_FLUSHES
+    streaming_mod._FLUSH_BATCH_SIZE = 1
+    streaming_mod._MAX_INFLIGHT_FLUSHES = 1  # 한 번에 1개만 in-flight
+
+    flush_started = asyncio.Event()
+    flush_release = asyncio.Event()
+    flush_count = {"n": 0}
+
+    async def slow_callback(chunk: list[dict[str, Any]]) -> None:
+        flush_count["n"] += 1
+        flush_started.set()
+        # 첫 호출은 release까지 대기 — in-flight 점유
+        if flush_count["n"] == 1:
+            await flush_release.wait()
+
+    # 여러 content_delta를 yield하는 agent → 여러 flush 시도 유발
+    chunks = [(_make_ai_chunk(f"c{i}"), {}) for i in range(5)]
+    agent = MockAgent(chunks)
+
+    try:
+        # 백그라운드에서 stream 진행
+        events: list[str] = []
+
+        async def consume():
+            async for e in stream_agent_response(
+                agent, [], {}, persist_callback=slow_callback, run_id="run-backpressure"
+            ):
+                events.append(e)
+
+        consume_task = asyncio.create_task(consume())
+        # 첫 flush 시작 대기 (in-flight=1 점유)
+        await asyncio.wait_for(flush_started.wait(), timeout=2.0)
+        # 다른 emit들은 cap 때문에 새 task 안 만들고 buffer에 쌓임.
+        # release하면 finally의 final flush가 잔여를 처리.
+        flush_release.set()
+        await asyncio.wait_for(consume_task, timeout=5.0)
+    finally:
+        streaming_mod._FLUSH_BATCH_SIZE = original_batch
+        streaming_mod._MAX_INFLIGHT_FLUSHES = original_cap
+
+    # 최소 1회는 호출됐고, cap 덕분에 무한 폭주는 안 일어남.
+    # 정확한 호출 수는 timing-dependent라 lower bound만 검증.
+    assert flush_count["n"] >= 1

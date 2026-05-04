@@ -4,7 +4,7 @@ import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, StreamingResponse
@@ -234,6 +234,42 @@ def _sse_handler(
         {"X-Run-Id": run_id} if run_id else None
     )
     return _sse_response(generate(), extra_headers=extra)
+
+
+class _StreamCtx(NamedTuple):
+    """W3-out M2 — 4개 POST 핸들러가 공통으로 만드는 streaming 컨텍스트.
+
+    ``_prepare_stream_context`` 가 한 번에 생성, 핸들러는 unpack해서 사용.
+    """
+
+    run_id: str
+    broker: Any  # EventBroker — 순환 import 회피 위해 Any
+    persist_cb: Callable[[list[dict[str, Any]]], Awaitable[None]]
+    trace_sink: list[dict[str, Any]]
+    msg_id_sink: list[str]
+
+
+def _prepare_stream_context(conversation_id: uuid.UUID) -> _StreamCtx:
+    """W3-out M2 — 4 POST 핸들러 공통 셋업 (run_id + broker + sinks + persist_cb).
+
+    핸들러는 ``ctx = _prepare_stream_context(conversation_id)`` 한 줄로 받고,
+    executor 호출 시 ``ctx.broker`` / ``ctx.persist_cb`` / ``ctx.run_id`` 등을
+    keyword로 전달, ``_sse_handler(... run_id=ctx.run_id, on_complete=lambda
+    success: _finalize_trace(conversation_id, ctx.run_id, ctx.trace_sink,
+    ctx.msg_id_sink, success=success))`` 로 마감.
+    """
+    run_id = str(uuid.uuid4())
+    broker = broker_registry.get_or_create(
+        run_id, conversation_id=str(conversation_id)
+    )
+    persist_cb = _build_persist_callback(conversation_id, run_id)
+    return _StreamCtx(
+        run_id=run_id,
+        broker=broker,
+        persist_cb=persist_cb,
+        trace_sink=[],
+        msg_id_sink=[],
+    )
 
 
 def _build_persist_callback(
@@ -494,26 +530,22 @@ async def send_message(
             attachment_ids=[a.id for a in data.attachments],
         )
 
-    trace_sink: list[dict[str, Any]] = []
-    msg_id_sink: list[str] = []
-    run_id = str(uuid.uuid4())
-    broker = broker_registry.get_or_create(run_id, conversation_id=str(conversation_id))
-    persist_cb = _build_persist_callback(conversation_id, run_id)
+    ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: execute_agent_stream(
             cfg,
             [{"role": "user", "content": data.content}],
-            trace_sink=trace_sink,
-            msg_id_sink=msg_id_sink,
-            broker=broker,
-            persist_callback=persist_cb,
-            run_id=run_id,
+            trace_sink=ctx.trace_sink,
+            msg_id_sink=ctx.msg_id_sink,
+            broker=ctx.broker,
+            persist_callback=ctx.persist_cb,
+            run_id=ctx.run_id,
         ),
         log_msg=f"Agent stream failed for conversation {conversation_id}",
         user_msg="에이전트 실행 중 오류가 발생했습니다.",
-        run_id=run_id,
+        run_id=ctx.run_id,
         on_complete=lambda success: _finalize_trace(
-            conversation_id, run_id, trace_sink, msg_id_sink, success=success
+            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
         ),
     )
 
@@ -529,26 +561,22 @@ async def resume_message(
     cfg = await _resolve_agent_context(db, conversation_id, user)
     await chat_service.touch_conversation(db, conversation_id)
 
-    trace_sink: list[dict[str, Any]] = []
-    msg_id_sink: list[str] = []
-    run_id = str(uuid.uuid4())
-    broker = broker_registry.get_or_create(run_id, conversation_id=str(conversation_id))
-    persist_cb = _build_persist_callback(conversation_id, run_id)
+    ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: resume_agent_stream(
             cfg,
             data.response,
-            trace_sink=trace_sink,
-            msg_id_sink=msg_id_sink,
-            broker=broker,
-            persist_callback=persist_cb,
-            run_id=run_id,
+            trace_sink=ctx.trace_sink,
+            msg_id_sink=ctx.msg_id_sink,
+            broker=ctx.broker,
+            persist_callback=ctx.persist_cb,
+            run_id=ctx.run_id,
         ),
         log_msg=f"Agent resume failed for conversation {conversation_id}",
         user_msg="에이전트 재개 중 오류가 발생했습니다.",
-        run_id=run_id,
+        run_id=ctx.run_id,
         on_complete=lambda success: _finalize_trace(
-            conversation_id, run_id, trace_sink, msg_id_sink, success=success
+            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
         ),
     )
 
@@ -627,26 +655,22 @@ async def edit_message(
     # newest (just-edited) branch becomes the displayed one on next list.
     await chat_service.clear_active_branch_override(db, conversation_id)
 
-    trace_sink: list[dict[str, Any]] = []
-    msg_id_sink: list[str] = []
-    run_id = str(uuid.uuid4())
-    broker = broker_registry.get_or_create(run_id, conversation_id=str(conversation_id))
-    persist_cb = _build_persist_callback(conversation_id, run_id)
+    ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: execute_agent_stream(
             cfg,
             [{"role": "user", "content": data.new_content}],
-            trace_sink=trace_sink,
-            msg_id_sink=msg_id_sink,
-            broker=broker,
-            persist_callback=persist_cb,
-            run_id=run_id,
+            trace_sink=ctx.trace_sink,
+            msg_id_sink=ctx.msg_id_sink,
+            broker=ctx.broker,
+            persist_callback=ctx.persist_cb,
+            run_id=ctx.run_id,
         ),
         log_msg=f"Agent edit failed for conversation {conversation_id}",
         user_msg="메시지 편집 중 오류가 발생했습니다.",
-        run_id=run_id,
+        run_id=ctx.run_id,
         on_complete=lambda success: _finalize_trace(
-            conversation_id, run_id, trace_sink, msg_id_sink, success=success
+            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
         ),
     )
 
@@ -725,26 +749,22 @@ async def regenerate_message(
     # Empty messages_history → executor passes None to LangGraph,
     # resuming from the rewound checkpoint state without duplicating
     # the user message.
-    trace_sink: list[dict[str, Any]] = []
-    msg_id_sink: list[str] = []
-    run_id = str(uuid.uuid4())
-    broker = broker_registry.get_or_create(run_id, conversation_id=str(conversation_id))
-    persist_cb = _build_persist_callback(conversation_id, run_id)
+    ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: execute_agent_stream(
             cfg,
             [],
-            trace_sink=trace_sink,
-            msg_id_sink=msg_id_sink,
-            broker=broker,
-            persist_callback=persist_cb,
-            run_id=run_id,
+            trace_sink=ctx.trace_sink,
+            msg_id_sink=ctx.msg_id_sink,
+            broker=ctx.broker,
+            persist_callback=ctx.persist_cb,
+            run_id=ctx.run_id,
         ),
         log_msg=f"Agent regenerate failed for conversation {conversation_id}",
         user_msg="메시지 재생성 중 오류가 발생했습니다.",
-        run_id=run_id,
+        run_id=ctx.run_id,
         on_complete=lambda success: _finalize_trace(
-            conversation_id, run_id, trace_sink, msg_id_sink, success=success
+            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
         ),
     )
 

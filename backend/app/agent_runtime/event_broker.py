@@ -47,6 +47,11 @@ class BrokeredEvent(TypedDict):
 _DEFAULT_BUFFER_SIZE = 2000
 _DEFAULT_LISTENER_QUEUE_MAXSIZE = 512
 
+# Memory-protection caps. APScheduler GC (M4) is the primary defense, but these
+# in-band limits prevent runaway accumulation in the M1+M2 release window.
+_DEFAULT_MAX_BROKERS = 256
+_DEFAULT_MAX_LIVE_AGE_SECONDS = 1800  # 30 min — longer than any reasonable turn
+
 
 class EventBroker:
     """Per-run SSE event broker.
@@ -160,6 +165,12 @@ class EventBroker:
         )
         if not self._closed:
             self._listeners.add(queue)
+        else:
+            # Defensive against future await insertions in this block:
+            # if close() raced with our subscribe entry, ensure subscriber
+            # still receives the sentinel and exits cleanly.
+            with contextlib.suppress(asyncio.QueueFull):
+                queue.put_nowait(None)
         snapshot: list[BrokeredEvent] = list(self._buffer)
         already_closed = self._closed
 
@@ -227,10 +238,23 @@ class BrokerRegistry:
 
     멀티-워커 환경 지원은 후속 트랙. 단일 워커에서는 dict + asyncio
     single-thread 모델로 충분하다 (lock 불필요).
+
+    메모리 보호: M4의 APScheduler GC가 정식 청소부지만, 그 이전 PR
+    릴리즈 창에서도 오래된 broker가 무한 누적되지 않도록 in-band
+    safeguard 두 가지를 둔다 — (a) ``max_brokers`` 한도 도달 시
+    가장 오래된 closed broker부터 eviction, (b) live broker도
+    ``max_live_age_seconds`` 초과 시 ``evict_expired`` 가 강제 close.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        max_brokers: int = _DEFAULT_MAX_BROKERS,
+        max_live_age_seconds: int = _DEFAULT_MAX_LIVE_AGE_SECONDS,
+    ) -> None:
         self._brokers: dict[str, EventBroker] = {}
+        self._max_brokers = max_brokers
+        self._max_live_age_seconds = max_live_age_seconds
 
     def get_or_create(
         self,
@@ -244,9 +268,15 @@ class BrokerRegistry:
         같은 run_id로 두 번 호출 시 같은 EventBroker 인스턴스를 반환한다.
         기존 broker가 이미 close된 경우(같은 run_id 재사용은 비정상)에는
         새 broker로 교체한다.
+
+        한도 도달 시 in-band LRU eviction: ``max_brokers`` 초과면 가장
+        오래된 closed broker부터 dict에서 pop. 모두 live면 가장 오래된
+        live broker를 강제 close + pop. 운영 OOM 방지가 정상 turn 보존
+        보다 우선.
         """
         broker = self._brokers.get(run_id)
         if broker is None or broker.is_closed:
+            self._enforce_capacity()
             broker = EventBroker(
                 run_id,
                 buffer_size=buffer_size,
@@ -255,25 +285,68 @@ class BrokerRegistry:
             self._brokers[run_id] = broker
         return broker
 
+    def _enforce_capacity(self) -> None:
+        """Drop oldest closed (or oldest live) brokers until under the cap.
+
+        Insertion order(=Python 3.7+ dict ordering)가 LRU 근사로 충분.
+        가장 먼저 들어온 broker부터 검사하여 closed면 즉시 pop, live면
+        강제 close 후 pop. ``max_brokers - 1`` 까지 비워야 새 entry가
+        들어갈 자리 확보.
+        """
+        if len(self._brokers) < self._max_brokers:
+            return
+        target = self._max_brokers - 1
+        for run_id in list(self._brokers.keys()):
+            if len(self._brokers) <= target:
+                break
+            broker = self._brokers[run_id]
+            if not broker.is_closed:
+                logger.warning(
+                    "BrokerRegistry capacity reached (%d) — force-closing live "
+                    "broker run_id=%s to make room",
+                    self._max_brokers,
+                    run_id,
+                )
+                broker.close()
+            self._brokers.pop(run_id, None)
+
     def get(self, run_id: str) -> EventBroker | None:
         return self._brokers.get(run_id)
 
     def evict_expired(self, ttl_seconds: int = 300) -> int:
-        """Evict brokers whose ``closed_at + ttl_seconds`` is in the past.
+        """Evict closed brokers past TTL + force-close stale live brokers.
 
-        살아있는(live) broker는 evict하지 않는다 (스트림 진행 중일 수
-        있음). APScheduler 60s interval job에서 호출.
+        두 단계로 정리:
+
+        1. ``broker.closed_at + ttl_seconds`` 가 과거면 dict에서 pop.
+        2. live broker 중 ``broker.created_at + max_live_age_seconds`` 가
+           과거면 강제 close (다음 호출에서 1단계로 정리됨).
+           정상 turn은 분 단위로 끝나므로 30분 초과 live broker는
+           누락된 close() 콜백 또는 finally 미호출의 신호다.
 
         Returns:
-            Number of brokers evicted.
+            Number of brokers evicted (closed broker pops only — force-closed
+            live brokers는 다음 호출에서 evict).
         """
-        now_ts = datetime.now(UTC).replace(tzinfo=None).timestamp()
-        cutoff_ts = now_ts - ttl_seconds
+        now = datetime.now(UTC).replace(tzinfo=None)
+        now_ts = now.timestamp()
+        closed_cutoff = now_ts - ttl_seconds
+        live_cutoff = now_ts - self._max_live_age_seconds
         to_remove: list[str] = []
         for run_id, broker in self._brokers.items():
             if broker.closed_at is None:
+                # Force-close stale live broker. Will be evicted on next call.
+                if broker.created_at.timestamp() <= live_cutoff:
+                    logger.warning(
+                        "Force-closing stale live broker run_id=%s "
+                        "(age %ds > max %ds)",
+                        run_id,
+                        int(now_ts - broker.created_at.timestamp()),
+                        self._max_live_age_seconds,
+                    )
+                    broker.close()
                 continue
-            if broker.closed_at.timestamp() <= cutoff_ts:
+            if broker.closed_at.timestamp() <= closed_cutoff:
                 to_remove.append(run_id)
         for run_id in to_remove:
             self._brokers.pop(run_id, None)
