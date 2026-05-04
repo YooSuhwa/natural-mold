@@ -51,36 +51,34 @@ def _now_default() -> sa.TextClause:
 
 
 def upgrade() -> None:
-    op.add_column(
-        "message_events",
-        sa.Column(
-            "status",
-            sa.String(20),
-            nullable=False,
-            server_default=sa.text("'completed'"),
-        ),
-    )
-    op.add_column(
-        "message_events",
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=False),
-            nullable=False,
-            server_default=_now_default(),
-        ),
-    )
-    op.create_check_constraint(
-        _CHECK_NAME,
-        "message_events",
-        sa.column("status").in_(_STATUS_VALUES),
-    )
-
-    # PG에서는 ``CREATE INDEX CONCURRENTLY`` 로 long-table 락 회피. alembic의
-    # 기본 트랜잭션 안에서는 CONCURRENTLY 가 금지되므로 ``autocommit_block``
-    # 으로 트랜잭션을 일시 종료한다. SQLite 는 CONCURRENTLY 미지원이라 일반
-    # ``create_index`` 사용.
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
+        # PG: native ALTER TABLE — fast default(메타데이터만) + CHECK 제약 +
+        # CONCURRENTLY index. autocommit_block으로 트랜잭션을 일시 종료해야
+        # CREATE INDEX CONCURRENTLY 가 허용된다.
+        op.add_column(
+            "message_events",
+            sa.Column(
+                "status",
+                sa.String(20),
+                nullable=False,
+                server_default=sa.text("'completed'"),
+            ),
+        )
+        op.add_column(
+            "message_events",
+            sa.Column(
+                "updated_at",
+                sa.DateTime(timezone=False),
+                nullable=False,
+                server_default=_now_default(),
+            ),
+        )
+        op.create_check_constraint(
+            _CHECK_NAME,
+            "message_events",
+            sa.column("status").in_(_STATUS_VALUES),
+        )
         with op.get_context().autocommit_block():
             op.execute(
                 sa.text(
@@ -89,6 +87,30 @@ def upgrade() -> None:
                 )
             )
     else:
+        # SQLite: ALTER TABLE 은 ADD COLUMN 만 native 지원. CHECK 제약과
+        # nullable 컬럼 추가 일부는 ``batch_alter_table`` 의 copy-and-move
+        # 로 우회. 인덱스는 일반 create_index (CONCURRENTLY 미지원).
+        with op.batch_alter_table("message_events") as batch_op:
+            batch_op.add_column(
+                sa.Column(
+                    "status",
+                    sa.String(20),
+                    nullable=False,
+                    server_default=sa.text("'completed'"),
+                )
+            )
+            batch_op.add_column(
+                sa.Column(
+                    "updated_at",
+                    sa.DateTime(timezone=False),
+                    nullable=False,
+                    server_default=_now_default(),
+                )
+            )
+            batch_op.create_check_constraint(
+                _CHECK_NAME,
+                sa.column("status").in_(_STATUS_VALUES),
+            )
         op.create_index(
             _INDEX_NAME,
             "message_events",
