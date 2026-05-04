@@ -21,7 +21,7 @@ import {
   conversationKeys,
 } from '@/lib/hooks/use-conversations'
 import { useQueryClient } from '@tanstack/react-query'
-import { streamChat } from '@/lib/sse/stream-chat'
+import { streamChat, type StreamChatOptions } from '@/lib/sse/stream-chat'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
@@ -70,7 +70,7 @@ export default function ChatPage({
   }, [conversationId, setSessionTokenUsage])
 
   const streamFn = useCallback(
-    (content: string, signal: AbortSignal, options?: { attachmentIds?: string[] }) =>
+    (content: string, signal: AbortSignal, options?: StreamChatOptions) =>
       streamChat(conversationId, content, signal, options),
     [conversationId],
   )

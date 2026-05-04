@@ -617,6 +617,10 @@
     "streaming": {
       "thinking": "생각 중..."
     },
+    "reconnect": {
+      "reconnecting": "연결 재시도 중...",
+      "failed": "연결을 다시 맺지 못했어요. 메시지를 다시 전송하거나 새로고침해주세요."
+    },
     "loading": {
       "witty": {
         "0": "잠시만요, 뇌를 부팅하는 중...",

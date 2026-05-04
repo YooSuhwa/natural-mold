@@ -523,3 +523,44 @@ M0(거버넌스+docs+삭제분석) → M1(브랜딩+Cipher) → M2(Credential+Va
 - 발견 패턴 1건 (jensen 보고): record_turn은 IntegrityError invariant(unique assistant_msg_id 보장)가 있으므로 UPSERT인 append_events로 위임 불가. shim 보존 + _resolve_linked_ids 헬퍼만 공용. M5/M6 후속에서 contract 재평가.
 - 베조스 1순위 함정(BrokerRegistry process-local 누수) 사전 차단: tests/conftest.py:53 _clear_event_broker_registry autouse fixture. 3회 연속 실행에서 flaky 0.
 - 다음 사이클(M3+M4): GET /stream endpoint + APScheduler lifecycle + close_for_conversation. backend 자체 완결, frontend는 M5 별도 사이클.
+
+[2026-05-04 M5 DONE — Frontend lastEventId + withAutoResume + reconnect 인디케이터]
+- 브랜치: feature/w3-out-m5-frontend (main 분기 — PR #117 머지된 상태에서 시작).
+- 신규 5: parse-sse.ts(streamSSEGetResume + onRunId helper), with-auto-resume.ts(generator decorator), stream-resume-attach.ts(GET wrapper), reconnect-indicator.tsx, reconnect-state.ts(Jotai atom). 수정 8: parse-sse(StreamSSEPostOptions/onRunId), stream-{chat,edit,regenerate,resume}.ts(onRunId option), use-chat-runtime.ts(runIdRef + lastEventIdRef + withAutoResume 통합 + reconnectStateAtom + toast), assistant-thread.tsx(ReconnectIndicator 마운트), messages/ko.json(chat.reconnect 추가).
+- 핵심 설계 결정:
+  - withAutoResume 시그니처: primary() → resumeFactory(lastEventId, attempt)|null. null 반환은 "재시도 불가" (runId 미수신/conversationId 없음 등). 4xx StreamHttpError + AbortError + signal.aborted 는 retry skip.
+  - resume 정책: backoff [500,1500,4000] × maxAttempts=3. 재시도 stream 첫 event 도착 시 attempt 카운터 reset → 끊김 N회 누적해도 새 끊김 윈도우는 3회 풀로 시도.
+  - boundary dedup: withAutoResume 자체에서는 dedup 안 함. caller(use-chat-runtime)의 streamGuard.isDuplicate(event.id)가 boundary 중복 1개를 자동으로 거른다 (Map<string,bool> 기반). 이중 dedup 회피.
+  - GET resume 게이트: conversations 라우터(streamChat/Edit/Regenerate/Resume)만 onRunId 지원 → resumeFactory가 runIdRef.current null 시 null 반환. builder/assistant-panel 같은 다른 streamFn 은 graceful degradation (재시도 안 함, 기존 동작 100% 유지).
+  - 인디케이터 분기: reconnecting → 배지만 / failed → 배지는 idle로 reset + toast 1회. prepareStream() 진입 시 reconnectState idle 강제 reset.
+  - StreamHttpError class 도입: GET /stream 응답 4xx/5xx 구분용. withAutoResume 가 "4xx = non-retryable"(404 RESUME_NOT_FOUND, 409 INTERRUPT_PENDING)로 판정.
+- gotcha:
+  - SSEEvent 타입이 두 개 (parse-sse 의 generic SSEEvent<T> vs lib/types 의 discriminated union). withAutoResume 는 IdentifiedEvent {id?: string} 으로 일반화 → 둘 다 받음.
+  - StreamFn 시그니처에 onRunId 추가 시 builder/assistant-panel 의 (content, signal) 시그니처는 그대로 유효 (TS 함수 contravariance). 단순 ignore.
+  - stale event 는 별도 typed event 안 만듦 — consumeStream switch 미스 → 자동 폐기. 백엔드는 stale 이후 즉시 close 하므로 caller 가 자연스럽게 종료.
+  - sleepWithAbort: setTimeout + abort listener. signal 이미 aborted 면 즉시 reject. backoff 도중 cancel 시 finally 에서 timer/listener cleanup.
+  - prepareStream() 내 setReconnectState('idle') 추가 — 이전 turn 의 'failed' 잔재가 새 turn 인디케이터에 새는 회귀 가드.
+- 검증: pnpm test --run (45 files, 259 tests pass) + pnpm lint (0 errors, 1 pre-existing warning) + pnpm build (TypeScript clean, 16 pages OK). with-auto-resume.test.ts 단위 10건 신규: primary 정상 종료 / resume 호출 / 콜백 순서 / maxAttempts 초과 / 4xx skip / AbortError / signal.aborted / null 반환 / 다중 cycle attempt reset / id 없는 event lastEventId 미갱신.
+- 다음 사이클(M6): backend integration test (test_stream_resume.py 4 시나리오 — live attach / replay-only / stale streaming / interrupt pending). e2e manual 검증은 별도. ADR-011 작성도 함께 가능.
+
+[2026-05-04 M5 수동 통합 테스트 사이클 — 발견 + fix 4건]
+- 시나리오: backend 통째 SIGKILL → 1-2초 후 재시작 → withAutoResume retry 가 GET /stream 으로 partial events DB replay 받기. 사용자 manual test (DevTools Network throttle 은 in-flight SSE 안 끊으므로 부적합 → backend kill 방식이 production server crash 와 가장 유사).
+- 통합 시각으로 본 발견 (M5 unit test 로는 절대 못 잡는 종류):
+  1. **CORS expose_headers 누락 (HIGH/blocker)**: cross-origin (3000→8002) 에서 frontend 가 X-Run-Id / X-Resume-Mode 헤더 못 읽음 → runIdRef 항상 null → resumeFactory 가 null 반환 → withAutoResume 자체가 silent no-op. fix: backend/app/main.py 의 CORSMiddleware 에 expose_headers=["X-Run-Id", "X-Resume-Mode"] 추가.
+  2. **truncateMessagesCache envelope 미처리 (pre-existing, M-CHAT1b 부터)**: 캐시는 MessagesEnvelope ({messages, ...}) 인데 setQueryData 가 Message[] 로 가정해 prev.slice 호출 → TypeError. Regenerate 클릭 시 트리거. fix: prev.messages.slice 후 envelope 통째로 갱신.
+  3. **streamingMessages 무조건 클리어 회귀 (pre-W3-out, 이번에 가시화)**: stream 이 mid-way 끊기면 backend 가 finalize_turn 못 해 messages 에 row 없음. 그런데 prevMessagesRef 비교 블록이 무조건 streamingMessages = [] → 받은 partial 토큰이 화면에서 사라짐. fix: runIdRef.current 가 messages 에 매칭 row 있을 때만 클리어. 없으면 partial 유지.
+  4. **optimistic user 중복 (M5 새 회귀)**: backend 는 user msg 를 POST 진입 직후 commit 하므로 refetch 후 messages 에 user row 있음. streamingMessages 의 optimistic user (id `opt-{uuid}`) 가 backend UUID 와 매칭 안 돼 둘 다 표시 → user 버블 2개. fix: 미커밋 케이스에서 streamingMessages 클리어 시 role==='user' 만 제거, assistant+tool 유지.
+- 테스트 인프라:
+  - dev: while-loop 스크립트로 backend 자동 재시작 (uvicorn --reload 는 worker SIGKILL 자동 회복 X). pkill -9 -f "uvicorn.*8002" 한 줄로 crash 트리거.
+  - DevTools "Offline" 은 in-flight SSE connection 못 끊고 NEW request 만 차단 → 시나리오 2 검증 부적합. backend kill 만 유효.
+- 검증된 M5 동작:
+  - POST 응답 X-Run-Id 추출 ✅
+  - withAutoResume retry × maxAttempts=3 backoff [500,1500,4000] ✅
+  - GET /stream?run_id=&last_event_id= 자동 호출 ✅
+  - retry 성공 시 200 OK + DB partial events replay ✅ (X-Resume-Mode: replay, broker SIGKILL 로 함께 죽었으므로)
+  - reconnect 인디케이터 노출 ✅ (사용자 확인)
+  - 받은 토큰 화면 보존 ✅ (회귀 fix #3 효과)
+- 알려진 한계 (plan 명세 그대로):
+  - backend 통째 kill 시 in-flight LangGraph turn 사라짐 → DB replay 만 받고 종료, 새 토큰 안 이어짐. multi-worker / sticky routing 후속 트랙으로 해결 가능.
+  - production 의 transient network drop (Wi-Fi 토글 등) 은 broker 살아있어 X-Resume-Mode: live 로 진짜 이어짐 — 이 케이스는 manual test 어려워 unit + 코드 review 로 검증.
+- 다음 사이클 (M6): backend integration test (test_stream_resume.py 4 시나리오 — live attach / replay-only / stale streaming / interrupt pending) + ADR-011 작성.

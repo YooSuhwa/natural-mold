@@ -42,13 +42,21 @@ export async function* parseSSEStream<TEvent extends string>(
       buffer = lines.pop() || ''
 
       for (const line of lines) {
-        if (line.startsWith('event: ')) {
-          currentEvent = line.slice(7).trim() as TEvent
-        } else if (line.startsWith('id: ')) {
-          currentId = line.slice(4).trim()
-        } else if (line.startsWith('data: ')) {
+        // SSE 표준: ``field:value`` — colon 뒤의 공백 1개까지 trim. ``id: x`` /
+        // ``id:x`` 둘 다 유효. 일부 프록시가 공백을 제거하면 startsWith 매칭이
+        // 깨져 lastEventId 추적이 망가졌었음. colon-split 로 통일.
+        const colon = line.indexOf(':')
+        if (colon < 0) continue  // comment 라인 (``: ...``) 또는 빈 줄
+        const field = line.slice(0, colon)
+        const rawValue = line.slice(colon + 1)
+        const value = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue
+        if (field === 'event') {
+          currentEvent = value.trim() as TEvent
+        } else if (field === 'id') {
+          currentId = value.trim()
+        } else if (field === 'data') {
           try {
-            const data: unknown = JSON.parse(line.slice(6))
+            const data: unknown = JSON.parse(value)
             yield { event: currentEvent, data, id: currentId }
           } catch {
             // Skip malformed JSON lines
@@ -66,6 +74,17 @@ export async function* parseSSEStream<TEvent extends string>(
 }
 
 /**
+ * POST 기반 SSE stream 옵션.
+ *
+ * - ``onRunId`` — W3-out M5. 응답 헤더 ``X-Run-Id`` 가 도착하면 1회 호출. 호출
+ *   측은 이 id 를 ref 에 저장해 두었다가 GET ``/stream?run_id=`` 로 재연결한다.
+ *   primary stream 이 헤더 없이 끝나면 호출되지 않는다.
+ */
+export interface StreamSSEPostOptions {
+  onRunId?: (runId: string) => void
+}
+
+/**
  * Generic POST-based SSE stream. Sends a JSON body to the given path and
  * yields parsed SSE events.
  *
@@ -73,11 +92,10 @@ export async function* parseSSEStream<TEvent extends string>(
  * - ``openWhenHidden: true`` → 탭이 백그라운드로 가도 connection 유지. 기본
  *   EventSource는 브라우저가 throttle하거나 끊지만, fetch-event-source는 fetch
  *   API를 직접 사용해 hidden 상태에서도 살아있다.
- * - 자동 재연결은 **비활성화**. natural-mold의 SSE는 POST 기반이라 같은 stream을
- *   다시 attach할 수 없다 (POST 재실행은 새 LangGraph run = 비용 + 중복). retry는
- *   서버에 GET-based resume endpoint가 추가될 때(W3-out) 풀린다.
+ * - 자동 재연결은 **비활성화**. POST 재실행 = 새 LangGraph run = 비용 + 중복.
+ *   재연결은 W3-out M5 에서 ``streamSSEGetResume`` (GET) + ``withAutoResume``
+ *   (caller 측 generator 데코레이터) 조합으로 달성한다.
  * - id/event/data는 ``EventSourceMessage``에서 직접 받아 ``parseSSEStream`` 우회.
- *   재연결을 안 하므로 ``Last-Event-ID`` 헤더 송신도 불필요.
  *
  * generator 인터페이스는 그대로 유지 (caller 전부 호환).
  */
@@ -86,6 +104,7 @@ export async function* streamSSEPost<TEvent extends string>(
   body: Record<string, unknown>,
   signal: AbortSignal | undefined,
   defaultEvent: TEvent,
+  options?: StreamSSEPostOptions,
 ): AsyncGenerator<SSEEvent<TEvent>> {
   // Callback-driven fetchEventSource → generator로 bridge.
   const buffer: SSEEvent<TEvent>[] = []
@@ -118,6 +137,13 @@ export async function* streamSSEPost<TEvent extends string>(
       // 자체 검증으로 통일.
       if (!response.ok) {
         throw new Error(`Stream failed: ${response.status}`)
+      }
+      // W3-out M5 — X-Run-Id 헤더는 stream 재연결 식별자. POST 응답 헤더에서
+      // 1회 추출해 caller 에게 전달한다. 헤더가 없으면(legacy/예외 경로) 조용히
+      // 패스 — withAutoResume 가 runId 없으면 재연결을 시도하지 않는다.
+      if (options?.onRunId) {
+        const runId = response.headers.get('X-Run-Id') ?? response.headers.get('x-run-id')
+        if (runId) options.onRunId(runId)
       }
     },
     onmessage(msg: EventSourceMessage) {
@@ -166,6 +192,69 @@ export async function* streamSSEPost<TEvent extends string>(
       resolver = resolve
     })
   }
+}
+
+/**
+ * GET 기반 SSE stream — W3-out M5 의 stream resume endpoint 전용.
+ *
+ * - ``Last-Event-ID`` 헤더로 마지막 받은 event id 를 송신 (서버는 query
+ *   ``last_event_id`` 우선, 헤더 fallback 으로 둘 다 지원).
+ * - ``X-Run-Id``, ``X-Resume-Mode`` 응답 헤더는 ``onMode`` 콜백으로 caller 에
+ *   전달. 관찰성 + dedup 정책 결정 (live → boundary 1개 dedup 필요, replay →
+ *   서버가 이미 after_id 이후만 보냄).
+ * - 백엔드가 reject 분기 시 (4xx, 특히 ``404 RESUME_NOT_FOUND`` /
+ *   ``409 RESUME_INTERRUPT_PENDING``) ``onopen`` 에서 ``StreamHttpError`` 를
+ *   throw — ``withAutoResume`` 가 retryable 여부를 status 로 판단한다.
+ *
+ * native ``fetch`` + ``parseSSEStream`` 으로 구현 (POST helper 의 fetch-event-
+ * source 는 자동 재연결 비활성화 외에 GET 에 줄 이점이 없음 + Last-Event-ID
+ * 헤더를 쓰면 라이브러리 자체 retry 와 충돌).
+ */
+export interface StreamSSEGetResumeOptions<TEvent extends string> {
+  /** SSE 표준 ``Last-Event-ID`` 헤더로 송신할 마지막 event id. */
+  lastEventId?: string
+  /** ``run_id`` query param. 서버가 broker / DB row 식별에 사용. */
+  runId?: string
+  /** 응답 헤더 ``X-Resume-Mode`` 와 ``X-Run-Id`` 를 1회 전달. */
+  onMode?: (info: { mode: 'live' | 'replay' | string; runId: string | null }) => void
+  defaultEvent: TEvent
+}
+
+/** GET 기반 stream 이 4xx/5xx 로 reject 됐을 때 throw 되는 에러.
+ *  ``withAutoResume`` 가 ``status >= 500`` / 네트워크 에러만 retry 하는 데 사용. */
+export class StreamHttpError extends Error {
+  constructor(public status: number, public statusText: string) {
+    super(`Stream HTTP ${status} ${statusText}`)
+    this.name = 'StreamHttpError'
+  }
+}
+
+export async function* streamSSEGetResume<TEvent extends string>(
+  path: string,
+  signal: AbortSignal | undefined,
+  options: StreamSSEGetResumeOptions<TEvent>,
+): AsyncGenerator<SSEEvent<TEvent>> {
+  const url = new URL(`${API_BASE}${path}`)
+  if (options.runId) url.searchParams.set('run_id', options.runId)
+  if (options.lastEventId) url.searchParams.set('last_event_id', options.lastEventId)
+
+  const headers: Record<string, string> = { Accept: 'text/event-stream' }
+  if (options.lastEventId) headers['Last-Event-ID'] = options.lastEventId
+
+  const response = await fetch(url.toString(), { method: 'GET', headers, signal })
+  if (!response.ok) {
+    throw new StreamHttpError(response.status, response.statusText)
+  }
+  if (options.onMode) {
+    options.onMode({
+      mode: response.headers.get('X-Resume-Mode') ?? 'unknown',
+      runId: response.headers.get('X-Run-Id'),
+    })
+  }
+  if (!response.body) {
+    throw new Error('Stream response has no body')
+  }
+  yield* parseSSEStream(response.body, options.defaultEvent)
 }
 
 /**
