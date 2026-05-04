@@ -1,54 +1,35 @@
-# 작업 인계 — feature/w3-out-m3-get-stream (M3 + M4 + 리뷰 fix)
+# 작업 인계 — W3-out M6 완료
 
-> 새 세션 진입: 본 파일 + `progress.txt` 마지막 4-5 섹션 + `~/.claude/plans/1-ux-quirky-canyon.md`.
-> 설계: `docs/design-docs/adr-011-sse-stream-resume.md`.
-> ⚠️ 첫 작업: 브랜치 머지 여부 확인 → main 이면 `/sync` 후 M5.
+> 새 세션 진입: 본 파일 + `progress.txt` 마지막 4-5 섹션 + `~/.claude/plans/1-ux-quirky-canyon.md` (마무리).
+> 설계: `docs/design-docs/adr-011-sse-stream-resume.md` (M3-M5 결정 반영 완료).
+> ⚠️ 첫 작업: PR 머지 여부 확인 → main 이면 W3-out 트랙 종료, 다음 트랙 선택.
 
 ## 마지막 상태
 
-- 브랜치: **`feature/w3-out-m3-get-stream`** (HEAD `358b2ab`, **PR 미생성**)
-- main HEAD: `568cfd4` (PR #116 머지 시점), alembic head **m34** (변경 없음)
-- backend **815 pass** / pyright 0 errors / ruff clean / frontend lint·test·build clean
-- 사용자 무영향 (GET endpoint + lifecycle 정비만, frontend 미통합)
+- 브랜치: **`feature/w3-out-m6-integration`** (PR 미생성)
+- 직전 main HEAD: `66ccedd` (PR #118 머지)
+- backend **819 pass** / pyright 0 / ruff clean / frontend 262 tests / lint·build clean
+- 사용자 무영향 (backend test + docs 만)
 
-## 이번 사이클 (8 커밋)
+## W3-out 전체 진행
 
-| Commit | 내용 |
+| 마일스톤 | 상태 | PR |
+|---|---|---|
+| M1 EventBroker primitive | ✅ | #116 |
+| M2 streaming.py + m34 partial flush | ✅ | #116 |
+| M3 GET /stream endpoint | ✅ | #117 |
+| M4 lifecycle + APScheduler | ✅ | #117 |
+| M5 frontend auto-resume + 회귀 fix | ✅ | #118 |
+| **M6 통합 테스트 + ADR-011** | ✅ | (현 PR) |
+
+## 이번 사이클 변경
+
+| 파일 | 내용 |
 |---|---|
-| `3cf5086` | **M3** — GET `/api/conversations/{id}/stream?run_id=&last_event_id=` (4 분기) |
-| `94f6ca8` | **M4** — `register_broker_eviction_job` (60s) + `BrokerRegistry.close_all` + lifespan |
-| `1a5a0f5` | pyright fix — `subscribe` `AsyncIterator → AsyncGenerator` |
-| `f2e0b33` | **리뷰 BLOCKER+HIGH** — shutdown 순서 / oracle 통일 (단일 404) / broker.conv_id None fail-closed / 운영 로깅 |
-| `3c00682` | **리뷰 MEDIUM 7** — `event_names.py` / corrupt evt skip / stale id fallback / tz fix / lowercase 헤더 / `close_for_conversation` 로깅 / `get_agent_for_user` |
-| `65a22e0` | **리뷰 NIT 5** — `_normalize_event_id` / `_clear()` underscore / `resume_gone` 제거 / `aclose` 회귀 |
-| `358b2ab` | `/simplify` — `slice_events_after` 공용 helper / `_log_resume_reject` / `_format_brokered` 인라인 |
-
-## 다음 작업
-
-1. **M5 — Frontend lastEventId + withAutoResume + reconnect 인디케이터** (~10h, plan M5). 신규 8 + 수정 8 파일
-2. **M6 — 통합 테스트 + 끊김 시뮬레이션** (~6h). e2e 4 시나리오
-3. M3+M4 PR 먼저 생성 후 머지 → M5 시작 (PR 사이즈 절반) 가능
-
-## 의도적 follow-up
-
-- 🟠 cross-tenant LRU sub-cap (인증 도입 PR 과 함께)
-- 🟡 multi-worker 지원 — Redis pub/sub 또는 sticky routing
-- 🟡 `get_conversation` + `get_agent_for_user` schema-level join (현재 2 round-trip)
-- 🟡 `evict_expired` dirty flag (워커=1 가정 하에 미적용)
-- 🟡 turn 당 events 5000+ 시 `events_chunks` 별도 테이블
-
-## 알려진 이슈
-
-- W3-out 글로벌 룰 신규 (`~/.claude/rules/security.md` enumeration oracle / `~/.claude/rules/async-lifespan.md` shutdown 순서) — **다음 세션부터 효력**
-- W6 trace 매핑: m32 이전 row `linked_message_ids = NULL`
-
-## 코드 컨벤션 (이번 사이클 정착분)
-
-- **SSE event 이름**: `agent_runtime/event_names.py` 단일 source. 매직 스트링 금지
-- **Resume endpoint 가드**: 모든 실패 단일 `404 RESUME_NOT_FOUND`. `_log_resume_reject(reason, ...)` 로 reason 만 서버 로그 (rules/security.md)
-- **Shutdown 순서**: in-flight consumer → `await asyncio.sleep(0)` → scheduler → DB (rules/async-lifespan.md)
-- **Naive UTC 비교**: `.timestamp()` 회피 (로컬 tz 해석). `datetime` 직접 비교
-- **Events 슬라이싱**: `slice_events_after[E: Mapping](events, after_id)` — broker subscribe + DB replay 공유
+| `backend/tests/integration/test_stream_resume.py` | E2E 4 시나리오 (A live attach / B replay-only / C stale / D interrupt) — 진짜 POST 핸들러 통과시키며 broker 등록 + partial flush + finalize_turn cross-handler invariant 검증. `async_session` monkeypatch + `_finalize_trace` no-op patch (C) + `_make_executor_simulator` 헬퍼 도입 |
+| `docs/design-docs/adr-011-sse-stream-resume.md` | M1+M2 시점 작성본 → M3-M5 결정 사항 반영 (보안 oracle 통일 / `slice_events_after` 공유 / `event_names.py` 단일 source / shutdown 순서 / withAutoResume HOF / 알려진 한계 명시). 결정 1-9 → 1-11 확장 |
+| `HANDOFF.md` | M6 진입 준비 → M6 완료 |
+| `tasks/archive/HANDOFF-w3-out-m3-m5.md` | 직전 사이클 HANDOFF 보관 |
 
 ## 검증
 
@@ -57,18 +38,33 @@ cd backend && uv run alembic upgrade head && uv run ruff check . && uv run pytes
 cd frontend && pnpm lint && pnpm test --run && pnpm build
 ```
 
-## 핵심 파일 (M3+M4 진입점)
+## 의도적 follow-up (W3-out 외)
 
-- broker: `backend/app/agent_runtime/event_broker.py` (`slice_events_after`, `close_all`, tz fix)
-- routes: `backend/app/routers/conversations.py` (`stream_resume`, `_log_resume_reject`, `_replay_resume_generator`)
-- lifecycle: `backend/app/scheduler.py` (`register_broker_eviction_job`) + `backend/app/main.py`
-- helpers: `backend/app/services/chat_service.py:get_agent_for_user`, `backend/app/agent_runtime/event_names.py`
-- 테스트: `backend/tests/integration/test_stream_resume.py` (15건)
-- Plan: `~/.claude/plans/1-ux-quirky-canyon.md` (M5/M6 섹션)
+- 🟠 cross-tenant LRU sub-cap (인증 도입 PR 과 함께)
+- 🟡 multi-worker — Redis pub/sub 또는 sticky routing (현재 workers=1)
+- 🟡 `get_conversation` + `get_agent_for_user` schema-level join
+- 🟡 `evict_expired` dirty flag
+- 🟡 turn 당 events 5000+ 시 `events_chunks` 별도 테이블
+- 🟡 `record_turn` deprecate 검토 (`finalize_turn` 경로 전환 — 12 legacy 호출자)
+
+## 알려진 한계 (plan 명세대로)
+
+- backend 통째 죽으면 broker 같이 죽어 in-flight LangGraph turn 사라짐 → DB replay 만 받고 종료. transient network drop (Wi-Fi 토글) 은 broker 살아있어 X-Resume-Mode: live 로 진짜 이어짐.
+- workers=1 가정. multi-worker 는 후속 트랙.
+- M6 시나리오 C E2E 는 `_finalize_trace` no-op monkeypatch 로 crash 시뮬레이션 — 실제 SIGKILL 회귀는 수동 e2e (M5 머지 시점 통과) 가 보장.
+
+## 핵심 파일 (완료된 인프라)
+
+- broker: `backend/app/agent_runtime/event_broker.py` (`BrokerRegistry`, `EventBroker`, `slice_events_after`)
+- routes: `backend/app/routers/conversations.py` (`stream_resume`, `_replay_resume_generator`, `_log_resume_reject`, `_prepare_stream_context`)
+- broker unit tests: `backend/tests/agent_runtime/test_event_broker.py` (21 tests)
+- stream resume tests: `backend/tests/integration/test_stream_resume.py` (router-단위 17 + M6 E2E 4 = 21)
+- frontend: `frontend/src/lib/sse/with-auto-resume.ts`, `stream-resume-attach.ts`, `parse-sse.ts`, `frontend/src/components/chat/reconnect-indicator.tsx`
+- ADR: `docs/design-docs/adr-011-sse-stream-resume.md`
+- Plan: `~/.claude/plans/1-ux-quirky-canyon.md`
 
 ## 새 트랙 시작 체크
 
-1. `gh pr view feature/w3-out-m3-get-stream` 머지 여부 확인 (현재 PR 미생성)
-2. PR 생성 권장 — backend 자체 완결, 사용자 무영향
-3. M5 시작 시: `feature/w3-out-m5-frontend` 신규 브랜치 (현재 브랜치에서 분기)
-4. plan M5 섹션 — `withAutoResume` + `lastEventIdRef` + `reconnect-indicator.tsx`
+1. PR #(현재 미생성) 머지 확인 + main HEAD 갱신
+2. `tasks/archive/HANDOFF-w3-out-m6.md` 로 본 파일 보관 (선택)
+3. 다음 트랙 SPEC / plan 진입
