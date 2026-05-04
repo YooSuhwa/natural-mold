@@ -6,19 +6,30 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import FileResponse, StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
-from app.agent_runtime.event_broker import EventBroker
+from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
 from app.agent_runtime.model_factory import env_provider_keys
+from app.agent_runtime.streaming import format_sse
 from app.config import settings
 from app.database import async_session
 from app.dependencies import CurrentUser, get_current_user, get_db
-from app.error_codes import agent_not_found, conversation_not_found, file_not_found
+from app.error_codes import (
+    agent_not_found,
+    conversation_not_found,
+    file_not_found,
+    resume_forbidden,
+    resume_interrupt_pending,
+    resume_not_found,
+)
+from app.models.agent import Agent
+from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.schemas.conversation import (
     ConversationCreate,
@@ -504,6 +515,155 @@ async def list_messages(
     )
 
 
+
+
+# ---------------------------------------------------------------------------
+# W3-out M3 — GET stream resume
+# ---------------------------------------------------------------------------
+
+
+def _is_pending_interrupt(events: list[dict[str, Any]] | None) -> bool:
+    """Detect HiTL interrupt waiting for ``/messages/resume``.
+
+    DB row events 의 마지막이 ``interrupt`` 이고 ``message_end`` 가 한 번도
+    오지 않았다면 graph 가 일시정지 상태. 이 경우 stream resume(GET)이 아니라
+    HiTL graph resume(POST `/messages/resume`)으로 응답해야 하므로 409 로
+    차단한다 (plan 시나리오 D + 위험 항목).
+    """
+    if not events:
+        return False
+    has_message_end = any(evt.get("event") == "message_end" for evt in events)
+    if has_message_end:
+        return False
+    return events[-1].get("event") == "interrupt"
+
+
+def _format_brokered(evt: BrokeredEvent) -> str:
+    return format_sse(
+        evt["event"], evt["data"], event_id=evt.get("id") or None
+    )
+
+
+async def _broker_resume_generator(
+    broker: EventBroker, after_id: str | None
+) -> AsyncGenerator[str, None]:
+    """Subscribe to a live broker → SSE chunks.
+
+    ``broker.subscribe`` 가 buffer replay (after_id 이후) → live tail 순서로
+    이벤트를 yield. broker close 시 자연스럽게 종료된다.
+    """
+    async for evt in broker.subscribe(after_id=after_id):
+        yield _format_brokered(evt)
+
+
+async def _replay_resume_generator(
+    record: MessageEvent,
+    after_id: str | None,
+    *,
+    mark_stale: bool,
+) -> AsyncGenerator[str, None]:
+    """Replay events from DB row, optionally marking the stream as stale.
+
+    broker 가 죽고 row.status='streaming' (정상 종료 신호 message_end 미수신)
+    이면 마지막에 ``event: stale`` 을 발행해 client 에 broker 손실을 알린다.
+    client 는 이 이벤트를 받으면 turn 이 backend 에서 끊겼음을 인지하고
+    자동 재시도를 멈춘다.
+    """
+    seen_after = after_id is None
+    for evt in record.events or []:
+        evt_id = evt.get("id")
+        if not seen_after:
+            if evt_id == after_id:
+                seen_after = True
+            continue
+        yield format_sse(
+            str(evt.get("event") or "message"),
+            evt.get("data") or {},
+            event_id=evt_id if isinstance(evt_id, str) and evt_id else None,
+        )
+
+    if mark_stale:
+        yield format_sse(
+            "stale",
+            {
+                "reason": "broker_lost",
+                "last_event_id": record.last_event_id,
+            },
+        )
+
+
+@router.get("/api/conversations/{conversation_id}/stream")
+async def stream_resume(
+    conversation_id: uuid.UUID,
+    run_id: uuid.UUID,
+    last_event_id: str | None = Query(None),
+    last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> StreamingResponse:
+    """Resume an in-flight or recently-completed assistant SSE stream.
+
+    분기 (plan M3):
+    1. broker live → ``EventBroker.subscribe`` 로 누락분 replay + 라이브 tail.
+       header ``X-Resume-Mode: live``.
+    2. broker miss + DB row → events 슬라이스 emit (after_id 이후).
+       header ``X-Resume-Mode: replay``. ``status='streaming'`` 인 row 는
+       ``event: stale`` 을 마지막에 발행 (broker 가 끊긴 채로 message_end 가
+       오지 않은 케이스).
+    3. broker miss + DB row 없음 → ``404 RESUME_NOT_FOUND``.
+    4. row 가 다른 conversation 소속 → ``403 RESUME_FORBIDDEN``
+       (cross-tenant run_id 방어).
+    5. row 의 마지막 이벤트가 HiTL interrupt → ``409
+       RESUME_INTERRUPT_PENDING``. client 는 ``/messages/resume`` 으로 다시
+       와야 한다.
+
+    ``last_event_id`` 는 query 우선, ``Last-Event-ID`` 헤더 fallback. SSE
+    표준 헤더를 지원해서 EventSource 같은 brower native 도 호환.
+    """
+    after_id = last_event_id or last_event_id_header
+
+    conv = await chat_service.get_conversation(db, conversation_id)
+    if conv is None:
+        raise conversation_not_found()
+
+    agent_row = (
+        await db.execute(select(Agent).where(Agent.id == conv.agent_id))
+    ).scalar_one_or_none()
+    if agent_row is None or agent_row.user_id != user.id:
+        raise resume_forbidden()
+
+    run_id_str = str(run_id)
+    broker = broker_registry.get(run_id_str)
+    if broker is not None and not broker.is_closed:
+        # broker 가 다른 conversation 의 turn 일 가능성 차단 (process-local
+        # singleton 이라 실수로 cross-conversation run_id 가 hit 할 수 있음).
+        if broker.conversation_id and broker.conversation_id != str(conversation_id):
+            raise resume_forbidden()
+        return _sse_response(
+            _broker_resume_generator(broker, after_id),
+            extra_headers={
+                "X-Run-Id": run_id_str,
+                "X-Resume-Mode": "live",
+            },
+        )
+
+    record = await trace_storage.get_trace_by_msg_id(db, run_id_str)
+    if record is None:
+        raise resume_not_found()
+    if record.conversation_id != conversation_id:
+        raise resume_forbidden()
+    if _is_pending_interrupt(record.events):
+        raise resume_interrupt_pending()
+
+    return _sse_response(
+        _replay_resume_generator(
+            record, after_id, mark_stale=record.status == "streaming"
+        ),
+        extra_headers={
+            "X-Run-Id": run_id_str,
+            "X-Resume-Mode": "replay",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
