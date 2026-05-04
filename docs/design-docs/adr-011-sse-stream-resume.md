@@ -149,7 +149,9 @@ shutdown 순서를 거꾸로 하면 scheduler 가 먼저 죽어서 GC 가 멈추
 
 ### 11. Frontend auto-resume (M5)
 
-`withAutoResume(streamFn, resumeFn, opts)` HOF — POST stream 이 mid-turn 에 끊기면 (`runId` + `lastEventId` 보존) 1s → 2s → 4s → 8s exponential backoff 로 GET resume 재시도. `event: stale` 수신 또는 `409 RESUME_INTERRUPT_PENDING` 또는 max 5회 도달 시 종료.
+`withAutoResume(streamFn, resumeFn, opts)` HOF — POST stream 이 mid-turn 에 끊기면 (`runId` + `lastEventId` 보존) `[500, 1500, 4000]ms` schedule 로 GET resume 재시도, max 3 회 (`with-auto-resume.ts:45-46` `DEFAULT_BACKOFF_MS` / `DEFAULT_MAX_ATTEMPTS`). 4xx (404 RESUME_NOT_FOUND, 409 RESUME_INTERRUPT_PENDING) 는 비-retryable — 즉시 `onFailed`. `AbortController` cancel 도 즉시 종료.
+
+`event: stale` 은 backend 가 broker 손실을 알리는 신호 (`reason: broker_lost | broker_lost_no_id`). 현재 frontend `consumeStream` 의 switch 에 명시적 `case 'stale'` 가 없어 default no-op 으로 흘러가 stream 이 자연 종료된다 (자동 retry 도 같이 종료) — **사용자에게 끊김 알림은 전달되지 않음**. 이를 toast / persistent indicator 로 surface 하는 follow-up 은 의도적 미해결 (HANDOFF.md 참조).
 
 `onReconnecting/onReconnected/onFailed` 콜백 → `reconnectStateAtom` → `<ReconnectIndicator>` 배지 ("연결 재시도 중...") 입력창 위에 표시.
 
