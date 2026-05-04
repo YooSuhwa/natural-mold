@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
-from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
+from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
 from app.agent_runtime.model_factory import env_provider_keys
@@ -538,13 +538,9 @@ def _is_pending_interrupt(events: list[dict[str, Any]] | None) -> bool:
     return events[-1].get("event") == event_names.INTERRUPT
 
 
-def _format_brokered(evt: BrokeredEvent) -> str:
-    # event_id 가 빈 문자열이면 SSE ``id:`` 라인 자체를 생략 (None 처리). 일반
-    # 케이스에서는 ``streaming.py`` emit 클로저가 항상 ``{msg_id}-{seq}`` 형태로
-    # 채우지만, 빈 문자열도 SSE 표준상 의미 없는 id 라 None 으로 정규화.
-    raw_id = evt.get("id")
-    event_id = raw_id if isinstance(raw_id, str) and raw_id else None
-    return format_sse(evt["event"], evt["data"], event_id=event_id)
+def _normalize_event_id(raw: object) -> str | None:
+    """빈 문자열 / non-str 을 None 으로 정규화. SSE ``id:`` 라인 생략 신호."""
+    return raw if isinstance(raw, str) and raw else None
 
 
 async def _broker_resume_generator(
@@ -556,7 +552,9 @@ async def _broker_resume_generator(
     이벤트를 yield. broker close 시 자연스럽게 종료된다.
     """
     async for evt in broker.subscribe(after_id=after_id):
-        yield _format_brokered(evt)
+        yield format_sse(
+            evt["event"], evt["data"], event_id=_normalize_event_id(evt.get("id"))
+        )
 
 
 async def _replay_resume_generator(
@@ -572,38 +570,27 @@ async def _replay_resume_generator(
     client 는 이 이벤트를 받으면 turn 이 backend 에서 끊겼음을 인지하고
     자동 재시도를 멈춘다.
 
-    M-2: ``event`` 필드가 비어있는 corrupt row 항목은 silent default 로
-    내보내지 않고 skip + warning. SSE 표준상 빈 이벤트 type 은 ``"message"``
-    채널로 라우팅되어 client 가 정체불명의 데이터를 normal message 로
-    오해할 수 있다.
+    Corrupt row (``event`` 필드 누락) 항목은 SSE 표준상 ``"message"`` 채널로
+    오해되어 client 가 정체불명 데이터를 받게 되므로 skip + warning.
 
-    M-3: stale payload 의 ``last_event_id`` 가 None 인 경우 fallback 으로
-    events 의 마지막 항목 id 를 사용. 그래도 없으면 ``reason``을
-    ``"broker_lost_no_id"`` 로 분기해 client 가 NPE 없이 처리할 수 있게.
+    stale payload 의 ``last_event_id`` 는 row.last_event_id → 방금 yield 한
+    마지막 evt id → 둘 다 없으면 ``reason='broker_lost_no_id'`` 분기 (NPE 회피).
     """
-    seen_after = after_id is None
     last_emitted_id: str | None = None
-    for evt in record.events or []:
-        evt_id = evt.get("id")
-        if not seen_after:
-            if evt_id == after_id:
-                seen_after = True
-            continue
+    for evt in slice_events_after(record.events or [], after_id):
         evt_name = evt.get("event")
         if not isinstance(evt_name, str) or not evt_name:
             logger.warning(
                 "stream_resume skip corrupt evt msg_id=%s evt_id=%s",
-                record.assistant_msg_id, evt_id,
+                record.assistant_msg_id, evt.get("id"),
             )
             continue
-        emitted_id = evt_id if isinstance(evt_id, str) and evt_id else None
+        emitted_id = _normalize_event_id(evt.get("id"))
         yield format_sse(evt_name, evt.get("data") or {}, event_id=emitted_id)
         if emitted_id:
             last_emitted_id = emitted_id
 
     if mark_stale:
-        # M-3: row.last_event_id 우선, 없으면 방금 yield 한 마지막 evt id,
-        # 둘 다 없으면 reason 으로 분기해 None payload 회피.
         stale_id = record.last_event_id or last_emitted_id
         yield format_sse(
             event_names.STALE,
@@ -612,6 +599,24 @@ async def _replay_resume_generator(
                 "last_event_id": stale_id,
             },
         )
+
+
+def _log_resume_reject(
+    reason: str,
+    conversation_id: uuid.UUID,
+    run_id_str: str,
+    **extra: Any,
+) -> None:
+    """가드 분기에서 외부 응답은 단일화 (RESUME_NOT_FOUND) 하되 서버 로그로
+    reason 구분이 가능하게. simplify #2 — 6개 호출 사이트 중복 제거.
+    """
+    suffix = (
+        " " + " ".join(f"{k}={v}" for k, v in extra.items()) if extra else ""
+    )
+    logger.info(
+        "stream_resume reject reason=%s conv=%s run_id=%s%s",
+        reason, conversation_id, run_id_str, suffix,
+    )
 
 
 @router.get("/api/conversations/{conversation_id}/stream")
@@ -648,35 +653,29 @@ async def stream_resume(
 
     conv = await chat_service.get_conversation(db, conversation_id)
     if conv is None:
-        logger.info(
-            "stream_resume reject reason=conversation_missing conv=%s run_id=%s",
-            conversation_id, run_id_str,
-        )
+        _log_resume_reject("conversation_missing", conversation_id, run_id_str)
         raise resume_not_found()
 
-    # M-7: chat_service.get_agent_for_user 가 ownership 검증의 단일 source.
-    # POST 핸들러는 get_agent_with_tools (eager-load) 를 쓰지만 같은 user_id
-    # 필터를 공유한다.
+    # ownership 검증의 단일 source — POST 핸들러는 get_agent_with_tools
+    # (eager-load) 를 쓰지만 user_id 필터는 두 helper 가 공유한다.
     agent_row = await chat_service.get_agent_for_user(
         db, conv.agent_id, user.id
     )
     if agent_row is None:
-        logger.info(
-            "stream_resume reject reason=ownership conv=%s run_id=%s user=%s",
-            conversation_id, run_id_str, user.id,
+        _log_resume_reject(
+            "ownership", conversation_id, run_id_str, user=user.id
         )
         raise resume_not_found()
 
     broker = broker_registry.get(run_id_str)
     if broker is not None and not broker.is_closed:
         # broker.conversation_id 가 URL conv 와 다르면 (None 포함) cross-conv
-        # 누설 가능 — fail-closed (rules/security.md). _prepare_stream_context
-        # 가 항상 conv_id 를 전달하므로 None 은 비정상 신호.
+        # 누설 가능 — fail-closed. _prepare_stream_context 가 항상 conv_id 를
+        # 전달하므로 None 은 비정상 신호.
         if broker.conversation_id != str(conversation_id):
-            logger.info(
-                "stream_resume reject reason=broker_conv_mismatch conv=%s "
-                "run_id=%s broker_conv=%s",
-                conversation_id, run_id_str, broker.conversation_id,
+            _log_resume_reject(
+                "broker_conv_mismatch", conversation_id, run_id_str,
+                broker_conv=broker.conversation_id,
             )
             raise resume_not_found()
         logger.info(
@@ -693,23 +692,16 @@ async def stream_resume(
 
     record = await trace_storage.get_trace_by_msg_id(db, run_id_str)
     if record is None:
-        logger.info(
-            "stream_resume reject reason=row_missing conv=%s run_id=%s",
-            conversation_id, run_id_str,
-        )
+        _log_resume_reject("row_missing", conversation_id, run_id_str)
         raise resume_not_found()
     if record.conversation_id != conversation_id:
-        logger.info(
-            "stream_resume reject reason=row_conv_mismatch conv=%s run_id=%s "
-            "row_conv=%s",
-            conversation_id, run_id_str, record.conversation_id,
+        _log_resume_reject(
+            "row_conv_mismatch", conversation_id, run_id_str,
+            row_conv=record.conversation_id,
         )
         raise resume_not_found()
     if _is_pending_interrupt(record.events):
-        logger.info(
-            "stream_resume reject reason=interrupt_pending conv=%s run_id=%s",
-            conversation_id, run_id_str,
-        )
+        _log_resume_reject("interrupt_pending", conversation_id, run_id_str)
         raise resume_interrupt_pending()
 
     is_stale = record.status == "streaming"

@@ -24,7 +24,7 @@ import asyncio
 import contextlib
 import logging
 from collections import deque
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterable, Iterator, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any, TypedDict
 
@@ -46,6 +46,30 @@ class BrokeredEvent(TypedDict):
 
 _DEFAULT_BUFFER_SIZE = 2000
 _DEFAULT_LISTENER_QUEUE_MAXSIZE = 512
+
+
+def slice_events_after[E: Mapping[str, Any]](
+    events: Iterable[E], after_id: str | None
+) -> Iterator[E]:
+    """Yield events strictly after the one whose ``id`` matches ``after_id``.
+
+    Shared invariant for two replay paths:
+    - ``EventBroker.subscribe`` 의 buffer snapshot 슬라이싱 (live broker)
+    - ``routers/conversations._replay_resume_generator`` 의 DB events 슬라이싱
+
+    Semantics:
+    - ``after_id is None`` → yield 모든 evt.
+    - ``after_id`` 와 일치하는 evt 가 있으면 그 evt 까지(포함) skip 후 yield 시작.
+    - ``after_id`` 가 events 안에 없으면(이미 evict 됐거나 newer) 아무것도 yield X.
+      caller 가 이 의미("evicted/missing")를 분리 해석.
+    """
+    seen_after = after_id is None
+    for evt in events:
+        if not seen_after:
+            if evt.get("id") == after_id:
+                seen_after = True
+            continue
+        yield evt
 
 # Memory-protection caps. APScheduler GC (M4) is the primary defense, but these
 # in-band limits prevent runaway accumulation in the M1+M2 release window.
@@ -186,15 +210,9 @@ class EventBroker:
         already_closed = self._closed
 
         try:
-            seen_after = after_id is None
             yielded_ids: set[str] = set()
-            for evt in snapshot:
+            for evt in slice_events_after(snapshot, after_id):
                 evt_id = evt.get("id")
-                if not seen_after:
-                    if evt_id == after_id:
-                        seen_after = True
-                    # Skip events up to and including after_id.
-                    continue
                 if isinstance(evt_id, str):
                     yielded_ids.add(evt_id)
                 yield evt
