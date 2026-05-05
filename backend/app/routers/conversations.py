@@ -68,14 +68,23 @@ async def _resolve_agent_context(
 ) -> AgentConfig:
     """conversation + agent 조회 → AgentConfig 생성.
 
-    send_message와 resume_message에서 공통으로 사용.
+    send_message/resume/edit/regenerate 가 공유. 단일 join (conversations ⨝
+    agents on user_id) + agent runtime eager-load chain — 이전엔 conv lookup
+    + agent eager-load 두 round-trip 이었지만 ``get_owned_conversation_with_
+    agent`` 로 통합 (W3-out retrospective). conv 부재와 ownership 실패가
+    ``conversation_not_found`` 단일 응답으로 합쳐져 enumeration oracle 도
+    더 강해진다 (rules/security.md).
     """
-    conv = await chat_service.get_conversation(db, conversation_id)
+    conv = await chat_service.get_owned_conversation_with_agent(
+        db, conversation_id, user.id
+    )
     if not conv:
         raise conversation_not_found()
 
-    agent = await chat_service.get_agent_with_tools(db, conv.agent_id, user.id)
-    if not agent:
+    agent = conv.agent
+    if agent is None:
+        # contains_eager + INNER JOIN 로 conv.agent 는 항상 채워져야 함.
+        # None 은 ORM hydration 회귀 신호 — fail-loudly.
         raise agent_not_found()
 
     if agent.model is None:
