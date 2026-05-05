@@ -672,6 +672,28 @@ async def test_resume_unknown_conversation_returns_404(
 
 
 @pytest.mark.asyncio
+async def test_resume_unknown_conversation_logs_unowned_reason(
+    client: AsyncClient,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """conv 존재 X 와 ownership 실패가 단일 join 으로 합쳐졌으므로 reason 도
+    ``conv_unowned_or_missing`` 단일 라벨 — round-trip 절감 + oracle 강화."""
+    import logging
+
+    caplog.set_level(logging.INFO, logger="app.routers.conversations")
+    resp = await client.get(
+        f"/api/conversations/{uuid.uuid4()}/stream",
+        params={"run_id": str(uuid.uuid4())},
+    )
+    assert resp.status_code == 404
+    assert any(
+        "stream_resume reject" in r.message
+        and "reason=conv_unowned_or_missing" in r.message
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
 async def test_resume_logs_reject_reason(
     client: AsyncClient,
     caplog: pytest.LogCaptureFixture,
