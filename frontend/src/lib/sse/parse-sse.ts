@@ -141,8 +141,11 @@ export async function* streamSSEPost<TEvent extends string>(
       // W3-out M5 — X-Run-Id 헤더는 stream 재연결 식별자. POST 응답 헤더에서
       // 1회 추출해 caller 에게 전달한다. 헤더가 없으면(legacy/예외 경로) 조용히
       // 패스 — withAutoResume 가 runId 없으면 재연결을 시도하지 않는다.
+      // ``Headers.get`` 는 case-insensitive (HTML living standard 보장) 라
+      // ``streamSSEGetResume`` 의 ``X-Resume-Mode`` 와 동일하게 single-case
+      // lookup. 트랙 종료 retrospective 에서 발견된 비대칭 정리.
       if (options?.onRunId) {
-        const runId = response.headers.get('X-Run-Id') ?? response.headers.get('x-run-id')
+        const runId = response.headers.get('X-Run-Id')
         if (runId) options.onRunId(runId)
       }
     },
