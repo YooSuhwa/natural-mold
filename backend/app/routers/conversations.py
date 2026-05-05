@@ -686,19 +686,17 @@ async def stream_resume(
     after_id = last_event_id or last_event_id_header
     run_id_str = str(run_id)
 
-    conv = await chat_service.get_conversation(db, conversation_id)
-    if conv is None:
-        _log_resume_reject("conversation_missing", conversation_id, run_id_str)
-        raise resume_not_found()
-
-    # ownership 검증의 단일 source — POST 핸들러는 get_agent_with_tools
-    # (eager-load) 를 쓰지만 user_id 필터는 두 helper 가 공유한다.
-    agent_row = await chat_service.get_agent_for_user(
-        db, conv.agent_id, user.id
+    # 단일 join (conversations ⨝ agents on user_id) — 이전엔 get_conversation +
+    # get_agent_for_user 두 round-trip 으로 conv 존재성 + ownership 을 분리
+    # 검증했지만, 외부 응답이 어차피 단일 RESUME_NOT_FOUND 로 통일되므로 (rules
+    # /security.md enumeration oracle) 두 분기를 분간할 가치가 없다. round-trip
+    # 절감 + reason 명도 단일화 (디버깅 시 user=... 로 주체 식별 가능).
+    conv = await chat_service.get_owned_conversation(
+        db, conversation_id, user.id
     )
-    if agent_row is None:
+    if conv is None:
         _log_resume_reject(
-            "ownership", conversation_id, run_id_str, user=user.id
+            "conv_unowned_or_missing", conversation_id, run_id_str, user=user.id
         )
         raise resume_not_found()
 
