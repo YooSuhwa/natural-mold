@@ -249,7 +249,8 @@ def _sse_handler(
 class _StreamCtx(NamedTuple):
     """W3-out M2 — 4개 POST 핸들러가 공통으로 만드는 streaming 컨텍스트.
 
-    ``_prepare_stream_context`` 가 한 번에 생성, 핸들러는 unpack해서 사용.
+    ``_prepare_stream_context`` 가 한 번에 생성, 핸들러는 ``as_stream_kwargs()``
+    + ``finalize_callback()`` 두 메서드로 explicit 분해 없이 forward.
     """
 
     run_id: str
@@ -258,15 +259,49 @@ class _StreamCtx(NamedTuple):
     trace_sink: list[dict[str, Any]]
     msg_id_sink: list[str]
 
+    def as_stream_kwargs(self) -> dict[str, Any]:
+        """``execute_agent_stream`` / ``resume_agent_stream`` 의 dual-write 채널
+        kwargs 묶음. 핸들러가 5개를 매번 explicit 전달할 때의 invariant
+        (``persist_cb`` 와 ``run_id`` 가 같은 ctx 에서 와야 함, broker 가 같은
+        run_id 로 등록된 인스턴스여야 함) 를 한 곳에서 강제.
+        """
+        return {
+            "trace_sink": self.trace_sink,
+            "msg_id_sink": self.msg_id_sink,
+            "broker": self.broker,
+            "persist_callback": self.persist_cb,
+            "run_id": self.run_id,
+        }
+
+    def finalize_callback(
+        self, conversation_id: uuid.UUID
+    ) -> Callable[[bool], Awaitable[None]]:
+        """``_sse_handler.on_complete`` 에 그대로 넘길 수 있는 closure.
+
+        4 핸들러가 같은 lambda (``lambda success: _finalize_trace(conversation
+        _id, self.run_id, self.trace_sink, self.msg_id_sink, success=success)``)
+        를 매번 hand-roll 하던 것을 묶음. ``conversation_id`` 만 외부에서 주입
+        — 나머지는 self 에서.
+        """
+
+        async def _cb(success: bool) -> None:
+            await _finalize_trace(
+                conversation_id,
+                self.run_id,
+                self.trace_sink,
+                self.msg_id_sink,
+                success=success,
+            )
+
+        return _cb
+
 
 def _prepare_stream_context(conversation_id: uuid.UUID) -> _StreamCtx:
     """W3-out M2 — 4 POST 핸들러 공통 셋업 (run_id + broker + sinks + persist_cb).
 
     핸들러는 ``ctx = _prepare_stream_context(conversation_id)`` 한 줄로 받고,
-    executor 호출 시 ``ctx.broker`` / ``ctx.persist_cb`` / ``ctx.run_id`` 등을
-    keyword로 전달, ``_sse_handler(... run_id=ctx.run_id, on_complete=lambda
-    success: _finalize_trace(conversation_id, ctx.run_id, ctx.trace_sink,
-    ctx.msg_id_sink, success=success))`` 로 마감.
+    ``ctx.as_stream_kwargs()`` 로 executor 호출 + ``ctx.finalize_callback(
+    conversation_id)`` 로 ``_sse_handler.on_complete`` 마감.
 
     같은 conversation 의 직전 turn 이 disconnect 등으로 broker 가 미정리
     상태로 남아 있으면 즉시 회수 (M4 APScheduler GC 도래 전 ghost broker
@@ -759,18 +794,12 @@ async def send_message(
         lambda: execute_agent_stream(
             cfg,
             [{"role": "user", "content": data.content}],
-            trace_sink=ctx.trace_sink,
-            msg_id_sink=ctx.msg_id_sink,
-            broker=ctx.broker,
-            persist_callback=ctx.persist_cb,
-            run_id=ctx.run_id,
+            **ctx.as_stream_kwargs(),
         ),
         log_msg=f"Agent stream failed for conversation {conversation_id}",
         user_msg="에이전트 실행 중 오류가 발생했습니다.",
         run_id=ctx.run_id,
-        on_complete=lambda success: _finalize_trace(
-            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
-        ),
+        on_complete=ctx.finalize_callback(conversation_id),
     )
 
 
@@ -788,20 +817,12 @@ async def resume_message(
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: resume_agent_stream(
-            cfg,
-            data.response,
-            trace_sink=ctx.trace_sink,
-            msg_id_sink=ctx.msg_id_sink,
-            broker=ctx.broker,
-            persist_callback=ctx.persist_cb,
-            run_id=ctx.run_id,
+            cfg, data.response, **ctx.as_stream_kwargs()
         ),
         log_msg=f"Agent resume failed for conversation {conversation_id}",
         user_msg="에이전트 재개 중 오류가 발생했습니다.",
         run_id=ctx.run_id,
-        on_complete=lambda success: _finalize_trace(
-            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
-        ),
+        on_complete=ctx.finalize_callback(conversation_id),
     )
 
 
@@ -884,18 +905,12 @@ async def edit_message(
         lambda: execute_agent_stream(
             cfg,
             [{"role": "user", "content": data.new_content}],
-            trace_sink=ctx.trace_sink,
-            msg_id_sink=ctx.msg_id_sink,
-            broker=ctx.broker,
-            persist_callback=ctx.persist_cb,
-            run_id=ctx.run_id,
+            **ctx.as_stream_kwargs(),
         ),
         log_msg=f"Agent edit failed for conversation {conversation_id}",
         user_msg="메시지 편집 중 오류가 발생했습니다.",
         run_id=ctx.run_id,
-        on_complete=lambda success: _finalize_trace(
-            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
-        ),
+        on_complete=ctx.finalize_callback(conversation_id),
     )
 
 
@@ -975,21 +990,11 @@ async def regenerate_message(
     # the user message.
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
-        lambda: execute_agent_stream(
-            cfg,
-            [],
-            trace_sink=ctx.trace_sink,
-            msg_id_sink=ctx.msg_id_sink,
-            broker=ctx.broker,
-            persist_callback=ctx.persist_cb,
-            run_id=ctx.run_id,
-        ),
+        lambda: execute_agent_stream(cfg, [], **ctx.as_stream_kwargs()),
         log_msg=f"Agent regenerate failed for conversation {conversation_id}",
         user_msg="메시지 재생성 중 오류가 발생했습니다.",
         run_id=ctx.run_id,
-        on_complete=lambda success: _finalize_trace(
-            conversation_id, ctx.run_id, ctx.trace_sink, ctx.msg_id_sink, success=success
-        ),
+        on_complete=ctx.finalize_callback(conversation_id),
     )
 
 

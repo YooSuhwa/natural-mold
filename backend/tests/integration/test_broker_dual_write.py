@@ -26,32 +26,15 @@ from unittest.mock import patch
 import pytest
 from httpx import AsyncClient
 
-from app.models.agent import Agent
-from app.models.conversation import Conversation
-from app.models.model import Model
-from app.models.user import User
-from tests.conftest import TEST_USER_ID, TestSession
+from tests.integration._seed import seed_conversation_with_agent
 
 
 async def _seed() -> uuid.UUID:
-    async with TestSession() as db:
-        user = User(id=TEST_USER_ID, email="test@test.com", name="Test")
-        db.add(user)
-        model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
-        db.add(model)
-        await db.flush()
-        agent = Agent(
-            user_id=user.id,
-            name="DualWrite Agent",
-            system_prompt="You are helpful.",
-            model_id=model.id,
-        )
-        db.add(agent)
-        await db.flush()
-        conv = Conversation(agent_id=agent.id, title="DualWrite Conv")
-        db.add(conv)
-        await db.commit()
-        return conv.id
+    return await seed_conversation_with_agent(
+        agent_name="DualWrite Agent",
+        conv_title="DualWrite Conv",
+        system_prompt="You are helpful.",
+    )
 
 
 @pytest.mark.asyncio
