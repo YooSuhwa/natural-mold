@@ -102,7 +102,7 @@ export default function ChatPage({
     queryClient.invalidateQueries({ queryKey: conversationKeys.messages(conversationId) })
   })
 
-  const { runtime, onResume } = useChatRuntime({
+  const { runtime, onResume, onResumeDecisions } = useChatRuntime({
     messages,
     totalCost: envelope?.total_estimated_cost,
     streamFn,
@@ -111,6 +111,11 @@ export default function ChatPage({
     feedbackAdapter,
     attachmentAdapter: moldyAttachmentAdapter,
   })
+
+  const hitlValue = useMemo(
+    () => ({ onResume, onResumeDecisions }),
+    [onResume, onResumeDecisions],
+  )
 
   async function handleNewConversation() {
     const conv = await createConversation.mutateAsync(undefined)
@@ -201,7 +206,7 @@ export default function ChatPage({
           </div>
         ) : (
           <AssistantRuntimeProvider runtime={runtime}>
-            <HiTLContext.Provider value={{ onResume }}>
+            <HiTLContext.Provider value={hitlValue}>
               <AssistantThread
                 agentImageUrl={agent?.image_url}
                 agentName={agent?.name}

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, PlainSerializer
+from pydantic import BaseModel, PlainSerializer, model_validator
 
 
 def _utc_iso(dt: datetime) -> str:
@@ -42,8 +42,53 @@ class ConversationResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class Decision(BaseModel):
+    """단일 tool_call에 대한 인간 결정.
+
+    LangChain ``HumanInTheLoopMiddleware``의 ``HITLResponse.decisions[i]``와
+    동일 shape (1:1 매칭). router에서 검증한 뒤 ``model_dump(exclude_none=True)``
+    로 dict 직렬화하여 ``Command(resume={"decisions": [dict, ...]})``로 송신한다
+    (LangChain 미들웨어는 ``NotRequired`` TypedDict를 받음).
+
+    - ``approve``: 추가 필드 없음.
+    - ``edit``: ``edited_action={"name": str, "args": dict}`` 필수.
+    - ``reject``: ``message`` 선택 (없으면 미들웨어가 기본 메시지 생성).
+    - ``respond``: ``message`` 필수 (synthetic ToolMessage content).
+    """
+
+    type: Literal["approve", "edit", "reject", "respond"]
+    edited_action: dict[str, Any] | None = None  # type=edit 시 필수
+    message: str | None = None  # type=respond 시 필수, type=reject 시 선택
+
+    @model_validator(mode="after")
+    def _validate_payload_for_type(self) -> Decision:
+        if self.type == "edit" and self.edited_action is None:
+            raise ValueError("Decision(type='edit') requires 'edited_action'")
+        if self.type == "respond" and self.message is None:
+            raise ValueError("Decision(type='respond') requires 'message'")
+        return self
+
+
 class ResumeRequest(BaseModel):
-    response: str | list[str] | dict[str, Any]  # interrupt 응답값
+    """HiTL resume 요청. Phase 2 transition: 두 형식 양쪽 수용.
+
+    - ``decisions``: 표준 (Phase 2 신규). LangChain ``HITLResponse`` 호환.
+    - ``response``: legacy (@deprecated, Phase 3에서 제거). 단일 ``respond``
+      decision으로 변환.
+
+    한 요청에 두 필드 모두 들어오면 ``decisions``만 채택하고 ``response``는
+    버린다 (transition 관용 — 422 거절하지 않음). 둘 다 ``None``이면 422.
+    """
+
+    decisions: list[Decision] | None = None
+    # @deprecated — Phase 3 제거. 단일 respond decision으로 변환되어 처리됨.
+    response: str | list[str] | dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one(self) -> ResumeRequest:
+        if self.decisions is None and self.response is None:
+            raise ValueError("ResumeRequest requires either 'decisions' or 'response'")
+        return self
 
 
 class MessageAttachmentRef(BaseModel):

@@ -264,9 +264,58 @@ export type SSEEventType =
   | 'interrupt'
   | 'stale'
 
-export interface InterruptPayload {
+// ── HiTL Phase 2 — dual-shape interrupt wire ──────────────────────────────
+// 표준(LangChain `HumanInTheLoopMiddleware`)과 legacy(자체 ask_user) 두 형태를
+// transition window 동안 동시 수용한다. Phase 3에서 legacy 제거.
+// 단일 진실 공급원: docs/exec-plans/active/hitl-phase2-contract.md §5.1.
+
+/** 표준 chunk: `HITLRequest.action_requests[i]` 한 항목. */
+export interface ActionRequest {
+  name: string
+  args: Record<string, unknown>
+  description?: string
+}
+
+/** Decision 4종 — LangChain HITLResponse 표준 + legacy 자체 ask_user `respond`. */
+export type DecisionType = 'approve' | 'edit' | 'reject' | 'respond'
+
+/** 표준 chunk: `HITLRequest.review_configs[i]` — 도구별 허용 결정 화이트리스트. */
+export interface ReviewConfig {
+  action_name: string
+  allowed_decisions: DecisionType[]
+}
+
+/** 표준 chunk payload — `LangChain HITLRequest` + safety-net `interrupt_id`. */
+export interface StandardInterruptPayload {
+  interrupt_id: string
+  action_requests: ActionRequest[]
+  review_configs: ReviewConfig[]
+}
+
+/** Legacy chunk payload — 자체 `ask_user` 호환. Phase 3 제거 예정. */
+export interface LegacyInterruptPayload {
   interrupt_id: string
   value: Record<string, unknown>
+}
+
+/**
+ * SSE `interrupt` event payload union. 분기는 `'action_requests' in data`로
+ * 좁힌다 (`use-chat-runtime` `case 'interrupt'` 참조).
+ */
+export type InterruptPayload = StandardInterruptPayload | LegacyInterruptPayload
+
+/** Resume 송신용 단일 결정. LangChain `HITLResponse.decisions[i]`와 1:1. */
+export interface Decision {
+  type: DecisionType
+  /** type='edit' 시 필수: 수정된 tool_call. */
+  edited_action?: { name: string; args: Record<string, unknown> }
+  /** type='respond' 시 필수, type='reject' 시 선택. */
+  message?: string
+}
+
+/** POST `/conversations/:id/messages/resume` 표준 body. */
+export interface ResumeDecisionsRequest {
+  decisions: Decision[]
 }
 
 // W3-out M3 — backend 가 broker 손실 (in-flight turn 중 backend 가 죽어 GET
