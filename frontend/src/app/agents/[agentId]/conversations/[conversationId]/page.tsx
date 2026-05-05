@@ -102,7 +102,7 @@ export default function ChatPage({
     queryClient.invalidateQueries({ queryKey: conversationKeys.messages(conversationId) })
   })
 
-  const { runtime, onResume, onResumeDecisions } = useChatRuntime({
+  const { runtime, onResumeDecisions } = useChatRuntime({
     messages,
     totalCost: envelope?.total_estimated_cost,
     streamFn,
@@ -113,8 +113,8 @@ export default function ChatPage({
   })
 
   const hitlValue = useMemo(
-    () => ({ onResume, onResumeDecisions }),
-    [onResume, onResumeDecisions],
+    () => ({ onResumeDecisions }),
+    [onResumeDecisions],
   )
 
   async function handleNewConversation() {

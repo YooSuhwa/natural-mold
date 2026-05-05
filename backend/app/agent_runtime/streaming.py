@@ -75,6 +75,49 @@ def _is_tool_selector_json(text: str) -> bool:
         return False
 
 
+def _interrupt_to_standard_chunk(
+    intr_id: str, intr_value: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """LangGraph interrupt value를 표준 wire chunk로 정규화.
+
+    - 표준 미들웨어 ``HITLRequest`` (action_requests/review_configs): 그대로 사용.
+    - 자체 ``ask_user.py`` native interrupt (``{"type":"ask_user","question",
+      "options"}``): 표준 ``respond`` 단일 액션으로 어댑트. 표준 미들웨어가
+      ask_user 도구를 wrap하면 자연스럽게 도달 X — fallback 안전망.
+    - 그 외 dict: skip (None 반환).
+    """
+    if intr_value is None:
+        return None
+    if "action_requests" in intr_value and "review_configs" in intr_value:
+        return {
+            "interrupt_id": intr_id,
+            "action_requests": intr_value["action_requests"],
+            "review_configs": intr_value["review_configs"],
+        }
+    if intr_value.get("type") == "ask_user":
+        question = intr_value.get("question") or ""
+        options = intr_value.get("options") or []
+        return {
+            "interrupt_id": intr_id,
+            "action_requests": [
+                {
+                    "id": intr_id or "ask_user",
+                    "name": "ask_user",
+                    "args": {"question": question, "options": options},
+                    "type": "tool_call",
+                }
+            ],
+            "review_configs": [
+                {
+                    "tool_name": "ask_user",
+                    "description": question,
+                    "allowed_decisions": ["respond"],
+                }
+            ],
+        }
+    return None
+
+
 async def stream_agent_response(
     agent: Any,
     input_: list[Any] | Command | dict[str, Any] | None,
@@ -339,12 +382,9 @@ async def stream_agent_response(
         if _buf:
             full_content += _buf
 
-        # HiTL: 그래프 상태에서 interrupt 감지 후 클라이언트에 emit.
-        # Phase 2 dual emit (transition window): 표준 chunk(action_requests/
-        # review_configs) + legacy chunk(value) 둘 다 발행. frontend는 표준 우선,
-        # 같은 interrupt_id의 legacy는 dedup. 자체 ask_user.py가 발행한 interrupt는
-        # 표준 shape이 아니므로 legacy chunk만 emit (회귀 0). 자세한 규칙은
-        # docs/exec-plans/active/hitl-phase2-contract.md §4 참조.
+        # HiTL: 그래프 상태에서 interrupt 감지 후 표준 wire로 emit.
+        # 변환은 ``_interrupt_to_standard_chunk`` 단일 진입점이 담당
+        # (자체 ask_user.py 어댑터 포함). fallback은 빈 표준 chunk로 발행.
         try:
             state = await agent.aget_state(config)
             if state.tasks:
@@ -355,46 +395,20 @@ async def stream_agent_response(
                             intr_value = (
                                 intr.value if isinstance(intr.value, dict) else None
                             )
-
-                            # 표준 chunk: intr.value가 LangChain HITLRequest
-                            # TypedDict shape일 때만 emit. (ask_user 자체
-                            # interrupt는 이 shape이 아니므로 skip → frontend는
-                            # legacy chunk를 채택.)
-                            if (
-                                intr_value is not None
-                                and "action_requests" in intr_value
-                                and "review_configs" in intr_value
-                            ):
-                                yield emit(
-                                    event_names.INTERRUPT,
-                                    {
-                                        "interrupt_id": intr_id,
-                                        "action_requests": intr_value["action_requests"],
-                                        "review_configs": intr_value["review_configs"],
-                                    },
-                                )
-
-                            # legacy chunk: 항상 emit (transition window).
-                            yield emit(
-                                event_names.INTERRUPT,
-                                {
-                                    "interrupt_id": intr_id,
-                                    "value": intr_value
-                                    if intr_value is not None
-                                    else {"message": str(intr.value)},
-                                },
-                            )
+                            chunk = _interrupt_to_standard_chunk(intr_id, intr_value)
+                            if chunk is not None:
+                                yield emit(event_names.INTERRUPT, chunk)
         except Exception:
             logger.warning("aget_state failed (interrupt check)", exc_info=True)
             if was_interrupted:
-                # fallback: state 조회 실패라 표준 shape을 구성할 정보가 없다.
-                # legacy chunk만 emit — frontend는 `action_requests` 키 부재로
-                # legacy 경로를 자연스럽게 채택 (contract §4.5).
+                # fallback: state 조회 실패라 정확한 action을 알 수 없다. 빈 표준
+                # chunk를 emit — frontend는 빈 action_requests로 fallback UI 표시.
                 yield emit(
                     event_names.INTERRUPT,
                     {
                         "interrupt_id": "",
-                        "value": {"message": "Interrupt detected but state unavailable"},
+                        "action_requests": [],
+                        "review_configs": [],
                     },
                 )
 

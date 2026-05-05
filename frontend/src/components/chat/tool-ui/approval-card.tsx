@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { useHiTL } from '@/lib/chat/hitl-context'
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
+import type { Decision as StandardDecision } from '@/lib/types'
 import { CountdownBadge } from './countdown-badge'
 
 interface ApprovalArgs {
@@ -38,6 +39,28 @@ interface ApprovalResult {
   decision: Decision
   modified_args?: Record<string, unknown>
   reason?: string
+}
+
+function toDecision(
+  d: Decision,
+  response: ApprovalResult,
+  toolName: string | undefined,
+): StandardDecision | null {
+  switch (d) {
+    case 'approved':
+      return { type: 'approve' }
+    case 'modified':
+      // edited_action.name은 미들웨어가 ToolCall로 재발행하므로 비워서 보낼 수 없다.
+      if (!toolName) return null
+      return {
+        type: 'edit',
+        edited_action: { name: toolName, args: response.modified_args ?? {} },
+      }
+    case 'rejected':
+      return response.reason
+        ? { type: 'reject', message: response.reason }
+        : { type: 'reject' }
+  }
 }
 
 function useDecisionStyles() {
@@ -174,9 +197,19 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
         }
 
         addResult(response)
-        await hitl?.onResume(response, styles[d].label)
+
+        // addResult/result는 Tool UI 내부 표시용 — backend wire는 Decision으로 변환.
+        const decision = toDecision(d, response, args?.tool_name)
+        if (!decision) {
+          // edit인데 tool_name 미상 — backend가 무효 edited_action으로 거절할 것이므로 abort.
+          setJsonError(t('invalidJson'))
+          setSubmitting(false)
+          setDecision(null)
+          return
+        }
+        await hitl?.onResumeDecisions([decision], styles[d].label)
       },
-      [addResult, hitl, rejectReason, editedArgs, t, styles],
+      [addResult, hitl, rejectReason, editedArgs, t, styles, args],
     )
 
     // 만료 시 자동 reject — handleDecision 변동에 영향받지 않도록 ref로 보관

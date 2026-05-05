@@ -70,25 +70,9 @@ class Decision(BaseModel):
 
 
 class ResumeRequest(BaseModel):
-    """HiTL resume 요청. Phase 2 transition: 두 형식 양쪽 수용.
+    """HiTL resume 요청. LangChain ``HITLResponse`` 호환 표준 wire."""
 
-    - ``decisions``: 표준 (Phase 2 신규). LangChain ``HITLResponse`` 호환.
-    - ``response``: legacy (@deprecated, Phase 3에서 제거). 단일 ``respond``
-      decision으로 변환.
-
-    한 요청에 두 필드 모두 들어오면 ``decisions``만 채택하고 ``response``는
-    버린다 (transition 관용 — 422 거절하지 않음). 둘 다 ``None``이면 422.
-    """
-
-    decisions: list[Decision] | None = None
-    # @deprecated — Phase 3 제거. 단일 respond decision으로 변환되어 처리됨.
-    response: str | list[str] | dict[str, Any] | None = None
-
-    @model_validator(mode="after")
-    def _at_least_one(self) -> ResumeRequest:
-        if self.decisions is None and self.response is None:
-            raise ValueError("ResumeRequest requires either 'decisions' or 'response'")
-        return self
+    decisions: list[Decision]
 
 
 class MessageAttachmentRef(BaseModel):

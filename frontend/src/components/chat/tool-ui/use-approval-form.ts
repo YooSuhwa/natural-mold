@@ -24,11 +24,7 @@ export interface ApprovalFormState {
   handleRevision: () => Promise<void>
 }
 
-/**
- * Phase 3/4/5/8의 공통 approval 폼 상태 관리.
- * - revision 텍스트와 submitted 결정 상태
- * - HiTL onResume 호출 + display text 변환
- */
+/** 공통 approval 폼 — revision 텍스트, submitted 결정, HiTL resume 송신. */
 export function useApprovalForm(options: UseApprovalFormOptions): ApprovalFormState {
   const { revisionFallback = '수정 요청', approveDisplay = '승인', isComplete } = options
 
@@ -41,14 +37,14 @@ export function useApprovalForm(options: UseApprovalFormOptions): ApprovalFormSt
   const handleApprove = async () => {
     if (submitted) return
     setSubmitted('approved')
-    await hitl?.onResume({ approved: true }, approveDisplay)
+    await hitl?.onResumeDecisions([{ type: 'approve' }], approveDisplay)
   }
 
   const handleRevision = async () => {
     if (submitted) return
     const msg = revision.trim() || revisionFallback
     setSubmitted('revision')
-    await hitl?.onResume({ approved: false, revision_message: msg }, msg)
+    await hitl?.onResumeDecisions([{ type: 'reject', message: msg }], msg)
   }
 
   return {
