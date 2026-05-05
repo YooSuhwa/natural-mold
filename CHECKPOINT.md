@@ -1,70 +1,59 @@
-# CHECKPOINT — HiTL Phase 1: 표준 미들웨어 인스턴스화 (사용자 무영향)
+# CHECKPOINT — HiTL Phase 2 Wire Format 통합
 
-> 참조: `docs/design-docs/adr-012-hitl-middleware-migration.md` §Phase 1, `HANDOFF.md`
-> 브랜치: `feature/hitl-phase1-middleware-instance` (main HEAD `750d587` 에서 분기)
-> done-when: 표준 미들웨어가 deep agent 에 주입되지만 SSE wire 는 자체 형식 유지 (dual-path 그대로)
+> 마일스톤 게이트 — 사티아가 소유. 팀원 완료 보고 시 `검증` 실행 → done-when 충족 시 done 마킹.
+> 브랜치: `feature/hitl-phase2-wire-format` (main `750d587`에서 분기)
+> 참조: `HANDOFF.md` (Phase 1 산출물), `docs/design-docs/adr-012-hitl-middleware-migration.md` §Phase 2.
+> Phase 1 CHECKPOINT는 git history에 보존됨 (Plans are Disposable — 새 사이클에 새 체크포인트).
 
 ---
 
-## 핵심 사실 (코드 정독 결과)
+## M0: Wire Contract 정의 (피차이 DRI)
+- [x] `docs/exec-plans/active/hitl-phase2-contract.md` — backend/frontend 양쪽이 참조할 dual-shape 계약 (ResumeRequest, INTERRUPT event payload, transition 윈도우 규칙)
+- 검증: `test -f docs/exec-plans/active/hitl-phase2-contract.md`
+- done-when: 계약 문서 존재 + Decision 스키마 / action_requests / review_configs / transition emit 규칙 모두 명시
+- 상태: done
 
-- `deepagents.create_deep_agent(interrupt_on=...)` 는 이미 `HumanInTheLoopMiddleware` 를 **자동 주입**한다 (deepagents/graph.py docstring: "HumanInTheLoopMiddleware (if interrupt_on is provided)")
-- 즉 현재 코드 (`executor.py:537-548`) 도 표준 미들웨어를 사용 중 — 다만 **인스턴스를 명시적으로 받아 middleware list 에 합치는 경로가 아닌, deepagents 의 자동 주입에 의존** 중
-- `middleware_registry.py:419` 의 `human_in_the_loop` 제외 목록은 **자동 주입과의 중복 회피**가 목적. 자동 주입과 명시 주입은 둘 중 하나만 가능
+## M1: Backend Dual-Shape (젠슨 DRI, M0 이후)
+- [x] `backend/app/schemas/conversation.py` — `ResumeRequest{decisions?, response?}` dual-shape (둘 중 하나 이상 필수, model_validator 검증)
+- [x] `backend/app/schemas/conversation.py` — 신규 `Decision` 모델 (`type: Literal["approve","edit","reject","respond"]` + payload)
+- [x] `backend/app/routers/conversations.py:resume_message` — `decisions` → `Command(resume={"decisions":[...]})`. `response`만 들어오면 단일 respond decision으로 변환 후 동일 dict 송신.
+- [x] `backend/app/agent_runtime/streaming.py:331-367` — `GraphInterrupt` catch 시 표준 `{action_requests, review_configs}` chunk + 기존 `{interrupt_id, value}` chunk dual emit (transition window).
+- [x] `backend/app/agent_runtime/executor.py` — `resume_agent_stream` 시그니처 보존(`resume_value: Any`); router가 dict payload `{"decisions": [...]}` 송신.
+- 검증: `cd backend && uv run ruff check . && uv run pyright app/ && uv run pytest tests/`
+- done-when: ruff 0 / pyright 0 / pytest 회귀 0 (기존 826 + 신규 PASS)
+- 상태: done
 
-## Phase 1 의 정확한 목표
+## M2: Frontend Dual-Shape (저커버그 DRI, M0 이후 — M1과 병렬)
+- [x] `frontend/src/lib/types/index.ts` — `InterruptPayload` 표준 + 기존 union (action_requests / review_configs / interrupt_id+value)
+- [x] `frontend/src/lib/types/index.ts` — `Decision` 타입 + `ResumeDecisionsRequest` 신규
+- [x] `frontend/src/lib/chat/use-chat-runtime.ts` — `case 'interrupt'` 표준 payload 처리 (handledStandardInterruptIdsRef dedup + onStandardInterrupt 콜백), legacy payload는 기존 onInterrupt 경로 보존
+- [x] `frontend/src/lib/sse/stream-resume.ts` — `streamResumeDecisions` 신규 (`{decisions}` 송신), 기존 `streamResume` 시그니처 보존
+- [x] `frontend/src/lib/chat/hitl-context.ts` — `HiTLContextValue`에 `onResumeDecisions(decisions[])` 추가, `onResume`은 어댑터로 보존
+- [x] `frontend/messages/ko.json` — `chat.approval.respond`, `chat.approval.allActionsCompleted`, `confirmAll`, `actionN`, `respondPlaceholder` 라벨 추가
+- 검증: `cd frontend && pnpm lint && pnpm test --run && pnpm build`
+- done-when: lint 0 / test 회귀 0 / build 성공
+- 상태: done
 
-ADR-012 의 "표준 미들웨어가 deep agent 에 주입되지만 SSE wire 는 자체 형식 유지" = 이미 90% 달성. 남은 격차:
+## M3: 회귀 가드 (베조스 DRI, M1·M2 이후)
+- [x] `backend/tests/test_hitl_phase2_wire.py` (신규, 23건) — Decision/ResumeRequest 스키마(13) + router 표준/legacy/공존/422(6) + streaming dual emit + ask_user-only legacy + fallback(3). contract 결정사항 1:1 매칭.
+- [x] `frontend/src/lib/sse/__tests__/stream-resume.test.ts` (신규, 6건) + `frontend/src/lib/chat/__tests__/use-chat-runtime-hitl.test.tsx` (신규, 9건 — 8 PASS + 1 expected-fail). 표준/legacy 분기 + dedup + multi-action + onResumeDecisions noop + body shape 검증.
+- 검증: `cd backend && uv run pytest tests/test_hitl_phase2_wire.py -v && cd ../frontend && pnpm test --run`
+- done-when: 신규 테스트 전부 PASS, 기존 회귀 0
+- 상태: done — backend 849 PASS (826+23, 회귀 0) / frontend 276 PASS + 1 expected fail (262+14, 회귀 0). 발견 이슈 1건 (fallback 경로 onInterrupt 2회 호출 — §4.5 위반, rare path) → SendMessage("?") 저커버그 보고됨.
 
-1. **트리거(invoke) 모드 강제 차단** — `execute_agent_invoke` 경로에서 `interrupt_on` 이 도달하면 hang. 명시적으로 `None` override 필요. (현재는 `_WRITE_TOOL_KEYWORDS` 자동 추출이 트리거 모드에서도 작동 가능)
-2. **명시적 인스턴스 경로** — `HumanInTheLoopMiddleware(interrupt_on=...)` 인스턴스를 `build_middleware_instances` 결과와 동일한 list 에 합쳐 deep agent 에 전달. `create_deep_agent` 의 `interrupt_on` 파라미터는 `None`. 이로써 **registry 단일 경로 + description_prefix 등 추가 옵션 제어 가능 + 디버깅 추적 용이**
-3. **middleware_registry 정리** — `human_in_the_loop` 을 `DEEPAGENT_BUILTIN_TYPES` 에서 제외하지 않고, `build_middleware_instances` 가 정상적으로 인스턴스화. 단, 사용자 `middleware_configs` 에서 `human_in_the_loop` 가 들어와도 executor 가 별도 경로로 처리 (자동 추출 vs 사용자 명시 둘 다 지원)
-
-## M1: 코드 변경 (피차이 단독 DRI)
-
-- [x] `backend/app/agent_runtime/middleware_registry.py`: `human_in_the_loop` 을 `DEEPAGENT_BUILTIN_TYPES` 에서 **유지**(중복 자동 주입 방지) 하되, executor 가 명시 인스턴스화하므로 자동 주입 경로 비활성화. 주석 갱신.
-- [x] `backend/app/agent_runtime/executor.py:472-548`:
-  - [x] `interrupt_on` 추출 로직 그대로 유지
-  - [x] `HumanInTheLoopMiddleware` 인스턴스 생성 (`interrupt_on` 이 None 이 아닐 때만)
-  - [x] 인스턴스를 `middleware` list 에 append
-  - [x] `build_agent(..., interrupt_on=None, ...)` — deepagents 자동 주입 비활성화
-  - [x] `execute_agent_invoke` 경로(`include_ask_user=False`) 에서 `interrupt_on` 강제 `None` (트리거 모드 자동 승인)
-- 검증: `cd backend && uv run ruff check . && uv run pyright app/agent_runtime/executor.py app/agent_runtime/middleware_registry.py`
-- done-when: ruff/pyright clean
+## M4: 통합 검증 + HANDOFF (사티아 DRI, M1·M2·M3 이후)
+- [x] backend: alembic upgrade head OK + ruff clean + pytest **849 PASS** (회귀 0) + pyright **0/0**
+- [x] frontend: pnpm lint clean + vitest **276 PASS** (47 files) + pnpm build PASS (16 routes)
+- [x] HANDOFF.md Phase 3 진입 안내 갱신 (dual-path 제거 작업 명세)
+- 검증: 위 명령 모두 0 exit ✅
+- done-when: 전체 명령 통과 + HANDOFF Phase 3 안내 반영 ✅
 - 상태: **done**
 
-## M2: 회귀 가드 테스트 (피차이 단독 DRI)
+---
 
-- [x] `backend/tests/test_hitl_middleware.py` 신규 (~330 라인):
-  - [x] `test_hitl_middleware_instance_injected_when_interrupt_on_provided` — `executor._build_*` 헬퍼 또는 `build_runtime` 호출 결과의 미들웨어 list 에 `HumanInTheLoopMiddleware` 인스턴스 존재 확인
-  - [x] `test_hitl_middleware_not_injected_in_trigger_mode` — `include_ask_user=False` 경로에서 미들웨어 list 에 없음 + `interrupt_on=None`
-  - [x] `test_hitl_middleware_per_tool_policy_applied` — `interrupt_on` dict 가 인스턴스에 그대로 전달
-  - [x] `test_hitl_middleware_auto_extraction_from_write_keywords` — 명시 dict 없을 때 자동 추출 동작
-  - [x] `test_deepagents_interrupt_on_param_is_none_when_explicit_instance` — `create_deep_agent` 자동 주입과의 중복 회피
-- 검증: `cd backend && uv run pytest tests/test_hitl_middleware.py -v`
-- done-when: 신규 테스트 모두 PASS
-- 상태: **done** (5/5 PASS)
-
-## M3: 통합 게이트 (베조스 DRI)
-
-- [ ] `cd backend && uv run alembic upgrade head` — 마이그레이션 무영향 확인
-- [ ] `cd backend && uv run ruff check .` — clean
-- [ ] `cd backend && uv run pytest tests/` — 기존 821 + 신규 ~5 = 826 PASS, 회귀 0
-- [ ] `cd backend && uv run pyright app/ tests/` — 0 error
-- [ ] 사용자 영향 없음 검증 — SSE wire format 변경 X (`streaming.py` 미수정, `routers/conversations.py` 미수정)
-- 검증: 전체 게이트 4종
-- done-when: 모두 PASS, 회귀 0
-- 상태: pending
-
-## 수정 금지 (Phase 2+ 대상)
-
-- `backend/app/agent_runtime/tools/ask_user.py`
-- `backend/app/agent_runtime/streaming.py`
-- `backend/app/routers/conversations.py`
-- `backend/app/agent_runtime/builder_v3/**`
-- `backend/app/schemas/conversation.py`
-- `frontend/**`
-
-## PR
-
-단일 PR — backend 코드 + 테스트만. 사용자 무영향 (SSE wire 자체 형식 유지).
+## 수정 금지 (Phase 1 산출물 / 다른 Phase 영역)
+- `backend/app/agent_runtime/middleware_registry.py` — Phase 1 주석 보존
+- `backend/app/agent_runtime/executor.py:_prepare_agent` 시그니처 + `include_ask_user=False` 트리거 차단 동작
+- `backend/tests/test_hitl_middleware.py` — Phase 1 5건 회귀 가드 보존
+- `backend/app/agent_runtime/tools/ask_user.py` — Phase 4까지 보존
+- `backend/app/agent_runtime/builder_v3/**` — Phase 5까지 보존 (자체 native interrupt 패턴)

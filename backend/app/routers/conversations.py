@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -810,6 +811,30 @@ async def send_message(
     )
 
 
+def _legacy_response_to_decisions(
+    response: str | list[str] | dict[str, Any],
+) -> list[dict[str, Any]]:
+    """legacy ``response`` 필드를 단일 ``respond`` Decision으로 변환.
+
+    HiTL Phase 2 wire contract §2.4 참조. 기존 자체 ask_user의
+    free-text/single-select/multi-select 답변 또는 builder의 dict 응답을
+    표준 미들웨어의 ``respond`` decision (synthetic ToolMessage content)
+    의미로 매핑한다.
+
+    - ``str``: 그대로 ``message``
+    - ``list[str]``: ``", ".join(...)`` 단일 문자열 (multi-select 응답)
+    - ``dict``: ``json.dumps(..., ensure_ascii=False)`` 직렬화
+      (자체 ask_user historical edge case)
+    """
+    if isinstance(response, str):
+        message = response
+    elif isinstance(response, list):
+        message = ", ".join(str(item) for item in response)
+    else:  # dict
+        message = json.dumps(response, ensure_ascii=False)
+    return [{"type": "respond", "message": message}]
+
+
 @router.post("/api/conversations/{conversation_id}/messages/resume")
 async def resume_message(
     conversation_id: uuid.UUID,
@@ -817,14 +842,37 @@ async def resume_message(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """HiTL interrupt 재개 — Command(resume=response)로 그래프 실행 재개."""
+    """HiTL interrupt 재개 — ``Command(resume={"decisions": [...]})``로
+    그래프 실행 재개.
+
+    Phase 2 dual-shape: 표준 ``decisions`` 우선. legacy ``response``만 들어오면
+    단일 ``respond`` decision으로 변환해 동일 dict 형태로 송신한다 (둘 다 들어오면
+    표준 우선, legacy 무시 — wire contract §2.3).
+    """
     cfg = await _resolve_agent_context(db, conversation_id, user)
     await chat_service.touch_conversation(db, conversation_id)
+
+    # 표준 우선. ``decisions``가 있으면 그대로 사용, 없으면 legacy 변환.
+    if data.decisions is not None:
+        if data.response is not None:
+            logger.info(
+                "ResumeRequest received both 'decisions' and 'response' — "
+                "using standard 'decisions' (transition tolerance)"
+            )
+        decisions_payload: list[dict[str, Any]] = [
+            d.model_dump(exclude_none=True) for d in data.decisions
+        ]
+    else:
+        # validator가 둘 다 None인 케이스를 422로 거절했으므로 response는 not None.
+        assert data.response is not None
+        decisions_payload = _legacy_response_to_decisions(data.response)
+
+    resume_payload: dict[str, Any] = {"decisions": decisions_payload}
 
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: resume_agent_stream(
-            cfg, data.response, **ctx.as_stream_kwargs()
+            cfg, resume_payload, **ctx.as_stream_kwargs()
         ),
         log_msg=f"Agent resume failed for conversation {conversation_id}",
         user_msg="에이전트 재개 중 오류가 발생했습니다.",

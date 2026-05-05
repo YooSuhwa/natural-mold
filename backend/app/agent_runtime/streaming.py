@@ -339,25 +339,57 @@ async def stream_agent_response(
         if _buf:
             full_content += _buf
 
-        # HiTL: 그래프 상태에서 interrupt 감지 후 클라이언트에 emit
+        # HiTL: 그래프 상태에서 interrupt 감지 후 클라이언트에 emit.
+        # Phase 2 dual emit (transition window): 표준 chunk(action_requests/
+        # review_configs) + legacy chunk(value) 둘 다 발행. frontend는 표준 우선,
+        # 같은 interrupt_id의 legacy는 dedup. 자체 ask_user.py가 발행한 interrupt는
+        # 표준 shape이 아니므로 legacy chunk만 emit (회귀 0). 자세한 규칙은
+        # docs/exec-plans/active/hitl-phase2-contract.md §4 참조.
         try:
             state = await agent.aget_state(config)
             if state.tasks:
                 for task in state.tasks:
                     if task.interrupts:
                         for intr in task.interrupts:
+                            intr_id = str(getattr(intr, "ns", ""))
+                            intr_value = (
+                                intr.value if isinstance(intr.value, dict) else None
+                            )
+
+                            # 표준 chunk: intr.value가 LangChain HITLRequest
+                            # TypedDict shape일 때만 emit. (ask_user 자체
+                            # interrupt는 이 shape이 아니므로 skip → frontend는
+                            # legacy chunk를 채택.)
+                            if (
+                                intr_value is not None
+                                and "action_requests" in intr_value
+                                and "review_configs" in intr_value
+                            ):
+                                yield emit(
+                                    event_names.INTERRUPT,
+                                    {
+                                        "interrupt_id": intr_id,
+                                        "action_requests": intr_value["action_requests"],
+                                        "review_configs": intr_value["review_configs"],
+                                    },
+                                )
+
+                            # legacy chunk: 항상 emit (transition window).
                             yield emit(
                                 event_names.INTERRUPT,
                                 {
-                                    "interrupt_id": str(getattr(intr, "ns", "")),
-                                    "value": intr.value
-                                    if isinstance(intr.value, dict)
+                                    "interrupt_id": intr_id,
+                                    "value": intr_value
+                                    if intr_value is not None
                                     else {"message": str(intr.value)},
                                 },
                             )
         except Exception:
             logger.warning("aget_state failed (interrupt check)", exc_info=True)
             if was_interrupted:
+                # fallback: state 조회 실패라 표준 shape을 구성할 정보가 없다.
+                # legacy chunk만 emit — frontend는 `action_requests` 키 부재로
+                # legacy 경로를 자연스럽게 채택 (contract §4.5).
                 yield emit(
                     event_names.INTERRUPT,
                     {

@@ -7,9 +7,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import type {
+  Decision,
+  LegacyInterruptPayload,
   Message,
   MessagesEnvelope,
   SSEEvent,
+  StandardInterruptPayload,
   ToolCallInfo,
   InterruptPayload,
   TokenUsageBreakdown,
@@ -17,7 +20,7 @@ import type {
 import { sessionTokenUsageAtom, reconnectStateAtom } from '@/lib/stores/chat-store'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
-import { streamResume } from '@/lib/sse/stream-resume'
+import { streamResume, streamResumeDecisions } from '@/lib/sse/stream-resume'
 import { streamEdit } from '@/lib/sse/stream-edit'
 import { streamRegenerate } from '@/lib/sse/stream-regenerate'
 import { streamResumeAttach } from '@/lib/sse/stream-resume-attach'
@@ -95,8 +98,21 @@ interface UseChatRuntimeOptions {
   onStreamEnd?: (didMutate: boolean) => void
   /** 스트리밍 메시지 확정 시 호출 — 로컬 히스토리 유지용 (AssistantPanel) */
   onMessagesCommit?: (messages: Message[]) => void
-  /** interrupt 발생 시 호출 (HiTL UI 렌더링용) */
-  onInterrupt?: (payload: InterruptPayload) => void
+  /**
+   * Legacy interrupt 발생 시 호출 (HiTL UI 렌더링용).
+   *
+   * 자체 ask_user wire(`{interrupt_id, value}`) 또는 표준 chunk가 빈
+   * `action_requests`로 도달했을 때 fallback. Phase 3에서 표준 일원화 시 제거.
+   */
+  onInterrupt?: (payload: LegacyInterruptPayload) => void
+  /**
+   * 표준 interrupt 발생 시 호출 (Phase 2 신규).
+   *
+   * LangChain `HumanInTheLoopMiddleware`가 발행한 `action_requests` /
+   * `review_configs` chunk가 도달했을 때 호출. 같은 `interrupt_id`의 legacy
+   * chunk가 함께 와도 dedup하여 한 번만 호출된다.
+   */
+  onStandardInterrupt?: (payload: StandardInterruptPayload) => void
   /** resume 시 conversationId가 필요 (legacy, conversations 페이지용) */
   conversationId?: string
   /** 커스텀 resume 함수 (Builder v3 등 conversationId가 없는 컨텍스트용) */
@@ -120,6 +136,7 @@ export function useChatRuntime({
   streamFn,
   onStreamEnd,
   onInterrupt,
+  onStandardInterrupt,
   onMessagesCommit,
   conversationId,
   resumeFn,
@@ -136,6 +153,10 @@ export function useChatRuntime({
   const abortRef = useRef<AbortController | null>(null)
   // 가장 최근에 emit된 interrupt_id (resume 시 stale 검증용)
   const lastInterruptIdRef = useRef<string | null>(null)
+  // HiTL Phase 2 — 같은 `interrupt_id`로 표준 chunk를 이미 처리했으면 뒤에 오는
+  // legacy chunk는 무시(dedup). 컴포넌트 라이프사이클 동안 누적; conversation
+  // 전환 시 자연 remount로 리셋. (contract §5.2 / progress.txt §HiTL Phase 2)
+  const handledStandardInterruptIdsRef = useRef<Set<string>>(new Set())
   // W3-out M5 — primary POST 응답 헤더 ``X-Run-Id`` 와 마지막 SSE event id.
   // GET ``/stream?run_id=&last_event_id=`` 재연결에 사용. stream 이 끝나거나
   // 새 stream 이 시작되면 ``prepareStream`` 에서 reset.
@@ -359,10 +380,24 @@ export function useChatRuntime({
             }
             case 'interrupt': {
               // interrupt 발생 → 사용자 응답 대기 상태이므로 로딩 중지
-              const intrId = (event.data as { interrupt_id?: string }).interrupt_id
-              if (intrId) lastInterruptIdRef.current = intrId
               setIsRunning(false)
-              onInterrupt?.(event.data)
+              const data = event.data as InterruptPayload
+              const intrId = data.interrupt_id
+              if (intrId) lastInterruptIdRef.current = intrId
+
+              // 표준/legacy 분기는 `action_requests` 키 *존재* 기준. 표준 chunk
+              // 는 항상 키를 가지고 legacy chunk는 절대 갖지 않는다 (contract §4).
+              // 같은 interrupt_id의 표준 chunk가 먼저 처리되면 짝으로 오는
+              // legacy chunk는 dedup으로 무시.
+              if ('action_requests' in data && Array.isArray(data.action_requests)) {
+                if (intrId) handledStandardInterruptIdsRef.current.add(intrId)
+                onStandardInterrupt?.(data as StandardInterruptPayload)
+                break
+              }
+              if (intrId && handledStandardInterruptIdsRef.current.has(intrId)) {
+                break
+              }
+              onInterrupt?.(data as LegacyInterruptPayload)
               break
             }
             case 'error': {
@@ -433,7 +468,14 @@ export function useChatRuntime({
         onStreamEnd?.(didMutate)
       }
     },
-    [onStreamEnd, onInterrupt, onMessagesCommit, setReconnectState, tReconnect],
+    [
+      onStreamEnd,
+      onInterrupt,
+      onStandardInterrupt,
+      onMessagesCommit,
+      setReconnectState,
+      tReconnect,
+    ],
   )
 
   // messages가 새로 fetch되면(refetch 완료) streaming messages를 clear.
@@ -559,7 +601,12 @@ export function useChatRuntime({
     [streamFn, _runStream],
   )
 
-  /** HiTL: interrupt 응답 후 그래프 재개 */
+  /**
+   * HiTL: legacy interrupt 응답 후 그래프 재개.
+   *
+   * 자체 wire(`{response: ...}`)로 송신. backend router가 단일 respond decision
+   * 으로 변환하여 표준 미들웨어에 전달한다. Phase 3에서 제거 예정.
+   */
   const onResume = useCallback(
     async (response: unknown, displayText?: string) => {
       const userMsg = displayText ? createOptimisticMessage('user', displayText) : null
@@ -576,6 +623,27 @@ export function useChatRuntime({
       )
     },
     [conversationId, resumeFn, _runStream],
+  )
+
+  /**
+   * HiTL: 표준 interrupt 응답 후 그래프 재개 (Phase 2 신규).
+   *
+   * `decisions` 배열 길이는 interrupt의 `action_requests.length`와 같아야
+   * 미들웨어가 valid response로 인식. backend로 표준 wire `{decisions: [...]}`
+   * 송신. `resumeFn`이 주입된 호환 컨텍스트(builder 등)에는 송신하지 않고
+   * 호출 자체를 noop 처리 — builder는 자체 native interrupt를 유지.
+   */
+  const onResumeDecisions = useCallback(
+    async (decisions: Decision[], displayText?: string) => {
+      if (!conversationId) return
+      const userMsg = displayText ? createOptimisticMessage('user', displayText) : null
+      await _runStream(
+        (signal, onRunId) =>
+          streamResumeDecisions(conversationId, decisions, signal, { onRunId }),
+        userMsg,
+      )
+    },
+    [conversationId, _runStream],
   )
 
   const onCancel = useCallback(async () => {
@@ -686,5 +754,5 @@ export function useChatRuntime({
     [streamFn, _runStream],
   )
 
-  return { runtime, onResume, sendMessage }
+  return { runtime, onResume, onResumeDecisions, sendMessage }
 }

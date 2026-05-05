@@ -564,3 +564,141 @@ M0(거버넌스+docs+삭제분석) → M1(브랜딩+Cipher) → M2(Credential+Va
   - backend 통째 kill 시 in-flight LangGraph turn 사라짐 → DB replay 만 받고 종료, 새 토큰 안 이어짐. multi-worker / sticky routing 후속 트랙으로 해결 가능.
   - production 의 transient network drop (Wi-Fi 토글 등) 은 broker 살아있어 X-Resume-Mode: live 로 진짜 이어짐 — 이 케이스는 manual test 어려워 unit + 코드 review 로 검증.
 - 다음 사이클 (M6): backend integration test (test_stream_resume.py 4 시나리오 — live attach / replay-only / stale streaming / interrupt pending) + ADR-011 작성.
+
+================================================================================
+[2026-05-05 satya] HiTL Phase 2 — Wire format 통합 사이클 시작
+================================================================================
+
+## 목표
+자체 HiTL wire format → LangChain `HumanInTheLoopMiddleware` 표준 wire format으로
+dual-path transition. 본 PR은 양쪽 모두 작동하게 만드는 transition window.
+Phase 3에서 legacy 제거.
+
+## 필독 (모든 팀원)
+- `HANDOFF.md` (루트) — Phase 1 완료 상태 + Phase 2 작업 명세
+- `docs/design-docs/adr-012-hitl-middleware-migration.md` (특히 §3, §4, §7)
+- `CHECKPOINT.md` (마일스톤 + 검증 커맨드)
+- `docs/exec-plans/active/hitl-phase2-contract.md` (M0에서 피차이가 작성)
+
+## Phase 1 산출물 (수정 금지)
+- `backend/app/agent_runtime/executor.py` — `_prepare_agent`의 `include_ask_user=False`가 트리거 indicator. `HumanInTheLoopMiddleware` 명시 인스턴스화 완료. **Phase 2에서는 시그니처/동작 보존.** resume_agent_stream의 resume_value 처리는 변경 가능.
+- `backend/app/agent_runtime/middleware_registry.py` — `human_in_the_loop` 자동 주입 회피 주석. Phase 2 미수정.
+- `backend/tests/test_hitl_middleware.py` — 5 회귀 가드. **Phase 2 PR에서도 보존 필수.**
+
+## Phase 4까지 보존
+- `backend/app/agent_runtime/tools/ask_user.py`
+
+## Phase 5까지 보존
+- `backend/app/agent_runtime/builder_v3/graph.py` (Builder v3는 직교 — 자체 native interrupt 패턴 유지)
+
+## Phase 1 → Phase 2 핵심 결정 (ADR-012 §3, §4)
+
+### ResumeRequest dual-shape (transition)
+```python
+class Decision(BaseModel):
+    type: Literal["approve", "edit", "reject", "respond"]
+    edited_action: dict | None = None  # type=edit
+    message: str | None = None         # type=reject | respond
+
+class ResumeRequest(BaseModel):
+    decisions: list[Decision] | None = None  # 표준 (신규)
+    response: str | list[str] | dict | None = None  # @deprecated, 단일 respond decision으로 변환
+    # 둘 중 하나 이상 필수 — model_validator로 검증
+```
+
+### INTERRUPT event payload dual emit
+```typescript
+// 표준 (신규)
+{ event: 'interrupt', data: {
+  action_requests: [{ name, args, description? }],
+  review_configs: [{ action_name, allowed_decisions: ('approve'|'edit'|'reject'|'respond')[] }]
+}}
+// legacy (보존, transition window 동안 함께 emit)
+{ event: 'interrupt', data: { interrupt_id, value: { type, question?, options?, message? } } }
+```
+streaming.py는 한 task의 한 interrupt당 두 SSE chunk를 발행한다 (표준 + legacy).
+frontend는 표준 우선 처리, legacy fallback. 두 chunk가 같은 interrupt를 가리키므로
+중복 처리 방지 로직 필요 (e.g. 표준 chunk 받으면 legacy chunk 무시 — 같은 interrupt_id 기준).
+
+### Multi-action 큐 (표준만)
+- 표준 `action_requests`는 길이 ≥ 1. 길이 1이면 단일 액션 = 기존 동작과 동치.
+- 길이 ≥ 2이면 frontend가 배열 큐로 렌더 (Phase 2에서는 순차 카드 + 일괄 확정 버튼으로 단순 시작).
+
+### 트리거 모드
+- Phase 1에서 이미 `include_ask_user=False`일 때 `interrupt_on=None`으로 차단. 표준 미들웨어 인스턴스 자체가 주입되지 않음. **Phase 2에서 트리거 경로 추가 변경 없음.**
+
+## Codebase Patterns (Phase 2 컨텍스트)
+
+- Backend SSE: `event_names.INTERRUPT` 상수 재사용. dual emit 시 두 chunk가 같은 event 이름을 사용.
+- Backend 테스트: pytest + aiosqlite in-memory. langchain internal 속성 fallback 의존 시 주석 명시.
+- Frontend types: `SSEEvent`는 discriminated union — interrupt variant의 data를 union으로 확장 시 타입 가드 필요. `'action_requests' in data` in-operator로 분기.
+- Frontend SSE: `streamSSEPost`로 일관 송신. `consumeStream`이 `case 'interrupt'`로 분기.
+- Frontend HiTL: `HiTLContext`(`hitl-context.ts`)가 `onResume` 콜백 제공. `useHiTL()`로 tool UI에서 호출.
+- Frontend i18n: `messages/ko.json`. 키 네이밍 `chat.approval.*`.
+
+## Gotchas (Phase 2)
+
+- `streaming.py:343` 의 `agent.aget_state(config)`는 generator finally 외부에서 실행. interrupt 발생 후 emit. **dual emit 시 한 task의 한 interrupt당 정확히 두 chunk(표준+legacy)만 발행** — 중복 주의.
+- `was_interrupted=True` fallback 분기에도 표준 형식을 함께 emit해야 일관성 유지.
+- Frontend `consumeStream` 의 `case 'interrupt'`: 현재 단일 `onInterrupt(payload)` 호출. 표준 payload 처리 분기 추가 시 type narrowing 필요.
+- `lastInterruptIdRef.current = intrId` (stale 검증용)는 legacy `interrupt_id`에서 유래. 표준 payload 우선 처리 시 stale 검증이 끊기지 않도록, **legacy chunk가 함께 도착하면 그쪽에서만 갱신**하는 방식이 안전. 또는 표준 payload에 corrleation id를 함께 emit (서버 측에서 동일 interrupt_id를 두 chunk 모두에 포함).
+- Phase 2 dual emit 권장 구현: 표준 chunk에도 `interrupt_id` 동봉 (frontend stale 검증/중복 dedupe에 활용). ADR-012 §4에는 명시되지 않았지만 transition window의 안전망으로 채택. 피차이가 wire-contract에서 명시 결정.
+
+## 파일 경계
+
+- 피차이: `docs/exec-plans/active/hitl-phase2-contract.md` (신규), `docs/design-docs/index.md` 갱신, `CHECKPOINT.md` 보조
+- 젠슨: `backend/app/schemas/conversation.py`, `backend/app/routers/conversations.py:813-833`, `backend/app/agent_runtime/streaming.py:331-367`, `backend/app/agent_runtime/executor.py` (resume 경로만, _prepare_agent 보존)
+- 저커버그: `frontend/src/lib/types/index.ts`, `frontend/src/lib/chat/use-chat-runtime.ts`, `frontend/src/lib/sse/stream-resume.ts`, `frontend/src/lib/chat/hitl-context.ts`, `frontend/src/messages/ko.json`
+- 베조스: `backend/tests/test_hitl_phase2_wire.py` (신규), `frontend/src/lib/chat/__tests__/` (신규 또는 보강)
+
+[2026-05-05 pichai M0 DONE — wire contract]
+- 산출물: docs/exec-plans/active/hitl-phase2-contract.md (단일 파일, 10 섹션 + 부록 2). M1·M2 즉시 병렬 시작 가능.
+- 표준 미들웨어 `allowed_decisions` 기본값 검증 (langchain/agents/middleware/human_in_the_loop.py:215-220): `interrupt_on={"tool": True}` → `["approve","edit","reject","respond"]` 4종 모두. False는 entry 자체 무시(auto-approve). dict 명시면 그 값 그대로.
+- 결정점 단정 (모호점 0): (a) decisions+response 둘 다 오면 표준 우선, legacy 무시(422 안 함, transition 관용); (b) legacy response 변환은 str→그대로 / list→", ".join / dict→json.dumps; (c) 표준 chunk에도 interrupt_id 동봉(frontend dedup·stale 안전망); (d) dual emit 순서 표준→legacy, 한 interrupt당 정확히 두 chunk; (e) fallback(was_interrupted+aget_state 실패)도 두 chunk 모두 emit, interrupt_id="" 빈 문자열; (f) frontend 분기는 `'action_requests' in data && length>0` (빈 배열 표준은 legacy로 fallback); (g) handledStandardInterruptIdsRef로 같은 interrupt_id 중복 처리 차단.
+
+[2026-05-05 jensen M1 DONE — backend dual-shape]
+- ResumeRequest validator: decisions+response 둘 다 None → ValueError로 422 자동 거절(model_validator after). 둘 다 있으면 표준만 채택 + INFO 로그.
+- legacy 변환 헬퍼는 router private (`_legacy_response_to_decisions`). dict→json.dumps(ensure_ascii=False) — 한글 응답 raw 보존. 단일 respond decision으로 wrap.
+- streaming dual emit: intr.value가 dict이고 `action_requests`+`review_configs` 키 둘 다 있을 때만 표준 chunk 발행 → ask_user 자체 interrupt는 표준 chunk skip(legacy 단독). 표준 미들웨어 interrupt만 두 chunk. fallback(aget_state 실패+was_interrupted)도 표준 빈 배열 + legacy 메시지 두 chunk 모두 emit.
+- executor.resume_agent_stream: 시그니처(`resume_value: Any`) 미수정. Phase 1 보존 영역 0 라인 변경. `Command(resume=dict)`은 LangChain TypedDict NotRequired 호환.
+- 회귀 0: ruff clean, pyright app/ 0, pytest 826 PASS.
+
+[2026-05-05 zuckerberg M2 DONE — frontend HiTL Phase 2 dual-shape]
+- 파일 5개 + 호출부 2개 변경: lib/types/index.ts(InterruptPayload union: StandardInterruptPayload | LegacyInterruptPayload + Decision/ActionRequest/ReviewConfig/DecisionType/ResumeDecisionsRequest 신규), lib/sse/stream-resume.ts(streamResumeDecisions 신규+기존 streamResume 시그니처 보존), lib/chat/hitl-context.ts(onResumeDecisions 추가, onResume @deprecated로 보존), lib/chat/use-chat-runtime.ts(handledStandardInterruptIdsRef Set dedup + onStandardInterrupt 콜백 신규 + 'action_requests' in data 분기 + onResumeDecisions export), messages/ko.json(respond/respondPlaceholder/allActionsCompleted/confirmAll/actionN 5키 추가). 호출부 페이지 2곳(conversations/[conversationId]/page.tsx + agents/new/conversational/page.tsx)에서 `{ onResume, onResumeDecisions }` HiTLContext provider 갱신.
+- 핵심 패턴 (회귀 0의 비결):
+  1. SSEEvent의 interrupt variant는 `data: InterruptPayload`로 두고, InterruptPayload 자체를 union으로 확장 → 기존 `(event.data as { interrupt_id?: string }).interrupt_id` 류 좁힘은 그대로 통과(union 모두 interrupt_id 갖음). use-chat-runtime의 case 'interrupt' 분기는 `'action_requests' in data && length>0` in-operator narrowing으로 표준/legacy 구분.
+  2. onInterrupt 시그니처를 `LegacyInterruptPayload`로 좁힘. 기존 callers(grep 결과 0건 — onInterrupt 패스되는 곳 없음)에 영향 0.
+  3. handledStandardInterruptIdsRef는 컴포넌트 라이프사이클 누적 Set. conversation 전환은 page remount로 자연 리셋. streamGuard와 별도(streamGuard는 stream-단위 reset).
+  4. 빈 표준 chunk(action_requests=[])는 fallback chunk로 표준 처리에서 skip → 같은 ID의 legacy chunk가 채택. contract §4.5 정확히 반영.
+  5. onResumeDecisions는 conversationId 필수 → resumeFn(builder)에는 noop. builder는 자체 native interrupt 유지하므로 의도된 동작.
+- gotcha: HiTLContextValue가 두 필드 모두 required. Provider value를 `{ onResume }` → `{ onResume, onResumeDecisions }`로 갱신해야 TS 컴파일. Phase 3에서 `onResume` 제거 시 Provider value도 `{ onResumeDecisions }` 단일로.
+- multi-action UI는 본 PR 명시적으로 미포함. action_requests.length>=2 케이스는 onStandardInterrupt 콜백에 통째로 전달되며, UI 렌더는 후속 작업(콜백 미지정 시 noop). contract §5.3에 명시. 컴포넌트 자체 미수정 — 4 액션 이미 지원하는 ApprovalCard / UserInputUI / 기타 tool UI 회귀 0.
+- 검증: pnpm lint clean / pnpm test --run 262/262 PASS / pnpm build PASS 16 routes TypeScript clean. 회귀 0.
+
+[2026-05-05 bezos M3 DONE — Phase 2 회귀 가드 테스트]
+- 신규 backend: backend/tests/test_hitl_phase2_wire.py 23건 — Decision/ResumeRequest 스키마 13건 + router 표준/legacy/공존/422 6건 + streaming dual emit + ask_user-only legacy + fallback 3건. 모두 PASS, contract 결정사항 1:1 매칭.
+- 신규 frontend: frontend/src/lib/sse/__tests__/stream-resume.test.ts 6건(streamResumeDecisions body shape + streamResume legacy 보존, fetchEventSource vi.mock으로 body capture) + frontend/src/lib/chat/__tests__/use-chat-runtime-hitl.test.tsx 9건(표준 onStandardInterrupt 분기 + legacy onInterrupt 분기 + 표준→legacy dedup + multi-action 통째 전달 + fallback 동작 LOCK + onResumeDecisions noop + InterruptPayload union narrowing). 8 PASS + 1 expected fail.
+- 회귀 게이트: backend ruff clean / pyright app/ tests/ 0 / pytest 849 PASS (826+23, 회귀 0) / alembic upgrade head OK. frontend lint clean / vitest 276 PASS + 1 expected fail (262 baseline +14, 회귀 0) / build PASS 16 routes.
+- 발견 이슈 1건 (Zuckerberg M2 fallback 경로): aget_state 실패 + was_interrupted=True fallback에서 backend가 표준 빈 배열 chunk(interrupt_id="")를 emit하는데, frontend 현 dispatch 로직이 빈 배열 표준 chunk를 그대로 onInterrupt로 통과시킴. intrId="" 가 falsy라 handledStandardInterruptIdsRef gate를 통과 → legacy chunk도 통과 → onInterrupt 2회 호출(첫 호출은 value 없는 잘못된 payload). contract §4.5 위반(legacy 1회만 채택해야 함). 영향: rare path(aget_state 장애), UX 이중 표시. fix 후보: 빈 표준 chunk를 explicit no-op marker로 처리(handledStandardInterruptIdsRef에 sentinel 추가) 또는 length===0 standard chunk를 dispatch 제외.
+- 테스트 패턴(future 기여자):
+  1. langchain GraphInterrupt는 `interrupts: Sequence[Interrupt]` 인자 필요 — 빈 list 전달로 통과(`raise GraphInterrupt([])`).
+  2. router 페이로드 캡처는 `app.routers.conversations.resume_agent_stream`을 patch해서 `(*args, **kwargs)`를 list에 append하는 fake async generator로. _sse_handler가 200 응답하려면 chunk 1개 yield 필요.
+  3. 스트리밍 dual emit 검증은 `_InterruptingAgent`(astream raises GraphInterrupt + aget_state returns mock state with task.interrupts).
+  4. frontend `useChatRuntime` hook은 next-intl + jotai + sonner 가벼운 mock + QueryClientProvider 만 있으면 renderHook 가능. assistant-ui useExternalStoreRuntime은 추가 provider 없이 동작.
+  5. fetchEventSource vi.mock — onopen ok 200 가짜 response → 즉시 onclose. body capture는 `JSON.parse(init.body as string)`.
+
+[2026-05-05 zuckerberg HOTFIX — fallback chunk §4.5 위반 수정 (베조스 ?)]
+- 베조스 발견: was_interrupted=True + aget_state 실패 fallback에서 backend가 표준 빈배열 chunk(interrupt_id="") + legacy chunk(interrupt_id="")를 emit하면 frontend가 onInterrupt를 2회 호출. 첫 호출은 `value` 키 없는 표준 빈 chunk(LegacyInterruptPayload shape 위반).
+- 근본 원인: M2 분기가 `'action_requests' in data && length>0` 기준 → length===0 표준은 isStandard=false → intrId="" falsy로 dedup gate 통과 → onInterrupt에 흘러감.
+- fix: 분기 기준을 `'action_requests' 키 존재`로 변경 (length 무관). 빈 배열도 표준 마커로 인식하여 explicit no-op 처리 → legacy chunk만 채택. handledStandardInterruptIdsRef에는 length>0일 때만 add(빈 배열은 dedup 무관).
+- 패턴 (기록): 표준/legacy union 분기는 *키 존재* 기준이 length 기준보다 안전. 표준 chunk는 항상 `action_requests` 키를 가지고(길이 무관), legacy는 절대 갖지 않는다. length 기반 narrowing은 fallback shape이 추가되면 회귀 유발.
+- 베조스의 .fails 테스트(§4.5 expected) + LOCK baseline 두 개를 단일 `it()`로 통합(LOCK 제거). 47 test files / 276 PASS, lint/build clean.
+
+[2026-05-05 zuckerberg M2 HOTFIX — fallback 분기 fix]
+- 베조스가 발견한 §4.5 위반 fix. 분기 기준 `length > 0` → `'action_requests' in data` 키 존재 (length 무관). 빈 배열 표준 chunk = explicit no-op marker.
+- 핵심 패턴: union 분기는 *키 존재* 기준이 length 기준보다 안전. 빈 배열/빈 문자열 등 falsy edge case가 dedup gate(intrId truthy 체크)를 우회하는 회귀를 차단.
+- 베조스 신규 테스트(LOCK + it.fails) → 정식 it() 단일 가드로 통합 (빈 배열 표준 skip + legacy chunk 1회만 채택). 14/14 frontend HiTL 테스트 PASS.
+
+[2026-05-05 bezos M3 RE-VERIFY — fix 후 재검증]
+- 게이트 6/6 PASS: backend pytest 849 (회귀 0), frontend lint clean + vitest 276 PASS (expected-fail 0건), build PASS 16 routes, alembic OK.
+- verdict CONDITIONAL → **FULL APPROVE**. M4 통합 검증 진입 가능.

@@ -106,7 +106,7 @@ export default function ConversationalCreationPage({
     })()
   }, [router])
 
-  const { runtime, onResume, sendMessage } = useChatRuntime({
+  const { runtime, onResume, onResumeDecisions, sendMessage } = useChatRuntime({
     messages,
     streamFn,
     resumeFn,
@@ -122,7 +122,10 @@ export default function ConversationalCreationPage({
     }
   }, [initialMessage, sendMessage])
 
-  const hitlValue = useMemo(() => ({ onResume }), [onResume])
+  const hitlValue = useMemo(
+    () => ({ onResume, onResumeDecisions }),
+    [onResume, onResumeDecisions],
+  )
 
   return (
     <div className="flex h-screen flex-col">

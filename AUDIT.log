@@ -131,3 +131,25 @@
 [2026-05-05T00:35:00] satya VERIFICATION_PASS M3 게이트 4종 (alembic/ruff/pytest 826/pyright 0)
 [2026-05-05T00:40:00] bezos REVIEW_APPROVE Phase 1 — 회귀 위험 0, 수정금지 0건, 테스트 4/5
 [2026-05-05T00:40:00] satya PROJECT_DONE HiTL Phase 1 머지 준비
+
+[2026-05-05T15:35:00] satya PROJECT_START "HiTL Phase 2 — Wire format 통합 (dual-path transition)"
+[2026-05-05T15:35:00] satya MILESTONE_CREATED M0 wire-contract / M1 backend / M2 frontend / M3 regression / M4 integration
+[2026-05-05T15:35:00] satya BRANCH_CREATED feature/hitl-phase2-wire-format from main@750d587
+[2026-05-05T15:35:00] satya TEAM_COMPOSITION 4인 사일로 (피차이 wire-contract / 젠슨 backend / 저커버그 frontend / 베조스 회귀가드). 풀스택 5인 매트릭스에서 팀쿡 제외 — 신규 UI 디자인 없음(어댑터만).
+[2026-05-05T06:46:57Z] pichai MILESTONE_DONE M0 wire-contract 문서 작성 (docs/exec-plans/active/hitl-phase2-contract.md)
+[2026-05-05T06:52:46Z] jensen MILESTONE_DONE M1 backend dual-shape — schemas/conversation.py(Decision+ResumeRequest dual), routers/conversations.py:resume_message(legacy→respond decision 변환), streaming.py(표준+legacy dual emit, fallback 두 chunk). ruff clean / pyright app/ 0 / pytest 826 PASS 회귀 0. Phase 1 보존영역 0 라인.
+[2026-05-05T06:54:49Z] zuckerberg MILESTONE_DONE M2 frontend dual-shape — types/index.ts(InterruptPayload union+Decision+ResumeDecisionsRequest), stream-resume.ts(streamResumeDecisions 신규+legacy 보존), hitl-context.ts(onResumeDecisions 추가+onResume 보존), use-chat-runtime.ts(handledStandardInterruptIdsRef dedup+onStandardInterrupt 콜백+onResumeDecisions export), 페이지 2개(HiTLContext provider 갱신), ko.json 5개 키 추가. pnpm lint clean / pnpm test --run 262 PASS 회귀 0 / pnpm build PASS 16 routes.
+[2026-05-05T06:55:00Z] satya VERIFICATION_PASS M1 backend ruff clean + pytest 826 PASS (회귀 0). 게이트 통과.
+[2026-05-05T06:57:30Z] satya VERIFICATION_PASS M2 frontend lint clean + vitest 262 PASS + build PASS (16 routes). 게이트 통과.
+[2026-05-05T16:15:00Z] bezos VERIFICATION_PASS M3 — backend test_hitl_phase2_wire.py 23 신규 PASS / pytest 849 PASS (회귀 0) / ruff clean / pyright app/ tests/ 0. frontend stream-resume.test.ts 6 + use-chat-runtime-hitl.test.tsx 9(8 PASS + 1 expected-fail) 신규 / vitest 276 PASS + 1 expected fail (회귀 0) / lint clean / build PASS 16 routes / alembic upgrade head OK.
+[2026-05-05T16:15:00Z] bezos REVIEW_APPROVE Phase 2 — verdict CONDITIONAL APPROVE. 게이트 6/6 통과, contract 결정사항 dual-path 모두 회귀 가드. 발견 이슈 1건 (M2 fallback 경로 onInterrupt 2회 호출, §4.5 위반) — rare path UX 이중 표시. expected-fail 테스트로 베이스라인 + Zuckerberg에 SendMessage 보고. 머지는 가능하되 follow-up fix 필요.
+[2026-05-05T07:14:00Z] satya COURSE_CORRECTION M3 verdict CONDITIONAL — fallback 경로 onInterrupt 2회 호출(§4.5 위반). Phase 3 시 legacy 제거 후엔 fix 비용 더 큼. 머지 전 fix 결정. zuckerberg에 fix 위임 (옵션 1: dedup ref 보강).
+[2026-05-05T07:14:43Z] zuckerberg HOTFIX M2 use-chat-runtime.ts fallback 경로 contract §4.5 위반 수정 — 'action_requests' 키 *존재* 기준 분기로 변경(length 무관). 빈 배열 표준 chunk = explicit no-op으로 처리하여 legacy chunk만 채택, onInterrupt 1회 호출. 베조스 신규 .fails 테스트는 LOCK 제거 + 정식 it()로 흡수. lint clean / test 47 files 276 PASS / build PASS.
+[2026-05-05T07:16:00Z] satya VERIFICATION_PASS M2-hotfix frontend lint clean + vitest 276 PASS (47 files, expected-fail 흡수). 게이트 통과.
+[2026-05-05T07:16:00Z] satya MILESTONE_DONE M3 — Phase 2 verdict 무조건 APPROVE로 전환 (CONDITIONAL → APPROVE). 신규 backend 23 + frontend 14 회귀 가드.
+[2026-05-05T16:20:00Z] zuckerberg HOTFIX_DONE M2 fallback 분기 — `'action_requests' in data` 키 존재 기준으로 변경 (length 무관). 빈 배열 표준 chunk = explicit no-op marker. 회귀 가드 LOCK→정식 it() 통합. lint clean / vitest 276 PASS / build PASS 16 routes.
+[2026-05-05T16:20:30Z] bezos VERIFICATION_PASS Phase 2 fix re-verify — backend pytest 849 PASS (회귀 0) / frontend lint clean + vitest 276 PASS (no expected-fail) + build PASS 16 routes. 발견 이슈 0건 잔여.
+[2026-05-05T16:20:30Z] bezos REVIEW_APPROVE Phase 2 — verdict 갱신 CONDITIONAL→**FULL APPROVE**. contract dual-path §2~§6 모두 회귀 가드, fallback §4.5도 정식 가드. M4 통합 검증 진입 가능.
+[2026-05-05T07:18:00Z] satya VERIFICATION_PASS M4 backend 게이트 4종 (alembic up + ruff clean + pytest 849 PASS + pyright 0/0). frontend 게이트 3종 (lint clean + vitest 276 PASS + build 16 routes).
+[2026-05-05T07:18:00Z] satya MILESTONE_DONE M4 통합 검증 + HANDOFF.md Phase 3 진입 안내 갱신.
+[2026-05-05T07:18:00Z] satya PROJECT_DONE HiTL Phase 2 — Wire format 통합. dual-path transition 완료. 머지 준비.
