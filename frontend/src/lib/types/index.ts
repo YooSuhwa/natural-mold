@@ -262,10 +262,20 @@ export type SSEEventType =
   | 'message_end'
   | 'error'
   | 'interrupt'
+  | 'stale'
 
 export interface InterruptPayload {
   interrupt_id: string
   value: Record<string, unknown>
+}
+
+// W3-out M3 — backend 가 broker 손실 (in-flight turn 중 backend 가 죽어 GET
+// resume 이 DB replay 만 받은 케이스) 을 client 에 알리는 marker. ``reason``
+// = ``broker_lost`` (events 에 last_event_id 있음) 또는 ``broker_lost_no_id``
+// (events 자체가 빈 채로 status='streaming' row 만 있음 — NPE 회피용 구분).
+export interface StalePayload {
+  reason: 'broker_lost' | 'broker_lost_no_id'
+  last_event_id: string | null
 }
 
 // ``id``: 백엔드가 발행하는 SSE id (``{msg_id}-{seq}`` 형식). caller side에서
@@ -286,6 +296,7 @@ export type SSEEvent = { id?: string } & (
     }
   | { event: 'error'; data: { message: string } }
   | { event: 'interrupt'; data: InterruptPayload }
+  | { event: 'stale'; data: StalePayload }
 )
 
 export interface UserInputQuestion {
