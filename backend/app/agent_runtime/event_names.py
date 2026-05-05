@@ -20,8 +20,11 @@ CONTENT_DELTA: Final = "content_delta"
 MESSAGE_END: Final = "message_end"
 ERROR: Final = "error"
 INTERRUPT: Final = "interrupt"
-TOOL_CALL: Final = "tool_call"
-TOOL_RESULT: Final = "tool_result"
+# wire format 은 ``tool_call_start`` / ``tool_call_result`` (frontend
+# ``SSEEventType`` 와 일치). 초기 작성 시 ``tool_call`` / ``tool_result`` 로
+# 잘못 둬 dead constant 였다 — 트랙 종료 시점 cross-file audit 에서 발견.
+TOOL_CALL_START: Final = "tool_call_start"
+TOOL_CALL_RESULT: Final = "tool_call_result"
 
 # Resume-only — W3-out M3 GET endpoint 가 broker 가 죽은 채로 streaming
 # row 만 남은 경우 발행. client 는 이 이벤트를 받으면 자동 재시도를 멈춘다.

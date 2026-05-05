@@ -294,7 +294,7 @@ async def stream_agent_response(
                                 continue
                             emitted_tool_call_keys.add(key)
                         yield emit(
-                            "tool_call_start",
+                            event_names.TOOL_CALL_START,
                             {
                                 "tool_name": tc_name,
                                 "parameters": tc.get("args", {}),
@@ -306,7 +306,7 @@ async def stream_agent_response(
                     # Internal middleware tool result도 UI 노출 X (start와 대칭)
                     if tool_name not in _INTERNAL_TOOL_NAMES:
                         yield emit(
-                            "tool_call_result",
+                            event_names.TOOL_CALL_RESULT,
                             {
                                 "tool_name": tool_name,
                                 "result": msg.content

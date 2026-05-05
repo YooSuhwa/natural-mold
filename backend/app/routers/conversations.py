@@ -317,7 +317,7 @@ async def _finalize_trace(
     conversation_id: uuid.UUID,
     run_id: str,
     trace_sink: list[dict[str, Any]],
-    msg_id_sink: list[str] | None = None,
+    msg_id_sink: list[str],
     *,
     success: bool,
 ) -> None:

@@ -18,19 +18,41 @@
 - DB row 가 다른 conversation 소속
 
 ``Last-Event-ID`` 헤더는 query 가 비면 fallback.
+
+W3-out M6 — POST → GET roundtrip 통합. 라우터-단위 시나리오는 위에서 broker /
+DB row 를 합성으로 주입했지만 M6 는 실제 ``POST /messages`` 로 broker 를
+등록하고 partial flush 를 실재 DB(in-memory aiosqlite) 에 적재한 뒤 ``GET
+/stream`` 으로 이어 받는 cross-handler invariant 를 잡는다 (live attach 도중
+abort, broker 강제 evict 후 DB replay, finalize 미실행 시 stale, interrupt 가
+DB 에 남은 채로 resume). 핵심은 ``async_session`` 을 TestSession 으로
+monkeypatch — partial flush / finalize_turn 이 conftest in-memory DB 와 같은
+엔진을 쓰지 않으면 GET 측 ``trace_storage.get_trace_by_msg_id`` 가 빈 결과를
+받아 RESUME_NOT_FOUND 로 떨어진다.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
 
 from app.agent_runtime import event_broker
+from app.agent_runtime.event_names import (
+    CONTENT_DELTA,
+    INTERRUPT,
+    MESSAGE_END,
+    MESSAGE_START,
+    STALE,
+)
+from app.agent_runtime.streaming import format_sse
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
@@ -701,3 +723,387 @@ async def test_resume_logs_reject_reason(
 # - test_multiple_listeners_broadcast
 # - test_ring_buffer_drops_oldest
 # - test_subscribe_after_ring_eviction_returns_buffer_only
+
+
+# ---------------------------------------------------------------------------
+# W3-out M6 — end-to-end POST → GET resume integration
+# ---------------------------------------------------------------------------
+#
+# 위 시나리오들은 broker / DB row 를 합성으로 주입한 뒤 GET 만 단독 검증한다.
+# M6 는 진짜 POST 핸들러를 통과하면서 (a) `_prepare_stream_context` 가 broker
+# 를 등록하고 (b) partial flush 가 DB 에 status='streaming' row 를 만들고
+# (c) finalize_turn 이 종결 상태로 마감한다는 cross-handler invariant 를 묶어
+# 검증한다. 라우터 변경 시 한 곳만 어긋나도 잡힌다.
+
+
+def _build_events(run_id: str) -> list[dict[str, Any]]:
+    """E2E 시나리오 공용 — 4-event happy path."""
+    return [
+        {"id": f"{run_id}-1", "event": MESSAGE_START,
+         "data": {"id": run_id, "role": "assistant"}},
+        {"id": f"{run_id}-2", "event": CONTENT_DELTA,
+         "data": {"delta": "hi"}},
+        {"id": f"{run_id}-3", "event": CONTENT_DELTA,
+         "data": {"delta": " world"}},
+        {"id": f"{run_id}-4", "event": MESSAGE_END,
+         "data": {"content": "hi world", "usage": {}}},
+    ]
+
+
+def _make_executor_simulator(
+    events_factory,  # callable: (run_id) -> list[event dict]
+    *,
+    pause_after: int | None = None,
+    pause_event: asyncio.Event | None = None,
+    close_broker_at_end: bool = True,
+    captured: dict[str, Any] | None = None,
+):
+    """Build a mock for ``execute_agent_stream`` that simulates the streaming
+    layer's dual-write contract (``broker.publish_nowait`` + ``trace_sink``
+    append + ``persist_callback`` flush + SSE yield). ``stream_agent_response``
+    의 finally 가 broker.close 를 호출하지만, 우리는 실행기 자체를 패치하므로
+    그 책임을 시뮬레이터가 흉내낸다.
+
+    pause_after: 처음 N개 emit 후 ``pause_event.wait()`` 로 멈춤. live attach
+    시나리오 — POST 가 mid-stream 에 머물러 broker 가 살아있는 동안 GET 이
+    들어오는 경합을 결정적으로 재현한다.
+    """
+
+    async def mock_stream(*args: Any, **kwargs: Any) -> AsyncGenerator[str, None]:
+        broker = kwargs["broker"]
+        persist_cb = kwargs["persist_callback"]
+        trace_sink = kwargs["trace_sink"]
+        run_id = kwargs["run_id"]
+        if captured is not None:
+            captured["broker"] = broker
+
+        events = events_factory(run_id)
+        try:
+            for idx, evt in enumerate(events):
+                broker.publish_nowait(evt)
+                trace_sink.append(evt)
+                await persist_cb([evt])
+                yield format_sse(
+                    evt["event"], evt["data"], event_id=evt["id"]
+                )
+                if pause_after is not None and idx + 1 == pause_after:
+                    assert pause_event is not None
+                    await pause_event.wait()
+        finally:
+            if close_broker_at_end:
+                broker.close()
+
+    return mock_stream
+
+
+async def _wait_for(
+    predicate,
+    *,
+    timeout: float = 2.0,  # noqa: ASYNC109 — bespoke poll helper, asyncio.timeout cancel 의미와 다름
+    interval: float = 0.01,
+) -> None:
+    """Poll ``predicate`` until truthy or timeout — race-free fixture sync."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        if predicate():
+            return
+        await asyncio.sleep(interval)
+    raise AssertionError("timeout waiting for predicate")
+
+
+@pytest.fixture
+def patch_async_session(monkeypatch: pytest.MonkeyPatch):
+    """`_build_persist_callback` / `_finalize_trace` 가 conftest in-memory DB
+    와 동일 엔진을 쓰도록 router 모듈 안의 ``async_session`` 을 TestSession 으로
+    교체. 미patch 시 partial flush 가 production DB(설정 안 됨)로 향해 silent
+    drop → GET resume 가 row 를 못 찾아 RESUME_NOT_FOUND 로 빠진다.
+    """
+    monkeypatch.setattr(
+        "app.routers.conversations.async_session", TestSession
+    )
+
+
+async def _drive_post_to_completion(
+    client: AsyncClient,
+    conv_id: uuid.UUID,
+    mock_stream,
+    *,
+    content: str = "go",
+) -> None:
+    """B/C/D 공용 — patch + POST + aread 한 번에. 4번 반복되던 시퀀스 통합."""
+    with patch(
+        "app.routers.conversations.execute_agent_stream", side_effect=mock_stream
+    ):
+        async with client.stream(
+            "POST",
+            f"/api/conversations/{conv_id}/messages",
+            json={"content": content},
+        ) as resp:
+            assert resp.status_code == 200
+            await resp.aread()
+
+
+@pytest.mark.asyncio
+async def test_e2e_post_inflight_get_attaches_live_and_receives_tail(
+    client: AsyncClient,
+    patch_async_session: None,
+) -> None:
+    """A: POST 가 mid-stream 일 때 GET 이 들어오면 broker live 로 attach,
+    누락된 prefix 를 buffer 에서 replay 한 뒤 라이브 tail 까지 이어 받는다."""
+    conv_id = await _seed_conv()
+    captured: dict[str, Any] = {}
+    pause = asyncio.Event()
+    mock_stream = _make_executor_simulator(
+        _build_events,
+        pause_after=2,
+        pause_event=pause,
+        captured=captured,
+    )
+
+    async def consume_post() -> None:
+        # POST 는 mock 의 pause 가 풀릴 때까지 mid-stream 에 머문다 — pause.set
+        # 이전에 abort 하지 않고 끝까지 함께 흘려 보낸다 (둘 다 close 까지 따라감).
+        async with client.stream(
+            "POST",
+            f"/api/conversations/{conv_id}/messages",
+            json={"content": "go"},
+        ) as resp:
+            assert resp.status_code == 200
+            captured["post_run_id_header"] = resp.headers["x-run-id"]
+            async for _ in resp.aiter_text():
+                pass
+
+    get_task: asyncio.Task[bytes] | None = None
+    with patch(
+        "app.routers.conversations.execute_agent_stream", side_effect=mock_stream
+    ):
+        post_task = asyncio.create_task(consume_post())
+        try:
+            # mock 이 message_start + content_delta 두 개 를 publish 하고 pause 에
+            # 걸렸는지 확인 — 이 시점에 broker buffer 는 2 events, broker live.
+            await _wait_for(
+                lambda: (
+                    "broker" in captured
+                    and len(captured["broker"]._buffer) >= 2  # noqa: SLF001
+                )
+            )
+            broker_live = captured["broker"]
+            run_id = broker_live.run_id
+            assert not broker_live.is_closed
+
+            async def consume_get() -> bytes:
+                async with client.stream(
+                    "GET",
+                    f"/api/conversations/{conv_id}/stream",
+                    params={"run_id": run_id},
+                ) as resp:
+                    assert resp.status_code == 200
+                    assert resp.headers["x-resume-mode"] == "live"
+                    assert resp.headers["x-run-id"] == run_id
+                    return await resp.aread()
+
+            get_task = asyncio.create_task(consume_get())
+            # GET listener 가 broker.subscribe 에 등록될 때까지 짧게 양보 —
+            # pause.set 직후 mock 이 곧장 late events 를 publish 해도 listener
+            # queue 에 fan-out 되어야 한다.
+            #
+            # Race-free invariant: ``EventBroker.subscribe`` 는 첫 ``__anext__``
+            # 에서 ``listeners.add(queue)`` → ``buffer snapshot`` → buffer
+            # 슬라이스 yield 순서를 await 없이 (단일 sync 청크) 처리한다. 외부
+            # observer 가 ``len(_listeners) >= 1`` 을 관측한 시점에 listener
+            # 등록 + snapshot 둘 다 완료된 상태이며, 이후 ``publish_nowait`` 은
+            # 무조건 queue 로 fan-out + ``yielded_ids`` dedup 으로 boundary
+            # 중복도 차단된다 (event_broker.py:194-240).
+            await _wait_for(
+                lambda: len(broker_live._listeners) >= 1  # noqa: SLF001
+            )
+            pause.set()
+            get_body = await get_task
+        finally:
+            # Race / assertion 실패로 진입한 경우에도 task leak 을 막는다 —
+            # 회수 안 된 listener task 가 conftest autouse `_clear()` 와 만나면
+            # `queue.get()` 영구 hang 으로 다음 테스트 flake 의 원인이 된다.
+            #
+            # Happy path 에서도 POST 측은 ``_finalize_trace`` (DB write 2회) 가
+            # GET 측 stream 종료보다 약간 늦게 끝나므로 무조건 cancel 하면
+            # SQLAlchemy connection mid-rollback 와 충돌한다 (sqlite3 "no
+            # active connection"). 자연 종료를 우선 기다린 뒤 timeout 시에만
+            # cancel — ``shield`` 로 wait_for cancel propagation 차단.
+            pause.set()
+            for task in (post_task, get_task):
+                if task is None or task.done():
+                    continue
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
+                except (TimeoutError, asyncio.CancelledError):
+                    task.cancel()
+                    with contextlib.suppress(BaseException):
+                        await task
+
+    sse_events = _parse_sse_events(get_body.decode())
+    deltas = [
+        json.loads(e["data"]).get("delta")
+        for e in sse_events
+        if e.get("event") == CONTENT_DELTA
+    ]
+    # buffer replay (hi) + 라이브 tail ( world) — 둘 다 GET 에 도달.
+    assert deltas == ["hi", " world"]
+    assert sse_events[-1]["event"] == MESSAGE_END
+    # POST header 의 run_id 와 mock 이 받은 run_id 가 일치 — `_prepare_stream
+    # _context` 가 한 turn 에서 같은 id 로 broker / persist / 헤더를 통일.
+    assert captured["post_run_id_header"] == run_id
+
+
+@pytest.mark.asyncio
+async def test_e2e_post_completed_then_broker_evicted_get_replays_from_db(
+    client: AsyncClient,
+    patch_async_session: None,
+) -> None:
+    """B: POST 가 정상 종료 → ``registry.evict_expired(ttl_seconds=0)`` 으로
+    closed broker 강제 회수 → GET 이 들어오면 DB replay 분기로 떨어진다."""
+    conv_id = await _seed_conv()
+    captured: dict[str, Any] = {}
+    mock_stream = _make_executor_simulator(_build_events, captured=captured)
+
+    await _drive_post_to_completion(client, conv_id, mock_stream, content="hi")
+
+    run_id = captured["broker"].run_id
+
+    # broker 는 mock finally 에서 close 되어 evict 후보. ttl=0 으로 강제 회수.
+    broker = event_broker.registry.get(run_id)
+    assert broker is not None and broker.is_closed
+    evicted = event_broker.registry.evict_expired(ttl_seconds=0)
+    assert evicted >= 1
+    assert event_broker.registry.get(run_id) is None
+
+    async with client.stream(
+        "GET",
+        f"/api/conversations/{conv_id}/stream",
+        params={"run_id": run_id},
+    ) as resp:
+        assert resp.status_code == 200
+        assert resp.headers["x-resume-mode"] == "replay"
+        body = await resp.aread()
+
+    sse_events = _parse_sse_events(body.decode())
+    assert [e.get("event") for e in sse_events] == [
+        MESSAGE_START, CONTENT_DELTA, CONTENT_DELTA, MESSAGE_END
+    ]
+    deltas = [
+        json.loads(e["data"]).get("delta")
+        for e in sse_events
+        if e.get("event") == CONTENT_DELTA
+    ]
+    assert deltas == ["hi", " world"]
+    assert all(e.get("event") != STALE for e in sse_events)
+
+
+@pytest.mark.asyncio
+async def test_e2e_post_killed_before_finalize_get_emits_stale(
+    client: AsyncClient,
+    patch_async_session: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """C: partial flush 로 status='streaming' row 가 적재된 상태에서 backend
+    가 finalize 전에 죽은 케이스. ``_finalize_trace`` 를 no-op 으로 패치해 row
+    가 'streaming' 상태로 남도록 해 broker miss → DB replay → ``event: stale``
+    경로를 검증한다.
+    """
+    conv_id = await _seed_conv()
+    captured: dict[str, Any] = {}
+
+    async def _no_finalize(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "app.routers.conversations._finalize_trace", _no_finalize
+    )
+
+    def events_no_end(run_id: str) -> list[dict[str, Any]]:
+        # message_end 누락 — 백엔드가 도중에 죽은 것을 시뮬레이션.
+        return [
+            {"id": f"{run_id}-1", "event": MESSAGE_START,
+             "data": {"id": run_id, "role": "assistant"}},
+            {"id": f"{run_id}-2", "event": CONTENT_DELTA,
+             "data": {"delta": "partial"}},
+        ]
+
+    mock_stream = _make_executor_simulator(events_no_end, captured=captured)
+
+    await _drive_post_to_completion(client, conv_id, mock_stream)
+
+    run_id = captured["broker"].run_id
+    # finalize 가 no-op 이라 row.status 는 partial flush 가 적은 'streaming'
+    # 그대로. broker 는 mock finally 에서 close + ttl=0 으로 회수. 추가로
+    # ``_clear()`` 까지 호출해 registry dict 자체를 비워 — 실제 SIGKILL 후
+    # backend 재기동 시점 (broker dict 빈 상태) 과 동일한 invariant 를 만든다.
+    event_broker.registry.evict_expired(ttl_seconds=0)
+    event_broker.registry._clear()  # noqa: SLF001 — crash-after-restart 시뮬
+    assert event_broker.registry.get(run_id) is None
+    async with TestSession() as db:
+        from sqlalchemy import select
+
+        record = (
+            await db.execute(
+                select(MessageEvent).where(
+                    MessageEvent.assistant_msg_id == run_id
+                )
+            )
+        ).scalar_one()
+        assert record.status == "streaming"
+
+    async with client.stream(
+        "GET",
+        f"/api/conversations/{conv_id}/stream",
+        params={"run_id": run_id},
+    ) as resp:
+        assert resp.status_code == 200
+        assert resp.headers["x-resume-mode"] == "replay"
+        body = await resp.aread()
+
+    sse_events = _parse_sse_events(body.decode())
+    assert sse_events[-1]["event"] == STALE
+    stale_payload = json.loads(sse_events[-1]["data"])
+    assert stale_payload["reason"] == "broker_lost"
+    assert stale_payload["last_event_id"] == f"{run_id}-2"
+
+
+@pytest.mark.asyncio
+async def test_e2e_post_emits_interrupt_then_get_returns_409(
+    client: AsyncClient,
+    patch_async_session: None,
+) -> None:
+    """D: POST 가 message_end 없이 ``interrupt`` 만 emit 한 채 종료하면 GET
+    resume 은 graph 가 HiTL 응답을 기다리는 신호로 인식해 409 로 차단한다
+    (client 는 ``/messages/resume`` 으로 와야 함).
+    """
+    conv_id = await _seed_conv()
+    captured: dict[str, Any] = {}
+
+    def events_with_interrupt(run_id: str) -> list[dict[str, Any]]:
+        return [
+            {"id": f"{run_id}-1", "event": MESSAGE_START,
+             "data": {"id": run_id, "role": "assistant"}},
+            {"id": f"{run_id}-2", "event": INTERRUPT,
+             "data": {"interrupt_id": "abc", "value": "approve?"}},
+        ]
+
+    mock_stream = _make_executor_simulator(
+        events_with_interrupt, captured=captured
+    )
+
+    await _drive_post_to_completion(client, conv_id, mock_stream, content="do thing")
+
+    run_id = captured["broker"].run_id
+    # broker 는 mock finally 에서 close. ttl=0 으로 회수해 확실히 broker miss
+    # 경로로 떨어지게 한다 (broker live 였다면 subscribe 로 가서 409 가 안 남).
+    event_broker.registry.evict_expired(ttl_seconds=0)
+    assert event_broker.registry.get(run_id) is None
+
+    resp = await client.get(
+        f"/api/conversations/{conv_id}/stream",
+        params={"run_id": run_id},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "RESUME_INTERRUPT_PENDING"

@@ -148,6 +148,14 @@ def resume_interrupt_pending() -> ConflictError:
 
 
 def resume_forbidden() -> ForbiddenError:
+    """Reserved — 현재 의도적 미사용.
+
+    W3-out M3 시점에 stream resume 의 모든 권한/존재 거부 분기는
+    ``RESUME_NOT_FOUND`` 단일 응답으로 통일됐다 (rules/security.md —
+    enumeration oracle 방지). 향후 명시적 share/public link 등이 도입되어
+    "리소스가 공개적으로 알려졌고 권한만 부족하다" 분기가 생기면 이 helper 가
+    재사용 후보. 그때까지는 declared-but-unused.
+    """
     return ForbiddenError(
         "RESUME_FORBIDDEN", "이 대화의 스트림에 접근할 수 없습니다"
     )

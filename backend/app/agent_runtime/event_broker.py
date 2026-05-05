@@ -71,8 +71,8 @@ def slice_events_after[E: Mapping[str, Any]](
             continue
         yield evt
 
-# Memory-protection caps. APScheduler GC (M4) is the primary defense, but these
-# in-band limits prevent runaway accumulation in the M1+M2 release window.
+# Memory-protection caps. APScheduler GC is the primary defense (60s interval,
+# ttl=300s); in-band cap is the burst safeguard between GC ticks.
 _DEFAULT_MAX_BROKERS = 256
 _DEFAULT_MAX_LIVE_AGE_SECONDS = 1800  # 30 min — longer than any reasonable turn
 
@@ -273,11 +273,16 @@ class BrokerRegistry:
     멀티-워커 환경 지원은 후속 트랙. 단일 워커에서는 dict + asyncio
     single-thread 모델로 충분하다 (lock 불필요).
 
-    메모리 보호: M4의 APScheduler GC가 정식 청소부지만, 그 이전 PR
-    릴리즈 창에서도 오래된 broker가 무한 누적되지 않도록 in-band
-    safeguard 두 가지를 둔다 — (a) ``max_brokers`` 한도 도달 시
-    가장 오래된 closed broker부터 eviction, (b) live broker도
-    ``max_live_age_seconds`` 초과 시 ``evict_expired`` 가 강제 close.
+    메모리 보호 — 두 메커니즘이 다른 contract 로 공존:
+    - **APScheduler GC** (정식 청소부, 60s interval, ttl=300s): 정상 운영
+      중 closed broker 의 주기적 회수 + stale live broker 강제 close.
+    - **in-band emergency cap** (즉시 트리거, ``_enforce_capacity``): GC
+      interval 사이에 broker 가 폭주 (예: 단기간 다수 turn 시작) 해도
+      ``max_brokers`` 한도를 넘기지 않게 하는 안전망. closed broker 우선,
+      모두 live 면 가장 오래된 live broker 강제 close.
+    - **per-broker live age cap** (``max_live_age_seconds``): 30분 초과
+      live broker 는 누락된 close() 콜백 신호 — ``evict_expired`` 가 강제
+      close 후 다음 주기에 회수.
     """
 
     def __init__(
