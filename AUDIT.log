@@ -120,3 +120,14 @@
 [2026-05-04T01:30:00Z] satya N1_FIX m34 SQLite upgrade 결함 발견 + fix — 신규 회귀 테스트 5건이 m34 upgrade 의 SQLite 결함(create_check_constraint 미지원) 을 처음으로 노출. m34 upgrade 도 dialect 분기로 SQLite 는 batch_alter_table 우회. PG 경로는 변경 없음.
 [2026-05-04T01:50:00Z] satya SIMPLIFY_FIX — /simplify 3 에이전트 리뷰 결과 4건 반영. (1) close_for_conversation 미배선 → _prepare_stream_context 진입 시 호출 (ghost broker 차단). (2) final_status TraceStatus annotation (mypy 가드). (3) emit() dict 중복 생성 제거 — 단일 evt_dict를 trace_sink/broker/flush_buffer 공유 (메모리 절반). (4) parse_msg_id lazy import 제거 (cyclic 검증 후 module-level). 786 PASS, ruff clean, pyright 0/0.
 [2026-05-04T02:10:00Z] satya HANDOFF_UPDATE PR #116 머지 대기 + M3+M4 다음 트랙 명시. feature 브랜치에 직접 commit (PR 함께 머지). ADR-011 + plan 참조. follow-up 6건 분리 명시.
+
+[2026-05-05T00:00:00] satya PROJECT_START "HiTL Phase 1 — 표준 미들웨어 인스턴스화 (사용자 무영향)"
+[2026-05-05T00:00:00] satya MILESTONE_CREATED M1,M2,M3
+[2026-05-05T00:00:00] satya BRANCH_CREATED feature/hitl-phase1-middleware-instance from main@750d587
+[2026-05-05T00:00:00Z] pichai MILESTONE_DONE M1 executor.py + middleware_registry.py 명시 미들웨어 인스턴스화 완료 (ruff/pyright clean)
+[2026-05-05T00:00:01Z] pichai MILESTONE_DONE M2 tests/test_hitl_middleware.py 신규 5 테스트 PASS — 회귀 821 → 826 무회귀
+[2026-05-05T00:30:00] pichai MILESTONE_DONE M1 executor.py + middleware_registry.py 명시 인스턴스화 + 트리거 차단
+[2026-05-05T00:30:00] pichai MILESTONE_DONE M2 test_hitl_middleware.py 5종 PASS
+[2026-05-05T00:35:00] satya VERIFICATION_PASS M3 게이트 4종 (alembic/ruff/pytest 826/pyright 0)
+[2026-05-05T00:40:00] bezos REVIEW_APPROVE Phase 1 — 회귀 위험 0, 수정금지 0건, 테스트 4/5
+[2026-05-05T00:40:00] satya PROJECT_DONE HiTL Phase 1 머지 준비

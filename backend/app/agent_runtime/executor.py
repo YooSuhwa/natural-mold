@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
+from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool, StructuredTool
 
@@ -437,7 +438,12 @@ async def _prepare_agent(
     messages_history: list[dict[str, str]],
     include_ask_user: bool = True,
 ) -> tuple[Any, list, dict]:
-    """에이전트 빌드 + 설정. stream/invoke 공용."""
+    """에이전트 빌드 + 설정. stream/invoke 공용.
+
+    ``include_ask_user=False`` 는 트리거(invoke) 모드 indicator —
+    사용자가 없으므로 HiTL interrupt 가 발생하면 hang. 아래에서 명시적으로
+    interrupt_on 을 None 으로 강제 override 한다.
+    """
     system_prompt = cfg.system_prompt
     model = _build_model_with_fallback(cfg)
 
@@ -469,12 +475,12 @@ async def _prepare_agent(
     middleware = build_middleware_instances(resolved_mw)
     middleware += get_provider_middleware(cfg.provider)
 
-    # 3-1. HiTL — interrupt_on 추출 (deepagents가 네이티브로 처리)
-    # interrupt_on은 dict[str, bool | InterruptOnConfig] 형식이어야 함
-    # 주의: 모든 도구에 interrupt를 걸면 LLM이 도구 호출을 피할 수 있음
+    # 3-1. HiTL — interrupt_on 추출 후 표준 미들웨어 명시 인스턴스화
+    # interrupt_on은 dict[str, bool | InterruptOnConfig] 형식.
+    # 주의: 모든 도구에 interrupt를 걸면 LLM이 도구 호출을 피할 수 있음.
     # 따라서 params에 명시적 interrupt_on이 없으면 부작용(side-effect) 가능성이 있는
-    # 쓰기/실행 도구만 대상으로 함 (모듈 레벨 _WRITE_TOOL_KEYWORDS 참조)
-    interrupt_on: dict[str, bool] | None = None
+    # 쓰기/실행 도구만 대상으로 함 (모듈 레벨 _WRITE_TOOL_KEYWORDS 참조).
+    interrupt_on: dict[str, Any] | None = None
     for mw_config in cfg.middleware_configs or []:
         if mw_config.get("type") == "human_in_the_loop":
             explicit = mw_config.get("params", {}).get("interrupt_on")
@@ -491,6 +497,21 @@ async def _prepare_agent(
                 if not interrupt_on:
                     interrupt_on = None
             break
+
+    # 3-2. 트리거 모드 강제 차단 — invoke 경로에서 HiTL interrupt 가 발생하면
+    # 사용자가 없어 hang. include_ask_user=False 가 트리거 모드 indicator.
+    if not include_ask_user:
+        interrupt_on = None
+
+    # 3-3. HumanInTheLoopMiddleware 명시 인스턴스화 (ADR-012 Phase 1).
+    # deepagents.create_deep_agent(interrupt_on=...) 자동 주입 대신, 본 executor
+    # 가 명시적으로 인스턴스를 미들웨어 list 에 합쳐 deep agent 에 전달한다.
+    # 이로써 (a) registry 단일 경로, (b) description_prefix 등 옵션 제어 가능,
+    # (c) 디버깅/회귀 가드 추적 용이. 자동 주입과 명시 주입은 둘 중 하나만 —
+    # 동시에 하면 미들웨어 중복 등록되므로 build_agent(interrupt_on=None) 으로
+    # 자동 주입 비활성화한다.
+    if interrupt_on:
+        middleware.append(HumanInTheLoopMiddleware(interrupt_on=interrupt_on))
 
     # 4. Backend + Skills + Memory 구성
     backend = FilesystemBackend(root_dir=str(_DATA_DIR), virtual_mode=True)
@@ -539,7 +560,9 @@ async def _prepare_agent(
         langchain_tools,
         system_prompt,
         middleware=middleware or None,
-        interrupt_on=interrupt_on,
+        # ADR-012 Phase 1: 명시 인스턴스 사용 — deepagents 자동 주입 회피.
+        # HumanInTheLoopMiddleware 는 위에서 middleware list 에 직접 추가됨.
+        interrupt_on=None,
         checkpointer=get_checkpointer(),
         backend=backend,
         skills=skills_sources,

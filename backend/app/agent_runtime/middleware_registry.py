@@ -409,6 +409,16 @@ def get_provider_middleware(provider: str) -> list:
 
 # deepagents/create_deep_agent()가 자동 추가하는 미들웨어 타입.
 # 사용자 설정에서 중복 추가하면 AssertionError가 발생하므로 카탈로그/실행 시 제외.
+#
+# ``human_in_the_loop`` (ADR-012 Phase 1):
+#   executor.py 가 ``HumanInTheLoopMiddleware`` 를 명시적으로 인스턴스화해
+#   미들웨어 list 에 추가하고, ``create_deep_agent(interrupt_on=None)`` 으로
+#   자동 주입을 끈다. 본 set 에 포함시켜 두는 이유:
+#     1. 사용자 카탈로그(get_middleware_registry)에서 노출 제외 — 사용자가
+#        직접 등록할 수 있는 미들웨어가 아님.
+#     2. ``_prepare_agent`` 의 ``filtered_mw`` 가 사용자 ``middleware_configs``
+#        에서 ``human_in_the_loop`` 항목을 build 단계에서 제거 — 명시 인스턴스
+#        화 경로(executor.py:478~)가 단일 진실 공급원이 되도록 보장.
 DEEPAGENT_BUILTIN_TYPES: frozenset[str] = frozenset(
     {
         "todo_list",
@@ -416,7 +426,7 @@ DEEPAGENT_BUILTIN_TYPES: frozenset[str] = frozenset(
         "subagent",
         "summarization",
         "anthropic_prompt_caching",
-        "human_in_the_loop",  # executor.py에서 interrupt_on으로 별도 처리
+        "human_in_the_loop",  # executor.py 가 명시 인스턴스화 (ADR-012 Phase 1)
     }
 )
 
