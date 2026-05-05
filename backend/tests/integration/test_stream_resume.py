@@ -53,36 +53,15 @@ from app.agent_runtime.event_names import (
     STALE,
 )
 from app.agent_runtime.streaming import format_sse
-from app.models.agent import Agent
-from app.models.conversation import Conversation
 from app.models.message_event import MessageEvent
-from app.models.model import Model
-from app.models.user import User
-from tests.conftest import TEST_USER_ID, TestSession
+from tests.conftest import TestSession
+from tests.integration._seed import seed_conversation_with_agent
 
 
 async def _seed_conv() -> uuid.UUID:
-    async with TestSession() as db:
-        # User row may already exist from autouse fixture? No, conftest just
-        # creates the schema — seed our own.
-        existing = await db.get(User, TEST_USER_ID)
-        if existing is None:
-            db.add(User(id=TEST_USER_ID, email="test@test.com", name="Test"))
-        model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
-        db.add(model)
-        await db.flush()
-        agent = Agent(
-            user_id=TEST_USER_ID,
-            name="Resume Agent",
-            system_prompt="x",
-            model_id=model.id,
-        )
-        db.add(agent)
-        await db.flush()
-        conv = Conversation(agent_id=agent.id, title="Resume Conv")
-        db.add(conv)
-        await db.commit()
-        return conv.id
+    return await seed_conversation_with_agent(
+        agent_name="Resume Agent", conv_title="Resume Conv"
+    )
 
 
 def _parse_sse_events(body: str) -> list[dict[str, str]]:
@@ -931,7 +910,13 @@ async def test_e2e_post_inflight_get_attaches_live_and_receives_tail(
             # active connection"). 자연 종료를 우선 기다린 뒤 timeout 시에만
             # cancel — ``shield`` 로 wait_for cancel propagation 차단.
             pause.set()
-            for task in (post_task, get_task):
+            # ``post_task`` 와 ``get_task`` 가 서로 다른 return 타입 (None vs
+            # bytes) 이라 generic union 으로 묶이는데, ``asyncio.shield`` 는
+            # 단일 generic 만 받아 pyright 가 mismatch 를 잡는다. 정렬 의도가
+            # 맞으므로 ``Any`` 로 cast 하여 침묵.
+            from typing import cast
+
+            for task in cast(list[asyncio.Task[Any]], [post_task, get_task]):
                 if task is None or task.done():
                     continue
                 try:

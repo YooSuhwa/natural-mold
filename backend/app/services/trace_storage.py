@@ -8,8 +8,8 @@ W3-out M2: partial flush — ``append_events`` UPSERT은 stream 진행 중 32 ev
 또는 2초마다 호출되어 ``status='streaming'`` row를 점진적으로 채운다.
 ``finalize_turn`` 은 message_end / 정상 종료 / 실패 분기에서 한 번 호출되어
 ``status`` 를 종결 상태로 갱신하고 ``linked_message_ids`` 를 부착한다.
-기존 ``record_turn`` 은 backward-compat shim — 신규 호출 경로는
-append_events + finalize_turn 조합을 사용한다.
+기존 ``record_turn`` 은 [DEPRECATED] backward-compat shim — 신규 호출 경로는
+``append_events`` + ``finalize_turn`` 조합을 사용한다 (W3-out M6 retrospective).
 """
 
 from __future__ import annotations
@@ -188,19 +188,29 @@ async def record_turn(
     events: list[dict[str, Any]],
     raw_msg_ids: list[str] | None = None,
 ) -> MessageEvent | None:
-    """Persist all events emitted during one assistant turn.
+    """[DEPRECATED — 신규 호출자 추가 금지] one-shot turn persistence shim.
 
-    Backward-compat shim (pre-W3-out callers). 신규 호출 경로는
-    ``append_events`` + ``finalize_turn`` 조합을 사용한다.
+    W3-out 트랙 종료 (M6) 시점 기준 production 호출자는 단 1곳:
+    ``routers/conversations._finalize_trace`` 의 fallback path (``finalize_turn``
+    이 row 를 못 찾고 + ``trace_sink`` 에 events 가 모인 비정상 종료 케이스).
+    나머지 호출자는 모두 테스트 (``test_trace_storage.py`` 12건 + ``test_shares_
+    router.py`` 시드).
 
-    보존: ``record_turn`` 은 ``IntegrityError`` 보장 invariant 를 들고 있다.
-    같은 ``assistant_msg_id`` 로 두 번 호출 시 unique 제약 위반이 발생해야
-    하며 (``test_record_turn_unique_assistant_msg_id`` 검증), ``append_events``
-    는 의도적으로 UPSERT 라 의도가 다르다. 따라서 두 함수는 분리 유지하고
-    ``_resolve_linked_ids`` 헬퍼만 공용. **M5/M6 후속에서 contract 재평가** —
-    legacy 호출자(test_shares_router 시드, test_trace_storage 12건)를 모두
-    finalize_turn 경로로 이전 가능해지면 record_turn 자체를 deprecate.
+    **신규 코드는 반드시** ``append_events`` (partial flush) + ``finalize_turn``
+    조합을 사용. ``record_turn`` 추가 호출은 invariant (``IntegrityError`` 보장
+    vs ``append_events`` UPSERT) 가 분산되어 디버깅을 어렵게 한다.
 
+    제거 절차 (별도 PR):
+    1. ``finalize_turn`` 에 ``events_fallback: list | None = None`` 옵션 추가
+       — 호출자가 row 부재 시 events 로 새 row insert + IntegrityError invariant
+       유지하는 분기 흡수.
+    2. production 호출자 1곳을 ``finalize_turn(events_fallback=trace_sink)`` 로
+       마이그레이션.
+    3. test_trace_storage.py 12건을 ``finalize_turn(events_fallback=...)`` 또는
+       ``append_events`` 패턴으로 이전.
+    4. ``record_turn`` 삭제.
+
+    --- 기존 contract (현 호출자가 의존) ---
     No-op when ``events`` is empty (interrupt before message_start, etc.).
     Caller commits the session.
 
