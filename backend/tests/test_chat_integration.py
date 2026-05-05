@@ -12,6 +12,7 @@ These tests cover the M5 wiring contract:
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -164,6 +165,86 @@ async def test_trigger_executor_uses_chat_service_prefetch() -> None:
     # legacy "trigger executor used different prefetch" bug).
     args = spy.call_args.args
     assert args[2] == TEST_USER_ID
+
+
+# ---------------------------------------------------------------------------
+# Scenario 2b: get_owned_conversation_with_agent (W3-out retrospective MED
+# follow-up) — single join + agent runtime eager-load chain. SELECT 수가
+# 기존 (get_conversation + get_agent_with_tools) 조합보다 정확히 1 적어야
+# 한다. round-trip 절감의 정량 회귀 가드.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_owned_conv_with_agent_saves_one_roundtrip() -> None:
+    from sqlalchemy import event
+
+    from app.models.conversation import Conversation
+
+    # Seed 는 fresh session 1개에서, 측정은 별도 fresh session 2개에서 — 같은
+    # session 의 identity_map 캐시가 SELECT 를 우회해 카운트가 왜곡되는 것을
+    # 차단한다.
+    async with TestSession() as setup_db:
+        model = await _seed_user_and_model(setup_db)
+        agent = Agent(
+            user_id=TEST_USER_ID,
+            name="RT Agent",
+            system_prompt="x",
+            model_id=model.id,
+        )
+        setup_db.add(agent)
+        await setup_db.flush()
+        conv = Conversation(agent_id=agent.id, title="RT Conv")
+        setup_db.add(conv)
+        await setup_db.commit()
+        conv_id = conv.id
+
+    select_count_old = 0
+    select_count_new = 0
+
+    def _on_cursor_old(_conn, _cursor, statement: str, *_args: Any) -> None:
+        nonlocal select_count_old
+        if statement.lstrip().lower().startswith("select"):
+            select_count_old += 1
+
+    def _on_cursor_new(_conn, _cursor, statement: str, *_args: Any) -> None:
+        nonlocal select_count_new
+        if statement.lstrip().lower().startswith("select"):
+            select_count_new += 1
+
+    async with TestSession() as old_db:
+        engine = old_db.get_bind()
+        event.listen(engine, "before_cursor_execute", _on_cursor_old)
+        try:
+            old_conv = await chat_service.get_conversation(old_db, conv_id)
+            assert old_conv is not None
+            old_agent = await chat_service.get_agent_with_tools(
+                old_db, old_conv.agent_id, TEST_USER_ID
+            )
+            assert old_agent is not None
+        finally:
+            event.remove(engine, "before_cursor_execute", _on_cursor_old)
+
+    async with TestSession() as new_db:
+        engine = new_db.get_bind()
+        event.listen(engine, "before_cursor_execute", _on_cursor_new)
+        try:
+            new_conv = await chat_service.get_owned_conversation_with_agent(
+                new_db, conv_id, TEST_USER_ID
+            )
+            assert new_conv is not None
+            assert new_conv.agent is not None
+            assert new_conv.agent.model is not None
+        finally:
+            event.remove(engine, "before_cursor_execute", _on_cursor_new)
+
+    # 정확히 1 적어야 함 (conv lookup + agent base 두 SELECT 가 단일 join SELECT
+    # 로 통합). selectin chain (model/llm_credential/tool_links/mcp_tool_links/
+    # skill_links) 는 양쪽 동일하게 발사되므로 차이는 정확히 -1.
+    assert select_count_new == select_count_old - 1, (
+        f"old={select_count_old}, new={select_count_new} — "
+        "단일 join 으로 정확히 1 query 절감 invariant 위반"
+    )
 
 
 # ---------------------------------------------------------------------------

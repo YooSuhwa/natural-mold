@@ -21,7 +21,7 @@ from typing import Any
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import contains_eager, selectinload
 
 from app.credentials import service as credential_service
 from app.models.agent import Agent
@@ -47,6 +47,7 @@ __all__ = [
     "get_agent_with_tools",
     "get_conversation",
     "get_owned_conversation",
+    "get_owned_conversation_with_agent",
     "link_attachments_to_conversation",
     "list_conversations",
     "list_messages_from_checkpointer",
@@ -430,6 +431,45 @@ async def clear_active_branch_override(
 # ---------------------------------------------------------------------------
 # Agent context assembly (single-path, greenfield)
 # ---------------------------------------------------------------------------
+
+
+async def get_owned_conversation_with_agent(
+    db: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID
+) -> Conversation | None:
+    """Single SELECT joining ``conversations ⨝ agents on user_id`` + agent
+    runtime eager-loads (model / llm_credential / tool_links / mcp_tool_links
+    / skill_links). 결과 ``conv.agent`` 는 별도 query 없이 hydrated.
+
+    ``_resolve_agent_context`` 의 conv lookup + ``get_agent_with_tools`` 두
+    round-trip 을 하나로 축소 (W3-out 트랙 종료 retrospective MED follow-up).
+    runtime relations 의 selectin chain 자체는 동일하게 발사되므로 SELECT
+    수는 (2 + N) → (1 + N) — N=5 (model, llm_credential, tool_links, mcp_tool
+    _links, skill_links) 기준 약 14% 절감.
+
+    Returns ``None`` when the conversation doesn't exist *or* belongs to
+    another user — caller should map both to a single 404 (rules/security.md
+    enumeration oracle, ``get_owned_conversation`` 와 동일 contract).
+    """
+    result = await db.execute(
+        select(Conversation)
+        .join(Agent, Conversation.agent_id == Agent.id)
+        .where(Conversation.id == conversation_id, Agent.user_id == user_id)
+        .options(
+            contains_eager(Conversation.agent).options(
+                selectinload(Agent.model),
+                selectinload(Agent.llm_credential),
+                selectinload(Agent.tool_links)
+                .selectinload(AgentToolLink.tool)
+                .selectinload(Tool.credential),
+                selectinload(Agent.mcp_tool_links)
+                .selectinload(AgentMcpToolLink.mcp_tool)
+                .selectinload(McpTool.server)
+                .selectinload(McpServer.credential),
+                selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
+            )
+        )
+    )
+    return result.unique().scalar_one_or_none()
 
 
 async def get_agent_with_tools(
