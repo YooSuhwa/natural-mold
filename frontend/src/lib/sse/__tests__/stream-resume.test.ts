@@ -1,14 +1,10 @@
 /**
- * HiTL Phase 2 — wire body shape 회귀 가드.
- *
- * - ``streamResumeDecisions`` 가 ``{decisions: [...]}`` body를 보내는지 검증 (§6.1)
- * - ``streamResume`` 이 ``{response}`` body를 보존하는지 검증 (§6.2)
- *
- * 단일 진실 공급원: ``docs/exec-plans/active/hitl-phase2-contract.md`` §6.
+ * HiTL resume wire body shape 회귀 가드 — `streamResumeDecisions`가
+ * `{decisions: [...]}` body를 보내는지 검증.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Decision } from '@/lib/types'
-import { streamResume, streamResumeDecisions } from '../stream-resume'
+import { streamResumeDecisions } from '../stream-resume'
 
 // ---------------------------------------------------------------------------
 // fetchEventSource를 가짜로 교체 — body 만 캡처하면 충분 (스트림 자체는 빈
@@ -70,7 +66,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('streamResumeDecisions (Phase 2 표준 wire — §6.1)', () => {
+describe('streamResumeDecisions', () => {
   it('body는 정확히 {decisions: [...]} 형태로 직렬화된다', async () => {
     const decisions: Decision[] = [
       { type: 'approve' },
@@ -103,28 +99,5 @@ describe('streamResumeDecisions (Phase 2 표준 wire — §6.1)', () => {
     await drain(streamResumeDecisions('conv-3', [{ type: 'approve' }]))
     expect(captured[0].headers['Content-Type']).toBe('application/json')
     expect(captured[0].headers['Accept']).toBe('text/event-stream')
-  })
-})
-
-describe('streamResume (legacy wire 보존 — §6.2)', () => {
-  it('body는 {response: ...} 형태로 보존된다 (transition window)', async () => {
-    await drain(streamResume('conv-1', 'free text answer'))
-
-    expect(captured).toHaveLength(1)
-    expect(captured[0].body).toEqual({ response: 'free text answer' })
-    // legacy wire는 절대로 표준 `decisions` 필드를 같이 보내지 않는다.
-    expect(captured[0].body).not.toHaveProperty('decisions')
-  })
-
-  it('multi-select 응답 (string[]) 그대로 송신 — 변환은 backend router 책임', async () => {
-    await drain(streamResume('conv-2', ['alpha', 'beta']))
-    expect(captured[0].body).toEqual({ response: ['alpha', 'beta'] })
-  })
-
-  it('builder edge case (dict) 그대로 송신', async () => {
-    await drain(streamResume('conv-3', { x: 1, name: '한글' }))
-    expect(captured[0].body).toEqual({
-      response: { x: 1, name: '한글' },
-    })
   })
 })

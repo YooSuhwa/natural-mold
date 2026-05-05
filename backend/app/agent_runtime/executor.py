@@ -503,6 +503,11 @@ async def _prepare_agent(
     if not include_ask_user:
         interrupt_on = None
 
+    # 3-2b. ask_user 표준 wire wrap (ADR-012 §1 옵션 A) — 자체 ask_user.py 의
+    # native interrupt 가 표준 미들웨어로 wrap 되도록 interrupt_on 에 등록.
+    if interrupt_on is not None and any(t.name == "ask_user" for t in langchain_tools):
+        interrupt_on.setdefault("ask_user", {"allowed_decisions": ["respond"]})
+
     # 3-3. HumanInTheLoopMiddleware 명시 인스턴스화 (ADR-012 Phase 1).
     # deepagents.create_deep_agent(interrupt_on=...) 자동 주입 대신, 본 executor
     # 가 명시적으로 인스턴스를 미들웨어 list 에 합쳐 deep agent 에 전달한다.

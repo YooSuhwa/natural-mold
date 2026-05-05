@@ -220,8 +220,8 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
             })
             .join(' | ')
 
-        // onResume으로 백엔드 그래프 재개
-        await hitl?.onResume(payload, displayText)
+        const message = typeof payload === 'string' ? payload : JSON.stringify(payload)
+        await hitl?.onResumeDecisions([{ type: 'respond', message }], displayText)
         setSubmitState('submitted')
       },
       [answers, questions, hitl],
@@ -313,7 +313,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
                       // 질문 1개 + single_select → 즉시 제출
                       if (questions.length === 1) {
                         setSubmitState('submitted')
-                        hitl?.onResume(v, v)
+                        hitl?.onResumeDecisions([{ type: 'respond', message: v }], v)
                       }
                     }}
                   />

@@ -153,3 +153,12 @@
 [2026-05-05T07:18:00Z] satya VERIFICATION_PASS M4 backend 게이트 4종 (alembic up + ruff clean + pytest 849 PASS + pyright 0/0). frontend 게이트 3종 (lint clean + vitest 276 PASS + build 16 routes).
 [2026-05-05T07:18:00Z] satya MILESTONE_DONE M4 통합 검증 + HANDOFF.md Phase 3 진입 안내 갱신.
 [2026-05-05T07:18:00Z] satya PROJECT_DONE HiTL Phase 2 — Wire format 통합. dual-path transition 완료. 머지 준비.
+[2026-05-05T07:41:24Z] satya PROJECT_START "HiTL Phase 3 — Transition End (legacy wire format 제거, clean break)"
+[2026-05-05T07:41:25Z] satya BRANCH_CREATED feature/hitl-phase3-transition-end (main be5a735)
+[2026-05-05T07:41:26Z] satya MILESTONE_CREATED M0,M1,M2,M3,M4,M5
+[2026-05-05T07:41:27Z] satya TEAM_COMPOSITION 풀스택 축소 4인 (사티아 직속 + 베조스 + 젠슨 + 저커버그), 모두 Opus
+[2026-05-05T07:41:28Z] satya MILESTONE_DONE M0 거버넌스 초기화 (CHECKPOINT 재작성, AUDIT 진입)
+[2026-05-05T08:10:00Z] zuckerberg MILESTONE_DONE M3 Frontend Legacy 제거 — 12 파일 (+130/-251). InterruptPayload union→standard alias, streamResume/onResume 제거, Tool UI 5곳 onResumeDecisions 마이그레이션, chat 페이지 2 HiTLContext useMemo 정리, 테스트 정리. lint 0 / test 270 PASS / build 17 routes.
+[2026-05-05T08:12:00Z] satya MILESTONE_DONE M4 통합 검증 — backend 847 PASS / pyright 0/0 / ruff clean / alembic OK + frontend lint 0 / test 270 PASS / build 17 routes. legacy grep 0건 (코드 매치는 모두 주석/회귀가드).
+[2026-05-05T08:15:00Z] satya MILESTONE_DONE M5 contract 이동 + HANDOFF — hitl-phase2-contract.md → completed/, HANDOFF Phase 4 진입 정보 갱신.
+[2026-05-05T08:15:01Z] satya PROJECT_DONE Phase 3 transition end 완료. 사용자 승인 대기 (커밋/PR).

@@ -106,7 +106,7 @@ export default function ConversationalCreationPage({
     })()
   }, [router])
 
-  const { runtime, onResume, onResumeDecisions, sendMessage } = useChatRuntime({
+  const { runtime, onResumeDecisions, sendMessage } = useChatRuntime({
     messages,
     streamFn,
     resumeFn,
@@ -123,8 +123,8 @@ export default function ConversationalCreationPage({
   }, [initialMessage, sendMessage])
 
   const hitlValue = useMemo(
-    () => ({ onResume, onResumeDecisions }),
-    [onResume, onResumeDecisions],
+    () => ({ onResumeDecisions }),
+    [onResumeDecisions],
   )
 
   return (

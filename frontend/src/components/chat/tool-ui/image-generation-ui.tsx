@@ -4,7 +4,18 @@ import { useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { ImageIcon, RotateCwIcon, SparklesIcon, SkipForwardIcon, CheckIcon } from 'lucide-react'
 import { cn, resolveImageUrl } from '@/lib/utils'
-import { useHiTL } from '@/lib/chat/hitl-context'
+import { useHiTL, type HiTLContextValue } from '@/lib/chat/hitl-context'
+
+async function submitChoice(
+  hitl: HiTLContextValue | null,
+  payload: Record<string, unknown>,
+  display: string,
+) {
+  await hitl?.onResumeDecisions(
+    [{ type: 'respond', message: JSON.stringify(payload) }],
+    display,
+  )
+}
 
 // ---------------------------------------------------------------------------
 // Phase 6 1차: skip / generate 선택
@@ -47,7 +58,8 @@ function ImageChoice({
     if (submitted) return
     setSubmitted(choice)
     const display = choice === 'skip' ? '넘어가기' : '생성하기'
-    await hitl?.onResume(
+    await submitChoice(
+      hitl,
       { choice, prompt: choice === 'generate' ? editPrompt : undefined },
       display,
     )
@@ -129,7 +141,7 @@ function ImageApproval({
     if (submitted) return
     setSubmitted(choice)
     const display = { confirm: '확정', regenerate: '재생성', skip: '넘어가기' }[choice]
-    await hitl?.onResume({ choice, prompt: editPrompt }, display)
+    await submitChoice(hitl, { choice, prompt: editPrompt }, display)
   }
 
   return (
