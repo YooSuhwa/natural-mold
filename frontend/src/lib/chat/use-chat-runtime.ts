@@ -396,6 +396,19 @@ export function useChatRuntime({
               }
               break
             }
+            case 'stale': {
+              // W3-out M3 — backend broker 가 in-flight turn 중 사망해 GET
+              // resume 이 DB replay 만 받은 신호. message_end 가 도착하지
+              // 않았음을 의미하므로 (a) 토큰이 일부 누락됐을 수 있고 (b)
+              // withAutoResume 의 자동 retry 도 더 이상 의미 없다. 인디케이터
+              // 정리 + toast 알림으로 사용자가 "왜 응답이 멈췄는지" 인지하게.
+              setReconnectState('idle')
+              setStreamError('broker_lost')
+              if (!streamGuardRef.current.isStale(token)) {
+                toast.warning(tReconnect('stale'))
+              }
+              break
+            }
           }
         }
       } catch (err) {
@@ -420,7 +433,7 @@ export function useChatRuntime({
         onStreamEnd?.(didMutate)
       }
     },
-    [onStreamEnd, onInterrupt, onMessagesCommit],
+    [onStreamEnd, onInterrupt, onMessagesCommit, setReconnectState, tReconnect],
   )
 
   // messages가 새로 fetch되면(refetch 완료) streaming messages를 clear.
