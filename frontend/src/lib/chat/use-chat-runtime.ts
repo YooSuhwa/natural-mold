@@ -44,6 +44,22 @@ function isMutationToolName(name: string | undefined): boolean {
   return MUTATION_PREFIXES.some((p) => name.startsWith(p))
 }
 
+/**
+ * messages refetch 결과에 새 assistant 메시지가 도착했는지 판정.
+ *
+ * Stream 종료 후 messages query refetch 시 streamingMessages 클리어 여부를
+ * 결정하는 휴리스틱. ``run_id``(uuid4) 와 ``messages.id``(uuid5(raw_id)) 형식이
+ * 달라 직접 매칭 불가 — set-diff 로 판단. mid-stream 끊김 시 backend 가
+ * checkpointer commit 못 해 새 assistant id 가 없으므로 partial 토큰 보존.
+ */
+export function hasNewAssistantMessage(
+  prev: readonly Message[],
+  next: readonly Message[],
+): boolean {
+  const prevIds = new Set(prev.map((m) => m.id))
+  return next.some((m) => m.role === 'assistant' && !prevIds.has(m.id))
+}
+
 function createOptimisticMessage(
   role: 'user' | 'assistant' | 'tool',
   content: string,
@@ -464,16 +480,13 @@ export function useChatRuntime({
   // streamingMessages 를 비우면 사용자가 받은 partial 토큰이 화면에서 사라진다.
   // 새 assistant 메시지가 refetch 결과에 도착했는지로 "정말 persist 됐는지" 판정.
   // run_id ↔ messages.id 직접 비교는 형식이 달라 (uuid4 vs uuid5(raw_id)) 매칭
-  // 불가 — id 매칭 대신 set-diff 휴리스틱 사용.
+  // 불가 — id 매칭 대신 ``hasNewAssistantMessage`` set-diff 휴리스틱 사용.
   const prevMessagesRef = useRef(messages)
   if (prevMessagesRef.current !== messages) {
-    const prevIds = new Set(prevMessagesRef.current.map((m) => m.id))
+    const prev = prevMessagesRef.current
     prevMessagesRef.current = messages
     if (!isRunning && streamingMessages.length > 0) {
-      const newAssistantArrived = messages.some(
-        (m) => m.role === 'assistant' && !prevIds.has(m.id),
-      )
-      if (newAssistantArrived) {
+      if (hasNewAssistantMessage(prev, messages)) {
         setStreamingMessages([])
       } else {
         // assistant 미커밋(끊긴 turn) — partial assistant + tool 결과는 유지하되,
