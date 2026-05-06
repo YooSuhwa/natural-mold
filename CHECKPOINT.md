@@ -1,93 +1,82 @@
-# CHECKPOINT — HiTL Phase 5 Builder v3 Wire 통일
+# CHECKPOINT — Service LLM Key from Credentials (UX 갭 해소)
 
 > 마일스톤 게이트 — 사티아 소유. 팀원 완료 보고 시 검증 → done-when 충족 시 done 마킹.
-> 브랜치: `feature/hitl-phase5-builder-wire` (main `d387603`에서 분기)
-> 참조: `~/.claude/plans/p5-precious-bengio.md`, `docs/design-docs/adr-012-hitl-middleware-migration.md` §Phase 5
-> 사용자 결정 (2026-05-06): Router-only 어댑터 + image_choice phase6 JSON.parse fallback + Clean break
+> 브랜치: `feat/service-llm-key-from-credentials` (main `4fee88c`에서 분기)
+> 사용자 결정 (2026-05-06): 옵션 B — credentials UI 등록 LLM 키를 builder/assistant sub-agent 도 사용 가능. UX 갭 해소.
 
 ---
 
 ## 핵심 스코프
 
-ADR-012 마이그레이션의 마지막 옵션 단계. Builder v3 의 ResumeRequest 를 표준 `decisions: Decision[]` 로 통일 + frontend `decisionToBuilderResponse` 어댑터(PR #135) retire.
+**문제**: Builder/Assistant sub-agent는 `settings.{provider}_api_key` (.env / OS env) 만 사용. 사용자가 `/credentials` UI 에 등록한 LLM provider 키는 일반 chat agent (`Agent.llm_credential`) 전용이라 builder 가 못 씀. 사용자 mental model("credentials = 단일 진실 공급원") 과 어긋남.
+
+**해결**: lifespan startup 시점 + credential CRUD 변경 시 credentials 테이블의 LLM provider 키를 `_ENV_FALLBACK` dict 로 동기화. `.env` 키 있으면 우선 (backward compat).
 
 | 영역 | 결정 |
 |------|------|
-| `routers/builder.py` `BuilderResumeRequest` | ✅ `decisions` 단일 필드 (clean break) |
-| `decisions_to_builder_response` helper | ✅ 신규 (services/builder_service 또는 builder_v3 유틸) |
-| `resume_message` handler | ✅ helper 호출 후 graph 전달 |
-| `phase6_image.py` (choice/approval wait) | ✅ string JSON.parse fallback (소규모 graph 변경) |
-| `_helpers.parse_approval_response` | 🔒 보존 (dict|str 처리 그대로 호환) |
-| `builder_v3/graph.py`, `state.py`, 다른 노드 | 🔒 보존 (8-phase 구조) |
-| `pending_tool_call_id` stale 검증 | 🔒 보존 |
-| frontend `builder-resume-adapter.ts` | ✅ 삭제 (-18) |
-| frontend `__tests__/builder-resume-adapter.test.ts` | ✅ 삭제 (-55, 8 가드 retire) |
-| frontend `use-chat-runtime.ts:onResumeDecisions` | ✅ 어댑터 호출 제거 + ResumeFn 시그니처 갱신 |
-| frontend `stream-builder-resume.ts` | ✅ 시그니처 `Decision[]` + body `{decisions}` |
+| `model_factory.py:_ENV_FALLBACK` 동기화 | ✅ 신규 — credentials → dict 주입 |
+| `main.py` lifespan | ✅ startup hook 으로 1회 동기화 |
+| credential CRUD API | ✅ invalidate hook (재시작 없이 반영) |
+| `.env` 키 우선순위 | ✅ env 가 있으면 우선 (backward compat) |
+| Frontend 변경 | ❌ 0 (mental model에 맞추는 backend-only fix) |
+| `Agent.llm_credential` (end-user agent) 경로 | 🔒 보존 (이미 정상 동작) |
 
-회귀 위험 최소화: backend helper 가 frontend 어댑터의 책임 그대로 옮겨받음 + phase6 JSON.parse 는 backward compatible.
+회귀 위험 최소화: env-only fallback 동작은 유지. credentials 통합은 *추가* 경로.
 
 ---
 
 ## M0: 거버넌스 초기화 (사티아 DRI)
-- [x] 브랜치 `feature/hitl-phase5-builder-wire` 생성 (main `d387603`)
-- [x] CHECKPOINT.md 새 사이클로 작성
-- [ ] AUDIT.log Phase 5 진입 기록
+- [x] 브랜치 `feat/service-llm-key-from-credentials` 생성 (main `4fee88c`)
+- [x] CHECKPOINT.md 작성
+- [ ] AUDIT.log 진입 기록
 - 검증: `git branch --show-current`
 - done-when: 새 브랜치 + CHECKPOINT + AUDIT 항목
 - 상태: in-progress
 
 ## M1: 의존성 분석 (베조스 DRI)
-- [ ] phase별 wait node 응답 형식 매핑 (어떤 dict shape vs string 기대하는지)
-- [ ] 표준 Decision → builder native shape 변환 표 확정
-- [ ] phase6 image_choice/approval 에서 JSON-string 회귀 시나리오 정확한 라인 식별
-- 검증: `tasks/phase5-dependency-analysis.md` 존재
-- done-when: 보고서 + 변환 매핑 + 회귀 가드 후보 명시
+- [ ] credentials 테이블 LLM provider 키 식별 패턴 (definition_key 매핑 — anthropic/openai/google/openrouter)
+- [ ] 기존 `Agent.llm_credential` 복호화 경로 추적 — 재사용 가능한 helper 식별
+- [ ] credential CRUD API 위치 (POST/PATCH/DELETE) + invalidate hook 삽입 지점
+- [ ] `_ENV_FALLBACK` 호출처 매핑 (helpers.py / model_factory.py 외)
+- [ ] 회귀 가드 후보 시나리오 명세
+- 검증: `tasks/credentials-llm-key-sync-analysis.md` 존재
+- done-when: 의존성 보고서 + invalidate hook 위치 + 회귀 가드 시나리오
 - 상태: pending
 
-## M2: ADR + helper 위치 결정 (피차이 DRI, M1 이후)
-- [ ] `docs/design-docs/adr-012-hitl-middleware-migration.md` §Phase 5 done-when 명시 + Phase 1~5 완료 회고
-- [ ] `decisions_to_builder_response` helper 위치 결정 (services/builder_service vs 신규 builder_v3/_resume_adapter.py)
-- 검증: `grep -n "Phase 5 완료" docs/design-docs/adr-012-hitl-middleware-migration.md`
-- done-when: ADR §Phase 5 완료 회고 추가, 위치 결정 progress.txt 기록
+## M2: 아키텍처 + ADR (피차이 DRI, M1 이후)
+- [ ] 신규 ADR `docs/design-docs/adr-013-service-llm-key-from-credentials.md` 작성 — 결정 사유 (사용자 mental model + a7fc92d "런타임 키 격리"와 trade-off)
+- [ ] 키 우선순위 결정: env > credentials (또는 credentials > env). backward compat 측 권장 = env 우선
+- [ ] invalidate hook 메커니즘 결정 (mutable dict vs lock-protected reload vs callback registry)
+- [ ] credentials 의 anthropic/openai/google/openrouter definition_key 매핑 명세
+- 검증: `test -f docs/design-docs/adr-013-service-llm-key-from-credentials.md`
+- done-when: ADR 작성 + 우선순위 + hook 디자인 + provider 매핑
 - 상태: pending
 
 ## M3: Backend 구현 (젠슨 DRI, M2 이후)
-- [x] `decisions_to_builder_response(decisions)` helper 신규 (services/builder_service.py — approve/reject/respond/edit + 빈 배열 처리)
-- [x] `routers/builder.py` `BuilderResumeRequest` schema → `decisions: list[Decision]` (`min_length=1`, `extra='forbid'`)
-- [x] `routers/builder.py` `resume_message` handler — helper 호출 후 `run_v3_resume_stream(response=...)` 전달
-- [x] `agent_runtime/builder_v3/nodes/_helpers.py` `parse_choice_response` helper 추출 (JSON.parse fallback)
-- [x] `agent_runtime/builder_v3/nodes/phase6_image.py` 두 wait 노드 helper 사용으로 단순화 (-9)
-- [x] 신규 가드 16건 (`tests/test_builder_phase5.py`):
-  - 6 helper unit (TestDecisionsToBuilderResponse: approve/reject±msg/respond/edit/빈배열)
-  - 4 router contract (TestResumeRouterContract: standard 200 + approve dict 변환 + legacy 422 + 빈배열 422)
-  - 6 phase6 JSON 회귀 (TestPhase6JsonStringFallback: JSON 객체 string + auto_prompt key + invalid JSON + dict/plain 보존 + prompt_keys + 노드 직접 invoke skip 분기)
-- 검증: ruff 0 / pyright 0 errors,0 warnings / pytest 865 PASS 회귀 0 / alembic OK
-- done-when: ruff 0 / pyright 0/0 / pytest 회귀 0 + 신규 가드 ≥3건 PASS ✅
-- 상태: done
-
-## M4: Frontend 구현 (저커버그 DRI, M3 이후)
-- [x] `lib/chat/builder-resume-adapter.ts` 삭제
-- [x] `lib/chat/__tests__/builder-resume-adapter.test.ts` 삭제 (8 가드 retire)
-- [x] `lib/chat/use-chat-runtime.ts:onResumeDecisions` — `decisionToBuilderResponse` 호출 제거, `decisions` 그대로 `resumeFn`에 전달
-- [x] `lib/chat/use-chat-runtime.ts` `ResumeFn` 타입 시그니처 갱신 (`response: unknown` → `decisions: Decision[]`)
-- [x] `lib/sse/stream-builder-resume.ts` 시그니처 + POST body `{decisions, display_text, interrupt_id}`
-- [x] `app/agents/new/conversational/page.tsx` resumeFn 시그니처 갱신 (Decision[] 수용)
-- 검증: `cd frontend && pnpm lint && pnpm test --run && pnpm build`
-- done-when: lint 0 / vitest 회귀 0 / build PASS / `decisionToBuilderResponse` grep 0건
-- 상태: done
-
-## M5: 회귀 검증 + 통합 (베조스 DRI, M3·M4 이후)
-- [ ] backend 게이트 4종 + 신규 가드 (M3) 모두 PASS
-- [ ] frontend 게이트 3종 + 어댑터 retire 잔재 0
-- [ ] grep 검증: `rg "decisionToBuilderResponse" frontend/src` → 0건, `rg "BuilderResumeRequest.*response\b" backend/app` → 0건
-- [ ] builder_v3 phase별 회귀 테스트 모두 PASS (test_builder_v3.py 기존 시나리오 보존)
-- 검증: 위 명령 모두 통과
-- done-when: 전체 통과 + retire 잔재 0
+- [ ] `app/services/credential_service.py` (또는 신규) `get_provider_keys() -> dict[str, str | None]` async helper — credentials 테이블 LLM provider 별 키 복호화
+- [ ] `model_factory.py` `_ENV_FALLBACK` 을 mutable dict 또는 resolver function 으로 변경 + thread-safe sync helper `sync_env_fallback_from_credentials(db)`
+- [ ] `main.py` lifespan startup — sync 호출 1회
+- [ ] credential CRUD (POST/PATCH/DELETE) 핸들러 — sync 재호출 (또는 callback registry)
+- [ ] 신규 가드 ≥3건:
+  - `test_lifespan_syncs_credentials_to_env_fallback`
+  - `test_credential_create_invalidates_env_fallback`
+  - `test_env_key_takes_priority_over_credential` (backward compat)
+  - `test_get_provider_keys_decrypts_anthropic` (helper 단위)
+- 검증: `cd backend && uv run alembic upgrade head && uv run ruff check . && uv run pytest tests/ && uv run pyright app/ tests/`
+- done-when: ruff 0 / pyright 0/0 / pytest 회귀 0 + 신규 가드 ≥3건 PASS
 - 상태: pending
 
-## M6: HANDOFF + ADR-012 종료 회고 (사티아 DRI, M5 이후)
-- [ ] HANDOFF.md Phase 5 완료 + ADR-012 모든 phase 종료 안내
+## M4: 회귀 검증 + 통합 (베조스 DRI, M3 이후)
+- [ ] backend 게이트 4종 + 신규 가드 PASS
+- [ ] 사용자 시나리오 검증: credentials 에 anthropic 키 등록 → builder 정상 LLM 호출 (수동 또는 통합 테스트)
+- [ ] backward compat: `.env` ANTHROPIC_API_KEY 있으면 그것 우선 사용
+- [ ] credential 삭제 후 sync 재호출되어 키 누락 반영
+- 검증: 위 항목 모두 통과
+- done-when: 게이트 + 사용자 시나리오 + backward compat + invalidate 모두 PASS
+- 상태: pending
+
+## M5: HANDOFF (사티아 DRI, M4 이후)
+- [ ] HANDOFF.md 작성
 - [ ] progress.txt 학습 entry
 - [ ] AUDIT PROJECT_DONE
 - 상태: pending
@@ -96,20 +85,15 @@ ADR-012 마이그레이션의 마지막 옵션 단계. Builder v3 의 ResumeRequ
 
 ## 보존 영역 (수정 금지)
 
-- `backend/app/agent_runtime/builder_v3/graph.py` (8-phase state machine)
-- `backend/app/agent_runtime/builder_v3/state.py`
-- `backend/app/agent_runtime/builder_v3/nodes/phase{2,3,4,5,7,8}*.py` (phase6 외)
-- `backend/app/agent_runtime/builder_v3/nodes/_helpers.py:parse_approval_response` (dict|str 처리 호환)
-- `backend/app/agent_runtime/middleware_registry.py` (Phase 1)
-- `backend/tests/test_hitl_middleware.py` (Phase 1 가드)
-- `backend/tests/test_hitl_wire.py` 메인 채팅 가드
-- `frontend/src/lib/chat/decision-mappers.ts` (PR #136)
-- `frontend/src/lib/chat/has-new-assistant-message.test.ts` (PR #134)
+- `Agent.llm_credential` 복호화 경로 (chat_service / agent_runtime 의 end-user agent 흐름)
+- `credentials` 테이블 schema (변경 0)
+- `Cipher` / `key_provider` (M1 산출, 보존)
+- frontend `/credentials` 페이지 (UI 변경 0)
 
-## 회귀 위험 최소화 가드
+## 회귀 위험 최소화
 
-1. `decisions_to_builder_response` helper 가 frontend 어댑터(PR #135)의 매핑을 1:1 이전 — 동작 변경 0
-2. phase6 JSON.parse 는 fallback만 추가 — 기존 dict/string 분기 그대로 호환
-3. graph + state + 8 phase 노드 변경 0 (phase6 외)
-4. 신규 가드 ≥3건 (M3) + builder_v3 기존 시나리오 PASS 검증 (M5)
-5. 어댑터 retire 후 grep 0건 검증 (M5)
+1. **`.env` 우선** — backward compat. 기존 사용자 영향 0
+2. **mutable dict 동기화** — 기존 `PROVIDER_API_KEY_MAP = _ENV_FALLBACK` alias 그대로 유지, dict 내용만 갱신
+3. **lifespan startup 1회 + CRUD invalidate** — credential 변경 즉시 반영
+4. **신규 가드 ≥3건** + 사용자 시나리오 검증 (M4)
+5. **end-user agent 경로 보존** — `Agent.llm_credential` 흐름은 변경 0

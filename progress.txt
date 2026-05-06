@@ -815,3 +815,31 @@ frontend는 표준 우선 처리, legacy fallback. 두 chunk가 같은 interrupt
   1. Pydantic v2 `extra="forbid"` + `Field(min_length=1)` 조합은 clean break wire 가드의 정석 — legacy response 필드 보내면 422 + 빈 decisions 배열도 422. 향후 dual-shape 호환 시도 자체를 차단.
   2. Helper 추출이 graph 응집도 보존 핵심: 노드 코드 라인이 줄어들면서(-9) 동시에 두 wait 노드의 응답 정규화 일관성이 제고. 향후 phase8 등 다른 wait 가 같은 패턴 필요 시 재사용 가능.
   3. M3 완료 시점에 M4 도 이미 완료(zuckerberg) — frontend 가 새 wire schema(decisions field) 로 보내고 있고 backend 가 이번 변경으로 수용하므로 contract 일치. 이제 M5 (베조스 통합 검증) 만 남음.
+
+[2026-05-06 pichai M2 — Service LLM Key from Credentials ADR-013 작성]
+- 산출물: docs/design-docs/adr-013-service-llm-key-from-credentials.md (~180 라인). 우선순위/재사용/hook/매핑 4개 결정 + 위험완화 + 마이그레이션.
+- 결정 1 — 우선순위: ENV > system credential > user credential > None. .env 1순위 = backward compat 영향 0. system 2순위 = operator-billed 일관. user 3순위 = mental model 충족.
+- 결정 2 — 재사용 전략: system_credential_resolver.resolve_system_api_key()는 의미 보존(operator-billed 단건 resolver). 신규 helper credential_service.get_provider_keys(db) -> dict[str, str|None] 추가 (bulk reader, startup/CRUD sync 용). 의미론적 분리 — 단건 resolver 가 user creds 까지 포함하면 a7fc92d 격리 의도 위반.
+- 결정 3 — Hook: _ENV_FALLBACK.update() (mutable dict). PROVIDER_API_KEY_MAP alias 그대로 유지(builder helper 코드 변경 0). callback registry/lazy reload 거부 — Musk Step 1(불필요한 추상화). startup 1회 + CRUD POST/PATCH/DELETE 3곳 hook. dict 객체 교체 금지(alias stale).
+- 결정 4 — 매핑: anthropic/openai/openrouter 1:1, google_genai → google (별칭), openai_compatible skip (base_url 필수, builder 미지원). LLM_DEFINITION_TO_ENV_KEY 상수로 명시.
+- 핵심 인사이트: 베조스 분석에서 system_credential_resolver 의 존재가 최대 발견. 이 함수의 의미(operator-billed only)를 그대로 보존하고, builder/assistant 통합은 새 helper 로 분리하는 게 ADR-005 의도에 맞다. user_id 파라미터를 의도적으로 누락 — PoC 단계 단일 mock user 가정 + 인증 도입 시 재검토.
+- 보존: end-user agent (Agent.llm_credential) 경로 변경 0. credentials 테이블 schema 변경 0. frontend 변경 0. PROVIDER_API_KEY_MAP alias 보존.
+- 다음 단계 (M3 젠슨): credential_service.get_provider_keys() 구현 + sync_env_fallback_from_credentials() helper + main.py lifespan 호출 + credentials.py CRUD 3곳 hook. 신규 가드 ≥3건은 베조스 M1 §5 시나리오 그대로 사용.
+
+[2026-05-06 jensen M3 — Service LLM Key 통합 backend 구현]
+- 변경: 5파일 +588 (backend/app 4파일 +158, backend/tests 1파일 +430)
+  - app/credentials/service.py: LLM_DEFINITION_TO_ENV_KEY 상수 + is_llm_definition() 헬퍼 + get_provider_keys(db, *, system_only=False) bulk reader 신규(+81). order_by(is_system DESC, created_at DESC) 단일 쿼리로 priority(system>user) + 최신 row 선정. 빈 키/decrypt 실패 row는 skip.
+  - app/agent_runtime/model_factory.py: _ENV_DEFAULTS 스냅샷(import 시 .env 캡처) + sync_env_fallback_from_credentials(db) async helper(+38). 매 호출 idempotent — _ENV_FALLBACK 을 _ENV_DEFAULTS 로 리셋 후 credentials 레이어. .env truthy 슬롯은 절대 덮지 않음(backward compat). PROVIDER_API_KEY_MAP alias 보존(객체 교체 X, in-place mutation).
+  - app/main.py: lifespan startup bootstrap_credentials_from_env() 직후 sync 1회 호출(+15). try/except로 lifespan boundary 격리.
+  - app/routers/credentials.py: _maybe_sync_env_fallback(db, definition_key) 헬퍼 + user CRUD 3곳(POST/PATCH/DELETE) + system CRUD 3곳 hook(+24). is_llm_definition() short-circuit으로 non-LLM CRUD는 decrypt 비용 0.
+  - tests/test_credentials_llm_sync.py: 신규 가드 16건(+430) — helper 단위 4(decrypt anthropic / google_genai→google 별칭 / system>user 우선순위 / is_llm_definition 멤버십), sync 단위 3(env empty fill / env priority / DELETE idempotent), CRUD invalidate 4(POST/PATCH/DELETE/non-LLM no-op), lifespan 1, 방어 4(openai_compatible skip, decrypt 실패 swallow, 모듈 export, alias 동일성).
+- 핵심 결정:
+  1. _ENV_DEFAULTS 스냅샷 패턴 = idempotent sync 핵심. 매 호출마다 .env 리셋 후 credentials 레이어 → DELETE 시 자연스럽게 키 누락 반영(별도 pop 로직 불필요). ADR-013 결정 3에서 제시한 옵션 (a) 채택.
+  2. 단일 쿼리로 priority 해결: order_by(is_system DESC, created_at DESC) + dict 첫 hit 보존 → N+1 회피. system>user 우선순위가 SQL 레벨에서 결정.
+  3. _maybe_sync_env_fallback 의 is_llm_definition 가드 = naver_search/http_bearer 등 non-LLM CRUD 가 매번 전체 LLM credentials decrypt 비용 지불 회피. 성능 + 명확한 의도 표현.
+  4. PROVIDER_API_KEY_MAP is _ENV_FALLBACK assert 가드(test_module_exports_new_symbols) = 향후 누군가 dict 객체 교체로 hook 깨뜨리는 시도 차단(ADR-013 §결정 3 끝).
+- 회귀: 881 PASS (기존 865 + 신규 16). ruff 0 / pyright 0/0 / alembic OK.
+- 학습 포인트:
+  1. mutable dict in-place mutation = alias 보존의 정석. `_ENV_FALLBACK = {...}` 처럼 객체 교체하면 import 시점에 alias 한 모듈(builder helpers, system_credential_resolver)이 stale 참조 보유. `.clear() + .update()` 또는 `.update(new)` 만 사용.
+  2. snapshot-then-layer 패턴이 sync invalidate 보다 단순. CRUD 3개 핸들러마다 "키 추가/제거" 로직 분기하는 대신 sync 함수가 매번 full state 재구성 → 단일 진입점, 단일 의도, single source of truth.
+  3. .env truthy 가드(`if not _ENV_FALLBACK.get(env_key) and cred_key`)는 한 줄로 backward compat 보장. 기존 .env-only 배포는 1순위 유지하면서 빈 슬롯에만 credentials 채움 — 사용자 mental model("credentials = 단일 진실 공급원") 의 점진적 확장.
