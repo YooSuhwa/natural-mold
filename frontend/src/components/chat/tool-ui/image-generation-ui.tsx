@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { ImageIcon, RotateCwIcon, SparklesIcon, SkipForwardIcon, CheckIcon } from 'lucide-react'
 import { cn, resolveImageUrl } from '@/lib/utils'
+import { toRespond } from '@/lib/chat/decision-mappers'
 import { useHiTL, type HiTLContextValue } from '@/lib/chat/hitl-context'
 
 async function submitChoice(
@@ -11,10 +12,7 @@ async function submitChoice(
   payload: Record<string, unknown>,
   display: string,
 ) {
-  await hitl?.onResumeDecisions(
-    [{ type: 'respond', message: JSON.stringify(payload) }],
-    display,
-  )
+  await hitl?.onResumeDecisions([toRespond(JSON.stringify(payload))], display)
 }
 
 // ---------------------------------------------------------------------------
