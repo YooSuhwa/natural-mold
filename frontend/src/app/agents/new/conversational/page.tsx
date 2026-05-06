@@ -14,7 +14,7 @@ import { BUILDER_TOOL_UI } from '@/lib/chat/tool-ui-registry'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { streamBuilderMessage } from '@/lib/sse/stream-builder-message'
 import { streamBuilderResume } from '@/lib/sse/stream-builder-resume'
-import type { Message, SSEEvent } from '@/lib/types'
+import type { Decision, Message, SSEEvent } from '@/lib/types'
 
 function WelcomeContent() {
   return (
@@ -65,14 +65,14 @@ export default function ConversationalCreationPage({
 
   const resumeFn = useCallback(
     (
-      response: unknown,
+      decisions: Decision[],
       signal: AbortSignal,
       displayText?: string,
       interruptId?: string | null,
     ): AsyncGenerator<SSEEvent> => {
       async function* run() {
         if (!sessionIdRef.current) return
-        yield* streamBuilderResume(sessionIdRef.current, response, signal, displayText, interruptId)
+        yield* streamBuilderResume(sessionIdRef.current, decisions, signal, displayText, interruptId)
       }
       return run()
     },

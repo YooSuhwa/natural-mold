@@ -778,3 +778,40 @@ frontend는 표준 우선 처리, legacy fallback. 두 chunk가 같은 interrupt
   2. jensen의 include_ask_user → is_trigger_mode rename은 "두 책임 분리" 관점에서 가치 있는 발견이었으나 retire와 함께 revert. 별도 PR로 다시 진행 가능 (트리거 모드 indicator 정리).
   3. PR 스코프 회고: 사용자 검증 단계에서 발견된 회귀를 즉시 인정하고 revert하는 것이 sunk cost 추구보다 옳다. 자동 테스트만으로는 UX 회귀를 잡을 수 없다 — 수동 E2E (특히 Builder v3 + 메인 채팅 cross 시나리오)가 필수.
   4. ADR §Phase 4를 "옵션 A 최종 결정"으로 갱신해야 한다 — 향후 누군가 다시 옵션 B 시도하지 않도록.
+
+[2026-05-06 pichai M2 — Phase 5 ADR 갱신 + helper 위치 결정]
+- helper 위치 결정: `decisions_to_builder_response` 는 `backend/app/services/builder_service.py` 안에 둔다.
+  근거: builder_v3/ 디렉토리는 graph + state + nodes 의 단일 책임 (8-phase deterministic state machine). wire 어댑터 / Decision → native shape 변환은 router 경계 utility 이므로 services 레이어가 책임. 신규 `_resume_adapter.py` 모듈을 builder_v3/ 안에 두는 것은 graph 응집도를 흐림.
+- ADR-012 갱신:
+  1) 상태 헤더 "Phase 1~3 완료, Phase 4 옵션 A 최종" → "Phase 1~4 완료, Phase 5 진행 중 (Builder v3 wire 통일)"
+  2) §Phase 5 섹션 — done-when 구체화 (graph 변경 0 + 회귀 가드 ≥3건), 사용자 결정 (Router-only + JSON.parse fallback + Clean break) 명시, 작업 항목 + 신규 가드 4건 + 보존 영역 표
+  3) §위험 + 완화 표 — Builder v3 graph 영향 행 갱신: "Router-only 어댑터로 graph + state + 대부분 노드 변경 0. phase6 만 backward-compatible JSON.parse 추가"
+  4) §Phase 5 회고 신규 추가 — 마이그레이션 종료 메모, 핵심 학습 3건 (graph 단일 책임 / phase 별 wire vs graph 보존 트레이드오프 / clean break 가드의 디자인 락 가치)
+- 핵심 인사이트:
+  1. graph 디렉토리 응집도 보존 = wire 어댑터를 services 가 받는다. helper 위치 결정은 단순 파일 경로가 아니라 모듈 경계 의사결정 — builder_v3/ 안에 _resume_adapter.py 를 두면 향후 누군가 graph 노드에서 직접 어댑터를 import 할 가능성 (잘못된 의존성 방향) 을 만든다.
+  2. Phase 5 끝나면 ADR-012 5단계 (Phase 0~5) 모두 완료. 사티아가 머지 후 §상태를 "Phase 1~5 완료 — ADR-012 마이그레이션 종료"로 최종 갱신할 것.
+  3. clean break 가드 (`test_resume_rejects_legacy_response_field_422`) 는 단순 negative test 가 아니라 ADR 결정의 코드 락. 향후 호환성 명목으로 dual-shape 추가 시도 차단 — Phase 2 dual-path 학습을 적용한 디자인.
+
+[2026-05-06 zuckerberg M4 — Phase 5 frontend 구현]
+- 변경: 5파일 +15/-91 (builder-resume-adapter.ts -18, builder-resume-adapter.test.ts -55, use-chat-runtime.ts +6/-6, stream-builder-resume.ts +6/-6, conversational/page.tsx +3/-3)
+- 어댑터 retire: decisionToBuilderResponse 호출 제거 + ResumeFn 시그니처 (response: unknown) → (decisions: Decision[]) + streamBuilderResume body {decisions, display_text, interrupt_id} + page.tsx resumeFn 시그니처 갱신.
+- retire 잔재: rg "decisionToBuilderResponse|builder-resume-adapter" frontend/src → 0건.
+- 회귀: lint 0 / vitest 49 files 284 tests PASS (count -8: 어댑터 테스트 retire 반영) / build PASS (Next.js 16.2.2 Turbopack, TypeScript 통과).
+- 핵심 인사이트: TypeScript 컴파일러가 ResumeFn 시그니처 변경의 모든 호출처(page.tsx)를 자동 탐지 — runtime guard 불필요. Decision[] 표준화로 frontend → backend wire 단일 형식 도달, ADR-012 마이그레이션의 마지막 옵션 단계 frontend 영역 종결.
+
+[2026-05-06 jensen M3 — Phase 5 backend 구현]
+- 변경: 5파일 +389/-26
+  - services/builder_service.py: decisions_to_builder_response helper 신규(+36) — Decision[] → builder native shape (approve→{approved:True}, reject→{approved:False, revision_message}, respond→string, edit→{approved:True}(graph는 edit args 미사용), 빈배열→None)
+  - routers/builder.py: BuilderResumeRequest clean break — `response: dict|str` 필드 제거, `decisions: list[Decision] = Field(min_length=1)` + extra='forbid'. resume_message handler 가 helper 호출 후 run_v3_resume_stream 에 response 로 전달 (시그니처 그대로 Any)
+  - builder_v3/nodes/_helpers.py: parse_choice_response helper 추출(+41) — JSON.parse fallback 우선 (`{` 시작 + `}` 끝일 때만 시도), dict/string 분기 그대로 보존, prompt_keys 튜플로 image_choice(prompt+auto_prompt) vs image_approval(prompt only) 차등 처리
+  - builder_v3/nodes/phase6_image.py: phase6_choice_wait + phase6_image_approval 두 wait 노드를 parse_choice_response 호출로 단순화(-9) — graph + state + 다른 phase 노드 변경 0
+  - tests/test_builder_phase5.py: 신규 가드 16건(+293) — 6 helper unit (TestDecisionsToBuilderResponse 5 매핑 + edge case) + 4 router contract (TestResumeRouterContract: 표준 decisions 200 + approve dict 변환 + legacy response 422 + 빈배열 422) + 6 phase6 JSON 회귀 (TestPhase6JsonStringFallback: JSON 객체 string→dict, auto_prompt key 지원, invalid JSON fallthrough, dict/plain string 보존, prompt_keys 동작, 노드 직접 invoke skip 분기)
+- 핵심 결정:
+  1. JSON.parse fallback 을 helper 로 추출 — 두 wait 노드가 동일 정규화 로직 공유. parse_approval_response 와 같은 위치(`_helpers.py`) 에 두어 phase 노드들이 import 한 곳에서만 가져온다 (모듈 경계 단순화).
+  2. JSON.parse 시도는 `{` 시작 + `}` 끝 휴리스틱 으로 가드 — `parse_choice_response("skip")` 같은 평범한 옵션 라벨은 try/except 비용 회피.
+  3. 노드 단위 테스트는 graph 통합 대신 `monkeypatch.setattr(phase6_image, "interrupt", _fake)` 로 interrupt 만 mock 하여 phase6_choice_wait 를 직접 invoke. graph 라이프사이클 의존성 제거 → 빠르고 안정.
+- 회귀 가드: 16건 (helper 6 + router 4 + phase6 6). 기존 회귀 0 (full pytest 865 PASS).
+- 학습 포인트:
+  1. Pydantic v2 `extra="forbid"` + `Field(min_length=1)` 조합은 clean break wire 가드의 정석 — legacy response 필드 보내면 422 + 빈 decisions 배열도 422. 향후 dual-shape 호환 시도 자체를 차단.
+  2. Helper 추출이 graph 응집도 보존 핵심: 노드 코드 라인이 줄어들면서(-9) 동시에 두 wait 노드의 응답 정규화 일관성이 제고. 향후 phase8 등 다른 wait 가 같은 패턴 필요 시 재사용 가능.
+  3. M3 완료 시점에 M4 도 이미 완료(zuckerberg) — frontend 가 새 wire schema(decisions field) 로 보내고 있고 backend 가 이번 변경으로 수용하므로 contract 일치. 이제 M5 (베조스 통합 검증) 만 남음.

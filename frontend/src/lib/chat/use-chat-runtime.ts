@@ -16,7 +16,6 @@ import type {
   TokenUsageBreakdown,
 } from '@/lib/types'
 import { sessionTokenUsageAtom, reconnectStateAtom } from '@/lib/stores/chat-store'
-import { decisionToBuilderResponse } from './builder-resume-adapter'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
 import { streamResumeDecisions } from '@/lib/sse/stream-resume'
@@ -93,7 +92,7 @@ type StreamFn = (
   options?: StreamFnOptions,
 ) => AsyncGenerator<SSEEvent>
 type ResumeFn = (
-  response: unknown,
+  decisions: Decision[],
   signal: AbortSignal,
   displayText?: string,
   interruptId?: string | null,
@@ -600,9 +599,9 @@ export function useChatRuntime({
    * HiTL: 표준 interrupt 응답 후 그래프 재개. `decisions.length`는
    * `action_requests.length`와 일치해야 미들웨어가 valid response로 인식.
    *
-   * `resumeFn` 주입 시(builder 호환): 표준 wire를 모르는 builder 자체 resume
-   * 에 위임 — ``decisionToBuilderResponse`` 가 첫 decision 을 builder 인자로
-   * 변환 (ADR-012 §Phase 5 까지 보존).
+   * `resumeFn` 주입 시(builder v3): ADR-012 §Phase 5 — 표준 ``Decision[]`` 을
+   * 그대로 builder router 로 전달. Backend ``decisions_to_builder_response``
+   * helper 가 phase 별 native shape 으로 변환한다.
    */
   const onResumeDecisions = useCallback(
     async (decisions: Decision[], displayText?: string) => {
@@ -610,9 +609,8 @@ export function useChatRuntime({
       const userMsg = displayText ? createOptimisticMessage('user', displayText) : null
 
       if (resumeFn) {
-        const response = decisionToBuilderResponse(decisions)
         await _runStream(
-          (signal) => resumeFn(response, signal, displayText, intrId),
+          (signal) => resumeFn(decisions, signal, displayText, intrId),
           userMsg,
         )
         return
