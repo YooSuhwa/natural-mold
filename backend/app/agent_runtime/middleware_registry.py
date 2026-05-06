@@ -420,11 +420,11 @@ DEEPAGENT_AUTO_INJECTED_TYPES: frozenset[str] = frozenset(
 )
 
 
-# executor가 명시 인스턴스화하는 타입 (ADR-012 Phase 1).
-# 사용자가 카탈로그에서 추가하면 ``cfg.middleware_configs`` 에 들어가지만,
-# build 단계에서는 제외되고 executor 가 도구별 ``interrupt_on`` 정책을 읽어
-# 명시 인스턴스를 미들웨어 list 에 합친다. 이로써 (a) 단일 진실 공급원,
-# (b) 트리거 모드 강제 차단, (c) ask_user retire 후 표준 경로 일원화.
+# 본 set 의 항목은 ``build_middleware_instances`` 경로를 우회한다 — executor 가
+# 도구별 정책을 읽어 명시 인스턴스를 미들웨어 list 에 합치는 책임을 가진다
+# (ADR-012 Phase 1). 사용자가 카탈로그에서 추가하면 ``cfg.middleware_configs``
+# 에 들어가지만 build 단계에서는 제외되고 executor 가 인스턴스화한다. 이로써
+# (a) 단일 진실 공급원, (b) 트리거 모드 강제 차단 같은 횡단 정책 적용 가능.
 EXPLICITLY_INSTANTIATED_TYPES: frozenset[str] = frozenset(
     {
         "human_in_the_loop",
