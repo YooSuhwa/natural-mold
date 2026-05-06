@@ -114,7 +114,7 @@ async def test_hitl_middleware_not_injected_in_trigger_mode(
     mock_checkpointer: MagicMock,
     mock_fs_backend_cls: MagicMock,
 ):
-    """execute_agent_invoke (is_trigger_mode=True) → HiTL 강제 차단."""
+    """execute_agent_invoke (include_ask_user=False) → HiTL 강제 차단."""
     from app.agent_runtime.executor import execute_agent_invoke
 
     mock_model_factory.return_value = MagicMock()

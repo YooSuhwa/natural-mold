@@ -170,17 +170,6 @@ function normalizeQuestions(args: AskUserArgs): UserInputQuestion[] {
   return []
 }
 
-/**
- * UserInputUI — Builder v3 전용 사용자 입력 카드.
- *
- * builder_v3가 phase2_intent / router fallback에서 발행하는 native interrupt
- * (`{type:'ask_user', question, options}`)는 backend streaming.py 어댑터가
- * 표준 `respond` action chunk로 변환하고, 이 컴포넌트가 toolName: 'ask_user'
- * 로 매칭되어 렌더된다.
- *
- * @see backend/app/agent_runtime/streaming.py:_interrupt_to_standard_chunk
- * @see backend/app/agent_runtime/builder_v3/nodes/{phase2_intent,router}.py
- */
 export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
   toolName: 'ask_user',
   render: function AskUserRender({ args, result, status }) {

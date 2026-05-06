@@ -51,14 +51,7 @@ export const TOOL_UI_WITHOUT_HITL = ALL_TOOL_UI.filter(
   (ui) => ui !== UserInputUI && ui !== ApprovalCard,
 )
 
-/**
- * Builder v3 전용 — 8-phase 빌더 흐름의 Tool UI 5종 + UserInputUI.
- *
- * builder_v3가 phase2_intent / router fallback에서 발행하는 native
- * interrupt (`{type:'ask_user', question, options}`)는 backend
- * streaming.py 어댑터가 표준 `respond` action chunk로 변환하고,
- * `UserInputUI` (toolName: 'ask_user') 가 렌더된다.
- */
+/** Builder v3 전용 — 8-phase 빌더 흐름의 Tool UI 5종 + 공통 ask_user */
 export const BUILDER_TOOL_UI = [
   GenericToolFallback,
   UserInputUI,

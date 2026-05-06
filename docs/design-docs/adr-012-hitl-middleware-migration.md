@@ -1,6 +1,6 @@
 # ADR-012: HiTL — 자체 구현에서 LangChain `HumanInTheLoopMiddleware` 로 마이그레이션
 
-## 상태: Phase 4 진행 중 (옵션 B — ask_user retire, 메인 채팅 한정)
+## 상태: 계획 (구현 대기)
 
 관련 문서:
 - 마일스톤 진행: `HANDOFF.md` (루트)
@@ -90,21 +90,14 @@ class Decision(BaseModel):
 { event: 'interrupt', data: { interrupt_id: string, value: { type: 'ask_user', question: string, options?: string[] } } }
 ```
 
-### 5. `ask_user` 도구 retire (옵션 B 선택, Phase 4)
+### 5. `ask_user` 도구는 보존 (옵션 A)
 
-> **이력**: Phase 1~3 transition 동안은 옵션 A(보존 + 표준 미들웨어 wrap)였으나, Phase 4 진입 시 옵션 B(retire)로 전환. 베조스 의존성 분석 결과 retire 범위는 **메인 채팅 한정**이며, builder_v3 의 native interrupt 패턴은 ADR-012 §Phase 5 영역으로 보존.
+옵션 A (선택됨): `ask_user` 도구 그대로 유지 + 표준 미들웨어가 `interrupt_on={"ask_user": True}` 로 wrap.
+- LLM prompt / 도구 description 영향 없음
+- 자체 `interrupt()` 호출은 미들웨어 호출과 양립 (미들웨어가 tool_call 단계에서 interrupt 발행, ask_user 자체는 빈 도구로 retire 가능)
+- 마이그레이션 후 단계적으로 ask_user 단순화
 
-**옵션 B 선택 사유**:
-1. **표준 미들웨어가 모든 도구의 interrupt 처리를 일원화** — 자체 `ask_user` 도구가 직접 `interrupt()` 호출하는 패턴은 표준 `HumanInTheLoopMiddleware` 와 의미 중복. 미들웨어가 모든 tool_call 단계에서 interrupt 를 발행하므로 자체 도구가 더 이상 필요 없다.
-2. **트리거 모드 무용** — HANDOFF 가 이미 지적: `_prepare_agent(include_ask_user=False)` indicator 분기 자체가 트리거에서 hang 을 막기 위한 우회. 도구를 retire 하면 indicator 도 함께 사라져 표준 경로로 단일화.
-3. **Prompt 오염 제거** — `ask_user` 의 docstring(L13–28) 이 OpenAI tools 배열에 description 으로 직렬화되어 LLM 입력에 항상 노출된다. system_prompt 에는 직접 언급이 없지만, 도구 카드(name + description) 자체가 모델 행동에 영향을 미치는 implicit prompt. retire 시 description 부담 자체 제거.
-
-**중요 보존 영역** (회귀 위험 최소화 가드):
-- `backend/app/agent_runtime/builder_v3/**` — Phase 2 intent 노드(`phase2_intent.py`) + router fallback(`router.py`) 의 native `interrupt({"type":"ask_user", ...})` 발행 패턴 유지. 8-phase deterministic state machine 의 직교 영역(§2 참조).
-- `backend/app/agent_runtime/streaming.py:84-117` — ask_user 어댑터 분기는 builder_v3 의 native interrupt 를 표준 `respond` action chunk 로 변환하는 역할. **삭제 X, 주석만 갱신** ("builder_v3 native interrupt 어댑터" 명시).
-- `frontend/src/components/chat/tool-ui/user-input-ui.tsx` + `tool-ui-registry.ts:34,51,57` + `frontend/messages/ko.json:558-571` — builder_v3 UI 가 동일 컴포넌트/라벨 사용. 코드 보존, JSDoc/주석에 "Builder v3 전용" 명시.
-
-옵션 A (이전): `ask_user` 도구 보존 + `interrupt_on={"ask_user": True}` wrap. → Phase 1~3 transition 안전망 역할 종료, Phase 4 에서 옵션 B 로 전환.
+옵션 B (보류): `ask_user` 완전 제거. LLM prompt 변경 필요 + 회귀 위험.
 
 ### 6. Frontend UI 활용 — 4 액션은 이미 구현됨
 
@@ -164,38 +157,12 @@ Frontend:
 - frontend 의 기존 `{interrupt_id, value}` 처리 코드 제거
 - streaming.py 의 자체 INTERRUPT emit 제거 (표준 미들웨어 발행만)
 
-### Phase 4 — `ask_user` 도구 retire (옵션 B, 메인 채팅 한정)
-**Done-when**: 메인 채팅 ask_user 도구 retire 완료, builder_v3 native interrupt 패턴 + 어댑터/UI/번역 모두 보존, 메인 채팅 회귀 0, 신규 가드 ≥2건 PASS
+### Phase 4 — `ask_user` 검토 (옵션, ~30 라인)
+**Done-when**: ask_user 도구의 의존성 평가 완료, 단순화 또는 retire 결정
 
-**LLM prompt 영향 분석 결과** (Phase 4 진입 시 확인):
-- `executor.py:530-548` 의 system_prompt 동적 추가 영역(스킬 규칙 + skills_block) 에 `ask_user` 직접 언급 없음.
-- 시드 템플릿/모델 system_prompt 에도 `ask_user` 텍스트 없음.
-- 단, `tools/ask_user.py:13-28` docstring 이 OpenAI tools 배열에 description 으로 노출되어 implicit prompt 로 작용. retire 시 도구 카드 자체 미주입 → LLM 호출 자체 불가 → prompt 회귀 0.
-
-**Backend 작업**:
-- `backend/app/agent_runtime/tools/ask_user.py` 삭제
-- `executor.py`:
-  - L34 `from .tools.ask_user import ask_user as ask_user_tool` import 제거
-  - L439-443 `include_ask_user: bool = True` 파라미터 제거 (모든 호출처)
-  - L502-504 `if not include_ask_user: interrupt_on = None` (트리거 차단 우회) 제거
-  - L506-509 `interrupt_on.setdefault("ask_user", {"allowed_decisions": ["respond"]})` 자동 등록 제거
-  - L555-558 `if include_ask_user: langchain_tools.append(ask_user_tool)` conditional append 제거
-- `streaming.py:84-117` ask_user 어댑터 분기는 **코드 보존 + 주석 갱신** ("builder_v3 native interrupt → 표준 respond action chunk 어댑터"로 의도 명시)
-
-**Frontend 작업** (코드 변경 없음, 주석만):
-- `lib/chat/tool-ui-registry.ts:54` 주석 갱신 — "Builder v3 전용 (메인 채팅 ask_user 도구 retired)"
-- `lib/chat/use-chat-runtime.ts:100, 430-432` 주석 갱신 — "builder_v3 native interrupt 어댑터 경유"
-- `components/chat/tool-ui/user-input-ui.tsx` JSDoc — "Builder v3 전용" 명시
-- `messages/ko.json:558-571` `userInput` 라벨 보존 (builder_v3 사용)
-
-**Tests**:
-- `tests/test_executor.py:125-129, 185, 235, 272, 344, 551-575` — ask_user 자동 주입 어설션 갱신/삭제
-- `tests/test_hitl_middleware.py:117` — `include_ask_user=False` 호출 제거(파라미터 자체 삭제)
-- `tests/test_hitl_wire.py:280-295, 337-350` — 시나리오를 "builder_v3 native interrupt → 표준 respond chunk" 로 명확화 (이름/주석)
-- `tests/test_builder_v3.py:177-230` 보존
-- **신규 가드 ≥2건** (M5):
-  1. 메인 채팅 도구 미주입 가드 — `include_ask_user` 파라미터 부재 + `langchain_tools` 에 `ask_user` 없음 검증
-  2. builder_v3 native interrupt → streaming 어댑터 → 표준 respond chunk 파이프라인 회귀 가드
+- ask_user 의 LLM prompt 영향 분석
+- 표준 미들웨어로 충분히 대체 가능하면 도구 제거
+- 옵션 선택 UX 보존 필요 시 `ask_user` 의 description 조정
 
 ### Phase 5 — Builder v3 wire format 통일 (옵션, ~150 라인)
 **Done-when**: Builder v3 의 ResumeRequest 도 표준 `decisions` 형식 받음 (graph 자체는 변경 X)
@@ -212,10 +179,9 @@ Frontend:
 |------|------|
 | Wire format 변경 = breaking change | dual-path transition window — 한 PR 에서 둘 다 받기, 4 PR 후 제거 |
 | Multi-action UI 신규 디자인 부재 | `ApprovalCard` 가 이미 단일 액션 지원 — 배열 렌더링 + 일괄 확정 버튼 추가만 |
-| `ask_user` LLM prompt 변경 시 회귀 | Phase 4 에서 retire — 도구 미주입으로 LLM 호출 자체 불가, system_prompt 직접 언급 없음(분석 완료), prompt 회귀 0 |
-| `ask_user` 도구가 builder_v3 의존성과 얽힘 | 메인 채팅 도구만 retire, builder_v3 native interrupt 패턴 + streaming 어댑터 + UI 컴포넌트 + ko.json 라벨 모두 보존. M5 가드 테스트로 builder_v3 파이프라인 회귀 0 확인 |
+| `ask_user` LLM prompt 변경 시 회귀 | Phase 4 까지 ask_user 보존, 충분한 회귀 테스트 후 결정 |
 | Builder v3 graph 영향 | wire format 만 통일, graph 자체 변경 X — Phase 5 가 분리됨 |
-| 트리거 모드에서 interrupt 발생 시 hang | Phase 4 retire 후 `include_ask_user` indicator 자체가 사라지므로 우회 코드 제거. 표준 미들웨어가 트리거 경로에서 자동 승인 처리 |
+| 트리거 모드에서 interrupt 발생 시 hang | 트리거 호출 시 `interrupt_on` config 강제 override, 회귀 테스트 |
 | Stale interrupt (오래된 카드 클릭) | Builder 의 `pending_tool_call_id` 패턴을 메인 채팅에도 적용 검토 (Phase 2 내) |
 
 ---
@@ -230,7 +196,7 @@ Phase 별 신규 회귀 테스트:
 - Phase 1: 도구별 interrupt_on 적용 / 트리거 모드 자동 승인
 - Phase 2: 표준 + 기존 wire 양쪽 작동 / multi-action 일괄 처리
 - Phase 3: 기존 wire 제거 후 회귀 0
-- Phase 4: 메인 채팅 ask_user 도구 미주입 가드 + builder_v3 native interrupt → streaming 어댑터 → 표준 respond chunk 파이프라인 회귀 0
+- Phase 4: ask_user retire 시 LLM prompt 회귀
 - Phase 5: builder graph state 회귀 0
 
 수동 e2e:

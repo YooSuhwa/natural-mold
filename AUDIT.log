@@ -162,21 +162,7 @@
 [2026-05-05T08:12:00Z] satya MILESTONE_DONE M4 통합 검증 — backend 847 PASS / pyright 0/0 / ruff clean / alembic OK + frontend lint 0 / test 270 PASS / build 17 routes. legacy grep 0건 (코드 매치는 모두 주석/회귀가드).
 [2026-05-05T08:15:00Z] satya MILESTONE_DONE M5 contract 이동 + HANDOFF — hitl-phase2-contract.md → completed/, HANDOFF Phase 4 진입 정보 갱신.
 [2026-05-05T08:15:01Z] satya PROJECT_DONE Phase 3 transition end 완료. 사용자 승인 대기 (커밋/PR).
-[2026-05-06T00:00:00Z] satya PROJECT_START "HiTL Phase 4 — ask_user retire (옵션 B, 메인 채팅 한정)"
-[2026-05-06T00:00:01Z] satya BRANCH_CREATED feature/hitl-phase4-ask-user-retire (main 20022dc)
-[2026-05-06T00:00:02Z] satya MILESTONE_CREATED M0,M1,M2,M3,M4,M5,M6
-[2026-05-06T00:00:03Z] satya TEAM_COMPOSITION 풀 5인 사일로 (피차이/팀쿡/저커버그/젠슨/베조스), 모두 Opus, 회귀 위험 최소화 강조
-[2026-05-06T00:00:04Z] satya DECISIONS_PHASE4 옵션 B retire — 메인 채팅 ask_user 도구만 제거. builder_v3 보존 영역(native interrupt, streaming 어댑터, UserInputUI, ko.json) 모두 보존. ADR-012 §Phase 5 영역 침범 X.
-[2026-05-06T00:05:00Z] bezos MILESTONE_DONE M1 의존성 매핑 — tasks/phase4-dependency-analysis.md. ask_user 두 경로(메인 채팅 retire / builder_v3 보존) 분리. 7개 카테고리 file:line 매핑, 회귀 리스크 맵, 8개 인사이트.
-[2026-05-06T00:05:01Z] satya MILESTONE_DONE M0 거버넌스 초기화 — 브랜치, CHECKPOINT 새 사이클, AUDIT 진입, 분석 보고서 저장.
-[2026-05-06T08:42:00Z] pichai MILESTONE_DONE M2 ADR-012 §5/§Phase 4/§위험 갱신 — 옵션 B retire 결정·builder_v3 보존영역 명시·prompt 분석(직접언급 0, docstring implicit 오염) 반영
-[2026-05-06T09:15:00Z] jensen MILESTONE_DONE M3 backend retire — tools/ask_user.py 삭제, executor.py include_ask_user 파라미터+자동 등록 제거(is_trigger_mode rename), streaming.py 어댑터 코드 보존 주석 갱신, tests 4건 갱신+1건 삭제. ruff/pyright clean, pytest 846 PASS, alembic OK.
-[2026-05-06T09:15:00Z] jensen MILESTONE_DONE M3 backend retire — tools/ask_user.py 삭제, executor.py include_ask_user 파라미터+자동 등록 제거(is_trigger_mode rename), streaming.py 어댑터 코드 보존 주석 갱신, tests 4건 갱신+1건 삭제. ruff/pyright clean, pytest 846 PASS, alembic OK.
-[2026-05-06T07:30:00Z] zuckerberg MILESTONE_DONE M4 frontend 주석 갱신 — tool-ui-registry/use-chat-runtime/user-input-ui 3파일 주석+JSDoc 갱신, 코드 동작 변경 0, lint 0/test 270 PASS/build PASS 16 routes
-[2026-05-05T22:32:34Z] bezos VERIFICATION_PASS M5 — retire 잔재 0(메인), 신규 가드 7건 PASS, backend 853 PASS(846+7)/ruff/pyright/alembic 모두 통과, frontend 270 PASS/lint/build 통과
-[2026-05-05T22:32:34Z] bezos REVIEW_APPROVE Phase 4 — verdict APPROVE, 게이트 7/7 PASS, 회귀 0건, 옵션 B retire 가드 잠금 완료
-[2026-05-06T07:35:00Z] satya VERIFICATION_PASS M6 통합 검증 — backend ruff clean / pytest 853 PASS / pyright 0/0 / alembic OK + frontend lint clean / vitest 270 PASS / build PASS. retire 잔재 grep 메인 채팅 0건, builder_v3+streaming 어댑터만 보존.
-[2026-05-06T07:35:01Z] satya MILESTONE_DONE M6 — HANDOFF.md Phase 5 진입 정보 갱신, CHECKPOINT 모든 마일스톤 done.
-[2026-05-06T07:35:02Z] satya PROJECT_DONE Phase 4 ask_user retire (옵션 B). 메인 채팅 도구 retire + builder_v3 보존 영역 모두 보존. 신규 가드 7건. 사용자 승인 대기 (커밋/PR). 스코프 외 catalog 자동 갱신 파일 staging 제외 권장.
 [2026-05-06T11:00:00Z] satya BUGFIX HiTL 미들웨어 카탈로그 노출 — DEEPAGENT_BUILTIN_TYPES를 AUTO_INJECTED + EXPLICITLY_INSTANTIATED 두 set으로 분리. get_middleware_registry(exclude_builtin=True)는 AUTO_INJECTED만 제외 → human_in_the_loop이 사용자 카탈로그에 노출되어 도구별 interrupt_on 정책 등록 가능. executor.py의 build-time filter는 union(DEEPAGENT_BUILTIN_TYPES)을 그대로 사용해 중복 인스턴스화 방지. 신규 가드 3건 (test_middleware_registry 2건 + test_agents.test_list_middlewares 어설션 보강).
-[2026-05-06T11:00:01Z] satya VERIFICATION_PASS Phase 4 + bugfix — backend 855 PASS / pyright 0/0 / ruff clean + frontend 270 PASS / lint 0 / build PASS.
+[2026-05-06T11:00:01Z] satya VERIFICATION_PASS bugfix — backend 855 PASS / pyright 0/0 / ruff clean + frontend 270 PASS / lint 0 / build PASS.
+[2026-05-06T12:00:00Z] satya REVERT_PHASE4 사용자 검증 결과 옵션 B retire 결정 번복 — ask_user 도구가 자연어 "되물어보기" UX의 본질이고 HumanInTheLoopMiddleware로 대체 불가(미들웨어는 도구 호출 게이트, ask_user는 사용자 질문 도구로 책임 직교). 8f81439 revert로 ask_user 복원, ADR-012 §Phase 4를 옵션 A 최종 결정으로 갱신. e7140fd 카탈로그 fix는 별개 버그라 유지.
+[2026-05-06T12:00:01Z] satya LESSONS_PHASE4 옵션 B 시도에서 학습: (1) 도구 description의 implicit prompt 오염 vs UX 손실 트레이드오프에서 UX 보존이 우선. (2) HumanInTheLoopMiddleware는 위험 액션 게이트, ask_user는 질문 도구 — 두 책임 통합 시도는 UX 회귀. (3) jensen의 include_ask_user→is_trigger_mode rename은 두 책임 분리 가치 있는 발견이었으나 retire와 함께 revert. (4) PR 회고: 사용자 검증 단계에서 발견된 회귀를 즉시 인정하고 revert하는 게 sunk cost 추구보다 옳다.
