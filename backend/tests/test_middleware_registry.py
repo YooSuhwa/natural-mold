@@ -5,6 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from app.agent_runtime.middleware_registry import (
+    DEEPAGENT_AUTO_INJECTED_TYPES,
+    DEEPAGENT_BUILTIN_TYPES,
+    EXPLICITLY_INSTANTIATED_TYPES,
     MIDDLEWARE_REGISTRY,
     _coerce_tuple_params,
     _resolve_middleware_class,
@@ -38,6 +41,29 @@ def test_get_middleware_registry_entries_have_metadata():
         assert "display_name" in item
         assert "description" in item
         assert "category" in item
+
+
+def test_get_middleware_registry_exclude_builtin_keeps_explicit_instantiated():
+    """exclude_builtin=True excludes auto-injected types only.
+
+    ``human_in_the_loop`` is explicitly instantiated by executor.py based on
+    user-defined ``interrupt_on`` policy and MUST stay visible in the catalog
+    so users can register it through the middleware add UI.
+    """
+    result = get_middleware_registry(exclude_builtin=True)
+    types = {item["type"] for item in result}
+    for auto_type in DEEPAGENT_AUTO_INJECTED_TYPES:
+        assert auto_type not in types, f"auto-injected '{auto_type}' should be excluded"
+    for explicit_type in EXPLICITLY_INSTANTIATED_TYPES:
+        assert explicit_type in types, f"explicit-instantiated '{explicit_type}' should be exposed"
+
+
+def test_deepagent_builtin_types_is_union_of_auto_and_explicit():
+    """DEEPAGENT_BUILTIN_TYPES is the union — used by build-time filtering only."""
+    assert DEEPAGENT_BUILTIN_TYPES == DEEPAGENT_AUTO_INJECTED_TYPES | EXPLICITLY_INSTANTIATED_TYPES
+    assert "human_in_the_loop" in DEEPAGENT_BUILTIN_TYPES
+    assert "human_in_the_loop" in EXPLICITLY_INSTANTIATED_TYPES
+    assert "human_in_the_loop" not in DEEPAGENT_AUTO_INJECTED_TYPES
 
 
 # ---------------------------------------------------------------------------

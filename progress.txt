@@ -758,3 +758,12 @@ frontend는 표준 우선 처리, legacy fallback. 두 chunk가 같은 interrupt
   3. *is_trigger_mode rename의 "(b) HiTL 강제 차단" 책임 보존 가드 필수*. 단순 `interrupt_on=None` 강제만 보면 향후 누군가 "is_trigger_mode 파라미터 자체가 더는 안 쓰이네" 하고 제거할 수 있음. 본 가드는 "트리거 경로는 항상 interrupt_on=None" 행동을 잠금.
   4. *grep 잔재 검증을 verdict 일부로 포함*. 단위 테스트뿐 아니라 코드베이스 grep도 가드의 일부 — 미래 컨트리뷰터가 ask_user를 메인 채팅 영역에 다시 끼워 넣지 못하게 한다.
 - 회귀 0 확인 → REVIEW_APPROVE 발행. M6 통합 검증 + HANDOFF 작업으로 넘어갈 수 있음.
+
+[2026-05-06 satya BUGFIX — HiTL 카탈로그 노출 (Phase 4 PR에 포함)]
+- 발견: 사용자가 frontend "미들웨어 추가" UI에서 HiTL 옵션을 못 찾음.
+- 원인: middleware_registry.py의 DEEPAGENT_BUILTIN_TYPES가 두 종류를 한 set로 묶어 카탈로그 노출 차단.
+  (1) AUTO_INJECTED: deepagents가 자동 주입 (todo_list, filesystem, subagent, summarization, anthropic_prompt_caching) — 카탈로그 노출 금지(중복 등록 시 AssertionError).
+  (2) EXPLICITLY_INSTANTIATED: executor.py가 명시 인스턴스화 (human_in_the_loop) — 사용자가 interrupt_on 정책을 정의해야 동작하므로 카탈로그 노출 필수.
+- 수정: 두 set 분리. get_middleware_registry(exclude_builtin=True)는 AUTO_INJECTED만 제외. executor.py의 filtered_mw는 union(DEEPAGENT_BUILTIN_TYPES) 그대로 사용해 build 단계에서 중복 방지.
+- 회귀 가드 3건: test_middleware_registry 2건 (분리 검증 + union 무결성), test_agents.test_list_middlewares (human_in_the_loop 노출 어설션).
+- 핵심 패턴: "자동 주입" vs "명시 인스턴스화"는 같은 카테고리가 아님. 카탈로그 노출 정책과 build-time 필터링 정책을 분리해야 의도된 사용자 경로(도구별 위험도 차등)가 살아남.

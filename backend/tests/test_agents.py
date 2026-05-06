@@ -225,9 +225,12 @@ async def test_list_middlewares(client: AsyncClient):
     assert isinstance(data, list)
     assert len(data) > 0
     types = {item["type"] for item in data}
-    # deepagents 빌트인 타입(summarization, todo_list 등)은 제외됨
+    # deepagents 자동 주입 타입(summarization, todo_list 등)은 제외됨
     assert "summarization" not in types
     assert "tool_retry" in types
+    # ``human_in_the_loop`` 는 executor 가 명시 인스턴스화하지만 사용자가
+    # 도구별 ``interrupt_on`` 정책을 정의해야 동작하므로 카탈로그에 노출.
+    assert "human_in_the_loop" in types
 
 
 # ---------------------------------------------------------------------------
