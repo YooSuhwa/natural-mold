@@ -9,6 +9,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   Decision,
@@ -175,13 +176,14 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
     expect(arg.review_configs).toHaveLength(3)
   })
 
-  it('fallback 표준 chunk(action_requests=[]) 도 표준 콜백 단일 호출 (§4.5)', async () => {
+  it('fallback 표준 chunk(action_requests=[]) 는 toast 안내 + onStandardInterrupt 미호출', async () => {
     /**
-     * Backend fallback (`aget_state` 실패): 빈 표준 chunk
-     * `{interrupt_id: "", action_requests: [], review_configs: []}` 1회 emit.
-     * frontend는 단일 표준 경로로 그대로 전달 — 호출자(chat 페이지)가 빈
-     * action_requests를 보고 fallback UI를 결정.
+     * Backend fallback (``aget_state`` 실패): 빈 표준 chunk
+     * ``{interrupt_id: "", action_requests: [], review_configs: []}`` 1회 emit.
+     * turn 이 silent 하게 갇히지 않도록 hook 이 toast 로 사용자에게 안내하고
+     * ``onStandardInterrupt`` 는 호출하지 않는다(액션 카드 렌더 의미 없음).
      */
+    vi.mocked(toast.error).mockClear()
     const fallbackStd: StandardInterruptPayload = {
       interrupt_id: '',
       action_requests: [],
@@ -200,8 +202,8 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
       await result.current.sendMessage('hi')
     })
 
-    await waitFor(() => expect(onStandardInterrupt).toHaveBeenCalledTimes(1))
-    expect(onStandardInterrupt).toHaveBeenCalledWith(fallbackStd)
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    expect(onStandardInterrupt).not.toHaveBeenCalled()
   })
 })
 
