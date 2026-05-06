@@ -1,68 +1,72 @@
-# 작업 인계 — HiTL Phase 4 진입 (옵션, ask_user 검토)
+# 작업 인계 — HiTL Phase 4 옵션 A 최종 + 카탈로그 fix
 
-> 새 세션 첫 행동: 본 파일 + `docs/design-docs/adr-012-hitl-middleware-migration.md` (Phase 4 §) + `docs/exec-plans/completed/hitl-phase2-contract.md` (transition 계약 참조).
+> 새 세션 첫 행동: 본 파일 + `docs/design-docs/adr-012-hitl-middleware-migration.md` (Phase 4 회고 §) 참조.
 
 ## 마지막 상태
 
-- 브랜치: `feature/hitl-phase3-transition-end` (main `be5a735`에서 분기, **커밋 미수행 — 사용자 승인 대기**)
-- backend: **847 PASS** / pyright 0/0 / ruff clean / alembic OK
-- frontend: **270 PASS** (47 files) / lint clean / build PASS (16 routes)
-- legacy 코드 잔재 grep: 0건
+- 브랜치: `feature/hitl-phase4-ask-user-retire` (main `20022dc` 분기)
+- 게이트 7/7 PASS — backend 849 / pyright 0/0 / ruff clean / alembic OK + frontend 270 / lint clean / build PASS
+- 미커밋: `middleware_registry.py` docstring 갱신(simplify 결과). 다음 커밋 또는 amend 후보.
+- 사용자 수동 검증 완료: ask_user 카드 정상 표시, 미들웨어 카탈로그에 HiTL 노출 확인
 
-## Phase 3 + /simplify 완료
+## 커밋 히스토리
 
-dual-path transition window 종료 → **legacy wire format 완전 제거**, 사용자 무영향 clean break + 코드 품질 정리.
+| Hash | 의미 |
+|------|------|
+| `8f81439` | Phase 4 옵션 B retire (시도) |
+| `e7140fd` | HiTL 카탈로그 노출 fix (유지) |
+| `221c4dd` | Phase 4 retire revert |
+| `ff8ab58` | ADR-012 옵션 A 최종 회고 + HANDOFF |
 
-**Backend (4 파일)**:
-- `schemas/conversation.py`: `ResumeRequest{decisions: list[Decision]}` 단일 필드
-- `routers/conversations.py:resume_message`: `_legacy_response_to_decisions` 헬퍼 + dual 분기 제거
-- `agent_runtime/streaming.py`: 표준 chunk 단독 emit. `_interrupt_to_standard_chunk` 헬퍼 — 자체 ask_user native interrupt를 표준 `respond` action으로 어댑트. fallback은 빈 표준 chunk.
-- `agent_runtime/executor.py`: ADR-012 §1 옵션 A 부분 활성 — `interrupt_on`에 `ask_user` 자동 등록 (human_in_the_loop 미들웨어 활성 시)
-- `tests/test_hitl_phase2_wire.py` 삭제 → `tests/test_hitl_wire.py` (21건)
+## PR 최종 효과 (main 대비 남는 변경)
 
-**Frontend (12 파일, 순 -615 라인)**:
-- `lib/types/index.ts`: `LegacyInterruptPayload` 제거
-- `lib/sse/stream-resume.ts`: `streamResume` 제거
-- `lib/chat/hitl-context.ts`: `onResume` 어댑터 제거
-- `lib/chat/use-chat-runtime.ts`: legacy 분기/dedup 제거. builder 호환 어댑터(첫 decision의 message 추출) 내부 흡수
-- Tool UI 5곳: `onResumeDecisions` 마이그레이션. `approval-card.tsx`는 `toDecision()` switch 헬퍼 + tool_name 부재 시 edit 거절. `image-generation-ui.tsx`는 `submitChoice()` 헬퍼로 copy-paste 통합.
-- chat 페이지 2곳: HiTLContext value 정리
+✅ HiTL 미들웨어가 `/api/middlewares` 카탈로그에 노출 → 사용자가 UI에서 추가 가능
+✅ `DEEPAGENT_AUTO_INJECTED_TYPES` + `EXPLICITLY_INSTANTIATED_TYPES` 두 set 분리 (build vs catalog 정책 분리)
+✅ 회귀 가드 3건 (`test_middleware_registry` 2 + `test_list_middlewares` 어설션)
+✅ ADR-012 §Phase 4 옵션 A 최종 결정 회고 §추가
 
-**문서**: `hitl-phase2-contract.md` → `completed/`
+## Phase 4 학습 (progress.txt + ADR 회고 §)
 
-## Phase 4 진입 (옵션, ~30 라인)
+`HumanInTheLoopMiddleware` = 위험 도구 게이트 / `ask_user` = 자연어 질문 도구 — **두 책임 직교**. 옵션 B가 단순화는 했지만 "되물어보기" UX를 잃어 사용자 검증에서 회귀 발견 → 즉시 revert. 향후 옵션 B 재시도 금지.
 
-브랜치: `feature/hitl-phase4-ask-user-review`
+## 남은 작업 (별도 PR 후보)
 
-작업 (ADR-012 "Phase 4" §):
-- ask_user 도구 의존성 평가 (LLM prompt 영향)
-- 단순화 또는 retire 결정. 보존 시 description 조정.
-- 마이그레이션 시 → ask_user.py 표준 미들웨어 패턴 전환 + `streaming.py` 어댑터 분기 제거
+### 우선순위 높음
+1. **답변 두 번 표시 회귀** — DB 1건이지만 frontend가 streamingMessages 미클리어. 새로고침 시 정상화. `runId`(`X-Run-Id`) ↔ DB assistant message id 불일치 추정. HiTL 미들웨어 추가가 트리거일 수 있음. 위치: `frontend/src/lib/chat/use-chat-runtime.ts:457-473`
 
-## Phase 3 후속 (별도 PR 권장)
+### 우선순위 중간
+2. **`include_ask_user` 두 책임 분리 재시도** — Phase 4에서 발견. 도구 주입 책임은 그대로, 트리거 hang 차단만 별도 indicator(`is_trigger_mode`)로 분리. retire와 무관하게 진행 가능
+3. **빈 fallback chunk UX** — backend `aget_state` 실패 시 emit하는 `{action_requests:[],review_configs:[]}` chat 페이지 미노출. 명시 fallback 핸들러 필요 시 `onStandardInterrupt` 주입
 
-1. **빈 fallback chunk UX**: backend가 `aget_state` 실패 시 emit하는 `{action_requests:[],review_configs:[]}`은 frontend chat 페이지에서 미노출. 명시 fallback UI 핸들러 필요 시 chat 페이지에 `onStandardInterrupt` 주입.
-2. **builder 어댑터 추출**: `use-chat-runtime.ts` 내부 흡수된 builder 호환 코드 → `lib/chat/builder-resume-adapter.ts` 분리.
-3. **Decision 매퍼 통합**: 인라인 객체 리터럴 11곳 → `lib/chat/decision-mappers.ts` (toApprove/toReject/toEdit/toRespond).
+### 우선순위 낮음 (코드 품질)
+4. builder 어댑터 추출 — `use-chat-runtime.ts` 내부 흡수된 builder 호환 코드를 `lib/chat/builder-resume-adapter.ts` 분리
+5. Decision 매퍼 통합 — 인라인 객체 리터럴 11곳 → `lib/chat/decision-mappers.ts`
 
-## 보존 영역 (Phase 4에서도 수정 X)
-- `agent_runtime/middleware_registry.py` (Phase 1)
-- `tests/test_hitl_middleware.py` (Phase 1, 5건)
-- `agent_runtime/builder_v3/**` (Phase 5까지)
+### ADR-012 마이그레이션 마지막 단계
+6. **Phase 5 (옵션, ~150 라인)** — Builder v3 `BuilderResumeRequest` 표준 `decisions` 형식. graph 자체는 native interrupt 유지
 
-## 핵심 제약
-- 트리거 모드 indicator: `_prepare_agent(include_ask_user=False)` (Phase 1) — 보존
-- `streaming.py:_interrupt_to_standard_chunk`의 ask_user 분기는 ADR §1 옵션 A wrap이 정상 작동하면 도달 X — 안전망 (Phase 4 마이그레이션 시 분기 제거 가능)
-- ask_user 자동 interrupt_on 등록은 사용자가 human_in_the_loop 미들웨어 활성화한 경우만 — 기본 비활성 에이전트 영향 X
+### W3-out 잔여
+- 🟠 cross-tenant LRU sub-cap (인증 도입 PR 함께)
+- 🟡 multi-worker (Redis pub/sub) — broker registry 재설계
+- 🟡 `evict_expired` dirty flag (multi-worker 후)
+- 🟡 `events_chunks` 별도 테이블 (turn 5000+ events 도달 시)
+
+## 보존 영역 (수정 금지)
+
+- `backend/app/agent_runtime/middleware_registry.py:DEEPAGENT_AUTO_INJECTED_TYPES` (deepagents 자동 주입 — 카탈로그 노출 시 AssertionError)
+- `backend/app/agent_runtime/builder_v3/**` (Phase 5까지)
+- `backend/app/agent_runtime/tools/ask_user.py` (옵션 A 최종)
+- `backend/tests/test_hitl_middleware.py` (Phase 1 회귀 가드)
 
 ## 검증 명령
+
 ```
 cd backend && uv run alembic upgrade head && uv run ruff check . && uv run pytest tests/ && uv run pyright app/ tests/
 cd frontend && pnpm lint && pnpm test --run && pnpm build
 ```
 
-## W3-out 잔여 follow-up (트리거 도달 대기)
-- 🟠 cross-tenant LRU sub-cap (인증 도입 PR 함께)
-- 🟡 multi-worker (Redis pub/sub) — broker registry 재설계
-- 🟡 `evict_expired` dirty flag — multi-worker 후
-- 🟡 `events_chunks` 별도 테이블 — turn 5000+ events 도달 시
+## 커밋 시 주의
+
+스코프 외 자동 갱신 파일 (catalog cron 6시간 결과물) staging 제외:
+- `backend/app/data/model_catalog/{catalog,fetch_metadata}.json`
+- `backend/app/data/model_catalog/sources/{ai_model_list,openrouter_models,pydantic_genai_prices}.json`

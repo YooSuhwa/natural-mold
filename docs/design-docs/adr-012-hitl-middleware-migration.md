@@ -1,10 +1,21 @@
 # ADR-012: HiTL — 자체 구현에서 LangChain `HumanInTheLoopMiddleware` 로 마이그레이션
 
-## 상태: 계획 (구현 대기)
+## 상태: Phase 1~3 완료, Phase 4 옵션 A 최종 결정 (ask_user 보존)
 
 관련 문서:
 - 마일스톤 진행: `HANDOFF.md` (루트)
 - 분석 PR: feature/hitl-analysis-and-plan (본 PR)
+
+## Phase 4 결정 회고 (2026-05-06)
+
+옵션 B (ask_user retire) 를 한 차례 시도 후 사용자 검증에서 **자연어 "되물어보기" UX 손실**을 발견하고 즉시 revert. 옵션 A (보존) 가 최종 결정.
+
+핵심 인사이트:
+- `HumanInTheLoopMiddleware` = "위험 도구 실행 전 승인 게이트". 도구 호출 시점에만 발동.
+- `ask_user` = "사용자 자연어 질문 도구". LLM이 모호한 입력을 받았을 때 사용자에게 옵션을 제시.
+- **두 책임은 직교** — 미들웨어가 ask_user를 대체할 수 없다. 옵션 B가 단순화 효과는 있지만 UX 시나리오를 통째로 잃는다.
+
+§5 옵션 B의 표면 사유 ("도구 description의 implicit prompt 오염")는 사실이지만, 그 비용이 UX 손실보다 작다는 트레이드오프 계산이 잘못이었음. 향후 누군가 다시 옵션 B를 시도하지 않도록 본 회고를 명시.
 
 ---
 

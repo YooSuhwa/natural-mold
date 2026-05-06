@@ -409,25 +409,35 @@ def get_provider_middleware(provider: str) -> list:
 
 # deepagents/create_deep_agent()가 자동 추가하는 미들웨어 타입.
 # 사용자 설정에서 중복 추가하면 AssertionError가 발생하므로 카탈로그/실행 시 제외.
-#
-# ``human_in_the_loop`` (ADR-012 Phase 1):
-#   executor.py 가 ``HumanInTheLoopMiddleware`` 를 명시적으로 인스턴스화해
-#   미들웨어 list 에 추가하고, ``create_deep_agent(interrupt_on=None)`` 으로
-#   자동 주입을 끈다. 본 set 에 포함시켜 두는 이유:
-#     1. 사용자 카탈로그(get_middleware_registry)에서 노출 제외 — 사용자가
-#        직접 등록할 수 있는 미들웨어가 아님.
-#     2. ``_prepare_agent`` 의 ``filtered_mw`` 가 사용자 ``middleware_configs``
-#        에서 ``human_in_the_loop`` 항목을 build 단계에서 제거 — 명시 인스턴스
-#        화 경로(executor.py:478~)가 단일 진실 공급원이 되도록 보장.
-DEEPAGENT_BUILTIN_TYPES: frozenset[str] = frozenset(
+DEEPAGENT_AUTO_INJECTED_TYPES: frozenset[str] = frozenset(
     {
         "todo_list",
         "filesystem",
         "subagent",
         "summarization",
         "anthropic_prompt_caching",
-        "human_in_the_loop",  # executor.py 가 명시 인스턴스화 (ADR-012 Phase 1)
     }
+)
+
+
+# 본 set 의 항목은 ``build_middleware_instances`` 경로를 우회한다 — executor 가
+# 도구별 정책을 읽어 명시 인스턴스를 미들웨어 list 에 합치는 책임을 가진다
+# (ADR-012 Phase 1). 사용자가 카탈로그에서 추가하면 ``cfg.middleware_configs``
+# 에 들어가지만 build 단계에서는 제외되고 executor 가 인스턴스화한다. 이로써
+# (a) 단일 진실 공급원, (b) 트리거 모드 강제 차단 같은 횡단 정책 적용 가능.
+EXPLICITLY_INSTANTIATED_TYPES: frozenset[str] = frozenset(
+    {
+        "human_in_the_loop",
+    }
+)
+
+
+# Build 단계에서 제외되는 모든 타입 — auto-injected + explicit-instantiated.
+# ``_prepare_agent`` 의 ``filtered_mw`` 가 사용자 ``middleware_configs`` 에서
+# 본 set 의 항목을 제거. auto-injected 는 deepagents 가, explicit 는 executor
+# 가 별도 경로로 처리하므로 build 시 중복 인스턴스화 방지가 목적.
+DEEPAGENT_BUILTIN_TYPES: frozenset[str] = (
+    DEEPAGENT_AUTO_INJECTED_TYPES | EXPLICITLY_INSTANTIATED_TYPES
 )
 
 
@@ -438,10 +448,13 @@ def get_middleware_registry(*, exclude_builtin: bool = False) -> list[dict[str, 
     description, category, config_schema, provider_specific).
 
     Args:
-        exclude_builtin: True이면 deepagents가 자동 추가하는 타입을 제외한다.
+        exclude_builtin: True이면 deepagents가 자동 추가하는 타입(auto-injected)
+            을 카탈로그에서 제외한다. ``human_in_the_loop`` 같이 사용자가 도구별
+            ``interrupt_on`` 정책을 정의해야 동작하는 explicit-instantiated
+            타입은 노출된다 — executor 가 사용자 설정을 읽어 명시 인스턴스화.
     """
     return [
         {"type": key, **entry}
         for key, entry in MIDDLEWARE_REGISTRY.items()
-        if not exclude_builtin or key not in DEEPAGENT_BUILTIN_TYPES
+        if not exclude_builtin or key not in DEEPAGENT_AUTO_INJECTED_TYPES
     ]
