@@ -436,13 +436,13 @@ async def _prepare_agent(
     cfg: AgentConfig,
     *,
     messages_history: list[dict[str, str]],
-    include_ask_user: bool = True,
+    is_trigger_mode: bool = False,
 ) -> tuple[Any, list, dict]:
     """에이전트 빌드 + 설정. stream/invoke 공용.
 
-    ``include_ask_user=False`` 는 트리거(invoke) 모드 indicator —
-    사용자가 없으므로 HiTL interrupt 가 발생하면 hang. 아래에서 명시적으로
-    interrupt_on 을 None 으로 강제 override 한다.
+    ``is_trigger_mode=True`` 는 트리거(invoke) 모드 indicator — 사용자가 없으므로
+    (a) ``ask_user`` 도구 미주입(호출 시 영원히 hang), (b) HiTL ``interrupt_on``
+    을 None 으로 강제 override 하여 위험 도구 승인 게이트도 자동 통과.
     """
     system_prompt = cfg.system_prompt
     model = _build_model_with_fallback(cfg)
@@ -499,8 +499,8 @@ async def _prepare_agent(
             break
 
     # 3-2. 트리거 모드 강제 차단 — invoke 경로에서 HiTL interrupt 가 발생하면
-    # 사용자가 없어 hang. include_ask_user=False 가 트리거 모드 indicator.
-    if not include_ask_user:
+    # 사용자가 없어 hang.
+    if is_trigger_mode:
         interrupt_on = None
 
     # 3-2b. ask_user 표준 wire wrap (ADR-012 §1 옵션 A) — 자체 ask_user.py 의
@@ -554,7 +554,7 @@ async def _prepare_agent(
 
     # 4-1. ask_user 도구 — 대화형(스트리밍) 에이전트에만 포함
     # 트리거/배치 실행 시에는 사용자가 없으므로 제외
-    if include_ask_user:
+    if not is_trigger_mode:
         langchain_tools.append(ask_user_tool)
 
     # 5. 에이전트 빌드 — create_deep_agent + checkpointer
@@ -792,7 +792,7 @@ async def execute_agent_invoke(
     agent, lc_messages, config = await _prepare_agent(
         cfg,
         messages_history=messages_history,
-        include_ask_user=False,  # 트리거 실행 — 사용자 없음
+        is_trigger_mode=True,
     )
 
     ctx = _hook_ctx_for_agent(cfg)
