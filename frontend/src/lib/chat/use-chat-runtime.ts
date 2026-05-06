@@ -448,17 +448,20 @@ export function useChatRuntime({
   // streaming 직후 messages → effective 전환에서 깜박임 방지.
   //
   // W3-out M5 회귀 가드: turn 이 mid-stream 끊긴 경우 backend 가 finalize_turn /
-  // checkpointer commit 을 못 해 ``messages`` API 에 해당 row 가 없다. 그 상태로
+  // checkpointer commit 을 못 해 assistant row 가 ``messages`` 에 없다. 그 상태로
   // streamingMessages 를 비우면 사용자가 받은 partial 토큰이 화면에서 사라진다.
-  // run_id (= assistant_msg_id) 가 refetch 결과에 있는지로 "정말 persist 됐는지"
-  // 를 판정해 미커밋이면 streaming 을 그대로 유지한다.
+  // 새 assistant 메시지가 refetch 결과에 도착했는지로 "정말 persist 됐는지" 판정.
+  // run_id ↔ messages.id 직접 비교는 형식이 달라 (uuid4 vs uuid5(raw_id)) 매칭
+  // 불가 — id 매칭 대신 set-diff 휴리스틱 사용.
   const prevMessagesRef = useRef(messages)
   if (prevMessagesRef.current !== messages) {
+    const prevIds = new Set(prevMessagesRef.current.map((m) => m.id))
     prevMessagesRef.current = messages
     if (!isRunning && streamingMessages.length > 0) {
-      const runId = runIdRef.current
-      const wasPersisted = runId ? messages.some((m) => m.id === runId) : true
-      if (wasPersisted) {
+      const newAssistantArrived = messages.some(
+        (m) => m.role === 'assistant' && !prevIds.has(m.id),
+      )
+      if (newAssistantArrived) {
         setStreamingMessages([])
       } else {
         // assistant 미커밋(끊긴 turn) — partial assistant + tool 결과는 유지하되,
