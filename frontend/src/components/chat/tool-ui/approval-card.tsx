@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
+import { toApprove, toEdit, toReject } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
 import type { Decision as StandardDecision } from '@/lib/types'
@@ -48,18 +49,13 @@ function toDecision(
 ): StandardDecision | null {
   switch (d) {
     case 'approved':
-      return { type: 'approve' }
+      return toApprove()
     case 'modified':
       // edited_action.name은 미들웨어가 ToolCall로 재발행하므로 비워서 보낼 수 없다.
       if (!toolName) return null
-      return {
-        type: 'edit',
-        edited_action: { name: toolName, args: response.modified_args ?? {} },
-      }
+      return toEdit({ name: toolName, args: response.modified_args ?? {} })
     case 'rejected':
-      return response.reason
-        ? { type: 'reject', message: response.reason }
-        : { type: 'reject' }
+      return toReject(response.reason)
   }
 }
 

@@ -5,6 +5,7 @@ import { makeAssistantToolUI } from '@assistant-ui/react'
 import { MessageSquareQuoteIcon, CheckCircle2Icon, SendIcon, Loader2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { cn, toggleSetItem } from '@/lib/utils'
+import { toRespond } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
 import type { UserInputQuestion } from '@/lib/types'
@@ -221,7 +222,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
             .join(' | ')
 
         const message = typeof payload === 'string' ? payload : JSON.stringify(payload)
-        await hitl?.onResumeDecisions([{ type: 'respond', message }], displayText)
+        await hitl?.onResumeDecisions([toRespond(message)], displayText)
         setSubmitState('submitted')
       },
       [answers, questions, hitl],
@@ -313,7 +314,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
                       // 질문 1개 + single_select → 즉시 제출
                       if (questions.length === 1) {
                         setSubmitState('submitted')
-                        hitl?.onResumeDecisions([{ type: 'respond', message: v }], v)
+                        hitl?.onResumeDecisions([toRespond(v)], v)
                       }
                     }}
                   />

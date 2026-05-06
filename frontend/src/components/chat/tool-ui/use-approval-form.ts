@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { toApprove, toReject } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
 
 export type ApprovalDecision = 'approved' | 'revision' | null
@@ -37,14 +38,14 @@ export function useApprovalForm(options: UseApprovalFormOptions): ApprovalFormSt
   const handleApprove = async () => {
     if (submitted) return
     setSubmitted('approved')
-    await hitl?.onResumeDecisions([{ type: 'approve' }], approveDisplay)
+    await hitl?.onResumeDecisions([toApprove()], approveDisplay)
   }
 
   const handleRevision = async () => {
     if (submitted) return
     const msg = revision.trim() || revisionFallback
     setSubmitted('revision')
-    await hitl?.onResumeDecisions([{ type: 'reject', message: msg }], msg)
+    await hitl?.onResumeDecisions([toReject(msg)], msg)
   }
 
   return {
