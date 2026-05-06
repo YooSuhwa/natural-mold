@@ -278,7 +278,14 @@ class TestInterruptToStandardChunk:
         assert chunk["review_configs"] == intr_value["review_configs"]
 
     def test_ask_user_native_adapted_to_respond_action(self):
-        """자체 ``ask_user.py`` interrupt → 표준 ``respond`` action으로 어댑트."""
+        """builder_v3 native interrupt (``{"type":"ask_user",...}``)
+        → 표준 ``respond`` action으로 어댑트.
+
+        메인 채팅 ask_user 도구는 Phase 4 (ADR-012 §Phase 4 옵션 B)에서
+        retire되었으나, builder_v3 (``builder_v3/nodes/phase2_intent.py``)는
+        자체 native interrupt 패턴을 유지하므로 streaming 어댑터가 본
+        chunk shape을 처리해야 한다.
+        """
         intr_value = {
             "type": "ask_user",
             "question": "어떤 옵션을 원하세요?",
@@ -335,7 +342,10 @@ class TestStreamingStandardEmit:
 
     @pytest.mark.asyncio
     async def test_ask_user_native_emits_adapted_standard_chunk(self):
-        """자체 ask_user interrupt도 표준 wire로 어댑트되어 단일 chunk emit."""
+        """builder_v3 native interrupt 발행 시 streaming 어댑터가
+        표준 wire chunk로 변환하여 단일 chunk emit (메인 채팅 ask_user
+        도구는 Phase 4 retire — 본 어댑터는 builder_v3 영역 보존용).
+        """
         intr_value = {"type": "ask_user", "question": "Choose?", "options": ["a", "b"]}
         state = _make_state_with_interrupts([_make_intr("ns-ask-1", intr_value)])
         agent = _InterruptingAgent(state)

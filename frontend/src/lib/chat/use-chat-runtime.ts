@@ -97,7 +97,8 @@ interface UseChatRuntimeOptions {
   onMessagesCommit?: (messages: Message[]) => void
   /**
    * 표준 interrupt(`action_requests` / `review_configs` chunk) 도달 시 호출.
-   * 자체 `ask_user` native interrupt도 백엔드 어댑터를 거쳐 같은 경로로 도달한다.
+   * builder_v3 native interrupt(`{type:'ask_user'}`)도 backend streaming.py
+   * 어댑터를 거쳐 표준 `{action_requests, review_configs}` chunk로 도착한다.
    */
   onStandardInterrupt?: (payload: StandardInterruptPayload) => void
   /** resume 시 conversationId가 필요 (conversations 페이지용) */
@@ -427,9 +428,10 @@ export function useChatRuntime({
         // streamingMessages는 즉시 비우지 않는다 — refetch가 끝나기 전 비우면 답변이
         // 화면에서 잠깐 사라졌다 다시 나타나는 깜박임이 생긴다. 아래 prevMessagesRef
         // 비교 블록이 backend messages refetch 완료 후 clear한다.
-        // interrupt(HiTL)도 그래프가 일시정지된 stream 종료 — backend는 ask_user tool_call을
-        // 이미 DB에 저장한 상태이므로, onStreamEnd로 messages query를 invalidate해야
-        // streaming 비운 직후 UI에서 ask_user input이 사라지지 않고 fetch된 메시지로 채워진다.
+        // interrupt(HiTL)도 그래프가 일시정지된 stream 종료 — backend가 표준 미들웨어
+        // 또는 builder_v3 어댑터 chunk를 이미 DB에 저장한 상태이므로, onStreamEnd로
+        // messages query를 invalidate해야 streaming 비운 직후 UI에서 입력 카드가
+        // 사라지지 않고 fetch된 메시지로 채워진다.
         // didMutate: write 도구가 호출되었나? 호출처는 이를 보고 폼 캐시 invalidate 여부 결정.
         const didMutate = toolCalls.some((tc) => isMutationToolName(tc.name))
         onStreamEnd?.(didMutate)

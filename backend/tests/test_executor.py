@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -122,11 +122,9 @@ async def test_execute_stream_no_tools(
 
     mock_model_factory.assert_called_once_with("openai", "gpt-4o", "sk-test", None)
     mock_build.assert_called_once()
-    # Only ask_user tool should be present (auto-included)
+    # No tools when no user tools provided (ask_user retired in Phase 4)
     tools_passed = mock_build.call_args[0][1]
-    # Only ask_user tool should be present (auto-included)
-    assert len(tools_passed) == 1
-    assert tools_passed[0].name == "ask_user"
+    assert len(tools_passed) == 0
 
 
 @pytest.mark.asyncio
@@ -182,8 +180,8 @@ async def test_execute_stream_runtime_tool_called_per_entry(
 
     assert mock_factory.call_count == 2
     tools_passed = mock_build.call_args[0][1]
-    # 2 user tools + ask_user auto-injected helper
-    assert len(tools_passed) == 3
+    # 2 user tools (ask_user retired in Phase 4)
+    assert len(tools_passed) == 2
 
 
 @pytest.mark.asyncio
@@ -232,8 +230,8 @@ async def test_execute_stream_skips_unknown_tool(
         pass
 
     tools_passed = mock_build.call_args[0][1]
-    # Only ask_user remains.
-    assert len(tools_passed) == 1
+    # No tools — unknown definition_key skipped, ask_user retired in Phase 4.
+    assert len(tools_passed) == 0
 
 
 @pytest.mark.asyncio
@@ -269,7 +267,7 @@ async def test_execute_stream_skips_custom_without_api_url(
         pass
 
     tools_passed = mock_build.call_args[0][1]
-    assert len(tools_passed) == 1  # ask_user only (auto)
+    assert len(tools_passed) == 0  # custom without api_url skipped (ask_user retired)
 
 
 @pytest.mark.asyncio
@@ -341,7 +339,7 @@ async def test_execute_stream_skips_unknown_tool_type(
         pass
 
     tools_passed = mock_build.call_args[0][1]
-    assert len(tools_passed) == 1  # ask_user only (auto)
+    assert len(tools_passed) == 0  # mcp tool not handled here (ask_user retired)
 
 
 @pytest.mark.asyncio
@@ -539,37 +537,3 @@ async def test_interrupt_on_without_hitl_middleware(
 
     build_kwargs = mock_build.call_args[1]
     assert build_kwargs["interrupt_on"] is None
-
-
-@pytest.mark.asyncio
-@patch("app.agent_runtime.executor.FilesystemBackend")
-@patch("app.agent_runtime.checkpointer.get_checkpointer")
-@patch("app.agent_runtime.executor.stream_agent_response")
-@patch("app.agent_runtime.executor.build_agent")
-@patch("app.agent_runtime.executor.convert_to_langchain_messages")
-@patch("app.agent_runtime.executor.create_chat_model")
-async def test_ask_user_not_included_in_invoke(
-    mock_model_factory: MagicMock,
-    mock_convert: MagicMock,
-    mock_build: MagicMock,
-    mock_stream: MagicMock,
-    mock_checkpointer: MagicMock,
-    mock_fs_backend_cls: MagicMock,
-):
-    """execute_agent_invoke should NOT include ask_user tool."""
-    from app.agent_runtime.executor import execute_agent_invoke
-
-    mock_model_factory.return_value = MagicMock()
-    mock_convert.return_value = []
-
-    mock_agent = MagicMock()
-    mock_agent.ainvoke = AsyncMock(
-        return_value={"messages": [MagicMock(content="Hello", type="ai")]}
-    )
-    mock_build.return_value = mock_agent
-
-    await execute_agent_invoke(_cfg(), [])
-
-    tools_passed = mock_build.call_args[0][1]
-    tool_names = [t.name for t in tools_passed]
-    assert "ask_user" not in tool_names

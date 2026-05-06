@@ -702,3 +702,59 @@ frontend는 표준 우선 처리, legacy fallback. 두 chunk가 같은 interrupt
 [2026-05-05 bezos M3 RE-VERIFY — fix 후 재검증]
 - 게이트 6/6 PASS: backend pytest 849 (회귀 0), frontend lint clean + vitest 276 PASS (expected-fail 0건), build PASS 16 routes, alembic OK.
 - verdict CONDITIONAL → **FULL APPROVE**. M4 통합 검증 진입 가능.
+
+[2026-05-06 satya PROJECT_START — HiTL Phase 4 ask_user retire (옵션 B)]
+- 사용자 결정: 옵션 B (retire) + 풀 5인 사일로 + 회귀 위험 최소화 꼼꼼히
+- 브랜치: feature/hitl-phase4-ask-user-retire (main 20022dc)
+- ADR-012 §Phase 4 진입. ~30 라인 스코프지만 범위 정밀 분리 필요.
+
+[2026-05-06 bezos M1 — 의존성 매핑 핵심 발견]
+- ask_user는 두 경로에서 사용: (1) 메인 채팅 도구 (executor.py에 자동 주입) (2) builder_v3 native interrupt (phase2_intent.py + router.py)
+- builder_v3는 ADR-012 §Phase 5 보존 영역. 따라서 옵션 B retire = (1)만 한정.
+- streaming.py의 ask_user 어댑터 분기는 builder_v3가 여전히 native interrupt 발행하므로 보존 필수. HANDOFF.md "어댑터 분기 제거" 안내는 옵션 A 가정.
+- frontend UserInputUI 컴포넌트, ko.json userInput 라벨 모두 builder_v3 의존 → 보존.
+- 결과: 코드 변경은 backend executor.py + tools/ask_user.py 삭제 + tests 정리. frontend는 주석만 갱신.
+- 회귀 가드 핵심 패턴: 도구 자체 미주입 시 LLM 호출 불가(tool definition 0). builder_v3 native interrupt 파이프라인은 별도 가드.
+
+[2026-05-06 jensen M3 — backend ask_user retire]
+- 변경: 6 파일 (executor.py +/-25, streaming.py +/-12, tools/ask_user.py -36, test_executor.py +/-54, test_hitl_middleware.py +/-2, test_hitl_wire.py +/-14). 핵심 코어 -36, 테스트 +/-70.
+- 핵심 결정: include_ask_user 파라미터를 단순 제거하지 않고 is_trigger_mode로 rename — 트리거(invoke) 모드의 HiTL 강제 차단 기능은 ask_user와 무관하게 보존 필수(사용자 없음 → interrupt hang 방지). 이름이 의도를 반영하도록 정정.
+- 주의 패턴 (gotcha):
+  1. include_ask_user는 두 책임을 묶고 있었음: (a) ask_user 도구 주입 (b) interrupt_on 강제 None. 단순 삭제 시 (b)가 사라져 트리거 hang 회귀. → is_trigger_mode로 rename하여 (b)만 보존.
+  2. streaming.py 어댑터 _interrupt_to_standard_chunk의 ask_user 분기는 builder_v3 native interrupt 처리용 — Phase 4 retire와 별도. 코드 보존 + 주석에 "builder_v3 영역 보존" 명시 필수. CHECKPOINT M3가 명시한 대로 streaming.py:84-86, 387 두 군데 모두 갱신.
+  3. test_executor.py에서 AsyncMock import는 test_ask_user_not_included_in_invoke 한 군데서만 사용 → 테스트 삭제 시 unused import 동시 제거 필요(ruff F401).
+  4. test_hitl_wire.py의 _interrupt_to_standard_chunk 어댑터 테스트는 행동 그대로 — builder_v3가 발행하는 동일 shape이므로 회귀 가드로 의미 유지. docstring만 명확화.
+- 회귀 가드: pytest 846 PASS (Phase 3 baseline 847 -1 = 의도적 삭제 test_ask_user_not_included_in_invoke. 도구 자체가 없으므로 테스트 의미 소멸). pyright 0/0, ruff clean, alembic OK. 잔재 grep 0건 (`include_ask_user|ask_user_tool` backend/ 전체).
+- 호출처 점검 결과: trigger_executor.py / routers/conversations.py 등 외부 호출은 모두 execute_agent_invoke / execute_agent_stream / resume_agent_stream 만 사용 → _prepare_agent의 키워드 인자 변경은 외부 영향 0. 호출처 인자 제거 작업 불필요.
+
+[2026-05-06 zuckerberg M4 — frontend 주석/JSDoc 갱신]
+- 변경: 3 파일 주석/JSDoc만 갱신, 코드 동작 변경 0건.
+  1. tool-ui-registry.ts:54 BUILDER_TOOL_UI 주석 — "메인 채팅 ask_user 도구 Phase 4 retire, builder_v3 native interrupt → streaming 어댑터 → respond chunk 경로" 명시.
+  2. use-chat-runtime.ts:99-104 onStandardInterrupt JSDoc — builder_v3 native interrupt 어댑터 경유 명시 + Phase 4 retire 컨텍스트.
+  3. use-chat-runtime.ts:430-432 stream finalize 주석 — "메인 채팅 ask_user 도구는 Phase 4에서 retire" + "builder_v3 ask_user 어댑터 chunk 처리" 보존 명시.
+  4. user-input-ui.tsx:174 컴포넌트 상단 JSDoc 신설 — Builder v3 전용임을 명시 + backend streaming.py + builder_v3 nodes 참조.
+- 보존 영역(수정 0): UserInputUI 컴포넌트 동작, ko.json:558-571 userInput 라벨, tool-ui-registry export 구조, hitl-context.ts.
+- ko.json 식별: userInput 라벨군은 모두 입력 카드 일반 라벨(placeholder/sending/sent/send/waitingInput/completed/preparing/inputRequired/confirm/expiresIn/expired/autoSkipped). 메인 채팅 전용 라벨 없음 → 보존 결정 그대로.
+- 회귀 게이트: lint 0건, vitest 270 PASS / 47 files (Phase 3 baseline 그대로), build PASS 16 routes.
+- 핵심 패턴(future): 기능 retire 시 보존 영역 의존 코드의 주석은 (a) 어떤 동작이 retire됐는지 (b) 보존 코드는 무엇을 처리하는지 (c) cross-stack 참조(file path) 세 요소를 명시해야 후속 컨트리뷰터가 잘못 삭제하지 않는다.
+
+[2026-05-06 bezos M5 — Phase 4 회귀 검증 PASS / verdict APPROVE]
+- 게이트 7/7 PASS: backend(alembic OK, ruff clean, pytest 853 (846 baseline +7 신규 가드, 회귀 0), pyright 0/0) + frontend(lint 0, vitest 270 PASS, build PASS 19 routes)
+- retire 잔재 grep 결과:
+  1. `rg "ask_user_tool|include_ask_user" backend/app` → 0건 (EXIT 1)
+  2. `rg "from .tools.ask_user|import ask_user" backend/app backend/tests` → 0건 (EXIT 1)
+  3. `rg '"ask_user"' backend/app` → streaming.py 어댑터(builder_v3 native interrupt 처리) + builder_v3/* 만. executor.py / 메인 채팅 코드 0건. ✅
+- 신규 가드 파일: backend/tests/test_hitl_phase4_retire.py (7건)
+  1. test_ask_user_module_is_retired — `app.agent_runtime.tools.ask_user` ModuleNotFoundError 가드 (모듈 잔재 0)
+  2. test_executor_does_not_expose_ask_user_tool_symbol — executor 모듈 hasattr('ask_user_tool') False 가드
+  3. test_main_chat_stream_never_injects_ask_user — execute_agent_stream 도구 list에 ask_user 미주입 (Case A: tools_config 빈 경우 0개 / Case B: send_email user_tool만 있을 때 ask_user 자동 추가 X)
+  4. test_trigger_invoke_never_injects_ask_user_and_blocks_hitl — execute_agent_invoke (is_trigger_mode=True) 트리거 모드 ask_user 미주입 + interrupt_on=None 강제 보존 (M3 jensen 책임 분리 회귀 가드)
+  5. test_builder_v3_native_ask_user_with_options_adapted_to_respond_chunk — builder_v3 phase2_intent 발행 패턴 어댑트 (options 동반)
+  6. test_builder_v3_native_ask_user_without_options_adapted_to_respond_chunk — builder_v3 router fallback 패턴 어댑트 (options 없음 → 빈 list 정규화)
+  7. test_unknown_native_interrupt_shape_is_skipped_after_retire — unknown shape None skip 정책 보존
+- 핵심 패턴 (회귀 가드 디자인):
+  1. *retire 가드는 행동(behavior)뿐만 아니라 모듈/심볼 부재(absence) 도 잠가라*. 누군가 ask_user.py 다시 만들고 import 추가하는 것을 ModuleNotFoundError + hasattr False 두 단계로 차단.
+  2. *streaming 어댑터 옵션 동반/누락 양쪽 모두 회귀 가드*. builder_v3 phase2_intent.py(options 동반) + router.py(fallback options 없음) 두 발행 경로가 둘 다 어댑트되는지 검증해야 어댑터 회귀 0.
+  3. *is_trigger_mode rename의 "(b) HiTL 강제 차단" 책임 보존 가드 필수*. 단순 `interrupt_on=None` 강제만 보면 향후 누군가 "is_trigger_mode 파라미터 자체가 더는 안 쓰이네" 하고 제거할 수 있음. 본 가드는 "트리거 경로는 항상 interrupt_on=None" 행동을 잠금.
+  4. *grep 잔재 검증을 verdict 일부로 포함*. 단위 테스트뿐 아니라 코드베이스 grep도 가드의 일부 — 미래 컨트리뷰터가 ask_user를 메인 채팅 영역에 다시 끼워 넣지 못하게 한다.
+- 회귀 0 확인 → REVIEW_APPROVE 발행. M6 통합 검증 + HANDOFF 작업으로 넘어갈 수 있음.

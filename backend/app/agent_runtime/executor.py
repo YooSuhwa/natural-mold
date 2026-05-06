@@ -31,7 +31,6 @@ from app.agent_runtime.middleware_registry import (
 from app.agent_runtime.model_factory import create_chat_model
 from app.agent_runtime.streaming import stream_agent_response
 from app.agent_runtime.tool_factory import create_tool_for_runtime
-from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
 from app.hooks import HookContext, HookResult, hooks
 
 logger = logging.getLogger(__name__)
@@ -436,13 +435,13 @@ async def _prepare_agent(
     cfg: AgentConfig,
     *,
     messages_history: list[dict[str, str]],
-    include_ask_user: bool = True,
+    is_trigger_mode: bool = False,
 ) -> tuple[Any, list, dict]:
     """에이전트 빌드 + 설정. stream/invoke 공용.
 
-    ``include_ask_user=False`` 는 트리거(invoke) 모드 indicator —
-    사용자가 없으므로 HiTL interrupt 가 발생하면 hang. 아래에서 명시적으로
-    interrupt_on 을 None 으로 강제 override 한다.
+    ``is_trigger_mode=True`` 는 invoke (트리거/배치) 경로 — 사용자가 없으므로
+    HiTL interrupt 가 발생하면 hang. 아래에서 명시적으로 interrupt_on 을
+    None 으로 강제 override 한다.
     """
     system_prompt = cfg.system_prompt
     model = _build_model_with_fallback(cfg)
@@ -499,14 +498,9 @@ async def _prepare_agent(
             break
 
     # 3-2. 트리거 모드 강제 차단 — invoke 경로에서 HiTL interrupt 가 발생하면
-    # 사용자가 없어 hang. include_ask_user=False 가 트리거 모드 indicator.
-    if not include_ask_user:
+    # 사용자가 없어 hang. is_trigger_mode=True 가 트리거 모드 indicator.
+    if is_trigger_mode:
         interrupt_on = None
-
-    # 3-2b. ask_user 표준 wire wrap (ADR-012 §1 옵션 A) — 자체 ask_user.py 의
-    # native interrupt 가 표준 미들웨어로 wrap 되도록 interrupt_on 에 등록.
-    if interrupt_on is not None and any(t.name == "ask_user" for t in langchain_tools):
-        interrupt_on.setdefault("ask_user", {"allowed_decisions": ["respond"]})
 
     # 3-3. HumanInTheLoopMiddleware 명시 인스턴스화 (ADR-012 Phase 1).
     # deepagents.create_deep_agent(interrupt_on=...) 자동 주입 대신, 본 executor
@@ -551,11 +545,6 @@ async def _prepare_agent(
     if cfg.agent_id:
         (_DATA_DIR / "agents" / cfg.agent_id).mkdir(parents=True, exist_ok=True)
         memory_sources = [f"/agents/{cfg.agent_id}/AGENTS.md"]
-
-    # 4-1. ask_user 도구 — 대화형(스트리밍) 에이전트에만 포함
-    # 트리거/배치 실행 시에는 사용자가 없으므로 제외
-    if include_ask_user:
-        langchain_tools.append(ask_user_tool)
 
     # 5. 에이전트 빌드 — create_deep_agent + checkpointer
     from app.agent_runtime.checkpointer import get_checkpointer
@@ -792,7 +781,7 @@ async def execute_agent_invoke(
     agent, lc_messages, config = await _prepare_agent(
         cfg,
         messages_history=messages_history,
-        include_ask_user=False,  # 트리거 실행 — 사용자 없음
+        is_trigger_mode=True,  # 트리거 실행 — 사용자 없음, HiTL interrupt 강제 차단
     )
 
     ctx = _hook_ctx_for_agent(cfg)

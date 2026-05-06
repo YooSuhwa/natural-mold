@@ -13,6 +13,7 @@ from langgraph.errors import GraphInterrupt
 from langgraph.types import Command
 
 from app.agent_runtime import event_names
+from app.agent_runtime.builder_v3.constants import ToolNames
 from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
 from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
 
@@ -81,9 +82,11 @@ def _interrupt_to_standard_chunk(
     """LangGraph interrupt value를 표준 wire chunk로 정규화.
 
     - 표준 미들웨어 ``HITLRequest`` (action_requests/review_configs): 그대로 사용.
-    - 자체 ``ask_user.py`` native interrupt (``{"type":"ask_user","question",
-      "options"}``): 표준 ``respond`` 단일 액션으로 어댑트. 표준 미들웨어가
-      ask_user 도구를 wrap하면 자연스럽게 도달 X — fallback 안전망.
+    - ``{"type":"ask_user","question","options"}`` 형태의 native interrupt:
+      builder_v3 (``builder_v3/nodes/phase2_intent.py`` + ``router.py``)가
+      직접 발행하는 native interrupt를 표준 ``respond`` 단일 액션으로 어댑트.
+      builder_v3는 자체 native interrupt 패턴을 유지하므로 본 어댑터로 표준
+      wire에 정합한다.
     - 그 외 dict: skip (None 반환).
     """
     if intr_value is None:
@@ -94,22 +97,22 @@ def _interrupt_to_standard_chunk(
             "action_requests": intr_value["action_requests"],
             "review_configs": intr_value["review_configs"],
         }
-    if intr_value.get("type") == "ask_user":
+    if intr_value.get("type") == ToolNames.ASK_USER:
         question = intr_value.get("question") or ""
         options = intr_value.get("options") or []
         return {
             "interrupt_id": intr_id,
             "action_requests": [
                 {
-                    "id": intr_id or "ask_user",
-                    "name": "ask_user",
+                    "id": intr_id or ToolNames.ASK_USER,
+                    "name": ToolNames.ASK_USER,
                     "args": {"question": question, "options": options},
                     "type": "tool_call",
                 }
             ],
             "review_configs": [
                 {
-                    "tool_name": "ask_user",
+                    "tool_name": ToolNames.ASK_USER,
                     "description": question,
                     "allowed_decisions": ["respond"],
                 }
@@ -384,7 +387,8 @@ async def stream_agent_response(
 
         # HiTL: 그래프 상태에서 interrupt 감지 후 표준 wire로 emit.
         # 변환은 ``_interrupt_to_standard_chunk`` 단일 진입점이 담당
-        # (자체 ask_user.py 어댑터 포함). fallback은 빈 표준 chunk로 발행.
+        # (builder_v3 native interrupt 어댑터 포함). fallback은 빈 표준
+        # chunk로 발행.
         try:
             state = await agent.aget_state(config)
             if state.tasks:
