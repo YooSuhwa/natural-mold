@@ -114,6 +114,47 @@ def parse_approval_response(response: Any) -> tuple[bool, str]:
     return False, ""
 
 
+def parse_choice_response(
+    response: Any,
+    *,
+    prompt_keys: tuple[str, ...] = ("prompt", "auto_prompt"),
+) -> tuple[str, str]:
+    """phase6 image_choice/image_approval interrupt 응답 → (choice, prompt) 정규화.
+
+    수용 형식:
+    - dict: ``{"choice": "...", "prompt"|"auto_prompt": "..."}`` (canonical)
+    - str: 단일 옵션 라벨 (e.g. ``"skip"``, ``"generate"``, ``"확정"``)
+    - str (JSON): ``'{"choice":"skip","prompt":"..."}'`` — frontend 에서 dict
+      의도로 JSON.stringify 한 페이로드가 router 어댑터의 ``respond`` 분기에서
+      string 으로 전달된 경우 backward-compatible 하게 dict 분기로 fallthrough.
+
+    JSON.parse 가 dict 가 아니거나 실패하면 평범한 string 옵션으로 취급한다.
+    """
+    # JSON 문자열 fallback — dict 의도가 string 으로 직렬화된 경우 복원
+    if isinstance(response, str):
+        stripped = response.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, dict):
+                    response = parsed
+            except (json.JSONDecodeError, ValueError):
+                pass  # 평범한 string — 그대로 진행
+
+    if isinstance(response, dict):
+        choice = str(response.get("choice", "")).lower()
+        prompt = ""
+        for key in prompt_keys:
+            value = response.get(key)
+            if value:
+                prompt = str(value)
+                break
+        return choice, prompt
+    if isinstance(response, str):
+        return response.lower(), ""
+    return "", ""
+
+
 def build_approval_result(
     *,
     state: BuilderState,

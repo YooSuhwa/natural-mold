@@ -1,62 +1,67 @@
-# 작업 인계 — HiTL Phase 4 옵션 A 최종 + 카탈로그 fix
+# 작업 인계 — HiTL Phase 5 완료, ADR-012 마이그레이션 종료
 
-> 새 세션 첫 행동: 본 파일 + `docs/design-docs/adr-012-hitl-middleware-migration.md` (Phase 4 회고 §) 참조.
+> 새 세션 첫 행동: 본 파일 + `docs/design-docs/adr-012-hitl-middleware-migration.md` (Phase 1~5 완료 회고) 참조.
 
 ## 마지막 상태
 
-- 브랜치: `feature/hitl-phase4-ask-user-retire` (main `20022dc` 분기)
-- 게이트 7/7 PASS — backend 849 / pyright 0/0 / ruff clean / alembic OK + frontend 270 / lint clean / build PASS
-- 미커밋: `middleware_registry.py` docstring 갱신(simplify 결과). 다음 커밋 또는 amend 후보.
-- 사용자 수동 검증 완료: ask_user 카드 정상 표시, 미들웨어 카탈로그에 HiTL 노출 확인
+- 브랜치: `feature/hitl-phase5-builder-wire` (main `d387603`에서 분기, **커밋 미수행 — 사용자 승인 대기**)
+- backend: **865 PASS** (Phase 4 baseline 849 + 16 Phase 5 가드) / pyright 0/0 / ruff clean / alembic OK
+- frontend: **284 PASS** (49 files, Phase 4 baseline 292 - 8 retire) / lint clean / build PASS
+- 어댑터 retire 잔재 grep: `decisionToBuilderResponse` 0건, `payload.response` 0건
 
-## 커밋 히스토리
+## Phase 5 완료 사항
 
-| Hash | 의미 |
-|------|------|
-| `8f81439` | Phase 4 옵션 B retire (시도) |
-| `e7140fd` | HiTL 카탈로그 노출 fix (유지) |
-| `221c4dd` | Phase 4 retire revert |
-| `ff8ab58` | ADR-012 옵션 A 최종 회고 + HANDOFF |
+ADR-012 §Phase 5 — Builder v3 wire format 통일. 사용자 결정: Router-only 어댑터 + Clean break + image_choice JSON.parse fallback.
 
-## PR 최종 효과 (main 대비 남는 변경)
+**Backend (5 파일, +389/-26)**:
+- `services/builder_service.py`: `decisions_to_builder_response(decisions)` helper 신규 (+36)
+- `routers/builder.py`: `BuilderResumeRequest{decisions: list[Decision]}` schema clean break + handler 갱신 (`min_length=1`, `extra='forbid'`)
+- `agent_runtime/builder_v3/nodes/_helpers.py`: `parse_choice_response` helper 신규 (+41) — JSON.parse fallback 두 wait 노드 공유
+- `agent_runtime/builder_v3/nodes/phase6_image.py`: 두 wait 노드 helper 사용으로 단순화 (-9)
+- `tests/test_builder_phase5.py`: 신규 가드 16건 (helper 6 + router contract 4 + phase6 JSON 6)
 
-✅ HiTL 미들웨어가 `/api/middlewares` 카탈로그에 노출 → 사용자가 UI에서 추가 가능
-✅ `DEEPAGENT_AUTO_INJECTED_TYPES` + `EXPLICITLY_INSTANTIATED_TYPES` 두 set 분리 (build vs catalog 정책 분리)
-✅ 회귀 가드 3건 (`test_middleware_registry` 2 + `test_list_middlewares` 어설션)
-✅ ADR-012 §Phase 4 옵션 A 최종 결정 회고 §추가
+**Frontend (5 파일, +15/-91)**:
+- `lib/chat/builder-resume-adapter.ts` 삭제 (-18)
+- `lib/chat/__tests__/builder-resume-adapter.test.ts` 삭제 (-55, 8 가드 retire)
+- `lib/chat/use-chat-runtime.ts`: import + `ResumeFn` 시그니처 갱신, `onResumeDecisions`에서 어댑터 호출 제거
+- `lib/sse/stream-builder-resume.ts`: 시그니처 `Decision[]` + POST body `{decisions, ...}`
+- `app/agents/new/conversational/page.tsx`: resumeFn 시그니처 갱신
 
-## Phase 4 학습 (progress.txt + ADR 회고 §)
+**Docs**:
+- `docs/design-docs/adr-012-hitl-middleware-migration.md`: §Phase 5 완료 회고 + §위험 갱신 + 상태 헤더 "Phase 1~5 완료"
+- `tasks/phase5-dependency-analysis.md`: 베조스 분석 보고서
+- `progress.txt` + `AUDIT.log`: 학습 entry
 
-`HumanInTheLoopMiddleware` = 위험 도구 게이트 / `ask_user` = 자연어 질문 도구 — **두 책임 직교**. 옵션 B가 단순화는 했지만 "되물어보기" UX를 잃어 사용자 검증에서 회귀 발견 → 즉시 revert. 향후 옵션 B 재시도 금지.
+## 핵심 인사이트
 
-## 남은 작업 (별도 PR 후보)
+1. **Router-only 어댑터**: builder graph + state + 8 phase 노드 변경 0 보존. `decisions_to_builder_response`가 frontend 어댑터(PR #135) 책임을 1:1 이전.
+2. **`parse_choice_response` 추출**: phase6 두 wait 노드(choice/approval)가 동일 정규화 로직 공유. JSON.parse는 `{`+`}` 휴리스틱 가드로 평범 옵션 라벨 비용 회피.
+3. **Clean break**: Pydantic `extra='forbid'` + `Field(min_length=1)`로 legacy `response` 필드 + 빈 `decisions` 모두 422.
+4. **builder_v3/ 디렉토리 책임 분리**: graph + state + nodes 단일 책임, wire 어댑터/변환은 services 가 책임.
 
-### 우선순위 높음
-1. **답변 두 번 표시 회귀** — DB 1건이지만 frontend가 streamingMessages 미클리어. 새로고침 시 정상화. `runId`(`X-Run-Id`) ↔ DB assistant message id 불일치 추정. HiTL 미들웨어 추가가 트리거일 수 있음. 위치: `frontend/src/lib/chat/use-chat-runtime.ts:457-473`
+## ADR-012 마이그레이션 종료
 
-### 우선순위 중간
-2. **`include_ask_user` 두 책임 분리 재시도** — Phase 4에서 발견. 도구 주입 책임은 그대로, 트리거 hang 차단만 별도 indicator(`is_trigger_mode`)로 분리. retire와 무관하게 진행 가능
-3. **빈 fallback chunk UX** — backend `aget_state` 실패 시 emit하는 `{action_requests:[],review_configs:[]}` chat 페이지 미노출. 명시 fallback 핸들러 필요 시 `onStandardInterrupt` 주입
+| Phase | 상태 |
+|-------|------|
+| 0 분석 + ADR | ✅ main |
+| 1 Backend 인프라 | ✅ main (PR #127) |
+| 2 Wire dual-path transition | ✅ main (PR #128) |
+| 3 Legacy wire 제거 clean break | ✅ main (PR #129) |
+| 4 ask_user 검토 (옵션 A 최종) | ✅ main (PR #130) |
+| **5 Builder v3 wire 통일** | ✅ **본 PR** |
 
-### 우선순위 낮음 (코드 품질)
-4. builder 어댑터 추출 — `use-chat-runtime.ts` 내부 흡수된 builder 호환 코드를 `lib/chat/builder-resume-adapter.ts` 분리
-5. Decision 매퍼 통합 — 인라인 객체 리터럴 11곳 → `lib/chat/decision-mappers.ts`
+## 회귀 검증 결과 (M5)
 
-### ADR-012 마이그레이션 마지막 단계
-6. **Phase 5 (옵션, ~150 라인)** — Builder v3 `BuilderResumeRequest` 표준 `decisions` 형식. graph 자체는 native interrupt 유지
+- backend 게이트 4종 + 신규 가드 16건 PASS
+- frontend 게이트 3종 + 어댑터 retire 잔재 0
+- builder_v3 기존 시나리오 (test_phase2_to_phase3_with_intent_confirmed_via_resume 등) 모두 보존
 
-### W3-out 잔여
-- 🟠 cross-tenant LRU sub-cap (인증 도입 PR 함께)
-- 🟡 multi-worker (Redis pub/sub) — broker registry 재설계
-- 🟡 `evict_expired` dirty flag (multi-worker 후)
-- 🟡 `events_chunks` 별도 테이블 (turn 5000+ events 도달 시)
+## 사용자 수동 검증 요청 (PR 머지 후)
 
-## 보존 영역 (수정 금지)
-
-- `backend/app/agent_runtime/middleware_registry.py:DEEPAGENT_AUTO_INJECTED_TYPES` (deepagents 자동 주입 — 카탈로그 노출 시 AssertionError)
-- `backend/app/agent_runtime/builder_v3/**` (Phase 5까지)
-- `backend/app/agent_runtime/tools/ask_user.py` (옵션 A 최종)
-- `backend/tests/test_hitl_middleware.py` (Phase 1 회귀 가드)
+- [ ] `/agents/new/conversational` 페이지 진입 → Phase 2 ask_user 옵션 선택 → 다음 phase 진행
+- [ ] Phase 6 image_choice → "건너뛰기" 또는 "생성하기" 선택 → 정상 분기 (JSON.parse fallback 핵심)
+- [ ] Phase 6 image_approval → "확정/재생성/건너뛰기" → phase 7 이동
+- [ ] 빌더 전체 흐름 → 에이전트 생성 완료
 
 ## 검증 명령
 
@@ -67,6 +72,13 @@ cd frontend && pnpm lint && pnpm test --run && pnpm build
 
 ## 커밋 시 주의
 
-스코프 외 자동 갱신 파일 (catalog cron 6시간 결과물) staging 제외:
+스코프 외 catalog 자동 갱신 파일 staging 제외:
 - `backend/app/data/model_catalog/{catalog,fetch_metadata}.json`
 - `backend/app/data/model_catalog/sources/{ai_model_list,openrouter_models,pydantic_genai_prices}.json`
+
+## W3-out 잔여 follow-up (트리거 도달 대기)
+
+- 🟠 cross-tenant LRU sub-cap (인증 도입 PR 함께)
+- 🟡 multi-worker (Redis pub/sub) — broker registry 재설계
+- 🟡 `evict_expired` dirty flag — multi-worker 후
+- 🟡 `events_chunks` 별도 테이블 — turn 5000+ events 도달 시

@@ -1,6 +1,6 @@
 # ADR-012: HiTL — 자체 구현에서 LangChain `HumanInTheLoopMiddleware` 로 마이그레이션
 
-## 상태: Phase 1~3 완료, Phase 4 옵션 A 최종 결정 (ask_user 보존)
+## 상태: Phase 1~4 완료, Phase 5 진행 중 (Builder v3 wire 통일)
 
 관련 문서:
 - 마일스톤 진행: `HANDOFF.md` (루트)
@@ -16,6 +16,22 @@
 - **두 책임은 직교** — 미들웨어가 ask_user를 대체할 수 없다. 옵션 B가 단순화 효과는 있지만 UX 시나리오를 통째로 잃는다.
 
 §5 옵션 B의 표면 사유 ("도구 description의 implicit prompt 오염")는 사실이지만, 그 비용이 UX 손실보다 작다는 트레이드오프 계산이 잘못이었음. 향후 누군가 다시 옵션 B를 시도하지 않도록 본 회고를 명시.
+
+---
+
+## Phase 5 회고 — ADR-012 마이그레이션 종료 (2026-05-06)
+
+Phase 0~5 모두 완료 시 ADR-012 5단계 마이그레이션 전체 종료. Phase 5 진입 시점의 핵심 결정:
+
+- **Router-only 어댑터**: graph 본체 (`builder_v3/graph.py`, `state.py`, `phase{2,3,4,5,7,8}*.py`) 변경 0. backend router/services 가 `decisions_to_builder_response` helper 로 표준 → builder native shape 변환. frontend `decisionToBuilderResponse` 어댑터 (PR #135) 의 책임을 그대로 backend 로 이전 — 동작 변경 0, dual-wire 제거.
+- **Phase 6 JSON.parse fallback**: image_choice / image_approval 의 string 분기에 JSON.parse 시도만 추가 (3-5 라인). 기존 dict/string 분기 우선, JSON string 만 신규 처리 — backward compatible.
+- **Clean break**: `BuilderResumeRequest.response` 필드 즉시 제거. Phase 2 dual-path transition 학습 (메인 채팅) 적용 — Builder 는 사용자 영향 범위가 좁아 clean break 안전.
+- **어댑터 retire**: PR #135 (-18) + 테스트 (-55, 8 가드 retire). Phase 5 PR 자체에 신규 가드 ≥3건 보전 (helper 매핑, 422, JSON.parse).
+
+핵심 학습:
+1. **graph 디렉토리는 단일 책임 유지**. wire 어댑터 / 변환 helper 는 services 레이어가 책임. builder_v3/ 안에 `_resume_adapter.py` 두는 것은 graph state machine 의 응집도를 흐림 — services/builder_service.py 안에 helper 두는 것이 올바른 모듈 경계.
+2. **Phase 별 wire 통일 vs graph 보존 트레이드오프**: 메인 채팅은 표준 미들웨어 마이그레이션 (graph 행동 변경 포함) 가치 컸음. Builder 는 8-phase deterministic state machine 패턴이라 router-only 어댑터로 wire 만 통일하는 것이 옳음 — 직교 관계 보존.
+3. **clean break 가드의 가치**: `test_resume_rejects_legacy_response_field_422` 같은 가드는 단순 negative test 가 아니라 "두 wire 형식의 공존 의도가 없다" 는 ADR 결정을 코드로 잠그는 디자인 락. 향후 누군가 호환성 명목으로 dual-shape 다시 추가하는 것을 차단.
 
 ---
 
@@ -175,12 +191,27 @@ Frontend:
 - 표준 미들웨어로 충분히 대체 가능하면 도구 제거
 - 옵션 선택 UX 보존 필요 시 `ask_user` 의 description 조정
 
-### Phase 5 — Builder v3 wire format 통일 (옵션, ~150 라인)
-**Done-when**: Builder v3 의 ResumeRequest 도 표준 `decisions` 형식 받음 (graph 자체는 변경 X)
+### Phase 5 — Builder v3 wire format 통일 (~150 라인)
+**Done-when**: Builder v3 의 ResumeRequest 도 표준 `decisions: list[Decision]` 형식 수신, frontend `decisionToBuilderResponse` 어댑터 retire, graph + state + 8 phase 노드 (phase6 외) 변경 0, 회귀 가드 ≥3건 PASS
 
-- builder routes 의 `BuilderResumeRequest` 도 dual-shape → 표준만
-- frontend builder UI 동일 어댑터 사용
-- builder graph 자체는 native interrupt 패턴 유지
+**사용자 결정 (2026-05-06)**: Router-only 어댑터 + image_choice JSON.parse fallback + Clean break (dual-path 없음)
+
+작업 항목:
+- `decisions_to_builder_response(decisions)` helper 신규 — `backend/app/services/builder_service.py` (graph 디렉토리는 graph/state/nodes 단일 책임 유지, wire 어댑터는 services 가 책임)
+- `routers/builder.py` `BuilderResumeRequest{decisions: list[Decision]}` clean break (legacy `response` 필드 제거)
+- `routers/builder.py` `resume_message` handler — helper 호출 후 `Command(resume=...)` 전달
+- `phase6_image.py` (choice + approval) string JSON.parse fallback 3-5 라인 — backward compatible (기존 dict/string 분기 우선, JSON string 만 추가 처리)
+- frontend `lib/chat/builder-resume-adapter.ts` 삭제 (-18) + `__tests__/builder-resume-adapter.test.ts` 삭제 (-55, 8 가드 retire — Phase 5 PR 자체에 회귀 가드 ≥3건 신규로 보전)
+- `use-chat-runtime.ts:onResumeDecisions` 어댑터 호출 제거, `ResumeFn` 시그니처 `decisions: Decision[]` 로 갱신
+- `stream-builder-resume.ts` 시그니처 + POST body `{decisions, display_text, interrupt_id}`
+
+회귀 가드 (≥3건, 신규):
+- `test_resume_accepts_standard_decisions` — 표준 wire 200
+- `test_resume_rejects_legacy_response_field_422` — clean break 가드
+- `test_decisions_to_builder_response_mapping` — helper 단위
+- `test_phase6_choice_accepts_json_string` — JSON.parse fallback 회귀 방지
+
+**보존 (수정 금지)**: `builder_v3/graph.py`, `state.py`, `phase{2,3,4,5,7,8}*.py`, `_helpers.parse_approval_response` (dict|str 호환), `pending_tool_call_id` stale 검증.
 
 ---
 
@@ -191,7 +222,7 @@ Frontend:
 | Wire format 변경 = breaking change | dual-path transition window — 한 PR 에서 둘 다 받기, 4 PR 후 제거 |
 | Multi-action UI 신규 디자인 부재 | `ApprovalCard` 가 이미 단일 액션 지원 — 배열 렌더링 + 일괄 확정 버튼 추가만 |
 | `ask_user` LLM prompt 변경 시 회귀 | Phase 4 까지 ask_user 보존, 충분한 회귀 테스트 후 결정 |
-| Builder v3 graph 영향 | wire format 만 통일, graph 자체 변경 X — Phase 5 가 분리됨 |
+| Builder v3 graph 영향 | Router-only 어댑터로 graph + state + 대부분 노드 변경 0. phase6 image_choice/approval 만 backward-compatible JSON.parse fallback 추가 (기존 dict/string 분기 우선, JSON string 만 신규 처리). 회귀 가드 ≥3건으로 매핑 + 422 + JSON.parse 검증. |
 | 트리거 모드에서 interrupt 발생 시 hang | 트리거 호출 시 `interrupt_on` config 강제 override, 회귀 테스트 |
 | Stale interrupt (오래된 카드 클릭) | Builder 의 `pending_tool_call_id` 패턴을 메인 채팅에도 적용 검토 (Phase 2 내) |
 

@@ -20,10 +20,46 @@ from app.models.builder_session import BuilderSession
 from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.builder import BuilderStatus
+from app.schemas.conversation import Decision
 from app.services.model_service import resolve_model
 from app.services.tool_service import get_tools_catalog
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Resume wire 어댑터 (router-only) — ADR-012
+# ---------------------------------------------------------------------------
+
+
+def decisions_to_builder_response(decisions: list[Decision]) -> Any:
+    """표준 ``Decision[]`` → builder graph 가 기대하는 native shape.
+
+    builder v3 wait 노드들은 dict|str 응답을 처리한다
+    (``parse_approval_response``, phase6 ``image_choice``/``image_approval``).
+    frontend 는 표준 ``Decision[]`` wire 만 유지하고, builder native shape 으로
+    의 변환 책임은 router 경계의 본 helper 가 단일 책임으로 흡수한다.
+
+    Mapping:
+    - ``approve`` → ``{"approved": True}``
+    - ``reject`` → ``{"approved": False, "revision_message": message or ""}``
+    - ``respond`` → ``message or ""`` (string)
+    - ``edit`` → ``{"approved": True}`` (builder 는 edit args 를 사용하지 않음)
+    - empty list → ``None``
+    """
+    if not decisions:
+        return None
+    first = decisions[0]
+    if first.type == "approve":
+        return {"approved": True}
+    if first.type == "reject":
+        return {"approved": False, "revision_message": first.message or ""}
+    if first.type == "respond":
+        return first.message or ""
+    if first.type == "edit":
+        # builder edit 미사용 — approve fallback (graph 행동은 동일)
+        return {"approved": True}
+    return None
 
 
 # ---------------------------------------------------------------------------

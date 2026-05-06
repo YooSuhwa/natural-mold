@@ -25,6 +25,7 @@ from app.agent_runtime.builder_v3.nodes._helpers import (
     ensure_todos,
     make_pending_tool_card,
     make_tool_card,
+    parse_choice_response,
 )
 from app.agent_runtime.builder_v3.state import BuilderState
 
@@ -114,13 +115,7 @@ async def phase6_choice_wait(state: BuilderState) -> dict:
         }
     )
 
-    choice = ""
-    custom_prompt = ""
-    if isinstance(response, dict):
-        choice = str(response.get("choice", "")).lower()
-        custom_prompt = str(response.get("prompt") or response.get("auto_prompt") or "")
-    elif isinstance(response, str):
-        choice = response.lower()
+    choice, custom_prompt = parse_choice_response(response)
 
     pending_tc_id = state.get("pending_tool_call_id")
 
@@ -222,13 +217,7 @@ async def phase6_image_approval(state: BuilderState) -> dict:
         }
     )
 
-    choice = ""
-    new_prompt = ""
-    if isinstance(response, dict):
-        choice = str(response.get("choice", "")).lower()
-        new_prompt = str(response.get("prompt") or "")
-    elif isinstance(response, str):
-        choice = response.lower()
+    choice, new_prompt = parse_choice_response(response, prompt_keys=("prompt",))
 
     pending_tc_id = state.get("pending_tool_call_id")
 

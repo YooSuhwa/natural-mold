@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
@@ -23,6 +22,7 @@ from app.exceptions import ValidationError
 from app.routers.agents import _agent_to_response
 from app.schemas.agent import AgentResponse
 from app.schemas.builder import BuilderSessionResponse, BuilderStartRequest, BuilderStatus
+from app.schemas.conversation import Decision
 from app.services import builder_service
 
 
@@ -33,20 +33,22 @@ class BuilderMessageRequest(BaseModel):
 
 
 class BuilderResumeRequest(BaseModel):
-    """Builder v3 — interrupt 응답 요청.
+    """Builder v3 — interrupt 응답 요청. 표준 HiTL wire (ADR-012).
 
-    response 형식 (interrupt type별):
-    - ask_user: str (옵션 라벨 또는 자유 텍스트)
-    - approval: {"approved": bool, "revision_message": str?}
-    - image_choice: {"choice": "skip" | "generate", "prompt": str?}
-    - image_approval: {"choice": "confirm" | "regenerate" | "skip", "prompt": str?}
+    표준 ``decisions: list[Decision]`` 만 수용한다 (clean break — extra
+    field 는 422). router 가 ``decisions_to_builder_response`` 어댑터로
+    builder graph 가 기대하는 native shape (dict | str) 로 변환한다.
 
-    악의적 페이로드 방어를 위해 dict는 깊이/크기를 제한.
+    Decision → builder native 변환:
+    - ``approve``                   → ``{"approved": True}``      (approval phase)
+    - ``reject(message)``           → ``{"approved": False, "revision_message": ...}``
+    - ``respond(message)``          → ``"..."``                    (ask_user / image_*)
+    - ``edit(edited_action)``       → ``{"approved": True}``       (builder 는 edit 미사용)
     """
 
     model_config = {"extra": "forbid"}
 
-    response: dict[str, Any] | str = Field(..., description="interrupt 응답")
+    decisions: list[Decision] = Field(..., min_length=1, description="표준 HiTL decisions")
     display_text: str | None = Field(None, max_length=200)
     # SSE interrupt 이벤트의 interrupt_id (stale 카드로 응답 시 차단용)
     interrupt_id: str | None = Field(None, max_length=200)
@@ -192,11 +194,12 @@ async def resume_message(
     if not session:
         raise session_not_found()
 
+    response = builder_service.decisions_to_builder_response(payload.decisions)
     return StreamingResponse(
         builder_service.run_v3_resume_stream(
             session_id=session.id,
             user_id=session.user_id,
-            response=payload.response,
+            response=response,
             interrupt_id=payload.interrupt_id,
         ),
         media_type="text/event-stream",
