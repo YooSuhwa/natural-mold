@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Phase 5 — wire 어댑터 (router-only)
+# Resume wire 어댑터 (router-only) — ADR-012
 # ---------------------------------------------------------------------------
 
 
@@ -37,8 +37,8 @@ def decisions_to_builder_response(decisions: list[Decision]) -> Any:
 
     builder v3 wait 노드들은 dict|str 응답을 처리한다
     (``parse_approval_response``, phase6 ``image_choice``/``image_approval``).
-    Phase 5 이전 frontend ``decisionToBuilderResponse`` 의 책임을 backend
-    router 경계로 이전 — frontend 는 표준 ``Decision[]`` wire 만 유지.
+    frontend 는 표준 ``Decision[]`` wire 만 유지하고, builder native shape 으로
+    의 변환 책임은 router 경계의 본 helper 가 단일 책임으로 흡수한다.
 
     Mapping:
     - ``approve`` → ``{"approved": True}``

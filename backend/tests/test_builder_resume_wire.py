@@ -1,8 +1,8 @@
-"""Builder v3 wire 통일 (Phase 5) 가드.
+"""Builder v3 resume wire 가드 (ADR-012 §Phase 5).
 
-ADR-012 §Phase 5 — frontend ``decisionToBuilderResponse`` 어댑터를 retire하고
-backend router 가 표준 ``Decision[]`` → builder native shape (dict | str) 변환을
-담당하는 clean break 디자인의 회귀 가드.
+frontend ``decisionToBuilderResponse`` 어댑터를 retire하고 backend router 가
+표준 ``Decision[]`` → builder native shape (dict | str) 변환을 담당하는
+clean break 디자인의 회귀 가드.
 
 검증 4축:
 1. Router contract — 표준 ``decisions`` 페이로드 200 처리

@@ -33,12 +33,11 @@ class BuilderMessageRequest(BaseModel):
 
 
 class BuilderResumeRequest(BaseModel):
-    """Builder v3 — interrupt 응답 요청 (Phase 5 표준 wire — clean break).
+    """Builder v3 — interrupt 응답 요청. 표준 HiTL wire (ADR-012).
 
-    표준 ``decisions: list[Decision]`` 만 수용한다. Phase 5 이전의
-    ``response: dict | str`` 필드는 retire 됨 — backend router 가
-    ``decisions_to_builder_response`` 어댑터로 builder graph 가 기대하는
-    native shape (dict | str) 로 변환한다.
+    표준 ``decisions: list[Decision]`` 만 수용한다 (clean break — extra
+    field 는 422). router 가 ``decisions_to_builder_response`` 어댑터로
+    builder graph 가 기대하는 native shape (dict | str) 로 변환한다.
 
     Decision → builder native 변환:
     - ``approve``                   → ``{"approved": True}``      (approval phase)
