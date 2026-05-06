@@ -152,6 +152,7 @@ export function useChatRuntime({
   const setReconnectState = useSetAtom(reconnectStateAtom)
   const queryClient = useQueryClient()
   const tReconnect = useTranslations('chat.reconnect')
+  const tPage = useTranslations('chat.page')
 
   /** B1 fix — when the user edits/regenerates we already know the new turn
    * will replace messages from ``truncateAtIndex`` onward. Optimistically
@@ -364,6 +365,16 @@ export function useChatRuntime({
               setIsRunning(false)
               const data = event.data as StandardInterruptPayload
               if (data.interrupt_id) lastInterruptIdRef.current = data.interrupt_id
+              // 빈 fallback chunk — backend가 ``aget_state`` 실패로 정확한 액션을
+              // 제시하지 못해 표준 미들웨어 contract만 채워 emit한다(streaming.py).
+              // turn 이 silent 하게 갇히지 않도록 사용자에게 toast 로 안내.
+              if (
+                data.action_requests.length === 0 &&
+                data.review_configs.length === 0
+              ) {
+                toast.error(tPage('interruptStateLost'))
+                break
+              }
               onStandardInterrupt?.(data)
               break
             }
@@ -441,6 +452,7 @@ export function useChatRuntime({
       onMessagesCommit,
       setReconnectState,
       tReconnect,
+      tPage,
     ],
   )
 

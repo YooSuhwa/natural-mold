@@ -579,6 +579,7 @@
       "newConversation": "새 대화",
       "emptyState": "대화를 시작해보세요.",
       "error": "에이전트 실행 중 오류가 발생했습니다",
+      "interruptStateLost": "응답이 일시정지되었지만 상세 정보를 불러올 수 없습니다. 새로고침해 주세요.",
       "conversationList": "대화 목록",
       "menu": "더보기 메뉴"
     },
