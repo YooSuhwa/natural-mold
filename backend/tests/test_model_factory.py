@@ -101,7 +101,12 @@ class TestCreateChatModel:
         kwargs = mock_cls.call_args[1]
         assert kwargs["base_url"] == "http://localhost:11434"
 
-    def test_no_base_url_omits_key(self):
+    def test_no_base_url_pins_canonical_endpoint(self):
+        """openai provider + base_url 미지정 → canonical OpenAI endpoint 강제.
+
+        OS env ``OPENAI_BASE_URL`` 우회 차단 가드 (RunPod proxy / 사내 헬퍼
+        등으로 export 해도 OpenAI 본 endpoint 로 라우팅).
+        """
         mock_cls = MagicMock()
         with patch.dict(
             "app.agent_runtime.model_factory.PROVIDER_MAP",
@@ -112,7 +117,7 @@ class TestCreateChatModel:
             create_chat_model("openai", "gpt-4o", api_key="k")
 
         kwargs = mock_cls.call_args[1]
-        assert "base_url" not in kwargs
+        assert kwargs["base_url"] == "https://api.openai.com/v1"
 
     def test_api_key_none_falls_back_to_settings(self):
         """api_key=None일 때 PROVIDER_API_KEY_MAP의 settings 키로 fallback.
@@ -233,3 +238,46 @@ class TestCreateChatModelGpt5Family:
         kwargs = self._patched_create("gpt-5.5", max_tokens=200)
         model_kw = kwargs.get("model_kwargs", {})
         assert "max_completion_tokens" not in model_kw
+
+
+class TestCreateChatModelBaseUrlGuard:
+    """``OPENAI_BASE_URL`` env 우회 차단 가드.
+
+    ChatOpenAI 가 base_url 미지정 시 OpenAI Python SDK 가 ``OPENAI_BASE_URL``
+    env 로 fallback. 사용자 셸이 RunPod proxy / Claude Code helper / 사내
+    프록시로 export 해놓으면 OpenAI 본 endpoint 가 아닌 엉뚱한 호스트로
+    라우팅되어 404 회귀. provider 별 canonical endpoint 명시 set 으로 차단.
+    """
+
+    @staticmethod
+    def _patched_create(provider: str, model_name: str, base_url=None):
+        from unittest.mock import MagicMock, patch
+        mock_cls = MagicMock()
+        with patch.dict(
+            "app.agent_runtime.model_factory.PROVIDER_MAP",
+            {provider: mock_cls},
+        ):
+            from app.agent_runtime.model_factory import create_chat_model
+            create_chat_model(provider, model_name, api_key="sk-test", base_url=base_url)
+        return mock_cls.call_args[1]
+
+    def test_openai_base_url_pinned_when_caller_omits(self):
+        """openai provider + base_url 미지정 → canonical endpoint 강제 (RunPod env 차단)."""
+        kwargs = self._patched_create("openai", "gpt-5.5")
+        assert kwargs["base_url"] == "https://api.openai.com/v1"
+
+    def test_openrouter_base_url_pinned_when_caller_omits(self):
+        """openrouter provider 도 같은 가드 — qwen/llama/* 같은 OpenRouter 모델."""
+        kwargs = self._patched_create("openrouter", "qwen/qwen3.6-27b")
+        assert kwargs["base_url"] == "https://openrouter.ai/api/v1"
+
+    def test_explicit_base_url_takes_precedence(self):
+        """caller 가 base_url 명시 → 가드 우회 (사용자 의도 보존)."""
+        custom = "https://custom.proxy.example/v1"
+        kwargs = self._patched_create("openai", "gpt-4o", base_url=custom)
+        assert kwargs["base_url"] == custom
+
+    def test_anthropic_no_base_url_pin(self):
+        """anthropic 은 ChatOpenAI 가 아니므로 base_url 가드 영향 없음."""
+        kwargs = self._patched_create("anthropic", "claude-sonnet-4-6")
+        assert "base_url" not in kwargs

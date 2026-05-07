@@ -104,6 +104,16 @@ def create_chat_model(
         kwargs["api_key"] = resolved_key
     if base_url:
         kwargs["base_url"] = base_url
+    elif provider in _OPENAI_FAMILY_BASE_URLS:
+        # ChatOpenAI (openai / openrouter wrap) 가 base_url 미지정 시 OpenAI
+        # Python SDK 가 ``OPENAI_BASE_URL`` env 로 fallback. 사용자 셸이 RunPod
+        # proxy / Claude Code helper / 사내 프록시로 export 해놓으면 OpenAI 본
+        # endpoint 가 아닌 *엉뚱한* 호스트로 라우팅되어 404 회귀 (e.g.
+        # agent.model.base_url=NULL + OS env OPENAI_BASE_URL=https://*.proxy.
+        # runpod.net/v1 → gpt-5 호출 시 404). provider 별 canonical endpoint
+        # 명시 set 으로 OS env 우회 차단. ``create_chat_model_for_test`` 와
+        # 동일한 가드.
+        kwargs["base_url"] = _OPENAI_FAMILY_BASE_URLS[provider]
 
     for param in ("temperature", "top_p", "max_tokens"):
         if param in extra and extra[param] is not None:
