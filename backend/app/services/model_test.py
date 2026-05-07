@@ -401,6 +401,8 @@ def _provider_wire_shape(
     base_url: str | None,
     api_key: str | None,
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
+    from app.agent_runtime.model_factory import _TEST_COMPLETION_TOKEN_CAP
+
     is_gpt5 = _is_gpt5_family(provider, model_name)
 
     body: dict[str, Any] = {
@@ -409,9 +411,12 @@ def _provider_wire_shape(
     }
     if is_gpt5:
         # GPT-5 family — new field name, no temperature override.
-        body["max_completion_tokens"] = 10
+        body["max_completion_tokens"] = _TEST_COMPLETION_TOKEN_CAP
     else:
-        body["max_tokens"] = 10
+        # cap = 200: reasoning 미지원 모델 = 항상 짧은 응답이라 비용 동일,
+        # reasoning 모델 (qwen reasoning, deepseek-r 등) 은 hidden CoT 토큰
+        # 소진 후에도 "pong" 한 단어가 visible content 로 남을 여유.
+        body["max_tokens"] = _TEST_COMPLETION_TOKEN_CAP
         body["temperature"] = 0
     headers: dict[str, str] = {"Content-Type": "application/json"}
 

@@ -166,21 +166,33 @@ def _is_gpt5_family(provider: str, model_name: str) -> bool:
     return provider == "openai" and any(name.startswith(p) for p in _GPT5_FAMILY_PREFIXES)
 
 
+_TEST_COMPLETION_TOKEN_CAP = 200
+
+
 def _completion_token_cap_kw(provider: str, model_name: str) -> dict[str, Any]:
     """Return the right kwarg shape for ChatOpenAI's token cap.
 
     OpenAI GPT-5 / reasoning models reject ``max_tokens`` and require
     ``max_completion_tokens``. LangChain's ``ChatOpenAI`` does not yet
     surface that as a top-level constructor argument, so we forward it
-    through ``model_kwargs``. Everything else keeps the legacy
-    ``max_tokens=10`` shortcut, which LangChain wires straight to OpenAI.
+    through ``model_kwargs``. Everything else keeps the top-level
+    ``max_tokens`` shortcut, which LangChain wires straight to OpenAI.
+
+    Cap is ``_TEST_COMPLETION_TOKEN_CAP`` so reasoning families (GPT-5,
+    o-series, qwen reasoning, deepseek-r 등) 가 hidden chain-of-thought
+    에 토큰을 다 쓰고도 ``"pong"`` 한 단어가 visible content 로 남을
+    여유를 보장한다. Anthropic / 일반 OpenAI 처럼 reasoning 미지원
+    모델은 항상 짧게 응답하므로 200 cap 도 비용 무시 수준 (~$0.001/test).
     """
 
     if _is_gpt5_family(provider, model_name):
         # GPT-5 family also rejects non-default temperature; drop it and let
         # the API use its locked default (1.0) so the request validates.
-        return {"model_kwargs": {"max_completion_tokens": 10}, "_drop_temperature": True}
-    return {"max_tokens": 10}
+        return {
+            "model_kwargs": {"max_completion_tokens": _TEST_COMPLETION_TOKEN_CAP},
+            "_drop_temperature": True,
+        }
+    return {"max_tokens": _TEST_COMPLETION_TOKEN_CAP}
 
 
 def create_chat_model_for_test(
