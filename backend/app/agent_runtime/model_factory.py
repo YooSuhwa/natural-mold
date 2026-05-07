@@ -62,6 +62,42 @@ _ENV_FALLBACK: dict[str, str] = {
 PROVIDER_API_KEY_MAP = _ENV_FALLBACK
 
 
+# Snapshot of the .env-derived values captured at module import. Used by the
+# credentials sync (ADR-013) to re-seed ``_ENV_FALLBACK`` on every refresh so
+# DELETE-of-credential is reflected without having to track removed keys.
+# ``settings`` may be mutated in tests; we intentionally take the value once.
+_ENV_DEFAULTS: dict[str, str] = dict(_ENV_FALLBACK)
+
+
+async def sync_env_fallback_from_credentials(db: AsyncSession) -> None:
+    """Refresh ``_ENV_FALLBACK`` from the credentials table (ADR-013).
+
+    Priority (per provider): ``.env`` > system credential > user credential.
+    The dict is mutated in-place so the ``PROVIDER_API_KEY_MAP`` alias used
+    by builder/assistant helpers stays valid (no object replacement).
+
+    Idempotent: every call resets the dict to the import-time ``.env`` snapshot
+    before layering credentials on top, so DELETE/PATCH propagates cleanly.
+    """
+
+    from app.credentials import service as credential_service
+
+    try:
+        cred_keys = await credential_service.get_provider_keys(db)
+    except Exception:  # noqa: BLE001 — never let sync crash a request handler
+        logger.exception("sync_env_fallback_from_credentials: read failed")
+        return
+
+    # Re-seed from the .env snapshot first; .env wins by definition.
+    for env_key, default in _ENV_DEFAULTS.items():
+        _ENV_FALLBACK[env_key] = default
+
+    # Layer credentials on top *only* where .env is empty — backward compat.
+    for env_key, cred_key in cred_keys.items():
+        if not _ENV_FALLBACK.get(env_key) and cred_key:
+            _ENV_FALLBACK[env_key] = cred_key
+
+
 # SSL 컨텍스트.
 #
 # 일부 macOS / 사내 VPN 환경에서 OpenAI 인증서 체인이 strict 검증
@@ -452,9 +488,11 @@ async def create_chat_model_with_fallback(
 
 
 __all__ = [
+    "PROVIDER_API_KEY_MAP",
     "PROVIDER_MAP",
     "create_chat_model",
     "create_chat_model_for_test",
     "create_chat_model_with_fallback",
     "env_provider_keys",
+    "sync_env_fallback_from_credentials",
 ]

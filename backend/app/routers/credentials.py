@@ -26,6 +26,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.model_factory import sync_env_fallback_from_credentials
 from app.credentials import service as credential_service
 from app.credentials.registry import registry
 from app.credentials.tester import CredentialTester
@@ -99,6 +100,21 @@ async def _load_owned(
     return cred
 
 
+async def _maybe_sync_env_fallback(
+    db: AsyncSession, definition_key: str
+) -> None:
+    """ADR-013 invalidate hook — refresh ``_ENV_FALLBACK`` after CRUD.
+
+    Only fires for LLM provider definitions (anthropic/openai/google_genai/
+    openrouter). Other providers don't participate in builder/assistant key
+    resolution, so the dict stays untouched.
+    """
+
+    if not credential_service.is_llm_definition(definition_key):
+        return
+    await sync_env_fallback_from_credentials(db)
+
+
 # -- Catalog -----------------------------------------------------------------
 
 
@@ -149,6 +165,7 @@ async def create_credential(
     )
     await db.commit()
     await db.refresh(cred)
+    await _maybe_sync_env_fallback(db, payload.definition_key)
     return _to_response(cred)
 
 
@@ -186,6 +203,7 @@ async def update_credential(
     )
     await db.commit()
     await db.refresh(cred)
+    await _maybe_sync_env_fallback(db, cred.definition_key)
     return _to_response(cred)
 
 
@@ -196,6 +214,7 @@ async def delete_credential(
     user: CurrentUser = Depends(get_current_user),
 ) -> None:
     cred = await _load_owned(db, credential_id, user.id)
+    definition_key = cred.definition_key
     await credential_service.write_audit_log(
         db,
         credential_id=cred.id,
@@ -204,6 +223,7 @@ async def delete_credential(
     )
     await db.delete(cred)
     await db.commit()
+    await _maybe_sync_env_fallback(db, definition_key)
 
 
 # -- System credentials (operator-managed) ----------------------------------
@@ -253,6 +273,7 @@ async def create_system_credential(
     )
     await db.commit()
     await db.refresh(cred)
+    await _maybe_sync_env_fallback(db, payload.definition_key)
     return _to_response(cred)
 
 
@@ -291,6 +312,7 @@ async def update_system_credential(
     )
     await db.commit()
     await db.refresh(cred)
+    await _maybe_sync_env_fallback(db, cred.definition_key)
     return _to_response(cred)
 
 
@@ -301,6 +323,7 @@ async def delete_system_credential(
     user: CurrentUser = Depends(get_current_user),
 ) -> None:
     cred = await _load_system(db, credential_id)
+    definition_key = cred.definition_key
     await credential_service.write_audit_log(
         db,
         credential_id=cred.id,
@@ -309,6 +332,7 @@ async def delete_system_credential(
     )
     await db.delete(cred)
     await db.commit()
+    await _maybe_sync_env_fallback(db, definition_key)
 
 
 # -- Test --------------------------------------------------------------------

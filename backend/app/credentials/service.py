@@ -138,6 +138,81 @@ async def find_system_by_definition(
     return result.scalar_one_or_none()
 
 
+# -- LLM provider key bulk reader --------------------------------------------
+
+# ADR-013: maps Credential.definition_key → ``_ENV_FALLBACK`` key (the latter
+# matches ``settings.<key>_api_key``). ``openai_compatible`` is intentionally
+# omitted — builder/assistant sub-agents need a single api_key plus base_url
+# triple, which the env-fallback dict can't represent. Those flows still go
+# through ``Agent.llm_credential`` (chat_service path).
+LLM_DEFINITION_TO_ENV_KEY: dict[str, str] = {
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "google_genai": "google",
+    "openrouter": "openrouter",
+}
+
+
+def is_llm_definition(definition_key: str) -> bool:
+    """True when ``definition_key`` participates in ``_ENV_FALLBACK`` sync."""
+
+    return definition_key in LLM_DEFINITION_TO_ENV_KEY
+
+
+async def get_provider_keys(
+    db: AsyncSession, *, system_only: bool = False
+) -> dict[str, str | None]:
+    """LLM provider → api_key dict for ``_ENV_FALLBACK`` sync (ADR-013).
+
+    Returns a dict keyed by ``_ENV_FALLBACK`` key (``anthropic``/``openai``/
+    ``google``/``openrouter``). Decrypts each matching credential and extracts
+    the ``api_key`` (or ``token``) field.
+
+    - When ``system_only=True`` only ``is_system=True`` rows are read.
+    - When ``system_only=False`` system rows take precedence; user rows fill
+      gaps. Within the same priority tier the most recently created row wins
+      (``created_at DESC``). Rows that fail to decrypt are skipped with a log.
+
+    Empty / missing entries are omitted from the result so the caller can
+    decide its own fallback policy (typically: don't overwrite existing ENV).
+    """
+
+    stmt = (
+        select(Credential)
+        .where(
+            Credential.definition_key.in_(LLM_DEFINITION_TO_ENV_KEY.keys()),
+            Credential.status == "active",
+        )
+        .order_by(Credential.is_system.desc(), Credential.created_at.desc())
+    )
+    if system_only:
+        stmt = stmt.where(Credential.is_system.is_(True))
+
+    result = await db.execute(stmt)
+    rows = list(result.scalars().all())
+
+    out: dict[str, str | None] = {}
+    for cred in rows:
+        env_key = LLM_DEFINITION_TO_ENV_KEY.get(cred.definition_key)
+        if env_key is None or env_key in out:
+            # ``is_system DESC`` puts system rows first, so the first hit per
+            # env_key already represents the highest-priority credential.
+            continue
+        try:
+            payload = await decrypt_with_external(cred.data_encrypted)
+        except Exception:  # noqa: BLE001 — bad cipher / missing key shouldn't crash startup
+            logger.exception(
+                "get_provider_keys: failed to decrypt credential %s (%s)",
+                cred.id,
+                cred.definition_key,
+            )
+            continue
+        api_key = payload.get("api_key") or payload.get("token")
+        if api_key:
+            out[env_key] = str(api_key)
+    return out
+
+
 # -- Audit log ---------------------------------------------------------------
 
 
@@ -313,13 +388,19 @@ async def list_audit_logs(
 
 
 __all__ = [
+    "LLM_DEFINITION_TO_ENV_KEY",
     "create",
     "decrypt_data",
     "decrypt_with_external",
     "encrypt_data",
+    "find_system_by_definition",
     "get_for_user",
+    "get_provider_keys",
+    "get_system",
+    "is_llm_definition",
     "list_audit_logs",
     "list_for_user",
+    "list_system",
     "re_encrypt_with_active_key",
     "record_test",
     "update",

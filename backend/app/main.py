@@ -125,6 +125,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     "bootstrap_credentials_from_env failed — continuing startup."
                 )
 
+        # ADR-013 — sync builder/assistant `_ENV_FALLBACK` from credentials
+        # so user-registered LLM keys (POST /api/credentials) are visible to
+        # the builder helper without a server restart. ``.env`` keys keep
+        # priority; this only fills empty slots.
+        from app.agent_runtime.model_factory import (
+            sync_env_fallback_from_credentials,
+        )
+
+        try:
+            await sync_env_fallback_from_credentials(db)
+        except Exception:  # noqa: BLE001 — lifespan boundary
+            logger.exception(
+                "sync_env_fallback_from_credentials failed — continuing startup."
+            )
+
     # Checkpointer 초기화 — psycopg v3 호환 URL 사용.
     from app.agent_runtime.checkpointer import init_checkpointer
 
