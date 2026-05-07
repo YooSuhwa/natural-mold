@@ -115,6 +115,21 @@ def create_chat_model(
     if provider == "anthropic" and "temperature" in kwargs and "top_p" in kwargs:
         kwargs.pop("top_p")
 
+    # OpenAI GPT-5 / o-series reasoning families: ``max_tokens`` → 모델이
+    # 거부하므로 ``max_completion_tokens`` 으로 forward + non-default
+    # ``temperature`` 제거. 또한 reasoning 토큰을 다 쓰고 본문이 비는 회귀
+    # (output_tokens 가 reasoning_tokens 와 같음) 를 막기 위해 caller 가
+    # 명시 cap 을 안 줬으면 충분히 큰 default 를 보장한다.
+    if _is_gpt5_family(provider, model_name):
+        max_tokens = kwargs.pop("max_tokens", None)
+        kwargs.pop("temperature", None)
+        completion_cap = (
+            max_tokens if isinstance(max_tokens, int) else _GPT5_DEFAULT_COMPLETION_TOKENS
+        )
+        existing_kw = kwargs.setdefault("model_kwargs", {})
+        if isinstance(existing_kw, dict):
+            existing_kw.setdefault("max_completion_tokens", completion_cap)
+
     kwargs["stream_usage"] = True
 
     if cls in (ChatOpenAI,):
@@ -138,6 +153,18 @@ def env_provider_keys() -> dict[str, str | None]:
 # Detecting these prefixes lets us pick the right cap up front.
 _GPT5_FAMILY_PREFIXES: tuple[str, ...] = ("gpt-5", "o1", "o3", "o4")
 
+# Default ``max_completion_tokens`` for chat runtime when the caller did not
+# pass an explicit cap. Reasoning models burn output tokens on hidden chains
+# of thought; if the cap is too tight the visible content stays empty even
+# though the API succeeds (200 OK + ``output_token_details.reasoning ≈ cap``).
+# Picking a generous default avoids that silent regression for routine prompts.
+_GPT5_DEFAULT_COMPLETION_TOKENS = 4096
+
+
+def _is_gpt5_family(provider: str, model_name: str) -> bool:
+    name = (model_name or "").lower()
+    return provider == "openai" and any(name.startswith(p) for p in _GPT5_FAMILY_PREFIXES)
+
 
 def _completion_token_cap_kw(provider: str, model_name: str) -> dict[str, Any]:
     """Return the right kwarg shape for ChatOpenAI's token cap.
@@ -149,8 +176,7 @@ def _completion_token_cap_kw(provider: str, model_name: str) -> dict[str, Any]:
     ``max_tokens=10`` shortcut, which LangChain wires straight to OpenAI.
     """
 
-    name = (model_name or "").lower()
-    if provider == "openai" and any(name.startswith(p) for p in _GPT5_FAMILY_PREFIXES):
+    if _is_gpt5_family(provider, model_name):
         # GPT-5 family also rejects non-default temperature; drop it and let
         # the API use its locked default (1.0) so the request validates.
         return {"model_kwargs": {"max_completion_tokens": 10}, "_drop_temperature": True}

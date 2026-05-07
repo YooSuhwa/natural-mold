@@ -178,3 +178,51 @@ class TestCreateChatModel:
 
         kwargs = mock_cls.call_args[1]
         assert kwargs["api_key"] == "explicit-key"
+
+
+class TestCreateChatModelGpt5Family:
+    """Tests for ``create_chat_model`` GPT-5 / o-series reasoning model guard.
+
+    Reasoning models (gpt-5*, o1*, o3*, o4*) reject ``max_tokens`` and
+    non-default ``temperature`` from the OpenAI Chat Completions API. They
+    also burn output tokens on hidden reasoning chains, so a tight cap
+    leaves the visible ``content`` empty even when the API responds 200 OK.
+    """
+
+    @staticmethod
+    def _patched_create(model_name: str, **extra):
+        from unittest.mock import MagicMock, patch
+        mock_cls = MagicMock()
+        with patch.dict(
+            "app.agent_runtime.model_factory.PROVIDER_MAP",
+            {"openai": mock_cls},
+        ):
+            from app.agent_runtime.model_factory import create_chat_model
+            create_chat_model("openai", model_name, api_key="sk-test", **extra)
+        return mock_cls.call_args[1]
+
+    def test_gpt5_drops_max_tokens_and_forwards_max_completion_tokens(self):
+        kwargs = self._patched_create("gpt-5.5-2026-04-23", max_tokens=512)
+        assert "max_tokens" not in kwargs
+        assert kwargs["model_kwargs"]["max_completion_tokens"] == 512
+
+    def test_gpt5_drops_non_default_temperature(self):
+        kwargs = self._patched_create("gpt-5", temperature=0.7)
+        assert "temperature" not in kwargs
+
+    def test_gpt5_default_completion_tokens_when_caller_omits_cap(self):
+        """No max_tokens passed → default 4096 to avoid empty content regression."""
+        kwargs = self._patched_create("gpt-5")
+        assert kwargs["model_kwargs"]["max_completion_tokens"] == 4096
+
+    def test_o3_family_also_guarded(self):
+        kwargs = self._patched_create("o3-mini")
+        assert "max_tokens" not in kwargs
+        assert kwargs["model_kwargs"]["max_completion_tokens"] == 4096
+
+    def test_non_gpt5_keeps_max_tokens_top_level(self):
+        """gpt-4o is NOT a reasoning family — max_tokens stays as-is."""
+        kwargs = self._patched_create("gpt-4o", max_tokens=256)
+        assert kwargs["max_tokens"] == 256
+        model_kw = kwargs.get("model_kwargs", {})
+        assert "max_completion_tokens" not in model_kw
