@@ -32,6 +32,17 @@ if os.path.exists(_hc_cert):
 import logging
 import uuid
 
+# Root logger 설정 — uvicorn 자체 logger 외 ``app.*`` logger 의 INFO/WARNING/
+# ERROR 가 stdout 으로 도달하도록 한다. 미설정 시 ``logger.info()`` 호출이
+# silent 하게 사라져 진단이 불가능 (e.g. credential resolution 분기 로그,
+# stream_agent_response 의 partial flush 실패 로그). force=True 로 uvicorn
+# 사전 설정과 무관하게 root handler 를 명시 등록.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    force=True,
+)
+
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError

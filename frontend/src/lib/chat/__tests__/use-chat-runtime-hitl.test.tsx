@@ -205,6 +205,31 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
     expect(onStandardInterrupt).not.toHaveBeenCalled()
   })
+
+  it('SSE error event 도달 시 toast.error 1회 호출 (silent fail 가드)', async () => {
+    /** ``setStreamError`` 는 setter-only state 라 UI 미노출.
+     * Backend 의 SSE ``error`` event (예: OpenAI 404, model not found) 가
+     * 사용자 화면에 silent 하게 사라지지 않도록 toast 강제 호출. */
+    vi.mocked(toast.error).mockClear()
+    const { options } = buildHookOptions({
+      events: [
+        {
+          event: 'error',
+          data: { message: 'Error code: 404' } as unknown as Record<string, unknown>,
+        },
+      ],
+    })
+    const { result } = renderHook(() => useChatRuntime(options), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
+    expect(toast.error).toHaveBeenCalledWith('Error code: 404')
+  })
 })
 
 // ---------------------------------------------------------------------------
