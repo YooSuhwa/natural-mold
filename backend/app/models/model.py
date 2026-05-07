@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from sqlalchemy import JSON, Boolean, ForeignKey, Integer, Numeric, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
@@ -51,4 +51,14 @@ class Model(Base):
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,
+    )
+
+    # Provider-matched user credential captured at Add-model time. Used as
+    # fallback when ``Agent.llm_credential`` 가 미설정인 경우 (예: builder
+    # 가 자동 생성한 agent). 우선순위: agent.llm_credential >
+    # model.default_credential > _ENV_FALLBACK[provider] > None.
+    default_credential = relationship(
+        "Credential",
+        foreign_keys=[default_credential_id],
+        lazy="select",
     )

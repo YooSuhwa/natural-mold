@@ -35,13 +35,21 @@ async def resolve_llm_api_key_for_agent(
 
     Returns ``None`` when no usable credential exists; the model factory will
     fall through to env-var fallback.
+
+    INFO 레벨 trace 를 한 줄씩 emit — 어느 단계에서 키가 결정/실패했는지
+    backend stdout 로 진단 가능 (silent fail 회귀 방지).
     """
 
     cred = getattr(agent, "llm_credential", None)
     if cred is not None:
         key = await _decrypt_api_key(cred)
         if key is not None:
+            logger.info("agent %s: api_key from agent.llm_credential", agent.id)
             return key
+        logger.warning(
+            "agent %s: llm_credential decrypt returned None, trying model.default",
+            agent.id,
+        )
 
     model = getattr(agent, "model", None)
     if model is not None and model.default_credential_id is not None:
@@ -54,8 +62,28 @@ async def resolve_llm_api_key_for_agent(
         if fallback_cred is not None:
             key = await _decrypt_api_key(fallback_cred)
             if key is not None:
+                logger.info(
+                    "agent %s: api_key from model.default_credential (id=%s)",
+                    agent.id,
+                    fallback_cred.id,
+                )
                 return key
+            logger.warning(
+                "agent %s: model.default_credential decrypt returned None",
+                agent.id,
+            )
+        else:
+            logger.warning(
+                "agent %s: model.default_credential_id=%s not owned by user %s",
+                agent.id,
+                model.default_credential_id,
+                agent.user_id,
+            )
 
+    logger.warning(
+        "agent %s: no LLM credential resolved — falling back to env (api_key=None)",
+        agent.id,
+    )
     return None
 
 
