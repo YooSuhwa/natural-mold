@@ -126,9 +126,10 @@ def create_chat_model(
         completion_cap = (
             max_tokens if isinstance(max_tokens, int) else _GPT5_DEFAULT_COMPLETION_TOKENS
         )
-        existing_kw = kwargs.setdefault("model_kwargs", {})
-        if isinstance(existing_kw, dict):
-            existing_kw.setdefault("max_completion_tokens", completion_cap)
+        # langchain-openai 0.3+ 에서 ``max_completion_tokens`` 는 ChatOpenAI 의
+        # top-level kwarg. ``model_kwargs`` 안에 넣으면 LangChain 이 UserWarning
+        # 후 *제거* 해 OpenAI 에 forward 되지 않는다.
+        kwargs.setdefault("max_completion_tokens", completion_cap)
 
     kwargs["stream_usage"] = True
 
@@ -188,8 +189,9 @@ def _completion_token_cap_kw(provider: str, model_name: str) -> dict[str, Any]:
     if _is_gpt5_family(provider, model_name):
         # GPT-5 family also rejects non-default temperature; drop it and let
         # the API use its locked default (1.0) so the request validates.
+        # langchain-openai 0.3+ 는 top-level ``max_completion_tokens`` 만 forward.
         return {
-            "model_kwargs": {"max_completion_tokens": _TEST_COMPLETION_TOKEN_CAP},
+            "max_completion_tokens": _TEST_COMPLETION_TOKEN_CAP,
             "_drop_temperature": True,
         }
     return {"max_tokens": _TEST_COMPLETION_TOKEN_CAP}

@@ -204,7 +204,8 @@ class TestCreateChatModelGpt5Family:
     def test_gpt5_drops_max_tokens_and_forwards_max_completion_tokens(self):
         kwargs = self._patched_create("gpt-5.5-2026-04-23", max_tokens=512)
         assert "max_tokens" not in kwargs
-        assert kwargs["model_kwargs"]["max_completion_tokens"] == 512
+        # langchain-openai 0.3+ 는 top-level kwarg 로만 forward
+        assert kwargs["max_completion_tokens"] == 512
 
     def test_gpt5_drops_non_default_temperature(self):
         kwargs = self._patched_create("gpt-5", temperature=0.7)
@@ -213,16 +214,22 @@ class TestCreateChatModelGpt5Family:
     def test_gpt5_default_completion_tokens_when_caller_omits_cap(self):
         """No max_tokens passed → default 4096 to avoid empty content regression."""
         kwargs = self._patched_create("gpt-5")
-        assert kwargs["model_kwargs"]["max_completion_tokens"] == 4096
+        assert kwargs["max_completion_tokens"] == 4096
 
     def test_o3_family_also_guarded(self):
         kwargs = self._patched_create("o3-mini")
         assert "max_tokens" not in kwargs
-        assert kwargs["model_kwargs"]["max_completion_tokens"] == 4096
+        assert kwargs["max_completion_tokens"] == 4096
 
     def test_non_gpt5_keeps_max_tokens_top_level(self):
         """gpt-4o is NOT a reasoning family — max_tokens stays as-is."""
         kwargs = self._patched_create("gpt-4o", max_tokens=256)
         assert kwargs["max_tokens"] == 256
+        assert "max_completion_tokens" not in kwargs
+
+    def test_gpt5_no_userwarning_from_model_kwargs(self):
+        """``max_completion_tokens`` 는 top-level — model_kwargs 안에 들어가면
+        LangChain 이 UserWarning 후 제거하므로 OpenAI 에 forward 되지 않는다."""
+        kwargs = self._patched_create("gpt-5.5", max_tokens=200)
         model_kw = kwargs.get("model_kwargs", {})
         assert "max_completion_tokens" not in model_kw
