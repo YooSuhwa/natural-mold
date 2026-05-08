@@ -28,6 +28,14 @@ import type { FeedbackAdapter, AttachmentAdapter } from '@assistant-ui/react'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
 
+// Toast dedup ids — sonner 가 같은 id 토스트를 교체해 한 stream 내 다중
+// 에러가 스택되는 회귀 차단. 분류별 독립 슬롯 → SSE error / stale / reconnect /
+// interrupt-state-lost 가 동시에 발생해도 각각 1건씩만 표시.
+const TOAST_ID_STREAM_ERROR = 'chat-stream-error'
+const TOAST_ID_STREAM_STALE = 'chat-stream-stale'
+const TOAST_ID_RECONNECT_FAILED = 'chat-reconnect-failed'
+const TOAST_ID_INTERRUPT_LOST = 'chat-interrupt-state-lost'
+
 const MUTATION_PREFIXES = [
   'add_',
   'remove_',
@@ -388,7 +396,7 @@ export function useChatRuntime({
                 data.action_requests.length === 0 &&
                 data.review_configs.length === 0
               ) {
-                toast.error(tPage('interruptStateLost'))
+                toast.error(tPage('interruptStateLost'), { id: TOAST_ID_INTERRUPT_LOST })
                 break
               }
               onStandardInterrupt?.(data)
@@ -400,7 +408,9 @@ export function useChatRuntime({
               setStreamError(errMsg)
               // SSE error event 가 silent 하게 사라지지 않도록 사용자에게 toast.
               // ``setStreamError`` 는 setter-only state 라 UI 에 노출 안 됨.
-              toast.error(errMsg)
+              // 한 stream 내 다중 error event 시 sonner 가 같은 id 토스트를
+              // 교체하도록 dedup id 부여 — 마지막 메시지만 보이고 스택 방지.
+              toast.error(errMsg, { id: TOAST_ID_STREAM_ERROR })
               break
             }
             case 'message_end': {
@@ -436,7 +446,7 @@ export function useChatRuntime({
               setReconnectState('idle')
               setStreamError('broker_lost')
               if (!streamGuardRef.current.isStale(token)) {
-                toast.warning(tReconnect('stale'))
+                toast.warning(tReconnect('stale'), { id: TOAST_ID_STREAM_STALE })
               }
               break
             }
@@ -558,7 +568,7 @@ export function useChatRuntime({
           // 은 toast 무음. 두 가드 모두 통과한 진짜 실패만 사용자 알림.
           setReconnectState('idle')
           if (signal.aborted || streamGuardRef.current.isStale(token)) return
-          toast.error(tReconnect('failed'))
+          toast.error(tReconnect('failed'), { id: TOAST_ID_RECONNECT_FAILED })
           console.error('[useChatRuntime] Stream resume failed:', err)
         },
       })

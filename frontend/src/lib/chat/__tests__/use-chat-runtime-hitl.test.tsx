@@ -228,7 +228,41 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
     })
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(1))
-    expect(toast.error).toHaveBeenCalledWith('Error code: 404')
+    expect(toast.error).toHaveBeenCalledWith(
+      'Error code: 404',
+      expect.objectContaining({ id: 'chat-stream-error' }),
+    )
+  })
+
+  it('한 stream 다중 error event 시 dedup id 로 sonner 가 토스트 교체', async () => {
+    /**
+     * Backend 가 한 turn 안에 ``error`` SSE event 를 여러 개 emit (e.g. tool
+     * 단계마다 fail 누적) 하면 이전 구현은 토스트가 스택 → 화면 가림. 모든
+     * 호출이 동일 id (``chat-stream-error``) 를 부여해 sonner 가 교체하도록
+     * 보장 (시각적 dedup). 호출 횟수가 아닌 id 일관성을 회귀 가드.
+     */
+    vi.mocked(toast.error).mockClear()
+    const { options } = buildHookOptions({
+      events: [
+        { event: 'error', data: { message: 'first' } as unknown as Record<string, unknown> },
+        { event: 'error', data: { message: 'second' } as unknown as Record<string, unknown> },
+        { event: 'error', data: { message: 'third' } as unknown as Record<string, unknown> },
+      ],
+    })
+    const { result } = renderHook(() => useChatRuntime(options), {
+      wrapper: createWrapper(),
+    })
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(3))
+    // 모든 호출이 같은 dedup id 보유 — sonner 가 자동 교체
+    const calls = vi.mocked(toast.error).mock.calls
+    for (const call of calls) {
+      expect(call[1]).toEqual(expect.objectContaining({ id: 'chat-stream-error' }))
+    }
   })
 })
 
