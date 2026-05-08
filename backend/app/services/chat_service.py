@@ -28,7 +28,6 @@ from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
-from app.models.model import Model
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
@@ -447,6 +446,13 @@ async def get_owned_conversation_with_agent(
     수는 (2 + N) → (1 + N) — N=5 (model, llm_credential, tool_links, mcp_tool
     _links, skill_links) 기준 약 14% 절감.
 
+    ``Model.default_credential`` 관계는 eager-load 하지 않는다 — 런타임
+    (``credential_resolution``) 이 ``model.default_credential_id`` (FK 컬럼)
+    만 읽고 tier 2 fallback 시에만 ``credential_service.get_for_user`` 로
+    별도 fetch 한다. 이전에는 ``selectinload(Model.default_credential)`` 로
+    매 chat 요청마다 +1 SELECT 가 발사됐으나 결과를 아무도 읽지 않아 dead
+    round-trip 이었음.
+
     Returns ``None`` when the conversation doesn't exist *or* belongs to
     another user — caller should map both to a single 404 (rules/security.md
     enumeration oracle, ``get_owned_conversation`` 와 동일 contract).
@@ -457,7 +463,7 @@ async def get_owned_conversation_with_agent(
         .where(Conversation.id == conversation_id, Agent.user_id == user_id)
         .options(
             contains_eager(Conversation.agent).options(
-                selectinload(Agent.model).selectinload(Model.default_credential),
+                selectinload(Agent.model),
                 selectinload(Agent.llm_credential),
                 selectinload(Agent.tool_links)
                 .selectinload(AgentToolLink.tool)
