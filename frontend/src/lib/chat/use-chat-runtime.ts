@@ -396,9 +396,11 @@ export function useChatRuntime({
             }
             case 'error': {
               const errMsg =
-                (event.data as { message?: string }).message ??
-                '에이전트 실행 중 오류가 발생했습니다.'
+                (event.data as { message?: string }).message ?? tPage('error')
               setStreamError(errMsg)
+              // SSE error event 가 silent 하게 사라지지 않도록 사용자에게 toast.
+              // ``setStreamError`` 는 setter-only state 라 UI 에 노출 안 됨.
+              toast.error(errMsg)
               break
             }
             case 'message_end': {

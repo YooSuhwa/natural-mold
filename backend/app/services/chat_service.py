@@ -28,6 +28,7 @@ from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
+from app.models.model import Model
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
@@ -456,7 +457,7 @@ async def get_owned_conversation_with_agent(
         .where(Conversation.id == conversation_id, Agent.user_id == user_id)
         .options(
             contains_eager(Conversation.agent).options(
-                selectinload(Agent.model),
+                selectinload(Agent.model).selectinload(Model.default_credential),
                 selectinload(Agent.llm_credential),
                 selectinload(Agent.tool_links)
                 .selectinload(AgentToolLink.tool)
