@@ -80,7 +80,7 @@ async def resolve_llm_api_key_for_agent(
                 agent.user_id,
             )
 
-    logger.warning(
+    logger.info(
         "agent %s: no LLM credential resolved — falling back to env (api_key=None)",
         agent.id,
     )
