@@ -130,6 +130,8 @@ def create_chat_model(
     ``api_key`` is the resolved (decrypted) key from the caller. When ``None``
     the env-var fallback is consulted for ``openai``/``anthropic``/``google``/
     ``openrouter`` only — other providers must receive an explicit key.
+
+    Provider quirk 처리는 helper 함수 (``_apply_*``) 로 분리 — ADR-014.
     """
 
     cls = PROVIDER_MAP.get(provider, ChatOpenAI)
@@ -140,16 +142,6 @@ def create_chat_model(
         kwargs["api_key"] = resolved_key
     if base_url:
         kwargs["base_url"] = base_url
-    elif provider in _OPENAI_FAMILY_BASE_URLS:
-        # ChatOpenAI (openai / openrouter wrap) 가 base_url 미지정 시 OpenAI
-        # Python SDK 가 ``OPENAI_BASE_URL`` env 로 fallback. 사용자 셸이 RunPod
-        # proxy / Claude Code helper / 사내 프록시로 export 해놓으면 OpenAI 본
-        # endpoint 가 아닌 *엉뚱한* 호스트로 라우팅되어 404 회귀 (e.g.
-        # agent.model.base_url=NULL + OS env OPENAI_BASE_URL=https://*.proxy.
-        # runpod.net/v1 → gpt-5 호출 시 404). provider 별 canonical endpoint
-        # 명시 set 으로 OS env 우회 차단. ``create_chat_model_for_test`` 와
-        # 동일한 가드.
-        kwargs["base_url"] = _OPENAI_FAMILY_BASE_URLS[provider]
 
     for param in ("temperature", "top_p", "max_tokens"):
         if param in extra and extra[param] is not None:
@@ -157,31 +149,14 @@ def create_chat_model(
                 continue
             kwargs[param] = extra[param]
 
-    # Anthropic rejects temperature + top_p simultaneously.
-    if provider == "anthropic" and "temperature" in kwargs and "top_p" in kwargs:
-        kwargs.pop("top_p")
-
-    # OpenAI GPT-5 / o-series reasoning families: ``max_tokens`` → 모델이
-    # 거부하므로 ``max_completion_tokens`` 으로 forward + non-default
-    # ``temperature`` 제거. 또한 reasoning 토큰을 다 쓰고 본문이 비는 회귀
-    # (output_tokens 가 reasoning_tokens 와 같음) 를 막기 위해 caller 가
-    # 명시 cap 을 안 줬으면 충분히 큰 default 를 보장한다.
-    if _is_gpt5_family(provider, model_name):
-        max_tokens = kwargs.pop("max_tokens", None)
-        kwargs.pop("temperature", None)
-        completion_cap = (
-            max_tokens if isinstance(max_tokens, int) else _GPT5_DEFAULT_COMPLETION_TOKENS
-        )
-        # langchain-openai 0.3+ 에서 ``max_completion_tokens`` 는 ChatOpenAI 의
-        # top-level kwarg. ``model_kwargs`` 안에 넣으면 LangChain 이 UserWarning
-        # 후 *제거* 해 OpenAI 에 forward 되지 않는다.
-        kwargs.setdefault("max_completion_tokens", completion_cap)
+    _apply_anthropic_quirks(provider, kwargs)
+    _apply_gpt5_quirks(
+        provider, model_name, kwargs, completion_token_default=_GPT5_DEFAULT_COMPLETION_TOKENS
+    )
+    _apply_openai_compatible_base_url(provider, kwargs)
 
     kwargs["stream_usage"] = True
-
-    if cls in (ChatOpenAI,):
-        kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
-        kwargs["http_client"] = httpx.Client(verify=_ssl_ctx)
+    _apply_openai_ssl_clients(cls, kwargs)
 
     return cls(**kwargs)
 
@@ -208,41 +183,23 @@ _GPT5_FAMILY_PREFIXES: tuple[str, ...] = ("gpt-5", "o1", "o3", "o4")
 _GPT5_DEFAULT_COMPLETION_TOKENS = 4096
 
 
-def _is_gpt5_family(provider: str, model_name: str) -> bool:
+def is_gpt5_family(provider: str, model_name: str) -> bool:
+    """OpenAI GPT-5 / o-series 가족 — ``max_completion_tokens`` 강제, temperature lock.
+
+    Public so other modules (e.g. ``app.services.model_test``) share the
+    single source of truth (ADR-014). raw curl preview 와 런타임 wire 가
+    drift 하지 않도록 한 곳에서만 판정.
+    """
+
+    if provider != "openai":
+        return False
     name = (model_name or "").lower()
-    return provider == "openai" and any(name.startswith(p) for p in _GPT5_FAMILY_PREFIXES)
+    return any(name.startswith(p) for p in _GPT5_FAMILY_PREFIXES)
 
 
 TEST_COMPLETION_TOKEN_CAP = 200
 # Backwards-compat alias (이전 commit 에서 underscore prefix 로 export 되었음).
 _TEST_COMPLETION_TOKEN_CAP = TEST_COMPLETION_TOKEN_CAP
-
-
-def _completion_token_cap_kw(provider: str, model_name: str) -> dict[str, Any]:
-    """Return the right kwarg shape for ChatOpenAI's token cap.
-
-    OpenAI GPT-5 / reasoning models reject ``max_tokens`` and require
-    ``max_completion_tokens``. LangChain's ``ChatOpenAI`` does not yet
-    surface that as a top-level constructor argument, so we forward it
-    through ``model_kwargs``. Everything else keeps the top-level
-    ``max_tokens`` shortcut, which LangChain wires straight to OpenAI.
-
-    Cap is ``_TEST_COMPLETION_TOKEN_CAP`` so reasoning families (GPT-5,
-    o-series, qwen reasoning, deepseek-r 등) 가 hidden chain-of-thought
-    에 토큰을 다 쓰고도 ``"pong"`` 한 단어가 visible content 로 남을
-    여유를 보장한다. Anthropic / 일반 OpenAI 처럼 reasoning 미지원
-    모델은 항상 짧게 응답하므로 200 cap 도 비용 무시 수준 (~$0.001/test).
-    """
-
-    if _is_gpt5_family(provider, model_name):
-        # GPT-5 family also rejects non-default temperature; drop it and let
-        # the API use its locked default (1.0) so the request validates.
-        # langchain-openai 0.3+ 는 top-level ``max_completion_tokens`` 만 forward.
-        return {
-            "max_completion_tokens": TEST_COMPLETION_TOKEN_CAP,
-            "_drop_temperature": True,
-        }
-    return {"max_tokens": TEST_COMPLETION_TOKEN_CAP}
 
 
 def create_chat_model_for_test(
@@ -254,45 +211,97 @@ def create_chat_model_for_test(
 ) -> BaseChatModel:
     """Build a deterministic, low-cost LangChain chat model for the test surface.
 
-    Locked-in defaults (token cap = 10, ``temperature=0``) keep test
-    invocations cheap and reproducible no matter what model row exists in the
-    catalog. The caller is expected to wrap the resulting ``ainvoke`` in an
-    ``asyncio.wait_for(...)`` to enforce the timeout — this factory does not
-    schedule timers itself.
+    Locked-in defaults (``TEST_COMPLETION_TOKEN_CAP``, ``temperature=0``)
+    keep test invocations cheap and reproducible no matter what model row
+    exists in the catalog. The caller is expected to wrap the resulting
+    ``ainvoke`` in an ``asyncio.wait_for(...)`` to enforce the timeout —
+    this factory does not schedule timers itself.
+
+    Provider quirk 처리는 ``create_chat_model`` 과 동일 helper 사용 — ADR-014.
     """
 
     cls = PROVIDER_MAP.get(provider, ChatOpenAI)
-    cap_kwargs = _completion_token_cap_kw(provider, model_name)
-    drop_temperature = cap_kwargs.pop("_drop_temperature", False)
 
     kwargs: dict[str, Any] = {
         "model": model_name,
         "stream_usage": True,
-        **cap_kwargs,
+        "max_tokens": TEST_COMPLETION_TOKEN_CAP,
+        "temperature": 0,
     }
-    if not drop_temperature:
-        kwargs["temperature"] = 0
     if api_key:
         kwargs["api_key"] = api_key
     if base_url:
         kwargs["base_url"] = base_url
-    elif cls is ChatOpenAI:
-        # ChatOpenAI is the wrapper for every OpenAI-compatible provider in our
-        # PROVIDER_MAP (openai itself, OpenRouter, generic openai_compatible).
-        # The underlying OpenAI Python SDK falls back to ``OPENAI_BASE_URL``
-        # env when ``base_url`` is omitted, which routes the request to the
-        # *wrong* host whenever a shell has set it for an unrelated tool
-        # (Claude Code / codex helpers do this). Pin the canonical endpoint
-        # per-provider so each credential reaches its own gateway.
-        default_base = _OPENAI_FAMILY_BASE_URLS.get(provider)
-        if default_base:
-            kwargs["base_url"] = default_base
 
-    if cls in (ChatOpenAI,):
-        kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
-        kwargs["http_client"] = httpx.Client(verify=_ssl_ctx)
+    _apply_gpt5_quirks(
+        provider, model_name, kwargs, completion_token_default=TEST_COMPLETION_TOKEN_CAP
+    )
+    _apply_openai_compatible_base_url(provider, kwargs)
+    _apply_openai_ssl_clients(cls, kwargs)
 
     return cls(**kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Provider quirk helpers (ADR-014)
+# ---------------------------------------------------------------------------
+
+
+def _apply_anthropic_quirks(provider: str, kwargs: dict[str, Any]) -> None:
+    """Anthropic API 가 ``temperature`` 와 ``top_p`` 동시 지정을 거부 — top_p drop."""
+
+    if provider == "anthropic" and "temperature" in kwargs and "top_p" in kwargs:
+        kwargs.pop("top_p")
+
+
+def _apply_gpt5_quirks(
+    provider: str,
+    model_name: str,
+    kwargs: dict[str, Any],
+    *,
+    completion_token_default: int,
+) -> None:
+    """OpenAI GPT-5 / o-series 가족: ``max_tokens`` 거부 + non-default ``temperature`` 거부.
+
+    - ``max_tokens`` → ``max_completion_tokens`` 로 top-level forward
+      (langchain-openai 0.3+ 는 ``model_kwargs`` 안에 넣으면 UserWarning 후
+      제거해 OpenAI 에 도달 못 함).
+    - caller 가 cap 을 안 줬으면 ``completion_token_default`` 보장 — reasoning
+      토큰을 다 쓰고 visible content 가 비는 회귀 방지.
+    - ``temperature`` 는 모델이 default 만 받으므로 drop.
+    """
+
+    if not is_gpt5_family(provider, model_name):
+        return
+    max_tokens = kwargs.pop("max_tokens", None)
+    kwargs.pop("temperature", None)
+    cap = max_tokens if isinstance(max_tokens, int) else completion_token_default
+    kwargs.setdefault("max_completion_tokens", cap)
+
+
+def _apply_openai_compatible_base_url(provider: str, kwargs: dict[str, Any]) -> None:
+    """``base_url`` 미지정 시 provider canonical endpoint pin.
+
+    ChatOpenAI 가 base_url 없을 때 OpenAI Python SDK 가 ``OPENAI_BASE_URL``
+    env 로 fallback. 사용자 셸이 RunPod proxy / Claude Code helper / 사내
+    프록시로 export 해놓으면 *엉뚱한* 호스트로 라우팅되어 404 회귀
+    (e.g. ``OPENAI_BASE_URL=https://*.proxy.runpod.net/v1`` 환경에서 gpt-5
+    호출 시 404). provider 별 canonical endpoint 명시 set 으로 OS env 우회 차단.
+    """
+
+    if "base_url" in kwargs:
+        return
+    default = _OPENAI_FAMILY_BASE_URLS.get(provider)
+    if default:
+        kwargs["base_url"] = default
+
+
+def _apply_openai_ssl_clients(cls: type[BaseChatModel], kwargs: dict[str, Any]) -> None:
+    """ChatOpenAI 계열만 truststore 기반 SSL client 주입 (사내 VPN / corp proxy 호환)."""
+
+    if cls is ChatOpenAI:
+        kwargs["http_async_client"] = httpx.AsyncClient(verify=_ssl_ctx)
+        kwargs["http_client"] = httpx.Client(verify=_ssl_ctx)
 
 
 # Default base URL per OpenAI-compatible provider. Used only when the caller
@@ -542,9 +551,11 @@ async def create_chat_model_with_fallback(
 __all__ = [
     "PROVIDER_API_KEY_MAP",
     "PROVIDER_MAP",
+    "TEST_COMPLETION_TOKEN_CAP",
     "create_chat_model",
     "create_chat_model_for_test",
     "create_chat_model_with_fallback",
     "env_provider_keys",
+    "is_gpt5_family",
     "sync_env_fallback_from_credentials",
 ]

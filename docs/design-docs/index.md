@@ -12,3 +12,6 @@
 | ADR-009 | [Credential / Tools / Skills 그린필드 리라이트](adr-009-greenfield-credentials.md) | 승인됨 | 2026-04-29 |
 | ADR-010 | [UI 토큰 + DialogShell 비주얼 스펙](ADR-010-ui-tokens-and-dialog-shell.md) | 승인됨 | 2026-04-30 |
 | ADR-011 | [SSE Stream Resume (W3-out)](adr-011-sse-stream-resume.md) | 진행 중 (M1+M2) | 2026-05-03 |
+| ADR-012 | [HiTL 미들웨어 마이그레이션](adr-012-hitl-middleware-migration.md) | 승인됨 | 2026-05-04 |
+| ADR-013 | [Service-side LLM Key from Credentials](adr-013-service-llm-key-from-credentials.md) | 승인됨 | 2026-05-06 |
+| ADR-014 | [Chat Model Factory — Provider Quirks 분리](adr-014-chat-model-factory-strategy.md) | 승인됨 | 2026-05-08 |

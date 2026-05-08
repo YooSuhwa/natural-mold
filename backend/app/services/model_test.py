@@ -383,15 +383,8 @@ def _reconstruct_request(
 # OpenAI's GPT-5 / o-series families reject ``max_tokens`` and ``temperature``
 # overrides — the wire payload uses ``max_completion_tokens`` instead. We
 # mirror the runtime decision here so ``raw_request`` / curl reflect the
-# bytes actually sent rather than the legacy shape.
-_GPT5_FAMILY_PREFIXES: tuple[str, ...] = ("gpt-5", "o1", "o3", "o4")
-
-
-def _is_gpt5_family(provider: str, model_name: str) -> bool:
-    if provider != "openai":
-        return False
-    name = (model_name or "").lower()
-    return any(name.startswith(p) for p in _GPT5_FAMILY_PREFIXES)
+# bytes actually sent rather than the legacy shape. Single source of truth
+# (``is_gpt5_family``) lives in ``model_factory`` — see ADR-014.
 
 
 def _provider_wire_shape(
@@ -401,9 +394,9 @@ def _provider_wire_shape(
     base_url: str | None,
     api_key: str | None,
 ) -> tuple[str, dict[str, str], dict[str, Any]]:
-    from app.agent_runtime.model_factory import TEST_COMPLETION_TOKEN_CAP
+    from app.agent_runtime.model_factory import TEST_COMPLETION_TOKEN_CAP, is_gpt5_family
 
-    is_gpt5 = _is_gpt5_family(provider, model_name)
+    is_gpt5 = is_gpt5_family(provider, model_name)
 
     body: dict[str, Any] = {
         "model": model_name,
