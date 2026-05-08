@@ -273,10 +273,7 @@ async def _resolve_tools(
     """도구 이름 목록 → (Tool 레코드, McpTool 레코드) 분리 반환.
 
     Builder phase3 카탈로그 (``get_tools_catalog``) 는 ``Tool`` 과 ``McpTool``
-    을 모두 노출하므로 phase8 confirm 단계도 양쪽을 매칭해야 한다. 이전
-    구현은 ``Tool`` 만 조회해 사용자가 등록한 MCP 서버 도구
-    (e.g. ``list_departments``) 가 silent drop 되어 빈 도구 에이전트로
-    생성되는 회귀가 있었음.
+    을 모두 노출하므로 phase8 confirm 도 양쪽을 매칭해야 한다.
 
     같은 이름이 양쪽 테이블에 존재하면 ``Tool`` 우선 — 사용자가 동명 custom
     tool 을 명시적으로 등록했다면 그쪽이 의도일 가능성이 높다.
