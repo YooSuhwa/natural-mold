@@ -29,8 +29,13 @@ class BuilderSession(Base):
     system_prompt: Mapped[str | None] = mapped_column(Text)
     draft_config: Mapped[dict | None] = mapped_column(JSON)  # type: ignore[type-arg]
 
-    # 빌드 완료 시 생성된 에이전트 ID
-    agent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("agents.id"), nullable=True)
+    # 빌드 완료 시 생성된 에이전트 ID. ``ON DELETE SET NULL`` — agent 가
+    # 삭제돼도 builder session 은 감사/히스토리 용도로 보존하고 reference 만
+    # 끊는다. cascade delete 로 세션을 함께 지우면 빌드 흐름 분석 트레일
+    # 손실.
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agents.id", ondelete="SET NULL"), nullable=True
+    )
     error_message: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(
