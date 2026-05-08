@@ -446,12 +446,10 @@ async def get_owned_conversation_with_agent(
     수는 (2 + N) → (1 + N) — N=5 (model, llm_credential, tool_links, mcp_tool
     _links, skill_links) 기준 약 14% 절감.
 
-    ``Model.default_credential`` 관계는 eager-load 하지 않는다 — 런타임
-    (``credential_resolution``) 이 ``model.default_credential_id`` (FK 컬럼)
-    만 읽고 tier 2 fallback 시에만 ``credential_service.get_for_user`` 로
-    별도 fetch 한다. 이전에는 ``selectinload(Model.default_credential)`` 로
-    매 chat 요청마다 +1 SELECT 가 발사됐으나 결과를 아무도 읽지 않아 dead
-    round-trip 이었음.
+    ``Model.default_credential`` 관계는 의도적으로 chain 에서 제외한다 —
+    ``credential_resolution`` 이 FK (``default_credential_id``) 만 읽고 tier 2
+    fallback 시 ownership 검증을 위해 ``credential_service.get_for_user`` 로
+    별도 fetch 하므로, eager-load 결과는 사용처가 없다.
 
     Returns ``None`` when the conversation doesn't exist *or* belongs to
     another user — caller should map both to a single 404 (rules/security.md
