@@ -1,11 +1,15 @@
 'use client'
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import { WrenchIcon, BlocksIcon } from 'lucide-react'
+import { WrenchIcon, BlocksIcon, BookOpenIcon, PlugIcon } from 'lucide-react'
 import { useApprovalForm } from './use-approval-form'
 import { ApprovalFooter } from './approval-footer'
 
+// Card-level kind (Phase 3: tool, Phase 4: middleware). 개별 item 의 카테고리는
+// item.kind 로 override — 한 카드 안에 tool / mcp / skill 이 섞여 추천될 때
+// 각 행이 자기 아이콘과 path 를 가진다.
 type ItemKind = 'tool' | 'middleware'
+type RowKind = 'tool' | 'mcp' | 'skill' | 'middleware'
 
 interface ToolItem {
   tool_name?: string
@@ -13,6 +17,7 @@ interface ToolItem {
   description?: string
   reason?: string
   path?: string
+  kind?: 'tool' | 'mcp' | 'skill'
 }
 
 interface RecommendationArgs {
@@ -28,15 +33,36 @@ function getItemName(item: ToolItem, kind: ItemKind): string {
   return item.middleware_name ?? ''
 }
 
-function getItemPath(item: ToolItem, kind: ItemKind): string {
+const ROW_PATH_PREFIX: Record<RowKind, string> = {
+  tool: 'tools',
+  mcp: 'mcp',
+  skill: 'skills',
+  middleware: 'middlewares',
+}
+
+function getItemPath(item: ToolItem, rowKind: RowKind): string {
   if (item.path) return item.path
-  const name = getItemName(item, kind)
-  return kind === 'tool' ? `tools/${name}.yaml` : `middlewares/${name}.yaml`
+  const name =
+    rowKind === 'middleware' ? (item.middleware_name ?? '') : (item.tool_name ?? '')
+  return `${ROW_PATH_PREFIX[rowKind]}/${name}.yaml`
+}
+
+const ROW_ICON: Record<RowKind, typeof WrenchIcon> = {
+  tool: WrenchIcon,
+  mcp: PlugIcon,
+  skill: BookOpenIcon,
+  middleware: BlocksIcon,
+}
+
+function resolveRowKind(item: ToolItem, cardKind: ItemKind): RowKind {
+  if (cardKind === 'middleware') return 'middleware'
+  return item.kind ?? 'tool'
 }
 
 function ItemCard({ item, kind }: { item: ToolItem; kind: ItemKind }) {
   const name = getItemName(item, kind)
-  const Icon = kind === 'middleware' ? BlocksIcon : WrenchIcon
+  const rowKind = resolveRowKind(item, kind)
+  const Icon = ROW_ICON[rowKind]
   return (
     <div className="rounded-lg border border-border p-3">
       <div className="flex items-start gap-2">
@@ -47,7 +73,7 @@ function ItemCard({ item, kind }: { item: ToolItem; kind: ItemKind }) {
             <div className="mt-1 text-xs text-muted-foreground">
               경로:{' '}
               <code className="rounded bg-muted px-1 py-0.5">
-                {getItemPath(item, kind)}
+                {getItemPath(item, rowKind)}
               </code>
             </div>
           )}

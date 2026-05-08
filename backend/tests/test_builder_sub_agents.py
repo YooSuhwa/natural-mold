@@ -397,7 +397,7 @@ async def test_invoke_for_text_all_short():
 def test_format_catalog_empty():
     from app.agent_runtime.builder.sub_agents.tool_recommender import _format_catalog
 
-    assert "사용 가능한 도구가 없습니다" in _format_catalog([])
+    assert "사용 가능한 항목이 없습니다" in _format_catalog([])
 
 
 def test_format_catalog_items():
@@ -406,6 +406,52 @@ def test_format_catalog_items():
     result = _format_catalog(TOOL_CATALOG)
     assert "Web Search" in result
     assert "Web Scraper" in result
+
+
+def test_format_catalog_includes_kind_prefix():
+    """카탈로그 줄에 [kind] prefix 가 노출되어야 LLM 이 종류 인지 — skill 포함."""
+    from app.agent_runtime.builder.sub_agents.tool_recommender import _format_catalog
+
+    catalog = [
+        {"name": "Web Search", "kind": "tool", "description": "웹 검색"},
+        {"name": "list_departments", "kind": "mcp", "description": "부서 목록"},
+        {"name": "seat_layout", "kind": "skill", "description": "좌석 가이드"},
+    ]
+    result = _format_catalog(catalog)
+    assert "[tool] Web Search" in result
+    assert "[mcp] list_departments" in result
+    assert "[skill] seat_layout" in result
+
+
+@pytest.mark.asyncio
+async def test_recommend_tools_skill_kind_canonicalized():
+    """LLM 이 kind 를 누락/잘못 답해도 카탈로그 정답으로 정정 — skill 매칭 회귀 가드."""
+    from unittest.mock import AsyncMock, patch
+
+    catalog = [
+        {"name": "seat_layout_guide", "kind": "skill", "description": "좌석 가이드"},
+    ]
+    # LLM 이 kind 를 일부러 잘못 답함 — 시스템이 skill 로 정정해야 함
+    mock_data = [
+        {
+            "tool_name": "seat_layout_guide",
+            "kind": "tool",
+            "description": "좌석",
+            "reason": "위치 안내",
+        },
+    ]
+    with patch(
+        "app.agent_runtime.builder.sub_agents.tool_recommender.invoke_with_json_retry",
+        new_callable=AsyncMock,
+        return_value=mock_data,
+    ):
+        from app.agent_runtime.builder.sub_agents.tool_recommender import recommend_tools
+
+        intent = _make_intent()
+        result = await recommend_tools(intent, catalog)
+        assert len(result) == 1
+        assert result[0].tool_name == "seat_layout_guide"
+        assert result[0].kind == "skill"  # 카탈로그 정답으로 정정
 
 
 # ---------------------------------------------------------------------------

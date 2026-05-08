@@ -86,11 +86,18 @@ class AgentCreationIntent(BaseModel):
 
 
 class ToolRecommendation(BaseModel):
-    """도구 추천 서브에이전트의 개별 추천 항목."""
+    """도구 추천 서브에이전트의 개별 추천 항목.
+
+    ``kind`` 는 매칭 대상 카테고리를 명시한다 — phase8 confirm 단계가 종류별
+    로 다른 테이블/링크를 사용하므로 (Tool / McpTool / Skill). 기본값은
+    ``"tool"`` 로 backward compat 보장 — 기존 LLM 응답이 kind 를 누락해도
+    Tool 매칭 경로로 흘러간다.
+    """
 
     tool_name: str
     description: str
     reason: str
+    kind: Literal["tool", "mcp", "skill"] = "tool"
 
 
 # ---------------------------------------------------------------------------

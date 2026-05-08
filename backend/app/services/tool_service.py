@@ -17,11 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
+from app.models.skill import Skill
 from app.models.tool import Tool
 
 
 async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
-    """Return the user's enabled tools + system tools + MCP tools (per-user servers)."""
+    """Return the user's available items: ``Tool`` + ``McpTool`` + ``Skill``.
+
+    Each item carries a ``kind`` field (``"tool" | "mcp" | "skill"``) so the
+    builder phase3 추천기 LLM 이 상황에 맞는 종류를 선택할 수 있고, phase8
+    confirm 이 종류별로 적절한 link 테이블에 매칭한다.
+    """
 
     tool_rows = await db.execute(
         select(Tool.id, Tool.name, Tool.description, Tool.definition_key).where(
@@ -62,6 +68,22 @@ async def get_tools_catalog(db: AsyncSession, user_id: uuid.UUID) -> list[dict[s
             "enabled": bool(row.enabled),
         }
         for row in mcp_rows.all()
+    )
+
+    skill_rows = await db.execute(
+        select(Skill.id, Skill.name, Skill.description, Skill.slug).where(
+            Skill.user_id == user_id
+        )
+    )
+    items.extend(
+        {
+            "id": str(row.id),
+            "kind": "skill",
+            "name": row.name,
+            "description": row.description or "",
+            "slug": row.slug,
+        }
+        for row in skill_rows.all()
     )
 
     return items
