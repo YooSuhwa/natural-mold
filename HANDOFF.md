@@ -1,27 +1,26 @@
-# 작업 인계 — Builder v3 skill/revision/UX + agent 삭제 FK fix
+# 작업 인계 — 8 PR 머지 완료, 다음 세션 라이브 검증
 
 > 새 세션 첫 행동: 본 파일 + (필요 시) `docs/design-docs/adr-014-chat-model-factory-strategy.md` 참조.
 
 ## 마지막 상태
 
-- 브랜치: `fix/builder-session-agent-fk-cascade` (PR #147 open)
-- main 머지 완료 (이번 세션): PR #140 ~ #146 (7건)
-- main 머지 대기: PR #147
+- 브랜치: `main` (모든 작업 머지 완료, 본 파일 갱신용 docs 브랜치만 남음)
+- 이번 세션 PR 8건 (#140~#147) **전부 main 머지** ✅
 - backend: pytest **908** / pyright 0/0 / ruff clean / alembic m35 OK
 - frontend: vitest **286** / lint clean / build PASS
 
-## 이번 세션 PR 8건
+## 이번 세션 PR 8건 (전부 머지)
 
-| PR | 의미 | 상태 |
-|----|------|------|
-| #140 | credential_resolution env fallback WARNING→INFO | ✅ merged |
-| #141 | chat model factory provider quirks 분리 (ADR-014) | ✅ merged |
-| #142 | chat toast 한 stream 다중 에러 dedup id | ✅ merged |
-| #143 | Model.default_credential dead eager-load 제거 | ✅ merged |
-| #144 | builder confirm MCP 도구 silent drop 차단 | ✅ merged |
-| #145 | builder skill 인지 + revision 한정 표현 ("이것만") | ✅ merged |
-| #146 | prompt approval 카드 — 전체 보기 토글 → 내부 스크롤 | ✅ merged |
-| #147 | agent 삭제 — builder_sessions FK ON DELETE SET NULL | 🟡 open |
+| PR | 의미 |
+|----|------|
+| #140 | credential_resolution env fallback WARNING→INFO |
+| #141 | chat model factory provider quirks 분리 (ADR-014) |
+| #142 | chat toast 한 stream 다중 에러 dedup id |
+| #143 | Model.default_credential dead eager-load 제거 |
+| #144 | builder confirm MCP 도구 silent drop 차단 |
+| #145 | builder skill 인지 + revision 한정 표현 ("이것만") |
+| #146 | prompt approval 카드 — 전체 보기 토글 → 내부 스크롤 |
+| #147 | agent 삭제 — builder_sessions FK ON DELETE SET NULL |
 
 ## PR #145 핵심 변경
 
@@ -33,11 +32,12 @@
 
 ## 다음 세션 진입점
 
-1. PR #147 머지 확인 → `/sync` 로 main 동기화
-2. **라이브 검증 시나리오** (이번 세션 fix 모두):
-   - PR #145: "직원 위치" 에이전트 → skill 카탈로그 노출 + "이것만" 수정 → 정확 반영 → `skill_links` 생성
-   - PR #146: phase5 프롬프트 카드 내부 스크롤
-   - PR #147: 빌더로 만든 에이전트 즉시 삭제 → 204 + `builder_sessions.agent_id` NULL 끊김
+1. **라이브 검증 시나리오** (이번 세션 fix 모두):
+   - #145: "직원 위치" 에이전트 → skill 카탈로그 노출 + "이것만" 수정 → 정확 반영 → `skill_links` 생성
+   - #146: phase5 프롬프트 카드 내부 스크롤
+   - #147: 빌더 에이전트 즉시 삭제 → 204 + `builder_sessions.agent_id` NULL 끊김
+2. 운영 DB 마이그레이션: `cd backend && uv run alembic upgrade head` (m35 적용)
+3. 신규 task 시작 (HANDOFF follow-up + 즉시 버그 모두 소진)
 
 ## W3-out 잔여 (외부 트리거 대기 — 지금 손대지 말 것)
 
