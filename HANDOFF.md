@@ -1,16 +1,16 @@
-# 작업 인계 — Builder v3 skill 인지 + revision 한정 표현 + UX 폴리시
+# 작업 인계 — Builder v3 skill/revision/UX + agent 삭제 FK fix
 
 > 새 세션 첫 행동: 본 파일 + (필요 시) `docs/design-docs/adr-014-chat-model-factory-strategy.md` 참조.
 
 ## 마지막 상태
 
-- 브랜치: `fix/prompt-approval-card-scroll` (PR #146 open)
-- main 머지 완료 (이번 세션): PR #140 ~ #145 (6건)
-- main 머지 대기: PR #146
-- backend: pytest **907** / pyright 0/0 / ruff clean / alembic OK
+- 브랜치: `fix/builder-session-agent-fk-cascade` (PR #147 open)
+- main 머지 완료 (이번 세션): PR #140 ~ #146 (7건)
+- main 머지 대기: PR #147
+- backend: pytest **908** / pyright 0/0 / ruff clean / alembic m35 OK
 - frontend: vitest **286** / lint clean / build PASS
 
-## 이번 세션 PR 7건
+## 이번 세션 PR 8건
 
 | PR | 의미 | 상태 |
 |----|------|------|
@@ -20,7 +20,8 @@
 | #143 | Model.default_credential dead eager-load 제거 | ✅ merged |
 | #144 | builder confirm MCP 도구 silent drop 차단 | ✅ merged |
 | #145 | builder skill 인지 + revision 한정 표현 ("이것만") | ✅ merged |
-| #146 | prompt approval 카드 — 전체 보기 토글 → 내부 스크롤 | 🟡 open |
+| #146 | prompt approval 카드 — 전체 보기 토글 → 내부 스크롤 | ✅ merged |
+| #147 | agent 삭제 — builder_sessions FK ON DELETE SET NULL | 🟡 open |
 
 ## PR #145 핵심 변경
 
@@ -32,12 +33,11 @@
 
 ## 다음 세션 진입점
 
-1. PR #146 머지 확인 → `/sync` 로 main 동기화
-2. **사용자 시나리오 라이브 재현** (PR #145 검증):
-   - "직원 위치 알려주는 에이전트" → skill 카탈로그 노출 + 추천에 skill 포함
-   - "seating-guide 이것만" 수정요청 → 정확히 1건 응답
-   - 최종 승인 → `agent.skill_links` 정상 생성
-3. PR #146 검증: phase5 시스템 프롬프트 카드가 카드 내부 스크롤로 전체 표시 (전체 보기 토글 사라짐)
+1. PR #147 머지 확인 → `/sync` 로 main 동기화
+2. **라이브 검증 시나리오** (이번 세션 fix 모두):
+   - PR #145: "직원 위치" 에이전트 → skill 카탈로그 노출 + "이것만" 수정 → 정확 반영 → `skill_links` 생성
+   - PR #146: phase5 프롬프트 카드 내부 스크롤
+   - PR #147: 빌더로 만든 에이전트 즉시 삭제 → 204 + `builder_sessions.agent_id` NULL 끊김
 
 ## W3-out 잔여 (외부 트리거 대기 — 지금 손대지 말 것)
 

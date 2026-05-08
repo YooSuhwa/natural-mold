@@ -121,6 +121,21 @@ async def test_delete_nonexistent_agent(client: AsyncClient):
     assert resp.status_code == 404
 
 
+def test_builder_sessions_agent_id_fk_set_null():
+    """Builder session FK 가 ``ON DELETE SET NULL`` 이어야 PostgreSQL 에서 agent
+    삭제 시 세션이 cascade-delete 되거나 ForeignKeyViolation 으로 막히지 않는다.
+
+    Test runner 의 SQLite 는 기본 FK 비활성화라 runtime fire 검증 불가 →
+    SQLAlchemy metadata 의 FK 정의 자체를 검증해 PostgreSQL 동작을 보장.
+    """
+    from app.models.builder_session import BuilderSession
+
+    fk = next(
+        c for c in BuilderSession.__table__.foreign_keys if c.column.table.name == "agents"
+    )
+    assert fk.ondelete == "SET NULL"
+
+
 async def _create_agent(client: AsyncClient, model_id: str) -> str:
     resp = await client.post(
         "/api/agents",
