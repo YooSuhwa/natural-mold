@@ -171,7 +171,11 @@ def build_approval_result(
     """phase 3/4/5 approval 응답을 dict로 변환 (라우팅은 conditional_edges가).
 
     승인 시: completion 메시지 + ``current_phase`` 전진 + 카드 close.
-    수정 시: ``last_revision_message`` 와 ``clear_field`` 클리어 + 카드 close.
+    수정 시: ``last_revision_message`` 만 set + 카드 close. **list 형 필드 (tools,
+    middlewares) 는 clear 하지 않는다** — 다음 self-loop 의 추천기가 직전
+    값을 "수정 대상" 컨텍스트로 LLM 에 전달해 사용자 한정 표현 ("이것만"
+    등) 을 정확히 반영하기 위함. ``system_prompt`` 같은 단일 텍스트 필드는
+    clear 해 강제 재생성.
     """
     if approved:
         close_msgs = close_pending_tool_card(pending_tc_id, tool_name, "승인됨")
@@ -189,12 +193,16 @@ def build_approval_result(
     close_msgs = close_pending_tool_card(
         pending_tc_id, tool_name, f"수정 요청: {revision_text}"
     )
-    return {
+    result: dict[str, Any] = {
         "messages": close_msgs,
         "last_revision_message": revision_text,
-        clear_field: [] if clear_field in ("tools", "middlewares") else None,
         "pending_tool_call_id": None,
     }
+    # 리스트 필드 (tools/middlewares) 는 보존 — 다음 추천기 LLM 입력으로 사용.
+    # 텍스트 필드 (system_prompt) 만 None 으로 clear.
+    if clear_field not in ("tools", "middlewares"):
+        result[clear_field] = None
+    return result
 
 
 def build_phase_intro(phase_id: int, todos: list[PhaseTodo] | None) -> list[BaseMessage]:

@@ -11,6 +11,7 @@ from app.models.agent import Agent
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.model import Model
+from app.models.skill import Skill
 from app.models.tool import Tool
 from app.models.user import User
 from app.schemas.builder import BuilderStatus
@@ -74,6 +75,22 @@ async def _seed_mcp_tools(
         tools.append(mt)
     await db.flush()
     return server, tools
+
+
+async def _seed_skills(db: AsyncSession, *, names: list[str]) -> list[Skill]:
+    """Test user 의 ``Skill`` row 들을 생성. slug 는 name 소문자 hyphenate."""
+    skills = []
+    for name in names:
+        skill = Skill(
+            user_id=TEST_USER_ID,
+            name=name,
+            slug=name.lower().replace(" ", "-").replace("_", "-"),
+            description=f"{name} 가이드",
+        )
+        db.add(skill)
+        skills.append(skill)
+    await db.flush()
+    return skills
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +263,111 @@ async def test_confirm_build_mixed_tool_and_mcp(db: AsyncSession):
     assert {link.mcp_tool_id for link in agent.mcp_tool_links} == {
         mt.id for mt in mcp_tools
     }
+
+
+@pytest.mark.asyncio
+async def test_confirm_build_links_skills(db: AsyncSession):
+    """Skill 회귀 가드 — Builder 가 skill 을 인지하고 ``agent.skill_links`` 생성.
+
+    이전에는 phase3 카탈로그/추천이 skill 을 노출하지 않아 사용자가 "스킬을
+    추가해줘" 라고 명시해도 도구만 추천되고 skill_links 는 항상 비어 있었음.
+    catalog + draft_config.tools 흐름이 skill 도 포함하는지 검증.
+    """
+    await _seed_user(db)
+    await _seed_model(db)
+    skills = await _seed_skills(db, names=["seat_layout_guide", "evac_procedure"])
+    await db.commit()
+
+    session = await create_session(db, TEST_USER_ID, "위치 안내 봇")
+    session.status = BuilderStatus.CONFIRMING
+    session.draft_config = {
+        "name": "Locate",
+        "name_ko": "위치 봇",
+        "description": "직원 좌석 안내",
+        "system_prompt": "p",
+        "tools": ["seat_layout_guide", "evac_procedure"],
+        "middlewares": [],
+        "model_name": "GPT-4o",
+    }
+    await db.commit()
+
+    agent = await confirm_build(db, session)
+    assert agent is not None
+    assert len(agent.tool_links) == 0
+    assert len(agent.mcp_tool_links) == 0
+    assert {link.skill_id for link in agent.skill_links} == {s.id for s in skills}
+
+
+@pytest.mark.asyncio
+async def test_confirm_build_mixed_tool_mcp_skill(db: AsyncSession):
+    """draft.tools 안에 Tool + McpTool + Skill 이 섞여도 모두 정확히 분리 링크."""
+    await _seed_user(db)
+    await _seed_model(db)
+    tool = await _seed_tool(db)  # name="Web Search"
+    _, mcp_tools = await _seed_mcp_tools(db, names=["list_departments"])
+    skills = await _seed_skills(db, names=["seat_layout_guide"])
+    await db.commit()
+
+    session = await create_session(db, TEST_USER_ID, "혼합")
+    session.status = BuilderStatus.CONFIRMING
+    session.draft_config = {
+        "name": "All",
+        "name_ko": "전체",
+        "description": "d",
+        "system_prompt": "p",
+        "tools": ["Web Search", "list_departments", "seat_layout_guide"],
+        "middlewares": [],
+        "model_name": "GPT-4o",
+    }
+    await db.commit()
+
+    agent = await confirm_build(db, session)
+    assert agent is not None
+    assert {link.tool_id for link in agent.tool_links} == {tool.id}
+    assert {link.mcp_tool_id for link in agent.mcp_tool_links} == {
+        mt.id for mt in mcp_tools
+    }
+    assert {link.skill_id for link in agent.skill_links} == {s.id for s in skills}
+
+
+@pytest.mark.asyncio
+async def test_confirm_build_skill_cross_user_blocked(db: AsyncSession):
+    """다른 사용자의 skill 은 ``Skill.user_id`` ownership 필터로 차단."""
+    await _seed_user(db)
+    await _seed_model(db)
+
+    other_user_id = uuid.uuid4()
+    other = User(id=other_user_id, email="other-skill@test.com", name="Other Skill")
+    db.add(other)
+    await db.flush()
+    db.add(
+        Skill(
+            user_id=other_user_id,
+            name="cross_user_skill",
+            slug="cross-user-skill",
+            description="d",
+        )
+    )
+    await db.commit()
+
+    session = await create_session(db, TEST_USER_ID, "차단")
+    session.status = BuilderStatus.CONFIRMING
+    session.draft_config = {
+        "name": "X",
+        "name_ko": "X",
+        "description": "d",
+        "system_prompt": "p",
+        "tools": ["cross_user_skill"],
+        "middlewares": [],
+        "model_name": "GPT-4o",
+    }
+    await db.commit()
+
+    agent = await confirm_build(db, session)
+    assert agent is not None
+    assert len(agent.tool_links) == 0
+    assert len(agent.mcp_tool_links) == 0
+    assert len(agent.skill_links) == 0
 
 
 @pytest.mark.asyncio

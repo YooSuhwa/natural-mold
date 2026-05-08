@@ -24,10 +24,16 @@ logger = logging.getLogger(__name__)
 
 
 async def phase3_recommend_tools(state: BuilderState) -> dict:
-    """도구 추천 LLM 호출 → state.tools 갱신 + RecommendationApprovalCard 카드 emit."""
+    """도구 추천 LLM 호출 → state.tools 갱신 + RecommendationApprovalCard 카드 emit.
+
+    Revision (사용자 수정요청) 시 ``recommend_tools`` 에 직전 추천 + 수정
+    메시지를 first-class 인자로 전달 — LLM 이 "이것만 / X 빼고" 같은
+    한정 표현을 정확히 반영하도록 한다.
+    """
     intent_dict = state.get("intent") or {}
     catalog = state.get("tools_catalog") or []
     revision = state.get("last_revision_message")
+    previous = state.get("tools") or []
 
     intent_obj = AgentCreationIntent(**intent_dict) if intent_dict else None
 
@@ -37,17 +43,13 @@ async def phase3_recommend_tools(state: BuilderState) -> dict:
             "error_message": "Phase 3 진입 전 intent가 비어 있습니다.",
         }
 
-    # revision 메시지가 있으면 description에 prepend
-    if revision:
-        # tool_recommender는 prompt를 task description에 추가하는 방식이 깔끔하지 않으므로,
-        # 임시로 intent.tool_preferences에 합치는 방식 사용
-        merged = AgentCreationIntent(**intent_dict)
-        suffix = f"\n\n[사용자 수정 요청] {revision}"
-        merged.tool_preferences = (merged.tool_preferences or "") + suffix
-        intent_obj = merged
-
     try:
-        tool_objs: list[ToolRecommendation] = await recommend_tools(intent_obj, catalog)
+        tool_objs: list[ToolRecommendation] = await recommend_tools(
+            intent_obj,
+            catalog,
+            previous_recommendations=previous if revision else None,
+            revision_message=revision,
+        )
     except Exception:  # pragma: no cover
         logger.exception("Tool recommendation failed")
         tool_objs = []

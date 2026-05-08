@@ -397,7 +397,7 @@ async def test_invoke_for_text_all_short():
 def test_format_catalog_empty():
     from app.agent_runtime.builder.sub_agents.tool_recommender import _format_catalog
 
-    assert "사용 가능한 도구가 없습니다" in _format_catalog([])
+    assert "사용 가능한 항목이 없습니다" in _format_catalog([])
 
 
 def test_format_catalog_items():
@@ -406,6 +406,91 @@ def test_format_catalog_items():
     result = _format_catalog(TOOL_CATALOG)
     assert "Web Search" in result
     assert "Web Scraper" in result
+
+
+def test_format_catalog_includes_kind_prefix():
+    """카탈로그 줄에 [kind] prefix 가 노출되어야 LLM 이 종류 인지 — skill 포함."""
+    from app.agent_runtime.builder.sub_agents.tool_recommender import _format_catalog
+
+    catalog = [
+        {"name": "Web Search", "kind": "tool", "description": "웹 검색"},
+        {"name": "list_departments", "kind": "mcp", "description": "부서 목록"},
+        {"name": "seat_layout", "kind": "skill", "description": "좌석 가이드"},
+    ]
+    result = _format_catalog(catalog)
+    assert "[tool] Web Search" in result
+    assert "[mcp] list_departments" in result
+    assert "[skill] seat_layout" in result
+
+
+@pytest.mark.asyncio
+async def test_recommend_tools_skill_kind_canonicalized():
+    """LLM 이 kind 를 누락/잘못 답해도 카탈로그 정답으로 정정 — skill 매칭 회귀 가드."""
+    from unittest.mock import AsyncMock, patch
+
+    catalog = [
+        {"name": "seat_layout_guide", "kind": "skill", "description": "좌석 가이드"},
+    ]
+    # LLM 이 kind 를 일부러 잘못 답함 — 시스템이 skill 로 정정해야 함
+    mock_data = [
+        {
+            "tool_name": "seat_layout_guide",
+            "kind": "tool",
+            "description": "좌석",
+            "reason": "위치 안내",
+        },
+    ]
+    with patch(
+        "app.agent_runtime.builder.sub_agents.tool_recommender.invoke_with_json_retry",
+        new_callable=AsyncMock,
+        return_value=mock_data,
+    ):
+        from app.agent_runtime.builder.sub_agents.tool_recommender import recommend_tools
+
+        intent = _make_intent()
+        result = await recommend_tools(intent, catalog)
+        assert len(result) == 1
+        assert result[0].tool_name == "seat_layout_guide"
+        assert result[0].kind == "skill"  # 카탈로그 정답으로 정정
+
+
+def test_build_task_description_includes_revision_section():
+    """Revision 메시지가 별도 '절대 우선' 섹션으로 task description 에 포함."""
+    from app.agent_runtime.builder.sub_agents.tool_recommender import (
+        _build_task_description,
+    )
+
+    intent = _make_intent()
+    catalog = [{"name": "seating-guide", "kind": "skill", "description": "좌석"}]
+    previous = [
+        {"tool_name": "search_employees", "kind": "mcp", "reason": "직원 검색"},
+        {"tool_name": "list_departments", "kind": "mcp", "reason": "부서 목록"},
+        {"tool_name": "seating-guide", "kind": "skill", "reason": "좌석"},
+    ]
+    description = _build_task_description(
+        intent,
+        catalog,
+        previous_recommendations=previous,
+        revision_message="seating-guide 이것만 있으면 될 것 같아",
+    )
+    assert "직전 추천 (수정 대상)" in description
+    assert "search_employees" in description
+    assert "사용자 수정 요청 (절대 우선)" in description
+    assert "seating-guide 이것만 있으면 될 것 같아" in description
+    # 한정 표현 가이드가 LLM 입력에 포함되는지
+    assert "이것만" in description
+
+
+def test_build_task_description_skips_revision_when_absent():
+    """Revision 없으면 직전/수정 섹션 모두 미포함 (1차 추천 호출)."""
+    from app.agent_runtime.builder.sub_agents.tool_recommender import (
+        _build_task_description,
+    )
+
+    intent = _make_intent()
+    description = _build_task_description(intent, [{"name": "x", "kind": "tool"}])
+    assert "직전 추천" not in description
+    assert "사용자 수정 요청" not in description
 
 
 # ---------------------------------------------------------------------------
