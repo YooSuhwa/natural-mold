@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { FileTextIcon } from 'lucide-react'
 import { useApprovalForm } from './use-approval-form'
@@ -24,11 +23,8 @@ function PromptApproval({
     isComplete: status === 'complete',
     revisionFallback: '프롬프트를 다시 작성해주세요',
   })
-  const [expanded, setExpanded] = useState(false)
 
   const prompt = args.system_prompt ?? ''
-  const truncated = prompt.length > 400 && !expanded
-  const display = truncated ? prompt.slice(0, 400) + '...' : prompt
 
   return (
     <div className="my-3 rounded-xl border border-border bg-card shadow-sm">
@@ -37,18 +33,9 @@ function PromptApproval({
         {args.title || '시스템 프롬프트'}
       </div>
       <div className="px-4 py-3">
-        <pre className="whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs text-foreground">
-          {display}
+        <pre className="max-h-96 overflow-y-auto whitespace-pre-wrap rounded-lg bg-muted p-3 text-xs text-foreground">
+          {prompt}
         </pre>
-        {truncated && (
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="mt-2 text-xs text-primary-strong hover:underline"
-          >
-            전체 보기
-          </button>
-        )}
       </div>
       {args.summary && (
         <div className="border-t border-border px-4 py-3 text-sm text-foreground">
