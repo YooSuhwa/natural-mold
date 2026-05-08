@@ -28,9 +28,7 @@ async def phase3_recommend_tools(state: BuilderState) -> dict:
 
     Revision (사용자 수정요청) 시 ``recommend_tools`` 에 직전 추천 + 수정
     메시지를 first-class 인자로 전달 — LLM 이 "이것만 / X 빼고" 같은
-    한정 표현을 정확히 반영하도록 한다 (이전 구현은 tool_preferences 에
-    suffix 합치기라 LLM 이 일반 선호로 약하게 처리해 보조 항목을 임의
-    추가하던 회귀).
+    한정 표현을 정확히 반영하도록 한다.
     """
     intent_dict = state.get("intent") or {}
     catalog = state.get("tools_catalog") or []
