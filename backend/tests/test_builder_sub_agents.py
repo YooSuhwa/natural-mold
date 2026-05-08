@@ -454,6 +454,45 @@ async def test_recommend_tools_skill_kind_canonicalized():
         assert result[0].kind == "skill"  # 카탈로그 정답으로 정정
 
 
+def test_build_task_description_includes_revision_section():
+    """Revision 메시지가 별도 '절대 우선' 섹션으로 task description 에 포함."""
+    from app.agent_runtime.builder.sub_agents.tool_recommender import (
+        _build_task_description,
+    )
+
+    intent = _make_intent()
+    catalog = [{"name": "seating-guide", "kind": "skill", "description": "좌석"}]
+    previous = [
+        {"tool_name": "search_employees", "kind": "mcp", "reason": "직원 검색"},
+        {"tool_name": "list_departments", "kind": "mcp", "reason": "부서 목록"},
+        {"tool_name": "seating-guide", "kind": "skill", "reason": "좌석"},
+    ]
+    description = _build_task_description(
+        intent,
+        catalog,
+        previous_recommendations=previous,
+        revision_message="seating-guide 이것만 있으면 될 것 같아",
+    )
+    assert "직전 추천 (수정 대상)" in description
+    assert "search_employees" in description
+    assert "사용자 수정 요청 (절대 우선)" in description
+    assert "seating-guide 이것만 있으면 될 것 같아" in description
+    # 한정 표현 가이드가 LLM 입력에 포함되는지
+    assert "이것만" in description
+
+
+def test_build_task_description_skips_revision_when_absent():
+    """Revision 없으면 직전/수정 섹션 모두 미포함 (1차 추천 호출)."""
+    from app.agent_runtime.builder.sub_agents.tool_recommender import (
+        _build_task_description,
+    )
+
+    intent = _make_intent()
+    description = _build_task_description(intent, [{"name": "x", "kind": "tool"}])
+    assert "직전 추천" not in description
+    assert "사용자 수정 요청" not in description
+
+
 # ---------------------------------------------------------------------------
 # middleware_recommender helper: _format_catalog
 # ---------------------------------------------------------------------------
