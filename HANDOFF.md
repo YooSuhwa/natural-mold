@@ -1,80 +1,72 @@
-# 작업 인계 — Service LLM Key from Credentials (UX 갭 해소)
+# 작업 인계 — chat model factory provider quirks 분리 (ADR-014)
 
-> 새 세션 첫 행동: 본 파일 + `docs/design-docs/adr-013-service-llm-key-from-credentials.md` 참조.
+> 새 세션 첫 행동: 본 파일 + `docs/design-docs/adr-014-chat-model-factory-strategy.md` 참조.
 
 ## 마지막 상태
 
-- 브랜치: `feat/service-llm-key-from-credentials` (main `4fee88c` 분기, **커밋 미수행 — 사용자 승인 대기**)
-- backend: **881 PASS** (Phase 5 baseline 865 + 16 신규 가드) / pyright 0/0 / ruff clean / alembic OK
-- frontend: 변경 없음 (backend-only fix)
+- 브랜치: `refactor/chat-model-factory-strategy` (PR #141 open, main `d8744bb` 분기)
+- 직전 머지: PR #140 (credential_resolution log level WARNING→INFO)
+- backend: pytest **891** / pyright 0/0 / ruff clean / alembic OK
+- frontend: 변경 없음 (backend-only refactor)
 
-## 변경 요약
+## 이번 세션 변경
 
-**문제**: Builder/Assistant sub-agent 가 `.env` 의 `{provider}_api_key` 만 사용해, `/credentials` UI 에 등록한 LLM provider 키를 못 씀. 사용자 mental model("credentials = 단일 진실") 과 어긋남.
+**PR #140** — `credential_resolution.py:83` `logger.warning` → `logger.info` (HANDOFF #3 완료)
 
-**해결**: lifespan startup + credential CRUD invalidate hook 으로 `_ENV_FALLBACK` dict 동기화. `.env` 키 우선 (backward compat).
+**PR #141** — chat model factory provider quirks 분리 (ADR-014, HANDOFF #1+#5 완료)
+- `_apply_{anthropic,gpt5,openai_compatible_base_url,openai_ssl_clients}` 4개 helper 추출
+- `is_gpt5_family` 공개 → `model_test.py` 사일로 사본 제거 (단일 진실 공급원)
+- `_completion_token_cap_kw` 제거 (`_apply_gpt5_quirks` 흡수)
+- 공개 API 시그니처 100% 보존
 
-## 변경 파일 (5개, +588)
+## 남은 follow-up (HANDOFF #1/#3/#5 완료, #2/#4 미착수)
 
-- `backend/app/credentials/service.py` (+81): `LLM_DEFINITION_TO_ENV_KEY` 상수, `is_llm_definition()`, `get_provider_keys(db)` async helper
-- `backend/app/agent_runtime/model_factory.py` (+38): `_ENV_DEFAULTS` import-time snapshot, `sync_env_fallback_from_credentials(db)` async helper
-- `backend/app/main.py` (+15): lifespan startup sync 호출
-- `backend/app/routers/credentials.py` (+24): CRUD 6곳(user 3 + system 3) invalidate hook
-- `backend/tests/test_credentials_llm_sync.py` (+430, 신규): 가드 16건
+### 코드 품질 (우선순위 순)
 
-## 핵심 설계 결정 (ADR-013)
+1. **Toast 스팸 dedup** — 🟡 Medium / S (2~3h)
+   - 한 stream 다중 에러 시 중복 토스트. sonner duplicate suppression
+2. **`Model.default_credential` 조건부 lazy load** — 🟡 Medium / S (1~2h)
+   - `agent.llm_credential` set 시 불필요한 +1 round-trip 제거
+3. ~~**GPT-5 family helper 통합**~~ — ✅ PR #141
+4. ~~**`create_chat_model` 책임 분리**~~ — ✅ PR #141
+5. ~~**`credential_resolution` WARNING 강등**~~ — ✅ PR #140
 
-1. **우선순위**: `ENV > system credential > user credential > None` — backward compat 보장
-2. **Idempotent snapshot-then-layer**: `_ENV_DEFAULTS` 가 import 시 .env 캡처 → 매 sync 마다 dict 리셋 후 credentials 레이어. DELETE 시 별도 pop 로직 없이 자연 반영.
-3. **단일 SQL priority**: `order_by(is_system DESC, created_at DESC)` + dict 첫 hit 보존 — N+1 회피
-4. **Alias 동일성**: `_ENV_FALLBACK` in-place mutation (객체 교체 X) → `PROVIDER_API_KEY_MAP` alias 보유한 builder helper / system_credential_resolver 변경 0
-5. **CRUD short-circuit**: `is_llm_definition()` 가드로 non-LLM credential CRUD 는 decrypt 비용 0
-6. **Provider 매핑**: `google_genai → google` 별칭, `openai_compatible` skip (base_url 트리플 필요, 별도 ADR)
+### W3-out 잔여 (외부 트리거 대기 — 지금 손대지 말 것)
 
-## 신규 회귀 가드 16건
+- 🟠 cross-tenant LRU sub-cap (인증 도입 PR과 함께)
+- 🟡 multi-worker (Redis pub/sub)
+- 🟡 `evict_expired` dirty flag (multi-worker 후)
+- 🟡 `events_chunks` 별도 테이블 (turn 5000+ 시)
 
-- `test_credentials_llm_sync.py` — sync helper 단위, lifespan startup, CRUD hook(POST/PATCH/DELETE × user/system), priority 검증, openai_compatible skip, alias 동일성 잠금
+## 추천 진입 순서
 
-## 사용자 시나리오 검증
+1. **#1 (Toast dedup)** — UX 즉시 개선, frontend-only
+2. **#2 (lazy load)** — 성능 자투리, backend-only
 
-- credentials UI 에 anthropic 키 등록 → backend sync → `_ENV_FALLBACK["anthropic"]` 갱신 → builder `_get_builder_model()` 새 키 사용 → builder phase 3 LLM 호출 정상
+남은 follow-up 모두 S 작업. 묶어서 1 PR 도 가능하나 도메인이 달라(frontend vs backend) 분리 권장.
 
-## Backward Compat
+## 보존 영역 (수정 금지)
 
-- `.env` 에 `ANTHROPIC_API_KEY` 있으면 그대로 우선
-- `.env` 비어있고 credentials 에 키 있으면 credentials 사용 (신규 동작)
-- 둘 다 없으면 None (이전과 동일 — silent fail)
-
-## ADR-013 위험 + 완화
-
-| 위험 | 완화 |
-|------|------|
-| credential rotation 시 sync 누락 | CRUD 6곳 hook + alias 동일성 가드 |
-| system vs user credentials 충돌 | SQL ordering 으로 system 우선 명시 |
-| a7fc92d "런타임 키 격리" 의도 충돌 | end-user agent (`Agent.llm_credential`) 경로 보존 — 본 PR 은 sub-agent 만 영향 |
+- `backend/app/agent_runtime/builder_v3/**` (ADR-012 종료, native interrupt)
+- `backend/app/agent_runtime/middleware_registry.py:DEEPAGENT_AUTO_INJECTED_TYPES`
+- `backend/app/agent_runtime/tools/ask_user.py` (옵션 A 최종)
+- `backend/app/agent_runtime/credential_resolution.py:resolve_llm_api_key_for_agent` (tiered policy)
+- `backend/app/agent_runtime/model_factory.py:_apply_*` helpers (ADR-014 strategy)
+- `backend/app/services/builder_service.py:decisions_to_builder_response` (Phase 5 router 어댑터)
 
 ## 검증 명령
 
 ```
 cd backend && uv run alembic upgrade head && uv run ruff check . && uv run pytest tests/ && uv run pyright app/ tests/
+cd frontend && pnpm lint && pnpm test --run && pnpm build
 ```
 
-## 사용자 수동 검증 (PR 머지 후)
+## 환경 주의 (사용자 셸)
 
-- [ ] `.env` 에서 ANTHROPIC_API_KEY 제거 (또는 빈 값) + backend 재시작
-- [ ] credentials UI 에 anthropic 키 등록
-- [ ] `/agents/new/conversational` 시작 → Phase 3 도구 추천 정상 (LLM 호출 성공)
-- [ ] `.env` 에 키 다시 추가 → env 우선 동작 (backward compat)
+`~/.zshrc:225` 에 `OPENAI_BASE_URL=https://*.proxy.runpod.net/v1` export. PR #139 + ADR-014 의 canonical endpoint pin 으로 backend 영향 차단 완료. 다른 도구는 영향받을 수 있음.
 
 ## 커밋 시 주의
 
-스코프 외 catalog 자동 갱신 파일 staging 제외:
+스코프 외 catalog 자동 갱신(6시간 cron) 항상 staging 제외:
 - `backend/app/data/model_catalog/{catalog,fetch_metadata}.json`
-- `backend/app/data/model_catalog/sources/{ai_model_list,openrouter_models,pydantic_genai_prices}.json`
-
-## W3-out 잔여 follow-up (트리거 도달 대기)
-
-- 🟠 cross-tenant LRU sub-cap (인증 도입 PR 함께)
-- 🟡 multi-worker (Redis pub/sub) — broker registry 재설계
-- 🟡 `evict_expired` dirty flag — multi-worker 후
-- 🟡 `events_chunks` 별도 테이블 — turn 5000+ events 도달 시
+- `backend/app/data/model_catalog/sources/*.json`
