@@ -1,16 +1,16 @@
-# 작업 인계 — Builder v3 skill 인지 + revision 한정 표현 정확 반영
+# 작업 인계 — Builder v3 skill 인지 + revision 한정 표현 + UX 폴리시
 
 > 새 세션 첫 행동: 본 파일 + (필요 시) `docs/design-docs/adr-014-chat-model-factory-strategy.md` 참조.
 
 ## 마지막 상태
 
-- 브랜치: `feat/builder-skill-awareness` (PR #145 open)
-- main 머지 완료 (이번 세션): PR #140 ~ #144 (5건)
-- main 머지 대기: PR #145
+- 브랜치: `fix/prompt-approval-card-scroll` (PR #146 open)
+- main 머지 완료 (이번 세션): PR #140 ~ #145 (6건)
+- main 머지 대기: PR #146
 - backend: pytest **907** / pyright 0/0 / ruff clean / alembic OK
 - frontend: vitest **286** / lint clean / build PASS
 
-## 이번 세션 PR 6건
+## 이번 세션 PR 7건
 
 | PR | 의미 | 상태 |
 |----|------|------|
@@ -19,7 +19,8 @@
 | #142 | chat toast 한 stream 다중 에러 dedup id | ✅ merged |
 | #143 | Model.default_credential dead eager-load 제거 | ✅ merged |
 | #144 | builder confirm MCP 도구 silent drop 차단 | ✅ merged |
-| #145 | builder skill 인지 + revision 한정 표현 ("이것만") | 🟡 open |
+| #145 | builder skill 인지 + revision 한정 표현 ("이것만") | ✅ merged |
+| #146 | prompt approval 카드 — 전체 보기 토글 → 내부 스크롤 | 🟡 open |
 
 ## PR #145 핵심 변경
 
@@ -31,11 +32,12 @@
 
 ## 다음 세션 진입점
 
-1. PR #145 머지 확인 → `/sync` 로 main 동기화
-2. **사용자 시나리오 라이브 재현**:
+1. PR #146 머지 확인 → `/sync` 로 main 동기화
+2. **사용자 시나리오 라이브 재현** (PR #145 검증):
    - "직원 위치 알려주는 에이전트" → skill 카탈로그 노출 + 추천에 skill 포함
    - "seating-guide 이것만" 수정요청 → 정확히 1건 응답
    - 최종 승인 → `agent.skill_links` 정상 생성
+3. PR #146 검증: phase5 시스템 프롬프트 카드가 카드 내부 스크롤로 전체 표시 (전체 보기 토글 사라짐)
 
 ## W3-out 잔여 (외부 트리거 대기 — 지금 손대지 말 것)
 
