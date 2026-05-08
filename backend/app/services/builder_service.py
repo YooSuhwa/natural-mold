@@ -17,6 +17,8 @@ from app.agent_runtime.streaming import format_sse
 from app.database import async_session as async_session_factory
 from app.models.agent import Agent
 from app.models.builder_session import BuilderSession
+from app.models.mcp_server import McpServer
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.skill import AgentSkillLink
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.builder import BuilderStatus
@@ -204,8 +206,10 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
                 "사용 가능한 모델이 없습니다. 모델 설정 페이지에서 모델을 등록해주세요."
             )
 
-        # 도구 매칭 — 이름으로 DB Tool 레코드 조회
-        tools_to_link = await _resolve_tools(db, session.user_id, config.get("tools", []))
+        # 도구 매칭 — 이름으로 Tool / McpTool 레코드 분리 조회
+        tools_to_link, mcp_tools_to_link = await _resolve_tools(
+            db, session.user_id, config.get("tools", [])
+        )
 
         # 에이전트 생성
         agent = Agent(
@@ -219,6 +223,9 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
             ],
         )
         agent.tool_links = [AgentToolLink(tool_id=t.id) for t in tools_to_link]
+        agent.mcp_tool_links = [
+            AgentMcpToolLink(mcp_tool_id=mt.id) for mt in mcp_tools_to_link
+        ]
         db.add(agent)
         await db.flush()  # agent.id 할당을 위해 flush 필요
 
@@ -245,6 +252,7 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
             .options(
                 selectinload(Agent.model),
                 selectinload(Agent.tool_links).selectinload(AgentToolLink.tool),
+                selectinload(Agent.mcp_tool_links).selectinload(AgentMcpToolLink.mcp_tool),
                 selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
             )
         )
@@ -261,22 +269,45 @@ async def _resolve_tools(
     db: AsyncSession,
     user_id: uuid.UUID,
     tool_names: list[str],
-) -> list[Tool]:
-    """도구 이름 목록 → Tool DB 레코드 리스트.
+) -> tuple[list[Tool], list[McpTool]]:
+    """도구 이름 목록 → (Tool 레코드, McpTool 레코드) 분리 반환.
 
-    agent_creation_service.confirm_creation()의 패턴 재사용:
-    func.lower(Tool.name).in_(lower_names)
+    Builder phase3 카탈로그 (``get_tools_catalog``) 는 ``Tool`` 과 ``McpTool``
+    을 모두 노출하므로 phase8 confirm 도 양쪽을 매칭해야 한다.
+
+    같은 이름이 양쪽 테이블에 존재하면 ``Tool`` 우선 — 사용자가 동명 custom
+    tool 을 명시적으로 등록했다면 그쪽이 의도일 가능성이 높다.
+
+    MCP 도구는 ``McpServer.user_id`` 를 통한 ownership 필터를 강제 — cross-
+    user MCP 도구 링킹 차단.
     """
     if not tool_names:
-        return []
+        return [], []
     lower_names = [n.lower() for n in tool_names]
-    result = await db.execute(
+
+    tool_result = await db.execute(
         select(Tool).where(
             or_(Tool.user_id == user_id, Tool.user_id.is_(None)),
             func.lower(Tool.name).in_(lower_names),
         )
     )
-    return list(result.scalars().all())
+    tools = list(tool_result.scalars().all())
+
+    matched = {t.name.lower() for t in tools}
+    remaining = [n for n in lower_names if n not in matched]
+    if not remaining:
+        return tools, []
+
+    mcp_result = await db.execute(
+        select(McpTool)
+        .join(McpServer, McpServer.id == McpTool.server_id)
+        .where(
+            McpServer.user_id == user_id,
+            func.lower(McpTool.name).in_(remaining),
+        )
+    )
+    mcp_tools = list(mcp_result.scalars().all())
+    return tools, mcp_tools
 
 
 # ---------------------------------------------------------------------------
