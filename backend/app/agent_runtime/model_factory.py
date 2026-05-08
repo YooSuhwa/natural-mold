@@ -177,7 +177,9 @@ def _is_gpt5_family(provider: str, model_name: str) -> bool:
     return provider == "openai" and any(name.startswith(p) for p in _GPT5_FAMILY_PREFIXES)
 
 
-_TEST_COMPLETION_TOKEN_CAP = 200
+TEST_COMPLETION_TOKEN_CAP = 200
+# Backwards-compat alias (이전 commit 에서 underscore prefix 로 export 되었음).
+_TEST_COMPLETION_TOKEN_CAP = TEST_COMPLETION_TOKEN_CAP
 
 
 def _completion_token_cap_kw(provider: str, model_name: str) -> dict[str, Any]:
@@ -201,10 +203,10 @@ def _completion_token_cap_kw(provider: str, model_name: str) -> dict[str, Any]:
         # the API use its locked default (1.0) so the request validates.
         # langchain-openai 0.3+ 는 top-level ``max_completion_tokens`` 만 forward.
         return {
-            "max_completion_tokens": _TEST_COMPLETION_TOKEN_CAP,
+            "max_completion_tokens": TEST_COMPLETION_TOKEN_CAP,
             "_drop_temperature": True,
         }
-    return {"max_tokens": _TEST_COMPLETION_TOKEN_CAP}
+    return {"max_tokens": TEST_COMPLETION_TOKEN_CAP}
 
 
 def create_chat_model_for_test(

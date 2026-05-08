@@ -35,13 +35,16 @@ import uuid
 # Root logger 설정 — uvicorn 자체 logger 외 ``app.*`` logger 의 INFO/WARNING/
 # ERROR 가 stdout 으로 도달하도록 한다. 미설정 시 ``logger.info()`` 호출이
 # silent 하게 사라져 진단이 불가능 (e.g. credential resolution 분기 로그,
-# stream_agent_response 의 partial flush 실패 로그). force=True 로 uvicorn
-# 사전 설정과 무관하게 root handler 를 명시 등록.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    force=True,
-)
+# stream_agent_response 의 partial flush 실패 로그).
+#
+# 운영 환경의 structured logger / log shipper 설정을 덮어쓰지 않도록 root
+# handler 가 *비어있을 때만* basicConfig 적용. uvicorn ``--log-config`` /
+# JSON formatter / OpenTelemetry handler 가 사전 등록된 경우 우회한다.
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
 
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
