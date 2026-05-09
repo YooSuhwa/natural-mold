@@ -33,18 +33,6 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _client_ip(request: Request) -> str | None:
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[0].strip() or None
-    return request.client.host if request.client else None
-
-
-# ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
 
@@ -66,7 +54,7 @@ async def register_endpoint(
 
     user = await auth_service.register(db, payload, request)
     access, refresh, csrf = await auth_service.issue_tokens(db, user, request)
-    await user_service.record_login_success(db, user, ip=_client_ip(request))
+    await user_service.record_login_success(db, user, ip=auth_service.client_ip(request))
     await db.commit()
     set_auth_cookies(
         response,
@@ -91,7 +79,7 @@ async def login_endpoint(
         db, email=payload.email, password=payload.password
     )
     access, refresh, csrf = await auth_service.issue_tokens(db, user, request)
-    await user_service.record_login_success(db, user, ip=_client_ip(request))
+    await user_service.record_login_success(db, user, ip=auth_service.client_ip(request))
     await db.commit()
     set_auth_cookies(
         response,
@@ -158,14 +146,11 @@ async def me_endpoint(
 ) -> UserResponse:
     """Return the authenticated user.
 
-    Sourced from the DB rather than the ``CurrentUser`` projection so
-    fields like ``last_login_at`` (not on ``CurrentUser``) reflect
-    persisted state.
+    Re-fetches the row so fields like ``last_login_at`` (not carried
+    on ``CurrentUser``) reflect persisted state.
     """
 
-    from app.models.user import User as UserModel  # local import — avoid cycle
-
-    db_user = await db.get(UserModel, user.id)
+    db_user = await user_service.get_by_id(db, user.id)
     if db_user is None:
         # Should be impossible — ``get_current_user`` already loaded the row.
         raise AppError(

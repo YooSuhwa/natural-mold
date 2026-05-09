@@ -47,24 +47,28 @@ class TokenPayload(BaseModel):
 # Secret resolution
 # ---------------------------------------------------------------------------
 
+# Dev fallback — ephemeral key, regenerated each process restart. WARNING
+# is emitted once so any production deploy without ``JWT_SECRET`` set is
+# obvious in logs; tests silence via ``caplog`` filter when desired.
+_warned_about_missing_secret = False
+_ephemeral_secret: str | None = None
+
 
 def _resolve_secret() -> str:
+    global _warned_about_missing_secret, _ephemeral_secret
     secret = settings.jwt_secret
     if secret:
         return secret
-    # Dev fallback — ephemeral key, regenerated each process restart. We
-    # log at WARNING so the operator notices in any production run; tests
-    # silence the warning via the ``caplog`` filter when desired.
-    if not getattr(_resolve_secret, "_warned", False):
+    if not _warned_about_missing_secret:
         logger.warning(
             "JWT_SECRET is empty — generating an ephemeral key. Tokens "
             "issued by this process will be invalidated on restart. "
             "Set JWT_SECRET (>= 32 bytes) in .env for stable sessions."
         )
-        _resolve_secret._warned = True  # type: ignore[attr-defined]
-    if not getattr(_resolve_secret, "_ephemeral", None):
-        _resolve_secret._ephemeral = secrets.token_urlsafe(48)  # type: ignore[attr-defined]
-    return _resolve_secret._ephemeral  # type: ignore[attr-defined]
+        _warned_about_missing_secret = True
+    if _ephemeral_secret is None:
+        _ephemeral_secret = secrets.token_urlsafe(48)
+    return _ephemeral_secret
 
 
 # ---------------------------------------------------------------------------

@@ -10,19 +10,19 @@ extraction. Tests inject auth via the cookies emitted by
 from __future__ import annotations
 
 import logging
+import secrets
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
 from fastapi import Depends, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import InvalidTokenError, decode_token
 from app.config import settings
 from app.database import async_session
 from app.exceptions import AppError
-from app.models.user import User
+from app.services import user_service
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ async def _resolve_user(token: str, db: AsyncSession) -> CurrentUser | None:
         user_id = uuid.UUID(payload.sub)
     except (TypeError, ValueError):
         return None
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    user = await user_service.get_by_id(db, user_id)
     if user is None or not user.is_active:
         return None
     return CurrentUser(
@@ -155,7 +155,7 @@ async def verify_csrf(
         return
     header = request.headers.get("x-csrf-token") or request.headers.get("X-CSRF-Token")
     cookie = request.cookies.get(settings.cookie_name_csrf)
-    if not header or not cookie or header != cookie:
+    if not header or not cookie or not secrets.compare_digest(header, cookie):
         raise AppError(code="csrf_mismatch", message="CSRF 검증 실패", status=403)
     try:
         payload = decode_token(header, expected_type="csrf")

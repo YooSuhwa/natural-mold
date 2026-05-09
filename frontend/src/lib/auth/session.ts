@@ -20,8 +20,7 @@ export function useSession() {
     queryKey: SESSION_QUERY_KEY,
     queryFn: async () => {
       try {
-        const res = await authApi.me()
-        return res.user
+        return await authApi.me()
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) return null
         throw err

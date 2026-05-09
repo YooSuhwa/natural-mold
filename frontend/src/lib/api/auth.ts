@@ -1,5 +1,5 @@
 import { apiFetch } from '@/lib/api/client'
-import type { AuthResponse, MeResponse, RefreshResponse } from '@/lib/types/user'
+import type { AuthResponse, RefreshResponse, User } from '@/lib/types/user'
 
 export interface LoginPayload {
   email: string
@@ -35,5 +35,5 @@ export const authApi = {
       method: 'POST',
     }),
 
-  me: () => apiFetch<MeResponse>('/api/auth/me'),
+  me: () => apiFetch<User>('/api/auth/me'),
 }

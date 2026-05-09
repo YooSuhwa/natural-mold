@@ -4,9 +4,8 @@ import { useEffect } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
+import { SUPER_USER_WELCOMED_FLAG } from '@/lib/auth/session-flags'
 import type { User } from '@/lib/types/user'
-
-const FLAG = 'moldy.super_user_welcomed'
 
 /**
  * Fires `toast.success(...)` exactly once per browser tab/session for a
@@ -26,9 +25,9 @@ export function useSuperUserWelcomeToast(user: User) {
     if (!fresh) return
 
     try {
-      const shown = sessionStorage.getItem(FLAG)
+      const shown = sessionStorage.getItem(SUPER_USER_WELCOMED_FLAG)
       if (shown === '1') return
-      sessionStorage.setItem(FLAG, '1')
+      sessionStorage.setItem(SUPER_USER_WELCOMED_FLAG, '1')
     } catch {
       // sessionStorage unavailable — skip.
       return

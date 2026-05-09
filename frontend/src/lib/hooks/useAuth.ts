@@ -6,10 +6,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { authApi, type LoginPayload, type RegisterPayload } from '@/lib/api/auth'
 import { clearCsrfToken, setCsrfToken } from '@/lib/auth/csrf'
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
+import {
+  ONBOARDING_DISMISSED_FLAG,
+  SUPER_USER_WELCOMED_FLAG,
+} from '@/lib/auth/session-flags'
 import type { AuthResponse } from '@/lib/types/user'
-
-const ONBOARDING_FLAG = 'moldy.onboarding_dismissed'
-const SUPER_USER_TOAST_FLAG = 'moldy.super_user_welcomed'
 
 function isSafeCallback(url: string | null | undefined): url is string {
   if (!url) return false
@@ -51,8 +52,8 @@ export function useRegister() {
       // Reset onboarding so the dashboard dialog fires once.
       if (typeof window !== 'undefined') {
         try {
-          sessionStorage.removeItem(ONBOARDING_FLAG)
-          sessionStorage.removeItem(SUPER_USER_TOAST_FLAG)
+          sessionStorage.removeItem(ONBOARDING_DISMISSED_FLAG)
+          sessionStorage.removeItem(SUPER_USER_WELCOMED_FLAG)
         } catch {
           // sessionStorage unavailable (private mode) — silently degrade.
         }

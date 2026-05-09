@@ -27,17 +27,25 @@ MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_DURATION = timedelta(minutes=15)
 
 
-async def get_by_email(db: AsyncSession, email: str) -> User | None:
-    """Case-insensitive email lookup.
+async def get_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
+    """PK lookup. Centralized so callers don't replicate the SELECT."""
 
-    The DB column has a UNIQUE constraint but isn't citext — normalize
-    here. Front-end is expected to lowercase before submission, but we
-    don't trust the wire.
+    return (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+
+
+async def get_by_email(db: AsyncSession, email: str) -> User | None:
+    """Case-insensitive email lookup using the existing UNIQUE index.
+
+    All writes funnel through ``create_user`` which lowercases — so the
+    column invariant is "email is always stored lower". Normalize the
+    query side to match and the b-tree index does the work without
+    needing a functional/expression index.
     """
 
-    normalized = email.strip().lower()
     return (
-        await db.execute(select(User).where(func.lower(User.email) == normalized))
+        await db.execute(select(User).where(User.email == email.strip().lower()))
     ).scalar_one_or_none()
 
 
@@ -149,15 +157,19 @@ async def cleanup_user_resources(db: AsyncSession, user_id: uuid.UUID) -> None:
     ).scalars().all()
 
     if conv_rows:
+        import asyncio
+
         from app.agent_runtime import checkpointer as cp
 
-        for conv_id in conv_rows:
+        async def _safe_delete(thread_id: str) -> None:
             try:
-                await cp.delete_thread(str(conv_id))
+                await cp.delete_thread(thread_id)
             except Exception:  # noqa: BLE001 — checkpoint cleanup must not block user delete
                 logger.exception(
-                    "cleanup_user_resources: delete_thread(%s) failed", conv_id
+                    "cleanup_user_resources: delete_thread(%s) failed", thread_id
                 )
+
+        await asyncio.gather(*(_safe_delete(str(c)) for c in conv_rows))
 
     # 2. Revoke active refresh tokens. The CASCADE on the FK will remove the
     # rows themselves when the User is deleted; we mark them revoked first so
@@ -188,9 +200,7 @@ async def delete_user(db: AsyncSession, user_id: uuid.UUID) -> None:
     decide whether to roll back on a failure mid-way.
     """
 
-    user = (
-        await db.execute(select(User).where(User.id == user_id))
-    ).scalar_one_or_none()
+    user = await get_by_id(db, user_id)
     if user is None:
         return
 

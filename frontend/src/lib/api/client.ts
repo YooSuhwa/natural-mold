@@ -33,6 +33,9 @@ let refreshPromise: Promise<boolean> | null = null
 
 async function tryRefresh(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
+  // ``finally`` runs synchronously when the inner promise settles, so
+  // every concurrent awaiter (queued in the same microtask) sees the
+  // shared ``refreshPromise`` before it's cleared.
   refreshPromise = (async (): Promise<boolean> => {
     try {
       const res = await fetch(`${API_BASE}/api/auth/refresh`, {
@@ -45,13 +48,10 @@ async function tryRefresh(): Promise<boolean> {
       return true
     } catch {
       return false
-    } finally {
-      // Clear on next tick so concurrent awaits resolve against the same promise.
-      setTimeout(() => {
-        refreshPromise = null
-      }, 0)
     }
-  })()
+  })().finally(() => {
+    refreshPromise = null
+  })
   return refreshPromise
 }
 

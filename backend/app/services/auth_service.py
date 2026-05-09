@@ -34,23 +34,29 @@ from app.services import user_service
 
 logger = logging.getLogger(__name__)
 
+# Pre-computed bcrypt hash used to keep ``authenticate()`` timing roughly
+# constant when the email doesn't exist. Computed once at import time — running
+# verify against a real (but unguessable) hash takes the same ~250ms as
+# verifying against a real user's hash, blocking a timing oracle that would
+# otherwise leak email existence. See ADR-016 §5.1.
+_DUMMY_PASSWORD_HASH = hash_password("__timing_pad__")
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _client_ip(request: Request) -> str | None:
+def client_ip(request: Request) -> str | None:
     """Best-effort IP extraction (X-Forwarded-For first, then peer)."""
 
     xff = request.headers.get("x-forwarded-for")
     if xff:
-        # First entry is the original client. Trim spaces.
         return xff.split(",")[0].strip() or None
     return request.client.host if request.client else None
 
 
-def _user_agent(request: Request) -> str | None:
+def user_agent(request: Request) -> str | None:
     return request.headers.get("user-agent")
 
 
@@ -102,9 +108,7 @@ async def authenticate(
 
     user = await user_service.get_by_email(db, email)
     if user is None:
-        # Run a dummy verify to keep timing roughly constant — bcrypt
-        # short-circuits on missing hash, so we manually slow-path.
-        verify_password(password, "$2b$12$abcdefghijklmnopqrstuv.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        verify_password(password, _DUMMY_PASSWORD_HASH)
         raise AppError(
             code="invalid_credentials",
             message="이메일 또는 비밀번호가 올바르지 않습니다",
@@ -162,8 +166,8 @@ async def issue_tokens(
             user_id=user.id,
             token_hash=refresh_hash,
             expires_at=expires_at,
-            user_agent=_user_agent(request),
-            ip=_client_ip(request),
+            user_agent=user_agent(request),
+            ip=client_ip(request),
         )
     )
     await db.flush()
@@ -230,9 +234,7 @@ async def rotate_refresh(
         )
 
     user_id = uuid.UUID(payload.sub)
-    user = (
-        await db.execute(select(User).where(User.id == user_id))
-    ).scalar_one_or_none()
+    user = await user_service.get_by_id(db, user_id)
     if user is None or not user.is_active:
         raise AppError(
             code="invalid_refresh", message="세션이 만료되었습니다", status=401

@@ -18,10 +18,6 @@ export interface AuthResponse {
   csrf_token: string
 }
 
-export interface MeResponse {
-  user: User
-}
-
 export interface RefreshResponse {
   csrf_token: string
 }
