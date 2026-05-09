@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.models.tool import Tool
 from app.schemas.tool import (
     ToolCreate,
@@ -134,6 +134,7 @@ async def create_tool(
     payload: ToolCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> ToolInstanceResponse:
     _validate_required_parameters(payload.definition_key, payload.parameters)
     tool = Tool(
@@ -166,6 +167,7 @@ async def update_tool(
     payload: ToolPatch,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> ToolInstanceResponse:
     tool = await _load_owned(db, tool_id, user.id)
     if payload.name is not None:
@@ -189,6 +191,7 @@ async def delete_tool(
     tool_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> None:
     tool = await _load_owned(db, tool_id, user.id)
     await db.delete(tool)
@@ -204,6 +207,7 @@ async def run_tool_endpoint(
     payload: ToolRunRequest | None = None,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> ToolRunResponse:
     tool = await _load_owned(db, tool_id, user.id)
     runtime_args = payload.runtime_args if payload else {}

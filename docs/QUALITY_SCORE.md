@@ -1,7 +1,65 @@
 # Quality Score — Moldy Agent Builder
 
-> 최종 검증일: 2026-04-29
+> 최종 검증일: 2026-05-09
 > 검증자: bezos (QA Engineer)
+
+---
+
+## ADR-016 Multi-user Auth (S2~S7) — 2026-05-09
+
+### 게이트
+
+| 게이트 | 결과 | 비고 |
+|---|---|---|
+| `uv run ruff check app/ tests/` | PASS | 0 errors |
+| `uv run pytest` | PASS | **947 passed, 3 xfailed (BUG escalations), 2 deselected** |
+| `pnpm lint` | PASS | 0 errors |
+| `pnpm build` | PASS | 모든 라우트 빌드 성공 (Proxy middleware 포함) |
+| Mock user 흔적 grep (backend/app/, frontend/src/) | PASS | 0건 |
+| `alembic upgrade head` | DEFERRED | dev DB는 head 상태. 운영 DB는 별도 마이그레이션 윈도우 |
+
+### Authentication 도메인 등급
+
+| 영역 | 등급 | 비고 |
+|---|:---:|---|
+| 백엔드 인증 코어 (`auth/`) | A | JWT(access/refresh/csrf) 분리 type, bcrypt cost 12, refresh hash 저장 |
+| 라우터 audit (`/api/auth`) | A | register/login/refresh/logout/me 5 엔드포인트, rate-limit, CSRF exempt 분리 |
+| Service 레이어 owner filter | A | 모든 owner-scoped query에 `Agent.user_id == user_id` predicate |
+| Super_user 가드 | A | 6 엔드포인트(system-credentials × 5, models × 3) 모두 PASS |
+| Multi-user isolation | A | 격리 매트릭스 10/10, enumeration oracle 통일 (404) 검증 |
+| User cleanup / cascade | A | LangGraph thread + refresh + agent CASCADE + system 보존 8/8 PASS |
+| CSRF double-submit | A | 7/7 PASS (header≠cookie, sub mismatch, garbage 모두 거부) |
+| **Refresh replay defense** | **B-** | 감지·logging은 작동하나 mass-revoke가 commit 누락으로 미적용 — escalation 2 |
+| **Login lockout** | **B-** | 동일 클래스 commit 누락 — failed_login_attempts 카운터 영구 0, escalation 1 |
+| 프론트엔드 인증 흐름 | A | 19 신규 + 5 수정 파일, 빌드 PASS, proxy.ts middleware 정상 |
+| 보안 체크리스트 | A- | OWASP Top 10 8/10 PASS, 2건은 운영자 설정 의존(cookie_secure, JWT_SECRET) + escalation 2건 |
+| 마이그레이션 m36 | A | refresh_tokens, users 컬럼, FK CASCADE, ADR 번호 보정 정상 |
+
+### 변경 통계 (S2~S6 누적)
+
+- 백엔드 신규 파일: 8 (auth/* 4, models/refresh_token, routers/auth, schemas/auth, services/auth_service, services/user_service)
+- 백엔드 신규 테스트: 6 (test_auth_register, test_auth_login, test_auth_refresh, test_csrf, test_multiuser_isolation, test_user_cleanup) — **40 PASS + 3 xfail**
+- 프론트엔드 신규: 19 + 5 수정 (auth pages, login form, useAuth hook, proxy middleware, 등)
+- 마이그레이션: 1 (m36_multiuser_auth)
+
+### Escalation (deploy 차단 사항)
+
+1. **CRITICAL: Login failure counter 미커밋** — `auth_service.authenticate` 실패 path가 commit 없이 raise → `failed_login_attempts` 영구 0, lockout 무력화. brute-force 무제한 가능.
+2. **CRITICAL: Refresh replay mass-revoke 미커밋** — `rotate_refresh` replay 감지 후 `_revoke_all_active` UPDATE가 raise 전에 rollback → 도난 refresh가 victim 세션을 강제 무효화하지 못함.
+
+두 escalation 모두 동일 클래스 버그(라우터 commit 경계 누락)로 단일 PR에서 일괄 fix 가능. `tasks/security-checklist-multiuser-auth.md` ESCALATION 섹션 참조. 수정 후 `tests/test_auth_login.py`와 `tests/test_auth_refresh.py`의 `xfail strict` 데코레이터 제거 필요.
+
+### 운영자 deploy 직전 액션
+
+1. `JWT_SECRET` 32 byte 랜덤 환경변수 설정 (미설정 시 ephemeral 키)
+2. `COOKIE_SECURE=true` + `COOKIE_DOMAIN` 명시
+3. 위 escalation 2건 머지 + `xfail` 제거 검증
+4. 첫 운영자 가입 직후 `ALLOW_FIRST_USER_AS_ADMIN=false`
+5. `main.py`의 CORS `allow_origins`를 환경변수 기반으로 교체 (현재 dev origin 하드코딩)
+
+### 판정
+
+**CONDITIONAL GO** — 격리 매트릭스 + super_user 가드 + cleanup은 production-ready. 그러나 **2건의 commit 누락 버그가 보안 핵심 방어를 무력화**하므로 escalation fix 머지 전에는 production deploy 금지.
 
 ---
 

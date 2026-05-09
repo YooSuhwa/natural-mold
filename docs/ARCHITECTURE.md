@@ -760,3 +760,63 @@ User (1) ──────┬──▶ (N) Agent
                            ├── checkpointer 기반 히스토리
                            └── 32개 도구로 에이전트 설정 직접 수정
 ```
+
+---
+
+## Authentication & Authorization (멀티유저)
+
+> 본 섹션은 ADR-016 — [멀티유저 인증](design-docs/adr-016-multiuser-auth.md)의 적용 결과를 요약한다. 정확한 데이터 타입·에러 코드·CHECK constraint는 ADR-016을 참조.
+
+### 핵심 개념
+
+- **HttpOnly Cookie + CSRF body token**: 브라우저는 access/refresh를 JS에서 읽을 수 없고 (XSS 차단), 서버는 `X-CSRF-Token` 헤더와 `moldy_csrf` 쿠키 일치 여부로 mutation을 검증한다 (CSRF 차단).
+- **JWT HS256**: Access 60분, Refresh 30일. Refresh는 `refresh_tokens` 테이블에 SHA-256 해시로 저장(whitelist)되며, 회전 시 이전 row를 revoke. replay 감지 시 해당 user의 모든 refresh를 일괄 폐기한다.
+- **`is_super_user` 단일 boolean 권한 모델**: 첫 가입자는 자동 super_user. system credential / template / model의 관리는 super_user 전용.
+- **System credentials**: `user_id IS NULL` + `is_system=TRUE`. CHECK constraint로 일관성 강제. 일반 사용자는 본인 credential을 반드시 등록해야 LLM 호출 가능 (비용 폭주 방지).
+
+### 데이터 모델 요약
+
+- `users` 테이블에 12개 컬럼 추가 (`hashed_password`, `is_active`, `is_super_user`, `last_login_at`, `last_login_ip`, `failed_login_attempts`, `locked_until`, `email_verify_*` 3종, `password_reset_*` 2종).
+- `refresh_tokens` 테이블 신설 — `(id, user_id CASCADE, token_hash UNIQUE, issued_at, expires_at, revoked_at, user_agent, ip)`.
+- `tools.is_system`, `credentials.is_system` 컬럼 추가 + CHECK `(is_system=FALSE OR user_id IS NULL)`.
+- `agents`, `builder_sessions`, `agent_triggers`의 `user_id` FK를 ON DELETE CASCADE로 통일.
+- `oauth_accounts`는 Phase 2에 신설 (지금은 만들지 않음).
+
+### API 흐름 (register / login / refresh)
+
+```
+[register]
+  Browser ──POST /api/auth/register {email,password,name}──▶ FastAPI
+                                                              │
+                                          DB count=0이면 super_user 부여
+                                                              ▼
+                                                        users row 생성
+                                                              │
+                                                refresh_tokens row 생성
+                                                              ▼
+  Browser ◀──201 + {user, csrf_token} + Set-Cookie x3 (at, rt, csrf)──
+
+[login]
+  POST /api/auth/login {email,password}
+    → bcrypt 비교
+    → 실패 시 failed_login_attempts++ (5회→ locked_until=+15min, 423)
+    → 성공 시 last_login_at/ip 갱신, csrf+at+rt 발급
+
+[refresh]
+  POST /api/auth/refresh  (cookie만, body 없음, CSRF 면제)
+    → moldy_rt JWT decode → token_hash 조회
+    → 이미 revoked면 user의 모든 refresh 폐기 + 401 (replay 방어)
+    → 정상이면 이전 row.revoked_at=NOW() + 새 at/rt/csrf 발급
+```
+
+모든 mutation 엔드포인트는 `Depends(verify_csrf)`로 보호. 예외: `/api/auth/login`, `/register`, `/refresh`, `/api/shares/{token}/...` (공개 link).
+
+### Workspace 확장 청사진 (미래)
+
+지금은 User 단위 테넌시지만, 향후 개인 → 팀 → 실 → 회사 4계층 워크스페이스 확장을 염두에 둔다. 자세한 마이그레이션 단계는 ADR-016 §7 ([Workspace 확장 청사진](design-docs/adr-016-multiuser-auth.md))을 참조.
+
+지금 시점의 약속:
+- 모든 service layer 함수는 user 객체(또는 `CurrentUser`)를 받는 시그니처로 통일 — 미래에 `TenantContext(user, workspace)`로 단일 매개변수만 교체 가능.
+- `user_id` 컬럼명은 그대로 유지 (의미: "primary owner").
+- 권한 검증은 가능하면 service 레이어에 일원화.
+

@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.models.message_feedback import MessageFeedback
 from app.schemas.feedback import MessageFeedbackCreate, MessageFeedbackResponse
 
@@ -36,6 +36,7 @@ async def upsert_feedback(
     data: MessageFeedbackCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> MessageFeedback:
     """Create or replace the current user's rating for ``message_id``."""
 
@@ -76,6 +77,7 @@ async def clear_feedback(
     message_id: str,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> None:
     """Remove the current user's rating for ``message_id`` (toggle off)."""
 

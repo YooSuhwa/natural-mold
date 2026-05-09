@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import (
     agent_creation_failed,
     no_draft_config,
@@ -63,6 +63,7 @@ async def start_build(
     data: BuilderStartRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """빌드 세션을 시작한다."""
     session = await builder_service.create_session(db, user.id, data.user_request)
@@ -91,6 +92,7 @@ async def confirm_build(
     session_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """빌드를 확인하고 실제 에이전트를 생성한다.
 
@@ -161,6 +163,7 @@ async def post_message(
     payload: BuilderMessageRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Builder v3 — 사용자 메시지를 전송하고 SSE 스트림을 받는다.
 
@@ -188,6 +191,7 @@ async def resume_message(
     payload: BuilderResumeRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Builder v3 — interrupt 응답을 전달하고 그래프를 재개한다."""
     session = await builder_service.get_session(db, session_id, user.id)

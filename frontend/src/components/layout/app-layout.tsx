@@ -7,13 +7,18 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { QueryProvider } from '@/lib/providers/query-provider'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
+import { OnboardingDialog } from '@/components/auth/OnboardingDialog'
 
 /** Routes that must render bare (no sidebar/header) — public visitor pages. */
 const BARE_ROUTE_PREFIXES = ['/shared/'] as const
+/** Auth pages render their own centered layout — no sidebar/header. */
+const BARE_ROUTES = new Set<string>(['/login', '/register'])
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
-  const isBare = BARE_ROUTE_PREFIXES.some((prefix) => pathname?.startsWith(prefix))
+  const isBare =
+    (pathname ? BARE_ROUTES.has(pathname) : false) ||
+    BARE_ROUTE_PREFIXES.some((prefix) => pathname?.startsWith(prefix))
 
   if (isBare) {
     return (
@@ -31,6 +36,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           <SidebarInset>
             <AppHeader />
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+            <OnboardingDialog />
           </SidebarInset>
         </SidebarProvider>
       </TooltipProvider>

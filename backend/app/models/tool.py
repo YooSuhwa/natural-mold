@@ -17,7 +17,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -43,13 +43,28 @@ class AgentToolLink(Base):
 
 class Tool(Base):
     __tablename__ = "tools"
-    __table_args__ = {"extend_existing": True}
+    # ``is_system=True`` MUST imply ``user_id IS NULL`` (ADR-016 §4.4).
+    # Enforced at the DB layer so a code bug cannot create a system tool that
+    # leaks the operator's user_id into shared resources.
+    __table_args__ = (
+        CheckConstraint(
+            "(is_system = false) OR (user_id IS NULL)",
+            name="ck_tools_system_user_null",
+        ),
+        {"extend_existing": True},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
 
     # NULL = system-owned tool (visible to all users). Otherwise per-user instance.
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
+
+    # Operator-managed tool (e.g. seeded prebuilt tools). Hidden from regular
+    # user pickers; only super_user can manage.
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
     )
 
     # Logical FK to a registered ToolDefinition (``app.tools.registry``). Stored

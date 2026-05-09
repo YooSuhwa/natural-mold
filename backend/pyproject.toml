@@ -57,6 +57,14 @@ dependencies = [
     "truststore>=0.10.4",
     # Rate limiting (public share endpoints)
     "slowapi>=0.1.9",
+    # Auth (ADR-016): bcrypt password hashing + JWT signing.
+    # passlib 1.7.4 trips bcrypt>=5 (detect_wrap_bug raises on the 72-byte
+    # probe). Pin bcrypt<5 until passlib 1.8 ships.
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt<5",
+    "pyjwt>=2.8",
+    # EmailStr validation (Pydantic) for /api/auth payloads.
+    "email-validator>=2.0",
 ]
 
 [project.optional-dependencies]

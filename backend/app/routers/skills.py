@@ -8,7 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, Form, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import (
     invalid_file_path,
     invalid_skill_package,
@@ -45,6 +45,7 @@ async def create_text_skill(
     data: SkillCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     skill = await skill_service.create_text_skill(
         db,
@@ -65,6 +66,7 @@ async def upload_package_skill(
     file: UploadFile,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Upload a ``.skill`` package (ZIP with SKILL.md frontmatter)."""
 
@@ -100,6 +102,7 @@ async def patch_skill_metadata(
     data: SkillMetadataUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     skill = await skill_service.get_skill(db, skill_id, user.id)
     if not skill:
@@ -122,6 +125,7 @@ async def put_text_content(
     data: SkillContentUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     skill = await skill_service.get_skill(db, skill_id, user.id)
     if not skill:
@@ -156,6 +160,7 @@ async def delete_skill(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     skill = await skill_service.get_skill(db, skill_id, user.id)
     if not skill:
@@ -209,6 +214,7 @@ async def put_skill_file(
     data: SkillFileUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Create or overwrite a single file in a package skill."""
 
@@ -239,6 +245,7 @@ async def delete_skill_file(
     file_path: str,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Delete a file (or directory) from a package skill. SKILL.md is protected."""
 
@@ -267,6 +274,7 @@ async def upload_skill_file(
     rel_path: str = Form(..., description="Relative path inside the skill, eg 'scripts/run.py'"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Upload a binary or text file (multipart) into a package skill."""
 

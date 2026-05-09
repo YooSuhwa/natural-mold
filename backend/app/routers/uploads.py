@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import file_not_found
 from app.models.message_attachment import MessageAttachment
 from app.schemas.upload import UploadResponse
@@ -63,6 +63,7 @@ async def create_upload(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> MessageAttachment:
     mime = file.content_type or "application/octet-stream"
     if not _is_allowed(mime):

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.models.credential import Credential
 from app.models.health_check_history import HealthCheckHistory
 from app.models.mcp_server import McpServer
@@ -177,6 +177,7 @@ async def check_now(
     credential_id: uuid.UUID | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Run a probe immediately and return the resulting history row.
 

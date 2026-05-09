@@ -248,7 +248,7 @@ async def write_audit_log(
 async def create(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    user_id: uuid.UUID | None,
     definition_key: str,
     name: str,
     data: dict[str, Any],
@@ -256,6 +256,20 @@ async def create(
     is_system: bool = False,
     source: str = "api",
 ) -> Credential:
+    """Create a credential row.
+
+    ``is_system=True`` rows MUST be created with ``user_id=None`` — system
+    credentials belong to the operator, not to any single user, so the FK is
+    intentionally NULL (the m36 migration relaxed the constraint and added a
+    CHECK enforcing this invariant). User-owned credentials must always
+    supply a non-null ``user_id``.
+    """
+
+    if is_system and user_id is not None:
+        raise ValueError("system credentials must have user_id=None")
+    if not is_system and user_id is None:
+        raise ValueError("user credentials require user_id")
+
     blob, key_id, field_keys = encrypt_data(data)
     cred = Credential(
         user_id=user_id,

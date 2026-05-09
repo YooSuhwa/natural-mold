@@ -23,12 +23,17 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    require_super_user,
+    verify_csrf,
+)
 from app.error_codes import model_not_found
 from app.models.agent import Agent
 from app.models.credential import Credential
 from app.models.model import Model
-from app.models.user import User
 from app.schemas.model import (
     ModelCreate,
     ModelTestPreviewRequest,
@@ -52,7 +57,7 @@ router = APIRouter(prefix="/api/models", tags=["models"])
 @router.get("")
 async def list_models(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ):
     return await model_service.list_models(db)
 
@@ -61,7 +66,7 @@ async def list_models(
 async def get_model(
     model_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(get_current_user),
 ):
     model = await model_service.get_model(db, model_id)
     if not model:
@@ -73,12 +78,15 @@ async def get_model(
 async def create_model(
     payload: ModelCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_super_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Register a new model row.
 
-    409 on duplicate ``(provider, model_name)`` so the frontend can collapse
-    "already registered" into a friendly toast.
+    Catalog mutations are operator-only — the model table is a global
+    resource and end users should not be able to inject pricing or rebind
+    providers. 409 on duplicate ``(provider, model_name)`` so the frontend
+    can collapse "already registered" into a friendly toast.
     """
 
     model = Model(
@@ -123,7 +131,8 @@ async def update_model(
     model_id: uuid.UUID,
     payload: ModelUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_super_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     model = await model_service.get_model(db, model_id)
     if not model:
@@ -151,7 +160,8 @@ async def update_model(
 async def delete_model(
     model_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: CurrentUser = Depends(require_super_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     model = await model_service.get_model(db, model_id)
     if not model:
@@ -205,6 +215,7 @@ async def test_registered_model(
     ),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> ModelTestResponse:
     """Probe a registered ``Model`` row using a Credential.
 
@@ -272,6 +283,7 @@ async def test_preview_model(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> ModelTestResponse:
     """Probe an unregistered ``provider:model_name`` combo (Custom ID flow).
 

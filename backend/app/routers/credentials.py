@@ -30,7 +30,13 @@ from app.agent_runtime.model_factory import sync_env_fallback_from_credentials
 from app.credentials import service as credential_service
 from app.credentials.registry import registry
 from app.credentials.tester import CredentialTester
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_db,
+    require_super_user,
+    verify_csrf,
+)
 from app.models.credential import Credential
 from app.schemas.credential import (
     CredentialAuditLogResponse,
@@ -148,6 +154,7 @@ async def create_credential(
     payload: CredentialCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> CredentialResponse:
     if registry.get(payload.definition_key) is None:
         raise HTTPException(
@@ -185,6 +192,7 @@ async def update_credential(
     payload: CredentialUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> CredentialResponse:
     cred = await _load_owned(db, credential_id, user.id)
     if payload.name is not None:
@@ -212,6 +220,7 @@ async def delete_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> None:
     cred = await _load_owned(db, credential_id, user.id)
     definition_key = cred.definition_key
@@ -243,9 +252,9 @@ async def _load_system(
 @system_router.get("", response_model=list[CredentialResponse])
 async def list_system_credentials(
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_super_user),
 ) -> list[CredentialResponse]:
-    """All operator system credentials. PoC: no role gate (mock user)."""
+    """List all operator-managed system credentials. Super_user only."""
 
     creds = await credential_service.list_system(db)
     return [_to_response(c) for c in creds]
@@ -255,16 +264,20 @@ async def list_system_credentials(
 async def create_system_credential(
     payload: CredentialCreate,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_super_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> CredentialResponse:
     if registry.get(payload.definition_key) is None:
         raise HTTPException(
             status_code=400,
             detail=f"unknown definition '{payload.definition_key}'",
         )
+    # System credentials are operator-owned (user_id=NULL) so they survive
+    # any individual user's lifecycle and never leak through the user-scoped
+    # picker queries (``list_for_user`` filters ``is_system=False``).
     cred = await credential_service.create(
         db,
-        user_id=user.id,
+        user_id=None,
         definition_key=payload.definition_key,
         name=payload.normalized_name(),
         data=payload.data,
@@ -283,7 +296,7 @@ async def create_system_credential(
 async def get_system_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_super_user),
 ) -> CredentialResponse:
     return _to_response(await _load_system(db, credential_id))
 
@@ -295,7 +308,8 @@ async def update_system_credential(
     credential_id: uuid.UUID,
     payload: CredentialUpdate,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_super_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> CredentialResponse:
     cred = await _load_system(db, credential_id)
     if payload.name is not None:
@@ -320,7 +334,8 @@ async def update_system_credential(
 async def delete_system_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_super_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> None:
     cred = await _load_system(db, credential_id)
     definition_key = cred.definition_key
@@ -345,6 +360,7 @@ async def test_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> CredentialTestResponse:
     cred = await _load_owned(db, credential_id, user.id)
     definition = registry.get(cred.definition_key)
@@ -367,7 +383,11 @@ async def test_credential(
 
 
 @crud_router.post("/preview-test", response_model=CredentialTestResponse)
-async def preview_test(payload: PreviewTestRequest) -> CredentialTestResponse:
+async def preview_test(
+    payload: PreviewTestRequest,
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> CredentialTestResponse:
     definition = registry.get(payload.definition_key)
     if definition is None:
         raise HTTPException(
@@ -390,6 +410,7 @@ async def discover_models(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> list[DiscoveredModelSchema]:
     """List models reachable through this Credential.
 
@@ -476,6 +497,7 @@ async def oauth2_auth_start(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> OAuth2AuthStartResponse:
     """Build an authorization URL and persist the in-flight state token.
 

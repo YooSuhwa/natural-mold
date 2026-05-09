@@ -15,3 +15,4 @@
 | ADR-012 | [HiTL 미들웨어 마이그레이션](adr-012-hitl-middleware-migration.md) | 승인됨 | 2026-05-04 |
 | ADR-013 | [Service-side LLM Key from Credentials](adr-013-service-llm-key-from-credentials.md) | 승인됨 | 2026-05-06 |
 | ADR-014 | [Chat Model Factory — Provider Quirks 분리](adr-014-chat-model-factory-strategy.md) | 승인됨 | 2026-05-08 |
+| ADR-016 | [멀티유저 인증 (HttpOnly Cookie + JWT + super_user)](adr-016-multiuser-auth.md) | 승인됨 | 2026-05-09 |

@@ -1,0 +1,311 @@
+"""Multi-user isolation matrix — User B must not observe User A's data.
+
+ADR-016 §6 — every owner-scoped resource MUST 404 (not 403) when accessed
+across users so the response shape doesn't leak existence (enumeration
+oracle).
+
+Each scenario uses two real cookie sessions against the unmodified app
+(``raw_client``) to exercise the full JWT + service-layer ownership
+filter path.
+"""
+
+from __future__ import annotations
+
+import uuid
+
+import pytest
+from httpx import AsyncClient
+from sqlalchemy import select
+
+from app.config import settings
+from app.models.model import Model
+from tests.conftest import TestSession
+
+# ---------------------------------------------------------------------------
+# Test infrastructure
+# ---------------------------------------------------------------------------
+
+
+async def _seed_default_model() -> str:
+    """Insert a default Model row directly (POST /api/models is super-only)."""
+
+    async with TestSession() as db:
+        existing = (await db.execute(select(Model))).scalar_one_or_none()
+        if existing:
+            return str(existing.id)
+        m = Model(
+            provider="openai",
+            model_name="gpt-4o",
+            display_name="GPT-4o",
+            is_default=True,
+        )
+        db.add(m)
+        await db.commit()
+        await db.refresh(m)
+        return str(m.id)
+
+
+class _Session:
+    def __init__(self, csrf: str, cookies: dict[str, str]):
+        self.csrf = csrf
+        self.cookies = cookies
+
+    def headers(self) -> dict[str, str]:
+        return {"X-CSRF-Token": self.csrf}
+
+
+async def _register(
+    client: AsyncClient, *, email: str, super_first: bool = False
+) -> _Session:
+    """Register a fresh user. ``super_first=True`` lets the first user be admin."""
+
+    settings.allow_first_user_as_admin = super_first
+    resp = await client.post(
+        "/api/auth/register",
+        json={"email": email, "password": "correct horse", "name": email[:5]},
+    )
+    assert resp.status_code == 201, resp.text
+    sess = _Session(
+        csrf=resp.json()["csrf_token"],
+        cookies={
+            settings.cookie_name_access: resp.cookies[settings.cookie_name_access],
+            settings.cookie_name_csrf: resp.cookies[settings.cookie_name_csrf],
+        },
+    )
+    client.cookies.clear()
+    return sess
+
+
+def _apply(client: AsyncClient, sess: _Session) -> None:
+    """Replace the client's cookies with this session's. Idempotent."""
+
+    client.cookies.clear()
+    for k, v in sess.cookies.items():
+        client.cookies.set(k, v)
+
+
+# ---------------------------------------------------------------------------
+# 1. Cross-user agent access
+# ---------------------------------------------------------------------------
+
+
+async def _make_agent(client: AsyncClient, sess: _Session, model_id: str) -> str:
+    _apply(client, sess)
+    resp = await client.post(
+        "/api/agents",
+        json={
+            "name": "Owned Agent",
+            "system_prompt": "hi",
+            "model_id": model_id,
+        },
+        headers=sess.headers(),
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_user_b_cannot_get_user_a_agent(raw_client: AsyncClient):
+    model_id = await _seed_default_model()
+    a = await _register(raw_client, email="a@test.com")
+    b = await _register(raw_client, email="b@test.com")
+    agent_id = await _make_agent(raw_client, a, model_id)
+
+    _apply(raw_client, b)
+    resp = await raw_client.get(f"/api/agents/{agent_id}")
+    assert resp.status_code == 404, resp.text
+
+
+@pytest.mark.asyncio
+async def test_user_b_cannot_modify_user_a_agent(raw_client: AsyncClient):
+    model_id = await _seed_default_model()
+    a = await _register(raw_client, email="a@test.com")
+    b = await _register(raw_client, email="b@test.com")
+    agent_id = await _make_agent(raw_client, a, model_id)
+
+    _apply(raw_client, b)
+    upd = await raw_client.put(
+        f"/api/agents/{agent_id}",
+        json={"name": "Hijack"},
+        headers=b.headers(),
+    )
+    assert upd.status_code == 404
+
+    delete = await raw_client.delete(
+        f"/api/agents/{agent_id}", headers=b.headers()
+    )
+    assert delete.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_agent_list_is_per_user(raw_client: AsyncClient):
+    model_id = await _seed_default_model()
+    a = await _register(raw_client, email="a@test.com")
+    b = await _register(raw_client, email="b@test.com")
+    await _make_agent(raw_client, a, model_id)
+
+    _apply(raw_client, b)
+    resp = await raw_client.get("/api/agents")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+# ---------------------------------------------------------------------------
+# 2. Cross-user trigger access
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_user_b_cannot_modify_user_a_trigger(raw_client: AsyncClient):
+    model_id = await _seed_default_model()
+    a = await _register(raw_client, email="a@test.com")
+    b = await _register(raw_client, email="b@test.com")
+    agent_id = await _make_agent(raw_client, a, model_id)
+
+    # User A creates an interval trigger via the agent-scoped path.
+    _apply(raw_client, a)
+    create = await raw_client.post(
+        f"/api/agents/{agent_id}/triggers",
+        json={
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 60},
+            "input_message": "hello",
+        },
+        headers=a.headers(),
+    )
+    assert create.status_code == 201, create.text
+    trigger_id = create.json()["id"]
+
+    # User B tries to update/delete via A's agent path. Service-level
+    # ``user_id`` filter on the trigger row → 404.
+    _apply(raw_client, b)
+    upd = await raw_client.put(
+        f"/api/agents/{agent_id}/triggers/{trigger_id}",
+        json={"status": "inactive"},
+        headers=b.headers(),
+    )
+    assert upd.status_code == 404
+    delete = await raw_client.delete(
+        f"/api/agents/{agent_id}/triggers/{trigger_id}", headers=b.headers()
+    )
+    assert delete.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# 3. System credentials — super_user gating
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_regular_user_cannot_list_system_credentials(raw_client: AsyncClient):
+    a = await _register(raw_client, email="a@test.com")
+    _apply(raw_client, a)
+    resp = await raw_client.get("/api/system-credentials")
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_regular_user_cannot_create_system_credentials(raw_client: AsyncClient):
+    a = await _register(raw_client, email="a@test.com")
+    _apply(raw_client, a)
+    resp = await raw_client.post(
+        "/api/system-credentials",
+        json={
+            "definition_key": "anthropic",
+            "name": "rogue system",
+            "data": {"api_key": "k"},
+        },
+        headers=a.headers(),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_super_user_can_list_system_credentials(raw_client: AsyncClient):
+    """First user with ``allow_first_user_as_admin=True`` is super_user."""
+
+    super_user = await _register(raw_client, email="boss@test.com", super_first=True)
+    _apply(raw_client, super_user)
+    resp = await raw_client.get("/api/system-credentials")
+    assert resp.status_code == 200, resp.text
+
+
+# ---------------------------------------------------------------------------
+# 4. Models / templates — super_user mutation gates
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_regular_user_cannot_create_model(raw_client: AsyncClient):
+    a = await _register(raw_client, email="a@test.com")
+    _apply(raw_client, a)
+    resp = await raw_client.post(
+        "/api/models",
+        json={
+            "provider": "openai",
+            "model_name": "gpt-4o",
+            "display_name": "rogue",
+        },
+        headers=a.headers(),
+    )
+    assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# 5. Cross-user usage / spend visibility
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_user_b_cannot_read_user_a_agent_usage(raw_client: AsyncClient):
+    model_id = await _seed_default_model()
+    a = await _register(raw_client, email="a@test.com")
+    b = await _register(raw_client, email="b@test.com")
+    agent_id = await _make_agent(raw_client, a, model_id)
+
+    _apply(raw_client, b)
+    resp = await raw_client.get(f"/api/agents/{agent_id}/usage")
+    # Either 404 (preferred) or zero-aggregate empty body. Spec mandates
+    # that we never expose A's totals to B.
+    if resp.status_code == 200:
+        body = resp.json()
+        # Must be empty / zeroed, not A's actual numbers.
+        assert body.get("total_tokens", 0) == 0
+        assert body.get("total_cost", 0) == 0
+    else:
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# 6. Cross-user conversation access
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_user_b_cannot_modify_user_a_conversation(raw_client: AsyncClient):
+    """Synthesize a conversation row owned by A; B's PATCH/DELETE → 404."""
+
+    from app.models.conversation import Conversation
+
+    model_id = await _seed_default_model()
+    a = await _register(raw_client, email="a@test.com")
+    b = await _register(raw_client, email="b@test.com")
+    agent_id = await _make_agent(raw_client, a, model_id)
+
+    async with TestSession() as db:
+        conv = Conversation(id=uuid.uuid4(), agent_id=uuid.UUID(agent_id), title="t")
+        db.add(conv)
+        await db.commit()
+        conv_id = str(conv.id)
+
+    _apply(raw_client, b)
+    upd = await raw_client.patch(
+        f"/api/conversations/{conv_id}",
+        json={"title": "hijack"},
+        headers=b.headers(),
+    )
+    assert upd.status_code == 404
+    delete = await raw_client.delete(
+        f"/api/conversations/{conv_id}", headers=b.headers()
+    )
+    assert delete.status_code == 404
