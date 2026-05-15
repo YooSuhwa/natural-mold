@@ -305,7 +305,10 @@ function PackageSkillEditor({
     if (!isTextFile(selectedPath)) return
     if (remoteCache.has(selectedPath)) return
     let cancelled = false
-    fetch(skillsApi.fileUrl(skillId, selectedPath))
+    // ``credentials: 'include'`` is required cross-origin (3000 → 8001) so
+    // the HttpOnly auth cookies attach — without it the backend treats
+    // this as anonymous and returns 401 for the file-read endpoint.
+    fetch(skillsApi.fileUrl(skillId, selectedPath), { credentials: 'include' })
       .then((r) => (r.ok ? r.text() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((body) => {
         if (cancelled) return

@@ -82,11 +82,17 @@ export function AppSidebar() {
 
   const resourceItems = [
     { label: t('nav.credentials'), href: '/credentials', icon: KeyRoundIcon },
-    {
-      label: t('nav.systemCredentials'),
-      href: '/settings/system-credentials',
-      icon: ShieldIcon,
-    },
+    // System Credentials are operator-managed; only super_user sees the menu.
+    // Backend enforces 403 via ``require_super_user`` — this hides the chrome.
+    ...(user?.is_super_user
+      ? [
+          {
+            label: t('nav.systemCredentials'),
+            href: '/settings/system-credentials',
+            icon: ShieldIcon,
+          },
+        ]
+      : []),
     { label: t('nav.models'), href: '/models', icon: BrainIcon },
     { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
   ]

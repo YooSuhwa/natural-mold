@@ -71,7 +71,9 @@ class CredentialUpdate(BaseModel):
 
 class CredentialResponse(BaseModel):
     id: uuid.UUID
-    user_id: uuid.UUID
+    # ``None`` for system credentials (operator-managed, ``is_system=True``);
+    # m36 relaxed the NOT NULL constraint to support that ownership model.
+    user_id: uuid.UUID | None = None
     definition_key: str
     name: str
     field_keys: list[str]

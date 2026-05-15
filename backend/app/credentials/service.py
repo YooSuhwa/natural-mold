@@ -152,6 +152,13 @@ LLM_DEFINITION_TO_ENV_KEY: dict[str, str] = {
     "openrouter": "openrouter",
 }
 
+# Inverse of ``LLM_DEFINITION_TO_ENV_KEY`` — used by chat credential resolver
+# to find a user's credential by ``Model.provider``. Kept as a derived constant
+# so a new provider only needs to be added in one place.
+PROVIDER_TO_DEFINITION_KEY: dict[str, str] = {
+    v: k for k, v in LLM_DEFINITION_TO_ENV_KEY.items()
+}
+
 
 def is_llm_definition(definition_key: str) -> bool:
     """True when ``definition_key`` participates in ``_ENV_FALLBACK`` sync."""
@@ -403,6 +410,7 @@ async def list_audit_logs(
 
 __all__ = [
     "LLM_DEFINITION_TO_ENV_KEY",
+    "PROVIDER_TO_DEFINITION_KEY",
     "create",
     "decrypt_data",
     "decrypt_with_external",

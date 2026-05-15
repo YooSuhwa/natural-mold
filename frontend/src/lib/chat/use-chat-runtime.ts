@@ -23,6 +23,7 @@ import { streamEdit } from '@/lib/sse/stream-edit'
 import { streamRegenerate } from '@/lib/sse/stream-regenerate'
 import { streamResumeAttach } from '@/lib/sse/stream-resume-attach'
 import { withAutoResume } from '@/lib/sse/with-auto-resume'
+import { StreamApiError } from '@/lib/sse/parse-sse'
 import { createStreamGuard } from '@/lib/sse/stream-guard'
 import type { FeedbackAdapter, AttachmentAdapter } from '@assistant-ui/react'
 
@@ -568,6 +569,20 @@ export function useChatRuntime({
           // 은 toast 무음. 두 가드 모두 통과한 진짜 실패만 사용자 알림.
           setReconnectState('idle')
           if (signal.aborted || streamGuardRef.current.isStale(token)) return
+          // Actionable backend errors (e.g. ``llm_credential_required``)
+          // surface as an inline assistant-side message instead of a toast
+          // so the user sees the guidance in chat flow without a duplicate
+          // "reconnect failed" notification on top.
+          if (err instanceof StreamApiError && err.code === 'llm_credential_required') {
+            setStreamingMessages((prev) => [
+              ...prev,
+              createOptimisticMessage(
+                'assistant',
+                `${err.message}\n\n[키 등록하러 가기](/credentials)`,
+              ),
+            ])
+            return
+          }
           toast.error(tReconnect('failed'), { id: TOAST_ID_RECONNECT_FAILED })
           console.error('[useChatRuntime] Stream resume failed:', err)
         },
@@ -575,6 +590,11 @@ export function useChatRuntime({
       try {
         await consumeStream(wrapped, optimisticMsg, token)
       } catch (err) {
+        // ``llm_credential_required`` is handled in-chat by ``onFailed`` above;
+        // suppress the duplicate console.error stack trace.
+        if (err instanceof StreamApiError && err.code === 'llm_credential_required') {
+          return
+        }
         console.error('[useChatRuntime] Stream error:', err)
       }
     },

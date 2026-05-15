@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Plus, Shield, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -10,6 +11,7 @@ import { DomainIcon } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
 import { StatusChip } from '@/components/shared/status-chip'
 import { CredentialCreateModal } from '@/components/credential/credential-create-modal'
+import { useSession } from '@/lib/auth/session'
 import {
   useCredentialTypes,
   useDeleteSystemCredential,
@@ -18,14 +20,36 @@ import {
 
 /**
  * System Credentials — operator-managed keys for Fix Agent / builder /
- * image generation. Distinct from user credentials so that:
+ * image generation. Super_user only:
  *   - cost is on the operator, not whichever user is logged in
  *   - users can't accidentally bind a system key to a personal agent
  *   - rotating system keys doesn't churn user-facing pickers
  *
- * PoC: no role gate (mock user). Wire to admin role check before multi-user.
+ * Backend enforces this via ``require_super_user`` on every endpoint;
+ * this guard avoids surfacing UI chrome and 403 noise to regular users
+ * who land here via a bookmarked URL.
  */
 export default function SystemCredentialsPage() {
+  const router = useRouter()
+  const { data: user, isPending } = useSession()
+  const denied = !isPending && !!user && !user.is_super_user
+
+  useEffect(() => {
+    if (denied) router.replace('/')
+  }, [denied, router])
+
+  if (isPending || denied) {
+    return (
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    )
+  }
+
+  return <SystemCredentialsPageInner />
+}
+
+function SystemCredentialsPageInner() {
   const { data: credentials, isLoading } = useSystemCredentials()
   const { data: definitions } = useCredentialTypes()
   const deleteCred = useDeleteSystemCredential()

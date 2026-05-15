@@ -57,6 +57,31 @@ async def setup_db():
 
 
 @pytest.fixture(autouse=True)
+def _stub_llm_credential_resolution(monkeypatch):
+    """Bypass the per-user credential gate in chat/trigger tests.
+
+    Production policy (ADR-016 §4.2): agent chat raises 422
+    ``llm_credential_required`` when the owner hasn't registered an LLM key.
+    Tests focus on routing/streaming/checkpoint logic and don't set up
+    real credentials, so substitute a deterministic dummy key. Tests that
+    exercise the resolver directly should override this fixture locally
+    (``monkeypatch.undo()`` or per-test re-patch).
+    """
+
+    async def _fake_resolve(_db, _agent):
+        return "test-api-key"
+
+    monkeypatch.setattr(
+        "app.routers.conversations.resolve_llm_api_key_for_agent",
+        _fake_resolve,
+    )
+    monkeypatch.setattr(
+        "app.agent_runtime.trigger_executor.resolve_llm_api_key_for_agent",
+        _fake_resolve,
+    )
+
+
+@pytest.fixture(autouse=True)
 def _clear_event_broker_registry():
     """W3-out M2 — module-level ``event_broker.registry`` is process-local and
     persists across tests. Without this fixture, any test that creates a

@@ -4,6 +4,10 @@ import { useRouter } from 'next/navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { authApi, type LoginPayload, type RegisterPayload } from '@/lib/api/auth'
+import {
+  resetRefreshBackoff,
+  resetSessionExpiredFlag,
+} from '@/lib/api/client'
 import { clearCsrfToken, setCsrfToken } from '@/lib/auth/csrf'
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
 import {
@@ -19,6 +23,10 @@ function isSafeCallback(url: string | null | undefined): url is string {
 
 function persistAuth(res: AuthResponse, queryClient: ReturnType<typeof useQueryClient>) {
   setCsrfToken(res.csrf_token)
+  // New session — re-arm the refresh + session-expired gates so the next
+  // expiry can fire toast/redirect normally.
+  resetRefreshBackoff()
+  resetSessionExpiredFlag()
   queryClient.setQueryData(SESSION_QUERY_KEY, res.user)
   queryClient.invalidateQueries({ queryKey: SESSION_QUERY_KEY })
 }
@@ -63,19 +71,37 @@ export function useRegister() {
   })
 }
 
-/** POST /api/auth/logout → clear cache + CSRF, redirect /login. */
+/** POST /api/auth/logout → clear cache + CSRF, full reload to /login. */
 export function useLogout() {
   const router = useRouter()
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: () => authApi.logout(),
+    // Cancel in-flight queries before the call so a stray useSession or
+    // useAgents refetch doesn't race with the cookie clear and produce a
+    // post-logout 401 → toast/redirect storm.
+    onMutate: async () => {
+      resetRefreshBackoff()
+      await queryClient.cancelQueries()
+    },
     // Always clear local state, even if the network call fails — server will
     // GC the orphaned refresh row eventually, and the user expects to be out.
     onSettled: () => {
       clearCsrfToken()
+      resetRefreshBackoff()
+      resetSessionExpiredFlag()
       queryClient.clear()
-      router.push('/login')
+      // Hard reload — same ``AppLayout``/``AppSidebar`` shell is shared
+      // between authenticated routes and ``/login``, so an SPA push leaves
+      // useSession/useAgents hooks mounted, which immediately refetch with
+      // a now-empty cookie jar and trip the 401 → refresh → toast chain.
+      // ``window.location.href`` tears the React tree down cleanly.
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login'
+      } else {
+        router.push('/login')
+      }
     },
   })
 }
