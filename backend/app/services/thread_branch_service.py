@@ -98,26 +98,95 @@ async def _collect_checkpoints(
     checkpointer: Any,
     thread_id: str,
 ) -> list[_CheckpointSlim]:
-    """Stream all checkpoints for a thread, trimmed to id/parent/messages."""
+    """Stream all checkpoints for a thread, trimmed to id/parent/messages.
+
+    langgraph 1.2+ stores `messages` as a `DeltaChannel`: a non-snapshot
+    checkpoint omits the channel from `channel_values` and stores only the
+    write deltas. Reading `channel_values["messages"]` therefore returns
+    `None` for most checkpoints. We materialize the accumulated value by
+    calling the saver's `aget_delta_channel_history` and replaying writes
+    onto the seed snapshot — the same logic LangGraph runs during graph
+    resume (`pregel/_checkpoint.py:achannels_from_checkpoint`).
+
+    Two-phase to avoid checkpointer connection deadlock: phase 1 fully
+    consumes `alist` (its async generator holds a postgres connection),
+    phase 2 materializes deltas via separate connections. Doing the
+    materialize call inside the `alist` loop deadlocks the langgraph
+    postgres pool — every nested `aget_delta_channel_history` request
+    waits for the same connection that `alist` is holding.
+    """
 
     config = {"configurable": {"thread_id": thread_id}}
-    out: list[_CheckpointSlim] = []
+    # Phase 1: drain alist into plain tuples.
+    raw: list[tuple[str, str | None, Any, dict[str, Any]]] = []
     async for ct in checkpointer.alist(config):
         cfg = ct.config or {}
         cid = cfg.get("configurable", {}).get("checkpoint_id")
-        parent_cfg = ct.parent_config or {}
-        pid = parent_cfg.get("configurable", {}).get("checkpoint_id")
-        msgs = (ct.checkpoint or {}).get("channel_values", {}).get("messages", []) or []
         if cid is None:
             continue
+        parent_cfg = ct.parent_config or {}
+        pid = parent_cfg.get("configurable", {}).get("checkpoint_id")
+        ckpt = ct.checkpoint or {}
+        cv = ckpt.get("channel_values", {})
+        raw.append((cid, pid, cv.get("messages"), ckpt.get("channel_versions") or {}))
+
+    # Phase 2: materialize DeltaChannel messages for checkpoints that need it.
+    out: list[_CheckpointSlim] = []
+    for cid, pid, msgs, versions in raw:
+        if msgs is None and "messages" in versions:
+            msgs = await _materialize_delta_messages(checkpointer, thread_id, cid)
         out.append(
             _CheckpointSlim(
                 checkpoint_id=cid,
                 parent_checkpoint_id=pid,
-                messages=list(msgs),
+                messages=list(msgs or []),
             )
         )
     return out
+
+
+async def _materialize_delta_messages(
+    checkpointer: Any,
+    thread_id: str,
+    checkpoint_id: str,
+) -> list[BaseMessage]:
+    """Reconstruct the `messages` list at `checkpoint_id` via DeltaChannel replay.
+
+    The saver returns ``{"seed": <_DeltaSnapshot|MISSING|plain>, "writes": [...]}``.
+    We unwrap the seed and concat the write batches in order. LangChain's
+    `add_messages` reducer would handle id-based updates, but for our
+    read-only viewing path raw concat is sufficient — the materialized
+    value is what LangGraph itself produces during resume.
+    """
+
+    from langgraph.checkpoint.serde.types import _DeltaSnapshot
+
+    cfg = {"configurable": {"thread_id": thread_id, "checkpoint_id": checkpoint_id}}
+    try:
+        histories = await checkpointer.aget_delta_channel_history(
+            config=cfg, channels=["messages"]
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "aget_delta_channel_history failed for checkpoint %s", checkpoint_id, exc_info=True
+        )
+        return []
+    history = histories.get("messages")
+    if history is None:
+        return []
+    seed = history.get("seed")
+    if isinstance(seed, _DeltaSnapshot):
+        base: list[BaseMessage] = list(seed.value or [])
+    elif isinstance(seed, list):
+        base = list(seed)
+    else:
+        base = []
+    for _, _, batch in history.get("writes", []):
+        if isinstance(batch, list):
+            base.extend(batch)
+        elif batch is not None:
+            base.append(batch)
+    return base
 
 
 def _is_leaf(checkpoint_id: str, all_parent_ids: set[str]) -> bool:

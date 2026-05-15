@@ -677,7 +677,14 @@ export function useChatRuntime({
         conversationId && message.sourceId
           ? messages.findIndex((m) => m.id === message.sourceId)
           : -1
-      const useFork = conversationId && message.sourceId
+      // Refetch race guard — optimistic id(`opt-…`)는 backend UUID 검증에서
+      // 튕긴다(422). 이 경로는 refetch가 streamingMessages를 교체하지 못한
+      // 상태에서 사용자가 곧장 편집을 눌렀을 때 발생한다. 새 turn으로 폴백.
+      const hasBackendId =
+        message.sourceId !== undefined &&
+        message.sourceId !== null &&
+        !message.sourceId.startsWith('opt-')
+      const useFork = conversationId && hasBackendId
       await _runStream(
         (signal, onRunId) =>
           useFork
@@ -709,7 +716,9 @@ export function useChatRuntime({
           const merged = [...messages, ...streamingMessages]
           const idx = merged.findIndex((m) => m.id === parentId)
           const next = idx >= 0 ? merged[idx + 1] : undefined
-          if (next?.role === 'assistant') {
+          // Optimistic id(`opt-…`)는 backend UUID 검증을 통과하지 못한다 — 빈
+          // targetMessageId로 폴백하면 backend가 최신 assistant tip을 자동 선택.
+          if (next?.role === 'assistant' && !next.id.startsWith('opt-')) {
             targetMessageId = next.id
             // Index inside ``messages`` (not merged) for the cache truncate.
             assistantIdxInMessages = messages.findIndex((m) => m.id === next.id)
