@@ -1130,9 +1130,7 @@
         "claude-3.7-sonnet",
         "gemini/claude-3-7-sonnet",
         "anthropic/claude-3.7-sonnet",
-        "anthropic/claude-3-7-sonnet-20250219",
-        "openrouter/anthropic/claude-3.7-sonnet",
-        "openrouter/anthropic/claude-3-7-sonnet-20250219"
+        "openrouter/anthropic/claude-3.7-sonnet"
       ],
       "capabilities": {
         "computer_use": true,
@@ -1727,13 +1725,13 @@
           "rank": 68
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 55,
+          "as_of": "2026-05-11",
+          "rank": 56,
           "score": 61.3
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 55,
+          "as_of": "2026-05-11",
+          "rank": 57,
           "score": 41.7
         },
         "livebench_coding": {
@@ -1742,13 +1740,13 @@
           "score": 72.8
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 42,
+          "as_of": "2026-05-11",
+          "rank": 43,
           "score": 59.3
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 60,
+          "as_of": "2026-05-11",
+          "rank": 61,
           "score": 49.8
         },
         "livebench_language": {
@@ -1757,13 +1755,13 @@
           "score": 66.5
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 52,
+          "as_of": "2026-05-11",
+          "rank": 54,
           "score": 77.5
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 63,
+          "as_of": "2026-05-11",
+          "rank": 65,
           "score": 61.7
         }
       },
@@ -2190,6 +2188,43 @@
         "output_per_mtok": 150.0
       }
     },
+    "claude-opus-4.7-fast": {
+      "aliases": [
+        "anthropic/claude-opus-4.7-fast",
+        "anthropic/claude-4.7-opus-fast-20260512",
+        "openrouter/anthropic/claude-opus-4.7-fast",
+        "openrouter/anthropic/claude-4.7-opus-fast-20260512"
+      ],
+      "capabilities": {
+        "function_calling": true,
+        "reasoning": true,
+        "response_schema": true,
+        "structured_output": true,
+        "tool_choice": true
+      },
+      "context_window": 1000000,
+      "display_name": "Anthropic: Claude Opus 4.7 (Fast)",
+      "max_output_tokens": 128000,
+      "modalities": {
+        "input": [
+          "text",
+          "image"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "modes": [
+        "chat"
+      ],
+      "pricing": {
+        "cache_write_per_mtok": 37.5,
+        "cached_input_per_mtok": 3.0,
+        "currency": "USD",
+        "input_per_mtok": 30.0,
+        "output_per_mtok": 150.0
+      }
+    },
     "claude-opus-latest": {
       "aliases": [
         "~anthropic/claude-opus-latest",
@@ -2406,8 +2441,8 @@
           "score": 80.4
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 45,
+          "as_of": "2026-05-11",
+          "rank": 47,
           "score": 57.0
         },
         "livebench_instruction_following": {
@@ -2421,8 +2456,8 @@
           "score": 76.5
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 48,
+          "as_of": "2026-05-11",
+          "rank": 49,
           "score": 79.3
         },
         "livebench_reasoning": {
@@ -3666,9 +3701,10 @@
         "chat"
       ],
       "pricing": {
+        "cached_input_per_mtok": 0.13,
         "currency": "USD",
-        "input_per_mtok": 0.15,
-        "output_per_mtok": 0.75
+        "input_per_mtok": 0.21,
+        "output_per_mtok": 0.79
       }
     },
     "deepseek-coder": {
@@ -4046,6 +4082,7 @@
       "aliases": [
         "azure_ai/deepseek-v3.2",
         "deepseek/deepseek-v3.2",
+        "ollama_cloud/deepseek-v3.2",
         "deepseek/deepseek-v3.2-20251201",
         "azure/azure_ai/deepseek-v3.2",
         "openrouter/deepseek/deepseek-v3.2",
@@ -4058,7 +4095,8 @@
         "tool_choice": true
       },
       "context_window": 163840,
-      "display_name": "Deepseek v3 2",
+      "description": "DeepSeek-V3.2, a model that harmonizes high computational efficiency with superior reasoning and agent performance.",
+      "display_name": "deepseek-v3.2",
       "max_output_tokens": 163840,
       "modalities": {
         "input": [
@@ -4071,6 +4109,7 @@
       "modes": [
         "chat"
       ],
+      "owned_by": "deepseek",
       "pricing": {
         "cached_input_per_mtok": 0.0252,
         "currency": "USD",
@@ -4099,13 +4138,13 @@
           "rank": 13
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 49,
+          "as_of": "2026-05-11",
+          "rank": 50,
           "score": 62.2
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 49,
+          "as_of": "2026-05-11",
+          "rank": 50,
           "score": 46.7
         },
         "livebench_coding": {
@@ -4114,13 +4153,13 @@
           "score": 75.7
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 65,
+          "as_of": "2026-05-11",
+          "rank": 67,
           "score": 50.0
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 61,
+          "as_of": "2026-05-11",
+          "rank": 62,
           "score": 48.2
         },
         "livebench_language": {
@@ -4139,7 +4178,7 @@
           "score": 77.2
         }
       },
-      "source_url": "https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/introducing-deepseek-v3-2-and-deepseek-v3-2-speciale-in-microsoft-foundry/4477549"
+      "source_url": "https://ollama.com/pricing"
     },
     "deepseek-v3.2-exp": {
       "aliases": [
@@ -4192,13 +4231,13 @@
           "rank": 20
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 64,
+          "as_of": "2026-05-11",
+          "rank": 66,
           "score": 58.9
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 70,
+          "as_of": "2026-05-11",
+          "rank": 72,
           "score": 36.7
         },
         "livebench_coding": {
@@ -4207,13 +4246,13 @@
           "score": 73.2
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 64,
+          "as_of": "2026-05-11",
+          "rank": 66,
           "score": 51.5
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 68,
+          "as_of": "2026-05-11",
+          "rank": 70,
           "score": 41.3
         },
         "livebench_language": {
@@ -4227,8 +4266,8 @@
           "score": 82.4
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 58,
+          "as_of": "2026-05-11",
+          "rank": 59,
           "score": 64.4
         }
       }
@@ -4344,13 +4383,13 @@
           "score": 50.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 80,
+          "as_of": "2026-05-11",
+          "rank": 81,
           "score": 69.2
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 28,
+          "as_of": "2026-05-11",
+          "rank": 29,
           "score": 68.0
         },
         "livebench_instruction_following": {
@@ -4364,8 +4403,8 @@
           "score": 70.1
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 46,
+          "as_of": "2026-05-11",
+          "rank": 47,
           "score": 79.6
         },
         "livebench_reasoning": {
@@ -4375,6 +4414,23 @@
         }
       },
       "source_url": "https://api-docs.deepseek.com/quick_start/pricing"
+    },
+    "deepseek-v4-flash-free": {
+      "aliases": [
+        "opencode_zen/deepseek-v4-flash-free"
+      ],
+      "display_name": "DeepSeek V4 Flash Free",
+      "modes": [
+        "chat"
+      ],
+      "owned_by": "deepseek",
+      "pricing": {
+        "cached_input_per_mtok": 0.0,
+        "currency": "USD",
+        "input_per_mtok": 0.0,
+        "output_per_mtok": 0.0
+      },
+      "source_url": "https://opencode.ai/docs/zen"
     },
     "deepseek-v4-pro": {
       "aliases": [
@@ -4424,8 +4480,8 @@
           "score": 56.7
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 73,
+          "as_of": "2026-05-11",
+          "rank": 74,
           "score": 70.0
         },
         "livebench_data_analysis": {
@@ -4486,43 +4542,43 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 100,
+          "as_of": "2026-05-11",
+          "rank": 102,
           "score": 41.2
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 52,
+          "as_of": "2026-05-11",
+          "rank": 54,
           "score": 43.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 90,
+          "as_of": "2026-05-11",
+          "rank": 91,
           "score": 66.8
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 107,
+          "as_of": "2026-05-11",
+          "rank": 109,
           "score": 39.1
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 110,
+          "as_of": "2026-05-11",
+          "rank": 112,
           "score": 13.5
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 102,
+          "as_of": "2026-05-11",
+          "rank": 104,
           "score": 45.7
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 102,
+          "as_of": "2026-05-11",
+          "rank": 104,
           "score": 52.5
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 104,
+          "as_of": "2026-05-11",
+          "rank": 106,
           "score": 27.7
         }
       },
@@ -6314,8 +6370,8 @@
           "score": 72.4
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 60,
+          "as_of": "2026-05-11",
+          "rank": 62,
           "score": 40.0
         },
         "livebench_coding": {
@@ -6536,7 +6592,9 @@
     },
     "gemini-3.1-flash-lite": {
       "aliases": [
+        "gemini/gemini-3.1-flash-lite",
         "google/gemini-3.1-flash-lite",
+        "vertex_ai/gemini-3.1-flash-lite",
         "google/gemini-3.1-flash-lite-20260507",
         "openrouter/google/gemini-3.1-flash-lite",
         "openrouter/google/gemini-3.1-flash-lite-20260507"
@@ -6548,9 +6606,9 @@
         "structured_output": true,
         "tool_choice": true
       },
-      "context_window": 1048576,
-      "display_name": "Google: Gemini 3.1 Flash Lite",
-      "max_output_tokens": 65536,
+      "context_window": 1000000,
+      "description": "Google's fastest and most cost-efficient Gemini 3 series model, built for intelligence at scale. Optimized for high-volume, low-latency applications while maintaining strong multimodal capabilities.",
+      "display_name": "Gemini 3.1 Flash Lite",
       "modalities": {
         "input": [
           "text",
@@ -6565,13 +6623,18 @@
       "modes": [
         "chat"
       ],
+      "owned_by": "gemini",
       "pricing": {
-        "cache_write_per_mtok": 0.08333333333333334,
+        "audio_input_per_mtok": 0.5,
+        "batch_input_per_mtok": 0.125,
+        "batch_output_per_mtok": 0.75,
+        "cache_write_per_mtok": 0.25,
         "cached_input_per_mtok": 0.025,
         "currency": "USD",
         "input_per_mtok": 0.25,
         "output_per_mtok": 1.5
-      }
+      },
+      "source_url": "https://ai.google.dev/gemini-api/docs/pricing"
     },
     "gemini-3.1-flash-lite-preview": {
       "aliases": [
@@ -6596,9 +6659,8 @@
         "vision": true,
         "web_search": true
       },
-      "context_window": 1000000,
-      "description": "Google's fastest and most cost-efficient Gemini 3 series model, built for intelligence at scale. Optimized for high-volume, low-latency applications while maintaining strong multimodal capabilities.",
-      "display_name": "Gemini 3.1 Flash Lite Preview",
+      "context_window": 1048576,
+      "display_name": "Gemini 3 1 Flash Lite Preview",
       "max_audio_length_seconds": 30240,
       "max_audio_per_request": 1,
       "max_images_per_request": 3000,
@@ -6619,7 +6681,6 @@
       "modes": [
         "chat"
       ],
-      "owned_by": "gemini",
       "pricing": {
         "audio_input_per_mtok": 0.5,
         "batch_input_per_mtok": 0.125,
@@ -6633,23 +6694,23 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 52,
+          "as_of": "2026-05-11",
+          "rank": 53,
           "score": 61.7
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 76,
+          "as_of": "2026-05-11",
+          "rank": 78,
           "score": 33.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 83,
+          "as_of": "2026-05-11",
+          "rank": 84,
           "score": 68.5
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 50,
+          "as_of": "2026-05-11",
+          "rank": 52,
           "score": 54.9
         },
         "livebench_instruction_following": {
@@ -6663,17 +6724,17 @@
           "score": 73.2
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 64,
+          "as_of": "2026-05-11",
+          "rank": 66,
           "score": 73.6
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 65,
+          "as_of": "2026-05-11",
+          "rank": 67,
           "score": 59.7
         }
       },
-      "source_url": "https://ai.google.dev/gemini-api/docs/pricing"
+      "source_url": "https://ai.google.dev/gemini-api/docs/models"
     },
     "gemini-3.1-flash-live-preview": {
       "aliases": [
@@ -7865,28 +7926,28 @@
       ],
       "pricing": {
         "currency": "USD",
-        "input_per_mtok": 0.13,
-        "output_per_mtok": 0.38
+        "input_per_mtok": 0.12,
+        "output_per_mtok": 0.37
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 53,
+          "as_of": "2026-05-11",
+          "rank": 54,
           "score": 61.6
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 61,
+          "as_of": "2026-05-11",
+          "rank": 63,
           "score": 40.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 103,
+          "as_of": "2026-05-11",
+          "rank": 105,
           "score": 60.3
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 43,
+          "as_of": "2026-05-11",
+          "rank": 45,
           "score": 58.8
         },
         "livebench_instruction_following": {
@@ -7900,13 +7961,13 @@
           "score": 71.3
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 63,
+          "as_of": "2026-05-11",
+          "rank": 65,
           "score": 73.9
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 67,
+          "as_of": "2026-05-11",
+          "rank": 69,
           "score": 59.4
         }
       }
@@ -8281,33 +8342,33 @@
           "rank": 11
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 73,
+          "as_of": "2026-05-11",
+          "rank": 75,
           "score": 55.2
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 72,
+          "as_of": "2026-05-11",
+          "rank": 74,
           "score": 35.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 66,
+          "as_of": "2026-05-11",
+          "rank": 67,
           "score": 71.0
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 61,
+          "as_of": "2026-05-11",
+          "rank": 63,
           "score": 51.9
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 89,
+          "as_of": "2026-05-11",
+          "rank": 91,
           "score": 26.2
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 83,
+          "as_of": "2026-05-11",
+          "rank": 85,
           "score": 59.0
         },
         "livebench_math": {
@@ -8316,8 +8377,8 @@
           "score": 81.1
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 61,
+          "as_of": "2026-05-11",
+          "rank": 63,
           "score": 62.1
         }
       }
@@ -8358,43 +8419,43 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 101,
+          "as_of": "2026-05-11",
+          "rank": 103,
           "score": 40.1
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 106,
+          "as_of": "2026-05-11",
+          "rank": 108,
           "score": 3.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 99,
+          "as_of": "2026-05-11",
+          "rank": 101,
           "score": 64.2
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 84,
+          "as_of": "2026-05-11",
+          "rank": 86,
           "score": 46.4
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 107,
+          "as_of": "2026-05-11",
+          "rank": 109,
           "score": 17.1
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 97,
+          "as_of": "2026-05-11",
+          "rank": 99,
           "score": 49.7
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 94,
+          "as_of": "2026-05-11",
+          "rank": 96,
           "score": 62.5
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 97,
+          "as_of": "2026-05-11",
+          "rank": 99,
           "score": 37.2
         }
       }
@@ -8437,13 +8498,13 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 70,
+          "as_of": "2026-05-11",
+          "rank": 72,
           "score": 58.1
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 56,
+          "as_of": "2026-05-11",
+          "rank": 58,
           "score": 41.7
         },
         "livebench_coding": {
@@ -8452,13 +8513,13 @@
           "score": 73.1
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 49,
+          "as_of": "2026-05-11",
+          "rank": 51,
           "score": 55.2
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 72,
+          "as_of": "2026-05-11",
+          "rank": 74,
           "score": 35.7
         },
         "livebench_language": {
@@ -8467,13 +8528,13 @@
           "score": 65.2
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 58,
+          "as_of": "2026-05-11",
+          "rank": 60,
           "score": 76.0
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 64,
+          "as_of": "2026-05-11",
+          "rank": 66,
           "score": 59.7
         }
       },
@@ -8541,13 +8602,13 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 70,
+          "as_of": "2026-05-11",
+          "rank": 72,
           "score": 58.1
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 56,
+          "as_of": "2026-05-11",
+          "rank": 58,
           "score": 41.7
         },
         "livebench_coding": {
@@ -8556,13 +8617,13 @@
           "score": 73.1
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 49,
+          "as_of": "2026-05-11",
+          "rank": 51,
           "score": 55.2
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 72,
+          "as_of": "2026-05-11",
+          "rank": 74,
           "score": 35.7
         },
         "livebench_language": {
@@ -8571,13 +8632,13 @@
           "score": 65.2
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 58,
+          "as_of": "2026-05-11",
+          "rank": 60,
           "score": 76.0
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 64,
+          "as_of": "2026-05-11",
+          "rank": 66,
           "score": 59.7
         }
       },
@@ -8635,8 +8696,8 @@
           "score": 73.6
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 29,
+          "as_of": "2026-05-11",
+          "rank": 30,
           "score": 67.9
         },
         "livebench_instruction_following": {
@@ -8655,8 +8716,8 @@
           "score": 83.5
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 53,
+          "as_of": "2026-05-11",
+          "rank": 54,
           "score": 69.1
         }
       },
@@ -8751,8 +8812,8 @@
           "score": 75.4
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 35,
+          "as_of": "2026-05-11",
+          "rank": 36,
           "score": 63.2
         },
         "livebench_instruction_following": {
@@ -8816,13 +8877,13 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 83,
+          "as_of": "2026-05-11",
+          "rank": 85,
           "score": 49.6
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 107,
+          "as_of": "2026-05-11",
+          "rank": 109,
           "score": 3.3
         },
         "livebench_coding": {
@@ -8831,59 +8892,30 @@
           "score": 73.9
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 53,
+          "as_of": "2026-05-11",
+          "rank": 55,
           "score": 54.1
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 85,
+          "as_of": "2026-05-11",
+          "rank": 87,
           "score": 27.2
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 80,
+          "as_of": "2026-05-11",
+          "rank": 82,
           "score": 62.3
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 69,
+          "as_of": "2026-05-11",
+          "rank": 71,
           "score": 70.4
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 73,
+          "as_of": "2026-05-11",
+          "rank": 75,
           "score": 56.1
         }
-      }
-    },
-    "goliath-120b": {
-      "aliases": [
-        "alpindale/goliath-120b",
-        "openrouter/alpindale/goliath-120b"
-      ],
-      "capabilities": {
-        "response_schema": true,
-        "structured_output": true
-      },
-      "context_window": 6144,
-      "display_name": "Goliath 120B",
-      "max_output_tokens": 1024,
-      "modalities": {
-        "input": [
-          "text"
-        ],
-        "output": [
-          "text"
-        ]
-      },
-      "modes": [
-        "chat"
-      ],
-      "pricing": {
-        "currency": "USD",
-        "input_per_mtok": 3.75,
-        "output_per_mtok": 7.5
       }
     },
     "gpt-3.5-0301": {
@@ -11436,23 +11468,23 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 58,
+          "as_of": "2026-05-11",
+          "rank": 59,
           "score": 60.4
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 63,
+          "as_of": "2026-05-11",
+          "rank": 65,
           "score": 40.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 74,
+          "as_of": "2026-05-11",
+          "rank": 75,
           "score": 69.9
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 67,
+          "as_of": "2026-05-11",
+          "rank": 69,
           "score": 49.7
         },
         "livebench_instruction_following": {
@@ -11461,18 +11493,18 @@
           "score": 59.0
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 77,
+          "as_of": "2026-05-11",
+          "rank": 79,
           "score": 63.0
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 57,
+          "as_of": "2026-05-11",
+          "rank": 59,
           "score": 76.3
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 56,
+          "as_of": "2026-05-11",
+          "rank": 57,
           "score": 64.7
         }
       },
@@ -11780,13 +11812,13 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 57,
+          "as_of": "2026-05-11",
+          "rank": 58,
           "score": 61.0
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 73,
+          "as_of": "2026-05-11",
+          "rank": 75,
           "score": 35.0
         },
         "livebench_coding": {
@@ -11795,8 +11827,8 @@
           "score": 76.1
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 69,
+          "as_of": "2026-05-11",
+          "rank": 71,
           "score": 49.6
         },
         "livebench_instruction_following": {
@@ -11810,13 +11842,13 @@
           "score": 69.1
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 60,
+          "as_of": "2026-05-11",
+          "rank": 62,
           "score": 74.4
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 70,
+          "as_of": "2026-05-11",
+          "rank": 72,
           "score": 58.7
         }
       },
@@ -11911,43 +11943,43 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 89,
+          "as_of": "2026-05-11",
+          "rank": 91,
           "score": 48.6
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 84,
+          "as_of": "2026-05-11",
+          "rank": 86,
           "score": 28.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 89,
+          "as_of": "2026-05-11",
+          "rank": 90,
           "score": 67.4
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 94,
+          "as_of": "2026-05-11",
+          "rank": 96,
           "score": 44.3
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 52,
+          "as_of": "2026-05-11",
+          "rank": 53,
           "score": 52.0
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 100,
+          "as_of": "2026-05-11",
+          "rank": 102,
           "score": 47.7
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 86,
+          "as_of": "2026-05-11",
+          "rank": 88,
           "score": 64.7
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 100,
+          "as_of": "2026-05-11",
+          "rank": 102,
           "score": 35.5
         }
       },
@@ -12056,8 +12088,8 @@
           "score": 72.1
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 44,
+          "as_of": "2026-05-11",
+          "rank": 46,
           "score": 57.0
         },
         "livebench_instruction_following": {
@@ -12138,8 +12170,8 @@
           "score": 72.1
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 44,
+          "as_of": "2026-05-11",
+          "rank": 46,
           "score": 57.0
         },
         "livebench_instruction_following": {
@@ -12334,8 +12366,8 @@
           "score": 81.4
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 41,
+          "as_of": "2026-05-11",
+          "rank": 42,
           "score": 60.7
         },
         "livebench_instruction_following": {
@@ -12578,8 +12610,8 @@
           "score": 71.8
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 41,
+          "as_of": "2026-05-11",
+          "rank": 42,
           "score": 60.7
         },
         "livebench_instruction_following": {
@@ -12593,8 +12625,8 @@
           "score": 69.5
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 47,
+          "as_of": "2026-05-11",
+          "rank": 48,
           "score": 79.6
         },
         "livebench_reasoning": {
@@ -12700,8 +12732,8 @@
           "score": 81.4
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 51,
+          "as_of": "2026-05-11",
+          "rank": 53,
           "score": 54.9
         },
         "livebench_instruction_following": {
@@ -12771,23 +12803,23 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 58,
+          "as_of": "2026-05-11",
+          "rank": 59,
           "score": 60.4
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 63,
+          "as_of": "2026-05-11",
+          "rank": 65,
           "score": 40.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 74,
+          "as_of": "2026-05-11",
+          "rank": 75,
           "score": 69.9
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 67,
+          "as_of": "2026-05-11",
+          "rank": 69,
           "score": 49.7
         },
         "livebench_instruction_following": {
@@ -12796,18 +12828,18 @@
           "score": 59.0
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 77,
+          "as_of": "2026-05-11",
+          "rank": 79,
           "score": 63.0
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 57,
+          "as_of": "2026-05-11",
+          "rank": 59,
           "score": 76.3
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 56,
+          "as_of": "2026-05-11",
+          "rank": 57,
           "score": 64.7
         }
       },
@@ -13431,8 +13463,8 @@
           "score": 78.2
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 38,
+          "as_of": "2026-05-11",
+          "rank": 39,
           "score": 62.7
         },
         "livebench_instruction_following": {
@@ -13678,13 +13710,13 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 105,
+          "as_of": "2026-05-11",
+          "rank": 107,
           "score": 37.0
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 94,
+          "as_of": "2026-05-11",
+          "rank": 96,
           "score": 17.0
         },
         "livebench_coding": {
@@ -13693,28 +13725,28 @@
           "score": 74.7
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 79,
+          "as_of": "2026-05-11",
+          "rank": 81,
           "score": 47.4
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 104,
+          "as_of": "2026-05-11",
+          "rank": 106,
           "score": 18.9
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 107,
+          "as_of": "2026-05-11",
+          "rank": 109,
           "score": 41.8
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 109,
+          "as_of": "2026-05-11",
+          "rank": 111,
           "score": 37.0
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 109,
+          "as_of": "2026-05-11",
+          "rank": 111,
           "score": 21.9
         }
       },
@@ -13813,43 +13845,43 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 111,
+          "as_of": "2026-05-11",
+          "rank": 113,
           "score": 32.4
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 87,
+          "as_of": "2026-05-11",
+          "rank": 89,
           "score": 27.1
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 101,
+          "as_of": "2026-05-11",
+          "rank": 103,
           "score": 61.9
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 106,
+          "as_of": "2026-05-11",
+          "rank": 108,
           "score": 39.2
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 109,
+          "as_of": "2026-05-11",
+          "rank": 111,
           "score": 16.5
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 110,
+          "as_of": "2026-05-11",
+          "rank": 112,
           "score": 28.7
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 111,
+          "as_of": "2026-05-11",
+          "rank": 113,
           "score": 36.0
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 111,
+          "as_of": "2026-05-11",
+          "rank": 113,
           "score": 17.4
         }
       },
@@ -15294,43 +15326,43 @@
           "rank": 66
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 93,
+          "as_of": "2026-05-11",
+          "rank": 95,
           "score": 46.1
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 97,
+          "as_of": "2026-05-11",
+          "rank": 99,
           "score": 16.7
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 104,
+          "as_of": "2026-05-11",
+          "rank": 106,
           "score": 60.2
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 108,
+          "as_of": "2026-05-11",
+          "rank": 110,
           "score": 38.8
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 59,
+          "as_of": "2026-05-11",
+          "rank": 60,
           "score": 50.3
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 98,
+          "as_of": "2026-05-11",
+          "rank": 100,
           "score": 48.6
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 73,
+          "as_of": "2026-05-11",
+          "rank": 75,
           "score": 68.9
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 96,
+          "as_of": "2026-05-11",
+          "rank": 98,
           "score": 39.2
         }
       },
@@ -15598,6 +15630,46 @@
         "audio_input_per_mtok": 32.0,
         "audio_output_per_mtok": 64.0,
         "cached_input_per_mtok": 4.0,
+        "currency": "USD",
+        "input_per_image": 5e-06,
+        "input_per_mtok": 4.0,
+        "output_per_mtok": 16.0
+      }
+    },
+    "gpt-realtime-2": {
+      "aliases": [
+        "openai/gpt-realtime-2"
+      ],
+      "capabilities": {
+        "audio_input": true,
+        "audio_output": true,
+        "function_calling": true,
+        "parallel_function_calling": true,
+        "system_messages": true,
+        "tool_choice": true
+      },
+      "context_window": 32000,
+      "display_name": "GPT Realtime 2",
+      "max_output_tokens": 4096,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "audio"
+        ],
+        "output": [
+          "text",
+          "audio"
+        ]
+      },
+      "modes": [
+        "chat",
+        "realtime"
+      ],
+      "pricing": {
+        "audio_input_per_mtok": 32.0,
+        "audio_output_per_mtok": 64.0,
+        "cached_input_per_mtok": 0.4,
         "currency": "USD",
         "input_per_image": 5e-06,
         "input_per_mtok": 4.0,
@@ -16421,13 +16493,13 @@
           "rank": 17
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 50,
+          "as_of": "2026-05-11",
+          "rank": 51,
           "score": 62.0
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 82,
+          "as_of": "2026-05-11",
+          "rank": 84,
           "score": 30.0
         },
         "livebench_coding": {
@@ -16436,13 +16508,13 @@
           "score": 73.1
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 34,
+          "as_of": "2026-05-11",
+          "rank": 35,
           "score": 63.4
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 76,
+          "as_of": "2026-05-11",
+          "rank": 78,
           "score": 29.1
         },
         "livebench_language": {
@@ -16509,13 +16581,13 @@
           "rank": 17
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 50,
+          "as_of": "2026-05-11",
+          "rank": 51,
           "score": 62.0
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 82,
+          "as_of": "2026-05-11",
+          "rank": 84,
           "score": 30.0
         },
         "livebench_coding": {
@@ -16524,13 +16596,13 @@
           "score": 73.1
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 34,
+          "as_of": "2026-05-11",
+          "rank": 35,
           "score": 63.4
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 76,
+          "as_of": "2026-05-11",
+          "rank": 78,
           "score": 29.1
         },
         "livebench_language": {
@@ -16627,28 +16699,28 @@
           "rank": 54
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 60,
+          "as_of": "2026-05-11",
+          "rank": 62,
           "score": 60.0
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 79,
+          "as_of": "2026-05-11",
+          "rank": 81,
           "score": 31.7
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 76,
+          "as_of": "2026-05-11",
+          "rank": 77,
           "score": 69.6
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 59,
+          "as_of": "2026-05-11",
+          "rank": 61,
           "score": 52.2
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 81,
+          "as_of": "2026-05-11",
+          "rank": 83,
           "score": 28.2
         },
         "livebench_language": {
@@ -16712,43 +16784,43 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 108,
+          "as_of": "2026-05-11",
+          "rank": 110,
           "score": 33.4
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 100,
+          "as_of": "2026-05-11",
+          "rank": 102,
           "score": 10.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 108,
+          "as_of": "2026-05-11",
+          "rank": 110,
           "score": 54.3
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 104,
+          "as_of": "2026-05-11",
+          "rank": 106,
           "score": 40.6
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 108,
+          "as_of": "2026-05-11",
+          "rank": 110,
           "score": 17.0
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 95,
+          "as_of": "2026-05-11",
+          "rank": 97,
           "score": 50.0
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 108,
+          "as_of": "2026-05-11",
+          "rank": 110,
           "score": 38.9
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 108,
+          "as_of": "2026-05-11",
+          "rank": 110,
           "score": 23.3
         }
       },
@@ -16827,28 +16899,28 @@
           "rank": 54
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 60,
+          "as_of": "2026-05-11",
+          "rank": 62,
           "score": 60.0
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 79,
+          "as_of": "2026-05-11",
+          "rank": 81,
           "score": 31.7
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 76,
+          "as_of": "2026-05-11",
+          "rank": 77,
           "score": 69.6
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 59,
+          "as_of": "2026-05-11",
+          "rank": 61,
           "score": 52.2
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 81,
+          "as_of": "2026-05-11",
+          "rank": 83,
           "score": 28.2
         },
         "livebench_language": {
@@ -17164,18 +17236,18 @@
           "score": 68.0
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 54,
+          "as_of": "2026-05-11",
+          "rank": 56,
           "score": 43.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 92,
+          "as_of": "2026-05-11",
+          "rank": 93,
           "score": 66.1
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 37,
+          "as_of": "2026-05-11",
+          "rank": 38,
           "score": 62.9
         },
         "livebench_instruction_following": {
@@ -17341,43 +17413,43 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 103,
+          "as_of": "2026-05-11",
+          "rank": 105,
           "score": 39.7
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 67,
+          "as_of": "2026-05-11",
+          "rank": 69,
           "score": 38.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 105,
+          "as_of": "2026-05-11",
+          "rank": 107,
           "score": 58.5
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 100,
+          "as_of": "2026-05-11",
+          "rank": 102,
           "score": 43.5
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-07",
-          "rank": 91,
+          "as_of": "2026-05-11",
+          "rank": 93,
           "score": 24.4
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 106,
+          "as_of": "2026-05-11",
+          "rank": 108,
           "score": 42.0
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 105,
+          "as_of": "2026-05-11",
+          "rank": 107,
           "score": 45.5
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 107,
+          "as_of": "2026-05-11",
+          "rank": 109,
           "score": 25.6
         }
       },
@@ -17474,13 +17546,13 @@
           "score": 50.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 75,
+          "as_of": "2026-05-11",
+          "rank": 76,
           "score": 69.9
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 47,
+          "as_of": "2026-05-11",
+          "rank": 49,
           "score": 55.8
         },
         "livebench_instruction_following": {
@@ -17593,43 +17665,43 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 95,
+          "as_of": "2026-05-11",
+          "rank": 97,
           "score": 45.1
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 77,
+          "as_of": "2026-05-11",
+          "rank": 79,
           "score": 33.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 98,
+          "as_of": "2026-05-11",
+          "rank": 100,
           "score": 64.4
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 72,
+          "as_of": "2026-05-11",
+          "rank": 74,
           "score": 49.0
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 97,
+          "as_of": "2026-05-11",
+          "rank": 99,
           "score": 22.3
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 99,
+          "as_of": "2026-05-11",
+          "rank": 101,
           "score": 48.6
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 101,
+          "as_of": "2026-05-11",
+          "rank": 103,
           "score": 56.0
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 87,
+          "as_of": "2026-05-11",
+          "rank": 89,
           "score": 42.3
         }
       },
@@ -17692,43 +17764,43 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 95,
+          "as_of": "2026-05-11",
+          "rank": 97,
           "score": 45.1
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 77,
+          "as_of": "2026-05-11",
+          "rank": 79,
           "score": 33.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 98,
+          "as_of": "2026-05-11",
+          "rank": 100,
           "score": 64.4
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 72,
+          "as_of": "2026-05-11",
+          "rank": 74,
           "score": 49.0
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 97,
+          "as_of": "2026-05-11",
+          "rank": 99,
           "score": 22.3
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 99,
+          "as_of": "2026-05-11",
+          "rank": 101,
           "score": 48.6
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 101,
+          "as_of": "2026-05-11",
+          "rank": 103,
           "score": 56.0
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 87,
+          "as_of": "2026-05-11",
+          "rank": 89,
           "score": 42.3
         }
       },
@@ -18046,8 +18118,10 @@
     },
     "hy3-preview": {
       "aliases": [
-        "tencent/hy3-preview:free",
-        "openrouter/tencent/hy3-preview:free"
+        "tencent/hy3-preview",
+        "tencent/hy3-preview-20260421",
+        "openrouter/tencent/hy3-preview",
+        "openrouter/tencent/hy3-preview-20260421"
       ],
       "capabilities": {
         "function_calling": true,
@@ -18055,7 +18129,7 @@
         "tool_choice": true
       },
       "context_window": 262144,
-      "display_name": "Tencent: Hy3 preview (free)",
+      "display_name": "Tencent: Hy3 preview",
       "max_output_tokens": 262144,
       "modalities": {
         "input": [
@@ -18069,26 +18143,11 @@
         "chat"
       ],
       "pricing": {
+        "cached_input_per_mtok": 0.029,
         "currency": "USD",
-        "input_per_mtok": 0.0,
-        "output_per_mtok": 0.0
+        "input_per_mtok": 0.066,
+        "output_per_mtok": 0.26
       }
-    },
-    "hy3-preview-free": {
-      "aliases": [
-        "opencode_zen/hy3-preview-free"
-      ],
-      "display_name": "Hy3 Preview Free",
-      "modes": [
-        "chat"
-      ],
-      "pricing": {
-        "cached_input_per_mtok": 0.0,
-        "currency": "USD",
-        "input_per_mtok": 0.0,
-        "output_per_mtok": 0.0
-      },
-      "source_url": "https://opencode.ai/docs/zen"
     },
     "imagen-3.0-capability-001": {
       "aliases": [
@@ -18665,23 +18724,23 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 54,
+          "as_of": "2026-05-11",
+          "rank": 55,
           "score": 61.6
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 68,
+          "as_of": "2026-05-11",
+          "rank": 70,
           "score": 38.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 88,
+          "as_of": "2026-05-11",
+          "rank": 89,
           "score": 67.4
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 58,
+          "as_of": "2026-05-11",
+          "rank": 60,
           "score": 52.3
         },
         "livebench_instruction_following": {
@@ -18700,8 +18759,8 @@
           "score": 81.1
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 59,
+          "as_of": "2026-05-11",
+          "rank": 60,
           "score": 63.5
         }
       }
@@ -18710,7 +18769,6 @@
       "aliases": [
         "azure_ai/kimi-k2.5",
         "moonshotai/kimi-k2.5",
-        "ollama_cloud/kimi-k2.5",
         "opencode_zen/kimi-k2.5",
         "moonshotai/kimi-k2.5-0127",
         "azure/azure_ai/kimi-k2.5",
@@ -18724,8 +18782,7 @@
         "vision": true
       },
       "context_window": 262144,
-      "description": "Kimi K2.5 is an open-source, native multimodal agentic model that seamlessly integrates vision and language understanding with advanced agentic capabilities, instant and thinking modes, as well as conversational and agentic paradigms.",
-      "display_name": "kimi-k2.5",
+      "display_name": "Kimi K2.5",
       "max_output_tokens": 262144,
       "modalities": {
         "input": [
@@ -18752,8 +18809,8 @@
           "score": 69.1
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 47,
+          "as_of": "2026-05-11",
+          "rank": 48,
           "score": 48.3
         },
         "livebench_coding": {
@@ -18762,8 +18819,8 @@
           "score": 77.9
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 39,
+          "as_of": "2026-05-11",
+          "rank": 40,
           "score": 61.4
         },
         "livebench_instruction_following": {
@@ -18787,7 +18844,7 @@
           "score": 76.0
         }
       },
-      "source_url": "https://ollama.com/pricing"
+      "source_url": "https://opencode.ai/docs/zen"
     },
     "kimi-k2.6": {
       "aliases": [
@@ -18805,10 +18862,10 @@
         "structured_output": true,
         "tool_choice": true
       },
-      "context_window": 262144,
+      "context_window": 262142,
       "description": "Kimi K2.6 is an open-source, native multimodal agentic model that advances practical capabilities in long-horizon coding, coding-driven design, proactive autonomous execution, and swarm-based task orchestration.",
       "display_name": "kimi-k2.6",
-      "max_output_tokens": 16384,
+      "max_output_tokens": 262142,
       "modalities": {
         "input": [
           "text",
@@ -18844,8 +18901,8 @@
           "score": 78.6
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 32,
+          "as_of": "2026-05-11",
+          "rank": 33,
           "score": 65.1
         },
         "livebench_instruction_following": {
@@ -18910,9 +18967,9 @@
         "structured_output": true,
         "tool_choice": true
       },
-      "context_window": 262144,
+      "context_window": 262142,
       "display_name": "MoonshotAI Kimi Latest",
-      "max_output_tokens": 16384,
+      "max_output_tokens": 262142,
       "modalities": {
         "input": [
           "text",
@@ -18926,9 +18983,9 @@
         "chat"
       ],
       "pricing": {
-        "cached_input_per_mtok": 0.15,
+        "cached_input_per_mtok": 0.25,
         "currency": "USD",
-        "input_per_mtok": 0.75,
+        "input_per_mtok": 0.74,
         "output_per_mtok": 3.5
       }
     },
@@ -19302,7 +19359,6 @@
     "ling-2.6-flash": {
       "aliases": [
         "inclusionai/ling-2.6-flash",
-        "opencode_zen/ling-2.6-flash",
         "inclusionai/ling-2.6-flash-20260421",
         "openrouter/inclusionai/ling-2.6-flash",
         "openrouter/inclusionai/ling-2.6-flash-20260421"
@@ -19314,7 +19370,7 @@
         "tool_choice": true
       },
       "context_window": 262144,
-      "display_name": "Ling 2.6 Flash",
+      "display_name": "inclusionAI: Ling-2.6-flash",
       "max_output_tokens": 32768,
       "modalities": {
         "input": [
@@ -19332,8 +19388,7 @@
         "currency": "USD",
         "input_per_mtok": 0.08,
         "output_per_mtok": 0.24
-      },
-      "source_url": "https://opencode.ai/docs/zen"
+      }
     },
     "llama-3-70b-instruct": {
       "aliases": [
@@ -20734,28 +20789,28 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 69,
+          "as_of": "2026-05-11",
+          "rank": 71,
           "score": 58.1
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 83,
+          "as_of": "2026-05-11",
+          "rank": 85,
           "score": 30.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 82,
+          "as_of": "2026-05-11",
+          "rank": 83,
           "score": 68.8
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 71,
+          "as_of": "2026-05-11",
+          "rank": 73,
           "score": 49.2
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 65,
+          "as_of": "2026-05-11",
+          "rank": 67,
           "score": 43.2
         },
         "livebench_language": {
@@ -20764,13 +20819,13 @@
           "score": 69.1
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 54,
+          "as_of": "2026-05-11",
+          "rank": 56,
           "score": 77.0
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 51,
+          "as_of": "2026-05-11",
+          "rank": 52,
           "score": 69.7
         }
       }
@@ -20829,7 +20884,7 @@
       },
       "context_window": 1048576,
       "display_name": "Xiaomi: MiMo-V2.5-Pro",
-      "max_output_tokens": 131072,
+      "max_output_tokens": 16384,
       "modalities": {
         "input": [
           "text"
@@ -21066,7 +21121,7 @@
       "context_window": 196608,
       "description": "MiniMax-M2.5 is a state-of-the-art large language model designed for real-world productivity and coding tasks.",
       "display_name": "minimax-m2.5",
-      "max_output_tokens": 131072,
+      "max_output_tokens": 196608,
       "modalities": {
         "input": [
           "text"
@@ -21087,8 +21142,8 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 59,
+          "as_of": "2026-05-11",
+          "rank": 61,
           "score": 60.1
         },
         "livebench_agentic_coding": {
@@ -21097,13 +21152,13 @@
           "score": 51.7
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 69,
+          "as_of": "2026-05-11",
+          "rank": 70,
           "score": 70.7
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 70,
+          "as_of": "2026-05-11",
+          "rank": 72,
           "score": 49.6
         },
         "livebench_instruction_following": {
@@ -21112,18 +21167,18 @@
           "score": 57.2
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 88,
+          "as_of": "2026-05-11",
+          "rank": 90,
           "score": 55.1
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 53,
+          "as_of": "2026-05-11",
+          "rank": 55,
           "score": 77.4
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 69,
+          "as_of": "2026-05-11",
+          "rank": 71,
           "score": 59.3
         }
       },
@@ -21164,7 +21219,6 @@
       "context_window": 196608,
       "description": "MiniMax&#39;s M2-series model for coding, agentic workflows, and professional productivity.",
       "display_name": "minimax-m2.7",
-      "max_output_tokens": 131072,
       "modalities": {
         "input": [
           "text"
@@ -21185,8 +21239,8 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 47,
+          "as_of": "2026-05-11",
+          "rank": 48,
           "score": 63.5
         },
         "livebench_agentic_coding": {
@@ -21195,13 +21249,13 @@
           "score": 50.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 107,
+          "as_of": "2026-05-11",
+          "rank": 109,
           "score": 54.9
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 46,
+          "as_of": "2026-05-11",
+          "rank": 48,
           "score": 56.3
         },
         "livebench_instruction_following": {
@@ -22841,43 +22895,43 @@
       },
       "rankings": {
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 110,
+          "as_of": "2026-05-11",
+          "rank": 112,
           "score": 32.5
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 92,
+          "as_of": "2026-05-11",
+          "rank": 94,
           "score": 23.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 109,
+          "as_of": "2026-05-11",
+          "rank": 111,
           "score": 54.1
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 111,
+          "as_of": "2026-05-11",
+          "rank": 113,
           "score": 21.2
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 79,
+          "as_of": "2026-05-11",
+          "rank": 81,
           "score": 28.4
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 109,
+          "as_of": "2026-05-11",
+          "rank": 111,
           "score": 30.0
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 110,
+          "as_of": "2026-05-11",
+          "rank": 112,
           "score": 36.4
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 101,
+          "as_of": "2026-05-11",
+          "rank": 103,
           "score": 34.4
         }
       }
@@ -24432,6 +24486,40 @@
         "output_per_mtok": -1000000.0
       }
     },
+    "perceptron-mk1": {
+      "aliases": [
+        "perceptron/perceptron-mk1",
+        "perceptron/perceptron-mk1-20260512",
+        "openrouter/perceptron/perceptron-mk1",
+        "openrouter/perceptron/perceptron-mk1-20260512"
+      ],
+      "capabilities": {
+        "reasoning": true,
+        "response_schema": true,
+        "structured_output": true
+      },
+      "context_window": 32768,
+      "display_name": "Perceptron: Perceptron Mk1",
+      "max_output_tokens": 8192,
+      "modalities": {
+        "input": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output": [
+          "text"
+        ]
+      },
+      "modes": [
+        "chat"
+      ],
+      "pricing": {
+        "currency": "USD",
+        "input_per_mtok": 0.15,
+        "output_per_mtok": 1.5
+      }
+    },
     "phi-3-medium-128k-instruct": {
       "aliases": [
         "Phi-3-medium-128k-instruct",
@@ -24900,40 +24988,6 @@
         "output_per_mtok": 1.0
       }
     },
-    "qwen-max": {
-      "aliases": [
-        "qwen/qwen-max",
-        "qwen/qwen-max-2025-01-25",
-        "openrouter/qwen/qwen-max",
-        "openrouter/qwen/qwen-max-2025-01-25"
-      ],
-      "capabilities": {
-        "function_calling": true,
-        "response_schema": true,
-        "structured_output": true,
-        "tool_choice": true
-      },
-      "context_window": 32768,
-      "display_name": "Qwen: Qwen-Max ",
-      "max_output_tokens": 8192,
-      "modalities": {
-        "input": [
-          "text"
-        ],
-        "output": [
-          "text"
-        ]
-      },
-      "modes": [
-        "chat"
-      ],
-      "pricing": {
-        "cached_input_per_mtok": 0.208,
-        "currency": "USD",
-        "input_per_mtok": 1.04,
-        "output_per_mtok": 4.16
-      }
-    },
     "qwen-plus": {
       "aliases": [
         "qwen/qwen-plus",
@@ -25001,112 +25055,6 @@
         "currency": "USD",
         "input_per_mtok": 0.26,
         "output_per_mtok": 0.78
-      }
-    },
-    "qwen-turbo": {
-      "aliases": [
-        "qwen/qwen-turbo",
-        "qwen/qwen-turbo-2024-11-01",
-        "openrouter/qwen/qwen-turbo",
-        "openrouter/qwen/qwen-turbo-2024-11-01"
-      ],
-      "capabilities": {
-        "function_calling": true,
-        "response_schema": true,
-        "structured_output": true,
-        "tool_choice": true
-      },
-      "context_window": 131072,
-      "display_name": "Qwen: Qwen-Turbo",
-      "max_output_tokens": 8192,
-      "modalities": {
-        "input": [
-          "text"
-        ],
-        "output": [
-          "text"
-        ]
-      },
-      "modes": [
-        "chat"
-      ],
-      "pricing": {
-        "cached_input_per_mtok": 0.0065,
-        "currency": "USD",
-        "input_per_mtok": 0.0325,
-        "output_per_mtok": 0.13
-      }
-    },
-    "qwen-vl-max": {
-      "aliases": [
-        "qwen/qwen-vl-max",
-        "qwen/qwen-vl-max-2025-01-25",
-        "openrouter/qwen/qwen-vl-max",
-        "openrouter/qwen/qwen-vl-max-2025-01-25"
-      ],
-      "capabilities": {
-        "function_calling": true,
-        "response_schema": true,
-        "structured_output": true,
-        "tool_choice": true
-      },
-      "context_window": 131072,
-      "display_name": "Qwen: Qwen VL Max",
-      "max_output_tokens": 32768,
-      "modalities": {
-        "input": [
-          "text",
-          "image"
-        ],
-        "output": [
-          "text"
-        ]
-      },
-      "modes": [
-        "chat"
-      ],
-      "pricing": {
-        "currency": "USD",
-        "input_per_mtok": 0.52,
-        "output_per_mtok": 2.08
-      },
-      "rankings": {
-        "chatbot_arena_vision": {
-          "as_of": "2026-03-28",
-          "elo": 1212,
-          "rank": 14
-        }
-      }
-    },
-    "qwen-vl-plus": {
-      "aliases": [
-        "qwen/qwen-vl-plus",
-        "openrouter/qwen/qwen-vl-plus"
-      ],
-      "capabilities": {
-        "response_schema": true,
-        "structured_output": true
-      },
-      "context_window": 131072,
-      "display_name": "Qwen: Qwen VL Plus",
-      "max_output_tokens": 8192,
-      "modalities": {
-        "input": [
-          "text",
-          "image"
-        ],
-        "output": [
-          "text"
-        ]
-      },
-      "modes": [
-        "chat"
-      ],
-      "pricing": {
-        "cached_input_per_mtok": 0.0273,
-        "currency": "USD",
-        "input_per_mtok": 0.1365,
-        "output_per_mtok": 0.4095
       }
     },
     "qwen.qwen3-32b": {
@@ -25427,28 +25375,28 @@
           "rank": 38
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 78,
+          "as_of": "2026-05-11",
+          "rank": 80,
           "score": 53.0
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 103,
+          "as_of": "2026-05-11",
+          "rank": 105,
           "score": 6.7
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 81,
+          "as_of": "2026-05-11",
+          "rank": 82,
           "score": 69.0
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 60,
+          "as_of": "2026-05-11",
+          "rank": 62,
           "score": 52.2
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 69,
+          "as_of": "2026-05-11",
+          "rank": 71,
           "score": 40.6
         },
         "livebench_language": {
@@ -25457,13 +25405,13 @@
           "score": 69.5
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 65,
+          "as_of": "2026-05-11",
+          "rank": 67,
           "score": 73.4
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 68,
+          "as_of": "2026-05-11",
+          "rank": 70,
           "score": 59.4
         }
       }
@@ -25523,43 +25471,43 @@
           "rank": 86
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 104,
+          "as_of": "2026-05-11",
+          "rank": 106,
           "score": 39.0
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 111,
+          "as_of": "2026-05-11",
+          "rank": 113,
           "score": 1.7
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 111,
+          "as_of": "2026-05-11",
+          "rank": 113,
           "score": 48.9
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 92,
+          "as_of": "2026-05-11",
+          "rank": 94,
           "score": 44.9
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 99,
+          "as_of": "2026-05-11",
+          "rank": 101,
           "score": 21.1
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 90,
+          "as_of": "2026-05-11",
+          "rank": 92,
           "score": 54.5
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 83,
+          "as_of": "2026-05-11",
+          "rank": 85,
           "score": 65.3
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 98,
+          "as_of": "2026-05-11",
+          "rank": 100,
           "score": 36.7
         }
       }
@@ -25706,43 +25654,43 @@
           "rank": 48
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 96,
+          "as_of": "2026-05-11",
+          "rank": 98,
           "score": 43.6
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 108,
+          "as_of": "2026-05-11",
+          "rank": 110,
           "score": 3.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 94,
+          "as_of": "2026-05-11",
+          "rank": 95,
           "score": 66.0
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 83,
+          "as_of": "2026-05-11",
+          "rank": 85,
           "score": 46.5
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 105,
+          "as_of": "2026-05-11",
+          "rank": 107,
           "score": 17.8
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 87,
+          "as_of": "2026-05-11",
+          "rank": 89,
           "score": 55.5
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 80,
+          "as_of": "2026-05-11",
+          "rank": 82,
           "score": 67.4
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 79,
+          "as_of": "2026-05-11",
+          "rank": 81,
           "score": 48.3
         }
       }
@@ -26085,28 +26033,28 @@
           "rank": 9
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 90,
+          "as_of": "2026-05-11",
+          "rank": 92,
           "score": 48.3
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 101,
+          "as_of": "2026-05-11",
+          "rank": 103,
           "score": 10.0
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 86,
+          "as_of": "2026-05-11",
+          "rank": 87,
           "score": 68.2
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 66,
+          "as_of": "2026-05-11",
+          "rank": 68,
           "score": 49.8
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 103,
+          "as_of": "2026-05-11",
+          "rank": 105,
           "score": 19.2
         },
         "livebench_language": {
@@ -26115,13 +26063,13 @@
           "score": 66.3
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 71,
+          "as_of": "2026-05-11",
+          "rank": 73,
           "score": 70.2
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 75,
+          "as_of": "2026-05-11",
+          "rank": 77,
           "score": 54.7
         }
       }
@@ -26181,43 +26129,43 @@
           "rank": 44
         },
         "livebench": {
-          "as_of": "2026-05-04",
-          "rank": 81,
+          "as_of": "2026-05-11",
+          "rank": 83,
           "score": 50.4
         },
         "livebench_agentic_coding": {
-          "as_of": "2026-05-04",
-          "rank": 102,
+          "as_of": "2026-05-11",
+          "rank": 104,
           "score": 8.3
         },
         "livebench_coding": {
-          "as_of": "2026-05-04",
-          "rank": 102,
+          "as_of": "2026-05-11",
+          "rank": 104,
           "score": 60.7
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 54,
+          "as_of": "2026-05-11",
+          "rank": 56,
           "score": 53.6
         },
         "livebench_instruction_following": {
-          "as_of": "2026-05-04",
-          "rank": 67,
+          "as_of": "2026-05-11",
+          "rank": 69,
           "score": 41.5
         },
         "livebench_language": {
-          "as_of": "2026-05-04",
-          "rank": 86,
+          "as_of": "2026-05-11",
+          "rank": 88,
           "score": 56.3
         },
         "livebench_math": {
-          "as_of": "2026-05-04",
-          "rank": 61,
+          "as_of": "2026-05-11",
+          "rank": 63,
           "score": 74.3
         },
         "livebench_reasoning": {
-          "as_of": "2026-05-04",
-          "rank": 72,
+          "as_of": "2026-05-11",
+          "rank": 74,
           "score": 58.2
         }
       }
@@ -26655,7 +26603,6 @@
         "chat"
       ],
       "pricing": {
-        "cached_input_per_mtok": 0.195,
         "currency": "USD",
         "input_per_mtok": 0.39,
         "output_per_mtok": 2.34
@@ -26856,6 +26803,48 @@
         "currency": "USD",
         "input_per_mtok": 0.32,
         "output_per_mtok": 3.2
+      },
+      "rankings": {
+        "livebench": {
+          "as_of": "2026-05-11",
+          "rank": 44,
+          "score": 65.6
+        },
+        "livebench_agentic_coding": {
+          "as_of": "2026-05-11",
+          "rank": 43,
+          "score": 50.0
+        },
+        "livebench_coding": {
+          "as_of": "2026-05-11",
+          "rank": 64,
+          "score": 71.8
+        },
+        "livebench_data_analysis": {
+          "as_of": "2026-05-11",
+          "rank": 22,
+          "score": 70.4
+        },
+        "livebench_instruction_following": {
+          "as_of": "2026-05-11",
+          "rank": 52,
+          "score": 53.2
+        },
+        "livebench_language": {
+          "as_of": "2026-05-11",
+          "rank": 77,
+          "score": 63.3
+        },
+        "livebench_math": {
+          "as_of": "2026-05-11",
+          "rank": 46,
+          "score": 79.9
+        },
+        "livebench_reasoning": {
+          "as_of": "2026-05-11",
+          "rank": 51,
+          "score": 70.3
+        }
       }
     },
     "qwen3.6-35b-a3b": {
@@ -26928,6 +26917,48 @@
         "currency": "USD",
         "input_per_mtok": 0.25,
         "output_per_mtok": 1.5
+      },
+      "rankings": {
+        "livebench": {
+          "as_of": "2026-05-11",
+          "rank": 60,
+          "score": 60.4
+        },
+        "livebench_agentic_coding": {
+          "as_of": "2026-05-11",
+          "rank": 53,
+          "score": 46.7
+        },
+        "livebench_coding": {
+          "as_of": "2026-05-11",
+          "rank": 98,
+          "score": 64.9
+        },
+        "livebench_data_analysis": {
+          "as_of": "2026-05-11",
+          "rank": 44,
+          "score": 58.8
+        },
+        "livebench_instruction_following": {
+          "as_of": "2026-05-11",
+          "rank": 64,
+          "score": 47.2
+        },
+        "livebench_language": {
+          "as_of": "2026-05-11",
+          "rank": 78,
+          "score": 63.1
+        },
+        "livebench_math": {
+          "as_of": "2026-05-11",
+          "rank": 51,
+          "score": 78.9
+        },
+        "livebench_reasoning": {
+          "as_of": "2026-05-11",
+          "rank": 62,
+          "score": 62.9
+        }
       }
     },
     "qwen3.6-max-preview": {
@@ -27020,8 +27051,8 @@
           "score": 78.2
         },
         "livebench_data_analysis": {
-          "as_of": "2026-05-04",
-          "rank": 24,
+          "as_of": "2026-05-11",
+          "rank": 25,
           "score": 69.9
         },
         "livebench_instruction_following": {
@@ -27304,6 +27335,16 @@
         "input_per_mtok": 0.0,
         "output_per_mtok": 0.0
       }
+    },
+    "ring-2.6-1t-free": {
+      "aliases": [
+        "opencode_zen/ring-2.6-1t-free"
+      ],
+      "display_name": "Ring 2.6 1T",
+      "modes": [
+        "chat"
+      ],
+      "source_url": "https://opencode.ai/docs/zen"
     },
     "rnj-1": {
       "aliases": [
@@ -28321,7 +28362,9 @@
     "trinity-large-thinking": {
       "aliases": [
         "arcee-ai/trinity-large-thinking",
-        "openrouter/arcee-ai/trinity-large-thinking"
+        "arcee-ai/trinity-large-thinking:free",
+        "openrouter/arcee-ai/trinity-large-thinking",
+        "openrouter/arcee-ai/trinity-large-thinking:free"
       ],
       "capabilities": {
         "function_calling": true,
@@ -38039,8 +38082,24 @@
         "https://ai.google.dev/gemini-api/docs/pricing#gemini-3.1-flash-image-preview"
       ]
     },
-    "gemini/gemini-3.1-flash-lite-preview": {
+    "gemini/gemini-3.1-flash-lite": {
       "context_window": 1000000,
+      "enabled": true,
+      "model_ref": "gemini-3.1-flash-lite",
+      "pricing": {
+        "audio_input_per_mtok": 0.5,
+        "cached_input_per_mtok": 0.025,
+        "currency": "USD",
+        "input_per_mtok": 0.25,
+        "output_per_mtok": 1.5
+      },
+      "pricing_source_url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "source_urls": [
+        "https://ai.google.dev/gemini-api/docs/pricing"
+      ]
+    },
+    "gemini/gemini-3.1-flash-lite-preview": {
+      "context_window": 1048576,
       "enabled": true,
       "endpoints": [
         "/v1/chat/completions",
@@ -38057,14 +38116,13 @@
         "output_per_mtok": 1.5,
         "reasoning_output_per_mtok": 1.5
       },
-      "pricing_source_url": "https://ai.google.dev/gemini-api/docs/pricing",
+      "pricing_source_url": "https://llmprices.dev/",
       "rate_limits": {
         "rpm": 15,
         "tpm": 250000
       },
       "source_urls": [
         "https://ai.google.dev/gemini-api/docs/models",
-        "https://ai.google.dev/gemini-api/docs/pricing",
         "https://llmprices.dev/"
       ]
     },
@@ -40441,6 +40499,13 @@
         "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
       ]
     },
+    "ollama_cloud/deepseek-v3.2": {
+      "enabled": true,
+      "model_ref": "deepseek-v3.2",
+      "source_urls": [
+        "https://ollama.com/pricing"
+      ]
+    },
     "ollama_cloud/deepseek-v4-flash": {
       "enabled": true,
       "model_ref": "deepseek-v4-flash",
@@ -40493,13 +40558,6 @@
     "ollama_cloud/glm-5.1": {
       "enabled": true,
       "model_ref": "glm-5.1",
-      "source_urls": [
-        "https://ollama.com/pricing"
-      ]
-    },
-    "ollama_cloud/kimi-k2.5": {
-      "enabled": true,
-      "model_ref": "kimi-k2.5",
       "source_urls": [
         "https://ollama.com/pricing"
       ]
@@ -44343,6 +44401,28 @@
         "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
       ]
     },
+    "openai/gpt-realtime-2": {
+      "context_window": 32000,
+      "enabled": true,
+      "endpoints": [
+        "/v1/realtime"
+      ],
+      "max_output_tokens": 4096,
+      "model_ref": "gpt-realtime-2",
+      "pricing": {
+        "audio_input_per_mtok": 32.0,
+        "audio_output_per_mtok": 64.0,
+        "cached_input_per_mtok": 0.4,
+        "currency": "USD",
+        "input_per_image": 5e-06,
+        "input_per_mtok": 4.0,
+        "output_per_mtok": 16.0
+      },
+      "pricing_source_url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+      "source_urls": [
+        "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      ]
+    },
     "openai/gpt-realtime-2025-08-28": {
       "enabled": true,
       "model_ref": "gpt-realtime",
@@ -45361,6 +45441,20 @@
         "https://opencode.ai/docs/zen"
       ]
     },
+    "opencode_zen/deepseek-v4-flash-free": {
+      "enabled": true,
+      "model_ref": "deepseek-v4-flash-free",
+      "pricing": {
+        "cached_input_per_mtok": 0.0,
+        "currency": "USD",
+        "input_per_mtok": 0.0,
+        "output_per_mtok": 0.0
+      },
+      "pricing_source_url": "https://opencode.ai/docs/zen",
+      "source_urls": [
+        "https://opencode.ai/docs/zen"
+      ]
+    },
     "opencode_zen/gemini-3-flash": {
       "enabled": true,
       "model_ref": "gemini-3-flash",
@@ -45655,20 +45749,6 @@
         "https://opencode.ai/docs/zen"
       ]
     },
-    "opencode_zen/hy3-preview-free": {
-      "enabled": true,
-      "model_ref": "hy3-preview-free",
-      "pricing": {
-        "cached_input_per_mtok": 0.0,
-        "currency": "USD",
-        "input_per_mtok": 0.0,
-        "output_per_mtok": 0.0
-      },
-      "pricing_source_url": "https://opencode.ai/docs/zen",
-      "source_urls": [
-        "https://opencode.ai/docs/zen"
-      ]
-    },
     "opencode_zen/kimi-k2.5": {
       "enabled": true,
       "model_ref": "kimi-k2.5",
@@ -45693,13 +45773,6 @@
         "output_per_mtok": 4.0
       },
       "pricing_source_url": "https://opencode.ai/docs/zen",
-      "source_urls": [
-        "https://opencode.ai/docs/zen"
-      ]
-    },
-    "opencode_zen/ling-2.6-flash": {
-      "enabled": true,
-      "model_ref": "ling-2.6-flash",
       "source_urls": [
         "https://opencode.ai/docs/zen"
       ]
@@ -45788,6 +45861,13 @@
         "output_per_mtok": 3.0
       },
       "pricing_source_url": "https://opencode.ai/docs/zen",
+      "source_urls": [
+        "https://opencode.ai/docs/zen"
+      ]
+    },
+    "opencode_zen/ring-2.6-1t-free": {
+      "enabled": true,
+      "model_ref": "ring-2.6-1t-free",
       "source_urls": [
         "https://opencode.ai/docs/zen"
       ]
@@ -45979,21 +46059,6 @@
         "https://openrouter.ai/allenai/olmo-3-32b-think"
       ]
     },
-    "openrouter/alpindale/goliath-120b": {
-      "context_window": 6144,
-      "enabled": true,
-      "max_output_tokens": 1024,
-      "model_ref": "goliath-120b",
-      "pricing": {
-        "currency": "USD",
-        "input_per_mtok": 3.75,
-        "output_per_mtok": 7.5
-      },
-      "pricing_source_url": "https://openrouter.ai/alpindale/goliath-120b",
-      "source_urls": [
-        "https://openrouter.ai/alpindale/goliath-120b"
-      ]
-    },
     "openrouter/amazon/nova-2-lite-v1": {
       "context_window": 1000000,
       "enabled": true,
@@ -46142,16 +46207,13 @@
       "max_output_tokens": 128000,
       "model_ref": "claude-3-7-sonnet",
       "pricing": {
-        "cache_write_per_mtok": 3.75,
-        "cached_input_per_mtok": 0.3,
         "currency": "USD",
         "input_per_image": 0.0048,
         "input_per_mtok": 3.0,
         "output_per_mtok": 15.0
       },
-      "pricing_source_url": "https://openrouter.ai/anthropic/claude-3.7-sonnet",
+      "pricing_source_url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
       "source_urls": [
-        "https://openrouter.ai/anthropic/claude-3.7-sonnet",
         "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
       ]
     },
@@ -46280,6 +46342,23 @@
       "source_urls": [
         "https://openrouter.ai/anthropic/claude-opus-4.7",
         "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      ]
+    },
+    "openrouter/anthropic/claude-opus-4.7-fast": {
+      "context_window": 1000000,
+      "enabled": true,
+      "max_output_tokens": 128000,
+      "model_ref": "claude-opus-4.7-fast",
+      "pricing": {
+        "cache_write_per_mtok": 37.5,
+        "cached_input_per_mtok": 3.0,
+        "currency": "USD",
+        "input_per_mtok": 30.0,
+        "output_per_mtok": 150.0
+      },
+      "pricing_source_url": "https://openrouter.ai/anthropic/claude-opus-4.7-fast",
+      "source_urls": [
+        "https://openrouter.ai/anthropic/claude-opus-4.7-fast"
       ]
     },
     "openrouter/anthropic/claude-sonnet-4": {
@@ -46445,6 +46524,21 @@
       "pricing_source_url": "https://openrouter.ai/arcee-ai/trinity-large-thinking",
       "source_urls": [
         "https://openrouter.ai/arcee-ai/trinity-large-thinking"
+      ]
+    },
+    "openrouter/arcee-ai/trinity-large-thinking:free": {
+      "context_window": 262144,
+      "enabled": true,
+      "max_output_tokens": 80000,
+      "model_ref": "trinity-large-thinking",
+      "pricing": {
+        "currency": "USD",
+        "input_per_mtok": 0.0,
+        "output_per_mtok": 0.0
+      },
+      "pricing_source_url": "https://openrouter.ai/arcee-ai/trinity-large-thinking:free",
+      "source_urls": [
+        "https://openrouter.ai/arcee-ai/trinity-large-thinking:free"
       ]
     },
     "openrouter/arcee-ai/trinity-mini": {
@@ -46720,6 +46814,24 @@
         "https://openrouter.ai/anthropic/claude-opus-4.6-fast"
       ]
     },
+    "openrouter/claude-opus-4.7-fast": {
+      "context_window": 1000000,
+      "enabled": true,
+      "max_output_tokens": 128000,
+      "model_ref": "claude-opus-4.7-fast",
+      "pricing": {
+        "cache_write_per_mtok": 37.5,
+        "cached_input_per_mtok": 3.0,
+        "currency": "USD",
+        "input_per_mtok": 30.0,
+        "output_per_mtok": 150.0
+      },
+      "pricing_source_url": "https://openrouter.ai/anthropic/claude-opus-4.7-fast",
+      "provider_model_id": "anthropic/claude-opus-4.7-fast",
+      "source_urls": [
+        "https://openrouter.ai/anthropic/claude-opus-4.7-fast"
+      ]
+    },
     "openrouter/claude-opus-latest": {
       "context_window": 1000000,
       "enabled": true,
@@ -46981,9 +47093,10 @@
       "max_output_tokens": 163840,
       "model_ref": "deepseek-chat-v3.1",
       "pricing": {
+        "cached_input_per_mtok": 0.13,
         "currency": "USD",
-        "input_per_mtok": 0.15,
-        "output_per_mtok": 0.75
+        "input_per_mtok": 0.21,
+        "output_per_mtok": 0.79
       },
       "pricing_source_url": "https://openrouter.ai/deepseek/deepseek-chat-v3.1",
       "provider_model_id": "deepseek/deepseek-chat-v3.1",
@@ -47131,9 +47244,10 @@
       "max_output_tokens": 163840,
       "model_ref": "deepseek-chat-v3.1",
       "pricing": {
+        "cached_input_per_mtok": 0.13,
         "currency": "USD",
-        "input_per_mtok": 0.15,
-        "output_per_mtok": 0.75
+        "input_per_mtok": 0.21,
+        "output_per_mtok": 0.79
       },
       "pricing_source_url": "https://openrouter.ai/deepseek/deepseek-chat-v3.1",
       "source_urls": [
@@ -47272,13 +47386,13 @@
     "openrouter/deepseek/deepseek-v4-flash": {
       "context_window": 1048576,
       "enabled": true,
-      "max_output_tokens": 384000,
+      "max_output_tokens": 131072,
       "model_ref": "deepseek-v4-flash",
       "pricing": {
-        "cached_input_per_mtok": 0.0028,
+        "cached_input_per_mtok": 0.0252,
         "currency": "USD",
-        "input_per_mtok": 0.14,
-        "output_per_mtok": 0.28
+        "input_per_mtok": 0.126,
+        "output_per_mtok": 0.252
       },
       "pricing_source_url": "https://openrouter.ai/deepseek/deepseek-v4-flash",
       "source_urls": [
@@ -47442,24 +47556,6 @@
         "https://openrouter.ai/google/gemini-2.5-pro-preview"
       ]
     },
-    "openrouter/gemini-3.1-flash-lite": {
-      "context_window": 1048576,
-      "enabled": true,
-      "max_output_tokens": 65536,
-      "model_ref": "gemini-3.1-flash-lite",
-      "pricing": {
-        "cache_write_per_mtok": 0.08333333333333334,
-        "cached_input_per_mtok": 0.025,
-        "currency": "USD",
-        "input_per_mtok": 0.25,
-        "output_per_mtok": 1.5
-      },
-      "pricing_source_url": "https://openrouter.ai/google/gemini-3.1-flash-lite",
-      "provider_model_id": "google/gemini-3.1-flash-lite",
-      "source_urls": [
-        "https://openrouter.ai/google/gemini-3.1-flash-lite"
-      ]
-    },
     "openrouter/gemma-2-27b-it": {
       "context_window": 8192,
       "enabled": true,
@@ -47546,8 +47642,8 @@
       "model_ref": "gemma-4-31b-it",
       "pricing": {
         "currency": "USD",
-        "input_per_mtok": 0.13,
-        "output_per_mtok": 0.38
+        "input_per_mtok": 0.12,
+        "output_per_mtok": 0.37
       },
       "pricing_source_url": "https://openrouter.ai/google/gemma-4-31b-it",
       "source_urls": [
@@ -47737,22 +47833,6 @@
       "provider_model_id": "z-ai/glm-5v-turbo",
       "source_urls": [
         "https://openrouter.ai/z-ai/glm-5v-turbo"
-      ]
-    },
-    "openrouter/goliath-120b": {
-      "context_window": 6144,
-      "enabled": true,
-      "max_output_tokens": 1024,
-      "model_ref": "goliath-120b",
-      "pricing": {
-        "currency": "USD",
-        "input_per_mtok": 3.75,
-        "output_per_mtok": 7.5
-      },
-      "pricing_source_url": "https://openrouter.ai/alpindale/goliath-120b",
-      "provider_model_id": "alpindale/goliath-120b",
-      "source_urls": [
-        "https://openrouter.ai/alpindale/goliath-120b"
       ]
     },
     "openrouter/google/gemini-2.0-flash-001": {
@@ -48208,8 +48288,8 @@
       "model_ref": "gemma-4-31b-it",
       "pricing": {
         "currency": "USD",
-        "input_per_mtok": 0.13,
-        "output_per_mtok": 0.38
+        "input_per_mtok": 0.12,
+        "output_per_mtok": 0.37
       },
       "pricing_source_url": "https://openrouter.ai/google/gemma-4-31b-it",
       "source_urls": [
@@ -48529,14 +48609,15 @@
       "max_output_tokens": 262144,
       "model_ref": "hy3-preview",
       "pricing": {
+        "cached_input_per_mtok": 0.029,
         "currency": "USD",
-        "input_per_mtok": 0.0,
-        "output_per_mtok": 0.0
+        "input_per_mtok": 0.066,
+        "output_per_mtok": 0.26
       },
-      "pricing_source_url": "https://openrouter.ai/tencent/hy3-preview:free",
-      "provider_model_id": "tencent/hy3-preview:free",
+      "pricing_source_url": "https://openrouter.ai/tencent/hy3-preview",
+      "provider_model_id": "tencent/hy3-preview",
       "source_urls": [
-        "https://openrouter.ai/tencent/hy3-preview:free"
+        "https://openrouter.ai/tencent/hy3-preview"
       ]
     },
     "openrouter/ibm-granite/granite-4.0-h-micro": {
@@ -48778,13 +48859,13 @@
     "openrouter/kimi-k2.5": {
       "context_window": 262144,
       "enabled": true,
-      "max_output_tokens": 65535,
+      "max_output_tokens": 262144,
       "model_ref": "kimi-k2.5",
       "pricing": {
-        "cached_input_per_mtok": 0.22,
+        "cached_input_per_mtok": 0.09,
         "currency": "USD",
-        "input_per_mtok": 0.44,
-        "output_per_mtok": 2.0
+        "input_per_mtok": 0.4,
+        "output_per_mtok": 1.9
       },
       "pricing_source_url": "https://openrouter.ai/moonshotai/kimi-k2.5",
       "provider_model_id": "moonshotai/kimi-k2.5",
@@ -48793,14 +48874,14 @@
       ]
     },
     "openrouter/kimi-k2.6": {
-      "context_window": 262144,
+      "context_window": 262142,
       "enabled": true,
-      "max_output_tokens": 16384,
+      "max_output_tokens": 262142,
       "model_ref": "kimi-k2.6",
       "pricing": {
-        "cached_input_per_mtok": 0.15,
+        "cached_input_per_mtok": 0.25,
         "currency": "USD",
-        "input_per_mtok": 0.75,
+        "input_per_mtok": 0.74,
         "output_per_mtok": 3.5
       },
       "pricing_source_url": "https://openrouter.ai/moonshotai/kimi-k2.6",
@@ -48810,14 +48891,14 @@
       ]
     },
     "openrouter/kimi-latest": {
-      "context_window": 262144,
+      "context_window": 262142,
       "enabled": true,
-      "max_output_tokens": 16384,
+      "max_output_tokens": 262142,
       "model_ref": "kimi-latest",
       "pricing": {
-        "cached_input_per_mtok": 0.15,
+        "cached_input_per_mtok": 0.25,
         "currency": "USD",
-        "input_per_mtok": 0.75,
+        "input_per_mtok": 0.74,
         "output_per_mtok": 3.5
       },
       "pricing_source_url": "https://openrouter.ai/~moonshotai/kimi-latest",
@@ -49682,7 +49763,7 @@
     "openrouter/mimo-v2.5-pro": {
       "context_window": 1048576,
       "enabled": true,
-      "max_output_tokens": 131072,
+      "max_output_tokens": 16384,
       "model_ref": "mimo-v2.5-pro",
       "pricing": {
         "cached_input_per_mtok": 0.2,
@@ -49782,10 +49863,9 @@
     "openrouter/minimax-m2.5": {
       "context_window": 196608,
       "enabled": true,
-      "max_output_tokens": 131072,
+      "max_output_tokens": 196608,
       "model_ref": "minimax-m2.5",
       "pricing": {
-        "cached_input_per_mtok": 0.03,
         "currency": "USD",
         "input_per_mtok": 0.15,
         "output_per_mtok": 1.15
@@ -49799,11 +49879,10 @@
     "openrouter/minimax-m2.7": {
       "context_window": 196608,
       "enabled": true,
-      "max_output_tokens": 131072,
       "model_ref": "minimax-m2.7",
       "pricing": {
         "currency": "USD",
-        "input_per_mtok": 0.299,
+        "input_per_mtok": 0.28,
         "output_per_mtok": 1.2
       },
       "pricing_source_url": "https://openrouter.ai/minimax/minimax-m2.7",
@@ -49893,10 +49972,9 @@
     "openrouter/minimax/minimax-m2.5": {
       "context_window": 196608,
       "enabled": true,
-      "max_output_tokens": 131072,
+      "max_output_tokens": 196608,
       "model_ref": "minimax-m2.5",
       "pricing": {
-        "cached_input_per_mtok": 0.03,
         "currency": "USD",
         "input_per_mtok": 0.15,
         "output_per_mtok": 1.15
@@ -49924,11 +50002,10 @@
     "openrouter/minimax/minimax-m2.7": {
       "context_window": 196608,
       "enabled": true,
-      "max_output_tokens": 131072,
       "model_ref": "minimax-m2.7",
       "pricing": {
         "currency": "USD",
-        "input_per_mtok": 0.299,
+        "input_per_mtok": 0.28,
         "output_per_mtok": 1.2
       },
       "pricing_source_url": "https://openrouter.ai/minimax/minimax-m2.7",
@@ -50434,13 +50511,13 @@
     "openrouter/moonshotai/kimi-k2.5": {
       "context_window": 262144,
       "enabled": true,
-      "max_output_tokens": 65535,
+      "max_output_tokens": 262144,
       "model_ref": "kimi-k2.5",
       "pricing": {
-        "cached_input_per_mtok": 0.22,
+        "cached_input_per_mtok": 0.09,
         "currency": "USD",
-        "input_per_mtok": 0.44,
-        "output_per_mtok": 2.0
+        "input_per_mtok": 0.4,
+        "output_per_mtok": 1.9
       },
       "pricing_source_url": "https://openrouter.ai/moonshotai/kimi-k2.5",
       "source_urls": [
@@ -50448,14 +50525,14 @@
       ]
     },
     "openrouter/moonshotai/kimi-k2.6": {
-      "context_window": 262144,
+      "context_window": 262142,
       "enabled": true,
-      "max_output_tokens": 16384,
+      "max_output_tokens": 262142,
       "model_ref": "kimi-k2.6",
       "pricing": {
-        "cached_input_per_mtok": 0.15,
+        "cached_input_per_mtok": 0.25,
         "currency": "USD",
-        "input_per_mtok": 0.75,
+        "input_per_mtok": 0.74,
         "output_per_mtok": 3.5
       },
       "pricing_source_url": "https://openrouter.ai/moonshotai/kimi-k2.6",
@@ -52068,6 +52145,37 @@
         "https://openrouter.ai/openrouter/pareto-code"
       ]
     },
+    "openrouter/perceptron-mk1": {
+      "context_window": 32768,
+      "enabled": true,
+      "max_output_tokens": 8192,
+      "model_ref": "perceptron-mk1",
+      "pricing": {
+        "currency": "USD",
+        "input_per_mtok": 0.15,
+        "output_per_mtok": 1.5
+      },
+      "pricing_source_url": "https://openrouter.ai/perceptron/perceptron-mk1",
+      "provider_model_id": "perceptron/perceptron-mk1",
+      "source_urls": [
+        "https://openrouter.ai/perceptron/perceptron-mk1"
+      ]
+    },
+    "openrouter/perceptron/perceptron-mk1": {
+      "context_window": 32768,
+      "enabled": true,
+      "max_output_tokens": 8192,
+      "model_ref": "perceptron-mk1",
+      "pricing": {
+        "currency": "USD",
+        "input_per_mtok": 0.15,
+        "output_per_mtok": 1.5
+      },
+      "pricing_source_url": "https://openrouter.ai/perceptron/perceptron-mk1",
+      "source_urls": [
+        "https://openrouter.ai/perceptron/perceptron-mk1"
+      ]
+    },
     "openrouter/perplexity/sonar": {
       "context_window": 127072,
       "enabled": true,
@@ -52265,23 +52373,6 @@
         "https://openrouter.ai/qwen/qwen-2.5-coder-32b-instruct"
       ]
     },
-    "openrouter/qwen-max": {
-      "context_window": 32768,
-      "enabled": true,
-      "max_output_tokens": 8192,
-      "model_ref": "qwen-max",
-      "pricing": {
-        "cached_input_per_mtok": 0.208,
-        "currency": "USD",
-        "input_per_mtok": 1.04,
-        "output_per_mtok": 4.16
-      },
-      "pricing_source_url": "https://openrouter.ai/qwen/qwen-max",
-      "provider_model_id": "qwen/qwen-max",
-      "source_urls": [
-        "https://openrouter.ai/qwen/qwen-max"
-      ]
-    },
     "openrouter/qwen-plus": {
       "context_window": 1000000,
       "enabled": true,
@@ -52315,56 +52406,6 @@
       "source_urls": [
         "https://openrouter.ai/qwen/qwen-plus-2025-07-28",
         "https://openrouter.ai/qwen/qwen-plus-2025-07-28:thinking"
-      ]
-    },
-    "openrouter/qwen-turbo": {
-      "context_window": 131072,
-      "enabled": true,
-      "max_output_tokens": 8192,
-      "model_ref": "qwen-turbo",
-      "pricing": {
-        "cached_input_per_mtok": 0.0065,
-        "currency": "USD",
-        "input_per_mtok": 0.0325,
-        "output_per_mtok": 0.13
-      },
-      "pricing_source_url": "https://openrouter.ai/qwen/qwen-turbo",
-      "provider_model_id": "qwen/qwen-turbo",
-      "source_urls": [
-        "https://openrouter.ai/qwen/qwen-turbo"
-      ]
-    },
-    "openrouter/qwen-vl-max": {
-      "context_window": 131072,
-      "enabled": true,
-      "max_output_tokens": 32768,
-      "model_ref": "qwen-vl-max",
-      "pricing": {
-        "currency": "USD",
-        "input_per_mtok": 0.52,
-        "output_per_mtok": 2.08
-      },
-      "pricing_source_url": "https://openrouter.ai/qwen/qwen-vl-max",
-      "provider_model_id": "qwen/qwen-vl-max",
-      "source_urls": [
-        "https://openrouter.ai/qwen/qwen-vl-max"
-      ]
-    },
-    "openrouter/qwen-vl-plus": {
-      "context_window": 131072,
-      "enabled": true,
-      "max_output_tokens": 8192,
-      "model_ref": "qwen-vl-plus",
-      "pricing": {
-        "cached_input_per_mtok": 0.0273,
-        "currency": "USD",
-        "input_per_mtok": 0.1365,
-        "output_per_mtok": 0.4095
-      },
-      "pricing_source_url": "https://openrouter.ai/qwen/qwen-vl-plus",
-      "provider_model_id": "qwen/qwen-vl-plus",
-      "source_urls": [
-        "https://openrouter.ai/qwen/qwen-vl-plus"
       ]
     },
     "openrouter/qwen/qwen-2.5-72b-instruct": {
@@ -52409,22 +52450,6 @@
       "pricing_source_url": "https://openrouter.ai/qwen/qwen-2.5-coder-32b-instruct",
       "source_urls": [
         "https://openrouter.ai/qwen/qwen-2.5-coder-32b-instruct"
-      ]
-    },
-    "openrouter/qwen/qwen-max": {
-      "context_window": 32768,
-      "enabled": true,
-      "max_output_tokens": 8192,
-      "model_ref": "qwen-max",
-      "pricing": {
-        "cached_input_per_mtok": 0.208,
-        "currency": "USD",
-        "input_per_mtok": 1.04,
-        "output_per_mtok": 4.16
-      },
-      "pricing_source_url": "https://openrouter.ai/qwen/qwen-max",
-      "source_urls": [
-        "https://openrouter.ai/qwen/qwen-max"
       ]
     },
     "openrouter/qwen/qwen-plus": {
@@ -52474,53 +52499,6 @@
       "pricing_source_url": "https://openrouter.ai/qwen/qwen-plus-2025-07-28:thinking",
       "source_urls": [
         "https://openrouter.ai/qwen/qwen-plus-2025-07-28:thinking"
-      ]
-    },
-    "openrouter/qwen/qwen-turbo": {
-      "context_window": 131072,
-      "enabled": true,
-      "max_output_tokens": 8192,
-      "model_ref": "qwen-turbo",
-      "pricing": {
-        "cached_input_per_mtok": 0.0065,
-        "currency": "USD",
-        "input_per_mtok": 0.0325,
-        "output_per_mtok": 0.13
-      },
-      "pricing_source_url": "https://openrouter.ai/qwen/qwen-turbo",
-      "source_urls": [
-        "https://openrouter.ai/qwen/qwen-turbo"
-      ]
-    },
-    "openrouter/qwen/qwen-vl-max": {
-      "context_window": 131072,
-      "enabled": true,
-      "max_output_tokens": 32768,
-      "model_ref": "qwen-vl-max",
-      "pricing": {
-        "currency": "USD",
-        "input_per_mtok": 0.52,
-        "output_per_mtok": 2.08
-      },
-      "pricing_source_url": "https://openrouter.ai/qwen/qwen-vl-max",
-      "source_urls": [
-        "https://openrouter.ai/qwen/qwen-vl-max"
-      ]
-    },
-    "openrouter/qwen/qwen-vl-plus": {
-      "context_window": 131072,
-      "enabled": true,
-      "max_output_tokens": 8192,
-      "model_ref": "qwen-vl-plus",
-      "pricing": {
-        "cached_input_per_mtok": 0.0273,
-        "currency": "USD",
-        "input_per_mtok": 0.1365,
-        "output_per_mtok": 0.4095
-      },
-      "pricing_source_url": "https://openrouter.ai/qwen/qwen-vl-plus",
-      "source_urls": [
-        "https://openrouter.ai/qwen/qwen-vl-plus"
       ]
     },
     "openrouter/qwen/qwen2.5-vl-72b-instruct": {
@@ -52987,7 +52965,6 @@
       "max_output_tokens": 65536,
       "model_ref": "qwen3.5-397b-a17b",
       "pricing": {
-        "cached_input_per_mtok": 0.195,
         "currency": "USD",
         "input_per_mtok": 0.39,
         "output_per_mtok": 2.34
@@ -53585,7 +53562,6 @@
       "max_output_tokens": 65536,
       "model_ref": "qwen3.5-397b-a17b",
       "pricing": {
-        "cached_input_per_mtok": 0.195,
         "currency": "USD",
         "input_per_mtok": 0.39,
         "output_per_mtok": 2.34
@@ -54272,19 +54248,20 @@
         "https://openrouter.ai/tencent/hunyuan-a13b-instruct"
       ]
     },
-    "openrouter/tencent/hy3-preview:free": {
+    "openrouter/tencent/hy3-preview": {
       "context_window": 262144,
       "enabled": true,
       "max_output_tokens": 262144,
       "model_ref": "hy3-preview",
       "pricing": {
+        "cached_input_per_mtok": 0.029,
         "currency": "USD",
-        "input_per_mtok": 0.0,
-        "output_per_mtok": 0.0
+        "input_per_mtok": 0.066,
+        "output_per_mtok": 0.26
       },
-      "pricing_source_url": "https://openrouter.ai/tencent/hy3-preview:free",
+      "pricing_source_url": "https://openrouter.ai/tencent/hy3-preview",
       "source_urls": [
-        "https://openrouter.ai/tencent/hy3-preview:free"
+        "https://openrouter.ai/tencent/hy3-preview"
       ]
     },
     "openrouter/thedrummer/cydonia-24b-v4.1": {
@@ -54393,9 +54370,9 @@
         "output_per_mtok": 0.85
       },
       "pricing_source_url": "https://openrouter.ai/arcee-ai/trinity-large-thinking",
-      "provider_model_id": "arcee-ai/trinity-large-thinking",
       "source_urls": [
-        "https://openrouter.ai/arcee-ai/trinity-large-thinking"
+        "https://openrouter.ai/arcee-ai/trinity-large-thinking",
+        "https://openrouter.ai/arcee-ai/trinity-large-thinking:free"
       ]
     },
     "openrouter/trinity-mini": {
@@ -54776,7 +54753,7 @@
     "openrouter/xiaomi/mimo-v2.5-pro": {
       "context_window": 1048576,
       "enabled": true,
-      "max_output_tokens": 131072,
+      "max_output_tokens": 16384,
       "model_ref": "mimo-v2.5-pro",
       "pricing": {
         "cached_input_per_mtok": 0.2,
@@ -55078,14 +55055,14 @@
       ]
     },
     "openrouter/~moonshotai/kimi-latest": {
-      "context_window": 262144,
+      "context_window": 262142,
       "enabled": true,
-      "max_output_tokens": 16384,
+      "max_output_tokens": 262142,
       "model_ref": "kimi-latest",
       "pricing": {
-        "cached_input_per_mtok": 0.15,
+        "cached_input_per_mtok": 0.25,
         "currency": "USD",
-        "input_per_mtok": 0.75,
+        "input_per_mtok": 0.74,
         "output_per_mtok": 3.5
       },
       "pricing_source_url": "https://openrouter.ai/~moonshotai/kimi-latest",
@@ -56355,6 +56332,23 @@
       "pricing_source_url": "https://configs.portkey.ai/pricing/vertex-ai.json",
       "source_urls": [
         "https://cloud.google.com/vertex-ai/generative-ai/pricing#gemini-models",
+        "https://configs.portkey.ai/pricing/vertex-ai.json"
+      ]
+    },
+    "vertex_ai/gemini-3.1-flash-lite": {
+      "enabled": true,
+      "model_ref": "gemini-3.1-flash-lite",
+      "pricing": {
+        "batch_input_per_mtok": 0.125,
+        "batch_output_per_mtok": 0.75,
+        "cache_write_per_mtok": 0.25,
+        "cached_input_per_mtok": 0.025,
+        "currency": "USD",
+        "input_per_mtok": 0.25,
+        "output_per_mtok": 1.5
+      },
+      "pricing_source_url": "https://configs.portkey.ai/pricing/vertex-ai.json",
+      "source_urls": [
         "https://configs.portkey.ai/pricing/vertex-ai.json"
       ]
     },
@@ -59353,6 +59347,6 @@
       "website": "https://x.ai"
     }
   },
-  "updated_at": "2026-05-08T19:24:09Z",
+  "updated_at": "2026-05-13T19:59:45Z",
   "version": 1
 }
