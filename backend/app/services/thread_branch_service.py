@@ -182,6 +182,13 @@ async def _materialize_delta_messages(
         histories = await checkpointer.aget_delta_channel_history(
             config=cfg, channels=["messages"]
         )
+    except (AttributeError, NotImplementedError):
+        # Pre-DeltaChannel saver (테스트 fake) — fall back to channel_values.
+        tup = await checkpointer.aget_tuple(cfg)
+        if tup is None:
+            return []
+        cv_msgs = (tup.checkpoint or {}).get("channel_values", {}).get("messages")
+        return list(cv_msgs or [])
     except Exception:  # noqa: BLE001
         logger.warning(
             "aget_delta_channel_history failed for checkpoint %s", checkpoint_id, exc_info=True
@@ -218,6 +225,15 @@ def _message_id(msg: BaseMessage, fallback_idx: int) -> str:
     # LangChain occasionally emits messages without ids (system/tool stubs).
     # Fall back to a deterministic synthetic id derived from index.
     return f"synthetic-{fallback_idx}"
+
+
+def _is_synthetic_id(mid: str) -> bool:
+    """Synthetic id 는 ``synthetic-{idx}`` 형태. fork-edit 같은 분기에서
+    LangChain HumanMessage(id=None) 가 분기마다 같은 synthetic id 로 나오기
+    때문에 sibling 비교 시 checkpoint 까지 함께 봐야 한다. 진짜 langchain
+    id (e.g. ``lc_run-...``) 는 메시지 단위로 유니크해 id 만으로 dedup."""
+
+    return mid.startswith("synthetic-")
 
 
 def _resolve_active_leaf(
@@ -372,18 +388,23 @@ def _build_tree_from_checkpoints(
     #   - they have different ids
     branches_by_message: dict[str, list[BranchSibling]] = {}
 
-    # Pair-based parent key — `(msg_id, introducing_checkpoint)`. LangChain
-    # HumanMessage 는 id 를 안 박아서 fork-edit 두 분기의 user 메시지가 똑같이
-    # ``synthetic-{idx}`` 로 나온다. parent를 msg_id 만으로 비교하면 분기점
-    # 바로 다음 AIMessage 가 sibling 으로 잘못 잡혀 picker 가 엉뚱한 위치에
-    # 붙는다. checkpoint 까지 함께 비교해 다른 분기의 같은 idx 메시지를 구분.
+    # Pair-based parent key — `(msg_id, introducing_checkpoint)` for synthetic
+    # ids, ``(msg_id, "")`` for real ids. LangChain HumanMessage 는 id 를 안
+    # 박아서 fork-edit 두 분기의 user 메시지가 똑같이 ``synthetic-{idx}`` 로
+    # 나온다. 그땐 checkpoint 까지 함께 봐야 분기점이 sibling 으로 잡힌다.
+    # 반대로 진짜 langchain id (lc_run-…) 는 메시지 단위로 유니크하므로
+    # 같은 msg_id 가 여러 leaf 의 체인에서 나타나면 그건 “같은 메시지” —
+    # dedup 해야 한다 (안 그러면 regenerate 후 첫 AI 가 7 siblings 처럼 잘못
+    # 잡힘).
+    def _sibling_key(mid: str, ck: str) -> tuple[str, str]:
+        return (mid, ck) if _is_synthetic_id(mid) else (mid, "")
+
     expected_parent_key: tuple[str, str] | None = None
 
     for idx, active_mid in enumerate(active_msg_ids):
         if idx > 0:
-            expected_parent_key = (
-                active_msg_ids[idx - 1],
-                nodes[idx - 1].introduced_by_checkpoint_id,
+            expected_parent_key = _sibling_key(
+                active_msg_ids[idx - 1], nodes[idx - 1].introduced_by_checkpoint_id
             )
 
         seen_keys: set[tuple[str, str]] = set()
@@ -391,7 +412,7 @@ def _build_tree_from_checkpoints(
 
         active_ck = nodes[idx].introduced_by_checkpoint_id
         siblings.append(BranchSibling(message_id=active_mid, checkpoint_id=active_ck))
-        seen_keys.add((active_mid, active_ck))
+        seen_keys.add(_sibling_key(active_mid, active_ck))
 
         for leaf in leaves:
             if leaf.checkpoint_id == active.checkpoint_id:
@@ -410,7 +431,7 @@ def _build_tree_from_checkpoints(
                     idx - 1,
                     leaf.checkpoint_id,
                 )
-                this_parent_key = (parent_mid, parent_ck)
+                this_parent_key = _sibling_key(parent_mid, parent_ck)
             if this_parent_key != expected_parent_key:
                 continue
             sibling_ck = _checkpoint_for_message_in_chain(
@@ -419,7 +440,7 @@ def _build_tree_from_checkpoints(
                 idx,
                 leaf.checkpoint_id,
             )
-            key = (this_mid, sibling_ck)
+            key = _sibling_key(this_mid, sibling_ck)
             if key in seen_keys:
                 continue
             siblings.append(
@@ -442,11 +463,12 @@ def _build_tree_from_checkpoints(
             # avoids a second indexOf round-trip and the index-bug it caused.
             # 매칭 키는 (msg_id, checkpoint) 쌍. synthetic 동률 시 msg_id 만으로
             # 비교하면 항상 첫 번째가 잡혀 active_index 가 0 으로 고정된다.
+            active_key = _sibling_key(active_mid, active_ck)
             active_pos = next(
                 (
                     i
                     for i, s in enumerate(siblings)
-                    if s.message_id == active_mid and s.checkpoint_id == active_ck
+                    if _sibling_key(s.message_id, s.checkpoint_id) == active_key
                 ),
                 0,
             )

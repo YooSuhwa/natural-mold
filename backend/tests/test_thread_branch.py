@@ -213,6 +213,27 @@ class _FakeCheckpointer:
                 },
             )()
 
+    async def aget_tuple(self, config: Any) -> Any:
+        cid = (config.get("configurable") or {}).get("checkpoint_id")
+        for ck in self._cks:
+            if ck.checkpoint_id == cid:
+                return type(
+                    "CT",
+                    (),
+                    {
+                        "config": {
+                            "configurable": {"checkpoint_id": ck.checkpoint_id}
+                        },
+                        "parent_config": (
+                            {"configurable": {"checkpoint_id": ck.parent_checkpoint_id}}
+                            if ck.parent_checkpoint_id
+                            else None
+                        ),
+                        "checkpoint": {"channel_values": {"messages": ck.messages}},
+                    },
+                )()
+        return None
+
 
 @pytest.mark.asyncio
 async def test_rewind_finds_parent_checkpoint():
@@ -399,9 +420,18 @@ async def test_regenerate_does_not_duplicate_user_message(client: AsyncClient):
     cfg, history = captured[0]
     # Forked from ck0 (state holds only the user message — no assistant).
     assert cfg.checkpoint_id == "ck0"
-    # The executor must receive an empty history so the user turn isn't
-    # appended a second time when LangGraph resumes the graph.
-    assert history == []
+    # langgraph 1.2 DeltaChannel — regenerate 도 fork-edit 와 동일하게
+    # ``Overwrite(value=[pre_msgs])`` 로 messages 채널을 명시 리셋해야
+    # ancestor pending_writes 가 누적되지 않는다. pre_msgs 는 rewound
+    # checkpoint 의 state (= 타깃 직전까지의 메시지).
+    from langgraph.types import Overwrite
+
+    assert isinstance(history, dict)
+    ow = history.get("messages")
+    assert isinstance(ow, Overwrite)
+    # ck0 state = [user "정말 슬펐어"]; Overwrite 리셋 후 agent 가 새 AI 생성.
+    assert len(ow.value) == 1
+    assert ow.value[0].content == "정말 슬펐어"
 
 
 @pytest.mark.asyncio
@@ -475,7 +505,15 @@ async def test_regenerate_targeted_assistant_uses_correct_checkpoint(
     # ck2 holds [u1, a1, u2] — exactly the state needed to fork a sibling
     # of a2 without duplicating u2.
     assert cfg.checkpoint_id == "ck2"
-    assert history == []
+    # Regenerate 도 DeltaChannel 누적 차단을 위해 ``Overwrite(pre_msgs)`` 전송.
+    # pre_msgs = ck2 의 state = [user "안녕?", ai "안녕!", user "정말 슬펐어"].
+    from langgraph.types import Overwrite
+
+    assert isinstance(history, dict)
+    ow = history.get("messages")
+    assert isinstance(ow, Overwrite)
+    assert len(ow.value) == 3
+    assert [m.content for m in ow.value] == ["안녕?", "안녕!", "정말 슬펐어"]
 
 
 @pytest.mark.asyncio

@@ -1018,7 +1018,10 @@ async def regenerate_message(
     # sibling assistant message. Passing the user content as input (the old
     # behaviour) caused the user turn to be appended a second time, so the
     # frontend rendered "[user, user, ai_new]" instead of "[user, ai_new]".
-    from app.services.thread_branch_service import rewind_to_checkpoint_before_message
+    from app.services.thread_branch_service import (
+        materialize_messages_at_checkpoint,
+        rewind_to_checkpoint_before_message,
+    )
 
     target_msg = msgs[target_idx]
     target_msg_raw = getattr(target_msg, "id", None) or f"synthetic-{target_idx}"
@@ -1033,12 +1036,27 @@ async def regenerate_message(
     # Regenerate creates a new leaf — drop any prior user-pinned branch.
     await chat_service.clear_active_branch_override(db, conversation_id)
 
-    # Empty messages_history → executor passes None to LangGraph,
-    # resuming from the rewound checkpoint state without duplicating
-    # the user message.
+    # langgraph 1.2 DeltaChannel 회귀 대응 (edit_message 와 동일 패턴):
+    # rewind 한 checkpoint 의 state 를 materialize 한 뒤 ``Overwrite`` 로
+    # messages 채널을 강제 리셋. 그러지 않으면 부모 체인의 pending_writes 가
+    # 누적되어 regen 결과가 [user, old_ai, new_ai] 처럼 old_ai 가 덤으로
+    # 남는다. Overwrite value = 타깃 직전까지의 메시지 → agent 가 그 뒤로
+    # 새 AI 만 만들어 leaf 가 [user, new_ai] 깔끔하게 정착한다.
+    from langgraph.types import Overwrite
+
+    pre_msgs: list[Any] = []
+    if checkpoint_id is not None:
+        try:
+            pre_msgs = await materialize_messages_at_checkpoint(
+                checkpointer, str(conversation_id), checkpoint_id
+            )
+        except Exception:  # noqa: BLE001
+            pre_msgs = []
+    overwrite_input: dict[str, Any] = {"messages": Overwrite(value=list(pre_msgs))}
+
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
-        lambda: execute_agent_stream(cfg, [], **ctx.as_stream_kwargs()),
+        lambda: execute_agent_stream(cfg, overwrite_input, **ctx.as_stream_kwargs()),
         log_msg=f"Agent regenerate failed for conversation {conversation_id}",
         user_msg="메시지 재생성 중 오류가 발생했습니다.",
         run_id=ctx.run_id,
