@@ -372,16 +372,26 @@ def _build_tree_from_checkpoints(
     #   - they have different ids
     branches_by_message: dict[str, list[BranchSibling]] = {}
 
+    # Pair-based parent key — `(msg_id, introducing_checkpoint)`. LangChain
+    # HumanMessage 는 id 를 안 박아서 fork-edit 두 분기의 user 메시지가 똑같이
+    # ``synthetic-{idx}`` 로 나온다. parent를 msg_id 만으로 비교하면 분기점
+    # 바로 다음 AIMessage 가 sibling 으로 잘못 잡혀 picker 가 엉뚱한 위치에
+    # 붙는다. checkpoint 까지 함께 비교해 다른 분기의 같은 idx 메시지를 구분.
+    expected_parent_key: tuple[str, str] | None = None
+
     for idx, active_mid in enumerate(active_msg_ids):
-        expected_parent = active_msg_ids[idx - 1] if idx > 0 else None
-        # Collect all message_ids at this position across leaves that share
-        # the same parent.
-        seen_ids: set[str] = set()
+        if idx > 0:
+            expected_parent_key = (
+                active_msg_ids[idx - 1],
+                nodes[idx - 1].introduced_by_checkpoint_id,
+            )
+
+        seen_keys: set[tuple[str, str]] = set()
         siblings: list[BranchSibling] = []
 
         active_ck = nodes[idx].introduced_by_checkpoint_id
         siblings.append(BranchSibling(message_id=active_mid, checkpoint_id=active_ck))
-        seen_ids.add(active_mid)
+        seen_keys.add((active_mid, active_ck))
 
         for leaf in leaves:
             if leaf.checkpoint_id == active.checkpoint_id:
@@ -390,13 +400,18 @@ def _build_tree_from_checkpoints(
             if idx >= len(msgs):
                 continue
             this_mid = _message_id(msgs[idx], idx)
-            if this_mid in seen_ids:
-                continue
-            # Verify same parent.
-            this_parent = (
-                _message_id(msgs[idx - 1], idx - 1) if idx > 0 else None
-            )
-            if this_parent != expected_parent:
+            # Verify same parent — pair-compared (msg_id, introducing_ck).
+            this_parent_key: tuple[str, str] | None = None
+            if idx > 0:
+                parent_mid = _message_id(msgs[idx - 1], idx - 1)
+                parent_ck = _checkpoint_for_message_in_chain(
+                    chains_by_leaf[leaf.checkpoint_id],
+                    parent_mid,
+                    idx - 1,
+                    leaf.checkpoint_id,
+                )
+                this_parent_key = (parent_mid, parent_ck)
+            if this_parent_key != expected_parent_key:
                 continue
             sibling_ck = _checkpoint_for_message_in_chain(
                 chains_by_leaf[leaf.checkpoint_id],
@@ -404,10 +419,13 @@ def _build_tree_from_checkpoints(
                 idx,
                 leaf.checkpoint_id,
             )
+            key = (this_mid, sibling_ck)
+            if key in seen_keys:
+                continue
             siblings.append(
                 BranchSibling(message_id=this_mid, checkpoint_id=sibling_ck)
             )
-            seen_ids.add(this_mid)
+            seen_keys.add(key)
 
         if len(siblings) >= 2:
             # Stable chronological order: oldest branch first → newest last.
