@@ -5,7 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import (
     invalid_schedule_config,
     invalid_trigger_type,
@@ -33,6 +33,7 @@ async def create_trigger(
     data: TriggerCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     # Validate trigger type
     if data.trigger_type not in ("interval", "cron"):
@@ -58,6 +59,7 @@ async def update_trigger(
     data: TriggerUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
     if not trigger or trigger.agent_id != agent_id:
@@ -87,6 +89,7 @@ async def delete_trigger(
     trigger_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
     if not trigger or trigger.agent_id != agent_id:

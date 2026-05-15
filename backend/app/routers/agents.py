@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.middleware_registry import get_middleware_registry
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import agent_not_found, image_not_found
 from app.exceptions import ExternalServiceError, ValidationError
 from app.models.agent import Agent
@@ -119,6 +119,7 @@ async def create_agent(
     data: AgentCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     agent = await agent_service.create_agent(db, data, user.id)
     return _agent_to_response(agent)
@@ -142,6 +143,7 @@ async def update_agent(
     data: AgentUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
@@ -155,6 +157,7 @@ async def toggle_favorite(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
@@ -168,6 +171,7 @@ async def delete_agent(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
@@ -180,6 +184,7 @@ async def generate_agent_image(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:

@@ -152,6 +152,13 @@ LLM_DEFINITION_TO_ENV_KEY: dict[str, str] = {
     "openrouter": "openrouter",
 }
 
+# Inverse of ``LLM_DEFINITION_TO_ENV_KEY`` — used by chat credential resolver
+# to find a user's credential by ``Model.provider``. Kept as a derived constant
+# so a new provider only needs to be added in one place.
+PROVIDER_TO_DEFINITION_KEY: dict[str, str] = {
+    v: k for k, v in LLM_DEFINITION_TO_ENV_KEY.items()
+}
+
 
 def is_llm_definition(definition_key: str) -> bool:
     """True when ``definition_key`` participates in ``_ENV_FALLBACK`` sync."""
@@ -248,7 +255,7 @@ async def write_audit_log(
 async def create(
     db: AsyncSession,
     *,
-    user_id: uuid.UUID,
+    user_id: uuid.UUID | None,
     definition_key: str,
     name: str,
     data: dict[str, Any],
@@ -256,6 +263,20 @@ async def create(
     is_system: bool = False,
     source: str = "api",
 ) -> Credential:
+    """Create a credential row.
+
+    ``is_system=True`` rows MUST be created with ``user_id=None`` — system
+    credentials belong to the operator, not to any single user, so the FK is
+    intentionally NULL (the m36 migration relaxed the constraint and added a
+    CHECK enforcing this invariant). User-owned credentials must always
+    supply a non-null ``user_id``.
+    """
+
+    if is_system and user_id is not None:
+        raise ValueError("system credentials must have user_id=None")
+    if not is_system and user_id is None:
+        raise ValueError("user credentials require user_id")
+
     blob, key_id, field_keys = encrypt_data(data)
     cred = Credential(
         user_id=user_id,
@@ -389,6 +410,7 @@ async def list_audit_logs(
 
 __all__ = [
     "LLM_DEFINITION_TO_ENV_KEY",
+    "PROVIDER_TO_DEFINITION_KEY",
     "create",
     "decrypt_data",
     "decrypt_with_external",

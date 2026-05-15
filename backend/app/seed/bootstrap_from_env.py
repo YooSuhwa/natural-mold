@@ -1,18 +1,20 @@
-"""Auto-create Credentials from environment variables for the mock user.
+"""Auto-create system Credentials from environment variables.
 
 PoC-only convenience: when ``OPENAI_API_KEY`` and friends are present in the
 environment, generate a Credential row encrypted with the active Cipher V2
-key. Idempotent — credentials with the marker name are not duplicated on
-subsequent boots.
+key. Rows are stored as ``is_system=True, user_id=NULL`` so they belong to
+the operator (not any single user) and only surface through the
+super_user-gated ``/api/system-credentials`` router.
 
-This module never deletes or rotates anything; it only inserts missing rows.
+Idempotent — credentials with the marker name are not duplicated on
+subsequent boots. This module never deletes or rotates anything; it only
+inserts missing rows.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,13 +24,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.credentials import service as credential_service
 from app.models.credential import Credential
-from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
 # Credentials inserted by this seed are tagged with this prefix so re-runs
-# can skip them and admins can identify env-derived rows in the UI.
-SEED_NAME_PREFIX = "[env]"
+# can skip them and operators can identify env-derived rows in the UI.
+SEED_NAME_PREFIX = "[system]"
 
 
 @dataclass(frozen=True)
@@ -102,32 +103,23 @@ def _gather_env_payload(spec: _EnvSpec) -> dict[str, Any] | None:
     return payload
 
 
-async def bootstrap_credentials_from_env(
-    db: AsyncSession,
-    user_id: uuid.UUID,
-) -> list[Credential]:
-    """Create env-derived credentials for ``user_id`` if missing. Idempotent.
+async def bootstrap_system_credentials(db: AsyncSession) -> list[Credential]:
+    """Create env-derived ``is_system=True`` credentials if missing. Idempotent.
 
     Skipped when ``settings.environment`` (if defined) is ``"production"`` so
-    real deployments never auto-import their own env into the DB.
+    real deployments never auto-import their own env into the DB. The rows
+    are written with ``user_id=NULL`` — they belong to the operator, not to
+    any specific user account.
     """
 
     env_setting = getattr(settings, "environment", None)
     if env_setting == "production":
-        logger.info("skip bootstrap_credentials_from_env: production environment")
-        return []
-
-    # Confirm the user actually exists — otherwise FK insert fails.
-    user_exists = await db.execute(select(User.id).where(User.id == user_id))
-    if user_exists.scalar() is None:
-        logger.info(
-            "skip bootstrap_credentials_from_env: user %s not found", user_id
-        )
+        logger.info("skip bootstrap_system_credentials: production environment")
         return []
 
     existing_rows = await db.execute(
         select(Credential.definition_key, Credential.name).where(
-            Credential.user_id == user_id
+            Credential.is_system.is_(True)
         )
     )
     existing = {(row[0], row[1]) for row in existing_rows.all()}
@@ -141,19 +133,20 @@ async def bootstrap_credentials_from_env(
             continue
         credential = await credential_service.create(
             db,
-            user_id=user_id,
+            user_id=None,
             definition_key=spec.definition_key,
             name=spec.name,
             data=payload,
+            is_system=True,
             source="seed",
         )
         created.append(credential)
         logger.info(
-            "bootstrap: created credential %s (%s) from env",
+            "bootstrap: created system credential %s (%s) from env",
             spec.name,
             spec.definition_key,
         )
     return created
 
 
-__all__ = ["SEED_NAME_PREFIX", "bootstrap_credentials_from_env"]
+__all__ = ["SEED_NAME_PREFIX", "bootstrap_system_credentials"]

@@ -55,7 +55,15 @@ _WRITE_TOOL_KEYWORDS = frozenset(
 
 @dataclass
 class AgentConfig:
-    """에이전트 실행에 필요한 설정 묶음. executor 공용 함수들의 시그니처를 단순화."""
+    """에이전트 실행에 필요한 설정 묶음. executor 공용 함수들의 시그니처를 단순화.
+
+    Multi-user (ADR-016 §6) — 프로덕션 진입점(``routers/conversations.py``,
+    ``trigger_executor``)은 ``agent_id`` 와 ``user_id`` 를 항상 함께 채워야
+    한다. ``__post_init__`` 가 둘 중 하나만 설정된 경우(특히 ``agent_id`` 는
+    있는데 ``user_id`` 가 비어 있는 케이스)를 즉시 ``ValueError`` 로 차단해
+    hook framework / 권한 트레이싱이 silently None 으로 떨어지지 않도록 한다.
+    DB-free 단위 테스트는 두 필드 모두 비워두면 종전처럼 통과한다.
+    """
 
     provider: str
     model_name: str
@@ -72,6 +80,8 @@ class AgentConfig:
     cost_per_input_token: float | None = None
     cost_per_output_token: float | None = None
     # Hook framework correlation — populated by router/trigger executor.
+    # NOTE: ``agent_id`` 가 설정되면 반드시 ``user_id`` 도 설정되어야 한다
+    # (``__post_init__`` 가드). 일치하지 않으면 ValueError.
     user_id: str | None = None
     model_id: str | None = None
     llm_credential_id: str | None = None
@@ -86,6 +96,18 @@ class AgentConfig:
     # (used by edit / regenerate to branch off an earlier message instead of
     # appending to the thread tip).
     checkpoint_id: str | None = None
+
+    def __post_init__(self) -> None:
+        # ADR-016 §6 — 프로덕션 callsite(``conversations`` 라우터,
+        # ``trigger_executor``)는 ``agent_id`` + ``user_id`` 둘 다 채운다.
+        # 한쪽만 채워진 상태로 hook framework 가 호출되면 권한 트레이싱이
+        # silently None 으로 떨어져 "누구의 호출인가" 추적이 불가능해진다.
+        # 즉시 fail-fast.
+        if self.agent_id and not self.user_id:
+            raise ValueError(
+                "AgentConfig.user_id is required when agent_id is set "
+                "(production callsite forgot to propagate authenticated user)."
+            )
 
 
 def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseTool:
@@ -592,6 +614,11 @@ def _hook_ctx_for_agent(cfg: AgentConfig) -> HookContext | None:
     Returns ``None`` when the caller didn't propagate a ``user_id`` (legacy
     tests that build ``AgentConfig`` directly). Hook dispatch is a no-op in
     that case so the runtime stays backward compatible.
+
+    Correlation IDs (``agent_id`` / ``model_id`` / ``llm_credential_id``)
+    are best-effort: a malformed UUID drops the field instead of crashing
+    the request — these are trace metadata, not access-control gates.
+    The user_id check above is the security boundary.
     """
 
     if not cfg.user_id:
@@ -600,6 +627,14 @@ def _hook_ctx_for_agent(cfg: AgentConfig) -> HookContext | None:
         user_uuid = _uuid.UUID(str(cfg.user_id))
     except (TypeError, ValueError):
         return None
+
+    def _opt(value: str | None) -> _uuid.UUID | None:
+        if not value:
+            return None
+        try:
+            return _uuid.UUID(str(value))
+        except (TypeError, ValueError):
+            return None
 
     metadata: dict[str, Any] = {
         "provider": cfg.provider,
@@ -611,11 +646,9 @@ def _hook_ctx_for_agent(cfg: AgentConfig) -> HookContext | None:
         kind="agent_invoke",
         user_id=user_uuid,
         started_at=datetime.now(UTC).replace(tzinfo=None),
-        agent_id=_uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
-        model_id=_uuid.UUID(cfg.model_id) if cfg.model_id else None,
-        credential_id=(
-            _uuid.UUID(cfg.llm_credential_id) if cfg.llm_credential_id else None
-        ),
+        agent_id=_opt(cfg.agent_id),
+        model_id=_opt(cfg.model_id),
+        credential_id=_opt(cfg.llm_credential_id),
         metadata=metadata,
     )
 

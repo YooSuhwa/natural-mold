@@ -1,4 +1,4 @@
-import { apiFetch, API_BASE, ApiError } from './client'
+import { API_BASE, apiFetch, apiUpload } from './client'
 import type {
   Skill,
   SkillContentUpdateRequest,
@@ -53,42 +53,16 @@ export const skillsApi = {
       method: 'DELETE',
     }),
 
-  uploadFile: async (id: string, relPath: string, file: File): Promise<Skill> => {
+  uploadFile: (id: string, relPath: string, file: File): Promise<Skill> => {
     const formData = new FormData()
     formData.append('file', file)
     formData.append('rel_path', relPath)
-    const res = await fetch(`${API_BASE}/api/skills/${id}/files`, {
-      method: 'POST',
-      body: formData,
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      const err = body.error ?? {}
-      throw new ApiError(
-        res.status,
-        err.code ?? 'UPLOAD_ERROR',
-        err.message ?? body.detail ?? 'Upload failed',
-      )
-    }
-    return res.json()
+    return apiUpload<Skill>(`/api/skills/${id}/files`, formData)
   },
 
-  uploadPackage: async (file: File): Promise<Skill> => {
+  uploadPackage: (file: File): Promise<Skill> => {
     const formData = new FormData()
     formData.append('file', file)
-    const res = await fetch(`${API_BASE}/api/skills/upload`, {
-      method: 'POST',
-      body: formData,
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      const err = body.error ?? {}
-      throw new ApiError(
-        res.status,
-        err.code ?? 'UPLOAD_ERROR',
-        err.message ?? body.detail ?? 'Upload failed',
-      )
-    }
-    return res.json()
+    return apiUpload<Skill>('/api/skills/upload', formData)
   },
 }

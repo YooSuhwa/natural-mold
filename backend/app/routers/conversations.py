@@ -19,7 +19,7 @@ from app.agent_runtime.model_factory import env_provider_keys
 from app.agent_runtime.streaming import format_sse
 from app.config import settings
 from app.database import async_session
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import (
     agent_not_found,
     conversation_not_found,
@@ -428,6 +428,7 @@ async def create_conversation(
     data: ConversationCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
     if not agent:
@@ -443,8 +444,10 @@ async def update_conversation(
     conversation_id: uuid.UUID,
     data: ConversationUpdate,
     db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
-    conv = await chat_service.get_conversation(db, conversation_id)
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
     return await chat_service.update_conversation(db, conv, data)
@@ -454,8 +457,10 @@ async def update_conversation(
 async def delete_conversation(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
-    conv = await chat_service.get_conversation(db, conversation_id)
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
     await chat_service.delete_conversation(db, conv)
@@ -777,6 +782,7 @@ async def send_message(
     data: MessageCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     cfg = await _resolve_agent_context(db, conversation_id, user)
     await chat_service.maybe_set_auto_title(db, conversation_id, data.content)
@@ -816,6 +822,7 @@ async def resume_message(
     data: ResumeRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """HiTL interrupt 재개 — ``Command(resume={"decisions": [...]})``로
     그래프 실행 재개.
@@ -897,6 +904,7 @@ async def edit_message(
     data: EditMessageRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Replace a previous user message and re-run.
 
@@ -934,6 +942,7 @@ async def regenerate_message(
     data: RegenerateMessageRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Regenerate an assistant message in place by replaying its parent user turn."""
 
@@ -1020,10 +1029,12 @@ async def switch_branch(
     conversation_id: uuid.UUID,
     data: SwitchBranchRequest,
     db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Record the user's branch choice on the conversation row."""
 
-    conv = await chat_service.get_conversation(db, conversation_id)
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
     from sqlalchemy import update as _update

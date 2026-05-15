@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import {
   HomeIcon,
   WrenchIcon,
@@ -17,10 +17,6 @@ import {
   Plug2Icon,
   ShieldIcon,
   ChevronRightIcon,
-  UserIcon,
-  SettingsIcon,
-  LogOutIcon,
-  ChevronsUpDownIcon,
   ToggleRightIcon,
   ToggleLeftIcon,
   SunIcon,
@@ -30,9 +26,11 @@ import {
 import { useAtom } from 'jotai'
 import { useTheme } from 'next-themes'
 import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
 
 import { useAgents } from '@/lib/hooks/use-agents'
+import { UserMenu } from '@/components/auth/UserMenu'
+import { useSession } from '@/lib/auth/session'
+import { useLogout } from '@/lib/hooks/useAuth'
 import { connectorsExpandedAtom } from '@/lib/stores/sidebar-store'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import {
@@ -53,21 +51,15 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu'
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
   const { data: agents, isLoading } = useAgents()
   const { setTheme, theme } = useTheme()
   const { toggleSidebar } = useSidebar()
   const t = useTranslations('sidebar')
+  const { data: user } = useSession()
+  const logout = useLogout()
 
   const [connectorsExpanded, setConnectorsExpanded] = useAtom(connectorsExpandedAtom)
 
@@ -90,11 +82,17 @@ export function AppSidebar() {
 
   const resourceItems = [
     { label: t('nav.credentials'), href: '/credentials', icon: KeyRoundIcon },
-    {
-      label: t('nav.systemCredentials'),
-      href: '/settings/system-credentials',
-      icon: ShieldIcon,
-    },
+    // System Credentials are operator-managed; only super_user sees the menu.
+    // Backend enforces 403 via ``require_super_user`` — this hides the chrome.
+    ...(user?.is_super_user
+      ? [
+          {
+            label: t('nav.systemCredentials'),
+            href: '/settings/system-credentials',
+            icon: ShieldIcon,
+          },
+        ]
+      : []),
     { label: t('nav.models'), href: '/models', icon: BrainIcon },
     { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
   ]
@@ -365,42 +363,17 @@ export function AppSidebar() {
         {/* User Profile */}
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                className="w-full rounded-md ring-sidebar-ring outline-hidden focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0"
-                render={
-                  <SidebarMenuButton
-                    size="lg"
-                    className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
-                  />
-                }
-              >
-                <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-accent">
-                  <UserIcon className="size-4 text-sidebar-accent-foreground" />
+            {user ? (
+              <UserMenu user={user} onLogout={() => logout.mutate()} />
+            ) : (
+              <div className="flex items-center gap-3 px-2 py-2">
+                <Skeleton className="size-8 rounded-lg" />
+                <div className="flex-1 space-y-1">
+                  <Skeleton className="h-3 w-24" />
+                  <Skeleton className="h-3 w-32" />
                 </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{t('user.name')}</span>
-                  <span className="truncate text-xs text-muted-foreground">{t('user.email')}</span>
-                </div>
-                <ChevronsUpDownIcon className="ml-auto size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-[--anchor-width]">
-                <DropdownMenuItem onClick={() => router.push('/settings')}>
-                  <SettingsIcon />
-                  {t('settings')}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => {
-                    toast.info(t('logoutMessage'))
-                    router.push('/')
-                  }}
-                >
-                  <LogOutIcon />
-                  {t('logout')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </div>
+            )}
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

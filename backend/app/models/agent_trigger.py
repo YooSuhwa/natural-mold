@@ -16,7 +16,9 @@ class AgentTrigger(Base):
     agent_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("agents.id", ondelete="CASCADE"), nullable=False
     )
-    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     trigger_type: Mapped[str] = mapped_column(String(20), nullable=False)  # "interval" | "cron"
     schedule_config: Mapped[dict] = mapped_column(JSON, nullable=False)
     input_message: Mapped[str] = mapped_column(Text, nullable=False)

@@ -30,7 +30,6 @@ if os.path.exists(_hc_cert):
     ssl._create_default_https_context = lambda: ssl_ctx
 
 import logging
-import uuid
 
 # Root logger 설정 — uvicorn 자체 logger 외 ``app.*`` logger 의 INFO/WARNING/
 # ERROR 가 stdout 으로 도달하도록 한다. 미설정 시 ``logger.info()`` 호출이
@@ -66,7 +65,6 @@ from app.hooks import register_default_hooks
 from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
 from app.models.template import Template
-from app.models.user import User
 from app.rate_limit import limiter
 from app.scheduler import (
     add_trigger_job,
@@ -77,7 +75,7 @@ from app.scheduler import (
     register_health_check_job,
     register_mcp_health_job,
 )
-from app.seed.bootstrap_from_env import bootstrap_credentials_from_env
+from app.seed.bootstrap_from_env import bootstrap_system_credentials
 from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_templates import DEFAULT_TEMPLATES
 from app.services.spend_writer import spend_queue
@@ -95,18 +93,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Startup: seed default data.
     async with async_session() as db:
-        # Ensure mock user exists.
-        mock_user_id = uuid.UUID(settings.mock_user_id)
-        result = await db.execute(select(User).where(User.id == mock_user_id))
-        if not result.scalar_one_or_none():
-            db.add(
-                User(
-                    id=mock_user_id,
-                    email=settings.mock_user_email,
-                    name=settings.mock_user_name,
-                )
-            )
-
         # Seed default models (insert if table empty).
         result = await db.execute(select(Model).limit(1))
         if not result.scalar_one_or_none():
@@ -128,15 +114,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         await db.commit()
 
-        # Greenfield env-derived credentials (Cipher V2 encrypted).
+        # Operator-managed system credentials seeded from env (Cipher V2). Stored
+        # as ``is_system=True, user_id=NULL`` so they survive every user's
+        # lifecycle and surface only to super_user-gated endpoints.
         if getattr(settings, "encryption_keys", ""):
             try:
-                await bootstrap_credentials_from_env(db, mock_user_id)
+                await bootstrap_system_credentials(db)
                 await db.commit()
             except Exception:  # noqa: BLE001 — lifespan boundary
                 await db.rollback()
                 logger.exception(
-                    "bootstrap_credentials_from_env failed — continuing startup."
+                    "bootstrap_system_credentials failed — continuing startup."
                 )
 
         # ADR-013 — sync builder/assistant `_ENV_FALLBACK` from credentials
@@ -235,10 +223,10 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origins=settings.cors_origins_list,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
         # W3-out — cross-origin (3000 → 8001) 에서 frontend 가 SSE stream 의
         # ``X-Run-Id`` (resume 식별자) / ``X-Resume-Mode`` (관찰성) 를 읽으려면
         # CORS expose_headers 에 명시해야 한다. 누락 시 browser fetch.headers.get
@@ -249,6 +237,7 @@ def create_app() -> FastAPI:
     from app.routers import (
         agents,
         assistant,
+        auth,
         builder,
         conversations,
         credentials,
@@ -265,6 +254,7 @@ def create_app() -> FastAPI:
         usage,
     )
 
+    app.include_router(auth.router)
     app.include_router(agents.router)
     app.include_router(agents.middleware_router)
     app.include_router(builder.router)

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import agent_not_found
 from app.schemas.assistant import AssistantMessageRequest
 from app.services import agent_service, assistant_service
@@ -22,6 +22,7 @@ async def send_assistant_message(
     data: AssistantMessageRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ):
     """Assistant에게 메시지를 보내고 SSE 스트리밍으로 응답받는다."""
     agent = await agent_service.get_agent(db, agent_id, user.id)

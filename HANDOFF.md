@@ -1,75 +1,98 @@
-# 작업 인계 — 8 PR 머지 완료, 다음 세션 라이브 검증
+# HANDOFF — Multi-User Auth + 라이브 검증 라운드
 
-> 새 세션 첫 행동: 본 파일 + (필요 시) `docs/design-docs/adr-014-chat-model-factory-strategy.md` 참조.
+**Branch**: `feature/multiuser-auth`
+**Date**: 2026-05-15
+**ADR**: `docs/design-docs/adr-016-multiuser-auth.md`
+**Plan**: `~/.claude/plans/replicated-crunching-lark.md`
+**Status**: ✅ 코드 안정 — 라이브 검증 fix **19 파일 미커밋**
+
+---
 
 ## 마지막 상태
 
-- 브랜치: `main` (모든 작업 머지 완료, 본 파일 갱신용 docs 브랜치만 남음)
-- 이번 세션 PR 8건 (#140~#147) **전부 main 머지** ✅
-- backend: pytest **908** / pyright 0/0 / ruff clean / alembic m35 OK
-- frontend: vitest **286** / lint clean / build PASS
+- 커밋 3개: `7e6fcb9` simplify · `4c6a516` feat 멀티유저 · `ec78f3f` chore catalog
+- **미커밋 19 파일** (라이브 검증 라운드, 아래 §2 참조)
+- 검증: backend 950 PASS / ruff clean, frontend pnpm lint+build PASS
+- backend `--reload`로 가동 중 (포트 8001), frontend dev (3000)
 
-## 이번 세션 PR 8건 (전부 머지)
+---
 
-| PR | 의미 |
-|----|------|
-| #140 | credential_resolution env fallback WARNING→INFO |
-| #141 | chat model factory provider quirks 분리 (ADR-014) |
-| #142 | chat toast 한 stream 다중 에러 dedup id |
-| #143 | Model.default_credential dead eager-load 제거 |
-| #144 | builder confirm MCP 도구 silent drop 차단 |
-| #145 | builder skill 인지 + revision 한정 표현 ("이것만") |
-| #146 | prompt approval 카드 — 전체 보기 토글 → 내부 스크롤 |
-| #147 | agent 삭제 — builder_sessions FK ON DELETE SET NULL |
+## 1. 완료 (이전 세션 — 멀티유저 MVP)
 
-## PR #145 핵심 변경
+- 백엔드 인증 코어 (auth/, JWT/bcrypt/cookie, register/login/logout/refresh/me)
+- m36 마이그 + RefreshToken + is_system CHECK + FK CASCADE
+- 시드 정리 (mock user 제거, system credentials 전환)
+- 6 endpoint `require_super_user` + 63 mutation `verify_csrf`
+- 프론트엔드 (proxy.ts, (auth) route, useAuth/useSession, AuthGuard, UserMenu)
+- 통합 테스트 5종 + 격리 매트릭스 10/10
 
-빌더 v3 가 Skill 자료를 인지 못하던 갭 + revision 한정 표현 무시 회귀 동시 해소.
-- 카탈로그 + 추천 + confirm 모두 Tool/McpTool/Skill 3-way 통합
-- `recommend_tools` 에 `revision_message`/`previous_recommendations` first-class 인자
-- `tool_recommender.md` 한정 표현 lookup table (이것만/X 빼고/X 대신 Y/카테고리 한정)
-- 회귀 가드 13건 — 자세한 내용은 PR #145 설명 참조
+---
 
-## 다음 세션 진입점
+## 2. 라이브 검증 라운드 (미커밋, 이번 세션)
 
-1. **라이브 검증 시나리오** (이번 세션 fix 모두):
-   - #145: "직원 위치" 에이전트 → skill 카탈로그 노출 + "이것만" 수정 → 정확 반영 → `skill_links` 생성
-   - #146: phase5 프롬프트 카드 내부 스크롤
-   - #147: 빌더 에이전트 즉시 삭제 → 204 + `builder_sessions.agent_id` NULL 끊김
-2. 운영 DB 마이그레이션: `cd backend && uv run alembic upgrade head` (m35 적용)
-3. 신규 task 시작 (HANDOFF follow-up + 즉시 버그 모두 소진)
+| 영역 | 핵심 fix |
+|------|---------|
+| 정책 | **모든 user(super 포함) 에이전트 채팅은 본인 credential만**. System은 service-only |
+| credential resolver | 3rd tier provider-matched fallback + `LLMCredentialRequiredError` 422 |
+| frontend NEXT_PUBLIC_API_BASE_URL | 8002 → 8001 오타 fix |
+| sidebar / system-credentials page | super_user 가드 (UI hide + URL redirect) |
+| upload/skill detail | `credentials:'include'` + `apiUpload` 헬퍼 |
+| SSE | credentials/CSRF 헤더 + `StreamApiError` + 401/422 inline 처리 |
+| useLogout | `window.location.href` hard reload + `cancelQueries` |
+| client.ts | `AUTH_PREAUTH_ENDPOINTS` base + refresh dedup + 5s backoff + sessionExpired gate |
+| credential POST 500 | `CredentialResponse.user_id` Optional |
+| auth_service 트랜잭션 | `record_login_failure`/`rotate_refresh` 후 `commit` 강제 |
+| simplify 라운드 | provider dict 통합, endpoint base, instanceof guard, comment 정리 |
 
-## W3-out 잔여 (외부 트리거 대기 — 지금 손대지 말 것)
+전체 변경: 19 파일 (backend 4 + frontend 9 + tests 5 + catalog 6).
 
-- 🟠 cross-tenant LRU sub-cap (인증 도입 PR과 함께)
-- 🟡 multi-worker (Redis pub/sub)
-- 🟡 `evict_expired` dirty flag (multi-worker 후)
-- 🟡 `events_chunks` 별도 테이블 (turn 5000+ 시)
+---
 
-## 보존 영역 (수정 금지)
+## 3. 다음 작업 (우선순위)
 
-- `agent_runtime/builder_v3/**` — ADR-012 native interrupt 패턴
-- `agent_runtime/middleware_registry.py:DEEPAGENT_AUTO_INJECTED_TYPES`
-- `agent_runtime/tools/ask_user.py` (옵션 A 최종)
-- `agent_runtime/credential_resolution.py:resolve_llm_api_key_for_agent` (tiered policy)
-- `agent_runtime/model_factory.py:_apply_*` helpers (ADR-014)
-- `services/builder_service.py:decisions_to_builder_response` (Phase 5 router 어댑터)
-- `services/chat_service.py:get_owned_conversation_with_agent` — `Model.default_credential` 추가 금지 (#143)
-- `services/builder_service.py:_resolve_tools` — 3-way 시그니처 유지 (#144 #145)
+1. **🔴 미커밋 변경 commit** → push → PR 생성
+   - 권장: 2-3개 commit으로 분할 (`[feat]` resolver 정책 / `[fix]` 라이브 검증 fix / `[refactor]` simplify)
+2. **🟡 운영자 필수 액션** (ADR-016 §8 + 이전 HANDOFF):
+   - `JWT_SECRET` 32바이트 + `COOKIE_SECURE=true` + `CORS_ALLOWED_ORIGINS`
+   - 첫 운영자 가입 직후 `ALLOW_FIRST_USER_AS_ADMIN=false`
+   - `scripts/migrate_mock_to_real_user.py --dry-run` 후 실행
+3. **🟢 후속 PR 분리** (simplify 라운드에서 보존 처리):
+   - `session-gate.ts` 추출 + `createAuthGate()` factory
+   - `withAuthRetry()` 헬퍼 (apiFetch/apiUpload 401 chain 통합)
+   - `readApiErrorBody` 유틸 (3중 중복 통합)
+   - `StreamApiError extends ApiError`
+4. **Phase 2** (별도 PR): Google OAuth 로그인, 이메일 검증, 비번 재설정
 
-## 검증 명령
+---
 
+## 4. 주의사항
+
+- **건드리지 말 것**: `system_credential_resolver.py` (builder/assistant 전용 경로 — 채팅 resolver와 분리)
+- **system credentials 페이지의 OpenAI key** — 사용자가 라이브 검증 중 invalid 키 등록 가능성. 실제 검증 시 [platform.openai.com/api-keys](https://platform.openai.com/api-keys) sk- 키로 재등록 필요
+- **중복 row 정리** (사용자 요청 시): `credentials WHERE is_system=true` 에 Anthropic 4개 + OpenAI 1개 + OpenRouter 1개 중복 있음
+- **conftest `_stub_llm_credential_resolution` autouse** — 신규 라우터/실행기에서 `resolve_llm_api_key_for_agent` import 시 stub 누락 위험. monkeypatch path 하드코딩됨
+
+---
+
+## 5. 핵심 파일
+
+- `backend/app/agent_runtime/credential_resolution.py` — 4-tier resolver + 422 정책
+- `backend/app/credentials/service.py` — `PROVIDER_TO_DEFINITION_KEY` derive
+- `frontend/src/lib/api/client.ts` — `apiFetch`/`apiUpload` + auth gates
+- `frontend/src/lib/sse/parse-sse.ts` — `StreamApiError` + credentials/CSRF
+- `frontend/src/lib/chat/use-chat-runtime.ts` — 422 → inline 메시지
+- `frontend/src/lib/hooks/useAuth.ts` — `useLogout` hard reload
+- `backend/tests/conftest.py` — autouse credential stub
+
+---
+
+## 6. 검증
+
+```bash
+cd backend && uv run ruff check app/ tests/ && uv run pytest -q
+cd frontend && pnpm lint && pnpm build
 ```
-cd backend && uv run alembic upgrade head && uv run ruff check . && uv run pytest tests/ && uv run pyright app/ tests/
-cd frontend && pnpm lint && pnpm test --run && pnpm build
-```
 
-## 환경 주의 (사용자 셸)
+기대: ruff clean / 950 PASS / lint clean / build PASS.
 
-`~/.zshrc:225` 에 `OPENAI_BASE_URL=https://*.proxy.runpod.net/v1` export. PR #139 + ADR-014 의 canonical endpoint pin 으로 backend 영향 차단 완료.
-
-## 커밋 시 주의
-
-스코프 외 catalog 자동 갱신(6시간 cron) 항상 staging 제외:
-- `backend/app/data/model_catalog/{catalog,fetch_metadata}.json`
-- `backend/app/data/model_catalog/sources/*.json`
+다음 세션 첫 행동: 본 파일 + `tasks/code-review-multiuser-auth.md`(이전) 참조.

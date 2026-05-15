@@ -413,7 +413,11 @@ async def test_execute_stream_passes_skills_and_memory(
 
     with patch("app.agent_runtime.executor._DATA_DIR", mock_data_dir):
         async for _ in execute_agent_stream(
-            _cfg(agent_skills=agent_skills, agent_id="agent-123"),
+            _cfg(
+                agent_skills=agent_skills,
+                agent_id="agent-123",
+                user_id="00000000-0000-0000-0000-000000000001",
+            ),
             [],
         ):
             pass

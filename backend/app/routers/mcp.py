@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.mcp import discovery
 from app.mcp.client import connect_and_list
 from app.models.credential import Credential
@@ -153,6 +153,7 @@ async def create_server(
     payload: McpServerCreate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> McpServerResponse:
     _validate_payload_consistency(payload.transport, payload.url, payload.command)
     server = McpServer(
@@ -181,6 +182,7 @@ async def create_server_from_registry(
     payload: McpServerCreateFromRegistry,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> McpServerResponse:
     """Create a server from a curated catalog entry.
 
@@ -226,6 +228,7 @@ async def probe_mcp_server(
     payload: McpProbeRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> McpProbeResponse:
     """Connect to an MCP server without persisting it.
 
@@ -338,6 +341,7 @@ async def import_servers(
     payload: McpImportRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> McpImportResult:
     """Bulk import MCP server definitions.
 
@@ -518,6 +522,7 @@ async def update_server(
     payload: McpServerUpdate,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> McpServerResponse:
     server = await _load_owned(db, server_id, user.id)
     fields_set = payload.model_fields_set
@@ -554,6 +559,7 @@ async def delete_server(
     server_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> None:
     server = await _load_owned(db, server_id, user.id)
     # Manual cascade for SQLite tests where ondelete=CASCADE isn't enforced.
@@ -571,6 +577,7 @@ async def test_server(
     server_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> McpTestResponse:
     server = await _load_owned(db, server_id, user.id)
     probe: dict[str, Any] = await discovery.test_server(db, server)
@@ -589,6 +596,7 @@ async def discover_server_tools(
     server_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> McpDiscoverResponse:
     server = await _load_owned(db, server_id, user.id)
     probe, tools = await discovery.discover_tools(db, server)

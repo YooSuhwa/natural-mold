@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.dependencies import CurrentUser, get_current_user, get_db
+from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import conversation_not_found, share_not_found
 from app.rate_limit import limiter
 from app.schemas.conversation import MessagesEnvelope
@@ -79,6 +79,7 @@ async def create_share(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> ShareLinkResponse:
     """Make the conversation public. Returns the existing token if already shared."""
     conv = await _require_owned_conversation(db, conversation_id, user)
@@ -94,6 +95,7 @@ async def revoke_share(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
 ) -> None:
     """Revoke any active share link for the conversation. Idempotent."""
     await _require_owned_conversation(db, conversation_id, user)

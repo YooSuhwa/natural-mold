@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -17,14 +17,25 @@ from app.database import Base
 
 class Credential(Base):
     __tablename__ = "credentials"
-    # The legacy m6~m12 schema reused this table; tests rebuild it via
-    # ``Base.metadata.create_all``. ``extend_existing`` lets the import remain
-    # idempotent under that flow.
-    __table_args__ = {"extend_existing": True}
+    # ``is_system=True`` rows have ``user_id IS NULL`` (ADR-016 §4.4) so a
+    # system credential is never silently scoped to an operator account. A
+    # CHECK constraint enforces the invariant at the DB layer.
+    __table_args__ = (
+        CheckConstraint(
+            "(is_system = false) OR (user_id IS NULL)",
+            name="ck_credentials_system_user_null",
+        ),
+        # The legacy m6~m12 schema reused this table; tests rebuild it via
+        # ``Base.metadata.create_all``. ``extend_existing`` lets the import
+        # remain idempotent under that flow.
+        {"extend_existing": True},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    # Nullable so ``is_system=True`` rows can detach from any specific user
+    # (m18 originally enforced NOT NULL — m36 relaxes this).
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
     )
     definition_key: Mapped[str] = mapped_column(String(80), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)

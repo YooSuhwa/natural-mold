@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,11 +29,6 @@ class Settings(BaseSettings):
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
     google_oauth_refresh_token: str = ""
-
-    # Mock user (PoC: no auth)
-    mock_user_id: str = "00000000-0000-0000-0000-000000000001"
-    mock_user_email: str = "demo@moldy.dev"
-    mock_user_name: str = "Demo User"
 
     # Encryption key for API keys in DB (Fernet — legacy, removed in M5)
     encryption_key: str = ""
@@ -105,6 +102,38 @@ class Settings(BaseSettings):
     # active branch (new turn / fork) yields a new cache key automatically.
     share_snapshot_cache_ttl_s: float = 60.0
     share_snapshot_cache_max: int = 1024
+
+    # ----- ADR-016: multi-user auth -----
+    # JWT signing secret. MUST be set in production (>= 32 bytes, random).
+    # If empty in dev, ``app.auth.jwt`` generates an ephemeral key at import
+    # time + emits a warning — tokens won't survive a process restart.
+    jwt_secret: str = ""
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60
+    refresh_token_expire_days: int = 30
+    csrf_token_expire_minutes: int = 60
+    cookie_name_access: str = "moldy_at"
+    cookie_name_refresh: str = "moldy_rt"
+    cookie_name_csrf: str = "moldy_csrf"
+    # In dev (HTTP) cookies must NOT be Secure or browsers reject them.
+    # Production deployments MUST set ``cookie_secure=true``.
+    cookie_secure: bool = False
+    cookie_samesite: Literal["lax", "strict", "none"] = "lax"
+    cookie_domain: str | None = None
+    # First user signing up is granted ``is_super_user=true`` — convenient
+    # for bootstrapping. Toggle off (``false``) immediately after the
+    # operator account exists in production. See ADR-016 §8.4.
+    allow_first_user_as_admin: bool = True
+
+    # CORS allowed origins. Comma-separated origins, e.g.
+    # "https://moldy.dev,https://staging.moldy.dev". Default permits the
+    # local dev frontend (Next 16 on :3000). ``allow_credentials=true`` is
+    # required for HttpOnly cookie auth so wildcard ("*") is rejected.
+    cors_allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
 
 settings = Settings()

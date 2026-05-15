@@ -3,6 +3,84 @@
     "title": "Moldy - AI Agent Builder",
     "description": "대화로 만드는 AI 에이전트 빌더"
   },
+  "auth": {
+    "login": {
+      "title": "로그인",
+      "subtitle": "계정 정보를 입력해 주세요",
+      "email": "이메일",
+      "password": "비밀번호",
+      "rememberMe": "로그인 유지",
+      "rememberMeTooltip": "현재는 항상 로그인이 유지됩니다",
+      "forgotPassword": "비밀번호 찾기",
+      "submit": "로그인",
+      "submitting": "로그인 중...",
+      "googleButton": "Google로 로그인",
+      "googleComingSoon": "곧 지원될 예정입니다 (Phase 2)",
+      "or": "또는",
+      "noAccount": "계정이 없으신가요?",
+      "registerLink": "회원가입",
+      "expiredNotice": "로그인이 필요합니다",
+      "benefits": {
+        "title": "AI 에이전트를 코드 한 줄 없이",
+        "item1": "노코드 빌더",
+        "item2": "LangGraph 런타임",
+        "item3": "대화형 에이전트 생성"
+      }
+    },
+    "register": {
+      "title": "회원가입",
+      "subtitle": "Moldy 계정을 만들어보세요",
+      "name": "이름",
+      "email": "이메일",
+      "password": "비밀번호",
+      "passwordConfirm": "비밀번호 확인",
+      "terms": "서비스 이용약관 및 개인정보처리방침에 동의합니다 (필수)",
+      "submit": "가입하기",
+      "submitting": "가입 중...",
+      "haveAccount": "이미 계정이 있으신가요?",
+      "loginLink": "로그인",
+      "mismatch": "비밀번호가 일치하지 않습니다",
+      "strength": {
+        "tooShort": "비밀번호는 8자 이상이어야 합니다",
+        "weak": "약함",
+        "medium": "보통",
+        "strong": "강함",
+        "veryStrong": "매우 강함"
+      }
+    },
+    "errors": {
+      "invalidCredentials": "이메일 또는 비밀번호가 올바르지 않습니다",
+      "emailTaken": "이미 사용 중인 이메일입니다",
+      "accountLocked": "계정이 일시적으로 잠겼습니다. 15분 후 다시 시도해 주세요.",
+      "accountInactive": "비활성화된 계정입니다. 관리자에게 문의해 주세요.",
+      "rateLimit": "잠시 후 다시 시도해 주세요",
+      "network": "네트워크 연결을 확인해 주세요",
+      "serverError": "잠시 후 다시 시도해 주세요. 문제가 계속되면 관리자에게 문의해 주세요.",
+      "sessionExpired": "세션이 만료되었습니다",
+      "sessionExpiredDesc": "다시 로그인해 주세요.",
+      "invalidEmail": "올바른 이메일 주소를 입력해 주세요",
+      "passwordRequired": "비밀번호를 입력해 주세요",
+      "nameRequired": "이름을 입력해 주세요"
+    },
+    "onboarding": {
+      "title": "Moldy에 오신 것을 환영합니다",
+      "subtitle": "AI 에이전트를 만들 준비가 거의 끝났어요",
+      "body": "AI 에이전트를 만들려면 LLM API 키를 등록해야 합니다.",
+      "providers": "다음 중 하나를 등록해 주세요",
+      "encryptedNote": "키는 암호화되어 저장되며 본인만 볼 수 있습니다.",
+      "later": "나중에",
+      "register": "지금 등록",
+      "superUserToast": "Super User로 등록되었습니다",
+      "superUserToastDesc": "시스템 credential을 관리할 수 있습니다."
+    },
+    "userMenu": {
+      "profile": "프로필 설정",
+      "credentials": "API 키 관리",
+      "logout": "로그아웃",
+      "adminBadge": "관리자",
+      "profileComingSoon": "프로필 설정은 곧 지원됩니다"
+    }
+  },
   "common": {
     "save": "저장",
     "create": "생성",

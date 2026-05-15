@@ -18,13 +18,39 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.credentials.service import PROVIDER_TO_DEFINITION_KEY
+from app.exceptions import AppError
 from app.models.agent import Agent
 from app.models.credential import Credential
 
 logger = logging.getLogger(__name__)
+
+
+class LLMCredentialRequiredError(AppError):
+    """Raised when an agent chat reaches LLM call with no user-owned key.
+
+    User-facing agent chats — for *every* user, including super_users —
+    must run on a credential the agent's owner personally registered.
+    System credentials are reserved for operator-managed service flows
+    (Fix Agent / builder / image generation) routed through a separate
+    resolver. Returning ``None`` here would silently fall back to the
+    operator's key for super_users too, billing them personally. See
+    ADR-016 §4.2.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            code="llm_credential_required",
+            message=(
+                "본인의 LLM API 키가 등록되어 있지 않습니다. "
+                "/credentials 페이지에서 키를 등록한 뒤 다시 시도해주세요."
+            ),
+            status=422,
+        )
 
 
 async def resolve_llm_api_key_for_agent(
@@ -80,11 +106,54 @@ async def resolve_llm_api_key_for_agent(
                 agent.user_id,
             )
 
+    # 3rd tier — auto-match user-owned credential by provider. The two
+    # explicit binding points above (agent.llm_credential, model.default)
+    # remain authoritative; this only kicks in when both are NULL and the
+    # user has *exactly one obvious choice*: a credential whose
+    # ``definition_key`` matches the model's ``provider``. Avoids forcing
+    # users to manually re-bind after registering a key. If the user owns
+    # multiple credentials for the same provider, picks the most recent so
+    # post-rotation flows pick up the new key automatically.
+    if model is not None and model.provider in PROVIDER_TO_DEFINITION_KEY:
+        definition_key = PROVIDER_TO_DEFINITION_KEY[model.provider]
+        matches = (
+            await db.execute(
+                select(Credential)
+                .where(
+                    Credential.user_id == agent.user_id,
+                    Credential.is_system.is_(False),
+                    Credential.definition_key == definition_key,
+                    Credential.status == "active",
+                )
+                .order_by(Credential.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if matches is not None:
+            key = await _decrypt_api_key(matches)
+            if key is not None:
+                logger.info(
+                    "agent %s: api_key from provider-matched user credential"
+                    " (id=%s, definition=%s)",
+                    agent.id,
+                    matches.id,
+                    definition_key,
+                )
+                return key
+
+    # No user-owned credential found. The model factory's env fallback would
+    # otherwise serve up the operator's system credential (ADR-013 sync),
+    # leaking operator quota to whoever is chatting — *including* super_users,
+    # who'd pay the operator's bill for their own personal chats. System
+    # credentials are reserved for service flows (builder/assistant/image
+    # gen) routed through ``system_credential_resolver``. Agent chat always
+    # demands an owner-registered key; raise a clear 422 with guidance.
     logger.info(
-        "agent %s: no LLM credential resolved — falling back to env (api_key=None)",
+        "agent %s: no user-owned LLM credential for owner %s — raising",
         agent.id,
+        agent.user_id,
     )
-    return None
+    raise LLMCredentialRequiredError()
 
 
 async def _decrypt_api_key(cred: Credential) -> str | None:
@@ -99,4 +168,4 @@ async def _decrypt_api_key(cred: Credential) -> str | None:
     return str(api_key) if api_key else None
 
 
-__all__ = ["resolve_llm_api_key_for_agent"]
+__all__ = ["resolve_llm_api_key_for_agent", "LLMCredentialRequiredError"]

@@ -185,7 +185,19 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
 
     ``tool_config`` shape (set by ``app.services.chat_service.build_tools_config``):
     ``{"tool_id", "definition_key", "name", "description", "parameters",
-        "credentials", "credential_id"}``.
+        "credentials", "credential_id", "user_id", "agent_id"}``.
+
+    Credential resolution policy (multi-user, ADR-016 §4):
+
+    - The ``credentials`` dict is pre-resolved by ``build_tools_config`` from
+      a ``Tool.credential_id`` that's already owner-checked against the
+      caller's user id. We deliberately do **not** consult system credentials
+      from inside the tool factory — system credentials are operator-billed
+      and only surface through dedicated flows (Fix Agent, image generation,
+      builder) where the caller has been explicitly authorized as a
+      super_user. A regular user whose tool requires an API key but has no
+      personal credential gets a clear ``ToolConfigError`` (raised by the
+      runner) with guidance to register one at ``/credentials``.
 
     Returns ``None`` when the definition is unknown so the caller can warn
     instead of crashing the chat session.

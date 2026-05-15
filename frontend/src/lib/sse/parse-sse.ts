@@ -2,7 +2,48 @@ import {
   fetchEventSource,
   type EventSourceMessage,
 } from '@microsoft/fetch-event-source'
-import { API_BASE } from '@/lib/api/client'
+import { API_BASE, fireSessionExpired } from '@/lib/api/client'
+import { getCsrfToken } from '@/lib/auth/csrf'
+
+/** Error thrown when a stream POST/GET returns a non-2xx with a parseable
+ *  ``{error: {code, message}}`` body. Carries the structured fields so the
+ *  chat runtime (``useChatRuntime``) can render an inline assistant-side
+ *  message for actionable codes (e.g. ``llm_credential_required``) instead
+ *  of a generic toast. ``StreamHttpError`` (legacy GET resume path) stays
+ *  intact for callers that only need status. */
+export class StreamApiError extends Error {
+  constructor(
+    public status: number,
+    public code: string | null,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'StreamApiError'
+  }
+}
+
+async function readStreamErrorBody(
+  response: Response,
+): Promise<{ code: string | null; message: string }> {
+  let code: string | null = null
+  let message: string | null = null
+  try {
+    const body = await response.clone().json()
+    const detail = body?.error ?? body?.detail ?? null
+    if (detail && typeof detail === 'object') {
+      code = (detail as { code?: string }).code ?? null
+      message = (detail as { message?: string }).message ?? null
+    } else if (typeof detail === 'string') {
+      message = detail
+    }
+  } catch {
+    // body not JSON — fall through to generic message
+  }
+  return {
+    code,
+    message: message ?? `요청이 거부되었습니다 (HTTP ${response.status})`,
+  }
+}
 
 /**
  * 단일 SSE 이벤트.
@@ -122,11 +163,20 @@ export async function* streamSSEPost<TEvent extends string>(
 
   // .catch로 fetchEventSource Promise를 처리해 unhandled rejection 방지.
   // 실제 종료 신호는 onclose/onerror에서 closed=true로 표시한다.
+  // CSRF token is grabbed once per stream — fetchEventSource doesn't retry
+  // automatically, so a token rotation mid-stream isn't a concern.
+  const csrf = getCsrfToken()
+
   void fetchEventSource(`${API_BASE}${path}`, {
     method: 'POST',
+    // Cross-origin (3000 → 8001) needs explicit ``credentials`` so the
+    // HttpOnly auth cookies attach. Without it the backend sees an
+    // anonymous request and returns 401.
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
+      ...(csrf ? { 'X-CSRF-Token': csrf } : {}),
     },
     body: JSON.stringify(body),
     signal,
@@ -135,8 +185,16 @@ export async function* streamSSEPost<TEvent extends string>(
       // 라이브러리 기본 onopen은 Content-Type을 엄격 검사한다. 백엔드가
       // text/event-stream을 항상 보내지만 일부 프록시가 변환할 수 있어
       // 자체 검증으로 통일.
+      if (response.status === 401) {
+        // Fire the global session-expired handler so the user sees the toast
+        // + redirect, then bail with a clear error. Stream restart on refresh
+        // is intentionally out of scope (LangGraph run cost — see plan).
+        fireSessionExpired()
+        throw new Error(`Stream failed: 401`)
+      }
       if (!response.ok) {
-        throw new Error(`Stream failed: ${response.status}`)
+        const { code, message } = await readStreamErrorBody(response)
+        throw new StreamApiError(response.status, code, message)
       }
       // W3-out M5 — X-Run-Id 헤더는 stream 재연결 식별자. POST 응답 헤더에서
       // 1회 추출해 caller 에게 전달한다. 헤더가 없으면(legacy/예외 경로) 조용히
@@ -244,9 +302,19 @@ export async function* streamSSEGetResume<TEvent extends string>(
   const headers: Record<string, string> = { Accept: 'text/event-stream' }
   if (options.lastEventId) headers['Last-Event-ID'] = options.lastEventId
 
-  const response = await fetch(url.toString(), { method: 'GET', headers, signal })
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    credentials: 'include',
+    headers,
+    signal,
+  })
+  if (response.status === 401) {
+    fireSessionExpired()
+    throw new StreamHttpError(401, response.statusText)
+  }
   if (!response.ok) {
-    throw new StreamHttpError(response.status, response.statusText)
+    const { code, message } = await readStreamErrorBody(response)
+    throw new StreamApiError(response.status, code, message)
   }
   if (options.onMode) {
     options.onMode({

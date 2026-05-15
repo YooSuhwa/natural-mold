@@ -125,7 +125,7 @@ async def test_get_provider_keys_system_beats_user(db: AsyncSession) -> None:
     )
     await credential_service.create(
         db,
-        user_id=TEST_USER_ID,
+        user_id=None,
         definition_key="anthropic",
         name="system anthropic",
         data={"api_key": "system-key"},

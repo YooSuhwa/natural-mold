@@ -137,9 +137,13 @@ async def test_public_share_rate_limit_returns_429_when_enabled():
     # retroactively tighten the existing route. Instead drive the limiter's
     # in-memory storage to near-cap before the request.
     try:
+        from app.dependencies import verify_csrf
+        from tests.conftest import _bypass_verify_csrf
+
         app = create_app()
         app.dependency_overrides[get_db] = override_get_db
         app.dependency_overrides[get_current_user] = override_get_current_user
+        app.dependency_overrides[verify_csrf] = _bypass_verify_csrf
 
         # Mint a token the public route can resolve.
         async with AsyncClient(
