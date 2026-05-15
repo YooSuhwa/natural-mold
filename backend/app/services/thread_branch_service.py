@@ -440,8 +440,14 @@ def _build_tree_from_checkpoints(
             # Stamp the active node with its position in the sibling list so
             # the frontend gets ``branch_index/branch_total`` for free —
             # avoids a second indexOf round-trip and the index-bug it caused.
+            # 매칭 키는 (msg_id, checkpoint) 쌍. synthetic 동률 시 msg_id 만으로
+            # 비교하면 항상 첫 번째가 잡혀 active_index 가 0 으로 고정된다.
             active_pos = next(
-                (i for i, s in enumerate(siblings) if s.message_id == active_mid),
+                (
+                    i
+                    for i, s in enumerate(siblings)
+                    if s.message_id == active_mid and s.checkpoint_id == active_ck
+                ),
                 0,
             )
             nodes[idx] = MessageTreeNode(
