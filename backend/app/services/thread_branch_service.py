@@ -145,6 +145,17 @@ async def _collect_checkpoints(
     return out
 
 
+async def materialize_messages_at_checkpoint(
+    checkpointer: Any,
+    thread_id: str,
+    checkpoint_id: str,
+) -> list[BaseMessage]:
+    """Public wrapper around `_materialize_delta_messages` — used by the edit
+    handler to compute the pre-target message list for fork Overwrite."""
+
+    return await _materialize_delta_messages(checkpointer, thread_id, checkpoint_id)
+
+
 async def _materialize_delta_messages(
     checkpointer: Any,
     thread_id: str,

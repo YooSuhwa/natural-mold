@@ -333,7 +333,19 @@ async def test_edit_message_streams_with_checkpoint_fork(client: AsyncClient):
     cfg, history = captured[0]
     # Editing the first user message → rewind to before it = None checkpoint.
     assert cfg.checkpoint_id is None
-    assert history == [{"role": "user", "content": "edited"}]
+    # langgraph 1.2 DeltaChannel — fork-edit must Overwrite the messages
+    # channel so ancestor pending_writes (the original "original" message)
+    # don't get replayed onto the new branch. History before idx=0 is empty,
+    # so the Overwrite value is just the new HumanMessage.
+    from langchain_core.messages import HumanMessage
+    from langgraph.types import Overwrite
+
+    assert isinstance(history, dict)
+    ow = history.get("messages")
+    assert isinstance(ow, Overwrite)
+    assert len(ow.value) == 1
+    assert isinstance(ow.value[0], HumanMessage)
+    assert ow.value[0].content == "edited"
 
 
 @pytest.mark.asyncio

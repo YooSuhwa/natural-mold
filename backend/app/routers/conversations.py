@@ -922,11 +922,36 @@ async def edit_message(
     # newest (just-edited) branch becomes the displayed one on next list.
     await chat_service.clear_active_branch_override(db, conversation_id)
 
+    # langgraph 1.2 DeltaChannel — forking from a checkpoint inherits ALL
+    # ancestor pending_writes for the ``messages`` channel, including the
+    # ones we wanted to replace. To make fork-replace work, we materialize
+    # the exact pre-target message list at ``checkpoint_id`` and pass it
+    # plus the new user message wrapped in ``Overwrite`` — this resets the
+    # channel instead of accumulating onto ancestor writes.
+    from langchain_core.messages import HumanMessage
+    from langgraph.types import Overwrite
+
+    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.services.thread_branch_service import materialize_messages_at_checkpoint
+
+    pre_msgs: list[Any] = []
+    if checkpoint_id is not None:
+        try:
+            pre_msgs = await materialize_messages_at_checkpoint(
+                get_checkpointer(), str(conversation_id), checkpoint_id
+            )
+        except Exception:  # noqa: BLE001
+            pre_msgs = []
+    new_user = HumanMessage(content=data.new_content)
+    overwrite_input: dict[str, Any] = {
+        "messages": Overwrite(value=[*pre_msgs, new_user])
+    }
+
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: execute_agent_stream(
             cfg,
-            [{"role": "user", "content": data.new_content}],
+            overwrite_input,
             **ctx.as_stream_kwargs(),
         ),
         log_msg=f"Agent edit failed for conversation {conversation_id}",
