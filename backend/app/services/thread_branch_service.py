@@ -164,13 +164,18 @@ async def _materialize_delta_messages(
     """Reconstruct the `messages` list at `checkpoint_id` via DeltaChannel replay.
 
     The saver returns ``{"seed": <_DeltaSnapshot|MISSING|plain>, "writes": [...]}``.
-    We unwrap the seed and concat the write batches in order. LangChain's
-    `add_messages` reducer would handle id-based updates, but for our
-    read-only viewing path raw concat is sufficient — the materialized
-    value is what LangGraph itself produces during resume.
+    Mirrors `DeltaChannel.replay_writes` semantics:
+
+    - Start from seed (snapshot value or empty).
+    - Walk writes oldest-to-newest. When a write is an `Overwrite`, reset the
+      accumulator to its value (fork-edit emits these to truncate ancestor
+      writes); subsequent writes accumulate onto the reset base.
+    - Non-`Overwrite` writes append (concat for lists, single-element for
+      non-lists).
     """
 
     from langgraph.checkpoint.serde.types import _DeltaSnapshot
+    from langgraph.types import Overwrite
 
     cfg = {"configurable": {"thread_id": thread_id, "checkpoint_id": checkpoint_id}}
     try:
@@ -193,7 +198,9 @@ async def _materialize_delta_messages(
     else:
         base = []
     for _, _, batch in history.get("writes", []):
-        if isinstance(batch, list):
+        if isinstance(batch, Overwrite):
+            base = list(batch.value or [])
+        elif isinstance(batch, list):
             base.extend(batch)
         elif batch is not None:
             base.append(batch)
