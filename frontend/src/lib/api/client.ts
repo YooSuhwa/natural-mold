@@ -1,4 +1,4 @@
-import { getCsrfToken, setCsrfToken } from '@/lib/auth/csrf'
+import { csrfStore } from '@/lib/auth/csrf'
 import { authGate } from '@/lib/auth/session-gate'
 
 import { ApiError, throwApiError } from './errors'
@@ -61,7 +61,7 @@ async function tryRefresh(): Promise<boolean> {
         return false
       }
       const body = (await res.json().catch(() => null)) as RefreshBody | null
-      if (body?.csrf_token) setCsrfToken(body.csrf_token)
+      if (body?.csrf_token) csrfStore.set(body.csrf_token)
       return true
     } catch {
       lastRefreshFailureAt = Date.now()
@@ -104,7 +104,7 @@ function buildHeaders(method: string, path: string, init?: HeadersInit): Headers
 
   const upper = method.toUpperCase()
   if (MUTATION_METHODS.has(upper) && !matchesEndpoint(path, CSRF_SKIP_ENDPOINTS)) {
-    const csrf = getCsrfToken()
+    const csrf = csrfStore.get()
     if (csrf && !headers.has('X-CSRF-Token')) {
       headers.set('X-CSRF-Token', csrf)
     }
@@ -168,7 +168,7 @@ export async function apiUpload<T>(
 ): Promise<T> {
   const send = (): Promise<Response> => {
     const headers: Record<string, string> = {}
-    const csrf = getCsrfToken()
+    const csrf = csrfStore.get()
     if (csrf) headers['X-CSRF-Token'] = csrf
     return fetch(`${API_BASE}${path}`, {
       method: 'POST',

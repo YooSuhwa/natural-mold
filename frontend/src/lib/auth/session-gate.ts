@@ -11,7 +11,7 @@
  * up the entire HTTP client + its CSRF/fetch state.
  */
 
-import { clearCsrfToken } from './csrf'
+import { csrfStore } from './csrf'
 
 type SessionExpiredHandler = () => void
 
@@ -25,7 +25,7 @@ export const authGate = {
   fire() {
     if (fired) return
     fired = true
-    clearCsrfToken()
+    csrfStore.clear()
     handler?.()
     // Hold the gate open until ``reset`` is called by a successful
     // login — otherwise concurrent useQuery 401s fire the toast/redirect

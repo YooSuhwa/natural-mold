@@ -8,7 +8,7 @@ import {
   resetRefreshBackoff,
   resetSessionExpiredFlag,
 } from '@/lib/api/client'
-import { clearCsrfToken, setCsrfToken } from '@/lib/auth/csrf'
+import { csrfStore } from '@/lib/auth/csrf'
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
 import {
   ONBOARDING_DISMISSED_FLAG,
@@ -22,7 +22,7 @@ function isSafeCallback(url: string | null | undefined): url is string {
 }
 
 function persistAuth(res: AuthResponse, queryClient: ReturnType<typeof useQueryClient>) {
-  setCsrfToken(res.csrf_token)
+  csrfStore.set(res.csrf_token)
   // New session — re-arm the refresh + session-expired gates so the next
   // expiry can fire toast/redirect normally.
   resetRefreshBackoff()
@@ -88,7 +88,7 @@ export function useLogout() {
     // Always clear local state, even if the network call fails — server will
     // GC the orphaned refresh row eventually, and the user expects to be out.
     onSettled: () => {
-      clearCsrfToken()
+      csrfStore.clear()
       resetRefreshBackoff()
       resetSessionExpiredFlag()
       queryClient.clear()
