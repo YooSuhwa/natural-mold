@@ -39,31 +39,46 @@ def _has_column(table: str, column: str) -> bool:
     return any(col["name"] == column for col in inspector.get_columns(table))
 
 
-def _has_foreign_key(table: str, name: str) -> bool:
+def _has_constraint(table: str, name: str, kind: str = "check") -> bool:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     if table not in inspector.get_table_names():
         return False
-    return any(fk.get("name") == name for fk in inspector.get_foreign_keys(table))
+    if kind == "foreignkey":
+        return any(fk.get("name") == name for fk in inspector.get_foreign_keys(table))
+    if kind == "check":
+        try:
+            return any(
+                c.get("name") == name for c in inspector.get_check_constraints(table)
+            )
+        except NotImplementedError:
+            return False
+    return False
+
+
+def _is_postgres() -> bool:
+    return op.get_bind().dialect.name == "postgresql"
+
+
+FK_NAME = "fk_refresh_tokens_replaced_by_id"
 
 
 def upgrade() -> None:
     if not _has_column("refresh_tokens", "replaced_by_id"):
-        # SQLite (tests) cannot ALTER TABLE ADD COLUMN with an inline
-        # FK reference, so we add the column first and (on Postgres
-        # only) attach the constraint afterwards. SQLite is fine without
-        # the named FK — the application enforces the invariant.
+        # SQLite (tests) can't ALTER TABLE ADD COLUMN with an inline FK,
+        # so we add the column first and attach the FK on Postgres only.
+        # SQLite is fine without the named FK — the application enforces
+        # the invariant.
         op.add_column(
             "refresh_tokens",
             sa.Column("replaced_by_id", sa.Uuid(), nullable=True),
         )
 
-    bind = op.get_bind()
-    if bind.dialect.name == "postgresql" and not _has_foreign_key(
-        "refresh_tokens", "fk_refresh_tokens_replaced_by_id"
+    if _is_postgres() and not _has_constraint(
+        "refresh_tokens", FK_NAME, kind="foreignkey"
     ):
         op.create_foreign_key(
-            "fk_refresh_tokens_replaced_by_id",
+            FK_NAME,
             "refresh_tokens",
             "refresh_tokens",
             ["replaced_by_id"],
@@ -73,14 +88,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    if bind.dialect.name == "postgresql" and _has_foreign_key(
-        "refresh_tokens", "fk_refresh_tokens_replaced_by_id"
+    if _is_postgres() and _has_constraint(
+        "refresh_tokens", FK_NAME, kind="foreignkey"
     ):
-        op.drop_constraint(
-            "fk_refresh_tokens_replaced_by_id",
-            "refresh_tokens",
-            type_="foreignkey",
-        )
+        op.drop_constraint(FK_NAME, "refresh_tokens", type_="foreignkey")
     if _has_column("refresh_tokens", "replaced_by_id"):
         op.drop_column("refresh_tokens", "replaced_by_id")

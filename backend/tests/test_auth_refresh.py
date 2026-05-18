@@ -41,6 +41,28 @@ async def _register_and_login(
     return refresh
 
 
+async def _register_and_first_rotate(
+    client: AsyncClient, user_agent: str
+) -> tuple[str, str, dict[str, str]]:
+    """Register a user, perform Tab A's winning rotation, return the
+    stale original cookie + rotated cookie + ``user-agent`` headers.
+
+    Centralises the boilerplate every race scenario needs to reach the
+    interesting branch (a revoked-but-replaced row to re-present).
+    """
+
+    headers = {"user-agent": user_agent}
+    rt = await _register_and_login(client, user_agent=user_agent)
+    first = await client.post(
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers=headers,
+    )
+    assert first.status_code == 200, first.text
+    rt_a = first.cookies[settings.cookie_name_refresh]
+    return rt, rt_a, headers
+
+
 @pytest.mark.asyncio
 async def test_refresh_rotates_and_revokes_previous(raw_client: AsyncClient):
     rt = await _register_and_login(raw_client)
@@ -178,19 +200,9 @@ async def test_refresh_race_within_grace_window_chains_instead_of_replay(
     rotations untouched.
     """
 
-    ua = "Mozilla/5.0 (TabRaceTest)"
-    headers = {"user-agent": ua}
-
-    rt = await _register_and_login(raw_client, user_agent=ua)
-
-    # Tab A wins — normal rotation.
-    first = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
-        headers=headers,
+    rt, rt_a, headers = await _register_and_first_rotate(
+        raw_client, user_agent="Mozilla/5.0 (TabRaceTest)"
     )
-    assert first.status_code == 200
-    rt_a = first.cookies[settings.cookie_name_refresh]
 
     # Tab B loses — same original cookie, same UA, well inside grace.
     second = await raw_client.post(
@@ -202,9 +214,6 @@ async def test_refresh_race_within_grace_window_chains_instead_of_replay(
     rt_b = second.cookies[settings.cookie_name_refresh]
     assert rt_b not in {rt, rt_a}
 
-    # The chain head (rt_b) is active; rt_a was chain-revoked but not
-    # mass-revoked — anything older that isn't part of this chain stays
-    # untouched. There must be no in-flight replay sweep.
     async with TestSession() as db:
         rows = (await db.execute(select(RefreshToken))).scalars().all()
         by_hash = {r.token_hash: r for r in rows}
@@ -212,7 +221,6 @@ async def test_refresh_race_within_grace_window_chains_instead_of_replay(
         assert by_hash[hash_refresh_token(rt_a)].revoked_at is not None
         head = by_hash[hash_refresh_token(rt_b)]
         assert head.revoked_at is None
-        # Chain link is wired forward.
         assert by_hash[hash_refresh_token(rt)].replaced_by_id == by_hash[
             hash_refresh_token(rt_a)
         ].id
@@ -252,16 +260,9 @@ async def test_refresh_race_with_user_agent_mismatch_is_replay(
 async def test_refresh_race_outside_grace_window_is_replay(raw_client: AsyncClient):
     """Same-cookie re-use *after* the grace window expired → mass-revoke."""
 
-    ua = "Mozilla/5.0 (GraceWindowTest)"
-    headers = {"user-agent": ua}
-
-    rt = await _register_and_login(raw_client, user_agent=ua)
-    first = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
-        headers=headers,
+    rt, _rt_a, headers = await _register_and_first_rotate(
+        raw_client, user_agent="Mozilla/5.0 (GraceWindowTest)"
     )
-    assert first.status_code == 200
 
     # Backdate the original row's revocation so it's outside grace.
     async with TestSession() as db:
@@ -297,17 +298,9 @@ async def test_refresh_replay_after_replacement_revoked_is_replay(
 ):
     """Replacement no longer active → don't chain; fall through to replay."""
 
-    ua = "Mozilla/5.0 (RevokedHeadTest)"
-    headers = {"user-agent": ua}
-
-    rt = await _register_and_login(raw_client, user_agent=ua)
-    first = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
-        headers=headers,
+    rt, rt_a, headers = await _register_and_first_rotate(
+        raw_client, user_agent="Mozilla/5.0 (RevokedHeadTest)"
     )
-    assert first.status_code == 200
-    rt_a = first.cookies[settings.cookie_name_refresh]
 
     # Logout the replacement leg — chain head is now revoked.
     async with TestSession() as db:
