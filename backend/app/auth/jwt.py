@@ -27,6 +27,12 @@ logger = logging.getLogger(__name__)
 
 TokenType = Literal["access", "refresh", "csrf"]
 
+# Minimum acceptable JWT_SECRET length. ``secrets.token_urlsafe(32)`` emits
+# 43 base64 chars; we accept anything >= 32 so raw hex (``token_hex(16)``)
+# also clears the bar. Below this an operator almost certainly typed a
+# placeholder. Shared with ``app.security.production_check``.
+MIN_JWT_SECRET_LEN = 32
+
 
 class InvalidTokenError(Exception):
     """Raised when a JWT fails decode/verification or has the wrong type."""

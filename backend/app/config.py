@@ -6,6 +6,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    # Runtime mode. ``production`` triggers strict boot-time validation
+    # of auth/cookie/CORS/secret settings (see app.security.production_check).
+    # Default ``dev`` only warns so the local workflow stays frictionless.
+    app_env: Literal["dev", "production"] = "dev"
+
     # Database
     database_url: str = "postgresql+asyncpg://moldy:moldy@localhost:5432/moldy"
     database_url_sync: str = "postgresql://moldy:moldy@localhost:5432/moldy"
