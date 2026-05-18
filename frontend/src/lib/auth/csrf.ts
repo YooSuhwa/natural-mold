@@ -29,7 +29,7 @@ function readCookie(name: string): string | null {
 }
 
 export const csrfStore = {
-  set(token: string | null) {
+  set(token: string) {
     inMemoryToken = token
   },
   clear() {
@@ -38,6 +38,8 @@ export const csrfStore = {
   get(): string | null {
     if (inMemoryToken) return inMemoryToken
     if (typeof document === 'undefined') return null
+    // First read after page load — warm the in-memory cache from the
+    // double-submit cookie so subsequent reads skip the parse.
     const cookie = readCookie(COOKIE_NAME)
     if (cookie) inMemoryToken = cookie
     return cookie
