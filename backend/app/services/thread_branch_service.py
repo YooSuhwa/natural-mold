@@ -134,7 +134,7 @@ async def _collect_checkpoints(
     out: list[_CheckpointSlim] = []
     for cid, pid, msgs, versions in raw:
         if msgs is None and "messages" in versions:
-            msgs = await _materialize_delta_messages(checkpointer, thread_id, cid)
+            msgs = await materialize_messages_at_checkpoint(checkpointer, thread_id, cid)
         out.append(
             _CheckpointSlim(
                 checkpoint_id=cid,
@@ -150,28 +150,15 @@ async def materialize_messages_at_checkpoint(
     thread_id: str,
     checkpoint_id: str,
 ) -> list[BaseMessage]:
-    """Public wrapper around `_materialize_delta_messages` — used by the edit
-    handler to compute the pre-target message list for fork Overwrite."""
-
-    return await _materialize_delta_messages(checkpointer, thread_id, checkpoint_id)
-
-
-async def _materialize_delta_messages(
-    checkpointer: Any,
-    thread_id: str,
-    checkpoint_id: str,
-) -> list[BaseMessage]:
     """Reconstruct the `messages` list at `checkpoint_id` via DeltaChannel replay.
 
-    The saver returns ``{"seed": <_DeltaSnapshot|MISSING|plain>, "writes": [...]}``.
-    Mirrors `DeltaChannel.replay_writes` semantics:
+    Mirrors `DeltaChannel.replay_writes`: start from the snapshot seed, walk
+    writes oldest-to-newest, and when an `Overwrite` is seen reset the
+    accumulator to its value (fork-edit emits these to truncate ancestor
+    writes). Non-`Overwrite` writes append.
 
-    - Start from seed (snapshot value or empty).
-    - Walk writes oldest-to-newest. When a write is an `Overwrite`, reset the
-      accumulator to its value (fork-edit emits these to truncate ancestor
-      writes); subsequent writes accumulate onto the reset base.
-    - Non-`Overwrite` writes append (concat for lists, single-element for
-      non-lists).
+    Falls back to `channel_values["messages"]` when the saver predates
+    DeltaChannel (e.g. the test fake).
     """
 
     from langgraph.checkpoint.serde.types import _DeltaSnapshot
@@ -212,6 +199,36 @@ async def _materialize_delta_messages(
         elif batch is not None:
             base.append(batch)
     return base
+
+
+async def build_fork_overwrite_input(
+    checkpointer: Any,
+    thread_id: str,
+    checkpoint_id: str | None,
+    *,
+    append: list[BaseMessage] | None = None,
+) -> dict[str, Any]:
+    """Build the agent input dict for fork-edit / regenerate.
+
+    langgraph 1.2 DeltaChannel replays ancestor `messages` writes onto any
+    forked checkpoint — without explicit truncation the resulting branch
+    inherits messages we meant to replace. Wrapping the pre-target state in
+    ``Overwrite`` resets the channel; the agent then runs from that exact
+    state and produces a clean leaf.
+    """
+
+    from langgraph.types import Overwrite
+
+    pre_msgs: list[BaseMessage] = []
+    if checkpoint_id is not None:
+        try:
+            pre_msgs = await materialize_messages_at_checkpoint(
+                checkpointer, thread_id, checkpoint_id
+            )
+        except Exception:  # noqa: BLE001
+            pre_msgs = []
+    value: list[BaseMessage] = [*pre_msgs, *(append or [])]
+    return {"messages": Overwrite(value=value)}
 
 
 def _is_leaf(checkpoint_id: str, all_parent_ids: set[str]) -> bool:

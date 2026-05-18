@@ -922,30 +922,17 @@ async def edit_message(
     # newest (just-edited) branch becomes the displayed one on next list.
     await chat_service.clear_active_branch_override(db, conversation_id)
 
-    # langgraph 1.2 DeltaChannel — forking from a checkpoint inherits ALL
-    # ancestor pending_writes for the ``messages`` channel, including the
-    # ones we wanted to replace. To make fork-replace work, we materialize
-    # the exact pre-target message list at ``checkpoint_id`` and pass it
-    # plus the new user message wrapped in ``Overwrite`` — this resets the
-    # channel instead of accumulating onto ancestor writes.
     from langchain_core.messages import HumanMessage
-    from langgraph.types import Overwrite
 
     from app.agent_runtime.checkpointer import get_checkpointer
-    from app.services.thread_branch_service import materialize_messages_at_checkpoint
+    from app.services.thread_branch_service import build_fork_overwrite_input
 
-    pre_msgs: list[Any] = []
-    if checkpoint_id is not None:
-        try:
-            pre_msgs = await materialize_messages_at_checkpoint(
-                get_checkpointer(), str(conversation_id), checkpoint_id
-            )
-        except Exception:  # noqa: BLE001
-            pre_msgs = []
-    new_user = HumanMessage(content=data.new_content)
-    overwrite_input: dict[str, Any] = {
-        "messages": Overwrite(value=[*pre_msgs, new_user])
-    }
+    overwrite_input = await build_fork_overwrite_input(
+        get_checkpointer(),
+        str(conversation_id),
+        checkpoint_id,
+        append=[HumanMessage(content=data.new_content)],
+    )
 
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
@@ -1019,7 +1006,7 @@ async def regenerate_message(
     # behaviour) caused the user turn to be appended a second time, so the
     # frontend rendered "[user, user, ai_new]" instead of "[user, ai_new]".
     from app.services.thread_branch_service import (
-        materialize_messages_at_checkpoint,
+        build_fork_overwrite_input,
         rewind_to_checkpoint_before_message,
     )
 
@@ -1036,23 +1023,9 @@ async def regenerate_message(
     # Regenerate creates a new leaf — drop any prior user-pinned branch.
     await chat_service.clear_active_branch_override(db, conversation_id)
 
-    # langgraph 1.2 DeltaChannel 회귀 대응 (edit_message 와 동일 패턴):
-    # rewind 한 checkpoint 의 state 를 materialize 한 뒤 ``Overwrite`` 로
-    # messages 채널을 강제 리셋. 그러지 않으면 부모 체인의 pending_writes 가
-    # 누적되어 regen 결과가 [user, old_ai, new_ai] 처럼 old_ai 가 덤으로
-    # 남는다. Overwrite value = 타깃 직전까지의 메시지 → agent 가 그 뒤로
-    # 새 AI 만 만들어 leaf 가 [user, new_ai] 깔끔하게 정착한다.
-    from langgraph.types import Overwrite
-
-    pre_msgs: list[Any] = []
-    if checkpoint_id is not None:
-        try:
-            pre_msgs = await materialize_messages_at_checkpoint(
-                checkpointer, str(conversation_id), checkpoint_id
-            )
-        except Exception:  # noqa: BLE001
-            pre_msgs = []
-    overwrite_input: dict[str, Any] = {"messages": Overwrite(value=list(pre_msgs))}
+    overwrite_input = await build_fork_overwrite_input(
+        checkpointer, str(conversation_id), checkpoint_id
+    )
 
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
