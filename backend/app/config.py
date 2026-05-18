@@ -53,6 +53,12 @@ class Settings(BaseSettings):
 
     # Daily health check sweep (APScheduler crontab format; default: 04:00 UTC)
     health_check_cron: str = "0 4 * * *"
+    # Daily refresh-token GC (APScheduler crontab; default: 05:00 UTC).
+    # Deletes ``refresh_tokens`` rows whose ``expires_at`` is older than the
+    # retention window — keeps replay history available for that window so
+    # a barely-expired hash still classifies correctly. ADR-016 §4.2.
+    refresh_token_gc_cron: str = "0 5 * * *"
+    refresh_token_gc_retention_days: int = 1
     # Model catalog refresh (APScheduler crontab format; default: every 6 hours)
     catalog_update_cron: str = "0 */6 * * *"
     # Retention window for ``health_check_history`` rows. The cleanup job is a

@@ -154,32 +154,53 @@ async def rotate_credentials_to_active_key() -> int:
             return rotated
 
 
-def register_credential_rotation_job() -> None:
-    """Register the recurring credential rotation cron job. Idempotent."""
+def _register_cron_job(
+    *,
+    job_id: str,
+    func: Any,
+    cron_expr: str,
+    cron_setting_name: str,
+    log_label: str,
+    log_extra: str = "",
+) -> None:
+    """Register a recurring cron-triggered job. Idempotent.
+
+    Centralises the four-step shape every cron job repeats: scheduler-
+    running guard, crontab parse with logged ``ValueError``, ``add_job``
+    with the consistent dedup flags (``coalesce + max_instances=1``),
+    and the success log. ``log_extra`` lets callers append job-specific
+    detail (e.g. ``" (retention=1d)"``) without duplicating the rest.
+    """
 
     scheduler = get_scheduler()
     if not scheduler.running:
-        logger.debug("Scheduler not running; skipping credential rotation registration")
+        logger.debug("Scheduler not running; skipping %s registration", log_label)
         return
     try:
-        trigger = CronTrigger.from_crontab(settings.credential_rotation_cron)
+        trigger = CronTrigger.from_crontab(cron_expr)
     except ValueError:
         logger.exception(
-            "invalid credential_rotation_cron=%r; rotation job not scheduled",
-            settings.credential_rotation_cron,
+            "invalid %s=%r; %s not scheduled", cron_setting_name, cron_expr, log_label
         )
         return
     scheduler.add_job(
-        rotate_credentials_to_active_key,
+        func,
         trigger,
-        id=CREDENTIAL_ROTATION_JOB_ID,
+        id=job_id,
         replace_existing=True,
         coalesce=True,
         max_instances=1,
     )
-    logger.info(
-        "Scheduled credential rotation job: cron %s",
-        settings.credential_rotation_cron,
+    logger.info("Scheduled %s: cron %s%s", log_label, cron_expr, log_extra)
+
+
+def register_credential_rotation_job() -> None:
+    _register_cron_job(
+        job_id=CREDENTIAL_ROTATION_JOB_ID,
+        func=rotate_credentials_to_active_key,
+        cron_expr=settings.credential_rotation_cron,
+        cron_setting_name="credential_rotation_cron",
+        log_label="credential rotation job",
     )
 
 
@@ -203,31 +224,12 @@ async def update_model_catalog() -> dict[str, Any]:
 
 
 def register_catalog_update_job() -> None:
-    """Register the recurring catalog rebuild cron job. Idempotent."""
-
-    scheduler = get_scheduler()
-    if not scheduler.running:
-        logger.debug("Scheduler not running; skipping catalog update registration")
-        return
-    try:
-        trigger = CronTrigger.from_crontab(settings.catalog_update_cron)
-    except ValueError:
-        logger.exception(
-            "invalid catalog_update_cron=%r; catalog update job not scheduled",
-            settings.catalog_update_cron,
-        )
-        return
-    scheduler.add_job(
-        update_model_catalog,
-        trigger,
-        id=CATALOG_UPDATE_JOB_ID,
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
-    )
-    logger.info(
-        "Scheduled model catalog update: cron %s",
-        settings.catalog_update_cron,
+    _register_cron_job(
+        job_id=CATALOG_UPDATE_JOB_ID,
+        func=update_model_catalog,
+        cron_expr=settings.catalog_update_cron,
+        cron_setting_name="catalog_update_cron",
+        log_label="model catalog update",
     )
 
 
@@ -253,31 +255,45 @@ async def health_check_all_active() -> dict[str, int]:
 
 
 def register_health_check_job() -> None:
-    """Register the recurring health check cron job. Idempotent."""
-
-    scheduler = get_scheduler()
-    if not scheduler.running:
-        logger.debug("Scheduler not running; skipping health check registration")
-        return
-    try:
-        trigger = CronTrigger.from_crontab(settings.health_check_cron)
-    except ValueError:
-        logger.exception(
-            "invalid health_check_cron=%r; health check job not scheduled",
-            settings.health_check_cron,
-        )
-        return
-    scheduler.add_job(
-        health_check_all_active,
-        trigger,
-        id=HEALTH_CHECK_JOB_ID,
-        replace_existing=True,
-        coalesce=True,
-        max_instances=1,
+    _register_cron_job(
+        job_id=HEALTH_CHECK_JOB_ID,
+        func=health_check_all_active,
+        cron_expr=settings.health_check_cron,
+        cron_setting_name="health_check_cron",
+        log_label="health check sweep",
     )
-    logger.info(
-        "Scheduled health check sweep: cron %s",
-        settings.health_check_cron,
+
+
+# ---------------------------------------------------------------------------
+# Refresh-token GC (ADR-016 §4.2)
+# ---------------------------------------------------------------------------
+
+REFRESH_TOKEN_GC_JOB_ID = "refresh_token_gc"
+
+
+async def refresh_token_gc_run() -> int:
+    """Delete expired refresh-token rows past the retention window."""
+
+    from app.services.refresh_token_gc import gc_expired_refresh_tokens
+
+    async with async_session() as db:
+        try:
+            return await gc_expired_refresh_tokens(
+                db, retention_days=settings.refresh_token_gc_retention_days
+            )
+        except Exception:  # noqa: BLE001 — keep cron alive
+            logger.exception("refresh-token GC failed; will retry next run")
+            return 0
+
+
+def register_refresh_token_gc_job() -> None:
+    _register_cron_job(
+        job_id=REFRESH_TOKEN_GC_JOB_ID,
+        func=refresh_token_gc_run,
+        cron_expr=settings.refresh_token_gc_cron,
+        cron_setting_name="refresh_token_gc_cron",
+        log_label="refresh-token GC",
+        log_extra=f" (retention={settings.refresh_token_gc_retention_days}d)",
     )
 
 

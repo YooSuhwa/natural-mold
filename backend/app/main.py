@@ -74,6 +74,7 @@ from app.scheduler import (
     register_credential_rotation_job,
     register_health_check_job,
     register_mcp_health_job,
+    register_refresh_token_gc_job,
 )
 from app.security.production_check import enforce_production_safety
 from app.seed.bootstrap_from_env import bootstrap_system_credentials
@@ -167,6 +168,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     register_mcp_health_job()
     # W3-out M4 — EventBroker GC (60s interval, TTL 300s).
     register_broker_eviction_job()
+    # ADR-016 §4.2 — refresh-token whitelist GC (nightly).
+    register_refresh_token_gc_job()
 
     async with async_session() as db:
         result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))
