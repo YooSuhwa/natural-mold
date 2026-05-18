@@ -106,6 +106,7 @@ CREATE INDEX ix_refresh_tokens_active
   - **Race (탭 경합)** — `replaced_by_id`가 존재 + 교체본이 active + `revoked_at`이 `settings.refresh_rotation_grace_seconds`(기본 10s) 이내 + 원본 row의 user-agent가 현재 요청과 일치 → 교체본에서 다시 회전하여 새 토큰 발급(체인 연장). 일괄 폐기 안 함. 두 탭 동시 `/refresh` 시나리오 보호 (2026-05-18 회귀 가드).
   - **Replay (실제 공격 의심)** — 그 외 모든 경우(다른 UA, grace 초과, 교체본도 폐기됨 등) → 해당 user의 모든 active refresh를 일괄 revoke. `UPDATE refresh_tokens SET revoked_at=NOW() WHERE user_id=:uid AND revoked_at IS NULL`.
 - 만료된 row는 cron으로 GC: `settings.refresh_token_gc_cron`(기본 매일 05:00 UTC)에 `DELETE FROM refresh_tokens WHERE expires_at < NOW() - settings.refresh_token_gc_retention_days days` 실행. 기본 retention 1d로 barely-expired token도 replay 분류 가능. `replaced_by_id` 자기-FK는 `ON DELETE SET NULL` 이라 체인 중간 row 삭제도 안전. 구현: `app/services/refresh_token_gc.py`, `app/scheduler.py::register_refresh_token_gc_job`.
+- 회전은 Postgres `SELECT ... FOR UPDATE`로 row를 lock한 뒤 mutation. 두 패자가 동시에 같은 chain head를 rotate하려 하면 늦은 쪽이 lock 해제 후 revoked 상태를 발견하고 체인을 따라 다음 hop으로 전진(최대 `_MAX_CHAIN_FOLLOW`회). 결과: 모든 새 leg가 단일 chain에 linearly linked, orphan active row 없음. SQLite 테스트 환경은 lock 미지원이라 동시성 회귀는 Postgres 통합 테스트에서만 검증 가능. 구현: `auth_service._lock_row` + `rotate_refresh` chain-walk 루프.
 
 ### 4.3 `oauth_accounts` 테이블 (Phase 2 자리만 — 지금 만들지 않음)
 
