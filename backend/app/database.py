@@ -16,3 +16,13 @@ class Base(DeclarativeBase):
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session() as session:
         yield session
+
+
+def is_postgres(db: AsyncSession) -> bool:
+    """True when the session's engine is Postgres.
+
+    Fallback to ``False`` (= SQLite test path) when ``db.bind`` is
+    ``None`` so the helper is safe to call from any service.
+    """
+
+    return db.bind is not None and db.bind.dialect.name == "postgresql"

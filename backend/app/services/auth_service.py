@@ -26,6 +26,7 @@ from app.auth.jwt import (
 )
 from app.auth.password import hash_password, verify_password
 from app.config import settings
+from app.database import is_postgres
 from app.exceptions import AppError
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
@@ -284,27 +285,21 @@ async def _perform_rotation(
     return access, new_refresh, csrf
 
 
-async def _lock_row(db: AsyncSession, row_id: uuid.UUID) -> RefreshToken | None:
-    """Re-fetch ``row_id`` with a row-level lock so concurrent rotations
-    from the same row serialise.
+def _lock_select(stmt, db: AsyncSession):
+    """Apply ``SELECT ... FOR UPDATE`` on Postgres, plain SELECT on SQLite.
 
-    Postgres uses ``SELECT ... FOR UPDATE``; SQLite (test path) ignores
-    the hint, which is fine because tests don't run concurrent writers.
-    Returns ``None`` if the row was deleted (e.g. GC) between selects.
+    SQLite (test path) ignores row locks safely because the test runner
+    never executes concurrent writers against the same session.
     """
 
-    dialect = db.bind.dialect.name if db.bind is not None else "sqlite"
-    stmt = select(RefreshToken).where(RefreshToken.id == row_id)
-    if dialect == "postgresql":
-        stmt = stmt.with_for_update()
-    return (await db.execute(stmt)).scalar_one_or_none()
+    return stmt.with_for_update() if is_postgres(db) else stmt
 
 
 # Maximum forward jumps through the chain when a tab race forces us to
 # rotate from a replacement that's itself been rotated. Five is far above
 # any plausible concurrency burst — a deeper chain almost certainly means
 # something pathological (storm of stale-token presentations or coding
-# bug). Each iteration costs one row lock + one SELECT.
+# bug). Each iteration costs one locked SELECT + one chain-head SELECT.
 _MAX_CHAIN_FOLLOW = 5
 
 
@@ -315,7 +310,7 @@ async def rotate_refresh(
 
     Three outcomes for a candidate row at each chain step:
 
-    * **Live** — normal path: lock the row, revoke it, mint replacement,
+    * **Live** — normal path: revoke the locked row, mint replacement,
       link ``old.replaced_by_id``.
     * **Race** — row is revoked but its replacement is still active and
       the request looks like a tab-race (see :func:`_find_race_chain_head`).
@@ -324,7 +319,7 @@ async def rotate_refresh(
       user's entire refresh whitelist (force re-login) and 401.
 
     The chain-walk loop is what makes concurrent rotations from the same
-    row safe: ``_lock_row`` serialises writers on Postgres so the loser
+    row safe: ``FOR UPDATE`` serialises writers on Postgres so the loser
     of a race observes the winner's revocation and follows the chain
     instead of producing an orphaned leg (HANDOFF #2b).
 
@@ -338,25 +333,27 @@ async def rotate_refresh(
         raise _invalid_refresh() from exc
 
     digest = hash_refresh_token(refresh_token)
-    candidate = (
-        await db.execute(select(RefreshToken).where(RefreshToken.token_hash == digest))
+    # First fetch already holds the lock — saves one round-trip in the
+    # common single-iteration path. Subsequent chain hops re-lock by id.
+    locked = (
+        await db.execute(
+            _lock_select(
+                select(RefreshToken).where(RefreshToken.token_hash == digest), db
+            )
+        )
     ).scalar_one_or_none()
-    if candidate is None:
+    if locked is None:
         # Hash unknown — token forged or already GC'd.
         raise _invalid_refresh()
 
     user_id = uuid.UUID(payload.sub)
+    last_user_id = locked.user_id
 
     for _ in range(_MAX_CHAIN_FOLLOW):
-        locked = await _lock_row(db, candidate.id)
-        if locked is None:
-            # Row vanished between the initial lookup and the lock —
-            # treat as an unknown hash.
-            raise _invalid_refresh()
+        last_user_id = locked.user_id
         now = datetime.now(UTC)
 
         if locked.revoked_at is None:
-            # Live: rotate this row.
             if _aware(locked.expires_at) <= now:
                 raise _invalid_refresh()
             user = await _load_active_user_or_401(db, user_id)
@@ -365,7 +362,6 @@ async def rotate_refresh(
             )
             return access, new_refresh, csrf, user
 
-        # Revoked: race-chain or replay?
         chain_head = await _find_race_chain_head(db, locked, request, now)
         if chain_head is None:
             logger.warning(
@@ -383,13 +379,25 @@ async def rotate_refresh(
             "Refresh-token race resolved for user_id=%s; chaining from replacement.",
             locked.user_id,
         )
-        candidate = chain_head
+        # Re-lock the chain head to serialise against another tab that
+        # may also have decided to chain-rotate from it.
+        relocked = (
+            await db.execute(
+                _lock_select(
+                    select(RefreshToken).where(RefreshToken.id == chain_head.id), db
+                )
+            )
+        ).scalar_one_or_none()
+        if relocked is None:
+            # Chain head vanished (GC) — treat as unknown hash.
+            raise _invalid_refresh()
+        locked = relocked
 
     # Followed the chain to its bound without finding a live row — refuse
     # rather than spin forever.
     logger.warning(
         "Refresh-token chain follow exhausted for user_id=%s after %d hops",
-        candidate.user_id,
+        last_user_id,
         _MAX_CHAIN_FOLLOW,
     )
     raise _invalid_refresh()
