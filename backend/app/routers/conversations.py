@@ -922,11 +922,23 @@ async def edit_message(
     # newest (just-edited) branch becomes the displayed one on next list.
     await chat_service.clear_active_branch_override(db, conversation_id)
 
+    from langchain_core.messages import HumanMessage
+
+    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.services.thread_branch_service import build_fork_overwrite_input
+
+    overwrite_input = await build_fork_overwrite_input(
+        get_checkpointer(),
+        str(conversation_id),
+        checkpoint_id,
+        append=[HumanMessage(content=data.new_content)],
+    )
+
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: execute_agent_stream(
             cfg,
-            [{"role": "user", "content": data.new_content}],
+            overwrite_input,
             **ctx.as_stream_kwargs(),
         ),
         log_msg=f"Agent edit failed for conversation {conversation_id}",
@@ -993,7 +1005,10 @@ async def regenerate_message(
     # sibling assistant message. Passing the user content as input (the old
     # behaviour) caused the user turn to be appended a second time, so the
     # frontend rendered "[user, user, ai_new]" instead of "[user, ai_new]".
-    from app.services.thread_branch_service import rewind_to_checkpoint_before_message
+    from app.services.thread_branch_service import (
+        build_fork_overwrite_input,
+        rewind_to_checkpoint_before_message,
+    )
 
     target_msg = msgs[target_idx]
     target_msg_raw = getattr(target_msg, "id", None) or f"synthetic-{target_idx}"
@@ -1008,12 +1023,13 @@ async def regenerate_message(
     # Regenerate creates a new leaf — drop any prior user-pinned branch.
     await chat_service.clear_active_branch_override(db, conversation_id)
 
-    # Empty messages_history → executor passes None to LangGraph,
-    # resuming from the rewound checkpoint state without duplicating
-    # the user message.
+    overwrite_input = await build_fork_overwrite_input(
+        checkpointer, str(conversation_id), checkpoint_id
+    )
+
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
-        lambda: execute_agent_stream(cfg, [], **ctx.as_stream_kwargs()),
+        lambda: execute_agent_stream(cfg, overwrite_input, **ctx.as_stream_kwargs()),
         log_msg=f"Agent regenerate failed for conversation {conversation_id}",
         user_msg="메시지 재생성 중 오류가 발생했습니다.",
         run_id=ctx.run_id,

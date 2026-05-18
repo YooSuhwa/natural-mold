@@ -98,26 +98,137 @@ async def _collect_checkpoints(
     checkpointer: Any,
     thread_id: str,
 ) -> list[_CheckpointSlim]:
-    """Stream all checkpoints for a thread, trimmed to id/parent/messages."""
+    """Stream all checkpoints for a thread, trimmed to id/parent/messages.
+
+    langgraph 1.2+ stores `messages` as a `DeltaChannel`: a non-snapshot
+    checkpoint omits the channel from `channel_values` and stores only the
+    write deltas. Reading `channel_values["messages"]` therefore returns
+    `None` for most checkpoints. We materialize the accumulated value by
+    calling the saver's `aget_delta_channel_history` and replaying writes
+    onto the seed snapshot — the same logic LangGraph runs during graph
+    resume (`pregel/_checkpoint.py:achannels_from_checkpoint`).
+
+    Two-phase to avoid checkpointer connection deadlock: phase 1 fully
+    consumes `alist` (its async generator holds a postgres connection),
+    phase 2 materializes deltas via separate connections. Doing the
+    materialize call inside the `alist` loop deadlocks the langgraph
+    postgres pool — every nested `aget_delta_channel_history` request
+    waits for the same connection that `alist` is holding.
+    """
 
     config = {"configurable": {"thread_id": thread_id}}
-    out: list[_CheckpointSlim] = []
+    # Phase 1: drain alist into plain tuples.
+    raw: list[tuple[str, str | None, Any, dict[str, Any]]] = []
     async for ct in checkpointer.alist(config):
         cfg = ct.config or {}
         cid = cfg.get("configurable", {}).get("checkpoint_id")
-        parent_cfg = ct.parent_config or {}
-        pid = parent_cfg.get("configurable", {}).get("checkpoint_id")
-        msgs = (ct.checkpoint or {}).get("channel_values", {}).get("messages", []) or []
         if cid is None:
             continue
+        parent_cfg = ct.parent_config or {}
+        pid = parent_cfg.get("configurable", {}).get("checkpoint_id")
+        ckpt = ct.checkpoint or {}
+        cv = ckpt.get("channel_values", {})
+        raw.append((cid, pid, cv.get("messages"), ckpt.get("channel_versions") or {}))
+
+    # Phase 2: materialize DeltaChannel messages for checkpoints that need it.
+    out: list[_CheckpointSlim] = []
+    for cid, pid, msgs, versions in raw:
+        if msgs is None and "messages" in versions:
+            msgs = await materialize_messages_at_checkpoint(checkpointer, thread_id, cid)
         out.append(
             _CheckpointSlim(
                 checkpoint_id=cid,
                 parent_checkpoint_id=pid,
-                messages=list(msgs),
+                messages=list(msgs or []),
             )
         )
     return out
+
+
+async def materialize_messages_at_checkpoint(
+    checkpointer: Any,
+    thread_id: str,
+    checkpoint_id: str,
+) -> list[BaseMessage]:
+    """Reconstruct the `messages` list at `checkpoint_id` via DeltaChannel replay.
+
+    Mirrors `DeltaChannel.replay_writes`: start from the snapshot seed, walk
+    writes oldest-to-newest, and when an `Overwrite` is seen reset the
+    accumulator to its value (fork-edit emits these to truncate ancestor
+    writes). Non-`Overwrite` writes append.
+
+    Falls back to `channel_values["messages"]` when the saver predates
+    DeltaChannel (e.g. the test fake).
+    """
+
+    from langgraph.checkpoint.serde.types import _DeltaSnapshot
+    from langgraph.types import Overwrite
+
+    cfg = {"configurable": {"thread_id": thread_id, "checkpoint_id": checkpoint_id}}
+    try:
+        histories = await checkpointer.aget_delta_channel_history(
+            config=cfg, channels=["messages"]
+        )
+    except (AttributeError, NotImplementedError):
+        # Pre-DeltaChannel saver (테스트 fake) — fall back to channel_values.
+        tup = await checkpointer.aget_tuple(cfg)
+        if tup is None:
+            return []
+        cv_msgs = (tup.checkpoint or {}).get("channel_values", {}).get("messages")
+        return list(cv_msgs or [])
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "aget_delta_channel_history failed for checkpoint %s", checkpoint_id, exc_info=True
+        )
+        return []
+    history = histories.get("messages")
+    if history is None:
+        return []
+    seed = history.get("seed")
+    if isinstance(seed, _DeltaSnapshot):
+        base: list[BaseMessage] = list(seed.value or [])
+    elif isinstance(seed, list):
+        base = list(seed)
+    else:
+        base = []
+    for _, _, batch in history.get("writes", []):
+        if isinstance(batch, Overwrite):
+            base = list(batch.value or [])
+        elif isinstance(batch, list):
+            base.extend(batch)
+        elif batch is not None:
+            base.append(batch)
+    return base
+
+
+async def build_fork_overwrite_input(
+    checkpointer: Any,
+    thread_id: str,
+    checkpoint_id: str | None,
+    *,
+    append: list[BaseMessage] | None = None,
+) -> dict[str, Any]:
+    """Build the agent input dict for fork-edit / regenerate.
+
+    langgraph 1.2 DeltaChannel replays ancestor `messages` writes onto any
+    forked checkpoint — without explicit truncation the resulting branch
+    inherits messages we meant to replace. Wrapping the pre-target state in
+    ``Overwrite`` resets the channel; the agent then runs from that exact
+    state and produces a clean leaf.
+    """
+
+    from langgraph.types import Overwrite
+
+    pre_msgs: list[BaseMessage] = []
+    if checkpoint_id is not None:
+        try:
+            pre_msgs = await materialize_messages_at_checkpoint(
+                checkpointer, thread_id, checkpoint_id
+            )
+        except Exception:  # noqa: BLE001
+            pre_msgs = []
+    value: list[BaseMessage] = [*pre_msgs, *(append or [])]
+    return {"messages": Overwrite(value=value)}
 
 
 def _is_leaf(checkpoint_id: str, all_parent_ids: set[str]) -> bool:
@@ -131,6 +242,15 @@ def _message_id(msg: BaseMessage, fallback_idx: int) -> str:
     # LangChain occasionally emits messages without ids (system/tool stubs).
     # Fall back to a deterministic synthetic id derived from index.
     return f"synthetic-{fallback_idx}"
+
+
+def _is_synthetic_id(mid: str) -> bool:
+    """Synthetic id 는 ``synthetic-{idx}`` 형태. fork-edit 같은 분기에서
+    LangChain HumanMessage(id=None) 가 분기마다 같은 synthetic id 로 나오기
+    때문에 sibling 비교 시 checkpoint 까지 함께 봐야 한다. 진짜 langchain
+    id (e.g. ``lc_run-...``) 는 메시지 단위로 유니크해 id 만으로 dedup."""
+
+    return mid.startswith("synthetic-")
 
 
 def _resolve_active_leaf(
@@ -285,16 +405,31 @@ def _build_tree_from_checkpoints(
     #   - they have different ids
     branches_by_message: dict[str, list[BranchSibling]] = {}
 
+    # Pair-based parent key — `(msg_id, introducing_checkpoint)` for synthetic
+    # ids, ``(msg_id, "")`` for real ids. LangChain HumanMessage 는 id 를 안
+    # 박아서 fork-edit 두 분기의 user 메시지가 똑같이 ``synthetic-{idx}`` 로
+    # 나온다. 그땐 checkpoint 까지 함께 봐야 분기점이 sibling 으로 잡힌다.
+    # 반대로 진짜 langchain id (lc_run-…) 는 메시지 단위로 유니크하므로
+    # 같은 msg_id 가 여러 leaf 의 체인에서 나타나면 그건 “같은 메시지” —
+    # dedup 해야 한다 (안 그러면 regenerate 후 첫 AI 가 7 siblings 처럼 잘못
+    # 잡힘).
+    def _sibling_key(mid: str, ck: str) -> tuple[str, str]:
+        return (mid, ck) if _is_synthetic_id(mid) else (mid, "")
+
+    expected_parent_key: tuple[str, str] | None = None
+
     for idx, active_mid in enumerate(active_msg_ids):
-        expected_parent = active_msg_ids[idx - 1] if idx > 0 else None
-        # Collect all message_ids at this position across leaves that share
-        # the same parent.
-        seen_ids: set[str] = set()
+        if idx > 0:
+            expected_parent_key = _sibling_key(
+                active_msg_ids[idx - 1], nodes[idx - 1].introduced_by_checkpoint_id
+            )
+
+        seen_keys: set[tuple[str, str]] = set()
         siblings: list[BranchSibling] = []
 
         active_ck = nodes[idx].introduced_by_checkpoint_id
         siblings.append(BranchSibling(message_id=active_mid, checkpoint_id=active_ck))
-        seen_ids.add(active_mid)
+        seen_keys.add(_sibling_key(active_mid, active_ck))
 
         for leaf in leaves:
             if leaf.checkpoint_id == active.checkpoint_id:
@@ -303,13 +438,18 @@ def _build_tree_from_checkpoints(
             if idx >= len(msgs):
                 continue
             this_mid = _message_id(msgs[idx], idx)
-            if this_mid in seen_ids:
-                continue
-            # Verify same parent.
-            this_parent = (
-                _message_id(msgs[idx - 1], idx - 1) if idx > 0 else None
-            )
-            if this_parent != expected_parent:
+            # Verify same parent — pair-compared (msg_id, introducing_ck).
+            this_parent_key: tuple[str, str] | None = None
+            if idx > 0:
+                parent_mid = _message_id(msgs[idx - 1], idx - 1)
+                parent_ck = _checkpoint_for_message_in_chain(
+                    chains_by_leaf[leaf.checkpoint_id],
+                    parent_mid,
+                    idx - 1,
+                    leaf.checkpoint_id,
+                )
+                this_parent_key = _sibling_key(parent_mid, parent_ck)
+            if this_parent_key != expected_parent_key:
                 continue
             sibling_ck = _checkpoint_for_message_in_chain(
                 chains_by_leaf[leaf.checkpoint_id],
@@ -317,10 +457,13 @@ def _build_tree_from_checkpoints(
                 idx,
                 leaf.checkpoint_id,
             )
+            key = _sibling_key(this_mid, sibling_ck)
+            if key in seen_keys:
+                continue
             siblings.append(
                 BranchSibling(message_id=this_mid, checkpoint_id=sibling_ck)
             )
-            seen_ids.add(this_mid)
+            seen_keys.add(key)
 
         if len(siblings) >= 2:
             # Stable chronological order: oldest branch first → newest last.
@@ -335,8 +478,15 @@ def _build_tree_from_checkpoints(
             # Stamp the active node with its position in the sibling list so
             # the frontend gets ``branch_index/branch_total`` for free —
             # avoids a second indexOf round-trip and the index-bug it caused.
+            # 매칭 키는 (msg_id, checkpoint) 쌍. synthetic 동률 시 msg_id 만으로
+            # 비교하면 항상 첫 번째가 잡혀 active_index 가 0 으로 고정된다.
+            active_key = _sibling_key(active_mid, active_ck)
             active_pos = next(
-                (i for i, s in enumerate(siblings) if s.message_id == active_mid),
+                (
+                    i
+                    for i, s in enumerate(siblings)
+                    if _sibling_key(s.message_id, s.checkpoint_id) == active_key
+                ),
                 0,
             )
             nodes[idx] = MessageTreeNode(

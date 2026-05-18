@@ -95,7 +95,20 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
         "display_name": "PII 보호",
         "description": "개인식별정보(이메일, 신용카드, IP 등)를 감지하고 마스킹합니다",
         "category": "safety",
-        "config_schema": {},
+        # langchain 1.3 PIIMiddleware는 pii_type 단일값만 받는다(이전엔 자동 다중감지).
+        # 기본은 ``email``로 두고, 다중 감지가 필요한 사용자는 미들웨어를 여러 번 등록.
+        "config_schema": {
+            "pii_type": {
+                "type": "string",
+                "default": "email",
+                "description": "감지할 PII 종류 (email | credit_card | ip | mac_address | url)",
+            },
+            "strategy": {
+                "type": "string",
+                "default": "redact",
+                "description": "감지 시 처리 방식 (block | redact | mask | hash)",
+            },
+        },
         "provider_specific": None,
     },
     "shell_tool": {
@@ -367,6 +380,13 @@ def build_middleware_instances(middleware_configs: list[dict[str, Any]]) -> list
             continue
 
         coerced = _coerce_tuple_params(params, registry_entry.get("config_schema", {}))
+        # langchain 1.3 미들웨어 시그니처 변경 대응:
+        # config_schema에 default가 있는데 params에 누락된 키는 default로 채운다.
+        # ``ModelCallLimitMiddleware`` 는 thread_limit/run_limit 중 하나가 반드시
+        # 필요하고, ``PIIMiddleware`` 는 ``pii_type`` 이 positional required다.
+        for key, schema in registry_entry.get("config_schema", {}).items():
+            if key not in coerced and "default" in schema:
+                coerced[key] = schema["default"]
 
         # tool_retry: GraphInterrupt는 정상적인 HiTL 시그널이므로
         # 재시도하지 않고 re-raise하여 그래프 일시정지가 정상 전파되도록 함

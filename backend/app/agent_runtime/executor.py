@@ -754,7 +754,7 @@ _USE_PREPPED_LC_MESSAGES: Any = object()
 
 async def execute_agent_stream(
     cfg: AgentConfig,
-    messages_history: list[dict[str, str]],
+    messages_history: list[dict[str, str]] | dict[str, Any],
     *,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
@@ -776,6 +776,23 @@ async def execute_agent_stream(
     ``broker`` / ``persist_callback`` / ``run_id`` (W3-out M2): GET resume
     파이프라인. router가 주입하면 dual-write + partial flush 활성화.
     """
+
+    # dict input — fork-edit가 Overwrite({"messages": [...]}) 같은 형태로
+    # state 채널을 직접 덮어쓸 때 사용. 이 경우 _prepare_agent는 lc_messages
+    # 변환을 건너뛰고(빈 리스트), stream_input으로 dict를 그대로 흘려보낸다.
+    if isinstance(messages_history, dict):
+        async for chunk in _run_agent_stream(
+            cfg,
+            messages_history=[],
+            stream_input=messages_history,
+            trace_sink=trace_sink,
+            msg_id_sink=msg_id_sink,
+            broker=broker,
+            persist_callback=persist_callback,
+            run_id=run_id,
+        ):
+            yield chunk
+        return
 
     async for chunk in _run_agent_stream(
         cfg,
