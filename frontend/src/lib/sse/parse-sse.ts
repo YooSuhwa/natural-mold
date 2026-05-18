@@ -4,7 +4,7 @@ import {
 } from '@microsoft/fetch-event-source'
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
 import { ApiError, parseApiErrorBody } from '@/lib/api/errors'
-import { getCsrfToken } from '@/lib/auth/csrf'
+import { csrfStore } from '@/lib/auth/csrf'
 
 /** Error thrown when a stream POST/GET returns a non-2xx with a parseable
  *  ``{error: {code, message}}`` body. Carries the structured fields so the
@@ -153,7 +153,7 @@ export async function* streamSSEPost<TEvent extends string>(
   // 실제 종료 신호는 onclose/onerror에서 closed=true로 표시한다.
   // CSRF token is grabbed once per stream — fetchEventSource doesn't retry
   // automatically, so a token rotation mid-stream isn't a concern.
-  const csrf = getCsrfToken()
+  const csrf = csrfStore.get()
 
   void fetchEventSource(`${API_BASE}${path}`, {
     method: 'POST',
