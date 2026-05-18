@@ -1,33 +1,38 @@
-# HANDOFF — #2 운영 환경 셋업 완료
+# HANDOFF — #2a RefreshToken GC 완료
 
-**Branch**: `chore/operator-env-hardening` (PR 미생성)
+**Branch**: `chore/refresh-token-gc-job` (PR 미생성)
 **Date**: 2026-05-18
-**최신 커밋**: `b95ca83` [refactor] production_check: urlsplit + JWT 길이 상수 단일화
-**Status**: ✅ #2 구현 + simplify 완료, PR 생성 대기
+**최신 커밋**: `f03d3d5` [refactor] scheduler: _register_cron_job 헬퍼로 4개 잡 통합
+**Status**: ✅ #2a 구현 + simplify (인덱스 + fixture + cron 헬퍼) 완료, PR 생성 대기
 
 ---
 
 ## 직전 세션 완료
 
-### #1 — Refresh-token race fix (PR #154 머지됨)
+### #1 — Refresh-token race fix (PR #154 머지)
 - 3-way 분기(Live/Race/Replay) + `replaced_by_id` 체인 + 10s grace + UA 바인딩
 - m37 마이그레이션 (운영 DB 적용 완료)
 
-### #2 — 운영 환경 부팅 시 보안 셋업 검증 (PR 대기)
-- `APP_ENV=production`일 때 위험한 셋업이 있으면 **부팅 거부**
-- 검증 5항목: JWT_SECRET(≥32자) / COOKIE_SECURE / ALLOW_FIRST_USER_AS_ADMIN / CORS / ENCRYPTION_KEYS
-- 신규: `app/security/production_check.py` (순수 검증) + `docs/operator-setup.md` (체크리스트)
+### #2 — 운영 환경 부팅 시 보안 셋업 검증 (PR #155 머지)
+- `APP_ENV=production` + 위험 셋업 → **부팅 거부**
+- 검증 5항목: JWT_SECRET / COOKIE_SECURE / ALLOW_FIRST_USER_AS_ADMIN / CORS / ENCRYPTION_KEYS
 - IPv6 loopback(`::1`, `::`) 누락 버그 simplify 단계에서 발견 + 수정
-- 커밋 2건: `99a5edf` 기능, `b95ca83` simplify (urlsplit + MIN_JWT_SECRET_LEN 단일화)
-- 966 PASS / ruff clean
+
+### #2a — RefreshToken GC nightly cron (PR 대기)
+- `register_refresh_token_gc_job()` — 매일 05:00 UTC에 `DELETE WHERE expires_at < now - retention_days`
+- m38 마이그레이션: `ix_refresh_tokens_expires_at btree` (운영 DB 적용 완료)
+- `_register_cron_job` 헬퍼 추출 (4개 cron 잡 통합, 38줄 감소)
+- 테스트 fixture를 conftest로 통합 (`make_user`, `make_refresh_token`)
+- 커밋 3건: `77cd75f` 기능, `2850937` 인덱스/fixture, `f03d3d5` cron 헬퍼
+- 971 PASS / ruff clean
 
 ---
 
 ## 남은 할일 (우선순위 순)
 
 ### 🟢 후속 작업 (이번 PR들 정리 후)
-2a. **RefreshToken GC job** — revoked row 무한 누적, ADR-016 "30일+1d cron GC" 명시되어 있으나 미구현. APScheduler에 nightly `DELETE WHERE expires_at < now() - 1d`. **S. 운영 진입 전 차단 항목.**
 2b. **race-in-race chain divergence 강화** — 두 패자 동시 chain 진입 시 replacement.replaced_by_id overwrite 가능. 보안 영향 미미(docstring 명시). Postgres `SELECT FOR UPDATE`. **S. 보류 OK.**
+2c. **GC DELETE batch 처리** — 현재 단일 트랜잭션. retention=1d 운영 시 일 수천 건이라 OK이나 누적 백로그 cleanup 시나리오에 long-running tx + autovacuum 지연 가능. `ctid IN (... LIMIT N)` 루프 패턴. **S. 운영 백로그 감지 시점에.**
 
 ### 🟢 deepagents 0.6 후속 (다음 트랙)
 3. **`stream_events(version="v3")` 마이그레이션** — 가장 큰 ROI. `streaming.py` 분기 단순화. **L.**
@@ -52,7 +57,7 @@
 ## 알려진 한계
 
 - **race-in-race** — 위 #2b 참조. 현재 두 active 토큰 잠시 공존 가능 (둘 다 valid). `_perform_rotation` docstring 명시.
-- **RefreshToken GC 미구현** — 위 #2a 참조. 운영 진입 전 필수.
+- **GC batch 미분할** — 위 #2c 참조. retention=1d 정상 운영 시 영향 없음.
 - **frontend test 5건 사전 회귀** — #11에서 별도 처리.
 
 ---
@@ -62,7 +67,8 @@
 | 영역 | 파일 |
 |------|------|
 | 인증 (#1 PR #154) | `backend/app/services/auth_service.py`, `backend/app/models/refresh_token.py`, `backend/alembic/versions/m37_*.py` |
-| 운영 검증 (#2) | `backend/app/security/production_check.py`, `backend/app/auth/jwt.py` (`MIN_JWT_SECRET_LEN`), `backend/app/main.py` (lifespan), `backend/.env.example`, `docs/operator-setup.md` |
+| 운영 검증 (#2 PR #155) | `backend/app/security/production_check.py`, `backend/app/auth/jwt.py` (`MIN_JWT_SECRET_LEN`), `backend/app/main.py` (lifespan), `docs/operator-setup.md` |
+| GC (#2a) | `backend/app/services/refresh_token_gc.py`, `backend/app/scheduler.py` (`_register_cron_job`, `register_refresh_token_gc_job`), `backend/alembic/versions/m38_*.py`, `backend/tests/conftest.py` (factory) |
 | 정책 문서 | `docs/design-docs/adr-016-multiuser-auth.md` §4.2, §8.4 |
 | 스트리밍 | `backend/app/agent_runtime/streaming.py`, `frontend/src/lib/chat/use-chat-runtime.ts` |
 | Catalog | `backend/app/services/model_metadata.py` (fallback) |
@@ -71,14 +77,14 @@
 
 ## 마지막 상태
 
-- 검증: backend pytest **966 PASS** / ruff clean
-- 워킹트리: 깨끗 (`chore/operator-env-hardening` 브랜치, 2-커밋)
-- 운영 Postgres: m37 마이그레이션 적용 완료
-- 운영 부팅 검증: 잘못된 셋업 → RuntimeError 실제 확인, 깨끗한 셋업 → 정상 통과
-- **권장 다음 한 가지**: PR 생성 후 머지 → `/sync` → #2a GC job
+- 검증: backend pytest **971 PASS** / ruff clean
+- 워킹트리: 깨끗 (`chore/refresh-token-gc-job` 브랜치, 3-커밋)
+- 운영 Postgres: m37 + m38 마이그레이션 적용 완료, `ix_refresh_tokens_expires_at` 인덱스 생성 확인
+- 부팅 검증: GC 잡 등록 로그 확인 (`Scheduled refresh-token GC: cron 0 5 * * * (retention=1d)`)
+- **권장 다음 한 가지**: PR 생성 후 머지 → `/sync` → 🟡 simplify 묶음(#7~#12) 또는 🟢 deepagents 0.6 트랙(#3~#6) 중 선택
 
 새 세션 시작:
 1. 이 파일 읽기
 2. PR 만들고 머지 (`gh pr create`)
 3. `/sync`로 main 복귀
-4. #2a (GC job) 시작
+4. 다음 작업 선택 (#2b race-in-race 또는 #2c GC batch는 보류 OK)
