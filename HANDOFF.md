@@ -1,9 +1,9 @@
-# HANDOFF — #12b csrfStore 통합 완료
+# HANDOFF — #2b race-in-race fix 완료
 
-**Branch**: `refactor/csrf-factory-pattern` (PR 미생성)
+**Branch**: `fix/refresh-token-race-in-race` (PR 미생성)
 **Date**: 2026-05-18
-**최신 커밋**: `9ac4626` [refactor] csrfStore.set 시그니처 좁히기 + 캐시 의도 주석
-**Status**: ✅ #12b 구현 + simplify 완료, PR 생성 대기
+**최신 커밋**: `de61260` [refactor] is_postgres 헬퍼 + 초기 SELECT를 FOR UPDATE로 통합
+**Status**: ✅ #2b 구현 + simplify 완료, PR 생성 대기
 
 ---
 
@@ -14,21 +14,25 @@
 - #155 — 운영 환경 부팅 보안 셋업 검증
 - #156 — RefreshToken GC nightly cron
 - #157 — Frontend auth simplify 묶음 (#7-12)
-- #158 — next/navigation 글로벌 mock 통합 (#12a)
+- #158 — next/navigation 글로벌 mock (#12a)
+- #159 — csrfStore 통합 (#12b)
 
-### #12b — csrf.ts → csrfStore 객체 통합 (PR 대기)
-- `csrfStore.set/clear/get` 객체 메서드로 통합 (session-gate.ts `authGate`와 동일 패턴)
-- 5 consumer 업데이트: client.ts, parse-sse.ts, session-gate.ts, useAuth.ts
-- simplify 후속: `set(token: string)` 타입 좁히기 + warm-cache 주석
-- 커밋 2건: `b4a33d9` 통합, `9ac4626` simplify
+### #2b — race-in-race chain divergence 강화 (PR 대기)
+- `_lock_select(stmt, db)`: Postgres `SELECT FOR UPDATE` 적용 헬퍼 (SQLite no-op)
+- `rotate_refresh`: chain-walk 루프 (`_MAX_CHAIN_FOLLOW=5`) — 락 후 재검증 → live/race/replay 분기. 락 패배 측이 체인 1 hop 전진 후 재시도 → orphan active row 없음
+- `is_postgres(db)` 헬퍼 추가 (app/database.py), spend_writer 중복 제거
+- 초기 SELECT를 FOR UPDATE와 통합 → hot path RTT 1 절감
+- 신규 테스트: chain depth limit 시뮬레이션 (monkeypatch cycle)
+- ADR-016 §4.2에 lock 정책 + chain-walk 동작 명시
+- 커밋 2건: `c4953a9` 기능, `de61260` simplify
 
 ---
 
 ## 남은 할일
 
 ### 🟢 후속 작업 (보류 가능)
-2b. **race-in-race chain divergence 강화** — Postgres `SELECT FOR UPDATE`. **S. 보안 영향 미미.**
 2c. **GC DELETE batch 처리** — `ctid IN ... LIMIT N` 루프. **S. 운영 백로그 감지 시점에.**
+**🆕 oauth2_base FOR UPDATE 누락 가능성** — `backend/app/credentials/oauth2_base.py:5` 주석에 "caller가 SELECT FOR UPDATE 책임" 명시되어 있으나 실제 구현 미확인. OAuth 토큰 동시 refresh가 비직렬화 상태일 가능성. simplify 리뷰에서 발견. **S. 조사 + 보강.**
 
 ### 🟢 deepagents 0.6 후속 트랙
 3. **`stream_events(version="v3")` 마이그레이션** — `streaming.py` 분기 단순화. **L. ROI 최대.**
@@ -44,7 +48,7 @@
 
 ## 알려진 한계
 
-- **race-in-race** — 두 active 토큰 잠시 공존 가능. `_perform_rotation` docstring 명시.
+- **race-in-race 실 동시성 검증** — SQLite 테스트 환경 한계. Postgres 통합 테스트 별도 필요 (ADR-016 §4.2에 명시).
 - **GC batch 미분할** — retention=1d 정상 운영 시 영향 없음.
 
 ---
@@ -58,17 +62,18 @@
 | GC (#2a PR #156) | `backend/app/services/refresh_token_gc.py`, `backend/app/scheduler.py` (`_register_cron_job`), `backend/alembic/versions/m38_*.py` |
 | Frontend simplify (#7-12 PR #157) | `frontend/src/lib/api/errors.ts`, `frontend/src/lib/auth/session-gate.ts`, `frontend/src/lib/api/client.ts`, `frontend/src/lib/sse/parse-sse.ts`, `backend/alembic/versions/m39_*.py` |
 | Test mocks (#12a PR #158) | `frontend/tests/setup.ts`, 3개 override 파일 |
-| csrfStore (#12b) | `frontend/src/lib/auth/csrf.ts`, 4 consumer (client.ts, parse-sse.ts, session-gate.ts, useAuth.ts) |
+| csrfStore (#12b PR #159) | `frontend/src/lib/auth/csrf.ts`, 4 consumer |
+| race-in-race (#2b) | `backend/app/services/auth_service.py` (chain-walk + `_lock_select`), `backend/app/database.py` (`is_postgres`), `backend/app/services/spend_writer.py` |
 | 정책 문서 | `docs/design-docs/adr-016-multiuser-auth.md` |
 
 ---
 
 ## 마지막 상태
 
-- 검증: backend **971 PASS** / ruff clean, frontend **286 PASS** / lint clean / build OK
-- 워킹트리: 깨끗 (`refactor/csrf-factory-pattern` 브랜치, 2-커밋)
+- 검증: backend **972 PASS** / ruff clean, frontend **286 PASS** / lint clean / build OK
+- 워킹트리: 깨끗 (`fix/refresh-token-race-in-race` 브랜치, 2-커밋)
 - 운영 Postgres: m37 + m38 + m39 마이그레이션 적용 완료
-- **권장 다음 한 가지**: PR 생성 → 머지 → `/sync` → 🟢 #3 (stream_events v3 마이그레이션, L, ROI 최대) 또는 🟢 #2b (S, 보안 마무리)
+- **권장 다음 한 가지**: PR 생성 → 머지 → `/sync` → 🟢 #3 (stream_events v3, ROI 최대) 또는 🟢 oauth2_base 조사 (S)
 
 새 세션 시작:
 1. 이 파일 읽기
