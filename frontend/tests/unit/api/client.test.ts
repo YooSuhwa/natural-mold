@@ -95,7 +95,9 @@ describe('apiFetch', () => {
       const apiErr = error as ApiError
       expect(apiErr.status).toBe(500)
       expect(apiErr.code).toBe('UNKNOWN_ERROR')
-      expect(apiErr.message).toBe('Unknown error')
+      // Empty body ⇒ message falls back to ``response.statusText``
+      // (the runtime contract baked into ``readApiErrorBody``).
+      expect(apiErr.message).toBe('Internal Server Error')
     }
   })
 

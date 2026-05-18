@@ -1,4 +1,7 @@
-import { clearCsrfToken, getCsrfToken, setCsrfToken } from '@/lib/auth/csrf'
+import { getCsrfToken, setCsrfToken } from '@/lib/auth/csrf'
+import { authGate } from '@/lib/auth/session-gate'
+
+import { ApiError, throwApiError } from './errors'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'
 
@@ -20,17 +23,6 @@ const REFRESH_SKIP_ENDPOINTS = [
 
 /** HTTP methods considered state-changing for CSRF purposes. */
 const MUTATION_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
-
-class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    message: string,
-  ) {
-    super(message)
-    this.name = 'ApiError'
-  }
-}
 
 interface RefreshBody {
   csrf_token?: string
@@ -84,33 +76,20 @@ async function tryRefresh(): Promise<boolean> {
 // ------------------------------ session-expired hook ----------------------
 
 type SessionExpiredHandler = () => void
-let sessionExpiredHandler: SessionExpiredHandler | null = null
 
-/**
- * Registered by the QueryProvider on the client. Invoked exactly once per
- * unrecoverable 401 chain (refresh failed) so the UI can clear cache + toast +
- * redirect to /login.
- */
+/** Registered by the QueryProvider on the client. Invoked exactly once per
+ *  unrecoverable 401 chain (refresh failed) so the UI can clear cache +
+ *  toast + redirect to /login. */
 export function setSessionExpiredHandler(handler: SessionExpiredHandler | null): void {
-  sessionExpiredHandler = handler
+  authGate.setHandler(handler)
 }
 
-let sessionExpiredFired = false
 export function fireSessionExpired(): void {
-  if (sessionExpiredFired) return
-  sessionExpiredFired = true
-  clearCsrfToken()
-  try {
-    sessionExpiredHandler?.()
-  } finally {
-    // Hold the gate open until a successful login (``resetRefreshBackoff``)
-    // clears it — otherwise concurrent useQuery 401s fire the toast/redirect
-    // dozens of times. ``useLogin``/``useRegister`` clear this state.
-  }
+  authGate.fire()
 }
 
 export function resetSessionExpiredFlag(): void {
-  sessionExpiredFired = false
+  authGate.reset()
 }
 
 // ------------------------------ core fetch ---------------------------------
@@ -133,47 +112,43 @@ function buildHeaders(method: string, path: string, init?: HeadersInit): Headers
   return headers
 }
 
-async function rawFetch(path: string, options: RequestInit | undefined): Promise<Response> {
-  const method = (options?.method ?? 'GET').toUpperCase()
-  return fetch(`${API_BASE}${path}`, {
-    ...options,
-    method,
-    credentials: 'include',
-    headers: buildHeaders(method, path, options?.headers),
-  })
+/** Run ``send`` once, retry once after a successful ``/refresh`` if the
+ *  response was 401. Endpoints that own the refresh lifecycle skip the
+ *  retry (login/register/refresh/logout). If refresh fails, signal the
+ *  session-expired latch so the UI surfaces the redirect exactly once.
+ *
+ *  POST/PATCH/DELETE retry is safe because FastAPI's ``get_current_user``
+ *  dependency runs *before* the route handler — a 401 means the request
+ *  never touched the resource, so re-sending after a refresh cannot
+ *  double-apply the mutation. (Without that invariant we would have to
+ *  serialise non-idempotent mutations through a different path.) */
+async function withAuthRetry(
+  path: string,
+  send: () => Promise<Response>,
+): Promise<Response> {
+  const response = await send()
+  if (response.status !== 401 || matchesEndpoint(path, REFRESH_SKIP_ENDPOINTS)) {
+    return response
+  }
+  if (await tryRefresh()) {
+    return send()
+  }
+  fireSessionExpired()
+  return response
 }
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  let response = await rawFetch(path, options)
+  const method = (options?.method ?? 'GET').toUpperCase()
+  const send = (): Promise<Response> =>
+    fetch(`${API_BASE}${path}`, {
+      ...options,
+      method,
+      credentials: 'include',
+      headers: buildHeaders(method, path, options?.headers),
+    })
 
-  // 401 → single refresh attempt + retry, except on endpoints that own the
-  // refresh lifecycle themselves (login/register/refresh) or that should be
-  // allowed to complete locally even when expired (logout).
-  if (response.status === 401 && !matchesEndpoint(path, REFRESH_SKIP_ENDPOINTS)) {
-    const refreshed = await tryRefresh()
-    if (refreshed) {
-      response = await rawFetch(path, options)
-    } else {
-      fireSessionExpired()
-    }
-  }
-
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    const detail = body?.detail ?? body?.error ?? {}
-    const code: string =
-      typeof detail === 'object' && detail
-        ? (detail.code ?? 'UNKNOWN_ERROR')
-        : (body.code ?? 'UNKNOWN_ERROR')
-    const message: string =
-      typeof detail === 'object' && detail
-        ? (detail.message ?? body.message ?? response.statusText)
-        : typeof detail === 'string'
-          ? detail
-          : (body.message ?? response.statusText)
-    throw new ApiError(response.status, code, message)
-  }
-
+  const response = await withAuthRetry(path, send)
+  if (!response.ok) await throwApiError(response, 'UNKNOWN_ERROR')
   if (response.status === 204) return undefined as T
   return response.json()
 }
@@ -191,7 +166,7 @@ export async function apiUpload<T>(
   formData: FormData,
   signal?: AbortSignal,
 ): Promise<T> {
-  const send = async (): Promise<Response> => {
+  const send = (): Promise<Response> => {
     const headers: Record<string, string> = {}
     const csrf = getCsrfToken()
     if (csrf) headers['X-CSRF-Token'] = csrf
@@ -204,37 +179,8 @@ export async function apiUpload<T>(
     })
   }
 
-  let response = await send()
-  if (response.status === 401 && !matchesEndpoint(path, REFRESH_SKIP_ENDPOINTS)) {
-    const refreshed = await tryRefresh()
-    if (refreshed) {
-      response = await send()
-    } else {
-      fireSessionExpired()
-    }
-  }
-
-  if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as {
-      error?: { code?: string; message?: string }
-      detail?: { code?: string; message?: string } | string
-      code?: string
-      message?: string
-    }
-    const detail = body?.detail ?? body?.error ?? {}
-    const code: string =
-      typeof detail === 'object' && detail
-        ? (detail.code ?? 'UPLOAD_ERROR')
-        : (body.code ?? 'UPLOAD_ERROR')
-    const message: string =
-      typeof detail === 'object' && detail
-        ? (detail.message ?? body.message ?? response.statusText)
-        : typeof detail === 'string'
-          ? detail
-          : (body.message ?? response.statusText)
-    throw new ApiError(response.status, code, message)
-  }
-
+  const response = await withAuthRetry(path, send)
+  if (!response.ok) await throwApiError(response, 'UPLOAD_ERROR')
   if (response.status === 204) return undefined as T
   return response.json()
 }
