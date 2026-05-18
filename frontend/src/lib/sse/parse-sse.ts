@@ -3,21 +3,22 @@ import {
   type EventSourceMessage,
 } from '@microsoft/fetch-event-source'
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
+import { ApiError, readApiErrorBody } from '@/lib/api/errors'
 import { getCsrfToken } from '@/lib/auth/csrf'
 
 /** Error thrown when a stream POST/GET returns a non-2xx with a parseable
  *  ``{error: {code, message}}`` body. Carries the structured fields so the
  *  chat runtime (``useChatRuntime``) can render an inline assistant-side
  *  message for actionable codes (e.g. ``llm_credential_required``) instead
- *  of a generic toast. ``StreamHttpError`` (legacy GET resume path) stays
- *  intact for callers that only need status. */
-export class StreamApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string | null,
-    message: string,
-  ) {
-    super(message)
+ *  of a generic toast.
+ *
+ *  Subclasses ``ApiError`` so ``instanceof ApiError`` catches both REST
+ *  and SSE failures uniformly (auth-errors / session reload paths).
+ *  ``StreamHttpError`` (legacy GET resume path) stays intact for callers
+ *  that only need status. */
+export class StreamApiError extends ApiError {
+  constructor(status: number, code: string | null, message: string) {
+    super(status, code ?? 'UNKNOWN_STREAM_ERROR', message)
     this.name = 'StreamApiError'
   }
 }
@@ -25,24 +26,12 @@ export class StreamApiError extends Error {
 async function readStreamErrorBody(
   response: Response,
 ): Promise<{ code: string | null; message: string }> {
-  let code: string | null = null
-  let message: string | null = null
-  try {
-    const body = await response.clone().json()
-    const detail = body?.error ?? body?.detail ?? null
-    if (detail && typeof detail === 'object') {
-      code = (detail as { code?: string }).code ?? null
-      message = (detail as { message?: string }).message ?? null
-    } else if (typeof detail === 'string') {
-      message = detail
-    }
-  } catch {
-    // body not JSON — fall through to generic message
-  }
-  return {
-    code,
-    message: message ?? `요청이 거부되었습니다 (HTTP ${response.status})`,
-  }
+  const { code, message } = await readApiErrorBody(response, {
+    fallbackCode: 'UNKNOWN_STREAM_ERROR',
+    fallbackMessage: `요청이 거부되었습니다 (HTTP ${response.status})`,
+    clone: true,
+  })
+  return { code: code === 'UNKNOWN_STREAM_ERROR' ? null : code, message }
 }
 
 /**

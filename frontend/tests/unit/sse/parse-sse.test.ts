@@ -276,7 +276,9 @@ describe('streamSSEPost', () => {
     )
 
     const gen = streamSSEPost('/api/test/stream', {}, undefined, 'content_delta')
-    await expect(gen.next()).rejects.toThrow('Stream failed: 500')
+    // i18n contract: stream errors surface the user-facing Korean fallback
+    // when no structured ``{error: {code, message}}`` body is present.
+    await expect(gen.next()).rejects.toThrow('요청이 거부되었습니다 (HTTP 500)')
   })
 
   // body가 null인 응답 처리는 fetchEventSource 라이브러리 내부 로직이 담당하게

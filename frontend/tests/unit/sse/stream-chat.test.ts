@@ -223,7 +223,11 @@ describe('streamChat', () => {
       new Response('Internal Server Error', { status: 500 }),
     )
 
-    await expect(collectEvents('conv-1', 'test')).rejects.toThrow('Stream failed: 500')
+    // i18n contract: stream errors surface the user-facing Korean fallback
+    // when no structured ``{error: {code, message}}`` body is present.
+    await expect(collectEvents('conv-1', 'test')).rejects.toThrow(
+      '요청이 거부되었습니다 (HTTP 500)',
+    )
   })
 
   // body 가 null 인 응답 처리는 fetchEventSource 라이브러리 내부 로직으로
