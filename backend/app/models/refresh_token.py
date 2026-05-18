@@ -45,6 +45,14 @@ class RefreshToken(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Forward-link to the rotation that superseded this row. Used to
+    # distinguish "two tabs raced /refresh with the same cookie" (replay
+    # within a short grace window, replaced_by is active, UA matches) from
+    # a genuine replay attack — see auth_service.rotate_refresh.
+    replaced_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("refresh_tokens.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

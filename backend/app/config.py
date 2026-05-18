@@ -111,6 +111,13 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 30
+    # Grace window after a refresh rotation during which a re-presented
+    # (already-rotated) token is treated as a tab-race rather than a
+    # replay attack — but only when the replacement is still active AND
+    # the originating user-agent matches. Outside this window, or with
+    # a UA mismatch, replay detection fires (mass-revoke). See
+    # auth_service.rotate_refresh.
+    refresh_rotation_grace_seconds: int = 10
     csrf_token_expire_minutes: int = 60
     cookie_name_access: str = "moldy_at"
     cookie_name_refresh: str = "moldy_rt"

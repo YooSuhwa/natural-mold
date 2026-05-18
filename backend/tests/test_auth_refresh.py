@@ -21,13 +21,19 @@ from app.models.refresh_token import RefreshToken
 from tests.conftest import TestSession
 
 
-async def _register_and_login(client: AsyncClient, email: str = "rt@test.com") -> str:
+async def _register_and_login(
+    client: AsyncClient,
+    email: str = "rt@test.com",
+    user_agent: str | None = None,
+) -> str:
     """Register a fresh user. Returns the issued refresh JWT."""
 
     settings.allow_first_user_as_admin = False
+    headers = {"user-agent": user_agent} if user_agent else None
     resp = await client.post(
         "/api/auth/register",
         json={"email": email, "password": "correct horse", "name": "RT User"},
+        headers=headers,
     )
     assert resp.status_code == 201, resp.text
     refresh = resp.cookies[settings.cookie_name_refresh]
@@ -74,19 +80,28 @@ async def test_refresh_rotates_and_revokes_previous(raw_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_refresh_replay_logs_warning_and_returns_401(raw_client: AsyncClient):
-    """Replay detection: re-using a rotated refresh returns 401."""
+    """Replay detection: re-using a rotated refresh from a different UA → 401.
+
+    The UA mismatch is what classifies the second presentation as an
+    attack rather than a same-browser tab race. Without it, the request
+    falls into the grace-window chain path (covered separately).
+    """
 
     rt = await _register_and_login(raw_client)
 
-    # First rotation succeeds.
+    # First rotation succeeds (legit browser).
     first = await raw_client.post(
-        "/api/auth/refresh", cookies={settings.cookie_name_refresh: rt}
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers={"user-agent": "LegitBrowser/1.0"},
     )
     assert first.status_code == 200
 
-    # Replay the original — must 401.
+    # Replay the original from a different UA — must 401.
     replay = await raw_client.post(
-        "/api/auth/refresh", cookies={settings.cookie_name_refresh: rt}
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers={"user-agent": "AttackerBrowser/9.9"},
     )
     assert replay.status_code == 401
     assert replay.json()["error"]["code"] == "invalid_refresh"
@@ -96,11 +111,15 @@ async def test_refresh_replay_logs_warning_and_returns_401(raw_client: AsyncClie
 async def test_refresh_replay_revokes_all_active(raw_client: AsyncClient):
     rt = await _register_and_login(raw_client)
     first = await raw_client.post(
-        "/api/auth/refresh", cookies={settings.cookie_name_refresh: rt}
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers={"user-agent": "LegitBrowser/1.0"},
     )
     new_rt = first.cookies[settings.cookie_name_refresh]
     await raw_client.post(
-        "/api/auth/refresh", cookies={settings.cookie_name_refresh: rt}
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers={"user-agent": "AttackerBrowser/9.9"},
     )
 
     async with TestSession() as db:
@@ -109,7 +128,9 @@ async def test_refresh_replay_revokes_all_active(raw_client: AsyncClient):
         assert all(r.revoked_at is not None for r in rows)
 
     follow_up = await raw_client.post(
-        "/api/auth/refresh", cookies={settings.cookie_name_refresh: new_rt}
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: new_rt},
+        headers={"user-agent": "LegitBrowser/1.0"},
     )
     assert follow_up.status_code == 401
 
@@ -142,6 +163,170 @@ async def test_refresh_without_cookie_returns_401(raw_client: AsyncClient):
     resp = await raw_client.post("/api/auth/refresh")
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "invalid_refresh"
+
+
+@pytest.mark.asyncio
+async def test_refresh_race_within_grace_window_chains_instead_of_replay(
+    raw_client: AsyncClient,
+):
+    """Two-tab race: stale token re-presented within grace + UA match → success.
+
+    Reproduces the production bug from 2026-05-18 where two tabs hitting
+    /api/auth/refresh simultaneously caused the loser to be classified
+    as a replay and the entire user whitelist to be revoked. The grace
+    path issues fresh tokens off the chain head and leaves prior
+    rotations untouched.
+    """
+
+    ua = "Mozilla/5.0 (TabRaceTest)"
+    headers = {"user-agent": ua}
+
+    rt = await _register_and_login(raw_client, user_agent=ua)
+
+    # Tab A wins — normal rotation.
+    first = await raw_client.post(
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers=headers,
+    )
+    assert first.status_code == 200
+    rt_a = first.cookies[settings.cookie_name_refresh]
+
+    # Tab B loses — same original cookie, same UA, well inside grace.
+    second = await raw_client.post(
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers=headers,
+    )
+    assert second.status_code == 200, second.text
+    rt_b = second.cookies[settings.cookie_name_refresh]
+    assert rt_b not in {rt, rt_a}
+
+    # The chain head (rt_b) is active; rt_a was chain-revoked but not
+    # mass-revoked — anything older that isn't part of this chain stays
+    # untouched. There must be no in-flight replay sweep.
+    async with TestSession() as db:
+        rows = (await db.execute(select(RefreshToken))).scalars().all()
+        by_hash = {r.token_hash: r for r in rows}
+        assert by_hash[hash_refresh_token(rt)].revoked_at is not None
+        assert by_hash[hash_refresh_token(rt_a)].revoked_at is not None
+        head = by_hash[hash_refresh_token(rt_b)]
+        assert head.revoked_at is None
+        # Chain link is wired forward.
+        assert by_hash[hash_refresh_token(rt)].replaced_by_id == by_hash[
+            hash_refresh_token(rt_a)
+        ].id
+        assert by_hash[hash_refresh_token(rt_a)].replaced_by_id == head.id
+
+
+@pytest.mark.asyncio
+async def test_refresh_race_with_user_agent_mismatch_is_replay(
+    raw_client: AsyncClient,
+):
+    """UA mismatch breaks the race-vs-replay heuristic → mass-revoke."""
+
+    rt = await _register_and_login(raw_client)
+
+    first = await raw_client.post(
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers={"user-agent": "BrowserA/1.0"},
+    )
+    assert first.status_code == 200
+
+    # Same stale cookie from a different UA — treat as theft.
+    replay = await raw_client.post(
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers={"user-agent": "BrowserB/2.0"},
+    )
+    assert replay.status_code == 401
+
+    async with TestSession() as db:
+        rows = (await db.execute(select(RefreshToken))).scalars().all()
+        assert rows
+        assert all(r.revoked_at is not None for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_refresh_race_outside_grace_window_is_replay(raw_client: AsyncClient):
+    """Same-cookie re-use *after* the grace window expired → mass-revoke."""
+
+    ua = "Mozilla/5.0 (GraceWindowTest)"
+    headers = {"user-agent": ua}
+
+    rt = await _register_and_login(raw_client, user_agent=ua)
+    first = await raw_client.post(
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers=headers,
+    )
+    assert first.status_code == 200
+
+    # Backdate the original row's revocation so it's outside grace.
+    async with TestSession() as db:
+        old = (
+            await db.execute(
+                select(RefreshToken).where(
+                    RefreshToken.token_hash == hash_refresh_token(rt)
+                )
+            )
+        ).scalar_one()
+        old.revoked_at = (
+            datetime.now(UTC) - timedelta(
+                seconds=settings.refresh_rotation_grace_seconds + 30
+            )
+        ).replace(tzinfo=None)
+        await db.commit()
+
+    replay = await raw_client.post(
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers=headers,
+    )
+    assert replay.status_code == 401
+
+    async with TestSession() as db:
+        rows = (await db.execute(select(RefreshToken))).scalars().all()
+        assert all(r.revoked_at is not None for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_refresh_replay_after_replacement_revoked_is_replay(
+    raw_client: AsyncClient,
+):
+    """Replacement no longer active → don't chain; fall through to replay."""
+
+    ua = "Mozilla/5.0 (RevokedHeadTest)"
+    headers = {"user-agent": ua}
+
+    rt = await _register_and_login(raw_client, user_agent=ua)
+    first = await raw_client.post(
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers=headers,
+    )
+    assert first.status_code == 200
+    rt_a = first.cookies[settings.cookie_name_refresh]
+
+    # Logout the replacement leg — chain head is now revoked.
+    async with TestSession() as db:
+        head = (
+            await db.execute(
+                select(RefreshToken).where(
+                    RefreshToken.token_hash == hash_refresh_token(rt_a)
+                )
+            )
+        ).scalar_one()
+        head.revoked_at = datetime.now(UTC).replace(tzinfo=None)
+        await db.commit()
+
+    replay = await raw_client.post(
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers=headers,
+    )
+    assert replay.status_code == 401
 
 
 @pytest.mark.asyncio

@@ -154,6 +154,21 @@ async def issue_tokens(
     Returns ``(access, refresh, csrf)`` for the cookie helper.
     """
 
+    access, _refresh_row, refresh, csrf = await _issue_tokens_with_row(
+        db, user, request
+    )
+    return access, refresh, csrf
+
+
+async def _issue_tokens_with_row(
+    db: AsyncSession, user: User, request: Request
+) -> tuple[str, RefreshToken, str, str]:
+    """Like :func:`issue_tokens` but also returns the new ``RefreshToken``.
+
+    Internal helper for the rotation flow, which needs the row id to
+    wire ``old.replaced_by_id`` for the race-vs-replay disambiguation.
+    """
+
     access = create_access_token(user.id, is_super_user=user.is_super_user)
     refresh, _jti, refresh_hash = create_refresh_token(user.id)
     csrf = create_csrf_token(user.id)
@@ -161,17 +176,16 @@ async def issue_tokens(
     expires_at = datetime.now(UTC) + timedelta(
         days=settings.refresh_token_expire_days
     )
-    db.add(
-        RefreshToken(
-            user_id=user.id,
-            token_hash=refresh_hash,
-            expires_at=expires_at,
-            user_agent=user_agent(request),
-            ip=client_ip(request),
-        )
+    row = RefreshToken(
+        user_id=user.id,
+        token_hash=refresh_hash,
+        expires_at=expires_at,
+        user_agent=user_agent(request),
+        ip=client_ip(request),
     )
+    db.add(row)
     await db.flush()
-    return access, refresh, csrf
+    return access, row, refresh, csrf
 
 
 async def _revoke_all_active(db: AsyncSession, user_id: uuid.UUID) -> None:
@@ -184,10 +198,57 @@ async def _revoke_all_active(db: AsyncSession, user_id: uuid.UUID) -> None:
     )
 
 
+def _aware(dt: datetime) -> datetime:
+    """Coerce a naive datetime (SQLite test rows) to UTC-aware."""
+
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+
+
+def _is_race_not_replay(
+    row: RefreshToken, request: Request, now: datetime
+) -> bool:
+    """Decide if a re-presented (revoked) refresh row is a tab-race.
+
+    True ⇒ caller should chain-rotate from the replacement instead of
+    treating the request as a replay attack. Requires ALL of:
+
+    1. ``replaced_by_id`` is set (i.e. the row was rotated, not revoked
+       via logout or mass-revoke).
+    2. The revocation is within ``refresh_rotation_grace_seconds``.
+    3. The originating user-agent matches the current request — a cheap
+       binding that defeats a stolen-cookie attacker on a different
+       browser. Not cryptographic, but materially raises the bar over
+       "any presenter of the stale token wins".
+
+    The replacement's liveness is verified by the caller after we fetch
+    the row — keeps this predicate pure / synchronous.
+    """
+
+    if row.replaced_by_id is None or row.revoked_at is None:
+        return False
+    grace = timedelta(seconds=settings.refresh_rotation_grace_seconds)
+    if grace.total_seconds() <= 0:
+        return False
+    if now - _aware(row.revoked_at) > grace:
+        return False
+    return (row.user_agent or "") == (user_agent(request) or "")
+
+
 async def rotate_refresh(
     db: AsyncSession, refresh_token: str, request: Request
 ) -> tuple[str, str, str, User]:
-    """Validate + rotate a refresh token. Replay → mass-revoke + 401.
+    """Validate + rotate a refresh token.
+
+    Three outcomes for a re-presented (already-revoked) row:
+
+    * **Race** — replacement is still active, revocation is within the
+      grace window, and the originating UA matches. Chain-rotates from
+      the replacement so the losing tab also gets fresh cookies. No
+      mass-revoke.
+    * **Replay** — any other revoked-row presentation. Burns the user's
+      entire refresh whitelist (force re-login) and 401s.
+    * **Live** — normal path: revoke the row, mint replacement, link
+      ``old.replaced_by_id``.
 
     Returns ``(access, refresh, csrf, user)`` so the router can set
     cookies and respond with the latest user projection.
@@ -209,9 +270,32 @@ async def rotate_refresh(
         raise AppError(
             code="invalid_refresh", message="세션이 만료되었습니다", status=401
         )
+
+    now = datetime.now(UTC)
+    user_id = uuid.UUID(payload.sub)
+
     if row.revoked_at is not None:
-        # REPLAY — the same hash is being re-presented after rotation.
-        # Burn the entire user's refresh whitelist.
+        if _is_race_not_replay(row, request, now):
+            replacement = (
+                await db.execute(
+                    select(RefreshToken).where(RefreshToken.id == row.replaced_by_id)
+                )
+            ).scalar_one_or_none()
+            if (
+                replacement is not None
+                and replacement.revoked_at is None
+                and _aware(replacement.expires_at) > now
+            ):
+                logger.info(
+                    "Refresh-token race resolved for user_id=%s; chaining from replacement.",
+                    row.user_id,
+                )
+                return await _chain_rotate_from_replacement(
+                    db, replacement, user_id, request, now
+                )
+        # REPLAY — the same hash is being re-presented after rotation
+        # (and it isn't a tab-race we can vouch for). Burn the entire
+        # user's refresh whitelist.
         logger.warning(
             "Refresh-token replay detected for user_id=%s; revoking all active tokens.",
             row.user_id,
@@ -225,24 +309,55 @@ async def rotate_refresh(
         raise AppError(
             code="invalid_refresh", message="세션이 만료되었습니다", status=401
         )
-    expires_at = row.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=UTC)
-    if expires_at <= datetime.now(UTC):
+
+    if _aware(row.expires_at) <= now:
         raise AppError(
             code="invalid_refresh", message="세션이 만료되었습니다", status=401
         )
 
-    user_id = uuid.UUID(payload.sub)
     user = await user_service.get_by_id(db, user_id)
     if user is None or not user.is_active:
         raise AppError(
             code="invalid_refresh", message="세션이 만료되었습니다", status=401
         )
 
-    # Atomic rotation: revoke the row we just consumed, mint new tokens.
-    row.revoked_at = datetime.now(UTC)
-    access, new_refresh, csrf = await issue_tokens(db, user, request)
+    # Atomic rotation: revoke the row we just consumed, mint new tokens,
+    # and link the chain so a concurrent presenter of this same hash can
+    # be classified as race rather than replay.
+    access, new_row, new_refresh, csrf = await _issue_tokens_with_row(
+        db, user, request
+    )
+    row.revoked_at = now
+    row.replaced_by_id = new_row.id
+    return access, new_refresh, csrf, user
+
+
+async def _chain_rotate_from_replacement(
+    db: AsyncSession,
+    replacement: RefreshToken,
+    user_id: uuid.UUID,
+    request: Request,
+    now: datetime,
+) -> tuple[str, str, str, User]:
+    """Race resolution: rotate from the already-issued replacement.
+
+    The losing tab presented the stale token after the winner committed.
+    We mint *another* generation rather than re-emitting the winner's
+    tokens (which we don't store in plaintext). The cookie store ends
+    up with whichever generation the browser receives last — both are
+    valid until rotated themselves.
+    """
+
+    user = await user_service.get_by_id(db, user_id)
+    if user is None or not user.is_active:
+        raise AppError(
+            code="invalid_refresh", message="세션이 만료되었습니다", status=401
+        )
+    access, new_row, new_refresh, csrf = await _issue_tokens_with_row(
+        db, user, request
+    )
+    replacement.revoked_at = now
+    replacement.replaced_by_id = new_row.id
     return access, new_refresh, csrf, user
 
 
