@@ -19,6 +19,8 @@ vi.mock('next/link', () => ({
 
 const mockPush = vi.fn()
 
+// Overrides tests/setup.ts 의 기본 next/navigation mock — push 호출을
+// assert 하기 위해 named spy 와 라우트별 useParams/usePathname 이 필요.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, replace: vi.fn() }),
   useParams: () => ({ conversationId: 'conv-1' }),

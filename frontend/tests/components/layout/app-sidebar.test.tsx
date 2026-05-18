@@ -18,10 +18,7 @@ vi.mock('next/link', () => ({
   ),
 }))
 
-vi.mock('next/navigation', () => ({
-  usePathname: () => '/',
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}))
+// next/navigation 기본 stub은 tests/setup.ts 의 글로벌 mock 으로 충분.
 
 const mockUseAgents = vi.fn()
 

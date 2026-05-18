@@ -1,6 +1,30 @@
 import '@testing-library/jest-dom/vitest'
 import { setupServer } from 'msw/node'
+import { vi } from 'vitest'
+
 import { handlers } from './mocks/handlers'
+
+// Default next/navigation mock for every jsdom test. Tests that need to
+// assert on the router (named ``push``/``replace`` spies) or pin a
+// specific ``usePathname`` / ``useParams`` value override this with their
+// own ``vi.mock('next/navigation', ...)`` — per-file mocks beat the
+// setup-file mock so the override is transparent.
+//
+// Without this default, any component that calls ``useRouter()`` in a
+// jsdom test throws "invariant expected app router to be mounted".
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+  }),
+  usePathname: () => '/',
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
+}))
 
 class ResizeObserverPolyfill {
   observe() {}

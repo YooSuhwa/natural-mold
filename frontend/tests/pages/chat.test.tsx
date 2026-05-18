@@ -21,6 +21,8 @@ vi.mock('next/link', () => ({
   ),
 }))
 
+// Overrides tests/setup.ts 의 기본 next/navigation mock — 채팅 페이지가
+// useParams/usePathname 의 라우트별 값에 의존.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useParams: () => ({ conversationId: 'conv-1' }),

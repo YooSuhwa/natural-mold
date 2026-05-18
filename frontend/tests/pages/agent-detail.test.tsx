@@ -20,6 +20,8 @@ vi.mock('next/link', () => ({
 
 const mockReplace = vi.fn()
 
+// Overrides tests/setup.ts 의 기본 next/navigation mock — router.replace
+// 호출을 assert 하기 위해 named spy 가 필요.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: mockReplace }),
 }))
