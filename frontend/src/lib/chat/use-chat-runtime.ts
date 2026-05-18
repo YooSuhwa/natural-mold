@@ -302,6 +302,22 @@ export function useChatRuntime({
 
       setStreamingMessages(buildStreamState())
 
+      // content_delta 는 백엔드에서 초당 60+ 회 도착하지만 React 가 SSE 이벤트
+      // 사이에선 자동 batching 을 안 한다(각각 별 microtask). 매번 setState 하면
+      // Streamdown 이 누적 텍스트 전체를 재파싱해 길어질수록 누적 비용이 커진다.
+      // rAF tick(약 16ms = 60fps)에 한 번씩만 flush 해서 동일한 시각적 부드러움을
+      // 유지하면서 렌더 횟수를 줄인다.
+      let rafScheduled = false
+      const flushStreamState = () => {
+        rafScheduled = false
+        setStreamingMessages(buildStreamState())
+      }
+      const scheduleFlush = () => {
+        if (rafScheduled) return
+        rafScheduled = true
+        requestAnimationFrame(flushStreamState)
+      }
+
       try {
         for await (const event of stream) {
           // 이 stream이 stale이면(새 stream이 시작됨) 즉시 종료. AbortController로
@@ -317,7 +333,7 @@ export function useChatRuntime({
           switch (event.event) {
             case 'content_delta': {
               accumulated += event.data.content ?? event.data.delta ?? ''
-              setStreamingMessages(buildStreamState())
+              scheduleFlush()
               break
             }
             case 'tool_call_start': {
@@ -459,6 +475,12 @@ export function useChatRuntime({
         }
       } finally {
         setIsRunning(false)
+        // rAF-batched 마지막 flush 가 아직 안 돌았으면 동기로 한 번 더 적용해
+        // 최종 텍스트가 화면에 즉시 반영되게 한다.
+        if (rafScheduled) {
+          rafScheduled = false
+          setStreamingMessages(buildStreamState())
+        }
         // 스트리밍 메시지 확정 → 로컬 히스토리 유지 (AssistantPanel용)
         if (onMessagesCommit) {
           const finalMsgs = buildStreamState()
