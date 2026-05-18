@@ -282,6 +282,60 @@ def register_health_check_job() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Refresh-token GC (ADR-016 §4.2)
+# ---------------------------------------------------------------------------
+
+REFRESH_TOKEN_GC_JOB_ID = "refresh_token_gc"
+
+
+async def refresh_token_gc_run() -> int:
+    """Delete expired refresh-token rows past the retention window."""
+
+    from app.services.refresh_token_gc import gc_expired_refresh_tokens
+
+    async with async_session() as db:
+        try:
+            return await gc_expired_refresh_tokens(
+                db, retention_days=settings.refresh_token_gc_retention_days
+            )
+        except Exception:  # noqa: BLE001 — keep cron alive
+            logger.exception("refresh-token GC failed; will retry next run")
+            return 0
+
+
+def register_refresh_token_gc_job() -> None:
+    """Register the recurring refresh-token GC cron job. Idempotent."""
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        logger.debug(
+            "Scheduler not running; skipping refresh-token GC registration"
+        )
+        return
+    try:
+        trigger = CronTrigger.from_crontab(settings.refresh_token_gc_cron)
+    except ValueError:
+        logger.exception(
+            "invalid refresh_token_gc_cron=%r; GC job not scheduled",
+            settings.refresh_token_gc_cron,
+        )
+        return
+    scheduler.add_job(
+        refresh_token_gc_run,
+        trigger,
+        id=REFRESH_TOKEN_GC_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info(
+        "Scheduled refresh-token GC: cron %s (retention=%dd)",
+        settings.refresh_token_gc_cron,
+        settings.refresh_token_gc_retention_days,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Lightweight MCP health polling
 # ---------------------------------------------------------------------------
 

@@ -105,7 +105,7 @@ CREATE INDEX ix_refresh_tokens_active
 - 이미 `revoked_at IS NOT NULL`인 token이 다시 들어오면 두 갈래로 분기:
   - **Race (탭 경합)** — `replaced_by_id`가 존재 + 교체본이 active + `revoked_at`이 `settings.refresh_rotation_grace_seconds`(기본 10s) 이내 + 원본 row의 user-agent가 현재 요청과 일치 → 교체본에서 다시 회전하여 새 토큰 발급(체인 연장). 일괄 폐기 안 함. 두 탭 동시 `/refresh` 시나리오 보호 (2026-05-18 회귀 가드).
   - **Replay (실제 공격 의심)** — 그 외 모든 경우(다른 UA, grace 초과, 교체본도 폐기됨 등) → 해당 user의 모든 active refresh를 일괄 revoke. `UPDATE refresh_tokens SET revoked_at=NOW() WHERE user_id=:uid AND revoked_at IS NULL`.
-- 만료된 row는 cron으로 30일+1d 이후 GC.
+- 만료된 row는 cron으로 GC: `settings.refresh_token_gc_cron`(기본 매일 05:00 UTC)에 `DELETE FROM refresh_tokens WHERE expires_at < NOW() - settings.refresh_token_gc_retention_days days` 실행. 기본 retention 1d로 barely-expired token도 replay 분류 가능. `replaced_by_id` 자기-FK는 `ON DELETE SET NULL` 이라 체인 중간 row 삭제도 안전. 구현: `app/services/refresh_token_gc.py`, `app/scheduler.py::register_refresh_token_gc_job`.
 
 ### 4.3 `oauth_accounts` 테이블 (Phase 2 자리만 — 지금 만들지 않음)
 
