@@ -32,13 +32,14 @@
 
 ### 🟢 후속 작업 (보류 가능)
 2c. **GC DELETE batch 처리** — `ctid IN ... LIMIT N` 루프. **S. 운영 백로그 감지 시점에.**
-**🆕 oauth2_base FOR UPDATE 누락 가능성** — `backend/app/credentials/oauth2_base.py:5` 주석에 "caller가 SELECT FOR UPDATE 책임" 명시되어 있으나 실제 구현 미확인. OAuth 토큰 동시 refresh가 비직렬화 상태일 가능성. simplify 리뷰에서 발견. **S. 조사 + 보강.**
+**🆕 oauth2_base FOR UPDATE 누락 가능성** — `backend/app/credentials/oauth2_base.py:5` 주석에 "caller가 SELECT FOR UPDATE 책임" 명시되어 있으나 실제 구현 미확인. OAuth 토큰 동시 refresh 비직렬화 가능성. simplify 리뷰에서 발견. **S. 조사 + 보강.**
+**🆕 streaming.py 타입 기반 분기 정리** — `msg.type in (...)` 문자열 체크를 `isinstance(msg, AIMessageChunk)` 등 타입 기반으로 일부 교체. 분기 수 동등, 가독성/타입 안전성↑. 영향: `streaming.py` ~라인 289-360. **XS.**
 
 ### 🟢 deepagents 0.6 후속 트랙
-3. **`stream_events(version="v3")` 마이그레이션** — `streaming.py` 분기 단순화. **L. ROI 최대.**
-4. **`_collect_checkpoints` Phase 2 병렬화** — `asyncio.gather` + 세마포어. **M.**
-5. **CodeInterpreterMiddleware 도입 검토**. **M.**
-6. **WittyLoadingMessage 우회책 정공법화** — assistant-ui 재마운트 원인 추적. **M.**
+~~3. `stream_events(version="v3")` 마이그레이션~~ — **폐기 (2026-05-18)**. `streaming.py:273`은 이미 LangGraph 정식 권장 `astream(stream_mode="messages")` 사용 중, v3는 beta + 콜백 이벤트 미사용 코드엔 이득 없음 + 분기 수 동등. 근거: `langchain_core/runnables/base.py:1495` (v3는 BaseChatModel/CompiledGraph 전용, experimental). 가능한 작은 정리는 위 🆕 항목으로 분리.
+3. **`_collect_checkpoints` Phase 2 병렬화** — `asyncio.gather` + 세마포어. **M.**
+4. **CodeInterpreterMiddleware 도입 검토**. **M.**
+5. **WittyLoadingMessage 우회책 정공법화** — assistant-ui 재마운트 원인 추적. **M.**
 
 ### 🟣 Phase 2 (장기, 별도 트랙)
 13. **Google OAuth 로그인** — **L.**
@@ -73,7 +74,7 @@
 - 검증: backend **972 PASS** / ruff clean, frontend **286 PASS** / lint clean / build OK
 - 워킹트리: 깨끗 (`fix/refresh-token-race-in-race` 브랜치, 2-커밋)
 - 운영 Postgres: m37 + m38 + m39 마이그레이션 적용 완료
-- **권장 다음 한 가지**: PR 생성 → 머지 → `/sync` → 🟢 #3 (stream_events v3, ROI 최대) 또는 🟢 oauth2_base 조사 (S)
+- **권장 다음 한 가지**: 🟢 oauth2_base FOR UPDATE 조사 (S, 직전 PR 후속) 또는 deepagents 트랙 #3 (`_collect_checkpoints` 병렬화, M)
 
 새 세션 시작:
 1. 이 파일 읽기
