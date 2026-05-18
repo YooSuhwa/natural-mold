@@ -75,6 +75,7 @@ from app.scheduler import (
     register_health_check_job,
     register_mcp_health_job,
 )
+from app.security.production_check import enforce_production_safety
 from app.seed.bootstrap_from_env import bootstrap_system_credentials
 from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_templates import DEFAULT_TEMPLATES
@@ -83,13 +84,11 @@ from app.services.spend_writer import spend_queue
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    # Startup: warn if Cipher V2 keys are unconfigured.
-    if not getattr(settings, "encryption_keys", ""):
-        logger.warning(
-            "ENCRYPTION_KEYS is not set. Credential creation will be rejected. "
-            "Configure one or more 64-char hex keys in .env "
-            "(see ENCRYPTION_KEYS in .env.example)."
-        )
+    # Refuse boot on insecure prod config; emit dev hints otherwise.
+    # Covers JWT secret, cookie Secure flag, first-user-admin toggle,
+    # CORS origins, encryption keys — all the things that are safe
+    # locally but catastrophic if shipped with their defaults.
+    enforce_production_safety(settings)
 
     # Startup: seed default data.
     async with async_session() as db:
