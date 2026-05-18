@@ -18,8 +18,6 @@ vi.mock('next/navigation', () => ({
     replace: vi.fn(),
     prefetch: vi.fn(),
     back: vi.fn(),
-    forward: vi.fn(),
-    refresh: vi.fn(),
   }),
   usePathname: () => '/',
   useParams: () => ({}),

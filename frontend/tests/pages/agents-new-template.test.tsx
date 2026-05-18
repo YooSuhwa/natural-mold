@@ -18,8 +18,6 @@ vi.mock('next/link', () => ({
   ),
 }))
 
-// next/navigation 기본 stub은 tests/setup.ts 의 글로벌 mock 으로 충분.
-
 const mockUseTemplates = vi.fn()
 const mockUseModels = vi.fn()
 
