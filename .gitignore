@@ -78,3 +78,10 @@ dump.rdb
 
 # Claude — 전체 ignore (이미 트래킹된 .claude/skills/ 등은 영향 없음)
 .claude/
+
+# Model catalog — 6시간마다 cron으로 자동 갱신되는 산출물 + 외부 소스 raw 스냅샷.
+# curated/, providers.json, schema.json 같은 사람이 편집하는 파일은 추적 유지.
+# catalog.json 부재 시 ``litellm_model_catalog.json`` legacy snapshot 로 폴백.
+backend/app/data/model_catalog/catalog.json
+backend/app/data/model_catalog/fetch_metadata.json
+backend/app/data/model_catalog/sources/
