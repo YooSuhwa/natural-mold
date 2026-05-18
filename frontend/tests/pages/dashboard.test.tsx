@@ -18,10 +18,6 @@ vi.mock('next/link', () => ({
   ),
 }))
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}))
-
 const mockUseAgents = vi.fn()
 const mockUseUsageSummary = vi.fn()
 const mockToggleFavorite = vi.fn()

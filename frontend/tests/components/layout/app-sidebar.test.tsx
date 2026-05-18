@@ -18,11 +18,6 @@ vi.mock('next/link', () => ({
   ),
 }))
 
-vi.mock('next/navigation', () => ({
-  usePathname: () => '/',
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}))
-
 const mockUseAgents = vi.fn()
 
 vi.mock('@/lib/hooks/use-agents', () => ({

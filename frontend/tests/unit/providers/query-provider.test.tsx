@@ -2,15 +2,9 @@ import { render, screen } from '@testing-library/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { vi } from 'vitest'
 
-// QueryProvider depends on next/navigation's AppRouter context + next-intl's
-// IntlProvider. In a bare jsdom run neither is mounted, so we stub the two
-// hooks at module-resolution time. The fakes are deliberately minimal —
-// the goal is to keep the integration with TanStack Query honest while
-// the auth-router side-effects (toast + redirect) are exercised by the
-// dedicated session-gate tests.
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
-}))
+// next/navigation is stubbed globally in tests/setup.ts. next-intl is
+// only mocked here because the QueryProvider's toast wiring is the sole
+// consumer in the unit-test bundle.
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }))

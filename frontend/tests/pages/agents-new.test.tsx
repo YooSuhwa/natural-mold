@@ -17,10 +17,6 @@ vi.mock('next/link', () => ({
   ),
 }))
 
-vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}))
-
 describe('AgentNewPage', () => {
   it('renders hero section with title', () => {
     render(<AgentNewPage />)

@@ -20,6 +20,7 @@ vi.mock('next/link', () => ({
 
 const mockReplace = vi.fn()
 
+// Override: needs named ``mockReplace`` spy for redirect-assertion tests.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: mockReplace }),
 }))

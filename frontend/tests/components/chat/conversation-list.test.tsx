@@ -19,6 +19,7 @@ vi.mock('next/link', () => ({
 
 const mockPush = vi.fn()
 
+// Override: needs named ``mockPush`` spy for push-assertion tests.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, replace: vi.fn() }),
   useParams: () => ({ conversationId: 'conv-1' }),

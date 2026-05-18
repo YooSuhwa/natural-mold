@@ -21,6 +21,7 @@ vi.mock('next/link', () => ({
   ),
 }))
 
+// Override: pins useParams/usePathname to the chat route fixture.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useParams: () => ({ conversationId: 'conv-1' }),
