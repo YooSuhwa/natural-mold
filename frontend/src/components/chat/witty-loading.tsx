@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 
@@ -27,20 +27,27 @@ export function WittyLoadingMessage({ className }: WittyLoadingMessageProps) {
   const [fading, setFading] = useState(false)
   const recentRef = useRef<string[]>([])
 
-  const rotate = useCallback(() => {
-    setFading(true)
-    setTimeout(() => {
-      const next = pickRandom(messages, recentRef.current)
-      recentRef.current = [...recentRef.current.slice(-4), next]
-      setMessage(next)
-      setFading(false)
-    }, 300)
+  // Callback-ref pattern — rotate 함수 자체는 최신 messages를 항상 참조하되,
+  // setInterval은 마운트 시 한 번만 등록한다. 이전엔 ``useEffect([rotate])``
+  // 가 부모 re-render마다 interval 을 clear/reset 해서 스트리밍 청크 빠를 때
+  // 표시 타이밍이 불안정했다.
+  const messagesRef = useRef(messages)
+  useEffect(() => {
+    messagesRef.current = messages
   }, [messages])
 
   useEffect(() => {
-    const interval = setInterval(rotate, 3000)
+    const interval = setInterval(() => {
+      setFading(true)
+      setTimeout(() => {
+        const next = pickRandom(messagesRef.current, recentRef.current)
+        recentRef.current = [...recentRef.current.slice(-4), next]
+        setMessage(next)
+        setFading(false)
+      }, 300)
+    }, 3000)
     return () => clearInterval(interval)
-  }, [rotate])
+  }, [])
 
   return (
     <div className={cn('flex items-center gap-3', className)}>
