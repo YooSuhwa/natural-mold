@@ -3,7 +3,7 @@ import {
   type EventSourceMessage,
 } from '@microsoft/fetch-event-source'
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
-import { ApiError, readApiErrorBody } from '@/lib/api/errors'
+import { ApiError, parseApiErrorBody } from '@/lib/api/errors'
 import { getCsrfToken } from '@/lib/auth/csrf'
 
 /** Error thrown when a stream POST/GET returns a non-2xx with a parseable
@@ -26,12 +26,11 @@ export class StreamApiError extends ApiError {
 async function readStreamErrorBody(
   response: Response,
 ): Promise<{ code: string | null; message: string }> {
-  const { code, message } = await readApiErrorBody(response, {
-    fallbackCode: 'UNKNOWN_STREAM_ERROR',
-    fallbackMessage: `요청이 거부되었습니다 (HTTP ${response.status})`,
-    clone: true,
-  })
-  return { code: code === 'UNKNOWN_STREAM_ERROR' ? null : code, message }
+  const { code, message } = await parseApiErrorBody(response, { clone: true })
+  return {
+    code,
+    message: message ?? `요청이 거부되었습니다 (HTTP ${response.status})`,
+  }
 }
 
 /**

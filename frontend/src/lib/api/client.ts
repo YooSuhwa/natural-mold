@@ -115,7 +115,13 @@ function buildHeaders(method: string, path: string, init?: HeadersInit): Headers
 /** Run ``send`` once, retry once after a successful ``/refresh`` if the
  *  response was 401. Endpoints that own the refresh lifecycle skip the
  *  retry (login/register/refresh/logout). If refresh fails, signal the
- *  session-expired latch so the UI surfaces the redirect exactly once. */
+ *  session-expired latch so the UI surfaces the redirect exactly once.
+ *
+ *  POST/PATCH/DELETE retry is safe because FastAPI's ``get_current_user``
+ *  dependency runs *before* the route handler — a 401 means the request
+ *  never touched the resource, so re-sending after a refresh cannot
+ *  double-apply the mutation. (Without that invariant we would have to
+ *  serialise non-idempotent mutations through a different path.) */
 async function withAuthRetry(
   path: string,
   send: () => Promise<Response>,

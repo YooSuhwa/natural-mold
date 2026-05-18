@@ -43,16 +43,20 @@ interface ReadOptions {
   clone?: boolean
 }
 
-/** Parse a non-2xx response body into ``{code, message}``.
+/** Parse a non-2xx response body into ``{code, message}`` *without*
+ *  applying fallbacks. Either field is ``null`` when the body had nothing
+ *  for it — callers decide whether to map that to a fallback string or
+ *  surface the nullness (the SSE path does the latter to preserve
+ *  ``StreamApiError.code: string | null``).
  *
  *  Priority: ``body.error`` → ``body.detail`` (object) → ``body.detail``
- *  (string, message only) → root ``body`` fields → ``fallback*``. Never
- *  throws — JSON parse failures degrade to the fallbacks.
+ *  (string, message only) → root ``body`` fields. Never throws — JSON
+ *  parse failures degrade to ``{code: null, message: null}``.
  */
-export async function readApiErrorBody(
+export async function parseApiErrorBody(
   response: Response,
-  { fallbackCode, fallbackMessage, clone = false }: ReadOptions,
-): Promise<{ code: string; message: string }> {
+  { clone = false }: { clone?: boolean } = {},
+): Promise<{ code: string | null; message: string | null }> {
   const source = clone ? response.clone() : response
   const body = (await source.json().catch(() => ({}))) as ApiErrorBodyShape
 
@@ -68,8 +72,22 @@ export async function readApiErrorBody(
   }
 
   return {
-    code: code ?? body.code ?? fallbackCode,
-    message: message ?? body.message ?? fallbackMessage ?? response.statusText,
+    code: code ?? body.code ?? null,
+    message: message ?? body.message ?? null,
+  }
+}
+
+/** Like :func:`parseApiErrorBody` but applies ``fallback*`` so the result
+ *  is always populated. JSON callers want this; SSE callers don't (they
+ *  preserve ``code === null`` as a signal). */
+export async function readApiErrorBody(
+  response: Response,
+  { fallbackCode, fallbackMessage, clone = false }: ReadOptions,
+): Promise<{ code: string; message: string }> {
+  const { code, message } = await parseApiErrorBody(response, { clone })
+  return {
+    code: code ?? fallbackCode,
+    message: message ?? fallbackMessage ?? response.statusText,
   }
 }
 

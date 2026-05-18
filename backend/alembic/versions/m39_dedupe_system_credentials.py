@@ -95,5 +95,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Data migration — duplicates cannot be reconstructed. Intentional no-op.
-    pass
+    # Data migration — duplicates cannot be reconstructed. Fail loudly
+    # so an accidental ``alembic downgrade`` doesn't silently succeed
+    # and mask the irreversibility from the operator.
+    raise NotImplementedError(
+        "m39 is a one-way data dedupe; deleted duplicate credentials "
+        "cannot be reconstructed. Restore from backup if rollback is "
+        "required."
+    )
