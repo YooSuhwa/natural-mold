@@ -155,3 +155,66 @@ async def raw_client() -> AsyncGenerator[AsyncClient, None]:
 async def db() -> AsyncGenerator[AsyncSession, None]:
     async with TestSession() as session:
         yield session
+
+
+# ---------------------------------------------------------------------------
+# Auth-related row builders (shared between test_user_cleanup, test_refresh_*).
+# Factory-as-fixture so each call mints a unique row without collision.
+# ---------------------------------------------------------------------------
+
+
+def make_user(db: AsyncSession, *, email: str | None = None, **kwargs):
+    """Persist a minimal active ``User`` and flush. Returns the row."""
+
+    from app.models.user import User
+
+    user = User(
+        id=uuid.uuid4(),
+        email=email or f"u-{uuid.uuid4().hex[:8]}@test.com",
+        name=kwargs.pop("name", "U"),
+        hashed_password=kwargs.pop("hashed_password", "h"),
+        is_active=kwargs.pop("is_active", True),
+        is_super_user=kwargs.pop("is_super_user", False),
+        **kwargs,
+    )
+    db.add(user)
+
+    async def _flush_and_return():
+        await db.flush()
+        return user
+
+    return _flush_and_return()
+
+
+def make_refresh_token(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    expires_at=None,
+    revoked: bool = False,
+):
+    """Persist a minimal ``RefreshToken`` row and flush. Returns the row.
+
+    Defaults to a 14-day-future ``expires_at`` matching pre-existing test
+    fixtures. Tests for GC pass an explicit (often backdated) value.
+    """
+
+    from datetime import UTC, datetime, timedelta
+
+    from app.models.refresh_token import RefreshToken
+
+    row = RefreshToken(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        token_hash=uuid.uuid4().hex * 2,  # 64-char unique
+        issued_at=datetime.now(UTC),
+        expires_at=expires_at or datetime.now(UTC) + timedelta(days=14),
+        revoked_at=datetime.now(UTC) if revoked else None,
+    )
+    db.add(row)
+
+    async def _flush_and_return():
+        await db.flush()
+        return row
+
+    return _flush_and_return()

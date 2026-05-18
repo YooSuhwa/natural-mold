@@ -38,7 +38,7 @@ class RefreshToken(Base):
         default=lambda: datetime.now(UTC),
     )
     expires_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
+        DateTime(timezone=True), nullable=False, index=True
     )
     # NULL = active. Rotated/revoked rows are kept so a replay attempt is
     # detectable (hash exists but ``revoked_at IS NOT NULL``).

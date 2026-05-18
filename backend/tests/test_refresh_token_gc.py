@@ -9,47 +9,14 @@ the replay-detection branch keeps classifying them).
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
 
 from app.models.refresh_token import RefreshToken
-from app.models.user import User
 from app.services.refresh_token_gc import gc_expired_refresh_tokens
-from tests.conftest import TestSession
-
-
-async def _make_user(db) -> User:
-    user = User(
-        id=uuid.uuid4(),
-        email=f"gc-{uuid.uuid4().hex[:8]}@test.com",
-        hashed_password="x",
-        name="GC User",
-        is_active=True,
-    )
-    db.add(user)
-    await db.flush()
-    return user
-
-
-async def _add_token(
-    db,
-    user: User,
-    *,
-    expires_at: datetime,
-    revoked: bool = False,
-) -> RefreshToken:
-    row = RefreshToken(
-        user_id=user.id,
-        token_hash=uuid.uuid4().hex * 2,  # 64-char unique
-        expires_at=expires_at,
-        revoked_at=datetime.now(UTC) if revoked else None,
-    )
-    db.add(row)
-    await db.flush()
-    return row
+from tests.conftest import TestSession, make_refresh_token, make_user
 
 
 @pytest.mark.asyncio
@@ -63,21 +30,21 @@ async def test_gc_deletes_rows_past_retention_only() -> None:
 
     now = datetime.now(UTC)
     async with TestSession() as db:
-        user = await _make_user(db)
+        user = await make_user(db)
         # Way past cutoff (10 days expired) — should be deleted.
-        old_revoked = await _add_token(
-            db, user, expires_at=now - timedelta(days=10), revoked=True
+        old_revoked = await make_refresh_token(
+            db, user.id, expires_at=now - timedelta(days=10), revoked=True
         )
-        old_active = await _add_token(
-            db, user, expires_at=now - timedelta(days=10)
+        old_active = await make_refresh_token(
+            db, user.id, expires_at=now - timedelta(days=10)
         )
         # Just inside retention (12h past expiry) — should survive.
-        recent_expired = await _add_token(
-            db, user, expires_at=now - timedelta(hours=12)
+        recent_expired = await make_refresh_token(
+            db, user.id, expires_at=now - timedelta(hours=12)
         )
         # Still valid — never touch.
-        future = await _add_token(
-            db, user, expires_at=now + timedelta(days=15)
+        future = await make_refresh_token(
+            db, user.id, expires_at=now + timedelta(days=15)
         )
         await db.commit()
         old_revoked_id = old_revoked.id
@@ -102,13 +69,11 @@ async def test_gc_deletes_rows_past_retention_only() -> None:
 
 @pytest.mark.asyncio
 async def test_gc_zero_retention_deletes_anything_expired() -> None:
-    """retention=0 ⇒ cutoff is exactly ``now``; expired rows go immediately."""
-
     now = datetime.now(UTC)
     async with TestSession() as db:
-        user = await _make_user(db)
-        await _add_token(db, user, expires_at=now - timedelta(seconds=5))
-        await _add_token(db, user, expires_at=now + timedelta(days=1))
+        user = await make_user(db)
+        await make_refresh_token(db, user.id, expires_at=now - timedelta(seconds=5))
+        await make_refresh_token(db, user.id, expires_at=now + timedelta(days=1))
         await db.commit()
 
     async with TestSession() as db:
@@ -126,9 +91,9 @@ async def test_gc_negative_retention_rejected() -> None:
 @pytest.mark.asyncio
 async def test_gc_returns_zero_when_nothing_to_delete() -> None:
     async with TestSession() as db:
-        user = await _make_user(db)
-        await _add_token(
-            db, user, expires_at=datetime.now(UTC) + timedelta(days=30)
+        user = await make_user(db)
+        await make_refresh_token(
+            db, user.id, expires_at=datetime.now(UTC) + timedelta(days=30)
         )
         await db.commit()
 
@@ -145,12 +110,12 @@ async def test_gc_handles_chain_links_via_set_null() -> None:
 
     now = datetime.now(UTC)
     async with TestSession() as db:
-        user = await _make_user(db)
-        old = await _add_token(
-            db, user, expires_at=now - timedelta(days=10), revoked=True
+        user = await make_user(db)
+        old = await make_refresh_token(
+            db, user.id, expires_at=now - timedelta(days=10), revoked=True
         )
-        survivor = await _add_token(
-            db, user, expires_at=now + timedelta(days=30)
+        survivor = await make_refresh_token(
+            db, user.id, expires_at=now + timedelta(days=30)
         )
         survivor.replaced_by_id = old.id  # downstream points UP the chain
         await db.commit()
@@ -168,6 +133,5 @@ async def test_gc_handles_chain_links_via_set_null() -> None:
         ).scalar_one()
         # SQLite test path doesn't enforce the FK, so this assertion is
         # opportunistic — Postgres production path is exercised by the
-        # alembic migration's ON DELETE SET NULL. Either way the row
-        # must still exist and be readable.
+        # alembic migration's ON DELETE SET NULL.
         assert row is not None
