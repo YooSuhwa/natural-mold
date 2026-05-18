@@ -101,8 +101,10 @@ CREATE INDEX ix_refresh_tokens_active
 ```
 
 회전 정책:
-- `/auth/refresh` 호출 시 기존 row의 `revoked_at = NOW()` 설정 + 새 row 발급.
-- 이미 `revoked_at IS NOT NULL`인 token이 다시 들어오면 (replay 의심) → 해당 user의 모든 active refresh를 일괄 revoke (`UPDATE refresh_tokens SET revoked_at=NOW() WHERE user_id=:uid AND revoked_at IS NULL`).
+- `/auth/refresh` 호출 시 기존 row의 `revoked_at = NOW()` 설정 + 새 row 발급. 회전 시 `old.replaced_by_id = new.id`로 체인 링크 (m37).
+- 이미 `revoked_at IS NOT NULL`인 token이 다시 들어오면 두 갈래로 분기:
+  - **Race (탭 경합)** — `replaced_by_id`가 존재 + 교체본이 active + `revoked_at`이 `settings.refresh_rotation_grace_seconds`(기본 10s) 이내 + 원본 row의 user-agent가 현재 요청과 일치 → 교체본에서 다시 회전하여 새 토큰 발급(체인 연장). 일괄 폐기 안 함. 두 탭 동시 `/refresh` 시나리오 보호 (2026-05-18 회귀 가드).
+  - **Replay (실제 공격 의심)** — 그 외 모든 경우(다른 UA, grace 초과, 교체본도 폐기됨 등) → 해당 user의 모든 active refresh를 일괄 revoke. `UPDATE refresh_tokens SET revoked_at=NOW() WHERE user_id=:uid AND revoked_at IS NULL`.
 - 만료된 row는 cron으로 30일+1d 이후 GC.
 
 ### 4.3 `oauth_accounts` 테이블 (Phase 2 자리만 — 지금 만들지 않음)
