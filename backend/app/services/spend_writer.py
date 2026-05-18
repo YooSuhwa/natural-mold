@@ -42,7 +42,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import async_session
+from app.database import async_session, is_postgres
 from app.models.daily_spend_agent import DailySpendAgent
 from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
@@ -369,7 +369,7 @@ class DailySpendUpdateQueue:
             )
 
         dialect = db.bind.dialect.name if db.bind is not None else "sqlite"
-        if dialect == "postgresql":
+        if is_postgres(db):
             from sqlalchemy.dialects.postgresql import insert as pg_insert
 
             stmt = pg_insert(table_cls).values(rows)

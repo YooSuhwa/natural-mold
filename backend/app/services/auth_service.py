@@ -26,6 +26,7 @@ from app.auth.jwt import (
 )
 from app.auth.password import hash_password, verify_password
 from app.config import settings
+from app.database import is_postgres
 from app.exceptions import AppError
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
@@ -270,15 +271,10 @@ async def _perform_rotation(
 ) -> tuple[str, str, str]:
     """Mint a new token leg, revoke ``old_row``, link the chain.
 
-    Returns ``(access, refresh, csrf)``.
-
-    Known limitation: two concurrent rotations from the same ``old_row``
-    each mint a valid leg but only the last writer's ``replaced_by_id``
-    wins — the other leg ends up active but unlinked. Benign in practice
-    (both legs rotate normally on next use; mass-revoke is user-scoped)
-    and addressing it requires a ``SELECT FOR UPDATE`` that the SQLite
-    test path doesn't support. Tracked as a Postgres-only hardening
-    follow-up.
+    Caller is responsible for ensuring ``old_row`` is the locked +
+    re-verified-active result of ``_lock_active_row`` — otherwise a
+    concurrent rotation from the same row could orphan a leg
+    (see :func:`rotate_refresh` chain-walk loop).
     """
 
     access, new_row, new_refresh, csrf = await _issue_tokens_with_row(
@@ -289,20 +285,43 @@ async def _perform_rotation(
     return access, new_refresh, csrf
 
 
+def _lock_select(stmt, db: AsyncSession):
+    """Apply ``SELECT ... FOR UPDATE`` on Postgres, plain SELECT on SQLite.
+
+    SQLite (test path) ignores row locks safely because the test runner
+    never executes concurrent writers against the same session.
+    """
+
+    return stmt.with_for_update() if is_postgres(db) else stmt
+
+
+# Maximum forward jumps through the chain when a tab race forces us to
+# rotate from a replacement that's itself been rotated. Five is far above
+# any plausible concurrency burst — a deeper chain almost certainly means
+# something pathological (storm of stale-token presentations or coding
+# bug). Each iteration costs one locked SELECT + one chain-head SELECT.
+_MAX_CHAIN_FOLLOW = 5
+
+
 async def rotate_refresh(
     db: AsyncSession, refresh_token: str, request: Request
 ) -> tuple[str, str, str, User]:
     """Validate + rotate a refresh token.
 
-    Three outcomes for a re-presented (already-revoked) row:
+    Three outcomes for a candidate row at each chain step:
 
-    * **Race** — see :func:`_find_race_chain_head`. Chain-rotates from
-      the replacement so the losing tab also gets fresh cookies. No
-      mass-revoke.
-    * **Replay** — any other revoked-row presentation. Burns the user's
-      entire refresh whitelist (force re-login) and 401s.
-    * **Live** — normal path: revoke the row, mint replacement, link
-      ``old.replaced_by_id``.
+    * **Live** — normal path: revoke the locked row, mint replacement,
+      link ``old.replaced_by_id``.
+    * **Race** — row is revoked but its replacement is still active and
+      the request looks like a tab-race (see :func:`_find_race_chain_head`).
+      Follow the chain forward and retry. Bounded by ``_MAX_CHAIN_FOLLOW``.
+    * **Replay** — row is revoked with no eligible race chain. Burn the
+      user's entire refresh whitelist (force re-login) and 401.
+
+    The chain-walk loop is what makes concurrent rotations from the same
+    row safe: ``FOR UPDATE`` serialises writers on Postgres so the loser
+    of a race observes the winner's revocation and follows the chain
+    instead of producing an orphaned leg (HANDOFF #2b).
 
     Returns ``(access, refresh, csrf, user)`` so the router can set
     cookies and respond with the latest user projection.
@@ -314,46 +333,74 @@ async def rotate_refresh(
         raise _invalid_refresh() from exc
 
     digest = hash_refresh_token(refresh_token)
-    row = (
-        await db.execute(select(RefreshToken).where(RefreshToken.token_hash == digest))
+    # First fetch already holds the lock — saves one round-trip in the
+    # common single-iteration path. Subsequent chain hops re-lock by id.
+    locked = (
+        await db.execute(
+            _lock_select(
+                select(RefreshToken).where(RefreshToken.token_hash == digest), db
+            )
+        )
     ).scalar_one_or_none()
-    if row is None:
+    if locked is None:
         # Hash unknown — token forged or already GC'd.
         raise _invalid_refresh()
 
-    now = datetime.now(UTC)
     user_id = uuid.UUID(payload.sub)
+    last_user_id = locked.user_id
 
-    if row.revoked_at is not None:
-        chain_head = await _find_race_chain_head(db, row, request, now)
-        if chain_head is not None:
-            logger.info(
-                "Refresh-token race resolved for user_id=%s; chaining from replacement.",
-                row.user_id,
-            )
+    for _ in range(_MAX_CHAIN_FOLLOW):
+        last_user_id = locked.user_id
+        now = datetime.now(UTC)
+
+        if locked.revoked_at is None:
+            if _aware(locked.expires_at) <= now:
+                raise _invalid_refresh()
             user = await _load_active_user_or_401(db, user_id)
             access, new_refresh, csrf = await _perform_rotation(
-                db, chain_head, user, request, now
+                db, locked, user, request, now
             )
             return access, new_refresh, csrf, user
 
-        logger.warning(
-            "Refresh-token replay detected for user_id=%s; revoking all active tokens.",
-            row.user_id,
+        chain_head = await _find_race_chain_head(db, locked, request, now)
+        if chain_head is None:
+            logger.warning(
+                "Refresh-token replay detected for user_id=%s; revoking all active tokens.",
+                locked.user_id,
+            )
+            await _revoke_all_active(db, locked.user_id)
+            # Mass-revoke MUST persist even though we're about to raise.
+            # The session dependency rolls back on exception, which would
+            # otherwise leave the live tokens active. See ADR-016 §5.2.
+            await db.commit()
+            raise _invalid_refresh()
+
+        logger.info(
+            "Refresh-token race resolved for user_id=%s; chaining from replacement.",
+            locked.user_id,
         )
-        await _revoke_all_active(db, row.user_id)
-        # Mass-revoke MUST persist even though we're about to raise.
-        # The session dependency rolls back on exception, which would
-        # otherwise leave the live tokens active. See ADR-016 §5.2.
-        await db.commit()
-        raise _invalid_refresh()
+        # Re-lock the chain head to serialise against another tab that
+        # may also have decided to chain-rotate from it.
+        relocked = (
+            await db.execute(
+                _lock_select(
+                    select(RefreshToken).where(RefreshToken.id == chain_head.id), db
+                )
+            )
+        ).scalar_one_or_none()
+        if relocked is None:
+            # Chain head vanished (GC) — treat as unknown hash.
+            raise _invalid_refresh()
+        locked = relocked
 
-    if _aware(row.expires_at) <= now:
-        raise _invalid_refresh()
-
-    user = await _load_active_user_or_401(db, user_id)
-    access, new_refresh, csrf = await _perform_rotation(db, row, user, request, now)
-    return access, new_refresh, csrf, user
+    # Followed the chain to its bound without finding a live row — refuse
+    # rather than spin forever.
+    logger.warning(
+        "Refresh-token chain follow exhausted for user_id=%s after %d hops",
+        last_user_id,
+        _MAX_CHAIN_FOLLOW,
+    )
+    raise _invalid_refresh()
 
 
 async def revoke_refresh(db: AsyncSession, refresh_token: str) -> None:

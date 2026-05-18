@@ -323,6 +323,51 @@ async def test_refresh_replay_after_replacement_revoked_is_replay(
 
 
 @pytest.mark.asyncio
+async def test_refresh_chain_walk_aborts_at_depth_limit(
+    raw_client: AsyncClient, monkeypatch: pytest.MonkeyPatch,
+):
+    """Pathological loop: ``_find_race_chain_head`` repeatedly returns a row
+    that ``_lock_row`` then sees as revoked — without the depth bound the
+    chain-walk could spin forever. We stub the chain head to always point
+    back at the original row to simulate a degenerate cycle and assert
+    the bound bites at ``_MAX_CHAIN_FOLLOW``.
+    """
+
+    from app.services import auth_service
+
+    rt, rt_a, headers = await _register_and_first_rotate(
+        raw_client, user_agent="Mozilla/5.0 (ChainBoundTest)"
+    )
+
+    async with TestSession() as db:
+        original = (
+            await db.execute(
+                select(RefreshToken).where(
+                    RefreshToken.token_hash == hash_refresh_token(rt)
+                )
+            )
+        ).scalar_one()
+        original_id = original.id
+
+    # Force every chain-walk hop to land back on the (revoked) original
+    # row so the loop never finds an active candidate.
+    async def _always_return_original(db, row, request, now):
+        return await db.get(RefreshToken, original_id)
+
+    monkeypatch.setattr(
+        auth_service, "_find_race_chain_head", _always_return_original
+    )
+
+    response = await raw_client.post(
+        "/api/auth/refresh",
+        cookies={settings.cookie_name_refresh: rt},
+        headers=headers,
+    )
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_refresh"
+
+
+@pytest.mark.asyncio
 async def test_refresh_unknown_token_returns_401(raw_client: AsyncClient):
     """A well-formed JWT with no matching DB row → invalid_refresh.
 
