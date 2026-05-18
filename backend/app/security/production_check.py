@@ -12,44 +12,41 @@ See HANDOFF #2 (operator env setup) and ADR-016 §8.4.
 from __future__ import annotations
 
 import logging
+from urllib.parse import urlsplit
 
+from app.auth.jwt import MIN_JWT_SECRET_LEN
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
-# JWT secrets should provide >= 256 bits of entropy. ``secrets.token_urlsafe(32)``
-# emits 43 base64 chars; we accept anything >= 32 chars so a raw hex
-# (``token_hex(16)`` = 32 chars) also clears the bar. Below that, an
-# operator almost certainly typed a placeholder.
-_MIN_JWT_SECRET_LEN = 32
-
 # Origins permitted in dev defaults — production must replace these.
-_LOCAL_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0"}
+# Includes the IPv6 loopback (``::1``) and any-iface (``::``) variants so
+# they aren't accidentally treated as legitimate prod origins.
+_LOCAL_ORIGIN_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "::"}
 
 
 def _is_local_only(origins: list[str]) -> bool:
-    """True when every origin is a localhost loopback variant."""
+    """True when every origin's hostname is a loopback variant.
+
+    Uses ``urlsplit`` so IPv6 brackets, port numbers, and missing
+    schemes are parsed correctly — a bare ``split("//")`` mis-classifies
+    schemeless inputs and IPv6 literals.
+    """
 
     if not origins:
         return True
-    for origin in origins:
-        host = origin.split("//", 1)[-1].split(":", 1)[0].lower()
-        if host not in _LOCAL_ORIGIN_HOSTS:
-            return False
-    return True
+    return all(
+        (urlsplit(o).hostname or "").lower() in _LOCAL_ORIGIN_HOSTS
+        for o in origins
+    )
 
 
 def collect_production_warnings(settings: Settings) -> list[str]:
-    """Return a list of human-readable hardening issues.
-
-    Each entry is actionable: the fix is named alongside the symptom so
-    an operator can resolve it without cross-referencing the source.
-    Empty list ⇒ configuration is production-safe.
-    """
+    """Return a list of human-readable hardening issues. Empty ⇒ production-safe."""
 
     issues: list[str] = []
 
-    if len(settings.jwt_secret) < _MIN_JWT_SECRET_LEN:
+    if len(settings.jwt_secret) < MIN_JWT_SECRET_LEN:
         issues.append(
             "JWT_SECRET is empty or shorter than 32 chars. Generate with "
             "`python -c 'import secrets; print(secrets.token_urlsafe(48))'` "

@@ -16,10 +16,10 @@ from app.security.production_check import (
     enforce_production_safety,
 )
 
-_GOOD_SECRET = "a" * 48  # >= 32 chars, opaque enough for the validator
+_LONG_ENOUGH_SECRET = "a" * 48  # >= 32 chars, opaque enough for the validator
 _PROD_OVERRIDES = {
     "app_env": "production",
-    "jwt_secret": _GOOD_SECRET,
+    "jwt_secret": _LONG_ENOUGH_SECRET,
     "cookie_secure": True,
     "allow_first_user_as_admin": False,
     "cors_allowed_origins": "https://app.example.com",
@@ -88,3 +88,13 @@ def test_mixed_local_and_real_origins_pass() -> None:
     )
     issues = collect_production_warnings(settings)
     assert not any("CORS" in msg for msg in issues), issues
+
+
+def test_ipv6_loopback_origin_is_classified_local() -> None:
+    """``urlsplit`` strips IPv6 brackets — a bare ``split`` would mis-parse."""
+
+    settings = _make(cors_allowed_origins="http://[::1]:3000")
+    issues = collect_production_warnings(settings)
+    assert any("CORS_ALLOWED_ORIGINS" in msg for msg in issues), (
+        "::1 must be classified as loopback so production refuses to boot"
+    )
