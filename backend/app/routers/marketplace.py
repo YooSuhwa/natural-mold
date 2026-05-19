@@ -42,6 +42,7 @@ from app.marketplace.schemas import (
     InstallMarketplaceItemIn,
     MarketplaceInstallationOut,
     MarketplaceItemACLIn,
+    MarketplaceItemAdminListedIn,
     MarketplaceItemListFilters,
     MarketplaceItemOut,
     MarketplaceItemPatchIn,
@@ -390,6 +391,44 @@ async def disable_item(
     # ``latest_version`` + ``acl_entries`` eager-loaded (avoids
     # MissingGreenlet on lazy access in async context).
     loaded = await catalog_service.get_item(db, user=user, item_id=item.id)
+    if loaded is None:
+        raise marketplace_item_not_found()
+    return await catalog_service.project_item(db, item=loaded, user=user)
+
+
+# ---------------------------------------------------------------------------
+# Admin (super_user) — listing approval (Spec §10.5)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/admin/items/{item_id}/listed",
+    response_model=MarketplaceItemOut,
+)
+async def admin_set_item_listed(
+    item_id: uuid.UUID,
+    body: MarketplaceItemAdminListedIn,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(require_super_user),
+    _csrf: None = Depends(verify_csrf),
+) -> MarketplaceItemOut:
+    """Spec §10.5 — super_user가 public item의 ``is_listed``를 토글한다.
+
+    카탈로그 default filter는 ``is_listed=True``인 public 항목만 검색
+    결과에 노출한다 (PRD §11.7). 부적절한 public 항목을 unlist하거나
+    pending moderation에서 approve할 때 사용한다. CSRF 검증 필수.
+    """
+
+    item = await db.get(MarketplaceItem, item_id)
+    if item is None:
+        # 404 enumeration oracle (Spec §10.7).
+        raise marketplace_item_not_found()
+
+    item.is_listed = body.is_listed
+    await db.flush()
+    await db.refresh(item)
+
+    loaded = await catalog_service.get_item_for_user(db, item_id=item_id, user=user)
     if loaded is None:
         raise marketplace_item_not_found()
     return await catalog_service.project_item(db, item=loaded, user=user)

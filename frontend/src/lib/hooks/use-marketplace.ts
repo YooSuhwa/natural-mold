@@ -180,6 +180,18 @@ export function useDisableItem() {
   })
 }
 
+export function useAdminSetListed() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ itemId, isListed }: { itemId: string; isListed: boolean }) =>
+      marketplaceApi.adminSetListed(itemId, isListed),
+    onSuccess: () => {
+      invalidateAllItems(qc)
+      qc.invalidateQueries({ queryKey: MODERATION_KEY })
+    },
+  })
+}
+
 // ---------- Skill credential bindings ----------
 
 export function useSkillCredentialRequirements(

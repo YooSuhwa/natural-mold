@@ -127,11 +127,14 @@ export const marketplaceApi = {
     }),
 
   // ---- Admin (super_user) ----
-  // The dedicated `/admin/items/{id}/listed` and `/admin/items/{id}/disable`
-  // endpoints don't exist yet in M2.5 — moderation reuses the public list
-  // with `?is_listed=false&visibility=public` (super_user sees pending
-  // public items there). Listing approval flips `is_listed` via the
-  // existing item PATCH path (super_user only).
+  // `disable` (owner+super) uses the public route above. `setListed` is
+  // super_user only and toggles catalog search visibility (PRD §11.7).
+  adminSetListed: (itemId: string, isListed: boolean) =>
+    apiFetch<MarketplaceItem>(`/api/marketplace/admin/items/${itemId}/listed`, {
+      method: 'POST',
+      body: JSON.stringify({ is_listed: isListed }),
+    }),
+
   kSkillSyncStatus: () =>
     apiFetch<KSkillSyncStatus>('/api/marketplace/admin/k-skill/sync', {
       method: 'POST',

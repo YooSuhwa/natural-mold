@@ -15,6 +15,7 @@ import { PublicationBadge } from '@/components/marketplace/badges/publication-ba
 import { useSession } from '@/lib/auth/session'
 import { ApiError } from '@/lib/api/client'
 import {
+  useAdminSetListed,
   useDisableItem,
   useKSkillSyncStatus,
   useModerationQueue,
@@ -28,6 +29,7 @@ export default function MarketplaceModerationPage() {
   const { data: queue, isLoading } = useModerationQueue(superUser)
   const { data: kSkillStatus } = useKSkillSyncStatus(superUser)
   const disable = useDisableItem()
+  const setListed = useAdminSetListed()
 
   if (userLoading) {
     return (
@@ -60,6 +62,15 @@ export default function MarketplaceModerationPage() {
       toast.success('Disabled')
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to disable')
+    }
+  }
+
+  async function handleApprove(itemId: string) {
+    try {
+      await setListed.mutateAsync({ itemId, isListed: true })
+      toast.success('Listed in catalog')
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to approve')
     }
   }
 
@@ -113,6 +124,13 @@ export default function MarketplaceModerationPage() {
                       onClick={() => router.push(`/marketplace/${item.id}`)}
                     >
                       Review
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={setListed.isPending}
+                      onClick={() => handleApprove(item.id)}
+                    >
+                      Approve listing
                     </Button>
                     <Button
                       size="sm"
