@@ -43,6 +43,7 @@ from app.marketplace.schemas import (
 from app.models.marketplace import (
     MarketplaceItem,
     MarketplaceItemACL,
+    MarketplacePublicationLink,
     MarketplaceVersion,
 )
 
@@ -170,22 +171,38 @@ async def _project_item(
         db, item=item, user_id=user.id
     )
 
+    # publication_summary는 viewer 본인이 publish한 자기 리소스인지 보여주는 정보.
+    # owner 일치만으로 published 상태를 그리면 — 사용자가 source skill을 삭제한
+    # 직후에도 marketplace_item.owner_user_id는 남아있어 카탈로그가 "Manage"
+    # CTA를 노출. 그 결과 자기 publish 백업본을 다시 install 불가능. PRD §6
+    # 정신상 source resource를 잃은 owner는 marketplace 원본에서 재install이
+    # 합리적이므로, publication_link 존재 여부까지 함께 확인해야 한다.
+    owner_view = is_owner(item, user)
+    has_publication_link = False
+    if owner_view:
+        link_exists = await db.execute(
+            select(MarketplacePublicationLink.id)
+            .where(MarketplacePublicationLink.item_id == item.id)
+            .limit(1)
+        )
+        has_publication_link = link_exists.scalar_one_or_none() is not None
+
+    publication_visible = owner_view and has_publication_link
+
     publication = ResourcePublicationSummaryOut(
-        state="not_published"
-        if not is_owner(item, user)
-        else _publication_state_for_owner(item),
-        item_id=item.id if is_owner(item, user) else None,
-        visibility=item.visibility if is_owner(item, user) else None,
-        status=item.status if is_owner(item, user) else None,
-        is_listed=item.is_listed if is_owner(item, user) else False,
-        latest_version_id=item.latest_version_id if is_owner(item, user) else None,
+        state=_publication_state_for_owner(item) if publication_visible else "not_published",
+        item_id=item.id if publication_visible else None,
+        visibility=item.visibility if publication_visible else None,
+        status=item.status if publication_visible else None,
+        is_listed=item.is_listed if publication_visible else False,
+        latest_version_id=item.latest_version_id if publication_visible else None,
         version_number=(
             item.latest_version.version_number
-            if is_owner(item, user) and item.latest_version is not None
+            if publication_visible and item.latest_version is not None
             else None
         ),
         shared_user_count=(
-            len(item.acl_entries) if is_owner(item, user) else 0
+            len(item.acl_entries) if publication_visible else 0
         ),
     )
 
