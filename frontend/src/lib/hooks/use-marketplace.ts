@@ -41,6 +41,14 @@ export function useMarketplaceVersions(itemId: string | null | undefined) {
   })
 }
 
+export function useMarketplaceVersion(versionId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['marketplace', 'versions', versionId],
+    queryFn: () => marketplaceApi.getVersion(versionId!),
+    enabled: !!versionId,
+  })
+}
+
 export function useModerationQueue(enabled = true) {
   return useQuery({
     queryKey: MODERATION_KEY,

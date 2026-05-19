@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Plus, BookOpen, LayoutGrid, Rows } from 'lucide-react'
 
@@ -27,12 +26,17 @@ function formatDate(value: string | null): string {
 }
 
 export default function SkillsPage() {
-  const searchParams = useSearchParams()
-  const deepLinkDetailId = searchParams.get('detailId')
   const { data: skills, isLoading } = useSkills()
   const [createOpen, setCreateOpen] = useState(false)
   const [createTab, setCreateTab] = useState<CreateTab>('text')
-  const [detailId, setDetailId] = useState<string | null>(deepLinkDetailId)
+  // Deep-link from /marketplace Open button: `/skills?detailId=...`.
+  // useState lazy initializer runs once at mount (post-hydration on client,
+  // safely returns null during SSR/prerender). Avoids effect+setState pattern
+  // that the react-hooks/set-state-in-effect rule rejects.
+  const [detailId, setDetailId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return new URLSearchParams(window.location.search).get('detailId')
+  })
   const [view, setView] = useState<'table' | 'grid'>('table')
   const [publishSkill, setPublishSkill] = useState<Skill | null>(null)
 
