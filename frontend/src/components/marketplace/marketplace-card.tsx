@@ -31,6 +31,7 @@ export type PrimaryCtaKind =
   | 'update'
   | 'review_update'
   | 'view_details'
+  | 'manage'
   | 'disabled'
 
 export interface PrimaryCta {
@@ -43,9 +44,18 @@ export interface PrimaryCta {
 export function derivePrimaryCta(item: MarketplaceItem): PrimaryCta {
   const installation = item.installation
   const supportLevel = item.execution_profile?.support_level
+  const publicationState = item.publication_summary?.state
 
   if (item.status === 'disabled') {
     return { kind: 'disabled', label: 'Disabled', variant: 'outline', disabled: true }
+  }
+
+  // Owner of a published item should not "install" their own source — the
+  // skill row already exists on their side as the publication origin
+  // (PRD §6: install creates a copy from someone else's marketplace version).
+  // Route them to detail/management instead.
+  if (publicationState && publicationState !== 'not_published' && !installation?.installed) {
+    return { kind: 'manage', label: 'Manage', variant: 'outline' }
   }
 
   if (
