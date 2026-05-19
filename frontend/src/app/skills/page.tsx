@@ -243,7 +243,16 @@ export default function SkillsPage() {
       <SkillDetailDialog
         skillId={detailId}
         open={!!detailId}
-        onOpenChange={(open) => !open && setDetailId(null)}
+        onOpenChange={(open) => {
+          if (open) return
+          setDetailId(null)
+          // /marketplace에서 ``?detailId=...`` deep-link로 진입한 경우, dialog
+          // 닫을 때 URL의 query string도 함께 정리한다. history.replaceState로
+          // route 자체는 다시 그리지 않아 list scroll/state 보존.
+          if (typeof window !== 'undefined' && window.location.search) {
+            window.history.replaceState(null, '', '/skills')
+          }
+        }}
       />
 
       <PublishWizard

@@ -75,6 +75,57 @@ def _api_key_req(
     }
 
 
+def _hosted_proxy_req(
+    key: str,
+    *,
+    label: str,
+    description: str,
+) -> dict[str, Any]:
+    """운영자 proxy 키를 거치는 skill — 사용자는 별도 credential 등록 불필요
+    (PRD §9 ``hosted_proxy`` 상태). UI는 "Uses hosted proxy" 칩만 표시하고
+    install wizard에서 credential dropdown을 띄우지 않는다.
+    """
+
+    return {
+        "key": key,
+        "definition_key": "k_skill_proxy",
+        "required": False,
+        "label": label,
+        "description": description,
+        "fields": ["base_url"],
+        "injection": "env",
+        # ``system_dependency`` 표기 (Spec §10.8). 사용자 binding 흐름에서
+        # 제외되고 시스템 credential resolver가 처리한다.
+        "scope": "system_dependency",
+        "env_map": {"base_url": "KSKILL_PROXY_BASE_URL"},
+    }
+
+
+def _manual_login_req(
+    key: str,
+    *,
+    label: str,
+    description: str,
+) -> dict[str, Any]:
+    """사용자가 브라우저/로컬 앱에서 직접 로그인해야 하는 skill (PRD §9
+    ``manual_login``). UI는 "Manual login required" 칩으로 안내하고 install
+    wizard credential step을 skip한다 — 실제 인증은 skill 실행 시점에 외부
+    환경에서 이루어진다.
+    """
+
+    return {
+        "key": key,
+        "definition_key": "",
+        "required": False,
+        "label": label,
+        "description": description,
+        "fields": [],
+        "injection": "manual",
+        "scope": "manual",
+        "env_map": {},
+    }
+
+
 # Each entry is a list because future skills may bind more than one
 # credential (e.g. Google Workspace OAuth + a project ID API key).
 K_SKILL_REQUIREMENT_MAP: dict[str, list[dict[str, Any]]] = {
@@ -158,6 +209,22 @@ K_SKILL_REQUIREMENT_MAP: dict[str, list[dict[str, Any]]] = {
                 "secret_key": "KSKILL_COUPANG_SECRET_KEY",
             },
         }
+    ],
+    # Hosted proxy — PRD §9 ``hosted_proxy``. 운영자 proxy key 사용.
+    "seoul-density": [
+        _hosted_proxy_req(
+            "seoul_density_proxy",
+            label="서울 실시간 인구 proxy",
+            description="운영자가 발급한 서울 열린데이터광장 proxy를 통해 호출.",
+        ),
+    ],
+    # Manual login — PRD §9 ``manual_login``. 외부 앱/브라우저 세션 사용.
+    "kakaotalk-mac": [
+        _manual_login_req(
+            "kakaotalk_macos_session",
+            label="카카오톡 (macOS) 세션",
+            description="카카오톡 macOS 앱이 로그인된 상태로 실행되어야 한다.",
+        ),
     ],
     # No credentials required.
     "korean-spell-check": [],
