@@ -13,6 +13,14 @@ from app.models.daily_spend_agent import DailySpendAgent
 from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
 from app.models.health_check_history import HealthCheckHistory
+from app.models.marketplace import (
+    MarketplaceInstallation,
+    MarketplaceItem,
+    MarketplaceItemACL,
+    MarketplacePublicationLink,
+    MarketplaceVersion,
+    SkillCredentialBinding,
+)
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.message_attachment import MessageAttachment
@@ -43,6 +51,11 @@ __all__ = [
     "DailySpendModel",
     "DailySpendUser",
     "HealthCheckHistory",
+    "MarketplaceInstallation",
+    "MarketplaceItem",
+    "MarketplaceItemACL",
+    "MarketplacePublicationLink",
+    "MarketplaceVersion",
     "McpServer",
     "McpTool",
     "MessageAttachment",
@@ -52,6 +65,7 @@ __all__ = [
     "RefreshToken",
     "ShareLink",
     "Skill",
+    "SkillCredentialBinding",
     "Template",
     "TokenUsage",
     "Tool",

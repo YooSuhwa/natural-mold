@@ -16,3 +16,4 @@
 | ADR-013 | [Service-side LLM Key from Credentials](adr-013-service-llm-key-from-credentials.md) | 승인됨 | 2026-05-06 |
 | ADR-014 | [Chat Model Factory — Provider Quirks 분리](adr-014-chat-model-factory-strategy.md) | 승인됨 | 2026-05-08 |
 | ADR-016 | [멀티유저 인증 (HttpOnly Cookie + JWT + super_user)](adr-016-multiuser-auth.md) | 승인됨 | 2026-05-09 |
+| ADR-017 | [Marketplace Resources (Skill/MCP/Agent 공유 레이어, Phase 1: Skill)](adr-017-marketplace-resources.md) | 제안됨 | 2026-05-18 |

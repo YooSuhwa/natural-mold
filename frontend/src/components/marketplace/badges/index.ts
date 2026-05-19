@@ -1,0 +1,5 @@
+export { OriginBadge } from './origin-badge'
+export { PublicationBadge } from './publication-badge'
+export { CredentialBadge } from './credential-badge'
+export { SupportBadge } from './support-badge'
+export { InstallationBadge } from './installation-badge'

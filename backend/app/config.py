@@ -76,6 +76,17 @@ class Settings(BaseSettings):
     skill_storage_dir: str = "./data/skills"
     skill_max_package_bytes: int = 52428800
 
+    # ADR-017 Slice F — k-skill upstream import (super_user CLI only).
+    # ``k_skill_sync_dir`` is the local git working tree the importer
+    # ``git clone`` / ``git fetch`` mirrors into; ``k_skill_builtin_storage_dir``
+    # is where successfully imported package directories land (used as
+    # ``MarketplaceVersion.storage_path`` for ``is_system=True`` items).
+    # Both paths are local-only — no remote write back to upstream.
+    k_skill_upstream_url: str = "https://github.com/NomaDamas/k-skill.git"
+    k_skill_upstream_ref: str = "main"
+    k_skill_sync_dir: str = "./data/upstreams/k-skill"
+    k_skill_builtin_storage_dir: str = "./data/marketplace/k-skill"
+
     # Conversation outputs
     conversation_output_dir: str = "./data/conversations"
 

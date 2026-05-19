@@ -68,6 +68,21 @@ def skill_file_not_found() -> NotFoundError:
     return NotFoundError("SKILL_FILE_NOT_FOUND", "스킬 파일을 찾을 수 없습니다")
 
 
+def marketplace_item_not_found() -> NotFoundError:
+    """Spec §10.7 — emitted for both "doesn't exist" and "forbidden" so
+    catalog enumeration via 404 vs 403 is blocked (rules/security.md).
+    The branch is recorded server-side only."""
+    return NotFoundError(
+        "MARKETPLACE_ITEM_NOT_FOUND", "마켓플레이스 아이템을 찾을 수 없습니다"
+    )
+
+
+def marketplace_version_not_found() -> NotFoundError:
+    return NotFoundError(
+        "MARKETPLACE_VERSION_NOT_FOUND", "마켓플레이스 버전을 찾을 수 없습니다"
+    )
+
+
 def credential_not_found() -> NotFoundError:
     return NotFoundError("CREDENTIAL_NOT_FOUND", "크리덴셜을 찾을 수 없습니다")
 
@@ -116,6 +131,51 @@ def invalid_skill_package(detail: str) -> ValidationError:
     return ValidationError("INVALID_SKILL_PACKAGE", detail)
 
 
+def marketplace_credential_mismatch(detail: str) -> ValidationError:
+    """Spec §10.7 — credential definition_key / requirement_key mismatch
+    on a binding write. 400 ``ValidationError`` keeps client-side hints
+    actionable (the requirement / definition info is non-sensitive)."""
+    return ValidationError("MARKETPLACE_CREDENTIAL_MISMATCH", detail)
+
+
+def marketplace_invalid_package(detail: str) -> ValidationError:
+    """Spec §10.7 — version payload / storage snapshot is unreadable or
+    malformed (missing storage_path, missing SKILL.md, copy failure).
+    400 because the user can re-publish or pick a different version."""
+    return ValidationError("MARKETPLACE_INVALID_PACKAGE", detail)
+
+
+def marketplace_secret_detected(detail: str) -> ValidationError:
+    """Spec §13.1 — secret_scan rejected the package on publish or
+    import. 400 with the finding list folded into ``detail`` so the
+    operator can remediate without a second round-trip."""
+    return ValidationError("MARKETPLACE_SECRET_DETECTED", detail)
+
+
+def marketplace_invalid_visibility(detail: str) -> ValidationError:
+    """Spec §10.7 — invalid visibility transition (e.g. trying to
+    publish as ``system`` from a user route)."""
+    return ValidationError("MARKETPLACE_INVALID_VISIBILITY", detail)
+
+
+def marketplace_acl_required() -> ValidationError:
+    """Spec §10.7 — ``visibility='restricted'`` requires at least one
+    user_id in the ACL. 400 because the user can retry with valid ACL."""
+    return ValidationError(
+        "MARKETPLACE_ACL_REQUIRED",
+        "restricted 가시성은 최소 1명의 ACL 사용자가 필요합니다",
+    )
+
+
+def marketplace_manage_forbidden() -> ForbiddenError:
+    """Spec §10.7 — user is authenticated and *can see* the item, but
+    is not its owner / super_user. 403 rather than 404 because the
+    existence is already visible (item appeared in the catalog)."""
+    return ForbiddenError(
+        "MARKETPLACE_MANAGE_FORBIDDEN", "관리 권한이 없습니다"
+    )
+
+
 # ---------------------------------------------------------------------------
 # ConflictError (409)
 # ---------------------------------------------------------------------------
@@ -139,6 +199,23 @@ def resume_interrupt_pending() -> ConflictError:
     return ConflictError(
         "RESUME_INTERRUPT_PENDING",
         "HiTL 인터럽트 응답 대기 중입니다 — /messages/resume 으로 재개하세요",
+    )
+
+
+def marketplace_credential_required(detail: str) -> ConflictError:
+    """Spec §10.7 — install/runtime requires a credential that is not yet
+    bound. 409 because the install/run flow can be retried after the
+    user creates + binds the credential (idempotent)."""
+    return ConflictError("MARKETPLACE_CREDENTIAL_REQUIRED", detail)
+
+
+def marketplace_dirty_installation() -> ConflictError:
+    """Spec §10.3 — update requires an explicit ``strategy`` when the
+    installation is dirty (the user has edited the installed copy).
+    The client must pick overwrite / install_new_copy / keep_current."""
+    return ConflictError(
+        "MARKETPLACE_DIRTY_INSTALLATION",
+        "수정된 설치본은 업데이트 전략을 지정해야 합니다",
     )
 
 

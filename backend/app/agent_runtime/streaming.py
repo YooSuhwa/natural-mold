@@ -15,6 +15,7 @@ from langgraph.types import Command
 from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
 from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
+from app.marketplace.redaction import redact_keys
 
 logger = logging.getLogger(__name__)
 
@@ -340,7 +341,15 @@ async def stream_agent_response(
                             event_names.TOOL_CALL_START,
                             {
                                 "tool_name": tc_name,
-                                "parameters": tc.get("args", {}),
+                                # ADR-017 §13.2 — heuristic key-pattern
+                                # redaction (password / api_key / secret /
+                                # token / access_key / refresh_token) so
+                                # SSE consumers don't see secret-shaped
+                                # values from any tool that accepts an
+                                # auth-style argument. Skill tool already
+                                # redacts its own results at the executor
+                                # layer; this protects MCP/regular tools.
+                                "parameters": redact_keys(tc.get("args", {})),
                             },
                         )
 

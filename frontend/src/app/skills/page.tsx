@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Plus, BookOpen, LayoutGrid, Rows } from 'lucide-react'
 
@@ -12,6 +13,9 @@ import { DataTable, type FilterDef } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
 import { SkillDetailDialog } from '@/components/skill/skill-detail-dialog'
+import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
+import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
+import { PublishWizard } from '@/components/marketplace/publish-wizard'
 import { useSkills } from '@/lib/hooks/use-skills'
 import type { Skill } from '@/lib/types/skill'
 
@@ -23,11 +27,14 @@ function formatDate(value: string | null): string {
 }
 
 export default function SkillsPage() {
+  const searchParams = useSearchParams()
+  const deepLinkDetailId = searchParams.get('detailId')
   const { data: skills, isLoading } = useSkills()
   const [createOpen, setCreateOpen] = useState(false)
   const [createTab, setCreateTab] = useState<CreateTab>('text')
-  const [detailId, setDetailId] = useState<string | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(deepLinkDetailId)
   const [view, setView] = useState<'table' | 'grid'>('table')
+  const [publishSkill, setPublishSkill] = useState<Skill | null>(null)
 
   function openCreate(tab: CreateTab) {
     setCreateTab(tab)
@@ -53,14 +60,35 @@ export default function SkillsPage() {
         filterFn: 'equals',
       },
       {
+        id: 'origin',
+        header: 'Origin',
+        cell: ({ row }) => <OriginBadge summary={row.original.origin_summary} />,
+      },
+      {
+        id: 'marketplace',
+        header: 'Marketplace',
+        cell: ({ row }) => (
+          <PublicationBadge summary={row.original.publication_summary} />
+        ),
+      },
+      {
+        id: 'credential',
+        header: 'Credential',
+        cell: ({ row }) => {
+          const summary = row.original.installation
+            ? null
+            : null
+          void summary
+          // Skill row doesn't carry credential_summary directly; show via
+          // installation chip when relevant. For Phase 1 we render `—` for
+          // user-owned skills without binding info.
+          return <span className="text-xs text-muted-foreground">—</span>
+        },
+      },
+      {
         accessorKey: 'used_by_count',
         header: 'Agents',
         cell: ({ row }) => row.original.used_by_count,
-      },
-      {
-        accessorKey: 'size_bytes',
-        header: 'Size',
-        cell: ({ row }) => `${row.original.size_bytes}b`,
       },
       {
         accessorKey: 'version',
@@ -75,6 +103,27 @@ export default function SkillsPage() {
             {formatDate(row.original.updated_at)}
           </span>
         ),
+      },
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => {
+          const state = row.original.publication_summary?.state
+          const canPublish = !state || state === 'not_published'
+          if (!canPublish) return null
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                setPublishSkill(row.original)
+              }}
+            >
+              Publish
+            </Button>
+          )
+        },
       },
     ],
     [],
@@ -191,6 +240,12 @@ export default function SkillsPage() {
         skillId={detailId}
         open={!!detailId}
         onOpenChange={(open) => !open && setDetailId(null)}
+      />
+
+      <PublishWizard
+        skill={publishSkill}
+        open={!!publishSkill}
+        onOpenChange={(open) => !open && setPublishSkill(null)}
       />
     </div>
   )

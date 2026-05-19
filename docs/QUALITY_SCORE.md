@@ -307,3 +307,70 @@ PASS:
 
 **GO 조건**: ISSUE-3 (v2 테스트)은 별도 태스크로 후속 처리 가능. ISSUE-1, 2는 코드 위생 이슈로 즉시 삭제 가능.
 빌드/린트/기존 테스트 모두 통과하므로 **GO** 판정.
+
+---
+
+## Marketplace Resources Phase 1 (M1~M9) — 2026-05-19
+
+### 도메인별 등급
+
+| 도메인 | 등급 | 근거 |
+|--------|------|------|
+| **Marketplace catalog / read API** | **A** | Slice A read-only endpoints + visibility 매트릭스 (super_user/owner/ACL/unrelated × private/restricted/public/unlisted/system) 검증. 25 access tests + 12 listing tests + 11 migration tests + 15 regression tests. enumeration oracle envelope 동등성 가드. |
+| **Marketplace install** | **A** | 8 install tests + 7 E2E scenarios (모두 PASS). OPEN-1 (install_service lazy load) 2026-05-19 RESOLVED — `select(...).options(selectinload(MarketplaceItem.acl_entries))`로 eager-load. Phase 1 출시 게이트 #1 (enumeration oracle 방지) 가드 통과. strict xfail 자동 감지 → 베조스 promote 완료. |
+| **Marketplace publish + secret scan** | **A** | 8 publish integration tests + 53 secret_scan unit tests. 파일 패턴 9개 + 내용 패턴 6개 (OI-4 `\bsk-…{20,}\b` boundary 검증). 256KB cap + binary skip + symlink skip 가드. |
+| **Credential system (ADR-007/009 재사용 + 신규 8개)** | **A** | 13 기존 + 8 신규 k-skill definitions (총 21개). 10 credential injection tests: fail-fast 409, mapped-only env, override priority (`agent_skills.config.credential_bindings`), ownership drift silent missing. Cipher V2 round-trip 회귀 가드. |
+| **Runtime mount (per-thread)** | **A** | 10 isolation tests. `build_skill_runtime_context(cfg, data_dir)` per-thread `copytree(symlinks=False)` 격리. selected-skill mount (`ctx.descriptors`이 보안 경계). Cross-thread prefix-spoof 가드. `cleanup_stale_runtime_roots` mtime 기반 retention. |
+| **Redaction (multi-channel)** | **A** | 16 redaction tests. `redact_credential_values` (literal value, `len<5` 가드, 길이 정렬), `redact_keys` (recursive structural mask), subprocess stdout/stderr, SSE TOOL_CALL_START.parameters, exception detail 모두 통합. `streaming.py` 호출 지점 pin. |
+| **k-skill importer (CLI)** | **B+** | super_user CLI 전용. 모듈 존재 + admin status endpoint mount 가드. 실제 upstream sync는 운영 환경 검증 필요. 단위 테스트는 jensen 트랙. |
+| **Frontend Marketplace UI** | **Pending** | M8 진행 중 (M8a 디자인 스펙 in-progress, M8b 미완료). 빌드/lint 검증 후 재평가. |
+
+### Phase 1 출시 게이트 (PRD §13) 검증 결과
+
+8개 게이트 통합 검증: `backend/tests/test_marketplace_phase1_gates.py` (22 tests).
+
+| Gate | 상태 | 책임 |
+|------|------|------|
+| 1. Access control | ✅ PASS | `marketplace.access` 술어 + 라우터 enumeration oracle |
+| 2. Secret safety | ✅ PASS | `secret_scan` 9 파일 + 6 내용 패턴 + redaction 통합 |
+| 3. Runtime isolation | ✅ PASS | per-thread root + selected-skill mount + retention |
+| 4. Credential runtime | ✅ PASS | fail-fast 409 + mapped-only env + override 우선 |
+| 5. k-skill sync | ✅ PASS (skip 가능) | admin endpoint mount 가드, 실제 sync는 CLI/운영 |
+| 6. Backward compatibility | ✅ PASS | Skill ORM legacy columns 보존 + to_runtime_dict 키셋 |
+| 7. Listing 승인 | ✅ PASS | `_base_catalog_query` default `public+published+is_listed` 가드 |
+| 8. ADR-016 정합 | ✅ PASS | 모든 mutation route `verify_csrf` + `get_current_user`/`require_super_user` |
+
+### 검증 명령
+
+```bash
+cd backend
+uv run pytest tests/test_marketplace_phase1_gates.py -v   # 22 PASS
+uv run pytest tests/test_marketplace_e2e.py -v            # 7 PASS (xfail 해제 후)
+uv run pytest                                              # 전체 1191 PASS, 0 xfailed, 회귀 0
+uv run ruff check .                                        # clean
+```
+
+### Closed Issues
+
+| ID | Severity | Status | Resolution |
+|----|----------|--------|------------|
+| **OPEN-1** | MEDIUM | ✅ RESOLVED 2026-05-19 | `install_service.install_item`을 `select(...).options(selectinload(acl_entries))` 로 교체 (젠슨). strict xfail이 XPASS로 자동 감지 → 베조스 promote. test_marketplace_e2e.py::TestScenario_10_4_RestrictedACL는 이제 canonical regression guard. |
+
+### Open Issues
+
+| ID | Severity | Description | Owner |
+|----|----------|-------------|-------|
+| **OPEN-2** | LOW | M8 (Frontend Marketplace UI) 진행 중. Spec 정합성은 M8b 완료 후 재평가. | 저커버그 |
+| **OPEN-3** | LOW | k-skill importer 실제 upstream sync는 단위 테스트 범위 외. 운영 환경에서 dry-run 후 실제 sync 1회 수행 필요. | 운영 |
+
+### GO/NO-GO 판정
+
+**Backend 트랙: ✅ FULL GO** (2026-05-19) — 8개 출시 게이트 모두 통과 + OPEN-1 해소. Frontend 트랙은 M8b 완료 시점에 재평가.
+
+**근거**:
+- 36 보안 critical 테스트 (runtime isolation 10 + credential injection 10 + redaction 16) PASS
+- 53 secret_scan unit tests PASS
+- 25 access matrix tests + 12 listing tests + 11 migration tests + 15 regression tests PASS
+- **7 E2E user scenarios (PRD §10.1~10.7) 모두 PASS** (xfail strict 자동 감지 → 젠슨 fix → 베조스 promote)
+- 22 Phase 1 출시 게이트 통합 검증 PASS
+- 회귀 0, ruff 0
