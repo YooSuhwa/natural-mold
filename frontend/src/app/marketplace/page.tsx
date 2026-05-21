@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { MarketplaceCard, type PrimaryCta } from '@/components/marketplace/marketplace-card'
 import { MarketplaceFilterBar } from '@/components/marketplace/marketplace-filter-bar'
 import { InstallWizard } from '@/components/marketplace/install-wizard'
+import { UpdateStrategyDialog } from '@/components/marketplace/update-strategy-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useSession } from '@/lib/auth/session'
@@ -32,6 +33,7 @@ export default function MarketplaceCatalogPage() {
   const [tab, setTab] = useState<Tab>('skills')
   const [filters, setFilters] = useState<MarketplaceListFilters>({})
   const [installTarget, setInstallTarget] = useState<MarketplaceItem | null>(null)
+  const [updateTarget, setUpdateTarget] = useState<MarketplaceItem | null>(null)
 
   const effectiveFilters = useMemo<MarketplaceListFilters>(() => {
     const next: MarketplaceListFilters = {
@@ -50,6 +52,10 @@ export default function MarketplaceCatalogPage() {
   function handleAction(item: MarketplaceItem, cta: PrimaryCta) {
     if (cta.kind === 'install' || cta.kind === 'setup') {
       setInstallTarget(item)
+      return
+    }
+    if (cta.kind === 'update' || cta.kind === 'review_update') {
+      setUpdateTarget(item)
       return
     }
     if (cta.kind === 'open' && item.installation.installed_resource_id) {
@@ -126,6 +132,11 @@ export default function MarketplaceCatalogPage() {
         item={installTarget}
         open={!!installTarget}
         onOpenChange={(open) => !open && setInstallTarget(null)}
+      />
+      <UpdateStrategyDialog
+        item={updateTarget}
+        open={!!updateTarget}
+        onOpenChange={(open) => !open && setUpdateTarget(null)}
       />
     </div>
   )

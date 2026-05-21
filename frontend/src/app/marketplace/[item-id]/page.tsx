@@ -18,6 +18,7 @@ import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
 import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { SupportBadge } from '@/components/marketplace/badges/support-badge'
 import { InstallWizard } from '@/components/marketplace/install-wizard'
+import { UpdateStrategyDialog } from '@/components/marketplace/update-strategy-dialog'
 import { derivePrimaryCta } from '@/components/marketplace/marketplace-card'
 import { useSession } from '@/lib/auth/session'
 import { ApiError } from '@/lib/api/client'
@@ -41,6 +42,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
   const { data: versions } = useMarketplaceVersions(itemId)
   const disableItem = useDisableItem()
   const [installOpen, setInstallOpen] = useState(false)
+  const [updateOpen, setUpdateOpen] = useState(false)
 
   if (isLoading) {
     return (
@@ -77,6 +79,10 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
     if (!item) return
     if (cta.kind === 'install' || cta.kind === 'setup') {
       setInstallOpen(true)
+      return
+    }
+    if (cta.kind === 'update' || cta.kind === 'review_update') {
+      setUpdateOpen(true)
       return
     }
     if (cta.kind === 'open' && item.installation.installed_resource_id) {
@@ -197,6 +203,11 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
       ) : null}
 
       <InstallWizard item={item} open={installOpen} onOpenChange={setInstallOpen} />
+      <UpdateStrategyDialog
+        item={item}
+        open={updateOpen}
+        onOpenChange={setUpdateOpen}
+      />
     </div>
   )
 }
