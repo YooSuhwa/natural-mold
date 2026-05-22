@@ -1,4 +1,4 @@
-"""Skill ORM — greenfield rewrite.
+"""Skill ORM — greenfield rewrite + marketplace lineage (ADR-017 m41/m42).
 
 A ``Skill`` row describes a user-owned skill the agent runtime can mount.
 The legacy ``content`` text column is gone — text-kind skills now persist
@@ -6,9 +6,9 @@ their body to ``storage_path`` (a single file on disk) just like package-kind
 skills (a directory tree). This unifies the two storage paths and lets the
 runtime stream large skills without round-tripping through Postgres.
 
-Old columns dropped here (``content``): the m18 greenfield migration rebuilds
-the physical table; tests use ``Base.metadata.create_all`` so the model is
-the source of truth.
+ADR-017 (m41) adds 12 marketplace lineage columns + (m42) ``AgentSkillLink.config``
+JSON for per-agent overrides (credential bindings today, parameter overrides
+in future slices).
 """
 
 from __future__ import annotations
@@ -16,14 +16,26 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
 
 class AgentSkillLink(Base):
-    """Association: agent <-> skill."""
+    """Association: agent <-> skill.
+
+    ``config`` (m42) carries agent-scoped overrides. Phase 1 uses it for
+    credential bindings (`{"credential_bindings": {"<key>": "<credential-uuid>"}}`).
+    """
 
     __tablename__ = "agent_skills"
     __table_args__ = {"extend_existing": True}
@@ -36,6 +48,10 @@ class AgentSkillLink(Base):
         ForeignKey("skills.id", ondelete="CASCADE"),
         primary_key=True,
     )
+
+    # m42 — JSON blob for agent-scoped overrides. Nullable; readers must
+    # treat the missing/empty case as "no override".
+    config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     skill: Mapped[Skill] = relationship(lazy="joined")
 
@@ -86,6 +102,57 @@ class Skill(Base):
         Integer, nullable=False, default=0, server_default="0"
     )
 
+    # ---- m41 — marketplace lineage ---------------------------------------
+    # System skills (k-skill seed, system_seed) are owned by no specific user
+    # (CHECK enforced on tools/credentials; for skills we keep ``user_id``
+    # NOT NULL so seed rows attach to the super_user account — see Spec §3.7).
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    # Where the skill came from: 'user' | 'k-skill' | 'import' | 'system_seed'.
+    source_kind: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # When sourced from marketplace, the item + version that produced this
+    # row. ON DELETE SET NULL so deleting an item doesn't cascade through
+    # every installed copy.
+    source_marketplace_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("marketplace_items.id", ondelete="SET NULL"), nullable=True
+    )
+    source_marketplace_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("marketplace_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    # Upstream commit id (k-skill, git-imported).
+    source_commit: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Snapshot of the version's credential_requirements at install time —
+    # the runtime consults this without re-reading the marketplace row.
+    credential_requirements: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Snapshot of execution_profile (support_level, runners, requires_*).
+    execution_profile: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Provenance from the *current owner's* perspective: who created the
+    # row originally and where it was published. ``origin_kind`` drives
+    # ``ResourceOriginSummaryOut.kind`` derivation.
+    origin_kind: Mapped[str] = mapped_column(
+        String(40),
+        nullable=False,
+        default="created_by_me",
+        server_default="created_by_me",
+    )
+    origin_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    origin_marketplace_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("marketplace_items.id", ondelete="SET NULL"), nullable=True
+    )
+    origin_marketplace_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("marketplace_versions.id", ondelete="SET NULL"), nullable=True
+    )
+    # ``True`` when the installed row has been edited since installation —
+    # surfaces in the installation summary and gates "update available" UX.
+    is_dirty: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+
+    # ---- timestamps ------------------------------------------------------
     last_modified_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,

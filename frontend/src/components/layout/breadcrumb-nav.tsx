@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useConversations } from '@/lib/hooks/use-conversations'
+import { useMarketplaceItem } from '@/lib/hooks/use-marketplace'
 
 const ROUTE_LABELS: Record<string, string> = {
   tools: 'nav.tools',
@@ -42,6 +43,14 @@ function ConversationTitle({
   return <>{conv?.title ?? conversationId}</>
 }
 
+function MarketplaceItemName({ id }: { id: string }) {
+  // 404 / 401 시 hook 이 ApiError 를 throw 하므로 breadcrumb 가 빈 ID 로 떨어지면
+  // ``id`` fallback. detail page 에서 동일 query 가 이미 cache 되어 있어 추가
+  // round-trip 없음 (TanStack Query 자동 dedup).
+  const { data: item } = useMarketplaceItem(id)
+  return <>{item?.name ?? id}</>
+}
+
 export function BreadcrumbNav() {
   const pathname = usePathname()
   const t = useTranslations()
@@ -58,6 +67,7 @@ export function BreadcrumbNav() {
     isLast: boolean
     isAgentId: boolean
     isConvId: boolean
+    isMarketplaceItemId: boolean
   }[] = []
 
   for (let i = 0; i < segments.length; i++) {
@@ -76,13 +86,14 @@ export function BreadcrumbNav() {
     const isLast = i === segments.length - 1
     const isAgentId = isId && i > 0 && segments[i - 1] === 'agents'
     const isConvId = isId && i > 0 && segments[i - 1] === 'conversations'
+    const isMarketplaceItemId = isId && i > 0 && segments[i - 1] === 'marketplace'
 
     let label = segment
     if (!isId && ROUTE_LABELS[segment]) {
       label = t(ROUTE_LABELS[segment])
     }
 
-    crumbs.push({ label, href, isLast, isAgentId, isConvId })
+    crumbs.push({ label, href, isLast, isAgentId, isConvId, isMarketplaceItemId })
   }
 
   return (
@@ -99,6 +110,8 @@ export function BreadcrumbNav() {
           <AgentName id={crumb.label} />
         ) : crumb.isConvId && agentId ? (
           <ConversationTitle agentId={agentId} conversationId={crumb.label} />
+        ) : crumb.isMarketplaceItemId ? (
+          <MarketplaceItemName id={crumb.label} />
         ) : (
           crumb.label
         )

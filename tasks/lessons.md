@@ -174,3 +174,102 @@ const onClick = (text: string) => composer.setText(text)
 **패턴**: `WHERE user_id = '00000000-0000-0000-0000-000000000001'`로 mock UUID에 한정. 실행 후 mock row 삭제 → 두 번째 실행 시 0 rows affected.
 
 **규칙**: 데이터 이전 스크립트는 (1) 출처 row를 찾을 수 있는 정확한 predicate (2) 실행 종료 직전 출처 흔적 제거 (3) 부분 실패 시 재실행 가능한 idempotent 구조 — 셋 다 갖춰야 한다.
+
+## Session 7 (2026-05-19) — Marketplace Resources Phase 1
+
+### Pattern: strict xfail로 미구현/버그 spec 항목 pin
+**상황**: 다른 팀원의 영역에서 spec 위반 발견 (예: `service.create_package_skill`이 `origin_kind` 미설정).
+
+**패턴**:
+1. 의도된 동작을 `@pytest.mark.xfail(reason="...", strict=True)`로 작성
+2. 현재 동작을 별도 pinning test로 기록 (선택 사항)
+3. "?" 프로토콜로 담당자에게 보고
+4. 담당자 fix 시 strict xfail이 XPASS로 떨어져 자동 fail → 베조스가 promote (xfail 제거 + pinning test 삭제)
+
+**효과**: 영역 침범 없이 spec drift를 자동 감지. Ralph Loop backpressure의 핵심 도구.
+
+**예시**: `test_legacy_upload_package_should_set_imported_by_me` (M5 stage 4에서 자동 트리거됨).
+
+### Pattern: ? 프로토콜로 cross-team boundary issue 보고
+**상황**: 테스트 작성 중 발견한 회귀 또는 영역 경계 너머의 버그.
+
+**패턴**:
+- 짧은 "?" 마크 + file:line + 1줄 설명 → 담당자에게 SendMessage
+- 사티아에게도 동시 보고 (release gate 결정자)
+- 베조스는 그 영역 코드 수정하지 않고 다음 단계로 진행 (병렬화)
+
+**예시**:
+- `tests/test_executor.py:426` Stage 2 후 deprecated assertion → 젠슨에게 ?
+- `install_service.install_item` lazy load on `acl_entries` → MissingGreenlet → 젠슨에게 ? (M9 발견)
+
+### Pattern: M2.5 course correction (spec 위반 동기 정정)
+**상황**: M2 listing 테스트 작성 중 service.py가 PRD §10.1 default filter 위반 발견 (`is_listed` filter mechanic만, default 미강제).
+
+**패턴**:
+1. 베조스가 발견 시점 보고 + 테스트는 현재 동작 그대로 (XPASS 가드)
+2. 사티아가 "course correction" 태스크 생성 → 젠슨이 backend 정정
+3. 동기 정정 후 베조스 테스트 정정 (예상 동작으로 재작성)
+
+**효과**: 테스트가 spec 단순한 "구현 거울"이 아닌 **spec 검증 도구**로 작동. 베조스의 발견이 release gate 책임자(사티아)에게 즉시 escalate.
+
+### Pattern: per-thread runtime root + selected-skill mount + credential injection + redaction (보안 4종)
+**상황**: 마켓플레이스 도입으로 같은 사용자의 미선택 skill + 다른 사용자 skill 접근 가능성 (executor.py broad mount).
+
+**패턴**:
+1. `SkillToolContext(thread_id, output_dir, runtime_root, descriptors)` dataclass로 인자 폭증 방지
+2. `build_skill_runtime_context(cfg, *, data_dir)` — per-thread `copytree(symlinks=False)`
+3. `_create_skill_execute_tool(ctx)` — `Path(skill_dir).name`으로 slug 추출 → `ctx.descriptors` lookup이 보안 경계
+4. `resolve_runtime_credentials(ctx, *, db, cfg)` — mapped env var만 주입, fail-fast 409
+5. `redact_credential_values(text, mapped_env)` — subprocess result 자동 치환
+6. `redact_keys(payload)` — SSE TOOL_CALL_START.parameters 구조적 마스킹
+7. `cleanup_stale_runtime_roots(data_dir, retention_seconds=3600)` — mtime 기반 GC
+
+**규칙**:
+- redaction `\bsk-[A-Za-z0-9]{20,}\b`처럼 boundary 명시 (false-positive 방지)
+- `len < 5` skip (placeholder/fragment 가드)
+- 길이 정렬 (긴 값 먼저 치환 → 부분 매치 충돌 회피)
+
+### Pattern: enumeration oracle envelope equality
+**상황**: 비공개 item 접근 시도와 존재하지 않는 item 접근이 같은 응답이어야 함 (security.md).
+
+**패턴**:
+- status code뿐 아니라 JSON envelope shape까지 동등성 검증: `assert r_hidden.json() == r_missing.json()`
+- 분기는 `logger.info(...)` 서버 로그에만 남기고 응답은 통일
+
+### Pattern: 멀티 사용자 테스트 클라이언트
+**상황**: 기본 `client` fixture가 super_user 강제 → ACL/권한 매트릭스 검증 불가.
+
+**패턴**:
+```python
+async def _client_for_user(user: CurrentUser) -> AsyncClient:
+    app = create_app()
+    app.dependency_overrides[get_db] = override_get_db
+    async def _override() -> CurrentUser: return user
+    app.dependency_overrides[get_current_user] = _override
+    app.dependency_overrides[verify_csrf] = _no_csrf
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+```
+
+재사용 위치: `test_marketplace_access.py`, `test_marketplace_listing.py`, `test_marketplace_e2e.py`.
+
+### Failure: stage 2 후 기존 executor test deprecated
+**상황**: `tests/test_executor.py:426` 가 `assert build_kwargs["skills"] == ["/skills/"]`로 정확한 값 검증 → Stage 2 패치 후 깨짐.
+
+**교훈**: integration test가 production value를 hardcoded literal로 검증하면 production 변경마다 깨짐. **prefix/suffix 검사 또는 동적 변수 비교**로 작성해야 함.
+
+```python
+# 나쁨
+assert build_kwargs["skills"] == ["/skills/"]
+# 좋음
+assert build_kwargs["skills"][0].startswith("/runtime/")
+assert build_kwargs["skills"][0].endswith("/skills/")
+# 또는
+assert build_kwargs["skills"] == [f"/runtime/{cfg.thread_id}/skills/"]
+```
+
+### Failure: install_service lazy load on acl_entries (M9 발견)
+**상황**: `install_service.install_item`이 `db.get(MarketplaceItem, ...)` 후 `can_install_item(item, user)` 호출. `can_install_item` → `can_view_item` → `item.acl_entries` lazy load → MissingGreenlet → 500 instead of 404.
+
+**교훈**: 같은 ORM 모델의 relationship을 access predicate에서 사용하는 경우, **service-layer query는 catalog_service.get_item처럼 selectinload(MarketplaceItem.acl_entries) 사용 필수**. ``db.get`` 단축 경로는 access 예외 처리에서 위험.
+
+**Status**: M9에서 strict xfail로 pin됨 (test_marketplace_e2e.py::TestScenario_10_4_RestrictedACL::test_restricted_acl_grants_and_denies). 젠슨 fix 대기.

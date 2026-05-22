@@ -1,5 +1,11 @@
 // Skill domain types — mirrors backend `app/schemas/skill.py`.
 
+import type {
+  InstallationSummary,
+  ResourceOriginSummary,
+  ResourcePublicationSummary,
+} from './marketplace'
+
 export type SkillKind = 'text' | 'package'
 
 export interface Skill {
@@ -17,6 +23,10 @@ export interface Skill {
   last_modified_at: string
   created_at: string
   updated_at: string
+  // ADR-017 Slice A — origin/publication/installation summaries
+  origin_summary?: ResourceOriginSummary | null
+  publication_summary?: ResourcePublicationSummary | null
+  installation?: InstallationSummary | null
 }
 
 export interface SkillFileEntry {

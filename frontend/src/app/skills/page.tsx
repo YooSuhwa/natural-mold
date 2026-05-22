@@ -12,6 +12,9 @@ import { DataTable, type FilterDef } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/shared/empty-state'
 import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
 import { SkillDetailDialog } from '@/components/skill/skill-detail-dialog'
+import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
+import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
+import { PublishWizard } from '@/components/marketplace/publish-wizard'
 import { useSkills } from '@/lib/hooks/use-skills'
 import type { Skill } from '@/lib/types/skill'
 
@@ -26,8 +29,16 @@ export default function SkillsPage() {
   const { data: skills, isLoading } = useSkills()
   const [createOpen, setCreateOpen] = useState(false)
   const [createTab, setCreateTab] = useState<CreateTab>('text')
-  const [detailId, setDetailId] = useState<string | null>(null)
+  // Deep-link from /marketplace Open button: `/skills?detailId=...`.
+  // useState lazy initializer runs once at mount (post-hydration on client,
+  // safely returns null during SSR/prerender). Avoids effect+setState pattern
+  // that the react-hooks/set-state-in-effect rule rejects.
+  const [detailId, setDetailId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    return new URLSearchParams(window.location.search).get('detailId')
+  })
   const [view, setView] = useState<'table' | 'grid'>('table')
+  const [publishSkill, setPublishSkill] = useState<Skill | null>(null)
 
   function openCreate(tab: CreateTab) {
     setCreateTab(tab)
@@ -53,14 +64,35 @@ export default function SkillsPage() {
         filterFn: 'equals',
       },
       {
+        id: 'origin',
+        header: 'Origin',
+        cell: ({ row }) => <OriginBadge summary={row.original.origin_summary} />,
+      },
+      {
+        id: 'marketplace',
+        header: 'Marketplace',
+        cell: ({ row }) => (
+          <PublicationBadge summary={row.original.publication_summary} />
+        ),
+      },
+      {
+        id: 'credential',
+        header: 'Credential',
+        cell: ({ row }) => {
+          const summary = row.original.installation
+            ? null
+            : null
+          void summary
+          // Skill row doesn't carry credential_summary directly; show via
+          // installation chip when relevant. For Phase 1 we render `—` for
+          // user-owned skills without binding info.
+          return <span className="text-xs text-muted-foreground">—</span>
+        },
+      },
+      {
         accessorKey: 'used_by_count',
         header: 'Agents',
         cell: ({ row }) => row.original.used_by_count,
-      },
-      {
-        accessorKey: 'size_bytes',
-        header: 'Size',
-        cell: ({ row }) => `${row.original.size_bytes}b`,
       },
       {
         accessorKey: 'version',
@@ -75,6 +107,27 @@ export default function SkillsPage() {
             {formatDate(row.original.updated_at)}
           </span>
         ),
+      },
+      {
+        id: 'actions',
+        header: '',
+        cell: ({ row }) => {
+          const state = row.original.publication_summary?.state
+          const canPublish = !state || state === 'not_published'
+          if (!canPublish) return null
+          return (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation()
+                setPublishSkill(row.original)
+              }}
+            >
+              Publish
+            </Button>
+          )
+        },
       },
     ],
     [],
@@ -190,7 +243,22 @@ export default function SkillsPage() {
       <SkillDetailDialog
         skillId={detailId}
         open={!!detailId}
-        onOpenChange={(open) => !open && setDetailId(null)}
+        onOpenChange={(open) => {
+          if (open) return
+          setDetailId(null)
+          // /marketplace에서 ``?detailId=...`` deep-link로 진입한 경우, dialog
+          // 닫을 때 URL의 query string도 함께 정리한다. history.replaceState로
+          // route 자체는 다시 그리지 않아 list scroll/state 보존.
+          if (typeof window !== 'undefined' && window.location.search) {
+            window.history.replaceState(null, '', '/skills')
+          }
+        }}
+      />
+
+      <PublishWizard
+        skill={publishSkill}
+        open={!!publishSkill}
+        onOpenChange={(open) => !open && setPublishSkill(null)}
       />
     </div>
   )

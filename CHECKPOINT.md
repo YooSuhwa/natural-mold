@@ -1,106 +1,124 @@
-# CHECKPOINT — Multi-User Authentication
+# CHECKPOINT — Marketplace Resources Phase 1
 
 **Project Owner**: 사티아 (Satya)
-**Branch**: `feature/multiuser-auth`
-**Plan**: `~/.claude/plans/replicated-crunching-lark.md` (approved)
+**Branch**: `worktree-marketplace-resources`
+**Source docs**: `docs/marketplace-resources-prd.md` v0.2, `docs/marketplace-resources-spec.md` v0.1
+**Handoff order (Spec §19)**: A → B → D → E → C → F → G
 
 ---
 
-## 핵심 결정사항 (User-Approved)
+## 핵심 결정사항 (PRD/Spec에서 확정)
 
-| 항목 | 선택 |
-|------|------|
-| 토큰 저장 | HttpOnly Cookie (Access + Refresh) + CSRF body token |
-| 인증 알고리즘 | JWT HS256 — Access 1h, Refresh 30d (DB whitelist) |
-| 비밀번호 해싱 | bcrypt (passlib) |
-| 권한 모델 | `is_super_user` boolean 단일 플래그 |
-| 테넌시 단위 | User-only (Workspace 확장 hook은 service layer 추상화로) |
-| 인증 방식 | Email + Password (Google OAuth는 Phase 2 이연) |
-| System credentials | super_user 전용 (조회/사용/관리 모두) |
-| 첫 가입자 | 자동 super_user |
+| 항목 | 결정 | 출처 |
+|------|------|------|
+| 마켓플레이스 범위 | Agent / MCP / Skill (Tool 비목표) | PRD §3 |
+| Phase 1 범위 | Skill marketplace + selected-skill mount + credential injection + k-skill importer | PRD §14 |
+| Alembic 분할 | m40~m43 슬라이스별 마이그레이션 | Spec §3.1 |
+| Agent-Skill override | `agent_skills.config` JSON | Spec §0.1 |
+| Runtime mount | per-thread `copytree` 데이터 격리 | Spec §0.1, §9 |
+| k-skill source | GitHub `NomaDamas/k-skill` clone | Spec §0.1 |
+| Public publish | published vs listed 분리 (super_user `is_listed` 토글) | Spec §0.1 |
+| Visibility | private/restricted/public/unlisted/system | PRD §7 |
+| Credential | Cipher V2 재사용 + 신규 8개 definition (`srt_account` 등) | PRD §8 |
 
 ---
 
-## M1: 사일로 셋업 (S0 + 삭제 분석 + 아키텍처)
-- [ ] S0 (피차이): docs/design-docs/adr-016-multiuser-auth.md 작성
-- [ ] S1 (베조스): tasks/deletion-analysis.md — Mock User 흔적, 시드 종속성, FK 정책 매트릭스
-- [ ] S2 (피차이): User/RefreshToken 모델 + Alembic 마이그레이션 m22 스펙
-- 검증: `test -f docs/design-docs/adr-016-multiuser-auth.md && test -f tasks/deletion-analysis.md`
-- done-when: 아키텍처 결정 명문화 + 삭제 분석 보고서
+## M1: 사일로 셋업 (S0~S2)
+- [ ] S0 (피차이): docs/design-docs/adr-017-marketplace-resources.md + ARCHITECTURE.md marketplace 섹션
+- [ ] S1 (베조스): tasks/deletion-analysis.md — runtime broad mount/env 빈 구멍/packager secret scan 부재 식별
+- [ ] S2 (피차이): 모듈 경계/ORM 파일 계약/Pydantic 스키마 contracts
+- 검증: `test -f docs/design-docs/adr-017-marketplace-resources.md && test -f tasks/deletion-analysis.md && grep -q marketplace docs/ARCHITECTURE.md`
+- done-when: 아키텍처 명문화 + 삭제 분석 + 모듈 경계
 - 상태: pending
 
-## M2: 백엔드 인증 코어 (Phase 1 + 2 + 3)
-- [ ] 젠슨: User 컬럼 추가, RefreshToken 모델, Tool/Credential `is_system`, FK ON DELETE 정리
-- [ ] 젠슨: Alembic 마이그레이션 m22 작성 + 백필
-- [ ] 젠슨: `app/auth/{password,jwt,cookies}.py` 모듈
-- [ ] 젠슨: `dependencies.py` 재작성 (JWT-based `get_current_user`, `verify_csrf`, `require_super_user`)
-- [ ] 젠슨: `routers/auth.py` (register, login, logout, refresh, me) + rate limiting
-- [ ] 젠슨: `services/{auth_service,user_service}.py`
-- 검증: `cd backend && uv run pytest tests/test_auth_*.py -v && uv run ruff check . && uv run alembic upgrade head && uv run alembic downgrade -1 && uv run alembic upgrade head`
-- done-when: 모든 인증 엔드포인트 동작, 마이그레이션 reversible, 테스트 통과
+## M2: Slice A — 데이터 + Read Catalog
+- [ ] 젠슨: m40_marketplace_tables.py (5개 + circular FK)
+- [ ] 젠슨: m41_skills_marketplace_columns.py (12개 컬럼 + backfill)
+- [ ] 젠슨: m42_agent_skills_config.py
+- [ ] 젠슨: m43_skill_credential_bindings.py
+- [ ] 젠슨: app/models/marketplace.py (ORM)
+- [ ] 젠슨: app/marketplace/{access,schemas,origin_service,service}.py + routers/marketplace.py
+- [ ] 젠슨: 기존 /api/skills 응답에 origin_summary + publication_summary 추가
+- 검증: `cd backend && uv run ruff check . && uv run pytest tests/test_marketplace_*.py -v && uv run alembic upgrade head && uv run alembic downgrade -4 && uv run alembic upgrade head`
+- done-when: 마이그레이션 reversible, 접근 매트릭스 통과, 기존 skill 회귀 통과
 - 상태: pending
 
-## M3: 시드 정리 + 라우터 audit (Phase 4 + 5)
-- [ ] 젠슨: main.py mock user 자동 생성 제거
-- [ ] 젠슨: bootstrap → system credentials (is_system=True)
-- [ ] 젠슨: credential_service.list_for_user super_user 분기
-- [ ] 젠슨: tool_factory 정책 (일반 user는 system credential 거부)
-- [ ] 젠슨: templates/models mutation에 require_super_user
-- [ ] 젠슨: 모든 mutation 라우터에 CSRF 검증
-- 검증: `cd backend && uv run pytest tests/test_csrf.py tests/test_multiuser_isolation.py -v`
-- done-when: 격리 매트릭스 7개 시나리오 모두 통과
+## M3: Slice D — Credential Definitions + Binding
+- [ ] 젠슨: app/credentials/definitions/{srt_account,ktx_account,foresttrip_account,kipris_plus_api,dart_api,odsay_api,coupang_partners,k_skill_proxy}.py
+- [ ] 젠슨: app/marketplace/credential_requirements.py (env injection plan)
+- [ ] 젠슨: routers/skills.py에 credential-bindings 엔드포인트 추가
+- 검증: `cd backend && uv run pytest tests/test_credential_definitions.py tests/test_skill_bindings.py -v`
+- done-when: owner/definition_key 검증, needs_setup 응답 정확
 - 상태: pending
 
-## M4: 디자인 + 프론트엔드 인증 (Phase 7)
-- [ ] 팀쿡: 로그인/회원가입/사이드바 디자인 스펙 (와이어프레임 + 컴포넌트 목록)
-- [ ] 저커버그: `(auth)` route group + login/register 페이지
-- [ ] 저커버그: `lib/auth/{csrf,session}.ts` + useAuth hook + AuthGuard
-- [ ] 저커버그: `lib/api/client.ts` 수정 — credentials:include, CSRF, 401 auto-refresh deduplication
-- [ ] 저커버그: `middleware.ts` — 보호 라우트 + login/register 양방향 redirect
-- [ ] 저커버그: 사이드바/헤더 user 정보 + 로그아웃
+## M4: Slice B — Install
+- [ ] 젠슨: app/marketplace/install_service.py
+- [ ] 젠슨: POST install + update + DELETE installation
+- [ ] 젠슨: install_mode 처리
+- 검증: `cd backend && uv run pytest tests/test_marketplace_install.py -v`
+- done-when: 설치가 user-owned skills 생성, installation source 추적
+- 상태: pending
+
+## M5: Slice E — Runtime Mount + Credential Injection (보안 critical)
+- [ ] 젠슨: executor.py:build_agent 패치 (per-thread copytree)
+- [ ] 젠슨: _create_skill_execute_tool 시그니처 변경 + env injection
+- [ ] 젠슨: app/marketplace/redaction.py + streaming.py/tool result/exception에 적용
+- [ ] 젠슨: fail-fast missing credential
+- [ ] 젠슨: stale runtime root cleanup
+- 검증: `cd backend && uv run pytest tests/test_runtime_isolation.py tests/test_credential_injection.py tests/test_redaction.py -v`
+- done-when: 미선택 skill 차단, mapped env만 노출, log/SSE redacted
+- 상태: pending
+
+## M6: Slice C — Publish + Secret Scan
+- [ ] 젠슨: app/marketplace/secret_scan.py + publish_service.py
+- [ ] 젠슨: POST from-skill / versions/from-skill / ACL / disable 라우터
+- [ ] 젠슨: routers/skills.py:upload에 secret_scan 적용 (회귀 가드)
+- 검증: `cd backend && uv run pytest tests/test_publish.py tests/test_secret_scan.py -v`
+- done-when: secret 거부, immutable version, ACL 강제
+- 상태: pending
+
+## M7: Slice F — k-skill Importer
+- [ ] 젠슨: app/marketplace/k_skill_importer.py + k_skill_requirements.py (curated map)
+- [ ] 젠슨: app/scripts/sync_k_skill.py CLI
+- [ ] 젠슨: app/config.py에 k_skill_* 4개 settings
+- 검증: dry-run 실행 + `uv run pytest tests/test_k_skill_importer.py -v`
+- done-when: idempotent sync, 단일 실패가 전체 중단 안 함
+- 상태: pending
+
+## M8: Slice G — Frontend Marketplace UI
+- [ ] 팀쿡: docs/design-docs/marketplace-ui-spec.md
+- [ ] 저커버그: /marketplace 페이지 + install/publish wizard
+- [ ] 저커버그: lib/api/marketplace.ts + hooks
+- [ ] 저커버그: /skills, /mcp-servers에 origin/publication badge
 - 검증: `cd frontend && pnpm build && pnpm lint`
-- done-when: 빌드 통과 + 수동 로그인 플로우 동작
+- done-when: 빌드 통과 + 카드 CTA 동작
 - 상태: pending
 
-## M5: AI runtime 정비 + 마이그레이션 스크립트 (Phase 6 + 8)
-- [ ] 젠슨: AgentConfig.user_id 필수화
-- [ ] 젠슨: services/user_service.cleanup_user_resources (LangGraph checkpoint 정리)
-- [ ] 젠슨: scripts/migrate_mock_to_real_user.py 작성
-- 검증: `cd backend && uv run pytest tests/test_user_cleanup.py -v`
-- done-when: 사용자 삭제 시 conversation/checkpoint까지 정리, 마이그레이션 스크립트 dry-run 성공
-- 상태: pending
-
-## M6: 통합 검증 + 보안 체크 (Phase 9)
-- [ ] 베조스: multi-user 격리 매트릭스 자동 테스트 (7개 시나리오)
-- [ ] 베조스: CSRF mutation 테스트
-- [ ] 베조스: refresh token replay 감지 테스트
-- [ ] 베조스: 보안 체크리스트 (cookie secure, CORS, JWT secret, OWASP)
-- [ ] 베조스: tasks/lessons.md + docs/QUALITY_SCORE.md 업데이트
+## M9: 통합 검증 + HANDOFF
+- [ ] 베조스: E2E (PRD §10.1~10.7) + permission matrix + runtime isolation + secret safety
+- [ ] 베조스: tasks/lessons.md + docs/QUALITY_SCORE.md
+- [ ] 사티아: HANDOFF.md + docs/ARCHITECTURE.md 정리
 - 검증: `cd backend && uv run pytest -v && cd ../frontend && pnpm build && pnpm lint`
-- done-when: 전체 테스트 그린 + 보안 체크 PASS
-- 상태: pending
-
-## M7: 운영 준비 + HANDOFF (Phase 10)
-- [ ] 사티아: `.env.example` 업데이트 (JWT secret, cookie 설정 등)
-- [ ] 사티아: CORS 운영 설정 강화
-- [ ] 사티아: HANDOFF.md 작성
-- [ ] 사티아: docs/ARCHITECTURE.md 멀티유저 섹션 추가
-- 검증: `test -f HANDOFF.md && grep -q multiuser docs/ARCHITECTURE.md`
-- done-when: 다음 세션이 컨텍스트 없이 이어받을 수 있음
+- done-when: Phase 1 출시 게이트(PRD §13) 8개 PASS
 - 상태: pending
 
 ---
 
-## 🚦 마일스톤 의존 그래프
+## 마일스톤 의존 그래프
 
 ```
-M1 (셋업)
- ├── M2 (백엔드 코어) ──┐
- │                      ├── M5 (AI runtime + 마이그)
- ├── M3 (시드 + audit) ─┤
- │                      │
- └── M4 (FE) ───────────┴── M6 (통합 검증) ── M7 (운영 + HANDOFF)
+M1 ─ M2 ─┬─ M3 ─┐
+         └─ M4 ─┴── M5 ── M6 ── M7 ── M8 ── M9
 ```
 
-**병렬 가능**: M1 완료 후 M2/M3/M4를 병렬 진행 (파일 경계 분리)
-**Critical Path**: M1 → M2 → M5 → M6 → M7
+**병렬 가능**: M3/M4는 M2 완료 후 병렬. M8(frontend)은 M5/M6 완료 후 backend stable 상태에서.
+**Critical Path**: M1 → M2 → M4 → M5 → M9
+
+---
+
+## 컨텍스트 가드
+
+- 슬라이스 시작 전 progress.txt 반드시 읽기
+- verify 통과 없이 완료 마킹 금지 (Ralph: 검증 없이 완료 없음)
+- 3회 실패 → 사티아에게 ESCALATION
+- 컨텍스트 오염 신호 → progress.txt 덤프 → 리스폰

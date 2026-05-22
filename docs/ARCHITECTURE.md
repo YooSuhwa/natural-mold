@@ -820,3 +820,301 @@ User (1) ──────┬──▶ (N) Agent
 - `user_id` 컬럼명은 그대로 유지 (의미: "primary owner").
 - 권한 검증은 가능하면 service 레이어에 일원화.
 
+
+---
+
+## Marketplace Resources (ADR-017, Phase 1 — Skill)
+
+> 본 섹션은 [ADR-017 — Marketplace Resources](design-docs/adr-017-marketplace-resources.md)와 `docs/marketplace-resources-prd.md` v0.2 / `docs/marketplace-resources-spec.md` v0.1의 적용 결과를 요약한다. 컬럼/스키마/CHECK constraint/에러 코드 등 상세는 ADR-017 및 Spec을 참조.
+
+### 핵심 개념
+
+- **Marketplace Item**: 공유 가능한 logical 항목 (resource_type ∈ `agent|mcp|skill`, owner + visibility + `is_listed`).
+- **Marketplace Version**: 설치 가능한 immutable snapshot (`payload`, `storage_path`, `content_hash`, `credential_requirements`, `execution_profile` 포함). publish 후 수정 불가.
+- **Installation**: 사용자가 version을 자기 계정에 가져온 기록. installed resource(`agents`/`mcp_servers`/`skills`)와 1:N으로 연결.
+- **Installed Resource**: 사용자 계정에 실제로 설치되어 실행되는 리소스. 기존 `agents`/`mcp_servers`/`skills` 테이블 그대로 사용 (Skill에 12개 컬럼 추가).
+- **Origin / Publication state**: 모든 installed resource는 origin badge(`created_by_me | imported_by_me | built_in_k_skill | shared_with_me | community | system_seed`)와 publication badge(`not_published | draft | published_{private|restricted|public_listed|public_unlisted|unlisted} | disabled`)를 동시에 표시.
+
+### 데이터 모델 매핑
+
+신규 6개 도메인 엔티티 + 기존 `skills`/`agent_skills` 컬럼 확장.
+
+| 엔티티 | 테이블 | 마이그레이션 | 역할 |
+|--------|--------|--------------|------|
+| MarketplaceItem | `marketplace_items` | m40 | item-level metadata + visibility + `is_listed` (super_user 토글) + `latest_version_id` |
+| MarketplaceItemACL | `marketplace_item_acl` | m40 | restricted visibility의 user 단위 ACL (`view`/`install`/`manage`) |
+| MarketplaceVersion | `marketplace_versions` | m40 | immutable snapshot. `payload_kind ∈ {skill_package, agent_spec, mcp_template}` |
+| MarketplaceInstallation | `marketplace_installations` | m40 | user → item → version → installed_*_id. `install_status ∈ {active, needs_setup, disabled, uninstalled}`, `is_dirty` |
+| MarketplacePublicationLink | `marketplace_publication_links` | m40 | 내 리소스 ↔ 내가 publish한 item 역참조 (resource_type 별 UNIQUE) |
+| Skill 컬럼 확장 | `skills` ALTER | m41 | 12개 컬럼: `is_system`, `source_kind`, `source_marketplace_item_id`, `source_marketplace_version_id`, `source_commit`, `credential_requirements`, `execution_profile`, `origin_kind`, `origin_user_id`, `origin_marketplace_item_id`, `origin_marketplace_version_id`, `is_dirty` |
+| AgentSkillLink 컬럼 확장 | `agent_skills` ALTER | m42 | `config JSON` — `{"credential_bindings": {<requirement_key>: <credential_id>}}` |
+| SkillCredentialBinding | `skill_credential_bindings` | m43 | (skill_id, user_id, requirement_key, credential_id). Phase 1은 `scope='skill'`만 사용 |
+
+Circular FK 처리 (m40 내): `marketplace_items.latest_version_id` → `marketplace_versions.id`는 두 테이블 생성 후 `ALTER TABLE ... ADD CONSTRAINT`로 추가.
+
+### 데이터 모델 관계 (Phase 1 이후)
+
+```
+User (1) ────┬──▶ (N) MarketplaceItem (owner)
+             ├──▶ (N) MarketplaceItemACL (target)
+             ├──▶ (N) MarketplaceInstallation (installer)
+             ├──▶ (N) MarketplacePublicationLink
+             ├──▶ (N) Skill                ← user_id (NOT NULL)
+             └──▶ (N) Credential
+
+MarketplaceItem (1) ──┬──▶ (N) MarketplaceVersion
+                      ├──▶ (N) MarketplaceItemACL
+                      ├──▶ (N) MarketplaceInstallation
+                      └──▶ (N) MarketplacePublicationLink
+
+MarketplaceVersion (N) ──▶ (1) MarketplaceItem
+                  (1) ──▶ (0..N) MarketplaceInstallation (RESTRICT)
+
+MarketplaceInstallation ──┬── installed_agent_id | installed_mcp_server_id | installed_skill_id
+                          └── (resource_type별로 정확히 하나, CHECK constraint)
+
+Skill ─── source_marketplace_item_id  ▶ MarketplaceItem
+       ── source_marketplace_version_id ▶ MarketplaceVersion
+       ── origin_user_id ▶ User
+       ── (N) SkillCredentialBinding ──▶ (1) Credential
+       ── (N) AgentSkillLink.config.credential_bindings ──▶ (1) Credential (런타임 override)
+```
+
+### Slice A~G 데이터 흐름
+
+본 Phase 1은 7개 슬라이스로 분할된다 (Spec §0, §19 handoff order: A → B → D → E → C → F → G).
+
+#### Slice A — Read Catalog
+
+```
+GET /api/marketplace/items                  Frontend marketplace 페이지
+  │
+  ▼
+routers/marketplace.py
+  │  ├─ require Depends(get_current_user)
+  │  └─ verify_csrf 불필요 (read)
+  ▼
+marketplace/access.py:can_view_item(user, item) → bool
+  │  rules: owner | ACL | (public AND is_listed) | unlisted(by id) | system
+  ▼
+marketplace/service.py:list_items(...)
+  │  ├─ filter: resource_type, visibility, category, installed, install_state, support_level, source_kind, is_listed
+  │  └─ default filter (non super_user): is_listed=True OR system OR owner=current_user OR ACL
+  ▼
+marketplace/origin_service.py:derive_summaries(...)
+  │  → CredentialSummaryOut, ResourceOriginSummaryOut, ResourcePublicationSummaryOut, MarketplaceInstallationSummary
+  ▼
+schemas.py:MarketplaceItemOut → JSON
+```
+
+비인가 detail/install은 모두 404 (`marketplace_install_forbidden`/`marketplace_item_not_found`) — enumeration oracle 방지.
+
+#### Slice B — Install
+
+```
+POST /api/marketplace/items/{item_id}/install   body: InstallMarketplaceItemIn
+  │  Depends(get_current_user) + Depends(verify_csrf)
+  ▼
+marketplace/install_service.py:install_item(...)
+  │  1. access.can_install_item(user, item) → fail-fast 404
+  │  2. Version resolve (없으면 latest)
+  │  3. Credential bindings 검증:
+  │       - credential.user_id == current_user.id
+  │       - credential.definition_key == requirement.definition_key
+  │       - system credential 거부
+  │  4. Package extract → temp 디렉토리 (data/skills/.staging/<install_id>/)
+  │  5. DB 트랜잭션:
+  │       skills row 생성 (source_*, origin_*, credential_requirements, execution_profile 채움)
+  │       marketplace_installations row 생성 (install_status = active | needs_setup)
+  │       skill_credential_bindings rows 생성
+  │  6. Temp → data/skills/<skill_id>/ move
+  │  7. commit
+  │  8. Audit log: marketplace.install
+  ▼
+MarketplaceItemOut (installation 필드 갱신)
+```
+
+`install_mode ∈ {reuse_or_update, new_copy, overwrite_existing}` — 기본 `reuse_or_update`는 기존 installation 반환 + state refresh.
+
+#### Slice C — Publish + Secret Scan
+
+```
+POST /api/marketplace/items/from-skill/{skill_id}   body: PublishSkillIn
+  │
+  ▼
+marketplace/publish_service.py:publish_skill(...)
+  │  1. Skill ownership 확인 (Skill.user_id == current_user.id)
+  │  2. Package 빌드:
+  │       text skill: SKILL.md 단일 파일로 패키지화
+  │       package skill: storage_path 복사
+  │  3. marketplace/secret_scan.py:scan_package(staging_dir)
+  │       SECRET_FILE_PATTERNS: .env, *.pem, *.key, *.p12, cookies*, token*
+  │       SECRET_CONTENT_PATTERNS: sk-..., -----BEGIN PRIVATE KEY-----, AWS_SECRET_ACCESS_KEY, GOOGLE_APPLICATION_CREDENTIALS
+  │       → finding 있으면 400 marketplace_secret_detected
+  │  4. Item 없으면 생성, 있으면 ownership 확인
+  │  5. Immutable version 생성 (content_hash 비교, 중복이면 reject 또는 reuse)
+  │  6. items.latest_version_id 업데이트
+  │  7. restricted면 ACL row 생성
+  │  8. marketplace_publication_links upsert
+  │  9. Audit log: marketplace.publish
+```
+
+`secret_scan.py`는 `routers/skills.py:upload`에도 적용 — `.skill` ZIP 업로드 회귀 가드.
+
+#### Slice D — Credential Definitions + Binding
+
+신규 8개 credential definition (`backend/app/credentials/definitions/`):
+
+| definition_key | Fields | Used by | Phase 1 first wave |
+|----------------|--------|---------|----|
+| `srt_account` | `username`, `password` | srt-booking | ✅ |
+| `ktx_account` | `username`, `password` | ktx-booking | ✅ |
+| `foresttrip_account` | `username`, `password` | foresttrip-vacancy | hold |
+| `kipris_plus_api` | `api_key` | korean-patent-search | ✅ |
+| `dart_api` | `api_key` | k-dart | ✅ |
+| `odsay_api` | `api_key` | korean-transit-route | hold |
+| `coupang_partners` | `access_key`, `secret_key` | coupang-product-search (optional) | hold |
+| `k_skill_proxy` | `base_url`, optional `api_key` | hosted proxy skills | proxy only |
+
+기존 14개 정의(anthropic/openai/google_genai/azure_openai/openrouter/openai_compatible/google_search/naver_search/google_workspace_oauth2/http_bearer/http_basic/http_api_key/mcp_oauth2 + 1)는 변경 없이 유지. `field_keys` 캐시(ADR-007)는 신규 정의에도 자동 호환.
+
+```
+GET    /api/skills/{skill_id}/credential-requirements   → version에서 복사된 requirement 목록
+GET    /api/skills/{skill_id}/credential-bindings        → 현재 binding
+PUT    /api/skills/{skill_id}/credential-bindings/{key}  body: {credential_id}
+DELETE /api/skills/{skill_id}/credential-bindings/{key}
+```
+
+검증: skill ownership + requirement key 존재 + credential ownership + `definition_key` 일치 + system credential 거부.
+
+#### Slice E — Runtime Mount + Credential Injection (보안 critical)
+
+기존 `executor.py:113-195`의 `_create_skill_execute_tool` env dict는 PATH/PYTHONPATH/HOME/SKILL_OUTPUT_DIR/OUTPUTS_DIR만 — credential 미주입. `executor.py:544-571`은 `skills=["/skills/"]` broad mount — 미선택 skill 노출. 이 두 빈 구멍을 메운다.
+
+**변경 1 — per-thread skill mount** (`executor.py:build_agent`):
+
+```text
+runtime_skills_root = _DATA_DIR / "runtime" / cfg.thread_id / "skills"
+for descriptor in cfg.skill_descriptors:
+    target = runtime_skills_root / descriptor.slug
+    shutil.copytree(descriptor.original_storage_path, target, symlinks=False)
+    descriptor.storage_path = target
+
+skills_sources = [f"/runtime/{cfg.thread_id}/skills/"]
+backend = FilesystemBackend(root_dir=str(_DATA_DIR), virtual_mode=True)
+```
+
+**변경 2 — `_create_skill_execute_tool` 시그니처 + env injection**:
+
+```text
+_create_skill_execute_tool(output_dir, thread_id, skill_descriptors)
+  ├─ slug → descriptor 매핑 (없으면 "Error: skill not attached to this agent")
+  ├─ resolved.is_relative_to(runtime_root) 검증
+  ├─ env = base_env + 각 descriptor.credential_bindings의 env_map 주입
+  └─ subprocess 결과/exception은 redact_credential_values로 마스킹
+```
+
+**변경 3 — Redaction contract** (`marketplace/redaction.py`):
+
+```text
+redact_credential_values(text, mapped_env_vars) → text  (env value를 <redacted:NAME>으로 교체)
+redact_keys(payload) → payload                          (password/api_key/secret/token/access_key/refresh_token 키 값을 <redacted>로 교체)
+```
+
+호출 지점: `execute_in_skill` 반환, `streaming.py`의 tool_call_result 페이로드, exception detail 변환, 모든 raw log statement.
+
+**Override 우선순위**:
+1. `agent_skills.config.credential_bindings.<key>` (agent-skill 단위 override)
+2. `skill_credential_bindings`의 `(skill_id, user_id, key, scope='skill')` 기본값
+3. 없으면 `marketplace_installations.install_status='needs_setup'` → runtime fail-fast (409 `marketplace_credential_required`)
+
+**Cleanup**: conversation 종료 시 `data/runtime/<thread_id>/` 제거. 서버 시작 lifespan에서 1시간 이상 stale GC.
+
+#### Slice F — k-skill Importer (super_user CLI 전용)
+
+```
+uv run python -m app.scripts.sync_k_skill --ref <commit> [--dry-run] [--only ...] [--keep-deprecated]
+  │
+  ▼
+marketplace/k_skill_importer.py
+  │  1. git clone/fetch (k_skill_sync_dir, k_skill_upstream_url, k_skill_upstream_ref)
+  │  2. Discovery (validate-skills.sh exclusion mirror)
+  │  3. 각 skill 디렉토리 처리:
+  │       - staging 디렉토리로 복사
+  │       - secret_scan.py 거부 시 skip (전체 sync 계속)
+  │       - .skill ZIP 빌드 → packager.extract_package() 검증
+  │       - data/marketplace/k-skill/<skill-name>/<source_commit>/ 저장
+  │  4. Frontmatter + computed metadata 추출 (content_hash, source_commit, source_path, has_scripts, file_count, size_bytes, execution_profile)
+  │  5. K_SKILL_REQUIREMENT_MAP에서 credential_requirements 매핑 (curated source of truth)
+  │  6. marketplace_items / marketplace_versions upsert (idempotent: content_hash 동일 → 새 version 생성 안 함)
+  │  7. 사라진 upstream skill → status=deprecated (--keep-deprecated로 회피)
+  │  8. 결과 보고서 출력 (성공/skip/실패 목록)
+```
+
+신규 settings (`app/config.py`):
+- `k_skill_upstream_url = "https://github.com/NomaDamas/k-skill.git"`
+- `k_skill_upstream_ref = "main"`
+- `k_skill_sync_dir = "./data/upstreams/k-skill"`
+- `k_skill_builtin_storage_dir = "./data/marketplace/k-skill"`
+
+Web UI 노출 안 함. Admin API는 status 조회(`POST /api/marketplace/admin/k-skill/sync`)만 제공.
+
+#### Slice G — Frontend Marketplace UI
+
+`/marketplace` 페이지 + install/publish wizard. `/skills`, `/mcp-servers`에 origin/publication badge 추가. lib/api/marketplace.ts + TanStack Query hooks. (저커버그 DRI — 본 ADR 범위 밖. 상세는 `marketplace-ui-spec.md`(M8a))
+
+### Skill Runtime Mount 변경 요약 (Before/After)
+
+| 측면 | M3~M5 (현재) | ADR-017 Slice E 이후 |
+|------|--------------|----------------------|
+| Mount root | `["/skills/"]` (broad) — 같은 사용자의 모든 skill | `[f"/runtime/{thread_id}/skills/"]` (per-thread, 선택된 skill만 copytree) |
+| `execute_in_skill` 경로 검증 | `(_DATA_DIR / skill_directory.strip("/")).resolve()` — broad | `(runtime_root / Path(skill_directory).name).resolve()` + `is_relative_to(runtime_root)` |
+| env dict | PATH, PYTHONPATH, HOME, SKILL_OUTPUT_DIR, OUTPUTS_DIR | + descriptor.credential_bindings의 env_map (예: `KSKILL_SRT_ID`, `KSKILL_SRT_PASSWORD`) |
+| 미선택 skill 노출 | 가능 (read_file로 다른 skill 본문 접근 가능) | 차단 (mount root에 없음) |
+| Cleanup | 없음 (data/skills/는 영속) | conversation 종료 시 runtime root 제거 + lifespan GC (>1h stale) |
+| SSE resume(ADR-011) | N/A | thread_id가 checkpoint 키와 동일 — 같은 root 재사용 |
+
+### API Surface 요약
+
+| 그룹 | Endpoints |
+|------|-----------|
+| Catalog | `GET /api/marketplace/items`, `GET /api/marketplace/items/{id}`, `GET /api/marketplace/items/{id}/versions`, `GET /api/marketplace/versions/{id}` |
+| Install | `POST /api/marketplace/items/{id}/install`, `POST /api/marketplace/installations/{id}/update`, `DELETE /api/marketplace/installations/{id}` |
+| Publish/Manage | `POST /api/marketplace/items/from-skill/{skill_id}`, `POST /api/marketplace/items/{id}/versions/from-skill/{skill_id}`, `PATCH /api/marketplace/items/{id}`, `POST /api/marketplace/items/{id}/acl`, `DELETE /api/marketplace/items/{id}/acl/{user_id}`, `POST /api/marketplace/items/{id}/disable`, `GET /api/marketplace/publication-status` |
+| Admin (super_user) | `POST /api/marketplace/admin/items/{id}/listed`, `POST /api/marketplace/admin/items/{id}/disable`, `POST /api/marketplace/admin/k-skill/sync`, `GET /api/marketplace/admin/moderation` |
+| Skill Credential Bindings | `GET|PUT|DELETE /api/skills/{id}/credential-bindings[/{key}]`, `GET /api/skills/{id}/credential-requirements` |
+
+모든 mutation은 `Depends(get_current_user) + Depends(verify_csrf)`. 관리자 라우터는 추가로 `Depends(require_super_user)`.
+
+에러 코드(`marketplace_*`)는 Spec §10.7 / ADR-017 §5 참조. 비인가 detail/install은 404 통일.
+
+### 의존성 방향 (Phase 1 추가분)
+
+```
+routers/marketplace.py ──▶ marketplace/service,access,install_service,publish_service,origin_service
+                       ──▶ marketplace/schemas (Pydantic)
+                       ──▶ models/marketplace, models/skill, models/credential
+
+marketplace/install_service ──▶ skills/packager (재사용)
+                              ──▶ marketplace/secret_scan
+                              ──▶ marketplace/credential_requirements
+
+marketplace/publish_service ──▶ skills/packager, skills/inspector
+                              ──▶ marketplace/secret_scan
+
+marketplace/k_skill_importer ──▶ marketplace/secret_scan, marketplace/credential_requirements
+                              ──▶ marketplace/k_skill_requirements (curated map)
+                              ──▶ git (subprocess clone/fetch)
+
+agent_runtime/executor ──▶ marketplace/redaction (Slice E)
+                       ──▶ marketplace/credential_requirements (env injection plan)
+
+scripts/sync_k_skill ──▶ marketplace/k_skill_importer (CLI 진입점)
+
+routers/skills.py (upload) ──▶ marketplace/secret_scan (회귀 가드)
+                          ──▶ marketplace/origin_service.mark_installation_dirty (content 변경 시)
+```
+
+- 단방향 규칙은 그대로: `routers/` → `marketplace/` → `models/`.
+- `agent_runtime/`은 `marketplace/redaction`과 `marketplace/credential_requirements`만 import (service 레이어 우회 금지).
+- `marketplace/` 모듈끼리의 import 방향: `schemas ← access, service, install_service, publish_service, origin_service`; `secret_scan ← publish_service, install_service, k_skill_importer`; `redaction ← (agent_runtime, streaming)`; `credential_requirements ← (install_service, agent_runtime)`.

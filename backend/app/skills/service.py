@@ -169,6 +169,13 @@ async def create_package_skill(
             "frontmatter": info.metadata,
         },
         used_by_count=0,
+        # Task #15 / Spec §15.2 — ``.skill`` package uploads are external
+        # artefacts the user brought in. The m41 backfill stamps existing
+        # package rows ``imported_by_me``; new uploads must do the same
+        # at creation time. Without this override the column default
+        # ``created_by_me`` (m41) would mis-tag the row.
+        origin_kind="imported_by_me",
+        source_kind="import",
         last_modified_at=_now(),
     )
     db.add(skill)

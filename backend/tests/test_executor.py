@@ -423,7 +423,11 @@ async def test_execute_stream_passes_skills_and_memory(
             pass
 
     build_kwargs = mock_build.call_args[1]
-    assert build_kwargs["skills"] == ["/skills/"]
+    # ADR-017 Slice E (2026-05-19) — skill mount moved from the global
+    # ``/skills/`` to a per-thread ``/runtime/<thread_id>/skills/`` so
+    # one agent can never see another agent's selected skills
+    # (Spec §9). The ``_cfg`` fixture uses ``thread_id="t-1"``.
+    assert build_kwargs["skills"] == ["/runtime/t-1/skills/"]
     assert build_kwargs["memory"] == ["/agents/agent-123/AGENTS.md"]
     assert build_kwargs["backend"] is mock_fs_backend_cls.return_value
 

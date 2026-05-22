@@ -1,18 +1,134 @@
-[2026-05-09T00:00] satya PROJECT_START "Multi-User Authentication"
-[2026-05-09T00:00] satya BRANCH_CREATED feature/multiuser-auth (from main 52fd954)
-[2026-05-09T00:00] satya MILESTONE_CREATED M1,M2,M3,M4,M5,M6,M7
-[2026-05-09T00:00] satya TEAM_PLANNED 피차이+젠슨+팀쿡+저커버그+베조스 (Opus x5)
-[2026-05-09T01:30] pichai MILESTONE_DONE S0 ADR-016 작성 완료 + ARCHITECTURE.md 업데이트
-[2026-05-09T01:45] tim-cook MILESTONE_DONE S4 UI/UX 스펙 작성 완료
-[2026-05-09T00:42] bezos MILESTONE_DONE S1 삭제 분석 완료 — 9개 mock 흔적 + 5개 FK 변경 + 2개 라우터 가드 누락 식별, 예상 LOC 감소 ~50 (mock 35 + agent_creation_sessions dead table 15)
-[2026-05-09T10:00] jensen MILESTONE_DONE S2 백엔드 인증 코어 완료 — 19파일 변경/신규 (auth/ 4, models/ 5, services/ 2, routers/ 1, schemas/ 1, alembic m36, dependencies+config+main+pyproject), m36 마이그레이션 round-trip 검증 OK, /api/auth E2E (register/login/logout/refresh/me) 통과, CSRF/replay 가드 동작 확인
-[2026-05-09T01:05] jensen MILESTONE_DONE S3 시드/router/CSRF 정리 완료 — mock_user 흔적 0건 (config/main/bootstrap), bootstrap_system_credentials(db)로 시그니처 단순화, super_user 가드 6 endpoint(system credentials 5 + models mutation 3 = credentials.py + models.py), CSRF 가드 63/66 mutation endpoint (auth/login·register·refresh 제외), credential_service.create user_id None 강제 invariant 추가
-[2026-05-09T01:07] zuckerberg MILESTONE_DONE S5 프론트엔드 인증 완료 — 16파일 신규/수정 (proxy.ts, (auth)/{layout,login,register}, lib/auth/{csrf,session}, lib/api/{auth,client}, lib/hooks/useAuth, lib/types/user, components/auth/{LoginForm,RegisterForm,UserMenu,AuthGuard,OnboardingDialog,PasswordStrengthMeter,AuthAlert,auth-errors,session-expired-toast,use-super-user-welcome-toast}, providers/query-provider, layout/{app-layout,app-sidebar}, messages/ko.json), pnpm build PASS + pnpm lint PASS, 401 자동 refresh + dedup + sessionExpired toast/redirect 와이어드, Next.js 16 proxy.ts 컨벤션 준수
-[2026-05-09T01:17] jensen MILESTONE_DONE S6 AI runtime + cleanup + 마이그 스크립트 완료 — AgentConfig.__post_init__ 가드(agent_id+user_id 페어 강제), google_workspace_tools.py는 이미 S3 단계에서 환경변수 직접 참조 제거 완료(tools/definitions/* + credentials/google_workspace_oauth2 경로 사용), user_service에 cleanup_user_resources(LangGraph thread + refresh token revoke) + delete_user 추가, scripts/migrate_mock_to_real_user.py CLI 신규(dry-run/--delete-source 지원), tests/test_user_cleanup.py 6 케이스 PASS, 전체 lint clean
-[2026-05-09T11:00] bezos MILESTONE_DONE S7 통합 검증 + 보안 체크 완료 — 신규 5파일(test_auth_register, test_auth_login, test_auth_refresh, test_csrf, test_multiuser_isolation) + 보강(test_user_cleanup +2, conftest +raw_client/_bypass_verify_csrf, test_dependencies/test_credentials_llm_sync/test_shares_rate_limit_and_cache 마이그레이션 갭 패치) — 총 947 PASS / 0 FAIL / 3 xfailed (CRITICAL bug 2건 ESCALATION), 격리 매트릭스 10/10 PASS, CSRF 7/7 PASS, super_user 가드 PASS, cleanup 8/8 PASS, ruff PASS, pnpm lint+build PASS, mock_user grep 0건 — ESCALATIONS: (1) auth_service.authenticate 실패 path commit 누락 → failed_login_attempts 영구 0 → lockout 무력화, (2) rotate_refresh replay 시 _revoke_all_active commit 누락 → mass-revoke 미적용 → 도난 refresh 방어 무력화. 두 건 모두 backend/app/* 변경 필요라 사티아에게 ESCALATE. xfail strict 등록으로 회귀 가드 확보. 보안 체크리스트 tasks/security-checklist-multiuser-auth.md, lessons.md S8 섹션, QUALITY_SCORE.md Authentication 도메인 추가 완료. 판정: CONDITIONAL GO (escalation fix 후 deploy)
-[2026-05-09T01:43] jensen ESCALATION_RESOLVED auth_service 트랜잭션 경계 2건 fix — authenticate 실패 path / rotate_refresh replay 분기에 raise 전 await db.commit() 추가, xfail strict 가드 3건 제거 후 PASS 전환, 전체 950 PASS / 0 FAIL / 0 xfail (S7 947 → 950), ruff clean, 회귀 0건
-[2026-05-09T02:00] satya CORS_HARDENED env-driven cors_allowed_origins, allow_methods/allow_headers 명시
-[2026-05-09T02:05] satya HANDOFF_WRITTEN /Users/chester/dev/ref/natural-mold/HANDOFF.md 작성 — 운영자 필수 액션 3건 명시
-[2026-05-09T02:10] satya PROJECT_DONE Multi-User Authentication — 950 PASS, ESCALATION 해소, CONDITIONAL GO 판정
-[2026-05-09T02:00:33Z] code-reviewer REVIEW_DONE feature/multiuser-auth — 판정 CONDITIONAL_GO, 0 Critical / 4 High / 7 Minor
-[2026-05-09T02:25] satya REVIEW_FIX H3 templates.py에 get_current_user 추가 (인증 사용자만 카탈로그 조회) + M7 migrate 스크립트 --delete-source 분기에 cleanup_user_resources 호출 추가, ruff clean, 950 PASS 회귀 0건
+[2026-05-18T00:00] satya PROJECT_START Marketplace Resources Phase 1 (PRD v0.2 + Spec v0.1)
+[2026-05-18T00:00] satya WORKTREE_ENTER .claude/worktrees/marketplace-resources (branch worktree-marketplace-resources)
+[2026-05-18T00:00] satya ARCHIVE tasks/archive-multiuser-auth-2026-05 (이전 세션 CHECKPOINT/progress/AUDIT)
+[2026-05-18T00:01] satya MILESTONE_CREATED M1~M9 (Slice A~G + 셋업 + 통합)
+[2026-05-18T14:27] satya TEAM_SPAWN 피차이(M1-S0,S2) + 베조스(M1-S1) 병렬 스폰
+[2026-05-18T14:35] pichai STORY_START M1-S0 ADR-017 + ARCHITECTURE.md marketplace 섹션
+[2026-05-18T14:30] bezos STORY_START M1-S1 tasks/deletion-analysis.md 작성 시작
+[2026-05-18T15:05] pichai MILESTONE_DONE M1-S0 ADR-017 작성 (367 lines) + ARCHITECTURE.md Marketplace 섹션 추가 (75개 marketplace 언급)
+[2026-05-18T15:05] pichai STORY_START M1-S2 모듈 경계 + ORM 계약
+[2026-05-18T14:33] pichai MILESTONE_DONE M1-S0 ADR-017 + ARCHITECTURE.md marketplace 섹션 (236L + 75 hits)
+[2026-05-18T14:33] satya VERIFICATION_PASS M1-S0 검증 통과
+[2026-05-18T14:35] bezos MILESTONE_DONE M1-S1 tasks/deletion-analysis.md 작성 완료 (6 gaps 검증, 8 게이트 매트릭스, OI-1~5 등록, progress.txt에 7개 gotcha 추가)
+[2026-05-18T14:36] bezos MILESTONE_DONE M1-S1 deletion-analysis (executor.py 17 hits, 6 빈구멍, OI 5개)
+[2026-05-18T14:36] satya VERIFICATION_PASS M1-S1 검증 통과
+[2026-05-18T14:36] satya FACT_CHECK OI-1 credential definitions 실측 13개 확정 (PRD/progress.txt 14개는 오기)
+[2026-05-18T15:35] pichai MILESTONE_DONE M1-S2 marketplace-module-contracts.md (561 lines) — 11 modules + 6 ORM + 9 Pydantic schemas
+[2026-05-18T14:38] satya SPEC_PATCH OI-4 secret_scan boundary regex (sk-[A-Za-z0-9]{20,} + \\b)
+[2026-05-18T14:40] satya VERIFICATION_PASS M1-S1 deletion-analysis 통과. OI-1 13개 확정, OI-4 boundary regex 정정, OI-5 Spec §15.2 확인. OI-2/3은 Slice E 스폰 시 컨텍스트 주입.
+[2026-05-18T14:40] bezos IDLE M1-S1 완료. M2 Slice A(젠슨) 완료 후 회귀 테스트 8개 + access control 테스트 작성 대기.
+[2026-05-18T14:38] satya MILESTONE_COMPLETE M1 (S0+S1+S2) — 셋업 완료
+[2026-05-18T14:38] satya MILESTONE_START M2 Slice A (젠슨 스폰)
+[2026-05-18T14:40:41] jensen STAGE_START M2-stage1 alembic migrations m40~m43
+[2026-05-18T14:43:16] jensen STAGE_DONE M2-stage1 alembic reversible upgrade head/downgrade -4/upgrade head ok
+[2026-05-18T14:43:16] jensen STAGE_START M2-stage2 ORM models marketplace.py + skill.py expansion
+[2026-05-18T14:47:11] jensen STAGE_DONE M2-stage2 ORM models marketplace+skill, ruff clean, skill tests pass
+[2026-05-18T14:47:11] jensen STAGE_START M2-stage3 marketplace module (access/schemas/origin_service/service)
+[2026-05-18T14:50:14] jensen STAGE_DONE M2-stage3 marketplace module access/schemas/origin_service/service ruff clean
+[2026-05-18T14:50:14] jensen STAGE_START M2-stage4 routers/marketplace.py + main.py registration
+[2026-05-18T14:51:50] jensen STAGE_DONE M2-stage4 router mounted + 401 smoke
+[2026-05-18T14:51:50] jensen STAGE_START M2-stage5 SkillResponse origin/publication/installation embed
+[2026-05-18T14:55:40] jensen STAGE_DONE M2-stage5 SkillResponse embed, all 972 tests pass
+[2026-05-18T14:56:20] jensen MILESTONE_DONE M2 Slice A: alembic reversible, ORM 6+12, marketplace module, router 4 endpoints, SkillResponse embed, 972 tests pass
+[2026-05-18T15:00] jensen MILESTONE_DONE M2 Slice A (catalog read API + origin/publication embed). 972 tests PASS.
+[2026-05-18T15:00] bezos STORY_START M2 회귀 테스트 + access control 테스트 작성 진입.
+[2026-05-18T14:57] jensen MILESTONE_DONE M2 Slice A (m40-m43 reversible + ORM 6개 + marketplace 모듈 + 라우터 + skills 응답임베드, 972/972 PASS, ruff 0)
+[2026-05-18T14:57] satya VERIFICATION_PASS M2 Slice A (test_skills 21/21 회귀 통과)
+[2026-05-18T14:57] satya PARALLEL_DISPATCH bezos(회귀 테스트) + jensen(M3 Slice D)
+[2026-05-18T15:00:45] jensen STAGE_START M3-stage1 8 new credential definitions
+[2026-05-18T15:02:41] jensen STAGE_DONE M3-stage1 8 new credential definitions (21 total)
+[2026-05-18T15:02:41] jensen STAGE_START M3-stage2 credential_requirements module
+[2026-05-18T15:04:41] jensen STAGE_DONE M3-stage2 credential_requirements module + 2 error codes
+[2026-05-18T15:04:41] jensen STAGE_START M3-stage3 skill binding API (4 endpoints)
+[2026-05-19T10:30] bezos MILESTONE_DONE M2-회귀+access 테스트 작성 완료 — test_skills_regression.py (8), test_marketplace_access.py (25), test_marketplace_listing.py (7). 전체 backend pytest 1012 PASS (이전 972 + 40 신규, 회귀 0). ruff clean.
+[2026-05-18T15:06:23] jensen STAGE_DONE M3-stage3+4 4 binding endpoints + needs_setup derivation
+[2026-05-18T15:06:23] jensen STAGE_START M3-stage5 test files credential_definitions + skill_bindings
+[2026-05-19T10:45] bezos STORY_START Task #13 사티아 지시에 따라 파일명 align(test_skills_api_regression.py) + test_marketplace_migration.py 추가 + upload origin_kind/response shape/prompt block 시나리오 보강
+[2026-05-18T15:08] bezos MILESTONE_DONE M2-tests 회귀+access+listing 40개 PASS (1012/1012)
+[2026-05-18T15:08] satya VERIFICATION_PASS M2-tests 통과, 그러나 Spec §10.1 default filter 미강제 발견
+[2026-05-18T15:08] satya COURSE_CORRECTION M2.5 추가 — listing default filter spec compliance (M3 완료 후 처리)
+[2026-05-18T15:11:13] jensen MILESTONE_DONE M3 Slice D: 8 new definitions, credential_requirements module, 4 binding endpoints, needs_setup derivation, 15 new tests + 1027 total PASS, ruff 0
+[2026-05-18T15:12] jensen MILESTONE_DONE M3 Slice D (8 definitions + credential_requirements + 4 binding endpoints, 1027/1027 PASS)
+[2026-05-18T15:12] satya VERIFICATION_PASS M3 Slice D (test_credential_definitions+test_skill_bindings+test_skills 36/36)
+[2026-05-18T15:12] satya DISPATCH jensen(M2.5 service.py + M4 Slice B) + bezos(listing test 정정)
+[2026-05-18T15:13:45] jensen STAGE_START M2.5 course correction (Spec §10.1 listing default)
+[2026-05-19T10:55] bezos MILESTONE_DONE Task #13 보강 — test_skills_api_regression.py (15: 8 prev + 7 new, 1 xfailed), test_marketplace_migration.py (11 new). 전체 1043 PASS + 1 xfailed (OI-5 service 버그). ruff clean.
+[2026-05-19T10:55] bezos QUESTION_MARK 젠슨 — service.create_package_skill에서 origin_kind='imported_by_me' 미설정. m41 backfill은 기존 row만 처리. 신규 .skill 업로드는 column default 'created_by_me'로 들어감. Spec §15.2 + OI-5 위반. xfail test pin됨.
+[2026-05-18T15:15:18] jensen STAGE_DONE M2.5 service.py listing default fixed (unlisted excluded, public requires is_listed=True unless ?is_listed=false override)
+[2026-05-18T15:15:18] jensen STAGE_START M4 Slice B install_service
+[2026-05-18T15:15] jensen MILESTONE_DONE M2.5 service.py catalog default filter (public+listed only, unlisted list 제외), 36/36 회귀
+[2026-05-18T15:15] satya MILESTONE_START M4 Slice B (jensen 진행) + M2.5 test 정정 (bezos)
+[2026-05-19T11:10] bezos STORY_START Task #14 listing test 정정 — 젠슨 catalog 기본 동작 변경(unlisted 제외) 반영
+[2026-05-18T15:16] bezos QUESTION_PROTOCOL service.py:153 create_package_skill origin_kind 누락 (Spec §15.2 위반, xfail로 pin됨)
+[2026-05-18T15:16] bezos PARTIAL_DONE M2 회귀 보강 (15 regression + 11 migration tests, 1043/1043 + 1 xfailed)
+[2026-05-19T11:25] bezos MILESTONE_DONE Task #14 — listing test 정정. test_marketplace_listing.py 4 클래스 12 tests (이전 7→12). 핵심: default가 unlisted+public-unlisted 제외, ?is_listed=true는 explicit narrow, ?is_listed=false는 moderation 큐 (super_user 시나리오), visibility=unlisted는 list 항상 제외 + detail 접근만. 전체 1046 PASS + 1 xfailed. access test는 predicate/detail 레이어로 변경 영향 없음 — review 통과.
+[2026-05-18T15:21] bezos MILESTONE_DONE M2.5 listing test 정정 (12 tests, 4 classes, 1046 PASS + 1 xfailed)
+[2026-05-18T15:21] satya VERIFICATION_PASS M2.5 Course Correction 완료 (jensen service.py + bezos listing tests 동기 정정)
+[2026-05-18T15:21:52] jensen STAGE_DONE M4-stage1+2+3 install_service + 3 router endpoints + ruff clean
+[2026-05-18T15:21:52] jensen STAGE_START M4-stage4 install integration smoke tests
+[2026-05-18T15:26:52] jensen MILESTONE_DONE M4 Slice B: install_service + 3 router endpoints + 6 integration tests, 1052 PASS, ruff 0
+[2026-05-18T15:28] jensen MILESTONE_DONE M4 Slice B (install_service + 3 endpoints + 6 install tests, 1052/1052 PASS)
+[2026-05-18T15:28] satya VERIFICATION_PASS M4 Slice B
+[2026-05-18T15:28] satya MILESTONE_START M5 Slice E (보안 critical) — jensen + bezos 병렬
+[2026-05-18T15:29:33] jensen STAGE_START M5-stage1 SkillToolContext + executor refactor
+[2026-05-19T11:40] satya DISPATCH bezos(M5 Slice E 보안 테스트 3종 동기 작성)
+[2026-05-19T11:40] bezos STORY_START M5 Slice E — test_runtime_isolation.py + test_credential_injection.py + test_redaction.py 골격 세팅 (젠슨 단계별 ack 시 본격 단언 채움)
+[2026-05-18T15:33:11] jensen STAGE_DONE M5-stage1 SkillToolContext dataclass + signature change + ctx builder, behavior preserved
+[2026-05-18T15:33:35] jensen STAGE_START M5-stage2 per-thread runtime root + slug enforcement + cleanup
+[2026-05-19T11:55] bezos STAGE_DONE M5 골격 — 3 파일 신규 (runtime_isolation 6+1 smoke / credential_injection 8+1 smoke / redaction 9+3 smoke). 21 skipped placeholder + 1 xfail strict (redaction module). 전체 1056 PASS + 2 xfailed.
+[2026-05-18T15:36:57] jensen STAGE_DONE M5-stage2 per-thread copytree + slug enforcement + cleanup retention job + prompt prefix rewrite
+[2026-05-18T15:37:30] jensen STAGE_START M5-stage3 credential env injection + fail-fast
+[2026-05-19T12:10] bezos STAGE_START M5 stage2 enabling — test_runtime_isolation.py 6 placeholder를 본격 단언으로 전환
+[2026-05-18T15:43:20] jensen STAGE_DONE M5-stage3 credential resolve + Cipher V2 decrypt + env injection + fail-fast
+[2026-05-18T15:43:50] jensen STAGE_START M5-stage4 redaction module + integration points
+[2026-05-19T12:20] bezos STAGE_DONE M5 stage2 — tests/test_runtime_isolation.py 10/10 PASS (per-thread root + selected-skill mount + traversal rejection + retention cleanup + cross-thread prefix-spoof 가드)
+[2026-05-19T12:20] bezos QUESTION_MARK 젠슨 — tests/test_executor.py:426 `assert build_kwargs["skills"] == ["/skills/"]` 가 Stage 2 패치로 깨짐. 실제 mount는 `["/runtime/<thread>/skills/"]`. 테스트 update 필요 (existing 영역, 베조스 수정 불가)
+[2026-05-19T12:35] bezos STAGE_START M5 stage3 enabling — test_credential_injection.py 8 placeholder를 본격 단언으로 전환
+[2026-05-18T15:50:21] jensen MILESTONE_DONE M5 Slice E: SkillToolContext + per-thread copytree + credential injection + redaction, 1065 PASS, ruff 0
+[2026-05-18T15:51] jensen MILESTONE_DONE M5 Slice E (4 stages: SkillToolContext + per-thread mount + credential injection + redaction, 1065 PASS)
+[2026-05-18T15:51] satya VERIFICATION_PASS M5 Slice E 보안 critical 통과
+[2026-05-18T15:51] satya BOUNDARY_OVERRIDE_OK test_executor.py:73/426 fix (jensen 1줄 수정 컨펌)
+[2026-05-19T12:55] bezos STAGE_DONE M5 stage3 — test_credential_injection.py 10/10 PASS (fail-fast 409, optional skip, mapped-only env, override 우선, fallback, ownership 드리프트 silent missing, decrypt isolation, surface 가드 2). 전체 1074 PASS + 2 xfailed.
+[2026-05-19T13:10] bezos STAGE_START M5 stage4 enabling — test_redaction.py 9 placeholder + 1 xfail strict 본격 단언 전환
+[2026-05-18T15:53:48] jensen STAGE_START Task#15 origin_kind fix + M6 Slice C
+[2026-05-18T15:54:34] jensen STAGE_DONE Task#15 origin_kind fix, XPASS confirmed, bezos notified
+[2026-05-18T15:54:34] jensen STAGE_START M6-stage1 secret_scan module
+[2026-05-18T15:56:28] jensen STAGE_DONE M6-stage1 secret_scan module + upload integration
+[2026-05-18T15:56:28] jensen STAGE_START M6-stage2 publish_service
+[2026-05-19T13:25] bezos STAGE_DONE M5 stage4 — test_redaction.py 16 PASS (redact_credential_values 4 + redact_keys 4 + is_sensitive_key 2 + subprocess stdout/stderr 2 + streaming 2 + exception 1 + smoke 1). xfail strict 해제, OI-5 bug fix 검증(원래 xfail strict가 XPASS로 jensen fix 자동 감지). 전체 1088 PASS (회귀 0, xfail 0).
+[2026-05-19T13:25] bezos MILESTONE_DONE M5 Slice E 전체 완료 (Task #16). Stage 2+3+4 36 신규 보안 테스트 PASS + OI-5 bug 잡힘.
+[2026-05-18T16:00] bezos MILESTONE_DONE M5 Slice E 보안 테스트 36개 PASS (isolation 10 + injection 10 + redaction 16, 1088 total)
+[2026-05-18T16:00] satya VERIFICATION_PASS M5 Slice E 전체 + Task #15 (OI-5 origin_kind 자동 정리)
+[2026-05-18T16:05:05] jensen MILESTONE_DONE M6 Slice C: secret_scan + publish_service + 6 router endpoints + 8 publish tests, 1096 PASS, ruff 0
+[2026-05-18T16:05] jensen MILESTONE_DONE M6 Slice C (secret_scan + publish_service + 6 endpoints + 8 publish tests + Task #15 fix, 1096 PASS)
+[2026-05-18T16:05] satya VERIFICATION_PASS M6 Slice C
+[2026-05-18T16:05] satya MILESTONE_START M7 Slice F (k-skill importer CLI)
+[2026-05-18T16:07:19] jensen STAGE_START M7-stage1 k-skill settings
+[2026-05-19T13:40] jensen MILESTONE_DONE M6 Slice C (publish_service + secret_scan + 6 routers + 8 jensen publish tests)
+[2026-05-19T13:40] bezos STORY_START M6 보안 강화 — secret_scan 패턴 가드 + publish 회귀 (jensen's test 검토 + 보완)
+[2026-05-19T13:55] bezos STAGE_DONE M6 — tests/test_secret_scan.py 53/53 PASS (pattern registry pin 2 + filename 14 param + legitimate 6 param + content sk-/PEM/AWS/GCP/ghp/sk_live 10 + guards 3 + walk/dedup 6 + finding shape 2 + surface 2). 전체 1149 PASS. ruff clean.
+[2026-05-18T16:13:00] jensen STAGE_DONE M7-stage1-5 settings + curated map + importer + CLI + admin status
+[2026-05-18T16:13:00] jensen STAGE_START M7-stage6 smoke test importer + tests
+[2026-05-18T16:16:25] jensen MILESTONE_DONE M7 Slice F: k_skill_importer + CLI + admin status + 13 tests, 1162 PASS, ruff 0
+[2026-05-18T16:17] jensen MILESTONE_DONE M7 Slice F (k-skill importer CLI + 13 tests, 1162 PASS) — 백엔드 트랙 종료
+[2026-05-18T16:17] satya VERIFICATION_PASS M7 + Phase 1 backend full
+[2026-05-18T16:17] satya DISPATCH 팀쿡(M8a 디자인 스펙) + 베조스(M9 e2e 시나리오 + permission matrix)
+[2026-05-19T14:10] satya DISPATCH bezos M9 통합 검증 — E2E 시나리오 + permission matrix + lessons + QUALITY_SCORE
+[2026-05-19T14:10] bezos STORY_START M9 — test_marketplace_e2e.py + test_marketplace_phase1_gates.py + tasks/lessons.md + docs/QUALITY_SCORE.md
+[2026-05-18T16:25] timcook MILESTONE_START M8a Slice G — marketplace UI design spec
+[2026-05-18T16:40] timcook MILESTONE_DONE M8a — docs/design-docs/marketplace-ui-spec.md (6 pages + 16 components + 6 flows + 38 badge variants + 12 error matrix entries, 839 lines)
+[2026-05-18T16:26] tim-cook MILESTONE_DONE M8a marketplace-ui-spec.md (839L, 16 컴포넌트, 38 badge variants, 6 흐름, 10 슬라이스)
+[2026-05-18T16:26] satya VERIFICATION_PASS M8a
+[2026-05-18T16:26] satya MILESTONE_START M8b Slice G frontend (저커버그)
+[2026-05-19T14:45] bezos MILESTONE_DONE M9 통합 검증 — test_marketplace_e2e.py (7 시나리오 6 PASS + 1 xfailed strict M9 finding), test_marketplace_phase1_gates.py (22 PASS 8 게이트 + 1 summary), tasks/lessons.md (Session 7 추가, 275 lines), docs/QUALITY_SCORE.md (Marketplace 도메인 등급 + 게이트 매트릭스 + GO/NO-GO 추가, 371 lines). 전체 backend 1190 PASS + 1 xfailed (install_service lazy load). ruff clean.
+[2026-05-19T14:45] bezos QUESTION_MARK 젠슨 OPEN-1 — install_service.install_item lazy load on acl_entries 미선택 셀렉트 → restricted item 시 500 (should 404). Phase 1 출시 게이트 #1 위반.
+[2026-05-18T16:31] bezos MILESTONE_DONE M9 통합 검증 (7 e2e + 22 게이트, 1190 PASS + 1 xfailed OPEN-1)
+[2026-05-18T16:31] satya VERIFICATION_PASS M9 조건부 GO (OPEN-1 fix 후 full GO)
+[2026-05-18T16:31] satya OPEN_ITEM_1 install_service:287 acl_entries lazy load fix 요청 → jensen
+[2026-05-18T16:33:33] jensen BUGFIX OPEN-1 install_service.install_item: selectinload(acl_entries) fix → Bezos e2e XPASS(strict) confirms
+[2026-05-19T15:00] bezos STORY_START OPEN-1 cleanup — xfail strict 해제 + QUALITY_SCORE.md 정정
+[2026-05-18T16:34] jensen MILESTONE_DONE OPEN-1 install_service acl_entries selectinload (4줄, 1184 PASS)
+[2026-05-19T15:05] bezos MILESTONE_DONE OPEN-1 cleanup — xfail strict 해제 + canonical assertion으로 promote. QUALITY_SCORE.md OPEN-1 RESOLVED 마킹 + FULL GO 갱신. 전체 1191 PASS, 0 xfailed, ruff clean.
+[2026-05-19T14:30] zuckerberg MILESTONE_DONE M8b Slice G — Frontend Marketplace UI skeleton 완료. 3 new pages (/marketplace, /marketplace/[item-id], /marketplace/admin/moderation), 7 new components (5 badges + Card + FilterBar + InstallWizard + PublishWizard), 1 API client + 1 types module + 14 hooks. Sidebar Marketplace entry + Skills page Origin/Publication columns + Publish entry 통합. `pnpm install && pnpm lint && pnpm build` PASS (23 routes). 후속 슬라이스 TODO 항목 progress.txt에 기록.
+[2026-05-19T00:23] satya HANDOFF_WRITTEN HANDOFF.md (Phase 1 Full GO + 8 게이트 PASS + 1191 backend tests + frontend build OK)
+[2026-05-19T00:23] satya PROJECT_DONE Marketplace Resources Phase 1

@@ -33,6 +33,11 @@ from app.agent_runtime.streaming import stream_agent_response
 from app.agent_runtime.tool_factory import create_tool_for_runtime
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
 from app.hooks import HookContext, HookResult, hooks
+from app.marketplace.skill_runtime import (
+    SkillToolContext,
+    build_skill_runtime_context,
+    resolve_runtime_credentials,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,21 +115,58 @@ class AgentConfig:
             )
 
 
-def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseTool:
-    """스킬 디렉토리에서 Python 스크립트를 실행하는 도구를 생성."""
+def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
+    """스킬 디렉토리에서 Python 스크립트를 실행하는 도구를 생성.
 
-    api_file_prefix = f"/api/conversations/{thread_id}/files/" if thread_id else ""
-    _path_re = re.compile(re.escape(str(output_dir)) + r"/([^\s\n]+)") if api_file_prefix else None
+    ADR-017 Slice E refactor — the tool now closes over a
+    ``SkillToolContext`` (output_dir + thread_id + runtime_root + slug
+    descriptor map). Stage 1 preserves the legacy validation surface;
+    stage 2 swaps ``runtime_root`` to the per-thread location and adds
+    "unknown slug" rejection. The closure shape was deliberately
+    chosen to avoid an argument explosion on the inner ``execute_in_skill``
+    body — see Bezos OI-3.
+    """
+
+    output_dir = ctx.output_dir
+    api_file_prefix = (
+        f"/api/conversations/{ctx.thread_id}/files/" if ctx.thread_id else ""
+    )
+    _path_re = (
+        re.compile(re.escape(str(output_dir)) + r"/([^\s\n]+)")
+        if api_file_prefix
+        else None
+    )
 
     async def execute_in_skill(skill_directory: str, command: str) -> str:
         """스킬 디렉토리에서 Python 스크립트를 실행합니다.
 
         Args:
-            skill_directory: 스킬 디렉토리의 가상 경로 (예: /skills/146ecc62.../)
+            skill_directory: 스킬 디렉토리의 가상 경로
+                (예: /runtime/<thread_id>/skills/<slug>/).
             command: 실행할 명령어 (예: python scripts/mark_seat.py search 이상윤)
         """
-        resolved = (_DATA_DIR / skill_directory.strip("/")).resolve()
-        if not resolved.is_relative_to(_DATA_DIR.resolve()) or not resolved.is_dir():
+        # ``Path(skill_directory).name`` extracts the final segment
+        # regardless of leading slashes / trailing slashes — the LLM may
+        # pass any of ``/skills/<slug>``, ``<slug>``, ``<slug>/``.
+        requested_slug = Path(skill_directory.strip("/")).name
+        descriptor = ctx.descriptors.get(requested_slug)
+        if descriptor is None:
+            # Selected-skill mount (Spec §9) — even if the slug resolves
+            # to a real on-disk directory, refuse it when it wasn't
+            # attached to this agent. This is the regression guard for
+            # the legacy broad ``/skills/`` mount that leaked siblings.
+            return (
+                f"Error: skill not attached to this agent: {requested_slug}"
+            )
+
+        # Resolve against the per-thread runtime root so traversal
+        # attempts (``../``, absolute paths like ``/etc/passwd``) all
+        # fail the ``is_relative_to`` check below.
+        resolved = descriptor.runtime_storage_path.resolve()
+        if (
+            not resolved.is_relative_to(ctx.runtime_root.resolve())
+            or not resolved.is_dir()
+        ):
             return f"Error: invalid skill directory: {skill_directory}"
 
         args = shlex.split(command)
@@ -148,6 +190,19 @@ def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseToo
             "SKILL_OUTPUT_DIR": out,
             "OUTPUTS_DIR": out,
         }
+        # Slice E Stage 3 — credential env injection (Spec §8.2).
+        # ``descriptor.credential_bindings`` is populated by
+        # ``build_skill_runtime_context`` at agent build time so the
+        # hot path here only does an in-memory copy; no decrypt, no DB.
+        # ``env_map`` shape: ``{credential_field_name: env_var_name}``.
+        injected_env: dict[str, str] = {}
+        for rc in descriptor.credential_bindings.values():
+            for field, env_name in rc.env_map.items():
+                value = rc.decrypted.get(field)
+                if value is None:
+                    continue
+                env[env_name] = value
+                injected_env[env_name] = value
 
         proc = await asyncio.create_subprocess_exec(
             *args,
@@ -181,6 +236,16 @@ def _create_skill_execute_tool(output_dir: Path, thread_id: str = "") -> BaseToo
         files = await asyncio.to_thread(_collect_outputs)
         if files:
             result += "\n\nOUTPUT_FILES: " + ", ".join(files)
+
+        # Slice E Stage 4 — redact credential values that the script
+        # may have echoed back through stdout/stderr (debug prints,
+        # uncaught exceptions, etc.). The mapped env dict is the
+        # authoritative set of values the runtime injected for this
+        # skill; everything else passes through untouched.
+        if injected_env:
+            from app.marketplace.redaction import redact_credential_values
+
+            result = redact_credential_values(result, injected_env)
 
         return result
 
@@ -545,10 +610,22 @@ async def _prepare_agent(
 
     skills_sources: list[str] | None = None
     if cfg.agent_skills:
-        skills_sources = ["/skills/"]
-        # 스킬 스크립트 실행 도구 추가 — 출력은 대화 세션 폴더에 저장 (절대경로)
-        conv_output_dir = (_DATA_DIR / "conversations" / cfg.thread_id).resolve()
-        langchain_tools.append(_create_skill_execute_tool(conv_output_dir, cfg.thread_id))
+        # Slice E stage 2/3 — per-thread runtime root + credential
+        # injection. The sync builder materializes the on-disk copytree;
+        # the async resolver populates ``descriptor.credential_bindings``
+        # and fail-fast raises ``marketplace_credential_required`` when
+        # a required user binding is missing (Spec §8.3).
+        skill_ctx = build_skill_runtime_context(cfg, data_dir=_DATA_DIR)
+        if cfg.user_id:
+            from app.database import async_session as _async_session_factory
+
+            async with _async_session_factory() as _runtime_db:
+                await resolve_runtime_credentials(
+                    skill_ctx, db=_runtime_db, cfg=cfg
+                )
+        skills_virtual_prefix = f"/runtime/{cfg.thread_id}/skills/"
+        skills_sources = [skills_virtual_prefix]
+        langchain_tools.append(_create_skill_execute_tool(skill_ctx))
         system_prompt += (
             "\n\n## 스킬 사용 규칙\n"
             "스킬을 사용할 때는 반드시 read_file 도구로 SKILL.md를 먼저 읽고 "
@@ -567,6 +644,15 @@ async def _prepare_agent(
 
         skills_block = build_skills_prompt(cfg.agent_skills)
         if skills_block:
+            # Slice E stage 2 — ``build_skills_prompt`` emits paths under
+            # ``/skills/<slug>/`` because it doesn't know about the new
+            # per-thread mount. Rewrite the prefix here so the LLM lands
+            # on the actual mount point. Cheaper than threading the
+            # thread_id through ``build_skills_prompt``'s public API
+            # (which is also used by non-runtime callers).
+            skills_block = skills_block.replace(
+                "/skills/", skills_virtual_prefix
+            )
             system_prompt += "\n" + skills_block
 
     memory_sources: list[str] | None = None

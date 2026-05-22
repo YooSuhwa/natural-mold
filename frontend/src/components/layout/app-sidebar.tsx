@@ -17,6 +17,7 @@ import {
   Plug2Icon,
   ShieldIcon,
   ChevronRightIcon,
+  StoreIcon,
   ToggleRightIcon,
   ToggleLeftIcon,
   SunIcon,
@@ -79,6 +80,19 @@ export function AppSidebar() {
     icon: BookOpenIcon,
     tooltip: t('tooltip.skills'),
   }
+
+  const marketplaceItems = [
+    { label: 'Marketplace', href: '/marketplace', icon: StoreIcon },
+    ...(user?.is_super_user
+      ? [
+          {
+            label: 'Moderation',
+            href: '/marketplace/admin/moderation',
+            icon: ShieldIcon,
+          },
+        ]
+      : []),
+  ]
 
   const resourceItems = [
     { label: t('nav.credentials'), href: '/credentials', icon: KeyRoundIcon },
@@ -267,6 +281,27 @@ export function AppSidebar() {
                   <span>{skillsItem.label}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {marketplaceItems.map((item) => {
+                const isActive =
+                  item.href === '/marketplace'
+                    ? pathname === '/marketplace' ||
+                      (pathname.startsWith('/marketplace/') &&
+                        !pathname.startsWith('/marketplace/admin'))
+                    : pathname.startsWith(item.href)
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      tooltip={item.label}
+                      render={<Link href={item.href} />}
+                      className={activeMenuClass}
+                    >
+                      <item.icon className="size-4" />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

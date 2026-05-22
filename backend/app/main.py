@@ -68,6 +68,7 @@ from app.models.template import Template
 from app.rate_limit import limiter
 from app.scheduler import (
     add_trigger_job,
+    cleanup_skill_runtime_roots,
     get_scheduler,
     register_broker_eviction_job,
     register_catalog_update_job,
@@ -75,6 +76,7 @@ from app.scheduler import (
     register_health_check_job,
     register_mcp_health_job,
     register_refresh_token_gc_job,
+    register_skill_runtime_cleanup_job,
 )
 from app.security.production_check import enforce_production_safety
 from app.seed.bootstrap_from_env import bootstrap_system_credentials
@@ -170,6 +172,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     register_broker_eviction_job()
     # ADR-016 §4.2 — refresh-token whitelist GC (nightly).
     register_refresh_token_gc_job()
+    # ADR-017 Slice E — per-thread skill runtime root cleanup
+    # (10m interval, 1h retention). Also run once at startup to clear
+    # anything left over from a previous server crash.
+    cleanup_skill_runtime_roots()
+    register_skill_runtime_cleanup_job()
 
     async with async_session() as db:
         result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))
@@ -245,6 +252,7 @@ def create_app() -> FastAPI:
         credentials,
         feedback,
         health,
+        marketplace,
         mcp,
         models,
         shares,
@@ -264,6 +272,7 @@ def create_app() -> FastAPI:
     app.include_router(conversations.router)
     app.include_router(credentials.router)
     app.include_router(health.router)
+    app.include_router(marketplace.router)
     app.include_router(mcp.router)
     app.include_router(mcp.catalog_router)  # /api/mcp-server-types
     app.include_router(models.router)

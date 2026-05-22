@@ -414,6 +414,69 @@ def evict_expired_brokers() -> None:
         logger.exception("EventBroker eviction failed; will retry next run")
 
 
+# ---------------------------------------------------------------------------
+# ADR-017 Slice E — Skill runtime root cleanup
+# ---------------------------------------------------------------------------
+
+
+SKILL_RUNTIME_CLEANUP_JOB_ID = "skill_runtime_cleanup"
+_SKILL_RUNTIME_CLEANUP_INTERVAL_SECONDS = 600  # 10 minutes
+_SKILL_RUNTIME_RETENTION_SECONDS = 3600  # 1 hour
+
+
+def cleanup_skill_runtime_roots() -> None:
+    """Drop stale ``data/runtime/<thread_id>/`` directories.
+
+    Wraps ``app.marketplace.skill_runtime.cleanup_stale_runtime_roots`` so
+    APScheduler can target a module-level callable. Wrapped in a broad
+    ``except`` so a single failure doesn't disable the cron.
+    """
+
+    from app.agent_runtime.executor import _DATA_DIR
+    from app.marketplace.skill_runtime import cleanup_stale_runtime_roots
+
+    try:
+        cleanup_stale_runtime_roots(
+            _DATA_DIR,
+            retention_seconds=_SKILL_RUNTIME_RETENTION_SECONDS,
+        )
+    except Exception:  # noqa: BLE001 — keep cron alive
+        logger.exception(
+            "skill runtime root cleanup failed; will retry next run"
+        )
+
+
+def register_skill_runtime_cleanup_job() -> None:
+    """Register the recurring per-thread runtime root cleanup. Idempotent.
+
+    Default cadence: every 10 minutes, retention 1 hour. Conservative
+    so an idle conversation cooling between turns doesn't lose its
+    runtime root mid-session. LangGraph ``thread_id`` lines up with
+    the directory name so future versions can cross-reference the
+    checkpointer when picking deletion candidates.
+    """
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        logger.debug(
+            "Scheduler not running; skipping skill runtime cleanup registration"
+        )
+        return
+    scheduler.add_job(
+        cleanup_skill_runtime_roots,
+        IntervalTrigger(seconds=_SKILL_RUNTIME_CLEANUP_INTERVAL_SECONDS),
+        id=SKILL_RUNTIME_CLEANUP_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info(
+        "Scheduled skill runtime root cleanup: every %ds (retention=%ds)",
+        _SKILL_RUNTIME_CLEANUP_INTERVAL_SECONDS,
+        _SKILL_RUNTIME_RETENTION_SECONDS,
+    )
+
+
 def register_broker_eviction_job() -> None:
     """Register the recurring EventBroker GC job (W3-out M4). Idempotent.
 

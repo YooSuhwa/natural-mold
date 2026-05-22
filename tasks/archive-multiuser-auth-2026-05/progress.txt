@@ -1,0 +1,151 @@
+# progress.txt — Multi-User Auth 세션
+
+## Session Context
+- 시작: 2026-05-09
+- 브랜치: feature/multiuser-auth
+- 승인된 plan: ~/.claude/plans/replicated-crunching-lark.md
+- 이전 분석 완료: LambChat + JoySafeter + 자체 코드베이스 (Plan 작성 중 Explore agent로 수행)
+
+## 핵심 결정사항 (사용자 승인)
+- HttpOnly Cookie + CSRF body token (not Bearer/localStorage)
+- JWT HS256, Access 1h, Refresh 30d (DB whitelist via RefreshToken 모델)
+- bcrypt (passlib)
+- super_user 단일 boolean 플래그 (RBAC 미도입)
+- User-only tenancy + Workspace 확장 hook은 service layer 추상화로
+- Email + Password만 (Google OAuth는 Phase 2)
+- System credentials는 super_user 전용
+- 첫 가입자는 자동 super_user
+
+## Codebase Patterns (분석 결과)
+- FastAPI + SQLAlchemy(async) + Alembic
+- 대부분 모델에 user_id FK 존재 (Agent, BuilderSession, Trigger, Tool, Credential, DailySpendUser)
+- conversation은 직접 user_id 없음 → Agent.user_id로 간접 검증 (chat_service.get_owned_conversation)
+- enumeration oracle 방지 패턴: get_owned_*가 None 반환 → 라우터에서 404
+- 시스템 도구는 user_id IS NULL → list 시 OR 필터로 포함
+- Cipher V2 (credential_service)로 토큰 암호화 가능
+- LangGraph checkpoint는 thread_id=conversation_id, user_id 컬럼 없음
+
+## Gotchas
+- main.py:96-127 startup에서 mock user 자동 생성 → 제거 필요
+- bootstrap_credentials_from_env가 mock_user_id로 credential 생성 → is_system=True로 전환
+- Tool/BuilderSession/AgentTrigger의 user_id FK는 ON DELETE 미명시 → CASCADE로 변경 필요
+- Google OAuth refresh_token이 글로벌 env로 공유됨 → 도구용은 시스템 credential로, 일반 사용자는 본인 credential
+- frontend에 인증 인프라 전혀 없음 (middleware.ts 없음, API client에 credentials/CSRF 처리 없음)
+- 기존 Alembic 마이그레이션은 m21까지 — 신규는 m22
+- (S1 발견) 시스템 credential 라우터(`routers/credentials.py:243-336`)에 super_user 가드 없음 — 일반 인증 사용자가 시스템 키 조회/수정/삭제 가능. 비용 폭주/키 누출 위험 🔴
+- (S1 발견) 모델 카탈로그 mutation(`routers/models.py:72/121/150`)도 super_user 가드 없음 — 일반 사용자가 글로벌 catalog에 모델 추가/수정/삭제 가능 🔴
+- (S1 발견) `Credential.user_id`가 NOT NULL (m18 line 146-148) — `is_system=True` row를 user 비종속으로 만들려면 nullable 마이그레이션 필수. 현재 system credential 생성도 user.id로 채우고 있음(`routers/credentials.py:267`) → 격리 의미 흐려짐 🟡
+- (S1 발견) `agent_creation_sessions` 테이블은 코드에서 0건 참조 — `builder_sessions`로 완전 대체된 dead table. m22 마이그레이션에서 drop 가능
+
+## 파일 경계 (팀원별)
+- 피차이: docs/design-docs/adr-016-multiuser-auth.md (신규), docs/ARCHITECTURE.md (멀티유저 섹션 추가)
+- 젠슨: backend/app/{auth,models,services,routers,schemas,seed,dependencies.py,main.py,config.py}, backend/alembic/versions/m22_*, backend/.env.example, backend/scripts/, backend/app/agent_runtime/{executor.py,tool_factory.py,google_workspace_tools.py}
+- 팀쿡: docs/design-docs/multiuser-auth-ui-spec.md (신규)
+- 저커버그: frontend/src/{middleware.ts,app/(auth)/**,lib/auth/**,lib/api/client.ts,components/auth/**,components/layout/Sidebar.tsx,components/layout/Header.tsx,lib/types/user.ts}
+- 베조스: backend/tests/test_auth_*.py, backend/tests/test_csrf.py, backend/tests/test_multiuser_isolation.py, tasks/deletion-analysis.md, tasks/lessons.md, docs/QUALITY_SCORE.md
+
+## API 계약 (백 → 프 인터페이스)
+- POST /api/auth/register {email, password, name} → {user, csrf_token} + Set-Cookie
+- POST /api/auth/login {email, password} → {user, csrf_token} + Set-Cookie
+- POST /api/auth/logout → {ok} + Clear-Cookie
+- POST /api/auth/refresh → {csrf_token} + Set-Cookie
+- GET /api/auth/me → {user: {id, email, name, is_super_user, created_at}}
+- 모든 mutation에 X-CSRF-Token 헤더 필수 (auth/login, auth/register, auth/refresh 제외)
+- 401 응답 시 프론트는 1회 /refresh 시도 → 실패 시 /login으로 redirect
+- credentials: 'include' 항상 (HttpOnly cookie 자동 첨부)
+
+## 실패 교훈
+- (없음 — 세션 시작)
+- (S2 발견) `Credential.is_system=true` 행이 m24에서 user_id를 그대로 보존했음 — m36에서 CHECK constraint 추가하려면 마이그레이션 안에서 `UPDATE credentials SET user_id=NULL WHERE is_system=true` 백필 먼저 해야 함. 빠뜨리면 `CheckViolationError` 로 upgrade 자체가 실패 (이미 PostgreSQL에서 한 번 겪고 패치).
+- (S2 발견) bcrypt 5.0 + passlib 1.7.4 호환성 문제 — `detect_wrap_bug` 가 72-byte 길이 검사에서 ValueError, `bcrypt.__about__` AttributeError. pyproject 에 `bcrypt<5` 핀 + `app/auth/password.py` 에 `__about__` 셰임으로 우회. passlib 1.8 릴리스 후 두 워크어라운드 모두 제거 가능.
+- (S2 발견) Alembic 마이그레이션 번호가 m21 이후 m22~m35까지 이미 사용 중 (ADR-016 의 `m22_multiuser_auth.py` 명세는 historical). 신규는 m36 으로 진행하되 ADR 본문은 historical 명칭 유지 (revision id == file name 만 일치하면 됨).
+
+## S2 → S3 인계 (시드 정리에서 처리할 잔여 항목)
+- `app/main.py:96-127` mock user 자동 생성 블록 — 그대로 둠. S3 에서 제거.
+- `settings.mock_user_*` 3개 — `config.py` 에 그대로 유지. S3 에서 제거.
+- `bootstrap_credentials_from_env(db, mock_user_id)` — mock_user_id 인자로 system credential 생성. S3 에서 `is_system=true, user_id=NULL` 시드로 전환.
+- 기존 라우터 (`agents`, `tools`, `credentials`, `models`, `templates`, ...) 들이 새 `get_current_user` 를 사용하도록 자동 마이그레이션됨 — 시그니처 호환. mock fallback 없음. S3 에서 라우터별 권한 가드 audit + super_user 게이팅 적용 필요 (특히 `routers/credentials.py:243-336` 시스템 키 라우터, `routers/models.py` 카탈로그 mutation).
+- 기존 통합 테스트 — mock user 의존하는 부분은 `app/auth/jwt.create_access_token` 으로 토큰 발급해서 `Cookie: moldy_at=...` 로 호출하도록 baseline 픽스처 추가 필요 (S7/베조스).
+
+## ADR-016 작성 중 발견한 결정 패턴 (피차이)
+- **CHECK constraint로 `is_system` 일관성 강제**: `(is_system=FALSE OR user_id IS NULL)` — 코드 버그로 system 리소스에 user_id가 들어가는 사고를 DB 레벨에서 차단. tools/credentials 양쪽 동일 적용. 젠슨이 m22 마이그레이션에 ALTER TABLE ADD CONSTRAINT로 박을 것.
+- **refresh replay 방어 = user 전체 폐기**: rotation 시 이전 row revoke만으로는 부족. 이미 revoked인 token 재사용 감지 시 해당 user의 active refresh를 일괄 revoke해서 force re-login. 단순 401만 반환하면 공격자가 다른 토큰으로 계속 시도 가능.
+- **첫 가입자 super_user는 production에서 위험**: `ALLOW_FIRST_USER_AS_ADMIN=true` 환경변수로 토글 가능하게 하고, .env.example에 "운영자 가입 직후 false로 변경" 경고 명시. 베조스가 마이그레이션 가이드에 반영, 젠슨이 .env.example에 주석 추가.
+
+## 디자인 결정 (팀쿡 — multiuser-auth-ui-spec.md)
+- **새 토큰 0개**: ADR-010의 `--primary`, `--primary-strong`, `--status-{accent,info,warn,danger}`, `--destructive`만 재사용. super_user "관리자" 배지는 `--status-accent`로 brand primary와 시각 충돌 회피.
+- **(auth) route group**: 사이드바 없는 전용 레이아웃, 데스크탑 2컬럼(좌 인트로/우 폼 max-w-[420px] Card) + 모바일 단일 컬럼. Google 로그인/약관/비번 찾기는 placeholder만 — Phase 2.
+- **Onboarding/Welcome 1회 보장**: 첫 가입 super_user toast는 `sessionStorage('moldy.super_user_welcomed')`, OnboardingDialog는 `sessionStorage('moldy.onboarding_dismissed')`. 새로고침 시 재노출 방지.
+- **401 단일 진입점**: 저커버그가 `lib/api/client.ts`부터 시작 — `credentials:'include'` + `X-CSRF-Token` + 1회 /refresh 재시도 + 실패 시 `toast.error('세션이 만료되었습니다')` + `queryClient.clear()` + `/login?callbackUrl=...`. callbackUrl은 `startsWith('/') && !startsWith('//')` 검증으로 open redirect 방어.
+- **비밀번호 강도**: 단순 길이 기반 4세그먼트 meter (8/10/14/18자 분기). zxcvbn 도입은 Phase 2. `role="meter"` + aria-valuenow로 접근성.
+
+
+## S3 (jensen) — 시드 정리 + 라우터 권한 audit + CSRF 가드 완료
+- mock_user 흔적 전부 제거 (`app/config.py`, `app/main.py`, `app/seed/bootstrap_from_env.py`, `.env.example`). app/ 영역 grep 결과 0건.
+- `bootstrap_credentials_from_env(db, user_id)` → `bootstrap_system_credentials(db)`. system credential은 `is_system=True, user_id=NULL`.
+- `credential_service.create`에 invariant 추가: `is_system=True ⇒ user_id is None`, `is_system=False ⇒ user_id is not None`. 잘못된 호출 시 ValueError로 빠르게 실패.
+- 베조스 보고서 HIGH 항목 처리 완료:
+  - `routers/credentials.py` system 5 endpoint(GET list/POST/GET/PATCH/DELETE) → `Depends(require_super_user)` + create는 `user_id=None` 강제.
+  - `routers/models.py` create/update/delete 3 endpoint → `Depends(require_super_user)`. catalog는 글로벌 자원이므로 일반 user mutation 차단.
+- CSRF 가드: 모든 mutation 엔드포인트에 `Depends(verify_csrf)` 추가 (66 중 63개. 예외 3개: `/api/auth/login`, `/register`, `/refresh` — CSRF 발급 전이거나 cookie만으로 검증되는 인증 시작점).
+- `routers/conversations.py`: `update_conversation`/`delete_conversation`/`switch_branch`가 user dep 없이 작동했던 점도 발견 — `chat_service.get_owned_conversation`로 owner check 추가. 베조스 audit가 OK라 한 것은 이 helper 사용처를 본 것이지 직접 `get_conversation`을 부르는 라우트는 missed.
+- `tool_factory.create_tool_for_runtime` docstring 갱신: 일반 chat tool 호출은 super_user system credential을 fallback하지 않음을 명시 (구조적으로 이미 그렇게 작동 — chat_service.build_tools_config가 owner-checked Tool.credential만 주입).
+- `tests/test_seed.py` 새 시그니처에 맞춰 재작성. `_ensure_user`/`TEST_USER_ID` 의존성 제거.
+- `.env.example`에 ADR-016 JWT/Cookie/ALLOW_FIRST_USER_AS_ADMIN 섹션 추가 (S2 누락분).
+
+## S3 → S5/S6/S7 인계
+- (S5 저커버그) 모든 mutation에 `X-CSRF-Token` 헤더 필수. 예외는 `/api/auth/login`, `/register`, `/refresh`. `lib/api/client.ts`에서 mutation 메서드(POST/PATCH/PUT/DELETE)에 자동 첨부 + `credentials:'include'` 필수.
+- (S5) system credentials 라우터 (`/api/system-credentials/*`)는 super_user 응답 외에 403 `forbidden` 반환. 일반 user에게 메뉴 자체를 숨기는 게 UX 좋음 (`user.is_super_user` 체크).
+- (S6 젠슨 AI runtime) `system_credential_resolver.resolve_system_api_key`는 그대로 유지 — assistant_agent/image_gen는 super_user 콜러가 아니라 시스템 빌링 플로우. 이 정책 결정은 별도 이슈로 추적 필요 (일반 user의 builder 사용 시 누가 빌링하나? 현재는 system credential이 fallback되어 운영자 부담).
+- (S6) 신규 마이그레이션 m37 — `credentials.user_id` nullable + CHECK constraint(`(is_system AND user_id IS NULL) OR (NOT is_system AND user_id IS NOT NULL)`)이 m36에 이미 있다고 가정. m36 검증 후 차이 있으면 m37로 보완. 데이터 백필(`UPDATE credentials SET user_id=NULL WHERE is_system=true`)도 m36에 포함되었어야 함 (S2 lessons에 기록된 PostgreSQL CheckViolation 회피).
+- (S7 베조스 통합) 격리 매트릭스 테스트 시:
+  1. user A의 credential id를 user B가 GET → 404 (enumeration oracle 안전)
+  2. 일반 user가 `/api/system-credentials` GET → 403
+  3. 일반 user가 `/api/models` POST → 403
+  4. CSRF 헤더 누락 mutation → 403 `csrf_mismatch`
+  5. cookie만 있고 X-CSRF-Token 없는 cross-site 시도 → 403
+  6. user A 토큰으로 user B의 conversation에 mutation (update/delete/switch_branch) → 404
+
+## 디자인/구현 결정 (저커버그 — 프론트엔드 S5)
+
+- **Next.js 16 컨벤션**: `middleware.ts`는 deprecated. Next 16부터 `proxy.ts` + `export function proxy()` 로 명명. `node_modules/next/dist/docs/01-app/01-getting-started/16-proxy.md` 참조. 동작은 동일.
+- **(auth) route group 노출**: Next.js의 route group은 URL에 영향을 주지 않으므로 `/login`, `/register` 같은 절대 경로만 보호 매트릭스에 추가. proxy의 PUBLIC_ROUTES에 명시적 등록 필요.
+- **Bare layout 분기**: `AppLayout` (client component) 가 `usePathname()` 으로 `/login` `/register`를 감지해 사이드바 없이 children만 렌더. (auth)/layout.tsx는 그 안에서 2컬럼 그리드로 폼 카드를 배치.
+- **CSRF 메모리 + 쿠키 fallback**: `lib/auth/csrf.ts` 에서 in-memory가 primary, `moldy_csrf` 쿠키가 fallback (페이지 새로고침 후 SPA 부팅 시). login/register/refresh 응답 body의 `csrf_token`을 `useAuth`가 `setCsrfToken()`으로 저장.
+- **401 dedup**: `apiFetch`가 401 받으면 `tryRefresh()` 단일 promise로 모든 동시 요청 동기화. 성공 시 원 요청 1회 재시도, 실패 시 한 번만 fireSessionExpired() (1초간 dedup) → toast + queryClient.clear() + `/login?callbackUrl=…` redirect (current path 보존, // 시작은 거부).
+- **Auth endpoint 화이트리스트**: `/api/auth/login`, `/api/auth/register`, `/api/auth/refresh` 는 CSRF 헤더 자동 첨부 + 401 refresh 흐름에서 제외. `/api/auth/logout`은 CSRF 필요 (백엔드 verify_csrf 의존).
+- **OnboardingDialog 패턴**: React 19 `react-hooks/set-state-in-effect` 룰 회피 위해 outer는 props만 보고 mount 결정, inner는 `key={user.id}` + `useMemo(() => shouldShow(user), [user])` 로 초기 open 계산. 효과 안에서 setState 안 함.
+- **Super user welcome toast**: 별도 훅 `use-super-user-welcome-toast.ts` — 효과 안에서 sessionStorage flag + toast.success 만 호출 (state sync 없음). 5분 이내 created_at이 fresh 조건.
+- **shadcn 미설치 컴포넌트**: Alert/Avatar/Form/Label은 프로젝트에 없음 → AuthAlert는 lucide + 토큰 기반 inline 컴포넌트로 대체. Avatar는 initials 함수로 div 생성. Form/Label도 native `<label>` + Input 직접 조합 (react-hook-form/zod 미설치 — 의존성 추가 회피).
+- **PasswordStrengthMeter 점수 규칙**: 길이 기반 단순 휴리스틱 (8/10/14/18자) + 영숫자기호 혼합 보너스. zxcvbn 도입은 나중에 교체 가능.
+- **session-expired handler 등록 패턴**: `lib/api/client.ts` 의 setSessionExpiredHandler(handler)는 React 컨텍스트가 아니라 모듈 레벨 변수. `QueryProvider` 가 useEffect에서 등록/해제. 이렇게 하면 fetch 레이어가 React 의존성 없이 토스트/리다이렉트 트리거 가능.
+- **Suspense 필수**: Next.js 16에서 `useSearchParams()`는 page에서 직접 호출 시 prerender error. `<Suspense fallback={null}>` 로 감싸야 함 (login/page.tsx).
+
+## S6 (jensen) — AI runtime user_id 강화 + cleanup + 마이그 스크립트 완료
+
+- **AgentConfig.user_id 처리 결정**: dataclass field 자체는 `user_id: str | None = None` 으로 유지(테스트 4파일이 직접 생성). 대신 `__post_init__` 에서 "agent_id 가 set 인데 user_id 가 비어있는" 경우만 ValueError. 프로덕션 callsite(`routers/conversations.py`, `trigger_executor`)는 둘 다 채우므로 무영향. DB-free 단위 테스트는 둘 다 비워서 통과. → silent fallback 봉쇄 + 테스트 호환을 동시 달성. test_executor.py 의 1 fixture 가 agent_id 만 설정 → user_id 추가로 수정.
+- **`_hook_ctx_for_agent` 보강**: agent_id/model_id/llm_credential_id 의 UUID parse 실패 시 None drop(`_opt` 헬퍼). 이전엔 user_id 만 try/except + 다른 필드는 즉시 raise 였음. 보안 경계는 user_id 만이고 나머지는 trace correlation 이라 best-effort 가 정확한 정책.
+- **google_workspace_tools.py 부재 발견**: 파일은 이미 `app/agent_runtime/` 에서 제거됨(legacy `__pycache__` 만 잔존). 현재 Google 도구 경로는 `app/tools/definitions/{gmail_send,google_calendar_event,google_chat_message}.py` — 모두 `ctx.credentials` 만 사용하고 `settings.google_oauth_*` 직접 참조 0건. credential refresh 는 `app/credentials/definitions/google_workspace_oauth2.py:_refresh` 가 stored refresh_token → access_token 변환. ADR/plan 4.3 의 토큰 우선순위(per-tool override → user own → super_user fallback)는 `chat_service.build_tools_config` + `Tool.credential_id` 의 owner-checked FK 로 이미 구조적으로 만족. 추가 코드 변경 불필요.
+- **cleanup_user_resources 동작**: (1) `Conversation.agent_id → Agent.user_id` JOIN 으로 thread_id 수집 → `agent_runtime.checkpointer.delete_thread(str(conv_id))` 반복 호출. checkpointer 가 raise 해도 try/except 로 cleanup 자체는 계속 — 사용자 삭제가 checkpoint store 일시 장애에 막히지 않음. (2) `UPDATE refresh_tokens SET revoked_at=now() WHERE user_id=? AND revoked_at IS NULL` 일괄 revoke (이미 revoked 된 row 는 forensic timestamp 보존). FK CASCADE 가 어차피 row 자체를 지우지만 cleanup 시점에 revoke 해두면 race window 에서도 토큰 무효화.
+- **delete_user 동작**: `cleanup_user_resources` 호출 후 `db.delete(user)` + `flush`. commit 은 caller 책임. m36 의 ON DELETE CASCADE 로 agents/builder_sessions/agent_triggers/refresh_tokens/credentials(non-system)/daily_spend_user 자동 정리.
+- **migrate_mock_to_real_user.py 사용법**: `uv run python scripts/migrate_mock_to_real_user.py --target-user-id <UUID> [--source-user-id <UUID>] [--dry-run] [--delete-source]`. source 기본값 `00000000-0000-0000-0000-000000000001` (레거시 PoC mock UUID). 6개 테이블 UPDATE(`agents`,`builder_sessions`,`agent_triggers`,`tools` non-system,`credentials` non-system,`daily_spend_user`) → 단일 트랜잭션 commit/rollback. dry-run 시 rollback. `--delete-source` 지정 시 마지막에 source User row DELETE(나머지는 CASCADE). idempotent — 두 번 실행해도 두번째는 0 row.
+- **테스트 인프라 발견**: SQLite aiosqlite 는 `DateTime(timezone=True)` 컬럼 round-trip 시 tzinfo 를 떨어뜨림 → naive datetime 으로 비교해야 함. `assert dt1 == dt2` 직접 비교 금지, `replace(tzinfo=None)` 후 비교.
+- **사이드 이펙트 없음 검증**: test_executor / test_hitl_middleware / test_model_fallback / test_user_cleanup / test_chat_service / test_chat_integration 88개 PASS. 전체 suite 의 149개 실패는 S3 에서 추가된 CSRF 가드 영향(test_thread_branch, test_tools, test_triggers, test_uploads_router, test_skills) — S6 작업과 무관, S5 인계 사항으로 이미 인지됨.
+
+## S6 → S7 인계 (베조스)
+
+- **S7 격리 매트릭스에 추가할 시나리오**:
+  1. user A 가 자기 agent 의 conversation 삭제 → LangGraph thread 까지 깨끗하게 지웠는지 (checkpoints/checkpoint_blobs/checkpoint_writes 3 테이블 row=0)
+  2. delete_user 후 LangGraph checkpoint store 잔존 row 0 인지 (실 PostgreSQL 검증)
+  3. 일반 user 의 agent 가 google_workspace 도구 사용 + 자기 OAuth credential 없음 → tool runner 에서 `ValueError("google_workspace_oauth2 credential is required")` 명확하게 raise (silent fallback 없음)
+  4. migrate_mock_to_real_user.py 실DB 시나리오: dry-run → 변경 없음 / 실행 → 6 테이블 row 이동 / 재실행 → 0 row (idempotent)
+  5. `--delete-source` 사용 시 system credential(user_id=NULL) 은 영향 없는지 — m36 제약상 분리되어 있어야 함
+  6. AgentConfig 를 직접 만드는 신규 callsite 가 user_id 누락하면 즉시 ValueError — 회귀 가드
+- **운영 마이그레이션 절차** (라이브 검증 시): (1) target user 회원가입 → super_user 승격 (or `ALLOW_FIRST_USER_AS_ADMIN=true` 인스톨이면 자동) → (2) `--dry-run` → (3) 결과 검증 → (4) `--delete-source` 없이 1회 → (5) 새 사용자로 로그인하여 모든 데이터 보이는지 UI 검증 → (6) 문제 없으면 `--delete-source` 로 mock user 정리.
+
+## 트랜잭션 경계 + commit 강제 (jensen S7 escalation fix)
+- **패턴**: 라우터/서비스에서 카운터/상태 갱신(UPDATE) 후 raise 전에 `await db.commit()` 필수. FastAPI 의 `get_db` 의존성은 raise 시 자동 rollback 하므로 flush 만 한 변경은 영속되지 않음.
+- **재현**: `authenticate` 실패 시 `record_login_failure` 만 호출하고 raise → `failed_login_attempts` 영구 0 → 5회 lockout 무력화. `rotate_refresh` replay 분기 `_revoke_all_active` UPDATE 후 raise → mass-revoke 롤백 → 도난 refresh 방어 무력화.
+- **수정 위치**: `app/services/auth_service.py::authenticate` (record_login_failure 직후) / `rotate_refresh` (replay UPDATE 직후). 정상 경로의 commit 은 router 가 책임지므로 그대로 둠.
+- **회귀 가드**: `tests/test_auth_login.py::test_wrong_password_returns_401_and_increments_counter`, `test_five_failures_lock_account_returns_423`, `tests/test_auth_refresh.py::test_refresh_replay_revokes_all_active`. xfail strict 제거.
+- **유사 클래스 점검 대상**: 다른 라우터/서비스에서 카운터/감사 row UPDATE 후 raise 하는 코드 — 발견 시 동일 fix 필요.
