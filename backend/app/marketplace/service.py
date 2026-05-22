@@ -116,6 +116,28 @@ def _base_catalog_query(user: CurrentUser, *, public_listed_only: bool):
     return stmt.where(or_(*visibility_clauses))
 
 
+def _installed_for_user_exists(user_id: uuid.UUID):
+    """User 의 active installation 이 있는 item id 를 EXISTS 로 잡는다.
+
+    SQL 단계에서 적용해야 ``installed=true`` filter + pagination 이 정확하다.
+    post-load 후처리로 두면 ``limit`` 가 base catalog 결과에 먼저 적용되어
+    user installation 이 있는 item 이 첫 페이지 밖으로 밀려나면 결과에서
+    누락된다.
+    """
+
+    from app.models.marketplace import MarketplaceInstallation
+
+    return (
+        select(MarketplaceInstallation.id)
+        .where(
+            MarketplaceInstallation.item_id == MarketplaceItem.id,
+            MarketplaceInstallation.user_id == user_id,
+            MarketplaceInstallation.install_status != "uninstalled",
+        )
+        .exists()
+    )
+
+
 def _apply_filters(stmt, filters: MarketplaceItemListFilters):
     if filters.resource_type:
         stmt = stmt.where(MarketplaceItem.resource_type == filters.resource_type)
@@ -276,6 +298,14 @@ async def list_items(
     public_listed_only = filters.is_listed is None
     stmt = _base_catalog_query(user, public_listed_only=public_listed_only)
     stmt = _apply_filters(stmt, filters)
+    # ``installed`` 는 SQL 단계에서 처리 — pagination 정확성을 위해.
+    # post-load 후처리는 limit 안에 들어온 row 만 검사하므로, user installation
+    # 이 base catalog ordering 의 첫 페이지 밖에 있으면 결과에 누락된다.
+    if filters.installed is not None:
+        exists_clause = _installed_for_user_exists(user.id)
+        stmt = stmt.where(
+            exists_clause if filters.installed else ~exists_clause
+        )
     stmt = stmt.options(
         selectinload(MarketplaceItem.latest_version),
         selectinload(MarketplaceItem.acl_entries),
@@ -288,16 +318,10 @@ async def list_items(
     stmt = stmt.limit(limit).offset(offset)
     rows = (await db.execute(stmt)).scalars().unique().all()
 
-    # Post-load filters (need eager-loaded data).
-    if filters.installed is not None:
-        kept: list[MarketplaceItem] = []
-        for item in rows:
-            summary = await derive_installation_summary(
-                db, item=item, user_id=user.id
-            )
-            if summary.installed == filters.installed:
-                kept.append(item)
-        rows = kept
+    # ``installed`` 는 위에서 이미 SQL 로 처리됨. ``install_state`` (active /
+    # needs_setup / disabled) 는 derive_installation_summary 가 결정하는
+    # 동적 상태(예: credential gap 으로 active → needs_setup 승급) 이므로
+    # 여전히 post-load 단계에서만 정확히 적용 가능.
     if filters.install_state:
         kept = []
         for item in rows:

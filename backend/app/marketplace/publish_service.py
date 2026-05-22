@@ -501,6 +501,34 @@ async def patch_item(
         item.categories = list(body.categories) or None
     if body.locale is not None:
         item.locale = body.locale
+
+    if body.visibility is not None and body.visibility != item.visibility:
+        # restricted 로 전환할 때 ACL 가드 — 빈 ACL 로는 둘 수 없다.
+        if body.visibility == "restricted":
+            existing_acl = (
+                await db.execute(
+                    select(MarketplaceItemACL).where(
+                        MarketplaceItemACL.item_id == item.id
+                    )
+                )
+            ).scalars().first()
+            if existing_acl is None:
+                raise marketplace_acl_required()
+
+        previous_visibility = item.visibility
+        item.visibility = body.visibility
+
+        # public → 비공개 전환 시 ``is_listed`` 자동 해제 — 카탈로그 검색
+        # 노출 권한은 super_user 가 잡고 있던 것이라 owner unpublish 와
+        # 함께 떨굴 책임이 있다.
+        if previous_visibility == "public" and body.visibility != "public":
+            item.is_listed = False
+
+        # public 외 → restricted 로 전환 시 ACL 은 이미 위에서 가드. ACL 갱신
+        # 흐름은 별도 endpoint(`POST /items/{id}/acl`)로 호출해야 한다.
+        # private/unlisted → public 전환 시 ``is_listed`` 는 그대로 (super_user
+        # 가 approve 단계에서 토글) — PRD §11.7 정신.
+
     item.updated_at = _now()
     return item
 

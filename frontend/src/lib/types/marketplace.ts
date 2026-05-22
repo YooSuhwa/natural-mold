@@ -237,6 +237,9 @@ export interface MarketplaceItemPatchBody {
   tags?: string[] | null
   categories?: string[] | null
   locale?: string | null
+  // ``private | restricted | public | unlisted`` 전환. system 으로는 못 바꿈
+  // (super_user 영역). restricted 전환 시 ACL endpoint 도 함께 호출해야 함.
+  visibility?: Exclude<MarketplaceVisibility, 'system'> | null
 }
 
 export interface MarketplaceItemACLBody {

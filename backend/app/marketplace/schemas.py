@@ -244,7 +244,13 @@ class PublishSkillIn(BaseModel):
 
 
 class MarketplaceItemPatchIn(BaseModel):
-    """Metadata-only PATCH (no version mutation)."""
+    """Metadata-only PATCH (no version mutation).
+
+    ``visibility`` 는 새 version 을 만들지 않는 경량 전환 — public ↔ private
+    ↔ unlisted 토글 (예: 사용자가 잘못 public 으로 publish 한 것을 private
+    으로 되돌리는 경로). ``restricted`` 로 바꾸려면 ACL endpoint 도 함께
+    호출해야 한다 (ACL 비어 있으면 ``marketplace_acl_required``).
+    """
 
     name: str | None = None
     description: str | None = None
@@ -252,6 +258,7 @@ class MarketplaceItemPatchIn(BaseModel):
     tags: list[str] | None = None
     categories: list[str] | None = None
     locale: str | None = None
+    visibility: Literal["private", "restricted", "public", "unlisted"] | None = None
 
 
 class MarketplaceItemAdminListedIn(BaseModel):

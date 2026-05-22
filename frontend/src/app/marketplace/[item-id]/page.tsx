@@ -26,8 +26,20 @@ import {
   useDisableItem,
   useMarketplaceItem,
   useMarketplaceVersions,
+  usePatchMarketplaceItem,
 } from '@/lib/hooks/use-marketplace'
-import type { MarketplaceItem } from '@/lib/types/marketplace'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import type {
+  MarketplaceItem,
+  MarketplaceItemPatchBody,
+  MarketplaceVisibility,
+} from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 
 interface PageProps {
@@ -41,6 +53,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
   const { data: item, isLoading, error } = useMarketplaceItem(itemId)
   const { data: versions } = useMarketplaceVersions(itemId)
   const disableItem = useDisableItem()
+  const patchItem = usePatchMarketplaceItem(itemId)
   const [installOpen, setInstallOpen] = useState(false)
   const [updateOpen, setUpdateOpen] = useState(false)
 
@@ -97,6 +110,33 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
       toast.success('Disabled')
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to disable')
+    }
+  }
+
+  async function handleVisibilityChange(next: MarketplaceVisibility) {
+    if (!item || next === item.visibility) return
+    // ``system`` 은 super_user 시드만 — PATCH 로는 변경 불가.
+    if (next === 'system') return
+    const body: MarketplaceItemPatchBody = { visibility: next }
+    try {
+      await patchItem.mutateAsync(body)
+      const message =
+        next === 'private'
+          ? '비공개로 전환했습니다. 카탈로그에서 노출 안 됨.'
+          : next === 'public'
+            ? '공개로 전환했습니다. 카탈로그 노출은 super_user 승인 대기.'
+            : next === 'unlisted'
+              ? '링크 전용(unlisted)으로 전환했습니다.'
+              : 'Restricted로 전환했습니다. ACL 대상 추가 필요.'
+      toast.success(message)
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? err.code === 'marketplace_acl_required'
+            ? 'restricted 전환은 ACL 대상이 최소 1명 필요합니다. ACL 추가 후 다시 시도하세요.'
+            : err.message
+          : 'Visibility 변경에 실패했습니다.',
+      )
     }
   }
 
@@ -191,13 +231,47 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
               {user?.is_super_user ? 'Moderation actions' : 'Owner actions'}
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={handleDisable} disabled={disableItem.isPending}>
-              {disableItem.isPending ? 'Disabling…' : 'Disable item'}
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              Metadata edit / ACL / new version flows are part of the next slice.
-            </span>
+          <CardContent className="space-y-3">
+            {isOwner ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Visibility:</span>
+                <Select
+                  value={item.visibility}
+                  onValueChange={(v) =>
+                    v && handleVisibilityChange(v as MarketplaceVisibility)
+                  }
+                >
+                  <SelectTrigger className="w-[220px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="private">Private (me only)</SelectItem>
+                    <SelectItem value="restricted">
+                      Restricted (ACL users)
+                    </SelectItem>
+                    <SelectItem value="public">
+                      Public (pending listing)
+                    </SelectItem>
+                    <SelectItem value="unlisted">Unlisted (link only)</SelectItem>
+                  </SelectContent>
+                </Select>
+                {patchItem.isPending ? (
+                  <span className="text-xs text-muted-foreground">Saving…</span>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={handleDisable}
+                disabled={disableItem.isPending}
+              >
+                {disableItem.isPending ? 'Disabling…' : 'Disable item'}
+              </Button>
+              <span className="self-center text-xs text-muted-foreground">
+                ACL / new version 흐름은 후속 슬라이스.
+              </span>
+            </div>
           </CardContent>
         </Card>
       ) : null}
