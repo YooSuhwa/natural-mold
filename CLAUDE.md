@@ -99,6 +99,22 @@ natural-mold/
 - [mise](https://mise.jdx.dev/) 설치 (Python, Node 버전 관리)
 - Docker Desktop (PostgreSQL용)
 
+### git worktree 에서 작업 시
+
+`backend/.env` 는 `.gitignore` 라 worktree 마다 별도 파일이 필요하지만, ground
+truth 는 main checkout 의 `backend/.env` 하나로 유지해야 한다 (같은 PG DB +
+같은 `ENCRYPTION_KEYS` 라야 기존 credential 복호화 정상 + `JWT_SECRET` 공유로
+세션도 share 됨). worktree 진입 후 1회만 실행:
+
+```bash
+bash scripts/worktree-setup.sh
+```
+
+스크립트는 멱등 — `backend/.env` 가 main 의 `.env` 로 symlink 되어 있는지
+확인하고, 없으면 생성한다. 또한 `uvicorn --reload` 가 publish/install 시
+`data/` 디렉토리 변경을 자동 reload 트리거하지 않도록 `--reload-dir app` 추가
+권장 안내도 출력한다.
+
 ### 1. 런타임 설치
 
 ```bash
