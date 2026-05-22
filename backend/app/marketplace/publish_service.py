@@ -616,8 +616,33 @@ async def disable_item(
     return item
 
 
+async def enable_item(
+    db: AsyncSession,
+    *,
+    item_id: uuid.UUID,
+    user: CurrentUser,
+) -> MarketplaceItem:
+    """Disable 의 inverse — ``status: disabled → published``. ``is_listed`` 는
+    그대로 False 유지 (public 카탈로그 노출은 super_user approve 가 별도로
+    잡는다 — PRD §11.7).
+
+    disabled 가 아닌 상태에서 enable 호출은 idempotent no-op (반환 그대로).
+    """
+
+    item = await db.get(MarketplaceItem, item_id)
+    if item is None:
+        raise marketplace_item_not_found()
+    if not can_manage_item(item, user):
+        raise marketplace_manage_forbidden()
+    if item.status == "disabled":
+        item.status = "published"
+        item.updated_at = _now()
+    return item
+
+
 __all__ = [
     "disable_item",
+    "enable_item",
     "patch_item",
     "publish_skill",
     "remove_acl_entry",

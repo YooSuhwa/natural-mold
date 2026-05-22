@@ -24,9 +24,11 @@ import { useSession } from '@/lib/auth/session'
 import { ApiError } from '@/lib/api/client'
 import {
   useDisableItem,
+  useEnableItem,
   useMarketplaceItem,
   useMarketplaceVersions,
   usePatchMarketplaceItem,
+  useRemoveItemACL,
 } from '@/lib/hooks/use-marketplace'
 import {
   Select,
@@ -52,7 +54,9 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
   const { data: item, isLoading, error } = useMarketplaceItem(itemId)
   const { data: versions } = useMarketplaceVersions(itemId)
   const disableItem = useDisableItem()
+  const enableItem = useEnableItem()
   const patchItem = usePatchMarketplaceItem(itemId)
+  const removeACL = useRemoveItemACL(itemId)
   const [installOpen, setInstallOpen] = useState(false)
   const [updateOpen, setUpdateOpen] = useState(false)
 
@@ -113,6 +117,31 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
       toast.success('Disabled')
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Failed to disable')
+    }
+  }
+
+  async function handleEnable() {
+    if (!item) return
+    try {
+      await enableItem.mutateAsync(item.id)
+      toast.success('Re-enabled — 카탈로그 재노출은 visibility/listing 설정에 따라 결정됩니다.')
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Failed to enable')
+    }
+  }
+
+  async function handleRevokeAcl(userId: string) {
+    try {
+      await removeACL.mutateAsync(userId)
+      toast.success('공유 취소 완료')
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? err.code === 'marketplace_acl_required'
+            ? 'restricted 상태에서는 마지막 ACL 을 비울 수 없습니다. visibility 를 먼저 바꾸세요.'
+            : err.message
+          : '공유 취소에 실패했습니다.',
+      )
     }
   }
 
@@ -264,17 +293,61 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
               </div>
             ) : null}
             <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                onClick={handleDisable}
-                disabled={disableItem.isPending}
-              >
-                {disableItem.isPending ? 'Disabling…' : 'Disable item'}
-              </Button>
+              {item.status === 'disabled' ? (
+                <Button
+                  onClick={handleEnable}
+                  disabled={enableItem.isPending}
+                >
+                  {enableItem.isPending ? 'Enabling…' : 'Re-enable item'}
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={handleDisable}
+                  disabled={disableItem.isPending}
+                >
+                  {disableItem.isPending ? 'Disabling…' : 'Disable item'}
+                </Button>
+              )}
               <span className="self-center text-xs text-muted-foreground">
-                ACL / new version 흐름은 후속 슬라이스.
+                Disabled item 은 신규 install 이 차단됩니다. 이미 install 한
+                사용자의 copy 는 영향 없음.
               </span>
             </div>
+
+            {isOwner && item.visibility === 'restricted' && item.acl_user_ids ? (
+              <div className="space-y-2 border-t border-border/60 pt-3">
+                <p className="text-sm font-medium">공유 대상 (Restricted ACL)</p>
+                {item.acl_user_ids.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    공유된 user 가 없습니다. 새 user 추가는 ACL endpoint 직접
+                    호출이 필요합니다 (후속 슬라이스에 wizard 추가 예정).
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {item.acl_user_ids.map((uid) => (
+                      <li
+                        key={uid}
+                        className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
+                      >
+                        <code className="font-mono">{uid}</code>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleRevokeAcl(uid)}
+                          disabled={removeACL.isPending}
+                        >
+                          공유 취소
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  마지막 ACL 을 제거하려면 먼저 visibility 를 다른 값으로 변경하세요.
+                </p>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}

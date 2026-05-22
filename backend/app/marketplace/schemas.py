@@ -154,6 +154,10 @@ class MarketplaceItemOut(BaseModel):
     origin_summary: ResourceOriginSummaryOut | None = None
     publication_summary: ResourcePublicationSummaryOut
     installation: MarketplaceInstallationSummary
+    # owner / super_user 시점에만 채워진다 (frontend 가 ACL revoke UI 에서
+    # 사용). 다른 user 응답에서는 None — list 자체가 leak 되면 enumeration
+    # oracle 위반.
+    acl_user_ids: list[uuid.UUID] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -396,6 +396,28 @@ async def disable_item(
     return await catalog_service.project_item(db, item=loaded, user=user)
 
 
+@router.post(
+    "/items/{item_id}/enable", response_model=MarketplaceItemOut
+)
+async def enable_item(
+    item_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> MarketplaceItemOut:
+    """Disable 의 inverse — ``status: disabled → published`` 로 복원. ACL
+    / visibility / is_listed 는 그대로 유지된다 — owner 가 다시 노출하려면
+    별도 흐름(visibility 변경 + super_user listing approve) 을 거친다.
+    """
+
+    item = await publish_service.enable_item(db, item_id=item_id, user=user)
+    await db.commit()
+    loaded = await catalog_service.get_item(db, user=user, item_id=item.id)
+    if loaded is None:
+        raise marketplace_item_not_found()
+    return await catalog_service.project_item(db, item=loaded, user=user)
+
+
 # ---------------------------------------------------------------------------
 # Admin (super_user) — listing approval (Spec §10.5)
 # ---------------------------------------------------------------------------

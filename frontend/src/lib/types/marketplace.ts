@@ -142,6 +142,8 @@ export interface MarketplaceItem {
   execution_profile?: ExecutionProfile | null
   origin_summary?: ResourceOriginSummary | null
   publication_summary: ResourcePublicationSummary
+  /** owner / super_user 시점에만 채워진다 — ACL revoke UI 용. */
+  acl_user_ids?: string[] | null
   installation: InstallationSummary
 }
 

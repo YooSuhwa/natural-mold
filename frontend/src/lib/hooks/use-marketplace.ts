@@ -180,6 +180,25 @@ export function useDisableItem() {
   })
 }
 
+export function useEnableItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (itemId: string) => marketplaceApi.enableItem(itemId),
+    onSuccess: () => {
+      invalidateAllItems(qc)
+      qc.invalidateQueries({ queryKey: MODERATION_KEY })
+    },
+  })
+}
+
+export function useRemoveItemACL(itemId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) => marketplaceApi.removeACLEntry(itemId, userId),
+    onSuccess: () => invalidateAllItems(qc),
+  })
+}
+
 export function useAdminSetListed() {
   const qc = useQueryClient()
   return useMutation({

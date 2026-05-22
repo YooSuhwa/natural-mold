@@ -126,6 +126,11 @@ export const marketplaceApi = {
       method: 'POST',
     }),
 
+  enableItem: (itemId: string) =>
+    apiFetch<MarketplaceItem>(`/api/marketplace/items/${itemId}/enable`, {
+      method: 'POST',
+    }),
+
   // ---- Admin (super_user) ----
   // `disable` (owner+super) uses the public route above. `setListed` is
   // super_user only and toggles catalog search visibility (PRD §11.7).

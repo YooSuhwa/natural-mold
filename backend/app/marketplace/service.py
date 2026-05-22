@@ -255,6 +255,15 @@ async def _project_item(
         origin_summary=None,
         publication_summary=publication,
         installation=installation,
+        # owner / super_user 만 ACL user_id 목록을 본다. ResourcePublicationSummaryOut.
+        # shared_user_count 는 모든 viewer 에게 노출되지만 user id 자체는 leak
+        # 하지 않는다 — 다른 user 가 본인이 ACL 에 있는지 알 수 있게 되어
+        # information leak 발생.
+        acl_user_ids=(
+            [a.user_id for a in (item.acl_entries or [])]
+            if (is_owner(item, user) or user.is_super_user)
+            else None
+        ),
     )
 
 
