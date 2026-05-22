@@ -43,6 +43,16 @@ import type {
 } from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 
+const VISIBILITY_SUCCESS_MESSAGE: Record<
+  Exclude<MarketplaceVisibility, 'system'>,
+  string
+> = {
+  private: '비공개로 전환했습니다. 카탈로그에서 노출 안 됨.',
+  public: '공개로 전환했습니다. 카탈로그 노출은 super_user 승인 대기.',
+  unlisted: '링크 전용(unlisted)으로 전환했습니다.',
+  restricted: 'Restricted로 전환했습니다. ACL 대상 추가 필요.',
+}
+
 interface PageProps {
   params: Promise<{ 'item-id': string }>
 }
@@ -110,24 +120,38 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
     }
   }
 
+  async function runMutation(
+    action: () => Promise<unknown>,
+    successMsg: string,
+    options?: { fallback?: string; codeMap?: Record<string, string> },
+  ) {
+    try {
+      await action()
+      toast.success(successMsg)
+    } catch (err) {
+      const fallback = options?.fallback ?? '요청에 실패했습니다.'
+      if (err instanceof ApiError) {
+        toast.error(options?.codeMap?.[err.code ?? ''] ?? err.message ?? fallback)
+      } else {
+        toast.error(fallback)
+      }
+    }
+  }
+
   async function handleDisable() {
     if (!item) return
-    try {
-      await disableItem.mutateAsync(item.id)
-      toast.success('Disabled')
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to disable')
-    }
+    await runMutation(() => disableItem.mutateAsync(item.id), 'Disabled', {
+      fallback: 'Failed to disable',
+    })
   }
 
   async function handleEnable() {
     if (!item) return
-    try {
-      await enableItem.mutateAsync(item.id)
-      toast.success('Re-enabled — 카탈로그 재노출은 visibility/listing 설정에 따라 결정됩니다.')
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Failed to enable')
-    }
+    await runMutation(
+      () => enableItem.mutateAsync(item.id),
+      'Re-enabled — 카탈로그 재노출은 visibility/listing 설정에 따라 결정됩니다.',
+      { fallback: 'Failed to enable' },
+    )
   }
 
   async function handleUnpublish() {
@@ -136,56 +160,37 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
       toast.info('이미 비공개 상태입니다.')
       return
     }
-    try {
-      await patchItem.mutateAsync({ visibility: 'private' })
-      toast.success(
-        'Unpublish 완료 — 카탈로그에서 미노출. 다른 사용자가 이미 install 한 copy 는 영향 없음.',
-      )
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Unpublish 에 실패했습니다.')
-    }
+    await runMutation(
+      () => patchItem.mutateAsync({ visibility: 'private' }),
+      'Unpublish 완료 — 카탈로그에서 미노출. 다른 사용자가 이미 install 한 copy 는 영향 없음.',
+      { fallback: 'Unpublish 에 실패했습니다.' },
+    )
   }
 
   async function handleRevokeAcl(userId: string) {
-    try {
-      await removeACL.mutateAsync(userId)
-      toast.success('공유 취소 완료')
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError
-          ? err.code === 'marketplace_acl_required'
-            ? 'restricted 상태에서는 마지막 ACL 을 비울 수 없습니다. visibility 를 먼저 바꾸세요.'
-            : err.message
-          : '공유 취소에 실패했습니다.',
-      )
-    }
+    await runMutation(() => removeACL.mutateAsync(userId), '공유 취소 완료', {
+      fallback: '공유 취소에 실패했습니다.',
+      codeMap: {
+        marketplace_acl_required:
+          'restricted 상태에서는 마지막 ACL 을 비울 수 없습니다. visibility 를 먼저 바꾸세요.',
+      },
+    })
   }
 
   async function handleVisibilityChange(next: MarketplaceVisibility) {
-    if (!item || next === item.visibility) return
     // ``system`` 은 super_user 시드만 — PATCH 로는 변경 불가.
-    if (next === 'system') return
-    const body: MarketplaceItemPatchBody = { visibility: next }
-    try {
-      await patchItem.mutateAsync(body)
-      const message =
-        next === 'private'
-          ? '비공개로 전환했습니다. 카탈로그에서 노출 안 됨.'
-          : next === 'public'
-            ? '공개로 전환했습니다. 카탈로그 노출은 super_user 승인 대기.'
-            : next === 'unlisted'
-              ? '링크 전용(unlisted)으로 전환했습니다.'
-              : 'Restricted로 전환했습니다. ACL 대상 추가 필요.'
-      toast.success(message)
-    } catch (err) {
-      toast.error(
-        err instanceof ApiError
-          ? err.code === 'marketplace_acl_required'
-            ? 'restricted 전환은 ACL 대상이 최소 1명 필요합니다. ACL 추가 후 다시 시도하세요.'
-            : err.message
-          : 'Visibility 변경에 실패했습니다.',
-      )
-    }
+    if (!item || next === item.visibility || next === 'system') return
+    await runMutation(
+      () => patchItem.mutateAsync({ visibility: next } satisfies MarketplaceItemPatchBody),
+      VISIBILITY_SUCCESS_MESSAGE[next],
+      {
+        fallback: 'Visibility 변경에 실패했습니다.',
+        codeMap: {
+          marketplace_acl_required:
+            'restricted 전환은 ACL 대상이 최소 1명 필요합니다. ACL 추가 후 다시 시도하세요.',
+        },
+      },
+    )
   }
 
   return (
