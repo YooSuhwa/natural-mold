@@ -36,7 +36,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type {
-  MarketplaceItem,
   MarketplaceItemPatchBody,
   MarketplaceVisibility,
 } from '@/lib/types/marketplace'
@@ -85,7 +84,11 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
     )
   }
 
-  const isOwner = !!user && item.publication_summary.item_id === item.id && user.id === userIdFromOrigin(item)
+  // Owner 판별: 백엔드가 ``publication_summary.item_id`` 를 owner+link 동시일
+  // 때만 채워주므로 (service.py `_project_item`), 이 한 줄로 충분하다.
+  // origin_summary.source_user_id 는 다른 user 가 공유해준 케이스에만 set 되어
+  // 본인 publish 에서는 null — 이전 비교는 항상 false 였다.
+  const isOwner = !!user && item.publication_summary.item_id === item.id
   const cta = derivePrimaryCta(item)
 
   function handlePrimary() {
@@ -286,9 +289,3 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
   )
 }
 
-function userIdFromOrigin(item: MarketplaceItem): string | null {
-  // origin_summary.source_user_id is set when current user is the owner who
-  // imported it elsewhere; for ownership we can't determine without API.
-  // Phase 1 keeps this minimal — owner actions guard relies on backend 403.
-  return item.origin_summary?.source_user_id ?? null
-}
