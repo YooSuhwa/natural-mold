@@ -130,6 +130,22 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
     }
   }
 
+  async function handleUnpublish() {
+    if (!item) return
+    if (item.visibility === 'private') {
+      toast.info('이미 비공개 상태입니다.')
+      return
+    }
+    try {
+      await patchItem.mutateAsync({ visibility: 'private' })
+      toast.success(
+        'Unpublish 완료 — 카탈로그에서 미노출. 다른 사용자가 이미 install 한 copy 는 영향 없음.',
+      )
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : 'Unpublish 에 실패했습니다.')
+    }
+  }
+
   async function handleRevokeAcl(userId: string) {
     try {
       await removeACL.mutateAsync(userId)
@@ -293,6 +309,15 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
               </div>
             ) : null}
             <div className="flex flex-wrap gap-2">
+              {isOwner && item.visibility !== 'private' ? (
+                <Button
+                  variant="outline"
+                  onClick={handleUnpublish}
+                  disabled={patchItem.isPending}
+                >
+                  {patchItem.isPending ? 'Unpublishing…' : 'Unpublish (Private 으로)'}
+                </Button>
+              ) : null}
               {item.status === 'disabled' ? (
                 <Button
                   onClick={handleEnable}
@@ -309,11 +334,11 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                   {disableItem.isPending ? 'Disabling…' : 'Disable item'}
                 </Button>
               )}
-              <span className="self-center text-xs text-muted-foreground">
-                Disabled item 은 신규 install 이 차단됩니다. 이미 install 한
-                사용자의 copy 는 영향 없음.
-              </span>
             </div>
+            <p className="text-xs text-muted-foreground">
+              <span className="font-medium">Unpublish</span>: visibility 를 private 으로 — 본인만 보임, 다른 사용자 신규 install 불가.{' '}
+              <span className="font-medium">Disable</span>: 운영 차단 — 다른 사용자 신규 install 영구 차단. 둘 다 이미 install 된 copy 에는 영향 없음.
+            </p>
 
             {isOwner && item.visibility === 'restricted' && item.acl_user_ids ? (
               <div className="space-y-2 border-t border-border/60 pt-3">
