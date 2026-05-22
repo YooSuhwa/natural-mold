@@ -289,24 +289,50 @@ async def publish_skill(
         if not can_manage_item(item, user):
             raise marketplace_manage_forbidden()
     else:
-        item = MarketplaceItem(
-            id=uuid.uuid4(),
-            resource_type="skill",
-            owner_user_id=user.id,
-            is_system=False,
-            is_listed=False,  # Spec §0.1 — public items start unlisted.
-            name=body.name,
-            slug=_slugify(body.name),
-            description=body.description,
-            visibility=body.visibility,
-            status="draft",
-            moderation_status="approved",
-            source_kind="user",
-            tags=list(body.tags) or None,
-            categories=list(body.categories) or None,
-        )
-        db.add(item)
-        await db.flush()
+        # ``body.item_id`` 없음 — 신규 publish 흐름이지만 ``(owner, slug)``
+        # UNIQUE constraint를 침해하지 않으려면 동일 owner+slug 기존 item을
+        # 먼저 검색해 재사용해야 한다. 사용자가 자기 skill을 publish→삭제→
+        # 재publish 할 때 publication_link 는 CASCADE 로 사라지지만
+        # marketplace_items 자체는 남기 때문에, naive insert 는 IntegrityError
+        # 로 500 을 던지고 CORS 헤더가 누락되어 브라우저는 "네트워크 오류"
+        # 처럼 표시한다.
+        item_slug = _slugify(body.name)
+        existing = (
+            await db.execute(
+                select(MarketplaceItem)
+                .where(MarketplaceItem.owner_user_id == user.id)
+                .where(MarketplaceItem.resource_type == "skill")
+                .where(MarketplaceItem.slug == item_slug)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            # 기존 item 재사용 — 새 version 을 추가하는 흐름으로 자연스럽게
+            # 합류. metadata 갱신은 아래 ``if body.item_id is None`` 분기에서
+            # name/description/tags/categories 를 다시 채운다.
+            if not can_manage_item(existing, user):
+                # 동일 slug 가 시스템 item 등에 잡혔을 때의 방어선.
+                raise marketplace_manage_forbidden()
+            item = existing
+        else:
+            item = MarketplaceItem(
+                id=uuid.uuid4(),
+                resource_type="skill",
+                owner_user_id=user.id,
+                is_system=False,
+                is_listed=False,  # Spec §0.1 — public items start unlisted.
+                name=body.name,
+                slug=item_slug,
+                description=body.description,
+                visibility=body.visibility,
+                status="draft",
+                moderation_status="approved",
+                source_kind="user",
+                tags=list(body.tags) or None,
+                categories=list(body.categories) or None,
+            )
+            db.add(item)
+            await db.flush()
 
     # Snapshot the skill payload off disk into the immutable
     # versions storage. Use a temp directory so a secret_scan failure
