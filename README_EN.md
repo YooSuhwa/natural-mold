@@ -68,7 +68,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 
 # 3. Backend
 cd backend
-cp .env.example .env                  # set OPENAI_API_KEY, etc.
+cp .env.example .env                  # set ENCRYPTION_KEYS / JWT_SECRET (LLM keys via UI)
 uv sync                               # install dependencies
 uv run alembic upgrade head           # run migrations (head: m43)
 uv run uvicorn app.main:app --reload --port 8001
@@ -87,8 +87,8 @@ system tools, and four agent templates.
 ### Run everything with Docker Compose
 
 ```bash
-export OPENAI_API_KEY=sk-...
 docker compose up -d                  # postgres + backend + frontend
+# Register LLM API keys in the UI Credentials screen after boot (ADR-013)
 ```
 
 ### Verification commands
@@ -306,9 +306,9 @@ See `backend/.env.example` for the full list. Minimum keys to boot:
 | Variable | Required | Description |
 |------|------|------|
 | `DATABASE_URL` | yes | PostgreSQL async URL (`postgresql+asyncpg://...`) |
-| `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` | yes (≥1) | LLM calls |
 | `ENCRYPTION_KEY` | yes | Cipher V2 master key (HKDF-SHA256 + AES-256-GCM) |
 | `JWT_SECRET` | yes | JWT HS256 signing key (ADR-016 multi-user auth) |
+| LLM keys (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`, …) | optional | Register via UI Credentials (ADR-013). ENV is an optional dev bootstrap |
 | `LANGSMITH_API_KEY` | optional | LangSmith tracing |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | optional | Naver search tools |
 | `GOOGLE_API_KEY` / `GOOGLE_CSE_ID` | optional | Google CSE tools |
