@@ -155,14 +155,14 @@ async def upload_package_skill(
     # Spec §13.1 — gate the upload with the same secret_scan used by
     # publish. Imports + uploads share the surface so a leak can't
     # enter the system via either path.
+    from pathlib import Path as _Path
+
     from app.config import settings
     from app.marketplace.secret_scan import scan_package
     from app.storage.paths import resolve_data_path
 
-    from pathlib import Path as _Path
-
     skill_path = resolve_data_path(skill.storage_path)
-    skills_root = _Path(settings.skill_storage_dir).resolve()
+    skills_root = (_Path(settings.data_root) / "skills").resolve()
     if not skill_path.is_relative_to(skills_root):
         await skill_service.delete_skill(db, skill)
         await db.rollback()
