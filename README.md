@@ -69,7 +69,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # OPENAI_API_KEY 등 입력
 uv sync                               # 의존성 설치
-uv run alembic upgrade head           # DB 마이그레이션 (현재 head: m31)
+uv run alembic upgrade head           # DB 마이그레이션 (현재 head: m43)
 uv run uvicorn app.main:app --reload --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
@@ -165,9 +165,10 @@ pnpm build                            # 프로덕션 빌드
 <details>
 <summary><b>🔐 크리덴셜 · 모델 관리</b></summary>
 
-- **Cipher V2 암호화** — Fernet + HKDF-SHA256, 단일 블롭 Base64
+- **Cipher V2 암호화** — HKDF-SHA256 + AES-256-GCM, 단일 블롭 Base64
 - **Vault 통합** — `hvac` 기반 external secrets 지원
 - **System / User 크리덴셜 분리** — 운영자 관리 vs 사용자 개인 키
+- **한국 서비스 8종** — SRT · KTX · 산림청 숲길 · KIPRIS · DART · ODsay · 쿠팡 파트너스 · K-Skill 프록시
 - **모델 discovery** — 크리덴셜로 LLM API에 직접 질의해 사용 가능 모델 + 가격
   + 컨텍스트 윈도우 자동 가져오기
 - **모델 health check** — 주기적 probe로 모델 가용성 모니터링
@@ -202,6 +203,17 @@ pnpm build                            # 프로덕션 빌드
 
 </details>
 
+<details>
+<summary><b>🛒 마켓플레이스</b></summary>
+
+- **카탈로그** — Agent / MCP 서버 / Skill을 공개 마켓플레이스에 게시하고 한 클릭으로 설치
+- **원본-설치본 분리** — 설치 시 사용자 계정에 독립 복사본 생성, 원본 업데이트와 독립 동작
+- **버전 스냅샷** — `marketplace_versions` 테이블에 immutable 버전 이력 관리
+- **Credential 바인딩** — Skill별 필요 credential을 설치 시점에 사용자 계정 키로 매핑
+- **모더레이션** — super_user가 `/marketplace/admin/moderation`에서 공개 심사
+
+</details>
+
 ## 🏗️ 아키텍처
 
 ```
@@ -216,9 +228,10 @@ pnpm build                            # 프로덕션 빌드
 │  routers/ → services/ → models/ (SQLAlchemy 2.0 async)         │
 │                                                                 │
 │  agent_runtime/                                                 │
-│    ├ creation_agent (메타 빌더)                                 │
+│    ├ builder_v3/ (대화형 메타 빌더 — 최신)                      │
 │    ├ executor (create_deep_agent + astream)                     │
 │    ├ streaming (LangGraph events → SSE chunks, orjson)          │
+│    ├ event_broker (이벤트 브로드캐스트)                          │
 │    ├ tool_factory (prebuilt + MCP + custom 통합)               │
 │    ├ model_factory (provider별 LLM)                             │
 │    └ trigger_executor (스케줄 → 메시지 실행)                     │
@@ -234,7 +247,7 @@ pnpm build                            # 프로덕션 빌드
 
 - **Router** (`app/routers/`) — HTTP 엔드포인트, 요청·응답 변환
 - **Service** (`app/services/`) — 비즈니스 로직, DB 쿼리, 트랜잭션
-- **Model** (`app/models/`) — SQLAlchemy ORM, 31개 테이블 (m31 기준)
+- **Model** (`app/models/`) — SQLAlchemy ORM, ~40개 테이블 (m43 기준)
 
 ### Frontend 패턴
 
@@ -253,7 +266,7 @@ natural-mold/
 │   │   ├── main.py              # FastAPI 앱 팩토리 + lifespan
 │   │   ├── config.py            # pydantic-settings (.env)
 │   │   ├── database.py          # async engine + session
-│   │   ├── dependencies.py      # get_db, get_current_user (mock)
+│   │   ├── dependencies.py      # get_db, get_current_user, require_super_user, verify_csrf
 │   │   ├── scheduler.py         # APScheduler 싱글턴
 │   │   ├── models/              # SQLAlchemy ORM
 │   │   ├── schemas/             # Pydantic 스키마
@@ -262,11 +275,11 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + 도메인
 │   │   ├── agent_runtime/       # AI 실행 엔진
 │   │   └── seed/                # 시드 데이터
-│   ├── alembic/versions/        # 마이그레이션 (m31까지)
-│   └── tests/                   # pytest (709 passed)
+│   ├── alembic/versions/        # 마이그레이션 (m43까지)
+│   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
-│       ├── app/                 # Next.js App Router (17 라우트)
+│       ├── app/                 # Next.js App Router (23+ 라우트)
 │       ├── components/          # UI 컴포넌트
 │       └── lib/                 # api, hooks, stores, sse, types
 ├── docs/
@@ -274,6 +287,7 @@ natural-mold/
 │   ├── PRD-screens.md           # 화면 와이어프레임
 │   ├── ARCHITECTURE.md          # 시스템 아키텍처
 │   ├── design-docs/             # ADR (디자인 결정)
+│   ├── marketplace-resources-prd.md  # 마켓플레이스 PRD
 │   └── tool-setup-guide.md      # 도구 API 키 설정
 ├── tasks/                       # 작업 메모 + archive/
 ├── docker-compose.yml
@@ -292,7 +306,8 @@ natural-mold/
 |------|------|------|
 | `DATABASE_URL` | O | PostgreSQL async URL (`postgresql+asyncpg://...`) |
 | `OPENAI_API_KEY` 또는 `ANTHROPIC_API_KEY` | O (1+) | LLM 호출 |
-| `ENCRYPTION_KEY` | O | Fernet 키 (DB 내 API 키 암호화) |
+| `ENCRYPTION_KEY` | O | Cipher V2 마스터 키 (HKDF-SHA256 + AES-256-GCM) |
+| `JWT_SECRET` | O | JWT HS256 서명 키 (ADR-016 멀티유저 인증) |
 | `LANGSMITH_API_KEY` | - | LangSmith 트레이싱 (선택) |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | - | 네이버 검색 도구 |
 | `GOOGLE_API_KEY` / `GOOGLE_CSE_ID` | - | Google CSE 도구 |
