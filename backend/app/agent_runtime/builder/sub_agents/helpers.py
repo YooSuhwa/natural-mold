@@ -204,8 +204,12 @@ async def invoke_with_json_retry(
         )
         content = response.content
         try:
-            text = strip_code_fences(content)
-            return json.loads(text)
+            text = strip_code_fences(content).lstrip()
+            # 일부 모델(LiteLLM gateway 등)은 JSON 객체 뒤에 설명 텍스트를
+            # 덧붙인다. raw_decode로 첫 JSON 값만 파싱하고 뒤따르는 extra data는
+            # 무시해 "Extra data: line N" 파싱 실패를 방지한다.
+            obj, _ = json.JSONDecoder().raw_decode(text)
+            return obj
         except (json.JSONDecodeError, ValueError) as exc:
             logger.warning("JSON parsing failed (attempt %d): %s", attempt + 1, exc)
             if attempt < max_retries - 1:
