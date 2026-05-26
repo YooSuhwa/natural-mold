@@ -1,15 +1,13 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
-import Link from 'next/link'
 import { EyeIcon, EyeOffIcon, Loader2Icon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { useState, type FormEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
 
 import { AuthAlert } from './AuthAlert'
 import { mapAuthError } from './auth-errors'
@@ -47,95 +45,125 @@ export function LoginForm({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      aria-busy={isLoading}
-      noValidate
-      className="space-y-4"
-    >
-      <header className="space-y-1.5">
-        <h1 className="text-2xl font-semibold tracking-tight">{t('auth.login.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('auth.login.subtitle')}</p>
+    <form onSubmit={handleSubmit} aria-busy={isLoading} noValidate>
+      <header style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', margin: '0 0 6px' }}>
+          계정에 로그인
+        </h1>
+        {/* <p style={{ fontSize: 13.5, color: 'oklch(0.556 0 0)', margin: 0 }}>
+          이메일과 비밀번호로 계속하기
+        </p> */}
       </header>
 
       {showCallbackNotice ? (
-        <AuthAlert variant="info">{t('auth.login.expiredNotice')}</AuthAlert>
+        <div style={{ marginBottom: 14 }}>
+          <AuthAlert variant="info">{t('auth.login.expiredNotice')}</AuthAlert>
+        </div>
       ) : null}
 
       {mapped && mapped.field === null ? (
-        <AuthAlert>{t(mapped.messageKey)}</AuthAlert>
+        <div style={{ marginBottom: 14 }}>
+          <AuthAlert>{t(mapped.messageKey)}</AuthAlert>
+        </div>
       ) : null}
 
       <fieldset disabled={isLoading} className="contents">
-        <div className="space-y-1.5">
-          <label htmlFor="login-email" className="text-sm font-medium">
-            {t('auth.login.email')}
-          </label>
-          <Input
-            id="login-email"
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            autoFocus
-            required
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onBlur={() => setTouched((prev) => ({ ...prev, email: true }))}
-            aria-invalid={emailError || mapped?.field === 'email' || undefined}
-            aria-describedby={
-              mapped?.field === 'email' ? 'login-email-error' : undefined
-            }
-          />
-          {emailError ? (
-            <p className="text-xs text-destructive">{t('auth.errors.invalidEmail')}</p>
-          ) : mapped?.field === 'email' ? (
-            <p id="login-email-error" className="text-xs text-destructive">
-              {t(mapped.messageKey)}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="space-y-1.5">
-          <label htmlFor="login-password" className="text-sm font-medium">
-            {t('auth.login.password')}
-          </label>
-          <div className="relative">
-            <Input
-              id="login-password"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onBlur={() => setTouched((prev) => ({ ...prev, password: true }))}
-              aria-invalid={passwordError || undefined}
-              className="pr-9"
-            />
-            <button
-              type="button"
-              aria-pressed={showPassword}
-              aria-label={showPassword ? '비밀번호 숨김' : '비밀번호 표시'}
-              onClick={() => setShowPassword((v) => !v)}
-              className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+        <div style={{ display: 'grid', gap: 13 }}>
+          {/* Email */}
+          <div>
+            <label
+              htmlFor="login-email"
+              className="text-sm font-medium"
+              style={{ display: 'block', marginBottom: 6 }}
             >
-              {showPassword ? (
-                <EyeOffIcon className="size-4" />
-              ) : (
-                <EyeIcon className="size-4" />
-              )}
-            </button>
+              {t('auth.login.email')}
+            </label>
+            <Input
+              id="login-email"
+              type="email"
+              autoComplete="email"
+              inputMode="email"
+              autoFocus
+              required
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setTouched((prev) => ({ ...prev, email: true }))}
+              aria-invalid={emailError || mapped?.field === 'email' || undefined}
+            />
+            {emailError ? (
+              <p style={{ fontSize: 12, color: 'oklch(0.577 0.245 27.325)', marginTop: 6 }}>
+                {t('auth.errors.invalidEmail')}
+              </p>
+            ) : mapped?.field === 'email' ? (
+              <p style={{ fontSize: 12, color: 'oklch(0.577 0.245 27.325)', marginTop: 6 }}>
+                {t(mapped.messageKey)}
+              </p>
+            ) : null}
           </div>
-          {passwordError ? (
-            <p className="text-xs text-destructive">{t('auth.errors.passwordRequired')}</p>
-          ) : null}
-        </div>
 
-        <div className="flex items-center justify-between text-sm">
+          {/* Password */}
+          <div>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                marginBottom: 6,
+              }}
+            >
+              <label htmlFor="login-password" className="text-sm font-medium">
+                {t('auth.login.password')}
+              </label>
+              <button
+                type="button"
+                aria-disabled
+                className="text-xs hover:underline opacity-60 cursor-not-allowed"
+                style={{
+                  color: 'oklch(0.596 0.145 163.225)',
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                }}
+                onClick={(e) => e.preventDefault()}
+              >
+                {t('auth.login.forgotPassword')}
+              </button>
+            </div>
+            <div className="relative">
+              <Input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onBlur={() => setTouched((prev) => ({ ...prev, password: true }))}
+                aria-invalid={passwordError || undefined}
+                className="pr-9"
+              />
+              <button
+                type="button"
+                aria-pressed={showPassword}
+                aria-label={showPassword ? '비밀번호 숨김' : '비밀번호 표시'}
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              >
+                {showPassword ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+              </button>
+            </div>
+            {passwordError ? (
+              <p style={{ fontSize: 12, color: 'oklch(0.577 0.245 27.325)', marginTop: 6 }}>
+                {t('auth.errors.passwordRequired')}
+              </p>
+            ) : null}
+          </div>
+
+          {/* Remember me */}
           <Tooltip>
             <TooltipTrigger
               render={
-                <label className="flex items-center gap-2 text-muted-foreground cursor-not-allowed">
+                <label className="flex items-center gap-2 text-muted-foreground cursor-not-allowed select-none text-sm">
                   <Checkbox checked disabled data-placeholder="true" />
                   <span>{t('auth.login.rememberMe')}</span>
                 </label>
@@ -143,63 +171,25 @@ export function LoginForm({
             />
             <TooltipContent>{t('auth.login.rememberMeTooltip')}</TooltipContent>
           </Tooltip>
-          <button
-            type="button"
-            aria-disabled
-            className="text-primary-strong hover:underline disabled:opacity-60"
-            onClick={(e) => {
-              e.preventDefault()
-            }}
+
+          {/* Submit */}
+          <Button
+            type="submit"
+            className="w-full gap-2"
+            disabled={isLoading}
+            style={{ marginTop: 2 }}
           >
-            {t('auth.login.forgotPassword')}
-          </button>
+            {isLoading ? (
+              <>
+                <Loader2Icon className="size-4 animate-spin" aria-hidden />
+                {t('auth.login.submitting')}
+              </>
+            ) : (
+              t('auth.login.submit')
+            )}
+          </Button>
         </div>
-
-        <Button type="submit" className="w-full" disabled={isLoading}>
-          {isLoading ? (
-            <>
-              <Loader2Icon className="mr-2 size-4 animate-spin" aria-hidden />
-              {t('auth.login.submitting')}
-            </>
-          ) : (
-            t('auth.login.submit')
-          )}
-        </Button>
       </fieldset>
-
-      <div className="relative my-2" aria-hidden>
-        <div className="border-t border-border/60" />
-        <span className="absolute inset-0 -top-2.5 flex items-center justify-center">
-          <span className="bg-card px-2 text-xs text-muted-foreground">
-            {t('auth.login.or')}
-          </span>
-        </span>
-      </div>
-
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span className={cn('block w-full', 'cursor-not-allowed')}>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full opacity-60"
-                disabled
-              >
-                {t('auth.login.googleButton')}
-              </Button>
-            </span>
-          }
-        />
-        <TooltipContent>{t('auth.login.googleComingSoon')}</TooltipContent>
-      </Tooltip>
-
-      <p className="text-center text-sm text-muted-foreground">
-        {t('auth.login.noAccount')}{' '}
-        <Link href="/register" className="text-primary-strong hover:underline">
-          {t('auth.login.registerLink')}
-        </Link>
-      </p>
     </form>
   )
 }

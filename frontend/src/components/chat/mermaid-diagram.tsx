@@ -13,7 +13,7 @@ function ensureInitialized(theme: MermaidTheme) {
   mermaid.initialize({
     startOnLoad: false,
     theme,
-    securityLevel: 'loose',
+    securityLevel: 'strict',
     fontFamily: 'inherit',
   })
   currentTheme = theme
