@@ -20,29 +20,6 @@ interface Props {
   showCallbackNotice?: boolean
 }
 
-function GoogleColorIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-      <path
-        fill="#4285F4"
-        d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.44c-.28 1.46-1.11 2.69-2.36 3.52v2.94h3.81c2.23-2.06 3.6-5.1 3.6-8.7z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 24c3.24 0 5.95-1.08 7.94-2.91l-3.81-2.94c-1.05.71-2.4 1.14-4.13 1.14-3.18 0-5.87-2.14-6.83-5.02H1.24v3.04C3.22 21.3 7.31 24 12 24z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.17 14.27a7.26 7.26 0 0 1-.39-2.27c0-.79.14-1.55.39-2.27V6.69H1.24A11.96 11.96 0 0 0 0 12c0 1.94.47 3.77 1.24 5.31l3.93-3.04z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 4.74c1.79 0 3.39.62 4.66 1.82l3.38-3.38C17.95 1.23 15.24 0 12 0 7.31 0 3.22 2.7 1.24 6.69l3.93 3.04C6.13 6.88 8.82 4.74 12 4.74z"
-      />
-    </svg>
-  )
-}
-
 export function LoginForm({
   onSubmit,
   isLoading,
@@ -89,26 +66,6 @@ export function LoginForm({
           <AuthAlert>{t(mapped.messageKey)}</AuthAlert>
         </div>
       ) : null}
-
-      {/* Google button */}
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className="block w-full cursor-not-allowed" style={{ marginBottom: 12 }} />}
-        >
-          <Button type="button" variant="outline" className="w-full opacity-60 gap-2.5" disabled>
-            <GoogleColorIcon />
-            Google로 계속하기
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t('auth.login.googleComingSoon')}</TooltipContent>
-      </Tooltip>
-
-      {/* Divider */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '14px 0' }}>
-        <div style={{ flex: 1, height: 1, background: 'oklch(0.922 0 0)' }} />
-        <span style={{ fontSize: 12, color: 'oklch(0.556 0 0)' }}>또는 이메일로</span>
-        <div style={{ flex: 1, height: 1, background: 'oklch(0.922 0 0)' }} />
-      </div>
 
       <fieldset disabled={isLoading} className="contents">
         <div style={{ display: 'grid', gap: 13 }}>
