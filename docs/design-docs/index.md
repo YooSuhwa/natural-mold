@@ -17,3 +17,5 @@
 | ADR-014 | [Chat Model Factory — Provider Quirks 분리](adr-014-chat-model-factory-strategy.md) | 승인됨 | 2026-05-08 |
 | ADR-016 | [멀티유저 인증 (HttpOnly Cookie + JWT + super_user)](adr-016-multiuser-auth.md) | 승인됨 | 2026-05-09 |
 | ADR-017 | [Marketplace Resources (Skill/MCP/Agent 공유 레이어, Phase 1: Skill)](adr-017-marketplace-resources.md) | 제안됨 | 2026-05-18 |
+| ADR-018 | [storage_path 상대화 (worktree 데이터 손실 재발 방지)](adr-018-relative-storage-path.md) | 승인됨 | 2026-05-23 |
+| ADR-019 | [System LLM Settings (역할별 모델 선택 + base_url 주입)](adr-019-system-llm-settings.md) | 승인됨 | 2026-05-26 |

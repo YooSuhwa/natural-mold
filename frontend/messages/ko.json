@@ -112,6 +112,7 @@
       "models": "모델",
       "credentials": "Credential",
       "systemCredentials": "System Credential",
+      "systemLlm": "System LLM 설정",
       "skills": "스킬",
       "usage": "사용량",
       "templates": "에이전트 템플릿"

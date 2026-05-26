@@ -21,8 +21,7 @@ from app.agent_runtime.assistant.tools.write_tools import build_write_tools
 from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.executor import build_agent
 from app.agent_runtime.model_factory import create_chat_model
-from app.config import settings
-from app.services.system_credential_resolver import resolve_system_api_key
+from app.services.system_credential_resolver import resolve_system_model
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +44,6 @@ def _load_system_prompt() -> str:
         )
 
 
-# ``_resolve_system_api_key`` was promoted to
-# ``app.services.system_credential_resolver.resolve_system_api_key`` so the
-# image generation flows can share the same ENV → system-credential
-# fallback policy. Re-exported under the legacy name for the test that
-# patches it via ``patch.object``.
-_resolve_system_api_key = resolve_system_api_key
-
-
 async def build_assistant_agent(
     db: AsyncSession,
     agent_id: uuid.UUID,
@@ -70,13 +61,15 @@ async def build_assistant_agent(
     Returns:
         CompiledStateGraph — build_agent의 반환값
     """
-    api_key = await resolve_system_api_key(
-        db, settings.assistant_model_provider
-    )
+    # ADR-019: the assistant text model is the operator-selected ``text_primary``
+    # role. Raises ``SystemModelNotConfiguredError`` if unset (surfaced by the
+    # caller) — no silent ``.env`` fallback.
+    resolved = await resolve_system_model(db, "text_primary")
     model: BaseChatModel = create_chat_model(
-        settings.assistant_model_provider,
-        settings.assistant_model_name,
-        api_key=api_key,
+        resolved.provider,
+        resolved.model_name,
+        api_key=resolved.api_key,
+        base_url=resolved.base_url,
     )
 
     # 도구 35개 = 16 read + 18 write + 1 clarify

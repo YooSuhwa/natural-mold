@@ -132,3 +132,12 @@
 [2026-05-19T14:30] zuckerberg MILESTONE_DONE M8b Slice G — Frontend Marketplace UI skeleton 완료. 3 new pages (/marketplace, /marketplace/[item-id], /marketplace/admin/moderation), 7 new components (5 badges + Card + FilterBar + InstallWizard + PublishWizard), 1 API client + 1 types module + 14 hooks. Sidebar Marketplace entry + Skills page Origin/Publication columns + Publish entry 통합. `pnpm install && pnpm lint && pnpm build` PASS (23 routes). 후속 슬라이스 TODO 항목 progress.txt에 기록.
 [2026-05-19T00:23] satya HANDOFF_WRITTEN HANDOFF.md (Phase 1 Full GO + 8 게이트 PASS + 1191 backend tests + frontend build OK)
 [2026-05-19T00:23] satya PROJECT_DONE Marketplace Resources Phase 1
+[2026-05-26T19:10] bezos MILESTONE_START S5 통합검증(M6) — backend/frontend 게이트 + HIGH 2개 폐쇄 재확인
+[2026-05-26T19:12] bezos VERIFICATION_PASS S5-1 backend `ruff check .` clean + `pytest` 1218 passed, 2 deselected, 0 회귀 (젠슨 1214 재현·초과)
+[2026-05-26T19:13] bezos VERIFICATION_PASS S5-2 frontend `pnpm build` 성공(/settings/system-llm 라우트 생성 확인) + `pnpm lint` clean
+[2026-05-26T19:14] bezos VERIFICATION_PASS S5-3 HIGH#1 super_user 가드 — test_get/put_requires_super_user 403 + test_invalid_credential_detail_is_byte_identical(detail ==) CLOSED (test_system_llm_settings.py 19 PASS)
+[2026-05-26T19:15] bezos VERIFICATION_PASS S5-5 핵심시나리오 — test_assistant_stream_surfaces_unconfigured(SSE event:error code=system_model_not_configured) + image base_url payload우선/canonical/raise 3케이스 + assistant create_chat_model(...,base_url) 전달(S3 노트 L82) 확인
+[2026-05-26T19:16] bezos VERIFICATION_CONDITIONAL S5-4 HIGH#2 FK SET NULL — 제약 모델+m45 선언, 젠슨 PG enforce 검증. 단 CI 재현 behavioral 단위테스트 부재. 판정: 게이트 GO, 국소엔진 FK 테스트 in-PR fast-follow 요청(전역 PRAGMA는 별도 follow-up). → jensen '?'
+[2026-05-26T19:16] bezos GATE_DECISION S5 GO (1 in-PR fast-follow: 국소 FK SET NULL 테스트). 전 게이트 그린, HIGH#1 closed, 핵심시나리오 verified. → satya 보고
+[2026-05-26T19:40] bezos VERIFICATION_PASS S5-4 HIGH#2 FK SET NULL CLOSED — test_credential_delete_sets_slot_null PASS(국소 engine+PRAGMA, conftest 전역 무수정). false-pass 반증: PRAGMA 제거 시 credential_id가 NULL 안 됨(IS NULL=False) 직접 입증 → PRAGMA load-bearing 회귀가드 확인. 전체 1219 passed/0 회귀, ruff clean.
+[2026-05-26T19:41] bezos MILESTONE_DONE S5 통합검증(M6) DONE — 전 게이트 GREEN, HIGH#1/#2 CLOSED, 핵심시나리오 verified. ADR-019 FULL GO.

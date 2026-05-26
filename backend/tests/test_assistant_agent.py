@@ -71,10 +71,18 @@ async def test_build_assistant_agent():
     mock_checkpointer = MagicMock()
     mock_compiled_graph = MagicMock()
 
+    from app.services.system_credential_resolver import ResolvedSystemModel
+
+    resolved = ResolvedSystemModel(
+        provider="anthropic",
+        model_name="claude-sonnet-4-6",
+        api_key="sk-test",
+        base_url=None,
+    )
     with (
         patch.object(mod, "_load_system_prompt", return_value="Test prompt"),
         patch.object(
-            mod, "resolve_system_api_key", AsyncMock(return_value="sk-test")
+            mod, "resolve_system_model", AsyncMock(return_value=resolved)
         ),
         patch.object(mod, "create_chat_model", return_value=mock_model),
         patch.object(mod, "build_read_tools", return_value=mock_read_tools),

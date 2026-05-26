@@ -11,9 +11,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.agent import Agent
-from app.services.system_credential_resolver import resolve_system_api_key
+from app.services.system_credential_resolver import (
+    ResolvedSystemModel,
+    resolve_system_model,
+)
 
 logger = logging.getLogger(__name__)
+
+# Canonical API base URLs per provider for the raw image-generation HTTP call
+# (this flow uses httpx directly, not ``create_chat_model``, so the model
+# factory's base_url pinning does not apply here). ``openai_compatible`` always
+# carries an explicit ``base_url`` in its credential payload.
+_IMAGE_PROVIDER_BASE_URLS: dict[str, str] = {
+    "openrouter": "https://openrouter.ai/api/v1",
+    "openai": "https://api.openai.com/v1",
+}
+
+
+def resolve_image_base_url(resolved: ResolvedSystemModel) -> str:
+    """Effective base URL for the image API call (credential payload wins)."""
+    if resolved.base_url:
+        return resolved.base_url.rstrip("/")
+    canonical = _IMAGE_PROVIDER_BASE_URLS.get(resolved.provider)
+    if not canonical:
+        raise ValueError(
+            f"No base_url for image provider '{resolved.provider}' — "
+            "the credential must supply one (openai_compatible)."
+        )
+    return canonical
 
 IMAGE_GEN_SYSTEM_PROMPT = """### [Constraint & Character Base (Refer to moldy_main.jpg)]
 * **Base Character:** 'Moldy' from `moldy_main.jpg`. Maintain its exact translucent teal jelly \
@@ -99,12 +124,11 @@ async def generate_agent_image(
 
     Returns the API URL for the generated image.
     """
-    api_key = await resolve_system_api_key(db, "openrouter")
-    if not api_key:
-        raise ValueError(
-            "No OpenRouter system credential — register one at "
-            "/settings/system-credentials or set OPENROUTER_API_KEY in .env."
-        )
+    # ADR-019: image model/base_url/key come from the operator-selected
+    # ``image`` system role. Raises SystemModelNotConfiguredError if unset.
+    resolved = await resolve_system_model(db, "image")
+    api_key = resolved.api_key
+    base_url = resolve_image_base_url(resolved)
 
     ref_b64 = _load_reference_image_base64()
 
@@ -116,13 +140,13 @@ async def generate_agent_image(
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
-            f"{settings.image_gen_base_url}/chat/completions",
+            f"{base_url}/chat/completions",
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
-                "model": settings.image_gen_model,
+                "model": resolved.model_name,
                 "modalities": ["image", "text"],
                 "image_config": {"aspect_ratio": "1:1"},
                 "messages": [

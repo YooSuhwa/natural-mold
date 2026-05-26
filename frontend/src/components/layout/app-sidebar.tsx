@@ -16,6 +16,7 @@ import {
   PlusIcon,
   Plug2Icon,
   ShieldIcon,
+  SlidersHorizontalIcon,
   ChevronRightIcon,
   StoreIcon,
   ToggleRightIcon,
@@ -104,6 +105,11 @@ export function AppSidebar() {
             label: t('nav.systemCredentials'),
             href: '/settings/system-credentials',
             icon: ShieldIcon,
+          },
+          {
+            label: t('nav.systemLlm'),
+            href: '/settings/system-llm',
+            icon: SlidersHorizontalIcon,
           },
         ]
       : []),

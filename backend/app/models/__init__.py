@@ -30,6 +30,7 @@ from app.models.model import Model
 from app.models.refresh_token import RefreshToken
 from app.models.share_link import ShareLink
 from app.models.skill import AgentSkillLink, Skill
+from app.models.system_llm_setting import SystemLlmSetting
 from app.models.template import Template
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
@@ -66,6 +67,7 @@ __all__ = [
     "ShareLink",
     "Skill",
     "SkillCredentialBinding",
+    "SystemLlmSetting",
     "Template",
     "TokenUsage",
     "Tool",
