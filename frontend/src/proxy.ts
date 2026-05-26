@@ -9,26 +9,20 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))
 }
 
-function isAuthRoute(pathname: string): boolean {
-  return pathname === '/login' || pathname === '/register'
-}
-
 /**
  * Cookie-based gate (no JWT validation — that's the API's job).
  *
- * - `/login`, `/register` with cookie present → bounce to `/`
  * - any protected route without cookie → bounce to `/login?callbackUrl=…`
+ *
+ * NOTE: We intentionally do NOT redirect `/login`→`/` based on cookie presence.
+ * The cookie may be expired, and the proxy can't verify JWT validity at the edge.
+ * Doing so causes an infinite redirect loop when the refresh token is expired:
+ *   / → 401 → /login, proxy sees cookie → /, / → 401 → …
+ * The auth layout handles the logged-in redirect client-side via useSession().
  */
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl
   const hasRefresh = Boolean(request.cookies.get(REFRESH_COOKIE))
-
-  if (isAuthRoute(pathname) && hasRefresh) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/'
-    url.search = ''
-    return NextResponse.redirect(url)
-  }
 
   if (!isPublic(pathname) && !hasRefresh) {
     const url = request.nextUrl.clone()
@@ -42,5 +36,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|fonts|.*\\.(?:svg|png|jpg|jpeg|webp|ico)).*)'],
+  matcher: [
+    '/((?!api|_next/static|_next/image|favicon.ico|fonts|.*\\.(?:svg|png|jpg|jpeg|webp|ico)).*)',
+  ],
 }
