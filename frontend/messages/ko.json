@@ -48,6 +48,9 @@
         "veryStrong": "매우 강함"
       }
     },
+    "hero": {
+      "socialProof": "<strong>200+ 팀</strong>이 Moldy로 에이전트를 만들고 있어요"
+    },
     "errors": {
       "invalidCredentials": "이메일 또는 비밀번호가 올바르지 않습니다",
       "emailTaken": "이미 사용 중인 이메일입니다",
@@ -143,6 +146,16 @@
   "dashboard": {
     "greeting": "안녕하세요! 👋",
     "subtitle": "AI 에이전트를 만들어 반복 업무를 자동화하세요.",
+    "greetingMorning": "좋은 아침이에요",
+    "greetingAfternoon": "좋은 오후예요",
+    "greetingEvening": "좋은 저녁이에요",
+    "greetingNight": "늦은 밤이네요",
+    "greetingLate": "오늘도 수고하셨어요",
+    "greetingName": "{name}님 👋",
+    "subtitleWithCount": "AI 에이전트를 만들어 반복 업무를 자동화하세요. 현재 {count}개의 에이전트가 있어요.",
+    "recommended": "추천",
+    "startCta": "시작하기",
+    "userFallback": "사용자",
     "newAgent": "새 에이전트",
     "quickAction": {
       "conversational": {
@@ -271,6 +284,9 @@
       "settings": "설정",
       "modelLabel": "모델:",
       "createdAt": "{date} 생성",
+      "lastUsed": "{time} 사용",
+      "neverUsed": "아직 사용 안 함",
+      "noModel": "모델 미연결",
       "noDescription": "설명 없음",
       "fallbackTitle": "Fallback 모델 {count}개 등록됨"
     },
