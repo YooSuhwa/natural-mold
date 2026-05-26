@@ -252,6 +252,10 @@ class MarketplaceVersion(Base):
     payload_kind: Mapped[str] = mapped_column(String(40), nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
+    # ADR-018 — relative to ``settings.data_root``. k-skill imports land at
+    # ``marketplace/k-skill/<vid>``; user publishes land at
+    # ``skills/_marketplace_versions/<vid>``. Read sites must resolve via
+    # ``app.storage.paths.resolve_data_path``.
     storage_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

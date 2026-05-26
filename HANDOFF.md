@@ -1,64 +1,57 @@
-# HANDOFF — Marketplace Resources Phase 1 (closure 후)
+# HANDOFF — ADR-018 Relative storage_path
 
-**세션**: 2026-05-18 ~ 2026-05-22
-**브랜치**: `main` (Phase 1 작업물 머지 완료)
-**소스**: `docs/marketplace-resources-{prd,spec}.md`, `docs/design-docs/adr-017-marketplace-resources.md`
-**머지된 PR**: https://github.com/YooSuhwa/natural-mold/pull/162 (16 commits)
+**세션**: 2026-05-23 ~ 2026-05-26
+**브랜치**: `worktree-adr-018-relative-storage-path` (worktree, 미머지)
+**worktree 경로**: `.claude/worktrees/adr-018-relative-storage-path/`
+**소스**: `docs/design-docs/adr-018-relative-storage-path.md`
+
+## 사건 (재발 방지 대상)
+
+2026-05-23: 이전 worktree 정리하면서 ranian963 skill 2개 + marketplace_versions 93개 **본문 lost**. 원인 — `storage_path`가 worktree 절대경로(`.../worktrees/marketplace-resources/backend/data/skills/...`)로 박혀있어 worktree 삭제 시 dangling.
 
 ## 완료
 
-- **Phase 1 출시 게이트 8개 PASS** → Full GO (`/spec-verify` 확인)
-- backend pytest **1191 passed, 0 회귀** / ruff 0 / alembic m40~m43 reversible
-- frontend pnpm lint 0 / build PASS (24 routes)
-- 86 k-skill 카탈로그 등록 + first-wave sync 완료
-- `/simplify` 적용 — `runMutation` helper + `_apply_visibility_change` 추출
-- main 머지 + sync 완료 (latest `f9c165c [docs] CLAUDE.md`)
+- ADR-018 작성 — 절대→상대 경로 + worktree-setup data symlink 이중방어
+- `app/storage/paths.py` — `resolve_data_path`, `ensure_relative` helper
+- 저장 사이트 5곳 모두 상대화 (skills/marketplace publish/install/k_skill_importer/runtime)
+- `settings.data_root="./data"` 단일 source, `skill_storage_dir` 등은 deprecated
+- Alembic **M44** — 깨진 row wipe (marketplace 5테이블 + worktree-prefixed skills)
+- `scripts/worktree-setup.sh` — `backend/data` symlink 추가
+- 회귀 테스트 2개 (`test_storage_paths.py`, `test_storage_path_relative_invariant.py`)
+- `/simplify` 적용 — 미사용 helper 제거, 1회용 `_rel_*` 인라인
+- 검증: ruff 통과 / pytest **1199 passed, 0 회귀**
 
 ## 진행 중
 
-없음. 다만 worktree 디렉토리 잔존 — dev server 잠금으로 자동 삭제 실패:
-
-```bash
-# 사용자 액션: worktree 안 backend/frontend dev server (Ctrl+C) → 디렉토리 정리
-cd /Users/chester/dev/ref/natural-mold
-rm -rf .claude/worktrees/marketplace-resources
-git branch -D worktree-marketplace-resources
-```
+없음. 모든 코드 변경 완료.
 
 ## 다음 (우선순위)
 
-1. **dev server를 main 디렉토리에서 재시작** — `cd backend && uv run uvicorn app.main:app --reload --port 8001 --reload-dir app` / `cd frontend && pnpm dev`
-2. **사용자 UI smoke test** (backend test 로는 보장됨):
-   - PublishWizard 5-step (PRD §10.3): secret_scan / restricted ACL / public+approve
-   - Agent 에 marketplace skill 연결 후 채팅 (PRD §10.1, §10.2)
-3. **Phase 1 spec 한계 (별도 PR)**: ACL **user picker** (현재 UUID 직접 입력), publish 전 **secret_scan preview**
-4. **Polish (별도 PR)**: 모바일/태블릿 적응형 (FilterBar Sheet, Wizard LineTabs)
-5. **Phase 2**: MCP marketplace (mcp_servers publish/install)
+1. **PR 생성 + 머지** — worktree에서 commit + push + PR. 머지 후 main `git pull`
+2. **M44 적용** ⚡ destructive — main에서 `uv run alembic upgrade head` (사용자가 직접). 깨진 95개 row wipe
+3. **k-skill sync 재실행** — `uv run python -m app.scripts.sync_k_skill --ref main`. 86개 marketplace_versions 복원
+4. **ranian963 skill 재설치** — UI에서: korean-spell-check Install + seating-guide `.skill` 재import (원본 보유)
+5. **재발 검증 시나리오** — 새 worktree에서 publish → worktree 정리 → main에서 본문 살아있는지
+6. **CLAUDE.md 환경변수 표 정정** — `OPENAI_API_KEY` 등 `O (필수)` → `X (선택, UI 등록 가능)`. ADR-013/016 이후 outdated
 
 ## 주의사항
 
-- **새 worktree 생성** 시 `bash scripts/worktree-setup.sh` 1회 — main `.env` symlink + 가이드. CLAUDE.md "git worktree 에서 작업 시" 참조
-- **uvicorn** 띄울 때 `--reload-dir app` — `data/` watch 가 publish/install 시 reload trigger 함 (사용자 세션 끊어짐)
-- **`is_listed` 토글**은 super_user 전용 endpoint — owner 의 public publish 는 카탈로그 미노출 (`/marketplace/admin/moderation` 에서 Approve listing)
-- **`(owner, slug)` 충돌**: 사용자가 publish→삭제→재publish 시 stale marketplace_items 재사용 (publish_service 자동 처리)
-- **Disable 영구 차단 아님** → Re-enable / Unpublish 액션 분리 (owner actions 카드)
-- **본인 publish item Install 시도** — orphan publication owner는 Install fallback, publication_link 살아있는 owner는 Manage CTA
+- **M44 = mass delete** — marketplace_items/versions/acl/installations/publication_links + worktree-prefixed skills 전부 wipe. 실행 전 백업 권장
+- **worktree 작업 시** `bash scripts/worktree-setup.sh` 1회 — `.env` + `backend/data` symlink 둘 다 만들어줌 (ADR-018 핵심)
+- **uvicorn `--reload-dir app`** 필수 — data/ watch가 publish/sync 시 reload 유발해 세션 끊김
+- **`storage_path` 신규 저장은 항상 상대** — `ensure_relative()` guardrail + 회귀 테스트가 막아줌
+- **legacy 절대경로 row** — helper가 fallback으로 통과시키지만 M44가 미리 wipe하므로 production에서는 안 보일 것
 
 ## 핵심 파일
 
-- Backend: `backend/app/marketplace/` (10 service 모듈), `models/marketplace.py`, `routers/{marketplace,skills}.py`, `alembic/versions/m40~m43_*.py`, `scripts/sync_k_skill.py`
-- Frontend: `frontend/src/app/marketplace/**`, `components/marketplace/**`, `lib/{api,hooks,types}/marketplace.ts`
-- 디자인: `docs/design-docs/{adr-017,marketplace-module-contracts,marketplace-ui-spec}.md`
-- 테스트: `backend/tests/test_marketplace_*.py` + `test_{runtime_isolation,credential_injection,redaction,secret_scan,k_skill_importer}.py`
-- 운영 자동화: `scripts/worktree-setup.sh` (.env symlink + uvicorn 가이드)
+- ADR: `docs/design-docs/adr-018-relative-storage-path.md`
+- Helper: `backend/app/storage/paths.py` (53줄)
+- 저장 사이트: `backend/app/skills/service.py:136,178`, `app/marketplace/{publish,install}_service.py`, `app/marketplace/k_skill_importer.py:572`
+- Read 사이트: `app/skills/service.py` (8곳), `app/marketplace/skill_runtime.py:215`
+- Alembic: `backend/alembic/versions/m44_relative_storage_path.py`
+- 테스트: `backend/tests/test_storage_paths.py`, `test_storage_path_relative_invariant.py`
+- Worktree fix: `scripts/worktree-setup.sh`
 
-## Course corrections (16 commit history 요약)
+## Course corrections
 
-OI-1 13 credential count / OI-4 secret_scan `\bsk-` boundary / OI-5 `origin_kind` strict-xfail
-flow / M2.5 catalog default filter / OPEN-1 install_service selectinload / 본인 publish
-Manage CTA + orphan owner Install fallback / importer instruction-only → ready_python /
-(owner, slug) reuse / admin listing approval endpoint / Installed 탭 SQL EXISTS / Owner
-visibility dropdown + Unpublish + Re-enable + ACL revoke / worktree-setup.sh / `/simplify` /
-CLAUDE.md ADR-016 반영.
-
-PR #162 commit history + `tasks/lessons.md` Session 7 참조.
+ENV LLM key 필수성 재검증 → 코드는 default `""` 허용 + ADR-013 fallback이라 **선택**. CLAUDE.md만 outdated (#6에서 정정). simplify 단계에서 `relative_to_data_root` (미사용) + 3개 1회용 helper 인라인, paths.py docstring 단축.

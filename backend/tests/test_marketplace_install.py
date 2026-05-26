@@ -144,7 +144,7 @@ async def test_install_creates_skill_and_installation(
 ) -> None:
     await _ensure_test_user(db)
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         version_dir = tmp_path / "marketplace-versions" / "v1"
         item, _version = await _make_published_skill_item(
             db, storage_path=version_dir, requirements=None
@@ -156,27 +156,29 @@ async def test_install_creates_skill_and_installation(
             json={"install_mode": "reuse_or_update"},
         )
 
-    assert r.status_code == 201, r.text
-    body = r.json()
-    assert body["resource_type"] == "skill"
-    assert body["install_status"] == "active"
-    assert body["installed_skill_id"] is not None
-    assert body["is_dirty"] is False
+        assert r.status_code == 201, r.text
+        body = r.json()
+        assert body["resource_type"] == "skill"
+        assert body["install_status"] == "active"
+        assert body["installed_skill_id"] is not None
+        assert body["is_dirty"] is False
 
-    # Installed skill row exists and filesystem snapshot was copied.
-    skill = await db.get(Skill, uuid.UUID(body["installed_skill_id"]))
-    assert skill is not None
-    assert skill.user_id == TEST_USER_ID
-    assert skill.source_marketplace_item_id == item.id
-    assert skill.origin_kind in ("community", "imported_by_me")
-    # Filesystem assertions go via a sync helper to satisfy ASYNC240.
-    import asyncio
+        # Installed skill row exists and filesystem snapshot was copied.
+        skill = await db.get(Skill, uuid.UUID(body["installed_skill_id"]))
+        assert skill is not None
+        assert skill.user_id == TEST_USER_ID
+        assert skill.source_marketplace_item_id == item.id
+        assert skill.origin_kind in ("community", "imported_by_me")
+        # Filesystem assertions go via a sync helper to satisfy ASYNC240.
+        import asyncio
 
-    exists, has_skill_md = await asyncio.to_thread(
-        _check_skill_files, Path(skill.storage_path)
-    )
-    assert exists  # package storage_path is dir
-    assert has_skill_md
+        from app.storage.paths import resolve_data_path
+
+        exists, has_skill_md = await asyncio.to_thread(
+            _check_skill_files, resolve_data_path(skill.storage_path)
+        )
+        assert exists  # package storage_path is dir
+        assert has_skill_md
 
 
 def _check_skill_files(p: Path) -> tuple[bool, bool]:
@@ -189,7 +191,7 @@ async def test_install_with_missing_required_binding_marks_needs_setup(
 ) -> None:
     await _ensure_test_user(db)
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         version_dir = tmp_path / "v1"
         item, _ = await _make_published_skill_item(
             db,
@@ -227,7 +229,7 @@ async def test_install_with_binding_supplied_is_active(
     db.add(cred)
     await db.flush()
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         version_dir = tmp_path / "v1"
         item, _ = await _make_published_skill_item(
             db,
@@ -254,7 +256,7 @@ async def test_install_reuse_returns_existing_installation(
 ) -> None:
     await _ensure_test_user(db)
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         version_dir = tmp_path / "v1"
         item, _ = await _make_published_skill_item(
             db, storage_path=version_dir, requirements=None
@@ -282,7 +284,7 @@ async def test_delete_installation_soft_then_hard(
 ) -> None:
     await _ensure_test_user(db)
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         version_dir = tmp_path / "v1"
         item, _ = await _make_published_skill_item(
             db, storage_path=version_dir, requirements=None
@@ -308,7 +310,7 @@ async def test_delete_installation_soft_then_hard(
     assert (await db.get(Skill, skill_id)) is not None
 
     # Hard delete — cascades into the skill row + filesystem.
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         r3 = await client.delete(
             f"/api/marketplace/installations/{installation_id}",
             params={"delete_resource": True},

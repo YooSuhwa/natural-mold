@@ -176,8 +176,11 @@ def _resolve_path(value: str) -> Path:
 
 async def _run(args: argparse.Namespace) -> SyncReport:
     sync_dir = await asyncio.to_thread(_resolve_path, settings.k_skill_sync_dir)
+    # ADR-018 — k-skill snapshots land under ``<data_root>/marketplace/k-skill``
+    # to match the relative form ``marketplace/k-skill/<vid>`` written into
+    # ``marketplace_versions.storage_path``.
     storage_dir = await asyncio.to_thread(
-        _resolve_path, settings.k_skill_builtin_storage_dir
+        _resolve_path, str(Path(settings.data_root) / "marketplace" / "k-skill")
     )
 
     if args.skip_git:

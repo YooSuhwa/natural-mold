@@ -216,7 +216,7 @@ class TestScenario_10_1_BuiltInSkillInstall:
         )
 
         with patch.object(
-            skill_service.settings, "skill_storage_dir", str(tmp_path)
+            skill_service.settings, "data_root", str(tmp_path)
         ):
             async with await _client_for(_user(user_id)) as client:
                 # Catalog returns the system item.
@@ -297,7 +297,7 @@ class TestScenario_10_2_CredentialRequiredFlow:
         await db_session.commit()
 
         with patch.object(
-            skill_service.settings, "skill_storage_dir", str(tmp_path)
+            skill_service.settings, "data_root", str(tmp_path)
         ):
             async with await _client_for(_user(user_id)) as client:
                 resp = await client.post(
@@ -332,7 +332,7 @@ class TestScenario_10_3_PublishThenInstallByPeer:
         await _seed_user(db_session, user_b)
 
         with patch.object(
-            skill_service.settings, "skill_storage_dir", str(tmp_path)
+            skill_service.settings, "data_root", str(tmp_path)
         ):
             # User A creates a text skill + publishes it.
             skill = await skill_service.create_text_skill(
@@ -435,7 +435,7 @@ class TestScenario_10_4_RestrictedACL:
         await db_session.commit()
 
         with patch.object(
-            skill_service.settings, "skill_storage_dir", str(tmp_path)
+            skill_service.settings, "data_root", str(tmp_path)
         ):
             # User C — must 404 on both detail and install (oracle uniform).
             async with await _client_for(_user(user_c)) as client_c:
@@ -488,7 +488,7 @@ class TestScenario_10_5_UpdateStrategies:
         )
 
         with patch.object(
-            skill_service.settings, "skill_storage_dir", str(tmp_path)
+            skill_service.settings, "data_root", str(tmp_path)
         ):
             async with await _client_for(_user(user_id)) as client:
                 inst = await client.post(
@@ -549,7 +549,7 @@ class TestScenario_10_6_PublicationStatusBadge:
         await _seed_user(db_session, user_id)
 
         with patch.object(
-            skill_service.settings, "skill_storage_dir", str(tmp_path)
+            skill_service.settings, "data_root", str(tmp_path)
         ):
             skill = await skill_service.create_text_skill(
                 db_session,

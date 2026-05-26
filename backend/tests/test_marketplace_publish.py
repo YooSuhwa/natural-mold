@@ -86,7 +86,7 @@ async def _make_user_skill(
     """Create a real on-disk skill via the service so storage_path is
     populated (publish service reads it)."""
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         skill = await skill_service.create_text_skill(
             db,
             user_id=TEST_USER_ID,
@@ -112,7 +112,7 @@ async def test_publish_creates_item_version_and_publication_link(
     skill = await _make_user_skill(db, tmp_path=tmp_path)
     await db.commit()
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         r = await client.post(
             f"/api/marketplace/items/from-skill/{skill.id}",
             json={
@@ -165,7 +165,7 @@ async def test_publish_dedup_reuses_version_for_unchanged_skill(
     skill = await _make_user_skill(db, tmp_path=tmp_path)
     await db.commit()
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         r1 = await client.post(
             f"/api/marketplace/items/from-skill/{skill.id}",
             json={"visibility": "public", "name": "Dedup Demo"},
@@ -193,7 +193,7 @@ async def test_publish_restricted_requires_acl(
     skill = await _make_user_skill(db, tmp_path=tmp_path)
     await db.commit()
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         r = await client.post(
             f"/api/marketplace/items/from-skill/{skill.id}",
             json={"visibility": "restricted", "name": "Restricted", "acl_user_ids": []},
@@ -223,7 +223,7 @@ async def test_upload_rejects_env_file(
         }
     )
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         r = await client.post(
             "/api/skills/upload",
             files={"file": ("demo.skill", zip_bytes, "application/zip")},
@@ -249,7 +249,7 @@ async def test_upload_rejects_openai_key_in_content(
         }
     )
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         r = await client.post(
             "/api/skills/upload",
             files={"file": ("demo.skill", zip_bytes, "application/zip")},
@@ -274,7 +274,7 @@ async def test_upload_allows_placeholder_sk_example(
         }
     )
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         r = await client.post(
             "/api/skills/upload",
             files={"file": ("demo.skill", zip_bytes, "application/zip")},
@@ -296,7 +296,7 @@ async def test_patch_item_metadata(
     skill = await _make_user_skill(db, tmp_path=tmp_path)
     await db.commit()
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         r1 = await client.post(
             f"/api/marketplace/items/from-skill/{skill.id}",
             json={"visibility": "public", "name": "P1"},
@@ -324,7 +324,7 @@ async def test_disable_blocks_install(
     skill = await _make_user_skill(db, tmp_path=tmp_path)
     await db.commit()
 
-    with patch.object(skill_service.settings, "skill_storage_dir", str(tmp_path)):
+    with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         r1 = await client.post(
             f"/api/marketplace/items/from-skill/{skill.id}",
             json={"visibility": "public", "name": "ToDisable"},

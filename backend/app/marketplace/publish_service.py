@@ -61,6 +61,7 @@ from app.models.marketplace import (
     MarketplaceVersion,
 )
 from app.models.skill import Skill
+from app.storage.paths import ensure_relative, resolve_data_path
 
 if TYPE_CHECKING:
     from app.dependencies import CurrentUser
@@ -75,13 +76,12 @@ logger = logging.getLogger(__name__)
 
 
 def _versions_storage_root() -> Path:
-    """Root for immutable version snapshots.
+    """Root for immutable version snapshots — distinct from per-user
+    ``data/skills/`` so deleting a user-owned skill never strands an
+    installed copy elsewhere (Spec §6.4). Mirrors the relative form
+    ``skills/_marketplace_versions/<vid>`` stored in the column."""
 
-    Distinct from the per-user ``data/skills/`` tree so deleting a
-    user-owned skill never strands an installed copy elsewhere
-    (Spec §6.4)."""
-
-    return (Path(settings.skill_storage_dir) / "_marketplace_versions").resolve()
+    return (Path(settings.data_root) / "skills" / "_marketplace_versions").resolve()
 
 
 def _now() -> datetime:
@@ -118,7 +118,7 @@ async def _snapshot_skill(
             f"skill {skill.id} has no on-disk storage to publish"
         )
 
-    src = Path(skill.storage_path)
+    src = resolve_data_path(skill.storage_path)
     exists, is_file = await asyncio.to_thread(_probe_path, src)
     if not exists:
         raise marketplace_invalid_package(
@@ -395,7 +395,9 @@ async def publish_skill(
             resource_type="skill",
             payload_kind="skill_package",
             payload=payload,
-            storage_path=str(snapshot_target),
+            storage_path=ensure_relative(
+                f"skills/_marketplace_versions/{version_id}"
+            ),
             content_hash=content_hash,
             size_bytes=total_bytes,
             credential_requirements=skill.credential_requirements,

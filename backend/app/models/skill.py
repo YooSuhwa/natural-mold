@@ -78,9 +78,12 @@ class Skill(Base):
         String(20), nullable=False, default="text", server_default="text"
     )
 
-    # Filesystem location:
-    #  - text:    a single file containing the body (e.g. ``<root>/<id>/SKILL.md``).
-    #  - package: the extracted directory root.
+    # Filesystem location (ADR-018 — relative to ``settings.data_root``):
+    #  - text:    ``skills/<id>/SKILL.md`` (single file).
+    #  - package: ``skills/<id>`` (directory root).
+    # Read sites must resolve via ``app.storage.paths.resolve_data_path``;
+    # direct ``Path(value)`` use is a regression (absolute paths only land
+    # here as M44 legacy fallback).
     storage_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # SHA-256 of the canonical body (text: file bytes; package: SKILL.md bytes).
