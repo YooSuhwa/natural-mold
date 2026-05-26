@@ -58,6 +58,7 @@ from app.models.marketplace import (
     SkillCredentialBinding,
 )
 from app.models.skill import Skill
+from app.storage.paths import ensure_relative, resolve_data_path
 
 if TYPE_CHECKING:
     from app.dependencies import CurrentUser
@@ -74,13 +75,21 @@ logger = logging.getLogger(__name__)
 def _skill_storage_root() -> Path:
     """Mirrors ``app.skills.service._skill_root`` without importing the
     module (file-boundary rule for Slice B — install_service must not
-    modify skill service.py)."""
+    modify skill service.py). ADR-018 — derived from ``data_root``."""
 
-    return Path(settings.skill_storage_dir).resolve()
+    return (Path(settings.data_root) / "skills").resolve()
 
 
 def _target_for(skill_id: uuid.UUID) -> Path:
     return _skill_storage_root() / str(skill_id)
+
+
+def _rel_install_storage(skill_id: uuid.UUID, version: MarketplaceVersion) -> str:
+    """text-kind → ``skills/<id>/SKILL.md`` (file); package-kind →
+    ``skills/<id>`` (dir). Relative to ``settings.data_root`` per ADR-018."""
+
+    suffix = "/SKILL.md" if _payload_skill_kind(version) == "text" else ""
+    return f"skills/{skill_id}{suffix}"
 
 
 def _now() -> datetime:
@@ -191,7 +200,7 @@ async def _copy_snapshot(version: MarketplaceVersion, target: Path) -> None:
     if not version.storage_path:
         raise marketplace_invalid_package("version has no storage snapshot")
 
-    src = Path(version.storage_path)
+    src = resolve_data_path(version.storage_path)
     # ``ASYNC240`` — filesystem checks happen off the event loop. We
     # also return the is_file decision from the same probe so the copy
     # picks the correct branch without a second stat.
@@ -360,9 +369,7 @@ async def install_item(
         slug=_slugify(name),
         description=item.description,
         kind=_payload_skill_kind(version),
-        storage_path=str(
-            target / "SKILL.md" if _payload_skill_kind(version) == "text" else target
-        ),
+        storage_path=ensure_relative(_rel_install_storage(skill_id, version)),
         content_hash=version.content_hash,
         size_bytes=int(version.size_bytes or 0),
         version=payload.get("version"),
@@ -595,7 +602,7 @@ async def _remove_install_artifacts(
                 # is_file()/exists() go through ``to_thread`` to stay
                 # ASYNC240-clean.
                 await asyncio.to_thread(
-                    _rmtree_skill_storage, Path(skill.storage_path)
+                    _rmtree_skill_storage, resolve_data_path(skill.storage_path)
                 )
             await db.delete(skill)
     if not keep_installation:

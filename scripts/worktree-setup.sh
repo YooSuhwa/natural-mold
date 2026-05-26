@@ -63,8 +63,50 @@ fi
 
 echo "✓ backend/.env → $(readlink "$worktree_env")"
 echo "  resolved → $(python3 -c "import os; print(os.path.realpath('$worktree_env'))")"
+
+# --- ADR-018 — backend/data symlink ---------------------------------------
+# DB는 main과 공유되는데 backend/data/ 가 worktree마다 별도면 publish/install
+# 시 본문 파일이 worktree 안에만 생성된다. worktree를 정리하면 DB에는 row만
+# 남고 파일이 사라지는 사고가 2026-05-23에 발생. 같은 .env symlink 패턴을
+# data/ 에도 적용해 main backend/data 를 직접 가리키게 한다.
+main_data="$main_path/backend/data"
+worktree_data="$toplevel/backend/data"
+
+mkdir -p "$main_data"
+
+# worktree에 일반 디렉토리가 이미 있으면 비어있을 때만 자동 제거 후 symlink.
+# 안에 데이터가 있으면 — 사용자가 worktree 안에서 publish/install 한 결과 —
+# 자동 제거 위험하니 수동 조치 안내만 출력.
+if [[ -d "$worktree_data" && ! -L "$worktree_data" ]]; then
+  if [[ -z "$(ls -A "$worktree_data" 2>/dev/null)" ]]; then
+    rmdir "$worktree_data"
+  else
+    backup="$worktree_data.bak-$(date +%s)"
+    echo
+    echo "⚠ 기존 backend/data/ 는 일반 디렉토리이고 내용물이 있습니다."
+    echo "  worktree 안 데이터가 main 과 분리되어 storage_path 가 깨질 수 있습니다."
+    echo "  수동 조치:"
+    echo "    1) worktree 안에서 띄운 dev server 가 있으면 종료"
+    echo "    2) mv '$worktree_data' '$backup'   # 백업"
+    echo "    3) bash scripts/worktree-setup.sh   # 재실행"
+    echo
+  fi
+fi
+
+if [[ ! -e "$worktree_data" ]]; then
+  rel_data_target=$(python3 -c "import os.path; print(os.path.relpath('$main_data', start='$(dirname "$worktree_data")'))")
+  ln -sf "$rel_data_target" "$worktree_data"
+  echo "✓ backend/data → $(readlink "$worktree_data")"
+elif [[ -L "$worktree_data" ]]; then
+  echo "✓ backend/data → $(readlink "$worktree_data") (이미 symlink)"
+fi
+
 echo
 echo "다음 가이드:"
 echo "  1) backend 실행: cd backend && uv run uvicorn app.main:app --reload --port 8001 --reload-dir app"
 echo "     (--reload-dir app — publish/install 시 data/ 변경이 reload 트리거하는 것 방지)"
 echo "  2) frontend 실행: cd frontend && pnpm dev"
+echo
+echo "참고: ADR-018 — storage_path 는 settings.data_root 기준 상대경로로 저장됩니다."
+echo "       backend/data symlink + 상대경로 컬럼의 이중 방어로 worktree 정리 후에도"
+echo "       main 데이터가 보존됩니다."

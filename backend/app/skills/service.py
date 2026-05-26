@@ -28,6 +28,7 @@ from app.skills.inspector import (
     read_file_safe,
 )
 from app.skills.packager import PackageError, extract_package
+from app.storage.paths import ensure_relative, resolve_data_path
 
 _SLUG_RE = re.compile(r"[^a-z0-9-]+")
 
@@ -43,8 +44,13 @@ def slugify(value: str) -> str:
     return cleaned or "skill"
 
 
+# ADR-018 — ``skills.storage_path`` is stored relative to ``settings.data_root``
+# as ``skills/<id>`` (package) or ``skills/<id>/SKILL.md`` (text). The
+# filesystem layout derives from ``data_root`` to match.
+
+
 def _storage_root() -> Path:
-    return Path(settings.skill_storage_dir).resolve()
+    return (Path(settings.data_root) / "skills").resolve()
 
 
 def _skill_root(skill_id: uuid.UUID) -> Path:
@@ -115,7 +121,7 @@ async def create_text_skill(
         slug=final_slug,
         description=description,
         kind="text",
-        storage_path=str(file_path),
+        storage_path=ensure_relative(f"skills/{skill_id}/SKILL.md"),
         content_hash=hashlib.sha256(body_bytes).hexdigest(),
         size_bytes=len(body_bytes),
         version=version,
@@ -157,7 +163,7 @@ async def create_package_skill(
         slug=final_slug,
         description=info.description,
         kind="package",
-        storage_path=str(root),
+        storage_path=ensure_relative(f"skills/{skill_id}"),
         content_hash=info.content_hash,
         size_bytes=info.total_bytes,
         version=info.version,
@@ -210,7 +216,9 @@ async def update_text_content(
     if not skill.storage_path:
         raise ValueError("text skill missing storage_path")
     body_bytes = content.encode("utf-8")
-    await asyncio.to_thread(Path(skill.storage_path).write_bytes, body_bytes)
+    await asyncio.to_thread(
+        resolve_data_path(skill.storage_path).write_bytes, body_bytes
+    )
     skill.content_hash = hashlib.sha256(body_bytes).hexdigest()
     skill.size_bytes = len(body_bytes)
     skill.last_modified_at = _now()
@@ -227,7 +235,7 @@ def _package_root(skill: Skill) -> Path:
 
     if skill.kind != "package" or not skill.storage_path:
         raise ValueError("file-level mutations require a package skill")
-    return Path(skill.storage_path)
+    return resolve_data_path(skill.storage_path)
 
 
 async def set_skill_file(
@@ -287,7 +295,7 @@ def _refresh_package_metadata(skill: Skill) -> None:
 
     if skill.kind != "package" or not skill.storage_path:
         return
-    files = list_files(skill.storage_path)
+    files = list_files(resolve_data_path(skill.storage_path))
     skill.size_bytes = sum(f.size for f in files if not f.is_dir)
     meta = dict(skill.package_metadata or {})
     meta["files"] = [f.path for f in files if not f.is_dir]
@@ -327,7 +335,7 @@ async def delete_skill(db: AsyncSession, skill: Skill) -> None:
     await db.flush()
     if not storage:
         return
-    path = Path(storage)
+    path = resolve_data_path(storage)
     # Text skills store the file at .../<id>/SKILL.md — delete the parent dir.
     is_file = await asyncio.to_thread(path.is_file)
     target = path.parent if is_file else path
@@ -342,7 +350,7 @@ async def read_text_content(skill: Skill) -> str:
 
     if skill.kind != "text" or not skill.storage_path:
         return ""
-    path = Path(skill.storage_path)
+    path = resolve_data_path(skill.storage_path)
     is_file = await asyncio.to_thread(path.is_file)
     if not is_file:
         return ""
@@ -355,12 +363,12 @@ def get_skill_files(skill: Skill) -> list[FileInfo]:
     if not skill.storage_path:
         return []
     if skill.kind == "text":
-        path = Path(skill.storage_path)
+        path = resolve_data_path(skill.storage_path)
         if not path.is_file():
             return []
         return [FileInfo(path="SKILL.md", size=path.stat().st_size, is_dir=False)]
     # Package skills: storage_path is the root directory.
-    return list_files(skill.storage_path)
+    return list_files(resolve_data_path(skill.storage_path))
 
 
 def get_file_bytes(skill: Skill, rel_path: str) -> bytes:
@@ -371,8 +379,8 @@ def get_file_bytes(skill: Skill, rel_path: str) -> bytes:
     if skill.kind == "text":
         if rel_path not in {"SKILL.md", ""}:
             raise FileNotFoundError(rel_path)
-        return Path(skill.storage_path).read_bytes()
-    return read_file_safe(skill.storage_path, rel_path)
+        return resolve_data_path(skill.storage_path).read_bytes()
+    return read_file_safe(resolve_data_path(skill.storage_path), rel_path)
 
 
 __all__: list[str] = [

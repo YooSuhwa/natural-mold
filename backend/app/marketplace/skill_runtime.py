@@ -45,6 +45,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from app.storage.paths import resolve_data_path
+
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -207,7 +209,8 @@ def _build_descriptor_from_skill_dict(
         skill_id = uuid.UUID(str(skill_id_raw))
     except (TypeError, ValueError):
         return None
-    original = Path(storage_path) if storage_path else runtime_root
+    # ADR-018 — resolve column (relative) to absolute for materialize/copy.
+    original = resolve_data_path(storage_path) if storage_path else runtime_root
     return SkillRuntimeDescriptor(
         id=skill_id,
         slug=str(slug),

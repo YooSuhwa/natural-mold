@@ -72,6 +72,12 @@ class Settings(BaseSettings):
     # registered by ``scheduler.register_mcp_health_job``.
     mcp_health_check_interval_minutes: int = 5
 
+    # ADR-018 — single root for all on-disk data. ``skills.storage_path`` and
+    # ``marketplace_versions.storage_path`` store paths *relative to this root*
+    # so they remain portable across worktrees and deploy targets. All other
+    # ``*_dir`` settings default to subdirectories under this root.
+    data_root: str = "./data"
+
     # Skills (package)
     skill_storage_dir: str = "./data/skills"
     skill_max_package_bytes: int = 52428800

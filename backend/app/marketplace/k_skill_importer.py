@@ -50,6 +50,7 @@ from app.models.marketplace import (
     MarketplaceVersion,
 )
 from app.skills.inspector import parse_skill_md
+from app.storage.paths import ensure_relative
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -568,7 +569,7 @@ async def import_skill(
             "display_name": metadata.get("display_name"),
             "phase": metadata.get("phase"),
         },
-        storage_path=str(version_dest),
+        storage_path=ensure_relative(f"marketplace/k-skill/{version_id}"),
         content_hash=content_hash,
         size_bytes=total_bytes,
         credential_requirements=requirements or None,
