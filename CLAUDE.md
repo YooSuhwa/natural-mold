@@ -268,7 +268,7 @@ lib/types/      → Backend 스키마와 1:1 대응하는 TS 타입
 | `DATABASE_URL` | O | PostgreSQL async URL |
 | `ENCRYPTION_KEY` | O | Cipher V2 마스터 키 (HKDF info=`moldy-encryption-v1`). 복수 키 회전 지원 |
 | `JWT_SECRET` | O | JWT HS256 서명 키 (ADR-016) |
-| `OPENAI_API_KEY` 또는 `ANTHROPIC_API_KEY` | O (하나 이상) | LLM 호출용. ENV→system credential 자동 bootstrap |
+| LLM 키 (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` 등) | X (선택) | UI Credentials에서 등록 권장 (ADR-013). ENV에 있으면 dev에서 system credential로 bootstrap, production은 skip |
 | 나머지 (Naver, Google 등) | X | 해당 도구 사용 시에만 필요 |
 
 ENV에서 자동으로 생성되는 `is_system=True` credentials는 production 환경에서는 자동 생성을 건너뛰고, super_user가 직접 관리한다.

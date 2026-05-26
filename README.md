@@ -67,7 +67,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 
 # 3. Backend
 cd backend
-cp .env.example .env                  # OPENAI_API_KEY 등 입력
+cp .env.example .env                  # ENCRYPTION_KEYS / JWT_SECRET 등 입력 (LLM 키는 UI에서 등록)
 uv sync                               # 의존성 설치
 uv run alembic upgrade head           # DB 마이그레이션 (현재 head: m43)
 uv run uvicorn app.main:app --reload --port 8001
@@ -86,8 +86,8 @@ pnpm dev
 ### Docker Compose 전체 실행
 
 ```bash
-export OPENAI_API_KEY=sk-...
 docker compose up -d                  # postgres + backend + frontend
+# LLM API 키는 부팅 후 UI의 Credentials 화면에서 등록한다 (ADR-013)
 ```
 
 ### 검증 명령
@@ -305,9 +305,9 @@ natural-mold/
 | 변수 | 필수 | 설명 |
 |------|------|------|
 | `DATABASE_URL` | O | PostgreSQL async URL (`postgresql+asyncpg://...`) |
-| `OPENAI_API_KEY` 또는 `ANTHROPIC_API_KEY` | O (1+) | LLM 호출 |
 | `ENCRYPTION_KEY` | O | Cipher V2 마스터 키 (HKDF-SHA256 + AES-256-GCM) |
 | `JWT_SECRET` | O | JWT HS256 서명 키 (ADR-016 멀티유저 인증) |
+| LLM 키 (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 등) | - | UI Credentials에서 등록 권장 (ADR-013). ENV는 dev bootstrap용 선택값 |
 | `LANGSMITH_API_KEY` | - | LangSmith 트레이싱 (선택) |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | - | 네이버 검색 도구 |
 | `GOOGLE_API_KEY` / `GOOGLE_CSE_ID` | - | Google CSE 도구 |
