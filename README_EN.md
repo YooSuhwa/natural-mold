@@ -70,7 +70,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # set OPENAI_API_KEY, etc.
 uv sync                               # install dependencies
-uv run alembic upgrade head           # run migrations (head: m31)
+uv run alembic upgrade head           # run migrations (head: m43)
 uv run uvicorn app.main:app --reload --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
@@ -124,7 +124,7 @@ pnpm build                            # production build
 - **deepagents engine** — `create_deep_agent` over a compiled LangGraph that
   manages the message tree, branches, and checkpoints
 - **Conversational builder** — Meta-agent interviews requirements and proposes
-  build options (`agent_runtime/creation_agent.py`)
+  build options (`agent_runtime/builder_v3/`)
 - **Agent templates** — Pre-built agents you can spawn instantly
 - **Sub-agents** — Multi-level delegation (an agent invokes another agent as a tool)
 - **Middleware system** — 22 middlewares across context engineering, planning,
@@ -166,9 +166,10 @@ pnpm build                            # production build
 <details>
 <summary><b>🔐 Credentials · model management</b></summary>
 
-- **Cipher V2 encryption** — Fernet + HKDF-SHA256 single-blob Base64
+- **Cipher V2 encryption** — HKDF-SHA256 + AES-256-GCM single-blob Base64
 - **Vault integration** — `hvac`-based external secrets
 - **System / user split** — Operator-managed credentials vs. per-user keys
+- **Korean service integrations (8 types)** — SRT · KTX · Forest Trip · KIPRIS · DART · ODsay · Coupang Partners · K-Skill Proxy
 - **Model discovery** — Probe LLM APIs through a credential to auto-pull the
   available model list, pricing, and context window
 - **Model health checks** — Periodic probes monitor reachability
@@ -203,6 +204,17 @@ pnpm build                            # production build
 
 </details>
 
+<details>
+<summary><b>🛒 Marketplace</b></summary>
+
+- **Catalog** — Publish Agents, MCP servers, and Skills to a shared marketplace; install with one click
+- **Publish / install separation** — Installing creates an independent copy in your account, decoupled from the original
+- **Version snapshots** — `marketplace_versions` stores an immutable history of every published version
+- **Credential binding** — Map skill-required credentials to your own keys at install time
+- **Moderation** — super_user reviews submissions at `/marketplace/admin/moderation`
+
+</details>
+
 ## 🏗️ Architecture
 
 ```
@@ -217,9 +229,10 @@ pnpm build                            # production build
 │  routers/ → services/ → models/ (SQLAlchemy 2.0 async)         │
 │                                                                 │
 │  agent_runtime/                                                 │
-│    ├ creation_agent (meta builder)                              │
+│    ├ builder_v3/ (conversational meta builder — latest)         │
 │    ├ executor (create_deep_agent + astream)                     │
 │    ├ streaming (LangGraph events → SSE chunks via orjson)       │
+│    ├ event_broker (event broadcast)                             │
 │    ├ tool_factory (prebuilt + MCP + custom)                     │
 │    ├ model_factory (per-provider LLM)                           │
 │    └ trigger_executor (schedule → message)                      │
@@ -235,7 +248,7 @@ pnpm build                            # production build
 
 - **Router** (`app/routers/`) — HTTP endpoints, request / response shaping
 - **Service** (`app/services/`) — Business logic, DB queries, transactions
-- **Model** (`app/models/`) — SQLAlchemy ORM, 31 tables as of m31
+- **Model** (`app/models/`) — SQLAlchemy ORM, ~40 tables as of m43
 
 ### Frontend pattern
 
@@ -254,7 +267,7 @@ natural-mold/
 │   │   ├── main.py              # FastAPI app factory + lifespan
 │   │   ├── config.py            # pydantic-settings (.env)
 │   │   ├── database.py          # async engine + session
-│   │   ├── dependencies.py      # get_db, get_current_user (mock)
+│   │   ├── dependencies.py      # get_db, get_current_user, require_super_user, verify_csrf
 │   │   ├── scheduler.py         # APScheduler singleton
 │   │   ├── models/              # SQLAlchemy ORM
 │   │   ├── schemas/             # Pydantic schemas
@@ -263,11 +276,11 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + domain
 │   │   ├── agent_runtime/       # AI execution engine
 │   │   └── seed/                # seed data
-│   ├── alembic/versions/        # migrations (up to m31)
-│   └── tests/                   # pytest (709 passing)
+│   ├── alembic/versions/        # migrations (up to m43)
+│   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
-│       ├── app/                 # Next.js App Router (17 routes)
+│       ├── app/                 # Next.js App Router (23+ routes)
 │       ├── components/          # UI components
 │       └── lib/                 # api, hooks, stores, sse, types
 ├── docs/
@@ -275,6 +288,7 @@ natural-mold/
 │   ├── PRD-screens.md           # screen wireframes
 │   ├── ARCHITECTURE.md          # system architecture
 │   ├── design-docs/             # ADRs (design decisions)
+│   ├── marketplace-resources-prd.md  # marketplace PRD
 │   └── tool-setup-guide.md      # tool API key setup
 ├── tasks/                       # working notes + archive/
 ├── docker-compose.yml
@@ -293,7 +307,8 @@ See `backend/.env.example` for the full list. Minimum keys to boot:
 |------|------|------|
 | `DATABASE_URL` | yes | PostgreSQL async URL (`postgresql+asyncpg://...`) |
 | `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` | yes (≥1) | LLM calls |
-| `ENCRYPTION_KEY` | yes | Fernet key for at-rest API key encryption |
+| `ENCRYPTION_KEY` | yes | Cipher V2 master key (HKDF-SHA256 + AES-256-GCM) |
+| `JWT_SECRET` | yes | JWT HS256 signing key (ADR-016 multi-user auth) |
 | `LANGSMITH_API_KEY` | optional | LangSmith tracing |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | optional | Naver search tools |
 | `GOOGLE_API_KEY` / `GOOGLE_CSE_ID` | optional | Google CSE tools |
