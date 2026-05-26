@@ -1,7 +1,6 @@
 'use client'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 
@@ -9,7 +8,6 @@ import { setSessionExpiredHandler } from '@/lib/api/client'
 import { showSessionExpiredToast } from '@/components/auth/session-expired-toast'
 
 export function QueryProvider({ children }: { children: ReactNode }) {
-  const router = useRouter()
   const t = useTranslations('auth.errors')
 
   const [queryClient] = useState(
@@ -41,13 +39,17 @@ export function QueryProvider({ children }: { children: ReactNode }) {
         const isAuthRoute = path.startsWith('/login') || path.startsWith('/register')
         if (!isAuthRoute) {
           const callback = encodeURIComponent(path)
-          router.push(`/login?callbackUrl=${callback}`)
+          // Hard reload — same AppLayout shell is shared across all routes,
+          // so SPA push leaves mounted hooks refetching against empty cookies,
+          // which prevents navigation from completing. (Same reason useLogout
+          // uses window.location.href.)
+          window.location.href = `/login?callbackUrl=${callback}`
         }
       }
     }
     setSessionExpiredHandler(handler)
     return () => setSessionExpiredHandler(null)
-  }, [queryClient, router, t])
+  }, [queryClient, t])
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }

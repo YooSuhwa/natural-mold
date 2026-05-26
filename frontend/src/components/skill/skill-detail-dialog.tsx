@@ -124,13 +124,7 @@ function SkillDetailBody({ skillId, onClose }: { skillId: string; onClose: () =>
 // Text skill — single textarea (legacy behavior preserved)
 // ─────────────────────────────────────────────────────────────────────────
 
-function TextSkillEditor({
-  skillId,
-  onClose,
-}: {
-  skillId: string
-  onClose: () => void
-}) {
+function TextSkillEditor({ skillId, onClose }: { skillId: string; onClose: () => void }) {
   const { data: textContent } = useSkillContent(skillId, true)
   const update = useUpdateSkillContent()
   const remove = useDeleteSkill()
@@ -262,23 +256,14 @@ function isPdf(path: string): boolean {
   return getExt(path) === 'pdf'
 }
 
-function PackageSkillEditor({
-  skillId,
-  onClose,
-}: {
-  skillId: string
-  onClose: () => void
-}) {
+function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: () => void }) {
   const { data: skill } = useSkill(skillId)
   const { data: files } = useSkillFiles(skillId)
   const setFile = useSetSkillFile(skillId)
   const deleteFile = useDeleteSkillFile(skillId)
   const removeSkill = useDeleteSkill()
 
-  const fileEntries = useMemo(
-    () => (files ?? []).filter((f) => !f.is_dir),
-    [files],
-  )
+  const fileEntries = useMemo(() => (files ?? []).filter((f) => !f.is_dir), [files])
 
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   // Map<path, current-content> — only paths with unsaved edits live here.
@@ -300,6 +285,12 @@ function PackageSkillEditor({
   // Lazy-load remote content for the selected text file. All setState calls
   // happen inside async callbacks (which is fine for the React 19 lint rule);
   // the effect body itself only kicks off the fetch.
+  //
+  // ``remoteCache`` is intentionally excluded from deps: the guard below reads
+  // the current closure value of the Map, which is always fresh at the time
+  // ``selectedPath`` changes (the only moment a new closure is created).
+  // Including ``remoteCache`` would re-run the effect on every cache update,
+  // causing unnecessary effect setup/teardown cycles without any benefit.
   useEffect(() => {
     if (!selectedPath) return
     if (!isTextFile(selectedPath)) return
@@ -325,16 +316,16 @@ function PackageSkillEditor({
     return () => {
       cancelled = true
     }
-  }, [skillId, selectedPath, remoteCache])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skillId, selectedPath])
 
   // Derived loading flag — true while the selected text file is fetching.
-  const loadingFile =
-    !!selectedPath && isTextFile(selectedPath) && !remoteCache.has(selectedPath)
+  const loadingFile = !!selectedPath && isTextFile(selectedPath) && !remoteCache.has(selectedPath)
 
   const dirtyPaths = useMemo(() => new Set(drafts.keys()), [drafts])
   const isDirty = (path: string) => dirtyPaths.has(path)
   const currentContent = selectedPath
-    ? drafts.get(selectedPath) ?? remoteCache.get(selectedPath) ?? ''
+    ? (drafts.get(selectedPath) ?? remoteCache.get(selectedPath) ?? '')
     : ''
   const currentDirty = selectedPath ? isDirty(selectedPath) : false
   const isSkillMd = selectedPath?.endsWith('SKILL.md') ?? false
@@ -511,11 +502,7 @@ function PackageSkillEditor({
               </div>
             </div>
           ) : null}
-          <SkillPackageTree
-            files={files ?? []}
-            selectedPath={selectedPath}
-            onSelect={selectFile}
-          />
+          <SkillPackageTree files={files ?? []} selectedPath={selectedPath} onSelect={selectFile} />
           {dirtyPaths.size > 0 ? (
             <p className="mt-3 text-[10px] text-muted-foreground">
               {dirtyPaths.size} unsaved file{dirtyPaths.size > 1 ? 's' : ''}
@@ -563,16 +550,12 @@ function PackageSkillEditor({
           </Button>
         )}
         <span className="text-[10px] text-muted-foreground">
-          {skill?.size_bytes ?? 0}b · v{skill?.version ?? '—'} · used by{' '}
-          {skill?.used_by_count ?? 0}
+          {skill?.size_bytes ?? 0}b · v{skill?.version ?? '—'} · used by {skill?.used_by_count ?? 0}
         </span>
         <Button variant="outline" onClick={onClose}>
           Close
         </Button>
-        <Button
-          onClick={handleSave}
-          disabled={!currentDirty || setFile.isPending}
-        >
+        <Button onClick={handleSave} disabled={!currentDirty || setFile.isPending}>
           {setFile.isPending ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
@@ -633,10 +616,7 @@ function FileEditorPane({
           {selectedPath}
         </code>
         {currentDirty ? (
-          <Badge
-            variant="secondary"
-            className="bg-status-warn/15 text-[10px] text-status-warn"
-          >
+          <Badge variant="secondary" className="bg-status-warn/15 text-[10px] text-status-warn">
             • unsaved
           </Badge>
         ) : null}
@@ -651,10 +631,7 @@ function FileEditorPane({
             Delete file
           </Button>
         ) : (
-          <Badge
-            variant="secondary"
-            className="ml-auto text-[10px] text-muted-foreground"
-          >
+          <Badge variant="secondary" className="ml-auto text-[10px] text-muted-foreground">
             protected
           </Badge>
         )}

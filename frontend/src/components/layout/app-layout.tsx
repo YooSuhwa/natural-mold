@@ -20,25 +20,25 @@ export function AppLayout({ children }: { children: ReactNode }) {
     (pathname ? BARE_ROUTES.has(pathname) : false) ||
     BARE_ROUTE_PREFIXES.some((prefix) => pathname?.startsWith(prefix))
 
-  if (isBare) {
-    return (
-      <QueryProvider>
-        <TooltipProvider>{children}</TooltipProvider>
-      </QueryProvider>
-    )
-  }
-
+  // QueryProvider and TooltipProvider live outside the bare/full conditional so
+  // the QueryClient instance survives route transitions (e.g. /login → /).
+  // If they were inside each branch, React would unmount+remount them on every
+  // auth-state change, destroying the cache and causing a loading flash.
   return (
     <QueryProvider>
       <TooltipProvider>
-        <SidebarProvider>
-          <AppSidebar />
-          <SidebarInset>
-            <AppHeader />
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
-            <OnboardingDialog />
-          </SidebarInset>
-        </SidebarProvider>
+        {isBare ? (
+          children
+        ) : (
+          <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset>
+              <AppHeader />
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
+              <OnboardingDialog />
+            </SidebarInset>
+          </SidebarProvider>
+        )}
       </TooltipProvider>
     </QueryProvider>
   )
