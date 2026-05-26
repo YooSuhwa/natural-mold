@@ -97,18 +97,14 @@ def _request_meta(request: Request) -> tuple[str | None, str | None]:
     return client, request.headers.get("user-agent")
 
 
-async def _load_owned(
-    db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID
-) -> Credential:
+async def _load_owned(db: AsyncSession, credential_id: uuid.UUID, user_id: uuid.UUID) -> Credential:
     cred = await credential_service.get_for_user(db, credential_id, user_id)
     if cred is None:
         raise HTTPException(status_code=404, detail="credential not found")
     return cred
 
 
-async def _maybe_sync_env_fallback(
-    db: AsyncSession, definition_key: str
-) -> None:
+async def _maybe_sync_env_fallback(db: AsyncSession, definition_key: str) -> None:
     """ADR-013 invalidate hook — refresh ``_ENV_FALLBACK`` after CRUD.
 
     Only fires for LLM provider definitions (anthropic/openai/google_genai/
@@ -238,14 +234,10 @@ async def delete_credential(
 # -- System credentials (operator-managed) ----------------------------------
 
 
-async def _load_system(
-    db: AsyncSession, credential_id: uuid.UUID
-) -> Credential:
+async def _load_system(db: AsyncSession, credential_id: uuid.UUID) -> Credential:
     cred = await credential_service.get_system(db, credential_id)
     if cred is None:
-        raise HTTPException(
-            status_code=404, detail="system credential not found"
-        )
+        raise HTTPException(status_code=404, detail="system credential not found")
     return cred
 
 
@@ -290,9 +282,7 @@ async def create_system_credential(
     return _to_response(cred)
 
 
-@system_router.get(
-    "/{credential_id}", response_model=CredentialResponse
-)
+@system_router.get("/{credential_id}", response_model=CredentialResponse)
 async def get_system_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -301,9 +291,7 @@ async def get_system_credential(
     return _to_response(await _load_system(db, credential_id))
 
 
-@system_router.patch(
-    "/{credential_id}", response_model=CredentialResponse
-)
+@system_router.patch("/{credential_id}", response_model=CredentialResponse)
 async def update_system_credential(
     credential_id: uuid.UUID,
     payload: CredentialUpdate,
@@ -353,9 +341,7 @@ async def delete_system_credential(
 # -- Test --------------------------------------------------------------------
 
 
-@crud_router.post(
-    "/{credential_id}/test", response_model=CredentialTestResponse
-)
+@crud_router.post("/{credential_id}/test", response_model=CredentialTestResponse)
 async def test_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -459,9 +445,7 @@ async def list_audit_logs(
     user: CurrentUser = Depends(get_current_user),
 ) -> list[CredentialAuditLogResponse]:
     await _load_owned(db, credential_id, user.id)
-    logs = await credential_service.list_audit_logs(
-        db, credential_id=credential_id, limit=limit
-    )
+    logs = await credential_service.list_audit_logs(db, credential_id=credential_id, limit=limit)
     return [
         CredentialAuditLogResponse(
             id=log.id,
@@ -489,9 +473,7 @@ def _gc_oauth_state() -> None:
         _OAUTH_STATE.pop(k, None)
 
 
-@oauth_router.post(
-    "/auth/{credential_id}", response_model=OAuth2AuthStartResponse
-)
+@oauth_router.post("/auth/{credential_id}", response_model=OAuth2AuthStartResponse)
 async def oauth2_auth_start(
     credential_id: uuid.UUID,
     request: Request,
@@ -517,9 +499,7 @@ async def oauth2_auth_start(
     data = await credential_service.decrypt_with_external(cred.data_encrypted)
     client_id = data.get("client_id")
     auth_url_base = data.get("authorization_url") or data.get("auth_url")
-    redirect_uri = data.get("redirect_uri") or str(
-        request.url_for("oauth2_callback")
-    )
+    redirect_uri = data.get("redirect_uri") or str(request.url_for("oauth2_callback"))
     scope = data.get("scope") or ""
     if not client_id or not auth_url_base:
         raise HTTPException(
@@ -568,6 +548,11 @@ async def oauth2_callback(
     cred = result.scalar_one_or_none()
     if cred is None:
         raise HTTPException(status_code=404, detail="credential not found")
+    # Verify the credential belongs to the user who started the OAuth flow.
+    # Prevents a scenario where an attacker with a known state token could
+    # complete another user's OAuth flow and update their credential.
+    if str(cred.user_id) != pending["user_id"]:
+        raise HTTPException(status_code=403, detail="forbidden")
     definition = registry.get(cred.definition_key)
     if definition is None or definition.pre_authentication is None:
         raise HTTPException(

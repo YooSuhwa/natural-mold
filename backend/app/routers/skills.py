@@ -49,9 +49,7 @@ from app.skills.packager import PackageError
 router = APIRouter(prefix="/api/skills", tags=["skills"])
 
 
-async def _serialize_skill(
-    db: AsyncSession, skill: Skill, user: CurrentUser
-) -> SkillResponse:
+async def _serialize_skill(db: AsyncSession, skill: Skill, user: CurrentUser) -> SkillResponse:
     """Build a ``SkillResponse`` with origin/publication/installation embed.
 
     ``origin_summary`` always present. ``publication_summary`` defaults
@@ -157,18 +155,26 @@ async def upload_package_skill(
     # Spec §13.1 — gate the upload with the same secret_scan used by
     # publish. Imports + uploads share the surface so a leak can't
     # enter the system via either path.
+    from app.config import settings
     from app.marketplace.secret_scan import scan_package
     from app.storage.paths import resolve_data_path
 
-    findings = scan_package(resolve_data_path(skill.storage_path))
+    from pathlib import Path as _Path
+
+    skill_path = resolve_data_path(skill.storage_path)
+    skills_root = _Path(settings.skill_storage_dir).resolve()
+    if not skill_path.is_relative_to(skills_root):
+        await skill_service.delete_skill(db, skill)
+        await db.rollback()
+        raise invalid_skill_package("invalid skill storage path")
+
+    findings = scan_package(skill_path)
     if findings:
         # Roll back the in-memory row + on-disk directory before raising.
         await skill_service.delete_skill(db, skill)
         await db.rollback()
         summary = ", ".join(f"{f.path} ({f.kind})" for f in findings[:5])
-        raise marketplace_secret_detected(
-            f"package contains potential secrets: {summary}"
-        )
+        raise marketplace_secret_detected(f"package contains potential secrets: {summary}")
 
     await db.commit()
     await db.refresh(skill)
@@ -223,9 +229,7 @@ async def put_text_content(
         raise skill_not_found()
     if skill.kind != "text":
         raise invalid_skill_package("only text skills support content updates")
-    updated = await skill_service.update_text_content(
-        db, skill=skill, content=data.content
-    )
+    updated = await skill_service.update_text_content(db, skill=skill, content=data.content)
     await db.commit()
     await db.refresh(updated)
     return await _serialize_skill(db, updated, user)
@@ -313,9 +317,7 @@ async def put_skill_file(
     if not skill:
         raise skill_not_found()
     if skill.kind != "package":
-        raise invalid_skill_package(
-            "file-level mutations are only valid for package skills"
-        )
+        raise invalid_skill_package("file-level mutations are only valid for package skills")
     try:
         updated = await skill_service.set_skill_file(
             db,
@@ -344,13 +346,9 @@ async def delete_skill_file(
     if not skill:
         raise skill_not_found()
     if skill.kind != "package":
-        raise invalid_skill_package(
-            "file-level mutations are only valid for package skills"
-        )
+        raise invalid_skill_package("file-level mutations are only valid for package skills")
     try:
-        updated = await skill_service.delete_skill_file(
-            db, skill=skill, rel_path=file_path
-        )
+        updated = await skill_service.delete_skill_file(db, skill=skill, rel_path=file_path)
     except ValueError as exc:
         raise invalid_file_path() from exc
     await db.commit()
@@ -373,9 +371,7 @@ async def upload_skill_file(
     if not skill:
         raise skill_not_found()
     if skill.kind != "package":
-        raise invalid_skill_package(
-            "file-level mutations are only valid for package skills"
-        )
+        raise invalid_skill_package("file-level mutations are only valid for package skills")
     body = await file.read()
     try:
         updated = await skill_service.set_skill_file(
