@@ -2,37 +2,36 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useTranslations, useFormatter } from 'next-intl'
+import { useTranslations } from 'next-intl'
 import { WrenchIcon, StarIcon, Settings2Icon, CpuIcon } from 'lucide-react'
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToggleFavorite } from '@/lib/hooks/use-agents'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { cn } from '@/lib/utils'
+import { formatRelativeKo } from '@/lib/utils/format-relative-time'
 import type { Agent } from '@/lib/types'
 
 interface AgentCardProps {
   agent: Agent
 }
 
+const STATUS_DOT = {
+  active: 'bg-emerald-500 ring-emerald-500/20',
+  error: 'bg-red-500 ring-red-500/20',
+  inactive: 'bg-amber-500 ring-amber-500/20',
+} as const
+
 export function AgentCard({ agent }: AgentCardProps) {
   const router = useRouter()
   const { mutate: toggleFavorite } = useToggleFavorite()
   const t = useTranslations('agent.card')
-  const format = useFormatter()
 
-  const statusColor =
+  const dot =
     agent.status === 'active'
-      ? 'bg-emerald-500'
+      ? STATUS_DOT.active
       : agent.status === 'error'
-        ? 'bg-red-500'
-        : 'bg-yellow-500'
+        ? STATUS_DOT.error
+        : STATUS_DOT.inactive
 
   const statusLabel =
     agent.status === 'active'
@@ -46,72 +45,75 @@ export function AgentCard({ agent }: AgentCardProps) {
     e.stopPropagation()
   }
 
+  const fallbackCount = agent.model_fallback_ids?.length ?? 0
+
   return (
     <Link
       href={`/agents/${agent.id}`}
-      className="group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-xl"
+      className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
-      <Card className="h-full transition-colors hover:border-primary/40">
-        <CardHeader className="pb-2">
-          <div className="flex items-start justify-between">
-            <div className="flex items-start gap-3 min-w-0">
-              <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="md" />
-              <div className="flex-1 min-w-0">
-                <CardTitle className="truncate group-hover:text-primary-strong transition-colors">
-                  {agent.name}
-                </CardTitle>
+      <Card
+        className={cn(
+          'h-full gap-3 py-5 transition-all duration-150',
+          'hover:-translate-y-px hover:shadow-[0_10px_22px_-12px_rgba(16,185,129,0.22)]',
+          'hover:ring-emerald-300/70 dark:hover:ring-emerald-400/30',
+        )}
+      >
+        <CardHeader className="gap-2 px-5">
+          <div className="flex items-start gap-3">
+            <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="md" />
+            <div className="min-w-0 flex-1">
+              <CardTitle className="truncate text-[15px] font-semibold tracking-tight transition-colors group-hover:text-primary-strong">
+                {agent.name}
+              </CardTitle>
+              <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span className={cn('inline-block size-1.5 rounded-full ring-2', dot)} />
+                {statusLabel}
               </div>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <Badge variant="secondary" className="shrink-0">
-                <span className={`mr-1 inline-block size-1.5 rounded-full ${statusColor}`} />
-                {statusLabel}
-              </Badge>
-              <button
-                type="button"
-                onClick={(e) => {
-                  stopProp(e)
-                  toggleFavorite(agent.id)
-                }}
-                className="rounded-md p-1 hover:bg-accent transition-colors"
-                aria-label={agent.is_favorite ? t('favoriteRemove') : t('favoriteAdd')}
-              >
-                <StarIcon
-                  className={`size-4 transition-colors ${
-                    agent.is_favorite
-                      ? 'fill-yellow-400 text-yellow-400'
-                      : 'text-muted-foreground hover:text-yellow-400'
-                  }`}
-                />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                stopProp(e)
+                toggleFavorite(agent.id)
+              }}
+              className="-mr-1 rounded-md p-1 transition-colors hover:bg-accent"
+              aria-label={agent.is_favorite ? t('favoriteRemove') : t('favoriteAdd')}
+            >
+              <StarIcon
+                className={cn(
+                  'size-4 transition-colors',
+                  agent.is_favorite
+                    ? 'fill-amber-400 text-amber-400'
+                    : 'text-muted-foreground hover:text-amber-400',
+                )}
+              />
+            </button>
           </div>
-          <CardDescription className="line-clamp-2 min-h-[2.5rem]">
+          <CardDescription className="line-clamp-2 min-h-[2.5rem] text-[13px] leading-relaxed">
             {agent.description || t('noDescription')}
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="pt-0">
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <CpuIcon className="size-3.5" />
+        <CardContent className="px-5">
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-medium">
+              <CpuIcon className="size-3" />
               {agent.model?.display_name ?? (
-                <span className="text-amber-600 dark:text-amber-400">
-                  no model bound
-                </span>
+                <span className="text-amber-600 dark:text-amber-300">{t('noModel')}</span>
               )}
             </span>
-            {(agent.model_fallback_ids?.length ?? 0) > 0 && (
+            {fallbackCount > 0 && (
               <span
-                className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300"
-                title={t('fallbackTitle', { count: agent.model_fallback_ids?.length ?? 0 })}
+                className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300"
+                title={t('fallbackTitle', { count: fallbackCount })}
                 data-testid="agent-card-fallback-badge"
               >
-                +{agent.model_fallback_ids?.length} fallback
+                +{fallbackCount} fallback
               </span>
             )}
             {agent.tools.length > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 font-medium">
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-medium">
                 <WrenchIcon className="size-3" />
                 {agent.tools.length}
               </span>
@@ -119,28 +121,26 @@ export function AgentCard({ agent }: AgentCardProps) {
           </div>
         </CardContent>
 
-        <CardFooter>
-          <div className="flex w-full items-center justify-between">
-            <span className="text-xs text-muted-foreground">
-              {t('createdAt', {
-                date: format.dateTime(new Date(agent.created_at), { dateStyle: 'medium' }),
-              })}
-            </span>
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-200">
-              <button
-                type="button"
-                onClick={(e) => {
-                  stopProp(e)
-                  router.push(`/agents/${agent.id}/settings`)
-                }}
-                className="rounded-md p-1 hover:bg-accent transition-colors"
-                aria-label={t('settings')}
-              >
-                <Settings2Icon className="size-4 text-muted-foreground hover:text-foreground transition-colors" />
-              </button>
-            </div>
+        <div className="mx-5 mt-1 flex items-center justify-between border-t border-dashed border-border pt-3">
+          <span className="text-xs text-muted-foreground">
+            {agent.last_used_at
+              ? t('lastUsed', { time: formatRelativeKo(agent.last_used_at) })
+              : t('neverUsed')}
+          </span>
+          <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+            <button
+              type="button"
+              onClick={(e) => {
+                stopProp(e)
+                router.push(`/agents/${agent.id}/settings`)
+              }}
+              className="rounded-md p-1 transition-colors hover:bg-accent"
+              aria-label={t('settings')}
+            >
+              <Settings2Icon className="size-4 text-muted-foreground transition-colors hover:text-foreground" />
+            </button>
           </div>
-        </CardFooter>
+        </div>
       </Card>
     </Link>
   )

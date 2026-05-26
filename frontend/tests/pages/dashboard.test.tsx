@@ -1,6 +1,6 @@
 import { render, screen } from '../test-utils'
 import DashboardPage from '@/app/page'
-import { mockAgentList, mockUsageSummary } from '../mocks/fixtures'
+import { mockAgentList } from '../mocks/fixtures'
 
 vi.mock('next/link', () => ({
   default: ({
@@ -19,7 +19,7 @@ vi.mock('next/link', () => ({
 }))
 
 const mockUseAgents = vi.fn()
-const mockUseUsageSummary = vi.fn()
+const mockUseSession = vi.fn()
 const mockToggleFavorite = vi.fn()
 
 vi.mock('@/lib/hooks/use-agents', () => ({
@@ -27,14 +27,14 @@ vi.mock('@/lib/hooks/use-agents', () => ({
   useToggleFavorite: () => ({ mutate: mockToggleFavorite }),
 }))
 
-vi.mock('@/lib/hooks/use-usage', () => ({
-  useUsageSummary: () => mockUseUsageSummary(),
+vi.mock('@/lib/auth/session', () => ({
+  useSession: () => mockUseSession(),
 }))
 
 describe('DashboardPage', () => {
   beforeEach(() => {
     mockUseAgents.mockReturnValue({ data: undefined, isLoading: false })
-    mockUseUsageSummary.mockReturnValue({ data: undefined })
+    mockUseSession.mockReturnValue({ data: null })
   })
 
   it('renders loading skeletons when agents are loading', () => {
@@ -71,28 +71,28 @@ describe('DashboardPage', () => {
     expect(templateLink).toHaveAttribute('href', '/agents/new/template')
   })
 
-  it('shows hero greeting + subtitle', () => {
+  it('shows hero greeting with user name and subtitle with count', () => {
+    mockUseAgents.mockReturnValue({ data: mockAgentList, isLoading: false })
+    mockUseSession.mockReturnValue({ data: { id: 'u1', name: '수화', email: 'a@b.c' } })
     render(<DashboardPage />)
-    expect(screen.getByText('안녕하세요! 👋')).toBeInTheDocument()
-    // "새 에이전트" 진입은 사이드바로 옮겨졌고 hero에는 quickAction 카드만 노출.
-    expect(screen.getByText('대화로 만들기')).toBeInTheDocument()
+    // 시간대별 인사 5종 중 하나 + 사용자 이름 + 카운트 포함 subtitle.
+    expect(screen.getByText(/(좋은 아침이에요|좋은 오후예요|좋은 저녁이에요|늦은 밤이네요|오늘도 수고하셨어요),/)).toBeInTheDocument()
+    expect(screen.getByText(/수화님/)).toBeInTheDocument()
+    expect(screen.getByText(new RegExp(`현재 ${mockAgentList.length}개의 에이전트가 있어요`))).toBeInTheDocument()
   })
 
-  it('shows usage summary when data is available', () => {
+  it('falls back to "사용자" when session is null', () => {
+    mockUseSession.mockReturnValue({ data: null })
     mockUseAgents.mockReturnValue({ data: [], isLoading: false })
-    mockUseUsageSummary.mockReturnValue({ data: mockUsageSummary })
     render(<DashboardPage />)
-    expect(screen.getByText('이번 달 사용량')).toBeInTheDocument()
-    expect(screen.getByText('150,000')).toBeInTheDocument()
-    expect(screen.getByText('$1.25')).toBeInTheDocument()
+    expect(screen.getByText(/사용자님/)).toBeInTheDocument()
   })
 
-  it('does not show usage summary when total_tokens is 0', () => {
-    mockUseUsageSummary.mockReturnValue({
-      data: { ...mockUsageSummary, total_tokens: 0 },
-    })
+  it('does not render usage summary or tip line (removed in redesign)', () => {
+    mockUseAgents.mockReturnValue({ data: [], isLoading: false })
     render(<DashboardPage />)
     expect(screen.queryByText('이번 달 사용량')).not.toBeInTheDocument()
+    expect(screen.queryByText(/💡 팁/)).not.toBeInTheDocument()
   })
 
   it('shows agent count in header section', () => {
