@@ -1,0 +1,102 @@
+# progress.txt — System LLM Settings (ADR-019) 팀 공유 메모리
+
+모든 팀원: 스토리 시작 전 필독, 완료/실패 후 기록.
+worktree: /Users/chester/dev/ref/natural-mold/.claude/worktrees/system-llm-settings
+
+## API 계약 (사티아 확정 — 젠슨/저커버그 합의 기준)
+
+role enum: `text_primary` | `text_fallback` | `image`
+
+GET  /api/system-llm-settings        (super_user)
+  → 200: [ SystemLlmSettingOut x3 ]
+PUT  /api/system-llm-settings/{role} (super_user)
+  body: { "credential_id": uuid|null, "model_name": str|null }
+  → 200: SystemLlmSettingOut
+  - credential_id 지정 시: is_system=True && definition_key ∈ {openai,anthropic,openrouter,openai_compatible} 검증.
+    위반 시 404(없음)/422(타입불가) — enumeration oracle 방지 위해 메시지 통일.
+
+SystemLlmSettingOut:
+  { role: str, credential_id: uuid|null, credential_name: str|null,
+    provider: str|null (=credential.definition_key), base_url: str|null,
+    model_name: str|null, configured: bool, updated_at: datetime }
+
+discover (기존 재사용, 변경 금지):
+  POST /api/credentials/{credential_id}/discover-models → 모델 목록
+
+## Codebase Patterns (확인된 사실)
+- Router→Service→Model, async SQLAlchemy 2.0 select(). DI: Depends(get_db, require_super_user, verify_csrf).
+- 권한: super_user 전용은 require_super_user. is_system 리소스는 user_id NULL.
+- credential 복호화: app.credentials.service.decrypt_with_external(data_encrypted) → payload dict.
+  - LLM credential payload key: "api_key" 또는 "token". openai_compatible/openrouter는 "base_url" 보유.
+- find_system_by_definition(db, definition_key) 존재. get_system 류 헬퍼 확인 후 사용/추가.
+- model_factory.create_chat_model(provider, model_name, api_key=None, base_url=None, **extra).
+  - _OPENAI_FAMILY_BASE_URLS: openai/openrouter canonical pin. openai_compatible은 base_url 필수.
+- LLM credential definition_key: anthropic, openai, openrouter, openai_compatible (definitions/__init__.py).
+- 마이그레이션 head: m44 (ADR-018). 신규는 m45, down_revision='m44_relative_storage_path' 확인.
+- 테스트: pytest + aiosqlite in-memory. 새 테이블은 conftest 모델 import 경로 확인.
+
+## Gotchas
+- ADR-018: storage_path는 상대경로. 이 작업과 무관하나 data/ 건드리지 말 것.
+- .env / backend/data 는 main으로의 symlink (worktree-setup.sh). 절대 일반 파일로 덮지 말 것.
+- @functools.cache 제거(M3): 런타임 설정 변경 반영 위해. 필요시 updated_at 기반 캐시.
+- DB 단일 source(ADR-019 결정2): .env builder_model_*/assistant_model_* 런타임 미사용. config 상수는 잔존 가능하나 read 경로 끊기.
+
+## S1 삭제분석 결과 (베조스, 2026-05-26 → tasks/system-llm/deletion-analysis.md)
+- 단절 대상 런타임 read 18곳/4파일: helpers.py(L71-90,138-139 builder/fallback), assistant_agent.py(L74,77-78), image_gen.py:112+image_service.py:125 (image_gen_model). config 상수 정의(config.py:105-119)는 시드 참조용 잔존 OK.
+- base_url 별도: image_gen_base_url read 2곳(image_gen.py:133, image_service.py:119) → image role의 credential payload base_url로 대체.
+- @functools.cache(helpers.py): _get_builder_model(L68)/_get_fallback_model(L78) 싱글턴캐시 = 설정변경 미반영 버그. 제거 필수. 단 제거 시 두 함수 async+db 시그니처化 + 호출부 L176/226 await. ⚠️ updated_at 캐시 미도입 시 builder 요청마다 LLM 인스턴스 재생성(~5-10ms) 성능회귀. load_prompt(L37)캐시는 영향無(import시 static).
+- resolve_system_api_key 호출부 4곳: assistant_agent.py:73 + image_service.py:102 + image_gen.py:49,96. ⚠️중요판단: image_gen도 ADR결정2/5상 resolve_system_model("image")로 가야함(Explore는 "api_key만 필요 유지" 결론냈으나 ADR 위반). image_gen.py:49 가용성체크는 SystemModelNotConfiguredError try/except 또는 configured플래그로 전환. resolve_system_api_key 함수 자체는 ADR-013호환 유지하되 system모델 흐름 직접호출은 0으로 단절.
+- 깨질 테스트: test_builder_v3.py(image, CRITICAL settings.image_gen_model fallback제거), test_builder_sub_agents.py(~338-389 model getter async+db), test_assistant_agent.py(~77/119/144 resolve_system_api_key patch→model, ~14-49 cache_clear AttributeError), conftest.py(~60-82 _stub_llm_credential_resolution에 system model resolver stub 추가 필요). 라인번호는 Explore 추정 — 구현자 재확인.
+- 신규테스트: tests/test_system_llm_settings.py(role UNIQUE/CHECK/SET NULL/CRUD) + test_system_credential_resolver.py 확장(resolve_system_model).
+
+## S2 완료 패턴 (젠슨, M1/M2/M4 — 2026-05-26)
+- 모델: app/models/system_llm_setting.py — SystemLlmSetting + 상수 SYSTEM_LLM_ROLES=("text_primary","text_fallback","image"). role str40 unique, credential_id FK credentials SET NULL nullable, model_name str200 nullable, updated_at. CheckConstraint(role IN ...) + extend_existing=True(테스트 create_all 멱등). models/__init__ export 완료.
+- Alembic m45_system_llm_settings (down_revision=m44_relative_storage_path). _has_table 가드 + op.create_table + op.bulk_insert로 3 role seed(NULL cred/model). downgrade drop_table. PG 왕복(up/down/up) 검증 완료, 시드 3행 확인.
+- resolver(system_credential_resolver.py 확장): ResolvedSystemModel(provider,model_name,api_key,base_url) dataclass + SystemModelNotConfiguredError(role, .role 속성). resolve_system_model(db,role): get_setting→None/credential_id None/model_name 빈값이면 raise. get_system(db,credential_id)으로 cred 로드(없으면 raise). decrypt_with_external→ api_key=payload.get("api_key")or("token"), base_url=payload.get("base_url"). provider=cred.definition_key. **resolve_system_api_key/PROVIDER_API_KEY_MAP는 그대로 유지(ADR-013 호환)**. get_setting 헬퍼도 export(S3 배선/캐시에 사용 가능).
+- 라우터: app/routers/system_llm_settings.py prefix=/api/system-llm-settings. GET(require_super_user) 3 role 전체, 시드 누락 시 self-heal(add+flush). PUT/{role}(require_super_user+verify_csrf). 검증: credential_id 지정 시 get_system None→404, definition_key not in {openai,anthropic,openrouter,openai_compatible}→422. **404/422 detail 메시지 동일**("credential_id must reference an existing system LLM credential"), 실제 사유는 logger.info만(enumeration oracle 방지, security.md). main.py include_router 등록(standalone router, skills 다음 줄).
+- 스키마(schemas/system_llm_setting.py): SystemLlmSettingOut(role,credential_id,credential_name,provider,base_url,model_name,configured:bool,updated_at) + SystemLlmSettingUpdate(credential_id,model_name).
+- 테스트: tests/test_system_llm_settings.py 11 PASS (router GET/PUT happy+validation + resolver 3케이스). system credential은 credential_service.create(db,user_id=None,...,is_system=True)+db.commit()로 생성하면 client 세션(다른 세션)에서도 보임(동일 engine). client fixture=super_user=True+csrf bypass.
+- GET base_url은 configured role만 decrypt(최대 3회, N+1 아님). decrypt 실패는 base_url=None graceful degrade.
+- 검증 결과: `ruff check app/ tests/` clean, `pytest -k "system_llm or credentials"` 51 passed.
+
+## 프론트(저커버그) 참고 — 최종 API 형태
+GET  /api/system-llm-settings → 200 [3 x SystemLlmSettingOut]
+PUT  /api/system-llm-settings/{role} body{credential_id:uuid|null, model_name:str|null} → 200 SystemLlmSettingOut
+  - role path: text_primary|text_fallback|image (그 외 404)
+  - 둘 다 super_user 전용. PUT은 CSRF 필요(verify_csrf).
+  - credential_id 부적합(없음/비-LLM): 404 또는 422, detail 동일 문구.
+SystemLlmSettingOut = {role, credential_id:uuid|null, credential_name:str|null, provider:str|null(=definition_key), base_url:str|null, model_name:str|null, configured:bool, updated_at}
+모델 목록은 기존 POST /api/credentials/{credential_id}/discover-models 재사용.
+
+## S2 테스트 사전리뷰 (베조스, 2026-05-26 — test_system_llm_settings.py 11 PASS 기준)
+커버 양호: GET 3-role, PUT happy(openai/openai_compatible base_url passthrough/anthropic), PUT clear, 비존재 cred 404, 비-LLM 422, user-cred 404 거부, resolver configured/unconfigured/model_name누락.
+갭(→젠슨 '?' 전달):
+- HIGH require_super_user negative 테스트 부재: conftest client fixture가 항상 is_super_user=True+CSRF bypass(L108,132). 일반유저 GET/PUT 거부(403/404) 검증 불가 → non-super client fixture 추가 또는 raw_client+실제 JWT 필요. ADR결정4 핵심 가드인데 무검증.
+- HIGH credential ON DELETE SET NULL 동작 테스트 부재 + aiosqlite는 PRAGMA foreign_keys=ON 미설정(conftest engine L44, connect listener 없음) → 테스트 추가해도 SET NULL 발화 안 함. event.listens_for(engine.sync_engine,"connect")로 PRAGMA 켜야 의미있는 회귀가드.
+- MEDIUM role UNIQUE 제약 직접 테스트 부재(중복 role insert→IntegrityError 기대). SQLite UNIQUE는 FK pragma 없이도 enforce되니 추가 가능.
+- MEDIUM CHECK(role IN) DB레벨 테스트 부재 — 현재 test_put_unknown_role_404는 router검증만. role="bogus" 직접 insert→IntegrityError로 defense-in-depth 확인 권장.
+- MEDIUM 404/422 detail 동일성 assert 약함: 양쪽 substring("system LLM credential")만 체크, byte-identical 미검증 → 422 메시지 변경돼도 통과. 두 응답 detail 캡처 후 == assert로 enumeration oracle 회귀가드 강화.
+- LOW updated_at PUT 갱신 테스트 부재.
+
+## S3 완료 패턴 (젠슨, M3 배선 — 2026-05-26)
+- assistant_agent.py: resolve_system_api_key+settings.assistant_model_* → resolve_system_model("text_primary") + create_chat_model(provider,model_name,api_key,base_url). 죽은 `_resolve_system_api_key` re-export 제거.
+- assistant_service.stream_assistant_message: build_assistant_agent를 try/except SystemModelNotConfiguredError로 감싸 SSE error 이벤트(format_sse(event_names.ERROR,{message,code:"system_model_not_configured"})) yield 후 return. 스트림 크래시 대신 운영자 안내.
+- helpers.py(builder sub_agents): @functools.cache 제거. _get_builder_model/_get_fallback_model → async, 내부 `async_session()`로 resolve_system_model(text_primary/text_fallback). **호출부(invoke_with_json_retry/invoke_for_text) 시그니처 불변 → 6개 caller 무수정**(image_gen 패턴). fallback 미설정 시 None. 경량 캐시 `_MODEL_CACHE[role]=(ResolvedSystemModel,model)` — frozen dataclass 동등성으로 무효화(설정 변경 시 값이 달라져 자동 재생성). create_chat_model만 캐시.
+- image_service.py: resolve_system_model("image") + **resolve_image_base_url(resolved)** 헬퍼 신설(payload base_url 우선, 없으면 provider canonical openrouter/openai 맵, 그 외 ValueError). raw httpx라 model_factory base_url pin 미적용. image_gen.py가 이 헬퍼 재사용.
+- image_gen.py: is_image_generation_available→resolve_system_model("image") try/except로 configured 판정(api_key 체크 폐기). generate_agent_image도 동일, 미설정 시 ImageGenerationError.
+- ⚠️ async_session()는 PROD Postgres 연결 — 테스트 sqlite 아님. builder/image 단위테스트는 resolver mock 또는 순수헬퍼만(test_builder_v3 영향無).
+- 검증: `ruff check .` clean, 전체 `pytest -q` 1214 passed(0 회귀). 깨진 건 test_assistant_agent.py 1개(patch resolve_system_api_key→resolve_system_model + ResolvedSystemModel 반환 수정).
+
+## S2 테스트 하드닝 (젠슨, 베조스 리뷰 반영 — test_system_llm_settings.py 19 PASS)
+- 추가: super_user negative(GET/PUT 403, non_super_client 로컬 fixture) / 404·422 detail byte-identical assert(oracle 회귀가드) / role UNIQUE IntegrityError / image base_url 3케이스 / assistant SSE error surface.
+- ✅ (fast-follow, 베조스 요청) FK SET NULL 국소 테스트 추가: test_credential_delete_sets_slot_null — **전용 engine**(create_async_engine sqlite+aiosqlite + StaticPool + event.listens_for(connect)로 PRAGMA foreign_keys=ON) 안에서 cred insert→setting bind→cred delete→credential_id IS NULL assert→eng.dispose(). conftest 전역 engine 무수정 → 전역 영향 0(1219 passed). PRAGMA 없으면 SQLite가 SET NULL 무시 → false-pass라 PRAGMA 필수. 전역 PRAGMA 채택은 ADR019-OPEN-2로 이연.
+
+## 실패 교훈
+(아직 없음)
+
+## S4 완료 패턴 (저커버그, M5 — 2026-05-26)
+- 신규 파일: lib/types/system-llm-setting.ts(SystemLlmSettingOut/Update + SYSTEM_LLM_ROLES + SYSTEM_LLM_CREDENTIAL_KEYS), lib/api/system-llm-settings.ts(list GET, update PUT — apiFetch가 mutation에 X-CSRF-Token 자동주입), lib/hooks/use-system-llm-settings.ts(useSystemLlmSettings query + useUpdateSystemLlmSetting mutation, queryKey ['system-llm-settings'] invalidate).
+- 화면: app/settings/system-llm/page.tsx. super_user 가드는 system-credentials와 동일 패턴(useSession→denied→router.replace('/')+isPending Loading). 슬롯 3개를 SlotCard로 .map(key=role 고정→remount 없음, 로컬 편집상태 유지). credential 드롭다운=useSystemCredentials()를 SYSTEM_LLM_CREDENTIAL_KEYS로 필터. credential 선택 시 useDiscoverModels().mutate로 모델 로드(이벤트 핸들러에서 호출 — useEffect setState 안티패턴 회피). 저장된 model_name은 재로드 전에도 select에 보이도록 modelOptions에 prepend. dirty/canSave 가드로 불필요 PUT 방지.
+- ⚠️ Select(base-ui): onValueChange 시그니처 (value: string|null, eventDetails)=>void. 핸들러 파라미터를 string|null로 받아야 build 통과(string만 받으면 type error).
+- 사이드바: app-sidebar.tsx super_user 스프레드 블록에 systemLlm 추가(SlidersHorizontalIcon, /settings/system-llm). i18n: messages/ko.json sidebar.nav.systemLlm 추가, 호출 t('nav.systemLlm') (t=useTranslations('sidebar')).
+- worktree node_modules 없으면 pnpm install 선행. 검증: pnpm lint clean, pnpm build 성공(/settings/system-llm 라우트 확인).

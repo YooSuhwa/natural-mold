@@ -9,8 +9,10 @@ from collections.abc import AsyncGenerator
 from langchain_core.messages import HumanMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime import event_names
 from app.agent_runtime.assistant.assistant_agent import build_assistant_agent
-from app.agent_runtime.streaming import stream_agent_response
+from app.agent_runtime.streaming import format_sse, stream_agent_response
+from app.services.system_credential_resolver import SystemModelNotConfiguredError
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,23 @@ async def stream_assistant_message(
     기존 채팅 인프라(stream_agent_response)를 그대로 재사용한다 (ADR-005 AD-6).
     checkpointer가 히스토리를 자동 관리하므로 별도 세션 테이블 불필요.
     """
-    agent = await build_assistant_agent(db, agent_id, user_id, thread_id)
+    try:
+        agent = await build_assistant_agent(db, agent_id, user_id, thread_id)
+    except SystemModelNotConfiguredError as exc:
+        # ADR-019: no .env fallback — surface a clear operator-action message
+        # instead of crashing the SSE stream.
+        logger.warning("Assistant model unconfigured: %s", exc)
+        yield format_sse(
+            event_names.ERROR,
+            {
+                "message": (
+                    "운영자가 System LLM 설정(텍스트 모델)을 완료해야 "
+                    "어시스턴트를 사용할 수 있습니다."
+                ),
+                "code": "system_model_not_configured",
+            },
+        )
+        return
 
     messages = [HumanMessage(content=user_message)]
     config = {"configurable": {"thread_id": thread_id}}

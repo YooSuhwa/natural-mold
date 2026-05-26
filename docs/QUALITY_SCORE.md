@@ -374,3 +374,29 @@ uv run ruff check .                                        # clean
 - **7 E2E user scenarios (PRD §10.1~10.7) 모두 PASS** (xfail strict 자동 감지 → 젠슨 fix → 베조스 promote)
 - 22 Phase 1 출시 게이트 통합 검증 PASS
 - 회귀 0, ruff 0
+
+---
+
+## ADR-019 System LLM Settings — S5 통합검증 (2026-05-26, 베조스)
+
+### GO/NO-GO 판정: ✅ FULL GO (fast-follow closed 2026-05-26)
+
+| 게이트 | 결과 | 근거 |
+|--------|------|------|
+| S5-1 backend ruff + pytest | ✅ PASS | `ruff check .` clean, `pytest` **1219 passed**, 2 deselected, 0 회귀 (fast-follow +1) |
+| S5-2 frontend build + lint | ✅ PASS | `pnpm build` 성공(`/settings/system-llm` 라우트 생성), `pnpm lint` clean |
+| S5-3 HIGH#1 super_user 가드 | ✅ CLOSED | `test_get/put_requires_super_user`(403), `test_invalid_credential_detail_is_byte_identical`(404↔422 detail byte-identical) |
+| S5-4 HIGH#2 FK SET NULL | ✅ CLOSED | `test_credential_delete_sets_slot_null`(국소 engine+PRAGMA, conftest 무수정) PASS. 베조스 false-pass 반증: PRAGMA 제거 시 credential_id NULL 안 됨 입증 → load-bearing 회귀가드 |
+| S5-5 핵심 시나리오 | ✅ PASS | `test_assistant_stream_surfaces_unconfigured`(SSE `event:error` code=`system_model_not_configured`), image base_url payload우선/canonical/raise 3케이스, assistant `create_chat_model(...,base_url)` 전달 |
+
+신규 테스트 검증: `test_system_llm_settings.py` **19 PASS** (S2 11 + 베조스 리뷰 하드닝 8). 모든 신규 assertion 실질적(거짓통과 없음) 확인.
+
+### Open Items
+
+| ID | 심각도 | 설명 | 담당 |
+|----|--------|------|------|
+| ~~**ADR019-OPEN-1**~~ | ✅ RESOLVED | (2026-05-26) `test_credential_delete_sets_slot_null` 추가 — 국소 engine+PRAGMA, conftest 무수정. 베조스 false-pass 반증으로 load-bearing 확인. 1219 PASS. | 젠슨 |
+| **ADR019-OPEN-2** | LOW | 전역 aiosqlite `PRAGMA foreign_keys=ON` 채택 — 1218 테스트 회귀확인 필요. builder_session 등 타 FK SET NULL 테스트에도 잠재 영향. **별도 follow-up 이슈** | 젠슨/운영 |
+| **ADR019-OPEN-3** | LOW | 머지 후 운영자가 3슬롯 미설정 시 Builder/Assistant/이미지 동작 불가(ADR 의도). 배포 노트 "운영자 설정 필수" 명시 필요 | 운영 |
+
+**근거**: 전 게이트 그린(backend **1219 PASS**/0 회귀, frontend build+lint clean), HIGH#1·#2 모두 CLOSED, 핵심 시나리오(미설정 SSE surface + base_url passthrough) verified. fast-follow FK SET NULL 회귀가드 머지 전 닫힘 → **FULL GO**.

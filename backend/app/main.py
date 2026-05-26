@@ -257,6 +257,7 @@ def create_app() -> FastAPI:
         models,
         shares,
         skills,
+        system_llm_settings,
         templates,
         tools,
         triggers,
@@ -279,6 +280,7 @@ def create_app() -> FastAPI:
     app.include_router(shares.router)
     app.include_router(templates.router)
     app.include_router(skills.router)
+    app.include_router(system_llm_settings.router)
     app.include_router(tools.router)
     app.include_router(triggers.router)
     app.include_router(uploads.router)
