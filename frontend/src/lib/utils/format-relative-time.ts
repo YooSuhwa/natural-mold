@@ -91,3 +91,23 @@ export function formatLongDate(date: Date | string): string {
 export function formatMediumDate(date: Date | string): string {
   return mediumDateFmt.format(parseTimestamp(date))
 }
+
+const shortMonthDayFmt = new Intl.DateTimeFormat(LOCALE, {
+  timeZone: TIMEZONE,
+  month: 'short',
+  day: 'numeric',
+})
+
+/**
+ * "방금 전 / N분 전 / N시간 전 / N일 전 / 5월 22일" — KST-anchored relative time
+ * for compact meta strips (e.g., agent card footer "last used").
+ */
+export function formatRelativeKo(date: Date | string, now: Date = new Date()): string {
+  const d = parseTimestamp(date)
+  const diffSec = Math.max(0, (now.getTime() - d.getTime()) / 1000)
+  if (diffSec < 60) return '방금 전'
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}분 전`
+  if (diffSec < 86_400) return `${Math.floor(diffSec / 3600)}시간 전`
+  if (diffSec < 86_400 * 7) return `${Math.floor(diffSec / 86_400)}일 전`
+  return shortMonthDayFmt.format(d)
+}
