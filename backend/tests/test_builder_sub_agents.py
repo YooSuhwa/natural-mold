@@ -389,6 +389,38 @@ async def test_invoke_for_text_all_short():
         assert result == "short"
 
 
+@pytest.mark.asyncio
+async def test_invoke_with_json_retry_ignores_trailing_text():
+    """JSON 뒤에 설명 텍스트가 붙어도(LiteLLM gateway류) 첫 JSON을 파싱한다.
+
+    기존 json.loads는 "Extra data"로 실패 → fallback. raw_decode로 trailing
+    텍스트를 무시하므로 1회 시도에 성공한다.
+    """
+    response = MagicMock()
+    response.content = '{"options": ["a", "b"]}\n\n위 옵션을 추천합니다.'
+
+    mock_model = AsyncMock()
+    mock_model.ainvoke = AsyncMock(return_value=response)
+
+    with (
+        patch(
+            "app.agent_runtime.builder.sub_agents.helpers._get_builder_model",
+            return_value=mock_model,
+        ),
+        patch(
+            "app.agent_runtime.builder.sub_agents.helpers._get_fallback_model",
+            return_value=None,
+        ),
+    ):
+        from app.agent_runtime.builder.sub_agents.helpers import (
+            invoke_with_json_retry,
+        )
+
+        result = await invoke_with_json_retry("system", "task", max_retries=1)
+        assert result == {"options": ["a", "b"]}
+        assert mock_model.ainvoke.call_count == 1
+
+
 # ---------------------------------------------------------------------------
 # tool_recommender helper: _format_catalog, _build_task_description
 # ---------------------------------------------------------------------------

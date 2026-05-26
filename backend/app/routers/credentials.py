@@ -405,7 +405,14 @@ async def discover_models(
     canonical 'is this key valid' surface, not this endpoint.
     """
 
-    cred = await _load_owned(db, credential_id, user.id)
+    cred = await credential_service.get_for_user(db, credential_id, user.id)
+    if cred is None and user.is_super_user:
+        # System LLM settings (ADR-019) discovers models from is_system
+        # credentials, which _load_owned (user-scoped) can't see. super_user
+        # owns system credentials, so allow discovery against them here.
+        cred = await credential_service.get_system(db, credential_id)
+    if cred is None:
+        raise HTTPException(status_code=404, detail="credential not found")
     try:
         results = await model_discovery.discover_from_credential(db, cred)
     except ValueError as exc:

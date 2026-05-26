@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.credentials import service as credential_service
 from app.models.agent import Agent
 from app.models.model import Model
 from app.models.user import User
@@ -267,3 +268,29 @@ async def test_discover_models_endpoint_anthropic(client: AsyncClient) -> None:
     assert "model_name" in first
     assert "source" in first
     assert "already_registered" in first
+
+
+@pytest.mark.asyncio
+async def test_discover_models_endpoint_system_credential_as_super_user(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    """super_user can discover models from an ``is_system`` credential (ADR-019).
+
+    System LLM settings selects a model from a system credential via this
+    endpoint. ``_load_owned`` is user-scoped and previously 404'd on system
+    credentials (user_id IS NULL); discovery now falls back to ``get_system``
+    for super_users.
+    """
+
+    cred = await credential_service.create(
+        db,
+        user_id=None,
+        definition_key="anthropic",
+        name="sys-anth",
+        data={"api_key": "k"},
+        is_system=True,
+    )
+    await db.commit()
+    response = await client.post(f"/api/credentials/{cred.id}/discover-models")
+    assert response.status_code == 200, response.text
+    assert isinstance(response.json(), list)
