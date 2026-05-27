@@ -55,7 +55,7 @@ resulting agent or schedule it to run on its own.
 - [mise](https://mise.jdx.dev/) — auto-manages Python 3.12 + Node 22
 - [Docker](https://www.docker.com/) — for the PostgreSQL 16 container
 - [pnpm](https://pnpm.io/) — Node package manager
-- An LLM API key — at least one of OpenAI / Anthropic / Google
+- An LLM API key — one of OpenAI / Anthropic / OpenRouter / OpenAI-compatible (e.g. LiteLLM). No need to put it in ENV; **register it in the UI after boot** (ADR-013)
 
 ### Local development
 
@@ -70,8 +70,8 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # set ENCRYPTION_KEYS / JWT_SECRET (LLM keys via UI)
 uv sync                               # install dependencies
-uv run alembic upgrade head           # run migrations (head: m43)
-uv run uvicorn app.main:app --reload --port 8001
+uv run alembic upgrade head           # run migrations (head: m45)
+uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
 # 4. Frontend (new terminal)
@@ -82,13 +82,36 @@ pnpm dev
 ```
 
 The first run seeds default models (GPT-5.5, Claude Sonnet 4.6, Gemini, …),
-system tools, and four agent templates.
+system tools, and agent templates. However, **operator setup below is required
+before you can build and use agents**.
+
+### Post-boot setup (operator)
+
+LLM keys are registered in the UI (not ENV), and system features (builder,
+assistant, image generation) require the operator to pick which models to use
+(ADR-013/016/019).
+
+1. **First account = operator** — Sign up at http://localhost:3000. The first
+   user is auto-promoted to `super_user` (ADR-016, `ALLOW_FIRST_USER_AS_ADMIN=true`;
+   turn it off after the operator account exists in production).
+2. **Register LLM credentials** — At `/settings/system-credentials`, add OpenAI ·
+   Anthropic · OpenRouter · OpenAI-compatible (e.g. LiteLLM) keys.
+3. **Pick System LLM models (ADR-019, required)** — At `/settings/system-llm`,
+   choose a model for each of the `text_primary` · `text_fallback` · `image`
+   slots (select credential → "Load models" → pick a model). **Until this is
+   configured, the builder, assistant, and image generation will not work**
+   (explicit error, no silent failure).
+4. **Wire models for agents** — At `/models`, attach a credential to the models
+   your agents will use, or auto-register them via discovery.
+
+Then build agents through the conversational builder (`/agents`) and chat. Regular
+users register their own keys at `/credentials`.
 
 ### Run everything with Docker Compose
 
 ```bash
 docker compose up -d                  # postgres + backend + frontend
-# Register LLM API keys in the UI Credentials screen after boot (ADR-013)
+# Then follow "Post-boot setup" above for operator onboarding.
 ```
 
 ### Verification commands
@@ -248,7 +271,7 @@ pnpm build                            # production build
 
 - **Router** (`app/routers/`) — HTTP endpoints, request / response shaping
 - **Service** (`app/services/`) — Business logic, DB queries, transactions
-- **Model** (`app/models/`) — SQLAlchemy ORM, ~40 tables as of m43
+- **Model** (`app/models/`) — SQLAlchemy ORM, ~40 tables as of m45
 
 ### Frontend pattern
 
@@ -276,7 +299,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + domain
 │   │   ├── agent_runtime/       # AI execution engine
 │   │   └── seed/                # seed data
-│   ├── alembic/versions/        # migrations (up to m43)
+│   ├── alembic/versions/        # migrations (up to m45)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
