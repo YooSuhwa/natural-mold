@@ -78,6 +78,9 @@ workspace/
 # Redis dump (M-MCP2)
 dump.rdb
 
+# Redesign drafts (디자인 시안용 로컬 폴더)
+redesign/
+
 # Claude — 전체 ignore (이미 트래킹된 .claude/skills/ 등은 영향 없음)
 .claude/
 
