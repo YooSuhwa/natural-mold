@@ -15,10 +15,7 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { McpServerWizard } from '@/components/mcp/mcp-server-wizard'
 import { McpServerDetailDialog } from '@/components/mcp/mcp-server-detail-dialog'
 import { McpImportDialog } from '@/components/mcp/mcp-import-dialog'
-import {
-  useExportMcpServers,
-  useMcpServers,
-} from '@/lib/hooks/use-mcp-servers'
+import { useExportMcpServers, useMcpServers } from '@/lib/hooks/use-mcp-servers'
 import { useMcpHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 import type { McpServer } from '@/lib/types/mcp'
 import type { HealthCheckEntry } from '@/lib/types/health'
@@ -52,9 +49,9 @@ export default function McpServersPage() {
       a.remove()
       URL.revokeObjectURL(url)
       const count = Object.keys(data.mcpServers).length
-      toast.success(`Exported ${count} server${count === 1 ? '' : 's'}`)
+      toast.success(`서버 ${count}개를 내보냈어요`)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Export failed')
+      toast.error(e instanceof Error ? e.message : '내보내기 실패')
     }
   }
 
@@ -74,7 +71,7 @@ export default function McpServersPage() {
       })
       announceHealthResult(result)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Health check failed')
+      toast.error(e instanceof Error ? e.message : '상태 확인 실패')
     }
   }
 
@@ -82,24 +79,24 @@ export default function McpServersPage() {
     () => [
       {
         accessorKey: 'name',
-        header: 'Name',
+        header: '이름',
         cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
       },
       {
         accessorKey: 'transport',
-        header: 'Transport',
+        header: '전송 방식',
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">{row.original.transport}</span>
         ),
       },
       {
         accessorKey: 'last_tool_count',
-        header: 'Tools',
+        header: '도구',
         cell: ({ row }) => row.original.last_tool_count ?? 0,
       },
       {
         id: 'status',
-        header: 'Status',
+        header: '상태',
         cell: ({ row }) => {
           const entry = healthByServer.get(row.original.id)
           // Health probe wins if available; otherwise the static MCP status.
@@ -118,7 +115,7 @@ export default function McpServersPage() {
       },
       {
         accessorKey: 'last_pinged_at',
-        header: 'Last ping',
+        header: '최근 응답',
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
             {formatDate(row.original.last_pinged_at)}
@@ -132,7 +129,7 @@ export default function McpServersPage() {
           <Button
             variant="ghost"
             size="sm"
-            aria-label={`Check ${row.original.name}`}
+            aria-label={`${row.original.name} 상태 확인`}
             data-testid={`check-now-${row.original.id}`}
             onClick={(e) => {
               e.stopPropagation()
@@ -140,7 +137,7 @@ export default function McpServersPage() {
             }}
             disabled={runHealthCheck.isPending}
           >
-            <Activity className="size-3.5" /> Check
+            <Activity className="size-3.5" /> 상태 확인
           </Button>
         ),
         enableSorting: false,
@@ -153,66 +150,60 @@ export default function McpServersPage() {
   const data = servers ?? []
 
   return (
-    <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
-      <PageHeader
-        title="MCP Servers"
-        description="Connect to Model Context Protocol servers to expose remote tools."
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setImportOpen(true)}
-            >
-              <Download className="size-4" />
-              Import
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleExport}
-              disabled={exportMutation.isPending}
-            >
-              <Upload className="size-4" />
-              Export
-            </Button>
-            <Button onClick={() => setWizardOpen(true)}>
-              <Plus className="size-4" />
-              New MCP server
-            </Button>
-          </div>
-        }
-      />
-
-      {!isLoading && data.length === 0 ? (
-        <EmptyState
-          icon={<Server className="size-6" />}
-          title="No MCP servers yet"
-          description="Add a server to import its tools and bind credentials."
+    <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+      <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
+        <PageHeader
+          title="MCP 서버"
+          description="MCP 서버를 연결해 원격 도구를 가져오세요."
           action={
-            <Button onClick={() => setWizardOpen(true)}>
-              <Plus className="size-4" />
-              Add server
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => setImportOpen(true)}>
+                <Download className="size-4" />
+                불러오기
+              </Button>
+              <Button variant="outline" onClick={handleExport} disabled={exportMutation.isPending}>
+                <Upload className="size-4" />
+                내보내기
+              </Button>
+              <Button onClick={() => setWizardOpen(true)}>
+                <Plus className="size-4" />새 MCP 서버
+              </Button>
+            </div>
           }
         />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={data}
-          loading={isLoading}
-          searchable
-          searchPlaceholder="Search servers"
-          onRowClick={(row) => setDetailId(row.id)}
-          emptyTitle="No servers match your search"
-        />
-      )}
 
-      <McpServerWizard open={wizardOpen} onOpenChange={setWizardOpen} />
-      <McpImportDialog open={importOpen} onOpenChange={setImportOpen} />
-      <McpServerDetailDialog
-        serverId={detailId}
-        open={!!detailId}
-        onOpenChange={(open) => !open && setDetailId(null)}
-      />
+        {!isLoading && data.length === 0 ? (
+          <EmptyState
+            icon={<Server className="size-6" />}
+            title="아직 MCP 서버가 없어요"
+            description="서버를 추가하면 원격 도구를 가져와 자격증명에 연결할 수 있어요."
+            action={
+              <Button onClick={() => setWizardOpen(true)}>
+                <Plus className="size-4" />
+                서버 추가
+              </Button>
+            }
+          />
+        ) : (
+          <DataTable
+            columns={columns}
+            data={data}
+            loading={isLoading}
+            searchable
+            searchPlaceholder="서버 검색"
+            onRowClick={(row) => setDetailId(row.id)}
+            emptyTitle="검색 결과가 없어요"
+          />
+        )}
+
+        <McpServerWizard open={wizardOpen} onOpenChange={setWizardOpen} />
+        <McpImportDialog open={importOpen} onOpenChange={setImportOpen} />
+        <McpServerDetailDialog
+          serverId={detailId}
+          open={!!detailId}
+          onOpenChange={(open) => !open && setDetailId(null)}
+        />
+      </div>
     </div>
   )
 }
@@ -221,8 +212,8 @@ function formatRelativeTime(iso: string): string {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return iso
   const deltaSec = Math.floor((Date.now() - then) / 1000)
-  if (deltaSec < 60) return `${deltaSec}s ago`
-  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}m ago`
-  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}h ago`
-  return `${Math.floor(deltaSec / 86400)}d ago`
+  if (deltaSec < 60) return `${deltaSec}초 전`
+  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}분 전`
+  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}시간 전`
+  return `${Math.floor(deltaSec / 86400)}일 전`
 }
