@@ -1,0 +1,159 @@
+/**
+ * `onMessagesCommit` 경로(빌더 / AssistantPanel / TestChatPanel) 회귀 가드.
+ *
+ * 회귀: stream 종료 시 finally 가 `onMessagesCommit(finalMsgs)` 로 streaming
+ * 메시지를 부모 state 에 옮기는데, 같은 batch 에 `streamingMessages` 를
+ * 비우지 않으면 다음 render 의 `allMessages = [...messages, ...streamingMessages]`
+ * 에 동일한 `stream-{uuid}` / `opt-{uuid}` / `tr-{uuid}` id 가 양쪽에 동시
+ * 존재 → `useExternalMessageConverter` 가 assistant-ui `MessageRepository.link`
+ * 호출 시 "A message with the same id already exists in the parent tree" throw.
+ *
+ * 본 테스트는 hook 안에서 부모처럼 `messages` 를 보관하고 `onMessagesCommit`
+ * 에서 그대로 append 하는 실제 패턴을 재현해, 회귀가 발생하면 hook 자체가
+ * render 중 throw 하도록 한다.
+ */
+import { renderHook, act } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { describe, expect, it, vi, beforeEach } from 'vitest'
+import type { Message, SSEEvent } from '@/lib/types'
+import { useChatRuntime } from '../use-chat-runtime'
+
+vi.mock('next-intl', () => ({
+  useTranslations: () => (key: string) => key,
+}))
+
+vi.mock('jotai', async () => {
+  const actual = await vi.importActual<typeof import('jotai')>('jotai')
+  return {
+    ...actual,
+    useSetAtom: () => vi.fn(),
+    useAtomValue: () => undefined,
+  }
+})
+
+vi.mock('sonner', () => ({
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+}))
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+  return function Wrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  }
+}
+
+function makeStreamFn(customEvents: SSEEvent[]): (content: string) => AsyncGenerator<SSEEvent> {
+  return async function* () {
+    yield {
+      event: 'message_start' as const,
+      id: 'evt-start',
+      data: { id: 'msg-1', role: 'assistant' },
+    }
+    let i = 0
+    for (const ev of customEvents) {
+      i += 1
+      yield { ...ev, id: ev.id ?? `evt-${i}` }
+    }
+    yield {
+      event: 'message_end' as const,
+      id: 'evt-end',
+      data: { content: '', usage: {} },
+    }
+  }
+}
+
+/** 빌더 / AssistantPanel / TestChatPanel 의 실제 패턴을 재현한 하네스. */
+function useCommitHarness(events: SSEEvent[]) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const streamFn = useMemo(
+    () =>
+      makeStreamFn(events) as unknown as (
+        content: string,
+        signal: AbortSignal,
+      ) => AsyncGenerator<SSEEvent>,
+    [events],
+  )
+  const onMessagesCommit = useCallback((msgs: Message[]) => {
+    setMessages((prev) => [...prev, ...msgs])
+  }, [])
+  const chat = useChatRuntime({ messages, streamFn, onMessagesCommit })
+  return { ...chat, messages }
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+describe('useChatRuntime — onMessagesCommit dedup', () => {
+  it('stream 종료 후 부모가 commit 을 messages 에 append 해도 중복 id throw 없음', async () => {
+    /**
+     * 회귀 가드: 수정 전에는 finally 의 setState 가 같은 batch 에 처리되면서
+     * 다음 render 에 `messages` 와 `streamingMessages` 가 동시에 `stream-{uuid}`
+     * 를 담아 `useExternalMessageConverter` 가 throw 했다.
+     * 수정 후에는 `setStreamingMessages([])` 가 `onMessagesCommit` 호출 직전에
+     * 같은 batch 로 들어가 다음 render 의 `allMessages` 가 중복 없이 단일
+     * source 로 유지된다.
+     */
+    const { result } = renderHook(
+      () => useCommitHarness([{ event: 'content_delta', data: { content: 'Hello' } }]),
+      { wrapper: createWrapper() },
+    )
+
+    // 회귀 시 이 호출 종료 후 다음 render 에서 throw.
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    // 1) 부모 messages 에 commit 결과가 들어왔다 (user opt + assistant).
+    const ids = result.current.messages.map((m) => m.id)
+    expect(ids.length).toBeGreaterThanOrEqual(2)
+
+    // 2) 중복 id 가 없다 — assistant-ui MessageRepository 의 핵심 contract.
+    expect(new Set(ids).size).toBe(ids.length)
+
+    // 3) assistant 메시지가 한 번만 존재한다.
+    const assistantIds = result.current.messages
+      .filter((m) => m.role === 'assistant')
+      .map((m) => m.id)
+    expect(assistantIds).toHaveLength(1)
+  })
+
+  it('tool_call 이 포함된 turn 도 중복 없이 commit 된다', async () => {
+    const { result } = renderHook(
+      () =>
+        useCommitHarness([
+          {
+            event: 'tool_call_start',
+            data: { tool_name: 'web_search', parameters: { q: 'foo' } },
+          },
+          {
+            event: 'tool_call_result',
+            data: { tool_name: 'web_search', result: 'bar' },
+          },
+          { event: 'content_delta', data: { content: 'done' } },
+        ]),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    const ids = result.current.messages.map((m) => m.id)
+    expect(new Set(ids).size).toBe(ids.length)
+
+    // assistant + tool result 가 각각 1건씩.
+    const roleCount = result.current.messages.reduce<Record<string, number>>((acc, m) => {
+      acc[m.role] = (acc[m.role] ?? 0) + 1
+      return acc
+    }, {})
+    expect(roleCount.assistant).toBe(1)
+    expect(roleCount.tool).toBe(1)
+  })
+})

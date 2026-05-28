@@ -194,8 +194,7 @@ export function useChatRuntime({
       // TypeError 발생).
       queryClient.setQueryData<MessagesEnvelope | undefined>(
         ['conversations', conversationId, 'messages'],
-        (prev) =>
-          prev ? { ...prev, messages: prev.messages.slice(0, truncateAtIndex) } : prev,
+        (prev) => (prev ? { ...prev, messages: prev.messages.slice(0, truncateAtIndex) } : prev),
       )
     },
     [queryClient, conversationId],
@@ -259,11 +258,7 @@ export function useChatRuntime({
    * AbortController로 fetch는 끊지만 이미 buffer에 yield된 chunk는 막지 못하므로
    * caller side에서 한 번 더 거른다. */
   const consumeStream = useCallback(
-    async (
-      stream: AsyncGenerator<SSEEvent>,
-      optimisticUserMsg: Message | null,
-      token: number,
-    ) => {
+    async (stream: AsyncGenerator<SSEEvent>, optimisticUserMsg: Message | null, token: number) => {
       let accumulated = ''
       const toolCalls: ToolCallInfo[] = []
       const toolResults: Message[] = []
@@ -409,10 +404,7 @@ export function useChatRuntime({
               // 빈 fallback chunk — backend가 ``aget_state`` 실패로 정확한 액션을
               // 제시하지 못해 표준 미들웨어 contract만 채워 emit한다(streaming.py).
               // turn 이 silent 하게 갇히지 않도록 사용자에게 toast 로 안내.
-              if (
-                data.action_requests.length === 0 &&
-                data.review_configs.length === 0
-              ) {
+              if (data.action_requests.length === 0 && data.review_configs.length === 0) {
                 toast.error(tPage('interruptStateLost'), { id: TOAST_ID_INTERRUPT_LOST })
                 break
               }
@@ -420,8 +412,7 @@ export function useChatRuntime({
               break
             }
             case 'error': {
-              const errMsg =
-                (event.data as { message?: string }).message ?? tPage('error')
+              const errMsg = (event.data as { message?: string }).message ?? tPage('error')
               setStreamError(errMsg)
               // SSE error event 가 silent 하게 사라지지 않도록 사용자에게 toast.
               // ``setStreamError`` 는 setter-only state 라 UI 에 노출 안 됨.
@@ -475,20 +466,24 @@ export function useChatRuntime({
         }
       } finally {
         setIsRunning(false)
-        // rAF-batched 마지막 flush 가 아직 안 돌았으면 동기로 한 번 더 적용해
-        // 최종 텍스트가 화면에 즉시 반영되게 한다.
-        if (rafScheduled) {
-          rafScheduled = false
-          setStreamingMessages(buildStreamState())
-        }
-        // 스트리밍 메시지 확정 → 로컬 히스토리 유지 (AssistantPanel용)
+        const finalMsgs = buildStreamState()
         if (onMessagesCommit) {
-          const finalMsgs = buildStreamState()
+          // commit 콜백이 messages 를 책임진다. 같은 batch 에 streaming 을
+          // 비워야 다음 render 의 ``allMessages`` 에 동일 id (stream-{uuid}
+          // / opt-{uuid} / tr-{uuid}) 가 messages 와 streamingMessages 양쪽
+          // 에 동시 존재하지 않는다. 둘 다 존재하면 assistant-ui 의
+          // MessageRepository.link 가 "duplicate id in parent tree" 로 throw.
+          setStreamingMessages([])
           onMessagesCommit(finalMsgs)
+        } else if (rafScheduled) {
+          // refetch-driven 경로(일반 채팅): streamingMessages 는 비우지 않고
+          // backend messages refetch 까지 유지 — 답변이 화면에서 잠깐 사라
+          // 졌다 다시 나타나는 깜박임을 막는다. rAF-batched 마지막 flush 만
+          // 동기로 적용해 최종 텍스트가 화면에 즉시 반영되게 한다. cleanup
+          // 은 아래 prevMessagesRef 비교 블록(line 519~)이 담당.
+          rafScheduled = false
+          setStreamingMessages(finalMsgs)
         }
-        // streamingMessages는 즉시 비우지 않는다 — refetch가 끝나기 전 비우면 답변이
-        // 화면에서 잠깐 사라졌다 다시 나타나는 깜박임이 생긴다. 아래 prevMessagesRef
-        // 비교 블록이 backend messages refetch 완료 후 clear한다.
         // interrupt(HiTL)도 그래프가 일시정지된 stream 종료 — backend는 ask_user tool_call을
         // 이미 DB에 저장한 상태이므로, onStreamEnd로 messages query를 invalidate해야
         // streaming 비운 직후 UI에서 ask_user input이 사라지지 않고 fetch된 메시지로 채워진다.
@@ -497,14 +492,7 @@ export function useChatRuntime({
         onStreamEnd?.(didMutate)
       }
     },
-    [
-      onStreamEnd,
-      onStandardInterrupt,
-      onMessagesCommit,
-      setReconnectState,
-      tReconnect,
-      tPage,
-    ],
+    [onStreamEnd, onStandardInterrupt, onMessagesCommit, setReconnectState, tReconnect, tPage],
   )
 
   // messages가 새로 fetch되면(refetch 완료) streaming messages를 clear.
@@ -516,19 +504,20 @@ export function useChatRuntime({
   // 새 assistant 메시지가 refetch 결과에 도착했는지로 "정말 persist 됐는지" 판정.
   // run_id ↔ messages.id 직접 비교는 형식이 달라 (uuid4 vs uuid5(raw_id)) 매칭
   // 불가 — id 매칭 대신 ``hasNewAssistantMessage`` set-diff 휴리스틱 사용.
-  const prevMessagesRef = useRef(messages)
-  if (prevMessagesRef.current !== messages) {
-    const prev = prevMessagesRef.current
-    prevMessagesRef.current = messages
+  // React-approved "storing information from previous renders" pattern.
+  // useState instead of useRef avoids react-hooks/refs during render.
+  const [prevMessages, setPrevMessages] = useState(messages)
+  if (prevMessages !== messages) {
+    setPrevMessages(messages)
     if (!isRunning && streamingMessages.length > 0) {
-      if (hasNewAssistantMessage(prev, messages)) {
+      if (hasNewAssistantMessage(prevMessages, messages)) {
         setStreamingMessages([])
       } else {
         // assistant 미커밋(끊긴 turn) — partial assistant + tool 결과는 유지하되,
         // user 메시지는 보통 backend 가 POST 진입 직후 저장하므로 ``messages`` 에
         // 이미 들어있다. optimistic user copy 를 그대로 두면 user 버블이 중복으로
         // 보인다 (id 가 ``opt-{uuid}`` vs backend UUID 라 매칭 불가).
-        setStreamingMessages((prev) => prev.filter((m) => m.role !== 'user'))
+        setStreamingMessages((sm) => sm.filter((m) => m.role !== 'user'))
       }
     }
   }
@@ -663,17 +652,13 @@ export function useChatRuntime({
       const userMsg = displayText ? createOptimisticMessage('user', displayText) : null
 
       if (resumeFn) {
-        await _runStream(
-          (signal) => resumeFn(decisions, signal, displayText, intrId),
-          userMsg,
-        )
+        await _runStream((signal) => resumeFn(decisions, signal, displayText, intrId), userMsg)
         return
       }
 
       if (!conversationId) return
       await _runStream(
-        (signal, onRunId) =>
-          streamResumeDecisions(conversationId, decisions, signal, { onRunId }),
+        (signal, onRunId) => streamResumeDecisions(conversationId, decisions, signal, { onRunId }),
         userMsg,
       )
     },
@@ -710,13 +695,9 @@ export function useChatRuntime({
       await _runStream(
         (signal, onRunId) =>
           useFork
-            ? streamEdit(
-                conversationId as string,
-                message.sourceId as string,
-                content,
-                signal,
-                { onRunId },
-              )
+            ? streamEdit(conversationId as string, message.sourceId as string, content, signal, {
+                onRunId,
+              })
             : streamFn(content, signal, { onRunId }),
         userMsg,
         useFork ? editIdx : undefined,
@@ -758,10 +739,7 @@ export function useChatRuntime({
       const merged = [...messages, ...streamingMessages]
       const lastUser = [...merged].reverse().find((m) => m.role === 'user')
       if (!lastUser?.content) return
-      await _runStream(
-        (signal, onRunId) => streamFn(lastUser.content, signal, { onRunId }),
-        null,
-      )
+      await _runStream((signal, onRunId) => streamFn(lastUser.content, signal, { onRunId }), null)
     },
     [messages, streamingMessages, streamFn, _runStream, conversationId],
   )
