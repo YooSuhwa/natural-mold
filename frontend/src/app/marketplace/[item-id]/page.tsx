@@ -37,16 +37,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type {
-  MarketplaceItemPatchBody,
-  MarketplaceVisibility,
-} from '@/lib/types/marketplace'
+import type { MarketplaceItemPatchBody, MarketplaceVisibility } from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 
-const VISIBILITY_SUCCESS_MESSAGE: Record<
-  Exclude<MarketplaceVisibility, 'system'>,
-  string
-> = {
+const VISIBILITY_SUCCESS_MESSAGE: Record<Exclude<MarketplaceVisibility, 'system'>, string> = {
   private: '비공개로 전환했습니다. 카탈로그에서 노출 안 됨.',
   public: '공개로 전환했습니다. 카탈로그 노출은 super_user 승인 대기.',
   unlisted: '링크 전용(unlisted)으로 전환했습니다.',
@@ -72,10 +66,12 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-32 w-full rounded-xl" />
-        <Skeleton className="h-48 w-full rounded-xl" />
+      <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+        <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-32 w-full rounded-xl" />
+          <Skeleton className="h-48 w-full rounded-xl" />
+        </div>
       </div>
     )
   }
@@ -85,15 +81,20 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
       error instanceof ApiError &&
       (error.code === 'marketplace_item_not_found' || error.status === 404)
     return (
-      <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
-        <Link href="/marketplace" className="inline-flex items-center gap-1 text-sm text-primary-strong">
-          <ChevronLeftIcon className="size-4" />
-          Back to Marketplace
-        </Link>
-        <ErrorState
-          title={notFound ? 'Item not found' : 'Failed to load item'}
-          description="이 항목을 찾을 수 없거나 접근 권한이 없습니다."
-        />
+      <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+        <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
+          <Link
+            href="/marketplace"
+            className="inline-flex items-center gap-1 text-sm text-primary-strong"
+          >
+            <ChevronLeftIcon className="size-4" />
+            마켓플레이스로 돌아가기
+          </Link>
+          <ErrorState
+            title={notFound ? '항목을 찾을 수 없어요' : '항목을 불러오지 못했어요'}
+            description="이 항목을 찾을 수 없거나 접근 권한이 없습니다."
+          />
+        </div>
       </div>
     )
   }
@@ -140,8 +141,8 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
 
   async function handleDisable() {
     if (!item) return
-    await runMutation(() => disableItem.mutateAsync(item.id), 'Disabled', {
-      fallback: 'Failed to disable',
+    await runMutation(() => disableItem.mutateAsync(item.id), '비활성화 완료', {
+      fallback: '비활성화에 실패했습니다.',
     })
   }
 
@@ -149,8 +150,8 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
     if (!item) return
     await runMutation(
       () => enableItem.mutateAsync(item.id),
-      'Re-enabled — 카탈로그 재노출은 visibility/listing 설정에 따라 결정됩니다.',
-      { fallback: 'Failed to enable' },
+      '재활성화 완료 — 카탈로그 재노출은 공개 범위/리스팅 설정에 따라 결정됩니다.',
+      { fallback: '재활성화에 실패했습니다.' },
     )
   }
 
@@ -162,8 +163,8 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
     }
     await runMutation(
       () => patchItem.mutateAsync({ visibility: 'private' }),
-      'Unpublish 완료 — 카탈로그에서 미노출. 다른 사용자가 이미 install 한 copy 는 영향 없음.',
-      { fallback: 'Unpublish 에 실패했습니다.' },
+      '비공개 전환 완료 — 카탈로그에서 미노출. 이미 설치된 사본은 영향 없음.',
+      { fallback: '비공개 전환에 실패했습니다.' },
     )
   }
 
@@ -184,211 +185,197 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
       () => patchItem.mutateAsync({ visibility: next } satisfies MarketplaceItemPatchBody),
       VISIBILITY_SUCCESS_MESSAGE[next],
       {
-        fallback: 'Visibility 변경에 실패했습니다.',
+        fallback: '공개 범위 변경에 실패했습니다.',
         codeMap: {
           marketplace_acl_required:
-            'restricted 전환은 ACL 대상이 최소 1명 필요합니다. ACL 추가 후 다시 시도하세요.',
+            '제한 공유 전환은 공유 대상이 최소 1명 필요합니다. 대상 추가 후 다시 시도하세요.',
         },
       },
     )
   }
 
   return (
-    <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
-      <Link
-        href="/marketplace"
-        className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ChevronLeftIcon className="size-4" />
-        Back to Marketplace
-      </Link>
+    <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+      <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
+        <Link
+          href="/marketplace"
+          className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ChevronLeftIcon className="size-4" />
+          마켓플레이스로 돌아가기
+        </Link>
 
-      <PageHeader
-        title={item.name}
-        description={item.description ?? undefined}
-        action={
-          <div className="flex items-center gap-2">
-            <Button
-              variant={cta.variant}
-              disabled={cta.disabled}
-              onClick={handlePrimary}
-            >
-              {cta.label}
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="flex flex-wrap items-center gap-2">
-        <OriginBadge summary={item.origin_summary} />
-        <PublicationBadge summary={item.publication_summary} />
-        <CredentialBadge summary={item.credential_summary} />
-        <SupportBadge profile={item.execution_profile} />
-        <InstallationBadge summary={item.installation} />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Versions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {!versions || versions.length === 0 ? (
-              <EmptyState
-                icon={<SparklesIcon className="size-5" />}
-                title="No versions published yet"
-                description="Owners can publish a first version from the skill detail page."
-              />
-            ) : (
-              <ul className="space-y-2 text-sm">
-                {versions.map((v) => (
-                  <li
-                    key={v.id}
-                    className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
-                  >
-                    <span className="font-medium">v{v.version_label}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {formatMediumDate(v.created_at)}
-                      {v.source_commit ? ` · ${v.source_commit.slice(0, 7)}` : ''}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Execution profile</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1 text-sm text-muted-foreground">
-            {item.execution_profile ? (
-              Object.entries(item.execution_profile).map(([key, value]) => (
-                <p key={key}>
-                  <span className="font-medium text-foreground">{key}</span>:{' '}
-                  {Array.isArray(value) ? value.join(', ') : String(value)}
-                </p>
-              ))
-            ) : (
-              <p>No execution profile attached.</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {(isOwner || user?.is_super_user) ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">
-              {user?.is_super_user ? 'Moderation actions' : 'Owner actions'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {isOwner ? (
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Visibility:</span>
-                <Select
-                  value={item.visibility}
-                  onValueChange={(v) =>
-                    v && handleVisibilityChange(v as MarketplaceVisibility)
-                  }
-                >
-                  <SelectTrigger className="w-[220px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="private">Private (me only)</SelectItem>
-                    <SelectItem value="restricted">
-                      Restricted (ACL users)
-                    </SelectItem>
-                    <SelectItem value="public">
-                      Public (pending listing)
-                    </SelectItem>
-                    <SelectItem value="unlisted">Unlisted (link only)</SelectItem>
-                  </SelectContent>
-                </Select>
-                {patchItem.isPending ? (
-                  <span className="text-xs text-muted-foreground">Saving…</span>
-                ) : null}
-              </div>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              {isOwner && item.visibility !== 'private' ? (
-                <Button
-                  variant="outline"
-                  onClick={handleUnpublish}
-                  disabled={patchItem.isPending}
-                >
-                  {patchItem.isPending ? 'Unpublishing…' : 'Unpublish (Private 으로)'}
-                </Button>
-              ) : null}
-              {item.status === 'disabled' ? (
-                <Button
-                  onClick={handleEnable}
-                  disabled={enableItem.isPending}
-                >
-                  {enableItem.isPending ? 'Enabling…' : 'Re-enable item'}
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  onClick={handleDisable}
-                  disabled={disableItem.isPending}
-                >
-                  {disableItem.isPending ? 'Disabling…' : 'Disable item'}
-                </Button>
-              )}
+        <PageHeader
+          title={item.name}
+          description={item.description ?? undefined}
+          action={
+            <div className="flex items-center gap-2">
+              <Button variant={cta.variant} disabled={cta.disabled} onClick={handlePrimary}>
+                {cta.label}
+              </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              <span className="font-medium">Unpublish</span>: visibility 를 private 으로 — 본인만 보임, 다른 사용자 신규 install 불가.{' '}
-              <span className="font-medium">Disable</span>: 운영 차단 — 다른 사용자 신규 install 영구 차단. 둘 다 이미 install 된 copy 에는 영향 없음.
-            </p>
+          }
+        />
 
-            {isOwner && item.visibility === 'restricted' && item.acl_user_ids ? (
-              <div className="space-y-2 border-t border-border/60 pt-3">
-                <p className="text-sm font-medium">공유 대상 (Restricted ACL)</p>
-                {item.acl_user_ids.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">
-                    공유된 user 가 없습니다. 새 user 추가는 ACL endpoint 직접
-                    호출이 필요합니다 (후속 슬라이스에 wizard 추가 예정).
+        <div className="flex flex-wrap items-center gap-2">
+          <OriginBadge summary={item.origin_summary} />
+          <PublicationBadge summary={item.publication_summary} />
+          <CredentialBadge summary={item.credential_summary} />
+          <SupportBadge profile={item.execution_profile} />
+          <InstallationBadge summary={item.installation} />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="border border-border bg-card">
+            <CardHeader>
+              <CardTitle className="text-sm">버전</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!versions || versions.length === 0 ? (
+                <EmptyState
+                  icon={<SparklesIcon className="size-5" />}
+                  title="아직 공개된 버전이 없어요"
+                  description="스킬 상세 페이지에서 첫 버전을 공개할 수 있어요."
+                />
+              ) : (
+                <ul className="space-y-2 text-sm">
+                  {versions.map((v) => (
+                    <li
+                      key={v.id}
+                      className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
+                    >
+                      <span className="font-medium">v{v.version_label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatMediumDate(v.created_at)}
+                        {v.source_commit ? ` · ${v.source_commit.slice(0, 7)}` : ''}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border border-border bg-card">
+            <CardHeader>
+              <CardTitle className="text-sm">실행 프로필</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1 text-sm text-muted-foreground">
+              {item.execution_profile ? (
+                Object.entries(item.execution_profile).map(([key, value]) => (
+                  <p key={key}>
+                    <span className="font-medium text-foreground">{key}</span>:{' '}
+                    {Array.isArray(value) ? value.join(', ') : String(value)}
                   </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {item.acl_user_ids.map((uid) => (
-                      <li
-                        key={uid}
-                        className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
-                      >
-                        <code className="font-mono">{uid}</code>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleRevokeAcl(uid)}
-                          disabled={removeACL.isPending}
-                        >
-                          공유 취소
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  마지막 ACL 을 제거하려면 먼저 visibility 를 다른 값으로 변경하세요.
-                </p>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
+                ))
+              ) : (
+                <p>등록된 실행 프로필이 없어요.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
-      <InstallWizard item={item} open={installOpen} onOpenChange={setInstallOpen} />
-      <UpdateStrategyDialog
-        item={item}
-        open={updateOpen}
-        onOpenChange={setUpdateOpen}
-      />
+        {isOwner || user?.is_super_user ? (
+          <Card className="border border-border bg-card">
+            <CardHeader>
+              <CardTitle className="text-sm">
+                {user?.is_super_user ? '운영 관리' : '소유자 관리'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {isOwner ? (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">공개 범위:</span>
+                  <Select
+                    value={item.visibility}
+                    onValueChange={(v) => v && handleVisibilityChange(v as MarketplaceVisibility)}
+                  >
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="private">비공개 (나만)</SelectItem>
+                      <SelectItem value="restricted">제한 공유 (지정 사용자)</SelectItem>
+                      <SelectItem value="public">공개 (리스팅 대기)</SelectItem>
+                      <SelectItem value="unlisted">링크 전용</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {patchItem.isPending ? (
+                    <span className="text-xs text-muted-foreground">저장 중…</span>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {isOwner && item.visibility !== 'private' ? (
+                  <Button
+                    variant="outline"
+                    onClick={handleUnpublish}
+                    disabled={patchItem.isPending}
+                  >
+                    {patchItem.isPending ? '비공개 전환 중…' : '비공개로 전환'}
+                  </Button>
+                ) : null}
+                {item.status === 'disabled' ? (
+                  <Button onClick={handleEnable} disabled={enableItem.isPending}>
+                    {enableItem.isPending ? '재활성화 중…' : '항목 재활성화'}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={handleDisable}
+                    disabled={disableItem.isPending}
+                  >
+                    {disableItem.isPending ? '비활성화 중…' : '항목 비활성화'}
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium">비공개 전환</span>: 본인만 보이며 다른 사용자의 신규
+                설치가 막혀요. <span className="font-medium">비활성화</span>: 운영 차단 — 다른
+                사용자의 신규 설치가 영구 차단됩니다. 두 경우 모두 이미 설치된 사본에는 영향이
+                없어요.
+              </p>
+
+              {isOwner && item.visibility === 'restricted' && item.acl_user_ids ? (
+                <div className="space-y-2 border-t border-border/60 pt-3">
+                  <p className="text-sm font-medium">공유 대상 (제한 공유)</p>
+                  {item.acl_user_ids.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      공유된 사용자가 없어요. 새 사용자 추가는 ACL 엔드포인트 직접 호출이 필요합니다
+                      (후속 슬라이스에 마법사 추가 예정).
+                    </p>
+                  ) : (
+                    <ul className="space-y-1">
+                      {item.acl_user_ids.map((uid) => (
+                        <li
+                          key={uid}
+                          className="flex items-center justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-xs"
+                        >
+                          <code className="font-mono">{uid}</code>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleRevokeAcl(uid)}
+                            disabled={removeACL.isPending}
+                          >
+                            공유 취소
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    마지막 대상을 제거하려면 먼저 공개 범위를 다른 값으로 변경하세요.
+                  </p>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <InstallWizard item={item} open={installOpen} onOpenChange={setInstallOpen} />
+        <UpdateStrategyDialog item={item} open={updateOpen} onOpenChange={setUpdateOpen} />
+      </div>
     </div>
   )
 }
-
