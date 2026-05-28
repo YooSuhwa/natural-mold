@@ -74,15 +74,20 @@ export function validateField(field: FieldDef, raw: unknown): string | null {
   return null
 }
 
-/** Validate all fields and return a `field.name -> message` map. */
+/** Validate all fields and return a `field.name -> message` map.
+ *
+ * @param skipRequired - when true, skips `required` checks (e.g. tool creation
+ *   where required params are filled by the agent at runtime, not the user). */
 export function validateFields(
   fields: FieldDef[],
   values: Record<string, unknown>,
+  { skipRequired = false }: { skipRequired?: boolean } = {},
 ): Record<string, string> {
   const errors: Record<string, string> = {}
   for (const f of fields) {
     if (!shouldShow(f, values)) continue
-    const message = validateField(f, values[f.name])
+    const fieldToValidate = skipRequired ? { ...f, required: false } : f
+    const message = validateField(fieldToValidate, values[f.name])
     if (message) errors[f.name] = message
   }
   return errors
@@ -234,9 +239,7 @@ function FieldControl({
           min={opts.min}
           max={opts.max}
           step={opts.step}
-          onChange={(e) =>
-            onChange(e.target.value === '' ? undefined : Number(e.target.value))
-          }
+          onChange={(e) => onChange(e.target.value === '' ? undefined : Number(e.target.value))}
         />
       )
     case 'select':

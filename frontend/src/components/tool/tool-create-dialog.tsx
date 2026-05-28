@@ -7,10 +7,7 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import { FormFooter } from '@/components/shared/form-footer'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  DynamicFieldsForm,
-  validateFields,
-} from '@/components/shared/dynamic-fields-form'
+import { DynamicFieldsForm, validateFields } from '@/components/shared/dynamic-fields-form'
 import { CredentialPicker } from '@/components/credential/credential-picker'
 import { DomainIcon } from '@/components/shared/icon'
 import { useCreateTool } from '@/lib/hooks/use-tools'
@@ -50,7 +47,7 @@ export function ToolCreateDialog({
 
   const errors = useMemo(() => {
     if (!definition) return {}
-    return validateFields(definition.parameters as FieldDef[], parameters)
+    return validateFields(definition.parameters as FieldDef[], parameters, { skipRequired: true })
   }, [definition, parameters])
 
   const canSubmit =
@@ -116,9 +113,7 @@ export function ToolCreateDialog({
             <div className="space-y-1.5">
               <label htmlFor="tool-credential">
                 Credential{' '}
-                {definition.requires_credential && (
-                  <span className="text-destructive">*</span>
-                )}
+                {definition.requires_credential && <span className="text-destructive">*</span>}
               </label>
               <CredentialPicker
                 value={credentialId}
