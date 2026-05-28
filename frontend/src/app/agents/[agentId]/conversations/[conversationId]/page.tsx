@@ -121,7 +121,7 @@ export default function ChatPage({
   return (
     <div className="flex min-h-0 flex-1 gap-3 overflow-hidden bg-gradient-to-b from-emerald-50/40 via-background to-background p-3 dark:from-emerald-950/15 dark:via-background dark:to-background">
       {/* 좌측 사이드바 카드 (데스크톱) */}
-      <aside className="hidden w-72 shrink-0 overflow-hidden rounded-xl border bg-card shadow-sm md:block">
+      <aside className="hidden w-72 shrink-0 overflow-hidden rounded-xl border border-border bg-card shadow-sm md:block">
         <ConversationList
           agentId={agentId}
           agentName={agent?.name}
@@ -131,7 +131,7 @@ export default function ChatPage({
       </aside>
 
       {/* 메인 채팅 카드 */}
-      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-sm">
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div className="flex items-center justify-between border-b px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Sheet>
@@ -217,7 +217,7 @@ export default function ChatPage({
       </section>
 
       {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
-      <ChatRightRail className="overflow-hidden rounded-xl border bg-card shadow-sm" />
+      <ChatRightRail className="overflow-hidden rounded-xl border border-border bg-card shadow-sm" />
     </div>
   )
 }

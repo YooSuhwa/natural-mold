@@ -3,7 +3,7 @@
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeftIcon, SparklesIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, HomeIcon, SparklesIcon } from 'lucide-react'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
 
 import { AssistantThread } from '@/components/chat/assistant-thread'
@@ -72,7 +72,13 @@ export default function ConversationalCreationPage({
     ): AsyncGenerator<SSEEvent> => {
       async function* run() {
         if (!sessionIdRef.current) return
-        yield* streamBuilderResume(sessionIdRef.current, decisions, signal, displayText, interruptId)
+        yield* streamBuilderResume(
+          sessionIdRef.current,
+          decisions,
+          signal,
+          displayText,
+          interruptId,
+        )
       }
       return run()
     },
@@ -122,31 +128,78 @@ export default function ConversationalCreationPage({
     }
   }, [initialMessage, sendMessage])
 
-  const hitlValue = useMemo(
-    () => ({ onResumeDecisions }),
-    [onResumeDecisions],
-  )
+  const hitlValue = useMemo(() => ({ onResumeDecisions }), [onResumeDecisions])
 
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <Link href="/">
-            <Button variant="ghost" size="icon-sm" aria-label="뒤로가기">
-              <ArrowLeftIcon className="size-4" />
-            </Button>
-          </Link>
-          <h1 className="text-sm font-semibold">새 에이전트 만들기 (대화형)</h1>
-          {sessionId && (
-            <span className="text-xs text-muted-foreground">세션 #{sessionId.slice(0, 8)}</span>
-          )}
-        </div>
+    <div className="flex h-screen flex-col" style={{ background: '#fafafa' }}>
+      <header
+        className="flex shrink-0 items-center gap-3.5 bg-white"
+        style={{
+          padding: '14px 28px',
+          borderBottom: '1px solid oklch(0.93 0.005 163)',
+        }}
+      >
+        <Link href="/" aria-label="뒤로 가기">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="size-[30px] rounded-lg"
+            style={{
+              borderColor: 'oklch(0.93 0.005 163)',
+              color: 'oklch(0.35 0.005 163)',
+            }}
+            aria-label="뒤로 가기"
+          >
+            <ChevronLeftIcon className="size-3.5" strokeWidth={2} />
+          </Button>
+        </Link>
+
+        <nav
+          className="flex items-center gap-1.5 text-[13px]"
+          style={{ color: 'oklch(0.55 0.01 163)' }}
+        >
+          <HomeIcon className="size-3.5 opacity-55" />
+          <span>에이전트 만들기</span>
+          <ChevronRightIcon className="size-3 opacity-45" />
+          <span className="font-semibold" style={{ color: 'oklch(0.18 0.005 163)' }}>
+            대화로 만들기
+          </span>
+        </nav>
+
+        <div className="flex-1" />
+
+        {sessionId && (
+          <div
+            className="inline-flex items-center gap-1.5 font-mono text-[11px]"
+            style={{
+              padding: '4px 9px',
+              borderRadius: 6,
+              background: 'oklch(0.985 0.008 163)',
+              border: '1px solid oklch(0.93 0.005 163)',
+              color: 'oklch(0.55 0.01 163)',
+            }}
+          >
+            <span
+              className="rounded-full"
+              style={{
+                width: 6,
+                height: 6,
+                background: 'oklch(0.596 0.145 163.225)',
+                boxShadow: '0 0 0 3px oklch(0.96 0.04 163)',
+              }}
+            />
+            세션 #{sessionId.slice(0, 8)}
+          </div>
+        )}
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col">
         <AssistantRuntimeProvider runtime={runtime}>
           <HiTLContext.Provider value={hitlValue}>
             <AssistantThread
+              variant="builder"
+              builderModelLabel="대화형 에이전트 빌더 · GPT-4 Turbo"
+              builderAgentSubtitle="에이전트 빌더"
               agentName="에이전트 빌더"
               emptyContent={<WelcomeContent />}
               toolUI={BUILDER_TOOL_UI}
