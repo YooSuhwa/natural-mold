@@ -114,12 +114,29 @@ async def create_tool(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> ToolInstanceResponse:
+    definition = tool_registry.get(payload.definition_key)
+    if definition is None:
+        raise HTTPException(
+            status_code=400, detail=f"unknown definition '{payload.definition_key}'"
+        )
+
+    params = payload.parameters or {}
+    missing = [f.name for f in definition.parameters if f.required and f.name not in params]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {"loc": ["body", "parameters", name], "msg": "field required", "type": "missing"}
+                for name in missing
+            ],
+        )
+
     tool = Tool(
         user_id=user.id,
         definition_key=payload.definition_key,
         name=payload.name,
         description=payload.description,
-        parameters=payload.parameters,
+        parameters=params,
         credential_id=payload.credential_id,
         enabled=payload.enabled,
     )
