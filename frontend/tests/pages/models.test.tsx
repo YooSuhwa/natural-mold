@@ -130,16 +130,16 @@ describe('ModelsPage', () => {
     mockUseModels.mockReturnValue({ data: undefined, isLoading: false })
   })
 
-  it('renders page header with title + New model action', () => {
+  it('renders page header with title + 새 모델 action', () => {
     render(<ModelsPage />)
-    expect(screen.getByText('Models')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /New model/ })).toBeInTheDocument()
+    expect(screen.getByText('모델')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /새 모델/ })).toBeInTheDocument()
   })
 
   it('shows empty state when no models', () => {
     mockUseModels.mockReturnValue({ data: [], isLoading: false })
     render(<ModelsPage />)
-    expect(screen.getByText('No models yet')).toBeInTheDocument()
+    expect(screen.getByText('아직 모델이 없어요')).toBeInTheDocument()
   })
 
   it('renders model display names when data is loaded', () => {
