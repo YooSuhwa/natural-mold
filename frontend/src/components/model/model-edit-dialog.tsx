@@ -29,10 +29,7 @@ import { perMillionToTokenPrice, tokenPriceToPerMillion } from './model-format'
 import { useDeleteModel, useUpdateModel } from '@/lib/hooks/use-models'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import { useModelHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
-import {
-  filterLlmCredentials,
-  resolveCredentialForModel,
-} from '@/lib/utils/credential-resolution'
+import { filterLlmCredentials, resolveCredentialForModel } from '@/lib/utils/credential-resolution'
 import type { Model } from '@/lib/types/model'
 
 interface ModelEditDialogProps {
@@ -56,6 +53,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
   const [supportsTools, setSupportsTools] = useState(false)
   const [supportsReasoning, setSupportsReasoning] = useState(false)
   const [isDefault, setIsDefault] = useState(false)
+  const [isVisible, setIsVisible] = useState(true)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [testCredId, setTestCredId] = useState<string>('')
   const [testOpen, setTestOpen] = useState(false)
@@ -85,6 +83,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
     setSupportsTools(Boolean(model.supports_function_calling))
     setSupportsReasoning(Boolean(model.supports_reasoning))
     setIsDefault(model.is_default)
+    setIsVisible(model.is_visible)
     setConfirmDelete(false)
     setTestOpen(false)
     setTestCredId('')
@@ -108,6 +107,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
           supports_function_calling: supportsTools,
           supports_reasoning: supportsReasoning,
           is_default: isDefault,
+          is_visible: isVisible,
         },
       })
       toast.success('Model updated')
@@ -151,10 +151,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
         }
       />
       <DialogShell.Body className="flex flex-col">
-        <Tabs
-          defaultValue="info"
-          className="flex min-h-0 w-full flex-1 flex-col"
-        >
+        <Tabs defaultValue="info" className="flex min-h-0 w-full flex-1 flex-col">
           <TabsList>
             <TabsTrigger value="info">Info</TabsTrigger>
             <TabsTrigger value="health" data-testid="health-tab">
@@ -162,10 +159,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent
-            value="info"
-            className="flex-1 space-y-4 overflow-y-auto pt-3"
-          >
+          <TabsContent value="info" className="flex-1 space-y-4 overflow-y-auto pt-3">
             <RankingsSection
               rankings={model.rankings}
               emptyHint={
@@ -202,8 +196,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select credential">
                       {(selected) =>
-                        llmCredentials.find((c) => c.id === selected)?.name ??
-                        'Select credential'
+                        llmCredentials.find((c) => c.id === selected)?.name ?? 'Select credential'
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -321,6 +314,12 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
                   checked={isDefault}
                   onChange={setIsDefault}
                 />
+                <Toggle
+                  id="e-visible"
+                  label="사용자에게 표시"
+                  checked={isVisible}
+                  onChange={setIsVisible}
+                />
               </div>
 
               <Separator />
@@ -360,10 +359,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
             </div>
           </TabsContent>
 
-          <TabsContent
-            value="health"
-            className="flex-1 space-y-3 overflow-y-auto pt-3"
-          >
+          <TabsContent value="health" className="flex-1 space-y-3 overflow-y-auto pt-3">
             <ModelHealthPanel
               modelId={model.id}
               provider={model.provider}
@@ -397,10 +393,7 @@ function ModelHealthPanel({
   const { data: credentials } = useCredentials()
   const runHealthCheck = useRunHealthCheck()
 
-  const llmCredentials = useMemo(
-    () => filterLlmCredentials(credentials),
-    [credentials],
-  )
+  const llmCredentials = useMemo(() => filterLlmCredentials(credentials), [credentials])
   // Shared resolver — same picks as /models row [Check] and the Test dialog.
   const matchedDefault = useMemo(
     () =>
@@ -467,8 +460,7 @@ function ModelHealthPanel({
             <SelectTrigger size="sm" className="w-[180px]">
               <SelectValue placeholder="Select credential">
                 {(selected) =>
-                  llmCredentials.find((c) => c.id === selected)?.name ??
-                  'Select credential'
+                  llmCredentials.find((c) => c.id === selected)?.name ?? 'Select credential'
                 }
               </SelectValue>
             </SelectTrigger>

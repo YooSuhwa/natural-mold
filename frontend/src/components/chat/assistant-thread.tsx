@@ -9,6 +9,7 @@ import {
   ActionBarPrimitive,
   useThreadViewport,
   useAssistantState,
+  useAui,
   type AssistantToolUI,
 } from '@assistant-ui/react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -49,6 +50,13 @@ import { WittyLoadingMessage } from '@/components/chat/witty-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
+import {
+  BuilderAssistantMessage,
+  BuilderAssistantMessageParts,
+  BuilderComposer,
+  BuilderUserEditComposer,
+  BuilderUserMessage,
+} from '@/components/chat/builder-overrides'
 
 export { GenericToolFallback }
 
@@ -354,11 +362,8 @@ function FeedbackButtons() {
   const t = useTranslations('chat.message')
   const submitted = useAssistantState(
     (s) =>
-      (
-        s.message?.metadata as
-          | { submittedFeedback?: { type: 'positive' | 'negative' } }
-          | undefined
-      )?.submittedFeedback?.type,
+      (s.message?.metadata as { submittedFeedback?: { type: 'positive' | 'negative' } } | undefined)
+        ?.submittedFeedback?.type,
   )
   return (
     <>
@@ -439,6 +444,13 @@ export interface AssistantThreadProps {
    * is used to POST `/messages/switch-branch` and invalidate the messages
    * query on click. */
   conversationId?: string
+  /** Visual variant. Default = 기존 동작 (4개 채팅 페이지 공유). builder = 빌더 전용 리스킨
+   *  (mint user bubble, bare 38×38 mascot, no user avatar, mint focus composer, 모델 메타 라벨). */
+  variant?: 'default' | 'builder'
+  /** variant='builder' 시 Composer 메타 라벨 (예: `대화형 에이전트 빌더 · GPT-4 Turbo`). */
+  builderModelLabel?: string
+  /** variant='builder' 시 Assistant 메시지 이름줄 보조 라벨. 기본 `에이전트 빌더`. */
+  builderAgentSubtitle?: string
 }
 
 export function AssistantThread({
@@ -453,109 +465,145 @@ export function AssistantThread({
   toolUI,
   enableAttachments = false,
   conversationId,
+  variant = 'default',
+  builderModelLabel,
+  builderAgentSubtitle,
 }: AssistantThreadProps) {
   const tChat = useTranslations('chat')
   const tPage = useTranslations('chat.page')
+  const isBuilder = variant === 'builder'
 
   return (
     <ConversationContext.Provider value={conversationId ?? null}>
-    <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
-      <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto">
-        <ThreadPrimitive.Empty>
-          {emptyContent ?? (
-            <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
-              <p className="text-sm">{tPage('emptyState')}</p>
-            </div>
-          )}
-        </ThreadPrimitive.Empty>
+      <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
+        <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto">
+          <ThreadPrimitive.Empty>
+            {emptyContent ?? (
+              <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
+                <p className="text-sm">{tPage('emptyState')}</p>
+              </div>
+            )}
+          </ThreadPrimitive.Empty>
 
-        <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-4">
-          <ThreadPrimitive.Messages
-            components={{
-              UserMessage: function UserMsg() {
-                return (
-                  <div className="group relative flex justify-end gap-3">
-                    <div className="flex w-full max-w-[80%] flex-col items-end">
-                      <div className="rounded-2xl bg-emerald-100 px-4 py-2.5 text-sm leading-relaxed text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100">
-                        <MessagePrimitive.Content />
+          <div
+            className={cn(
+              'mx-auto w-full px-4 py-4',
+              isBuilder ? 'max-w-[880px] space-y-6' : 'max-w-3xl space-y-4',
+            )}
+          >
+            <ThreadPrimitive.Messages
+              components={{
+                UserMessage: function UserMsg() {
+                  const metaRow = (
+                    <MessageMetaRow>
+                      <BranchPicker />
+                      <EditButton />
+                      <CopyButton />
+                      {showMessageTimestamp && <MessageTimestamp />}
+                    </MessageMetaRow>
+                  )
+                  if (isBuilder) {
+                    return <BuilderUserMessage metaRow={metaRow} />
+                  }
+                  return (
+                    <div className="group relative flex justify-end gap-3">
+                      <div className="flex w-full max-w-[80%] flex-col items-end">
+                        <div className="rounded-2xl bg-emerald-100 px-4 py-2.5 text-sm leading-relaxed text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100">
+                          <MessagePrimitive.Content />
+                        </div>
+                        {metaRow}
                       </div>
-                      <MessageMetaRow>
-                        <BranchPicker />
-                        <EditButton />
-                        <CopyButton />
-                        {showMessageTimestamp && <MessageTimestamp />}
-                      </MessageMetaRow>
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                        <UserIcon className="size-4" />
+                      </div>
                     </div>
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <UserIcon className="size-4" />
+                  )
+                },
+                UserEditComposer: function UserEdit() {
+                  if (isBuilder) {
+                    return <BuilderUserEditComposer />
+                  }
+                  return (
+                    <div className="flex justify-end gap-3">
+                      <div className="flex w-full max-w-[80%] flex-col items-end">
+                        <UserMessageEditor />
+                      </div>
+                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                        <UserIcon className="size-4" />
+                      </div>
                     </div>
-                  </div>
-                )
-              },
-              UserEditComposer: function UserEdit() {
-                return (
-                  <div className="flex justify-end gap-3">
-                    <div className="flex w-full max-w-[80%] flex-col items-end">
-                      <UserMessageEditor />
-                    </div>
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <UserIcon className="size-4" />
-                    </div>
-                  </div>
-                )
-              },
-              AssistantMessage: function AssistantMsg() {
-                return (
-                  <div className="group relative flex gap-3">
-                    {/* loading indicator를 absolute로 배치 — 메시지 layout 밖에 떠 있어
+                  )
+                },
+                AssistantMessage: function AssistantMsg() {
+                  const metaRow = (
+                    <MessageMetaRow>
+                      {showMessageTimestamp && <MessageTimestamp />}
+                      <BranchPicker />
+                      <CopyButton />
+                      <RegenerateButton />
+                      <FeedbackButtons />
+                      <TokenUsagePopover />
+                    </MessageMetaRow>
+                  )
+                  if (isBuilder) {
+                    return (
+                      <BuilderAssistantMessage
+                        metaRow={metaRow}
+                        agentSubtitle={builderAgentSubtitle}
+                      >
+                        <StreamingLoadingIndicator />
+                        <BuilderAssistantMessageParts />
+                      </BuilderAssistantMessage>
+                    )
+                  }
+                  return (
+                    <div className="group relative flex gap-3">
+                      {/* loading indicator를 absolute로 배치 — 메시지 layout 밖에 떠 있어
                         사라질 때 답변 텍스트가 점프하지 않도록 한다. */}
-                    <StreamingLoadingIndicator />
-                    <AgentAvatar
-                      imageUrl={agentImageUrl ?? null}
-                      name={agentName ?? tChat('defaultAgentName')}
-                      size="sm"
-                      publicAsset={agentImagePublicAsset}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <AssistantMessageParts />
-                      <MessageMetaRow>
-                        {showMessageTimestamp && <MessageTimestamp />}
-                        <BranchPicker />
-                        <CopyButton />
-                        <RegenerateButton />
-                        <FeedbackButtons />
-                        <TokenUsagePopover />
-                      </MessageMetaRow>
+                      <StreamingLoadingIndicator />
+                      <AgentAvatar
+                        imageUrl={agentImageUrl ?? null}
+                        name={agentName ?? tChat('defaultAgentName')}
+                        size="sm"
+                        publicAsset={agentImagePublicAsset}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <AssistantMessageParts />
+                        {metaRow}
+                      </div>
                     </div>
-                  </div>
-                )
-              },
-            }}
-          />
-        </div>
+                  )
+                },
+              }}
+            />
+          </div>
 
-        <ThreadPrimitive.ViewportFooter>
-          <ScrollToBottomButton />
-        </ThreadPrimitive.ViewportFooter>
-      </ThreadPrimitive.Viewport>
+          <ThreadPrimitive.ViewportFooter>
+            <ScrollToBottomButton />
+          </ThreadPrimitive.ViewportFooter>
+        </ThreadPrimitive.Viewport>
 
-      {/* 도구 UI 등록 */}
-      {toolUI?.map((ToolComponent, i) => (
-        <ToolComponent key={i} />
-      ))}
+        {/* 도구 UI 등록 */}
+        {toolUI?.map((ToolComponent, i) => (
+          <ToolComponent key={i} />
+        ))}
 
-      <ReconnectIndicator />
+        <ReconnectIndicator />
 
-      {/* Composer */}
-      <div className="mx-auto w-full max-w-3xl px-4 pb-4">
-        <ThreadComposer
-          modelName={modelName}
-          showTokenBar={showTokenBar}
-          compact={compact}
-          enableAttachments={enableAttachments}
-        />
-      </div>
-    </ThreadPrimitive.Root>
+        {/* Composer */}
+        {isBuilder ? (
+          <BuilderComposer modelLabel={builderModelLabel} />
+        ) : (
+          <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+            <ThreadComposer
+              modelName={modelName}
+              showTokenBar={showTokenBar}
+              compact={compact}
+              enableAttachments={enableAttachments}
+            />
+          </div>
+        )}
+      </ThreadPrimitive.Root>
     </ConversationContext.Provider>
   )
 }
@@ -645,14 +693,48 @@ function ThreadComposer({
             </ComposerPrimitive.AddAttachment>
           )}
         </div>
-        <ComposerPrimitive.Send asChild>
-          <Button type="submit" size="icon-sm" className="rounded-full">
-            <SendIcon className="size-4" />
-            <span className="sr-only">{t('sendButton')}</span>
-          </Button>
-        </ComposerPrimitive.Send>
+        <ThreadPrimitive.If running={false}>
+          <ComposerPrimitive.Send asChild>
+            <Button type="submit" size="icon-sm" className="rounded-full">
+              <SendIcon className="size-4" />
+              <span className="sr-only">{t('sendButton')}</span>
+            </Button>
+          </ComposerPrimitive.Send>
+        </ThreadPrimitive.If>
+        <ThreadPrimitive.If running={true}>
+          <StopButton />
+        </ThreadPrimitive.If>
       </div>
     </ComposerPrimitive.Root>
+  )
+}
+
+/** Stop 버튼 — 진행 중인 응답을 취소.
+ *
+ * `aui.thread().cancelRun()`을 호출하면 ExternalStoreRuntime의 onCancel 이 트리거되어
+ * useChatRuntime의 abortRef.current.abort() 가 실행된다 (AbortController 경로).
+ * 시각: 32px 높이 pill, 9×9 dark square + "중단" 라벨.
+ */
+function StopButton() {
+  const aui = useAui()
+  const tMsg = useTranslations('chat.message')
+  const handleStop = () => {
+    try {
+      aui.thread().cancelRun()
+    } catch (err) {
+      console.warn('[StopButton] cancelRun error:', err)
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleStop}
+      aria-label={tMsg('stop')}
+      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-input bg-background px-3 text-[12.5px] font-medium text-foreground/80 transition-colors hover:bg-accent"
+    >
+      <span aria-hidden className="block size-[9px] rounded-sm bg-foreground/80" />
+      {tMsg('stop')}
+    </button>
   )
 }
 
@@ -679,9 +761,7 @@ function AttachmentChip() {
         <AttachmentPrimitive.Name />
       </span>
       {isUploading && (
-        <span className="text-[10px] text-muted-foreground">
-          {tMsg('attachmentUploading')}
-        </span>
+        <span className="text-[10px] text-muted-foreground">{tMsg('attachmentUploading')}</span>
       )}
       <AttachmentPrimitive.Remove asChild>
         <button

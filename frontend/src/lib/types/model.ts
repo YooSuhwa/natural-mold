@@ -27,6 +27,12 @@ export interface Model {
   display_name: string
   base_url: string | null
   is_default: boolean
+  /**
+   * Operator-managed visibility. `false` rows are filtered out of the
+   * default `GET /api/models` and the agent-creation selector, but survive
+   * for agents that already reference the row by `model_id`.
+   */
+  is_visible: boolean
   cost_per_input_token: number | null
   cost_per_output_token: number | null
   context_window: number | null
@@ -70,6 +76,8 @@ export type ModelSortOrder = 'asc' | 'desc'
 export interface ListModelsOptions {
   sort_by?: ModelSortKey
   order?: ModelSortOrder
+  /** Super-user only — surface rows where `is_visible=false`. */
+  include_hidden?: boolean
 }
 
 export interface ModelCreate {
@@ -88,6 +96,7 @@ export interface ModelCreate {
   supports_reasoning?: boolean | null
   source?: ModelSource | null
   is_default?: boolean
+  is_visible?: boolean
   default_credential_id?: string | null
 }
 
@@ -104,6 +113,7 @@ export interface ModelUpdate {
   supports_function_calling?: boolean | null
   supports_reasoning?: boolean | null
   is_default?: boolean
+  is_visible?: boolean
   default_credential_id?: string | null
 }
 
@@ -117,12 +127,7 @@ export type ModelPick =
 
 // -- M8: Model connection test ----------------------------------------------
 
-export type ModelTestErrorKind =
-  | 'auth'
-  | 'not_found'
-  | 'rate_limit'
-  | 'timeout'
-  | 'other'
+export type ModelTestErrorKind = 'auth' | 'not_found' | 'rate_limit' | 'timeout' | 'other'
 
 export interface ModelTestError {
   kind: ModelTestErrorKind

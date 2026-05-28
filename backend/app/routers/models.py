@@ -56,10 +56,19 @@ router = APIRouter(prefix="/api/models", tags=["models"])
 
 @router.get("")
 async def list_models(
+    include_hidden: bool = Query(
+        False,
+        description=(
+            "Super-user only — include rows where ``is_visible=False``. "
+            "Drives the operator-facing ``/models`` admin page."
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    return await model_service.list_models(db)
+    if include_hidden and not user.is_super_user:
+        raise HTTPException(status_code=403, detail="super_user required")
+    return await model_service.list_models(db, include_hidden=include_hidden)
 
 
 @router.get("/{model_id}")
@@ -89,12 +98,19 @@ async def create_model(
     can collapse "already registered" into a friendly toast.
     """
 
+    if payload.is_default and not payload.is_visible:
+        raise HTTPException(
+            status_code=422,
+            detail="cannot mark a hidden model as default",
+        )
+
     model = Model(
         provider=payload.provider,
         model_name=payload.model_name,
         display_name=payload.display_name,
         base_url=payload.base_url,
         is_default=payload.is_default,
+        is_visible=payload.is_visible,
         cost_per_input_token=payload.cost_per_input_token,
         cost_per_output_token=payload.cost_per_output_token,
         context_window=payload.context_window,
@@ -114,9 +130,7 @@ async def create_model(
         await db.rollback()
         raise HTTPException(
             status_code=409,
-            detail=(
-                f"model '{payload.provider}:{payload.model_name}' already exists"
-            ),
+            detail=(f"model '{payload.provider}:{payload.model_name}' already exists"),
         ) from exc
 
     # Pre-existing duplicate detection beyond the unique-index path: an explicit
@@ -139,6 +153,14 @@ async def update_model(
         raise model_not_found()
 
     updated = payload.model_dump(exclude_unset=True)
+    # is_default 와 is_visible 의 최종 조합이 모순(기본인데 숨김)이면 거부.
+    final_default = updated.get("is_default", model.is_default)
+    final_visible = updated.get("is_visible", model.is_visible)
+    if final_default and not final_visible:
+        raise HTTPException(
+            status_code=422,
+            detail="cannot mark a hidden model as default",
+        )
     for key, value in updated.items():
         setattr(model, key, value)
 
@@ -169,9 +191,7 @@ async def delete_model(
 
     # Refuse if any agent currently points at this model — the FK is non-null
     # and the user almost never wants the cascade.
-    in_use = await db.execute(
-        select(func.count(Agent.id)).where(Agent.model_id == model_id)
-    )
+    in_use = await db.execute(select(func.count(Agent.id)).where(Agent.model_id == model_id))
     count = in_use.scalar_one() or 0
     if count > 0:
         raise HTTPException(
@@ -269,9 +289,9 @@ async def test_registered_model(
             "model_name": model.model_name,
             "success": payload["success"],
         },
-        error=None if payload["success"] else (
-            payload["error"]["message"] if payload.get("error") else None
-        ),
+        error=None
+        if payload["success"]
+        else (payload["error"]["message"] if payload.get("error") else None),
     )
     await db.commit()
     return ModelTestResponse(**payload)
@@ -318,9 +338,9 @@ async def test_preview_model(
             "model_name": payload.model_name,
             "success": body["success"],
         },
-        error=None if body["success"] else (
-            body["error"]["message"] if body.get("error") else None
-        ),
+        error=None
+        if body["success"]
+        else (body["error"]["message"] if body.get("error") else None),
     )
     await db.commit()
     return ModelTestResponse(**body)

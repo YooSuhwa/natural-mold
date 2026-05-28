@@ -2,20 +2,24 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { modelsApi } from '@/lib/api/models'
-import type {
-  ModelCreate,
-  ModelTestPreviewRequest,
-  ModelUpdate,
-} from '@/lib/types/model'
+import type { ModelCreate, ModelTestPreviewRequest, ModelUpdate } from '@/lib/types/model'
 
 const KEY_LIST = ['models'] as const
 
-export function useModels() {
+interface UseModelsOptions {
+  /**
+   * Super-user only. When true, the request also returns rows where
+   * `is_visible=false`. Cached separately from the default (visible-only)
+   * query so the agent-creation selector stays clean.
+   */
+  includeHidden?: boolean
+}
+
+export function useModels(options?: UseModelsOptions) {
+  const includeHidden = options?.includeHidden ?? false
   return useQuery({
-    queryKey: KEY_LIST,
-    // Wrap so the QueryFunction signature stays compatible after `list`
-    // gained an optional `ListModelsOptions` argument in M11.
-    queryFn: () => modelsApi.list(),
+    queryKey: includeHidden ? [...KEY_LIST, 'all'] : KEY_LIST,
+    queryFn: () => modelsApi.list({ include_hidden: includeHidden }),
     staleTime: 60_000,
   })
 }
@@ -32,17 +36,20 @@ export function useCreateModel() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: ModelCreate) => modelsApi.create(data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY_LIST })
+      qc.invalidateQueries({ queryKey: [...KEY_LIST, 'all'] })
+    },
   })
 }
 
 export function useUpdateModel() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: ModelUpdate }) =>
-      modelsApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: ModelUpdate }) => modelsApi.update(id, data),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: KEY_LIST })
+      qc.invalidateQueries({ queryKey: [...KEY_LIST, 'all'] })
       qc.invalidateQueries({ queryKey: ['models', id] })
     },
   })
@@ -52,7 +59,10 @@ export function useDeleteModel() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => modelsApi.delete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY_LIST }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY_LIST })
+      qc.invalidateQueries({ queryKey: [...KEY_LIST, 'all'] })
+    },
   })
 }
 
@@ -63,8 +73,7 @@ export function useDeleteModel() {
  */
 export function useDiscoverModels() {
   return useMutation({
-    mutationFn: (credentialId: string) =>
-      modelsApi.discoverFromCredential(credentialId),
+    mutationFn: (credentialId: string) => modelsApi.discoverFromCredential(credentialId),
   })
 }
 

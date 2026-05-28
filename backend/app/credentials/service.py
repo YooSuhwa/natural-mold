@@ -57,9 +57,7 @@ async def decrypt_with_external(blob: str) -> dict[str, Any]:
 # -- Queries -----------------------------------------------------------------
 
 
-async def list_for_user(
-    db: AsyncSession, user_id: uuid.UUID
-) -> list[Credential]:
+async def list_for_user(db: AsyncSession, user_id: uuid.UUID) -> list[Credential]:
     """Return user-facing credentials only — system rows are hidden.
 
     Pickers (model Health, agent settings, MCP wizard) call this so a
@@ -104,9 +102,7 @@ async def list_system(db: AsyncSession) -> list[Credential]:
     return list(result.scalars().all())
 
 
-async def get_system(
-    db: AsyncSession, credential_id: uuid.UUID
-) -> Credential | None:
+async def get_system(db: AsyncSession, credential_id: uuid.UUID) -> Credential | None:
     """Look up a system credential by id (no user filter)."""
 
     result = await db.execute(
@@ -118,9 +114,7 @@ async def get_system(
     return result.scalar_one_or_none()
 
 
-async def find_system_by_definition(
-    db: AsyncSession, definition_key: str
-) -> Credential | None:
+async def find_system_by_definition(db: AsyncSession, definition_key: str) -> Credential | None:
     """First active system credential matching ``definition_key`` (e.g.
     ``anthropic``). Powers the assistant agent's tiered ENV → system
     credential fallback."""
@@ -152,11 +146,18 @@ LLM_DEFINITION_TO_ENV_KEY: dict[str, str] = {
     "openrouter": "openrouter",
 }
 
-# Inverse of ``LLM_DEFINITION_TO_ENV_KEY`` — used by chat credential resolver
-# to find a user's credential by ``Model.provider``. Kept as a derived constant
-# so a new provider only needs to be added in one place.
+# Used by the chat-time credential resolver (``resolve_llm_api_key_for_agent``)
+# to find a user's credential by ``Model.provider``. Includes
+# ``openai_compatible`` even though it's absent from
+# ``LLM_DEFINITION_TO_ENV_KEY``: the env-fallback exclusion is about not being
+# representable as a single ENV string, but the chat resolver merely needs a
+# provider→definition_key lookup and doesn't share that constraint.
 PROVIDER_TO_DEFINITION_KEY: dict[str, str] = {
-    v: k for k, v in LLM_DEFINITION_TO_ENV_KEY.items()
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "google": "google_genai",
+    "openrouter": "openrouter",
+    "openai_compatible": "openai_compatible",
 }
 
 

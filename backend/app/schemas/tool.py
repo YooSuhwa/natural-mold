@@ -22,6 +22,7 @@ class ToolFieldSchema(BaseModel):
     placeholder: str | None = None
     type_options: dict[str, Any] = Field(default_factory=dict)
     display_options: dict[str, Any] = Field(default_factory=dict)
+    runtime_only: bool = False
 
 
 class ToolDefinitionSchema(BaseModel):

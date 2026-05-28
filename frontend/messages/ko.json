@@ -741,7 +741,8 @@
       "attach": "파일 첨부",
       "attachmentTooLarge": "파일이 너무 큽니다",
       "attachmentRejected": "이 파일 형식은 지원되지 않습니다",
-      "attachmentUploading": "업로드 중..."
+      "attachmentUploading": "업로드 중...",
+      "stop": "중단"
     },
     "toolCall": {
       "calling": "호출 중...",

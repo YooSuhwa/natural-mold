@@ -85,6 +85,7 @@ export function validateFields(
 ): Record<string, string> {
   const errors: Record<string, string> = {}
   for (const f of fields) {
+    if (f.runtime_only) continue
     if (!shouldShow(f, values)) continue
     const fieldToValidate = skipRequired ? { ...f, required: false } : f
     const message = validateField(fieldToValidate, values[f.name])
@@ -126,6 +127,7 @@ export function DynamicFieldsForm({
   return (
     <div className="space-y-4">
       {fields.map((field) => {
+        if (field.runtime_only) return null
         if (!shouldShow(field, value)) return null
         return (
           <FieldRow

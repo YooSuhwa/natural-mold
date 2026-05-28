@@ -309,8 +309,10 @@ def _apply_openai_ssl_clients(cls: type[BaseChatModel], kwargs: dict[str, Any]) 
 _OPENAI_FAMILY_BASE_URLS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
-    # ``openai_compatible`` is a self-hosted catch-all; we never know the
-    # right host without the credential telling us, so don't guess.
+    # 사내 표준 게이트웨이. ``model.base_url`` 이 명시돼 있으면 그것을 우선
+    # 사용하고, 비어 있을 때만 이 default 가 적용된다. 다른 게이트웨이를
+    # 등록할 때는 모델 행의 ``base_url`` 컬럼을 채울 것.
+    "openai_compatible": "https://llm-gw.hancom.com/v1",
 }
 
 

@@ -57,6 +57,12 @@ class FieldDef:
     the list of values that make this field visible. e.g.
     ``{"show": {"auth_type": ["bearer", "basic"]}}``."""
 
+    runtime_only: bool = False
+    """Tool parameters only: when ``True`` the LLM supplies the value at call
+    time. The tool creation form hides the field and the tool factory exposes
+    it on the structured-tool args schema so the model can fill it. Stored
+    values still override at runtime if the operator chose to pin one."""
+
     def serialize(self) -> dict[str, Any]:
         """JSON-friendly representation for the API catalog endpoint."""
 
@@ -71,6 +77,7 @@ class FieldDef:
             "placeholder": self.placeholder,
             "type_options": dict(self.type_options),
             "display_options": dict(self.display_options),
+            "runtime_only": self.runtime_only,
         }
 
 
