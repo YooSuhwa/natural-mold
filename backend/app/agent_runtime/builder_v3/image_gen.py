@@ -21,8 +21,12 @@ from app.services.image_service import (
     IMAGE_GEN_SYSTEM_PROMPT,
     _extract_image_data,
     _load_reference_image_base64,
+    resolve_image_base_url,
 )
-from app.services.system_credential_resolver import resolve_system_api_key
+from app.services.system_credential_resolver import (
+    SystemModelNotConfiguredError,
+    resolve_system_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +42,17 @@ def _builder_image_dir(session_id: str) -> Path:
 
 
 async def is_image_generation_available() -> bool:
-    """OpenRouter 키 사용 가능 여부.
+    """이미지 ``image`` system role이 설정되었는지 여부.
 
-    ENV ``OPENROUTER_API_KEY`` 또는 ``is_system=True`` credential 중 하나
-    라도 있으면 True. node가 이 결과로 phase 진입을 결정한다.
+    ADR-019: 운영자가 System LLM 설정에서 image 슬롯(credential + model)을
+    선택했으면 True. node가 이 결과로 phase 진입을 결정한다.
     """
-    if settings.openrouter_api_key:
-        return True
     async with async_session() as db:
-        key = await resolve_system_api_key(db, "openrouter")
-    return bool(key)
+        try:
+            await resolve_system_model(db, "image")
+        except SystemModelNotConfiguredError:
+            return False
+    return True
 
 
 def build_default_prompt(
@@ -93,13 +98,14 @@ async def generate_agent_image(
         ImageGenerationError: provider 미설정 또는 호출 실패
     """
     async with async_session() as db:
-        api_key = await resolve_system_api_key(db, "openrouter")
-    if not api_key:
-        raise ImageGenerationError(
-            "OpenRouter system credential이 없습니다. "
-            "/settings/system-credentials에 등록하거나 .env에 "
-            "OPENROUTER_API_KEY를 설정하세요."
-        )
+        try:
+            resolved = await resolve_system_model(db, "image")
+        except SystemModelNotConfiguredError as exc:
+            raise ImageGenerationError(
+                "운영자가 System LLM 설정에서 이미지 모델을 선택해야 합니다."
+            ) from exc
+    api_key = resolved.api_key
+    base_url = resolve_image_base_url(resolved)
 
     try:
         ref_b64 = _load_reference_image_base64()
@@ -109,7 +115,7 @@ async def generate_agent_image(
         ) from exc
 
     body = {
-        "model": settings.image_gen_model,
+        "model": resolved.model_name,
         "modalities": ["image", "text"],
         "image_config": {"aspect_ratio": "1:1"},
         "messages": [
@@ -130,7 +136,7 @@ async def generate_agent_image(
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(
-                f"{settings.image_gen_base_url}/chat/completions",
+                f"{base_url}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",

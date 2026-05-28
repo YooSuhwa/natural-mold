@@ -113,8 +113,9 @@
       "tools": "도구",
       "mcpServers": "MCP 서버",
       "models": "모델",
-      "credentials": "자격증명",
-      "systemCredentials": "시스템 자격증명",
+      "credentials": "Credential",
+      "systemCredentials": "System Credential",
+      "systemLlm": "System LLM 설정",
       "skills": "스킬",
       "usage": "사용량",
       "templates": "에이전트 템플릿"

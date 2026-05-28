@@ -19,8 +19,13 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
-from app.agent_runtime.model_factory import PROVIDER_API_KEY_MAP, create_chat_model
-from app.config import settings
+from app.agent_runtime.model_factory import create_chat_model
+from app.database import async_session
+from app.services.system_credential_resolver import (
+    ResolvedSystemModel,
+    SystemModelNotConfiguredError,
+    resolve_system_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -64,32 +69,47 @@ def strip_code_fences(text: str) -> str:
     return text
 
 
-@functools.cache
-def _get_builder_model() -> BaseChatModel:
-    """Builder 기본 모델을 생성한다 (캐시됨)."""
-    return create_chat_model(
-        settings.builder_model_provider,
-        settings.builder_model_name,
-        api_key=PROVIDER_API_KEY_MAP.get(settings.builder_model_provider),
-    )
+# ADR-019: builder text models come from the operator-selected system LLM
+# settings (``text_primary`` / ``text_fallback``), not ``.env``. The old
+# ``@functools.cache`` singletons hid runtime setting changes, so we cache by
+# the *resolved selection* instead: when the operator changes the credential or
+# model, the ``ResolvedSystemModel`` value differs and the chat model is rebuilt.
+# This keeps the ~5-10ms ``create_chat_model`` (httpx + SSL) cost off the hot
+# path without pinning a stale model across setting changes.
+_MODEL_CACHE: dict[str, tuple[ResolvedSystemModel, BaseChatModel]] = {}
 
 
-@functools.cache
-def _get_fallback_model() -> BaseChatModel | None:
-    """Builder 폴백 모델을 생성한다 (캐시됨). 기본 모델과 같으면 None."""
-    if (
-        settings.builder_fallback_provider == settings.builder_model_provider
-        and settings.builder_fallback_name == settings.builder_model_name
-    ):
-        return None
-    key = PROVIDER_API_KEY_MAP.get(settings.builder_fallback_provider)
-    if not key:
-        return None
-    return create_chat_model(
-        settings.builder_fallback_provider,
-        settings.builder_fallback_name,
-        api_key=key,
+async def _resolve_cached_model(role: str) -> BaseChatModel:
+    """Resolve + build (or reuse) the chat model for a system ``role``.
+
+    Raises ``SystemModelNotConfiguredError`` when the role is unconfigured.
+    """
+    async with async_session() as db:
+        resolved = await resolve_system_model(db, role)
+    cached = _MODEL_CACHE.get(role)
+    if cached is not None and cached[0] == resolved:
+        return cached[1]
+    model = create_chat_model(
+        resolved.provider,
+        resolved.model_name,
+        api_key=resolved.api_key,
+        base_url=resolved.base_url,
     )
+    _MODEL_CACHE[role] = (resolved, model)
+    return model
+
+
+async def _get_builder_model() -> BaseChatModel:
+    """Builder 기본 모델 (system role ``text_primary``)."""
+    return await _resolve_cached_model("text_primary")
+
+
+async def _get_fallback_model() -> BaseChatModel | None:
+    """Builder 폴백 모델 (system role ``text_fallback``). 미설정 시 None."""
+    try:
+        return await _resolve_cached_model("text_fallback")
+    except SystemModelNotConfiguredError:
+        return None
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -133,11 +153,7 @@ async def _invoke_with_api_retry(
 
     # 재시도 소진 → 폴백 모델 시도
     if fallback:
-        logger.info(
-            "Falling back to %s:%s",
-            settings.builder_fallback_provider,
-            settings.builder_fallback_name,
-        )
+        logger.info("Falling back to system text_fallback model")
         try:
             return await fallback.ainvoke(messages, config=invoke_config)
         except Exception as fallback_exc:
@@ -173,8 +189,8 @@ async def invoke_with_json_retry(
     Raises:
         ValueError: max_retries 횟수만큼 파싱 실패 시
     """
-    model = _get_builder_model()
-    fallback = _get_fallback_model()
+    model = await _get_builder_model()
+    fallback = await _get_fallback_model()
     description = task_description
 
     for attempt in range(max_retries):
@@ -188,8 +204,12 @@ async def invoke_with_json_retry(
         )
         content = response.content
         try:
-            text = strip_code_fences(content)
-            return json.loads(text)
+            text = strip_code_fences(content).lstrip()
+            # 일부 모델(LiteLLM gateway 등)은 JSON 객체 뒤에 설명 텍스트를
+            # 덧붙인다. raw_decode로 첫 JSON 값만 파싱하고 뒤따르는 extra data는
+            # 무시해 "Extra data: line N" 파싱 실패를 방지한다.
+            obj, _ = json.JSONDecoder().raw_decode(text)
+            return obj
         except (json.JSONDecodeError, ValueError) as exc:
             logger.warning("JSON parsing failed (attempt %d): %s", attempt + 1, exc)
             if attempt < max_retries - 1:
@@ -223,8 +243,8 @@ async def invoke_for_text(
     Returns:
         텍스트 응답. max_retries 초과 시 None.
     """
-    model = _get_builder_model()
-    fallback = _get_fallback_model()
+    model = await _get_builder_model()
+    fallback = await _get_fallback_model()
     description = task_description
 
     for attempt in range(max_retries):

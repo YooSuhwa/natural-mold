@@ -54,7 +54,7 @@
 - [mise](https://mise.jdx.dev/) — Python 3.12 · Node 22 자동 관리
 - [Docker](https://www.docker.com/) — PostgreSQL 16 컨테이너용
 - [pnpm](https://pnpm.io/) — Node 패키지 매니저
-- LLM API 키 — OpenAI / Anthropic / Google 중 하나 이상
+- LLM API 키 — OpenAI / Anthropic / OpenRouter / OpenAI-compatible(LiteLLM 등) 중 하나. ENV에 넣을 필요 없이 **부팅 후 UI에서 등록**합니다 (ADR-013)
 
 ### 로컬 개발
 
@@ -67,10 +67,10 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 
 # 3. Backend
 cd backend
-cp .env.example .env                  # OPENAI_API_KEY 등 입력
+cp .env.example .env                  # ENCRYPTION_KEYS / JWT_SECRET 등 입력 (LLM 키는 UI에서 등록)
 uv sync                               # 의존성 설치
-uv run alembic upgrade head           # DB 마이그레이션 (현재 head: m43)
-uv run uvicorn app.main:app --reload --port 8001
+uv run alembic upgrade head           # DB 마이그레이션 (현재 head: m45)
+uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
 # 4. Frontend (새 터미널)
@@ -81,13 +81,34 @@ pnpm dev
 ```
 
 서버 시작 시 기본 모델(GPT-5.5, Claude Sonnet 4.6, Gemini 등) + 시스템 도구
-+ 에이전트 템플릿이 자동 시드됩니다.
++ 에이전트 템플릿이 자동 시드됩니다. 단, **에이전트를 만들고 쓰려면 아래 운영자
+초기 설정이 필요**합니다.
+
+### 서버 기동 후 초기 설정 (운영자)
+
+LLM 키는 ENV가 아닌 UI에서 등록하고, system 기능(빌더·어시스턴트·이미지)은
+운영자가 사용할 모델을 직접 골라야 동작합니다 (ADR-013/016/019).
+
+1. **첫 계정 = 운영자** — http://localhost:3000 에서 회원가입. 첫 사용자는
+   `super_user`로 자동 승격됩니다 (ADR-016, `ALLOW_FIRST_USER_AS_ADMIN=true`;
+   운영 환경에서는 계정 생성 후 꺼주세요).
+2. **LLM 크리덴셜 등록** — `/settings/system-credentials`에서 OpenAI ·
+   Anthropic · OpenRouter · OpenAI-compatible(LiteLLM 등) 키를 등록합니다.
+3. **System LLM 모델 선택 (ADR-019, 필수)** — `/settings/system-llm`에서
+   `text_primary` · `text_fallback` · `image` 세 슬롯의 모델을 고릅니다.
+   크리덴셜 선택 → "모델 목록 불러오기" → 모델 선택. **이 설정 전에는 빌더 ·
+   어시스턴트 · 이미지 생성이 동작하지 않습니다**(조용한 실패 없이 명시적 에러).
+4. **에이전트용 모델 연결** — `/models`에서 일반 에이전트가 쓸 모델에 크리덴셜을
+   연결하거나 discovery로 자동 등록합니다.
+
+이후 대화형 빌더(`/agents`)로 에이전트를 만들고 채팅할 수 있습니다. 일반
+사용자는 본인 키를 `/credentials`에서 등록해 사용합니다.
 
 ### Docker Compose 전체 실행
 
 ```bash
-export OPENAI_API_KEY=sk-...
 docker compose up -d                  # postgres + backend + frontend
+# 이후 위의 "서버 기동 후 초기 설정"을 따라 운영자 온보딩을 진행하세요.
 ```
 
 ### 검증 명령
@@ -247,7 +268,7 @@ pnpm build                            # 프로덕션 빌드
 
 - **Router** (`app/routers/`) — HTTP 엔드포인트, 요청·응답 변환
 - **Service** (`app/services/`) — 비즈니스 로직, DB 쿼리, 트랜잭션
-- **Model** (`app/models/`) — SQLAlchemy ORM, ~40개 테이블 (m43 기준)
+- **Model** (`app/models/`) — SQLAlchemy ORM, ~40개 테이블 (m45 기준)
 
 ### Frontend 패턴
 
@@ -275,7 +296,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + 도메인
 │   │   ├── agent_runtime/       # AI 실행 엔진
 │   │   └── seed/                # 시드 데이터
-│   ├── alembic/versions/        # 마이그레이션 (m43까지)
+│   ├── alembic/versions/        # 마이그레이션 (m45까지)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
@@ -305,9 +326,9 @@ natural-mold/
 | 변수 | 필수 | 설명 |
 |------|------|------|
 | `DATABASE_URL` | O | PostgreSQL async URL (`postgresql+asyncpg://...`) |
-| `OPENAI_API_KEY` 또는 `ANTHROPIC_API_KEY` | O (1+) | LLM 호출 |
 | `ENCRYPTION_KEY` | O | Cipher V2 마스터 키 (HKDF-SHA256 + AES-256-GCM) |
 | `JWT_SECRET` | O | JWT HS256 서명 키 (ADR-016 멀티유저 인증) |
+| LLM 키 (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 등) | - | UI Credentials에서 등록 권장 (ADR-013). ENV는 dev bootstrap용 선택값 |
 | `LANGSMITH_API_KEY` | - | LangSmith 트레이싱 (선택) |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | - | 네이버 검색 도구 |
 | `GOOGLE_API_KEY` / `GOOGLE_CSE_ID` | - | Google CSE 도구 |

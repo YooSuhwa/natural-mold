@@ -1,57 +1,40 @@
-# HANDOFF — ADR-018 Relative storage_path
+# 작업 인계 문서 — System LLM Settings + LiteLLM 연동
 
-**세션**: 2026-05-23 ~ 2026-05-26
-**브랜치**: `worktree-adr-018-relative-storage-path` (worktree, 미머지)
-**worktree 경로**: `.claude/worktrees/adr-018-relative-storage-path/`
-**소스**: `docs/design-docs/adr-018-relative-storage-path.md`
+**세션**: 2026-05-26
+**목표**: System 기능(Builder/Assistant/이미지)을 운영자가 UI에서 역할별 모델 선택 + LiteLLM(openai_compatible) 엔드포인트로 구동
 
-## 사건 (재발 방지 대상)
+## 완료된 작업
+- [x] **ADR-019 System LLM Settings** — PR #168 **머지됨**. `system_llm_settings` 테이블(m45) + `resolve_system_model(role)` + base_url 주입 + `/settings/system-llm` 화면(슬롯 3개)
+- [x] **LLM 키 문서 정정** — PR #169 **머지됨**. ENV 키 필수→선택(UI 등록), `.env.example`/CLAUDE/README
+- [x] **LiteLLM/builder 통합 버그 3건** — PR #170 **리뷰 대기**(push 완료)
+  - (a) discover-models가 system credential 404 → super_user면 `get_system` 폴백
+  - (b) builder JSON 파싱 → `raw_decode`로 trailing 텍스트 무시(LiteLLM 호환)
+  - (c) builder 채팅 중복 crash → `allMessages` id dedup(assistant-ui 불변식)
 
-2026-05-23: 이전 worktree 정리하면서 ranian963 skill 2개 + marketplace_versions 93개 **본문 lost**. 원인 — `storage_path`가 worktree 절대경로(`.../worktrees/marketplace-resources/backend/data/skills/...`)로 박혀있어 worktree 삭제 시 dangling.
+## 진행 중인 작업
+- [ ] **PR #170 머지** — 리뷰/머지 대기. 머지 후 `/sync`
 
-## 완료
-
-- ADR-018 작성 — 절대→상대 경로 + worktree-setup data symlink 이중방어
-- `app/storage/paths.py` — `resolve_data_path`, `ensure_relative` helper
-- 저장 사이트 5곳 모두 상대화 (skills/marketplace publish/install/k_skill_importer/runtime)
-- `settings.data_root="./data"` 단일 source, `skill_storage_dir` 등은 deprecated
-- Alembic **M44** — 깨진 row wipe (marketplace 5테이블 + worktree-prefixed skills)
-- `scripts/worktree-setup.sh` — `backend/data` symlink 추가
-- 회귀 테스트 2개 (`test_storage_paths.py`, `test_storage_path_relative_invariant.py`)
-- `/simplify` 적용 — 미사용 helper 제거, 1회용 `_rel_*` 인라인
-- 검증: ruff 통과 / pytest **1199 passed, 0 회귀**
-
-## 진행 중
-
-없음. 모든 코드 변경 완료.
-
-## 다음 (우선순위)
-
-1. **PR 생성 + 머지** — worktree에서 commit + push + PR. 머지 후 main `git pull`
-2. **M44 적용** ⚡ destructive — main에서 `uv run alembic upgrade head` (사용자가 직접). 깨진 95개 row wipe
-3. **k-skill sync 재실행** — `uv run python -m app.scripts.sync_k_skill --ref main`. 86개 marketplace_versions 복원
-4. **ranian963 skill 재설치** — UI에서: korean-spell-check Install + seating-guide `.skill` 재import (원본 보유)
-5. **재발 검증 시나리오** — 새 worktree에서 publish → worktree 정리 → main에서 본문 살아있는지
-6. **CLAUDE.md 환경변수 표 정정** — `OPENAI_API_KEY` 등 `O (필수)` → `X (선택, UI 등록 가능)`. ADR-013/016 이후 outdated
+## 다음에 해야 할 작업
+1. PR #170 머지 → main `git pull`(또는 /sync)
+2. **운영자 셋업**(ADR-019 의도된 breaking): super_user가 `/settings/system-llm`에서 text_primary/text_fallback/image 3슬롯 선택해야 Builder/Assistant/이미지 동작. m45는 이미 적용됨.
+3. follow-up(별도 PR): **OPEN-2** aiosqlite 전역 `PRAGMA foreign_keys=ON`(타 FK SET NULL 잠재 거짓통과) / **OPEN-4** 운영자 경고박스 raw `bg-amber-*`→`--status-warn` 토큰화(system-llm·system-credentials 동시)
+4. (선택) builder `streamingMessages` 미클리어로 인한 미세 메모리 누적 — (c)는 dedup으로 crash만 방어. 근본(builder 흐름 클리어)은 W3-out 가드와 얽혀 보류
 
 ## 주의사항
+- **DB 단일 source**(ADR-019 결정2): `.env` builder_model_*/assistant_model_* 런타임 미사용. 미설정 시 `SystemModelNotConfiguredError`로 명시 실패
+- **건드리면 안 됨**: `backend/data`·`backend/.env`(worktree symlink, 커밋 제외), `use-chat-runtime.ts`의 streamingMessages 클리어 로직(W3-out 스트림 재개 가드)
+- LiteLLM gateway 모델은 JSON 뒤 텍스트를 붙이는 경향 → (b)가 방어
+- 머지된 worktree `.claude/worktrees/system-llm-settings`는 `git worktree remove` 가능(ADR-018로 데이터 손실 없음)
 
-- **M44 = mass delete** — marketplace_items/versions/acl/installations/publication_links + worktree-prefixed skills 전부 wipe. 실행 전 백업 권장
-- **worktree 작업 시** `bash scripts/worktree-setup.sh` 1회 — `.env` + `backend/data` symlink 둘 다 만들어줌 (ADR-018 핵심)
-- **uvicorn `--reload-dir app`** 필수 — data/ watch가 publish/sync 시 reload 유발해 세션 끊김
-- **`storage_path` 신규 저장은 항상 상대** — `ensure_relative()` guardrail + 회귀 테스트가 막아줌
-- **legacy 절대경로 row** — helper가 fallback으로 통과시키지만 M44가 미리 wipe하므로 production에서는 안 보일 것
+## 관련 파일
+- `docs/design-docs/adr-019-system-llm-settings.md`
+- 백엔드: `app/models/system_llm_setting.py`, `app/services/system_credential_resolver.py`, `app/routers/system_llm_settings.py`, `alembic/.../m45_*.py`
+- 배선: `assistant_agent.py`, `builder/sub_agents/helpers.py`, `image_service.py`, `builder_v3/image_gen.py`
+- 프론트: `frontend/src/app/settings/system-llm/`, `lib/chat/use-chat-runtime.ts`
+- fix: `app/routers/credentials.py`(discover)
 
-## 핵심 파일
-
-- ADR: `docs/design-docs/adr-018-relative-storage-path.md`
-- Helper: `backend/app/storage/paths.py` (53줄)
-- 저장 사이트: `backend/app/skills/service.py:136,178`, `app/marketplace/{publish,install}_service.py`, `app/marketplace/k_skill_importer.py:572`
-- Read 사이트: `app/skills/service.py` (8곳), `app/marketplace/skill_runtime.py:215`
-- Alembic: `backend/alembic/versions/m44_relative_storage_path.py`
-- 테스트: `backend/tests/test_storage_paths.py`, `test_storage_path_relative_invariant.py`
-- Worktree fix: `scripts/worktree-setup.sh`
-
-## Course corrections
-
-ENV LLM key 필수성 재검증 → 코드는 default `""` 허용 + ADR-013 fallback이라 **선택**. CLAUDE.md만 outdated (#6에서 정정). simplify 단계에서 `relative_to_data_root` (미사용) + 3개 1회용 helper 인라인, paths.py docstring 단축.
+## 마지막 상태
+- 브랜치: `fix/litellm-builder-integration` (main 체크아웃 디렉토리)
+- 마지막 커밋: `b611ff4`
+- 테스트: backend **1221 passed / 0 회귀**, frontend build·lint 그린
+- PR: #168 머지 · #169 머지 · #170 리뷰 대기

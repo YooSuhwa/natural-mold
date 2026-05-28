@@ -213,11 +213,23 @@ export function useChatRuntime({
     return { signal: controller.signal, token }
   }, [setReconnectState])
 
-  // 로드된 메시지 + 스트리밍 중인 메시지 병합
-  const allMessages = useMemo(
-    () => [...messages, ...streamingMessages],
-    [messages, streamingMessages],
-  )
+  // 로드된 메시지 + 스트리밍 중인 메시지 병합.
+  // assistant-ui MessageRepository는 id 유일성을 불변식으로 요구한다. builder
+  // 흐름은 onMessagesCommit으로 stream 메시지를 ``messages``에 넣은 뒤에도
+  // ``streamingMessages``가 비워지지 않아(서버 refetch가 없어 hasNewAssistantMessage
+  // 가 false) 동일 id가 양쪽에 남는다 → "same id already exists" 크래시. 먼저
+  // 등장한 항목(=messages의 확정본)을 우선해 중복 id를 제거한다. 일반 대화는
+  // optimistic(opt-*)과 backend uuid가 달라 중복이 없어 영향받지 않는다.
+  const allMessages = useMemo(() => {
+    const seen = new Set<string>()
+    const merged: typeof messages = []
+    for (const m of [...messages, ...streamingMessages]) {
+      if (seen.has(m.id)) continue
+      seen.add(m.id)
+      merged.push(m)
+    }
+    return merged
+  }, [messages, streamingMessages])
 
   // W7-2 — Composer 토큰 바는 ``allMessages``의 usage 합으로 derive한다.
   // 이전 동작은 SSE ``message_end``에서만 누적했으므로 새로고침/대화 전환
