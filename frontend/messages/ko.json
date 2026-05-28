@@ -113,8 +113,8 @@
       "tools": "도구",
       "mcpServers": "MCP 서버",
       "models": "모델",
-      "credentials": "Credential",
-      "systemCredentials": "System Credential",
+      "credentials": "자격증명",
+      "systemCredentials": "시스템 자격증명",
       "skills": "스킬",
       "usage": "사용량",
       "templates": "에이전트 템플릿"
@@ -1301,7 +1301,8 @@
     }
   },
   "usage": {
-    "pageTitle": "토큰 사용량",
+    "pageTitle": "사용량",
+    "subtitle": "기간별 토큰 사용량과 비용을 한눈에 확인하세요.",
     "totalTokens": "총 토큰",
     "estimatedCost": "추정 비용",
     "inputTokens": "입력 토큰",
@@ -1335,6 +1336,8 @@
       "avgCostPerRequest": "평균 비용/요청"
     },
     "filters": {
+      "range": "기간",
+      "metric": "지표",
       "kind": "대상",
       "kindUser": "사용자",
       "kindAgent": "에이전트",
