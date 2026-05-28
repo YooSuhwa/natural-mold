@@ -77,6 +77,23 @@ async def test_tool_type_unknown(client: AsyncClient) -> None:
     assert response.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_runtime_only_flag_survives_catalog_serialization(
+    client: AsyncClient,
+) -> None:
+    """The tool-create form needs ``runtime_only`` to know which inputs to hide.
+
+    Pydantic strips unknown keys, so the response schema must declare the field
+    or the frontend silently renders every parameter as user-editable.
+    """
+
+    response = await client.get("/api/tool-types/naver_search_news")
+    assert response.status_code == 200
+    body = response.json()
+    query_field = next(p for p in body["parameters"] if p["name"] == "query")
+    assert query_field["runtime_only"] is True
+
+
 # -- CRUD --------------------------------------------------------------------
 
 
@@ -131,6 +148,23 @@ async def test_create_tool_missing_required_parameter(client: AsyncClient) -> No
         },
     )
     assert response.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_create_tool_skips_runtime_only_required_check(
+    client: AsyncClient,
+) -> None:
+    """``query`` is ``runtime_only`` — the operator never fills it at create time."""
+
+    response = await client.post(
+        "/api/tools",
+        json={
+            "definition_key": "naver_search_news",
+            "name": "naver news",
+            "parameters": {},  # no query — the agent supplies it at call time
+        },
+    )
+    assert response.status_code == 201, response.text
 
 
 @pytest.mark.asyncio

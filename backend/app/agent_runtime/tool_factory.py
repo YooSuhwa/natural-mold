@@ -23,11 +23,61 @@ from zoneinfo import ZoneInfo
 
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
+from pydantic import BaseModel, Field, create_model
 
 from app.config import settings
 from app.hooks import HookContext, HookResult, hooks
-from app.tools.domain import ToolRunContext
+from app.tools.domain import ToolDefinition, ToolRunContext
+from app.tools.parameters import FieldKind
 from app.tools.registry import registry as tool_registry
+
+_KIND_TO_PY_TYPE: dict[FieldKind, type] = {
+    FieldKind.STRING: str,
+    FieldKind.PASSWORD: str,
+    FieldKind.MULTILINE: str,
+    FieldKind.SELECT: str,
+    FieldKind.OAUTH_BUTTON: str,
+    FieldKind.NUMBER: float,
+    FieldKind.TOGGLE: bool,
+    FieldKind.JSON: dict,
+    FieldKind.COLLECTION: dict,
+}
+
+
+def _build_runtime_args_schema(
+    definition: ToolDefinition,
+    stored_params: dict[str, Any],
+) -> type[BaseModel] | None:
+    """Build a Pydantic args schema for the LangChain StructuredTool.
+
+    Exposes every ``runtime_only`` field so the LLM can supply per-call
+    arguments (e.g. the search ``query``). Operator-pinned values in
+    ``stored_params`` become the field default, letting the model omit them
+    while still being able to override.
+    """
+
+    runtime_fields = [f for f in definition.parameters if f.runtime_only]
+    if not runtime_fields:
+        return None
+
+    field_specs: dict[str, Any] = {}
+    for spec in runtime_fields:
+        py_type = _KIND_TO_PY_TYPE.get(spec.kind, str)
+        default_value = stored_params.get(spec.name)
+        if default_value is None:
+            default_value = spec.default
+        description = spec.description or spec.display_name
+        if spec.required and default_value is None:
+            field_specs[spec.name] = (py_type, Field(..., description=description))
+        else:
+            field_specs[spec.name] = (
+                py_type,
+                Field(default=default_value, description=description),
+            )
+
+    model_name = "".join(ch if ch.isalnum() else "_" for ch in f"{definition.key}_args")
+    return create_model(model_name, **field_specs)
+
 
 logger = logging.getLogger(__name__)
 
@@ -272,10 +322,12 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
         or f"Tool {definition.display_name}"
     )
 
+    args_schema = _build_runtime_args_schema(definition, stored_params)
     return StructuredTool.from_function(
         coroutine=_invoke,
         name=safe_name,
         description=description,
+        args_schema=args_schema,
     )
 
 

@@ -84,6 +84,8 @@ def _common_parameters(
             display_name="Search Query",
             kind=FieldKind.STRING,
             required=True,
+            runtime_only=True,
+            description="Keyword(s) the agent passes at call time.",
         ),
         FieldDef(
             name="display",

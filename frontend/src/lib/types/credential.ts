@@ -48,6 +48,9 @@ export interface FieldDef {
   placeholder?: string | null
   type_options?: FieldTypeOptions
   display_options?: FieldDisplayOptions
+  // Tool parameters only: filled in by the agent at call time, hidden in the
+  // tool-creation form. Backend exposes the field on the LLM args schema.
+  runtime_only?: boolean
 }
 
 export interface CredentialDefinition {
