@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Activity, Plus, Brain, Eye, Wrench, Lightbulb, Zap } from 'lucide-react'
+import { Activity, Plus, Brain, Eye, EyeOff, Wrench, Lightbulb, Zap } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
 import { announceHealthResult } from '@/lib/health-check-toast'
@@ -25,12 +25,22 @@ import { formatTokenPrice } from '@/components/model/model-format'
 import { RANKING_META, RankingCell, RankingHeader } from '@/components/model/model-rankings'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useModels } from '@/lib/hooks/use-models'
+import { useSession } from '@/lib/auth/session'
 import { useModelHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 import type { Model } from '@/lib/types/model'
 import type { HealthCheckEntry } from '@/lib/types/health'
 
 export default function ModelsPage() {
-  const { data: models, isLoading } = useModels()
+  const { data: user } = useSession()
+  const isSuper = Boolean(user?.is_super_user)
+  // Default ON for operators so the new visibility column is discoverable;
+  // regular users can't pass include_hidden (backend would 403) so we pin
+  // the toggle off + disabled for them.
+  const [showHidden, setShowHidden] = useState(true)
+  const effectiveShowHidden = isSuper && showHidden
+  const { data: models, isLoading } = useModels({
+    includeHidden: effectiveShowHidden,
+  })
   const { data: healthEntries } = useModelHealth()
   const { data: credentials } = useCredentials()
   const runHealthCheck = useRunHealthCheck()
@@ -105,7 +115,7 @@ export default function ModelsPage() {
         accessorKey: 'display_name',
         header: '모델',
         cell: ({ row }) => (
-          <div className="flex items-center gap-2">
+          <div className={`flex items-center gap-2 ${row.original.is_visible ? '' : 'opacity-60'}`}>
             <DomainIcon iconId={row.original.provider} className="size-4" />
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">
@@ -113,6 +123,11 @@ export default function ModelsPage() {
                 {row.original.is_default && (
                   <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
                     기본
+                  </span>
+                )}
+                {!row.original.is_visible && (
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border">
+                    <EyeOff className="size-3" /> 숨김
                   </span>
                 )}
               </p>
@@ -323,6 +338,20 @@ export default function ModelsPage() {
         />
         벤치마크 있음
       </label>
+      {isSuper && (
+        <label
+          htmlFor="show-hidden"
+          className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"
+        >
+          <Checkbox
+            id="show-hidden"
+            data-testid="show-hidden"
+            checked={showHidden}
+            onCheckedChange={(v) => setShowHidden(Boolean(v))}
+          />
+          숨김 포함
+        </label>
+      )}
       {selected.length > 0 && (
         <Button size="sm" onClick={() => setBulkTestOpen(true)} data-testid="test-selected">
           <Zap className="size-3.5" /> 선택 테스트

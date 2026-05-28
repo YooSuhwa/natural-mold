@@ -18,13 +18,13 @@ function buildListQuery(options?: ListModelsOptions): string {
   const params = new URLSearchParams()
   if (options.sort_by) params.set('sort_by', options.sort_by)
   if (options.order) params.set('order', options.order)
+  if (options.include_hidden) params.set('include_hidden', 'true')
   const qs = params.toString()
   return qs ? `?${qs}` : ''
 }
 
 export const modelsApi = {
-  list: (options?: ListModelsOptions) =>
-    apiFetch<Model[]>(`/api/models${buildListQuery(options)}`),
+  list: (options?: ListModelsOptions) => apiFetch<Model[]>(`/api/models${buildListQuery(options)}`),
   get: (id: string) => apiFetch<Model>(`/api/models/${id}`),
   create: (data: ModelCreate) =>
     apiFetch<Model>('/api/models', {
@@ -36,8 +36,7 @@ export const modelsApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  delete: (id: string) =>
-    apiFetch<void>(`/api/models/${id}`, { method: 'DELETE' }),
+  delete: (id: string) => apiFetch<void>(`/api/models/${id}`, { method: 'DELETE' }),
 
   /**
    * Ask the backend to enumerate models reachable through a saved credential
@@ -45,10 +44,9 @@ export const modelsApi = {
    * server-side via the LiteLLM catalog or provider-native list endpoints.
    */
   discoverFromCredential: (credentialId: string) =>
-    apiFetch<DiscoveredModel[]>(
-      `/api/credentials/${credentialId}/discover-models`,
-      { method: 'POST' },
-    ),
+    apiFetch<DiscoveredModel[]>(`/api/credentials/${credentialId}/discover-models`, {
+      method: 'POST',
+    }),
 
   /**
    * Run a one-shot completion against an already-registered model. The backend

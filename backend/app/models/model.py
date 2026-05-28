@@ -27,6 +27,12 @@ class Model(Base):
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # M46 — operator-managed visibility. False rows are hidden from the
+    # general model list / agent creation selector but still resolvable by
+    # ``model_id`` so existing agents keep working.
+    is_visible: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default="true"
+    )
     # User-intended default credential captured at Add-model time. Health
     # panel and other "preferred credential" flows read this before falling
     # back to provider-matched alternatives. ``ON DELETE SET NULL`` so the

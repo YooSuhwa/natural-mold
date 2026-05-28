@@ -20,6 +20,7 @@ class ModelCreate(BaseModel):
     display_name: str
     base_url: str | None = None
     is_default: bool = False
+    is_visible: bool = True
     cost_per_input_token: Decimal | None = None
     cost_per_output_token: Decimal | None = None
     context_window: int | None = None
@@ -41,6 +42,7 @@ class ModelUpdate(BaseModel):
     display_name: str | None = None
     base_url: str | None = None
     is_default: bool | None = None
+    is_visible: bool | None = None
     cost_per_input_token: Decimal | None = None
     cost_per_output_token: Decimal | None = None
     context_window: int | None = None
@@ -61,6 +63,7 @@ class ModelResponse(BaseModel):
     display_name: str
     base_url: str | None
     is_default: bool
+    is_visible: bool
     cost_per_input_token: Decimal | None
     cost_per_output_token: Decimal | None
     context_window: int | None = None

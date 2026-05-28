@@ -19,41 +19,65 @@ from app.models.model import Model
 from app.services.model_metadata import enrich_model
 
 
-async def resolve_model(
-    db: AsyncSession, model_name: str, *, strict: bool = False
-) -> Model | None:
+async def resolve_model(db: AsyncSession, model_name: str, *, strict: bool = False) -> Model | None:
     """Look up a ``Model`` row by display name or ``provider:model_name``.
 
     ``strict=True`` skips the default-model fallback so the caller can detect
     "user asked for a specific model that doesn't exist" cases.
+
+    Tolerant of duplicate ``Model`` rows (display_name / model_name lack a DB
+    unique constraint, and ``is_default`` is a plain boolean). Each lookup
+    selects a deterministic single row — ``is_default`` first, then oldest by
+    ``created_at`` — instead of raising ``MultipleResultsFound``. The
+    ``provider:model_name`` form matches provider too, so e.g.
+    ``openai_compatible:claude-sonnet-4-6`` never collapses onto the
+    ``anthropic`` row with the same ``model_name``.
     """
 
-    result = await db.execute(select(Model).where(Model.display_name == model_name))
-    model = result.scalar_one_or_none()
+    order = (Model.is_default.desc(), Model.created_at.asc())
+
+    result = await db.execute(
+        select(Model).where(Model.display_name == model_name).order_by(*order).limit(1)
+    )
+    model = result.scalars().first()
     if model:
         return model
 
     if ":" in model_name:
-        _, parsed = model_name.split(":", 1)
-        result = await db.execute(select(Model).where(Model.model_name == parsed))
-        model = result.scalar_one_or_none()
+        provider_part, parsed = model_name.split(":", 1)
+        result = await db.execute(
+            select(Model)
+            .where(Model.provider == provider_part, Model.model_name == parsed)
+            .order_by(*order)
+            .limit(1)
+        )
+        model = result.scalars().first()
         if model:
             return model
 
     if strict:
         return None
 
-    result = await db.execute(select(Model).where(Model.is_default.is_(True)))
-    return result.scalar_one_or_none()
-
-
-async def list_models(db: AsyncSession) -> list[dict]:
     result = await db.execute(
+        select(Model).where(Model.is_default.is_(True)).order_by(*order).limit(1)
+    )
+    return result.scalars().first()
+
+
+async def list_models(db: AsyncSession, *, include_hidden: bool = False) -> list[dict]:
+    """List models with agent_count. Filters hidden rows by default — only
+    super_user surfaces (the ``/models`` admin page) should pass
+    ``include_hidden=True``."""
+
+    stmt = (
         select(Model, func.count(Agent.id).label("agent_count"))
         .outerjoin(Agent, Agent.model_id == Model.id)
         .group_by(Model.id)
         .order_by(Model.is_default.desc(), Model.display_name)
     )
+    if not include_hidden:
+        stmt = stmt.where(Model.is_visible.is_(True))
+    result = await db.execute(stmt)
     return [serialize_model(row[0], agent_count=row[1]) for row in result.all()]
 
 
@@ -70,6 +94,7 @@ def serialize_model(model: Model, *, agent_count: int = 0) -> dict:
         "display_name": model.display_name,
         "base_url": model.base_url,
         "is_default": model.is_default,
+        "is_visible": model.is_visible,
         "cost_per_input_token": model.cost_per_input_token,
         "cost_per_output_token": model.cost_per_output_token,
         "context_window": model.context_window,

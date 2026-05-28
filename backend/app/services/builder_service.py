@@ -158,15 +158,18 @@ async def _get_default_model_name(db: AsyncSession) -> str:
     if settings.default_agent_model:
         return settings.default_agent_model
 
-    # 2. DB default
-    result = await db.execute(select(Model).where(Model.is_default.is_(True)))
-    model = result.scalar_one_or_none()
+    # 2. DB default — Model 테이블에는 is_default unique 제약이 없으므로
+    #    is_default=true row 가 여러 개여도 raise 하지 않도록 결정적 first 행 선택
+    result = await db.execute(
+        select(Model).where(Model.is_default.is_(True)).order_by(Model.created_at.asc()).limit(1)
+    )
+    model = result.scalars().first()
     if model:
         return f"{model.provider}:{model.model_name}"
 
-    # 3. 아무 모델
-    result = await db.execute(select(Model).limit(1))
-    model = result.scalar_one_or_none()
+    # 3. 아무 모델 — 마찬가지로 결정적 순서 보장
+    result = await db.execute(select(Model).order_by(Model.created_at.asc()).limit(1))
+    model = result.scalars().first()
     if model:
         return f"{model.provider}:{model.model_name}"
 
@@ -223,9 +226,7 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
             ],
         )
         agent.tool_links = [AgentToolLink(tool_id=t.id) for t in tools_to_link]
-        agent.mcp_tool_links = [
-            AgentMcpToolLink(mcp_tool_id=mt.id) for mt in mcp_tools_to_link
-        ]
+        agent.mcp_tool_links = [AgentMcpToolLink(mcp_tool_id=mt.id) for mt in mcp_tools_to_link]
         agent.skill_links = [AgentSkillLink(skill_id=s.id) for s in skills_to_link]
         db.add(agent)
         await db.flush()  # agent.id 할당을 위해 flush 필요
@@ -379,9 +380,7 @@ async def _transfer_builder_image(
 
     실패해도 Agent 생성은 유지한다.
     """
-    result = await asyncio.to_thread(
-        _transfer_builder_image_sync, session.id, agent.id, public_url
-    )
+    result = await asyncio.to_thread(_transfer_builder_image_sync, session.id, agent.id, public_url)
     if result:
         agent.image_path = result
 

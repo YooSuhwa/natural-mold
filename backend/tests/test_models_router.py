@@ -3,17 +3,30 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncGenerator
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.dependencies import (
+    CurrentUser,
+    get_current_user,
+    get_current_user_optional,
+    get_db,
+    verify_csrf,
+)
+from app.main import create_app
 from app.models.agent import Agent
 from app.models.model import Model
 from app.models.user import User
-from tests.conftest import TEST_USER_ID
+from tests.conftest import (
+    TEST_USER_ID,
+    _bypass_verify_csrf,
+    override_get_db,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -75,12 +88,8 @@ async def test_create_model_full_payload(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_model_duplicate_returns_409(
-    client: AsyncClient, db: AsyncSession
-) -> None:
-    db.add(
-        Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
-    )
+async def test_create_model_duplicate_returns_409(client: AsyncClient, db: AsyncSession) -> None:
+    db.add(Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o"))
     await db.commit()
 
     response = await client.post(
@@ -118,9 +127,7 @@ async def test_get_model_404(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_list_models_returns_agent_count(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_list_models_returns_agent_count(client: AsyncClient, db: AsyncSession) -> None:
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
@@ -145,9 +152,7 @@ async def test_list_models_returns_agent_count(
 
 
 @pytest.mark.asyncio
-async def test_patch_model_updates_pricing(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_patch_model_updates_pricing(client: AsyncClient, db: AsyncSession) -> None:
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.commit()
@@ -170,9 +175,7 @@ async def test_patch_model_updates_pricing(
 
 @pytest.mark.asyncio
 async def test_patch_model_404(client: AsyncClient) -> None:
-    response = await client.patch(
-        f"/api/models/{uuid.uuid4()}", json={"display_name": "x"}
-    )
+    response = await client.patch(f"/api/models/{uuid.uuid4()}", json={"display_name": "x"})
     assert response.status_code == 404
 
 
@@ -180,9 +183,7 @@ async def test_patch_model_404(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_unused_model(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_delete_unused_model(client: AsyncClient, db: AsyncSession) -> None:
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.commit()
@@ -190,16 +191,12 @@ async def test_delete_unused_model(
     response = await client.delete(f"/api/models/{model.id}")
     assert response.status_code == 204
 
-    row = (
-        await db.execute(select(Model).where(Model.id == model.id))
-    ).scalar_one_or_none()
+    row = (await db.execute(select(Model).where(Model.id == model.id))).scalar_one_or_none()
     assert row is None
 
 
 @pytest.mark.asyncio
-async def test_delete_in_use_model_409(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_delete_in_use_model_409(client: AsyncClient, db: AsyncSession) -> None:
     model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
     db.add(model)
     await db.flush()
@@ -225,6 +222,147 @@ async def test_delete_model_404(client: AsyncClient) -> None:
 
 
 # -- discover-models endpoint -----------------------------------------------
+
+
+# -- is_visible --------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_models_excludes_hidden_by_default(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    db.add_all(
+        [
+            Model(
+                provider="openai_compatible",
+                model_name="visible",
+                display_name="Visible",
+                is_visible=True,
+            ),
+            Model(
+                provider="anthropic",
+                model_name="hidden",
+                display_name="Hidden",
+                is_visible=False,
+            ),
+        ]
+    )
+    await db.commit()
+
+    response = await client.get("/api/models")
+    assert response.status_code == 200
+    names = {m["model_name"] for m in response.json()}
+    assert "visible" in names
+    assert "hidden" not in names
+
+
+@pytest.mark.asyncio
+async def test_list_models_include_hidden_super_user(client: AsyncClient, db: AsyncSession) -> None:
+    db.add_all(
+        [
+            Model(
+                provider="openai_compatible",
+                model_name="visible",
+                display_name="Visible",
+                is_visible=True,
+            ),
+            Model(
+                provider="anthropic",
+                model_name="hidden",
+                display_name="Hidden",
+                is_visible=False,
+            ),
+        ]
+    )
+    await db.commit()
+
+    response = await client.get("/api/models?include_hidden=true")
+    assert response.status_code == 200
+    names = {m["model_name"] for m in response.json()}
+    assert {"visible", "hidden"}.issubset(names)
+
+
+@pytest.fixture
+async def non_super_client() -> AsyncGenerator[AsyncClient, None]:
+    """Same as ``client`` fixture but the request actor is a normal user."""
+
+    async def _override() -> CurrentUser:
+        return CurrentUser(
+            id=TEST_USER_ID,
+            email="u@test.com",
+            name="U",
+            is_super_user=False,
+        )
+
+    app = create_app()
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = _override
+    app.dependency_overrides[get_current_user_optional] = _override
+    app.dependency_overrides[verify_csrf] = _bypass_verify_csrf
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+
+@pytest.mark.asyncio
+async def test_list_models_include_hidden_requires_super_user(
+    non_super_client: AsyncClient,
+) -> None:
+    response = await non_super_client.get("/api/models?include_hidden=true")
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_patch_toggle_is_visible(client: AsyncClient, db: AsyncSession) -> None:
+    model = Model(
+        provider="anthropic",
+        model_name="vis-toggle",
+        display_name="Vis Toggle",
+        is_visible=True,
+    )
+    db.add(model)
+    await db.commit()
+
+    response = await client.patch(f"/api/models/{model.id}", json={"is_visible": False})
+    assert response.status_code == 200
+    assert response.json()["is_visible"] is False
+
+
+@pytest.mark.asyncio
+async def test_patch_hidden_default_returns_422(client: AsyncClient, db: AsyncSession) -> None:
+    """기본 모델을 hidden 처리하면 셀렉터가 비어버린다 → 422."""
+
+    model = Model(
+        provider="anthropic",
+        model_name="hide-default",
+        display_name="Hide Default",
+        is_default=True,
+        is_visible=True,
+    )
+    db.add(model)
+    await db.commit()
+
+    response = await client.patch(f"/api/models/{model.id}", json={"is_visible": False})
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_hidden_default_returns_422(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/models",
+        json={
+            "provider": "anthropic",
+            "model_name": "ghost-default",
+            "display_name": "Ghost",
+            "is_default": True,
+            "is_visible": False,
+        },
+    )
+    assert response.status_code == 422
+
+
+# -- discover-models endpoint ------------------------------------------------
 
 
 @pytest.mark.asyncio
