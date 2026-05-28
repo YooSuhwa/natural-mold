@@ -43,8 +43,10 @@ test.describe('Smoke Test - Static Pages', () => {
     await page.goto('/agents/new/template')
     await page.waitForLoadState('domcontentloaded')
 
-    await expect(page.getByRole('main').getByText('템플릿으로 만들기')).toBeVisible()
-    // Category tabs
+    await expect(
+      page.getByRole('main').getByRole('heading', { name: '템플릿으로 시작하기' }),
+    ).toBeVisible()
+    // Category tabs (custom pill-group with role="tab")
     await expect(page.getByRole('tab', { name: '전체' })).toBeVisible()
 
     expect(errors.console).toEqual([])

@@ -46,7 +46,7 @@ describe('TemplateSelectionPage', () => {
 
   it('renders page header', () => {
     render(<TemplateSelectionPage />)
-    expect(screen.getByText('템플릿으로 만들기')).toBeInTheDocument()
+    expect(screen.getByText('템플릿으로 시작하기')).toBeInTheDocument()
   })
 
   it('renders loading state with skeletons', () => {
@@ -83,8 +83,8 @@ describe('TemplateSelectionPage', () => {
       isLoading: false,
     })
     render(<TemplateSelectionPage />)
-    // Both templates have recommended_tools with "Web Search", shown as "도구: Web Search"
-    const toolTexts = screen.getAllByText('도구: Web Search')
+    // Both templates have recommended_tools with "Web Search", shown as badge chips
+    const toolTexts = screen.getAllByText('Web Search')
     expect(toolTexts.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -116,7 +116,7 @@ describe('TemplateSelectionPage', () => {
 
     render(<TemplateSelectionPage />)
 
-    const createButtons = screen.getAllByText('이 템플릿으로 생성')
+    const createButtons = screen.getAllByRole('button', { name: /이 템플릿으로 생성/ })
     await user.click(createButtons[0])
 
     expect(mockCreateAgentFn).toHaveBeenCalledWith(
@@ -134,7 +134,7 @@ describe('TemplateSelectionPage', () => {
       isLoading: false,
     })
     render(<TemplateSelectionPage />)
-    const createButtons = screen.getAllByText('이 템플릿으로 생성')
+    const createButtons = screen.getAllByText('시작')
     expect(createButtons.length).toBe(mockTemplateList.length)
   })
 })

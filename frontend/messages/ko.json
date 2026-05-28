@@ -223,16 +223,38 @@
       }
     },
     "template": {
-      "pageTitle": "템플릿으로 만들기",
+      "pageTitle": "템플릿으로 시작하기",
+      "subtitle": "검증된 템플릿에서 골라 30초 만에 첫 에이전트를 만드세요.",
       "category": {
         "all": "전체",
         "productivity": "생산성",
         "communication": "커뮤니케이션",
         "data": "데이터"
       },
+      "search": {
+        "placeholder": "템플릿 이름, 설명, 도구로 검색…",
+        "ariaLabel": "템플릿 검색"
+      },
+      "sort": {
+        "newest": "최신순",
+        "name": "이름순",
+        "ariaLabelNewest": "현재 최신순으로 정렬됨, 클릭하여 이름순으로 변경",
+        "ariaLabelName": "현재 이름순으로 정렬됨, 클릭하여 최신순으로 변경"
+      },
       "tools": "도구: {toolNames}",
+      "toolsMore": "+{count}",
+      "startCta": "시작",
       "createFromTemplate": "이 템플릿으로 생성",
-      "emptyCategory": "이 카테고리에 템플릿이 없습니다."
+      "emptyCategory": "이 카테고리에 템플릿이 없습니다.",
+      "noSearchResults": {
+        "title": "\"{query}\"에 맞는 템플릿이 없어요",
+        "subtitle": "다른 키워드로 검색하거나, 대화로 직접 만들어보세요."
+      },
+      "bottomCta": {
+        "title": "원하는 템플릿이 없나요?",
+        "subtitle": "대화로 직접 만들거나, 처음부터 설정해 보세요.",
+        "action": "대화로 만들기"
+      }
     },
     "creation": {
       "header": "에이전트 만들기",
