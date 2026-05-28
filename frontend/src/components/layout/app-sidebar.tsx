@@ -16,7 +16,6 @@ import {
   ServerIcon,
   ShieldIcon,
   SlidersHorizontalIcon,
-  ChevronRightIcon,
   StoreIcon,
   SunIcon,
   ToggleLeftIcon,
