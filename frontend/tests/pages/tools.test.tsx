@@ -84,13 +84,13 @@ describe('ToolsPage', () => {
 
   it('renders page header with title', () => {
     render(<ToolsPage />)
-    expect(screen.getByText('Tools')).toBeInTheDocument()
+    expect(screen.getByText('도구')).toBeInTheDocument()
   })
 
-  it('renders Catalog + Manage tabs', () => {
+  it('renders 카탈로그 + 관리 tabs', () => {
     render(<ToolsPage />)
-    expect(screen.getByRole('tab', { name: /Catalog/ })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /Manage/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /카탈로그/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /관리/ })).toBeInTheDocument()
   })
 
   it('mounts the ToolCatalog stub on the catalog tab', () => {
@@ -98,12 +98,12 @@ describe('ToolsPage', () => {
     expect(screen.getByTestId('tool-catalog')).toBeInTheDocument()
   })
 
-  it('shows empty state when no tools after switching to Manage', async () => {
+  it('shows empty state when no tools after switching to 관리', async () => {
     mockUseTools.mockReturnValue({ data: [], isLoading: false })
     const user = userEvent.setup()
     render(<ToolsPage />)
-    await user.click(screen.getByRole('tab', { name: /Manage/ }))
-    expect(screen.getByText('No tools yet')).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: /관리/ }))
+    expect(screen.getByText('아직 도구가 없어요')).toBeInTheDocument()
   })
 
   // 카탈로그/검색/필터/뱃지/삭제 버튼 등 detail UI는 모두 tool-catalog 및

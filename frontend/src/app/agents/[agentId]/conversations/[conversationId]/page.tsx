@@ -93,10 +93,7 @@ export default function ChatPage({
     }
     return map
   }, [messages])
-  const getActiveRating = useCallback(
-    (mid: string) => ratingByMessage.get(mid),
-    [ratingByMessage],
-  )
+  const getActiveRating = useCallback((mid: string) => ratingByMessage.get(mid), [ratingByMessage])
 
   const feedbackAdapter = useChatFeedbackAdapter(conversationId, getActiveRating, () => {
     queryClient.invalidateQueries({ queryKey: conversationKeys.messages(conversationId) })
@@ -112,10 +109,7 @@ export default function ChatPage({
     attachmentAdapter: moldyAttachmentAdapter,
   })
 
-  const hitlValue = useMemo(
-    () => ({ onResumeDecisions }),
-    [onResumeDecisions],
-  )
+  const hitlValue = useMemo(() => ({ onResumeDecisions }), [onResumeDecisions])
 
   async function handleNewConversation() {
     const conv = await createConversation.mutateAsync(undefined)
@@ -124,9 +118,8 @@ export default function ChatPage({
 
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
 
-
   return (
-    <div className="flex min-h-0 flex-1 gap-3 overflow-hidden bg-muted/30 p-3">
+    <div className="flex min-h-0 flex-1 gap-3 overflow-hidden bg-gradient-to-b from-emerald-50/40 via-background to-background p-3 dark:from-emerald-950/15 dark:via-background dark:to-background">
       {/* 좌측 사이드바 카드 (데스크톱) */}
       <aside className="hidden w-72 shrink-0 overflow-hidden rounded-xl border bg-card shadow-sm md:block">
         <ConversationList
@@ -242,7 +235,11 @@ function ChatEmptyState({ agent, fallback }: ChatEmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
       <div className="mb-4">
-        <AgentAvatar imageUrl={agent?.image_url ?? null} name={agent?.name ?? 'Agent'} size="lg" />
+        <AgentAvatar
+          imageUrl={agent?.image_url ?? null}
+          name={agent?.name ?? '에이전트'}
+          size="lg"
+        />
       </div>
       <h2 className="mb-1 text-lg font-semibold">{agent?.name ?? fallback}</h2>
       {agent?.description && (

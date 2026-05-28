@@ -57,9 +57,7 @@ def _to_response(tool: Tool) -> ToolInstanceResponse:
     )
 
 
-async def _load_owned(
-    db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID
-) -> Tool:
+async def _load_owned(db: AsyncSession, tool_id: uuid.UUID, user_id: uuid.UUID) -> Tool:
     row = (
         await db.execute(
             select(Tool).where(
@@ -72,24 +70,6 @@ async def _load_owned(
     if row is None:
         raise HTTPException(status_code=404, detail="tool not found")
     return row
-
-
-def _validate_required_parameters(definition_key: str, values: dict) -> None:
-    definition = tool_registry.get(definition_key)
-    if definition is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"unknown tool definition '{definition_key}'",
-        )
-    missing: list[str] = []
-    for spec in definition.parameters:
-        if spec.required and (spec.name not in values or values[spec.name] in (None, "")):
-            missing.append(spec.name)
-    if missing:
-        raise HTTPException(
-            status_code=422,
-            detail=f"missing required parameters: {', '.join(missing)}",
-        )
 
 
 # -- Catalog -----------------------------------------------------------------
@@ -118,9 +98,7 @@ async def list_tools(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ) -> list[ToolInstanceResponse]:
-    stmt = select(Tool).where(
-        (Tool.user_id == user.id) | (Tool.user_id.is_(None))
-    )
+    stmt = select(Tool).where((Tool.user_id == user.id) | (Tool.user_id.is_(None)))
     if definition_key is not None:
         stmt = stmt.where(Tool.definition_key == definition_key)
     if enabled is not None:
@@ -136,7 +114,11 @@ async def create_tool(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> ToolInstanceResponse:
-    _validate_required_parameters(payload.definition_key, payload.parameters)
+    if tool_registry.get(payload.definition_key) is None:
+        raise HTTPException(
+            status_code=400, detail=f"unknown definition '{payload.definition_key}'"
+        )
+
     tool = Tool(
         user_id=user.id,
         definition_key=payload.definition_key,
@@ -175,7 +157,6 @@ async def update_tool(
     if payload.description is not None:
         tool.description = payload.description
     if payload.parameters is not None:
-        _validate_required_parameters(tool.definition_key, payload.parameters)
         tool.parameters = payload.parameters
     if payload.credential_id is not None or "credential_id" in payload.model_fields_set:
         tool.credential_id = payload.credential_id

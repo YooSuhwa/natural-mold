@@ -49,13 +49,13 @@ export default function SkillsPage() {
     () => [
       {
         accessorKey: 'name',
-        header: 'Name',
+        header: '이름',
         cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
       },
       {
         id: 'kind',
         accessorKey: 'kind',
-        header: 'Kind',
+        header: '종류',
         cell: ({ row }) => (
           <Badge variant="secondary" className="text-[10px]">
             {row.original.kind}
@@ -65,23 +65,19 @@ export default function SkillsPage() {
       },
       {
         id: 'origin',
-        header: 'Origin',
+        header: '출처',
         cell: ({ row }) => <OriginBadge summary={row.original.origin_summary} />,
       },
       {
         id: 'marketplace',
-        header: 'Marketplace',
-        cell: ({ row }) => (
-          <PublicationBadge summary={row.original.publication_summary} />
-        ),
+        header: '마켓플레이스',
+        cell: ({ row }) => <PublicationBadge summary={row.original.publication_summary} />,
       },
       {
         id: 'credential',
-        header: 'Credential',
+        header: '자격증명',
         cell: ({ row }) => {
-          const summary = row.original.installation
-            ? null
-            : null
+          const summary = row.original.installation ? null : null
           void summary
           // Skill row doesn't carry credential_summary directly; show via
           // installation chip when relevant. For Phase 1 we render `—` for
@@ -91,17 +87,17 @@ export default function SkillsPage() {
       },
       {
         accessorKey: 'used_by_count',
-        header: 'Agents',
+        header: '에이전트',
         cell: ({ row }) => row.original.used_by_count,
       },
       {
         accessorKey: 'version',
-        header: 'Version',
+        header: '버전',
         cell: ({ row }) => row.original.version ?? '—',
       },
       {
         accessorKey: 'updated_at',
-        header: 'Updated',
+        header: '수정일',
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
             {formatDate(row.original.updated_at)}
@@ -124,7 +120,7 @@ export default function SkillsPage() {
                 setPublishSkill(row.original)
               }}
             >
-              Publish
+              공개하기
             </Button>
           )
         },
@@ -137,10 +133,10 @@ export default function SkillsPage() {
     () => [
       {
         columnId: 'kind',
-        label: 'Kind',
+        label: '종류',
         options: [
-          { value: 'text', label: 'Text' },
-          { value: 'package', label: 'Package' },
+          { value: 'text', label: '텍스트' },
+          { value: 'package', label: '패키지' },
         ],
       },
     ],
@@ -150,116 +146,134 @@ export default function SkillsPage() {
   const data = skills ?? []
 
   return (
-    <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
-      <PageHeader
-        title="Skills"
-        description="Markdown snippets and packages attached to agents."
-        action={
-          <Button onClick={() => openCreate('text')}>
-            <Plus className="size-4" />
-            New skill
-          </Button>
-        }
-      />
-
-      {!isLoading && data.length > 0 && (
-        <div className="flex items-center justify-end gap-1 text-xs">
-          <button
-            type="button"
-            onClick={() => setView('table')}
-            className={`rounded p-1.5 ${view === 'table' ? 'bg-muted' : 'text-muted-foreground'}`}
-            aria-label="Table view"
-          >
-            <Rows className="size-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('grid')}
-            className={`rounded p-1.5 ${view === 'grid' ? 'bg-muted' : 'text-muted-foreground'}`}
-            aria-label="Grid view"
-          >
-            <LayoutGrid className="size-4" />
-          </button>
-        </div>
-      )}
-
-      {!isLoading && data.length === 0 ? (
-        <EmptyState
-          icon={<BookOpen className="size-6" />}
-          title="No skills yet"
-          description="Create a text snippet or upload a .skill package."
+    <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+      <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
+        <PageHeader
+          title="스킬"
+          description="에이전트에 붙여 쓰는 마크다운 스니펫과 패키지를 관리하세요."
           action={
             <Button onClick={() => openCreate('text')}>
-              <Plus className="size-4" />
-              Create first skill
+              <Plus className="size-4" />새 스킬
             </Button>
           }
         />
-      ) : view === 'table' ? (
-        <DataTable
-          columns={columns}
-          data={data}
-          loading={isLoading}
-          searchable
-          searchPlaceholder="Search skills"
-          filters={filters}
-          onRowClick={(row) => setDetailId(row.id)}
-          emptyTitle="No skills match your filters"
-        />
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {data.map((s) => (
-            <Card
-              key={s.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => setDetailId(s.id)}
-              onKeyDown={(e) => (e.key === 'Enter' ? setDetailId(s.id) : null)}
-              className="cursor-pointer transition-colors hover:border-primary/40"
+
+        {!isLoading && data.length > 0 && (
+          <div className="flex items-center justify-end">
+            <div
+              role="tablist"
+              aria-label="스킬 보기 모드"
+              className="inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1"
             >
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-sm">{s.name}</CardTitle>
-                  <Badge variant="secondary" className="text-[10px]">
-                    {s.kind}
-                  </Badge>
-                </div>
-                <CardDescription className="line-clamp-2 text-xs">
-                  {s.description ?? s.slug}
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
-      )}
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'table'}
+                aria-label="표 보기"
+                onClick={() => setView('table')}
+                className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors ${
+                  view === 'table'
+                    ? 'bg-background font-semibold text-foreground shadow-sm'
+                    : 'font-medium text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <Rows className="size-4" />
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === 'grid'}
+                aria-label="격자 보기"
+                onClick={() => setView('grid')}
+                className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors ${
+                  view === 'grid'
+                    ? 'bg-background font-semibold text-foreground shadow-sm'
+                    : 'font-medium text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <LayoutGrid className="size-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
-      <SkillCreateDialog
-        key={`create-${createTab}`}
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        initialTab={createTab}
-        onCreated={(id) => setDetailId(id)}
-      />
-      <SkillDetailDialog
-        skillId={detailId}
-        open={!!detailId}
-        onOpenChange={(open) => {
-          if (open) return
-          setDetailId(null)
-          // /marketplace에서 ``?detailId=...`` deep-link로 진입한 경우, dialog
-          // 닫을 때 URL의 query string도 함께 정리한다. history.replaceState로
-          // route 자체는 다시 그리지 않아 list scroll/state 보존.
-          if (typeof window !== 'undefined' && window.location.search) {
-            window.history.replaceState(null, '', '/skills')
-          }
-        }}
-      />
+        {!isLoading && data.length === 0 ? (
+          <EmptyState
+            icon={<BookOpen className="size-6" />}
+            title="아직 스킬이 없어요"
+            description="텍스트 스니펫을 만들거나 .skill 패키지를 업로드해 보세요."
+            action={
+              <Button onClick={() => openCreate('text')}>
+                <Plus className="size-4" />첫 스킬 만들기
+              </Button>
+            }
+          />
+        ) : view === 'table' ? (
+          <DataTable
+            columns={columns}
+            data={data}
+            loading={isLoading}
+            searchable
+            searchPlaceholder="스킬 검색"
+            filters={filters}
+            onRowClick={(row) => setDetailId(row.id)}
+            emptyTitle="조건에 맞는 스킬이 없어요"
+          />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.map((s) => (
+              <Card
+                key={s.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setDetailId(s.id)}
+                onKeyDown={(e) => (e.key === 'Enter' ? setDetailId(s.id) : null)}
+                className="cursor-pointer border border-border bg-card transition-all duration-150 hover:-translate-y-px hover:border-emerald-200 hover:shadow-md dark:hover:border-emerald-500/30"
+              >
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-sm">{s.name}</CardTitle>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {s.kind}
+                    </Badge>
+                  </div>
+                  <CardDescription className="line-clamp-2 text-xs">
+                    {s.description ?? s.slug}
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            ))}
+          </div>
+        )}
 
-      <PublishWizard
-        skill={publishSkill}
-        open={!!publishSkill}
-        onOpenChange={(open) => !open && setPublishSkill(null)}
-      />
+        <SkillCreateDialog
+          key={`create-${createTab}`}
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          initialTab={createTab}
+          onCreated={(id) => setDetailId(id)}
+        />
+        <SkillDetailDialog
+          skillId={detailId}
+          open={!!detailId}
+          onOpenChange={(open) => {
+            if (open) return
+            setDetailId(null)
+            // /marketplace에서 ``?detailId=...`` deep-link로 진입한 경우, dialog
+            // 닫을 때 URL의 query string도 함께 정리한다. history.replaceState로
+            // route 자체는 다시 그리지 않아 list scroll/state 보존.
+            if (typeof window !== 'undefined' && window.location.search) {
+              window.history.replaceState(null, '', '/skills')
+            }
+          }}
+        />
+
+        <PublishWizard
+          skill={publishSkill}
+          open={!!publishSkill}
+          onOpenChange={(open) => !open && setPublishSkill(null)}
+        />
+      </div>
     </div>
   )
 }

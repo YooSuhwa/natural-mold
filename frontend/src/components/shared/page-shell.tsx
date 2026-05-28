@@ -27,17 +27,15 @@ export function PageShell({
   children,
 }: Props) {
   return (
-    <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
-      <PageHeader title={title} description={description} action={action} />
-      {isError ? (
-        <ErrorState
-          title={errorTitle}
-          description={errorDescription}
-          onRetry={onRetry}
-        />
-      ) : (
-        children
-      )}
+    <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+      <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
+        <PageHeader title={title} description={description} action={action} />
+        {isError ? (
+          <ErrorState title={errorTitle} description={errorDescription} onRetry={onRetry} />
+        ) : (
+          children
+        )}
+      </div>
     </div>
   )
 }

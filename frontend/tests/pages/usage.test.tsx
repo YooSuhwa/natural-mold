@@ -43,7 +43,7 @@ describe('UsagePage', () => {
 
   it('renders page header', () => {
     render(<UsagePage />)
-    expect(screen.getByText('토큰 사용량')).toBeInTheDocument()
+    expect(screen.getByText('사용량')).toBeInTheDocument()
   })
 
   it('renders 4 summary cards (cost / tokens / requests / avg)', () => {

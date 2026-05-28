@@ -38,6 +38,8 @@ export function UserMenu({ user, onLogout }: Props) {
     <DropdownMenu>
       <DropdownMenuTrigger
         className="w-full rounded-md ring-sidebar-ring outline-hidden focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0"
+        aria-label={user.name}
+        title={user.name}
         render={
           <SidebarMenuButton
             size="lg"
@@ -54,7 +56,7 @@ export function UserMenu({ user, onLogout }: Props) {
         >
           {initials(user.name)}
         </div>
-        <div className="grid flex-1 min-w-0 text-left leading-tight">
+        <div className="grid flex-1 min-w-0 text-left leading-tight group-data-[collapsible=icon]:hidden">
           <span className="flex items-center gap-1.5 truncate text-sm font-medium">
             <span className="truncate">{user.name}</span>
             {user.is_super_user ? (
@@ -65,7 +67,7 @@ export function UserMenu({ user, onLogout }: Props) {
           </span>
           <span className="truncate text-xs text-muted-foreground">{user.email}</span>
         </div>
-        <ChevronsUpDownIcon className="ml-auto size-4" />
+        <ChevronsUpDownIcon className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-[--anchor-width]">
         <DropdownMenuItem
