@@ -1,39 +1,35 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useAtom } from 'jotai'
+import {
+  BarChart3Icon,
+  BookOpenIcon,
+  BrainIcon,
+  ChevronRightIcon,
+  HomeIcon,
+  KeyRoundIcon,
+  LayoutTemplateIcon,
+  MonitorIcon,
+  MoonIcon,
+  Plug2Icon,
+  PlusIcon,
+  ServerIcon,
+  ShieldIcon,
+  StoreIcon,
+  SunIcon,
+  ToggleLeftIcon,
+  ToggleRightIcon,
+  WrenchIcon,
+} from 'lucide-react'
+import { useTranslations } from 'next-intl'
+import { useTheme } from 'next-themes'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  HomeIcon,
-  WrenchIcon,
-  ServerIcon,
-  BarChart3Icon,
-  BookOpenIcon,
-  LayoutTemplateIcon,
-  KeyRoundIcon,
-  BrainIcon,
-  PlusIcon,
-  Plug2Icon,
-  ShieldIcon,
-  ChevronRightIcon,
-  StoreIcon,
-  ToggleRightIcon,
-  ToggleLeftIcon,
-  SunIcon,
-  MoonIcon,
-  MonitorIcon,
-} from 'lucide-react'
-import { useAtom } from 'jotai'
-import { useTheme } from 'next-themes'
-import { useTranslations } from 'next-intl'
+import { useMemo } from 'react'
 
-import { useAgents } from '@/lib/hooks/use-agents'
-import { UserMenu } from '@/components/auth/UserMenu'
-import { useSession } from '@/lib/auth/session'
-import { useLogout } from '@/lib/hooks/useAuth'
-import { connectorsExpandedAtom } from '@/lib/stores/sidebar-store'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { UserMenu } from '@/components/auth/UserMenu'
 import {
   Sidebar,
   SidebarContent,
@@ -52,6 +48,10 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useSession } from '@/lib/auth/session'
+import { useAgents } from '@/lib/hooks/use-agents'
+import { useLogout } from '@/lib/hooks/useAuth'
+import { connectorsExpandedAtom } from '@/lib/stores/sidebar-store'
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -82,7 +82,7 @@ export function AppSidebar() {
   }
 
   const marketplaceItems = [
-    { label: 'Marketplace', href: '/marketplace', icon: StoreIcon },
+    { label: '마켓플레이스', href: '/marketplace', icon: StoreIcon },
     ...(user?.is_super_user
       ? [
           {
@@ -111,9 +111,7 @@ export function AppSidebar() {
     { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
   ]
 
-  const isConnectorActive = connectorChildren.some((child) =>
-    pathname.startsWith(child.href),
-  )
+  const isConnectorActive = connectorChildren.some((child) => pathname.startsWith(child.href))
 
   const recentAgents = useMemo(
     () =>
@@ -376,7 +374,7 @@ export function AppSidebar() {
       {/* Theme Toggle */}
       <SidebarFooter>
         <SidebarSeparator />
-        <div className="flex items-center justify-center gap-1 px-2 py-1">
+        <div className="flex items-center justify-center gap-1 px-2 py-1 group-data-[collapsible=icon]:hidden">
           {[
             { value: 'light' as const, icon: SunIcon },
             { value: 'dark' as const, icon: MoonIcon },
@@ -401,9 +399,9 @@ export function AppSidebar() {
             {user ? (
               <UserMenu user={user} onLogout={() => logout.mutate()} />
             ) : (
-              <div className="flex items-center gap-3 px-2 py-2">
+              <div className="flex items-center gap-3 px-2 py-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0">
                 <Skeleton className="size-8 rounded-lg" />
-                <div className="flex-1 space-y-1">
+                <div className="flex-1 space-y-1 group-data-[collapsible=icon]:hidden">
                   <Skeleton className="h-3 w-24" />
                   <Skeleton className="h-3 w-32" />
                 </div>
