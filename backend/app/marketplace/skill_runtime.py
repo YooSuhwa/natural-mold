@@ -98,6 +98,7 @@ class SkillRuntimeDescriptor:
     description: str
     original_storage_path: Path
     runtime_storage_path: Path
+    execution_profile: dict[str, Any] | None = None
     credential_bindings: dict[str, ResolvedCredential] = field(default_factory=dict)
 
 
@@ -220,6 +221,11 @@ def _build_descriptor_from_skill_dict(
         # Stage 1 — no per-thread copy yet; runtime path == original.
         # Stage 2 overwrites with ``runtime_root / slug``.
         runtime_storage_path=original,
+        execution_profile=(
+            raw.get("execution_profile")
+            if isinstance(raw.get("execution_profile"), dict)
+            else None
+        ),
     )
 
 

@@ -20,11 +20,17 @@ def build_skills_for_agent(
 ) -> list[dict[str, Any]]:
     """Build a list of skill descriptors for an agent's deep-agents config."""
 
-    return [
-        skill_service.to_runtime_dict(link.skill)
-        for link in skill_links
-        if link.skill is not None
-    ]
+    descriptors: list[dict[str, Any]] = []
+    for link in skill_links:
+        if link.skill is None:
+            continue
+        descriptor = skill_service.to_runtime_dict(link.skill)
+        if link.config:
+            descriptor["config"] = link.config
+        if link.skill.execution_profile:
+            descriptor["execution_profile"] = link.skill.execution_profile
+        descriptors.append(descriptor)
+    return descriptors
 
 
 __all__ = ["build_skills_for_agent"]
