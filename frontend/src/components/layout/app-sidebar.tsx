@@ -9,6 +9,7 @@ import {
   HomeIcon,
   KeyRoundIcon,
   LayoutTemplateIcon,
+  type LucideIcon,
   MonitorIcon,
   MoonIcon,
   Plug2Icon,
@@ -52,7 +53,64 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/lib/auth/session'
 import { useAgents } from '@/lib/hooks/use-agents'
 import { useLogout } from '@/lib/hooks/useAuth'
-import { connectorsExpandedAtom } from '@/lib/stores/sidebar-store'
+import { connectorsExpandedAtom, marketplaceExpandedAtom } from '@/lib/stores/sidebar-store'
+
+type NavChild = { label: string; href: string; icon: LucideIcon; isActive: boolean }
+
+/** Collapsible top-level menu item with a toggle chevron and a list of sub-links. */
+function CollapsibleNavItem({
+  icon: Icon,
+  label,
+  tooltip,
+  isActive,
+  expanded,
+  onToggle,
+  items,
+  menuClass,
+}: {
+  icon: LucideIcon
+  label: string
+  tooltip: string
+  isActive: boolean
+  expanded: boolean
+  onToggle: () => void
+  items: NavChild[]
+  menuClass: string
+}) {
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        isActive={isActive}
+        tooltip={tooltip}
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className={menuClass}
+      >
+        <Icon className="size-4" />
+        <span>{label}</span>
+        <ChevronRightIcon
+          className={`ml-auto size-4 transition-transform ${expanded ? 'rotate-90' : ''}`}
+        />
+      </SidebarMenuButton>
+      {expanded && (
+        <SidebarMenuSub>
+          {items.map((child) => (
+            <SidebarMenuSubItem key={child.href}>
+              <SidebarMenuSubButton
+                isActive={child.isActive}
+                render={<Link href={child.href} />}
+                className={menuClass}
+              >
+                <child.icon className="size-4" />
+                <span>{child.label}</span>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          ))}
+        </SidebarMenuSub>
+      )}
+    </SidebarMenuItem>
+  )
+}
 
 export function AppSidebar() {
   const pathname = usePathname()
@@ -64,16 +122,17 @@ export function AppSidebar() {
   const logout = useLogout()
 
   const [connectorsExpanded, setConnectorsExpanded] = useAtom(connectorsExpandedAtom)
+  const [marketplaceExpanded, setMarketplaceExpanded] = useAtom(marketplaceExpandedAtom)
 
   const buildItems = [
     { label: t('nav.home'), href: '/', icon: HomeIcon },
     { label: t('nav.templates'), href: '/agents/new/template', icon: LayoutTemplateIcon },
   ]
 
-  const connectorChildren = [
+  const connectorChildren: NavChild[] = [
     { label: t('nav.tools'), href: '/tools', icon: WrenchIcon },
     { label: t('nav.mcpServers'), href: '/mcp-servers', icon: ServerIcon },
-  ]
+  ].map((c) => ({ ...c, isActive: pathname.startsWith(c.href) }))
 
   const skillsItem = {
     label: t('nav.skills'),
@@ -82,17 +141,24 @@ export function AppSidebar() {
     tooltip: t('tooltip.skills'),
   }
 
-  const marketplaceItems = [
-    { label: '마켓플레이스', href: '/marketplace', icon: StoreIcon },
-    ...(user?.is_super_user
-      ? [
-          {
-            label: 'Moderation',
-            href: '/marketplace/admin/moderation',
-            icon: ShieldIcon,
-          },
-        ]
-      : []),
+  const isMarketplaceActive = pathname.startsWith('/marketplace')
+
+  const marketplaceChildren: NavChild[] = [
+    {
+      label: t('nav.marketplaceExplore'),
+      href: '/marketplace',
+      icon: StoreIcon,
+      // Explore is active on /marketplace and its sub-pages, except the admin area.
+      isActive:
+        pathname === '/marketplace' ||
+        (pathname.startsWith('/marketplace/') && !pathname.startsWith('/marketplace/admin')),
+    },
+    {
+      label: t('nav.moderation'),
+      href: '/marketplace/admin/moderation',
+      icon: ShieldIcon,
+      isActive: pathname.startsWith('/marketplace/admin/moderation'),
+    },
   ]
 
   const resourceItems = [
@@ -117,7 +183,7 @@ export function AppSidebar() {
     { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
   ]
 
-  const isConnectorActive = connectorChildren.some((child) => pathname.startsWith(child.href))
+  const isConnectorActive = connectorChildren.some((child) => child.isActive)
 
   const recentAgents = useMemo(
     () =>
@@ -238,42 +304,16 @@ export function AppSidebar() {
           <SidebarGroupLabel>{t('section.capabilities')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isConnectorActive}
-                  tooltip={t('tooltip.connectors')}
-                  onClick={() => setConnectorsExpanded(!connectorsExpanded)}
-                  aria-expanded={connectorsExpanded}
-                  className={activeMenuClass}
-                >
-                  <Plug2Icon className="size-4" />
-                  <span>{t('nav.connectors')}</span>
-                  <ChevronRightIcon
-                    className={`ml-auto size-4 transition-transform ${
-                      connectorsExpanded ? 'rotate-90' : ''
-                    }`}
-                  />
-                </SidebarMenuButton>
-                {connectorsExpanded && (
-                  <SidebarMenuSub>
-                    {connectorChildren.map((child) => {
-                      const isActive = pathname.startsWith(child.href)
-                      return (
-                        <SidebarMenuSubItem key={child.href}>
-                          <SidebarMenuSubButton
-                            isActive={isActive}
-                            render={<Link href={child.href} />}
-                            className={activeMenuClass}
-                          >
-                            <child.icon className="size-4" />
-                            <span>{child.label}</span>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      )
-                    })}
-                  </SidebarMenuSub>
-                )}
-              </SidebarMenuItem>
+              <CollapsibleNavItem
+                icon={Plug2Icon}
+                label={t('nav.connectors')}
+                tooltip={t('tooltip.connectors')}
+                isActive={isConnectorActive}
+                expanded={connectorsExpanded}
+                onToggle={() => setConnectorsExpanded(!connectorsExpanded)}
+                items={connectorChildren}
+                menuClass={activeMenuClass}
+              />
               <SidebarMenuItem>
                 <SidebarMenuButton
                   isActive={pathname.startsWith(skillsItem.href)}
@@ -285,27 +325,30 @@ export function AppSidebar() {
                   <span>{skillsItem.label}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {marketplaceItems.map((item) => {
-                const isActive =
-                  item.href === '/marketplace'
-                    ? pathname === '/marketplace' ||
-                      (pathname.startsWith('/marketplace/') &&
-                        !pathname.startsWith('/marketplace/admin'))
-                    : pathname.startsWith(item.href)
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      tooltip={item.label}
-                      render={<Link href={item.href} />}
-                      className={activeMenuClass}
-                    >
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )
-              })}
+              {user?.is_super_user ? (
+                <CollapsibleNavItem
+                  icon={StoreIcon}
+                  label={t('nav.marketplace')}
+                  tooltip={t('tooltip.marketplace')}
+                  isActive={isMarketplaceActive}
+                  expanded={marketplaceExpanded}
+                  onToggle={() => setMarketplaceExpanded(!marketplaceExpanded)}
+                  items={marketplaceChildren}
+                  menuClass={activeMenuClass}
+                />
+              ) : (
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    isActive={isMarketplaceActive}
+                    tooltip={t('nav.marketplace')}
+                    render={<Link href="/marketplace" />}
+                    className={activeMenuClass}
+                  >
+                    <StoreIcon className="size-4" />
+                    <span>{t('nav.marketplace')}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
