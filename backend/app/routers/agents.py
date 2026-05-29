@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 from typing import Any, Literal, cast
 
 import anyio
 import httpx
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,7 @@ from app.schemas.agent import (
 )
 from app.schemas.skill import SkillBrief
 from app.services import agent_service, image_service
+from app.services.image_preview import get_or_create_image_preview
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 middleware_router = APIRouter(tags=["middlewares"])
@@ -201,6 +203,7 @@ async def generate_agent_image(
 @router.get("/{agent_id}/image")
 async def get_agent_image(
     agent_id: uuid.UUID,
+    variant: Literal["original", "preview"] = Query("original"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
@@ -219,9 +222,22 @@ async def get_agent_image(
         agent.image_path = None
         await db.commit()
         return Response(status_code=204)
+    target = Path(agent.image_path).resolve()
+    if variant == "preview":
+        preview = get_or_create_image_preview(
+            target,
+            cache_dir=target.parent / ".previews",
+            cache_name=f"agent-{agent.id}",
+        )
+        if preview is not None:
+            return FileResponse(
+                preview,
+                media_type="image/webp",
+                headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            )
     media_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
-    media = media_map.get(apath.suffix, "image/png")
-    return FileResponse(str(apath), media_type=media)
+    media = media_map.get(target.suffix, "image/png")
+    return FileResponse(str(target), media_type=media)
 
 
 @middleware_router.get("/api/middlewares")

@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import uuid
+from io import BytesIO
+
 import pytest
 from httpx import AsyncClient
+from PIL import Image
 
+from app.models.agent import Agent
 from app.models.model import Model
 from tests.conftest import TestSession
 
@@ -119,6 +124,35 @@ async def test_toggle_favorite_nonexistent(client: AsyncClient):
 async def test_delete_nonexistent_agent(client: AsyncClient):
     resp = await client.delete("/api/agents/00000000-0000-0000-0000-000000000099")
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_agent_image_preview_serves_cached_webp(client: AsyncClient, tmp_path):
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+
+    source = tmp_path / "agent.png"
+    image = Image.new("RGB", (1024, 640), color=(28, 148, 108))
+    image.save(source)
+
+    async with TestSession() as db:
+        agent = await db.get(Agent, uuid.UUID(agent_id))
+        assert agent is not None
+        agent.image_path = str(source)
+        await db.commit()
+
+    preview_resp = await client.get(f"/api/agents/{agent_id}/image?variant=preview")
+
+    assert preview_resp.status_code == 200
+    assert preview_resp.headers["content-type"] == "image/webp"
+    preview = Image.open(BytesIO(preview_resp.content))
+    assert preview.format == "WEBP"
+    assert max(preview.size) == 768
+
+    original_resp = await client.get(f"/api/agents/{agent_id}/image")
+    assert original_resp.status_code == 200
+    assert original_resp.headers["content-type"] == "image/png"
+    assert original_resp.content == source.read_bytes()
 
 
 def test_builder_sessions_agent_id_fk_set_null():

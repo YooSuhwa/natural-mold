@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
-from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -43,6 +42,7 @@ from app.schemas.conversation import (
     TurnTraceResponse,
 )
 from app.services import chat_service, thread_branch_service, trace_storage
+from app.services.image_preview import get_or_create_image_preview
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +53,6 @@ _SSE_HEADERS = {
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
 }
-
-_IMAGE_PREVIEW_MAX_EDGE = 768
-_IMAGE_PREVIEW_QUALITY = 82
-_IMAGE_PREVIEW_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1144,7 +1139,12 @@ async def get_conversation_file(
     if not target.is_relative_to(base.resolve()) or not target.is_file():
         raise file_not_found()
     if variant == "preview":
-        preview = _get_or_create_image_preview(base.resolve(), target)
+        resolved_base = base.resolve()
+        preview = get_or_create_image_preview(
+            target,
+            cache_dir=resolved_base / ".previews",
+            cache_name=target.relative_to(resolved_base).as_posix(),
+        )
         if preview is not None:
             return FileResponse(
                 preview,
@@ -1155,41 +1155,3 @@ async def get_conversation_file(
         target,
         headers={"Cache-Control": "public, max-age=3600"},
     )
-
-
-def _get_or_create_image_preview(base: Path, target: Path) -> Path | None:
-    if target.suffix.lower() not in _IMAGE_PREVIEW_SUFFIXES:
-        return None
-
-    stat = target.stat()
-    rel = target.relative_to(base)
-    cache_key = sha256(
-        f"{rel.as_posix()}:{stat.st_size}:{stat.st_mtime_ns}".encode()
-    ).hexdigest()[:24]
-    safe_stem = rel.as_posix().replace("/", "__")
-    preview = base / ".previews" / f"{safe_stem}.{cache_key}.webp"
-    if preview.is_file():
-        return preview
-
-    try:
-        from PIL import Image, ImageOps
-
-        preview.parent.mkdir(parents=True, exist_ok=True)
-        with Image.open(target) as image:
-            image = ImageOps.exif_transpose(image)
-            if image.mode not in {"RGB", "RGBA"}:
-                image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
-            image.thumbnail(
-                (_IMAGE_PREVIEW_MAX_EDGE, _IMAGE_PREVIEW_MAX_EDGE),
-                Image.Resampling.LANCZOS,
-            )
-            image.save(
-                preview,
-                format="WEBP",
-                quality=_IMAGE_PREVIEW_QUALITY,
-                method=6,
-            )
-        return preview
-    except Exception:  # noqa: BLE001
-        logger.exception("Failed to create image preview for %s", target)
-        return None

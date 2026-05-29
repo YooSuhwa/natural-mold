@@ -15,6 +15,11 @@ const sizeMap = {
   xl: { container: 'size-44 sm:size-52', icon: 'size-16', px: 208 },
 } as const
 
+function appendPreviewVariant(src: string): string {
+  if (src.includes('variant=')) return src
+  return `${src}${src.includes('?') ? '&' : '?'}variant=preview`
+}
+
 interface AgentAvatarProps {
   imageUrl: string | null
   name: string
@@ -42,9 +47,10 @@ export function AgentAvatar({
   }
 
   if (imageUrl && !hasError) {
+    const src = publicAsset ? imageUrl : appendPreviewVariant(`${API_BASE}${imageUrl}`)
     return (
       <Image
-        src={publicAsset ? imageUrl : `${API_BASE}${imageUrl}`}
+        src={src}
         alt={name}
         width={px}
         height={px}
