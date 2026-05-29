@@ -8,6 +8,8 @@ import pytest
 
 from app.agent_runtime.executor import AgentConfig
 
+TEMPORAL_TOOL_NAMES = {"current_datetime", "resolve_relative_date"}
+
 
 def _cfg(**overrides) -> AgentConfig:
     """테스트용 AgentConfig 기본값 생성."""
@@ -122,11 +124,13 @@ async def test_execute_stream_no_tools(
 
     mock_model_factory.assert_called_once_with("openai", "gpt-4o", "sk-test", None)
     mock_build.assert_called_once()
-    # Only ask_user tool should be present (auto-included)
     tools_passed = mock_build.call_args[0][1]
-    # Only ask_user tool should be present (auto-included)
-    assert len(tools_passed) == 1
-    assert tools_passed[0].name == "ask_user"
+    tool_names = {tool.name for tool in tools_passed}
+    assert TEMPORAL_TOOL_NAMES.issubset(tool_names)
+    assert "ask_user" in tool_names
+
+    system_prompt = mock_build.call_args[0][2]
+    assert "현재 기준 날짜와 시간" in system_prompt
 
 
 @pytest.mark.asyncio
@@ -182,8 +186,8 @@ async def test_execute_stream_runtime_tool_called_per_entry(
 
     assert mock_factory.call_count == 2
     tools_passed = mock_build.call_args[0][1]
-    # 2 user tools + ask_user auto-injected helper
-    assert len(tools_passed) == 3
+    # 2 user tools + temporal helpers + ask_user auto-injected helper
+    assert len(tools_passed) == 5
 
 
 @pytest.mark.asyncio
@@ -232,8 +236,9 @@ async def test_execute_stream_skips_unknown_tool(
         pass
 
     tools_passed = mock_build.call_args[0][1]
-    # Only ask_user remains.
-    assert len(tools_passed) == 1
+    tool_names = {tool.name for tool in tools_passed}
+    assert TEMPORAL_TOOL_NAMES.issubset(tool_names)
+    assert "ask_user" in tool_names
 
 
 @pytest.mark.asyncio
@@ -269,7 +274,9 @@ async def test_execute_stream_skips_custom_without_api_url(
         pass
 
     tools_passed = mock_build.call_args[0][1]
-    assert len(tools_passed) == 1  # ask_user only (auto)
+    tool_names = {tool.name for tool in tools_passed}
+    assert TEMPORAL_TOOL_NAMES.issubset(tool_names)
+    assert "ask_user" in tool_names
 
 
 @pytest.mark.asyncio
@@ -341,7 +348,9 @@ async def test_execute_stream_skips_unknown_tool_type(
         pass
 
     tools_passed = mock_build.call_args[0][1]
-    assert len(tools_passed) == 1  # ask_user only (auto)
+    tool_names = {tool.name for tool in tools_passed}
+    assert TEMPORAL_TOOL_NAMES.issubset(tool_names)
+    assert "ask_user" in tool_names
 
 
 @pytest.mark.asyncio
@@ -581,3 +590,4 @@ async def test_ask_user_not_included_in_invoke(
     tools_passed = mock_build.call_args[0][1]
     tool_names = [t.name for t in tools_passed]
     assert "ask_user" not in tool_names
+    assert TEMPORAL_TOOL_NAMES.issubset(set(tool_names))

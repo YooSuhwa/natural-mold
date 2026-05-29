@@ -13,6 +13,7 @@ out of the box and don't justify a registry entry of their own.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
@@ -20,12 +21,17 @@ import uuid as _uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 import httpx
 from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel, Field, create_model
 
+from app.agent_runtime.temporal import (
+    DEFAULT_TIMEZONE,
+    build_temporal_context,
+    parse_reference_datetime,
+    resolve_relative_date_expression,
+)
 from app.config import settings
 from app.hooks import HookContext, HookResult, hooks
 from app.http_ssl import get_outbound_ssl_context
@@ -145,15 +151,44 @@ def _build_web_scraper_tool() -> BaseTool:
 
 def _build_current_datetime_tool() -> BaseTool:
     async def get_current_datetime() -> str:
-        """현재 날짜와 시간을 반환합니다."""
+        """현재 날짜와 시간, 이번 주말 등 기준 날짜 컨텍스트를 반환합니다."""
 
-        now = datetime.now(ZoneInfo("Asia/Seoul"))
-        return now.strftime("%Y년 %m월 %d일 %A %H:%M:%S (KST)")
+        return json.dumps(build_temporal_context(), ensure_ascii=False)
 
     return StructuredTool.from_function(
         coroutine=get_current_datetime,
         name="current_datetime",
-        description="현재 날짜와 시간을 반환합니다. 오늘 날짜, 현재 시간, 요일을 알려줍니다.",
+        description=(
+            "현재 날짜/시간과 요일, 이번 주말/다음 주 날짜 범위를 JSON으로 반환합니다. "
+            "오늘, 요일, 현재 시간 확인이 필요할 때 사용하세요."
+        ),
+    )
+
+
+def _build_resolve_relative_date_tool() -> BaseTool:
+    async def resolve_relative_date(
+        expression: str,
+        reference_date: str | None = None,
+        timezone: str = DEFAULT_TIMEZONE,
+    ) -> str:
+        """상대 날짜 표현을 ISO 날짜 범위로 변환합니다."""
+
+        now = parse_reference_datetime(reference_date, timezone=timezone)
+        result = resolve_relative_date_expression(
+            expression,
+            now=now,
+            timezone=timezone,
+        )
+        return json.dumps(result, ensure_ascii=False)
+
+    return StructuredTool.from_function(
+        coroutine=resolve_relative_date,
+        name="resolve_relative_date",
+        description=(
+            "한국어 상대 날짜 표현을 ISO 날짜 범위로 변환합니다. "
+            "예: '이번주 주말', '다음주 수요일', '최근 뉴스', '내일'. "
+            "날씨, 뉴스, 일정, 예약 조회 전에 날짜 범위를 확정할 때 사용하세요."
+        ),
     )
 
 
@@ -161,6 +196,7 @@ _BUILTIN_BUILDERS: dict[str, Callable[[], BaseTool]] = {
     "builtin:web_search": _build_web_search_tool,
     "builtin:web_scraper": _build_web_scraper_tool,
     "builtin:current_datetime": _build_current_datetime_tool,
+    "builtin:resolve_relative_date": _build_resolve_relative_date_tool,
 }
 
 

@@ -31,7 +31,8 @@ from app.agent_runtime.middleware_registry import (
 )
 from app.agent_runtime.model_factory import create_chat_model
 from app.agent_runtime.streaming import stream_agent_response
-from app.agent_runtime.tool_factory import create_tool_for_runtime
+from app.agent_runtime.temporal import build_temporal_context_prompt
+from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_for_runtime
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
 from app.hooks import HookContext, HookResult, hooks
 from app.marketplace.skill_runtime import (
@@ -49,6 +50,10 @@ _SHELL_DEFAULT_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*):-(.*?)\}")
 _SHELL_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 _DEFAULT_SKILL_TIMEOUT_SECONDS = 30.0
 _MAX_SKILL_TIMEOUT_SECONDS = 420.0
+_TEMPORAL_BUILTIN_TOOL_KEYS = (
+    "builtin:current_datetime",
+    "builtin:resolve_relative_date",
+)
 
 # HiTL: interrupt_on 자동 생성 시 쓰기/실행 도구만 대상으로 하는 키워드
 _WRITE_TOOL_KEYWORDS = frozenset(
@@ -611,6 +616,18 @@ def _build_model_with_fallback(cfg: AgentConfig) -> BaseChatModel:
     raise last_error
 
 
+def _append_temporal_tools(tools: list[BaseTool]) -> None:
+    """Ensure date/time grounding tools are always available to agents."""
+
+    existing = {tool.name for tool in tools}
+    for key in _TEMPORAL_BUILTIN_TOOL_KEYS:
+        tool = create_builtin_tool(key)
+        if tool is None or tool.name in existing:
+            continue
+        tools.append(tool)
+        existing.add(tool.name)
+
+
 async def _prepare_agent(
     cfg: AgentConfig,
     *,
@@ -623,7 +640,7 @@ async def _prepare_agent(
     (a) ``ask_user`` 도구 미주입(호출 시 영원히 hang), (b) HiTL ``interrupt_on``
     을 None 으로 강제 override 하여 위험 도구 승인 게이트도 자동 통과.
     """
-    system_prompt = cfg.system_prompt
+    system_prompt = cfg.system_prompt + build_temporal_context_prompt()
     model = _build_model_with_fallback(cfg)
 
     # 1. 도구 생성 — 단일 경로 (definition_key + credentials).
@@ -645,6 +662,7 @@ async def _prepare_agent(
     # 2. MCP 도구 — langchain-mcp-adapters 사용 (legacy 경로, 항목이 비면 no-op)
     mcp_tools = await _build_mcp_tools(mcp_configs)
     langchain_tools.extend(mcp_tools)
+    _append_temporal_tools(langchain_tools)
 
     # 3. 미들웨어 — deepagents 빌트인 타입 제외 후, model 문자열을 BaseChatModel로 사전 해석
     filtered_mw = [
