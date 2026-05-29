@@ -75,7 +75,10 @@ function MessageTimestamp() {
   )
 }
 
-// reference 안정화 — react/streamdown이 prop 변화 시 processor를 재구성하지 않게.
+// CHAT_STREAMING_REMARK_PLUGINS는 모듈 레벨 상수다. 컴포넌트 body 안에서
+// 새 배열을 만들면 streamdown 메모이즈 캐시가 깨져 리렌더 루프가 날 수 있다.
+// remarkPlugins를 넘기면 streamdown 내장 기본값이 덮어써지므로, GFM은
+// CHAT_STREAMING_REMARK_PLUGINS에서 직접 재주입한다.
 // streamdown의 syntax highlight(@streamdown/code)는 우리 SyntaxHighlighter와
 // 출력이 충돌하므로 제거 — math plugin만 유지.
 const STREAMDOWN_PLUGINS = { math }
