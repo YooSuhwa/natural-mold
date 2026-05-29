@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from app.agent_runtime import executor as executor_runtime
 from app.agent_runtime.executor import (
     AgentConfig,
     _create_skill_execute_tool,
@@ -221,6 +222,106 @@ class TestPerThreadRuntimeRoot:
 
 
 class TestExecuteInSkillPathValidation:
+    @pytest.mark.asyncio
+    async def test_execute_in_skill_uses_skill_timeout_from_execution_profile(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        observed_timeouts: list[float | None] = []
+        real_wait_for = executor_runtime.asyncio.wait_for
+
+        async def _recording_wait_for(awaitable, **kwargs):
+            timeout = kwargs.get("timeout")
+            observed_timeouts.append(timeout)
+            return await real_wait_for(awaitable, timeout=timeout)
+
+        monkeypatch.setattr(executor_runtime.asyncio, "wait_for", _recording_wait_for)
+
+        src = _seed_skill_on_disk(tmp_path, slug="slow-image")
+        (src / "scripts" / "probe.py").write_text("print('ok')\n")
+        descriptor = _skill_descriptor_dict(uuid.uuid4(), "slow-image", src)
+        descriptor["execution_profile"] = {"timeout_seconds": 420}
+        cfg = _make_cfg(
+            thread_id="thread-timeout",
+            skills=[descriptor],
+        )
+        ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
+        tool = _create_skill_execute_tool(ctx)
+
+        result = await tool.coroutine(
+            skill_directory="/runtime/thread-timeout/skills/slow-image/",
+            command="python scripts/probe.py",
+        )
+
+        assert "ok" in result
+        assert observed_timeouts == [420]
+
+    @pytest.mark.asyncio
+    async def test_execute_in_skill_preserves_tls_ca_bundle_env(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Skill subprocesses need the curated TLS CA bundle from the parent
+        process, while unrelated host env vars must remain isolated."""
+
+        ssl_cert = tmp_path / "combined.pem"
+        ssl_cert.write_text("test-ca\n")
+        requests_bundle = tmp_path / "requests.pem"
+        requests_bundle.write_text("test-requests-ca\n")
+        monkeypatch.setenv("SSL_CERT_FILE", str(ssl_cert))
+        monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(requests_bundle))
+        monkeypatch.setenv("SECRET_PASTE", "host-leak-value")
+
+        src = _seed_skill_on_disk(tmp_path, slug="tls")
+        (src / "scripts" / "env_probe.py").write_text(
+            "import os\n"
+            "print('SSL_CERT_FILE=' + os.environ.get('SSL_CERT_FILE', ''))\n"
+            "print('REQUESTS_CA_BUNDLE=' + os.environ.get('REQUESTS_CA_BUNDLE', ''))\n"
+            "print('SECRET_PASTE=' + os.environ.get('SECRET_PASTE', ''))\n"
+        )
+        cfg = _make_cfg(
+            thread_id="thread-tls",
+            skills=[_skill_descriptor_dict(uuid.uuid4(), "tls", src)],
+        )
+        ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
+        tool = _create_skill_execute_tool(ctx)
+
+        result = await tool.coroutine(
+            skill_directory="/runtime/thread-tls/skills/tls/",
+            command="python scripts/env_probe.py",
+        )
+
+        assert f"SSL_CERT_FILE={ssl_cert}" in result
+        assert f"REQUESTS_CA_BUNDLE={requests_bundle}" in result
+        assert "SECRET_PASTE=host-leak-value" not in result
+
+    @pytest.mark.asyncio
+    async def test_execute_in_skill_allows_curl_with_base_assignment(
+        self, tmp_path: Path
+    ) -> None:
+        """k-skill docs often show a BASE=... + curl snippet. The runtime
+        should execute that shape without opening arbitrary shell execution."""
+
+        src = _seed_skill_on_disk(tmp_path, slug="curl")
+        (src / "payload.txt").write_text("curl-ok\n")
+        cfg = _make_cfg(
+            thread_id="thread-curl",
+            skills=[_skill_descriptor_dict(uuid.uuid4(), "curl", src)],
+        )
+        ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
+        payload_url = (
+            ctx.descriptors["curl"].runtime_storage_path / "payload.txt"
+        ).as_uri()
+        tool = _create_skill_execute_tool(ctx)
+
+        result = await tool.coroutine(
+            skill_directory="/runtime/thread-curl/skills/curl/",
+            command=(
+                f'BASE="${{KSKILL_PROXY_BASE_URL:-{payload_url}}}"\n'
+                'curl -fsS "${BASE}"'
+            ),
+        )
+
+        assert "curl-ok" in result
+
     @pytest.mark.asyncio
     async def test_execute_in_skill_rejects_outside_runtime_root(
         self, tmp_path: Path

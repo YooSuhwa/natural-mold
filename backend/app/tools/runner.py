@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.http_ssl import get_outbound_ssl_context
 from app.models.credential import Credential
 from app.models.tool import Tool
 from app.tools.domain import ToolDefinition, ToolRunContext
@@ -127,7 +128,10 @@ async def run_tool(
         return ToolRunResult(success=False, error=str(exc))
 
     own_client = http_client is None
-    client = http_client or httpx.AsyncClient(timeout=30.0)
+    client = http_client or httpx.AsyncClient(
+        timeout=30.0,
+        verify=get_outbound_ssl_context(),
+    )
     started = time.monotonic()
     http_status: int | None = None
     try:
