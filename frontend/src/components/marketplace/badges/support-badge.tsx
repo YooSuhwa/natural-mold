@@ -11,27 +11,27 @@ interface Spec {
 
 const SPECS: Record<SupportLevel, Spec> = {
   ready_python: {
-    label: 'Python ready',
+    label: 'Python 실행 가능',
     className: 'bg-status-success/10 text-status-success',
   },
   proxy_http: {
-    label: 'Proxy required',
+    label: '프록시 필요',
     className: 'bg-status-info/10 text-status-info',
   },
   node_package: {
-    label: 'Node required',
+    label: 'Node 필요',
     className: 'bg-muted text-foreground',
   },
   browser_or_local: {
-    label: 'Browser/local',
+    label: '브라우저/로컬 필요',
     className: 'bg-status-warn/10 text-status-warn',
   },
   manual_only: {
-    label: 'Manual only',
+    label: '수동 설정',
     className: 'bg-status-warn/10 text-status-warn',
   },
   disabled: {
-    label: 'Unsupported',
+    label: '지원 안 함',
     className: 'bg-destructive/10 text-destructive',
   },
 }
