@@ -25,6 +25,51 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleString()
 }
 
+function SkillViewToggle({
+  view,
+  onViewChange,
+}: {
+  view: 'table' | 'grid'
+  onViewChange: (view: 'table' | 'grid') => void
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label="스킬 보기 모드"
+      className="ml-auto inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1"
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === 'table'}
+        aria-label="표 보기"
+        onClick={() => onViewChange('table')}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors ${
+          view === 'table'
+            ? 'bg-background font-semibold text-foreground shadow-sm'
+            : 'font-medium text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        <Rows className="size-4" />
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={view === 'grid'}
+        aria-label="격자 보기"
+        onClick={() => onViewChange('grid')}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors ${
+          view === 'grid'
+            ? 'bg-background font-semibold text-foreground shadow-sm'
+            : 'font-medium text-muted-foreground hover:text-foreground'
+        }`}
+      >
+        <LayoutGrid className="size-4" />
+      </button>
+    </div>
+  )
+}
+
 export default function SkillsPage() {
   const { data: skills, isLoading } = useSkills()
   const [createOpen, setCreateOpen] = useState(false)
@@ -49,8 +94,26 @@ export default function SkillsPage() {
     () => [
       {
         accessorKey: 'name',
-        header: '이름',
-        cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+        header: '스킬',
+        cell: ({ row }) => {
+          const skill = row.original
+          return (
+            <div className="min-w-[240px] space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium text-foreground">{skill.name}</span>
+                {skill.version ? (
+                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    v{skill.version}
+                  </span>
+                ) : null}
+              </div>
+              <p className="line-clamp-2 max-w-[360px] text-xs leading-5 text-muted-foreground">
+                {skill.description ?? skill.slug}
+              </p>
+              <p className="font-mono text-[11px] text-muted-foreground/80">{skill.slug}</p>
+            </div>
+          )
+        },
       },
       {
         id: 'kind',
@@ -74,26 +137,9 @@ export default function SkillsPage() {
         cell: ({ row }) => <PublicationBadge summary={row.original.publication_summary} />,
       },
       {
-        id: 'credential',
-        header: '자격증명',
-        cell: ({ row }) => {
-          const summary = row.original.installation ? null : null
-          void summary
-          // Skill row doesn't carry credential_summary directly; show via
-          // installation chip when relevant. For Phase 1 we render `—` for
-          // user-owned skills without binding info.
-          return <span className="text-xs text-muted-foreground">—</span>
-        },
-      },
-      {
         accessorKey: 'used_by_count',
         header: '에이전트',
         cell: ({ row }) => row.original.used_by_count,
-      },
-      {
-        accessorKey: 'version',
-        header: '버전',
-        cell: ({ row }) => row.original.version ?? '—',
       },
       {
         accessorKey: 'updated_at',
@@ -144,6 +190,7 @@ export default function SkillsPage() {
   )
 
   const data = skills ?? []
+  const showViewToggle = !isLoading && data.length > 0
 
   return (
     <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
@@ -152,50 +199,14 @@ export default function SkillsPage() {
           title="스킬"
           description="에이전트에 붙여 쓰는 마크다운 스니펫과 패키지를 관리하세요."
           action={
-            <Button onClick={() => openCreate('text')}>
-              <Plus className="size-4" />새 스킬
-            </Button>
+            <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
+              {showViewToggle ? <SkillViewToggle view={view} onViewChange={setView} /> : null}
+              <Button onClick={() => openCreate('text')}>
+                <Plus className="size-4" />새 스킬
+              </Button>
+            </div>
           }
         />
-
-        {!isLoading && data.length > 0 && (
-          <div className="flex items-center justify-end">
-            <div
-              role="tablist"
-              aria-label="스킬 보기 모드"
-              className="inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === 'table'}
-                aria-label="표 보기"
-                onClick={() => setView('table')}
-                className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors ${
-                  view === 'table'
-                    ? 'bg-background font-semibold text-foreground shadow-sm'
-                    : 'font-medium text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Rows className="size-4" />
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === 'grid'}
-                aria-label="격자 보기"
-                onClick={() => setView('grid')}
-                className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors ${
-                  view === 'grid'
-                    ? 'bg-background font-semibold text-foreground shadow-sm'
-                    : 'font-medium text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <LayoutGrid className="size-4" />
-              </button>
-            </div>
-          </div>
-        )}
 
         {!isLoading && data.length === 0 ? (
           <EmptyState
