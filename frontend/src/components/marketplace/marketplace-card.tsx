@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { memo } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { BotIcon, ServerIcon, SparklesIcon } from 'lucide-react'
 
@@ -100,7 +101,7 @@ interface MarketplaceCardProps {
   className?: string
 }
 
-export function MarketplaceCard({ item, onAction, className }: MarketplaceCardProps) {
+function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProps) {
   const Icon = RESOURCE_ICONS[item.resource_type] ?? SparklesIcon
   const cta = derivePrimaryCta(item)
   const ownerLabel = item.is_system ? '시스템' : '커뮤니티'
@@ -170,3 +171,6 @@ export function MarketplaceCard({ item, onAction, className }: MarketplaceCardPr
     </Card>
   )
 }
+
+export const MarketplaceCard = memo(MarketplaceCardInner)
+MarketplaceCard.displayName = 'MarketplaceCard'

@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowUpCircleIcon,
@@ -50,7 +51,7 @@ interface InstallationBadgeProps {
   className?: string
 }
 
-export function InstallationBadge({ summary, className }: InstallationBadgeProps) {
+function InstallationBadgeInner({ summary, className }: InstallationBadgeProps) {
   if (!summary?.installed || !summary.status) return null
   const spec = SPECS[summary.status] ?? SPECS.active
   const Icon = spec.icon
@@ -75,3 +76,6 @@ export function InstallationBadge({ summary, className }: InstallationBadgeProps
     </div>
   )
 }
+
+export const InstallationBadge = memo(InstallationBadgeInner)
+InstallationBadge.displayName = 'InstallationBadge'

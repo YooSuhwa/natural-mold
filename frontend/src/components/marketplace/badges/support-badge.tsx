@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { Badge } from '@/components/ui/badge'
 import type { ExecutionProfile, SupportLevel } from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
@@ -41,7 +42,7 @@ interface SupportBadgeProps {
   className?: string
 }
 
-export function SupportBadge({ profile, className }: SupportBadgeProps) {
+function SupportBadgeInner({ profile, className }: SupportBadgeProps) {
   const level = profile?.support_level
   if (!level) return null
   const spec = SPECS[level] ?? SPECS.manual_only
@@ -51,3 +52,6 @@ export function SupportBadge({ profile, className }: SupportBadgeProps) {
     </Badge>
   )
 }
+
+export const SupportBadge = memo(SupportBadgeInner)
+SupportBadge.displayName = 'SupportBadge'

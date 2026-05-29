@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   type ColumnDef,
   type ColumnFiltersState,
@@ -98,50 +98,58 @@ export function DataTable<T>({
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [search, setSearch] = useState('')
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+  const deferredSearch = useDeferredValue(search)
+  const normalizedSearch = useMemo(
+    () => deferredSearch.trim().toLowerCase(),
+    [deferredSearch],
+  )
 
-  const filtered = search
-    ? data.filter((row) => {
-        if (globalFilterFn) return globalFilterFn(row, search.toLowerCase())
-        const r = row as unknown as Record<string, unknown>
-        const name = String(r.name ?? '').toLowerCase()
-        const description = String(r.description ?? '').toLowerCase()
-        const q = search.toLowerCase()
-        return name.includes(q) || description.includes(q)
-      })
-    : data
+  const filtered = useMemo(() => {
+    if (!normalizedSearch) return data
+
+    return data.filter((row) => {
+      if (globalFilterFn) return globalFilterFn(row, normalizedSearch)
+      const r = row as unknown as Record<string, unknown>
+      const name = String(r.name ?? '').toLowerCase()
+      const description = String(r.description ?? '').toLowerCase()
+      return name.includes(normalizedSearch) || description.includes(normalizedSearch)
+    })
+  }, [data, globalFilterFn, normalizedSearch])
 
   // Inject the leading selection column when requested. Wrapped in a separate
   // const so the original `columns` prop is preserved for downstream use.
-  const tableColumns = enableRowSelection
-    ? ([
-        {
-          id: '__select',
-          header: ({ table }) => (
-            <Checkbox
-              aria-label="모든 행 선택"
-              checked={table.getIsAllPageRowsSelected()}
-              indeterminate={table.getIsSomePageRowsSelected()}
-              onCheckedChange={(value) =>
-                table.toggleAllPageRowsSelected(Boolean(value))
-              }
-              onClick={(e) => e.stopPropagation()}
-            />
-          ),
-          cell: ({ row }) => (
-            <Checkbox
-              aria-label="행 선택"
-              checked={row.getIsSelected()}
-              disabled={!row.getCanSelect()}
-              onCheckedChange={(value) => row.toggleSelected(Boolean(value))}
-              onClick={(e) => e.stopPropagation()}
-            />
-          ),
-          enableSorting: false,
-          size: 32,
-        } as ColumnDef<T, unknown>,
-        ...columns,
-      ] as ColumnDef<T, unknown>[])
-    : columns
+  const tableColumns = useMemo(() => {
+    if (!enableRowSelection) return columns
+
+    return [
+      {
+        id: '__select',
+        header: ({ table }) => (
+          <Checkbox
+            aria-label="모든 행 선택"
+            checked={table.getIsAllPageRowsSelected()}
+            indeterminate={table.getIsSomePageRowsSelected()}
+            onCheckedChange={(value) =>
+              table.toggleAllPageRowsSelected(Boolean(value))
+            }
+            onClick={(e) => e.stopPropagation()}
+          />
+        ),
+        cell: ({ row }) => (
+          <Checkbox
+            aria-label="행 선택"
+            checked={row.getIsSelected()}
+            disabled={!row.getCanSelect()}
+            onCheckedChange={(value) => row.toggleSelected(Boolean(value))}
+            onClick={(e) => e.stopPropagation()}
+          />
+        ),
+        enableSorting: false,
+        size: 32,
+      } as ColumnDef<T, unknown>,
+      ...columns,
+    ] as ColumnDef<T, unknown>[]
+  }, [columns, enableRowSelection])
 
   const table = useReactTable({
     data: filtered,
