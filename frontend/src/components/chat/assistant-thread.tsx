@@ -802,7 +802,7 @@ function AttachmentChip() {
         <button
           type="button"
           className="ml-1 inline-flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-          aria-label="Remove attachment"
+          aria-label="첨부 파일 제거"
         >
           <XIcon className="size-3" />
         </button>

@@ -117,6 +117,8 @@ function CodeBlock({
             type="button"
             onClick={handleCopy}
             className="text-zinc-500 transition-colors hover:text-zinc-300"
+            aria-label={copied ? '복사됨' : '복사'}
+            title={copied ? '복사됨' : '복사'}
           >
             {copied ? (
               <CheckIcon className="size-3 text-status-success" />

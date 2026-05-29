@@ -30,65 +30,65 @@ const STYLES: Record<StatusChipVariant, { icon: Icon; classes: string; defaultLa
     icon: CheckCircle2,
     classes:
       'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30',
-    defaultLabel: 'Active',
+    defaultLabel: '활성',
   },
   connected: {
     icon: CheckCircle2,
     classes:
       'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30',
-    defaultLabel: 'Connected',
+    defaultLabel: '연결됨',
   },
   auth_needed: {
     icon: AlertTriangle,
     classes:
       'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30',
-    defaultLabel: 'Auth needed',
+    defaultLabel: '인증 필요',
   },
   expired: {
     icon: Clock,
     classes:
       'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30',
-    defaultLabel: 'Expired',
+    defaultLabel: '만료됨',
   },
   disabled: {
     icon: Slash,
     classes: 'bg-muted text-muted-foreground ring-border',
-    defaultLabel: 'Disabled',
+    defaultLabel: '비활성',
   },
   error: {
     icon: XCircle,
     classes:
       'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
-    defaultLabel: 'Error',
+    defaultLabel: '오류',
   },
   unreachable: {
     icon: XCircle,
     classes:
       'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
-    defaultLabel: 'Unreachable',
+    defaultLabel: '연결 불가',
   },
   unknown: {
     icon: HelpCircle,
     classes: 'bg-muted text-muted-foreground ring-border',
-    defaultLabel: 'Unknown',
+    defaultLabel: '알 수 없음',
   },
   healthy: {
     icon: CheckCircle2,
     classes:
       'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30',
-    defaultLabel: 'Healthy',
+    defaultLabel: '정상',
   },
   degraded: {
     icon: AlertTriangle,
     classes:
       'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30',
-    defaultLabel: 'Degraded',
+    defaultLabel: '주의',
   },
   unhealthy: {
     icon: XCircle,
     classes:
       'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
-    defaultLabel: 'Unhealthy',
+    defaultLabel: '비정상',
   },
 }
 

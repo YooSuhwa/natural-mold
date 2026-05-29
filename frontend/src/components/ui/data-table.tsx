@@ -86,7 +86,7 @@ export function DataTable<T>({
   onRowClick,
   pageSize = 10,
   loading = false,
-  emptyTitle = 'No items',
+  emptyTitle = '항목이 없어요',
   emptyDescription,
   emptyAction,
   enableRowSelection = false,
@@ -118,7 +118,7 @@ export function DataTable<T>({
           id: '__select',
           header: ({ table }) => (
             <Checkbox
-              aria-label="Select all rows"
+              aria-label="모든 행 선택"
               checked={table.getIsAllPageRowsSelected()}
               indeterminate={table.getIsSomePageRowsSelected()}
               onCheckedChange={(value) =>
@@ -129,7 +129,7 @@ export function DataTable<T>({
           ),
           cell: ({ row }) => (
             <Checkbox
-              aria-label="Select row"
+              aria-label="행 선택"
               checked={row.getIsSelected()}
               disabled={!row.getCanSelect()}
               onCheckedChange={(value) => row.toggleSelected(Boolean(value))}
@@ -183,7 +183,7 @@ export function DataTable<T>({
           {searchable && (
             <SearchInput
               containerClassName="w-full sm:w-72"
-              placeholder={searchPlaceholder ?? 'Search...'}
+              placeholder={searchPlaceholder ?? '검색...'}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -284,9 +284,8 @@ export function DataTable<T>({
       {table.getPageCount() > 1 && (
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
-            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()} ·{' '}
-            {table.getFilteredRowModel().rows.length} item
-            {table.getFilteredRowModel().rows.length === 1 ? '' : 's'}
+            {table.getState().pagination.pageIndex + 1}페이지 / {table.getPageCount()}페이지 ·{' '}
+            {table.getFilteredRowModel().rows.length}개 항목
           </span>
           <div className="flex gap-1">
             <Button
@@ -296,7 +295,7 @@ export function DataTable<T>({
               disabled={!table.getCanPreviousPage()}
             >
               <ChevronLeft className="size-4" />
-              Previous
+              이전
             </Button>
             <Button
               variant="outline"
@@ -304,7 +303,7 @@ export function DataTable<T>({
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
-              Next
+              다음
               <ChevronRight className="size-4" />
             </Button>
           </div>
@@ -332,7 +331,7 @@ function DataTableFilter({
         <SelectValue placeholder={filter.label} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">All {filter.label}</SelectItem>
+        <SelectItem value="all">전체 {filter.label}</SelectItem>
         {filter.options.map((opt) => (
           <SelectItem key={opt.value} value={opt.value}>
             {opt.label}
