@@ -193,15 +193,19 @@ function StreamingLoadingIndicator() {
  * 사용자/AI 메시지 쪽 정렬을 표현. */
 function MessageMetaRow({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-1 flex items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+    <div className="mt-1 flex min-h-7 max-w-full items-center gap-1 overflow-hidden opacity-0 transition-opacity group-hover:opacity-100">
       {children}
     </div>
   )
 }
 
+const MESSAGE_ACTION_CLASS =
+  'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40'
+
 function CopyButton() {
   const [copied, setCopied] = useState(false)
   const t = useTranslations('chat.message')
+  const label = copied ? t('copied') : t('copy')
 
   return (
     <ActionBarPrimitive.Copy
@@ -210,18 +214,19 @@ function CopyButton() {
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
       }}
-      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      className={MESSAGE_ACTION_CLASS}
       aria-label={t('copyLabel')}
+      title={label}
     >
       {copied ? (
         <>
           <CheckIcon className="size-3 text-status-success" />
-          <span className="text-status-success">{t('copied')}</span>
+          <span className="sr-only">{t('copied')}</span>
         </>
       ) : (
         <>
           <CopyIcon className="size-3" />
-          <span>{t('copy')}</span>
+          <span className="sr-only">{t('copy')}</span>
         </>
       )}
     </ActionBarPrimitive.Copy>
@@ -233,11 +238,12 @@ function EditButton() {
   const t = useTranslations('chat.message')
   return (
     <ActionBarPrimitive.Edit
-      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      className={MESSAGE_ACTION_CLASS}
       aria-label={t('edit')}
+      title={t('edit')}
     >
       <PencilIcon className="size-3" />
-      <span>{t('edit')}</span>
+      <span className="sr-only">{t('edit')}</span>
     </ActionBarPrimitive.Edit>
   )
 }
@@ -247,11 +253,12 @@ function RegenerateButton() {
   const t = useTranslations('chat.message')
   return (
     <ActionBarPrimitive.Reload
-      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+      className={MESSAGE_ACTION_CLASS}
       aria-label={t('regenerate')}
+      title={t('regenerate')}
     >
       <RotateCcwIcon className="size-3" />
-      <span>{t('regenerate')}</span>
+      <span className="sr-only">{t('regenerate')}</span>
     </ActionBarPrimitive.Reload>
   )
 }
@@ -387,23 +394,25 @@ function FeedbackButtons() {
     <>
       <ActionBarPrimitive.FeedbackPositive
         className={cn(
-          'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-colors hover:bg-accent',
+          MESSAGE_ACTION_CLASS,
           submitted === 'positive'
             ? 'text-primary-strong'
             : 'text-muted-foreground hover:text-foreground',
         )}
         aria-label={t('feedbackUp')}
+        title={t('feedbackUp')}
       >
         <ThumbsUpIcon className="size-3" />
       </ActionBarPrimitive.FeedbackPositive>
       <ActionBarPrimitive.FeedbackNegative
         className={cn(
-          'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-colors hover:bg-accent',
+          MESSAGE_ACTION_CLASS,
           submitted === 'negative'
             ? 'text-status-warn'
             : 'text-muted-foreground hover:text-foreground',
         )}
         aria-label={t('feedbackDown')}
+        title={t('feedbackDown')}
       >
         <ThumbsDownIcon className="size-3" />
       </ActionBarPrimitive.FeedbackNegative>
