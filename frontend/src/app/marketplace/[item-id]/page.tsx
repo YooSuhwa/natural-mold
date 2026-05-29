@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { ChevronLeftIcon, SparklesIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -40,11 +41,46 @@ import {
 import type { MarketplaceItemPatchBody, MarketplaceVisibility } from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 
+const SUPPORT_LEVEL_LABELS: Record<string, string> = {
+  ready_python: 'Python 실행 가능',
+  proxy_http: '프록시 필요',
+  node_package: 'Node 필요',
+  browser_or_local: '브라우저/로컬 필요',
+  manual_only: '수동 설정',
+  disabled: '지원 안 함',
+}
+
+const EXECUTION_PROFILE_LABELS: Record<string, string> = {
+  support_level: '지원 방식',
+  runners: '실행기',
+  requires_network: '네트워크',
+  notes: '메모',
+}
+
 const VISIBILITY_SUCCESS_MESSAGE: Record<Exclude<MarketplaceVisibility, 'system'>, string> = {
   private: '비공개로 전환했습니다. 카탈로그에서 노출 안 됨.',
   public: '공개로 전환했습니다. 카탈로그 노출은 super_user 승인 대기.',
   unlisted: '링크 전용(unlisted)으로 전환했습니다.',
   restricted: 'Restricted로 전환했습니다. ACL 대상 추가 필요.',
+}
+
+function shortHash(value?: string | null): string | null {
+  if (!value) return null
+  return value.slice(0, 7)
+}
+
+function formatExecutionProfileValue(key: string, value: unknown): string {
+  if (key === 'support_level' && typeof value === 'string') {
+    return SUPPORT_LEVEL_LABELS[value] ?? value
+  }
+  if (key === 'requires_network' && typeof value === 'boolean') {
+    return value ? '필요' : '불필요'
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(', ') : '없음'
+  }
+  if (value == null || value === '') return '—'
+  return String(value)
 }
 
 interface PageProps {
@@ -242,12 +278,28 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                   {versions.map((v) => (
                     <li
                       key={v.id}
-                      className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
+                      className="flex items-center justify-between gap-3 rounded-md border border-border/60 px-3 py-2"
                     >
-                      <span className="font-medium">v{v.version_label}</span>
-                      <span className="text-xs text-muted-foreground">
+                      <div className="min-w-0 space-y-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-medium">v{v.version_label}</span>
+                          <Badge variant="secondary" className="text-[10px]">
+                            #{v.version_number}
+                          </Badge>
+                          {v.id === item.latest_version?.id ? (
+                            <Badge className="bg-status-success/10 text-status-success text-[10px]">
+                              최신
+                            </Badge>
+                          ) : null}
+                        </div>
+                        {shortHash(v.content_hash) ? (
+                          <code className="font-mono text-[11px] text-muted-foreground">
+                            {shortHash(v.content_hash)}
+                          </code>
+                        ) : null}
+                      </div>
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         {formatMediumDate(v.created_at)}
-                        {v.source_commit ? ` · ${v.source_commit.slice(0, 7)}` : ''}
                       </span>
                     </li>
                   ))}
@@ -260,14 +312,18 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
             <CardHeader>
               <CardTitle className="text-sm">실행 프로필</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-1 text-sm text-muted-foreground">
+            <CardContent className="text-sm text-muted-foreground">
               {item.execution_profile ? (
-                Object.entries(item.execution_profile).map(([key, value]) => (
-                  <p key={key}>
-                    <span className="font-medium text-foreground">{key}</span>:{' '}
-                    {Array.isArray(value) ? value.join(', ') : String(value)}
-                  </p>
-                ))
+                <dl className="grid gap-2">
+                  {Object.entries(item.execution_profile).map(([key, value]) => (
+                    <div key={key} className="grid gap-1 rounded-md bg-muted/40 px-3 py-2 sm:grid-cols-[120px_1fr]">
+                      <dt className="font-medium text-foreground">
+                        {EXECUTION_PROFILE_LABELS[key] ?? key}
+                      </dt>
+                      <dd>{formatExecutionProfileValue(key, value)}</dd>
+                    </div>
+                  ))}
+                </dl>
               ) : (
                 <p>등록된 실행 프로필이 없어요.</p>
               )}
