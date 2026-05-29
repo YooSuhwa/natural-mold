@@ -3,13 +3,10 @@
 import { lazy, Suspense, useState, useCallback, useMemo } from 'react'
 import type { Components } from 'react-markdown'
 import Markdown, { defaultUrlTransform } from 'react-markdown'
-import remarkBreaks from 'remark-breaks'
-import remarkGfm from 'remark-gfm'
-import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import { CHAT_FINAL_REMARK_PLUGINS } from '@/components/chat/markdown-plugins'
 
 // 모듈 레벨 상수 — 매 렌더에서 새 배열 만드는 것 회피.
-const REMARK_PLUGINS = [remarkGfm, remarkMath, remarkBreaks]
 const REHYPE_PLUGINS = [rehypeKatex]
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -24,6 +21,16 @@ import './markdown-styles.css'
 const MermaidDiagram = lazy(() =>
   import('./mermaid-diagram').then((m) => ({ default: m.MermaidDiagram })),
 )
+
+const loadedImageSources = new Set<string>()
+const CONVERSATION_IMAGE_FILE_RE =
+  /\/api\/conversations\/[^/]+\/files\/.+\.(?:png|jpe?g|webp)(?:[?#]|$)/i
+
+export function getChatImagePreviewSrc(resolvedSrc: string): string {
+  if (!CONVERSATION_IMAGE_FILE_RE.test(resolvedSrc)) return resolvedSrc
+  if (resolvedSrc.includes('variant=preview')) return resolvedSrc
+  return `${resolvedSrc}${resolvedSrc.includes('?') ? '&' : '?'}variant=preview`
+}
 
 /** Allow sandbox: and file: URLs that LLMs prepend, then delegate to default. */
 function urlTransform(url: string): string {
@@ -84,11 +91,18 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 
 export function ChatImage({ src, alt }: { src: string; alt: string }) {
   const [open, setOpen] = useState(false)
-  const [error, setError] = useState(false)
-  const [loaded, setLoaded] = useState(false)
 
   const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'
   const resolvedSrc = src.startsWith('/api/') ? `${API_BASE}${src}` : src
+  const previewSrc = getChatImagePreviewSrc(resolvedSrc)
+  const [previewErrorSrc, setPreviewErrorSrc] = useState<string | null>(null)
+  const displaySrc = previewErrorSrc === previewSrc ? resolvedSrc : previewSrc
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(() =>
+    loadedImageSources.has(displaySrc) ? displaySrc : null,
+  )
+  const [errorSrc, setErrorSrc] = useState<string | null>(null)
+  const loaded = loadedImageSources.has(displaySrc) || loadedSrc === displaySrc
+  const error = errorSrc === displaySrc
 
   if (error) {
     return (
@@ -105,24 +119,39 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
         {!loaded && <span className="block w-48 h-32 rounded-lg bg-muted animate-pulse" />}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={resolvedSrc}
+          src={displaySrc}
           alt={alt}
           className={cn('chat-image', !loaded && 'absolute inset-0 opacity-0')}
           loading="lazy"
-          onLoad={() => setLoaded(true)}
-          onError={() => setError(true)}
+          onLoad={() => {
+            loadedImageSources.add(displaySrc)
+            setLoadedSrc(displaySrc)
+          }}
+          onError={() => {
+            if (displaySrc !== resolvedSrc) {
+              setPreviewErrorSrc(previewSrc)
+              return
+            }
+            setErrorSrc(displaySrc)
+          }}
           onClick={() => setOpen(true)}
         />
       </span>
 
-      <DialogShell open={open} onOpenChange={setOpen} size="xl" height="auto">
+      <DialogShell
+        open={open}
+        onOpenChange={setOpen}
+        size="xl"
+        height="auto"
+        className="!h-[calc(100vh-2rem)] !max-h-[calc(100vh-2rem)] !w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] lg:!w-[min(calc(100vw-2rem),1200px)]"
+      >
         <DialogShell.Header srOnly title={alt || 'Image preview'} />
-        <DialogShell.Body className="p-2">
+        <DialogShell.Body className="flex min-h-0 items-center justify-center !space-y-0 !overflow-hidden !px-3 !py-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={resolvedSrc}
             alt={alt}
-            className="w-full h-auto max-h-[80vh] object-contain rounded-lg"
+            className="block h-auto max-h-full w-auto max-w-full object-contain rounded-lg"
           />
         </DialogShell.Body>
       </DialogShell>
@@ -213,7 +242,7 @@ export function MarkdownContent({
       <Markdown
         components={components}
         urlTransform={urlTransform}
-        remarkPlugins={REMARK_PLUGINS}
+        remarkPlugins={CHAT_FINAL_REMARK_PLUGINS}
         rehypePlugins={REHYPE_PLUGINS}
       >
         {content}

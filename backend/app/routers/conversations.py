@@ -3,10 +3,11 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from hashlib import sha256
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Literal, NamedTuple
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,6 +53,10 @@ _SSE_HEADERS = {
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
 }
+
+_IMAGE_PREVIEW_MAX_EDGE = 768
+_IMAGE_PREVIEW_QUALITY = 82
+_IMAGE_PREVIEW_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 # ---------------------------------------------------------------------------
@@ -898,6 +903,41 @@ async def _resolve_branch_checkpoint(
     )
 
 
+def _find_message_in_checkpoints(
+    checkpoints: list,
+    conversation_id: uuid.UUID,
+    target_message_id: uuid.UUID,
+) -> tuple[Any, int] | None:
+    """Find a frontend-exposed message id across every branch checkpoint."""
+
+    from app.agent_runtime.message_utils import parse_msg_id
+
+    target_uuid_str = str(target_message_id)
+    for ck in checkpoints:
+        for idx, msg in enumerate(ck.messages):
+            raw = getattr(msg, "id", None)
+            if str(parse_msg_id(raw, conversation_id, idx)) == target_uuid_str:
+                return msg, idx
+    return None
+
+
+def _active_checkpoint_from_override(checkpoints: list, checkpoint_id: str | None) -> Any:
+    """Resolve the conversation's active branch checkpoint to a concrete leaf."""
+
+    from app.services.thread_branch_service import _build_tree_from_checkpoints  # noqa: PLC2701
+
+    tree = _build_tree_from_checkpoints(
+        checkpoints,
+        active_checkpoint_id=checkpoint_id,
+    )
+    active_id = tree.active_checkpoint_id
+    if active_id is not None:
+        for ck in checkpoints:
+            if ck.checkpoint_id == active_id:
+                return ck
+    return checkpoints[0]
+
+
 @router.post("/api/conversations/{conversation_id}/messages/edit")
 async def edit_message(
     conversation_id: uuid.UUID,
@@ -959,7 +999,6 @@ async def regenerate_message(
     """Regenerate an assistant message in place by replaying its parent user turn."""
 
     from app.agent_runtime.checkpointer import get_checkpointer
-    from app.agent_runtime.message_utils import parse_msg_id
     from app.services.thread_branch_service import _collect_checkpoints  # noqa: PLC2701
 
     conv = await chat_service.get_conversation(db, conversation_id)
@@ -973,28 +1012,34 @@ async def regenerate_message(
 
         raise HTTPException(status_code=422, detail="conversation has no history yet.")
 
-    # Pick the active branch tip (or the named assistant message) and find
-    # the user message that precedes it.
-    active = checkpoints[0]
-    msgs = active.messages
+    # Pick the selected branch tip (or the named assistant message) and find
+    # the user message that precedes it. The user may have pinned an older
+    # branch via `/switch-branch`; using checkpoints[0] would silently jump
+    # back to the newest leaf on regenerate.
+    target_msg = None
     target_idx: int | None = None
     if data.message_id is None:
+        active = _active_checkpoint_from_override(
+            checkpoints,
+            conv.active_branch_checkpoint_id,
+        )
+        msgs = active.messages
         # Walk back from the tip to the latest assistant message.
         for i in range(len(msgs) - 1, -1, -1):
             if getattr(msgs[i], "type", None) == "ai":
                 target_idx = i
+                target_msg = msgs[i]
                 break
     else:
-        target_uuid_str = str(data.message_id)
-        for i, m in enumerate(msgs):
-            raw = getattr(m, "id", None)
-            if str(parse_msg_id(raw, conversation_id, i)) == target_uuid_str:
-                target_idx = i
-                break
+        found = _find_message_in_checkpoints(
+            checkpoints,
+            conversation_id,
+            data.message_id,
+        )
+        if found is not None:
+            target_msg, target_idx = found
 
     if target_idx is None or target_idx == 0:
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=422, detail="cannot regenerate — no parent user message."
         )
@@ -1010,7 +1055,6 @@ async def regenerate_message(
         rewind_to_checkpoint_before_message,
     )
 
-    target_msg = msgs[target_idx]
     target_msg_raw = getattr(target_msg, "id", None) or f"synthetic-{target_idx}"
     checkpoint_id = await rewind_to_checkpoint_before_message(
         checkpointer, str(conversation_id), target_msg_raw
@@ -1053,6 +1097,19 @@ async def switch_branch(
     conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
+    from app.agent_runtime.checkpointer import get_checkpointer
+    from app.services.thread_branch_service import checkpoint_exists
+
+    if not await checkpoint_exists(
+        get_checkpointer(),
+        str(conversation_id),
+        data.checkpoint_id,
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="checkpoint does not belong to this conversation.",
+        )
+
     from sqlalchemy import update as _update
 
     from app.models.conversation import Conversation as _Conv
@@ -1074,6 +1131,7 @@ async def switch_branch(
 async def get_conversation_file(
     conversation_id: uuid.UUID,
     file_path: str,
+    variant: Literal["original", "preview"] = Query("original"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
@@ -1085,4 +1143,53 @@ async def get_conversation_file(
     target = (base / file_path).resolve()
     if not target.is_relative_to(base.resolve()) or not target.is_file():
         raise file_not_found()
-    return FileResponse(target)
+    if variant == "preview":
+        preview = _get_or_create_image_preview(base.resolve(), target)
+        if preview is not None:
+            return FileResponse(
+                preview,
+                media_type="image/webp",
+                headers={"Cache-Control": "public, max-age=31536000, immutable"},
+            )
+    return FileResponse(
+        target,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+def _get_or_create_image_preview(base: Path, target: Path) -> Path | None:
+    if target.suffix.lower() not in _IMAGE_PREVIEW_SUFFIXES:
+        return None
+
+    stat = target.stat()
+    rel = target.relative_to(base)
+    cache_key = sha256(
+        f"{rel.as_posix()}:{stat.st_size}:{stat.st_mtime_ns}".encode()
+    ).hexdigest()[:24]
+    safe_stem = rel.as_posix().replace("/", "__")
+    preview = base / ".previews" / f"{safe_stem}.{cache_key}.webp"
+    if preview.is_file():
+        return preview
+
+    try:
+        from PIL import Image, ImageOps
+
+        preview.parent.mkdir(parents=True, exist_ok=True)
+        with Image.open(target) as image:
+            image = ImageOps.exif_transpose(image)
+            if image.mode not in {"RGB", "RGBA"}:
+                image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+            image.thumbnail(
+                (_IMAGE_PREVIEW_MAX_EDGE, _IMAGE_PREVIEW_MAX_EDGE),
+                Image.Resampling.LANCZOS,
+            )
+            image.save(
+                preview,
+                format="WEBP",
+                quality=_IMAGE_PREVIEW_QUALITY,
+                method=6,
+            )
+        return preview
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to create image preview for %s", target)
+        return None

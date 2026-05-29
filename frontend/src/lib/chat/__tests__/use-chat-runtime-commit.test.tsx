@@ -17,7 +17,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { Message, SSEEvent } from '@/lib/types'
-import { useChatRuntime } from '../use-chat-runtime'
+import { sameMessageSnapshot, useChatRuntime } from '../use-chat-runtime'
 
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
@@ -86,11 +86,37 @@ function useCommitHarness(events: SSEEvent[]) {
   return { ...chat, messages }
 }
 
+function useUnstableEmptyMessagesHarness() {
+  const [, setTick] = useState(0)
+  const streamFn = useMemo(
+    () =>
+      (async function* () {}) as unknown as (
+        content: string,
+        signal: AbortSignal,
+      ) => AsyncGenerator<SSEEvent>,
+    [],
+  )
+  const chat = useChatRuntime({ messages: [], streamFn })
+  return { ...chat, bump: () => setTick((value) => value + 1) }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
 
 describe('useChatRuntime — onMessagesCommit dedup', () => {
+  it('부모가 빈 messages 배열을 새 참조로 넘겨도 render loop가 나지 않는다', () => {
+    const { result } = renderHook(() => useUnstableEmptyMessagesHarness(), {
+      wrapper: createWrapper(),
+    })
+
+    expect(() => {
+      act(() => {
+        result.current.bump()
+      })
+    }).not.toThrow()
+  })
+
   it('stream 종료 후 부모가 commit 을 messages 에 append 해도 중복 id throw 없음', async () => {
     /**
      * 회귀 가드: 수정 전에는 finally 의 setState 가 같은 batch 에 처리되면서
@@ -155,5 +181,63 @@ describe('useChatRuntime — onMessagesCommit dedup', () => {
     }, {})
     expect(roleCount.assistant).toBe(1)
     expect(roleCount.tool).toBe(1)
+  })
+
+  it('messages refetch에서 branch/attachment/feedback/usage 변경도 snapshot 변경으로 본다', () => {
+    const base: Message = {
+      id: 'm1',
+      conversation_id: 'c1',
+      role: 'assistant',
+      content: 'same text',
+      tool_calls: null,
+      tool_call_id: null,
+      created_at: '2026-05-29T00:00:00Z',
+      branch_index: 0,
+      branch_total: 2,
+      sibling_checkpoint_ids: ['ck1', 'ck2'],
+      feedback: { rating: 'up' },
+      usage: {
+        prompt_tokens: 1,
+        completion_tokens: 2,
+        cache_creation_tokens: 0,
+        cache_read_tokens: 0,
+      },
+    }
+
+    expect(sameMessageSnapshot([base], [{ ...base }])).toBe(true)
+    expect(sameMessageSnapshot([base], [{ ...base, branch_index: 1 }])).toBe(false)
+    expect(
+      sameMessageSnapshot(
+        [base],
+        [
+          {
+            ...base,
+            attachments: [
+              {
+                id: 'att-1',
+                filename: 'guide.png',
+                mime_type: 'image/png',
+                size_bytes: 12,
+                url: '/api/conversations/c1/files/guide.png',
+              },
+            ],
+          },
+        ],
+      ),
+    ).toBe(false)
+    expect(sameMessageSnapshot([base], [{ ...base, feedback: { rating: 'down' } }])).toBe(false)
+    expect(
+      sameMessageSnapshot([base], [
+        {
+          ...base,
+          usage: {
+            prompt_tokens: 1,
+            completion_tokens: 3,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+          },
+        },
+      ]),
+    ).toBe(false)
   })
 })

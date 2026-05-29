@@ -69,6 +69,40 @@ export function hasNewAssistantMessage(
   return next.some((m) => m.role === 'assistant' && !prevIds.has(m.id))
 }
 
+function snapshotPart(value: unknown): string {
+  return JSON.stringify(value ?? null)
+}
+
+function messageSnapshot(message: Message): string {
+  return [
+    message.id,
+    message.role,
+    message.content,
+    message.tool_call_id,
+    snapshotPart(message.tool_calls),
+    snapshotPart(message.feedback),
+    snapshotPart(message.attachments),
+    message.parent_id ?? null,
+    message.branch_checkpoint_id ?? null,
+    snapshotPart(message.siblings),
+    snapshotPart(message.sibling_checkpoint_ids),
+    message.branch_index ?? null,
+    message.branch_total ?? null,
+    snapshotPart(message.usage),
+  ].join('\u001f')
+}
+
+export function sameMessageSnapshot(
+  prev: readonly Message[],
+  next: readonly Message[],
+): boolean {
+  if (prev.length !== next.length) return false
+  return prev.every((message, index) => {
+    const other = next[index]
+    return other !== undefined && messageSnapshot(message) === messageSnapshot(other)
+  })
+}
+
 function createOptimisticMessage(
   role: 'user' | 'assistant' | 'tool',
   content: string,
@@ -519,7 +553,7 @@ export function useChatRuntime({
   // React-approved "storing information from previous renders" pattern.
   // useState instead of useRef avoids react-hooks/refs during render.
   const [prevMessages, setPrevMessages] = useState(messages)
-  if (prevMessages !== messages) {
+  if (prevMessages !== messages && !sameMessageSnapshot(prevMessages, messages)) {
     setPrevMessages(messages)
     if (!isRunning && streamingMessages.length > 0) {
       if (hasNewAssistantMessage(prevMessages, messages)) {
