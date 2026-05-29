@@ -14,6 +14,19 @@ interface ToolCatalogProps {
   onPick: (definition: ToolDefinition) => void
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  all: '전체',
+  general: '일반',
+  search: '검색',
+  productivity: '생산성',
+  communication: '커뮤니케이션',
+  automation: '자동화',
+}
+
+function formatCategoryLabel(category: string): string {
+  return CATEGORY_LABELS[category] ?? category
+}
+
 export function ToolCatalog({ onPick }: ToolCatalogProps) {
   const { data: definitions, isLoading } = useToolTypes()
   const [search, setSearch] = useState('')
@@ -42,8 +55,8 @@ export function ToolCatalog({ onPick }: ToolCatalogProps) {
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
       <aside className="lg:w-48">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Categories
+        <p className="mb-2 text-xs font-semibold text-muted-foreground">
+          카테고리
         </p>
         <div className="flex flex-wrap gap-1 lg:flex-col">
           {categories.map((c) => (
@@ -51,13 +64,14 @@ export function ToolCatalog({ onPick }: ToolCatalogProps) {
               key={c}
               type="button"
               onClick={() => setActiveCategory(c)}
-              className={`rounded-md px-2 py-1 text-left text-sm transition-colors ${
+              aria-pressed={activeCategory === c}
+              className={`rounded-md px-2 py-1 text-left text-sm font-medium transition-colors ${
                 activeCategory === c
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
-                  : 'hover:bg-muted'
+                  ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               }`}
             >
-              {c === 'all' ? 'All' : c}
+              {formatCategoryLabel(c)}
             </button>
           ))}
         </div>
@@ -65,7 +79,7 @@ export function ToolCatalog({ onPick }: ToolCatalogProps) {
 
       <div className="flex-1 space-y-3">
         <SearchInput
-          placeholder="Search tools"
+          placeholder="도구 검색"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -77,7 +91,10 @@ export function ToolCatalog({ onPick }: ToolCatalogProps) {
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <EmptyState title="No tools match" description="Try a different category or query." />
+          <EmptyState
+            title="조건에 맞는 도구가 없어요"
+            description="다른 카테고리나 검색어를 시도해 보세요."
+          />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((d) => (
@@ -102,11 +119,11 @@ export function ToolCatalog({ onPick }: ToolCatalogProps) {
                 </CardHeader>
                 <CardContent className="pt-0 flex flex-wrap gap-1">
                   <Badge variant="secondary" className="text-[10px]">
-                    {d.category}
+                    {formatCategoryLabel(d.category)}
                   </Badge>
                   {d.requires_credential && (
                     <Badge variant="outline" className="text-[10px]">
-                      requires credential
+                      자격증명 필요
                     </Badge>
                   )}
                 </CardContent>
