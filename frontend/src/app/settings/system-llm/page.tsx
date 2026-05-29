@@ -19,7 +19,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select'
 import { PageHeader } from '@/components/shared/page-header'
 import { useSession } from '@/lib/auth/session'
@@ -74,7 +73,7 @@ export default function SystemLlmSettingsPage() {
   if (isPending || denied) {
     return (
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground">불러오는 중…</p>
       </div>
     )
   }
@@ -98,7 +97,7 @@ function SystemLlmSettingsPageInner() {
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
         title="System LLM 설정"
-        description="Builder·Assistant·이미지 생성이 사용하는 system 모델을 역할별로 선택합니다. Credential 등록은 System Credentials 화면에서 진행하세요."
+        description="Builder·Assistant·이미지 생성이 사용하는 시스템 모델을 역할별로 선택합니다. 자격증명 등록은 시스템 자격증명 화면에서 진행하세요."
       />
 
       <div className="rounded-lg border bg-amber-50/40 p-3 text-xs text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
@@ -107,14 +106,14 @@ function SystemLlmSettingsPageInner() {
         </p>
         <p className="mt-1 text-amber-800/80 dark:text-amber-200/70">
           세 슬롯을 모두 설정하기 전까지 Builder/Assistant/이미지 생성이
-          동작하지 않습니다. provider는 선택한 System Credential에서 자동으로
-          파생되며, openai_compatible/openrouter는 credential의 base_url을
+          동작하지 않습니다. 제공자는 선택한 시스템 자격증명에서 자동으로
+          파생되며, openai_compatible/openrouter는 자격증명의 base_url을
           그대로 사용합니다.
         </p>
       </div>
 
       {isLoading || !settings ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
+        <p className="text-sm text-muted-foreground">불러오는 중…</p>
       ) : (
         <div className="grid gap-4">
           {settings.map((setting) => (
@@ -178,6 +177,8 @@ function SlotCard({
     models.forEach((m) => map.set(m.model_name, m.display_name))
     return map
   }, [models])
+  const selectedCredentialName = selectedCredential?.name ?? setting.credential_name
+  const selectedModelLabel = modelName ? (modelLabels.get(modelName) ?? modelName) : null
 
   const dirty =
     credentialId !== setting.credential_id || modelName !== setting.model_name
@@ -212,16 +213,33 @@ function SlotCard({
       </CardHeader>
 
       <CardContent className="space-y-4">
+        <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">자격증명</span>
+            <span className="font-medium text-foreground">
+              {selectedCredentialName ?? '선택 안 함'}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-xs font-medium text-muted-foreground">모델</span>
+            <span className="font-mono text-xs text-foreground">
+              {selectedModelLabel ?? '선택 안 함'}
+            </span>
+          </div>
+        </div>
+
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            System Credential
+            시스템 자격증명
           </label>
           <Select
             value={credentialId ?? NONE_VALUE}
             onValueChange={handleCredentialChange}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Credential 선택" />
+              <span className="truncate">
+                {selectedCredentialName ?? '자격증명 선택'}
+              </span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={NONE_VALUE}>선택 안 함</SelectItem>
@@ -234,7 +252,7 @@ function SlotCard({
           </Select>
           {credentials.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              사용 가능한 LLM System Credential이 없습니다. System Credentials
+              사용 가능한 LLM 시스템 자격증명이 없습니다. 시스템 자격증명
               화면에서 먼저 등록하세요.
             </p>
           )}
@@ -263,7 +281,7 @@ function SlotCard({
             disabled={!credentialId || modelOptions.length === 0}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="모델 선택" />
+              <span className="truncate">{selectedModelLabel ?? '모델 선택'}</span>
             </SelectTrigger>
             <SelectContent>
               {modelOptions.map((name) => (
@@ -275,7 +293,7 @@ function SlotCard({
           </Select>
           {!credentialId ? (
             <p className="text-xs text-muted-foreground">
-              먼저 System Credential을 선택하세요.
+              먼저 시스템 자격증명을 선택하세요.
             </p>
           ) : discover.isError ? (
             <p className="text-xs text-destructive">
@@ -284,7 +302,7 @@ function SlotCard({
             </p>
           ) : !discover.isPending && modelOptions.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              이 credential에서 사용 가능한 모델이 없습니다.
+              이 자격증명에서 사용 가능한 모델이 없습니다.
             </p>
           ) : null}
         </div>
@@ -292,12 +310,12 @@ function SlotCard({
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {provider && (
             <span>
-              provider: <span className="font-mono">{provider}</span>
+              제공자 <span className="font-mono">{provider}</span>
             </span>
           )}
           {setting.base_url && (
             <span>
-              base_url: <span className="font-mono">{setting.base_url}</span>
+              Base URL <span className="font-mono">{setting.base_url}</span>
             </span>
           )}
         </div>
