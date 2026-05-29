@@ -149,6 +149,16 @@ describe('ModelsPage', () => {
     expect(screen.getByText('Claude Sonnet 4')).toBeInTheDocument()
   })
 
+  it('uses compact pricing and action columns to avoid horizontal overflow', () => {
+    mockUseModels.mockReturnValue({ data: modelsWithNewFields, isLoading: false })
+    render(<ModelsPage />)
+
+    expect(screen.getByRole('columnheader', { name: /단가/ })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: '입력 단가' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: '출력 단가' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /상태 확인/ })[0]).toHaveClass('px-2')
+  })
+
   // 페이지 안의 DataTable / 모델 detail / provider 카드 / delete 흐름은
   // model-* 컴포넌트 단위 테스트와 e2e가 책임진다 (페이지 단위에서 제외).
 })

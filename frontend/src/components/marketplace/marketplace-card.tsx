@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { memo } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { BotIcon, ServerIcon, SparklesIcon } from 'lucide-react'
 
@@ -22,6 +23,12 @@ const RESOURCE_ICONS: Record<MarketplaceResourceType, LucideIcon> = {
   skill: SparklesIcon,
   agent: BotIcon,
   mcp: ServerIcon,
+}
+
+const RESOURCE_LABELS: Record<MarketplaceResourceType, string> = {
+  skill: '스킬',
+  agent: '에이전트',
+  mcp: 'MCP',
 }
 
 export type PrimaryCtaKind =
@@ -47,7 +54,7 @@ export function derivePrimaryCta(item: MarketplaceItem): PrimaryCta {
   const publicationState = item.publication_summary?.state
 
   if (item.status === 'disabled') {
-    return { kind: 'disabled', label: 'Disabled', variant: 'outline', disabled: true }
+    return { kind: 'disabled', label: '비활성화', variant: 'outline', disabled: true }
   }
 
   // Owner of a published item should not "install" their own source — the
@@ -55,37 +62,37 @@ export function derivePrimaryCta(item: MarketplaceItem): PrimaryCta {
   // (PRD §6: install creates a copy from someone else's marketplace version).
   // Route them to detail/management instead.
   if (publicationState && publicationState !== 'not_published' && !installation?.installed) {
-    return { kind: 'manage', label: 'Manage', variant: 'outline' }
+    return { kind: 'manage', label: '관리', variant: 'outline' }
   }
 
   if (
     (supportLevel === 'manual_only' || supportLevel === 'browser_or_local') &&
     !installation?.installed
   ) {
-    return { kind: 'view_details', label: 'View details', variant: 'outline' }
+    return { kind: 'view_details', label: '상세 보기', variant: 'outline' }
   }
 
   if (!installation?.installed) {
-    return { kind: 'install', label: 'Install', variant: 'default' }
+    return { kind: 'install', label: '설치', variant: 'default' }
   }
 
   if (installation.status === 'needs_setup') {
-    return { kind: 'setup', label: 'Set up', variant: 'default' }
+    return { kind: 'setup', label: '설정', variant: 'default' }
   }
 
   if (installation.update_available && installation.dirty) {
-    return { kind: 'review_update', label: 'Review update', variant: 'outline' }
+    return { kind: 'review_update', label: '업데이트 검토', variant: 'outline' }
   }
 
   if (installation.update_available) {
-    return { kind: 'update', label: 'Update', variant: 'default' }
+    return { kind: 'update', label: '업데이트', variant: 'default' }
   }
 
   if (installation.status === 'disabled') {
-    return { kind: 'disabled', label: 'Disabled', variant: 'outline', disabled: true }
+    return { kind: 'disabled', label: '비활성화', variant: 'outline', disabled: true }
   }
 
-  return { kind: 'open', label: 'Open', variant: 'outline' }
+  return { kind: 'open', label: '열기', variant: 'outline' }
 }
 
 interface MarketplaceCardProps {
@@ -94,10 +101,11 @@ interface MarketplaceCardProps {
   className?: string
 }
 
-export function MarketplaceCard({ item, onAction, className }: MarketplaceCardProps) {
+function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProps) {
   const Icon = RESOURCE_ICONS[item.resource_type] ?? SparklesIcon
   const cta = derivePrimaryCta(item)
-  const ownerLabel = item.is_system ? 'System' : 'Community'
+  const ownerLabel = item.is_system ? '시스템' : '커뮤니티'
+  const resourceLabel = RESOURCE_LABELS[item.resource_type] ?? item.resource_type
   const versionLabel = item.latest_version?.version_label
   const versionDate = item.latest_version?.created_at
 
@@ -120,7 +128,7 @@ export function MarketplaceCard({ item, onAction, className }: MarketplaceCardPr
             {item.name}
           </Link>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {ownerLabel} · {item.resource_type}
+            {ownerLabel} · {resourceLabel}
           </p>
         </div>
         <div className="shrink-0">
@@ -163,3 +171,6 @@ export function MarketplaceCard({ item, onAction, className }: MarketplaceCardPr
     </Card>
   )
 }
+
+export const MarketplaceCard = memo(MarketplaceCardInner)
+MarketplaceCard.displayName = 'MarketplaceCard'

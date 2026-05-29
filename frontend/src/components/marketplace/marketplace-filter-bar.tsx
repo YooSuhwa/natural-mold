@@ -23,24 +23,24 @@ interface MarketplaceFilterBarProps {
 }
 
 const SUPPORT_OPTIONS = [
-  { value: 'ready_python', label: 'Python ready' },
-  { value: 'proxy_http', label: 'Proxy required' },
-  { value: 'node_package', label: 'Node required' },
-  { value: 'browser_or_local', label: 'Browser/local' },
-  { value: 'manual_only', label: 'Manual only' },
+  { value: 'ready_python', label: 'Python 실행 가능' },
+  { value: 'proxy_http', label: '프록시 필요' },
+  { value: 'node_package', label: 'Node 필요' },
+  { value: 'browser_or_local', label: '브라우저/로컬 필요' },
+  { value: 'manual_only', label: '수동 설정' },
 ]
 
 const SOURCE_OPTIONS = [
-  { value: 'user', label: 'User' },
+  { value: 'user', label: '사용자' },
   { value: 'k-skill', label: 'k-skill' },
-  { value: 'import', label: 'Imported' },
-  { value: 'system_seed', label: 'System' },
+  { value: 'import', label: '가져오기' },
+  { value: 'system_seed', label: '시스템' },
 ]
 
 const INSTALL_STATE_OPTIONS: { value: InstallationStatus; label: string }[] = [
-  { value: 'active', label: 'Active' },
-  { value: 'needs_setup', label: 'Needs setup' },
-  { value: 'disabled', label: 'Disabled' },
+  { value: 'active', label: '설치됨' },
+  { value: 'needs_setup', label: '설정 필요' },
+  { value: 'disabled', label: '비활성화' },
 ]
 
 const ALL = '__all__'
@@ -68,7 +68,7 @@ export function MarketplaceFilterBar({
         <Input
           value={filters.q ?? ''}
           onChange={(e) => update({ q: e.target.value || undefined })}
-          placeholder="Search marketplace…"
+          placeholder="마켓플레이스 검색…"
           className="pl-8"
         />
       </div>
@@ -79,11 +79,11 @@ export function MarketplaceFilterBar({
           update({ source_kind: !v || v === ALL ? undefined : v })
         }
       >
-        <SelectTrigger className="min-w-[140px]" aria-label="Source filter">
-          <SelectValue placeholder="Source" />
+        <SelectTrigger className="min-w-[140px]" aria-label="출처 필터">
+          <SelectValue placeholder="출처" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>All sources</SelectItem>
+          <SelectItem value={ALL}>전체 출처</SelectItem>
           {SOURCE_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -98,11 +98,11 @@ export function MarketplaceFilterBar({
           update({ support_level: !v || v === ALL ? undefined : v })
         }
       >
-        <SelectTrigger className="min-w-[160px]" aria-label="Support level filter">
-          <SelectValue placeholder="Support" />
+        <SelectTrigger className="min-w-[160px]" aria-label="지원 방식 필터">
+          <SelectValue placeholder="지원 방식" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>All support</SelectItem>
+          <SelectItem value={ALL}>전체 지원 방식</SelectItem>
           {SUPPORT_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -119,11 +119,11 @@ export function MarketplaceFilterBar({
           })
         }
       >
-        <SelectTrigger className="min-w-[160px]" aria-label="Install state filter">
-          <SelectValue placeholder="Install state" />
+        <SelectTrigger className="min-w-[160px]" aria-label="설치 상태 필터">
+          <SelectValue placeholder="설치 상태" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>All states</SelectItem>
+          <SelectItem value={ALL}>전체 상태</SelectItem>
           {INSTALL_STATE_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}
@@ -142,12 +142,12 @@ export function MarketplaceFilterBar({
             })
           }
         >
-          Show pending
+          대기 항목 보기
         </Button>
       ) : null}
 
       <Button variant="ghost" size="sm" onClick={reset}>
-        Reset
+        초기화
       </Button>
     </div>
   )

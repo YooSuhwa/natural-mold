@@ -22,7 +22,7 @@ import { ModelEditDialog } from '@/components/model/model-edit-dialog'
 import { ModelTestDialog } from '@/components/model/model-test-dialog'
 import { ModelTestBulkDialog } from '@/components/model/model-test-bulk-dialog'
 import { formatTokenPrice } from '@/components/model/model-format'
-import { RANKING_META, RankingCell, RankingHeader } from '@/components/model/model-rankings'
+import { RankingBadge } from '@/components/model/model-rankings'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useModels } from '@/lib/hooks/use-models'
 import { useSession } from '@/lib/auth/session'
@@ -111,11 +111,15 @@ export default function ModelsPage() {
   const columns = useMemo<ColumnDef<Model>[]>(
     () => [
       {
-        id: 'display_name',
-        accessorKey: 'display_name',
+        id: 'provider',
+        accessorKey: 'provider',
         header: '모델',
         cell: ({ row }) => (
-          <div className={`flex items-center gap-2 ${row.original.is_visible ? '' : 'opacity-60'}`}>
+          <div
+            className={`flex min-w-[220px] items-center gap-2 ${
+              row.original.is_visible ? '' : 'opacity-60'
+            }`}
+          >
             <DomainIcon iconId={row.original.provider} className="size-4" />
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">
@@ -131,44 +135,30 @@ export default function ModelsPage() {
                   </span>
                 )}
               </p>
+              <p className="truncate font-mono text-[11px] text-muted-foreground">
+                {row.original.provider} · {row.original.model_name}
+              </p>
               <CapabilityIcons model={row.original} />
             </div>
           </div>
         ),
-      },
-      {
-        id: 'model_name',
-        accessorKey: 'model_name',
-        header: 'ID',
-        cell: ({ row }) => (
-          <span className="font-mono text-xs text-muted-foreground">{row.original.model_name}</span>
-        ),
-      },
-      {
-        id: 'provider',
-        accessorKey: 'provider',
-        header: '프로바이더',
-        cell: ({ row }) => <span className="text-xs">{row.original.provider}</span>,
         filterFn: 'equals',
       },
       {
-        id: 'cost_in',
+        id: 'cost',
         accessorFn: (row) => row.cost_per_input_token ?? 0,
-        header: '입력 단가',
+        header: '단가',
         cell: ({ row }) => (
-          <span className="font-mono text-xs tabular-nums">
-            {formatTokenPrice(row.original.cost_per_input_token)}
-          </span>
-        ),
-      },
-      {
-        id: 'cost_out',
-        accessorFn: (row) => row.cost_per_output_token ?? 0,
-        header: '출력 단가',
-        cell: ({ row }) => (
-          <span className="font-mono text-xs tabular-nums">
-            {formatTokenPrice(row.original.cost_per_output_token)}
-          </span>
+          <div className="flex min-w-[118px] flex-col gap-0.5 font-mono text-[11px] tabular-nums">
+            <span>
+              <span className="mr-1 font-sans text-muted-foreground">입력</span>
+              {formatTokenPrice(row.original.cost_per_input_token)}
+            </span>
+            <span>
+              <span className="mr-1 font-sans text-muted-foreground">출력</span>
+              {formatTokenPrice(row.original.cost_per_output_token)}
+            </span>
+          </div>
         ),
       },
       {
@@ -184,48 +174,23 @@ export default function ModelsPage() {
             <span className="text-xs text-muted-foreground">—</span>
           ),
       },
-      // M11 — Benchmark rankings. Missing scores are normalised to
-      // `undefined` so TanStack's `sortUndefined: 'last'` keeps them pinned
-      // to the bottom regardless of sort direction. Headers carry an ⓘ
-      // tooltip explaining what each score represents.
       {
-        id: 'lmarena',
-        accessorFn: (row) => row.rankings?.lmarena ?? undefined,
-        header: () => <RankingHeader rankingKey="lmarena" />,
-        cell: ({ row }) => (
-          <RankingCell
-            value={row.original.rankings?.lmarena}
-            format={RANKING_META.lmarena.format}
-          />
-        ),
-        sortingFn: 'basic',
-        sortUndefined: 'last',
-      },
-      {
-        id: 'livebench',
-        accessorFn: (row) => row.rankings?.livebench ?? undefined,
-        header: () => <RankingHeader rankingKey="livebench" />,
-        cell: ({ row }) => (
-          <RankingCell
-            value={row.original.rankings?.livebench}
-            format={RANKING_META.livebench.format}
-          />
-        ),
-        sortingFn: 'basic',
-        sortUndefined: 'last',
-      },
-      {
-        id: 'aa_index',
-        accessorFn: (row) => row.rankings?.aa_index ?? undefined,
-        header: () => <RankingHeader rankingKey="aa_index" />,
-        cell: ({ row }) => (
-          <RankingCell
-            value={row.original.rankings?.aa_index}
-            format={RANKING_META.aa_index.format}
-          />
-        ),
-        sortingFn: 'basic',
-        sortUndefined: 'last',
+        id: 'benchmarks',
+        accessorFn: (row) => (modelHasAnyRanking(row) ? 1 : 0),
+        header: '벤치마크',
+        cell: ({ row }) => {
+          const rankings = row.original.rankings
+          if (!modelHasAnyRanking(row.original)) {
+            return <span className="text-xs text-muted-foreground">—</span>
+          }
+          return (
+            <div className="flex min-w-[132px] flex-wrap gap-1">
+              <RankingBadge rankingKey="lmarena" value={rankings?.lmarena} />
+              <RankingBadge rankingKey="livebench" value={rankings?.livebench} />
+              <RankingBadge rankingKey="aa_index" value={rankings?.aa_index} />
+            </div>
+          )
+        },
       },
       {
         id: 'source',
@@ -264,8 +229,10 @@ export default function ModelsPage() {
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
+              className="px-2"
               aria-label={`${row.original.display_name} 상태 확인`}
+              title="상태 확인"
               data-testid={`check-now-${row.original.id}`}
               onClick={(e) => {
                 e.stopPropagation()
@@ -273,18 +240,22 @@ export default function ModelsPage() {
               }}
               disabled={runHealthCheck.isPending}
             >
-              <Activity className="size-3.5" /> 상태 확인
+              <Activity className="size-3.5" />
+              <span className="sr-only">상태 확인</span>
             </Button>
             <Button
               variant="ghost"
-              size="sm"
+              size="icon-sm"
+              className="px-2"
               aria-label={`${row.original.display_name} 테스트`}
+              title="테스트"
               onClick={(e) => {
                 e.stopPropagation()
                 setTesting(row.original)
               }}
             >
-              <Zap className="size-3.5" /> 테스트
+              <Zap className="size-3.5" />
+              <span className="sr-only">테스트</span>
             </Button>
           </div>
         ),

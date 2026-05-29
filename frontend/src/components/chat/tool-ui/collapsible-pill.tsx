@@ -56,6 +56,8 @@ interface CollapsiblePillProps {
   leadingIcon?: LucideIcon
   /** 확장 시 보일 본문. 미지정 시 chevron 자체를 숨긴다. */
   children?: ReactNode
+  /** 확장되기 전까지 만들 필요가 없는 무거운 본문. */
+  renderBody?: () => ReactNode
   defaultExpanded?: boolean
   /**
    * Chevron 옆에 추가로 띄울 아이콘 버튼들 (예: 사이드 패널 펼치기).
@@ -114,6 +116,7 @@ export function CollapsiblePill({
   meta,
   leadingIcon,
   children,
+  renderBody,
   defaultExpanded = false,
   trailing,
   onClick,
@@ -123,7 +126,8 @@ export function CollapsiblePill({
   const { Icon: StatusIcon, iconClass, containerClass, spin } = STATUS_META[status]
   // leadingIcon이 명시되면 그것을 사용, 없으면 kind 매핑 폴백
   const HeaderIcon = leadingIcon ?? (kind ? KIND_ICON[kind] : null)
-  const expandable = children !== undefined && children !== null && children !== false
+  const expandable =
+    renderBody !== undefined || (children !== undefined && children !== null && children !== false)
 
   const headerInner = (
     <>
@@ -192,7 +196,9 @@ export function CollapsiblePill({
           </button>
         ) : null}
       </div>
-      {expandable && expanded ? <div className="border-t px-3 py-2">{children}</div> : null}
+      {expandable && expanded ? (
+        <div className="border-t px-3 py-2">{renderBody ? renderBody() : children}</div>
+      ) : null}
     </div>
   )
 }

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import localFont from 'next/font/local'
-import { Geist_Mono } from 'next/font/google'
 import { ThemeProvider } from 'next-themes'
 import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getMessages, getTimeZone, getTranslations } from 'next-intl/server'
@@ -13,11 +12,6 @@ const pretendard = localFont({
   variable: '--font-sans',
   display: 'swap',
   weight: '45 920',
-})
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
 })
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -40,7 +34,7 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${pretendard.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${pretendard.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="h-full bg-background font-sans text-foreground">

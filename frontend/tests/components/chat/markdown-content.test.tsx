@@ -1,3 +1,4 @@
+import { fireEvent } from '@testing-library/react'
 import { render, screen } from '../../test-utils'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 
@@ -52,6 +53,12 @@ describe('MarkdownContent', () => {
     expect(container.textContent).toContain('1')
   })
 
+  it('uses Korean copy text in code blocks', () => {
+    render(<MarkdownContent content={'```js\nconst x = 1\n```'} />)
+
+    expect(screen.getByRole('button', { name: '복사' })).toBeInTheDocument()
+  })
+
   it('accepts custom className', () => {
     const { container } = render(<MarkdownContent content="Hello" className="custom-class" />)
     expect(container.firstChild).toHaveClass('custom-class')
@@ -90,6 +97,14 @@ describe('MarkdownContent', () => {
   it('renders h3 headings', () => {
     render(<MarkdownContent content="### Heading 3" />)
     expect(screen.getByText('Heading 3')).toBeInTheDocument()
+  })
+
+  it('uses Korean image error text', () => {
+    render(<MarkdownContent content="![sample](/api/conversations/c1/files/missing.png)" />)
+
+    fireEvent.error(screen.getByRole('img', { name: 'sample' }))
+    fireEvent.error(screen.getByRole('img', { name: 'sample' }))
+    expect(screen.getByText('이미지를 불러오지 못했어요')).toBeInTheDocument()
   })
 
   it('renders KaTeX math via remark-math + rehype-katex', () => {

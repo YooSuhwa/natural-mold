@@ -59,16 +59,17 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
           type="button"
           onClick={handleCopy}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent transition-colors"
+          aria-label={copied ? '복사됨' : '복사'}
         >
           {copied ? (
             <>
               <CheckIcon className="size-3 text-status-success" />
-              <span className="text-status-success">copied</span>
+              <span className="text-status-success">복사됨</span>
             </>
           ) : (
             <>
               <CopyIcon className="size-3" />
-              <span>copy</span>
+              <span>복사</span>
             </>
           )}
         </button>
@@ -108,7 +109,7 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
     return (
       <div className="chat-image-error">
         <ImageOffIcon className="size-5" />
-        <span>Image failed to load</span>
+        <span>이미지를 불러오지 못했어요</span>
       </div>
     )
   }
@@ -145,7 +146,7 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
         height="auto"
         className="!h-[calc(100vh-2rem)] !max-h-[calc(100vh-2rem)] !w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] lg:!w-[min(calc(100vw-2rem),1200px)]"
       >
-        <DialogShell.Header srOnly title={alt || 'Image preview'} />
+        <DialogShell.Header srOnly title={alt || '이미지 미리보기'} />
         <DialogShell.Body className="flex min-h-0 items-center justify-center !space-y-0 !overflow-hidden !px-3 !py-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

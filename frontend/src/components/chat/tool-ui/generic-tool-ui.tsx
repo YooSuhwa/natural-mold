@@ -24,9 +24,12 @@ interface ToolFallbackPanelProps {
 function extractImageUrls(data: unknown): string[] {
   const urls: string[] = []
   if (!data) return urls
+  const seen = new WeakSet<object>()
 
   const walk = (obj: unknown) => {
     if (!obj || typeof obj !== 'object') return
+    if (seen.has(obj)) return
+    seen.add(obj)
     if (Array.isArray(obj)) {
       obj.forEach(walk)
       return
@@ -76,6 +79,65 @@ function extractImageUrls(data: unknown): string[] {
   return urls
 }
 
+function formatToolValue(value: unknown): string {
+  if (typeof value === 'string') return value
+
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return '직렬화할 수 없는 결과입니다.'
+  }
+}
+
+function ToolFallbackBody({
+  toolName,
+  args,
+  result,
+  hasArgs,
+  hasResult,
+}: {
+  toolName: string
+  args: Record<string, unknown>
+  result?: unknown
+  hasArgs: boolean
+  hasResult: boolean
+}) {
+  const t = useTranslations('chat.toolCall')
+  const imageUrls = hasResult ? extractImageUrls(result) : []
+
+  return (
+    <div className="space-y-2">
+      {hasArgs && (
+        <div className="rounded-lg border border-border/40 bg-background p-2.5">
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t('parameters')}
+          </div>
+          <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
+            {formatToolValue(args)}
+          </pre>
+        </div>
+      )}
+      {hasResult && (
+        <div className="rounded-lg border border-border/40 bg-background p-2.5">
+          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {t('results')}
+          </div>
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
+            {formatToolValue(result)}
+          </pre>
+        </div>
+      )}
+      {imageUrls.length > 0 && (
+        <div className="space-y-2">
+          {imageUrls.map((url) => (
+            <ChatImage key={url} src={url} alt={toolName} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ToolFallbackPanel({
   toolName,
   args,
@@ -87,7 +149,6 @@ export function ToolFallbackPanel({
   const setRail = useSetAtom(chatRightRailAtom)
   const hasArgs = args && Object.keys(args).length > 0
   const hasResult = result !== undefined && result !== null
-  const imageUrls = hasResult ? extractImageUrls(result) : []
   const railStatus =
     status === 'running' ? 'running' : status === 'complete' ? 'complete' : 'incomplete'
 
@@ -118,32 +179,6 @@ export function ToolFallbackPanel({
     </button>
   ) : null
 
-  const body =
-    hasArgs || hasResult ? (
-      <div className="space-y-2">
-        {hasArgs && (
-          <div className="rounded-lg border border-border/40 bg-background p-2.5">
-            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {t('parameters')}
-            </div>
-            <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-              {JSON.stringify(args, null, 2)}
-            </pre>
-          </div>
-        )}
-        {hasResult && (
-          <div className="rounded-lg border border-border/40 bg-background p-2.5">
-            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {t('results')}
-            </div>
-            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-              {typeof result === 'string' ? result : JSON.stringify(result, null, 2)}
-            </pre>
-          </div>
-        )}
-      </div>
-    ) : undefined
-
   return (
     <div className="space-y-2">
       <CollapsiblePill
@@ -152,17 +187,20 @@ export function ToolFallbackPanel({
         title={toolName}
         meta={status === 'running' ? t('calling') : t('completed')}
         trailing={trailing}
-      >
-        {body}
-      </CollapsiblePill>
-      {/* 이미지는 pill 바깥에 노출 — 채팅 흐름에서 즉시 보이게. */}
-      {imageUrls.length > 0 && (
-        <div className="space-y-2">
-          {imageUrls.map((url) => (
-            <ChatImage key={url} src={url} alt={toolName} />
-          ))}
-        </div>
-      )}
+        renderBody={
+          hasArgs || hasResult
+            ? () => (
+                <ToolFallbackBody
+                  toolName={toolName}
+                  args={args}
+                  result={result}
+                  hasArgs={hasArgs}
+                  hasResult={hasResult}
+                />
+              )
+            : undefined
+        }
+      />
     </div>
   )
 }
