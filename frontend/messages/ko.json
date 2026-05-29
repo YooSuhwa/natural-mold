@@ -113,12 +113,15 @@
       "tools": "도구",
       "mcpServers": "MCP 서버",
       "models": "모델",
-      "credentials": "Credential",
-      "systemCredentials": "System Credential",
-      "systemLlm": "System LLM 설정",
+      "credentials": "자격증명",
+      "systemCredentials": "시스템 자격증명",
+      "systemLlm": "시스템 LLM 설정",
       "skills": "스킬",
       "usage": "사용량",
-      "templates": "에이전트 템플릿"
+      "templates": "에이전트 템플릿",
+      "marketplace": "마켓플레이스",
+      "marketplaceExplore": "둘러보기",
+      "moderation": "운영자 관리"
     },
     "section": {
       "capabilities": "기능",
@@ -126,7 +129,8 @@
     },
     "tooltip": {
       "connectors": "외부 시스템 연결",
-      "skills": "지식·실행 절차 패키지"
+      "skills": "지식·실행 절차 패키지",
+      "marketplace": "에이전트·도구·스킬 공유"
     },
     "newAgent": "새 에이전트",
     "recentAgents": "최근 에이전트",
