@@ -497,6 +497,7 @@ class TestScenario_10_5_UpdateStrategies:
                 )
                 assert inst.status_code == 201
                 installation_id = inst.json()["id"]
+                installed_skill_id = inst.json()["installed_skill_id"]
 
                 # Publish a new version (simulate: insert v2 + bump latest).
                 snap_v2 = _seed_snapshot_dir(tmp_path, "v2")
@@ -529,6 +530,7 @@ class TestScenario_10_5_UpdateStrategies:
         body = upd.json()
         # Installation now points at v2.
         assert body["version_id"] == str(v2.id)
+        assert body["installed_skill_id"] == installed_skill_id
         assert body["is_dirty"] is False  # overwrite resets dirty
 
 

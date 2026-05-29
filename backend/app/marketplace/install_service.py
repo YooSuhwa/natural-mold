@@ -16,7 +16,8 @@ Transaction shape (Spec §7.3):
 6. Failure path: best-effort ``rmtree`` on the temp dir + ``db.rollback``.
 
 The same pattern handles ``install_new_copy`` updates (new skill row,
-old left alone) and ``overwrite`` (delete old first, then run the install).
+old left alone). ``overwrite`` updates the installed skill in place so
+existing agent links keep pointing at the refreshed skill row.
 
 The service is intentionally synchronous-feeling — there is no background
 job. Spec §7.4 acknowledges installs are I/O bound but small (<10MB
@@ -244,6 +245,53 @@ def _rmtree_skill_storage(p: Path) -> None:
 def _copy_text_snapshot(src: Path, target: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(src, target / "SKILL.md")
+
+
+async def _replace_skill_snapshot(version: MarketplaceVersion, skill: Skill) -> None:
+    """Replace an installed skill's on-disk bytes while preserving its id."""
+
+    target = _target_for(skill.id)
+    tmp = target.with_suffix(".update.tmp")
+    if tmp.exists():
+        await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
+
+    await _copy_snapshot(version, tmp)
+    try:
+        if target.exists():
+            await asyncio.to_thread(shutil.rmtree, target, ignore_errors=True)
+        await asyncio.to_thread(tmp.rename, target)
+    except Exception:
+        await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
+        raise
+
+
+def _apply_version_metadata_to_skill(
+    *,
+    skill: Skill,
+    item: MarketplaceItem,
+    version: MarketplaceVersion,
+) -> None:
+    """Refresh DB metadata after an in-place marketplace overwrite."""
+
+    payload = version.payload or {}
+    skill.description = item.description
+    skill.kind = _payload_skill_kind(version)
+    skill.storage_path = ensure_relative(_rel_install_storage(skill.id, version))
+    skill.content_hash = version.content_hash
+    skill.size_bytes = int(version.size_bytes or 0)
+    skill.version = payload.get("version")
+    skill.package_metadata = payload
+    skill.is_system = item.is_system
+    skill.source_kind = item.source_kind
+    skill.source_marketplace_item_id = item.id
+    skill.source_marketplace_version_id = version.id
+    skill.source_commit = version.source_commit
+    skill.credential_requirements = version.credential_requirements
+    skill.execution_profile = version.execution_profile
+    skill.origin_marketplace_item_id = item.id
+    skill.origin_marketplace_version_id = version.id
+    skill.is_dirty = False
+    skill.last_modified_at = _now()
 
 
 def _payload_skill_kind(version: MarketplaceVersion) -> str:
@@ -516,32 +564,19 @@ async def update_installation(
         )
         return new_install
 
-    # ``overwrite`` — replace files in place. Easiest path: delete the
-    # old install artifacts, run the install again as a fresh copy
-    # bound to the latest version, but reuse the installation row id so
-    # external references (frontend state, agent links) survive.
-    await _remove_install_artifacts(db, installation, keep_installation=True)
-    await db.flush()
-    new_install = await install_item(
-        db,
-        item_id=item.id,
-        user=user,
-        body=InstallMarketplaceItemIn(
-            version_id=latest.id,
-            install_mode="new_copy",
-            install_missing_credentials="needs_setup",
-        ),
+    # ``overwrite`` — replace files in place so agent_skills rows and
+    # user-specific skill references keep the same skill_id.
+    if skill is None:
+        raise marketplace_item_not_found()
+    await _replace_skill_snapshot(latest, skill)
+    _apply_version_metadata_to_skill(skill=skill, item=item, version=latest)
+    missing = await credential_requirements.missing_required_keys(
+        db, skill=skill, user=user
     )
-    # Reparent the existing installation id to the new skill so the
-    # caller's URL stays valid.
-    installation.installed_skill_id = new_install.installed_skill_id
     installation.version_id = latest.id
-    installation.install_status = new_install.install_status
+    installation.install_status = "needs_setup" if missing else "active"
     installation.is_dirty = False
     installation.updated_at = _now()
-    # The freshly created ``new_install`` row is redundant — delete it
-    # so we don't have two rows pointing at the same skill.
-    await db.delete(new_install)
     return installation
 
 
