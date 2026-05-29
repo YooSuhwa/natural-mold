@@ -136,7 +136,7 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
         "config_schema": {
             "thread_limit": {
                 "type": "integer",
-                "default": 10,
+                "default": 100,
                 "description": "스레드당 최대 모델 호출 횟수",
             },
             "run_limit": {

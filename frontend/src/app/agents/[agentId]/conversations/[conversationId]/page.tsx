@@ -12,10 +12,9 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
-import type { Agent } from '@/lib/types'
+import type { Agent, Message } from '@/lib/types'
 import { useAgent } from '@/lib/hooks/use-agents'
 import {
-  useMessages,
   useMessagesEnvelope,
   useCreateConversation,
   conversationKeys,
@@ -43,6 +42,8 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 
+const EMPTY_MESSAGES: Message[] = []
+
 export default function ChatPage({
   params,
 }: {
@@ -52,10 +53,10 @@ export default function ChatPage({
   const router = useRouter()
   const queryClient = useQueryClient()
   const { data: agent } = useAgent(agentId)
-  const { data: messages = [], isLoading: messagesLoading } = useMessages(conversationId)
   // W7-4 — envelope에서 conversation 누적 비용을 가져와 토큰 바에 흘림. 같은
-  // queryKey를 공유하므로 useMessages 외에 추가 fetch 비용은 없다.
-  const { data: envelope } = useMessagesEnvelope(conversationId)
+  // query observer 하나에서 messages와 cost를 함께 파생해 채팅 트리 리렌더를 줄인다.
+  const { data: envelope, isLoading: messagesLoading } = useMessagesEnvelope(conversationId)
+  const messages = envelope?.messages ?? EMPTY_MESSAGES
   const createConversation = useCreateConversation(agentId)
   const t = useTranslations('chat.page')
   const setSessionTokenUsage = useSetAtom(sessionTokenUsageAtom)
@@ -76,8 +77,9 @@ export default function ChatPage({
   )
 
   const onStreamEnd = useCallback(() => {
-    queryClient.invalidateQueries({
+    void queryClient.refetchQueries({
       queryKey: conversationKeys.messages(conversationId),
+      type: 'active',
     })
     queryClient.invalidateQueries({
       queryKey: conversationKeys.list(agentId),

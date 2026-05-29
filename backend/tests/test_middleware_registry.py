@@ -43,6 +43,12 @@ def test_get_middleware_registry_entries_have_metadata():
         assert "category" in item
 
 
+def test_model_call_limit_thread_default_is_100():
+    entry = MIDDLEWARE_REGISTRY["model_call_limit"]
+
+    assert entry["config_schema"]["thread_limit"]["default"] == 100
+
+
 def test_get_middleware_registry_exclude_builtin_keeps_explicit_instantiated():
     """exclude_builtin=True excludes auto-injected types only.
 
@@ -169,6 +175,18 @@ def test_build_middleware_instances_success():
         result = build_middleware_instances([{"type": "tool_retry", "params": {"max_retries": 5}}])
         assert len(result) == 1
         assert result[0] is mock_instance
+
+
+def test_build_middleware_instances_applies_model_call_limit_default():
+    mock_cls = MagicMock(return_value=MagicMock())
+    with patch(
+        "app.agent_runtime.middleware_registry._resolve_middleware_class",
+        return_value=mock_cls,
+    ):
+        result = build_middleware_instances([{"type": "model_call_limit", "params": {}}])
+
+    assert len(result) == 1
+    assert mock_cls.call_args.kwargs["thread_limit"] == 100
 
 
 # ---------------------------------------------------------------------------

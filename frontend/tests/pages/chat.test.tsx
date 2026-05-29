@@ -56,7 +56,20 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     messages: (conversationId: string) => ['messages', conversationId] as const,
   },
   useMessages: (...args: unknown[]) => mockUseMessages(...args),
-  useMessagesEnvelope: () => ({ data: undefined, isLoading: false }),
+  useMessagesEnvelope: (...args: unknown[]) => {
+    const result = mockUseMessages(...args)
+    return {
+      ...result,
+      data:
+        result.data === undefined
+          ? undefined
+          : {
+              messages: result.data,
+              active_checkpoint_id: null,
+              total_cost: 0,
+            },
+    }
+  },
   useCreateConversation: () => ({
     mutateAsync: vi.fn(),
     isPending: false,

@@ -21,11 +21,15 @@ from app.agent_runtime.tool_factory import (
 from app.tools.registry import registry as tool_registry
 
 
-def _naver_news_config(stored_params: dict[str, Any] | None = None) -> dict[str, Any]:
+def _naver_news_config(
+    stored_params: dict[str, Any] | None = None,
+    *,
+    name: str = "naver news search",
+) -> dict[str, Any]:
     return {
         "tool_id": None,
         "definition_key": "naver_search_news",
-        "name": "naver news search",
+        "name": name,
         "description": "Search Korean news.",
         "parameters": stored_params or {},
         "credentials": {
@@ -74,6 +78,22 @@ def test_create_tool_for_runtime_attaches_args_schema() -> None:
     assert "query" in schema.model_fields
 
 
+def test_create_tool_for_runtime_uses_vertex_safe_name_for_korean_tool_name() -> None:
+    """Provider tool schemas require ASCII-ish function names."""
+
+    tool = create_tool_for_runtime(_naver_news_config(name="네이버 뉴스 검색"))
+
+    assert tool is not None
+    assert tool.name == "naver_search_news"
+
+
+def test_create_tool_for_runtime_prefixes_digit_starting_tool_name() -> None:
+    tool = create_tool_for_runtime(_naver_news_config(name="123 news search"))
+
+    assert tool is not None
+    assert tool.name == "_123_news_search"
+
+
 @pytest.mark.asyncio
 async def test_runtime_arg_overrides_stored_query_at_invocation() -> None:
     """When the model calls the tool with a query, the runner sees that value."""
@@ -94,4 +114,5 @@ async def test_runtime_arg_overrides_stored_query_at_invocation() -> None:
             client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
             await tool.coroutine(query="한컴 최신 뉴스")
 
+    assert "verify" in client_cls.call_args.kwargs
     assert captured["params"]["query"] == "한컴 최신 뉴스"

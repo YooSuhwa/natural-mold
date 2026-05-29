@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -24,6 +25,7 @@ from app.models.user import User
 from app.tools import registry as tool_registry_mod
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.parameters import FieldDef, FieldKind
+from app.tools.registry import ToolRegistry
 from app.tools.registry import registry as tool_registry
 from app.tools.runner import run_tool
 from tests.conftest import TEST_USER_ID
@@ -415,6 +417,42 @@ async def test_run_tool_returns_error_envelope_on_missing_credential(
     assert result.success is False
     assert result.error is not None
     assert "credential" in result.error.lower()
+
+
+@pytest.mark.asyncio
+async def test_run_tool_uses_verified_outbound_client_when_it_owns_client(
+    db: AsyncSession,
+) -> None:
+    async def _runner(ctx: ToolRunContext) -> dict[str, bool]:
+        assert ctx.http_client is not None
+        return {"ok": True}
+
+    local = ToolRegistry()
+    local.register(
+        ToolDefinition(
+            key="local_ssl_probe",
+            display_name="Local SSL Probe",
+            description="",
+            parameters=[],
+            runner=_runner,
+        )
+    )
+    tool = Tool(
+        user_id=TEST_USER_ID,
+        definition_key="local_ssl_probe",
+        name="SSL Probe",
+        parameters={},
+    )
+    db.add(tool)
+    await db.commit()
+    await db.refresh(tool)
+
+    with patch("app.tools.runner.httpx.AsyncClient") as client_cls:
+        client_cls.return_value.aclose = AsyncMock()
+        result = await run_tool(db=db, tool=tool, registry=local)
+
+    assert result.success, result.error
+    assert "verify" in client_cls.call_args.kwargs
 
 
 @pytest.mark.asyncio

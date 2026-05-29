@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState } from 'react'
 import {
   ThreadPrimitive,
   MessagePrimitive,
@@ -14,11 +14,11 @@ import {
 } from '@assistant-ui/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
+import { conversationKeys } from '@/lib/hooks/use-conversations'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { math } from '@streamdown/math'
-import remarkGfm from 'remark-gfm'
-import remarkBreaks from 'remark-breaks'
 import { buildMarkdownComponents } from '@/components/chat/markdown-content'
+import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-plugins'
 import 'katex/dist/katex.min.css'
 import './markdown-styles.css'
 import {
@@ -75,12 +75,10 @@ function MessageTimestamp() {
   )
 }
 
-// reference 안정화 — react/streamdown이 prop 변화 시 processor를 재구성하지 않게.
-// (이 배열을 컴포넌트 body 안에서 만들면 매 렌더마다 새 reference가 되어 streamdown
-//  메모이즈 캐시가 깨지고 무한 리렌더(Too many re-renders)로 이어진다 → 반드시 모듈 레벨 고정.)
-// remarkGfm: remarkPlugins를 넘기면 streamdown 내장 기본값([gfm, codeMeta])이 덮어써져
-// 테이블/취소선 등 GFM 문법이 raw text로 보이므로 직접 재주입한다.
-const REMARK_PLUGINS = [remarkGfm, remarkBreaks]
+// CHAT_STREAMING_REMARK_PLUGINS는 모듈 레벨 상수다. 컴포넌트 body 안에서
+// 새 배열을 만들면 streamdown 메모이즈 캐시가 깨져 리렌더 루프가 날 수 있다.
+// remarkPlugins를 넘기면 streamdown 내장 기본값이 덮어써지므로, GFM은
+// CHAT_STREAMING_REMARK_PLUGINS에서 직접 재주입한다.
 // streamdown의 syntax highlight(@streamdown/code)는 우리 SyntaxHighlighter와
 // 출력이 충돌하므로 제거 — math plugin만 유지.
 const STREAMDOWN_PLUGINS = { math }
@@ -104,7 +102,7 @@ function AssistantTextPart() {
     <div className="prose-chat py-1 text-sm leading-relaxed text-foreground">
       <StreamdownTextPrimitive
         plugins={STREAMDOWN_PLUGINS}
-        remarkPlugins={REMARK_PLUGINS}
+        remarkPlugins={CHAT_STREAMING_REMARK_PLUGINS}
         // Components 타입(react-markdown)과 streamdown 내부 타입이 호환되지 않아
         // never로 우회 — 런타임 동작은 동일.
         components={components as never}
@@ -304,41 +302,56 @@ function canRenderBranchPicker(
 function BranchPicker() {
   const conversationId = useContext(ConversationContext)
   const queryClient = useQueryClient()
+  const [pendingCheckpointId, setPendingCheckpointId] = useState<string | null>(null)
   const meta = useAssistantState(
     (s) =>
       ((s.message?.metadata as { custom?: BranchMeta } | undefined)?.custom ?? {}) as BranchMeta,
   )
+  const siblingCheckpoints = useMemo(
+    () => meta.siblingCheckpointIds ?? [],
+    [meta.siblingCheckpointIds],
+  )
+
+  const switchTo = useCallback(
+    async (targetIdx: number) => {
+      if (!conversationId || pendingCheckpointId) return
+      const checkpointId = siblingCheckpoints[targetIdx]
+      if (!checkpointId) {
+        console.warn('[BranchPicker] missing checkpoint id for sibling idx', targetIdx)
+        return
+      }
+      setPendingCheckpointId(checkpointId)
+      try {
+        await conversationsApi.switchBranch(conversationId, checkpointId)
+        await queryClient.refetchQueries({
+          queryKey: conversationKeys.messages(conversationId),
+          type: 'active',
+        })
+      } catch (err) {
+        console.error('[BranchPicker] switch failed', err)
+      } finally {
+        setPendingCheckpointId(null)
+      }
+    },
+    [conversationId, pendingCheckpointId, queryClient, siblingCheckpoints],
+  )
+
   if (!canRenderBranchPicker(conversationId, meta)) return null
   // canRenderBranchPicker guarantees conversationId is non-null + the index/
   // total/checkpoint counts line up. The casts below are narrowing helpers
   // because the type guard only narrows ``meta``.
-  const convId = conversationId as string
-  const siblingCheckpoints = meta.siblingCheckpointIds ?? []
   const branchTotal = meta.branchTotal as number
   const currentIdx = meta.branchIndex as number
 
-  const switchTo = async (targetIdx: number) => {
-    const checkpointId = siblingCheckpoints[targetIdx]
-    if (!checkpointId) {
-      console.warn('[BranchPicker] missing checkpoint id for sibling idx', targetIdx)
-      return
-    }
-    await conversationsApi
-      .switchBranch(convId, checkpointId)
-      .catch((err) => console.error('[BranchPicker] switch failed', err))
-    await queryClient.invalidateQueries({
-      queryKey: ['conversations', convId, 'messages'],
-    })
-  }
-
   const total = branchTotal
   const display = currentIdx + 1
+  const isSwitching = pendingCheckpointId !== null
   return (
     <span className="inline-flex items-center gap-0.5 text-[10px] tabular-nums text-muted-foreground">
       <button
         type="button"
         className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
-        disabled={currentIdx <= 0}
+        disabled={isSwitching || currentIdx <= 0}
         onClick={() => void switchTo(currentIdx - 1)}
         aria-label="previous branch"
       >
@@ -350,7 +363,7 @@ function BranchPicker() {
       <button
         type="button"
         className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
-        disabled={currentIdx >= total - 1}
+        disabled={isSwitching || currentIdx >= total - 1}
         onClick={() => void switchTo(currentIdx + 1)}
         aria-label="next branch"
       >
@@ -478,6 +491,98 @@ export function AssistantThread({
   const tPage = useTranslations('chat.page')
   const isBuilder = variant === 'builder'
 
+  const messageComponents = useMemo(
+    () => ({
+      UserMessage: function UserMsg() {
+        const metaRow = (
+          <MessageMetaRow>
+            <BranchPicker />
+            <EditButton />
+            <CopyButton />
+            {showMessageTimestamp && <MessageTimestamp />}
+          </MessageMetaRow>
+        )
+        if (isBuilder) {
+          return <BuilderUserMessage metaRow={metaRow} />
+        }
+        return (
+          <div className="group relative flex justify-end gap-3 [contain-intrinsic-size:0_96px] [content-visibility:auto]">
+            <div className="flex w-full max-w-[80%] flex-col items-end">
+              <div className="rounded-2xl bg-emerald-100 px-4 py-2.5 text-sm leading-relaxed text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100">
+                <MessagePrimitive.Content />
+              </div>
+              {metaRow}
+            </div>
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <UserIcon className="size-4" />
+            </div>
+          </div>
+        )
+      },
+      UserEditComposer: function UserEdit() {
+        if (isBuilder) {
+          return <BuilderUserEditComposer />
+        }
+        return (
+          <div className="flex justify-end gap-3">
+            <div className="flex w-full max-w-[80%] flex-col items-end">
+              <UserMessageEditor />
+            </div>
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <UserIcon className="size-4" />
+            </div>
+          </div>
+        )
+      },
+      AssistantMessage: function AssistantMsg() {
+        const metaRow = (
+          <MessageMetaRow>
+            {showMessageTimestamp && <MessageTimestamp />}
+            <BranchPicker />
+            <CopyButton />
+            <RegenerateButton />
+            <FeedbackButtons />
+            <TokenUsagePopover />
+          </MessageMetaRow>
+        )
+        if (isBuilder) {
+          return (
+            <BuilderAssistantMessage metaRow={metaRow} agentSubtitle={builderAgentSubtitle}>
+              <StreamingLoadingIndicator />
+              <BuilderAssistantMessageParts />
+            </BuilderAssistantMessage>
+          )
+        }
+        return (
+          <div className="group relative flex gap-3 [contain-intrinsic-size:0_180px] [content-visibility:auto]">
+            {/* loading indicator를 absolute로 배치 — 메시지 layout 밖에 떠 있어
+              사라질 때 답변 텍스트가 점프하지 않도록 한다. */}
+            <StreamingLoadingIndicator />
+            <AgentAvatar
+              imageUrl={agentImageUrl ?? null}
+              name={agentName ?? tChat('defaultAgentName')}
+              size="sm"
+              publicAsset={agentImagePublicAsset}
+            />
+            <div className="min-w-0 flex-1">
+              <AssistantMessageParts />
+              {metaRow}
+            </div>
+          </div>
+        )
+      },
+    }),
+    [
+      agentImagePublicAsset,
+      agentImageUrl,
+      agentName,
+      builderAgentSubtitle,
+      isBuilder,
+      showMessageTimestamp,
+      tChat,
+    ],
+  )
+
   return (
     <ConversationContext.Provider value={conversationId ?? null}>
       <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
@@ -496,91 +601,7 @@ export function AssistantThread({
               isBuilder ? 'max-w-[880px] space-y-6' : 'max-w-3xl space-y-4',
             )}
           >
-            <ThreadPrimitive.Messages
-              components={{
-                UserMessage: function UserMsg() {
-                  const metaRow = (
-                    <MessageMetaRow>
-                      <BranchPicker />
-                      <EditButton />
-                      <CopyButton />
-                      {showMessageTimestamp && <MessageTimestamp />}
-                    </MessageMetaRow>
-                  )
-                  if (isBuilder) {
-                    return <BuilderUserMessage metaRow={metaRow} />
-                  }
-                  return (
-                    <div className="group relative flex justify-end gap-3">
-                      <div className="flex w-full max-w-[80%] flex-col items-end">
-                        <div className="rounded-2xl bg-emerald-100 px-4 py-2.5 text-sm leading-relaxed text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100">
-                          <MessagePrimitive.Content />
-                        </div>
-                        {metaRow}
-                      </div>
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                        <UserIcon className="size-4" />
-                      </div>
-                    </div>
-                  )
-                },
-                UserEditComposer: function UserEdit() {
-                  if (isBuilder) {
-                    return <BuilderUserEditComposer />
-                  }
-                  return (
-                    <div className="flex justify-end gap-3">
-                      <div className="flex w-full max-w-[80%] flex-col items-end">
-                        <UserMessageEditor />
-                      </div>
-                      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                        <UserIcon className="size-4" />
-                      </div>
-                    </div>
-                  )
-                },
-                AssistantMessage: function AssistantMsg() {
-                  const metaRow = (
-                    <MessageMetaRow>
-                      {showMessageTimestamp && <MessageTimestamp />}
-                      <BranchPicker />
-                      <CopyButton />
-                      <RegenerateButton />
-                      <FeedbackButtons />
-                      <TokenUsagePopover />
-                    </MessageMetaRow>
-                  )
-                  if (isBuilder) {
-                    return (
-                      <BuilderAssistantMessage
-                        metaRow={metaRow}
-                        agentSubtitle={builderAgentSubtitle}
-                      >
-                        <StreamingLoadingIndicator />
-                        <BuilderAssistantMessageParts />
-                      </BuilderAssistantMessage>
-                    )
-                  }
-                  return (
-                    <div className="group relative flex gap-3">
-                      {/* loading indicator를 absolute로 배치 — 메시지 layout 밖에 떠 있어
-                        사라질 때 답변 텍스트가 점프하지 않도록 한다. */}
-                      <StreamingLoadingIndicator />
-                      <AgentAvatar
-                        imageUrl={agentImageUrl ?? null}
-                        name={agentName ?? tChat('defaultAgentName')}
-                        size="sm"
-                        publicAsset={agentImagePublicAsset}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <AssistantMessageParts />
-                        {metaRow}
-                      </div>
-                    </div>
-                  )
-                },
-              }}
-            />
+            <ThreadPrimitive.Messages components={messageComponents} />
           </div>
 
           <ThreadPrimitive.ViewportFooter>

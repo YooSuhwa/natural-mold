@@ -16,6 +16,7 @@ import { LayoutGridIcon, PaperclipIcon, SendIcon } from 'lucide-react'
 
 import { BUILDER_TOKENS as T } from './tool-ui/builder-tokens'
 import { buildMarkdownComponents } from './markdown-content'
+import { CHAT_FINAL_REMARK_PLUGINS } from './markdown-plugins'
 import { ToolFallbackPanel } from './tool-ui/generic-tool-ui'
 import { BUILDER_PHASE_NAMES, parsePhaseNarration, type PhaseSegment } from './builder-phase-parser'
 import { SystemEventChip } from './system-event-chip'
@@ -129,7 +130,9 @@ function BuilderAssistantTextPart() {
               letterSpacing: '-0.005em',
             }}
           >
-            <Markdown components={components}>{seg.text}</Markdown>
+            <Markdown components={components} remarkPlugins={CHAT_FINAL_REMARK_PLUGINS}>
+              {seg.text}
+            </Markdown>
           </div>
         )
       })}

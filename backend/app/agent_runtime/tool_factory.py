@@ -14,6 +14,7 @@ out of the box and don't justify a registry entry of their own.
 from __future__ import annotations
 
 import logging
+import re
 import time
 import uuid as _uuid
 from collections.abc import Callable
@@ -27,6 +28,7 @@ from pydantic import BaseModel, Field, create_model
 
 from app.config import settings
 from app.hooks import HookContext, HookResult, hooks
+from app.http_ssl import get_outbound_ssl_context
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.parameters import FieldKind
 from app.tools.registry import registry as tool_registry
@@ -114,6 +116,7 @@ def _build_web_scraper_tool() -> BaseTool:
         try:
             async with httpx.AsyncClient(
                 timeout=settings.tool_call_timeout,
+                verify=get_outbound_ssl_context(),
                 follow_redirects=True,
                 headers={"User-Agent": "Mozilla/5.0 (Moldy Agent Builder)"},
             ) as client:
@@ -175,12 +178,24 @@ def create_builtin_tool(definition_key: str) -> BaseTool | None:
 # ---------------------------------------------------------------------------
 
 
-def _safe_tool_name(raw_name: str) -> str:
-    """LangChain tool names allow ``[a-zA-Z0-9_-]``; coerce display names."""
+def _safe_tool_name(raw_name: str, *, fallback: str = "tool") -> str:
+    """Coerce user-facing names into provider-safe function names.
 
-    cleaned = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "_" for ch in raw_name)
-    cleaned = cleaned.strip("_") or "tool"
-    return cleaned[:60]
+    Vertex/Gemini rejects non-ASCII function names and names that start
+    with a digit. Keep DB display names untouched; only sanitize the
+    runtime tool name sent to the model.
+    """
+
+    def normalize(value: str) -> str:
+        cleaned = re.sub(r"[^A-Za-z0-9_.:-]+", "_", value)
+        return cleaned.strip("_")
+
+    cleaned = normalize(raw_name)
+    if not cleaned:
+        cleaned = normalize(fallback) or "tool"
+    if not re.match(r"^[A-Za-z_]", cleaned):
+        cleaned = f"_{cleaned}"
+    return cleaned[:128]
 
 
 def _safe_uuid(value: Any) -> _uuid.UUID | None:
@@ -294,7 +309,10 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
             await hooks.run_pre(hook_ctx)
         started = time.monotonic()
         try:
-            async with httpx.AsyncClient(timeout=settings.tool_call_timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=settings.tool_call_timeout,
+                verify=get_outbound_ssl_context(),
+            ) as client:
                 run_ctx = ToolRunContext(
                     parameters=merged,
                     credentials=credentials,
@@ -315,7 +333,10 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
             )
         return output
 
-    safe_name = _safe_tool_name(tool_config.get("name") or definition.display_name)
+    safe_name = _safe_tool_name(
+        tool_config.get("name") or definition.display_name,
+        fallback=definition_key,
+    )
     description = (
         tool_config.get("description")
         or definition.description

@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from io import BytesIO
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 from langchain_core.messages import AIMessage, HumanMessage
+from PIL import Image
 
+from app.config import settings
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
@@ -297,10 +300,21 @@ async def _seed_agent_and_conv() -> tuple[uuid.UUID, uuid.UUID]:
 async def test_switch_branch_persists_checkpoint(client: AsyncClient):
     _agent_id, conv_id = await _seed_agent_and_conv()
 
-    resp = await client.post(
-        f"/api/conversations/{conv_id}/messages/switch-branch",
-        json={"checkpoint_id": "ck-xyz"},
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck-xyz",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "Hi"), _msg("ai", "a1", "Hello")],
     )
+    fake_cp = _FakeCheckpointer([leaf])
+
+    with patch(
+        "app.agent_runtime.checkpointer.get_checkpointer",
+        return_value=fake_cp,
+    ):
+        resp = await client.post(
+            f"/api/conversations/{conv_id}/messages/switch-branch",
+            json={"checkpoint_id": "ck-xyz"},
+        )
     assert resp.status_code == 204
 
     async with TestSession() as db:
@@ -311,6 +325,40 @@ async def test_switch_branch_persists_checkpoint(client: AsyncClient):
         )
         row = result.scalar_one()
         assert row.active_branch_checkpoint_id == "ck-xyz"
+
+
+@pytest.mark.asyncio
+async def test_switch_branch_rejects_checkpoint_outside_conversation(
+    client: AsyncClient,
+):
+    _agent_id, conv_id = await _seed_agent_and_conv()
+
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck-owned",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "Hi"), _msg("ai", "a1", "Hello")],
+    )
+    fake_cp = _FakeCheckpointer([leaf])
+
+    with patch(
+        "app.agent_runtime.checkpointer.get_checkpointer",
+        return_value=fake_cp,
+    ):
+        resp = await client.post(
+            f"/api/conversations/{conv_id}/messages/switch-branch",
+            json={"checkpoint_id": "ck-other"},
+        )
+
+    assert resp.status_code == 422
+
+    async with TestSession() as db:
+        from sqlalchemy import select
+
+        result = await db.execute(
+            select(Conversation).where(Conversation.id == conv_id)
+        )
+        row = result.scalar_one()
+        assert row.active_branch_checkpoint_id is None
 
 
 @pytest.mark.asyncio
@@ -517,6 +565,138 @@ async def test_regenerate_targeted_assistant_uses_correct_checkpoint(
 
 
 @pytest.mark.asyncio
+async def test_regenerate_without_message_id_uses_active_branch_checkpoint(
+    client: AsyncClient,
+):
+    """If the user has switched to an older branch, bare regenerate should
+    target that branch's latest assistant, not the newest checkpoint overall."""
+
+    _agent_id, conv_id = await _seed_agent_and_conv()
+
+    async with TestSession() as db:
+        from sqlalchemy import update
+
+        await db.execute(
+            update(Conversation)
+            .where(Conversation.id == conv_id)
+            .values(active_branch_checkpoint_id="ck1")
+        )
+        await db.commit()
+
+    captured: list = []
+
+    async def mock_stream(cfg, messages_history, **_kw):
+        captured.append((cfg, messages_history))
+        yield 'event: message_end\ndata: {"content": "regen active", "usage": {}}\n\n'
+
+    ck0 = _CheckpointSlim(
+        checkpoint_id="ck0",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "첫 질문")],
+    )
+    older_leaf = _CheckpointSlim(
+        checkpoint_id="ck1",
+        parent_checkpoint_id="ck0",
+        messages=[_msg("user", "u1", "첫 질문"), _msg("ai", "a-old", "옛 답변")],
+    )
+    ck2 = _CheckpointSlim(
+        checkpoint_id="ck2",
+        parent_checkpoint_id="ck0",
+        messages=[_msg("user", "u1", "첫 질문"), _msg("ai", "a-new", "새 답변")],
+    )
+    newest_leaf = _CheckpointSlim(
+        checkpoint_id="ck3",
+        parent_checkpoint_id="ck2",
+        messages=[
+            _msg("user", "u1", "첫 질문"),
+            _msg("ai", "a-new", "새 답변"),
+            _msg("user", "u2", "추가 질문"),
+            _msg("ai", "a-latest", "추가 답변"),
+        ],
+    )
+    fake_cp = _FakeCheckpointer([newest_leaf, ck2, older_leaf, ck0])
+
+    with (
+        patch(
+            "app.agent_runtime.checkpointer.get_checkpointer",
+            return_value=fake_cp,
+        ),
+        patch(
+            "app.routers.conversations.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+    ):
+        resp = await client.post(
+            f"/api/conversations/{conv_id}/messages/regenerate",
+            json={},
+        )
+
+    assert resp.status_code == 200
+    cfg, history = captured[0]
+    assert cfg.checkpoint_id == "ck0"
+
+    from langgraph.types import Overwrite
+
+    assert isinstance(history, dict)
+    ow = history.get("messages")
+    assert isinstance(ow, Overwrite)
+    assert [m.content for m in ow.value] == ["첫 질문"]
+
+
+@pytest.mark.asyncio
+async def test_regenerate_targeted_assistant_can_find_non_newest_branch(
+    client: AsyncClient,
+):
+    _agent_id, conv_id = await _seed_agent_and_conv()
+
+    captured: list = []
+
+    async def mock_stream(cfg, messages_history, **_kw):
+        captured.append((cfg, messages_history))
+        yield 'event: message_end\ndata: {"content": "regen old", "usage": {}}\n\n'
+
+    ck0 = _CheckpointSlim(
+        checkpoint_id="ck0",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "첫 질문")],
+    )
+    older_leaf = _CheckpointSlim(
+        checkpoint_id="ck1",
+        parent_checkpoint_id="ck0",
+        messages=[_msg("user", "u1", "첫 질문"), _msg("ai", "a-old", "옛 답변")],
+    )
+    newest_leaf = _CheckpointSlim(
+        checkpoint_id="ck2",
+        parent_checkpoint_id="ck0",
+        messages=[_msg("user", "u1", "첫 질문"), _msg("ai", "a-new", "새 답변")],
+    )
+    fake_cp = _FakeCheckpointer([newest_leaf, older_leaf, ck0])
+
+    from app.agent_runtime.message_utils import parse_msg_id
+
+    old_exposed = parse_msg_id("a-old", conv_id, 1)
+
+    with (
+        patch(
+            "app.agent_runtime.checkpointer.get_checkpointer",
+            return_value=fake_cp,
+        ),
+        patch(
+            "app.routers.conversations.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+    ):
+        resp = await client.post(
+            f"/api/conversations/{conv_id}/messages/regenerate",
+            json={"message_id": str(old_exposed)},
+        )
+
+    assert resp.status_code == 200
+    cfg, _history = captured[0]
+    assert cfg.checkpoint_id == "ck0"
+
+
+@pytest.mark.asyncio
 async def test_list_messages_envelope_shape(client: AsyncClient):
     """GET /messages now returns an envelope with messages + tip metadata."""
     _agent_id, conv_id = await _seed_agent_and_conv()
@@ -547,3 +727,42 @@ async def test_list_messages_envelope_shape(client: AsyncClient):
     assert body["messages"][1]["role"] == "assistant"
     assert body["messages"][1]["parent_id"] is not None
     assert body["active_checkpoint_id"] == "ck1"
+
+
+@pytest.mark.asyncio
+async def test_conversation_file_preview_generates_cached_webp(
+    client: AsyncClient,
+    tmp_path,
+    monkeypatch,
+):
+    _agent_id, conv_id = await _seed_agent_and_conv()
+    monkeypatch.setattr(settings, "conversation_output_dir", str(tmp_path))
+
+    base = tmp_path / str(conv_id)
+    base.mkdir(parents=True)
+    source = base / "image.png"
+    image = Image.new("RGB", (1024, 1024))
+    image.putdata(
+        [
+            ((x * 7) % 256, (y * 5) % 256, ((x + y) * 3) % 256)
+            for y in range(1024)
+            for x in range(1024)
+        ]
+    )
+    image.save(source)
+
+    resp = await client.get(
+        f"/api/conversations/{conv_id}/files/image.png?variant=preview"
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/webp"
+    preview = Image.open(BytesIO(resp.content))
+    assert preview.format == "WEBP"
+    assert max(preview.size) == 768
+    assert (base / ".previews").is_dir()
+
+    original = await client.get(f"/api/conversations/{conv_id}/files/image.png")
+    assert original.status_code == 200
+    assert original.headers["content-type"] == "image/png"
+    assert original.content == source.read_bytes()

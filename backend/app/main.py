@@ -80,6 +80,7 @@ from app.scheduler import (
 )
 from app.security.production_check import enforce_production_safety
 from app.seed.bootstrap_from_env import bootstrap_system_credentials
+from app.seed.default_marketplace_skills import seed_default_marketplace_skills
 from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_templates import DEFAULT_TEMPLATES
 from app.services.spend_writer import spend_queue
@@ -115,6 +116,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 db.add(Template(**tmpl_data))
 
         await db.commit()
+
+        try:
+            await seed_default_marketplace_skills(db)
+            await db.commit()
+        except Exception:  # noqa: BLE001 — default marketplace seed is non-fatal
+            await db.rollback()
+            logger.exception(
+                "seed_default_marketplace_skills failed — continuing startup."
+            )
 
         # Operator-managed system credentials seeded from env (Cipher V2). Stored
         # as ``is_system=True, user_id=NULL`` so they survive every user's

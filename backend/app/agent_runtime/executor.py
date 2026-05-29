@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import shlex
 import sys
@@ -34,6 +35,7 @@ from app.agent_runtime.tool_factory import create_tool_for_runtime
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
 from app.hooks import HookContext, HookResult, hooks
 from app.marketplace.skill_runtime import (
+    SkillRuntimeDescriptor,
     SkillToolContext,
     build_skill_runtime_context,
     resolve_runtime_credentials,
@@ -42,6 +44,11 @@ from app.marketplace.skill_runtime import (
 logger = logging.getLogger(__name__)
 
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+_SHELL_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+_SHELL_DEFAULT_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*):-(.*?)\}")
+_SHELL_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
+_DEFAULT_SKILL_TIMEOUT_SECONDS = 30.0
+_MAX_SKILL_TIMEOUT_SECONDS = 420.0
 
 # HiTL: interrupt_on 자동 생성 시 쓰기/실행 도구만 대상으로 하는 키워드
 _WRITE_TOOL_KEYWORDS = frozenset(
@@ -56,6 +63,90 @@ _WRITE_TOOL_KEYWORDS = frozenset(
         "reserve",
     }
 )
+
+
+def _expand_shell_vars(
+    value: str, *, env: dict[str, str], local_vars: dict[str, str]
+) -> str:
+    """Expand the small shell-var subset used in k-skill curl examples."""
+
+    def lookup(name: str) -> str:
+        return local_vars.get(name) or env.get(name, "")
+
+    def replace_default(match: re.Match[str]) -> str:
+        name = match.group(1)
+        fallback = match.group(2)
+        return lookup(name) or fallback
+
+    expanded = _SHELL_DEFAULT_RE.sub(replace_default, value)
+
+    def replace_var(match: re.Match[str]) -> str:
+        name = match.group(1) or match.group(2)
+        return lookup(name)
+
+    return _SHELL_VAR_RE.sub(replace_var, expanded)
+
+
+def _prepare_skill_subprocess_args(
+    command: str, *, resolved: Path, env: dict[str, str]
+) -> tuple[list[str] | None, str | None]:
+    """Convert an LLM-provided command into argv for the allowed executables.
+
+    We intentionally do not run a shell here. k-skill docs frequently use
+    ``BASE=...`` followed by ``curl "${BASE}/..."``; supporting that narrow
+    shape is enough without opening arbitrary shell command execution.
+    """
+
+    try:
+        raw_args = [arg for arg in shlex.split(command) if arg.strip()]
+    except ValueError as exc:
+        return None, f"Error: invalid command syntax: {exc}"
+
+    local_vars: dict[str, str] = {}
+    index = 0
+    while index < len(raw_args) and _SHELL_ASSIGNMENT_RE.match(raw_args[index]):
+        name, raw_value = raw_args[index].split("=", 1)
+        local_vars[name] = _expand_shell_vars(
+            raw_value, env=env, local_vars=local_vars
+        )
+        index += 1
+
+    args = [
+        _expand_shell_vars(arg, env=env, local_vars=local_vars)
+        for arg in raw_args[index:]
+    ]
+    if not args:
+        return None, "Error: command must start with python or curl."
+
+    executable = Path(args[0]).name
+    if executable == "python":
+        # 스크립트 경로가 스킬 디렉토리 하위인지 검증
+        if len(args) > 1 and not args[1].startswith("-"):
+            script_path = (resolved / args[1]).resolve()
+            if not script_path.is_relative_to(resolved):
+                return None, "Error: script must be within the skill directory."
+        args[0] = sys.executable
+        return args, None
+
+    if executable == "curl":
+        args[0] = "curl"
+        return args, None
+
+    return None, "Error: only python or curl commands are allowed."
+
+
+def _skill_timeout_seconds(descriptor: SkillRuntimeDescriptor) -> float:
+    profile = descriptor.execution_profile or {}
+    raw = profile.get("timeout_seconds")
+    if raw is None:
+        return _DEFAULT_SKILL_TIMEOUT_SECONDS
+    try:
+        seconds = float(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_SKILL_TIMEOUT_SECONDS
+    if seconds <= 0:
+        return _DEFAULT_SKILL_TIMEOUT_SECONDS
+    return min(seconds, _MAX_SKILL_TIMEOUT_SECONDS)
 
 
 @dataclass
@@ -169,18 +260,6 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
         ):
             return f"Error: invalid skill directory: {skill_directory}"
 
-        args = shlex.split(command)
-        if not args or args[0] != "python":
-            return "Error: only python commands are allowed."
-
-        # 스크립트 경로가 스킬 디렉토리 하위인지 검증
-        if len(args) > 1 and not args[1].startswith("-"):
-            script_path = (resolved / args[1]).resolve()
-            if not script_path.is_relative_to(resolved):
-                return "Error: script must be within the skill directory."
-
-        args[0] = sys.executable
-
         await asyncio.to_thread(output_dir.mkdir, parents=True, exist_ok=True)
         out = str(output_dir)
         env = {
@@ -190,6 +269,10 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             "SKILL_OUTPUT_DIR": out,
             "OUTPUTS_DIR": out,
         }
+        for key in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"):
+            value = os.environ.get(key)
+            if value:
+                env[key] = value
         # Slice E Stage 3 — credential env injection (Spec §8.2).
         # ``descriptor.credential_bindings`` is populated by
         # ``build_skill_runtime_context`` at agent build time so the
@@ -204,6 +287,12 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
                 env[env_name] = value
                 injected_env[env_name] = value
 
+        args, error = _prepare_skill_subprocess_args(
+            command, resolved=resolved, env=env
+        )
+        if error is not None or args is None:
+            return error or "Error: invalid command."
+
         proc = await asyncio.create_subprocess_exec(
             *args,
             cwd=str(resolved),
@@ -211,12 +300,15 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             stderr=asyncio.subprocess.PIPE,
             env=env,
         )
+        timeout_seconds = _skill_timeout_seconds(descriptor)
         try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout_seconds
+            )
         except TimeoutError:
             proc.kill()
             await proc.wait()
-            return "Error: script execution timed out (30s)."
+            return f"Error: script execution timed out ({timeout_seconds:g}s)."
 
         result = stdout.decode("utf-8", errors="replace")
         if proc.returncode != 0:

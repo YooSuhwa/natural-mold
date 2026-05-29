@@ -25,6 +25,7 @@ export function useMessages(conversationId: string) {
     queryFn: () => conversationsApi.messagesEnvelope(conversationId),
     select: (env) => env.messages,
     enabled: !!conversationId,
+    refetchOnWindowFocus: false,
   })
 }
 
@@ -35,6 +36,7 @@ export function useMessagesEnvelope(conversationId: string) {
     queryKey: conversationKeys.messages(conversationId),
     queryFn: () => conversationsApi.messagesEnvelope(conversationId),
     enabled: !!conversationId,
+    refetchOnWindowFocus: false,
   })
 }
 

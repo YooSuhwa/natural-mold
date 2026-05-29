@@ -57,6 +57,16 @@ class _CheckpointSlim:
 
 
 @dataclass
+class _CheckpointHeader:
+    """Checkpoint metadata collected without materializing DeltaChannel messages."""
+
+    checkpoint_id: str
+    parent_checkpoint_id: str | None
+    messages: Any
+    versions: dict[str, Any]
+
+
+@dataclass
 class BranchSibling:
     """One sibling at a branch point — message id + the checkpoint to switch to."""
 
@@ -116,9 +126,30 @@ async def _collect_checkpoints(
     waits for the same connection that `alist` is holding.
     """
 
+    raw = await _collect_checkpoint_headers(checkpointer, thread_id)
+
+    # Phase 2: materialize DeltaChannel messages for checkpoints that need it.
+    out: list[_CheckpointSlim] = []
+    for header in raw:
+        msgs = await _messages_for_header(checkpointer, thread_id, header)
+        out.append(
+            _CheckpointSlim(
+                checkpoint_id=header.checkpoint_id,
+                parent_checkpoint_id=header.parent_checkpoint_id,
+                messages=list(msgs or []),
+            )
+        )
+    return out
+
+
+async def _collect_checkpoint_headers(
+    checkpointer: Any,
+    thread_id: str,
+) -> list[_CheckpointHeader]:
+    """Collect checkpoint ids/parents without replaying message histories."""
+
     config = {"configurable": {"thread_id": thread_id}}
-    # Phase 1: drain alist into plain tuples.
-    raw: list[tuple[str, str | None, Any, dict[str, Any]]] = []
+    raw: list[_CheckpointHeader] = []
     async for ct in checkpointer.alist(config):
         cfg = ct.config or {}
         cid = cfg.get("configurable", {}).get("checkpoint_id")
@@ -128,21 +159,38 @@ async def _collect_checkpoints(
         pid = parent_cfg.get("configurable", {}).get("checkpoint_id")
         ckpt = ct.checkpoint or {}
         cv = ckpt.get("channel_values", {})
-        raw.append((cid, pid, cv.get("messages"), ckpt.get("channel_versions") or {}))
-
-    # Phase 2: materialize DeltaChannel messages for checkpoints that need it.
-    out: list[_CheckpointSlim] = []
-    for cid, pid, msgs, versions in raw:
-        if msgs is None and "messages" in versions:
-            msgs = await materialize_messages_at_checkpoint(checkpointer, thread_id, cid)
-        out.append(
-            _CheckpointSlim(
+        raw.append(
+            _CheckpointHeader(
                 checkpoint_id=cid,
                 parent_checkpoint_id=pid,
-                messages=list(msgs or []),
+                messages=cv.get("messages"),
+                versions=ckpt.get("channel_versions") or {},
             )
         )
-    return out
+    return raw
+
+
+async def checkpoint_exists(checkpointer: Any, thread_id: str, checkpoint_id: str) -> bool:
+    """Return whether a checkpoint belongs to a thread without materializing messages."""
+
+    async for ct in checkpointer.alist({"configurable": {"thread_id": thread_id}}):
+        cfg = ct.config or {}
+        if cfg.get("configurable", {}).get("checkpoint_id") == checkpoint_id:
+            return True
+    return False
+
+
+async def _messages_for_header(
+    checkpointer: Any,
+    thread_id: str,
+    header: _CheckpointHeader,
+) -> list[BaseMessage]:
+    msgs = header.messages
+    if msgs is None and "messages" in header.versions:
+        msgs = await materialize_messages_at_checkpoint(
+            checkpointer, thread_id, header.checkpoint_id
+        )
+    return list(msgs or [])
 
 
 async def materialize_messages_at_checkpoint(
@@ -507,6 +555,155 @@ def _build_tree_from_checkpoints(
     )
 
 
+def _message_fingerprint(msg: BaseMessage) -> tuple[str, str, str | None]:
+    """Stable-enough identity for synthetic LangChain messages without ids."""
+
+    return (
+        str(getattr(msg, "type", msg.__class__.__name__)),
+        repr(getattr(msg, "content", "")),
+        getattr(msg, "name", None),
+    )
+
+
+def _resolve_active_leaf_from_parent_map(
+    leaves: list[_CheckpointSlim],
+    parent_by_id: dict[str, str | None],
+    active_checkpoint_id: str | None,
+) -> _CheckpointSlim:
+    if active_checkpoint_id:
+        for leaf in leaves:
+            if leaf.checkpoint_id == active_checkpoint_id:
+                return leaf
+        for leaf in leaves:
+            cur: str | None = leaf.checkpoint_id
+            while cur is not None:
+                if cur == active_checkpoint_id:
+                    return leaf
+                cur = parent_by_id.get(cur)
+    return leaves[0]
+
+
+def _build_tree_from_leaf_checkpoints(
+    leaves: list[_CheckpointSlim],
+    parent_by_id: dict[str, str | None],
+    active_checkpoint_id: str | None = None,
+) -> MessageTree:
+    """Build the active branch tree from materialized leaves only.
+
+    Listing messages only needs leaf states: each leaf already contains the full
+    message chain for that branch. Using leaf checkpoint ids for branch
+    switching is enough because `/switch-branch` resolves any selected tip as
+    the active branch. The full checkpoint materialization path remains
+    available for rewind/regenerate, where exact pre-message checkpoints matter.
+    """
+
+    if not leaves:
+        return MessageTree(nodes=[], active_tip_message_id=None, active_checkpoint_id=None)
+
+    active = _resolve_active_leaf_from_parent_map(leaves, parent_by_id, active_checkpoint_id)
+
+    nodes: list[MessageTreeNode] = []
+    active_msg_ids: list[str] = []
+    prev_id: str | None = None
+    for idx, msg in enumerate(active.messages):
+        mid = _message_id(msg, idx)
+        nodes.append(
+            MessageTreeNode(
+                message=msg,
+                parent_id=prev_id,
+                introduced_by_checkpoint_id=active.checkpoint_id,
+            )
+        )
+        active_msg_ids.append(mid)
+        prev_id = mid
+
+    def sibling_key(msg: BaseMessage, idx: int) -> tuple[str, str]:
+        mid = _message_id(msg, idx)
+        if not _is_synthetic_id(mid):
+            return (mid, "")
+        return (mid, repr(_message_fingerprint(msg)))
+
+    branches_by_message: dict[str, list[BranchSibling]] = {}
+
+    for idx, active_mid in enumerate(active_msg_ids):
+        expected_parent_key: tuple[str, str] | None = None
+        if idx > 0:
+            expected_parent_key = sibling_key(active.messages[idx - 1], idx - 1)
+
+        seen_keys: set[tuple[str, str]] = set()
+        siblings: list[BranchSibling] = [
+            BranchSibling(message_id=active_mid, checkpoint_id=active.checkpoint_id)
+        ]
+        seen_keys.add(sibling_key(active.messages[idx], idx))
+
+        for leaf in leaves:
+            if leaf.checkpoint_id == active.checkpoint_id or idx >= len(leaf.messages):
+                continue
+            if idx > 0:
+                parent_key = sibling_key(leaf.messages[idx - 1], idx - 1)
+                if parent_key != expected_parent_key:
+                    continue
+            key = sibling_key(leaf.messages[idx], idx)
+            if key in seen_keys:
+                continue
+            siblings.append(
+                BranchSibling(
+                    message_id=_message_id(leaf.messages[idx], idx),
+                    checkpoint_id=leaf.checkpoint_id,
+                )
+            )
+            seen_keys.add(key)
+
+        if len(siblings) >= 2:
+            siblings.sort(key=lambda s: s.checkpoint_id)
+            branches_by_message[active_mid] = siblings
+            active_pos = next(
+                (
+                    i
+                    for i, s in enumerate(siblings)
+                    if s.checkpoint_id == active.checkpoint_id
+                ),
+                0,
+            )
+            nodes[idx] = MessageTreeNode(
+                message=nodes[idx].message,
+                parent_id=nodes[idx].parent_id,
+                introduced_by_checkpoint_id=nodes[idx].introduced_by_checkpoint_id,
+                branch_index=active_pos,
+                branch_total=len(siblings),
+            )
+
+    return MessageTree(
+        nodes=nodes,
+        active_tip_message_id=active_msg_ids[-1] if active_msg_ids else None,
+        active_checkpoint_id=active.checkpoint_id,
+        branches_by_message=branches_by_message,
+    )
+
+
+async def _collect_leaf_checkpoints(
+    checkpointer: Any,
+    thread_id: str,
+) -> tuple[list[_CheckpointSlim], dict[str, str | None]]:
+    headers = await _collect_checkpoint_headers(checkpointer, thread_id)
+    parent_by_id = {h.checkpoint_id: h.parent_checkpoint_id for h in headers}
+    parent_ids = {h.parent_checkpoint_id for h in headers if h.parent_checkpoint_id}
+    leaf_headers = [h for h in headers if h.checkpoint_id not in parent_ids]
+    if not leaf_headers and headers:
+        leaf_headers = [headers[0]]
+
+    leaves: list[_CheckpointSlim] = []
+    for header in leaf_headers:
+        leaves.append(
+            _CheckpointSlim(
+                checkpoint_id=header.checkpoint_id,
+                parent_checkpoint_id=header.parent_checkpoint_id,
+                messages=await _messages_for_header(checkpointer, thread_id, header),
+            )
+        )
+    return leaves, parent_by_id
+
+
 async def build_message_tree(
     checkpointer: Any,
     thread_id: str,
@@ -518,6 +715,17 @@ async def build_message_tree(
     ``Conversation.active_branch_checkpoint_id``) to render a specific user-
     chosen branch; ``None`` falls back to the newest leaf.
     """
+
+    leaves, parent_by_id = await _collect_leaf_checkpoints(checkpointer, thread_id)
+    return _build_tree_from_leaf_checkpoints(leaves, parent_by_id, active_checkpoint_id)
+
+
+async def build_message_tree_full(
+    checkpointer: Any,
+    thread_id: str,
+    active_checkpoint_id: str | None = None,
+) -> MessageTree:
+    """Compatibility path that materializes every checkpoint."""
 
     checkpoints = await _collect_checkpoints(checkpointer, thread_id)
     return _build_tree_from_checkpoints(checkpoints, active_checkpoint_id)
