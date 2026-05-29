@@ -68,6 +68,19 @@ function guessLanguage(filename: string): string {
   return ext ? (map[ext] ?? ext) : 'text'
 }
 
+export function shouldFileToolDefaultExpand({
+  label,
+  status,
+  hasPreview,
+}: {
+  label: 'Read' | 'Write' | 'Edit'
+  status: PillStatus
+  hasPreview: boolean
+}): boolean {
+  if (label === 'Read') return false
+  return status !== 'loading' && hasPreview
+}
+
 // ──────────────────────────────────────────────
 // CodeBlock — 코드 미리보기 (Shiki 없이 기본 스타일)
 // ──────────────────────────────────────────────
@@ -182,7 +195,7 @@ function FileToolPill({
   children,
 }: {
   icon: LucideIcon
-  label: string
+  label: 'Read' | 'Write' | 'Edit'
   filePath?: string
   status: PillStatus
   children?: React.ReactNode
@@ -194,7 +207,11 @@ function FileToolPill({
       status={status}
       title={label}
       meta={extractFilename(filePath)}
-      defaultExpanded={status !== 'loading' && Boolean(children)}
+      defaultExpanded={shouldFileToolDefaultExpand({
+        label,
+        status,
+        hasPreview: Boolean(children),
+      })}
     >
       {children}
     </CollapsiblePill>
