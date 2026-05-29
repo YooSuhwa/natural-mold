@@ -16,6 +16,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { math } from '@streamdown/math'
+import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
 import { buildMarkdownComponents } from '@/components/chat/markdown-content'
 import 'katex/dist/katex.min.css'
@@ -75,7 +76,11 @@ function MessageTimestamp() {
 }
 
 // reference 안정화 — react/streamdown이 prop 변화 시 processor를 재구성하지 않게.
-const REMARK_PLUGINS = [remarkBreaks]
+// (이 배열을 컴포넌트 body 안에서 만들면 매 렌더마다 새 reference가 되어 streamdown
+//  메모이즈 캐시가 깨지고 무한 리렌더(Too many re-renders)로 이어진다 → 반드시 모듈 레벨 고정.)
+// remarkGfm: remarkPlugins를 넘기면 streamdown 내장 기본값([gfm, codeMeta])이 덮어써져
+// 테이블/취소선 등 GFM 문법이 raw text로 보이므로 직접 재주입한다.
+const REMARK_PLUGINS = [remarkGfm, remarkBreaks]
 // streamdown의 syntax highlight(@streamdown/code)는 우리 SyntaxHighlighter와
 // 출력이 충돌하므로 제거 — math plugin만 유지.
 const STREAMDOWN_PLUGINS = { math }
