@@ -143,6 +143,50 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
     expect(onStandardInterrupt).toHaveBeenCalledWith(STANDARD_PAYLOAD)
   })
 
+  it('표준 chunk가 도착하면 내부 tool UI 호출도 합성한다', async () => {
+    const { options } = buildHookOptions({
+      events: [
+        { event: 'interrupt', data: STANDARD_PAYLOAD },
+      ],
+    })
+    const onMessagesCommit = vi.fn<(messages: Message[]) => void>()
+    const { result } = renderHook(
+      () =>
+        useChatRuntime({
+          ...options,
+          onStandardInterrupt: undefined,
+          onMessagesCommit,
+        }),
+      {
+        wrapper: createWrapper(),
+      },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    await waitFor(() => expect(onMessagesCommit).toHaveBeenCalled())
+    const committed = onMessagesCommit.mock.calls.at(-1)?.[0] ?? []
+    const assistant = committed.find((message) => message.role === 'assistant')
+    expect(assistant?.tool_calls).toEqual([
+      {
+        id: 'ns-1:0',
+        name: 'request_approval',
+        args: {
+          tool_name: 'send_email',
+          tool_args: { to: 'x@y' },
+          description: 'Send',
+          approval_id: 'ns-1:0',
+          allowed_decisions: ['approve', 'edit', 'reject', 'respond'],
+          hitl_interrupt_id: 'ns-1',
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+        },
+      },
+    ])
+  })
+
   it('multi-action(action_requests.length >= 2) 표준 chunk는 한 번에 통째로 전달', async () => {
     // backend는 한 interrupt = 한 묶음(여러 action_requests) 으로 발행 (§4.3).
     // frontend는 multi-action 배열을 분리하지 않고 그대로 콜백에 위임.
@@ -278,6 +322,7 @@ describe('useChatRuntime — onResumeDecisions', () => {
     })
 
     expect(typeof result.current.onResumeDecisions).toBe('function')
+    expect(typeof result.current.registerDecision).toBe('function')
     // legacy `onResume`은 더 이상 노출되지 않는다 (회귀 가드).
     expect('onResume' in result.current).toBe(false)
   })

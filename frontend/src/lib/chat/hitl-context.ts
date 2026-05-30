@@ -9,6 +9,11 @@ export interface HiTLContextValue {
    * (LangChain `HITLResponse` 계약).
    */
   onResumeDecisions: (decisions: Decision[], displayText?: string) => Promise<void>
+  registerDecision?: (
+    actionIndex: number,
+    decision: Decision,
+    displayText?: string,
+  ) => Promise<void>
 }
 
 export const HiTLContext = createContext<HiTLContextValue | null>(null)

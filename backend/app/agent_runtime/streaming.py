@@ -110,8 +110,7 @@ def _interrupt_to_standard_chunk(
             ],
             "review_configs": [
                 {
-                    "tool_name": "ask_user",
-                    "description": question,
+                    "action_name": "ask_user",
                     "allowed_decisions": ["respond"],
                 }
             ],

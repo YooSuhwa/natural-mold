@@ -23,6 +23,7 @@ from httpx import AsyncClient
 from pydantic import ValidationError
 
 from app.agent_runtime.streaming import _interrupt_to_standard_chunk, stream_agent_response
+from app.agent_runtime.tools.ask_user import ask_user
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
@@ -292,6 +293,8 @@ class TestInterruptToStandardChunk:
         assert action["name"] == "ask_user"
         assert action["args"] == {"question": "어떤 옵션을 원하세요?", "options": ["A", "B"]}
         review = chunk["review_configs"][0]
+        assert review["action_name"] == "ask_user"
+        assert "tool_name" not in review
         assert review["allowed_decisions"] == ["respond"]
 
     def test_unknown_shape_returns_none(self):
@@ -347,6 +350,8 @@ class TestStreamingStandardEmit:
         chunk = intrs[0]
         assert "action_requests" in chunk
         assert chunk["action_requests"][0]["name"] == "ask_user"
+        assert chunk["review_configs"][0]["action_name"] == "ask_user"
+        assert "tool_name" not in chunk["review_configs"][0]
         assert chunk["interrupt_id"] == "ns-ask-1"
 
     @pytest.mark.asyncio
@@ -375,3 +380,18 @@ class TestStreamingStandardEmit:
         assert chunk["action_requests"] == []
         assert chunk["review_configs"] == []
         assert "value" not in chunk
+
+
+class TestAskUserFallbackResumeParser:
+    """native ask_user fallback이 표준 resume payload를 모델에 그대로 노출하지 않는다."""
+
+    def test_ask_user_returns_respond_message_from_standard_resume_payload(self):
+        with patch(
+            "app.agent_runtime.tools.ask_user.interrupt",
+            return_value={"decisions": [{"type": "respond", "message": "옵션 A"}]},
+        ):
+            assert ask_user.invoke({"question": "어느 쪽?"}) == "옵션 A"
+
+    def test_ask_user_falls_back_to_string_response(self):
+        with patch("app.agent_runtime.tools.ask_user.interrupt", return_value="옵션 B"):
+            assert ask_user.invoke({"question": "어느 쪽?"}) == "옵션 B"
