@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useCallback, useMemo } from 'react'
+import { use, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
 import {
@@ -69,14 +69,20 @@ export default function ChatPage({
     .getQueryData<Conversation[]>(conversationKeys.list(agentId))
     ?.find((c) => c.id === conversationId)
   const currentTitle = currentConversation?.title
+  const markedReadKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
+    markedReadKeyRef.current = null
   }, [conversationId, setSessionTokenUsage])
 
   useEffect(() => {
     if (messagesLoading || isMarkingRead) return
-    if ((currentConversation?.unread_count ?? 0) <= 0) return
+    const unreadCount = currentConversation?.unread_count ?? 0
+    if (unreadCount <= 0) return
+    const markReadKey = `${conversationId}:${unreadCount}`
+    if (markedReadKeyRef.current === markReadKey) return
+    markedReadKeyRef.current = markReadKey
     markRead(conversationId)
   }, [conversationId, currentConversation?.unread_count, isMarkingRead, markRead, messagesLoading])
 

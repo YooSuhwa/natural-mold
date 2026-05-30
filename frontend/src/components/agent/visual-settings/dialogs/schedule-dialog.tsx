@@ -131,6 +131,15 @@ const TYPE_ICONS: Record<ScheduleType, typeof ClockIcon> = {
   advanced: SettingsIcon,
 }
 
+function conversationPolicyLabel(
+  t: ReturnType<typeof useTranslations<'agent.schedule'>>,
+  policy: ConversationPolicy,
+) {
+  if (policy === 'new_per_run') return t('resultStorage.newPerRun')
+  if (policy === 'selected_conversation') return t('resultStorage.selectedConversation')
+  return t('resultStorage.scheduleThread')
+}
+
 export function ScheduleForm({
   trigger,
   onSubmit,
@@ -430,7 +439,9 @@ export function ScheduleForm({
           onValueChange={(value) => setConversationPolicy(value as ConversationPolicy)}
         >
           <SelectTrigger className="mt-3 h-8 bg-background">
-            <SelectValue />
+            <span className="flex flex-1 text-left">
+              {conversationPolicyLabel(t, conversationPolicy)}
+            </span>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="schedule_thread">{t('resultStorage.scheduleThread')}</SelectItem>
@@ -498,7 +509,7 @@ export function ScheduleDialog({
 }: ScheduleDialogProps) {
   const t = useTranslations('agent.schedule')
   return (
-    <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
+    <DialogShell open={open} onOpenChange={onOpenChange} size="lg" height="tall">
       <DialogShell.Header title={t('title')} description={t('description')} />
       <DialogShell.Body>
         <ScheduleForm
