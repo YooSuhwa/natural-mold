@@ -1,0 +1,107 @@
+{
+  "metadata": {
+    "title": "Moldy - AI Agent Builder",
+    "description": "Create, chat with, and schedule AI agents."
+  },
+  "sidebar": {
+    "brand": "Moldy",
+    "nav": {
+      "home": "Home",
+      "connectors": "Connectors",
+      "tools": "Tools",
+      "mcpServers": "MCP Servers",
+      "models": "Models",
+      "credentials": "Credentials",
+      "systemCredentials": "System Credentials",
+      "systemLlm": "System LLM Settings",
+      "skills": "Skills",
+      "schedules": "Schedules",
+      "usage": "Usage",
+      "templates": "Agent Templates",
+      "marketplace": "Marketplace",
+      "marketplaceExplore": "Explore",
+      "moderation": "Moderation"
+    },
+    "section": {
+      "capabilities": "Capabilities",
+      "resources": "Resources"
+    },
+    "tooltip": {
+      "connectors": "Connect external systems",
+      "skills": "Knowledge and execution packages",
+      "marketplace": "Share agents, tools, and skills"
+    },
+    "newAgent": "New Agent",
+    "recentAgents": "Recent Agents",
+    "theme": {
+      "light": "Light mode",
+      "dark": "Dark mode",
+      "system": "System"
+    },
+    "language": {
+      "label": "Language",
+      "ko": "Korean",
+      "en": "English"
+    },
+    "settings": "Settings",
+    "logout": "Log out",
+    "logoutMessage": "Logged out",
+    "toggleSidebar": "Open or close sidebar"
+  },
+  "usage": {
+    "pageTitle": "Usage",
+    "subtitle": "Review token usage and costs by period.",
+    "totalTokens": "Total tokens",
+    "estimatedCost": "Estimated cost",
+    "inputTokens": "Input tokens",
+    "outputTokens": "Output tokens",
+    "perAgent": "Usage by agent",
+    "period": {
+      "7d": "Last 7 days",
+      "30d": "Last 30 days",
+      "90d": "Last 90 days",
+      "all": "All time",
+      "custom": "Custom"
+    },
+    "table": {
+      "agent": "Agent",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "date": "Date",
+      "target": "Target",
+      "tokensIn": "Input",
+      "tokensOut": "Output",
+      "requests": "Requests"
+    },
+    "empty": {
+      "title": "No usage yet.",
+      "description": "Token usage appears here after agents run."
+    },
+    "summary": {
+      "monthCost": "Cost this month",
+      "monthTokens": "Tokens this month",
+      "monthRequests": "Requests this month",
+      "avgCostPerRequest": "Average cost/request"
+    },
+    "filters": {
+      "range": "Range",
+      "metric": "Metric",
+      "kind": "Target",
+      "kindUser": "User",
+      "kindAgent": "Agent",
+      "kindModel": "Model",
+      "groupBy": "Group",
+      "groupByDate": "Date",
+      "groupByTarget": "Target",
+      "from": "From",
+      "to": "To"
+    },
+    "metric": {
+      "cost": "Cost",
+      "tokens": "Tokens",
+      "requests": "Requests"
+    },
+    "downloadCsv": "Download CSV",
+    "tableTitle": "Raw data"
+  }
+}

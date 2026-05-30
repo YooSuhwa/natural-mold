@@ -7,6 +7,7 @@ import {
   BrainIcon,
   CalendarClockIcon,
   ChevronRightIcon,
+  Globe2Icon,
   HomeIcon,
   KeyRoundIcon,
   LayoutTemplateIcon,
@@ -24,14 +25,22 @@ import {
   WrenchIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { useLocale } from 'next-intl'
 import { useTheme } from 'next-themes'
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useMemo } from 'react'
 
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { UserMenu } from '@/components/auth/UserMenu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Sidebar,
   SidebarContent,
@@ -56,6 +65,7 @@ import { useAgents } from '@/lib/hooks/use-agents'
 import { useLogout } from '@/lib/hooks/useAuth'
 import { useTriggerSummary } from '@/lib/hooks/use-triggers'
 import { connectorsExpandedAtom, marketplaceExpandedAtom } from '@/lib/stores/sidebar-store'
+import { LOCALE_COOKIE_NAME, SUPPORTED_LOCALES, isSupportedLocale } from '../../i18n/locales'
 
 type NavChild = { label: string; href: string; icon: LucideIcon; isActive: boolean }
 type ResourceItem = { label: string; href: string; icon: LucideIcon; badge?: number }
@@ -117,9 +127,11 @@ function CollapsibleNavItem({
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { data: agents, isLoading } = useAgents()
   const { data: triggerSummary } = useTriggerSummary()
   const { resolvedTheme, setTheme } = useTheme()
+  const locale = useLocale()
   const { toggleSidebar } = useSidebar()
   const t = useTranslations('sidebar')
   const { data: user } = useSession()
@@ -219,6 +231,14 @@ export function AppSidebar() {
 
   const isDarkTheme = resolvedTheme === 'dark'
   const themeToggleLabel = isDarkTheme ? t('theme.light') : t('theme.dark')
+  const currentLocale = isSupportedLocale(locale) ? locale : SUPPORTED_LOCALES[0]
+  const languageLabel = t('language.label')
+
+  function changeLocale(nextLocale: string) {
+    if (!isSupportedLocale(nextLocale) || nextLocale === currentLocale) return
+    document.cookie = `${LOCALE_COOKIE_NAME}=${nextLocale}; path=/; max-age=31536000; SameSite=Lax`
+    router.refresh()
+  }
 
   return (
     <Sidebar collapsible="icon">
@@ -456,6 +476,26 @@ export function AppSidebar() {
           >
             {isDarkTheme ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
           </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<button type="button" />}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+              aria-label={languageLabel}
+              title={languageLabel}
+            >
+              <Globe2Icon className="size-4" />
+              <span>{currentLocale.toUpperCase()}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="center" className="w-36">
+              <DropdownMenuRadioGroup value={currentLocale} onValueChange={changeLocale}>
+                {SUPPORTED_LOCALES.map((option) => (
+                  <DropdownMenuRadioItem key={option} value={option}>
+                    {t(`language.${option}`)}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* User Profile */}
