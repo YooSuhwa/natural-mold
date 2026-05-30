@@ -365,13 +365,19 @@ async def refresh_next_run_at(db: AsyncSession, trigger: AgentTrigger) -> None:
     await db.refresh(trigger)
 
 
-async def start_trigger_run(db: AsyncSession, trigger: AgentTrigger) -> AgentTriggerRun:
+async def start_trigger_run(
+    db: AsyncSession,
+    trigger: AgentTrigger,
+    *,
+    source: str = "scheduled",
+) -> AgentTriggerRun:
     run = AgentTriggerRun(
         trigger_id=trigger.id,
         agent_id=trigger.agent_id,
         user_id=trigger.user_id,
         input_message=trigger.input_message,
         status="running",
+        source=source,
     )
     db.add(run)
     await db.commit()
@@ -426,11 +432,20 @@ async def finish_trigger_run(
     conversation: Conversation | None,
     status: str,
     error_message: str | None = None,
+    output_preview: str | None = None,
+    thread_id: str | None = None,
+    checkpoint_id: str | None = None,
+    trace_id: str | None = None,
 ) -> None:
     finished_at = _now()
     run.status = status
     run.error_message = error_message
+    run.output_preview = output_preview[:1000] if output_preview else None
     run.finished_at = finished_at
+    run.duration_ms = max(0, int((finished_at - run.started_at).total_seconds() * 1000))
+    run.thread_id = thread_id
+    run.checkpoint_id = checkpoint_id
+    run.trace_id = trace_id
     if conversation is not None:
         run.conversation_id = conversation.id
     trigger.last_run_at = finished_at

@@ -96,6 +96,17 @@ async def test_execute_trigger_success():
         assert trigger is not None
         assert trigger.run_count == 1
         assert trigger.last_run_at is not None
+        from app.models.agent_trigger_run import AgentTriggerRun
+
+        result = await db.execute(
+            select(AgentTriggerRun).where(AgentTriggerRun.trigger_id == trigger_id)
+        )
+        run = result.scalar_one()
+        assert run.source == "scheduled"
+        assert run.duration_ms is not None
+        assert run.duration_ms >= 0
+        assert run.thread_id == str(run.conversation_id)
+        assert run.output_preview == "뉴스 결과입니다"
 
 
 @pytest.mark.asyncio
@@ -231,6 +242,36 @@ async def test_execute_trigger_run_count_incremented():
         trigger = await db.get(AgentTrigger, trigger_id)
         assert trigger is not None
         assert trigger.run_count == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_run_now_records_source():
+    """Forced runs should be marked as run_now in run history."""
+    trigger_id, _ = await _seed_full_setup()
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="manual result",
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        await execute_trigger(str(trigger_id), force=True)
+
+    async with TestSession() as db:
+        from app.models.agent_trigger_run import AgentTriggerRun
+
+        result = await db.execute(
+            select(AgentTriggerRun).where(AgentTriggerRun.trigger_id == trigger_id)
+        )
+        run = result.scalar_one()
+        assert run.source == "run_now"
+        assert run.output_preview == "manual result"
 
 
 @pytest.mark.asyncio

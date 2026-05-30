@@ -71,8 +71,14 @@ class TriggerRunResponse(BaseModel):
     user_id: uuid.UUID
     conversation_id: uuid.UUID | None
     status: str
+    source: str
     input_message: str
     error_message: str | None
+    output_preview: str | None
+    duration_ms: int | None
+    thread_id: str | None
+    checkpoint_id: str | None
+    trace_id: str | None
     started_at: datetime
     finished_at: datetime | None
     created_at: datetime

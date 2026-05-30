@@ -205,6 +205,10 @@ async def test_global_trigger_runs_history(client: AsyncClient):
     runs = resp.json()
     assert len(runs) == 1
     assert runs[0]["status"] == "success"
+    assert runs[0]["source"] == "scheduled"
+    assert "duration_ms" in runs[0]
+    assert "output_preview" in runs[0]
+    assert "thread_id" in runs[0]
 
 
 @pytest.mark.asyncio

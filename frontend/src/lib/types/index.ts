@@ -515,8 +515,14 @@ export interface TriggerRun {
   user_id: string
   conversation_id: string | null
   status: 'running' | 'success' | 'failed' | 'skipped'
+  source: 'scheduled' | 'run_now'
   input_message: string
   error_message: string | null
+  output_preview: string | null
+  duration_ms: number | null
+  thread_id: string | null
+  checkpoint_id: string | null
+  trace_id: string | null
   started_at: string
   finished_at: string | null
   created_at: string

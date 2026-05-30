@@ -79,7 +79,11 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             logger.info("Trigger %s skipped (not found)", trigger_id)
             return
 
-        run = await trigger_service.start_trigger_run(db, trigger)
+        run = await trigger_service.start_trigger_run(
+            db,
+            trigger,
+            source="run_now" if force else "scheduled",
+        )
 
         if trigger.status != "active" and not force:
             logger.info("Trigger %s skipped (inactive)", trigger_id)
@@ -196,7 +200,10 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             model_fallback_chain=fallback_chain,
         )
         try:
-            await execute_agent_invoke(cfg, [{"role": "user", "content": trigger.input_message}])
+            output = await execute_agent_invoke(
+                cfg,
+                [{"role": "user", "content": trigger.input_message}],
+            )
         except Exception as exc:
             logger.exception("Trigger %s: agent execution failed", trigger_id)
             await trigger_service.finish_trigger_run(
@@ -206,6 +213,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
                 conversation=conversation,
                 status="failed",
                 error_message=str(exc),
+                thread_id=str(conversation.id),
             )
             await db.refresh(run)
             return run
@@ -216,6 +224,8 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             run=run,
             conversation=conversation,
             status="success",
+            output_preview=str(output) if output is not None else None,
+            thread_id=str(conversation.id),
         )
         await db.refresh(run)
 

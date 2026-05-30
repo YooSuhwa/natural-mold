@@ -26,8 +26,14 @@ class AgentTriggerRun(Base):
         ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="scheduled")
     input_message: Mapped[str] = mapped_column(Text, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    output_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(nullable=True)
+    thread_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    checkpoint_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False
     )
