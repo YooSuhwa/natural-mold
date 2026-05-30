@@ -9,7 +9,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.agent_runtime.streaming import _is_tool_selector_json, format_sse, stream_agent_response
+from app.agent_runtime.streaming import (
+    StreamErrorRecord,
+    _is_tool_selector_json,
+    format_sse,
+    stream_agent_response,
+)
 
 # ---------------------------------------------------------------------------
 # format_sse
@@ -273,6 +278,35 @@ async def test_stream_exception_yields_error():
     assert len(error_events) == 1
     data = json.loads(error_events[0].split("data: ")[1].strip())
     assert "LLM connection failed" in data["message"]
+
+
+@pytest.mark.asyncio
+async def test_stream_exception_records_error_sink_and_failed_end_status():
+    """Visible stream errors must be observable by the caller as failures."""
+
+    class ErrorAgent:
+        async def astream(self, *args, **kwargs):
+            raise RuntimeError("LLM connection failed")
+            yield  # make it an async generator
+
+    errors: list[StreamErrorRecord] = []
+    events = [
+        e
+        async for e in stream_agent_response(
+            ErrorAgent(),
+            [],
+            {},
+            error_sink=errors,
+        )
+    ]
+
+    assert len(errors) == 1
+    assert isinstance(errors[0].error, RuntimeError)
+    assert errors[0].message == "LLM connection failed"
+
+    end_event = [e for e in events if "message_end" in e][0]
+    end_data = json.loads(end_event.split("data: ")[1].strip())
+    assert end_data["status"] == "failed"
 
 
 @pytest.mark.asyncio

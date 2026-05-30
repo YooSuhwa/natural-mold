@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agent_runtime.executor import AgentConfig
+from app.agent_runtime.streaming import StreamErrorRecord
 from app.tools.risk import default_deepagents_interrupt_policy
 
 TEMPORAL_TOOL_NAMES = {"current_datetime", "resolve_relative_date"}
@@ -464,6 +465,108 @@ async def test_execute_stream_yields_chunks(
         chunks.append(chunk)
 
     assert chunks == ["chunk-1", "chunk-2", "chunk-3"]
+
+
+@pytest.mark.asyncio
+async def test_execute_stream_records_stream_error_as_hook_failure(monkeypatch):
+    """A stream-visible error must call hook failure, not hook post success."""
+    from app.agent_runtime.executor import execute_agent_stream
+
+    class FailingAgent:
+        async def astream(self, *args, **kwargs):
+            yield (MagicMock(content="partial", type="ai", tool_calls=[]), {})
+            raise RuntimeError("provider stream failed")
+
+        async def aget_state(self, *args, **kwargs):
+            state = MagicMock()
+            state.tasks = []
+            return state
+
+    async def fake_prepare_agent(*args, **kwargs):
+        return FailingAgent(), [], {"configurable": {"thread_id": "t-1"}}
+
+    mock_hooks = MagicMock()
+    mock_hooks.run_pre = AsyncMock()
+    mock_hooks.run_post = AsyncMock()
+    mock_hooks.run_failure = AsyncMock()
+
+    monkeypatch.setattr(
+        "app.agent_runtime.executor._prepare_agent",
+        fake_prepare_agent,
+    )
+    monkeypatch.setattr("app.agent_runtime.executor.hooks", mock_hooks)
+
+    errors: list[StreamErrorRecord] = []
+    chunks = [
+        chunk
+        async for chunk in execute_agent_stream(
+            _cfg(
+                user_id="00000000-0000-0000-0000-000000000001",
+                agent_id="00000000-0000-0000-0000-0000000000aa",
+            ),
+            [{"role": "user", "content": "hi"}],
+            error_sink=errors,
+        )
+    ]
+
+    assert any("event: error" in chunk for chunk in chunks)
+    assert len(errors) == 1
+    assert str(errors[0].error) == "provider stream failed"
+    mock_hooks.run_pre.assert_awaited_once()
+    mock_hooks.run_failure.assert_awaited_once()
+    failure_error = mock_hooks.run_failure.await_args.args[1]
+    assert isinstance(failure_error, RuntimeError)
+    assert str(failure_error) == "provider stream failed"
+    mock_hooks.run_post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_resume_stream_records_stream_error_in_sink(monkeypatch):
+    """Resume streams must expose the same typed error signal as normal streams."""
+    from app.agent_runtime.executor import resume_agent_stream
+
+    class FailingAgent:
+        async def astream(self, *args, **kwargs):
+            raise RuntimeError("resume stream failed")
+            yield
+
+        async def aget_state(self, *args, **kwargs):
+            state = MagicMock()
+            state.tasks = []
+            return state
+
+    async def fake_prepare_agent(*args, **kwargs):
+        return FailingAgent(), [], {"configurable": {"thread_id": "t-1"}}
+
+    mock_hooks = MagicMock()
+    mock_hooks.run_pre = AsyncMock()
+    mock_hooks.run_post = AsyncMock()
+    mock_hooks.run_failure = AsyncMock()
+
+    monkeypatch.setattr(
+        "app.agent_runtime.executor._prepare_agent",
+        fake_prepare_agent,
+    )
+    monkeypatch.setattr("app.agent_runtime.executor.hooks", mock_hooks)
+
+    errors: list[StreamErrorRecord] = []
+    chunks = [
+        chunk
+        async for chunk in resume_agent_stream(
+            _cfg(
+                user_id="00000000-0000-0000-0000-000000000001",
+                agent_id="00000000-0000-0000-0000-0000000000aa",
+            ),
+            {"answer": "approved"},
+            error_sink=errors,
+        )
+    ]
+
+    assert any("event: error" in chunk for chunk in chunks)
+    assert len(errors) == 1
+    assert str(errors[0].error) == "resume stream failed"
+    mock_hooks.run_failure.assert_awaited_once()
+    mock_hooks.run_post.assert_not_awaited()
 
 
 @pytest.mark.asyncio

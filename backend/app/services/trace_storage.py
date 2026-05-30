@@ -187,6 +187,7 @@ async def record_turn(
     conversation_id: uuid.UUID,
     events: list[dict[str, Any]],
     raw_msg_ids: list[str] | None = None,
+    status: TraceStatus = "completed",
 ) -> MessageEvent | None:
     """[DEPRECATED — 신규 호출자 추가 금지] one-shot turn persistence shim.
 
@@ -236,7 +237,7 @@ async def record_turn(
         events=events,
         last_event_id=last_id,
         linked_message_ids=linked_ids,
-        status="completed",
+        status=status,
         completed_at=now,
         # ORM-level explicit set — server_default(now())와 별도로 SQLite/PG
         # 일관성과 회귀 가드. (model의 default lambda + server_default가
