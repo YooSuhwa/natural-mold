@@ -59,6 +59,7 @@ def test_build_agent_calls_deep_agent(mock_create: MagicMock):
         backend=None,
         skills=None,
         memory=None,
+        permissions=None,
         name=None,
     )
 
@@ -83,6 +84,25 @@ def test_build_agent_passes_skills_and_memory(mock_create: MagicMock):
     assert call_kwargs["skills"] == ["/skills/"]
     assert call_kwargs["memory"] == ["/agents/abc/AGENTS.md"]
     assert call_kwargs["backend"] is mock_backend
+
+
+@patch("app.agent_runtime.executor.create_deep_agent")
+def test_build_agent_passes_permissions(mock_create: MagicMock):
+    from deepagents.middleware.filesystem import FilesystemPermission
+
+    from app.agent_runtime.executor import build_agent
+
+    permissions = [
+        FilesystemPermission(
+            operations=["read"],
+            paths=["/runtime/t-1/skills/**"],
+        )
+    ]
+
+    build_agent(MagicMock(), [], "prompt", permissions=permissions)
+
+    call_kwargs = mock_create.call_args[1]
+    assert call_kwargs["permissions"] == permissions
 
 
 @patch("app.agent_runtime.executor.create_deep_agent")

@@ -19,9 +19,11 @@ from urllib.parse import urlparse
 
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
+from deepagents.middleware.filesystem import FilesystemPermission
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool, StructuredTool
 
+from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
 from app.agent_runtime.message_utils import convert_to_langchain_messages
 from app.agent_runtime.middleware_registry import (
     DEEPAGENT_BUILTIN_TYPES,
@@ -378,6 +380,7 @@ def build_agent(
     backend: Any | None = None,
     skills: list[str] | None = None,
     memory: list[str] | None = None,
+    permissions: list[FilesystemPermission] | None = None,
     name: str | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
@@ -392,6 +395,7 @@ def build_agent(
         backend=backend,
         skills=skills,
         memory=memory,
+        permissions=permissions,
         name=name,
     )
 
@@ -687,6 +691,17 @@ def _build_interrupt_on_policy(
     return policy or None
 
 
+def _selected_skill_slugs(agent_skills: list[dict[str, Any]] | None) -> list[str]:
+    if not agent_skills:
+        return []
+    slugs: list[str] = []
+    for raw in agent_skills:
+        slug = raw.get("slug")
+        if isinstance(slug, str) and slug:
+            slugs.append(slug)
+    return slugs
+
+
 async def _prepare_agent(
     cfg: AgentConfig,
     *,
@@ -786,6 +801,13 @@ async def _prepare_agent(
         (_DATA_DIR / "agents" / cfg.agent_id).mkdir(parents=True, exist_ok=True)
         memory_sources = [f"/agents/{cfg.agent_id}/AGENTS.md"]
 
+    permissions = build_filesystem_permissions(
+        thread_id=cfg.thread_id,
+        agent_id=cfg.agent_id,
+        user_id=cfg.user_id,
+        selected_skill_slugs=_selected_skill_slugs(cfg.agent_skills),
+    )
+
     # 4-1. ask_user 도구 — 대화형(스트리밍) 에이전트에만 포함
     # 트리거/배치 실행 시에는 사용자가 없으므로 제외
     if not is_trigger_mode:
@@ -815,6 +837,7 @@ async def _prepare_agent(
         backend=backend,
         skills=skills_sources,
         memory=memory_sources,
+        permissions=permissions,
         name=f"agent_{cfg.thread_id[:8]}",
     )
 
