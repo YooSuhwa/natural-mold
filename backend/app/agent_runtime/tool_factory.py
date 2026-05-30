@@ -38,6 +38,7 @@ from app.http_ssl import get_outbound_ssl_context
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.parameters import FieldKind
 from app.tools.registry import registry as tool_registry
+from app.tools.risk import attach_tool_risk, builtin_tool_risk, risk_from_definition
 
 _KIND_TO_PY_TYPE: dict[FieldKind, type] = {
     FieldKind.STRING: str,
@@ -206,7 +207,7 @@ def create_builtin_tool(definition_key: str) -> BaseTool | None:
     builder = _BUILTIN_BUILDERS.get(definition_key)
     if builder is None:
         return None
-    return builder()
+    return attach_tool_risk(builder(), builtin_tool_risk(definition_key))
 
 
 # ---------------------------------------------------------------------------
@@ -380,12 +381,13 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
     )
 
     args_schema = _build_runtime_args_schema(definition, stored_params)
-    return StructuredTool.from_function(
+    tool = StructuredTool.from_function(
         coroutine=_invoke,
         name=safe_name,
         description=description,
         args_schema=args_schema,
     )
+    return attach_tool_risk(tool, risk_from_definition(definition))
 
 
 __all__ = ["create_builtin_tool", "create_tool_for_runtime"]

@@ -22,6 +22,7 @@ from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.model import Model
 from app.services import chat_service, trigger_service
+from app.tools.risk import format_trigger_block_reason, trigger_blocked_tools
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +143,6 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             await db.refresh(run)
             return run
 
-        conversation = await trigger_service.resolve_schedule_conversation(db, trigger)
-
         if agent.model is None:
             logger.warning(
                 "Trigger %s: agent has no model bound — skipping run", trigger_id
@@ -152,13 +151,37 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
                 db,
                 trigger=trigger,
                 run=run,
-                conversation=conversation,
+                conversation=None,
                 status="failed",
                 error_message="agent has no model bound",
             )
             await db.refresh(run)
             return run
 
+        effective_prompt = chat_service.build_effective_prompt(agent)
+        tools_config = await chat_service.build_tools_config(
+            agent, db=db, conversation_id=None
+        )
+        agent_skills = chat_service.build_agent_skills(agent)
+        blocked_tools = trigger_blocked_tools(
+            tools_config,
+            has_agent_skills=bool(agent_skills),
+        )
+        if blocked_tools:
+            reason = format_trigger_block_reason(blocked_tools)
+            logger.warning("Trigger %s blocked: %s", trigger_id, reason)
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=None,
+                status="failed",
+                error_message=reason,
+            )
+            await db.refresh(run)
+            return run
+
+        conversation = await trigger_service.resolve_schedule_conversation(db, trigger)
         now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
         logger.info(
             "Trigger %s executing in conversation %s at %s",
@@ -166,12 +189,6 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             conversation.id,
             now_str,
         )
-
-        effective_prompt = chat_service.build_effective_prompt(agent)
-        tools_config = await chat_service.build_tools_config(
-            agent, db=db, conversation_id=str(conversation.id)
-        )
-        agent_skills = chat_service.build_agent_skills(agent)
 
         api_key = await resolve_llm_api_key_for_agent(db, agent)
         base_url = agent.model.base_url

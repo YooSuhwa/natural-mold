@@ -16,6 +16,7 @@ from app.credentials.authenticate import apply_authentication
 from app.credentials.registry import registry as credential_registry
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.parameters import FieldDef, FieldKind
+from app.tools.risk import ToolRiskLevel
 
 _METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
 
@@ -149,5 +150,10 @@ definition = ToolDefinition(
         ),
     ],
     credential_definition_keys=["http_bearer", "http_api_key", "http_basic"],
+    risk_level=ToolRiskLevel.EXTERNAL_MUTATION,
+    requires_approval=True,
+    allowed_decisions=("approve", "edit", "reject"),
+    trigger_safe=False,
+    risk_reason="Can call arbitrary external HTTP endpoints with credentials",
     runner=_runner,
 )

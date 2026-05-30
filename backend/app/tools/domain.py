@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from app.tools.parameters import FieldDef
+from app.tools.risk import ToolRiskLevel, risk_metadata_dict
 
 
 @dataclass
@@ -52,6 +53,11 @@ class ToolDefinition:
     # tool does not require a credential. The first entry is treated as the
     # preferred default by the UI.
     credential_definition_keys: list[str] = field(default_factory=list)
+    risk_level: ToolRiskLevel | str = ToolRiskLevel.READ_ONLY
+    requires_approval: bool | None = None
+    allowed_decisions: tuple[str, ...] = ()
+    trigger_safe: bool | None = None
+    risk_reason: str | None = None
     runner: ToolRunner | None = None
 
     def serialize(self) -> dict[str, Any]:
@@ -66,6 +72,13 @@ class ToolDefinition:
             "parameters": [p.serialize() for p in self.parameters],
             "credential_definition_keys": list(self.credential_definition_keys),
             "requires_credential": bool(self.credential_definition_keys),
+            "risk": risk_metadata_dict(
+                self.risk_level,
+                requires_approval=self.requires_approval,
+                allowed_decisions=list(self.allowed_decisions),
+                trigger_safe=self.trigger_safe,
+                reason=self.risk_reason,
+            ),
         }
 
 
