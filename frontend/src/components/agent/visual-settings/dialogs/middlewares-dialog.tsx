@@ -50,7 +50,7 @@ export function MiddlewaresDialog({
   onToggleMiddleware,
   allMiddlewares: providedAll,
 }: MiddlewaresDialogProps) {
-  const tc = useTranslations('common')
+  const t = useTranslations('agent.visualSettings.addMiddlewaresDialog')
   const { data: fetched } = useMiddlewares()
   const allMiddlewares = useMemo(
     () => providedAll ?? fetched ?? [],
@@ -83,8 +83,8 @@ export function MiddlewaresDialog({
     <DialogShell open={open} onOpenChange={onOpenChange} size="xl" height="tall">
       <DialogShell.Header
         icon={<LayersIcon className="size-5" />}
-        title="미들웨어 추가"
-        description="에이전트 호출에 끼워 넣을 미들웨어를 선택합니다."
+        title={t('title')}
+        description={t('description')}
       />
       <DialogShell.Body>
         <div className="grid gap-6 md:grid-cols-2">
@@ -92,6 +92,7 @@ export function MiddlewaresDialog({
             isLoading={isLoading}
             selected={selected}
             onRemove={onToggleMiddleware}
+            t={t}
           />
           <AvailableColumn
             isLoading={isLoading}
@@ -101,7 +102,7 @@ export function MiddlewaresDialog({
             category={category}
             onCategoryChange={setCategory}
             onAdd={onToggleMiddleware}
-            tc={tc}
+            tc={t}
           />
         </div>
       </DialogShell.Body>
@@ -113,19 +114,21 @@ function CurrentColumn({
   isLoading,
   selected,
   onRemove,
+  t,
 }: {
   isLoading: boolean
   selected: MiddlewareRegistryItem[]
   onRemove: (type: string) => void
+  t: ReturnType<typeof useTranslations>
 }) {
   return (
     <section className="flex min-h-0 flex-col">
-      <h3 className="mb-3 text-sm font-medium">현재 선택 ({selected.length})</h3>
+      <h3 className="mb-3 text-sm font-medium">{t('current', { count: selected.length })}</h3>
       <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1 sm:h-[60vh]">
         {isLoading ? (
           <Skeleton className="h-20 w-full" />
         ) : selected.length === 0 ? (
-          <EmptyBox>선택된 미들웨어가 없습니다.</EmptyBox>
+          <EmptyBox>{t('selectedEmpty')}</EmptyBox>
         ) : (
           selected.map((m) => (
             <SelectedCard key={m.type} item={m} onRemove={() => onRemove(m.type)} />
@@ -153,17 +156,17 @@ function AvailableColumn({
   category: CategoryFilter
   onCategoryChange: (v: CategoryFilter) => void
   onAdd: (type: string) => void
-  tc: (key: string) => string
+  tc: ReturnType<typeof useTranslations>
 }) {
   return (
     <section className="flex min-h-0 flex-col">
-      <h3 className="mb-3 text-sm font-medium">추가 가능</h3>
+      <h3 className="mb-3 text-sm font-medium">{tc('available')}</h3>
       <div className="relative mb-3">
         <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="검색"
+          placeholder={tc('searchPlaceholder')}
           className="pl-9 focus-visible:border-input focus-visible:ring-0"
         />
       </div>
@@ -179,7 +182,7 @@ function AvailableColumn({
                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
             }`}
           >
-            {cat === 'all' ? '전체' : cat}
+            {cat === 'all' ? tc('categories.all') : cat}
           </button>
         ))}
       </div>
@@ -188,7 +191,7 @@ function AvailableColumn({
           <Skeleton className="h-20 w-full" />
         ) : available.length === 0 ? (
           <EmptyBox>
-            {query.trim().length > 0 ? '검색 결과가 없습니다.' : '표시할 미들웨어가 없습니다.'}
+            {query.trim().length > 0 ? tc('noResults') : tc('empty')}
           </EmptyBox>
         ) : (
           available.map((m) => (
@@ -212,6 +215,7 @@ function SelectedCard({
   item: MiddlewareRegistryItem
   onRemove: () => void
 }) {
+  const t = useTranslations('agent.visualSettings.addMiddlewaresDialog')
   return (
     <MiddlewareCard
       item={item}
@@ -224,10 +228,10 @@ function SelectedCard({
           variant="ghost"
           onClick={onRemove}
           className="shrink-0"
-          aria-label={`${item.display_name} 제거`}
+          aria-label={t('removeNamed', { name: item.display_name })}
         >
           <Trash2Icon className="size-3.5" />
-          제거
+          {t('remove')}
         </Button>
       }
     />
@@ -243,6 +247,7 @@ function AvailableCard({
   addLabel: string
   onAdd: () => void
 }) {
+  const t = useTranslations('agent.visualSettings.addMiddlewaresDialog')
   return (
     <MiddlewareCard
       item={item}
@@ -262,7 +267,7 @@ function AvailableCard({
           variant="outline"
           onClick={onAdd}
           className="shrink-0"
-          aria-label={`${item.display_name} 추가`}
+          aria-label={t('addNamed', { name: item.display_name })}
         >
           <PlusIcon className="size-3.5" />
           {addLabel}

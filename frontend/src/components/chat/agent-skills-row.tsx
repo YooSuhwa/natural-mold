@@ -1,6 +1,7 @@
 'use client'
 
 import { BookOpenIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import type { SkillBrief } from '@/lib/types'
 
 interface Props {
@@ -13,12 +14,13 @@ interface Props {
  * for legacy / un-skilled agents.
  */
 export function AgentSkillsRow({ skills }: Props) {
+  const t = useTranslations('chat.skillsRow')
   if (!skills || skills.length === 0) return null
 
   return (
     <div className="flex items-center gap-2 border-b border-border/40 bg-muted/20 px-4 py-2 text-xs">
       <BookOpenIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      <span className="shrink-0 font-medium text-muted-foreground">Skills:</span>
+      <span className="shrink-0 font-medium text-muted-foreground">{t('label')}</span>
       <div className="flex flex-wrap gap-1.5">
         {skills.map((s) => (
           <span

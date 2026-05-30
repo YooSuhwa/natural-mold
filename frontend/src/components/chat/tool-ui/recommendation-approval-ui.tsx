@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
+import { useTranslations } from 'next-intl'
 import {
   BlocksIcon,
   BookOpenIcon,
@@ -113,6 +114,7 @@ function ToolRecommendationHeader({
 }
 
 function ToolRow({ item, cardKind }: { item: ToolItem; cardKind: ItemKind }) {
+  const t = useTranslations('chat.recommendation')
   const name = getItemName(item, cardKind)
   const rowKind = resolveRowKind(item, cardKind)
   const Icon = ROW_ICON[rowKind]
@@ -156,7 +158,7 @@ function ToolRow({ item, cardKind }: { item: ToolItem; cardKind: ItemKind }) {
               letterSpacing: '-0.005em',
             }}
           >
-            추천
+            {t('recommended')}
           </span>
         </div>
         <div className="mb-1.5 inline-flex items-center gap-1" style={{ color: T.muted }}>
@@ -180,7 +182,7 @@ function ToolRow({ item, cardKind }: { item: ToolItem; cardKind: ItemKind }) {
             style={{ color: T.ink2, lineHeight: 1.6, letterSpacing: '-0.005em' }}
           >
             <span className="mr-1.5 font-semibold" style={{ color: T.muted }}>
-              사유
+              {t('reason')}
             </span>
             {item.reason}
           </p>
@@ -199,6 +201,7 @@ function FeedbackTextarea({
   onChange: (v: string) => void
   disabled: boolean
 }) {
+  const t = useTranslations('chat.recommendation')
   const [focused, setFocused] = useState(false)
   const composingRef = useRef(false)
 
@@ -222,7 +225,7 @@ function FeedbackTextarea({
             e.stopPropagation()
           }
         }}
-        placeholder="추가하거나 빼고 싶은 도구, 변경 사유를 적어주세요"
+        placeholder={t('feedbackPlaceholder')}
         rows={2}
         disabled={disabled}
         className="w-full resize-none font-sans text-[13.5px] outline-none transition-[border-color,box-shadow] duration-150"
@@ -250,6 +253,7 @@ function ApproveButton({
   disabled: boolean
   submitted: boolean
 }) {
+  const t = useTranslations('chat.recommendation')
   return (
     <button
       type="button"
@@ -273,12 +277,13 @@ function ApproveButton({
       }}
     >
       <CheckIcon className="size-3" strokeWidth={3} />
-      {submitted ? '승인 완료' : '승인하고 진행'}
+      {submitted ? t('approved') : t('approveAndContinue')}
     </button>
   )
 }
 
 function RejectButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
+  const t = useTranslations('chat.recommendation')
   return (
     <button
       type="button"
@@ -303,7 +308,7 @@ function RejectButton({ onClick, disabled }: { onClick: () => void; disabled: bo
       }}
     >
       <XIcon className="size-3" strokeWidth={2.5} />
-      수정 요청
+      {t('requestRevision')}
     </button>
   )
 }
@@ -317,6 +322,7 @@ function FooterRow({
   feedbackOpen: boolean
   setFeedbackOpen: (v: boolean) => void
 }) {
+  const t = useTranslations('chat.recommendation')
   const { submitted, isLocked, handleApprove, handleRevision } = form
 
   return (
@@ -329,7 +335,7 @@ function FooterRow({
         style={{ color: T.muted, background: 'transparent', borderRadius: 6 }}
       >
         <PencilIcon className="size-3" />
-        {feedbackOpen ? '의견 닫기' : '수정 의견 작성'}
+        {feedbackOpen ? t('closeFeedback') : t('writeFeedback')}
       </button>
       <div className="flex items-center gap-2">
         <RejectButton onClick={handleRevision} disabled={isLocked} />
@@ -350,16 +356,17 @@ function RecommendationApproval({
   args: RecommendationArgs
   status: 'running' | 'complete' | 'incomplete' | 'requires-action'
 }) {
+  const t = useTranslations('chat.recommendation')
   const form = useApprovalForm({
     isComplete: status === 'complete',
-    approveDisplay: '승인',
-    revisionFallback: '수정 요청',
+    approveDisplay: t('approve'),
+    revisionFallback: t('requestRevision'),
   })
   const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   const items = args.items ?? []
   const cardKind = args.item_kind ?? 'tool'
-  const title = args.title || (cardKind === 'middleware' ? '미들웨어 추천' : '도구 추천')
+  const title = args.title || (cardKind === 'middleware' ? t('middlewareTitle') : t('toolTitle'))
 
   return (
     <div className="my-3">
@@ -396,7 +403,7 @@ function RecommendationApproval({
         <div style={{ padding: '6px 8px' }}>
           {items.length === 0 && (
             <p className="text-[13px]" style={{ padding: '12px 10px', color: T.muted }}>
-              추천된 항목이 없습니다.
+              {t('empty')}
             </p>
           )}
           {items.map((item, idx) => (

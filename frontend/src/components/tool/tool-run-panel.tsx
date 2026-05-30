@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Play, Loader2 } from 'lucide-react'
 
@@ -13,6 +14,7 @@ interface ToolRunPanelProps {
 }
 
 export function ToolRunPanel({ toolId }: ToolRunPanelProps) {
+  const t = useTranslations('tool.runPanel')
   const [argsText, setArgsText] = useState('{}')
   const [result, setResult] = useState<string | null>(null)
   const run = useRunTool()
@@ -23,19 +25,19 @@ export function ToolRunPanel({ toolId }: ToolRunPanelProps) {
       const raw = argsText.trim()
       parsed = raw ? JSON.parse(raw) : {}
     } catch {
-      toast.error('Runtime args must be valid JSON')
+      toast.error(t('invalidJson'))
       return
     }
     try {
       const out = await run.mutateAsync({ id: toolId, runtime_args: parsed })
       setResult(JSON.stringify(out, null, 2))
       if (out.success) {
-        toast.success(`Ran in ${out.duration_ms}ms`)
+        toast.success(t('ranIn', { duration: out.duration_ms }))
       } else {
-        toast.error(out.error ?? 'Run failed')
+        toast.error(out.error ?? t('failed'))
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Run failed')
+      toast.error(e instanceof Error ? e.message : t('failed'))
     }
   }
 
@@ -43,7 +45,7 @@ export function ToolRunPanel({ toolId }: ToolRunPanelProps) {
     <div className="space-y-3">
       <div className="space-y-1.5">
         <label htmlFor="tool-args" className="text-xs font-medium">
-          Runtime args (JSON)
+          {t('runtimeArgs')}
         </label>
         <Textarea
           id="tool-args"
@@ -59,7 +61,7 @@ export function ToolRunPanel({ toolId }: ToolRunPanelProps) {
         ) : (
           <Play className="size-4" />
         )}
-        Run
+        {t('run')}
       </Button>
       {result && (
         <pre className="max-h-64 overflow-auto rounded border bg-muted/40 p-2 font-mono text-[11px]">

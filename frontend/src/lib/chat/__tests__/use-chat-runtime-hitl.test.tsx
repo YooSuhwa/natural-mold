@@ -128,7 +128,7 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
   it('표준 chunk가 도착하면 onStandardInterrupt가 1회 호출된다', async () => {
     const { onStandardInterrupt, options } = buildHookOptions({
       events: [
-        { event: 'interrupt', data: STANDARD_PAYLOAD as unknown as Record<string, unknown> },
+        { event: 'interrupt', data: STANDARD_PAYLOAD },
       ],
     })
     const { result } = renderHook(() => useChatRuntime(options), {
@@ -160,7 +160,7 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
       ],
     }
     const { onStandardInterrupt, options } = buildHookOptions({
-      events: [{ event: 'interrupt', data: multi as unknown as Record<string, unknown> }],
+      events: [{ event: 'interrupt', data: multi }],
     })
     const { result } = renderHook(() => useChatRuntime(options), {
       wrapper: createWrapper(),
@@ -191,7 +191,7 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
     }
     const { onStandardInterrupt, options } = buildHookOptions({
       events: [
-        { event: 'interrupt', data: fallbackStd as unknown as Record<string, unknown> },
+        { event: 'interrupt', data: fallbackStd },
       ],
     })
     const { result } = renderHook(() => useChatRuntime(options), {
@@ -215,7 +215,7 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
       events: [
         {
           event: 'error',
-          data: { message: 'Error code: 404' } as unknown as Record<string, unknown>,
+          data: { message: 'Error code: 404' },
         },
       ],
     })
@@ -244,9 +244,9 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
     vi.mocked(toast.error).mockClear()
     const { options } = buildHookOptions({
       events: [
-        { event: 'error', data: { message: 'first' } as unknown as Record<string, unknown> },
-        { event: 'error', data: { message: 'second' } as unknown as Record<string, unknown> },
-        { event: 'error', data: { message: 'third' } as unknown as Record<string, unknown> },
+        { event: 'error', data: { message: 'first' } },
+        { event: 'error', data: { message: 'second' } },
+        { event: 'error', data: { message: 'third' } },
       ],
     })
     const { result } = renderHook(() => useChatRuntime(options), {

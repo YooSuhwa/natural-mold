@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
 import {
@@ -40,13 +41,14 @@ interface McpToolTableProps {
 }
 
 function ExpandableDescription({ text }: { text: string | null | undefined }) {
+  const t = useTranslations('mcp.toolTable')
   const [expanded, setExpanded] = useState(false)
   if (!text) return <span>—</span>
   return (
     <button
       type="button"
       onClick={() => setExpanded((v) => !v)}
-      title={expanded ? 'Click to collapse' : 'Click to expand'}
+      title={expanded ? t('collapse') : t('expand')}
       className={`block w-full whitespace-normal break-words text-left transition-colors hover:text-foreground ${
         expanded ? '' : 'line-clamp-3'
       }`}
@@ -69,12 +71,13 @@ function isPersistedTool(tool: McpToolLike): boolean {
 }
 
 export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
+  const t = useTranslations('mcp.toolTable')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
 
   if (tools.length === 0) {
     return (
       <p className="rounded border border-dashed p-3 text-center text-xs text-muted-foreground">
-        No tools discovered yet.
+        {t('empty')}
       </p>
     )
   }
@@ -94,9 +97,9 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
         <TableHeader>
           <TableRow>
             {onToggle && <TableHead className="w-8" />}
-            <TableHead className="w-1/3">Tool</TableHead>
-            <TableHead>Description</TableHead>
-            <TableHead className="w-20 text-right">Schema</TableHead>
+            <TableHead className="w-1/3">{t('columns.tool')}</TableHead>
+            <TableHead>{t('columns.description')}</TableHead>
+            <TableHead className="w-20 text-right">{t('columns.schema')}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -124,7 +127,7 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                       <span>{tool.name}</span>
                       {disabled ? (
                         <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                          disabled
+                          {t('disabled')}
                         </span>
                       ) : null}
                       {stale ? (
@@ -132,11 +135,11 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                           className="rounded-full bg-status-warn/15 px-1.5 py-0.5 text-[10px] font-medium text-status-warn"
                           title={
                             tool.last_seen_at
-                              ? `Last seen ${new Date(tool.last_seen_at).toLocaleString()}`
-                              : 'Never seen in a discovery probe'
+                              ? t('lastSeen', { date: new Date(tool.last_seen_at).toLocaleString() })
+                              : t('neverSeen')
                           }
                         >
-                          stale
+                          {t('stale')}
                         </span>
                       ) : null}
                     </div>
@@ -157,7 +160,7 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                         ) : (
                           <ChevronRight className="size-3" />
                         )}
-                        Schema
+                        {t('columns.schema')}
                       </Button>
                     ) : (
                       <span className="text-[10px] text-muted-foreground">—</span>

@@ -59,7 +59,7 @@ export function PasswordStrengthMeter({ password }: Props) {
     <div className="mt-2">
       <div
         role="meter"
-        aria-label="Password strength"
+        aria-label={t('label')}
         aria-valuenow={result.segments}
         aria-valuemin={0}
         aria-valuemax={4}

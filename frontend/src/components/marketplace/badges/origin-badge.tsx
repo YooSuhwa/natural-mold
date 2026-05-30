@@ -9,45 +9,46 @@ import {
   SparklesIcon,
   UsersIcon,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
 import type { OriginKind, ResourceOriginSummary } from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
 
 interface Spec {
-  label: string
+  labelKey: string
   icon: LucideIcon
   className: string
 }
 
 const SPECS: Record<OriginKind, Spec> = {
   created_by_me: {
-    label: 'Created by me',
+    labelKey: 'origin.created_by_me',
     icon: PencilIcon,
     className: 'bg-muted text-foreground',
   },
   imported_by_me: {
-    label: 'Imported by me',
+    labelKey: 'origin.imported_by_me',
     icon: DownloadIcon,
     className: 'bg-muted text-foreground',
   },
   built_in_k_skill: {
-    label: 'Built-in · k-skill',
+    labelKey: 'origin.built_in_k_skill',
     icon: SparklesIcon,
     className: 'bg-primary/15 text-primary-strong',
   },
   shared_with_me: {
-    label: 'Shared with me',
+    labelKey: 'origin.shared_with_me',
     icon: UsersIcon,
     className: 'bg-status-accent/10 text-status-accent',
   },
   community: {
-    label: 'Community',
+    labelKey: 'origin.community',
     icon: GlobeIcon,
     className: 'bg-status-info/10 text-status-info',
   },
   system_seed: {
-    label: 'System',
+    labelKey: 'origin.system_seed',
     icon: CogIcon,
     className: 'bg-muted text-foreground',
   },
@@ -59,12 +60,13 @@ interface OriginBadgeProps {
 }
 
 export function OriginBadge({ summary, className }: OriginBadgeProps) {
+  const t = useTranslations('marketplace.badges')
   if (!summary) return null
   const spec = SPECS[summary.kind] ?? SPECS.created_by_me
   const label =
     summary.kind === 'shared_with_me' && summary.source_name
-      ? `Shared by ${summary.source_name}`
-      : (summary.label || spec.label)
+      ? t('origin.sharedBy', { name: summary.source_name })
+      : (summary.label || t(spec.labelKey))
   const Icon = spec.icon
   return (
     <Badge className={cn('gap-1', spec.className, className)}>

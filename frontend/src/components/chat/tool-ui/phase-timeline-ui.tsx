@@ -2,6 +2,7 @@
 
 import { makeAssistantToolUI, useAssistantState } from '@assistant-ui/react'
 import { CheckIcon, SparklesIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 type PhaseStatus = 'pending' | 'in_progress' | 'completed'
 
@@ -124,13 +125,8 @@ function PhaseDot({ status }: { status: PhaseStatus }) {
   )
 }
 
-const STATUS_LABEL: Record<PhaseStatus, string> = {
-  completed: '완료',
-  in_progress: '진행중',
-  pending: '대기',
-}
-
 function StatusBadge({ status }: { status: PhaseStatus }) {
+  const t = useTranslations('chat.phaseTimeline')
   const bgFg: { bg: string; fg: string; border: string } =
     status === 'completed'
       ? { bg: T.primaryBg, fg: T.primary, border: 'transparent' }
@@ -160,12 +156,13 @@ function StatusBadge({ status }: { status: PhaseStatus }) {
           }}
         />
       )}
-      {STATUS_LABEL[status]}
+      {t(`status.${status}`)}
     </span>
   )
 }
 
 function ProgressRail({ todos }: { todos: PhaseTodo[] }) {
+  const t = useTranslations('chat.phaseTimeline')
   const items = deriveInProgress(todos ?? [])
   const total = items.length || 1
   const done = items.filter((t) => t.status === 'completed').length
@@ -193,10 +190,10 @@ function ProgressRail({ todos }: { todos: PhaseTodo[] }) {
             className="text-[13.5px] font-semibold"
             style={{ color: T.ink, letterSpacing: '-0.01em' }}
           >
-            진행 상황
+            {t('title')}
           </span>
           <span className="text-[12px] tabular-nums" style={{ color: T.muted }}>
-            · {done}/{items.length} 단계 완료
+            {t('progress', { done, total: items.length })}
           </span>
         </div>
         <div

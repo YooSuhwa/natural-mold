@@ -1,5 +1,7 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
+
 import { cn } from '@/lib/utils'
 import type { ModelSource } from '@/lib/types/model'
 
@@ -26,13 +28,14 @@ const CATALOG_CLASSES =
 
 const MANUAL_CLASSES = 'bg-muted text-muted-foreground ring-border'
 
-const SOURCE_LABEL: Record<ModelSource, string> = {
-  openrouter: 'OpenRouter',
-  litellm: 'LiteLLM',
-  manual: 'Manual',
+const SOURCE_LABEL_KEY: Record<ModelSource, string> = {
+  openrouter: 'source.openrouter',
+  litellm: 'source.litellm',
+  manual: 'source.manual',
 }
 
 export function ModelSourceBadge({ source, className }: ModelSourceBadgeProps) {
+  const t = useTranslations('model.sourceBadge')
   if (!source) {
     return (
       <span
@@ -47,10 +50,10 @@ export function ModelSourceBadge({ source, className }: ModelSourceBadgeProps) {
   }
 
   const isManual = source === 'manual'
-  const label = isManual ? 'Manual' : 'Catalog'
+  const label = isManual ? t('manual') : t('catalog')
   const tooltip = isManual
-    ? 'Custom ID — no pricing or context info'
-    : `Pricing & capability metadata from ${SOURCE_LABEL[source]} catalog. Calls use the provider SDK with your credential.`
+    ? t('manualTooltip')
+    : t('catalogTooltip', { source: t(SOURCE_LABEL_KEY[source]) })
 
   return (
     <span

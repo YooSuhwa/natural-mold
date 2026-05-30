@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import type { SubagentPayload } from '@/lib/stores/chat-right-rail'
 
 interface Props {
@@ -7,13 +8,14 @@ interface Props {
 }
 
 export function SubagentPanelContent({ payload }: Props) {
+  const t = useTranslations('chat.rightRail')
   const hasInput = Boolean(payload.input && payload.input.trim().length > 0)
 
   return (
     <div className="space-y-4">
       <section>
         <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Agent
+          {t('agent')}
         </h3>
         <p className="text-sm font-medium text-foreground">{payload.agentName}</p>
       </section>
@@ -21,7 +23,7 @@ export function SubagentPanelContent({ payload }: Props) {
       {hasInput ? (
         <section>
           <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Input
+            {t('input')}
           </h3>
           <pre className="whitespace-pre-wrap break-words rounded-md border border-border/60 bg-card p-3 text-xs leading-relaxed text-foreground/90">
             {payload.input}
@@ -31,10 +33,10 @@ export function SubagentPanelContent({ payload }: Props) {
 
       <section>
         <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Output
+          {t('output')}
         </h3>
         <p className="rounded-md border border-dashed border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground">
-          Sub-agent execution detail will appear here as it streams.
+          {t('subagentPending')}
         </p>
       </section>
 

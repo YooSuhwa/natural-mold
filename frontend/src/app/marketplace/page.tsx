@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { SparklesIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
@@ -21,12 +22,12 @@ import type {
 
 type Tab = 'all' | 'skills' | 'agents' | 'mcp' | 'installed'
 
-const TABS: { value: Tab; label: string; disabled?: boolean }[] = [
-  { value: 'all', label: '전체' },
-  { value: 'skills', label: '스킬' },
-  { value: 'agents', label: '에이전트 (Phase 3)', disabled: true },
-  { value: 'mcp', label: 'MCP (Phase 2)', disabled: true },
-  { value: 'installed', label: '설치됨' },
+const TABS: { value: Tab; labelKey: string; disabled?: boolean }[] = [
+  { value: 'all', labelKey: 'tabs.all' },
+  { value: 'skills', labelKey: 'tabs.skills' },
+  { value: 'agents', labelKey: 'tabs.agents', disabled: true },
+  { value: 'mcp', labelKey: 'tabs.mcp', disabled: true },
+  { value: 'installed', labelKey: 'tabs.installed' },
 ]
 
 function resourceFilter(tab: Tab): MarketplaceResourceType | undefined {
@@ -37,6 +38,7 @@ function resourceFilter(tab: Tab): MarketplaceResourceType | undefined {
 }
 
 export default function MarketplaceCatalogPage() {
+  const t = useTranslations('marketplace.catalog')
   const { data: user } = useSession()
   const [tab, setTab] = useState<Tab>('skills')
   const [filters, setFilters] = useState<MarketplaceListFilters>({})
@@ -75,34 +77,34 @@ export default function MarketplaceCatalogPage() {
     <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
       <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <PageHeader
-          title="마켓플레이스"
-          description="공유된 스킬, 에이전트, MCP 서버를 발견하고 설치하세요."
+          title={t('title')}
+          description={t('description')}
         />
 
         <div
           role="tablist"
-          aria-label="마켓플레이스 카테고리"
+          aria-label={t('categoriesLabel')}
           className="inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1"
         >
-          {TABS.map((t) => {
-            const isActive = tab === t.value
+          {TABS.map((tabOption) => {
+            const isActive = tab === tabOption.value
             return (
               <button
-                key={t.value}
+                key={tabOption.value}
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                disabled={t.disabled}
-                onClick={() => setTab(t.value)}
+                disabled={tabOption.disabled}
+                onClick={() => setTab(tabOption.value)}
                 className={cn(
                   'inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors',
                   isActive
                     ? 'bg-background font-semibold text-foreground shadow-sm'
                     : 'font-medium text-muted-foreground hover:text-foreground',
-                  t.disabled && 'cursor-not-allowed opacity-50 hover:text-muted-foreground',
+                  tabOption.disabled && 'cursor-not-allowed opacity-50 hover:text-muted-foreground',
                 )}
               >
-                {t.label}
+                {t(tabOption.labelKey)}
               </button>
             )
           })}
@@ -122,8 +124,8 @@ export default function MarketplaceCatalogPage() {
               ) : !items || items.length === 0 ? (
                 <EmptyState
                   icon={<SparklesIcon className="size-6" />}
-                  title="조건에 맞는 항목이 없어요"
-                  description="필터를 지우거나 k-skill 카탈로그를 동기화해 보세요 (관리자)."
+                  title={t('empty.title')}
+                  description={t('empty.description')}
                 />
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -136,11 +138,11 @@ export default function MarketplaceCatalogPage() {
           ) : (
             <EmptyState
               icon={<SparklesIcon className="size-6" />}
-              title="곧 만나요"
+              title={t('comingSoon.title')}
               description={
                 tab === 'agents'
-                  ? '에이전트 마켓플레이스는 Phase 3에 공개될 예정이에요.'
-                  : 'MCP 마켓플레이스는 Phase 2에 공개될 예정이에요.'
+                  ? t('comingSoon.agents')
+                  : t('comingSoon.mcp')
               }
             />
           )}

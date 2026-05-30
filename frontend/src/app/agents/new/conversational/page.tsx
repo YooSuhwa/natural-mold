@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeftIcon, ChevronRightIcon, HomeIcon, SparklesIcon } from 'lucide-react'
 import { AssistantRuntimeProvider } from '@assistant-ui/react'
+import { useTranslations } from 'next-intl'
 
 import { AssistantThread } from '@/components/chat/assistant-thread'
 import { Button } from '@/components/ui/button'
@@ -17,21 +18,16 @@ import { streamBuilderResume } from '@/lib/sse/stream-builder-resume'
 import type { Decision, Message, SSEEvent } from '@/lib/types'
 
 function WelcomeContent() {
+  const t = useTranslations('agent.conversational')
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-12 text-center">
       <div className="flex size-16 items-center justify-center rounded-2xl bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-400">
         <SparklesIcon className="size-8" />
       </div>
       <div>
-        <h2 className="text-xl font-bold">자연어로 에이전트 만들기</h2>
-        <p className="mt-2 max-w-md text-sm text-muted-foreground">
-          만들고 싶은 에이전트를 자연어로 설명해주세요. 8단계로 함께 만들어나갑니다 — 의도 분석,
-          도구 추천, 미들웨어, 시스템 프롬프트, 이미지 생성을 한 번에.
-        </p>
-        <p className="mt-3 text-xs text-muted-foreground">
-          예: &quot;인터넷 검색하는 에이전트를 만들어줘&quot;, &quot;매일 아침 9시 주식 시세
-          알려주는 에이전트 만들어줘&quot;
-        </p>
+        <h2 className="text-xl font-bold">{t('welcomeTitle')}</h2>
+        <p className="mt-2 max-w-md text-sm text-muted-foreground">{t('welcomeDescription')}</p>
+        <p className="mt-3 text-xs text-muted-foreground">{t('example')}</p>
       </div>
     </div>
   )
@@ -43,6 +39,7 @@ export default function ConversationalCreationPage({
   searchParams: Promise<{ initialMessage?: string }>
 }) {
   const { initialMessage } = use(searchParams)
+  const t = useTranslations('agent.conversational')
   const router = useRouter()
   const [messages, setMessages] = useState<Message[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -139,7 +136,7 @@ export default function ConversationalCreationPage({
           borderBottom: '1px solid oklch(0.93 0.005 163)',
         }}
       >
-        <Link href="/" aria-label="뒤로 가기">
+        <Link href="/" aria-label={t('back')}>
           <Button
             variant="outline"
             size="icon-sm"
@@ -148,7 +145,7 @@ export default function ConversationalCreationPage({
               borderColor: 'oklch(0.93 0.005 163)',
               color: 'oklch(0.35 0.005 163)',
             }}
-            aria-label="뒤로 가기"
+            aria-label={t('back')}
           >
             <ChevronLeftIcon className="size-3.5" strokeWidth={2} />
           </Button>
@@ -159,10 +156,10 @@ export default function ConversationalCreationPage({
           style={{ color: 'oklch(0.55 0.01 163)' }}
         >
           <HomeIcon className="size-3.5 opacity-55" />
-          <span>에이전트 만들기</span>
+          <span>{t('breadcrumb.create')}</span>
           <ChevronRightIcon className="size-3 opacity-45" />
           <span className="font-semibold" style={{ color: 'oklch(0.18 0.005 163)' }}>
-            대화로 만들기
+            {t('breadcrumb.conversational')}
           </span>
         </nav>
 
@@ -188,7 +185,7 @@ export default function ConversationalCreationPage({
                 boxShadow: '0 0 0 3px oklch(0.96 0.04 163)',
               }}
             />
-            세션 #{sessionId.slice(0, 8)}
+            {t('sessionLabel', { id: sessionId.slice(0, 8) })}
           </div>
         )}
       </header>
@@ -198,9 +195,9 @@ export default function ConversationalCreationPage({
           <HiTLContext.Provider value={hitlValue}>
             <AssistantThread
               variant="builder"
-              builderModelLabel="대화형 에이전트 빌더 · GPT-4 Turbo"
-              builderAgentSubtitle="에이전트 빌더"
-              agentName="에이전트 빌더"
+              builderModelLabel={t('builderModelLabel')}
+              builderAgentSubtitle={t('builderAgentSubtitle')}
+              agentName={t('builderAgentName')}
               emptyContent={<WelcomeContent />}
               toolUI={BUILDER_TOOL_UI}
             />

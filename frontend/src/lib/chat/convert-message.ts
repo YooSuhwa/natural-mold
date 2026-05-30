@@ -103,11 +103,16 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
   // 옆 TokenUsagePopover가 ``useAssistantState``로 직접 읽는다.
   const assistantBranchMeta = buildBranchMeta(message)
 
-  if (message.feedback || assistantBranchMeta || message.usage) {
+  const isStreamingMessage = message.id.startsWith('stream-')
+
+  if (message.feedback || assistantBranchMeta || message.usage || isStreamingMessage) {
     // assistant-ui treats `metadata.submittedFeedback.type` as the active
     // rating — the FeedbackPositive/Negative buttons render highlighted when
     // it matches their type. We co-locate branch info + usage in `metadata.custom`.
     const customMeta: Record<string, unknown> = { ...(assistantBranchMeta ?? {}) }
+    if (isStreamingMessage) {
+      customMeta.isStreamingMessage = true
+    }
     if (message.usage) {
       customMeta.usage = message.usage
     }

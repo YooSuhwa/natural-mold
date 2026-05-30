@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -71,6 +72,7 @@ function parseRequirements(
 }
 
 function InstallWizardInner({ item, open, onOpenChange }: InstallWizardProps) {
+  const t = useTranslations('marketplace.installWizard')
   const versionId = item?.latest_version?.id ?? null
   const { data: versionDetail } = useMarketplaceVersion(versionId)
   const requirements = useMemo(
@@ -118,24 +120,24 @@ function InstallWizardInner({ item, open, onOpenChange }: InstallWizardProps) {
       const willNeedSetup = missingRequiredKeys.length > 0
       toast.success(
         willNeedSetup
-          ? `Installed ${item.name} (needs setup)`
-          : `Installed ${item.name}`,
+          ? t('toast.installedNeedsSetup', { name: item.name })
+          : t('toast.installed', { name: item.name }),
       )
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorMessage(
           err.code === 'marketplace_item_not_found'
-            ? '이 항목을 찾을 수 없거나 접근 권한이 없습니다.'
+            ? t('errors.notFound')
             : err.code === 'marketplace_item_disabled'
-              ? '이 항목은 비활성화되었습니다.'
+              ? t('errors.disabled')
               : err.code === 'marketplace_credential_mismatch'
-                ? '선택한 자격증명이 요구사항과 일치하지 않습니다. 다시 선택해주세요.'
+                ? t('errors.credentialMismatch')
                 : err.code === 'marketplace_credential_required'
-                  ? '필수 자격증명이 누락되었습니다.'
-                  : err.message || '설치에 실패했습니다.',
+                  ? t('errors.credentialRequired')
+                  : err.message || t('errors.failed'),
         )
       } else {
-        setErrorMessage('네트워크 오류가 발생했습니다. 다시 시도하세요.')
+        setErrorMessage(t('errors.network'))
       }
     }
   }
@@ -162,7 +164,7 @@ function InstallWizardInner({ item, open, onOpenChange }: InstallWizardProps) {
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="lg" height="fixed">
       <DialogShell.Header
-        title={`Install ${item.name}`}
+        title={t('title', { name: item.name })}
         description={item.description ?? undefined}
         actions={
           <>
@@ -190,7 +192,7 @@ function InstallWizardInner({ item, open, onOpenChange }: InstallWizardProps) {
                 <span className="inline-flex size-5 items-center justify-center rounded-full bg-muted text-[10px]">
                   {i + 1}
                 </span>
-                <span className="capitalize">{labelForStep(s)}</span>
+                <span className="capitalize">{t(`steps.${s}`)}</span>
               </li>
             ))}
           </ol>
@@ -231,36 +233,29 @@ function InstallWizardInner({ item, open, onOpenChange }: InstallWizardProps) {
 
       <DialogShell.Footer>
         {isLast ? (
-          <Button onClick={() => onOpenChange(false)}>Close</Button>
+          <Button onClick={() => onOpenChange(false)}>{t('actions.close')}</Button>
         ) : (
           <>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t('actions.cancel')}
             </Button>
             {!isFirst ? (
               <Button variant="outline" onClick={goBack}>
-                Back
+                {t('actions.back')}
               </Button>
             ) : null}
             <Button onClick={goNext} disabled={install.isPending}>
               {stepIndex === steps.length - 2
                 ? install.isPending
-                  ? 'Installing…'
-                  : 'Install'
-                : 'Next'}
+                  ? t('actions.installing')
+                  : t('actions.install')
+                : t('actions.next')}
             </Button>
           </>
         )}
       </DialogShell.Footer>
     </DialogShell>
   )
-}
-
-function labelForStep(step: Step): string {
-  if (step === 'review') return 'Review'
-  if (step === 'credentials') return 'Credentials'
-  if (step === 'confirm') return 'Confirm'
-  return 'Done'
 }
 
 function ReviewStep({
@@ -272,21 +267,22 @@ function ReviewStep({
   nameOverride: string
   setName: (v: string) => void
 }) {
+  const t = useTranslations('marketplace.installWizard.review')
   return (
     <div className="space-y-4">
       <div className="text-sm text-muted-foreground">
         <p>
-          Resource type: <span className="font-medium text-foreground">{item.resource_type}</span>
+          {t('resourceType')} <span className="font-medium text-foreground">{item.resource_type}</span>
         </p>
         {item.latest_version ? (
           <p>
-            Latest version:{' '}
+            {t('latestVersion')}{' '}
             <span className="font-medium text-foreground">v{item.latest_version.version_label}</span>
           </p>
         ) : null}
         {item.execution_profile?.support_level ? (
           <p>
-            Support level:{' '}
+            {t('supportLevel')}{' '}
             <span className="font-medium text-foreground">
               {item.execution_profile.support_level}
             </span>
@@ -296,7 +292,7 @@ function ReviewStep({
 
       <div className="space-y-1.5">
         <label htmlFor="name-override" className="block">
-          Custom name (optional)
+          {t('customName')}
         </label>
         <Input
           id="name-override"
@@ -318,6 +314,7 @@ function CredentialsStep({
   bindings: Record<string, string>
   setBindings: (b: Record<string, string>) => void
 }) {
+  const t = useTranslations('marketplace.installWizard')
   const { data: credentials, isLoading } = useCredentials()
 
   function update(key: string, value: string) {
@@ -333,9 +330,9 @@ function CredentialsStep({
   return (
     <div className="space-y-4 text-sm">
       <p className="text-muted-foreground">
-        Skill 실행에 필요한 자격증명을 연결합니다. 필수가 아닌 항목은 건너뛸 수 있고, 필수 항목을
-        나중에 연결하면 설치는 <code className="font-mono text-xs">needs_setup</code> 상태가
-        됩니다.
+        {t.rich('credentialHelp', {
+          code: (chunks) => <code className="font-mono text-xs">{chunks}</code>,
+        })}
       </p>
 
       <ul className="space-y-3">
@@ -367,6 +364,7 @@ function RequirementRow({
   credentials: Credential[]
   isLoading: boolean
 }) {
+  const t = useTranslations('marketplace.installWizard')
   const matched = credentials.filter(
     (c) => c.definition_key === requirement.definition_key,
   )
@@ -382,27 +380,27 @@ function RequirementRow({
             {requirement.required ? (
               <span className="ml-1.5 text-destructive">*</span>
             ) : (
-              <span className="ml-1.5 text-xs font-normal text-muted-foreground">(optional)</span>
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">{t('optional')}</span>
             )}
           </p>
           {requirement.description ? (
             <p className="mt-0.5 text-xs text-muted-foreground">{requirement.description}</p>
           ) : null}
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Type: <code className="font-mono">{requirement.definition_key}</code>
+            {t('type')} <code className="font-mono">{requirement.definition_key}</code>
           </p>
         </div>
       </div>
 
       {isLoading ? (
-        <p className="text-xs text-muted-foreground">Loading credentials…</p>
+        <p className="text-xs text-muted-foreground">{t('loadingCredentials')}</p>
       ) : hasMatch ? (
         <Select value={value} onValueChange={(v) => onChange(v ?? SKIP_VALUE)}>
           <SelectTrigger>
-            <SelectValue placeholder="자격증명 선택…" />
+            <SelectValue placeholder={t('selectCredential')} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={SKIP_VALUE}>나중에 설정 (needs setup)</SelectItem>
+            <SelectItem value={SKIP_VALUE}>{t('skip')}</SelectItem>
             {matched.map((c) => (
               <SelectItem key={c.id} value={c.id}>
                 {c.name}
@@ -413,21 +411,24 @@ function RequirementRow({
       ) : (
         <div className="rounded-md border border-dashed border-status-warn/40 bg-status-warn/5 p-2 text-xs">
           <p className="text-status-warn">
-            <code className="font-mono">{requirement.definition_key}</code> 타입 자격증명이
-            없습니다.
+            {t.rich('missingType', {
+              type: () => <code className="font-mono">{requirement.definition_key}</code>,
+            })}
           </p>
           <Link
             href="/credentials"
             className="mt-1 inline-block text-primary-strong hover:underline"
           >
-            Credentials 페이지에서 만들기 →
+            {t('createCredential')}
           </Link>
         </div>
       )}
 
       {isRequiredAndMissing ? (
         <p className="mt-2 text-xs text-status-warn">
-          연결하지 않으면 설치 후 <code className="font-mono">needs_setup</code> 상태로 표시됩니다.
+          {t.rich('requiredMissing', {
+            code: (chunks) => <code className="font-mono">{chunks}</code>,
+          })}
         </p>
       ) : null}
     </li>
@@ -447,18 +448,19 @@ function ConfirmStep({
   bindings: Record<string, string>
   missingRequiredKeys: string[]
 }) {
+  const t = useTranslations('marketplace.installWizard.confirm')
   const boundCount = Object.keys(bindings).length
   const willNeedSetup = missingRequiredKeys.length > 0
 
   return (
     <div className="space-y-3 text-sm">
-      <p>The following will happen:</p>
+      <p>{t('intro')}</p>
       <ul className="list-inside list-disc space-y-1 text-muted-foreground">
-        <li>Create a skill row owned by you (origin: imported_by_me)</li>
-        <li>Copy package files into your data directory</li>
+        <li>{t('createSkill')}</li>
+        <li>{t('copyFiles')}</li>
         {boundCount > 0 ? (
           <li>
-            Bind <span className="font-medium text-foreground">{boundCount}</span> credential(s):{' '}
+            {t('bind', { count: boundCount })}{' '}
             {requirements
               .filter((r) => bindings[r.key])
               .map((r) => r.label)
@@ -467,19 +469,18 @@ function ConfirmStep({
         ) : null}
         {willNeedSetup ? (
           <li className="text-status-warn">
-            Mark as <code className="font-mono text-xs">needs_setup</code> — required credential(s)
-            missing: {missingRequiredKeys.join(', ')}
+            {t('needsSetup', { keys: missingRequiredKeys.join(', ') })}
           </li>
         ) : null}
       </ul>
       <div className="rounded-md bg-muted p-3">
         <p>
-          <span className="text-muted-foreground">Name:</span>{' '}
+          <span className="text-muted-foreground">{t('name')}</span>{' '}
           <span className="font-medium">{nameOverride || item.name}</span>
         </p>
         {item.latest_version ? (
           <p>
-            <span className="text-muted-foreground">Version:</span>{' '}
+            <span className="text-muted-foreground">{t('version')}</span>{' '}
             <span className="font-medium">v{item.latest_version.version_label}</span>
           </p>
         ) : null}
@@ -489,14 +490,16 @@ function ConfirmStep({
 }
 
 function DoneStep({ item, onClose }: { item: MarketplaceItem; onClose: () => void }) {
+  const t = useTranslations('marketplace.installWizard.done')
+  const tc = useTranslations('marketplace.installWizard.actions')
   return (
     <div className="flex flex-col items-center justify-center space-y-3 text-center">
-      <p className="text-base font-medium">Installed {item.name}</p>
+      <p className="text-base font-medium">{t('title', { name: item.name })}</p>
       <p className="text-sm text-muted-foreground">
-        Open the skill or attach it to an agent to start using it.
+        {t('description')}
       </p>
       <Button variant="outline" onClick={onClose}>
-        Close
+        {tc('close')}
       </Button>
     </div>
   )

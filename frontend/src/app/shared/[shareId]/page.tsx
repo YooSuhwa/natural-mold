@@ -3,6 +3,7 @@
 import { use, useMemo } from 'react'
 import Link from 'next/link'
 import { AlertCircleIcon, ArrowLeftIcon, MessageSquareIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { MarkdownContent } from '@/components/chat/markdown-content'
@@ -77,6 +78,7 @@ function SharedArticle({ data }: { data: SharedConversationView }) {
 }
 
 function SharedHeader() {
+  const t = useTranslations('sharedConversation')
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-14 max-w-3xl items-center justify-between px-5 sm:px-6">
@@ -87,13 +89,13 @@ function SharedHeader() {
           <span className="flex size-7 items-center justify-center rounded-lg bg-primary-strong/15 text-primary-strong">
             <span aria-hidden className="text-base">M</span>
           </span>
-          Moldy
+          {t('brand')}
         </Link>
         <Link
           href="/"
           className="text-xs font-medium text-muted-foreground hover:text-foreground"
         >
-          나만의 에이전트 만들기 →
+          {t('headerCta')}
         </Link>
       </div>
     </header>
@@ -107,6 +109,7 @@ function Hero({
   data: SharedConversationView
   messageCount: number
 }) {
+  const t = useTranslations('sharedConversation')
   const readingMinutes = useReadingMinutes(data.messages)
   const dateLabel = useMemo(
     () => formatLongDate(data.conversation_created_at),
@@ -116,10 +119,10 @@ function Hero({
   return (
     <section className="pt-16 pb-2 text-center sm:pt-24">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-        공유된 대화
+        {t('eyebrow')}
       </p>
       <h1 className="mt-5 text-3xl font-light leading-tight tracking-tight text-foreground sm:text-4xl">
-        {data.conversation_title ?? '제목 없는 대화'}
+        {data.conversation_title ?? t('titleFallback')}
       </h1>
 
       <div className="mt-10 flex items-center justify-center gap-3">
@@ -141,7 +144,7 @@ function Hero({
       <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
         <Badge variant="secondary">
           <MessageSquareIcon />
-          {messageCount}개 메시지
+          {t('footer.messageCount', { count: messageCount })}
         </Badge>
         {data.agent.description ? (
           <Badge
@@ -153,7 +156,9 @@ function Hero({
           </Badge>
         ) : null}
         <Badge variant="secondary">
-          {readingMinutes < 1 ? '1분 이내' : `약 ${readingMinutes}분 읽기`}
+          {readingMinutes < 1
+            ? t('readingTime.underOneMinute')
+            : t('readingTime.minutes', { minutes: readingMinutes })}
         </Badge>
       </div>
     </section>
@@ -169,6 +174,7 @@ function ConversationBody({
   agent: SharedConversationView['agent']
   traces: TurnTrace[]
 }) {
+  const t = useTranslations('sharedConversation')
   // 라이브 채팅 UX와 동일하게: 연속된 assistant 메시지는 한 그룹으로 묶고
   // 그룹의 첫 메시지에 chips를 붙인다 ("도우미"가 같은 turn에서 여러 번
   // 말하더라도 헤더는 한 번만, 도구 칩도 그 위에 한 번만).
@@ -179,7 +185,7 @@ function ConversationBody({
 
   return (
     <section className="py-10 sm:py-14">
-      <DividerLabel>대화 기록</DividerLabel>
+      <DividerLabel>{t('history')}</DividerLabel>
       <ol className="mt-10 flex flex-col gap-8">
         {turnGroups.map((group, i) =>
           group.kind === 'user' ? (
@@ -326,13 +332,14 @@ function AssistantTurnItem({
 }
 
 function EmptyConversation() {
+  const t = useTranslations('sharedConversation')
   return (
     <div className="py-16 text-center">
       <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-muted">
         <MessageSquareIcon className="size-5 text-muted-foreground" />
       </div>
       <p className="text-sm text-muted-foreground">
-        아직 메시지가 없는 대화입니다.
+        {t('empty')}
       </p>
     </div>
   )
@@ -345,6 +352,7 @@ function SharedFooter({
   messageCount: number
   createdAt: string
 }) {
+  const t = useTranslations('sharedConversation')
   const dateLabel = useMemo(() => formatMediumDate(createdAt), [createdAt])
 
   return (
@@ -352,17 +360,17 @@ function SharedFooter({
       <div className="rounded-2xl border bg-gradient-to-br from-muted/40 to-background p-6 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:p-8">
         <div className="text-center sm:text-left">
           <p className="text-base font-semibold tracking-tight text-foreground">
-            나만의 AI 에이전트를 만들어 보세요
+            {t('footer.title')}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Moldy로 도구·스킬을 조합한 에이전트를 노코드로 구축하고 공유하세요.
+            {t('footer.description')}
           </p>
         </div>
         <Link
           href="/"
           className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary-strong px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 sm:mt-0 sm:w-auto"
         >
-          Moldy 시작하기 →
+          {t('footer.cta')}
         </Link>
       </div>
 
@@ -370,9 +378,9 @@ function SharedFooter({
         <div className="flex items-center gap-2">
           <span>{dateLabel}</span>
           <span className="size-0.5 rounded-full bg-border" />
-          <span>{messageCount}개 메시지</span>
+          <span>{t('footer.messageCount', { count: messageCount })}</span>
         </div>
-        <span>Moldy로 만든 대화</span>
+        <span>{t('footer.madeWith')}</span>
       </div>
     </footer>
   )
@@ -409,24 +417,24 @@ function SharedSkeleton() {
 }
 
 function SharedError() {
+  const t = useTranslations('sharedConversation')
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
       <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-destructive/10">
         <AlertCircleIcon className="size-6 text-destructive" />
       </div>
       <h1 className="text-lg font-semibold tracking-tight text-foreground">
-        공유된 대화를 찾을 수 없어요
+        {t('error.title')}
       </h1>
       <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-        링크가 만료됐거나 공유가 해제된 것 같아요. 작성자에게 새 링크를
-        요청해 주세요.
+        {t('error.description')}
       </p>
       <Link
         href="/"
         className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary-strong px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
       >
         <ArrowLeftIcon className="size-4" />
-        홈으로 돌아가기
+        {t('error.home')}
       </Link>
     </div>
   )

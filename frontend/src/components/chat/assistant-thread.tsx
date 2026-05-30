@@ -173,20 +173,23 @@ function AssistantMessageParts() {
   )
 }
 
-/** 메시지가 running 상태일 때 메시지 위쪽에 absolute로 띄우는 loading row.
- *
- * 부모(AssistantMsg)의 `relative` 컨테이너 안에 absolute로 배치되므로 메시지
- * layout에 영향을 주지 않는다. 메시지가 끝나면 자동으로 사라지지만 답변
- * 텍스트의 위치는 흔들리지 않는다.
- */
-function StreamingLoadingIndicator() {
-  const isRunning = useAssistantState(
-    (s) => (s.message?.status as { type?: string } | undefined)?.type === 'running',
+function StreamingMessageLoadingIndicator({ className }: { className?: string }) {
+  const isStreamingMessage = useIsStreamingMessage()
+  if (!isStreamingMessage) return null
+  return (
+    <ThreadPrimitive.If running={true}>
+      <WittyLoadingMessage className={cn('pointer-events-none mb-1 px-1', className)} />
+    </ThreadPrimitive.If>
   )
-  if (!isRunning) return null
-  // left-11 = avatar size-8(2rem) + gap-3(0.75rem) → avatar 우측에 정렬.
-  // size 변경 시 동기화 필요.
-  return <WittyLoadingMessage className="pointer-events-none absolute -top-5 left-11 px-1" />
+}
+
+function useIsStreamingMessage(): boolean {
+  return useAssistantState((s) =>
+    Boolean(
+      (s.message?.metadata as { custom?: { isStreamingMessage?: boolean } } | undefined)?.custom
+        ?.isStreamingMessage,
+    ),
+  )
 }
 
 /** 메시지 hover 시 표시되는 메타 row (시간 + 복사 버튼). 자식 순서로
@@ -307,6 +310,7 @@ function canRenderBranchPicker(
 }
 
 function BranchPicker() {
+  const t = useTranslations('chat.branch')
   const conversationId = useContext(ConversationContext)
   const queryClient = useQueryClient()
   const [pendingCheckpointId, setPendingCheckpointId] = useState<string | null>(null)
@@ -360,7 +364,7 @@ function BranchPicker() {
         className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
         disabled={isSwitching || currentIdx <= 0}
         onClick={() => void switchTo(currentIdx - 1)}
-        aria-label="previous branch"
+        aria-label={t('previous')}
       >
         <ChevronLeftIcon className="size-3" />
       </button>
@@ -372,7 +376,7 @@ function BranchPicker() {
         className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
         disabled={isSwitching || currentIdx >= total - 1}
         onClick={() => void switchTo(currentIdx + 1)}
-        aria-label="next branch"
+        aria-label={t('next')}
       >
         <ChevronRightIcon className="size-3" />
       </button>
@@ -544,6 +548,7 @@ export function AssistantThread({
         )
       },
       AssistantMessage: function AssistantMsg() {
+        const isStreamingMessage = useIsStreamingMessage()
         const metaRow = (
           <MessageMetaRow>
             {showMessageTimestamp && <MessageTimestamp />}
@@ -557,16 +562,19 @@ export function AssistantThread({
         if (isBuilder) {
           return (
             <BuilderAssistantMessage metaRow={metaRow} agentSubtitle={builderAgentSubtitle}>
-              <StreamingLoadingIndicator />
+              <StreamingMessageLoadingIndicator />
               <BuilderAssistantMessageParts />
             </BuilderAssistantMessage>
           )
         }
         return (
-          <div className="group relative flex gap-3 [contain-intrinsic-size:0_180px] [content-visibility:auto]">
-            {/* loading indicator를 absolute로 배치 — 메시지 layout 밖에 떠 있어
-              사라질 때 답변 텍스트가 점프하지 않도록 한다. */}
-            <StreamingLoadingIndicator />
+          <div
+            className={cn(
+              'group relative flex gap-3',
+              !isStreamingMessage && '[contain-intrinsic-size:0_180px] [content-visibility:auto]',
+            )}
+          >
+            <StreamingMessageLoadingIndicator className="absolute -top-5 left-11 mb-0" />
             <AgentAvatar
               imageUrl={agentImageUrl ?? null}
               name={agentName ?? tChat('defaultAgentName')}
@@ -802,7 +810,7 @@ function AttachmentChip() {
         <button
           type="button"
           className="ml-1 inline-flex size-4 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground"
-          aria-label="첨부 파일 제거"
+          aria-label={tMsg('attachmentRemove')}
         >
           <XIcon className="size-3" />
         </button>

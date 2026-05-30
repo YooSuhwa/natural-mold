@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
+import { useTranslations } from 'next-intl'
 import { CheckIcon, FileTextIcon, PencilIcon, XIcon } from 'lucide-react'
 import { BUILDER_TOKENS as T } from './builder-tokens'
 import {
@@ -20,6 +21,7 @@ interface PromptApprovalArgs {
 }
 
 function PromptApprovalHeader({ phase, title }: { phase: number; title: string }) {
+  const t = useTranslations('chat.builderApproval')
   return (
     <PhaseCardHeader>
       <span
@@ -41,7 +43,7 @@ function PromptApprovalHeader({ phase, title }: { phase: number; title: string }
         {title}
       </span>
       <span className="text-[12px]" style={{ color: T.muted }}>
-        · 검토 필요
+        {t('reviewRequiredPrefix')}
       </span>
       <div className="flex-1" />
       <span
@@ -61,13 +63,14 @@ function PromptApproval({
   args: PromptApprovalArgs
   status: 'running' | 'complete' | 'incomplete' | 'requires-action'
 }) {
+  const t = useTranslations('chat.builderApproval')
   const form = useApprovalForm({
     isComplete: status === 'complete',
-    revisionFallback: '프롬프트를 다시 작성해주세요',
+    revisionFallback: t('promptRevisionFallback'),
   })
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const prompt = args.system_prompt ?? ''
-  const title = args.title || '시스템 프롬프트'
+  const title = args.title || t('systemPrompt')
 
   return (
     <div className="my-3">
@@ -81,7 +84,7 @@ function PromptApproval({
                   value={form.revision}
                   onChange={form.setRevision}
                   disabled={form.isLocked}
-                  placeholder="프롬프트에 대한 수정 의견을 적어주세요"
+                  placeholder={t('promptFeedbackPlaceholder')}
                 />
               )}
               <div className="flex items-center justify-between" style={{ padding: '10px 14px' }}>
@@ -93,19 +96,19 @@ function PromptApproval({
                   style={{ color: T.muted, background: 'transparent', borderRadius: 6 }}
                 >
                   <PencilIcon className="size-3" />
-                  {feedbackOpen ? '의견 닫기' : '수정 의견 작성'}
+                  {feedbackOpen ? t('closeFeedback') : t('writeFeedback')}
                 </button>
                 <div className="flex items-center gap-2">
                   <OutlineActionButton
                     onClick={form.handleRevision}
                     disabled={form.isLocked}
-                    label="수정 요청"
+                    label={t('requestRevision')}
                     icon={<XIcon className="size-3" strokeWidth={2.5} />}
                   />
                   <MintActionButton
                     onClick={form.handleApprove}
                     disabled={form.isLocked}
-                    label="승인하고 진행"
+                    label={t('approveAndContinue')}
                     icon={<CheckIcon className="size-3" strokeWidth={3} />}
                   />
                 </div>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Plus, BookOpen, LayoutGrid, Rows } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -28,21 +29,27 @@ function formatDate(value: string | null): string {
 function SkillViewToggle({
   view,
   onViewChange,
+  label,
+  tableLabel,
+  gridLabel,
 }: {
   view: 'table' | 'grid'
   onViewChange: (view: 'table' | 'grid') => void
+  label: string
+  tableLabel: string
+  gridLabel: string
 }) {
   return (
     <div
       role="tablist"
-      aria-label="스킬 보기 모드"
+      aria-label={label}
       className="ml-auto inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1"
     >
       <button
         type="button"
         role="tab"
         aria-selected={view === 'table'}
-        aria-label="표 보기"
+        aria-label={tableLabel}
         onClick={() => onViewChange('table')}
         className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors ${
           view === 'table'
@@ -56,7 +63,7 @@ function SkillViewToggle({
         type="button"
         role="tab"
         aria-selected={view === 'grid'}
-        aria-label="격자 보기"
+        aria-label={gridLabel}
         onClick={() => onViewChange('grid')}
         className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors ${
           view === 'grid'
@@ -71,6 +78,7 @@ function SkillViewToggle({
 }
 
 export default function SkillsPage() {
+  const t = useTranslations('skill')
   const { data: skills, isLoading } = useSkills()
   const [createOpen, setCreateOpen] = useState(false)
   const [createTab, setCreateTab] = useState<CreateTab>('text')
@@ -94,7 +102,7 @@ export default function SkillsPage() {
     () => [
       {
         accessorKey: 'name',
-        header: '스킬',
+        header: t('columns.skill'),
         cell: ({ row }) => {
           const skill = row.original
           return (
@@ -118,7 +126,7 @@ export default function SkillsPage() {
       {
         id: 'kind',
         accessorKey: 'kind',
-        header: '종류',
+        header: t('columns.kind'),
         cell: ({ row }) => (
           <Badge variant="secondary" className="text-[10px]">
             {row.original.kind}
@@ -128,22 +136,22 @@ export default function SkillsPage() {
       },
       {
         id: 'origin',
-        header: '출처',
+        header: t('columns.origin'),
         cell: ({ row }) => <OriginBadge summary={row.original.origin_summary} />,
       },
       {
         id: 'marketplace',
-        header: '마켓플레이스',
+        header: t('columns.marketplace'),
         cell: ({ row }) => <PublicationBadge summary={row.original.publication_summary} />,
       },
       {
         accessorKey: 'used_by_count',
-        header: '에이전트',
+        header: t('columns.agents'),
         cell: ({ row }) => row.original.used_by_count,
       },
       {
         accessorKey: 'updated_at',
-        header: '수정일',
+        header: t('columns.updatedAt'),
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
             {formatDate(row.original.updated_at)}
@@ -166,27 +174,27 @@ export default function SkillsPage() {
                 setPublishSkill(row.original)
               }}
             >
-              공개하기
+              {t('actions.publish')}
             </Button>
           )
         },
       },
     ],
-    [],
+    [t],
   )
 
   const filters = useMemo<FilterDef[]>(
     () => [
       {
         columnId: 'kind',
-        label: '종류',
+        label: t('filters.kind'),
         options: [
-          { value: 'text', label: '텍스트' },
-          { value: 'package', label: '패키지' },
+          { value: 'text', label: t('typeFilter.text') },
+          { value: 'package', label: t('typeFilter.package') },
         ],
       },
     ],
-    [],
+    [t],
   )
 
   const data = skills ?? []
@@ -196,13 +204,22 @@ export default function SkillsPage() {
     <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
       <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <PageHeader
-          title="스킬"
-          description="에이전트에 붙여 쓰는 마크다운 스니펫과 패키지를 관리하세요."
+          title={t('title')}
+          description={t('description')}
           action={
             <div className="flex max-w-full flex-wrap items-center justify-end gap-2">
-              {showViewToggle ? <SkillViewToggle view={view} onViewChange={setView} /> : null}
+              {showViewToggle ? (
+                <SkillViewToggle
+                  view={view}
+                  onViewChange={setView}
+                  label={t('viewMode.label')}
+                  tableLabel={t('viewMode.table')}
+                  gridLabel={t('viewMode.grid')}
+                />
+              ) : null}
               <Button onClick={() => openCreate('text')}>
-                <Plus className="size-4" />새 스킬
+                <Plus className="size-4" />
+                {t('new')}
               </Button>
             </div>
           }
@@ -211,11 +228,12 @@ export default function SkillsPage() {
         {!isLoading && data.length === 0 ? (
           <EmptyState
             icon={<BookOpen className="size-6" />}
-            title="아직 스킬이 없어요"
-            description="텍스트 스니펫을 만들거나 .skill 패키지를 업로드해 보세요."
+            title={t('empty.title')}
+            description={t('empty.description')}
             action={
               <Button onClick={() => openCreate('text')}>
-                <Plus className="size-4" />첫 스킬 만들기
+                <Plus className="size-4" />
+                {t('firstSkill')}
               </Button>
             }
           />
@@ -225,10 +243,10 @@ export default function SkillsPage() {
             data={data}
             loading={isLoading}
             searchable
-            searchPlaceholder="스킬 검색"
+            searchPlaceholder={t('searchPlaceholder')}
             filters={filters}
             onRowClick={(row) => setDetailId(row.id)}
-            emptyTitle="조건에 맞는 스킬이 없어요"
+            emptyTitle={t('empty.filtered')}
           />
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

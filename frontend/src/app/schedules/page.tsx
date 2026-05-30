@@ -14,7 +14,7 @@ import {
   SearchIcon,
   Trash2Icon,
 } from 'lucide-react'
-import { useFormatter } from 'next-intl'
+import { useFormatter, useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,21 +40,16 @@ import {
 } from '@/lib/hooks/use-triggers'
 import type { AgentTrigger, TriggerCreateRequest, TriggerUpdateRequest } from '@/lib/types'
 
-function formatSchedule(trigger: AgentTrigger) {
+type ScheduleTranslator = ReturnType<typeof useTranslations>
+
+function formatSchedule(trigger: AgentTrigger, t: ScheduleTranslator) {
   if (trigger.trigger_type === 'interval') {
-    return `매 ${trigger.schedule_config.interval_minutes ?? 10}분`
+    return t('format.interval', { minutes: trigger.schedule_config.interval_minutes ?? 10 })
   }
   if (trigger.trigger_type === 'one_time') {
-    return '1회 실행'
+    return t('format.oneTime')
   }
-  return trigger.schedule_config.cron_expression ?? 'Cron'
-}
-
-function statusLabel(status: AgentTrigger['status']) {
-  if (status === 'active') return '활성'
-  if (status === 'paused') return '일시정지'
-  if (status === 'completed') return '완료'
-  return '오류'
+  return trigger.schedule_config.cron_expression ?? t('format.cron')
 }
 
 function statusVariant(status: AgentTrigger['status']): 'default' | 'secondary' | 'destructive' {
@@ -67,6 +62,7 @@ const ALL_STATUSES = 'all'
 const ALL_AGENTS = 'all'
 
 export default function SchedulesPage() {
+  const t = useTranslations('scheduleCenter')
   const { data: triggers, isLoading } = useAllTriggers()
   const updateTrigger = useUpdateTriggerGlobal()
   const deleteTrigger = useDeleteTriggerGlobal()
@@ -97,12 +93,12 @@ export default function SchedulesPage() {
   const agentOptions = useMemo(() => {
     const options = new Map<string, string>()
     for (const trigger of triggers ?? []) {
-      options.set(trigger.agent_id, trigger.agent_name ?? '에이전트')
+      options.set(trigger.agent_id, trigger.agent_name ?? t('agentFallback'))
     }
     return Array.from(options, ([id, name]) => ({ id, name })).sort((a, b) =>
       a.name.localeCompare(b.name, 'ko'),
     )
-  }, [triggers])
+  }, [t, triggers])
   const filteredTriggers = useMemo(() => {
     const normalizedQuery = deferredSearchQuery.trim().toLocaleLowerCase()
     return (triggers ?? []).filter((trigger) => {
@@ -114,15 +110,15 @@ export default function SchedulesPage() {
         trigger.input_message,
         trigger.agent_name,
         trigger.schedule_conversation_title,
-        formatSchedule(trigger),
-        statusLabel(trigger.status),
+        formatSchedule(trigger, t),
+        t(`status.${trigger.status}`),
       ]
         .filter(Boolean)
         .join(' ')
         .toLocaleLowerCase()
       return haystack.includes(normalizedQuery)
     })
-  }, [agentFilter, deferredSearchQuery, statusFilter, triggers])
+  }, [agentFilter, deferredSearchQuery, statusFilter, t, triggers])
   const hasActiveFilters =
     searchQuery.trim().length > 0 || statusFilter !== ALL_STATUSES || agentFilter !== ALL_AGENTS
   const selectedAgentNameById = useMemo(
@@ -131,7 +127,7 @@ export default function SchedulesPage() {
   )
 
   function formatDate(value: string | null) {
-    if (!value) return '없음'
+    if (!value) return t('none')
     return format.dateTime(new Date(value), {
       dateStyle: 'medium',
       timeStyle: 'short',
@@ -163,23 +159,23 @@ export default function SchedulesPage() {
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <CalendarClockIcon className="size-4" />
-            자동 실행
+            {t('eyebrow')}
           </div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">스케줄</h1>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{t('title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            모든 에이전트의 예약 실행과 읽지 않은 자동 응답을 한 곳에서 확인합니다.
+            {t('description')}
           </p>
         </div>
         <div className="flex gap-2">
-          <Badge variant="secondary">활성 {activeCount}</Badge>
-          {totalUnread > 0 ? <Badge>{totalUnread}개 안읽음</Badge> : null}
+          <Badge variant="secondary">{t('badges.active', { count: activeCount })}</Badge>
+          {totalUnread > 0 ? <Badge>{t('badges.unread', { count: totalUnread })}</Badge> : null}
         </div>
       </div>
 
       <Card>
         <CardHeader className="gap-3 pb-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <CardTitle className="text-base">전체 스케줄</CardTitle>
+            <CardTitle className="text-base">{t('listTitle')}</CardTitle>
             <div className="text-xs text-muted-foreground">
               {filteredTriggers.length} / {(triggers ?? []).length}
             </div>
@@ -190,43 +186,43 @@ export default function SchedulesPage() {
               <Input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="스케줄 검색"
+                placeholder={t('searchPlaceholder')}
                 className="pl-8"
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full bg-background md:w-[150px]" aria-label="상태 필터">
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? ALL_STATUSES)}>
+              <SelectTrigger className="w-full bg-background md:w-[150px]" aria-label={t('filters.status')}>
                 <SelectValue>
                   {(selected) =>
                     selected === ALL_STATUSES
-                      ? '전체 상태'
-                      : statusLabel(selected as AgentTrigger['status'])
+                      ? t('filters.allStatus')
+                      : t(`status.${selected as AgentTrigger['status']}`)
                   }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL_STATUSES}>전체 상태</SelectItem>
-                <SelectItem value="active">활성</SelectItem>
-                <SelectItem value="paused">일시정지</SelectItem>
-                <SelectItem value="completed">완료</SelectItem>
-                <SelectItem value="error">오류</SelectItem>
+                <SelectItem value={ALL_STATUSES}>{t('filters.allStatus')}</SelectItem>
+                <SelectItem value="active">{t('status.active')}</SelectItem>
+                <SelectItem value="paused">{t('status.paused')}</SelectItem>
+                <SelectItem value="completed">{t('status.completed')}</SelectItem>
+                <SelectItem value="error">{t('status.error')}</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={agentFilter} onValueChange={setAgentFilter}>
+            <Select value={agentFilter} onValueChange={(value) => setAgentFilter(value ?? ALL_AGENTS)}>
               <SelectTrigger
                 className="w-full bg-background md:w-[190px]"
-                aria-label="에이전트 필터"
+                aria-label={t('filters.agent')}
               >
                 <SelectValue>
                   {(selected) =>
                     !selected || selected === ALL_AGENTS
-                      ? '전체 에이전트'
-                      : (selectedAgentNameById.get(selected) ?? '에이전트')
+                      ? t('filters.allAgents')
+                      : (selectedAgentNameById.get(selected) ?? t('agentFallback'))
                   }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL_AGENTS}>전체 에이전트</SelectItem>
+                <SelectItem value={ALL_AGENTS}>{t('filters.allAgents')}</SelectItem>
                 {agentOptions.map((agent) => (
                   <SelectItem key={agent.id} value={agent.id}>
                     {agent.name}
@@ -244,7 +240,7 @@ export default function SchedulesPage() {
                   setAgentFilter(ALL_AGENTS)
                 }}
               >
-                초기화
+                {t('reset')}
               </Button>
             ) : null}
           </div>
@@ -261,14 +257,14 @@ export default function SchedulesPage() {
               <table className="w-full text-sm">
                 <thead className="border-b bg-muted/40 text-xs text-muted-foreground">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium">스케줄</th>
-                    <th className="px-4 py-3 text-left font-medium">에이전트</th>
-                    <th className="px-4 py-3 text-left font-medium">주기</th>
-                    <th className="px-4 py-3 text-left font-medium">상태</th>
-                    <th className="px-4 py-3 text-left font-medium">다음 실행</th>
-                    <th className="px-4 py-3 text-left font-medium">마지막 실행</th>
-                    <th className="px-4 py-3 text-left font-medium">결과</th>
-                    <th className="px-4 py-3 text-right font-medium">작업</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('columns.schedule')}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('columns.agent')}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('columns.frequency')}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('columns.status')}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('columns.nextRun')}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('columns.lastRun')}</th>
+                    <th className="px-4 py-3 text-left font-medium">{t('columns.result')}</th>
+                    <th className="px-4 py-3 text-right font-medium">{t('columns.actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -291,14 +287,14 @@ export default function SchedulesPage() {
                           href={`/agents/${trigger.agent_id}/settings`}
                           className="text-primary-strong hover:underline"
                         >
-                          {trigger.agent_name ?? '에이전트'}
+                          {trigger.agent_name ?? t('agentFallback')}
                         </Link>
                       </td>
                       <td className="px-4 py-3 align-top text-xs">
                         <span
                           className={trigger.trigger_type === 'one_time' ? undefined : 'font-mono'}
                         >
-                          {formatSchedule(trigger)}
+                          {formatSchedule(trigger, t)}
                         </span>
                         {trigger.trigger_type === 'one_time' ? (
                           <div className="mt-1 text-muted-foreground">
@@ -308,7 +304,7 @@ export default function SchedulesPage() {
                       </td>
                       <td className="px-4 py-3 align-top">
                         <Badge variant={statusVariant(trigger.status)}>
-                          {statusLabel(trigger.status)}
+                          {t(`status.${trigger.status}`)}
                         </Badge>
                       </td>
                       <td className="px-4 py-3 align-top text-muted-foreground">
@@ -323,7 +319,7 @@ export default function SchedulesPage() {
                             href={`/agents/${trigger.agent_id}/conversations/${trigger.schedule_conversation_id}`}
                             className="inline-flex items-center gap-1 text-primary-strong hover:underline"
                           >
-                            {trigger.schedule_conversation_title ?? '결과 대화'}
+                            {trigger.schedule_conversation_title ?? t('resultConversationFallback')}
                             <ExternalLinkIcon className="size-3" />
                             {(trigger.schedule_conversation_unread_count ?? 0) > 0 ? (
                               <Badge className="ml-1" variant="secondary">
@@ -332,7 +328,7 @@ export default function SchedulesPage() {
                             ) : null}
                           </Link>
                         ) : (
-                          <span className="text-muted-foreground">아직 없음</span>
+                          <span className="text-muted-foreground">{t('notYet')}</span>
                         )}
                       </td>
                       <td className="px-4 py-3 align-top">
@@ -340,7 +336,7 @@ export default function SchedulesPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label="즉시 실행"
+                            aria-label={t('actions.runNow')}
                             onClick={() => runNow.mutate(trigger.id)}
                             disabled={runNow.isPending}
                           >
@@ -349,7 +345,7 @@ export default function SchedulesPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label={trigger.status === 'active' ? '일시정지' : '재개'}
+                            aria-label={trigger.status === 'active' ? t('actions.pause') : t('actions.resume')}
                             onClick={() => handleToggle(trigger)}
                             disabled={updateTrigger.isPending || trigger.status === 'completed'}
                           >
@@ -362,7 +358,7 @@ export default function SchedulesPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label="수정"
+                            aria-label={t('actions.edit')}
                             onClick={() => setEditingTrigger(trigger)}
                           >
                             <PencilIcon className="size-4" />
@@ -370,7 +366,7 @@ export default function SchedulesPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label="실행 이력"
+                            aria-label={t('actions.history')}
                             onClick={() => setHistoryTrigger(trigger)}
                           >
                             <HistoryIcon className="size-4" />
@@ -378,7 +374,7 @@ export default function SchedulesPage() {
                           <Button
                             variant="ghost"
                             size="icon-sm"
-                            aria-label="삭제"
+                            aria-label={t('actions.delete')}
                             onClick={() => setDeleteTarget(trigger)}
                           >
                             <Trash2Icon className="size-4 text-muted-foreground" />
@@ -391,13 +387,13 @@ export default function SchedulesPage() {
               </table>
               {filteredTriggers.length === 0 ? (
                 <div className="border-t p-10 text-center text-sm text-muted-foreground">
-                  조건에 맞는 스케줄이 없습니다.
+                  {t('empty.filtered')}
                 </div>
               ) : null}
             </div>
           ) : (
             <div className="p-10 text-center text-sm text-muted-foreground">
-              아직 등록된 스케줄이 없습니다. 에이전트 설정에서 자동 실행을 추가해 보세요.
+              {t('empty.description')}
             </div>
           )}
         </CardContent>
@@ -418,7 +414,7 @@ export default function SchedulesPage() {
         size="lg"
         height="auto"
       >
-        <DialogShell.Header title="실행 이력" description={historyTrigger?.name} />
+        <DialogShell.Header title={t('history.title')} description={historyTrigger?.name} />
         <DialogShell.Body>
           {runsLoading ? (
             <div className="space-y-2">
@@ -436,7 +432,7 @@ export default function SchedulesPage() {
                         {run.status}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {run.source === 'run_now' ? '즉시 실행' : '예약 실행'}
+                        {run.source === 'run_now' ? t('history.runNow') : t('history.scheduled')}
                       </span>
                     </div>
                     <span className="text-xs text-muted-foreground">
@@ -450,7 +446,7 @@ export default function SchedulesPage() {
                         href={`/agents/${run.agent_id}/conversations/${run.conversation_id}`}
                         className="text-primary-strong hover:underline"
                       >
-                        결과 대화 열기
+                        {t('history.openConversation')}
                       </Link>
                     ) : null}
                     {run.thread_id ? <span>thread {run.thread_id.slice(0, 8)}</span> : null}
@@ -467,7 +463,7 @@ export default function SchedulesPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">아직 실행 이력이 없습니다.</p>
+            <p className="text-sm text-muted-foreground">{t('history.empty')}</p>
           )}
         </DialogShell.Body>
       </DialogShell>
@@ -475,10 +471,10 @@ export default function SchedulesPage() {
       <DeleteConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title="스케줄 삭제"
-        description="이 스케줄을 삭제합니다. 이미 생성된 결과 대화는 삭제되지 않습니다."
-        cancelLabel="취소"
-        confirmLabel="삭제"
+        title={t('delete.title')}
+        description={t('delete.description')}
+        cancelLabel={t('delete.cancel')}
+        confirmLabel={t('delete.confirm')}
         isPending={deleteTrigger.isPending}
         onConfirm={() => {
           if (!deleteTarget) return

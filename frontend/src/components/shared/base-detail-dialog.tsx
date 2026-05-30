@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { useTranslations } from 'next-intl'
 import { Loader2Icon } from 'lucide-react'
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query'
 
@@ -47,6 +48,8 @@ function BaseDetailDialogInner<T>({
   renderBody,
   extraFooter,
 }: Props<T>) {
+  const t = useTranslations('common.detailDialog')
+  const tc = useTranslations('common')
   const [confirming, setConfirming] = useState(false)
   const entity = query.data
   const handleClose = (next: boolean) => {
@@ -58,7 +61,7 @@ function BaseDetailDialogInner<T>({
     <DialogShell open={open} onOpenChange={handleClose} size={size}>
       {query.isLoading ? (
         <>
-          <DialogShell.Header title={`Loading ${entityLabel}…`} />
+          <DialogShell.Header title={t('loading', { entity: entityLabel })} />
           <DialogShell.Body>
             <Skeleton className="h-40 w-full rounded-lg" />
             <Skeleton className="h-32 w-full rounded-lg" />
@@ -69,13 +72,13 @@ function BaseDetailDialogInner<T>({
         </>
       ) : query.isError || !entity ? (
         <>
-          <DialogShell.Header title={`Failed to load ${entityLabel}`} />
+          <DialogShell.Header title={t('failed', { entity: entityLabel })} />
           <DialogShell.Body>
             <ErrorState onRetry={() => void query.refetch()} />
           </DialogShell.Body>
           <DialogShell.Footer>
             <Button variant="outline" onClick={() => handleClose(false)}>
-              Close
+              {tc('close')}
             </Button>
           </DialogShell.Footer>
         </>
@@ -110,13 +113,13 @@ function BaseDetailDialogInner<T>({
                   className="mr-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => setConfirming(true)}
                 >
-                  Delete
+                  {tc('delete')}
                 </Button>
               )
             ) : null}
             {extraFooter?.(entity)}
             <Button variant="outline" onClick={() => handleClose(false)}>
-              Close
+              {tc('close')}
             </Button>
           </DialogShell.Footer>
         </>

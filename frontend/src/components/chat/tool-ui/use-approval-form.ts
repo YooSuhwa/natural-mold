@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toApprove, toReject } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
 
@@ -27,7 +28,12 @@ export interface ApprovalFormState {
 
 /** 공통 approval 폼 — revision 텍스트, submitted 결정, HiTL resume 송신. */
 export function useApprovalForm(options: UseApprovalFormOptions): ApprovalFormState {
-  const { revisionFallback = '수정 요청', approveDisplay = '승인', isComplete } = options
+  const t = useTranslations('chat.builderApproval')
+  const {
+    revisionFallback = t('requestRevision'),
+    approveDisplay = t('approve'),
+    isComplete,
+  } = options
 
   const hitl = useHiTL()
   const [revision, setRevision] = useState('')

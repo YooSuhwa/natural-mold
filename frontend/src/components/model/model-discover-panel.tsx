@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Loader2, Search, Sparkles, Zap } from 'lucide-react'
 
@@ -37,6 +38,7 @@ interface ModelDiscoverPanelProps {
  * the ones to register. Pricing/source is enriched server-side.
  */
 export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
+  const t = useTranslations('model.discoverPanel')
   const { data: credentials } = useCredentials()
   const { data: definitions } = useCredentialTypes()
   const discover = useDiscoverModels()
@@ -86,7 +88,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
       setResults(models)
       setSelected(new Set())
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Discovery failed')
+      toast.error(e instanceof Error ? e.message : t('toast.discoveryFailed'))
     }
   }
 
@@ -145,10 +147,10 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
           }),
         ),
       )
-      toast.success(`Saved ${picks.length} model${picks.length === 1 ? '' : 's'}`)
+      toast.success(t('toast.saved', { count: picks.length }))
       onComplete?.()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Save failed')
+      toast.error(e instanceof Error ? e.message : t('toast.saveFailed'))
     } finally {
       setSaving(false)
     }
@@ -159,7 +161,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-0 flex-1 space-y-1.5">
           <label className="text-xs font-medium" htmlFor="discover-cred">
-            LLM credential
+            {t('llmCredential')}
           </label>
           <Select
             value={credentialId}
@@ -176,16 +178,16 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
               <SelectValue
                 placeholder={
                   llmCredentials.length === 0
-                    ? 'No LLM credential available'
-                    : 'Select credential'
+                    ? t('noCredential')
+                    : t('selectCredential')
                 }
               >
                 {(value: string) => {
                   const selected = llmCredentials.find((c) => c.id === value)
                   if (!selected) {
                     return llmCredentials.length === 0
-                      ? 'No LLM credential available'
-                      : 'Select credential'
+                      ? t('noCredential')
+                      : t('selectCredential')
                   }
                   return (
                     <span className="inline-flex items-center gap-2">
@@ -223,21 +225,19 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
           ) : (
             <Sparkles className="size-4" />
           )}
-          Discover
+          {t('discover')}
         </Button>
       </div>
 
       {llmCredentials.length === 0 && (
         <p className="rounded border border-dashed p-3 text-xs text-muted-foreground">
-          Add an LLM credential first (OpenAI, OpenRouter, etc.) on the
-          Credentials page, then come back to discover models.
+          {t('emptyCredential')}
         </p>
       )}
 
       {results !== null && results.length === 0 && (
         <p className="rounded border border-dashed p-6 text-center text-sm text-muted-foreground">
-          <Search className="mx-auto mb-2 size-5" /> No models returned. Try the
-          Custom ID tab to add the model manually.
+          <Search className="mx-auto mb-2 size-5" /> {t('emptyResults')}
         </p>
       )}
 
@@ -246,12 +246,12 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
           <div className="flex items-center justify-between gap-2">
             <SearchInput
               containerClassName="flex-1"
-              placeholder="Search models"
+              placeholder={t('searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
             <Button variant="ghost" size="sm" onClick={toggleAll}>
-              Toggle all
+              {t('toggleAll')}
             </Button>
           </div>
 
@@ -276,7 +276,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                     checked={checked}
                     disabled={disabled}
                     onCheckedChange={() => toggleRow(m.model_name)}
-                    aria-label={`Select ${m.display_name}`}
+                    aria-label={t('selectModel', { name: m.display_name })}
                   />
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <div className="flex items-center gap-2">
@@ -286,7 +286,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                       <ModelSourceBadge source={m.source} />
                       {disabled && (
                         <span className="text-[10px] text-muted-foreground">
-                          already registered
+                          {t('alreadyRegistered')}
                         </span>
                       )}
                       <Button
@@ -300,9 +300,9 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                             prev === m.model_name ? null : m.model_name,
                           )
                         }}
-                        aria-label={`Test ${m.display_name}`}
+                        aria-label={t('testModel', { name: m.display_name })}
                       >
-                        <Zap className="size-3" /> Test
+                        <Zap className="size-3" /> {t('test')}
                       </Button>
                     </div>
                     <p className="truncate font-mono text-[11px] text-muted-foreground">
@@ -310,14 +310,14 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                     </p>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
                       <span>
-                        in {formatTokenPrice(m.cost_per_input_token)}
+                        {t('inputPrice', { price: formatTokenPrice(m.cost_per_input_token) })}
                       </span>
                       <span>
-                        out {formatTokenPrice(m.cost_per_output_token)}
+                        {t('outputPrice', { price: formatTokenPrice(m.cost_per_output_token) })}
                       </span>
                       {m.context_window && (
                         <span>
-                          ctx {m.context_window.toLocaleString()}
+                          {t('context', { count: m.context_window.toLocaleString() })}
                         </span>
                       )}
                     </div>
@@ -350,7 +350,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
 
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
-              {selected.size} selected · {filteredResults.length} shown
+              {t('selectedSummary', { selected: selected.size, shown: filteredResults.length })}
             </span>
             <Button
               size="sm"
@@ -358,7 +358,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
               disabled={selected.size === 0 || saving}
             >
               {saving && <Loader2 className="size-3 animate-spin" />}
-              Save selected
+              {t('saveSelected')}
             </Button>
           </div>
         </div>

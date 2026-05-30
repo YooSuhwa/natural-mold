@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Activity, Download, Plus, Server, Upload } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { announceHealthResult } from '@/lib/health-check-toast'
 
@@ -26,6 +27,7 @@ function formatDate(value: string | null): string {
 }
 
 export default function McpServersPage() {
+  const t = useTranslations('mcp.page')
   const { data: servers, isLoading } = useMcpServers()
   const { data: healthEntries } = useMcpHealth()
   const runHealthCheck = useRunHealthCheck()
@@ -49,9 +51,9 @@ export default function McpServersPage() {
       a.remove()
       URL.revokeObjectURL(url)
       const count = Object.keys(data.mcpServers).length
-      toast.success(`서버 ${count}개를 내보냈어요`)
+      toast.success(t('toast.exported', { count }))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '내보내기 실패')
+      toast.error(e instanceof Error ? e.message : t('toast.exportFailed'))
     }
   }
 
@@ -71,7 +73,7 @@ export default function McpServersPage() {
       })
       announceHealthResult(result)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '상태 확인 실패')
+      toast.error(e instanceof Error ? e.message : t('toast.healthCheckFailed'))
     }
   }
 
@@ -79,24 +81,24 @@ export default function McpServersPage() {
     () => [
       {
         accessorKey: 'name',
-        header: '이름',
+        header: t('columns.name'),
         cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
       },
       {
         accessorKey: 'transport',
-        header: '전송 방식',
+        header: t('columns.transport'),
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">{row.original.transport}</span>
         ),
       },
       {
         accessorKey: 'last_tool_count',
-        header: '도구',
+        header: t('columns.tools'),
         cell: ({ row }) => row.original.last_tool_count ?? 0,
       },
       {
         id: 'status',
-        header: '상태',
+        header: t('columns.status'),
         cell: ({ row }) => {
           const entry = healthByServer.get(row.original.id)
           // Health probe wins if available; otherwise the static MCP status.
@@ -105,7 +107,7 @@ export default function McpServersPage() {
               <div className="flex flex-col items-start gap-0.5">
                 <StatusChip variant={entry.status} />
                 <span className="text-[10px] text-muted-foreground">
-                  {formatRelativeTime(entry.checked_at)}
+                  {formatRelativeTime(entry.checked_at, t)}
                 </span>
               </div>
             )
@@ -115,7 +117,7 @@ export default function McpServersPage() {
       },
       {
         accessorKey: 'last_pinged_at',
-        header: '최근 응답',
+        header: t('columns.lastResponse'),
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
             {formatDate(row.original.last_pinged_at)}
@@ -129,7 +131,7 @@ export default function McpServersPage() {
           <Button
             variant="ghost"
             size="sm"
-            aria-label={`${row.original.name} 상태 확인`}
+            aria-label={t('actions.checkNowFor', { name: row.original.name })}
             data-testid={`check-now-${row.original.id}`}
             onClick={(e) => {
               e.stopPropagation()
@@ -137,14 +139,15 @@ export default function McpServersPage() {
             }}
             disabled={runHealthCheck.isPending}
           >
-            <Activity className="size-3.5" /> 상태 확인
+            <Activity className="size-3.5" />
+            {t('actions.checkNow')}
           </Button>
         ),
         enableSorting: false,
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [healthByServer, runHealthCheck.isPending],
+    [healthByServer, runHealthCheck.isPending, t],
   )
 
   const data = servers ?? []
@@ -153,20 +156,21 @@ export default function McpServersPage() {
     <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
       <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <PageHeader
-          title="MCP 서버"
-          description="MCP 서버를 연결해 원격 도구를 가져오세요."
+          title={t('title')}
+          description={t('description')}
           action={
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" onClick={() => setImportOpen(true)}>
                 <Download className="size-4" />
-                불러오기
+                {t('actions.import')}
               </Button>
               <Button variant="outline" onClick={handleExport} disabled={exportMutation.isPending}>
                 <Upload className="size-4" />
-                내보내기
+                {t('actions.export')}
               </Button>
               <Button onClick={() => setWizardOpen(true)}>
-                <Plus className="size-4" />새 MCP 서버
+                <Plus className="size-4" />
+                {t('actions.new')}
               </Button>
             </div>
           }
@@ -175,12 +179,12 @@ export default function McpServersPage() {
         {!isLoading && data.length === 0 ? (
           <EmptyState
             icon={<Server className="size-6" />}
-            title="아직 MCP 서버가 없어요"
-            description="서버를 추가하면 원격 도구를 가져와 자격증명에 연결할 수 있어요."
+            title={t('empty.title')}
+            description={t('empty.description')}
             action={
               <Button onClick={() => setWizardOpen(true)}>
                 <Plus className="size-4" />
-                서버 추가
+                {t('empty.action')}
               </Button>
             }
           />
@@ -190,9 +194,9 @@ export default function McpServersPage() {
             data={data}
             loading={isLoading}
             searchable
-            searchPlaceholder="서버 검색"
+            searchPlaceholder={t('searchPlaceholder')}
             onRowClick={(row) => setDetailId(row.id)}
-            emptyTitle="검색 결과가 없어요"
+            emptyTitle={t('empty.filtered')}
           />
         )}
 
@@ -208,12 +212,12 @@ export default function McpServersPage() {
   )
 }
 
-function formatRelativeTime(iso: string): string {
+function formatRelativeTime(iso: string, t: ReturnType<typeof useTranslations>): string {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return iso
   const deltaSec = Math.floor((Date.now() - then) / 1000)
-  if (deltaSec < 60) return `${deltaSec}초 전`
-  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}분 전`
-  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}시간 전`
-  return `${Math.floor(deltaSec / 86400)}일 전`
+  if (deltaSec < 60) return t('relative.secondsAgo', { count: deltaSec })
+  if (deltaSec < 3600) return t('relative.minutesAgo', { count: Math.floor(deltaSec / 60) })
+  if (deltaSec < 86400) return t('relative.hoursAgo', { count: Math.floor(deltaSec / 3600) })
+  return t('relative.daysAgo', { count: Math.floor(deltaSec / 86400) })
 }

@@ -55,6 +55,7 @@ export default function AgentNewPage() {
           }}
           isComposingRef={isComposingRef}
           placeholder={t('chatPlaceholder')}
+          submitLabel={t('startButtonAria')}
           hasInput={hasInput}
         />
 
@@ -122,6 +123,7 @@ type ChatInputProps = {
   onCompositionEnd: () => void
   isComposingRef: React.MutableRefObject<boolean>
   placeholder: string
+  submitLabel: string
   hasInput: boolean
 }
 
@@ -133,6 +135,7 @@ function ChatInput({
   onCompositionEnd,
   isComposingRef,
   placeholder,
+  submitLabel,
   hasInput,
 }: ChatInputProps) {
   return (
@@ -166,7 +169,7 @@ function ChatInput({
           size="icon"
           onClick={onSubmit}
           disabled={!hasInput}
-          aria-label="에이전트 만들기 시작"
+          aria-label={submitLabel}
           className={[
             'size-9 rounded-xl transition-colors',
             hasInput

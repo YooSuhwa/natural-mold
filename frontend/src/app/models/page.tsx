@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Activity, Plus, Brain, Eye, EyeOff, Wrench, Lightbulb, Zap } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -31,6 +32,7 @@ import type { Model } from '@/lib/types/model'
 import type { HealthCheckEntry } from '@/lib/types/health'
 
 export default function ModelsPage() {
+  const t = useTranslations('model')
   const { data: user } = useSession()
   const isSuper = Boolean(user?.is_super_user)
   // Default ON for operators so the new visibility column is discoverable;
@@ -79,7 +81,7 @@ export default function ModelsPage() {
     // pick the same credential for the same model.
     const credentialId = resolveCredentialForModel(model, llmCredentials)
     if (!credentialId) {
-      toast.error('사용 가능한 LLM 자격증명이 없어요. 먼저 등록해 주세요.')
+      toast.error(t('catalog.toast.noCredential'))
       return
     }
     try {
@@ -90,7 +92,7 @@ export default function ModelsPage() {
       })
       announceHealthResult(result)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '상태 확인 실패')
+      toast.error(e instanceof Error ? e.message : t('catalog.toast.healthCheckFailed'))
     }
   }
 
@@ -113,7 +115,7 @@ export default function ModelsPage() {
       {
         id: 'provider',
         accessorKey: 'provider',
-        header: '모델',
+        header: t('catalog.columns.model'),
         cell: ({ row }) => (
           <div
             className={`flex min-w-[220px] items-center gap-2 ${
@@ -126,12 +128,13 @@ export default function ModelsPage() {
                 {row.original.display_name}
                 {row.original.is_default && (
                   <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
-                    기본
+                    {t('defaultBadge')}
                   </span>
                 )}
                 {!row.original.is_visible && (
                   <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border">
-                    <EyeOff className="size-3" /> 숨김
+                    <EyeOff className="size-3" />
+                    {t('catalog.hiddenBadge')}
                   </span>
                 )}
               </p>
@@ -147,15 +150,15 @@ export default function ModelsPage() {
       {
         id: 'cost',
         accessorFn: (row) => row.cost_per_input_token ?? 0,
-        header: '단가',
+        header: t('catalog.columns.price'),
         cell: ({ row }) => (
           <div className="flex min-w-[118px] flex-col gap-0.5 font-mono text-[11px] tabular-nums">
             <span>
-              <span className="mr-1 font-sans text-muted-foreground">입력</span>
+              <span className="mr-1 font-sans text-muted-foreground">{t('inputModalities')}</span>
               {formatTokenPrice(row.original.cost_per_input_token)}
             </span>
             <span>
-              <span className="mr-1 font-sans text-muted-foreground">출력</span>
+              <span className="mr-1 font-sans text-muted-foreground">{t('outputModalities')}</span>
               {formatTokenPrice(row.original.cost_per_output_token)}
             </span>
           </div>
@@ -164,7 +167,7 @@ export default function ModelsPage() {
       {
         id: 'context_window',
         accessorFn: (row) => row.context_window ?? 0,
-        header: '컨텍스트',
+        header: t('catalog.columns.context'),
         cell: ({ row }) =>
           row.original.context_window ? (
             <span className="font-mono text-xs tabular-nums">
@@ -177,7 +180,7 @@ export default function ModelsPage() {
       {
         id: 'benchmarks',
         accessorFn: (row) => (modelHasAnyRanking(row) ? 1 : 0),
-        header: '벤치마크',
+        header: t('catalog.columns.benchmarks'),
         cell: ({ row }) => {
           const rankings = row.original.rankings
           if (!modelHasAnyRanking(row.original)) {
@@ -195,7 +198,7 @@ export default function ModelsPage() {
       {
         id: 'source',
         accessorKey: 'source',
-        header: '출처',
+        header: t('catalog.columns.source'),
         cell: ({ row }) => <ModelSourceBadge source={row.original.source} />,
         filterFn: (row, _columnId, filterValue) => {
           if (filterValue === undefined || filterValue === null) return true
@@ -205,10 +208,10 @@ export default function ModelsPage() {
       {
         id: 'health',
         accessorFn: (row) => healthByModel.get(row.id)?.status ?? 'unknown',
-        header: '상태',
+        header: t('catalog.columns.status'),
         cell: ({ row }) => {
           const entry = healthByModel.get(row.original.id)
-          return <HealthCell entry={entry} />
+          return <HealthCell entry={entry} format={(iso) => formatRelativeTime(iso, t)} />
         },
         filterFn: (row, _columnId, filterValue) => {
           if (filterValue === undefined || filterValue === null) return true
@@ -219,7 +222,7 @@ export default function ModelsPage() {
       {
         id: 'agent_count',
         accessorKey: 'agent_count',
-        header: '에이전트',
+        header: t('catalog.columns.agents'),
         cell: ({ row }) => <span className="text-xs tabular-nums">{row.original.agent_count}</span>,
       },
       {
@@ -231,8 +234,8 @@ export default function ModelsPage() {
               variant="ghost"
               size="icon-sm"
               className="px-2"
-              aria-label={`${row.original.display_name} 상태 확인`}
-              title="상태 확인"
+              aria-label={t('catalog.actions.checkNowFor', { name: row.original.display_name })}
+              title={t('catalog.actions.checkNow')}
               data-testid={`check-now-${row.original.id}`}
               onClick={(e) => {
                 e.stopPropagation()
@@ -241,21 +244,21 @@ export default function ModelsPage() {
               disabled={runHealthCheck.isPending}
             >
               <Activity className="size-3.5" />
-              <span className="sr-only">상태 확인</span>
+              <span className="sr-only">{t('catalog.actions.checkNow')}</span>
             </Button>
             <Button
               variant="ghost"
               size="icon-sm"
               className="px-2"
-              aria-label={`${row.original.display_name} 테스트`}
-              title="테스트"
+              aria-label={t('catalog.actions.testFor', { name: row.original.display_name })}
+              title={t('catalog.actions.test')}
               onClick={(e) => {
                 e.stopPropagation()
                 setTesting(row.original)
               }}
             >
               <Zap className="size-3.5" />
-              <span className="sr-only">테스트</span>
+              <span className="sr-only">{t('catalog.actions.test')}</span>
             </Button>
           </div>
         ),
@@ -263,19 +266,19 @@ export default function ModelsPage() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [healthByModel, runHealthCheck.isPending],
+    [healthByModel, runHealthCheck.isPending, t],
   )
 
   const filters = useMemo<FilterDef[]>(
     () => [
       {
         columnId: 'provider',
-        label: '프로바이더',
+        label: t('provider'),
         options: providerOptions.map((p) => ({ value: p, label: p })),
       },
       {
         columnId: 'source',
-        label: '출처',
+        label: t('catalog.columns.source'),
         options: sourceOptions.map((s) => ({
           value: s,
           label: s.charAt(0).toUpperCase() + s.slice(1),
@@ -283,16 +286,16 @@ export default function ModelsPage() {
       },
       {
         columnId: 'health',
-        label: '상태',
+        label: t('catalog.columns.status'),
         options: [
-          { value: 'healthy', label: '정상' },
-          { value: 'degraded', label: '저하' },
-          { value: 'unhealthy', label: '비정상' },
-          { value: 'unknown', label: '미확인' },
+          { value: 'healthy', label: t('catalog.health.healthy') },
+          { value: 'degraded', label: t('catalog.health.degraded') },
+          { value: 'unhealthy', label: t('catalog.health.unhealthy') },
+          { value: 'unknown', label: t('catalog.health.unknown') },
         ],
       },
     ],
-    [providerOptions, sourceOptions],
+    [providerOptions, sourceOptions, t],
   )
 
   const toolbar = (
@@ -307,7 +310,7 @@ export default function ModelsPage() {
           checked={onlyWithRanking}
           onCheckedChange={(v) => setOnlyWithRanking(Boolean(v))}
         />
-        벤치마크 있음
+        {t('catalog.filters.hasBenchmark')}
       </label>
       {isSuper && (
         <label
@@ -320,12 +323,13 @@ export default function ModelsPage() {
             checked={showHidden}
             onCheckedChange={(v) => setShowHidden(Boolean(v))}
           />
-          숨김 포함
+          {t('catalog.filters.showHidden')}
         </label>
       )}
       {selected.length > 0 && (
         <Button size="sm" onClick={() => setBulkTestOpen(true)} data-testid="test-selected">
-          <Zap className="size-3.5" /> 선택 테스트
+          <Zap className="size-3.5" />
+          {t('catalog.actions.testSelected')}
           <Badge variant="secondary" className="ml-1">
             {selected.length}
           </Badge>
@@ -338,11 +342,12 @@ export default function ModelsPage() {
     <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
       <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <PageHeader
-          title="모델"
-          description="LLM 카탈로그 — 가격, 기능 플래그, 자격증명별 모델 탐색."
+          title={t('catalog.title')}
+          description={t('catalog.description')}
           action={
             <Button onClick={() => setAddOpen(true)}>
-              <Plus className="size-4" />새 모델
+              <Plus className="size-4" />
+              {t('catalog.new')}
             </Button>
           }
         />
@@ -350,12 +355,12 @@ export default function ModelsPage() {
         {!isLoading && allModels.length === 0 ? (
           <EmptyState
             icon={<Brain className="size-6" />}
-            title="아직 모델이 없어요"
-            description="저장된 LLM 자격증명에서 모델을 탐색하거나 직접 모델 ID를 입력해 보세요."
+            title={t('catalog.empty.title')}
+            description={t('catalog.empty.description')}
             action={
               <Button onClick={() => setAddOpen(true)}>
                 <Plus className="size-4" />
-                모델 추가
+                {t('addModel')}
               </Button>
             }
           />
@@ -365,7 +370,7 @@ export default function ModelsPage() {
             data={data}
             loading={isLoading}
             searchable
-            searchPlaceholder="이름이나 모델 ID로 검색"
+            searchPlaceholder={t('catalog.searchPlaceholder')}
             globalFilterFn={(row, query) => {
               const m = row as Model
               return (
@@ -378,7 +383,7 @@ export default function ModelsPage() {
             onRowSelectionChange={setSelected}
             toolbar={toolbar}
             onRowClick={(row) => setEditing(row)}
-            emptyTitle="조건에 맞는 모델이 없어요"
+            emptyTitle={t('catalog.empty.filtered')}
           />
         )}
 
@@ -399,7 +404,13 @@ export default function ModelsPage() {
   )
 }
 
-function HealthCell({ entry }: { entry: HealthCheckEntry | undefined }) {
+function HealthCell({
+  entry,
+  format,
+}: {
+  entry: HealthCheckEntry | undefined
+  format: (iso: string) => string
+}) {
   if (!entry) {
     return <StatusChip variant="unknown" />
   }
@@ -407,20 +418,30 @@ function HealthCell({ entry }: { entry: HealthCheckEntry | undefined }) {
     <div className="flex flex-col items-start gap-0.5">
       <StatusChip variant={entry.status} />
       <span className="text-[10px] text-muted-foreground">
-        {formatRelativeTime(entry.checked_at)}
+        {format(entry.checked_at)}
       </span>
     </div>
   )
 }
 
-function formatRelativeTime(iso: string): string {
+function formatRelativeTime(
+  iso: string,
+  t: (
+    key:
+      | 'relativeTime.secondsAgo'
+      | 'relativeTime.minutesAgo'
+      | 'relativeTime.hoursAgo'
+      | 'relativeTime.daysAgo',
+    values: { count: number },
+  ) => string,
+): string {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return iso
   const deltaSec = Math.floor((Date.now() - then) / 1000)
-  if (deltaSec < 60) return `${deltaSec}초 전`
-  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}분 전`
-  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}시간 전`
-  return `${Math.floor(deltaSec / 86400)}일 전`
+  if (deltaSec < 60) return t('relativeTime.secondsAgo', { count: deltaSec })
+  if (deltaSec < 3600) return t('relativeTime.minutesAgo', { count: Math.floor(deltaSec / 60) })
+  if (deltaSec < 86400) return t('relativeTime.hoursAgo', { count: Math.floor(deltaSec / 3600) })
+  return t('relativeTime.daysAgo', { count: Math.floor(deltaSec / 86400) })
 }
 
 /**
@@ -438,24 +459,25 @@ function modelHasAnyRanking(model: Model): boolean {
 }
 
 function CapabilityIcons({ model }: { model: Model }) {
+  const t = useTranslations('model')
   const items = [
     {
       key: 'vision',
       icon: Eye,
       enabled: Boolean(model.supports_vision),
-      title: '비전',
+      title: t('vision'),
     },
     {
       key: 'tools',
       icon: Wrench,
       enabled: Boolean(model.supports_function_calling),
-      title: '함수 호출',
+      title: t('functionCalling'),
     },
     {
       key: 'reasoning',
       icon: Lightbulb,
       enabled: Boolean(model.supports_reasoning),
-      title: '추론',
+      title: t('reasoning'),
     },
   ].filter((i) => i.enabled)
 

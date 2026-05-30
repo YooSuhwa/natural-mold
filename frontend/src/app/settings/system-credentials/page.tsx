@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { Plus, Shield, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -30,6 +31,7 @@ import {
  * who land here via a bookmarked URL.
  */
 export default function SystemCredentialsPage() {
+  const t = useTranslations('systemCredentials')
   const router = useRouter()
   const { data: user, isPending } = useSession()
   const denied = !isPending && !!user && !user.is_super_user
@@ -41,7 +43,7 @@ export default function SystemCredentialsPage() {
   if (isPending || denied) {
     return (
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
-        <p className="text-sm text-muted-foreground">불러오는 중…</p>
+        <p className="text-sm text-muted-foreground">{t('loading')}</p>
       </div>
     )
   }
@@ -50,6 +52,7 @@ export default function SystemCredentialsPage() {
 }
 
 function SystemCredentialsPageInner() {
+  const t = useTranslations('systemCredentials')
   const { data: credentials, isLoading } = useSystemCredentials()
   const { data: definitions } = useCredentialTypes()
   const deleteCred = useDeleteSystemCredential()
@@ -62,48 +65,49 @@ function SystemCredentialsPageInner() {
   }, [definitions])
 
   async function handleDelete(id: string, name: string) {
-    if (!confirm(`시스템 자격증명 "${name}"을 삭제할까요?`)) return
+    if (!confirm(t('confirmDelete', { name }))) return
     try {
       await deleteCred.mutateAsync(id)
-      toast.success('시스템 자격증명을 삭제했습니다.')
+      toast.success(t('toast.deleted'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '삭제에 실패했습니다.')
+      toast.error(e instanceof Error ? e.message : t('toast.deleteFailed'))
     }
   }
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
-        title="시스템 자격증명"
-        description="Fix Agent, 에이전트 빌더, 이미지 생성에 쓰는 운영자 관리 키입니다. 사용자용 선택 목록에는 표시되지 않습니다."
+        title={t('title')}
+        description={t('description')}
         action={
           <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="size-4" /> 시스템 자격증명 추가
+            <Plus className="size-4" />
+            {t('add')}
           </Button>
         }
       />
 
       <div className="rounded-lg border bg-amber-50/40 p-3 text-xs text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
         <p className="flex items-center gap-2 font-medium">
-          <Shield className="size-3.5" /> 운영자 전용
+          <Shield className="size-3.5" />
+          {t('operatorOnly.title')}
         </p>
         <p className="mt-1 text-amber-800/80 dark:text-amber-200/70">
-          이 자격증명 사용 비용은 운영자 계정으로 비용이 청구됩니다. 사용자 에이전트 설정,
-          모델 상태 확인, MCP 마법사에는 노출되지 않습니다. Fix Agent와 에이전트 빌더를
-          실행하려면 여기에 최소 하나의 LLM 자격증명을 등록하세요.
+          {t('operatorOnly.description')}
         </p>
       </div>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">불러오는 중…</p>
+        <p className="text-sm text-muted-foreground">{t('loading')}</p>
       ) : !credentials || credentials.length === 0 ? (
         <EmptyState
           icon={<Shield className="size-8" />}
-          title="아직 시스템 자격증명이 없어요"
-          description="Fix Agent와 에이전트 빌더를 사용하려면 LLM용 시스템 자격증명을 추가하세요."
+          title={t('empty.title')}
+          description={t('empty.description')}
           action={
             <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="size-4" /> 시스템 자격증명 추가
+              <Plus className="size-4" />
+              {t('add')}
             </Button>
           }
         />
@@ -120,7 +124,7 @@ function SystemCredentialsPageInner() {
                 <p className="truncate text-xs text-muted-foreground">
                   {definitionLabels.get(c.definition_key) ?? c.definition_key}
                   {' · '}
-                  {c.field_keys.length}개 필드
+                  {t('fieldCount', { count: c.field_keys.length })}
                 </p>
               </div>
               <StatusChip variant={c.status} />
@@ -129,7 +133,7 @@ function SystemCredentialsPageInner() {
                 size="sm"
                 onClick={() => handleDelete(c.id, c.name)}
                 disabled={deleteCred.isPending}
-                aria-label={`${c.name} 삭제`}
+                aria-label={t('deleteNamed', { name: c.name })}
               >
                 <Trash2 className="size-4" />
               </Button>

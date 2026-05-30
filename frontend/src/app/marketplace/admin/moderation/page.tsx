@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { CheckCircle2Icon, ShieldIcon } from 'lucide-react'
 
@@ -23,6 +24,7 @@ import {
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 
 export default function MarketplaceModerationPage() {
+  const t = useTranslations('marketplace.moderation')
   const router = useRouter()
   const { data: user, isLoading: userLoading } = useSession()
   const superUser = !!user?.is_super_user
@@ -47,10 +49,10 @@ export default function MarketplaceModerationPage() {
         <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
           <EmptyState
             icon={<ShieldIcon className="size-6" />}
-            title="운영자 전용 페이지"
-            description="이 페이지는 운영자(super_user)만 접근할 수 있어요."
+            title={t('denied.title')}
+            description={t('denied.description')}
             action={
-              <Button onClick={() => router.push('/marketplace')}>마켓플레이스로 돌아가기</Button>
+              <Button onClick={() => router.push('/marketplace')}>{t('back')}</Button>
             }
           />
         </div>
@@ -61,18 +63,18 @@ export default function MarketplaceModerationPage() {
   async function handleDisable(itemId: string) {
     try {
       await disable.mutateAsync(itemId)
-      toast.success('비활성화 완료')
+      toast.success(t('toast.disabled'))
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : '비활성화에 실패했어요')
+      toast.error(err instanceof ApiError ? err.message : t('toast.disableFailed'))
     }
   }
 
   async function handleApprove(itemId: string) {
     try {
       await setListed.mutateAsync({ itemId, isListed: true })
-      toast.success('카탈로그에 게시했어요')
+      toast.success(t('toast.approved'))
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : '승인에 실패했어요')
+      toast.error(err instanceof ApiError ? err.message : t('toast.approveFailed'))
     }
   }
 
@@ -80,13 +82,13 @@ export default function MarketplaceModerationPage() {
     <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
       <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <PageHeader
-          title="마켓플레이스 운영"
-          description="리스팅 승인이 필요한 공개 항목을 관리하세요."
+          title={t('title')}
+          description={t('description')}
         />
 
         <Card className="border border-border bg-card">
           <CardHeader>
-            <CardTitle className="text-sm">대기 항목</CardTitle>
+            <CardTitle className="text-sm">{t('queueTitle')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {isLoading ? (
@@ -94,8 +96,8 @@ export default function MarketplaceModerationPage() {
             ) : !queue || queue.length === 0 ? (
               <EmptyState
                 icon={<CheckCircle2Icon className="size-5" />}
-                title="처리 대기 항목이 없어요"
-                description="공개 게시된 항목이 모두 승인되었습니다."
+                title={t('queueEmpty.title')}
+                description={t('queueEmpty.description')}
               />
             ) : (
               <ul className="divide-y divide-border/60">
@@ -125,14 +127,14 @@ export default function MarketplaceModerationPage() {
                         variant="outline"
                         onClick={() => router.push(`/marketplace/${item.id}`)}
                       >
-                        검토
+                        {t('actions.review')}
                       </Button>
                       <Button
                         size="sm"
                         disabled={setListed.isPending}
                         onClick={() => handleApprove(item.id)}
                       >
-                        승인
+                        {t('actions.approve')}
                       </Button>
                       <Button
                         size="sm"
@@ -140,7 +142,7 @@ export default function MarketplaceModerationPage() {
                         disabled={disable.isPending}
                         onClick={() => handleDisable(item.id)}
                       >
-                        비활성화
+                        {t('actions.disable')}
                       </Button>
                     </div>
                   </li>
@@ -152,17 +154,17 @@ export default function MarketplaceModerationPage() {
 
         <Card className="border border-border bg-card">
           <CardHeader>
-            <CardTitle className="text-sm">k-skill 동기화 상태</CardTitle>
+            <CardTitle className="text-sm">{t('syncTitle')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             {kSkillStatus ? (
               <>
                 <p>
-                  <span className="text-muted-foreground">항목 수: </span>
+                  <span className="text-muted-foreground">{t('sync.count')} </span>
                   <span className="font-medium">{kSkillStatus.count}</span>
                 </p>
                 <p>
-                  <span className="text-muted-foreground">마지막 업데이트: </span>
+                  <span className="text-muted-foreground">{t('sync.lastUpdated')} </span>
                   <span className="font-medium">
                     {kSkillStatus.last_updated_at
                       ? formatMediumDate(kSkillStatus.last_updated_at)
@@ -171,12 +173,12 @@ export default function MarketplaceModerationPage() {
                 </p>
               </>
             ) : (
-              <p className="text-muted-foreground">불러오는 중…</p>
+              <p className="text-muted-foreground">{t('loading')}</p>
             )}
             <pre className="rounded-md bg-muted px-3 py-2 text-xs">
-              uv run python -m app.scripts.sync_k_skill --ref main
+              {t('sync.command')}
             </pre>
-            <p className="text-xs text-muted-foreground">동기화는 CLI에서만 실행할 수 있어요.</p>
+            <p className="text-xs text-muted-foreground">{t('sync.cliOnly')}</p>
           </CardContent>
         </Card>
       </div>

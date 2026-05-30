@@ -88,7 +88,7 @@ export function ToolboxNode({ data }: { data: ToolboxNodeData }) {
                 >
                   <span className="truncate text-xs">
                     {tool.name}
-                    <span className="ml-1 text-[9px] text-muted-foreground/70">MCP</span>
+                    <span className="ml-1 text-[9px] text-muted-foreground/70">{t('toolbox.mcp')}</span>
                   </span>
                   <button
                     onClick={() => onToggleMcpTool(tool.id)}

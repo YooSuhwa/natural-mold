@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
+import { useTranslations } from 'next-intl'
 import {
   CopyIcon,
   CheckIcon,
@@ -73,7 +74,7 @@ export function shouldFileToolDefaultExpand({
   status,
   hasPreview,
 }: {
-  label: 'Read' | 'Write' | 'Edit'
+  label: string
   status: PillStatus
   hasPreview: boolean
 }): boolean {
@@ -94,6 +95,7 @@ function CodeBlock({
   filename: string
   maxLines?: number
 }) {
+  const t = useTranslations('chat.markdown')
   const [copied, setCopied] = useState(false)
   const lines = code.split('\n')
   const truncated = lines.length > maxLines
@@ -117,8 +119,8 @@ function CodeBlock({
             type="button"
             onClick={handleCopy}
             className="text-zinc-500 transition-colors hover:text-zinc-300"
-            aria-label={copied ? '복사됨' : '복사'}
-            title={copied ? '복사됨' : '복사'}
+            aria-label={copied ? t('copied') : t('copy')}
+            title={copied ? t('copied') : t('copy')}
           >
             {copied ? (
               <CheckIcon className="size-3 text-status-success" />
@@ -140,7 +142,9 @@ function CodeBlock({
             </div>
           ))}
           {truncated && (
-            <div className="mt-1 text-center text-zinc-500">… {lines.length - maxLines}줄 더</div>
+            <div className="mt-1 text-center text-zinc-500">
+              … {t('moreLines', { count: lines.length - maxLines })}
+            </div>
           )}
         </pre>
       </div>
@@ -197,7 +201,7 @@ function FileToolPill({
   children,
 }: {
   icon: LucideIcon
-  label: 'Read' | 'Write' | 'Edit'
+  label: string
   filePath?: string
   status: PillStatus
   children?: React.ReactNode
@@ -226,23 +230,36 @@ function FileToolPill({
 
 export const ReadFileToolUI = makeAssistantToolUI<ReadFileArgs, unknown>({
   toolName: 'read_file',
-  render: ({ args, result, status }) => {
-    const filePath = args?.file_path ?? args?.path
-    const filename = extractFilename(filePath)
-    const content = typeof result === 'string' ? result : null
-
-    return (
-      <FileToolPill
-        icon={FileIcon}
-        label="Read"
-        filePath={filePath}
-        status={pillStatusFromAssistantUi(status.type)}
-      >
-        {content && <CodeBlock code={content} filename={filename} />}
-      </FileToolPill>
-    )
-  },
+  render: ({ args, result, status }) => (
+    <ReadFileToolView args={args} result={result} statusType={status.type} />
+  ),
 })
+
+function ReadFileToolView({
+  args,
+  result,
+  statusType,
+}: {
+  args: ReadFileArgs
+  result: unknown
+  statusType: string
+}) {
+  const t = useTranslations('chat.toolCall.file')
+  const filePath = args?.file_path ?? args?.path
+  const filename = extractFilename(filePath)
+  const content = typeof result === 'string' ? result : null
+
+  return (
+    <FileToolPill
+      icon={FileIcon}
+      label={t('read')}
+      filePath={filePath}
+      status={pillStatusFromAssistantUi(statusType)}
+    >
+      {content && <CodeBlock code={content} filename={filename} />}
+    </FileToolPill>
+  )
+}
 
 // ──────────────────────────────────────────────
 // WriteFileToolUI
@@ -250,22 +267,25 @@ export const ReadFileToolUI = makeAssistantToolUI<ReadFileArgs, unknown>({
 
 export const WriteFileToolUI = makeAssistantToolUI<WriteFileArgs, unknown>({
   toolName: 'write_file',
-  render: ({ args, status }) => {
-    const filePath = args?.file_path ?? args?.path
-    const filename = extractFilename(filePath)
-
-    return (
-      <FileToolPill
-        icon={FilePlusIcon}
-        label="Write"
-        filePath={filePath}
-        status={pillStatusFromAssistantUi(status.type)}
-      >
-        {args?.content && <CodeBlock code={args.content} filename={filename} />}
-      </FileToolPill>
-    )
-  },
+  render: ({ args, status }) => <WriteFileToolView args={args} statusType={status.type} />,
 })
+
+function WriteFileToolView({ args, statusType }: { args: WriteFileArgs; statusType: string }) {
+  const t = useTranslations('chat.toolCall.file')
+  const filePath = args?.file_path ?? args?.path
+  const filename = extractFilename(filePath)
+
+  return (
+    <FileToolPill
+      icon={FilePlusIcon}
+      label={t('write')}
+      filePath={filePath}
+      status={pillStatusFromAssistantUi(statusType)}
+    >
+      {args?.content && <CodeBlock code={args.content} filename={filename} />}
+    </FileToolPill>
+  )
+}
 
 // ──────────────────────────────────────────────
 // EditFileToolUI
@@ -273,22 +293,25 @@ export const WriteFileToolUI = makeAssistantToolUI<WriteFileArgs, unknown>({
 
 export const EditFileToolUI = makeAssistantToolUI<EditFileArgs, unknown>({
   toolName: 'edit_file',
-  render: ({ args, status }) => {
-    const filePath = args?.file_path ?? args?.path
-    const filename = extractFilename(filePath)
-    const hasEdit = args?.old_string && args?.new_string
-
-    return (
-      <FileToolPill
-        icon={FileEditIcon}
-        label="Edit"
-        filePath={filePath}
-        status={pillStatusFromAssistantUi(status.type)}
-      >
-        {hasEdit && (
-          <DiffBlock oldStr={args.old_string!} newStr={args.new_string!} filename={filename} />
-        )}
-      </FileToolPill>
-    )
-  },
+  render: ({ args, status }) => <EditFileToolView args={args} statusType={status.type} />,
 })
+
+function EditFileToolView({ args, statusType }: { args: EditFileArgs; statusType: string }) {
+  const t = useTranslations('chat.toolCall.file')
+  const filePath = args?.file_path ?? args?.path
+  const filename = extractFilename(filePath)
+  const hasEdit = args?.old_string && args?.new_string
+
+  return (
+    <FileToolPill
+      icon={FileEditIcon}
+      label={t('edit')}
+      filePath={filePath}
+      status={pillStatusFromAssistantUi(statusType)}
+    >
+      {hasEdit && (
+        <DiffBlock oldStr={args.old_string!} newStr={args.new_string!} filename={filename} />
+      )}
+    </FileToolPill>
+  )
+}

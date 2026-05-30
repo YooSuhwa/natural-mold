@@ -41,14 +41,16 @@ export function LoginForm({
     e.preventDefault()
     setTouched({ email: true, password: true })
     if (!email.includes('@') || password.length === 0) return
-    void onSubmit(email, password)
+    void onSubmit(email, password).catch(() => {
+      // Mutation state renders the mapped auth error; avoid a dev overlay.
+    })
   }
 
   return (
     <form onSubmit={handleSubmit} aria-busy={isLoading} noValidate>
       <header style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', margin: '0 0 6px' }}>
-          계정에 로그인
+          {t('auth.login.formTitle')}
         </h1>
         {/* <p style={{ fontSize: 13.5, color: 'oklch(0.556 0 0)', margin: 0 }}>
           이메일과 비밀번호로 계속하기
@@ -85,7 +87,7 @@ export function LoginForm({
               inputMode="email"
               autoFocus
               required
-              placeholder="you@example.com"
+              placeholder={t('auth.login.emailPlaceholder')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onBlur={() => setTouched((prev) => ({ ...prev, email: true }))}
@@ -145,7 +147,9 @@ export function LoginForm({
               <button
                 type="button"
                 aria-pressed={showPassword}
-                aria-label={showPassword ? '비밀번호 숨김' : '비밀번호 표시'}
+                aria-label={
+                  showPassword ? t('auth.password.hide') : t('auth.password.show')
+                }
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >

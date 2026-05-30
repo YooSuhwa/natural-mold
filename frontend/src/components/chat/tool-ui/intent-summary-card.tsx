@@ -1,16 +1,11 @@
 'use client'
 
 import { CheckIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { BUILDER_TOKENS as T } from './builder-tokens'
 import { PhaseCard, PhaseCardHeader } from './phase-card'
 
 export type IntentConfidence = 'high' | 'medium' | 'low'
-
-const CONFIDENCE_LABEL: Record<IntentConfidence, string> = {
-  high: '확신도 높음',
-  medium: '확신도 보통',
-  low: '확신도 낮음',
-}
 
 export interface IntentSummaryCardProps {
   /** 에이전트 이름 (예: '한컴 뉴스 모니터'). */
@@ -32,6 +27,7 @@ function IntentSummaryHeader({
   confidence?: IntentConfidence
   phaseLabel?: string
 }) {
+  const t = useTranslations('chat.intentSummary')
   return (
     <PhaseCardHeader variant="gradient">
       <span
@@ -44,7 +40,7 @@ function IntentSummaryHeader({
         className="text-[12.5px] font-semibold"
         style={{ color: T.primaryInk, letterSpacing: '-0.005em' }}
       >
-        의도 수집 완료
+        {t('title')}
       </span>
       <span className="text-[11.5px]" style={{ color: T.muted }}>
         · {phaseLabel}
@@ -54,7 +50,7 @@ function IntentSummaryHeader({
         className="text-[10.5px] font-semibold uppercase tabular-nums"
         style={{ color: T.muted, letterSpacing: '0.04em' }}
       >
-        {CONFIDENCE_LABEL[confidence]}
+        {t(`confidence.${confidence}`)}
       </span>
     </PhaseCardHeader>
   )
@@ -85,10 +81,11 @@ export function IntentSummaryCard({
   confidence = 'high',
   phaseLabel = 'Phase 2',
 }: IntentSummaryCardProps) {
+  const t = useTranslations('chat.intentSummary')
   return (
     <PhaseCard header={<IntentSummaryHeader confidence={confidence} phaseLabel={phaseLabel} />}>
       <div style={{ padding: '16px 18px 18px' }}>
-        <IntentLabel text="에이전트 이름" />
+        <IntentLabel text={t('agentName')} />
         <div
           className="mb-3.5 text-[19px] font-bold"
           style={{ color: T.ink, letterSpacing: '-0.015em' }}
@@ -96,7 +93,7 @@ export function IntentSummaryCard({
           {name}
         </div>
 
-        <IntentLabel text="설명" />
+        <IntentLabel text={t('description')} />
         <p
           className="mb-3.5 text-[14px]"
           style={{

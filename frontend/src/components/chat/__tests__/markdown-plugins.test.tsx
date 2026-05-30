@@ -1,5 +1,7 @@
 import Markdown from 'react-markdown'
 import { render, screen } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
+import '@testing-library/jest-dom/vitest'
 
 import { CHAT_STREAMING_REMARK_PLUGINS } from '../markdown-plugins'
 

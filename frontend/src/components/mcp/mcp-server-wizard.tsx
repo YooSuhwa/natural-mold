@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
   Activity,
@@ -58,6 +59,7 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
 }
 
 function McpWizardBody({ onClose }: { onClose: () => void }) {
+  const t = useTranslations('mcp.wizard')
   const { data: registry } = useMcpRegistry()
   const create = useCreateMcpServer()
   const createFromRegistry = useCreateFromRegistry()
@@ -139,14 +141,14 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
 
   async function runProbe() {
     if (!basicsValid) {
-      toast.error('Fill the required fields first')
+      toast.error(t('toast.required'))
       return
     }
     setProbeState({ kind: 'pending' })
     try {
       const result = await probe.mutateAsync(buildProbePayload())
       if (!result.success) {
-        const msg = result.error ?? 'Probe failed'
+        const msg = result.error ?? t('toast.probeFailed')
         setProbeState({ kind: 'error', message: msg })
         toast.error(msg)
         return
@@ -156,7 +158,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
       setEnabledNames(new Set(result.tools.map((t) => t.name)))
       setProbeState({ kind: 'ok', toolCount: result.tools.length })
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Probe failed'
+      const msg = e instanceof Error ? e.message : t('toast.probeFailed')
       setProbeState({ kind: 'error', message: msg })
       toast.error(msg)
     }
@@ -196,7 +198,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
 
   async function handleSave() {
     if (!basicsValid) {
-      toast.error('Fill the required fields first')
+      toast.error(t('toast.required'))
       setTab('basics')
       return
     }
@@ -226,9 +228,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
         const result = await discover.mutateAsync(server.id)
         if (result.success) discoveredCount = result.tools.length
       } catch {
-        toast.warning(
-          'Server added, but tool import failed. Retry from the detail page.',
-        )
+        toast.warning(t('toast.importFailedAfterSave'))
       }
 
       // Inform the user if they pre-selected fewer tools than discovered —
@@ -239,16 +239,14 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
           (t) => !enabledNames.has(t.name),
         ).length
         if (toDisableCount > 0) {
-          toast.info(
-            `Server saved. Toggle off ${toDisableCount} tool(s) from the detail page if needed.`,
-          )
+          toast.info(t('toast.savedToggleLater', { count: toDisableCount }))
         }
       }
 
-      toast.success('MCP server added')
+      toast.success(t('toast.added'))
       onClose()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to add server')
+      toast.error(e instanceof Error ? e.message : t('toast.addFailed'))
     }
   }
 
@@ -259,16 +257,16 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
     <>
       <DialogShell.Header
         icon={<Server className="size-5" />}
-        title="New MCP server"
-        description="Pick a registry preset or wire one up manually, then preview its tools before saving."
+        title={t('title')}
+        description={t('description')}
         actions={<ProbeBadge state={probeState} />}
       />
       <DialogShell.Body>
         <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
           <TabsList variant="line">
-            <TabsTrigger value="basics">1 · Basics</TabsTrigger>
-            <TabsTrigger value="auth">2 · Auth</TabsTrigger>
-            <TabsTrigger value="tools">3 · Tools</TabsTrigger>
+            <TabsTrigger value="basics">{t('tabs.basics')}</TabsTrigger>
+            <TabsTrigger value="auth">{t('tabs.auth')}</TabsTrigger>
+            <TabsTrigger value="tools">{t('tabs.tools')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value="basics" className="pt-4">
@@ -306,7 +304,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
                 onClick={() => setTab('auth')}
                 disabled={!basicsValid}
               >
-                Continue to Auth →
+                {t('actions.continueAuth')}
               </Button>
             </div>
           </TabsContent>
@@ -322,10 +320,10 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
             />
             <div className="mt-6 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setTab('basics')}>
-                Back
+                {t('actions.back')}
               </Button>
               <Button onClick={() => setTab('tools')}>
-                Continue to Tools →
+                {t('actions.continueTools')}
               </Button>
             </div>
           </TabsContent>
@@ -346,14 +344,14 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
       </DialogShell.Body>
       <DialogShell.Footer>
         <Button variant="outline" onClick={onClose} disabled={saving}>
-          Cancel
+          {t('actions.cancel')}
         </Button>
         <Button
           onClick={handleSave}
           disabled={saving || !basicsValid}
         >
           {saving ? <Loader2 className="size-4 animate-spin" /> : null}
-          Save server
+          {t('actions.save')}
         </Button>
       </DialogShell.Footer>
     </>
@@ -365,10 +363,11 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
 // ──────────────────────────────────────────────────────────────────────────
 
 function ProbeBadge({ state }: { state: ProbeState }) {
+  const t = useTranslations('mcp.wizard.probe')
   if (state.kind === 'idle') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-status-warn/15 px-2 py-0.5 text-xs font-medium text-status-warn">
-        Probe needed
+        {t('needed')}
       </span>
     )
   }
@@ -376,7 +375,7 @@ function ProbeBadge({ state }: { state: ProbeState }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-status-info/15 px-2 py-0.5 text-xs font-medium text-status-info">
         <Loader2 className="size-3 animate-spin" />
-        Probing…
+        {t('pending')}
       </span>
     )
   }
@@ -384,14 +383,14 @@ function ProbeBadge({ state }: { state: ProbeState }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-status-success/15 px-2 py-0.5 text-xs font-medium text-status-success">
         <CheckCircle2 className="size-3" />
-        OK · {state.toolCount} tool{state.toolCount === 1 ? '' : 's'}
+        {t('ok', { count: state.toolCount })}
       </span>
     )
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-status-danger/15 px-2 py-0.5 text-xs font-medium text-status-danger">
       <XCircle className="size-3" />
-      Failed
+      {t('failed')}
     </span>
   )
 }
@@ -456,21 +455,22 @@ function RegistrySection({
   onSelect: (entry: McpRegistryEntry) => void
   onClear: () => void
 }) {
+  const t = useTranslations('mcp.wizard.registry')
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Quick start
+          {t('title')}
         </h3>
         {selected ? (
           <Button size="sm" variant="ghost" onClick={onClear}>
-            Clear preset
+            {t('clear')}
           </Button>
         ) : null}
       </div>
       {entries.length === 0 ? (
         <p className="rounded border border-dashed border-border/60 p-4 text-center text-xs text-muted-foreground">
-          No registry presets configured — fill the manual form below.
+          {t('empty')}
         </p>
       ) : (
         <div
@@ -540,17 +540,18 @@ function ManualSection({
   headers,
   setHeaders,
 }: BasicsTabProps) {
+  const t = useTranslations('mcp.wizard.manual')
   const isHttp = transport === 'sse' || transport === 'streamable_http'
   return (
     <section className="space-y-3">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {registryKey ? 'Override' : 'Manual'}
+        {registryKey ? t('override') : t('manual')}
       </h3>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label htmlFor="mcp-name">
-            Name <span className="text-destructive">*</span>
+            {t('name')} <span className="text-destructive">*</span>
           </label>
           <Input
             id="mcp-name"
@@ -559,7 +560,7 @@ function ManualSection({
           />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="mcp-desc">Description</label>
+          <label htmlFor="mcp-desc">{t('description')}</label>
           <Input
             id="mcp-desc"
             value={description}
@@ -570,22 +571,22 @@ function ManualSection({
 
       {/* Transport radios */}
       <div className="space-y-1.5">
-        <label>Transport</label>
+        <label>{t('transport')}</label>
         <div className="flex flex-wrap gap-2">
-          {(['stdio', 'sse', 'streamable_http'] as const).map((t) => {
-            const active = transport === t
+          {(['stdio', 'sse', 'streamable_http'] as const).map((option) => {
+            const active = transport === option
             return (
               <button
-                key={t}
+                key={option}
                 type="button"
-                onClick={() => setTransport(t)}
+                onClick={() => setTransport(option)}
                 className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
                   active
                     ? 'border-primary-strong/60 bg-primary-strong/10 text-primary-strong'
                     : 'border-border hover:bg-muted/50'
                 }`}
               >
-                {t === 'streamable_http' ? 'Streamable HTTP' : t === 'sse' ? 'SSE' : 'stdio'}
+                {t(`transportOptions.${option}`)}
               </button>
             )
           })}
@@ -597,18 +598,18 @@ function ManualSection({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <label htmlFor="mcp-command">
-              Command <span className="text-destructive">*</span>
+              {t('command')} <span className="text-destructive">*</span>
             </label>
             <Input
               id="mcp-command"
               value={command}
-              placeholder="npx"
+              placeholder={t('commandPlaceholder')}
               onChange={(e) => setCommand(e.target.value)}
             />
           </div>
 
           <div className="space-y-1.5">
-            <label>Arguments</label>
+            <label>{t('args')}</label>
             <div className="flex flex-wrap gap-1.5">
               {args.map((arg, i) => (
                 <span
@@ -618,7 +619,7 @@ function ManualSection({
                   {arg}
                   <button
                     type="button"
-                    aria-label={`Remove ${arg}`}
+                    aria-label={t('removeArg', { arg })}
                     onClick={() =>
                       setArgs((prev) => prev.filter((_, idx) => idx !== i))
                     }
@@ -632,7 +633,7 @@ function ManualSection({
             <div className="flex gap-2">
               <Input
                 value={argDraft}
-                placeholder="-y @modelcontextprotocol/server-github"
+                placeholder={t('argsPlaceholder')}
                 onChange={(e) => setArgDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -642,16 +643,16 @@ function ManualSection({
                 }}
               />
               <Button type="button" variant="outline" onClick={onAddArg}>
-                Add
+                {t('add')}
               </Button>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              Press Enter or comma/space to add multiple args at once.
+              {t('argsHint')}
             </p>
           </div>
 
           <KeyValueRows
-            label="Environment variables"
+            label={t('envVars')}
             rows={envVars}
             setRows={setEnvVars}
             keyPlaceholder="GITHUB_TOKEN"
@@ -664,17 +665,17 @@ function ManualSection({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <label htmlFor="mcp-url">
-              URL <span className="text-destructive">*</span>
+              {t('url')} <span className="text-destructive">*</span>
             </label>
             <Input
               id="mcp-url"
               value={url}
-              placeholder="https://example.com/mcp"
+              placeholder={t('urlPlaceholder')}
               onChange={(e) => setUrl(e.target.value)}
             />
           </div>
           <KeyValueRows
-            label="Headers"
+            label={t('headers')}
             rows={headers}
             setRows={setHeaders}
             keyPlaceholder="Authorization"
@@ -701,6 +702,7 @@ function KeyValueRows({
   keyPlaceholder?: string
   valuePlaceholder?: string
 }) {
+  const t = useTranslations('mcp.wizard.manual')
   function update(idx: number, patch: Partial<{ key: string; value: string }>) {
     setRows((prev) =>
       prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)),
@@ -735,14 +737,14 @@ function KeyValueRows({
               variant="ghost"
               size="sm"
               onClick={() => remove(i)}
-              aria-label="Remove row"
+              aria-label={t('removeRow')}
             >
               <X className="size-3.5" />
             </Button>
           </div>
         ))}
         <Button type="button" size="sm" variant="outline" onClick={add}>
-          <Plus className="size-3.5" /> Add row
+          <Plus className="size-3.5" /> {t('addRow')}
         </Button>
       </div>
     </div>
@@ -768,10 +770,11 @@ function AuthTab({
   onTest: () => void
   testing: boolean
 }) {
+  const t = useTranslations('mcp.wizard.auth')
   return (
     <div className="space-y-4">
       <div className="space-y-1.5">
-        <label>Credential</label>
+        <label>{t('credential')}</label>
         <CredentialPicker
           value={credentialId}
           onChange={setCredentialId}
@@ -782,22 +785,17 @@ function AuthTab({
       </div>
 
       <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
-        <p className="font-medium text-foreground">Credential interpolation</p>
+        <p className="font-medium text-foreground">{t('interpolation')}</p>
         <p className="mt-1">
-          Reference fields from the bound credential anywhere in headers or env
-          vars using{' '}
+          {t('interpolationBody')}{' '}
           <code className="rounded bg-background px-1 py-0.5 font-mono">
             {'{{ $credentials.<field> }}'}
           </code>
-          . The MCP client substitutes them at connect time.
+          . {t('interpolationSuffix')}
         </p>
         {credentialDefinitionFilter ? (
           <p className="mt-2">
-            Filtered to credentials of type{' '}
-            <code className="rounded bg-background px-1 py-0.5 font-mono">
-              {credentialDefinitionFilter}
-            </code>
-            .
+            {t('filtered', { type: credentialDefinitionFilter })}
           </p>
         ) : null}
       </div>
@@ -809,12 +807,11 @@ function AuthTab({
           ) : (
             <Activity className="size-3.5" />
           )}
-          Test connection
+          {t('test')}
         </Button>
         {probeState.kind === 'ok' ? (
           <span className="text-xs text-status-success">
-            Connected — discovered {probeState.toolCount} tool
-            {probeState.toolCount === 1 ? '' : 's'}.
+            {t('connected', { count: probeState.toolCount })}
           </span>
         ) : null}
         {probeState.kind === 'error' ? (
@@ -842,20 +839,21 @@ function ToolsTab({
   onToggle: (name: string) => void
   onRetry: () => void
 }) {
+  const t = useTranslations('mcp.wizard.tools')
   if (probeState.kind === 'pending') {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" /> Discovering tools…
+        <Loader2 className="size-4 animate-spin" /> {t('discovering')}
       </div>
     )
   }
   if (probeState.kind === 'error') {
     return (
       <div className="space-y-3 rounded-md border border-status-danger/40 bg-status-danger/10 p-3 text-sm text-status-danger">
-        <p className="font-medium">Probe failed</p>
+        <p className="font-medium">{t('probeFailed')}</p>
         <p className="text-xs">{probeState.message}</p>
         <Button size="sm" variant="outline" onClick={onRetry}>
-          Retry
+          {t('retry')}
         </Button>
       </div>
     )
@@ -863,19 +861,16 @@ function ToolsTab({
   if (tools.length === 0) {
     return (
       <p className="rounded border border-dashed border-border/60 p-6 text-center text-xs text-muted-foreground">
-        No tools advertised by this server yet.
+        {t('empty')}
       </p>
     )
   }
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>
-          {enabledNames.size} of {tools.length} tool
-          {tools.length === 1 ? '' : 's'} enabled
-        </span>
+        <span>{t('enabled', { enabled: enabledNames.size, total: tools.length })}</span>
         <Button size="sm" variant="ghost" onClick={onRetry}>
-          Re-probe
+          {t('reprobe')}
         </Button>
       </div>
       <div className="space-y-1.5">
@@ -897,7 +892,7 @@ function ToolsTab({
                     {tool.name}
                   </span>
                   <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                    {paramCount} param{paramCount === 1 ? '' : 's'}
+                    {t('params', { count: paramCount })}
                   </span>
                 </div>
                 {tool.description ? (

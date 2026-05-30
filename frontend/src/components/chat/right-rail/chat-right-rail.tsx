@@ -1,6 +1,7 @@
 'use client'
 
 import { useAtom } from 'jotai'
+import { useTranslations } from 'next-intl'
 import { XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -19,6 +20,7 @@ interface Props {
 const PANEL_WIDTH_CLASS = 'w-[380px]'
 
 export function ChatRightRail({ className }: Props) {
+  const t = useTranslations('chat.rightRail')
   const [state, setState] = useAtom(chatRightRailAtom)
   const isOpen = state.mode !== 'none'
 
@@ -47,7 +49,7 @@ export function ChatRightRail({ className }: Props) {
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true">
           <button
             type="button"
-            aria-label="Close panel"
+            aria-label={t('closePanel')}
             className="absolute inset-0 bg-background/60 backdrop-blur-sm"
             onClick={() => setState({ mode: 'none' })}
           />
@@ -71,11 +73,12 @@ interface RailFrameProps {
 }
 
 function RailFrame({ state, className, onClose }: RailFrameProps) {
+  const t = useTranslations('chat.rightRail')
   return (
     <div className={cn('flex h-full flex-col', className)}>
       <header className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
         <h2 className="truncate text-sm font-semibold text-foreground">{titleFor(state)}</h2>
-        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close panel">
+        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label={t('closePanel')}>
           <XIcon className="size-4" />
         </Button>
       </header>

@@ -246,6 +246,7 @@ interface ChatEmptyStateProps {
 }
 
 function ChatEmptyState({ agent, fallback }: ChatEmptyStateProps) {
+  const t = useTranslations('chat')
   // AssistantRuntimeProvider 컨텍스트 안에서만 동작 — emptyContent는 provider 자식
   const composer = useComposerRuntime({ optional: true })
   const openerQuestions = agent?.opener_questions ?? []
@@ -255,7 +256,7 @@ function ChatEmptyState({ agent, fallback }: ChatEmptyStateProps) {
       <div className="mb-4">
         <AgentAvatar
           imageUrl={agent?.image_url ?? null}
-          name={agent?.name ?? '에이전트'}
+          name={agent?.name ?? t('defaultAgentName')}
           size="lg"
         />
       </div>

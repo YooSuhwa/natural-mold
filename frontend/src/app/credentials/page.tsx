@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { Plus, KeyRound } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
@@ -21,6 +22,7 @@ function formatDate(value: string | null): string {
 }
 
 export default function CredentialsPage() {
+  const t = useTranslations('credentials.page')
   const { data: credentials, isLoading } = useCredentials()
   const { data: definitions } = useCredentialTypes()
   const [createOpen, setCreateOpen] = useState(false)
@@ -37,13 +39,13 @@ export default function CredentialsPage() {
       {
         id: 'name',
         accessorKey: 'name',
-        header: '이름',
+        header: t('columns.name'),
         cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
       },
       {
         id: 'definition_key',
         accessorKey: 'definition_key',
-        header: '종류',
+        header: t('columns.type'),
         cell: ({ row }) => {
           const key = row.original.definition_key
           return (
@@ -58,14 +60,14 @@ export default function CredentialsPage() {
       {
         id: 'status',
         accessorKey: 'status',
-        header: '상태',
+        header: t('columns.status'),
         cell: ({ row }) => <StatusChip variant={row.original.status} />,
         filterFn: 'equals',
       },
       {
         id: 'last_used_at',
         accessorKey: 'last_used_at',
-        header: '최근 사용',
+        header: t('columns.lastUsed'),
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
             {formatDate(row.original.last_used_at)}
@@ -75,7 +77,7 @@ export default function CredentialsPage() {
       {
         id: 'last_tested_at',
         accessorKey: 'last_tested_at',
-        header: '최근 테스트',
+        header: t('columns.lastTested'),
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
             {formatDate(row.original.last_tested_at)}
@@ -83,14 +85,14 @@ export default function CredentialsPage() {
         ),
       },
     ],
-    [definitionLabels],
+    [definitionLabels, t],
   )
 
   const filters = useMemo<FilterDef[]>(
     () => [
       {
         columnId: 'definition_key',
-        label: '종류',
+        label: t('filters.type'),
         options: (definitions ?? []).map((d) => ({
           value: d.key,
           label: d.display_name,
@@ -98,16 +100,16 @@ export default function CredentialsPage() {
       },
       {
         columnId: 'status',
-        label: '상태',
+        label: t('filters.status'),
         options: [
-          { value: 'active', label: '활성' },
-          { value: 'auth_needed', label: '인증 필요' },
-          { value: 'expired', label: '만료' },
-          { value: 'disabled', label: '비활성' },
+          { value: 'active', label: t('statuses.active') },
+          { value: 'auth_needed', label: t('statuses.authNeeded') },
+          { value: 'expired', label: t('statuses.expired') },
+          { value: 'disabled', label: t('statuses.disabled') },
         ],
       },
     ],
-    [definitions],
+    [definitions, t],
   )
 
   const data = credentials ?? []
@@ -116,11 +118,12 @@ export default function CredentialsPage() {
     <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
       <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <PageHeader
-          title="자격증명"
-          description="도구와 MCP 서버에서 사용하는 API 키와 OAuth 권한을 관리하세요."
+          title={t('title')}
+          description={t('description')}
           action={
             <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="size-4" />새 자격증명
+              <Plus className="size-4" />
+              {t('new')}
             </Button>
           }
         />
@@ -128,12 +131,12 @@ export default function CredentialsPage() {
         {!isLoading && data.length === 0 ? (
           <EmptyState
             icon={<KeyRound className="size-6" />}
-            title="아직 자격증명이 없어요"
-            description="API 키나 OAuth 권한을 추가하면 도구가 인증할 수 있어요."
+            title={t('empty.title')}
+            description={t('empty.description')}
             action={
               <Button onClick={() => setCreateOpen(true)}>
                 <Plus className="size-4" />
-                자격증명 추가
+                {t('empty.action')}
               </Button>
             }
           />
@@ -143,10 +146,10 @@ export default function CredentialsPage() {
             data={data}
             loading={isLoading}
             searchable
-            searchPlaceholder="자격증명 검색"
+            searchPlaceholder={t('searchPlaceholder')}
             filters={filters}
             onRowClick={(row) => setDetailId(row.id)}
-            emptyTitle="조건에 맞는 자격증명이 없어요"
+            emptyTitle={t('empty.filtered')}
           />
         )}
 

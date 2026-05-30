@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Loader2, Zap } from 'lucide-react'
 
@@ -27,13 +28,13 @@ interface ModelAddDialogProps {
 }
 
 const PROVIDERS = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'google', label: 'Google' },
-  { value: 'openrouter', label: 'OpenRouter' },
-  { value: 'openai_compatible', label: 'OpenAI Compatible' },
-  { value: 'azure_openai', label: 'Azure OpenAI' },
-  { value: 'other', label: 'Other' },
+  { value: 'openai', labelKey: 'openai' },
+  { value: 'anthropic', labelKey: 'anthropic' },
+  { value: 'google', labelKey: 'google' },
+  { value: 'openrouter', labelKey: 'openrouter' },
+  { value: 'openai_compatible', labelKey: 'openai_compatible' },
+  { value: 'azure_openai', labelKey: 'azure_openai' },
+  { value: 'other', labelKey: 'other' },
 ]
 
 /**
@@ -46,13 +47,14 @@ const PROVIDERS = [
  *    private/preview models the discovery endpoints don't surface yet.
  */
 export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
+  const t = useTranslations('model.addDialog')
   const [tab, setTab] = useState<'discover' | 'custom'>('discover')
 
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="lg" height="fixed">
       <DialogShell.Header
-        title="Add model"
-        description="Discover models from a credential, or enter a custom ID for previews and private deployments."
+        title={t('title')}
+        description={t('description')}
       />
       <DialogShell.Body className="flex flex-col">
         <Tabs
@@ -61,8 +63,8 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
           className="flex min-h-0 w-full flex-1 flex-col"
         >
           <TabsList className="w-full">
-            <TabsTrigger value="discover">Discover</TabsTrigger>
-            <TabsTrigger value="custom">Custom ID</TabsTrigger>
+            <TabsTrigger value="discover">{t('tabs.discover')}</TabsTrigger>
+            <TabsTrigger value="custom">{t('tabs.custom')}</TabsTrigger>
           </TabsList>
 
           <TabsContent
@@ -85,6 +87,7 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
 }
 
 function CustomIdForm({ onSaved }: { onSaved: () => void }) {
+  const t = useTranslations('model.addDialog')
   const create = useCreateModel()
   const { data: credentials } = useCredentials()
   const { data: definitions } = useCredentialTypes()
@@ -128,27 +131,23 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
         // model's default credential — same intent as the Discover flow.
         default_credential_id: effectiveCredId || null,
       })
-      toast.success('Model added')
+      toast.success(t('toast.added'))
       onSaved()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Save failed')
+      toast.error(e instanceof Error ? e.message : t('toast.saveFailed'))
     }
   }
 
   return (
     <div className="space-y-4">
       <p className="rounded border bg-muted/40 p-3 text-xs text-muted-foreground">
-        Use this for new or private models that don&apos;t show up in
-        discovery. Without explicit pricing, cost tracking will be inaccurate.
-        Benchmark rankings are not auto-fetched for Custom IDs — they will be
-        populated by the next catalog cron cycle if the model joins a public
-        catalog.
+        {t('customHint')}
       </p>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label htmlFor="m-provider" className="text-xs font-medium">
-            Provider
+            {t('fields.provider')}
             <span className="ml-0.5 text-destructive">*</span>
           </label>
           <Select value={provider} onValueChange={(v) => v && setProvider(v)}>
@@ -158,7 +157,7 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
             <SelectContent>
               {PROVIDERS.map((p) => (
                 <SelectItem key={p.value} value={p.value}>
-                  {p.label}
+                  {t(`providers.${p.labelKey}`)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -166,13 +165,13 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
         </div>
         <div className="space-y-1.5">
           <label htmlFor="m-model-name" className="text-xs font-medium">
-            Model ID
+            {t('fields.modelId')}
             <span className="ml-0.5 text-destructive">*</span>
           </label>
           <Input
             id="m-model-name"
             value={modelName}
-            placeholder="gpt-5-preview"
+            placeholder={t('placeholders.modelId')}
             onChange={(e) => setModelName(e.target.value)}
           />
         </div>
@@ -180,24 +179,24 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
 
       <div className="space-y-1.5">
         <label htmlFor="m-display-name" className="text-xs font-medium">
-          Display name
+          {t('fields.displayName')}
         </label>
         <Input
           id="m-display-name"
           value={displayName}
-          placeholder="GPT-5 Preview (defaults to model ID)"
+          placeholder={t('placeholders.displayName')}
           onChange={(e) => setDisplayName(e.target.value)}
         />
       </div>
 
       <div className="space-y-1.5">
         <label htmlFor="m-base-url" className="text-xs font-medium">
-          Base URL
+          {t('fields.baseUrl')}
         </label>
         <Input
           id="m-base-url"
           value={baseUrl}
-          placeholder="https://api.example.com/v1"
+          placeholder={t('placeholders.baseUrl')}
           onChange={(e) => setBaseUrl(e.target.value)}
         />
       </div>
@@ -205,7 +204,7 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
       <div className="grid grid-cols-3 gap-3">
         <div className="space-y-1.5">
           <label htmlFor="m-input-price" className="text-xs font-medium">
-            Input $/1M
+            {t('fields.inputPrice')}
           </label>
           <Input
             id="m-input-price"
@@ -219,7 +218,7 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
         </div>
         <div className="space-y-1.5">
           <label htmlFor="m-output-price" className="text-xs font-medium">
-            Output $/1M
+            {t('fields.outputPrice')}
           </label>
           <Input
             id="m-output-price"
@@ -233,7 +232,7 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
         </div>
         <div className="space-y-1.5">
           <label htmlFor="m-context" className="text-xs font-medium">
-            Context window
+            {t('fields.contextWindow')}
           </label>
           <Input
             id="m-context"
@@ -251,14 +250,14 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs font-medium" htmlFor="custom-test-cred">
-              Test with credential
+              {t('fields.testCredential')}
             </label>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setTestOpen(false)}
             >
-              Hide test
+              {t('actions.hideTest')}
             </Button>
           </div>
           <Select
@@ -266,7 +265,7 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
             onValueChange={(v) => v && setTestCredId(v)}
           >
             <SelectTrigger id="custom-test-cred" className="w-full">
-              <SelectValue placeholder="Select credential" />
+              <SelectValue placeholder={t('placeholders.selectCredential')} />
             </SelectTrigger>
             <SelectContent>
               {llmCredentials.map((c) => (
@@ -297,11 +296,11 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
           data-testid="custom-test-button"
         >
           <Zap className="size-3.5" />
-          Test
+          {t('actions.test')}
         </Button>
         <Button onClick={handleSave} disabled={!canSubmit || create.isPending}>
           {create.isPending && <Loader2 className="size-4 animate-spin" />}
-          Save model
+          {t('actions.save')}
         </Button>
       </div>
     </div>

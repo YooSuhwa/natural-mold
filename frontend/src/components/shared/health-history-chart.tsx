@@ -13,6 +13,7 @@
 
 import { useMemo } from 'react'
 import { Loader2 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useHealthHistory } from '@/lib/hooks/use-health'
@@ -46,6 +47,7 @@ export function HealthHistoryChart({
   limit = 30,
   className,
 }: HealthHistoryChartProps) {
+  const t = useTranslations('shared.healthHistory')
   const { data, isLoading, isError } = useHealthHistory(targetKind, targetId, limit)
 
   if (isLoading) {
@@ -69,7 +71,7 @@ export function HealthHistoryChart({
           className,
         )}
       >
-        Failed to load health history.
+        {t('loadFailed')}
       </div>
     )
   }
@@ -84,7 +86,7 @@ export function HealthHistoryChart({
         )}
         data-testid="health-history-empty"
       >
-        Health check 기록 없음 — &quot;Check now&quot; 버튼으로 시작하세요.
+        {t('empty')}
       </div>
     )
   }
@@ -101,6 +103,7 @@ export function HealthHistoryChart({
 // -- Latency line chart -----------------------------------------------------
 
 function LatencyLineChart({ entries }: { entries: HealthCheckEntry[] }) {
+  const t = useTranslations('shared.healthHistory')
   // viewBox-based geometry so the chart scales to its container width.
   const W = 600
   const H = 120
@@ -120,7 +123,7 @@ function LatencyLineChart({ entries }: { entries: HealthCheckEntry[] }) {
   if (!stats) {
     return (
       <div className="rounded-lg border bg-muted/20 p-4 text-center text-xs text-muted-foreground">
-        Latency 데이터가 없는 probe입니다 (모두 실패).
+        {t('noLatency')}
       </div>
     )
   }
@@ -154,16 +157,20 @@ function LatencyLineChart({ entries }: { entries: HealthCheckEntry[] }) {
   return (
     <div className="rounded-lg border bg-card p-3">
       <div className="mb-2 flex items-baseline justify-between">
-        <h4 className="text-xs font-semibold text-foreground">Latency (ms)</h4>
+        <h4 className="text-xs font-semibold text-foreground">{t('latencyTitle')}</h4>
         <p className="text-[10px] text-muted-foreground">
-          min {Math.round(stats.min)} · max {Math.round(stats.max)} · {entries.length} probes
+          {t('summary', {
+            min: Math.round(stats.min),
+            max: Math.round(stats.max),
+            count: entries.length,
+          })}
         </p>
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="h-32 w-full"
         role="img"
-        aria-label="Latency history line chart"
+        aria-label={t('chartLabel')}
       >
         {/* Y-axis baseline */}
         <line
@@ -203,7 +210,11 @@ function LatencyLineChart({ entries }: { entries: HealthCheckEntry[] }) {
               strokeWidth="1"
             >
               <title>
-                {`${formatRelativeTime(e.checked_at)} · ${e.status} · ${e.latency_ms}ms`}
+                {t('pointTitle', {
+                  relative: formatRelativeTime(e.checked_at, t),
+                  status: t(`status.${e.status}`),
+                  latency: e.latency_ms,
+                })}
               </title>
             </circle>
           )
@@ -216,11 +227,12 @@ function LatencyLineChart({ entries }: { entries: HealthCheckEntry[] }) {
 // -- Status timeline strip --------------------------------------------------
 
 function StatusTimelineStrip({ entries }: { entries: HealthCheckEntry[] }) {
+  const t = useTranslations('shared.healthHistory')
   return (
     <div className="rounded-lg border bg-card p-3">
       <div className="mb-2 flex items-baseline justify-between">
-        <h4 className="text-xs font-semibold text-foreground">Status timeline</h4>
-        <p className="text-[10px] text-muted-foreground">oldest → newest</p>
+        <h4 className="text-xs font-semibold text-foreground">{t('statusTimeline')}</h4>
+        <p className="text-[10px] text-muted-foreground">{t('oldestNewest')}</p>
       </div>
       <div className="flex items-stretch gap-0.5" data-testid="status-timeline">
         {entries.map((e) => (
@@ -233,21 +245,26 @@ function StatusTimelineStrip({ entries }: { entries: HealthCheckEntry[] }) {
                     'h-6 flex-1 cursor-pointer rounded-sm transition-opacity hover:opacity-80',
                     STATUS_BG[e.status],
                   )}
-                  aria-label={`${e.status} probe at ${e.checked_at}`}
+                  aria-label={t('probeAt', {
+                    status: t(`status.${e.status}`),
+                    checkedAt: e.checked_at,
+                  })}
                 />
               }
             />
             <TooltipContent>
               <div className="space-y-0.5 text-left">
                 <p className="font-medium">
-                  {e.status} · {formatRelativeTime(e.checked_at)}
+                  {t(`status.${e.status}`)} · {formatRelativeTime(e.checked_at, t)}
                 </p>
                 {typeof e.latency_ms === 'number' && (
-                  <p className="text-[10px] opacity-80">Latency: {e.latency_ms}ms</p>
+                  <p className="text-[10px] opacity-80">
+                    {t('latencyValue', { value: e.latency_ms })}
+                  </p>
                 )}
                 {e.error_kind && (
                   <p className="text-[10px] opacity-80">
-                    {e.error_kind}: {e.error_message ?? 'no message'}
+                    {e.error_kind}: {e.error_message ?? t('noMessage')}
                   </p>
                 )}
               </div>
@@ -262,18 +279,19 @@ function StatusTimelineStrip({ entries }: { entries: HealthCheckEntry[] }) {
 // -- Legend -----------------------------------------------------------------
 
 function Legend() {
-  const items: { status: HealthStatus; label: string }[] = [
-    { status: 'healthy', label: 'Healthy' },
-    { status: 'degraded', label: 'Degraded' },
-    { status: 'unhealthy', label: 'Unhealthy' },
-    { status: 'unknown', label: 'Unknown' },
+  const t = useTranslations('shared.healthHistory')
+  const items: { status: HealthStatus; labelKey: string }[] = [
+    { status: 'healthy', labelKey: 'status.healthy' },
+    { status: 'degraded', labelKey: 'status.degraded' },
+    { status: 'unhealthy', labelKey: 'status.unhealthy' },
+    { status: 'unknown', labelKey: 'status.unknown' },
   ]
   return (
     <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
       {items.map((i) => (
         <span key={i.status} className="inline-flex items-center gap-1">
           <span className={cn('inline-block size-2 rounded-sm', STATUS_BG[i.status])} />
-          {i.label}
+          {t(i.labelKey)}
         </span>
       ))}
     </div>
@@ -282,13 +300,16 @@ function Legend() {
 
 // -- Helpers ----------------------------------------------------------------
 
-function formatRelativeTime(iso: string): string {
+function formatRelativeTime(
+  iso: string,
+  t: ReturnType<typeof useTranslations<'shared.healthHistory'>>,
+): string {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return iso
   const now = Date.now()
   const deltaSec = Math.floor((now - then) / 1000)
-  if (deltaSec < 60) return `${deltaSec}s ago`
-  if (deltaSec < 3600) return `${Math.floor(deltaSec / 60)}m ago`
-  if (deltaSec < 86400) return `${Math.floor(deltaSec / 3600)}h ago`
-  return `${Math.floor(deltaSec / 86400)}d ago`
+  if (deltaSec < 60) return t('relative.seconds', { count: deltaSec })
+  if (deltaSec < 3600) return t('relative.minutes', { count: Math.floor(deltaSec / 60) })
+  if (deltaSec < 86400) return t('relative.hours', { count: Math.floor(deltaSec / 3600) })
+  return t('relative.days', { count: Math.floor(deltaSec / 86400) })
 }

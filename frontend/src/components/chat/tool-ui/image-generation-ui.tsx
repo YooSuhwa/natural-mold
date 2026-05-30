@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
+import { useTranslations } from 'next-intl'
 import {
   AlertTriangleIcon,
   CheckIcon,
@@ -139,6 +140,7 @@ interface ImageChoiceArgs {
 }
 
 function ImageChoiceUnavailable({ message }: { message?: string }) {
+  const t = useTranslations('chat.imageGeneration')
   return (
     <div
       className="my-3 flex items-start gap-2"
@@ -155,7 +157,7 @@ function ImageChoiceUnavailable({ message }: { message?: string }) {
           className="text-[12.5px] font-semibold"
           style={{ color: T.ink, letterSpacing: '-0.005em' }}
         >
-          이미지 생성 비활성화
+          {t('disabled')}
         </div>
         {message && (
           <p
@@ -177,6 +179,7 @@ function ImageChoice({
   args: ImageChoiceArgs
   status: 'running' | 'complete' | 'incomplete' | 'requires-action'
 }) {
+  const t = useTranslations('chat.imageGeneration')
   const hitl = useHiTL()
   const [submitted, setSubmitted] = useState<string | null>(null)
   const [editPrompt, setEditPrompt] = useState(args.auto_prompt ?? '')
@@ -191,7 +194,7 @@ function ImageChoice({
   const handle = async (choice: 'skip' | 'generate') => {
     if (submitted) return
     setSubmitted(choice)
-    const display = choice === 'skip' ? '넘어가기' : '생성하기'
+    const display = choice === 'skip' ? t('skip') : t('generate')
     await submitChoice(
       hitl,
       { choice, prompt: choice === 'generate' ? editPrompt : undefined },
@@ -199,12 +202,12 @@ function ImageChoice({
     )
   }
 
-  const title = args.title || '에이전트 이미지를 생성하시겠습니까?'
+  const title = args.title || t('choiceTitle')
 
   return (
     <div className="my-3">
       <PhaseCard
-        header={<ImageHeader phase={args.phase} title={title} subtitle="검토 필요" />}
+        header={<ImageHeader phase={args.phase} title={title} subtitle={t('reviewRequired')} />}
         footer={
           isLocked ? null : (
             <PhaseCardFooter>
@@ -212,13 +215,13 @@ function ImageChoice({
                 <OutlineActionButton
                   onClick={() => void handle('skip')}
                   disabled={isLocked}
-                  label="넘어가기"
+                  label={t('skip')}
                   icon={<SkipForwardIcon className="size-3" strokeWidth={2.5} />}
                 />
                 <MintActionButton
                   onClick={() => void handle('generate')}
                   disabled={isLocked}
-                  label="생성하기"
+                  label={t('generate')}
                   icon={<SparklesIcon className="size-3" strokeWidth={2.5} />}
                 />
               </div>
@@ -228,7 +231,7 @@ function ImageChoice({
       >
         <div style={{ padding: '14px 18px 16px' }}>
           <PromptEditor
-            label="자동 생성 프롬프트 (편집 가능)"
+            label={t('autoPrompt')}
             value={editPrompt}
             onChange={setEditPrompt}
             disabled={isLocked}
@@ -270,6 +273,7 @@ function ImageApprovalBody({
   setPrompt: (v: string) => void
   disabled: boolean
 }) {
+  const t = useTranslations('chat.imageGeneration')
   return (
     <div className="flex flex-col gap-3" style={{ padding: '14px 18px 16px' }}>
       {error ? (
@@ -291,17 +295,17 @@ function ImageApprovalBody({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={resolveImageUrl(imageUrl) ?? ''}
-          alt="에이전트 이미지"
+          alt={t('agentImageAlt')}
           className="mx-auto size-48 rounded-[14px] object-contain"
           style={{ border: `1px solid ${T.border}`, background: T.surfaceAlt }}
         />
       ) : (
         <p className="text-[13px]" style={{ color: T.mutedSoft }}>
-          이미지가 없습니다.
+          {t('noImage')}
         </p>
       )}
       <PromptEditor
-        label="재생성 프롬프트 (편집 가능)"
+        label={t('regeneratePrompt')}
         value={prompt}
         onChange={setPrompt}
         disabled={disabled}
@@ -317,6 +321,7 @@ function ImageApproval({
   args: ImageApprovalArgs
   status: 'running' | 'complete' | 'incomplete' | 'requires-action'
 }) {
+  const t = useTranslations('chat.imageGeneration')
   const hitl = useHiTL()
   const [submitted, setSubmitted] = useState<string | null>(null)
   const [editPrompt, setEditPrompt] = useState(args.prompt ?? '')
@@ -326,16 +331,16 @@ function ImageApproval({
   const handle = async (choice: 'confirm' | 'regenerate' | 'skip') => {
     if (submitted) return
     setSubmitted(choice)
-    const display = { confirm: '확정', regenerate: '재생성', skip: '넘어가기' }[choice]
+    const display = { confirm: t('confirm'), regenerate: t('regenerate'), skip: t('skip') }[choice]
     await submitChoice(hitl, { choice, prompt: editPrompt }, display)
   }
 
-  const title = args.title || '이미지 미리보기'
+  const title = args.title || t('previewTitle')
 
   return (
     <div className="my-3">
       <PhaseCard
-        header={<ImageHeader phase={args.phase} title={title} subtitle="검토 필요" />}
+        header={<ImageHeader phase={args.phase} title={title} subtitle={t('reviewRequired')} />}
         footer={
           isLocked ? null : (
             <PhaseCardFooter>
@@ -346,19 +351,19 @@ function ImageApproval({
                 <OutlineActionButton
                   onClick={() => void handle('skip')}
                   disabled={isLocked}
-                  label="넘어가기"
+                  label={t('skip')}
                   icon={<SkipForwardIcon className="size-3" strokeWidth={2.5} />}
                 />
                 <OutlineActionButton
                   onClick={() => void handle('regenerate')}
                   disabled={isLocked}
-                  label="재생성"
+                  label={t('regenerate')}
                   icon={<RotateCwIcon className="size-3" strokeWidth={2.5} />}
                 />
                 <MintActionButton
                   onClick={() => void handle('confirm')}
                   disabled={isLocked || !args.image_url}
-                  label="확정"
+                  label={t('confirm')}
                   icon={<CheckIcon className="size-3" strokeWidth={3} />}
                 />
               </div>

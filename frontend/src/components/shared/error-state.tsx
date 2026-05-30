@@ -1,6 +1,7 @@
 'use client'
 
 import { AlertCircleIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 
 interface Props {
@@ -10,6 +11,7 @@ interface Props {
 }
 
 export function ErrorState({ title, description, onRetry }: Props) {
+  const t = useTranslations('common.errorState')
   return (
     <div
       role="alert"
@@ -18,7 +20,7 @@ export function ErrorState({ title, description, onRetry }: Props) {
       <AlertCircleIcon className="size-8 text-status-danger" />
       <div>
         <p className="text-sm font-semibold text-foreground">
-          {title ?? '문제가 발생했습니다'}
+          {title ?? t('title')}
         </p>
         {description ? (
           <p className="mt-1 text-sm text-muted-foreground">{description}</p>
@@ -26,7 +28,7 @@ export function ErrorState({ title, description, onRetry }: Props) {
       </div>
       {onRetry ? (
         <Button variant="outline" size="sm" onClick={onRetry}>
-          다시 시도
+          {t('retry')}
         </Button>
       ) : null}
     </div>

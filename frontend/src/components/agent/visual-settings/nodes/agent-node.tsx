@@ -160,7 +160,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                   <div className="space-y-3 border-t border-border px-3 py-3">
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Temperature</span>
+                        <span className="text-muted-foreground">{ts('temperatureLabel')}</span>
                         <span className="font-mono text-[10px] tabular-nums">
                           {editTemp.toFixed(1)}
                         </span>
@@ -177,7 +177,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Top P</span>
+                        <span className="text-muted-foreground">{ts('topPLabel')}</span>
                         <span className="font-mono text-[10px] tabular-nums">
                           {editTopP.toFixed(1)}
                         </span>
@@ -194,7 +194,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Max Tokens</span>
+                        <span className="text-muted-foreground">{ts('maxTokensLabel')}</span>
                       </div>
                       <Input
                         type="number"

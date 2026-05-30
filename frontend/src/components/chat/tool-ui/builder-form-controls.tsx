@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, type ReactNode } from 'react'
+import { useTranslations } from 'next-intl'
 import { BUILDER_TOKENS as T } from './builder-tokens'
 
 interface BuilderFeedbackTextareaProps {
@@ -22,9 +23,11 @@ export function BuilderFeedbackTextarea({
   value,
   onChange,
   disabled = false,
-  placeholder = '수정 의견을 입력하세요',
+  placeholder,
   rows = 2,
 }: BuilderFeedbackTextareaProps) {
+  const t = useTranslations('chat.builderApproval')
+  const resolvedPlaceholder = placeholder ?? t('shortPlaceholder')
   const [focused, setFocused] = useState(false)
   const composingRef = useRef(false)
   return (
@@ -43,7 +46,7 @@ export function BuilderFeedbackTextarea({
         onKeyDown={(e) => {
           if (e.key === 'Enter' && composingRef.current) e.stopPropagation()
         }}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         rows={rows}
         disabled={disabled}
         className="w-full resize-none font-sans text-[13.5px] outline-none transition-[border-color,box-shadow] duration-150"

@@ -2,6 +2,7 @@
 
 import { memo } from 'react'
 import type { LucideIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import {
   ArrowUpCircleIcon,
   BanIcon,
@@ -18,29 +19,29 @@ import type {
 import { cn } from '@/lib/utils'
 
 interface Spec {
-  label: string
+  labelKey: string
   icon: LucideIcon
   className: string
 }
 
 const SPECS: Record<InstallationStatus, Spec> = {
   active: {
-    label: '설치됨',
+    labelKey: 'active',
     icon: CheckCircle2Icon,
     className: 'bg-status-success/10 text-status-success',
   },
   needs_setup: {
-    label: '설정 필요',
+    labelKey: 'needsSetup',
     icon: TriangleAlertIcon,
     className: 'bg-status-warn/10 text-status-warn',
   },
   disabled: {
-    label: '비활성화',
+    labelKey: 'disabled',
     icon: BanIcon,
     className: 'bg-destructive/10 text-destructive',
   },
   uninstalled: {
-    label: '미설치',
+    labelKey: 'uninstalled',
     icon: BanIcon,
     className: 'bg-muted text-muted-foreground',
   },
@@ -52,6 +53,7 @@ interface InstallationBadgeProps {
 }
 
 function InstallationBadgeInner({ summary, className }: InstallationBadgeProps) {
+  const t = useTranslations('marketplace.installation')
   if (!summary?.installed || !summary.status) return null
   const spec = SPECS[summary.status] ?? SPECS.active
   const Icon = spec.icon
@@ -59,18 +61,18 @@ function InstallationBadgeInner({ summary, className }: InstallationBadgeProps) 
     <div className={cn('flex flex-wrap items-center gap-1', className)}>
       <Badge className={cn('gap-1', spec.className)}>
         <Icon className="size-3" aria-hidden />
-        <span>{spec.label}</span>
+        <span>{t(spec.labelKey)}</span>
       </Badge>
       {summary.update_available ? (
         <Badge className="gap-1 bg-status-info/10 text-status-info">
           <ArrowUpCircleIcon className="size-3" aria-hidden />
-          <span>업데이트 가능</span>
+          <span>{t('updateAvailable')}</span>
         </Badge>
       ) : null}
       {summary.dirty ? (
         <Badge className="gap-1 bg-status-accent/10 text-status-accent">
           <PencilIcon className="size-3" aria-hidden />
-          <span>수정됨</span>
+          <span>{t('dirty')}</span>
         </Badge>
       ) : null}
     </div>

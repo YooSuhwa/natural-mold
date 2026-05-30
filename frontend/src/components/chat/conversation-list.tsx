@@ -167,7 +167,7 @@ export function ConversationList({
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setShareTarget(conv.id)}>
               <Share2Icon />
-              공유
+              {t('menu.share')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => handlePin(conv)}>
               {conv.is_pinned ? <PinOffIcon /> : <PinIcon />}

@@ -3,7 +3,24 @@ import { authGate } from '@/lib/auth/session-gate'
 
 import { ApiError, throwApiError } from './errors'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'
+const CONFIGURED_API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1'])
+
+function resolveApiBase(configuredBase: string): string {
+  if (typeof window === 'undefined') return configuredBase
+  try {
+    const url = new URL(configuredBase)
+    const appHost = window.location.hostname
+    if (LOOPBACK_HOSTS.has(url.hostname) && LOOPBACK_HOSTS.has(appHost)) {
+      url.hostname = appHost
+    }
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return configuredBase
+  }
+}
+
+const API_BASE = resolveApiBase(CONFIGURED_API_BASE)
 
 // Endpoints that own the auth lifecycle themselves. Logout is the only
 // asymmetry: it still needs CSRF (cross-origin POST shouldn't force-logout)

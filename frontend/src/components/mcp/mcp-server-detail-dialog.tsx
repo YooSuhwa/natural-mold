@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Activity, Loader2, RefreshCw, Server, Trash2 } from 'lucide-react'
 
@@ -33,6 +34,8 @@ export function McpServerDetailDialog(props: Props) {
 }
 
 function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
+  const t = useTranslations('mcp.detail')
+  const tc = useTranslations('common')
   const { data: server, isLoading } = useMcpServer(serverId)
   const update = useUpdateMcpServer()
   const remove = useDeleteMcpServer()
@@ -45,12 +48,12 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
     try {
       const result = await test.mutateAsync(server.id)
       if (result.success) {
-        toast.success(`Connected (${result.tool_count} tools)`)
+        toast.success(t('toast.connected', { count: result.tool_count }))
       } else {
-        toast.error(result.error ?? 'Connection failed')
+        toast.error(result.error ?? t('toast.connectionFailed'))
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Test failed')
+      toast.error(e instanceof Error ? e.message : t('toast.testFailed'))
     }
   }
 
@@ -59,12 +62,12 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
     try {
       const result = await discover.mutateAsync(server.id)
       if (result.success) {
-        toast.success(`Imported ${result.tools.length} tool(s)`)
+        toast.success(t('toast.importedTools', { count: result.tools.length }))
       } else {
-        toast.error(result.error ?? 'Discovery failed')
+        toast.error(result.error ?? t('toast.discoveryFailed'))
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Discovery failed')
+      toast.error(e instanceof Error ? e.message : t('toast.discoveryFailed'))
     }
   }
 
@@ -72,10 +75,10 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
     if (!server) return
     try {
       await remove.mutateAsync(server.id)
-      toast.success('Server deleted')
+      toast.success(t('toast.deleted'))
       onOpenChange(false)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Delete failed')
+      toast.error(e instanceof Error ? e.message : t('toast.deleteFailed'))
     }
   }
 
@@ -83,9 +86,9 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
     if (!server) return
     try {
       await update.mutateAsync({ id: server.id, data: { credential_id: next } })
-      toast.success('Credential updated')
+      toast.success(t('toast.credentialUpdated'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Update failed')
+      toast.error(e instanceof Error ? e.message : t('toast.updateFailed'))
     }
   }
 
@@ -93,13 +96,13 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
     <DialogShell open={open} onOpenChange={onOpenChange} size="lg" height="tall">
       {isLoading || !server ? (
         <>
-          <DialogShell.Header title="Loading MCP server…" />
+          <DialogShell.Header title={t('loading')} />
           <DialogShell.Body>
             <Skeleton className="h-40 w-full rounded-lg" />
           </DialogShell.Body>
           <DialogShell.Footer>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {tc('close')}
             </Button>
           </DialogShell.Footer>
         </>
@@ -113,7 +116,7 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
               <div className="flex items-center gap-2">
                 {server.is_system ? (
                   <span className="inline-flex items-center rounded-full bg-status-info/15 px-2 py-0.5 text-xs font-medium text-status-info">
-                    System
+                    {t('system')}
                   </span>
                 ) : null}
                 <StatusChip
@@ -125,7 +128,7 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
           <DialogShell.Body>
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="outline" onClick={handleTest} disabled={test.isPending}>
-                <Activity className="size-3.5" /> Test
+                <Activity className="size-3.5" /> {t('test')}
               </Button>
               <Button
                 size="sm"
@@ -133,19 +136,19 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
                 onClick={handleDiscover}
                 disabled={discover.isPending}
               >
-                <RefreshCw className="size-3.5" /> Refresh tools
+                <RefreshCw className="size-3.5" /> {t('refreshTools')}
               </Button>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium">Endpoint</label>
+              <label className="text-xs font-medium">{t('endpoint')}</label>
               <div className="rounded-md border border-border/60 bg-muted/40 p-2 font-mono text-xs break-all">
                 {server.transport === 'stdio' ? server.command : server.url}
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-medium">Credential</label>
+              <label className="text-xs font-medium">{t('credential')}</label>
               <CredentialPicker
                 value={server.credential_id}
                 onChange={handleCredentialChange}
@@ -156,7 +159,7 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
 
             <div className="space-y-1.5">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Imported tools ({server.tools.length})
+                {t('importedTools', { count: server.tools.length })}
               </h3>
               <McpToolTable tools={server.tools} />
             </div>
@@ -165,7 +168,7 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
             {confirming ? (
               <div className="flex-1">
                 <DeleteConfirmInline
-                  entity="server"
+                  entity={t('serverEntity')}
                   onCancel={() => setConfirming(false)}
                   onConfirm={handleDelete}
                   pending={remove.isPending}
@@ -179,11 +182,11 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
                 onClick={() => setConfirming(true)}
               >
                 <Trash2 className="size-3.5" />
-                Delete
+                {t('delete')}
               </Button>
             )}
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {tc('close')}
             </Button>
           </DialogShell.Footer>
         </>
@@ -193,6 +196,7 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
 }
 
 function McpHealthSection({ serverId }: { serverId: string }) {
+  const t = useTranslations('mcp.detail')
   const { data: healthEntries } = useMcpHealth()
   const runHealthCheck = useRunHealthCheck()
   const latest = useMemo(
@@ -208,7 +212,7 @@ function McpHealthSection({ serverId }: { serverId: string }) {
       })
       announceHealthResult(result)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Health check failed')
+      toast.error(e instanceof Error ? e.message : t('toast.healthCheckFailed'))
     }
   }
 
@@ -216,7 +220,7 @@ function McpHealthSection({ serverId }: { serverId: string }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Health
+          {t('health')}
         </h3>
         <Button
           size="sm"
@@ -230,7 +234,7 @@ function McpHealthSection({ serverId }: { serverId: string }) {
           ) : (
             <Activity className="size-3.5" />
           )}
-          Check now
+          {t('checkNow')}
         </Button>
       </div>
       {latest ? (

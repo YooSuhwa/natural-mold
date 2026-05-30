@@ -635,7 +635,7 @@ export function useChatRuntime({
               ...prev,
               createOptimisticMessage(
                 'assistant',
-                `${err.message}\n\n[키 등록하러 가기](/credentials)`,
+                tReconnect('credentialRequiredAction', { message: err.message }),
               ),
             ])
             return

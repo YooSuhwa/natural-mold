@@ -1,6 +1,7 @@
 'use client'
 
 import { Info } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -15,27 +16,24 @@ import type { ModelRankingKey, ModelRankings } from '@/lib/types/model'
  */
 export const RANKING_META: Record<
   ModelRankingKey,
-  { label: string; short: string; tooltip: string; format: 'integer' | 'decimal' }
+  { labelKey: string; shortKey: string; tooltipKey: string; format: 'integer' | 'decimal' }
 > = {
   lmarena: {
-    label: 'LMArena',
-    short: 'LMArena',
-    tooltip:
-      'LMArena Chatbot Arena ELO score (higher = better). Refreshed every ~6h.',
+    labelKey: 'items.lmarena.label',
+    shortKey: 'items.lmarena.short',
+    tooltipKey: 'items.lmarena.tooltip',
     format: 'integer',
   },
   livebench: {
-    label: 'LiveBench',
-    short: 'LiveBench',
-    tooltip:
-      'LiveBench composite score 0–100 (higher = better). Refreshed every ~6h.',
+    labelKey: 'items.livebench.label',
+    shortKey: 'items.livebench.short',
+    tooltipKey: 'items.livebench.tooltip',
     format: 'decimal',
   },
   aa_index: {
-    label: 'AA Index',
-    short: 'AA',
-    tooltip:
-      'Artificial Analysis Intelligence Index 0–100 (higher = better). Refreshed every ~6h.',
+    labelKey: 'items.aa_index.label',
+    shortKey: 'items.aa_index.short',
+    tooltipKey: 'items.aa_index.tooltip',
     format: 'decimal',
   },
 }
@@ -62,12 +60,13 @@ interface RankingCellProps {
 
 /** Compact table cell — number or muted em-dash. */
 export function RankingCell({ value, format, className }: RankingCellProps) {
+  const t = useTranslations('model.rankings')
   const formatted = formatRankingValue(value, format)
   if (formatted === null) {
     return (
       <span
         className={cn('text-xs text-muted-foreground', className)}
-        aria-label="No ranking data"
+        aria-label={t('noData')}
       >
         —
       </span>
@@ -84,17 +83,18 @@ interface RankingHeaderProps {
 
 /** Column header label + ⓘ tooltip describing what the score represents. */
 export function RankingHeader({ rankingKey }: RankingHeaderProps) {
+  const t = useTranslations('model.rankings')
   const meta = RANKING_META[rankingKey]
   return (
     <span className="inline-flex items-center gap-1">
-      {meta.short}
+      {t(meta.shortKey)}
       <Tooltip>
         <TooltipTrigger
           render={(triggerProps) => (
             <span
               {...triggerProps}
               role="img"
-              aria-label={`${meta.label} info`}
+              aria-label={t('info', { label: t(meta.labelKey) })}
               className="inline-flex cursor-help items-center text-muted-foreground"
               onClick={(e) => e.stopPropagation()}
             >
@@ -102,7 +102,7 @@ export function RankingHeader({ rankingKey }: RankingHeaderProps) {
             </span>
           )}
         />
-        <TooltipContent>{meta.tooltip}</TooltipContent>
+        <TooltipContent>{t(meta.tooltipKey)}</TooltipContent>
       </Tooltip>
     </span>
   )
@@ -128,6 +128,7 @@ export function RankingsSection({
   className,
   emptyHint,
 }: RankingsSectionProps) {
+  const t = useTranslations('model.rankings')
   const items = (Object.keys(RANKING_META) as ModelRankingKey[]).map((key) => ({
     key,
     meta: RANKING_META[key],
@@ -141,14 +142,14 @@ export function RankingsSection({
       className={cn('rounded-lg border bg-muted/30 p-3', className)}
     >
       <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold">Benchmark rankings</h3>
+        <h3 className="text-xs font-semibold">{t('title')}</h3>
         <Tooltip>
           <TooltipTrigger
             render={(triggerProps) => (
               <span
                 {...triggerProps}
                 role="img"
-                aria-label="Rankings info"
+                aria-label={t('summaryInfo')}
                 className="inline-flex cursor-help items-center text-muted-foreground"
               >
                 <Info className="size-3" />
@@ -156,7 +157,7 @@ export function RankingsSection({
             )}
           />
           <TooltipContent>
-            Public benchmark scores. Refreshed every ~6 hours by the catalog cron.
+            {t('tooltip')}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -171,7 +172,7 @@ export function RankingsSection({
               className="flex flex-col gap-0.5 rounded-md border bg-background px-3 py-2"
             >
               <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                {meta.label}
+                {t(meta.labelKey)}
               </span>
               {formatted ? (
                 <span className="font-mono text-sm tabular-nums">{formatted}</span>
@@ -185,8 +186,7 @@ export function RankingsSection({
 
       {!hasAny && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          {emptyHint ??
-            'No benchmark data yet — refreshed every ~6 hours by the catalog cron.'}
+          {emptyHint ?? t('emptyHint')}
         </p>
       )}
     </section>
@@ -204,9 +204,11 @@ interface RankingBadgeProps {
  * models at a glance. Hidden entirely when the score is missing.
  */
 export function RankingBadge({ rankingKey, value, className }: RankingBadgeProps) {
+  const t = useTranslations('model.rankings')
   const meta = RANKING_META[rankingKey]
   const formatted = formatRankingValue(value, meta.format)
   if (formatted === null) return null
+  const label = t(meta.labelKey)
   return (
     <span
       data-ranking-badge={rankingKey}
@@ -214,10 +216,10 @@ export function RankingBadge({ rankingKey, value, className }: RankingBadgeProps
         'inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground/80 ring-1 ring-inset ring-border',
         className,
       )}
-      title={`${meta.label}: ${formatted}`}
+      title={t('badgeTitle', { label, value: formatted })}
     >
       <span className="font-sans uppercase tracking-wide text-muted-foreground">
-        {meta.short}
+        {t(meta.shortKey)}
       </span>
       {formatted}
     </span>

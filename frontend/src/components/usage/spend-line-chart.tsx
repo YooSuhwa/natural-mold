@@ -13,6 +13,7 @@
  */
 
 import { useMemo } from 'react'
+import { useTranslations } from 'next-intl'
 
 import type { UsageDailyEntry, UsageMetric } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -25,12 +26,6 @@ interface SpendLineChartProps {
   className?: string
   /** Optional override of the chart label shown above the y-axis hint. */
   label?: string
-}
-
-const METRIC_LABEL: Record<UsageMetric, string> = {
-  cost: 'Cost (USD)',
-  tokens: 'Tokens (in + out)',
-  requests: 'Requests',
 }
 
 const METRIC_ACCENT: Record<UsageMetric, string> = {
@@ -52,6 +47,7 @@ function formatMetric(value: number, metric: UsageMetric): string {
 }
 
 export function SpendLineChart({ data, metric, className, label }: SpendLineChartProps) {
+  const t = useTranslations('usage.charts')
   const sorted = useMemo(() => {
     return [...data]
       .filter((d): d is UsageDailyEntry & { date: string } => typeof d.date === 'string')
@@ -67,7 +63,7 @@ export function SpendLineChart({ data, metric, className, label }: SpendLineChar
         )}
         data-testid="spend-line-chart-empty"
       >
-        데이터 없음 — 에이전트 실행 후 표시됩니다
+        {t('empty')}
       </div>
     )
   }
@@ -106,7 +102,7 @@ export function SpendLineChart({ data, metric, className, label }: SpendLineChar
   const ticks = [0, 0.33, 0.66, 1].map((t) => min + t * (max - min))
 
   const accent = METRIC_ACCENT[metric]
-  const heading = label ?? METRIC_LABEL[metric]
+  const heading = label ?? t(`lineMetric.${metric}`)
 
   return (
     <div
