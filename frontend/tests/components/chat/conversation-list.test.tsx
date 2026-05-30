@@ -32,6 +32,10 @@ const mockConversations = [
     agent_id: 'agent-1',
     title: 'Test Conversation',
     is_pinned: false,
+    unread_count: 0,
+    last_read_at: null,
+    last_unread_at: null,
+    last_activity_source: 'user',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   },
@@ -40,6 +44,10 @@ const mockConversations = [
     agent_id: 'agent-1',
     title: 'Second Conversation',
     is_pinned: false,
+    unread_count: 2,
+    last_read_at: null,
+    last_unread_at: '2026-01-01T00:10:00Z',
+    last_activity_source: 'schedule',
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
   },
@@ -110,6 +118,15 @@ describe('ConversationList', () => {
     )
     expect(convLinks[0]).toHaveAttribute('href', '/agents/agent-1/conversations/conv-1')
     expect(convLinks[1]).toHaveAttribute('href', '/agents/agent-1/conversations/conv-2')
+  })
+
+  it('shows unread badge for scheduled results', async () => {
+    render(<ConversationList agentId="agent-1" />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Second Conversation')).toBeInTheDocument()
+    })
+    expect(screen.getByText('2')).toBeInTheDocument()
   })
 
   it('shows loading skeletons initially', () => {

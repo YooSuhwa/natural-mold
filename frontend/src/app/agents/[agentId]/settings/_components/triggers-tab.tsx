@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Trash2Icon, PlayIcon, PauseIcon, PlusIcon } from 'lucide-react'
+import Link from 'next/link'
+import { ExternalLinkIcon, Trash2Icon, PlayIcon, PauseIcon, PlusIcon } from 'lucide-react'
 import { useTranslations, useFormatter } from 'next-intl'
 import { useTriggers, useCreateTrigger, useUpdateTrigger } from '@/lib/hooks/use-triggers'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +22,13 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
 
   const [showForm, setShowForm] = useState(false)
 
+  function statusLabel(status: string) {
+    if (status === 'active') return t('trigger.active')
+    if (status === 'paused') return t('trigger.paused')
+    if (status === 'completed') return t('trigger.completed')
+    return t('trigger.error')
+  }
+
   return (
     <div className="space-y-3">
       {triggers && triggers.length > 0 ? (
@@ -30,9 +38,18 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
               <CardContent className="flex items-center justify-between py-3">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <Badge variant={trigger.status === 'active' ? 'default' : 'secondary'}>
-                      {trigger.status === 'active' ? t('trigger.active') : t('trigger.paused')}
+                    <Badge
+                      variant={
+                        trigger.status === 'active'
+                          ? 'default'
+                          : trigger.status === 'error'
+                            ? 'destructive'
+                            : 'secondary'
+                      }
+                    >
+                      {statusLabel(trigger.status)}
                     </Badge>
+                    <span className="font-medium text-sm">{trigger.name}</span>
                     {trigger.trigger_type === 'interval' ? (
                       <span className="text-sm">
                         {t('trigger.interval', {
@@ -49,6 +66,22 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
                     &quot;{trigger.input_message}&quot;
                   </p>
                   <div className="flex gap-3 text-xs text-muted-foreground">
+                    {trigger.schedule_conversation_id ? (
+                      <Link
+                        href={`/agents/${agentId}/conversations/${trigger.schedule_conversation_id}`}
+                        className="inline-flex items-center gap-1 text-primary-strong hover:underline"
+                      >
+                        {trigger.schedule_conversation_title ?? t('trigger.resultConversation')}
+                        <ExternalLinkIcon className="size-3" />
+                        {(trigger.schedule_conversation_unread_count ?? 0) > 0 ? (
+                          <Badge variant="secondary">
+                            {trigger.schedule_conversation_unread_count}
+                          </Badge>
+                        ) : null}
+                      </Link>
+                    ) : (
+                      <span>{t('trigger.resultPending')}</span>
+                    )}
                     {trigger.last_run_at && (
                       <span>
                         {t('trigger.lastRun', {
@@ -124,4 +157,3 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
     </div>
   )
 }
-

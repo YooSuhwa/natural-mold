@@ -64,3 +64,16 @@ export function useDeleteConversation(agentId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: conversationKeys.list(agentId) }),
   })
 }
+
+export function useMarkConversationRead(agentId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (conversationId: string) => conversationsApi.markRead(conversationId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: conversationKeys.list(agentId) })
+      qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: ['triggers'] })
+      qc.invalidateQueries({ queryKey: ['triggers', 'summary'] })
+    },
+  })
+}

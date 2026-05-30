@@ -117,6 +117,7 @@
       "systemCredentials": "시스템 자격증명",
       "systemLlm": "시스템 LLM 설정",
       "skills": "스킬",
+      "schedules": "스케줄",
       "usage": "사용량",
       "templates": "에이전트 템플릿",
       "marketplace": "마켓플레이스",
@@ -436,7 +437,11 @@
         "title": "자동 실행 (트리거)",
         "active": "활성",
         "paused": "일시정지",
+        "completed": "완료",
+        "error": "오류",
         "interval": "매 {minutes}분",
+        "resultConversation": "결과 대화",
+        "resultPending": "첫 실행 후 결과 대화가 생성됩니다",
         "lastRun": "마지막 실행: {date}",
         "runCount": "실행 횟수: {count}회",
         "pause": "일시정지",
@@ -613,7 +618,7 @@
     },
     "schedule": {
       "title": "스케줄",
-      "description": "에이전트 실행 시간을 설정하세요. 시간은 UTC 기준입니다.",
+      "description": "에이전트 자동 실행 시간을 설정하세요. 시간은 한국 시간 기준입니다.",
       "types": {
         "minutes": "분 간격",
         "daily": "매일",
@@ -622,15 +627,17 @@
         "advanced": "고급"
       },
       "labels": {
+        "name": "스케줄 이름",
         "every": "매",
         "minutes": "분",
         "days": "요일",
         "dayOfMonth": "매월",
-        "time": "시간 (UTC)",
+        "time": "시간 (KST)",
         "cron": "Cron 표현식",
         "prompt": "프롬프트 (선택)"
       },
       "placeholders": {
+        "name": "예: 매일 아침 뉴스 요약",
         "cron": "0 9 * * 1-5",
         "prompt": "각 실행 시 에이전트에 전달할 메시지..."
       },
@@ -641,6 +648,10 @@
       "cancel": "취소",
       "noSchedules": "등록된 스케줄 없음",
       "add": "추가",
+      "resultStorage": {
+        "title": "결과 저장",
+        "description": "실행 결과는 첫 실행 때 만들어지는 스케줄 전용 대화에 계속 쌓이고, 읽지 않은 결과는 배지로 표시됩니다."
+      },
       "everyNMin": "매 {mins}분",
       "atTimeDays": "{time}, {days}",
       "atTimeDay": "{time}, {day}일",
@@ -1153,6 +1164,7 @@
     "agents": "에이전트",
     "tools": "도구",
     "models": "모델",
+    "schedules": "스케줄",
     "usage": "사용량",
     "settings": "설정",
     "skills": "스킬",

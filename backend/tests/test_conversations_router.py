@@ -341,6 +341,28 @@ async def test_update_conversation_not_found(client: AsyncClient):
     assert resp.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_mark_conversation_read_clears_schedule_unread(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    async with TestSession() as db:
+        conv = Conversation(
+            agent_id=agent_id,
+            title="스케줄: 뉴스",
+            unread_count=2,
+            last_activity_source="schedule",
+        )
+        db.add(conv)
+        await db.commit()
+        conv_id = conv.id
+
+    resp = await client.post(f"/api/conversations/{conv_id}/read")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["unread_count"] == 0
+    assert data["last_read_at"] is not None
+    assert data["last_activity_source"] == "schedule"
+
+
 # ---------------------------------------------------------------------------
 # DELETE /api/conversations/{conversation_id}
 # ---------------------------------------------------------------------------

@@ -181,13 +181,31 @@ async def test_user_b_cannot_modify_user_a_trigger(raw_client: AsyncClient):
     _apply(raw_client, b)
     upd = await raw_client.put(
         f"/api/agents/{agent_id}/triggers/{trigger_id}",
-        json={"status": "inactive"},
+        json={"status": "paused"},
         headers=b.headers(),
     )
     assert upd.status_code == 404
     delete = await raw_client.delete(
         f"/api/agents/{agent_id}/triggers/{trigger_id}", headers=b.headers()
     )
+    assert delete.status_code == 404
+
+    # Global schedule center routes must apply the same trigger ownership filter.
+    resp = await raw_client.get("/api/triggers", headers=b.headers())
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+    upd = await raw_client.patch(
+        f"/api/triggers/{trigger_id}",
+        json={"status": "paused"},
+        headers=b.headers(),
+    )
+    assert upd.status_code == 404
+
+    runs = await raw_client.get(f"/api/triggers/{trigger_id}/runs", headers=b.headers())
+    assert runs.status_code == 404
+
+    delete = await raw_client.delete(f"/api/triggers/{trigger_id}", headers=b.headers())
     assert delete.status_code == 404
 
 

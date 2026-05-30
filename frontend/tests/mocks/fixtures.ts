@@ -6,6 +6,8 @@ import type {
   Conversation,
   Message,
   AgentTrigger,
+  TriggerRun,
+  TriggerSummary,
   UsageSummary,
   CreationSession,
   Connection,
@@ -46,6 +48,9 @@ export const mockAgent: Agent = {
   model_params: null,
   middleware_configs: [],
   template_id: null,
+  image_url: null,
+  opener_questions: null,
+  unread_count: 0,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }
@@ -216,6 +221,10 @@ export const mockConversation: Conversation = {
   agent_id: 'agent-1',
   title: 'Test Conversation',
   is_pinned: false,
+  unread_count: 0,
+  last_read_at: null,
+  last_unread_at: null,
+  last_activity_source: 'user',
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }
@@ -257,12 +266,18 @@ export const mockMessageList: Message[] = [
 export const mockTrigger: AgentTrigger = {
   id: 'trigger-1',
   agent_id: 'agent-1',
+  name: 'Hourly update',
   trigger_type: 'interval',
   schedule_config: { interval_minutes: 60 },
   input_message: 'Check for updates',
+  timezone: 'Asia/Seoul',
+  conversation_policy: 'schedule_thread',
+  schedule_conversation_id: null,
   status: 'active',
   last_run_at: null,
   next_run_at: '2026-01-01T01:00:00Z',
+  last_status: null,
+  last_error: null,
   run_count: 0,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -273,12 +288,32 @@ export const mockTriggerList: AgentTrigger[] = [
   {
     ...mockTrigger,
     id: 'trigger-2',
+    name: 'Good morning report',
     trigger_type: 'cron',
     schedule_config: { cron_expression: '0 9 * * *' },
     input_message: 'Good morning report',
     status: 'paused',
   },
 ]
+
+export const mockTriggerRun: TriggerRun = {
+  id: 'run-1',
+  trigger_id: 'trigger-1',
+  agent_id: 'agent-1',
+  user_id: 'user-1',
+  conversation_id: 'conv-1',
+  status: 'success',
+  input_message: 'Check for updates',
+  error_message: null,
+  started_at: '2026-01-01T01:00:00Z',
+  finished_at: '2026-01-01T01:00:10Z',
+  created_at: '2026-01-01T01:00:00Z',
+}
+
+export const mockTriggerSummary: TriggerSummary = {
+  total_unread: 0,
+  active_count: 1,
+}
 
 // ── Usage ──────────────────────────────────────────────────────────
 

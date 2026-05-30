@@ -191,7 +191,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with async_session() as db:
         result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))
         for trigger in result.scalars():
-            add_trigger_job(trigger.id, trigger.trigger_type, trigger.schedule_config)
+            trigger.next_run_at = add_trigger_job(
+                trigger.id,
+                trigger.trigger_type,
+                {**trigger.schedule_config, "timezone": trigger.timezone},
+            )
+        await db.commit()
 
     yield
     # Shutdown — order matters (rules/async-lifespan.md):

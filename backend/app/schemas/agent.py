@@ -192,6 +192,7 @@ class AgentResponse(BaseModel):
     # max(conversations.updated_at) — set by ``list_agents`` only. Single-row
     # endpoints leave it None and the frontend sidebar falls back to ``updated_at``.
     last_used_at: datetime | None = None
+    unread_count: int = 0
 
     model_config = {"from_attributes": True}
 

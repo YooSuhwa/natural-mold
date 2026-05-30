@@ -19,10 +19,34 @@ vi.mock('next/link', () => ({
 }))
 
 const mockUseAgents = vi.fn()
+const mockUseTriggerSummary = vi.fn()
 
 vi.mock('@/lib/hooks/use-agents', () => ({
   useAgents: () => mockUseAgents(),
 }))
+
+vi.mock('@/lib/hooks/use-triggers', () => ({
+  useTriggerSummary: () => mockUseTriggerSummary(),
+}))
+
+vi.mock('@/lib/auth/session', () => ({
+  useSession: () => ({
+    data: {
+      id: 'user-1',
+      name: 'Test User',
+      email: 'test@example.com',
+      is_super_user: false,
+    },
+  }),
+}))
+
+vi.mock('jotai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('jotai')>()
+  return {
+    ...actual,
+    useAtom: () => [true, vi.fn()],
+  }
+})
 
 // Mock the sidebar UI components to avoid base-ui complexity
 vi.mock('@/components/ui/sidebar', () => ({
@@ -64,6 +88,7 @@ vi.mock('@/components/ui/sidebar', () => ({
     return <button {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}>{children}</button>
   },
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
+  SidebarMenuBadge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   SidebarMenuSub: ({ children }: { children: React.ReactNode }) => <ul>{children}</ul>,
   SidebarMenuSubItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
   SidebarMenuSubButton: ({
@@ -112,6 +137,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 describe('AppSidebar', () => {
   beforeEach(() => {
     mockUseAgents.mockReturnValue({ data: undefined, isLoading: false })
+    mockUseTriggerSummary.mockReturnValue({ data: { total_unread: 0, active_count: 0 } })
   })
 
   it('renders sidebar with brand', () => {
@@ -124,7 +150,14 @@ describe('AppSidebar', () => {
     expect(screen.getByText('홈')).toBeInTheDocument()
     expect(screen.getByText('도구')).toBeInTheDocument()
     expect(screen.getByText('모델')).toBeInTheDocument()
+    expect(screen.getByText('스케줄')).toBeInTheDocument()
     expect(screen.getByText('사용량')).toBeInTheDocument()
+  })
+
+  it('shows schedule unread badge from trigger summary', () => {
+    mockUseTriggerSummary.mockReturnValue({ data: { total_unread: 3, active_count: 1 } })
+    render(<AppSidebar />)
+    expect(screen.getByText('3')).toBeInTheDocument()
   })
 
   it('renders new agent button', () => {

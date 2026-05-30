@@ -5,6 +5,7 @@ import {
   BarChart3Icon,
   BookOpenIcon,
   BrainIcon,
+  CalendarClockIcon,
   ChevronRightIcon,
   HomeIcon,
   KeyRoundIcon,
@@ -41,6 +42,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -53,9 +55,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/lib/auth/session'
 import { useAgents } from '@/lib/hooks/use-agents'
 import { useLogout } from '@/lib/hooks/useAuth'
+import { useTriggerSummary } from '@/lib/hooks/use-triggers'
 import { connectorsExpandedAtom, marketplaceExpandedAtom } from '@/lib/stores/sidebar-store'
 
 type NavChild = { label: string; href: string; icon: LucideIcon; isActive: boolean }
+type ResourceItem = { label: string; href: string; icon: LucideIcon; badge?: number }
 
 /** Collapsible top-level menu item with a toggle chevron and a list of sub-links. */
 function CollapsibleNavItem({
@@ -115,6 +119,7 @@ function CollapsibleNavItem({
 export function AppSidebar() {
   const pathname = usePathname()
   const { data: agents, isLoading } = useAgents()
+  const { data: triggerSummary } = useTriggerSummary()
   const { setTheme, theme } = useTheme()
   const { toggleSidebar } = useSidebar()
   const t = useTranslations('sidebar')
@@ -161,7 +166,7 @@ export function AppSidebar() {
     },
   ]
 
-  const resourceItems = [
+  const resourceItems: ResourceItem[] = [
     { label: t('nav.credentials'), href: '/credentials', icon: KeyRoundIcon },
     // System Credentials are operator-managed; only super_user sees the menu.
     // Backend enforces 403 via ``require_super_user`` — this hides the chrome.
@@ -180,6 +185,12 @@ export function AppSidebar() {
         ]
       : []),
     { label: t('nav.models'), href: '/models', icon: BrainIcon },
+    {
+      label: t('nav.schedules'),
+      href: '/schedules',
+      icon: CalendarClockIcon,
+      badge: triggerSummary?.total_unread ?? 0,
+    },
     { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
   ]
 
@@ -373,6 +384,11 @@ export function AppSidebar() {
                       <item.icon className="size-4" />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
+                    {item.badge ? (
+                      <SidebarMenuBadge>
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </SidebarMenuBadge>
+                    ) : null}
                   </SidebarMenuItem>
                 )
               })}
@@ -410,6 +426,11 @@ export function AppSidebar() {
                               <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="xs" />
                               <span>{agent.name}</span>
                             </SidebarMenuButton>
+                            {agent.unread_count > 0 ? (
+                              <SidebarMenuBadge>
+                                {agent.unread_count > 99 ? '99+' : agent.unread_count}
+                              </SidebarMenuBadge>
+                            ) : null}
                           </SidebarMenuItem>
                         )
                       })}

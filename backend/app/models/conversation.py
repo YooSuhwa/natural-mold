@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, ForeignKey, String
+from sqlalchemy import JSON, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -33,5 +33,11 @@ class Conversation(Base):
     # here so subsequent edits/regenerates fork off this branch instead of
     # the most-recent-by-time branch. ``None`` = use latest checkpoint.
     active_branch_checkpoint_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    unread_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_read_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_unread_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_activity_source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="user"
+    )
 
     agent: Mapped[Agent] = relationship(back_populates="conversations")  # type: ignore[name-defined]

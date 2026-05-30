@@ -140,6 +140,7 @@ export function ScheduleForm({
   const t = useTranslations('agent.schedule')
 
   const [form, setForm] = useState(getDefaultForm)
+  const [scheduleName, setScheduleName] = useState('')
   const [inputMessage, setInputMessage] = useState('')
 
   const typeOptions: { value: ScheduleType; label: string; icon: typeof ClockIcon }[] = [
@@ -155,9 +156,11 @@ export function ScheduleForm({
     if (trigger) {
       const parsed = parseTriggerToForm(trigger)
       setForm(parsed)
+      setScheduleName(trigger.name)
       setInputMessage(trigger.input_message)
     } else {
       setForm(getDefaultForm())
+      setScheduleName('')
       setInputMessage('')
     }
   }, [trigger])
@@ -176,37 +179,52 @@ export function ScheduleForm({
     switch (form.type) {
       case 'minutes':
         return {
+          name: scheduleName.trim() || undefined,
           trigger_type: 'interval',
           schedule_config: { interval_minutes: form.intervalMinutes },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
+          timezone: 'Asia/Seoul',
+          conversation_policy: 'schedule_thread',
         }
       case 'daily':
         return {
+          name: scheduleName.trim() || undefined,
           trigger_type: 'cron',
           schedule_config: { cron_expression: `${form.minute} ${form.hour} * * *` },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
+          timezone: 'Asia/Seoul',
+          conversation_policy: 'schedule_thread',
         }
       case 'weekly': {
         const days = Array.from(form.weekdays).sort().join(',') || '*'
         return {
+          name: scheduleName.trim() || undefined,
           trigger_type: 'cron',
           schedule_config: { cron_expression: `${form.minute} ${form.hour} * * ${days}` },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
+          timezone: 'Asia/Seoul',
+          conversation_policy: 'schedule_thread',
         }
       }
       case 'monthly':
         return {
+          name: scheduleName.trim() || undefined,
           trigger_type: 'cron',
           schedule_config: {
             cron_expression: `${form.minute} ${form.hour} ${form.monthDay} * *`,
           },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
+          timezone: 'Asia/Seoul',
+          conversation_policy: 'schedule_thread',
         }
       case 'advanced':
         return {
+          name: scheduleName.trim() || undefined,
           trigger_type: 'cron',
           schedule_config: { cron_expression: form.cronExpression.trim() },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
+          timezone: 'Asia/Seoul',
+          conversation_policy: 'schedule_thread',
         }
     }
   }
@@ -219,47 +237,56 @@ export function ScheduleForm({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-2">
-          {typeOptions.map(({ value, label, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setForm((prev) => ({ ...prev, type: value }))}
-              className={`flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 text-xs transition-colors ${
-                form.type === value
-                  ? 'border-primary bg-primary/10 text-foreground'
-                  : 'border-border bg-background text-muted-foreground hover:bg-muted'
-              }`}
-            >
-              <Icon className="size-4" />
-              {label}
-            </button>
-          ))}
-        </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium">{t('labels.name')}</label>
+        <Input
+          value={scheduleName}
+          onChange={(e) => setScheduleName(e.target.value)}
+          placeholder={t('placeholders.name')}
+        />
+      </div>
 
-        {/* Type-specific settings — fixed height to prevent layout shift */}
-        <div className="min-h-[120px] space-y-3">
-          {form.type === 'minutes' && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm">{t('labels.every')}</span>
-              <Select
-                value={String(form.intervalMinutes)}
-                onValueChange={(v) => setForm((prev) => ({ ...prev, intervalMinutes: Number(v) }))}
-              >
-                <SelectTrigger className="w-20">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {INTERVAL_OPTIONS.map((m) => (
-                    <SelectItem key={m} value={String(m)}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <span className="text-sm">{t('labels.minutes')}</span>
-            </div>
-          )}
+      <div className="grid grid-cols-3 gap-2">
+        {typeOptions.map(({ value, label, icon: Icon }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setForm((prev) => ({ ...prev, type: value }))}
+            className={`flex flex-col items-center gap-1.5 rounded-lg border px-2 py-2.5 text-xs transition-colors ${
+              form.type === value
+                ? 'border-primary bg-primary/10 text-foreground'
+                : 'border-border bg-background text-muted-foreground hover:bg-muted'
+            }`}
+          >
+            <Icon className="size-4" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Type-specific settings — fixed height to prevent layout shift */}
+      <div className="min-h-[120px] space-y-3">
+        {form.type === 'minutes' && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm">{t('labels.every')}</span>
+            <Select
+              value={String(form.intervalMinutes)}
+              onValueChange={(v) => setForm((prev) => ({ ...prev, intervalMinutes: Number(v) }))}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INTERVAL_OPTIONS.map((m) => (
+                  <SelectItem key={m} value={String(m)}>
+                    {m}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-sm">{t('labels.minutes')}</span>
+          </div>
+        )}
 
           {(form.type === 'daily' || form.type === 'weekly' || form.type === 'monthly') && (
             <>
@@ -346,7 +373,7 @@ export function ScheduleForm({
               <p className="text-xxs text-muted-foreground">{t('cronFormat')}</p>
             </div>
           )}
-        </div>
+      </div>
 
       <div className="space-y-1.5">
         <label className="text-xs font-medium">{t('labels.prompt')}</label>
@@ -357,6 +384,11 @@ export function ScheduleForm({
           rows={2}
         />
         <p className="text-xxs text-muted-foreground">{t('promptDefault')}</p>
+      </div>
+
+      <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+        <div className="font-medium text-foreground">{t('resultStorage.title')}</div>
+        <p className="mt-1">{t('resultStorage.description')}</p>
       </div>
 
       <div className="flex justify-end gap-2">

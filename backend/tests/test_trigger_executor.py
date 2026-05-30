@@ -128,9 +128,19 @@ async def test_execute_trigger_inactive():
 
     # run_count should still be 0
     async with TestSession() as db:
+        from sqlalchemy import select
+
+        from app.models.agent_trigger_run import AgentTriggerRun
+
         trigger = await db.get(AgentTrigger, trigger_id)
         assert trigger is not None
         assert trigger.run_count == 0
+        assert trigger.last_status == "skipped"
+        result = await db.execute(
+            select(AgentTriggerRun).where(AgentTriggerRun.trigger_id == trigger_id)
+        )
+        run = result.scalar_one()
+        assert run.status == "skipped"
 
 
 @pytest.mark.asyncio
@@ -172,7 +182,7 @@ async def test_execute_trigger_agent_not_found():
 
 @pytest.mark.asyncio
 async def test_execute_trigger_execution_error():
-    """Agent execution failure should still save error message and update run count."""
+    """Agent execution failure records a failed run without success-counting it."""
     trigger_id, _ = await _seed_full_setup()
 
     with (
@@ -192,8 +202,10 @@ async def test_execute_trigger_execution_error():
     async with TestSession() as db:
         trigger = await db.get(AgentTrigger, trigger_id)
         assert trigger is not None
-        assert trigger.run_count == 1
+        assert trigger.run_count == 0
         assert trigger.last_run_at is not None
+        assert trigger.last_status == "failed"
+        assert "LLM call failed" in (trigger.last_error or "")
 
 
 @pytest.mark.asyncio
@@ -252,7 +264,7 @@ async def test_execute_trigger_passes_messages():
 
 @pytest.mark.asyncio
 async def test_execute_trigger_creates_conversation():
-    """A new conversation should be created for the trigger run."""
+    """A schedule-thread conversation should be created for the trigger run."""
     trigger_id, agent_id = await _seed_full_setup()
 
     with (
@@ -274,7 +286,9 @@ async def test_execute_trigger_creates_conversation():
         convs = result.scalars().all()
         assert len(convs) == 1
         assert convs[0].title is not None
-        assert "자동 실행" in convs[0].title
+        assert "스케줄:" in convs[0].title
+        assert convs[0].unread_count == 1
+        assert convs[0].last_activity_source == "schedule"
 
 
 @pytest.mark.asyncio

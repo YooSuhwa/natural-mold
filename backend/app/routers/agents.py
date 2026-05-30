@@ -104,6 +104,7 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         # endpoints the attribute is missing → schema defaults to None and the
         # sidebar falls back to ``updated_at`` for sort.
         last_used_at=getattr(agent, "_last_used_at", None),
+        unread_count=getattr(agent, "_unread_count", 0),
     )
 
 
@@ -222,7 +223,7 @@ async def get_agent_image(
         agent.image_path = None
         await db.commit()
         return Response(status_code=204)
-    target = Path(agent.image_path).resolve()
+    target = Path(agent.image_path)
     if variant == "preview":
         preview = get_or_create_image_preview(
             target,

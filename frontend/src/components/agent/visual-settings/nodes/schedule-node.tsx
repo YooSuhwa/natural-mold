@@ -22,6 +22,10 @@ function useFormatTriggerSummary() {
 
   return useCallback(
     (trigger: AgentTrigger): string => {
+      if (trigger.trigger_type === 'one_time') {
+        return trigger.schedule_config.scheduled_at ?? trigger.name
+      }
+
       if (trigger.trigger_type === 'interval') {
         const mins = trigger.schedule_config.interval_minutes ?? 10
         return t('everyNMin', { mins })
@@ -126,9 +130,12 @@ export function ScheduleNode({ data }: NodeProps) {
                   className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-muted/50"
                 >
                   <ClockIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="flex-1 truncate text-[11px] text-muted-foreground">
-                    {formatTriggerSummary(trigger)}
-                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[11px] font-medium">{trigger.name}</div>
+                    <div className="truncate text-[10px] text-muted-foreground">
+                      {formatTriggerSummary(trigger)}
+                    </div>
+                  </div>
                   <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                     <button
                       onClick={() => handleOpenEdit(trigger)}

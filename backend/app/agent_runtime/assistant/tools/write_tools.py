@@ -43,6 +43,8 @@ from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.skill import AgentSkillLink, Skill
 from app.models.tool import AgentToolLink, Tool
+from app.schemas.trigger import TriggerCreate, TriggerUpdate
+from app.services import trigger_service
 from app.services.model_service import resolve_model
 
 
@@ -690,17 +692,24 @@ def build_write_tools(
             return "schedule_type은 'recurring' 또는 'one_time'이어야 합니다."
 
         async with async_session_factory() as session:
-            trigger = AgentTrigger(
-                agent_id=agent_id,
-                user_id=user_id,
-                trigger_type="cron" if schedule_type == "recurring" else "one_time",
-                schedule_config=schedule_config,
-                input_message=message,
+            try:
+                trigger = await trigger_service.create_trigger(
+                    session,
+                    agent_id,
+                    user_id,
+                    TriggerCreate(
+                        trigger_type="cron" if schedule_type == "recurring" else "one_time",
+                        schedule_config=schedule_config,
+                        input_message=message,
+                        timezone="Asia/Seoul",
+                    ),
+                )
+            except ValueError as exc:
+                return f"스케줄 설정이 올바르지 않습니다: {exc}"
+            return (
+                f"스케줄 생성 완료 (ID: {trigger.id}, "
+                f"다음 실행: {trigger.next_run_at or '미정'})"
             )
-            session.add(trigger)
-            await session.commit()
-            await session.refresh(trigger)
-            return f"스케줄 생성 완료 (ID: {trigger.id})"
 
     # ------ 15. update_cron_schedule ------
 
@@ -723,20 +732,24 @@ def build_write_tools(
         async with async_session_factory() as session:
             result = await session.execute(
                 select(AgentTrigger).where(
-                    AgentTrigger.id == sid, AgentTrigger.agent_id == agent_id
+                    AgentTrigger.id == sid,
+                    AgentTrigger.agent_id == agent_id,
+                    AgentTrigger.user_id == user_id,
                 )
             )
             trigger = result.scalar_one_or_none()
             if not trigger:
                 return "스케줄을 찾을 수 없습니다."
 
+            update = TriggerUpdate()
             if cron_expression:
-                config = dict(trigger.schedule_config)
-                config["expression"] = cron_expression
-                trigger.schedule_config = config
+                update.schedule_config = {"cron_expression": cron_expression}
             if message:
-                trigger.input_message = message
-            await session.commit()
+                update.input_message = message
+            try:
+                await trigger_service.update_trigger(session, trigger, update)
+            except ValueError as exc:
+                return f"스케줄 설정이 올바르지 않습니다: {exc}"
             return "스케줄 수정 완료."
 
     # ------ 16. delete_cron_schedule ------
@@ -754,14 +767,15 @@ def build_write_tools(
         async with async_session_factory() as session:
             result = await session.execute(
                 select(AgentTrigger).where(
-                    AgentTrigger.id == sid, AgentTrigger.agent_id == agent_id
+                    AgentTrigger.id == sid,
+                    AgentTrigger.agent_id == agent_id,
+                    AgentTrigger.user_id == user_id,
                 )
             )
             trigger = result.scalar_one_or_none()
             if not trigger:
                 return "스케줄을 찾을 수 없습니다."
-            await session.delete(trigger)
-            await session.commit()
+            await trigger_service.delete_trigger(session, trigger)
             return "스케줄 삭제 완료."
 
     # ------ 17. enable_cron_schedule ------
@@ -779,14 +793,15 @@ def build_write_tools(
         async with async_session_factory() as session:
             result = await session.execute(
                 select(AgentTrigger).where(
-                    AgentTrigger.id == sid, AgentTrigger.agent_id == agent_id
+                    AgentTrigger.id == sid,
+                    AgentTrigger.agent_id == agent_id,
+                    AgentTrigger.user_id == user_id,
                 )
             )
             trigger = result.scalar_one_or_none()
             if not trigger:
                 return "스케줄을 찾을 수 없습니다."
-            trigger.status = "active"
-            await session.commit()
+            await trigger_service.update_trigger(session, trigger, TriggerUpdate(status="active"))
             return "스케줄 활성화 완료."
 
     # ------ 18. disable_cron_schedule ------
@@ -804,14 +819,15 @@ def build_write_tools(
         async with async_session_factory() as session:
             result = await session.execute(
                 select(AgentTrigger).where(
-                    AgentTrigger.id == sid, AgentTrigger.agent_id == agent_id
+                    AgentTrigger.id == sid,
+                    AgentTrigger.agent_id == agent_id,
+                    AgentTrigger.user_id == user_id,
                 )
             )
             trigger = result.scalar_one_or_none()
             if not trigger:
                 return "스케줄을 찾을 수 없습니다."
-            trigger.status = "paused"
-            await session.commit()
+            await trigger_service.update_trigger(session, trigger, TriggerUpdate(status="paused"))
             return "스케줄 비활성화 완료."
 
     # ------ Build tools list ------

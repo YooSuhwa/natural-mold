@@ -104,14 +104,15 @@ def resume_not_found() -> NotFoundError:
 
 def invalid_trigger_type() -> ValidationError:
     return ValidationError(
-        "INVALID_TRIGGER_TYPE", "trigger_type은 'interval' 또는 'cron'이어야 합니다"
+        "INVALID_TRIGGER_TYPE",
+        "trigger_type은 'interval', 'cron', 'one_time' 중 하나여야 합니다",
     )
 
 
 def invalid_schedule_config() -> ValidationError:
     return ValidationError(
         "INVALID_SCHEDULE_CONFIG",
-        "interval은 schedule_config.interval_minutes >= 1이 필요합니다",
+        "스케줄 설정이 올바르지 않습니다",
     )
 
 

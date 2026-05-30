@@ -317,17 +317,22 @@ def build_read_tools(
         """에이전트의 크론 스케줄 목록을 조회합니다."""
         async with async_session_factory() as session:
             result = await session.execute(
-                select(AgentTrigger).where(AgentTrigger.agent_id == agent_id)
+                select(AgentTrigger).where(
+                    AgentTrigger.agent_id == agent_id,
+                    AgentTrigger.user_id == user_id,
+                )
             )
             triggers = result.scalars().all()
             items = [
                 {
                     "id": str(t.id),
+                    "name": t.name,
                     "type": t.trigger_type,
                     "schedule": t.schedule_config,
                     "message": t.input_message,
                     "status": t.status,
                     "last_run_at": str(t.last_run_at) if t.last_run_at else None,
+                    "next_run_at": str(t.next_run_at) if t.next_run_at else None,
                     "run_count": t.run_count,
                 }
                 for t in triggers
@@ -349,7 +354,9 @@ def build_read_tools(
         async with async_session_factory() as session:
             result = await session.execute(
                 select(AgentTrigger).where(
-                    AgentTrigger.id == sid, AgentTrigger.agent_id == agent_id
+                    AgentTrigger.id == sid,
+                    AgentTrigger.agent_id == agent_id,
+                    AgentTrigger.user_id == user_id,
                 )
             )
             t = result.scalar_one_or_none()
@@ -358,6 +365,7 @@ def build_read_tools(
             return json.dumps(
                 {
                     "id": str(t.id),
+                    "name": t.name,
                     "type": t.trigger_type,
                     "schedule": t.schedule_config,
                     "message": t.input_message,

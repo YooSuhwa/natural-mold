@@ -22,6 +22,13 @@ describe('conversationsApi', () => {
     expect(conversation.agent_id).toBe('agent-1')
   })
 
+  it('markRead() clears unread count', async () => {
+    const conversation = await conversationsApi.markRead('conv-1')
+    expect(conversation.id).toBe('conv-1')
+    expect(conversation.unread_count).toBe(0)
+    expect(conversation.last_read_at).toBeTruthy()
+  })
+
   it('messages() returns messages for a conversation', async () => {
     const messages = await conversationsApi.messages('conv-1')
     expect(messages).toEqual(mockMessageList)
