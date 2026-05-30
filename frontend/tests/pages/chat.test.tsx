@@ -54,6 +54,9 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     all: ['conversations'] as const,
     list: (agentId: string) => ['conversations', agentId] as const,
     messages: (conversationId: string) => ['messages', conversationId] as const,
+    debugTraces: (conversationId: string) => ['debug-traces', conversationId] as const,
+    debugTraceDetail: (conversationId: string, traceId: string) =>
+      ['debug-traces', conversationId, traceId] as const,
   },
   useMessages: (...args: unknown[]) => mockUseMessages(...args),
   useMessagesEnvelope: (...args: unknown[]) => {
@@ -81,6 +84,16 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
   useConversations: () => ({
     data: [],
     isLoading: false,
+  }),
+  useConversationDebugTraces: () => ({
+    data: { conversation_id: 'conv-1', langfuse_enabled: false, traces: [], fallback_reason: null },
+    isLoading: false,
+    refetch: vi.fn(),
+  }),
+  useConversationDebugTraceDetail: () => ({
+    data: undefined,
+    isLoading: false,
+    refetch: vi.fn(),
   }),
   useUpdateConversation: () => ({
     mutate: vi.fn(),

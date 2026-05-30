@@ -9,6 +9,7 @@ import {
   SparklesIcon,
   MenuIcon,
   MoreHorizontalIcon,
+  ActivityIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
@@ -100,6 +101,9 @@ export default function ChatPage({
     queryClient.invalidateQueries({
       queryKey: conversationKeys.list(agentId),
     })
+    queryClient.invalidateQueries({
+      queryKey: conversationKeys.debugTraces(conversationId),
+    })
   }, [queryClient, conversationId, agentId])
 
   // P0-1c — current feedback per message id, derived from the messages query.
@@ -181,26 +185,38 @@ export default function ChatPage({
               {currentTitle ?? agent?.name ?? <Skeleton className="inline-block h-4 w-24" />}
             </h1>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon-sm" aria-label={t('menu')} />}
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Trace debugger"
+              onClick={() =>
+                router.push(`/agents/${agentId}/conversations/${conversationId}/traces`)
+              }
             >
-              <MoreHorizontalIcon className="size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={handleNewConversation}
-                disabled={createConversation.isPending}
+              <ActivityIcon className="size-4" />
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" size="icon-sm" aria-label={t('menu')} />}
               >
-                <SquarePenIcon />
-                {t('newConversation')}
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => router.push(`/agents/${agentId}/settings`)}>
-                <Settings2Icon />
-                {t('settings')}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <MoreHorizontalIcon className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={handleNewConversation}
+                  disabled={createConversation.isPending}
+                >
+                  <SquarePenIcon />
+                  {t('newConversation')}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push(`/agents/${agentId}/settings`)}>
+                  <Settings2Icon />
+                  {t('settings')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* Agent skills row (P2-10 — visualizes attached skills) */}

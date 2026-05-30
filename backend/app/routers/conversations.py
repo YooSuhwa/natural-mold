@@ -28,10 +28,13 @@ from app.error_codes import (
 )
 from app.models.message_event import MessageEvent
 from app.models.model import Model
+from app.observability.langfuse import LangfuseTraceRecord, is_langfuse_enabled
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationResponse,
     ConversationUpdate,
+    DebugTraceDetailResponse,
+    DebugTraceListResponse,
     EditMessageRequest,
     MessageCreate,
     MessagesEnvelope,
@@ -40,7 +43,7 @@ from app.schemas.conversation import (
     SwitchBranchRequest,
     TurnTraceResponse,
 )
-from app.services import chat_service, thread_branch_service, trace_storage
+from app.services import chat_service, thread_branch_service, trace_debug_service, trace_storage
 from app.services.image_preview import get_or_create_image_preview
 
 logger = logging.getLogger(__name__)
@@ -74,9 +77,7 @@ async def _resolve_agent_context(
     ``conversation_not_found`` 단일 응답으로 합쳐져 enumeration oracle 도
     더 강해진다 (rules/security.md).
     """
-    conv = await chat_service.get_owned_conversation_with_agent(
-        db, conversation_id, user.id
-    )
+    conv = await chat_service.get_owned_conversation_with_agent(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
 
@@ -95,8 +96,7 @@ async def _resolve_agent_context(
         raise HTTPException(
             status_code=422,
             detail=(
-                "agent has no model bound — open agent settings and pick a "
-                "model before chatting."
+                "agent has no model bound — open agent settings and pick a model before chatting."
             ),
         )
 
@@ -259,9 +259,7 @@ def _sse_handler(
                 except Exception:
                     logger.exception("on_complete hook failed (%s)", log_msg)
 
-    extra: dict[str, str] | None = (
-        {"X-Run-Id": run_id} if run_id else None
-    )
+    extra: dict[str, str] | None = {"X-Run-Id": run_id} if run_id else None
     return _sse_response(generate(), extra_headers=extra)
 
 
@@ -278,6 +276,7 @@ class _StreamCtx(NamedTuple):
     trace_sink: list[dict[str, Any]]
     msg_id_sink: list[str]
     error_sink: list[StreamErrorRecord]
+    langfuse_sink: list[LangfuseTraceRecord]
 
     def as_stream_kwargs(self) -> dict[str, Any]:
         """``execute_agent_stream`` / ``resume_agent_stream`` 의 dual-write 채널
@@ -292,14 +291,13 @@ class _StreamCtx(NamedTuple):
             "broker": self.broker,
             "persist_callback": self.persist_cb,
             "run_id": self.run_id,
+            "langfuse_sink": self.langfuse_sink,
         }
 
     def has_stream_error(self) -> bool:
         return bool(self.error_sink)
 
-    def finalize_callback(
-        self, conversation_id: uuid.UUID
-    ) -> Callable[[bool], Awaitable[None]]:
+    def finalize_callback(self, conversation_id: uuid.UUID) -> Callable[[bool], Awaitable[None]]:
         """``_sse_handler.on_complete`` 에 그대로 넘길 수 있는 closure.
 
         4 핸들러가 같은 lambda (``lambda success: _finalize_trace(conversation
@@ -314,6 +312,7 @@ class _StreamCtx(NamedTuple):
                 self.run_id,
                 self.trace_sink,
                 self.msg_id_sink,
+                self.langfuse_sink,
                 success=success,
             )
 
@@ -333,9 +332,7 @@ def _prepare_stream_context(conversation_id: uuid.UUID) -> _StreamCtx:
     """
     broker_registry.close_for_conversation(str(conversation_id))
     run_id = str(uuid.uuid4())
-    broker = broker_registry.get_or_create(
-        run_id, conversation_id=str(conversation_id)
-    )
+    broker = broker_registry.get_or_create(run_id, conversation_id=str(conversation_id))
     persist_cb = _build_persist_callback(conversation_id, run_id)
     return _StreamCtx(
         run_id=run_id,
@@ -344,6 +341,7 @@ def _prepare_stream_context(conversation_id: uuid.UUID) -> _StreamCtx:
         trace_sink=[],
         msg_id_sink=[],
         error_sink=[],
+        langfuse_sink=[],
     )
 
 
@@ -378,6 +376,7 @@ async def _finalize_trace(
     run_id: str,
     trace_sink: list[dict[str, Any]],
     msg_id_sink: list[str],
+    langfuse_sink: list[LangfuseTraceRecord],
     *,
     success: bool,
 ) -> None:
@@ -394,6 +393,7 @@ async def _finalize_trace(
     ``async_session()`` 으로 새 session 을 연다.
     """
     final_status: trace_storage.TraceStatus = "completed" if success else "failed"
+    trace_record = langfuse_sink[0] if langfuse_sink else None
     async with async_session() as session:
         finalized = await trace_storage.finalize_turn(
             session,
@@ -401,6 +401,9 @@ async def _finalize_trace(
             status=final_status,
             raw_msg_ids=msg_id_sink,
             conversation_id=conversation_id,
+            external_trace_provider=trace_record.provider if trace_record else None,
+            external_trace_id=trace_record.trace_id if trace_record else None,
+            external_trace_url=trace_record.trace_url if trace_record else None,
         )
         if finalized is None and trace_sink:
             # No partial flush happened (e.g. immediate failure). Persist via
@@ -411,6 +414,9 @@ async def _finalize_trace(
                 events=trace_sink,
                 raw_msg_ids=msg_id_sink,
                 status=final_status,
+                external_trace_provider=trace_record.provider if trace_record else None,
+                external_trace_id=trace_record.trace_id if trace_record else None,
+                external_trace_url=trace_record.trace_url if trace_record else None,
             )
         await session.commit()
 
@@ -521,6 +527,74 @@ async def list_traces(
 
 
 @router.get(
+    "/api/conversations/{conversation_id}/debug/traces",
+    response_model=DebugTraceListResponse,
+)
+async def list_debug_traces(
+    conversation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """Authenticated trace debugger summary.
+
+    This endpoint intentionally differs from ``/traces``: it returns only
+    debug-safe summary/correlation data and always enforces conversation
+    ownership before exposing external trace ids or URLs.
+    """
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
+    if not conv:
+        raise conversation_not_found()
+
+    records = await trace_storage.get_traces_for_conversation(db, conversation_id)
+    langfuse_enabled = is_langfuse_enabled()
+    fallback_reason = None if langfuse_enabled else "Langfuse disabled"
+    return DebugTraceListResponse(
+        conversation_id=conversation_id,
+        langfuse_enabled=langfuse_enabled,
+        fallback_reason=fallback_reason,
+        traces=[
+            trace_debug_service.summary_from_record(
+                record,
+                fallback_reason=(fallback_reason if not record.external_trace_id else None),
+            )
+            for record in records
+        ],
+    )
+
+
+@router.get(
+    "/api/conversations/{conversation_id}/debug/traces/{trace_id}",
+    response_model=DebugTraceDetailResponse,
+)
+async def get_debug_trace_detail(
+    conversation_id: uuid.UUID,
+    trace_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
+    if not conv:
+        raise conversation_not_found()
+
+    records = await trace_storage.get_traces_for_conversation(db, conversation_id)
+    record = next(
+        (item for item in records if trace_id in {item.external_trace_id, item.assistant_msg_id}),
+        None,
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail="Trace not found")
+
+    summary, spans, raw, fallback_reason = await trace_debug_service.build_debug_detail(record)
+    return DebugTraceDetailResponse(
+        conversation_id=conversation_id,
+        trace=summary,
+        spans=spans,
+        raw=raw,
+        fallback_reason=fallback_reason,
+    )
+
+
+@router.get(
     "/api/conversations/{conversation_id}/messages",
     response_model=MessagesEnvelope,
 )
@@ -584,18 +658,13 @@ async def list_messages(
         # uuid it produces here matches the one already on every
         # MessageResponse. The idx arg is only used as a synthetic-id
         # fallback (the tip always carries a real id), so 0 is fine.
-        active_tip = parse_msg_id(
-            tree.active_tip_message_id, conversation_id, 0
-        )
+        active_tip = parse_msg_id(tree.active_tip_message_id, conversation_id, 0)
     return MessagesEnvelope(
         messages=messages,
         active_tip_message_id=active_tip,
-        active_checkpoint_id=conv.active_branch_checkpoint_id
-        or tree.active_checkpoint_id,
+        active_checkpoint_id=conv.active_branch_checkpoint_id or tree.active_checkpoint_id,
         total_estimated_cost=total_cost,
     )
-
-
 
 
 # ---------------------------------------------------------------------------
@@ -613,9 +682,7 @@ def _is_pending_interrupt(events: list[dict[str, Any]] | None) -> bool:
     """
     if not events:
         return False
-    has_message_end = any(
-        evt.get("event") == event_names.MESSAGE_END for evt in events
-    )
+    has_message_end = any(evt.get("event") == event_names.MESSAGE_END for evt in events)
     if has_message_end:
         return False
     return events[-1].get("event") == event_names.INTERRUPT
@@ -635,9 +702,7 @@ async def _broker_resume_generator(
     이벤트를 yield. broker close 시 자연스럽게 종료된다.
     """
     async for evt in broker.subscribe(after_id=after_id):
-        yield format_sse(
-            evt["event"], evt["data"], event_id=_normalize_event_id(evt.get("id"))
-        )
+        yield format_sse(evt["event"], evt["data"], event_id=_normalize_event_id(evt.get("id")))
 
 
 async def _replay_resume_generator(
@@ -665,7 +730,8 @@ async def _replay_resume_generator(
         if not isinstance(evt_name, str) or not evt_name:
             logger.warning(
                 "stream_resume skip corrupt evt msg_id=%s evt_id=%s",
-                record.assistant_msg_id, evt.get("id"),
+                record.assistant_msg_id,
+                evt.get("id"),
             )
             continue
         emitted_id = _normalize_event_id(evt.get("id"))
@@ -693,12 +759,13 @@ def _log_resume_reject(
     """가드 분기에서 외부 응답은 단일화 (RESUME_NOT_FOUND) 하되 서버 로그로
     reason 구분이 가능하게. simplify #2 — 6개 호출 사이트 중복 제거.
     """
-    suffix = (
-        " " + " ".join(f"{k}={v}" for k, v in extra.items()) if extra else ""
-    )
+    suffix = " " + " ".join(f"{k}={v}" for k, v in extra.items()) if extra else ""
     logger.info(
         "stream_resume reject reason=%s conv=%s run_id=%s%s",
-        reason, conversation_id, run_id_str, suffix,
+        reason,
+        conversation_id,
+        run_id_str,
+        suffix,
     )
 
 
@@ -739,13 +806,9 @@ async def stream_resume(
     # 검증했지만, 외부 응답이 어차피 단일 RESUME_NOT_FOUND 로 통일되므로 (rules
     # /security.md enumeration oracle) 두 분기를 분간할 가치가 없다. round-trip
     # 절감 + reason 명도 단일화 (디버깅 시 user=... 로 주체 식별 가능).
-    conv = await chat_service.get_owned_conversation(
-        db, conversation_id, user.id
-    )
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if conv is None:
-        _log_resume_reject(
-            "conv_unowned_or_missing", conversation_id, run_id_str, user=user.id
-        )
+        _log_resume_reject("conv_unowned_or_missing", conversation_id, run_id_str, user=user.id)
         raise resume_not_found()
 
     broker = broker_registry.get(run_id_str)
@@ -755,13 +818,17 @@ async def stream_resume(
         # 전달하므로 None 은 비정상 신호.
         if broker.conversation_id != str(conversation_id):
             _log_resume_reject(
-                "broker_conv_mismatch", conversation_id, run_id_str,
+                "broker_conv_mismatch",
+                conversation_id,
+                run_id_str,
                 broker_conv=broker.conversation_id,
             )
             raise resume_not_found()
         logger.info(
             "stream_resume mode=live conv=%s run_id=%s after_id=%s",
-            conversation_id, run_id_str, after_id,
+            conversation_id,
+            run_id_str,
+            after_id,
         )
         return _sse_response(
             _broker_resume_generator(broker, after_id),
@@ -777,7 +844,9 @@ async def stream_resume(
         raise resume_not_found()
     if record.conversation_id != conversation_id:
         _log_resume_reject(
-            "row_conv_mismatch", conversation_id, run_id_str,
+            "row_conv_mismatch",
+            conversation_id,
+            run_id_str,
             row_conv=record.conversation_id,
         )
         raise resume_not_found()
@@ -790,11 +859,16 @@ async def stream_resume(
         logger.warning(
             "stream_resume stale conv=%s run_id=%s last_event_id=%s "
             "(broker lost while turn streaming)",
-            conversation_id, run_id_str, record.last_event_id,
+            conversation_id,
+            run_id_str,
+            record.last_event_id,
         )
     logger.info(
         "stream_resume mode=replay conv=%s run_id=%s after_id=%s status=%s",
-        conversation_id, run_id_str, after_id, record.status,
+        conversation_id,
+        run_id_str,
+        after_id,
+        record.status,
     )
     return _sse_response(
         _replay_resume_generator(record, after_id, mark_stale=is_stale),
@@ -841,6 +915,7 @@ async def send_message(
         lambda: execute_agent_stream(
             cfg,
             [{"role": "user", "content": data.content}],
+            moldy_source="chat",
             **ctx.as_stream_kwargs(),
         ),
         log_msg=f"Agent stream failed for conversation {conversation_id}",
@@ -873,7 +948,7 @@ async def resume_message(
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
         lambda: resume_agent_stream(
-            cfg, resume_payload, **ctx.as_stream_kwargs()
+            cfg, resume_payload, moldy_source="resume", **ctx.as_stream_kwargs()
         ),
         log_msg=f"Agent resume failed for conversation {conversation_id}",
         user_msg="에이전트 재개 중 오류가 발생했습니다.",
@@ -929,9 +1004,7 @@ async def _resolve_branch_checkpoint(
             break
     if raw_id is None:
         return None
-    return await rewind_to_checkpoint_before_message(
-        checkpointer, str(conversation_id), raw_id
-    )
+    return await rewind_to_checkpoint_before_message(checkpointer, str(conversation_id), raw_id)
 
 
 def _find_message_in_checkpoints(
@@ -985,9 +1058,7 @@ async def edit_message(
     """
 
     checkpoint_id = await _resolve_branch_checkpoint(conversation_id, data.message_id)
-    cfg = await _resolve_agent_context(
-        db, conversation_id, user, checkpoint_id=checkpoint_id
-    )
+    cfg = await _resolve_agent_context(db, conversation_id, user, checkpoint_id=checkpoint_id)
     await chat_service.touch_conversation(db, conversation_id)
     # Edit creates a new leaf — drop any prior user-pinned branch so the
     # newest (just-edited) branch becomes the displayed one on next list.
@@ -1010,6 +1081,7 @@ async def edit_message(
         lambda: execute_agent_stream(
             cfg,
             overwrite_input,
+            moldy_source="edit",
             **ctx.as_stream_kwargs(),
         ),
         log_msg=f"Agent edit failed for conversation {conversation_id}",
@@ -1072,9 +1144,7 @@ async def regenerate_message(
             target_msg, target_idx = found
 
     if target_idx is None or target_idx == 0:
-        raise HTTPException(
-            status_code=422, detail="cannot regenerate — no parent user message."
-        )
+        raise HTTPException(status_code=422, detail="cannot regenerate — no parent user message.")
 
     # B5 fix — rewind to the checkpoint that contains the parent user turn
     # but NOT the assistant reply we're regenerating, then resume the graph
@@ -1092,9 +1162,7 @@ async def regenerate_message(
         checkpointer, str(conversation_id), target_msg_raw
     )
 
-    cfg = await _resolve_agent_context(
-        db, conversation_id, user, checkpoint_id=checkpoint_id
-    )
+    cfg = await _resolve_agent_context(db, conversation_id, user, checkpoint_id=checkpoint_id)
     await chat_service.touch_conversation(db, conversation_id)
     # Regenerate creates a new leaf — drop any prior user-pinned branch.
     await chat_service.clear_active_branch_override(db, conversation_id)
@@ -1105,7 +1173,9 @@ async def regenerate_message(
 
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
-        lambda: execute_agent_stream(cfg, overwrite_input, **ctx.as_stream_kwargs()),
+        lambda: execute_agent_stream(
+            cfg, overwrite_input, moldy_source="regenerate", **ctx.as_stream_kwargs()
+        ),
         log_msg=f"Agent regenerate failed for conversation {conversation_id}",
         user_msg="메시지 재생성 중 오류가 발생했습니다.",
         run_id=ctx.run_id,

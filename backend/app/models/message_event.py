@@ -44,6 +44,11 @@ class MessageEvent(Base):
     # ``MessageResponse.id``와 동일 형식이라 frontend가 직접 매칭 가능.
     # NULL은 m33 이전 row 또는 streaming이 메시지 id를 노출 안 한 경우.
     linked_message_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # External trace correlation for authenticated debug tooling. The public
+    # /traces schema intentionally does not expose these fields.
+    external_trace_provider: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    external_trace_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    external_trace_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,

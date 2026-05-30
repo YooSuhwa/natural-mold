@@ -2,6 +2,8 @@ import { apiFetch } from './client'
 import type {
   Conversation,
   ConversationUpdateRequest,
+  DebugTraceDetailResponse,
+  DebugTraceListResponse,
   Message,
   MessagesEnvelope,
 } from '@/lib/types'
@@ -37,6 +39,12 @@ export const conversationsApi = {
     ),
   messagesEnvelope: (conversationId: string) =>
     apiFetch<MessagesEnvelope>(`/api/conversations/${conversationId}/messages`),
+  debugTraces: (conversationId: string) =>
+    apiFetch<DebugTraceListResponse>(`/api/conversations/${conversationId}/debug/traces`),
+  debugTraceDetail: (conversationId: string, traceId: string) =>
+    apiFetch<DebugTraceDetailResponse>(
+      `/api/conversations/${conversationId}/debug/traces/${traceId}`,
+    ),
   /**
    * M-CHAT1b — record the user-selected branch tip so subsequent
    * edits/regenerates fork off it.

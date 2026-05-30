@@ -7,6 +7,10 @@ import type { Conversation, ConversationUpdateRequest } from '@/lib/types'
 export const conversationKeys = {
   list: (agentId: string) => ['agents', agentId, 'conversations'] as const,
   messages: (conversationId: string) => ['conversations', conversationId, 'messages'] as const,
+  debugTraces: (conversationId: string) =>
+    ['conversations', conversationId, 'debug-traces'] as const,
+  debugTraceDetail: (conversationId: string, traceId: string) =>
+    ['conversations', conversationId, 'debug-traces', traceId] as const,
 }
 
 export function useConversations(agentId: string) {
@@ -36,6 +40,28 @@ export function useMessagesEnvelope(conversationId: string) {
     queryKey: conversationKeys.messages(conversationId),
     queryFn: () => conversationsApi.messagesEnvelope(conversationId),
     enabled: !!conversationId,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useConversationDebugTraces(conversationId: string, enabled = true) {
+  return useQuery({
+    queryKey: conversationKeys.debugTraces(conversationId),
+    queryFn: () => conversationsApi.debugTraces(conversationId),
+    enabled: enabled && !!conversationId,
+    refetchOnWindowFocus: false,
+  })
+}
+
+export function useConversationDebugTraceDetail(
+  conversationId: string,
+  traceId: string | null,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: conversationKeys.debugTraceDetail(conversationId, traceId ?? 'none'),
+    queryFn: () => conversationsApi.debugTraceDetail(conversationId, traceId ?? ''),
+    enabled: enabled && !!conversationId && !!traceId,
     refetchOnWindowFocus: false,
   })
 }

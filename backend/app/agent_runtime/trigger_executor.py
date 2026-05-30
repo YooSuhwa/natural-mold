@@ -144,9 +144,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             return run
 
         if agent.model is None:
-            logger.warning(
-                "Trigger %s: agent has no model bound — skipping run", trigger_id
-            )
+            logger.warning("Trigger %s: agent has no model bound — skipping run", trigger_id)
             await trigger_service.finish_trigger_run(
                 db,
                 trigger=trigger,
@@ -159,9 +157,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             return run
 
         effective_prompt = chat_service.build_effective_prompt(agent)
-        tools_config = await chat_service.build_tools_config(
-            agent, db=db, conversation_id=None
-        )
+        tools_config = await chat_service.build_tools_config(agent, db=db, conversation_id=None)
         agent_skills = chat_service.build_agent_skills(agent)
         blocked_tools = trigger_blocked_tools(
             tools_config,
@@ -220,6 +216,8 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             output = await execute_agent_invoke(
                 cfg,
                 [{"role": "user", "content": trigger.input_message}],
+                run_id=str(run.id),
+                moldy_source="trigger",
             )
         except Exception as exc:
             logger.exception("Trigger %s: agent execution failed", trigger_id)

@@ -23,9 +23,7 @@ async def _seed_conversation(*, owner_id: uuid.UUID = TEST_USER_ID) -> uuid.UUID
         existing_user = await db.get(User, owner_id)
         if existing_user is None:
             db.add(User(id=owner_id, email=f"{owner_id}@test.com", name="Test"))
-        model = Model(
-            provider="openai", model_name="gpt-4o", display_name="GPT-4o"
-        )
+        model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
         db.add(model)
         await db.flush()
         agent = Agent(
@@ -74,9 +72,7 @@ async def test_record_turn_round_trip() -> None:
     events = _events_for_msg(msg_id, count=2)
 
     async with TestSession() as db:
-        record = await trace_storage.record_turn(
-            db, conversation_id=conv_id, events=events
-        )
+        record = await trace_storage.record_turn(db, conversation_id=conv_id, events=events)
         await db.commit()
         assert record is not None
         assert record.assistant_msg_id == msg_id
@@ -95,9 +91,7 @@ async def test_record_turn_round_trip() -> None:
 async def test_record_turn_empty_events_is_noop() -> None:
     conv_id = await _seed_conversation()
     async with TestSession() as db:
-        result = await trace_storage.record_turn(
-            db, conversation_id=conv_id, events=[]
-        )
+        result = await trace_storage.record_turn(db, conversation_id=conv_id, events=[])
         await db.commit()
         assert result is None
 
@@ -114,9 +108,7 @@ async def test_record_turn_without_message_start_falls_back_to_uuid() -> None:
         {"id": "x-1", "event": "error", "data": {"message": "graph crashed"}},
     ]
     async with TestSession() as db:
-        record = await trace_storage.record_turn(
-            db, conversation_id=conv_id, events=events
-        )
+        record = await trace_storage.record_turn(db, conversation_id=conv_id, events=events)
         await db.commit()
         assert record is not None
         # Fallback uuid는 RFC4122 v4 형식
@@ -155,17 +147,13 @@ async def test_record_turn_unique_assistant_msg_id() -> None:
     events = _events_for_msg("dup-1")
 
     async with TestSession() as db:
-        await trace_storage.record_turn(
-            db, conversation_id=conv_id, events=events
-        )
+        await trace_storage.record_turn(db, conversation_id=conv_id, events=events)
         await db.commit()
 
     from sqlalchemy.exc import IntegrityError
 
     async with TestSession() as db:
-        await trace_storage.record_turn(
-            db, conversation_id=conv_id, events=events
-        )
+        await trace_storage.record_turn(db, conversation_id=conv_id, events=events)
         with pytest.raises(IntegrityError):
             await db.commit()
 
@@ -264,6 +252,59 @@ async def test_record_turn_persists_linked_message_ids() -> None:
 
 
 @pytest.mark.asyncio
+async def test_finalize_turn_persists_external_trace_correlation() -> None:
+    conv_id = await _seed_conversation()
+    run_id = "run-langfuse"
+
+    async with TestSession() as db:
+        await trace_storage.append_events(
+            db,
+            conversation_id=conv_id,
+            assistant_msg_id=run_id,
+            events_chunk=_events_for_msg(run_id, count=1),
+        )
+        await db.commit()
+
+    async with TestSession() as db:
+        record = await trace_storage.finalize_turn(
+            db,
+            assistant_msg_id=run_id,
+            status="completed",
+            conversation_id=conv_id,
+            external_trace_provider="langfuse",
+            external_trace_id="lf-trace-123",
+            external_trace_url="https://langfuse.local/project/moldy/traces/lf-trace-123",
+        )
+        await db.commit()
+
+        assert record is not None
+        assert record.external_trace_provider == "langfuse"
+        assert record.external_trace_id == "lf-trace-123"
+        assert record.external_trace_url.endswith("/lf-trace-123")
+
+
+@pytest.mark.asyncio
+async def test_record_turn_persists_external_trace_correlation() -> None:
+    conv_id = await _seed_conversation()
+
+    async with TestSession() as db:
+        record = await trace_storage.record_turn(
+            db,
+            conversation_id=conv_id,
+            events=_events_for_msg("one-shot-langfuse", count=1),
+            external_trace_provider="langfuse",
+            external_trace_id="lf-trace-one-shot",
+            external_trace_url="https://langfuse.local/project/moldy/traces/lf-trace-one-shot",
+        )
+        await db.commit()
+
+        assert record is not None
+        assert record.external_trace_provider == "langfuse"
+        assert record.external_trace_id == "lf-trace-one-shot"
+        assert record.external_trace_url.endswith("/lf-trace-one-shot")
+
+
+@pytest.mark.asyncio
 async def test_record_turn_linked_ids_default_none() -> None:
     """raw_msg_ids 미전달 시 linked_message_ids는 None (m32 호환 폴백)."""
     conv_id = await _seed_conversation()
@@ -286,9 +327,7 @@ async def test_record_turn_appends_to_session_without_committing() -> None:
 
     db: AsyncSession
     async with TestSession() as db:
-        record = await trace_storage.record_turn(
-            db, conversation_id=conv_id, events=events
-        )
+        record = await trace_storage.record_turn(db, conversation_id=conv_id, events=events)
         assert record is not None
         # commit 없이 세션 종료 — 데이터 영속 안 됨
         await db.rollback()
@@ -319,9 +358,7 @@ async def test_message_event_cascade_delete_with_conversation() -> None:
         from sqlalchemy import select
 
         conv = (
-            await db.execute(
-                select(Conversation).where(Conversation.id == conv_id)
-            )
+            await db.execute(select(Conversation).where(Conversation.id == conv_id))
         ).scalar_one()
         await db.delete(conv)
         await db.commit()

@@ -239,6 +239,51 @@ export interface MessagesEnvelope {
   total_estimated_cost?: number
 }
 
+export interface DebugTraceSummary {
+  trace_id: string
+  provider: string
+  name: string
+  status: string
+  source: string | null
+  started_at: string
+  completed_at: string | null
+  duration_ms: number | null
+  total_tokens: number | null
+  moldy_run_id: string
+  langfuse_url: string | null
+  fallback: boolean
+  fallback_reason: string | null
+}
+
+export interface DebugTraceSpan {
+  id: string
+  parent_id: string | null
+  name: string
+  kind: string
+  status: string
+  started_at: string | null
+  ended_at: string | null
+  duration_ms: number | null
+  input: unknown
+  output: unknown
+  metadata: Record<string, unknown>
+}
+
+export interface DebugTraceListResponse {
+  conversation_id: string
+  langfuse_enabled: boolean
+  traces: DebugTraceSummary[]
+  fallback_reason: string | null
+}
+
+export interface DebugTraceDetailResponse {
+  conversation_id: string
+  trace: DebugTraceSummary
+  spans: DebugTraceSpan[]
+  raw: Record<string, unknown>[] | Record<string, unknown> | null
+  fallback_reason: string | null
+}
+
 export interface MessageFeedbackRow {
   id: string
   message_id: string
