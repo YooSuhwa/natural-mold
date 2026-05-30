@@ -123,20 +123,25 @@ def create_chat_model(
     model_name: str,
     api_key: str | None = None,
     base_url: str | None = None,
+    *,
+    allow_env_fallback: bool = True,
     **extra: object,
 ) -> BaseChatModel:
     """Build a LangChain chat model for ``provider``.
 
     ``api_key`` is the resolved (decrypted) key from the caller. When ``None``
     the env-var fallback is consulted for ``openai``/``anthropic``/``google``/
-    ``openrouter`` only — other providers must receive an explicit key.
+    ``openrouter`` only when ``allow_env_fallback`` is true. User-facing
+    runtime paths pass ``False`` where falling through to system credentials
+    would cross the credential boundary.
 
     Provider quirk 처리는 helper 함수 (``_apply_*``) 로 분리 — ADR-014.
     """
 
     cls = PROVIDER_MAP.get(provider, ChatOpenAI)
 
-    resolved_key = api_key or _ENV_FALLBACK.get(provider) or None
+    fallback_key = _ENV_FALLBACK.get(provider) if allow_env_fallback else None
+    resolved_key = api_key or fallback_key or None
     kwargs: dict[str, Any] = {"model": model_name}
     if resolved_key:
         kwargs["api_key"] = resolved_key

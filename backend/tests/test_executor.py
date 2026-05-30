@@ -89,6 +89,57 @@ def test_build_agent_returns_agent(mock_create: MagicMock):
 
 
 # ---------------------------------------------------------------------------
+# middleware model credential boundary
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_middleware_model_requires_user_key():
+    from app.agent_runtime.executor import (
+        MiddlewareModelCredentialRequiredError,
+        _resolve_middleware_model_params,
+    )
+
+    configs = [
+        {
+            "type": "summarization",
+            "params": {"model": "openai:gpt-4o-mini"},
+        }
+    ]
+
+    with pytest.raises(MiddlewareModelCredentialRequiredError) as exc:
+        _resolve_middleware_model_params(configs, {})
+
+    assert exc.value.code == "middleware_model_credential_required"
+    assert exc.value.status == 422
+
+
+@patch("app.agent_runtime.executor.create_chat_model")
+def test_resolve_middleware_model_uses_user_key_without_env_fallback(
+    mock_model_factory: MagicMock,
+):
+    from app.agent_runtime.executor import _resolve_middleware_model_params
+
+    sentinel = MagicMock()
+    mock_model_factory.return_value = sentinel
+    configs = [
+        {
+            "type": "summarization",
+            "params": {"model": "openai:gpt-4o-mini"},
+        }
+    ]
+
+    result = _resolve_middleware_model_params(configs, {"openai": "sk-user"})
+
+    mock_model_factory.assert_called_once_with(
+        "openai",
+        "gpt-4o-mini",
+        api_key="sk-user",
+        allow_env_fallback=False,
+    )
+    assert result[0]["params"]["model"] is sentinel
+
+
+# ---------------------------------------------------------------------------
 # execute_agent_stream
 # ---------------------------------------------------------------------------
 

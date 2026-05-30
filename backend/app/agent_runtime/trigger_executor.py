@@ -2,9 +2,9 @@
 
 Greenfield M5: pulls everything via ``chat_service.get_agent_with_tools`` so
 prefetch matches the conversations router exactly. The legacy
-``llm_provider`` join + Fernet decrypt is replaced by an optional
-``Agent.llm_credential`` lookup; env-var fallback in ``model_factory`` covers
-agents that haven't bound a credential yet.
+``llm_provider`` join + Fernet decrypt is replaced by the same user-owned
+credential resolver used by conversations. Env/system credentials stay
+reserved for internal service flows.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from sqlalchemy import select
 
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.executor import AgentConfig, execute_agent_invoke
-from app.agent_runtime.model_factory import env_provider_keys
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
@@ -178,6 +177,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
         base_url = agent.model.base_url
 
         fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
+        provider_api_keys = {agent.model.provider: api_key} if api_key else None
 
         cfg = AgentConfig(
             provider=agent.model.provider,
@@ -191,7 +191,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             middleware_configs=agent.middleware_configs,
             agent_skills=agent_skills or None,
             agent_id=str(agent.id),
-            provider_api_keys=env_provider_keys(),
+            provider_api_keys=provider_api_keys,
             user_id=str(agent.user_id),
             model_id=str(agent.model.id) if agent.model else None,
             llm_credential_id=(
