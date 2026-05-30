@@ -8,8 +8,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import AsyncClient
 
+from app.agent_runtime.streaming import StreamErrorRecord, format_sse
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
@@ -299,6 +301,68 @@ async def test_send_message_with_tools_passes_tools_config(client: AsyncClient):
     assert entry["definition_key"] == "builtin:web_search"
     assert entry["credentials"] is None
     assert entry["credential_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_send_message_stream_error_marks_trace_failed(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A stream-visible error must finalize message_events as failed."""
+    from sqlalchemy import select
+
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+    monkeypatch.setattr("app.routers.conversations.async_session", TestSession)
+
+    async def mock_stream(*args, **kwargs):
+        run_id = kwargs["run_id"]
+        trace_sink = kwargs["trace_sink"]
+        error_sink = kwargs["error_sink"]
+        error_sink.append(
+            StreamErrorRecord(
+                error=RuntimeError("provider stream failed"),
+                message="provider stream failed",
+            )
+        )
+        events = [
+            {
+                "id": f"{run_id}-1",
+                "event": "message_start",
+                "data": {"id": run_id, "role": "assistant"},
+            },
+            {
+                "id": f"{run_id}-2",
+                "event": "error",
+                "data": {"message": "provider stream failed"},
+            },
+            {
+                "id": f"{run_id}-3",
+                "event": "message_end",
+                "data": {"content": "", "usage": {}, "status": "failed"},
+            },
+        ]
+        trace_sink.extend(events)
+        for evt in events:
+            yield format_sse(evt["event"], evt["data"], event_id=evt["id"])
+
+    with patch("app.routers.conversations.execute_agent_stream", side_effect=mock_stream):
+        resp = await client.post(
+            f"/api/conversations/{conv_id}/messages",
+            json={"content": "please fail"},
+        )
+
+    assert resp.status_code == 200
+    assert "event: error" in resp.text
+
+    async with TestSession() as db:
+        record = (
+            await db.execute(
+                select(MessageEvent).where(MessageEvent.conversation_id == conv_id)
+            )
+        ).scalar_one()
+        assert record.status == "failed"
+        assert record.events[-1]["data"]["status"] == "failed"
 
 
 # ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agen
 from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
-from app.agent_runtime.streaming import format_sse
+from app.agent_runtime.streaming import StreamErrorRecord, format_sse
 from app.config import settings
 from app.database import async_session
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
@@ -216,6 +216,7 @@ def _sse_handler(
     log_msg: str,
     user_msg: str,
     on_complete: Callable[[bool], Awaitable[None]] | None = None,
+    failure_probe: Callable[[], bool] | None = None,
     run_id: str | None = None,
 ) -> StreamingResponse:
     """4개 stream endpoint(send/resume/edit/regenerate)가 공유하는 SSE 래퍼.
@@ -228,6 +229,8 @@ def _sse_handler(
       인자는 generator가 예외 없이 끝났는지(=`completed`) 또는 예외로 SSE
       error 페어를 emit했는지(=`failed`) 를 알려준다. 실패해도 client에는
       영향 없도록 swallow + log.
+    - failure_probe: executor가 직접 raise하지 않고 SSE ``error``로 변환한
+      실패를 finalize 단계에서 ``failed``로 마감하기 위한 관찰 hook.
     - run_id: W3-out M2 — 응답 헤더 ``X-Run-Id`` 노출. 클라이언트가 이 id를
       들고 GET ``/stream?run_id=`` 로 재연결한다.
     """
@@ -237,7 +240,14 @@ def _sse_handler(
         try:
             async for chunk in executor_fn():
                 yield chunk
-            success = True
+            failed = False
+            if failure_probe is not None:
+                try:
+                    failed = failure_probe()
+                except Exception:
+                    logger.exception("stream failure probe failed (%s)", log_msg)
+                    failed = True
+            success = not failed
         except Exception:
             logger.exception(log_msg)
             for chunk in _error_sse_pair(user_msg):
@@ -267,6 +277,7 @@ class _StreamCtx(NamedTuple):
     persist_cb: Callable[[list[dict[str, Any]]], Awaitable[None]]
     trace_sink: list[dict[str, Any]]
     msg_id_sink: list[str]
+    error_sink: list[StreamErrorRecord]
 
     def as_stream_kwargs(self) -> dict[str, Any]:
         """``execute_agent_stream`` / ``resume_agent_stream`` 의 dual-write 채널
@@ -277,10 +288,14 @@ class _StreamCtx(NamedTuple):
         return {
             "trace_sink": self.trace_sink,
             "msg_id_sink": self.msg_id_sink,
+            "error_sink": self.error_sink,
             "broker": self.broker,
             "persist_callback": self.persist_cb,
             "run_id": self.run_id,
         }
+
+    def has_stream_error(self) -> bool:
+        return bool(self.error_sink)
 
     def finalize_callback(
         self, conversation_id: uuid.UUID
@@ -328,6 +343,7 @@ def _prepare_stream_context(conversation_id: uuid.UUID) -> _StreamCtx:
         persist_cb=persist_cb,
         trace_sink=[],
         msg_id_sink=[],
+        error_sink=[],
     )
 
 
@@ -394,6 +410,7 @@ async def _finalize_trace(
                 conversation_id=conversation_id,
                 events=trace_sink,
                 raw_msg_ids=msg_id_sink,
+                status=final_status,
             )
         await session.commit()
 
@@ -830,6 +847,7 @@ async def send_message(
         user_msg="에이전트 실행 중 오류가 발생했습니다.",
         run_id=ctx.run_id,
         on_complete=ctx.finalize_callback(conversation_id),
+        failure_probe=ctx.has_stream_error,
     )
 
 
@@ -861,6 +879,7 @@ async def resume_message(
         user_msg="에이전트 재개 중 오류가 발생했습니다.",
         run_id=ctx.run_id,
         on_complete=ctx.finalize_callback(conversation_id),
+        failure_probe=ctx.has_stream_error,
     )
 
 
@@ -997,6 +1016,7 @@ async def edit_message(
         user_msg="메시지 편집 중 오류가 발생했습니다.",
         run_id=ctx.run_id,
         on_complete=ctx.finalize_callback(conversation_id),
+        failure_probe=ctx.has_stream_error,
     )
 
 
@@ -1090,6 +1110,7 @@ async def regenerate_message(
         user_msg="메시지 재생성 중 오류가 발생했습니다.",
         run_id=ctx.run_id,
         on_complete=ctx.finalize_callback(conversation_id),
+        failure_probe=ctx.has_stream_error,
     )
 
 

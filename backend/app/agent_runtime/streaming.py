@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any, cast
 
 import orjson
@@ -38,6 +39,14 @@ _MAX_RETRY_BUFFER_EVENTS = 5000
 
 
 PersistCallback = Callable[[list[dict[str, Any]]], Awaitable[None]]
+
+
+@dataclass(frozen=True)
+class StreamErrorRecord:
+    """Typed sink record for stream-visible runtime failures."""
+
+    error: Exception
+    message: str
 
 
 def format_sse(event: str, data: dict[str, Any], *, event_id: str | None = None) -> str:
@@ -128,6 +137,7 @@ async def stream_agent_response(
     usage_sink: dict[str, Any] | None = None,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
+    error_sink: list[StreamErrorRecord] | None = None,
     broker: EventBroker | None = None,
     persist_callback: PersistCallback | None = None,
     run_id: str | None = None,
@@ -250,6 +260,7 @@ async def stream_agent_response(
 
     full_content = ""
     was_interrupted = False
+    stream_failed = False
     usage_data: dict[str, int] = {}
     # AIMessageChunk가 같은 tool_call을 partial state로 반복 emit하므로 dedupe.
     emitted_tool_call_keys: set[tuple[str, str]] = set()
@@ -384,7 +395,11 @@ async def stream_agent_response(
             # 아래 aget_state에서 interrupt 이벤트를 emit
             was_interrupted = True
         except Exception as e:
-            yield emit(event_names.ERROR, {"message": str(e)})
+            stream_failed = True
+            error_record = StreamErrorRecord(error=e, message=str(e))
+            if error_sink is not None:
+                error_sink.append(error_record)
+            yield emit(event_names.ERROR, {"message": error_record.message})
 
         # Flush any remaining buffer (incomplete JSON = not middleware output)
         if _buf:
@@ -433,7 +448,14 @@ async def stream_agent_response(
         if usage_sink is not None and usage_data:
             usage_sink.update(usage_data)
 
-        yield emit(event_names.MESSAGE_END, {"usage": usage_data, "content": full_content})
+        yield emit(
+            event_names.MESSAGE_END,
+            {
+                "usage": usage_data,
+                "content": full_content,
+                "status": "failed" if stream_failed else "completed",
+            },
+        )
     finally:
         # W3-out M2 — final flush + background flush join + broker close.
         # 무조건 실행되어야 함 (정상 종료 / GraphInterrupt / Exception / 클라이언트

@@ -31,7 +31,7 @@ from app.agent_runtime.middleware_registry import (
     get_provider_middleware,
 )
 from app.agent_runtime.model_factory import create_chat_model
-from app.agent_runtime.streaming import stream_agent_response
+from app.agent_runtime.streaming import StreamErrorRecord, stream_agent_response
 from app.agent_runtime.temporal import build_temporal_context_prompt
 from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_for_runtime
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
@@ -926,6 +926,7 @@ async def _run_agent_stream(
     hook_metadata_extra: dict[str, Any] | None = None,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
+    error_sink: list[StreamErrorRecord] | None = None,
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
@@ -961,6 +962,7 @@ async def _run_agent_stream(
         await hooks.run_pre(ctx)
     started = time.monotonic()
     usage_sink: dict[str, Any] = {}
+    stream_errors = error_sink if error_sink is not None else []
 
     try:
         async for chunk in stream_agent_response(
@@ -972,6 +974,7 @@ async def _run_agent_stream(
             usage_sink=usage_sink,
             trace_sink=trace_sink,
             msg_id_sink=msg_id_sink,
+            error_sink=stream_errors,
             broker=broker,
             persist_callback=persist_callback,
             run_id=run_id,
@@ -981,6 +984,10 @@ async def _run_agent_stream(
         if ctx is not None:
             await hooks.run_failure(ctx, exc)
         raise
+    if stream_errors:
+        if ctx is not None:
+            await hooks.run_failure(ctx, stream_errors[0].error)
+        return
     if ctx is not None:
         await hooks.run_post(
             ctx,
@@ -1002,6 +1009,7 @@ async def execute_agent_stream(
     *,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
+    error_sink: list[StreamErrorRecord] | None = None,
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
@@ -1031,6 +1039,7 @@ async def execute_agent_stream(
             stream_input=messages_history,
             trace_sink=trace_sink,
             msg_id_sink=msg_id_sink,
+            error_sink=error_sink,
             broker=broker,
             persist_callback=persist_callback,
             run_id=run_id,
@@ -1044,6 +1053,7 @@ async def execute_agent_stream(
         stream_input=_USE_PREPPED_LC_MESSAGES,
         trace_sink=trace_sink,
         msg_id_sink=msg_id_sink,
+        error_sink=error_sink,
         broker=broker,
         persist_callback=persist_callback,
         run_id=run_id,
@@ -1057,6 +1067,7 @@ async def resume_agent_stream(
     *,
     trace_sink: list[dict[str, Any]] | None = None,
     msg_id_sink: list[str] | None = None,
+    error_sink: list[StreamErrorRecord] | None = None,
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
@@ -1071,6 +1082,7 @@ async def resume_agent_stream(
         hook_metadata_extra={"resume": True},
         trace_sink=trace_sink,
         msg_id_sink=msg_id_sink,
+        error_sink=error_sink,
         broker=broker,
         persist_callback=persist_callback,
         run_id=run_id,

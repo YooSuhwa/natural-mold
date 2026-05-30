@@ -321,6 +321,33 @@ async def test_record_turn_sets_status_completed() -> None:
 
 
 @pytest.mark.asyncio
+async def test_record_turn_can_set_status_failed() -> None:
+    """Fallback trace persistence must preserve a failed stream status."""
+    conv_id = await _seed_conversation()
+    events = [
+        {"id": "msg-rec-fail-1", "event": "message_start", "data": {"id": "msg-rec-fail"}},
+        {"id": "msg-rec-fail-2", "event": "error", "data": {"message": "boom"}},
+        {
+            "id": "msg-rec-fail-3",
+            "event": "message_end",
+            "data": {"usage": {}, "content": "", "status": "failed"},
+        },
+    ]
+
+    async with TestSession() as db:
+        record = await trace_storage.record_turn(
+            db,
+            conversation_id=conv_id,
+            events=events,
+            status="failed",
+        )
+        await db.commit()
+        assert record is not None
+        assert record.status == "failed"
+        assert record.completed_at is not None
+
+
+@pytest.mark.asyncio
 async def test_append_events_sets_updated_at_on_insert_and_update() -> None:
     """append_events insert + 후속 update 모두 updated_at 이 채워진다.
 
