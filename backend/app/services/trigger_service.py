@@ -19,6 +19,7 @@ DEFAULT_TIMEZONE = "Asia/Seoul"
 DEFAULT_CONVERSATION_POLICY = "schedule_thread"
 VALID_TRIGGER_TYPES = {"interval", "cron", "one_time"}
 VALID_STATUSES = {"active", "paused", "completed", "error"}
+VALID_CONVERSATION_POLICIES = {"schedule_thread", "new_per_run", "selected_conversation"}
 
 
 def _now() -> datetime:
@@ -48,6 +49,13 @@ def _validate_positive_optional(value: int | None, field_name: str) -> int | Non
     if int(value) < 1:
         raise ValueError(f"{field_name} must be >= 1")
     return int(value)
+
+
+def _validate_conversation_policy(policy: str | None) -> str:
+    value = policy or DEFAULT_CONVERSATION_POLICY
+    if value not in VALID_CONVERSATION_POLICIES:
+        raise ValueError("invalid conversation_policy")
+    return value
 
 
 def normalize_schedule_config(
@@ -114,6 +122,7 @@ def _serialize_trigger(
         "timezone": trigger.timezone,
         "conversation_policy": trigger.conversation_policy,
         "schedule_conversation_id": trigger.schedule_conversation_id,
+        "target_conversation_id": trigger.target_conversation_id,
         "status": trigger.status,
         "last_run_at": trigger.last_run_at,
         "next_run_at": trigger.next_run_at,
@@ -151,6 +160,23 @@ async def get_trigger(
         )
     )
     return result.scalar_one_or_none()
+
+
+async def _validate_target_conversation(
+    db: AsyncSession,
+    *,
+    agent_id: uuid.UUID,
+    target_conversation_id: uuid.UUID | None,
+    conversation_policy: str,
+) -> uuid.UUID | None:
+    if conversation_policy != "selected_conversation":
+        return None
+    if target_conversation_id is None:
+        raise ValueError("target_conversation_id is required")
+    conversation = await db.get(Conversation, target_conversation_id)
+    if conversation is None or conversation.agent_id != agent_id:
+        raise ValueError("target_conversation_id is invalid")
+    return target_conversation_id
 
 
 async def list_triggers(
@@ -204,6 +230,13 @@ async def create_trigger(
         data.schedule_config,
         data.timezone,
     )
+    conversation_policy = _validate_conversation_policy(data.conversation_policy)
+    target_conversation_id = await _validate_target_conversation(
+        db,
+        agent_id=agent_id,
+        target_conversation_id=data.target_conversation_id,
+        conversation_policy=conversation_policy,
+    )
     name = (data.name or "").strip() or _default_name(data.trigger_type, schedule_config)
     trigger = AgentTrigger(
         agent_id=agent_id,
@@ -213,7 +246,8 @@ async def create_trigger(
         schedule_config=schedule_config,
         input_message=data.input_message,
         timezone=timezone,
-        conversation_policy=data.conversation_policy or DEFAULT_CONVERSATION_POLICY,
+        conversation_policy=conversation_policy,
+        target_conversation_id=target_conversation_id,
         max_runs=_validate_positive_optional(data.max_runs, "max_runs"),
         end_at=_normalize_optional_datetime(data.end_at),
         auto_pause_after_failures=_validate_positive_optional(
@@ -256,8 +290,18 @@ async def update_trigger(
         )
     if data.input_message is not None:
         trigger.input_message = data.input_message
-    if data.conversation_policy is not None:
-        trigger.conversation_policy = data.conversation_policy
+    if data.conversation_policy is not None or data.target_conversation_id is not None:
+        conversation_policy = _validate_conversation_policy(
+            data.conversation_policy or trigger.conversation_policy
+        )
+        target_conversation_id = await _validate_target_conversation(
+            db,
+            agent_id=trigger.agent_id,
+            target_conversation_id=data.target_conversation_id or trigger.target_conversation_id,
+            conversation_policy=conversation_policy,
+        )
+        trigger.conversation_policy = conversation_policy
+        trigger.target_conversation_id = target_conversation_id
     if data.status is not None:
         if data.status not in VALID_STATUSES:
             raise ValueError("invalid trigger status")
@@ -334,6 +378,23 @@ async def resolve_schedule_conversation(
     db: AsyncSession, trigger: AgentTrigger
 ) -> Conversation:
     conversation: Conversation | None = None
+
+    if trigger.conversation_policy == "selected_conversation" and trigger.target_conversation_id:
+        conversation = await db.get(Conversation, trigger.target_conversation_id)
+        if conversation is not None and conversation.agent_id == trigger.agent_id:
+            return conversation
+
+    if trigger.conversation_policy == "new_per_run":
+        conversation = Conversation(
+            agent_id=trigger.agent_id,
+            title=f"스케줄: {trigger.name}",
+            last_activity_source="schedule",
+        )
+        db.add(conversation)
+        await db.commit()
+        await db.refresh(conversation)
+        return conversation
+
     if trigger.schedule_conversation_id is not None:
         conversation = await db.get(Conversation, trigger.schedule_conversation_id)
 

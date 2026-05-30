@@ -326,6 +326,9 @@ def build_read_tools(
             "result_conversation_id": (
                 str(t.schedule_conversation_id) if t.schedule_conversation_id else None
             ),
+            "target_conversation_id": (
+                str(t.target_conversation_id) if t.target_conversation_id else None
+            ),
             "last_status": t.last_status,
             "recent_status": t.last_status,
             "last_error": t.last_error,

@@ -14,6 +14,7 @@ class TriggerCreate(BaseModel):
     input_message: str
     timezone: str | None = None
     conversation_policy: str | None = None
+    target_conversation_id: uuid.UUID | None = None
     max_runs: int | None = None
     end_at: datetime | None = None
     auto_pause_after_failures: int | None = None
@@ -26,6 +27,7 @@ class TriggerUpdate(BaseModel):
     input_message: str | None = None
     timezone: str | None = None
     conversation_policy: str | None = None
+    target_conversation_id: uuid.UUID | None = None
     status: str | None = None  # "active" | "paused" | "completed" | "error"
     max_runs: int | None = None
     end_at: datetime | None = None
@@ -42,6 +44,7 @@ class TriggerResponse(BaseModel):
     timezone: str
     conversation_policy: str
     schedule_conversation_id: uuid.UUID | None
+    target_conversation_id: uuid.UUID | None
     status: str
     last_run_at: datetime | None
     next_run_at: datetime | None

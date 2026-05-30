@@ -273,6 +273,7 @@ export const mockTrigger: AgentTrigger = {
   timezone: 'Asia/Seoul',
   conversation_policy: 'schedule_thread',
   schedule_conversation_id: null,
+  target_conversation_id: null,
   status: 'active',
   last_run_at: null,
   next_run_at: '2026-01-01T01:00:00Z',

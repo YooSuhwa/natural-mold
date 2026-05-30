@@ -107,6 +107,35 @@ async def test_trigger_guardrails_are_persisted(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_trigger_selected_conversation_policy_is_persisted(client: AsyncClient):
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+    conversation_resp = await client.post(
+        f"/api/agents/{agent_id}/conversations",
+        json={"title": "기존 세션"},
+    )
+    assert conversation_resp.status_code == 201
+    conversation_id = conversation_resp.json()["id"]
+
+    resp = await client.post(
+        f"/api/agents/{agent_id}/triggers",
+        json={
+            "name": "기존 세션에 쓰기",
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 10},
+            "input_message": "상태 확인",
+            "conversation_policy": "selected_conversation",
+            "target_conversation_id": conversation_id,
+        },
+    )
+
+    assert resp.status_code == 201
+    trigger = resp.json()
+    assert trigger["conversation_policy"] == "selected_conversation"
+    assert trigger["target_conversation_id"] == conversation_id
+
+
+@pytest.mark.asyncio
 async def test_global_trigger_management_routes(client: AsyncClient):
     model_id = await _create_model(client)
     agent_id = await _create_agent(client, model_id)

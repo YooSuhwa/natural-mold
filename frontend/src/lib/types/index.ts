@@ -463,6 +463,7 @@ export interface AgentTrigger {
   timezone: string
   conversation_policy: string
   schedule_conversation_id: string | null
+  target_conversation_id: string | null
   status: 'active' | 'paused' | 'completed' | 'error'
   last_run_at: string | null
   next_run_at: string | null
@@ -487,6 +488,7 @@ export interface TriggerCreateRequest {
   input_message: string
   timezone?: string
   conversation_policy?: string
+  target_conversation_id?: string | null
   max_runs?: number | null
   end_at?: string | null
   auto_pause_after_failures?: number | null
@@ -499,6 +501,7 @@ export interface TriggerUpdateRequest {
   input_message?: string
   timezone?: string
   conversation_policy?: string
+  target_conversation_id?: string | null
   status?: AgentTrigger['status']
   max_runs?: number | null
   end_at?: string | null

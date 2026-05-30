@@ -659,6 +659,7 @@ def build_write_tools(
         scheduled_at: str | None = None,
         timezone: str | None = None,
         conversation_policy: str | None = None,
+        target_conversation_id: str | None = None,
         max_runs: int | None = None,
         end_at: str | None = None,
         auto_pause_after_failures: int | None = None,
@@ -674,6 +675,7 @@ def build_write_tools(
             scheduled_at: 1회 실행 시점 ISO 8601 (one_time일 때 필수)
             timezone: IANA timezone (기본 Asia/Seoul)
             conversation_policy: 결과 저장 정책 (기본 schedule_thread)
+            target_conversation_id: selected_conversation 정책에서 사용할 대화 ID
             max_runs: 최대 성공 실행 횟수
             end_at: 종료 시각 ISO 8601
             auto_pause_after_failures: 연속 실패 자동 일시정지 임계치
@@ -718,6 +720,7 @@ def build_write_tools(
                         input_message=message,
                         timezone=timezone or "Asia/Seoul",
                         conversation_policy=conversation_policy or "schedule_thread",
+                        target_conversation_id=target_conversation_id,
                         max_runs=max_runs,
                         end_at=end_at,
                         auto_pause_after_failures=auto_pause_after_failures,
@@ -796,6 +799,7 @@ def build_write_tools(
         name: str | None = None,
         timezone: str | None = None,
         conversation_policy: str | None = None,
+        target_conversation_id: str | None = None,
         status: str | None = None,
         max_runs: int | None = None,
         end_at: str | None = None,
@@ -813,6 +817,7 @@ def build_write_tools(
             name: 새 스케줄 이름
             timezone: 새 timezone
             conversation_policy: 새 결과 저장 정책
+            target_conversation_id: selected_conversation 정책에서 사용할 대화 ID
             status: 새 상태
             max_runs: 새 최대 성공 실행 횟수
             end_at: 새 종료 시각 ISO 8601
@@ -841,6 +846,8 @@ def build_write_tools(
                 update.timezone = timezone
             if conversation_policy is not None:
                 update.conversation_policy = conversation_policy
+            if target_conversation_id is not None:
+                update.target_conversation_id = target_conversation_id
             if status is not None:
                 update.status = status
             if max_runs is not None:

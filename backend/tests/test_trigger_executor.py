@@ -389,6 +389,75 @@ async def test_execute_trigger_creates_conversation():
 
 
 @pytest.mark.asyncio
+async def test_execute_trigger_new_per_run_creates_a_new_conversation_each_time():
+    """new_per_run policy should not reuse the previous schedule conversation."""
+    trigger_id, agent_id = await _seed_full_setup()
+    async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        trigger.conversation_policy = "new_per_run"
+        await db.commit()
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="ok",
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        await execute_trigger(str(trigger_id))
+        await execute_trigger(str(trigger_id))
+
+    async with TestSession() as db:
+        result = await db.execute(select(Conversation).where(Conversation.agent_id == agent_id))
+        convs = result.scalars().all()
+        assert len(convs) == 2
+        assert all(conv.unread_count == 1 for conv in convs)
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_selected_conversation_uses_target_conversation():
+    """selected_conversation policy should write into the configured conversation."""
+    trigger_id, agent_id = await _seed_full_setup()
+    async with TestSession() as db:
+        target = Conversation(agent_id=agent_id, title="기존 대화")
+        db.add(target)
+        await db.flush()
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        trigger.conversation_policy = "selected_conversation"
+        trigger.target_conversation_id = target.id
+        await db.commit()
+        target_id = target.id
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="ok",
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        await execute_trigger(str(trigger_id))
+
+    async with TestSession() as db:
+        target = await db.get(Conversation, target_id)
+        assert target is not None
+        assert target.unread_count == 1
+        result = await db.execute(select(Conversation).where(Conversation.agent_id == agent_id))
+        assert len(result.scalars().all()) == 1
+
+
+@pytest.mark.asyncio
 async def test_execute_trigger_with_tools_config():
     """Greenfield tools_config carries definition_key + decrypted credentials."""
     trigger_id, _ = await _seed_full_setup(with_tools=True)

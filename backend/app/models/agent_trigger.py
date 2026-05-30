@@ -34,6 +34,9 @@ class AgentTrigger(Base):
     schedule_conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
     )
+    target_conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"), nullable=True
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
     last_run_at: Mapped[datetime | None] = mapped_column()
     next_run_at: Mapped[datetime | None] = mapped_column()
@@ -55,3 +58,4 @@ class AgentTrigger(Base):
 
     agent = relationship("Agent")
     schedule_conversation = relationship("Conversation", foreign_keys=[schedule_conversation_id])
+    target_conversation = relationship("Conversation", foreign_keys=[target_conversation_id])
