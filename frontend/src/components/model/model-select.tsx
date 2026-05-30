@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { Pencil, Zap } from 'lucide-react'
 
 import {
@@ -50,6 +51,7 @@ export function ModelSelect({
   className,
   placeholder = 'Select a model',
 }: ModelSelectProps) {
+  const t = useTranslations('model.select')
   const { data: models, isLoading } = useModels()
   const { data: credentials } = useCredentials()
   const { data: definitions } = useCredentialTypes()
@@ -104,25 +106,24 @@ export function ModelSelect({
     return (
       <div className={className}>
         <p className="mb-2 text-[11px] text-muted-foreground">
-          Custom IDs skip catalog pricing — register frequently used models on
-          the Models page for accurate cost tracking.
+          {t('customHint')}
         </p>
         <div className="flex gap-2">
           <Input
             value={customProvider}
             onChange={(e) => setCustomProvider(e.target.value)}
             onBlur={() => emitCustom(customProvider, customModelName)}
-            placeholder="provider"
+            placeholder={t('providerPlaceholder')}
             className="w-32"
-            aria-label="Custom provider"
+            aria-label={t('providerLabel')}
           />
           <Input
             value={customModelName}
             onChange={(e) => setCustomModelName(e.target.value)}
             onBlur={() => emitCustom(customProvider, customModelName)}
-            placeholder="model id"
+            placeholder={t('modelPlaceholder')}
             className="flex-1"
-            aria-label="Custom model id"
+            aria-label={t('modelLabel')}
           />
           <Button
             type="button"
@@ -132,7 +133,7 @@ export function ModelSelect({
             disabled={!canTest}
             data-testid="model-select-test"
           >
-            <Zap className="size-3.5" /> Test
+            <Zap className="size-3.5" /> {t('test')}
           </Button>
           <Button
             type="button"
@@ -140,7 +141,7 @@ export function ModelSelect({
             size="sm"
             onClick={() => setMode('list')}
           >
-            From list
+            {t('fromList')}
           </Button>
         </div>
 
@@ -151,7 +152,7 @@ export function ModelSelect({
               onValueChange={(v) => v && setCustomTestCredId(v)}
             >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select credential" />
+                <SelectValue placeholder={t('selectCredential')} />
               </SelectTrigger>
               <SelectContent>
                 {llmCredentials.map((c) => (
@@ -179,7 +180,7 @@ export function ModelSelect({
             />
             {lastTestResult && !lastTestResult.success && (
               <p className="text-[11px] text-destructive">
-                Test failed — fix the error above before relying on this model.
+                {t('testFailed')}
               </p>
             )}
           </div>
@@ -231,10 +232,10 @@ export function ModelSelect({
             variant="ghost"
             size="sm"
             onClick={() => setMode('custom')}
-            aria-label="Use a custom model id"
+            aria-label={t('useCustom')}
           >
             <Pencil className="size-3.5" />
-            Custom
+            {t('custom')}
           </Button>
         )}
       </div>

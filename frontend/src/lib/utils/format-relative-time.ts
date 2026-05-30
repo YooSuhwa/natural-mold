@@ -98,6 +98,10 @@ const shortMonthDayFmt = new Intl.DateTimeFormat(LOCALE, {
   day: 'numeric',
 })
 
+const relativeFmt = new Intl.RelativeTimeFormat(LOCALE, {
+  numeric: 'auto',
+})
+
 /**
  * "방금 전 / N분 전 / N시간 전 / N일 전 / 5월 22일" — KST-anchored relative time
  * for compact meta strips (e.g., agent card footer "last used").
@@ -105,9 +109,9 @@ const shortMonthDayFmt = new Intl.DateTimeFormat(LOCALE, {
 export function formatRelativeKo(date: Date | string, now: Date = new Date()): string {
   const d = parseTimestamp(date)
   const diffSec = Math.max(0, (now.getTime() - d.getTime()) / 1000)
-  if (diffSec < 60) return '방금 전'
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}분 전`
-  if (diffSec < 86_400) return `${Math.floor(diffSec / 3600)}시간 전`
-  if (diffSec < 86_400 * 7) return `${Math.floor(diffSec / 86_400)}일 전`
+  if (diffSec < 60) return relativeFmt.format(0, 'second')
+  if (diffSec < 3600) return relativeFmt.format(-Math.floor(diffSec / 60), 'minute')
+  if (diffSec < 86_400) return relativeFmt.format(-Math.floor(diffSec / 3600), 'hour')
+  if (diffSec < 86_400 * 7) return relativeFmt.format(-Math.floor(diffSec / 86_400), 'day')
   return shortMonthDayFmt.format(d)
 }

@@ -1,5 +1,6 @@
-import { fireEvent, render } from '@testing-library/react'
+import { fireEvent } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { render } from '../../../../tests/test-utils'
 import { ChatImage, getChatImagePreviewSrc } from '../markdown-content'
 
 describe('ChatImage', () => {

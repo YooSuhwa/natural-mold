@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { Badge } from '@/components/ui/badge'
@@ -32,6 +33,7 @@ export function ModelTestBulkDialog({
   open,
   onOpenChange,
 }: ModelTestBulkDialogProps) {
+  const t = useTranslations('model.testDialog')
   const { data: credentials } = useCredentials()
   const { data: definitions } = useCredentialTypes()
   const [credentialId, setCredentialId] = useState<string>('')
@@ -72,12 +74,12 @@ export function ModelTestBulkDialog({
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="xl" height="fixed">
       <DialogShell.Header
-        title={`Test ${total} model${total === 1 ? '' : 's'}`}
-        description="Each row runs in parallel against the selected credential."
+        title={t('bulkTitle', { count: total })}
+        description={t('bulkDescription')}
       />
       <DialogShell.Body>
         <div className="space-y-1.5">
-          <label htmlFor="bulk-cred">LLM credential</label>
+          <label htmlFor="bulk-cred">{t('llmCredential')}</label>
           <Select
             value={credentialId}
             onValueChange={(v) => v && setCredentialId(v)}
@@ -87,15 +89,15 @@ export function ModelTestBulkDialog({
               <SelectValue
                 placeholder={
                   llmCredentials.length === 0
-                    ? 'No LLM credential available'
-                    : 'Select credential'
+                    ? t('noCredential')
+                    : t('selectCredential')
                 }
               >
                 {(selected) =>
                   llmCredentials.find((c) => c.id === selected)?.name ??
                   (llmCredentials.length === 0
-                    ? 'No LLM credential available'
-                    : 'Select credential')
+                    ? t('noCredential')
+                    : t('selectCredential'))
                 }
               </SelectValue>
             </SelectTrigger>
@@ -112,14 +114,14 @@ export function ModelTestBulkDialog({
         {credentialId && (
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>
-              {completed}/{total} 완료
+              {t('progress', { completed, total })}
             </span>
             {allDone && (
               <span>
                 <Badge variant="secondary" className="mr-1">
-                  {successCount} success
+                  {t('success', { count: successCount })}
                 </Badge>
-                <Badge variant="destructive">{failedCount} failed</Badge>
+                <Badge variant="destructive">{t('failed', { count: failedCount })}</Badge>
               </span>
             )}
           </div>
@@ -152,7 +154,7 @@ export function ModelTestBulkDialog({
 
         {llmCredentials.length === 0 && (
           <p className="rounded border border-dashed p-3 text-xs text-muted-foreground">
-            Add an LLM credential first on the Credentials page.
+            {t('emptyCredential')}
           </p>
         )}
       </DialogShell.Body>

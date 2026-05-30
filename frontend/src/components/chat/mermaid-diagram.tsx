@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from 'react'
 import mermaid from 'mermaid'
 import { useTheme } from 'next-themes'
+import { useTranslations } from 'next-intl'
 
 type MermaidTheme = 'default' | 'dark'
 
@@ -24,6 +25,7 @@ interface MermaidDiagramProps {
 }
 
 export function MermaidDiagram({ code }: MermaidDiagramProps) {
+  const t = useTranslations('chat.mermaid')
   const rawId = useId()
   const id = rawId.replace(/[^a-zA-Z0-9-]/g, '-')
   const { resolvedTheme } = useTheme()
@@ -49,12 +51,12 @@ export function MermaidDiagram({ code }: MermaidDiagramProps) {
       })
       .catch((e: unknown) => {
         if (cancelled) return
-        setError(e instanceof Error ? e.message : 'Mermaid render failed')
+        setError(e instanceof Error ? e.message : t('renderFailed'))
       })
     return () => {
       cancelled = true
     }
-  }, [id, code, mermaidTheme])
+  }, [id, code, mermaidTheme, t])
 
   if (error) {
     return (

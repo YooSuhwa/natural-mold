@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { CheckIcon, CopyIcon, GlobeIcon, Trash2Icon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { DialogShell } from '@/components/shared/dialog-shell'
@@ -27,12 +28,13 @@ function buildShareUrl(token: string): string {
 }
 
 export function ShareDialog({ open, onOpenChange, conversationId }: ShareDialogProps) {
+  const t = useTranslations('chat.share')
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
       <DialogShell.Header
         icon={<GlobeIcon className="size-5" />}
-        title="대화 공유"
-        description="누구나 링크로 이 대화를 읽기 전용으로 볼 수 있어요."
+        title={t('title')}
+        description={t('description')}
       />
       {/* Body is inert when closed (DialogPortal unmounts) so the inner
           component can freely fetch / mutate without guards. */}
@@ -42,6 +44,7 @@ export function ShareDialog({ open, onOpenChange, conversationId }: ShareDialogP
 }
 
 function ShareDialogBody({ conversationId }: { conversationId: string }) {
+  const t = useTranslations('chat.share')
   const { data: link, isLoading } = useActiveShare(conversationId)
   const create = useCreateShare(conversationId)
   const revoke = useRevokeShare(conversationId)
@@ -64,29 +67,29 @@ function ShareDialogBody({ conversationId }: { conversationId: string }) {
     try {
       await navigator.clipboard.writeText(url)
       setCopied(true)
-      toast.success('공유 링크를 복사했어요.')
+      toast.success(t('toast.copied'))
       if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current)
       copiedTimerRef.current = setTimeout(() => setCopied(false), 2000)
     } catch {
-      toast.error('복사에 실패했습니다.')
+      toast.error(t('toast.copyFailed'))
     }
   }
 
   async function handleCreate() {
     try {
       await create.mutateAsync()
-      toast.success('공유 링크가 생성됐습니다.')
+      toast.success(t('toast.created'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '공유 링크 생성 실패')
+      toast.error(e instanceof Error ? e.message : t('toast.createFailed'))
     }
   }
 
   async function handleRevoke() {
     try {
       await revoke.mutateAsync()
-      toast.success('공유를 해제했습니다.')
+      toast.success(t('toast.revoked'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '공유 해제 실패')
+      toast.error(e instanceof Error ? e.message : t('toast.revokeFailed'))
     }
   }
 
@@ -94,39 +97,35 @@ function ShareDialogBody({ conversationId }: { conversationId: string }) {
     <>
       <DialogShell.Body>
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">불러오는 중…</p>
+          <p className="text-sm text-muted-foreground">{t('loading')}</p>
         ) : isShared ? (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Input
                 readOnly
                 value={url}
-                aria-label="공유 링크"
+                aria-label={t('linkLabel')}
                 className="font-mono text-xs"
               />
-              <Button variant="outline" onClick={handleCopy} aria-label="링크 복사">
+              <Button variant="outline" onClick={handleCopy} aria-label={t('copyLink')}>
                 {copied ? (
                   <>
-                    <CheckIcon className="size-4" /> 복사됨
+                    <CheckIcon className="size-4" />
+                    {t('copied')}
                   </>
                 ) : (
                   <>
-                    <CopyIcon className="size-4" /> 복사
+                    <CopyIcon className="size-4" />
+                    {t('copy')}
                   </>
                 )}
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              링크를 받은 사람은 로그인 없이 이 대화의 메시지를 볼 수 있어요. 새 메시지나
-              편집이 일어나도 공개된 스냅샷은 유지됩니다.
-            </p>
+            <p className="text-xs text-muted-foreground">{t('sharedHint')}</p>
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              아직 비공개 대화입니다. 공유 링크를 만들면 누구나 읽기 전용으로 접근할 수
-              있어요.
-            </p>
+            <p className="text-sm text-muted-foreground">{t('privateHint')}</p>
           </div>
         )}
       </DialogShell.Body>
@@ -139,12 +138,12 @@ function ShareDialogBody({ conversationId }: { conversationId: string }) {
             className="text-destructive hover:text-destructive"
           >
             <Trash2Icon className="size-4" />
-            공유 해제
+            {t('revoke')}
           </Button>
         ) : (
           <Button onClick={handleCreate} disabled={create.isPending}>
             <GlobeIcon className="size-4" />
-            공유 링크 만들기
+            {t('create')}
           </Button>
         )}
       </DialogShell.Footer>

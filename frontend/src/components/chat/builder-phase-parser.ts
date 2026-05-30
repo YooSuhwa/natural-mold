@@ -8,18 +8,6 @@
  * 백엔드를 못 건드릴 때 프론트엔드에서 정규식 split로 fallback.
  */
 
-/** 백엔드 PHASE_DEFINITIONS과 동기 (state.py:18). */
-export const BUILDER_PHASE_NAMES: Record<number, string> = {
-  1: '프로젝트 초기화',
-  2: '사용자 의도 분석',
-  3: '도구 추천',
-  4: '미들웨어 추천',
-  5: '시스템 프롬프트 작성',
-  6: '에이전트 이미지 생성',
-  7: '에이전트 설정 저장',
-  8: '에이전트 빌드',
-}
-
 export type PhaseTransition = 'started' | 'completed'
 
 export type PhaseSegment =

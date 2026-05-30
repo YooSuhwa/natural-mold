@@ -18,7 +18,7 @@ import { BUILDER_TOKENS as T } from './tool-ui/builder-tokens'
 import { buildMarkdownComponents } from './markdown-content'
 import { CHAT_FINAL_REMARK_PLUGINS } from './markdown-plugins'
 import { ToolFallbackPanel } from './tool-ui/generic-tool-ui'
-import { BUILDER_PHASE_NAMES, parsePhaseNarration, type PhaseSegment } from './builder-phase-parser'
+import { parsePhaseNarration, type PhaseSegment } from './builder-phase-parser'
 import { SystemEventChip } from './system-event-chip'
 
 /**
@@ -92,6 +92,7 @@ const MARKDOWN_COMPONENTS_FINAL = buildMarkdownComponents({ isStreaming: false }
 
 /** Builder 전용 text part — phase narration을 SystemEventChip으로 변환. */
 function BuilderAssistantTextPart() {
+  const tPhase = useTranslations('chat.phaseTimeline')
   const part = useMessagePartText()
   const isRunning = useAssistantState(
     (s) => (s.message?.status as { type?: string } | undefined)?.type === 'running',
@@ -106,11 +107,12 @@ function BuilderAssistantTextPart() {
     <div className="flex flex-col gap-3">
       {segments.map((seg, idx) => {
         if (seg.kind === 'event') {
-          const name = BUILDER_PHASE_NAMES[seg.phaseId] ?? `Phase ${seg.phaseId}`
-          const label =
+          const name = tPhase(`names.${seg.phaseId}`) || tPhase('phaseNameFallback', { phaseId: seg.phaseId })
+          const status =
             seg.transition === 'completed'
-              ? `Phase ${seg.phaseId} 완료`
-              : `Phase ${seg.phaseId} 시작`
+              ? tPhase('completedLabel')
+              : tPhase('startedLabel')
+          const label = tPhase('phaseLabel', { phaseId: seg.phaseId, status })
           return (
             <SystemEventChip
               key={`evt-${idx}`}
@@ -185,23 +187,25 @@ export function BuilderAssistantMessageParts() {
 export function BuilderAssistantMessage({
   children,
   metaRow,
-  agentSubtitle = '에이전트 빌더',
+  agentSubtitle,
 }: {
   /** 메시지 본문 (MessageMetaRow 포함 X — metaRow는 별도). */
   children: React.ReactNode
   metaRow: React.ReactNode
   agentSubtitle?: string
 }) {
+  const t = useTranslations('agent.conversational')
+  const resolvedAgentSubtitle = agentSubtitle ?? t('builderAgentSubtitle')
   return (
     <div className="group relative flex items-start gap-3">
-      <Image src={MASCOT_SRC} alt="Moldy" width={38} height={38} unoptimized className="shrink-0" />
+      <Image src={MASCOT_SRC} alt={t('builderAgentName')} width={38} height={38} unoptimized className="shrink-0" />
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-baseline gap-1.5">
           <span className="text-[12.5px] font-semibold" style={{ color: T.ink }}>
-            Moldy
+            {t('builderAgentName')}
           </span>
           <span className="text-[11px]" style={{ color: T.mutedSoft }}>
-            {agentSubtitle}
+            {resolvedAgentSubtitle}
           </span>
         </div>
         {children}
@@ -268,6 +272,7 @@ function BuilderStopButton() {
 
 /** Send 버튼 — 32×32 민트 square. */
 function BuilderSendButton() {
+  const t = useTranslations('chat.input')
   return (
     <ComposerPrimitive.Send
       className="inline-flex size-8 items-center justify-center text-white transition-colors disabled:cursor-not-allowed"
@@ -275,7 +280,7 @@ function BuilderSendButton() {
         borderRadius: 9,
         background: T.primary,
       }}
-      aria-label="보내기"
+      aria-label={t('sendButton')}
     >
       <SendIcon className="size-3.5" />
     </ComposerPrimitive.Send>
@@ -324,10 +329,10 @@ export function BuilderComposer({ modelLabel }: { modelLabel?: string }) {
             style={{ padding: '6px 10px 10px 14px' }}
           >
             <div className="flex items-center gap-1">
-              <IconBtn label="파일 첨부 (준비 중)">
+              <IconBtn label={t('attachComingSoon')}>
                 <PaperclipIcon className="size-[15px]" />
               </IconBtn>
-              <IconBtn label="템플릿에서 가져오기 (준비 중)">
+              <IconBtn label={t('templateComingSoon')}>
                 <LayoutGridIcon className="size-[15px]" />
               </IconBtn>
               <span

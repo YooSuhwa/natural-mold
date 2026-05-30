@@ -1,6 +1,7 @@
 'use client'
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
+import { useTranslations } from 'next-intl'
 import { ExternalLinkIcon, GlobeIcon } from 'lucide-react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 
@@ -108,10 +109,11 @@ function SearchRender({
   result?: unknown
   status: { readonly type: string }
 }) {
+  const t = useTranslations('chat.toolCall.search')
   const isRunning = status.type === 'running'
   const items = parseSearchResults(result)
-  const title = args?.query ? `"${args.query}"` : '웹 검색'
-  const meta = isRunning ? '검색 중…' : items.length > 0 ? `${items.length}건` : undefined
+  const title = args?.query ? `"${args.query}"` : t('defaultTitle')
+  const meta = isRunning ? t('running') : items.length > 0 ? t('count', { count: items.length }) : undefined
 
   const body =
     !isRunning && items.length > 0 ? (

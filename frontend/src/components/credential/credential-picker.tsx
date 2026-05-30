@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useTranslations } from 'next-intl'
 
 import {
   Select,
@@ -28,10 +29,12 @@ export function CredentialPicker({
   value,
   onChange,
   disabled,
-  placeholder = 'Select a credential',
+  placeholder,
   clearable = true,
 }: CredentialPickerProps) {
+  const t = useTranslations('credentials.picker')
   const { data: credentials, isLoading } = useCredentials()
+  const placeholderText = placeholder ?? t('placeholder')
 
   const filtered = useMemo(() => {
     if (!credentials) return []
@@ -50,16 +53,16 @@ export function CredentialPicker({
             SelectItem, so it falls back to the raw value (UUID). The
             function-children form receives the current value and lets us
             render the correct human label ourselves. */}
-        <SelectValue placeholder={placeholder}>
+        <SelectValue placeholder={placeholderText}>
           {(selected) => {
-            if (!selected || selected === '__none__') return placeholder
+            if (!selected || selected === '__none__') return placeholderText
             const match = filtered.find((c) => c.id === selected)
-            return match ? match.name : placeholder
+            return match ? match.name : placeholderText
           }}
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {clearable && <SelectItem value="__none__">(no credential)</SelectItem>}
+        {clearable && <SelectItem value="__none__">{t('none')}</SelectItem>}
         {filtered.map((c) => (
           <SelectItem key={c.id} value={c.id}>
             <span className="flex items-center gap-2">

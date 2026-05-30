@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Activity, Loader2, Trash2, Zap } from 'lucide-react'
 
@@ -39,6 +40,8 @@ interface ModelEditDialogProps {
 }
 
 export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogProps) {
+  const t = useTranslations('model')
+  const te = useTranslations('model.editDialog')
   const update = useUpdateModel()
   const remove = useDeleteModel()
   const { data: credentials } = useCredentials()
@@ -110,10 +113,10 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
           is_visible: isVisible,
         },
       })
-      toast.success('Model updated')
+      toast.success(te('toast.updated'))
       onOpenChange(false)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Save failed')
+      toast.error(e instanceof Error ? e.message : te('toast.saveFailed'))
     }
   }
 
@@ -121,16 +124,16 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
     if (!model) return
     try {
       await remove.mutateAsync(model.id)
-      toast.success('Model deleted')
+      toast.success(te('toast.deleted'))
       onOpenChange(false)
     } catch (e) {
       const err = e as { status?: number; message?: string }
       if (err.status === 409) {
         toast.error(
-          'Cannot delete: this model is in use. Update the affected agents to a different model first.',
+          te('toast.deleteInUse'),
         )
       } else {
-        toast.error(err.message ?? 'Delete failed')
+        toast.error(err.message ?? te('toast.deleteFailed'))
       }
     }
   }
@@ -153,9 +156,9 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
       <DialogShell.Body className="flex flex-col">
         <Tabs defaultValue="info" className="flex min-h-0 w-full flex-1 flex-col">
           <TabsList>
-            <TabsTrigger value="info">Info</TabsTrigger>
+            <TabsTrigger value="info">{te('tabs.info')}</TabsTrigger>
             <TabsTrigger value="health" data-testid="health-tab">
-              Health
+              {te('tabs.health')}
             </TabsTrigger>
           </TabsList>
 
@@ -164,14 +167,14 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
               rankings={model.rankings}
               emptyHint={
                 model.source === 'manual'
-                  ? 'Custom ID models are not auto-matched to public benchmarks. Discovery will populate scores when the model joins a public catalog.'
+                  ? te('customIdBenchmarkHint')
                   : undefined
               }
             />
 
             <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 p-2">
               <span className="text-xs text-muted-foreground">
-                Verify the credential reaches this model end-to-end.
+                {te('testHint')}
               </span>
               {!testOpen ? (
                 <Button
@@ -181,11 +184,11 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
                   disabled={llmCredentials.length === 0}
                   data-testid="edit-test-button"
                 >
-                  <Zap className="size-3.5" /> Test Connection
+                  <Zap className="size-3.5" /> {te('testConnection')}
                 </Button>
               ) : (
                 <Button variant="ghost" size="sm" onClick={() => setTestOpen(false)}>
-                  Hide test
+                  {te('hideTest')}
                 </Button>
               )}
             </div>
@@ -194,9 +197,9 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
               <div className="space-y-2">
                 <Select value={effectiveTestCredId} onValueChange={(v) => v && setTestCredId(v)}>
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select credential">
+                    <SelectValue placeholder={te('selectCredential')}>
                       {(selected) =>
-                        llmCredentials.find((c) => c.id === selected)?.name ?? 'Select credential'
+                        llmCredentials.find((c) => c.id === selected)?.name ?? te('selectCredential')
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -222,7 +225,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <label htmlFor="e-display" className="text-xs font-medium">
-                  Display name
+                  {te('fields.displayName')}
                 </label>
                 <Input
                   id="e-display"
@@ -234,7 +237,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label htmlFor="e-input-price" className="text-xs font-medium">
-                    Input $/1M tokens
+                    {te('fields.inputPrice')}
                   </label>
                   <Input
                     id="e-input-price"
@@ -247,7 +250,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
                 </div>
                 <div className="space-y-1.5">
                   <label htmlFor="e-output-price" className="text-xs font-medium">
-                    Output $/1M tokens
+                    {te('fields.outputPrice')}
                   </label>
                   <Input
                     id="e-output-price"
@@ -263,7 +266,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label htmlFor="e-context" className="text-xs font-medium">
-                    Context window
+                    {te('fields.contextWindow')}
                   </label>
                   <Input
                     id="e-context"
@@ -276,7 +279,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
                 </div>
                 <div className="space-y-1.5">
                   <label htmlFor="e-max-out" className="text-xs font-medium">
-                    Max output tokens
+                    {te('fields.maxOutputTokens')}
                   </label>
                   <Input
                     id="e-max-out"
@@ -292,31 +295,31 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
               <div className="grid grid-cols-2 gap-3">
                 <Toggle
                   id="e-vision"
-                  label="Vision input"
+                  label={te('fields.vision')}
                   checked={supportsVision}
                   onChange={setSupportsVision}
                 />
                 <Toggle
                   id="e-tools"
-                  label="Function calling"
+                  label={te('fields.functionCalling')}
                   checked={supportsTools}
                   onChange={setSupportsTools}
                 />
                 <Toggle
                   id="e-reasoning"
-                  label="Reasoning"
+                  label={te('fields.reasoning')}
                   checked={supportsReasoning}
                   onChange={setSupportsReasoning}
                 />
                 <Toggle
                   id="e-default"
-                  label="Set as default"
+                  label={te('fields.setDefault')}
                   checked={isDefault}
                   onChange={setIsDefault}
                 />
                 <Toggle
                   id="e-visible"
-                  label="사용자에게 표시"
+                  label={t('visibleToUsers')}
                   checked={isVisible}
                   onChange={setIsVisible}
                 />
@@ -326,8 +329,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
 
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>
-                  In use by {model.agent_count} agent
-                  {model.agent_count === 1 ? '' : 's'}
+                  {te('usage', { count: model.agent_count })}
                 </span>
                 {!confirmDelete ? (
                   <Button
@@ -337,13 +339,13 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
                     className="text-destructive hover:text-destructive"
                   >
                     <Trash2 className="size-3.5" />
-                    Delete
+                    {te('delete')}
                   </Button>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <span className="text-destructive">Delete this model?</span>
+                    <span className="text-destructive">{te('deleteConfirm')}</span>
                     <Button size="sm" variant="outline" onClick={() => setConfirmDelete(false)}>
-                      Cancel
+                      {te('cancel')}
                     </Button>
                     <Button
                       size="sm"
@@ -351,7 +353,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
                       onClick={handleDelete}
                       disabled={remove.isPending}
                     >
-                      Confirm
+                      {te('confirm')}
                     </Button>
                   </div>
                 )}
@@ -372,7 +374,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
         <FormFooter
           onCancel={() => onOpenChange(false)}
           onSubmit={handleSave}
-          submitLabel="Save changes"
+          submitLabel={te('save')}
           pending={update.isPending}
         />
       </DialogShell.Footer>
@@ -389,6 +391,7 @@ function ModelHealthPanel({
   provider: string
   defaultCredentialId: string | null
 }) {
+  const t = useTranslations('model.editDialog')
   const { data: healthEntries } = useModelHealth()
   const { data: credentials } = useCredentials()
   const runHealthCheck = useRunHealthCheck()
@@ -416,7 +419,7 @@ function ModelHealthPanel({
 
   async function handleCheck() {
     if (!credentialId) {
-      toast.error('No LLM credential available — register one first.')
+      toast.error(t('toast.noCredential'))
       return
     }
     try {
@@ -427,7 +430,7 @@ function ModelHealthPanel({
       })
       announceHealthResult(result)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Health check failed')
+      toast.error(e instanceof Error ? e.message : t('toast.healthCheckFailed'))
     }
   }
 
@@ -435,7 +438,7 @@ function ModelHealthPanel({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
         <div className="min-w-0 flex-1 space-y-1">
-          <p className="text-xs font-semibold">Latest probe</p>
+          <p className="text-xs font-semibold">{t('health.latestProbe')}</p>
           {latest ? (
             <div className="flex flex-wrap items-center gap-2">
               <StatusChip variant={latest.status} />
@@ -447,7 +450,7 @@ function ModelHealthPanel({
               </span>
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">No probes yet</p>
+            <p className="text-xs text-muted-foreground">{t('health.empty')}</p>
           )}
           {latest?.error_message && (
             <p className="line-clamp-2 break-words text-[10px] text-destructive">
@@ -458,9 +461,9 @@ function ModelHealthPanel({
         <div className="flex shrink-0 items-center gap-2">
           <Select value={credentialId} onValueChange={(v) => setOverride(v ?? '')}>
             <SelectTrigger size="sm" className="w-[180px]">
-              <SelectValue placeholder="Select credential">
+              <SelectValue placeholder={t('selectCredential')}>
                 {(selected) =>
-                  llmCredentials.find((c) => c.id === selected)?.name ?? 'Select credential'
+                  llmCredentials.find((c) => c.id === selected)?.name ?? t('selectCredential')
                 }
               </SelectValue>
             </SelectTrigger>
@@ -484,7 +487,7 @@ function ModelHealthPanel({
             ) : (
               <Activity className="size-3.5" />
             )}
-            Check now
+            {t('health.checkNow')}
           </Button>
         </div>
       </div>

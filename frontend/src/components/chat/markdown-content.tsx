@@ -11,7 +11,9 @@ const REHYPE_PLUGINS = [rehypeKatex]
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { CopyIcon, CheckIcon, ImageOffIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
+import { API_BASE } from '@/lib/api/client'
 import { DialogShell } from '@/components/shared/dialog-shell'
 
 import 'katex/dist/katex.min.css'
@@ -39,6 +41,7 @@ function urlTransform(url: string): string {
 }
 
 function CodeBlock({ language, code }: { language: string; code: string }) {
+  const t = useTranslations('chat.markdown')
   const [copied, setCopied] = useState(false)
 
   const handleCopy = useCallback(async () => {
@@ -59,17 +62,17 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
           type="button"
           onClick={handleCopy}
           className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-accent transition-colors"
-          aria-label={copied ? '복사됨' : '복사'}
+          aria-label={copied ? t('copied') : t('copy')}
         >
           {copied ? (
             <>
               <CheckIcon className="size-3 text-status-success" />
-              <span className="text-status-success">복사됨</span>
+              <span className="text-status-success">{t('copied')}</span>
             </>
           ) : (
             <>
               <CopyIcon className="size-3" />
-              <span>복사</span>
+              <span>{t('copy')}</span>
             </>
           )}
         </button>
@@ -91,9 +94,9 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 }
 
 export function ChatImage({ src, alt }: { src: string; alt: string }) {
+  const t = useTranslations('chat.markdown')
   const [open, setOpen] = useState(false)
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'
   const resolvedSrc = src.startsWith('/api/') ? `${API_BASE}${src}` : src
   const previewSrc = getChatImagePreviewSrc(resolvedSrc)
   const [previewErrorSrc, setPreviewErrorSrc] = useState<string | null>(null)
@@ -109,7 +112,7 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
     return (
       <div className="chat-image-error">
         <ImageOffIcon className="size-5" />
-        <span>이미지를 불러오지 못했어요</span>
+        <span>{t('imageLoadFailed')}</span>
       </div>
     )
   }
@@ -146,7 +149,7 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
         height="auto"
         className="!h-[calc(100vh-2rem)] !max-h-[calc(100vh-2rem)] !w-[calc(100vw-2rem)] !max-w-[calc(100vw-2rem)] lg:!w-[min(calc(100vw-2rem),1200px)]"
       >
-        <DialogShell.Header srOnly title={alt || '이미지 미리보기'} />
+        <DialogShell.Header srOnly title={alt || t('imagePreview')} />
         <DialogShell.Body className="flex min-h-0 items-center justify-center !space-y-0 !overflow-hidden !px-3 !py-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

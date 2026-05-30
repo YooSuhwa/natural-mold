@@ -1,6 +1,7 @@
 'use client'
 
 import { CheckIcon, XIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import type { ApprovalFormState } from './use-approval-form'
 
@@ -39,20 +40,24 @@ interface ApprovalFooterProps {
 export function ApprovalFooter({
   form,
   accent = 'neutral',
-  placeholder = '수정 의견을 입력하세요...',
+  placeholder,
   rows = 3,
-  approvedStatusText = '승인되었습니다. 다음 단계로 진행합니다...',
-  revisionStatusText = '수정 요청을 전달했습니다...',
+  approvedStatusText,
+  revisionStatusText,
   showStatusMessage = false,
 }: ApprovalFooterProps) {
+  const t = useTranslations('chat.builderApproval')
   const { revision, setRevision, submitted, isLocked, handleApprove, handleRevision } = form
+  const resolvedPlaceholder = placeholder ?? t('placeholder')
+  const resolvedApprovedStatusText = approvedStatusText ?? t('approvedStatus')
+  const resolvedRevisionStatusText = revisionStatusText ?? t('revisionStatus')
 
   return (
     <div className={CONTAINER_BY_ACCENT[accent]}>
       <textarea
         value={revision}
         onChange={(e) => setRevision(e.target.value)}
-        placeholder={placeholder}
+        placeholder={resolvedPlaceholder}
         disabled={isLocked}
         rows={rows}
         className="w-full resize-none rounded-lg border border-border bg-muted px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -68,7 +73,7 @@ export function ApprovalFooter({
           )}
         >
           <XIcon className="size-3.5" />
-          수정요청
+          {t('requestRevision')}
         </button>
         <button
           type="button"
@@ -81,12 +86,12 @@ export function ApprovalFooter({
           )}
         >
           <CheckIcon className="size-3.5" />
-          승인
+          {t('approve')}
         </button>
       </div>
       {showStatusMessage && submitted && (
         <p className="mt-2 text-xs text-muted-foreground">
-          {submitted === 'approved' ? approvedStatusText : revisionStatusText}
+          {submitted === 'approved' ? resolvedApprovedStatusText : resolvedRevisionStatusText}
         </p>
       )}
     </div>

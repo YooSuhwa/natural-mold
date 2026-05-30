@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { memo } from 'react'
+import { useTranslations } from 'next-intl'
 import type { LucideIcon } from 'lucide-react'
 import { BotIcon, ServerIcon, SparklesIcon } from 'lucide-react'
 
@@ -25,12 +26,6 @@ const RESOURCE_ICONS: Record<MarketplaceResourceType, LucideIcon> = {
   mcp: ServerIcon,
 }
 
-const RESOURCE_LABELS: Record<MarketplaceResourceType, string> = {
-  skill: '스킬',
-  agent: '에이전트',
-  mcp: 'MCP',
-}
-
 export type PrimaryCtaKind =
   | 'install'
   | 'open'
@@ -43,7 +38,6 @@ export type PrimaryCtaKind =
 
 export interface PrimaryCta {
   kind: PrimaryCtaKind
-  label: string
   variant: 'default' | 'outline'
   disabled?: boolean
 }
@@ -54,7 +48,7 @@ export function derivePrimaryCta(item: MarketplaceItem): PrimaryCta {
   const publicationState = item.publication_summary?.state
 
   if (item.status === 'disabled') {
-    return { kind: 'disabled', label: '비활성화', variant: 'outline', disabled: true }
+    return { kind: 'disabled', variant: 'outline', disabled: true }
   }
 
   // Owner of a published item should not "install" their own source — the
@@ -62,37 +56,37 @@ export function derivePrimaryCta(item: MarketplaceItem): PrimaryCta {
   // (PRD §6: install creates a copy from someone else's marketplace version).
   // Route them to detail/management instead.
   if (publicationState && publicationState !== 'not_published' && !installation?.installed) {
-    return { kind: 'manage', label: '관리', variant: 'outline' }
+    return { kind: 'manage', variant: 'outline' }
   }
 
   if (
     (supportLevel === 'manual_only' || supportLevel === 'browser_or_local') &&
     !installation?.installed
   ) {
-    return { kind: 'view_details', label: '상세 보기', variant: 'outline' }
+    return { kind: 'view_details', variant: 'outline' }
   }
 
   if (!installation?.installed) {
-    return { kind: 'install', label: '설치', variant: 'default' }
+    return { kind: 'install', variant: 'default' }
   }
 
   if (installation.status === 'needs_setup') {
-    return { kind: 'setup', label: '설정', variant: 'default' }
+    return { kind: 'setup', variant: 'default' }
   }
 
   if (installation.update_available && installation.dirty) {
-    return { kind: 'review_update', label: '업데이트 검토', variant: 'outline' }
+    return { kind: 'review_update', variant: 'outline' }
   }
 
   if (installation.update_available) {
-    return { kind: 'update', label: '업데이트', variant: 'default' }
+    return { kind: 'update', variant: 'default' }
   }
 
   if (installation.status === 'disabled') {
-    return { kind: 'disabled', label: '비활성화', variant: 'outline', disabled: true }
+    return { kind: 'disabled', variant: 'outline', disabled: true }
   }
 
-  return { kind: 'open', label: '열기', variant: 'outline' }
+  return { kind: 'open', variant: 'outline' }
 }
 
 interface MarketplaceCardProps {
@@ -102,10 +96,12 @@ interface MarketplaceCardProps {
 }
 
 function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProps) {
+  const t = useTranslations('marketplace.card')
   const Icon = RESOURCE_ICONS[item.resource_type] ?? SparklesIcon
   const cta = derivePrimaryCta(item)
-  const ownerLabel = item.is_system ? '시스템' : '커뮤니티'
-  const resourceLabel = RESOURCE_LABELS[item.resource_type] ?? item.resource_type
+  const ctaLabel = t(`cta.${cta.kind}`)
+  const ownerLabel = item.is_system ? t('owner.system') : t('owner.community')
+  const resourceLabel = t(`resource.${item.resource_type}`)
   const versionLabel = item.latest_version?.version_label
   const versionDate = item.latest_version?.created_at
 
@@ -137,9 +133,9 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
             size="sm"
             disabled={cta.disabled}
             onClick={() => onAction?.(item, cta)}
-            aria-label={cta.label}
+            aria-label={ctaLabel}
           >
-            {cta.label}
+            {ctaLabel}
           </Button>
         </div>
       </CardHeader>

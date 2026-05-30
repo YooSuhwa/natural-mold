@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Plus, Wrench } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
@@ -26,6 +27,7 @@ function formatDate(value: string | null): string {
 }
 
 export default function ToolsPage() {
+  const t = useTranslations('tool.page')
   const { data: tools, isLoading } = useTools()
   const { data: definitions } = useToolTypes()
   const { data: credentials } = useCredentials()
@@ -50,13 +52,13 @@ export default function ToolsPage() {
       {
         id: 'name',
         accessorKey: 'name',
-        header: '이름',
+        header: t('columns.name'),
         cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
       },
       {
         id: 'definition_key',
         accessorKey: 'definition_key',
-        header: '종류',
+        header: t('columns.type'),
         cell: ({ row }) => {
           const def = definitionLabels.get(row.original.definition_key)
           return (
@@ -69,7 +71,7 @@ export default function ToolsPage() {
       },
       {
         id: 'credential',
-        header: '자격증명',
+        header: t('columns.credential'),
         cell: ({ row }) => {
           const id = row.original.credential_id
           if (!id) return <span className="text-xs text-muted-foreground">—</span>
@@ -80,13 +82,13 @@ export default function ToolsPage() {
       {
         id: 'enabled',
         accessorKey: 'enabled',
-        header: '상태',
+        header: t('columns.status'),
         cell: ({ row }) => <StatusChip variant={row.original.enabled ? 'active' : 'disabled'} />,
       },
       {
         id: 'last_used_at',
         accessorKey: 'last_used_at',
-        header: '최근 사용',
+        header: t('columns.lastUsed'),
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
             {formatDate(row.original.last_used_at)}
@@ -94,25 +96,25 @@ export default function ToolsPage() {
         ),
       },
     ],
-    [definitionLabels, credentialMap],
+    [definitionLabels, credentialMap, t],
   )
 
   const tabs: { value: Tab; label: string }[] = [
-    { value: 'catalog', label: '카탈로그' },
-    { value: 'manage', label: `관리 (${tools?.length ?? 0})` },
+    { value: 'catalog', label: t('tabs.catalog') },
+    { value: 'manage', label: t('tabs.manage', { count: tools?.length ?? 0 }) },
   ]
 
   return (
     <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
       <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <PageHeader
-          title="도구"
-          description="카탈로그에서 도구를 골라 추가하거나, 이미 등록한 도구를 관리하세요."
+          title={t('title')}
+          description={t('description')}
         />
 
         <div
           role="tablist"
-          aria-label="도구 보기 모드"
+          aria-label={t('viewMode')}
           className="inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1"
         >
           {tabs.map((t) => {
@@ -142,12 +144,12 @@ export default function ToolsPage() {
         ) : !isLoading && (tools ?? []).length === 0 ? (
           <EmptyState
             icon={<Wrench className="size-6" />}
-            title="아직 도구가 없어요"
-            description="카탈로그에서 원하는 도구를 골라 시작해 보세요."
+            title={t('empty.title')}
+            description={t('empty.description')}
             action={
               <Button onClick={() => setTab('catalog')}>
                 <Plus className="size-4" />
-                카탈로그 둘러보기
+                {t('empty.action')}
               </Button>
             }
           />
@@ -157,9 +159,9 @@ export default function ToolsPage() {
             data={tools ?? []}
             loading={isLoading}
             searchable
-            searchPlaceholder="도구 검색"
+            searchPlaceholder={t('searchPlaceholder')}
             onRowClick={(row) => setDetailId(row.id)}
-            emptyTitle="검색 결과가 없어요"
+            emptyTitle={t('empty.filtered')}
           />
         )}
 

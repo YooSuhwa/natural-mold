@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import {
   PackageIcon,
   PlusIcon,
@@ -42,21 +43,21 @@ export type ToolsSkillsDialogMode = 'all' | 'tools' | 'skills'
 
 const MODE_META: Record<
   ToolsSkillsDialogMode,
-  { title: string; description: string; IconComponent: typeof WrenchIcon }
+  { titleKey: string; descriptionKey: string; IconComponent: typeof WrenchIcon }
 > = {
   all: {
-    title: '도구 · 스킬 추가',
-    description: '카탈로그 도구, 등록한 도구, MCP 도구, 스킬을 한 곳에서 관리합니다.',
+    titleKey: 'mode.all.title',
+    descriptionKey: 'mode.all.description',
     IconComponent: WrenchIcon,
   },
   tools: {
-    title: '도구 추가',
-    description: '카탈로그 도구, 등록한 도구, MCP 도구를 한 곳에서 관리합니다.',
+    titleKey: 'mode.tools.title',
+    descriptionKey: 'mode.tools.description',
     IconComponent: WrenchIcon,
   },
   skills: {
-    title: '스킬 추가',
-    description: '에이전트가 사용할 스킬을 선택합니다.',
+    titleKey: 'mode.skills.title',
+    descriptionKey: 'mode.skills.description',
     IconComponent: SparklesIcon,
   },
 }
@@ -119,7 +120,8 @@ export function ToolsSkillsDialog({
     [allSkills, selectedSkillIds],
   )
 
-  const { title, description, IconComponent } = MODE_META[mode]
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
+  const { titleKey, descriptionKey, IconComponent } = MODE_META[mode]
 
   const showSkills = mode !== 'tools'
   const showToolsAndMcp = mode !== 'skills'
@@ -131,8 +133,8 @@ export function ToolsSkillsDialog({
     <DialogShell open={open} onOpenChange={onOpenChange} size="console" height="tall">
       <DialogShell.Header
         icon={<IconComponent className="size-5" />}
-        title={title}
-        description={description}
+        title={t(titleKey)}
+        description={t(descriptionKey)}
       />
       <DialogShell.Body className="flex flex-col">
         <div className="grid min-h-0 flex-1 gap-6 md:grid-cols-2">
@@ -161,17 +163,17 @@ export function ToolsSkillsDialog({
               >
                 <LineTabsList className="w-full justify-start">
                   <LineTabsTrigger value="catalog">
-                    <PackageIcon className="size-3.5" /> Catalog
+                    <PackageIcon className="size-3.5" /> {t('tabs.catalog')}
                   </LineTabsTrigger>
                   <LineTabsTrigger value="tools">
-                    <WrenchIcon className="size-3.5" /> My Tools
+                    <WrenchIcon className="size-3.5" /> {t('tabs.tools')}
                   </LineTabsTrigger>
                   <LineTabsTrigger value="mcp">
-                    <ServerIcon className="size-3.5" /> MCP
+                    <ServerIcon className="size-3.5" /> {t('tabs.mcp')}
                   </LineTabsTrigger>
                   {mode === 'all' && (
                     <LineTabsTrigger value="skills">
-                      <SparklesIcon className="size-3.5" /> Skills
+                      <SparklesIcon className="size-3.5" /> {t('tabs.skills')}
                     </LineTabsTrigger>
                   )}
                 </LineTabsList>
@@ -232,12 +234,13 @@ function CurrentColumn({
   onRemoveMcp: (id: string) => void
   onRemoveSkill: (id: string) => void
 }) {
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
   return (
     <section className="flex min-h-0 flex-col">
-      <h3 className="mb-3 text-sm font-medium">현재 선택 ({total})</h3>
+      <h3 className="mb-3 text-sm font-medium">{t('current', { count: total })}</h3>
       <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1 sm:h-[60vh]">
         {total === 0 ? (
-          <EmptyBox>선택된 항목이 없습니다.</EmptyBox>
+          <EmptyBox>{t('selectedEmpty')}</EmptyBox>
         ) : (
           <>
             {tools.map((t) => (
@@ -285,6 +288,7 @@ function SelectedRow({
   subtitle: string
   onRemove: () => void
 }) {
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
   return (
     <div className="flex items-center gap-3 rounded-lg border p-3">
       <KindIcon kind={kind} />
@@ -297,36 +301,37 @@ function SelectedRow({
         variant="ghost"
         onClick={onRemove}
         className="shrink-0"
-        aria-label={`${name} 제거`}
+        aria-label={t('removeNamed', { name })}
       >
         <Trash2Icon className="size-3.5" />
-        제거
+        {t('remove')}
       </Button>
     </div>
   )
 }
 
 function KindIcon({ kind }: { kind: AvailableKind }) {
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog.kind')
   const config = {
     tool: {
       Icon: WrenchIcon,
       className: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400',
-      label: 'Tool',
+      label: t('tool'),
     },
     mcp: {
       Icon: ServerIcon,
       className: 'bg-sky-100 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400',
-      label: 'MCP',
+      label: t('mcp'),
     },
     skill: {
       Icon: SparklesIcon,
       className: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400',
-      label: 'Skill',
+      label: t('skill'),
     },
     catalog: {
       Icon: PackageIcon,
       className: 'bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400',
-      label: 'Catalog',
+      label: t('catalog'),
     },
   }[kind]
   const { Icon, className, label } = config
@@ -344,6 +349,7 @@ function KindIcon({ kind }: { kind: AvailableKind }) {
 // -- Right column tabs -------------------------------------------------------
 
 function CatalogPanel() {
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
   const { data: definitions } = useCredentialTypes()
   const [query, setQuery] = useState('')
 
@@ -375,12 +381,13 @@ function CatalogPanel() {
       items={filtered.map((d) => (
         <CatalogRow key={d.key} definition={d} />
       ))}
-      emptyText="표시할 카탈로그 항목이 없습니다."
+      emptyText={t('catalogEmpty')}
     />
   )
 }
 
 function CatalogRow({ definition }: { definition: CredentialDefinition }) {
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
   return (
     <div className="flex items-start gap-3 rounded-lg border p-3">
       <KindIcon kind="catalog" />
@@ -402,12 +409,12 @@ function CatalogRow({ definition }: { definition: CredentialDefinition }) {
         render={
           <Link
             href={`/tools?create=${encodeURIComponent(definition.key)}`}
-            aria-label={`${definition.display_name} 만들기`}
+            aria-label={t('createNamed', { name: definition.display_name })}
           />
         }
       >
         <PlusIcon className="size-3.5" />
-        만들기
+        {t('create')}
       </Button>
     </div>
   )
@@ -422,6 +429,7 @@ function ToolsPanel({
   selectedToolIds: Set<string>
   onToggle: (id: string) => void
 }) {
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
   const [query, setQuery] = useState('')
   const available = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -452,8 +460,8 @@ function ToolsPanel({
       ))}
       emptyText={
         allTools.length === 0
-          ? '아직 등록한 도구가 없습니다. /tools에서 인스턴스를 만들어주세요.'
-          : '검색 결과가 없습니다.'
+          ? t('toolsEmpty')
+          : t('noResults')
       }
     />
   )
@@ -466,6 +474,7 @@ function McpPanel({
   selectedIds: Set<string>
   onToggle: (id: string) => void
 }) {
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
   const { data: tools, isLoading } = useAllMcpTools()
   const [query, setQuery] = useState('')
 
@@ -503,8 +512,8 @@ function McpPanel({
       ))}
       emptyText={
         list.length === 0
-          ? 'MCP 도구가 없습니다. /mcp-servers에서 서버를 추가하면 자동으로 표시됩니다.'
-          : '검색 결과가 없습니다.'
+          ? t('mcpEmpty')
+          : t('noResults')
       }
     />
   )
@@ -519,6 +528,7 @@ function SkillsPanel({
   selectedSkillIds: Set<string>
   onToggle: (id: string) => void
 }) {
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
   const [query, setQuery] = useState('')
   const available = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -548,8 +558,8 @@ function SkillsPanel({
       ))}
       emptyText={
         allSkills.length === 0
-          ? '아직 등록한 스킬이 없습니다. /skills에서 업로드해주세요.'
-          : '검색 결과가 없습니다.'
+          ? t('skillsEmpty')
+          : t('noResults')
       }
     />
   )
@@ -579,13 +589,14 @@ function AvailableList({
 }
 
 function SearchBar({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
   return (
     <div className="relative">
       <SearchIcon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="검색"
+        placeholder={t('search')}
         className="pl-9 focus-visible:border-input focus-visible:ring-0"
       />
     </div>
@@ -605,6 +616,7 @@ function AvailableRow({
   description?: string | null
   onAdd: () => void
 }) {
+  const t = useTranslations('agent.visualSettings.toolsSkillsDialog')
   return (
     <div className="flex items-start gap-3 rounded-lg border p-3">
       <KindIcon kind={kind} />
@@ -622,10 +634,10 @@ function AvailableRow({
         variant="outline"
         onClick={onAdd}
         className="shrink-0"
-        aria-label={`${name} 추가`}
+        aria-label={t('addNamed', { name })}
       >
         <PlusIcon className="size-3.5" />
-        추가
+        {t('add')}
       </Button>
     </div>
   )

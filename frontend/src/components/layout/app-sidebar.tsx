@@ -6,12 +6,13 @@ import {
   BookOpenIcon,
   BrainIcon,
   CalendarClockIcon,
+  CheckIcon,
   ChevronRightIcon,
+  Globe2Icon,
   HomeIcon,
   KeyRoundIcon,
   LayoutTemplateIcon,
   type LucideIcon,
-  MonitorIcon,
   MoonIcon,
   Plug2Icon,
   PlusIcon,
@@ -25,14 +26,21 @@ import {
   WrenchIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { useLocale } from 'next-intl'
 import { useTheme } from 'next-themes'
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { useMemo } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
+import { useMemo, useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { UserMenu } from '@/components/auth/UserMenu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Sidebar,
   SidebarContent,
@@ -57,6 +65,7 @@ import { useAgents } from '@/lib/hooks/use-agents'
 import { useLogout } from '@/lib/hooks/useAuth'
 import { useTriggerSummary } from '@/lib/hooks/use-triggers'
 import { connectorsExpandedAtom, marketplaceExpandedAtom } from '@/lib/stores/sidebar-store'
+import { LOCALE_COOKIE_NAME, SUPPORTED_LOCALES, isSupportedLocale } from '../../i18n/locales'
 
 type NavChild = { label: string; href: string; icon: LucideIcon; isActive: boolean }
 type ResourceItem = { label: string; href: string; icon: LucideIcon; badge?: number }
@@ -118,9 +127,11 @@ function CollapsibleNavItem({
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { data: agents, isLoading } = useAgents()
   const { data: triggerSummary } = useTriggerSummary()
-  const { setTheme, theme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
+  const locale = useLocale()
   const { toggleSidebar } = useSidebar()
   const t = useTranslations('sidebar')
   const { data: user } = useSession()
@@ -128,6 +139,7 @@ export function AppSidebar() {
 
   const [connectorsExpanded, setConnectorsExpanded] = useAtom(connectorsExpandedAtom)
   const [marketplaceExpanded, setMarketplaceExpanded] = useAtom(marketplaceExpandedAtom)
+  const [languageOpen, setLanguageOpen] = useState(false)
 
   const buildItems = [
     { label: t('nav.home'), href: '/', icon: HomeIcon },
@@ -217,6 +229,18 @@ export function AppSidebar() {
 
   const newAgentButtonClass =
     'h-11 rounded-xl border border-emerald-200/80 bg-emerald-100/50 font-semibold text-emerald-800 hover:border-emerald-300/80 hover:bg-emerald-100/70 hover:text-emerald-900 active:bg-emerald-100/80 active:text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-200'
+
+  const isDarkTheme = resolvedTheme === 'dark'
+  const themeToggleLabel = isDarkTheme ? t('theme.light') : t('theme.dark')
+  const currentLocale = isSupportedLocale(locale) ? locale : SUPPORTED_LOCALES[0]
+  const languageLabel = t('language.label')
+
+  function changeLocale(nextLocale: string) {
+    setLanguageOpen(false)
+    if (!isSupportedLocale(nextLocale) || nextLocale === currentLocale) return
+    document.cookie = `${LOCALE_COOKIE_NAME}=${nextLocale}; path=/; max-age=31536000; SameSite=Lax`
+    router.refresh()
+  }
 
   return (
     <Sidebar collapsible="icon">
@@ -441,26 +465,49 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      {/* Theme Toggle */}
       <SidebarFooter>
         <SidebarSeparator />
         <div className="flex items-center justify-center gap-1 px-2 py-1 group-data-[collapsible=icon]:hidden">
-          {[
-            { value: 'light' as const, icon: SunIcon },
-            { value: 'dark' as const, icon: MoonIcon },
-            { value: 'system' as const, icon: MonitorIcon },
-          ].map(({ value, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTheme(value)}
-              suppressHydrationWarning
-              className={`rounded-md p-1.5 transition-colors ${theme === value ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-sidebar-accent'}`}
-              aria-label={t(`theme.${value}`)}
+          <button
+            type="button"
+            onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
+            suppressHydrationWarning
+            className="inline-flex h-7 items-center justify-center rounded-md px-1.5 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+            aria-label={themeToggleLabel}
+            title={themeToggleLabel}
+          >
+            {isDarkTheme ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
+          </button>
+          <DropdownMenu
+            open={languageOpen}
+            onOpenChange={setLanguageOpen}
+          >
+            <DropdownMenuTrigger
+              render={<button type="button" />}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+              aria-label={languageLabel}
+              title={languageLabel}
             >
-              <Icon className="size-4" />
-            </button>
-          ))}
+              <Globe2Icon className="size-4" />
+              <span>{currentLocale.toUpperCase()}</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="center" className="w-36">
+              {SUPPORTED_LOCALES.map((option) => (
+                <DropdownMenuItem
+                  key={option}
+                  onClick={() => changeLocale(option)}
+                  className="justify-between"
+                >
+                  <span>{t(`language.${option}`)}</span>
+                  {option === currentLocale ? (
+                    <CheckIcon className="size-4 text-primary-strong" />
+                  ) : (
+                    <span className="size-4" />
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* User Profile */}

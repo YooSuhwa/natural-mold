@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo } from 'react'
+import { useTranslations } from 'next-intl'
 import { ListIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { OutlinePayload } from '@/lib/stores/chat-right-rail'
@@ -74,6 +75,7 @@ function extractHeadings(content: string): OutlineHeading[] {
 }
 
 export function OutlinePanelContent({ payload }: Props) {
+  const t = useTranslations('chat.rightRail')
   const headings = useMemo(() => extractHeadings(payload.content), [payload.content])
 
   if (headings.length === 0) {
@@ -81,10 +83,10 @@ export function OutlinePanelContent({ payload }: Props) {
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm font-medium text-foreground">
           <ListIcon className="size-3.5 text-muted-foreground" aria-hidden />
-          Outline
+          {t('outline')}
         </div>
         <p className="rounded-md border border-dashed border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground">
-          No headings detected in this message.
+          {t('noHeadings')}
         </p>
         <p className="text-[10px] text-muted-foreground/70">message_id: {payload.messageId}</p>
       </div>
@@ -95,10 +97,10 @@ export function OutlinePanelContent({ payload }: Props) {
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-sm font-medium text-foreground">
         <ListIcon className="size-3.5 text-muted-foreground" aria-hidden />
-        Outline
+        {t('outline')}
         <span className="text-xs font-normal text-muted-foreground">({headings.length})</span>
       </div>
-      <nav aria-label="Message outline">
+      <nav aria-label={t('messageOutline')}>
         <ul className="space-y-0.5">
           {headings.map((h) => (
             <li key={h.anchor}>

@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { Loader2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -11,12 +12,15 @@ interface Props {
 }
 
 export function DeleteConfirmInline({ entity, onCancel, onConfirm, pending }: Props) {
+  const t = useTranslations('common.deleteConfirm')
+  const tc = useTranslations('common')
+
   return (
     <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs">
-      <p className="font-medium text-destructive">Delete this {entity}?</p>
+      <p className="font-medium text-destructive">{t('title', { entity })}</p>
       <div className="mt-2 flex gap-2">
         <Button size="sm" variant="outline" onClick={onCancel} disabled={pending}>
-          Cancel
+          {tc('cancel')}
         </Button>
         <Button
           size="sm"
@@ -25,7 +29,7 @@ export function DeleteConfirmInline({ entity, onCancel, onConfirm, pending }: Pr
           disabled={pending}
         >
           {pending ? <Loader2Icon className="mr-1 size-3 animate-spin" /> : null}
-          Confirm delete
+          {t('confirm')}
         </Button>
       </div>
     </div>

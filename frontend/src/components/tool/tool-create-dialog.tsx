@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { DialogShell } from '@/components/shared/dialog-shell'
@@ -27,6 +28,8 @@ export function ToolCreateDialog({
   onOpenChange,
   onCreated,
 }: ToolCreateDialogProps) {
+  const t = useTranslations('tool.createDialog')
+  const tValidation = useTranslations('shared.validation')
   const create = useCreateTool()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -47,8 +50,10 @@ export function ToolCreateDialog({
 
   const errors = useMemo(() => {
     if (!definition) return {}
-    return validateFields(definition.parameters as FieldDef[], parameters, { skipRequired: true })
-  }, [definition, parameters])
+    return validateFields(definition.parameters as FieldDef[], parameters, tValidation, {
+      skipRequired: true,
+    })
+  }, [definition, parameters, tValidation])
 
   const canSubmit =
     !!definition &&
@@ -67,11 +72,11 @@ export function ToolCreateDialog({
         credential_id: credentialId,
         enabled: true,
       })
-      toast.success('Tool created')
+      toast.success(t('toast.created'))
       onCreated?.(tool.id)
       handleClose(false)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Save failed')
+      toast.error(e instanceof Error ? e.message : t('toast.saveFailed'))
     }
   }
 
@@ -81,14 +86,14 @@ export function ToolCreateDialog({
     <DialogShell open={open} onOpenChange={handleClose} size="lg" height="fixed">
       <DialogShell.Header
         icon={<DomainIcon iconId={definition.icon_id ?? definition.key} className="size-5" />}
-        title={`New ${definition.display_name}`}
+        title={t('title', { toolName: definition.display_name })}
         description={definition.description}
       />
       <DialogShell.Body>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <label htmlFor="tool-name">
-              Name <span className="text-destructive">*</span>
+              {t('name')} <span className="text-destructive">*</span>
             </label>
             <Input
               id="tool-name"
@@ -99,12 +104,12 @@ export function ToolCreateDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="tool-desc">Description</label>
+            <label htmlFor="tool-desc">{t('description')}</label>
             <Textarea
               id="tool-desc"
               value={description}
               rows={2}
-              placeholder="Optional"
+              placeholder={t('optional')}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
@@ -112,7 +117,7 @@ export function ToolCreateDialog({
           {definition.credential_definition_keys.length > 0 && (
             <div className="space-y-1.5">
               <label htmlFor="tool-credential">
-                Credential{' '}
+                {t('credential')}{' '}
                 {definition.requires_credential && <span className="text-destructive">*</span>}
               </label>
               <CredentialPicker
@@ -137,7 +142,7 @@ export function ToolCreateDialog({
         <FormFooter
           onCancel={() => handleClose(false)}
           onSubmit={handleSubmit}
-          submitLabel="Create tool"
+          submitLabel={t('submit')}
           pending={create.isPending}
           disabled={!canSubmit}
         />

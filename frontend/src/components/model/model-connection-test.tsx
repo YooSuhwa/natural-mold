@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
   AlertCircle,
@@ -27,14 +28,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { useTestModel } from '@/lib/hooks/use-models'
 import type { ModelTestErrorKind, ModelTestResponse } from '@/lib/types/model'
-
-const ERROR_KIND_LABEL: Record<ModelTestErrorKind, string> = {
-  auth: '인증 실패',
-  not_found: '모델 없음',
-  rate_limit: '호출 한도',
-  timeout: '시간 초과',
-  other: '오류',
-}
 
 interface BaseProps {
   credentialId: string
@@ -62,6 +55,7 @@ interface PreviewProps extends BaseProps {
 type Props = RegisteredProps | PreviewProps
 
 export function ModelConnectionTest(props: Props) {
+  const t = useTranslations('model.connectionTest')
   const {
     credentialId,
     autoStart = true,
@@ -148,21 +142,21 @@ export function ModelConnectionTest(props: Props) {
     >
       {showCostBanner && (
         <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-          이 테스트는 실제 API를 호출합니다 (예상 ~$0.0001).
+          {t('costBanner')}
         </p>
       )}
 
       {status === 'idle' && (
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground">
-            준비됨 — Test 버튼을 눌러 시작하세요.
+            {t('idle')}
           </span>
           <Button
             size="sm"
             onClick={runTest}
             disabled={!credentialId || test.isPending}
           >
-            Test now
+            {t('testNow')}
           </Button>
         </div>
       )}
@@ -171,11 +165,11 @@ export function ModelConnectionTest(props: Props) {
         <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            Testing connection to{' '}
+            {t('testingPrefix')}{' '}
             <span className="font-medium text-foreground">
-              {modelLabel ?? 'this model'}
+              {modelLabel ?? t('thisModel')}
             </span>
-            ...
+            {t('testingSuffix')}
           </p>
         </div>
       )}
@@ -199,11 +193,13 @@ export function ModelConnectionTest(props: Props) {
           >
             {showDetails ? (
               <>
-                <ChevronUp className="size-3.5" /> Hide Details
+                <ChevronUp className="size-3.5" />
+                {t('hideDetails')}
               </>
             ) : (
               <>
-                <ChevronDown className="size-3.5" /> Show Details
+                <ChevronDown className="size-3.5" />
+                {t('showDetails')}
               </>
             )}
           </Button>
@@ -223,6 +219,7 @@ function SuccessCard({
   result: ModelTestResponse
   modelLabel?: string
 }) {
+  const t = useTranslations('model.connectionTest')
   const cost = formatUsd(result.estimated_cost_usd)
   const tokens =
     result.tokens_in !== null || result.tokens_out !== null
@@ -238,7 +235,7 @@ function SuccessCard({
         <CheckCircle2 className="size-6 shrink-0 text-emerald-600 dark:text-emerald-400" />
         <div className="min-w-0 flex-1 space-y-2">
           <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
-            연결 성공{modelLabel ? ` — ${modelLabel}` : ''}
+            {modelLabel ? t('successWithModel', { model: modelLabel }) : t('success')}
           </p>
 
           {result.response && (
@@ -246,23 +243,23 @@ function SuccessCard({
               className="line-clamp-3 text-xs text-emerald-900/80 dark:text-emerald-100/80"
               title={result.response}
             >
-              응답: {result.response}
+              {t('response', { response: result.response })}
             </p>
           )}
 
           <ul className="grid grid-cols-1 gap-1 text-[11px] text-emerald-900/90 sm:grid-cols-3 dark:text-emerald-100/90">
             <li>
-              <span className="font-medium">Latency:</span>{' '}
+              <span className="font-medium">{t('metrics.latency')}</span>{' '}
               {result.latency_ms.toLocaleString()} ms
             </li>
             {tokens && (
               <li>
-                <span className="font-medium">Tokens:</span> {tokens}
+                <span className="font-medium">{t('metrics.tokens')}</span> {tokens}
               </li>
             )}
             {cost && (
               <li>
-                <span className="font-medium">Cost:</span> {cost}
+                <span className="font-medium">{t('metrics.cost')}</span> {cost}
               </li>
             )}
           </ul>
@@ -279,10 +276,11 @@ function ErrorCard({
   result: ModelTestResponse
   onRetry: () => void
 }) {
+  const t = useTranslations('model.connectionTest')
   const kindLabel = result.error
-    ? ERROR_KIND_LABEL[result.error.kind] ?? '오류'
-    : '오류'
-  const message = result.error?.message ?? 'Unknown error'
+    ? t(`errorKind.${result.error.kind as ModelTestErrorKind}`)
+    : t('errorKind.other')
+  const message = result.error?.message ?? t('unknownError')
 
   return (
     <div
@@ -303,7 +301,7 @@ function ErrorCard({
             className="text-destructive"
           >
             <RotateCw className="size-3.5" />
-            Retry
+            {t('retry')}
           </Button>
         </div>
       </div>
@@ -312,12 +310,13 @@ function ErrorCard({
 }
 
 function DetailsPanel({ result }: { result: ModelTestResponse }) {
+  const t = useTranslations('model.connectionTest')
   return (
     <Tabs defaultValue="request" className="w-full">
       <TabsList>
-        <TabsTrigger value="request">Request</TabsTrigger>
-        <TabsTrigger value="response">Response</TabsTrigger>
-        <TabsTrigger value="curl">Curl</TabsTrigger>
+        <TabsTrigger value="request">{t('tabs.request')}</TabsTrigger>
+        <TabsTrigger value="response">{t('tabs.response')}</TabsTrigger>
+        <TabsTrigger value="curl">{t('tabs.curl')}</TabsTrigger>
       </TabsList>
 
       <TabsContent value="request" className="pt-2">
@@ -325,7 +324,7 @@ function DetailsPanel({ result }: { result: ModelTestResponse }) {
           code={
             result.raw_request
               ? JSON.stringify(maskSensitive(result.raw_request), null, 2)
-              : '(no request data)'
+              : t('empty.request')
           }
         />
       </TabsContent>
@@ -335,25 +334,26 @@ function DetailsPanel({ result }: { result: ModelTestResponse }) {
           code={
             result.raw_response
               ? JSON.stringify(result.raw_response, null, 2)
-              : '(no response data)'
+              : t('empty.response')
           }
         />
       </TabsContent>
 
       <TabsContent value="curl" className="pt-2">
         <div className="space-y-2">
-          <CodeBlock code={result.curl_command ?? '(no curl command)'} />
+          <CodeBlock code={result.curl_command ?? t('empty.curl')} />
           {result.curl_command && (
             <Button
               variant="outline"
               size="sm"
               onClick={async () => {
                 await navigator.clipboard.writeText(result.curl_command ?? '')
-                toast.success('Copied to clipboard')
+                toast.success(t('copied'))
               }}
               data-testid="copy-curl"
             >
-              <Copy className="size-3.5" /> Copy
+              <Copy className="size-3.5" />
+              {t('copy')}
             </Button>
           )}
         </div>

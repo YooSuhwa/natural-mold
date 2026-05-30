@@ -79,13 +79,13 @@ function extractImageUrls(data: unknown): string[] {
   return urls
 }
 
-function formatToolValue(value: unknown): string {
+function formatToolValue(value: unknown, serializeFailed: string): string {
   if (typeof value === 'string') return value
 
   try {
     return JSON.stringify(value, null, 2)
   } catch {
-    return '직렬화할 수 없는 결과입니다.'
+    return serializeFailed
   }
 }
 
@@ -103,6 +103,7 @@ function ToolFallbackBody({
   hasResult: boolean
 }) {
   const t = useTranslations('chat.toolCall')
+  const serializeFailed = t('serializeFailed')
   const imageUrls = hasResult ? extractImageUrls(result) : []
 
   return (
@@ -113,7 +114,7 @@ function ToolFallbackBody({
             {t('parameters')}
           </div>
           <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-            {formatToolValue(args)}
+            {formatToolValue(args, serializeFailed)}
           </pre>
         </div>
       )}
@@ -123,7 +124,7 @@ function ToolFallbackBody({
             {t('results')}
           </div>
           <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-            {formatToolValue(result)}
+            {formatToolValue(result, serializeFailed)}
           </pre>
         </div>
       )}
@@ -171,8 +172,8 @@ export function ToolFallbackPanel({
     <button
       type="button"
       onClick={handleExpandToPanel}
-      aria-label="Expand to panel"
-      title="Expand to panel"
+      aria-label={t('expandToPanel')}
+      title={t('expandToPanel')}
       className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
       <PanelRightOpenIcon className="size-3.5" aria-hidden />

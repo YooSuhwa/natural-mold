@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { ArrowLeft, Search } from 'lucide-react'
 
@@ -43,6 +44,9 @@ export function CredentialCreateModal({
   onCreated,
   mode = 'user',
 }: CredentialCreateModalProps) {
+  const t = useTranslations('credentials.create')
+  const tValidation = useTranslations('shared.validation')
+  const tc = useTranslations('common')
   const { data: definitions } = useCredentialTypes()
   const createUser = useCreateCredential()
   const createSystem = useCreateSystemCredential()
@@ -86,8 +90,8 @@ export function CredentialCreateModal({
 
   const errors = useMemo(() => {
     if (!definition) return {}
-    return validateFields(definition.properties, data)
-  }, [definition, data])
+    return validateFields(definition.properties, data, tValidation)
+  }, [definition, data, tValidation])
 
   const canSubmit =
     definition !== null && name.trim().length > 0 && Object.keys(errors).length === 0
@@ -101,11 +105,11 @@ export function CredentialCreateModal({
         data,
         is_shared: false,
       })
-      toast.success('Credential saved')
+      toast.success(t('toast.saved'))
       onCreated?.(cred.id)
       handleClose(false)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Save failed'
+      const msg = e instanceof Error ? e.message : t('toast.saveFailed')
       toast.error(msg)
     }
   }
@@ -113,24 +117,24 @@ export function CredentialCreateModal({
   return (
     <DialogShell open={open} onOpenChange={handleClose} size="lg" height="fixed">
       <DialogShell.Header
-        title={definition ? `New ${definition.display_name} credential` : 'New credential'}
+        title={definition ? t('titleWithType', { type: definition.display_name }) : t('title')}
         description={
           definition
-            ? 'Fill the required fields and test before saving.'
-            : 'Pick a credential type from the catalog.'
+            ? t('description.form')
+            : t('description.catalog')
         }
       />
       <DialogShell.Body>
         {!definition ? (
           <div className="space-y-3">
             <SearchInput
-              placeholder="Search credential types"
+              placeholder={t('searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
             {filteredDefinitions.length === 0 ? (
               <p className="rounded border border-dashed p-6 text-center text-sm text-muted-foreground">
-                <Search className="mx-auto mb-2 size-5" /> No matching definitions
+                <Search className="mx-auto mb-2 size-5" /> {t('emptyDefinitions')}
               </p>
             ) : (
               <div
@@ -173,7 +177,7 @@ export function CredentialCreateModal({
                     setData({})
                   }}
                 >
-                  <ArrowLeft className="size-4" /> Back
+                  <ArrowLeft className="size-4" /> {t('back')}
                 </Button>
               )}
               <Card className="flex-1 px-3 py-2 flex items-center gap-2">
@@ -184,12 +188,12 @@ export function CredentialCreateModal({
 
             <div className="space-y-1.5">
               <label htmlFor="cred-name" className="text-xs font-medium">
-                Name
+                {t('name')}
               </label>
               <Input
                 id="cred-name"
                 value={name}
-                placeholder="e.g. Production OpenAI"
+                placeholder={t('namePlaceholder')}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
@@ -208,7 +212,7 @@ export function CredentialCreateModal({
           <FormFooter
             onCancel={() => handleClose(false)}
             onSubmit={handleSubmit}
-            submitLabel="Save credential"
+            submitLabel={t('save')}
             pending={create.isPending}
             disabled={!canSubmit}
             extraActions={
@@ -223,7 +227,7 @@ export function CredentialCreateModal({
           />
         ) : (
           <Button variant="outline" onClick={() => handleClose(false)}>
-            Cancel
+            {tc('cancel')}
           </Button>
         )}
       </DialogShell.Footer>

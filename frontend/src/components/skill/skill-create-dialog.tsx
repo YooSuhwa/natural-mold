@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import JSZip from 'jszip'
 import { FileText, Loader2, Sparkles, Upload } from 'lucide-react'
@@ -58,25 +59,26 @@ function SkillCreateBody({
   onClose: () => void
   onCreated?: (skillId: string) => void
 }) {
+  const t = useTranslations('skill.createDialog')
   const [tab, setTab] = useState<TabKey>(initialTab)
 
   return (
     <>
       <DialogShell.Header
-        title="New skill"
-        description="Create a text snippet, upload a package, or scaffold a folder you can edit inline."
+        title={t('title')}
+        description={t('description')}
       />
       <DialogShell.Body>
         <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)}>
           <TabsList variant="line">
             <TabsTrigger value="text">
-              <FileText className="size-3.5" /> Text
+              <FileText className="size-3.5" /> {t('tabs.text')}
             </TabsTrigger>
             <TabsTrigger value="package">
-              <Upload className="size-3.5" /> Package
+              <Upload className="size-3.5" /> {t('tabs.package')}
             </TabsTrigger>
             <TabsTrigger value="scratch">
-              <Sparkles className="size-3.5" /> From scratch
+              <Sparkles className="size-3.5" /> {t('tabs.scratch')}
             </TabsTrigger>
           </TabsList>
 
@@ -106,6 +108,7 @@ function TextTab({
   onClose: () => void
   onCreated?: (skillId: string) => void
 }) {
+  const t = useTranslations('skill.createDialog.text')
   const create = useCreateTextSkill()
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
@@ -116,7 +119,7 @@ function TextTab({
 
   async function handleSubmit() {
     if (!canSubmit) {
-      toast.error('Name and content are required')
+      toast.error(t('required'))
       return
     }
     try {
@@ -126,11 +129,11 @@ function TextTab({
         description: description.trim() || null,
         content,
       })
-      toast.success('Skill created')
+      toast.success(t('created'))
       onCreated?.(created.id)
       onClose()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Save failed')
+      toast.error(e instanceof Error ? e.message : t('saveFailed'))
     }
   }
 
@@ -139,7 +142,7 @@ function TextTab({
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label htmlFor="skill-name">
-            Name <span className="text-destructive">*</span>
+            {t('name')} <span className="text-destructive">*</span>
           </label>
           <Input
             id="skill-name"
@@ -148,17 +151,17 @@ function TextTab({
           />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="skill-slug">Slug</label>
+          <label htmlFor="skill-slug">{t('slug')}</label>
           <Input
             id="skill-slug"
             value={slug}
-            placeholder="(auto-generated)"
+            placeholder={t('slugPlaceholder')}
             onChange={(e) => setSlug(e.target.value)}
           />
         </div>
       </div>
       <div className="space-y-1.5">
-        <label htmlFor="skill-desc">Description</label>
+        <label htmlFor="skill-desc">{t('description')}</label>
         <Input
           id="skill-desc"
           value={description}
@@ -167,7 +170,7 @@ function TextTab({
       </div>
       <div className="space-y-1.5">
         <label htmlFor="skill-content">
-          Content (markdown) <span className="text-destructive">*</span>
+          {t('content')} <span className="text-destructive">*</span>
         </label>
         <Textarea
           id="skill-content"
@@ -200,6 +203,7 @@ function PackageTab({
   onClose: () => void
   onCreated?: (skillId: string) => void
 }) {
+  const t = useTranslations('skill.createDialog.package')
   const upload = useUploadPackageSkill()
   const inputRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = useState<File | null>(null)
@@ -208,19 +212,18 @@ function PackageTab({
     if (!file) return
     try {
       const created = await upload.mutateAsync(file)
-      toast.success('Skill package uploaded')
+      toast.success(t('uploaded'))
       onCreated?.(created.id)
       onClose()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Upload failed')
+      toast.error(e instanceof Error ? e.message : t('uploadFailed'))
     }
   }
 
   return (
     <div className="flex h-full flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        Upload a ZIP archive containing a SKILL.md with YAML frontmatter, plus
-        any auxiliary files (markdown, code, images). Max 10MB.
+        {t('description')}
       </p>
       <div className="space-y-3">
         <input
@@ -243,7 +246,7 @@ function PackageTab({
           onSubmit={handleUpload}
           submitLabel={
             <>
-              <Upload className="mr-1 size-4" /> Upload
+              <Upload className="mr-1 size-4" /> {t('submit')}
             </>
           }
           pending={upload.isPending}
@@ -265,6 +268,7 @@ function ScratchTab({
   onClose: () => void
   onCreated?: (skillId: string) => void
 }) {
+  const t = useTranslations('skill.createDialog.scratch')
   const upload = useUploadPackageSkill()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -280,18 +284,18 @@ function ScratchTab({
       const skillMd = buildSkillMd(name.trim(), description.trim(), slug)
       const zip = new JSZip()
       const folder = zip.folder(slug)
-      if (!folder) throw new Error('Failed to scaffold zip')
+      if (!folder) throw new Error(t('zipFailed'))
       folder.file('SKILL.md', skillMd)
       const blob = await zip.generateAsync({ type: 'blob' })
       const file = new File([blob], `${slug}.skill`, {
         type: 'application/zip',
       })
       const created = await upload.mutateAsync(file)
-      toast.success('Skill scaffolded — opening editor…')
+      toast.success(t('created'))
       onCreated?.(created.id)
       onClose()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Scaffold failed')
+      toast.error(e instanceof Error ? e.message : t('failed'))
     } finally {
       setBusy(false)
     }
@@ -300,28 +304,27 @@ function ScratchTab({
   return (
     <div className="flex h-full flex-col gap-4">
       <p className="text-sm text-muted-foreground">
-        Create an empty package skill with just a SKILL.md stub. The detail
-        editor opens automatically so you can add files inline.
+        {t('description')}
       </p>
       <div className="space-y-1.5">
         <label htmlFor="scratch-name">
-          Name <span className="text-destructive">*</span>
+          {t('name')} <span className="text-destructive">*</span>
         </label>
         <Input
           id="scratch-name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="my-helpful-skill"
+          placeholder={t('namePlaceholder')}
         />
       </div>
       <div className="space-y-1.5">
-        <label htmlFor="scratch-desc">Description</label>
+        <label htmlFor="scratch-desc">{t('descriptionLabel')}</label>
         <Textarea
           id="scratch-desc"
           value={description}
           rows={3}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="One sentence describing what this skill does."
+          placeholder={t('descriptionPlaceholder')}
         />
       </div>
       <div className="mt-auto flex justify-end gap-2 pt-2">
@@ -335,7 +338,7 @@ function ScratchTab({
               ) : (
                 <Sparkles className="mr-1 size-4" />
               )}
-              Scaffold &amp; edit
+              {t('submit')}
             </>
           }
           pending={busy || upload.isPending}

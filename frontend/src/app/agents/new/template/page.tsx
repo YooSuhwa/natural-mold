@@ -24,20 +24,21 @@ type SortKey = 'newest' | 'name'
 
 const CATEGORIES: { value: string; labelKey: string }[] = [
   { value: '', labelKey: 'category.all' },
-  { value: '생산성', labelKey: 'category.productivity' },
-  { value: '커뮤니케이션', labelKey: 'category.communication' },
-  { value: '데이터', labelKey: 'category.data' },
+  { value: 'category.productivityValue', labelKey: 'category.productivity' },
+  { value: 'category.communicationValue', labelKey: 'category.communication' },
+  { value: 'category.dataValue', labelKey: 'category.data' },
 ]
 
 export default function TemplateSelectionPage() {
   const router = useRouter()
   const t = useTranslations('agent.template')
   const [selectedCategory, setSelectedCategory] = useState('')
+  const categoryValue = selectedCategory ? t(selectedCategory) : ''
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortKey>('newest')
   const [creatingId, setCreatingId] = useState<string | null>(null)
 
-  const { data: templates, isLoading } = useTemplates(selectedCategory || undefined)
+  const { data: templates, isLoading } = useTemplates(categoryValue || undefined)
   const { data: models } = useModels()
   const createAgent = useCreateAgent()
 
@@ -92,12 +93,12 @@ export default function TemplateSelectionPage() {
           onCategoryChange={setSelectedCategory}
           search={search}
           onSearchChange={setSearch}
-          sortBy={sortBy}
           onSortToggle={() => setSortBy((s) => (s === 'newest' ? 'name' : 'newest'))}
           searchPlaceholder={t('search.placeholder')}
           searchAriaLabel={t('search.ariaLabel')}
           sortLabel={sortBy === 'newest' ? t('sort.newest') : t('sort.name')}
           sortAriaLabel={sortBy === 'newest' ? t('sort.ariaLabelNewest') : t('sort.ariaLabelName')}
+          categoryAriaLabel={t('category.ariaLabel')}
           getCategoryLabel={(key) => t(key)}
         />
 
@@ -164,12 +165,12 @@ type FiltersBarProps = {
   onCategoryChange: (value: string) => void
   search: string
   onSearchChange: (value: string) => void
-  sortBy: SortKey
   onSortToggle: () => void
   searchPlaceholder: string
   searchAriaLabel: string
   sortLabel: string
   sortAriaLabel: string
+  categoryAriaLabel: string
   getCategoryLabel: (key: string) => string
 }
 
@@ -178,19 +179,19 @@ function FiltersBar({
   onCategoryChange,
   search,
   onSearchChange,
-  sortBy,
   onSortToggle,
   searchPlaceholder,
   searchAriaLabel,
   sortLabel,
   sortAriaLabel,
+  categoryAriaLabel,
   getCategoryLabel,
 }: FiltersBarProps) {
   return (
     <div className="flex flex-col gap-3.5">
       <div
         role="tablist"
-        aria-label="템플릿 카테고리"
+        aria-label={categoryAriaLabel}
         className="inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1"
       >
         {CATEGORIES.map((cat) => {

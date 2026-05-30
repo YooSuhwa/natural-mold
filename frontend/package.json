@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "lint:i18n": "node scripts/check-static-i18n.mjs",
+    "lint:i18n:strict": "node scripts/check-static-i18n.mjs --strict-ascii",
     "format": "prettier --write 'src/**/*.{ts,tsx}'",
     "format:check": "prettier --check 'src/**/*.{ts,tsx}'",
     "test": "vitest",

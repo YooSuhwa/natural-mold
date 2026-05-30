@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { SlidersHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -32,21 +33,8 @@ import type { Credential } from '@/lib/types/credential'
 import type { DiscoveredModel } from '@/lib/types/model'
 import {
   SYSTEM_LLM_CREDENTIAL_KEYS,
-  type SystemLlmRole,
   type SystemLlmSettingOut,
 } from '@/lib/types/system-llm-setting'
-
-const ROLE_LABELS: Record<SystemLlmRole, string> = {
-  text_primary: '텍스트 기본 모델',
-  text_fallback: '텍스트 폴백 모델',
-  image: '이미지 모델',
-}
-
-const ROLE_DESCRIPTIONS: Record<SystemLlmRole, string> = {
-  text_primary: 'Builder/Assistant가 사용하는 기본 텍스트 LLM.',
-  text_fallback: '기본 모델 호출이 실패할 때 사용하는 폴백 텍스트 LLM.',
-  image: '이미지 생성에 사용하는 모델 (base_url 주입 지원).',
-}
 
 const NONE_VALUE = '__none__'
 
@@ -62,6 +50,7 @@ const LLM_CREDENTIAL_KEYS = SYSTEM_LLM_CREDENTIAL_KEYS as readonly string[]
  * the chrome and avoids 403 noise for users who land via a bookmarked URL.
  */
 export default function SystemLlmSettingsPage() {
+  const t = useTranslations('systemLlm')
   const router = useRouter()
   const { data: user, isPending } = useSession()
   const denied = !isPending && !!user && !user.is_super_user
@@ -73,7 +62,7 @@ export default function SystemLlmSettingsPage() {
   if (isPending || denied) {
     return (
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
-        <p className="text-sm text-muted-foreground">불러오는 중…</p>
+        <p className="text-sm text-muted-foreground">{t('loading')}</p>
       </div>
     )
   }
@@ -82,6 +71,7 @@ export default function SystemLlmSettingsPage() {
 }
 
 function SystemLlmSettingsPageInner() {
+  const t = useTranslations('systemLlm')
   const { data: settings, isLoading } = useSystemLlmSettings()
   const { data: credentials } = useSystemCredentials()
 
@@ -96,24 +86,22 @@ function SystemLlmSettingsPageInner() {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader
-        title="System LLM 설정"
-        description="Builder·Assistant·이미지 생성이 사용하는 시스템 모델을 역할별로 선택합니다. 자격증명 등록은 시스템 자격증명 화면에서 진행하세요."
+        title={t('title')}
+        description={t('description')}
       />
 
       <div className="rounded-lg border bg-amber-50/40 p-3 text-xs text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
         <p className="flex items-center gap-2 font-medium">
-          <SlidersHorizontal className="size-3.5" /> 운영자 전용
+          <SlidersHorizontal className="size-3.5" />
+          {t('operatorOnly.title')}
         </p>
         <p className="mt-1 text-amber-800/80 dark:text-amber-200/70">
-          세 슬롯을 모두 설정하기 전까지 Builder/Assistant/이미지 생성이
-          동작하지 않습니다. 제공자는 선택한 시스템 자격증명에서 자동으로
-          파생되며, openai_compatible/openrouter는 자격증명의 base_url을
-          그대로 사용합니다.
+          {t('operatorOnly.description')}
         </p>
       </div>
 
       {isLoading || !settings ? (
-        <p className="text-sm text-muted-foreground">불러오는 중…</p>
+        <p className="text-sm text-muted-foreground">{t('loading')}</p>
       ) : (
         <div className="grid gap-4">
           {settings.map((setting) => (
@@ -136,6 +124,7 @@ function SlotCard({
   setting: SystemLlmSettingOut
   credentials: Credential[]
 }) {
+  const t = useTranslations('systemLlm')
   const update = useUpdateSystemLlmSetting()
   const discover = useDiscoverModels()
 
@@ -152,7 +141,7 @@ function SlotCard({
     discover.mutate(id, {
       onSuccess: (list) => setModels(list),
       onError: (e) =>
-        toast.error(e instanceof Error ? e.message : '모델 목록 로드 실패'),
+        toast.error(e instanceof Error ? e.message : t('toast.loadModelsFailed')),
     })
   }
 
@@ -190,9 +179,9 @@ function SlotCard({
         role: setting.role,
         data: { credential_id: credentialId, model_name: modelName },
       })
-      toast.success(`${ROLE_LABELS[setting.role]} 저장 완료`)
+      toast.success(t('toast.saved', { role: t(`roles.${setting.role}.label`) }))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : '저장 실패')
+      toast.error(e instanceof Error ? e.message : t('toast.saveFailed'))
     }
   }
 
@@ -201,36 +190,36 @@ function SlotCard({
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-base">
-            {ROLE_LABELS[setting.role]}
+            {t(`roles.${setting.role}.label`)}
           </CardTitle>
           {setting.configured ? (
-            <Badge variant="default">설정됨</Badge>
+            <Badge variant="default">{t('configured')}</Badge>
           ) : (
-            <Badge variant="outline">미설정</Badge>
+            <Badge variant="outline">{t('notConfigured')}</Badge>
           )}
         </div>
-        <CardDescription>{ROLE_DESCRIPTIONS[setting.role]}</CardDescription>
+        <CardDescription>{t(`roles.${setting.role}.description`)}</CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4">
         <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-medium text-muted-foreground">자격증명</span>
+            <span className="text-xs font-medium text-muted-foreground">{t('credential')}</span>
             <span className="font-medium text-foreground">
-              {selectedCredentialName ?? '선택 안 함'}
+              {selectedCredentialName ?? t('none')}
             </span>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-medium text-muted-foreground">모델</span>
+            <span className="text-xs font-medium text-muted-foreground">{t('model')}</span>
             <span className="font-mono text-xs text-foreground">
-              {selectedModelLabel ?? '선택 안 함'}
+              {selectedModelLabel ?? t('none')}
             </span>
           </div>
         </div>
 
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
-            시스템 자격증명
+            {t('systemCredential')}
           </label>
           <Select
             value={credentialId ?? NONE_VALUE}
@@ -238,11 +227,11 @@ function SlotCard({
           >
             <SelectTrigger className="w-full">
               <span className="truncate">
-                {selectedCredentialName ?? '자격증명 선택'}
+                {selectedCredentialName ?? t('selectCredential')}
               </span>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={NONE_VALUE}>선택 안 함</SelectItem>
+              <SelectItem value={NONE_VALUE}>{t('none')}</SelectItem>
               {credentials.map((c) => (
                 <SelectItem key={c.id} value={c.id}>
                   {c.name} · {c.definition_key}
@@ -252,8 +241,7 @@ function SlotCard({
           </Select>
           {credentials.length === 0 && (
             <p className="text-xs text-muted-foreground">
-              사용 가능한 LLM 시스템 자격증명이 없습니다. 시스템 자격증명
-              화면에서 먼저 등록하세요.
+              {t('emptyCredentials')}
             </p>
           )}
         </div>
@@ -261,7 +249,7 @@ function SlotCard({
         <div className="space-y-1.5">
           <div className="flex items-center justify-between gap-2">
             <label className="text-xs font-medium text-muted-foreground">
-              모델
+              {t('model')}
             </label>
             {credentialId && (
               <Button
@@ -271,7 +259,7 @@ function SlotCard({
                 onClick={() => loadModels(credentialId)}
                 disabled={discover.isPending}
               >
-                {discover.isPending ? '불러오는 중…' : '모델 목록 불러오기'}
+                {discover.isPending ? t('loading') : t('loadModels')}
               </Button>
             )}
           </div>
@@ -281,7 +269,7 @@ function SlotCard({
             disabled={!credentialId || modelOptions.length === 0}
           >
             <SelectTrigger className="w-full">
-              <span className="truncate">{selectedModelLabel ?? '모델 선택'}</span>
+              <span className="truncate">{selectedModelLabel ?? t('selectModel')}</span>
             </SelectTrigger>
             <SelectContent>
               {modelOptions.map((name) => (
@@ -293,16 +281,15 @@ function SlotCard({
           </Select>
           {!credentialId ? (
             <p className="text-xs text-muted-foreground">
-              먼저 시스템 자격증명을 선택하세요.
+              {t('selectCredentialFirst')}
             </p>
           ) : discover.isError ? (
             <p className="text-xs text-destructive">
-              모델 목록을 불러오지 못했습니다. ‘모델 목록 불러오기’로 다시
-              시도하세요.
+              {t('modelLoadFailed')}
             </p>
           ) : !discover.isPending && modelOptions.length === 0 ? (
             <p className="text-xs text-muted-foreground">
-              이 자격증명에서 사용 가능한 모델이 없습니다.
+              {t('noModels')}
             </p>
           ) : null}
         </div>
@@ -310,12 +297,12 @@ function SlotCard({
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           {provider && (
             <span>
-              제공자 <span className="font-mono">{provider}</span>
+              {t('provider')} <span className="font-mono">{provider}</span>
             </span>
           )}
           {setting.base_url && (
             <span>
-              Base URL <span className="font-mono">{setting.base_url}</span>
+              {t('baseUrl')} <span className="font-mono">{setting.base_url}</span>
             </span>
           )}
         </div>
@@ -323,7 +310,7 @@ function SlotCard({
 
       <CardContent className="flex justify-end pt-0">
         <Button onClick={handleSave} disabled={!canSave || update.isPending}>
-          {update.isPending ? '저장 중…' : '저장'}
+          {update.isPending ? t('saving') : t('save')}
         </Button>
       </CardContent>
     </Card>

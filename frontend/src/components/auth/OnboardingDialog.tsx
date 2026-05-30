@@ -84,9 +84,9 @@ function OnboardingDialogInner({ user }: { user: User }) {
           <div className="rounded-lg border border-border/60 bg-muted/40 p-4 space-y-2">
             <p className="font-medium">{t('providers')}</p>
             <ul className="list-disc pl-5 text-muted-foreground space-y-0.5">
-              <li>OpenAI API Key</li>
-              <li>Anthropic API Key</li>
-              <li>Google AI Studio API Key</li>
+              <li>{t('providerList.openai')}</li>
+              <li>{t('providerList.anthropic')}</li>
+              <li>{t('providerList.google')}</li>
             </ul>
           </div>
           <p className="text-muted-foreground">{t('encryptedNote')}</p>

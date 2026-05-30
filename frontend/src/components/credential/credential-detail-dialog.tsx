@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { KeyRound, Power, Trash2 } from 'lucide-react'
 
@@ -31,6 +32,8 @@ export function CredentialDetailDialog(props: Props) {
 }
 
 function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props) {
+  const t = useTranslations('credentials.detail')
+  const tc = useTranslations('common')
   const { data: credential, isLoading } = useCredential(credentialId)
   const { data: auditLogs } = useCredentialAuditLogs(credentialId, 10)
   const update = useUpdateCredential()
@@ -43,9 +46,9 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
     const next = credential.status === 'disabled' ? 'active' : 'disabled'
     try {
       await update.mutateAsync({ id: credential.id, data: { status: next } })
-      toast.success(`Credential ${next}`)
+      toast.success(t('toast.statusChanged', { status: next }))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Update failed')
+      toast.error(e instanceof Error ? e.message : t('toast.updateFailed'))
     }
   }
 
@@ -53,10 +56,10 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
     if (!credential) return
     try {
       await remove.mutateAsync(credential.id)
-      toast.success('Credential deleted')
+      toast.success(t('toast.deleted'))
       onOpenChange(false)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Delete failed')
+      toast.error(e instanceof Error ? e.message : t('toast.deleteFailed'))
     }
   }
 
@@ -66,7 +69,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
       const { authorization_url } = await oauth.mutateAsync(credential.id)
       window.open(authorization_url, '_blank', 'noopener,noreferrer')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'OAuth start failed')
+      toast.error(e instanceof Error ? e.message : t('toast.oauthStartFailed'))
     }
   }
 
@@ -74,14 +77,14 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
     <DialogShell open={open} onOpenChange={onOpenChange} size="lg">
       {isLoading || !credential ? (
         <>
-          <DialogShell.Header title="Loading credential…" />
+          <DialogShell.Header title={t('loading')} />
           <DialogShell.Body>
             <Skeleton className="h-32 w-full rounded-lg" />
             <Skeleton className="h-40 w-full rounded-lg" />
           </DialogShell.Body>
           <DialogShell.Footer>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {tc('close')}
             </Button>
           </DialogShell.Footer>
         </>
@@ -98,20 +101,20 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
               <CredentialTestButton credentialId={credential.id} />
               <Button variant="outline" size="sm" onClick={toggleStatus}>
                 <Power className="size-3.5" />
-                {credential.status === 'disabled' ? 'Enable' : 'Disable'}
+                {credential.status === 'disabled' ? t('enable') : t('disable')}
               </Button>
               <Button variant="outline" size="sm" onClick={handleOAuth}>
                 <KeyRound className="size-3.5" />
-                Re-authorize
+                {t('reauthorize')}
               </Button>
             </div>
 
             <div className="space-y-2 text-xs">
-              <Row label="ID" value={credential.id} mono />
-              <Row label="Key ID" value={credential.key_id} mono />
-              <Row label="Created" value={new Date(credential.created_at).toLocaleString()} />
+              <Row label={t('rows.id')} value={credential.id} mono />
+              <Row label={t('rows.keyId')} value={credential.key_id} mono />
+              <Row label={t('rows.created')} value={new Date(credential.created_at).toLocaleString()} />
               <Row
-                label="Last used"
+                label={t('rows.lastUsed')}
                 value={
                   credential.last_used_at
                     ? new Date(credential.last_used_at).toLocaleString()
@@ -119,7 +122,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
                 }
               />
               <Row
-                label="Last tested"
+                label={t('rows.lastTested')}
                 value={
                   credential.last_tested_at
                     ? new Date(credential.last_tested_at).toLocaleString()
@@ -127,7 +130,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
                 }
               />
               <Row
-                label="Stored fields"
+                label={t('rows.storedFields')}
                 value={credential.field_keys.join(', ') || '—'}
                 mono
               />
@@ -135,7 +138,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
 
             <section>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Recent audit log
+                {t('audit.title')}
               </h3>
               {auditLogs && auditLogs.length > 0 ? (
                 <ul className="space-y-1.5 text-xs">
@@ -158,7 +161,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
                   ))}
                 </ul>
               ) : (
-                <p className="text-xs text-muted-foreground">No audit entries yet.</p>
+                <p className="text-xs text-muted-foreground">{t('audit.empty')}</p>
               )}
             </section>
           </DialogShell.Body>
@@ -166,7 +169,7 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
             {confirming ? (
               <div className="flex-1">
                 <DeleteConfirmInline
-                  entity="credential"
+                  entity={t('entity')}
                   onCancel={() => setConfirming(false)}
                   onConfirm={handleDelete}
                   pending={remove.isPending}
@@ -180,11 +183,11 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
                 onClick={() => setConfirming(true)}
               >
                 <Trash2 className="size-3.5" />
-                Delete
+                {t('delete')}
               </Button>
             )}
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {tc('close')}
             </Button>
           </DialogShell.Footer>
         </>

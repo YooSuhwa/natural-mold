@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { BUILDER_TOKENS as T } from './builder-tokens'
 
 export interface ClarifyingQuestionsCardProps {
@@ -16,9 +17,11 @@ export interface ClarifyingQuestionsCardProps {
  * 백엔드가 별도 tool로 emit하기 시작하면 그 tool UI에서 이 컴포넌트를 wrap해 사용.
  */
 export function ClarifyingQuestionsCard({
-  label = '확인이 필요해요',
+  label,
   items,
 }: ClarifyingQuestionsCardProps) {
+  const t = useTranslations('chat.intentSummary')
+  const resolvedLabel = label ?? t('clarifyingTitle')
   return (
     <div
       className="rounded-[12px]"
@@ -32,7 +35,7 @@ export function ClarifyingQuestionsCard({
         className="mb-2 text-[12.5px] font-semibold"
         style={{ color: T.muted, letterSpacing: '-0.005em' }}
       >
-        {label}
+          {resolvedLabel}
       </div>
       <ul
         className="m-0 list-disc text-[14px]"

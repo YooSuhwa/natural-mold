@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -43,6 +44,7 @@ export function PublishWizard({ skill, open, onOpenChange }: PublishWizardProps)
 }
 
 function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
+  const t = useTranslations('marketplace.publishWizard')
   const router = useRouter()
   const [step, setStep] = useState<Step>('review')
   const [name, setName] = useState(skill?.name ?? '')
@@ -69,7 +71,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
     if (visibility === 'restricted' && aclUserIds.length === 0) {
       setError({
         code: 'marketplace_acl_required',
-        message: 'restricted 게시는 최소 1명의 공유 대상이 필요합니다.',
+        message: t('errors.aclRequired'),
       })
       setStep('visibility')
       return
@@ -87,7 +89,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
         },
       })
       setStep('done')
-      toast.success('Published to marketplace')
+      toast.success(t('toast.published'))
       router.push(`/marketplace/${created.id}`)
     } catch (err) {
       if (err instanceof ApiError) {
@@ -96,7 +98,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
         else if (err.code === 'marketplace_acl_required') setStep('visibility')
         else if (err.code === 'marketplace_invalid_visibility') setStep('visibility')
       } else {
-        setError({ message: '네트워크 오류가 발생했습니다.' })
+        setError({ message: t('errors.network') })
       }
     }
   }
@@ -118,8 +120,8 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="xl" height="tall">
       <DialogShell.Header
-        title={`Publish ${skill.name}`}
-        description="Make this skill discoverable in the marketplace."
+        title={t('title', { name: skill.name })}
+        description={t('description')}
       />
 
       <DialogShell.Split>
@@ -139,7 +141,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
                 <span className="inline-flex size-5 items-center justify-center rounded-full bg-muted text-[10px]">
                   {i + 1}
                 </span>
-                <span className="capitalize">{labelForStep(s)}</span>
+                <span className="capitalize">{t(`steps.${s}`)}</span>
               </li>
             ))}
           </ol>
@@ -154,12 +156,9 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
 
           {step === 'review' ? (
             <div className="space-y-3 text-sm">
-              <p>
-                마켓플레이스에 게시되기 전 secret 검사가 자동 실행됩니다. 차단된 파일이 있으면 1단계로
-                돌아와 제거 후 다시 시도하세요.
-              </p>
+              <p>{t('reviewHint')}</p>
               <div className="rounded-md bg-muted p-3 text-xs">
-                <p className="font-medium">Skill</p>
+                <p className="font-medium">{t('review.skill')}</p>
                 <p>{skill.name}</p>
                 <p className="text-muted-foreground">{skill.kind}</p>
               </div>
@@ -169,11 +168,11 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
           {step === 'metadata' ? (
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <label htmlFor="pub-name">Name</label>
+                <label htmlFor="pub-name">{t('fields.name')}</label>
                 <Input id="pub-name" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
               <div className="space-y-1.5">
-                <label htmlFor="pub-desc">Description</label>
+                <label htmlFor="pub-desc">{t('fields.description')}</label>
                 <Textarea
                   id="pub-desc"
                   rows={3}
@@ -182,7 +181,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
                 />
               </div>
               <div className="space-y-1.5">
-                <label htmlFor="pub-notes">Release notes (optional)</label>
+                <label htmlFor="pub-notes">{t('fields.releaseNotes')}</label>
                 <Textarea
                   id="pub-notes"
                   rows={3}
@@ -196,7 +195,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
           {step === 'visibility' ? (
             <div className="space-y-4">
               <div className="space-y-1.5">
-                <label htmlFor="pub-vis">Visibility</label>
+                <label htmlFor="pub-vis">{t('fields.visibility')}</label>
                 <Select
                   value={visibility}
                   onValueChange={(v: string | null) =>
@@ -207,16 +206,16 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="private">Private (me only)</SelectItem>
-                    <SelectItem value="restricted">Restricted (selected users)</SelectItem>
-                    <SelectItem value="public">Public (pending listing)</SelectItem>
-                    <SelectItem value="unlisted">Unlisted (link only)</SelectItem>
+                    <SelectItem value="private">{t('visibility.private')}</SelectItem>
+                    <SelectItem value="restricted">{t('visibility.restricted')}</SelectItem>
+                    <SelectItem value="public">{t('visibility.public')}</SelectItem>
+                    <SelectItem value="unlisted">{t('visibility.unlisted')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               {visibility === 'restricted' ? (
                 <div className="space-y-1.5">
-                  <label htmlFor="pub-acl">Shared user IDs (comma-separated)</label>
+                  <label htmlFor="pub-acl">{t('fields.acl')}</label>
                   <Input
                     id="pub-acl"
                     value={aclInput}
@@ -224,14 +223,13 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
                     placeholder="00000000-0000-…, …"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Phase 1: user lookup picker는 다음 슬라이스에서 추가됩니다. 임시로 user UUID를 직접
-                    입력하세요.
+                    {t('aclHint')}
                   </p>
                 </div>
               ) : null}
               {visibility === 'public' ? (
                 <div className="rounded-md bg-status-warn/10 p-3 text-xs text-status-warn">
-                  공개 publish 후에도 카탈로그 검색 노출은 운영자 승인이 필요합니다.
+                  {t('publicHint')}
                 </div>
               ) : null}
             </div>
@@ -239,13 +237,15 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
 
           {step === 'confirm' ? (
             <div className="space-y-2 text-sm">
-              <p>다음을 수행합니다:</p>
+              <p>{t('confirmIntro')}</p>
               <ul className="list-inside list-disc text-muted-foreground">
-                <li>마켓플레이스 item 생성</li>
-                <li>새 version snapshot 생성</li>
-                <li>가시성: <span className="font-medium text-foreground">{visibility}</span></li>
+                <li>{t('confirmCreateItem')}</li>
+                <li>{t('confirmCreateVersion')}</li>
+                <li>
+                  {t('visibilityLabel')} <span className="font-medium text-foreground">{visibility}</span>
+                </li>
                 {visibility === 'restricted' ? (
-                  <li>ACL: {aclInput.split(',').filter(Boolean).length} user(s)</li>
+                  <li>{t('aclSummary', { count: aclInput.split(',').filter(Boolean).length })}</li>
                 ) : null}
               </ul>
             </div>
@@ -253,9 +253,9 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
 
           {step === 'done' ? (
             <div className="space-y-3 text-center">
-              <p className="text-base font-medium">Published</p>
+              <p className="text-base font-medium">{t('done.title')}</p>
               <p className="text-sm text-muted-foreground">
-                Redirecting to the marketplace detail page…
+                {t('done.description')}
               </p>
             </div>
           ) : null}
@@ -264,35 +264,27 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
 
       <DialogShell.Footer>
         {isLast ? (
-          <Button onClick={() => onOpenChange(false)}>Close</Button>
+          <Button onClick={() => onOpenChange(false)}>{t('actions.close')}</Button>
         ) : (
           <>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t('actions.cancel')}
             </Button>
             {stepIndex > 0 ? (
               <Button variant="outline" onClick={goBack}>
-                Back
+                {t('actions.back')}
               </Button>
             ) : null}
             <Button onClick={goNext} disabled={publish.isPending}>
               {step === 'confirm'
                 ? publish.isPending
-                  ? 'Publishing…'
-                  : 'Publish'
-                : 'Next'}
+                  ? t('actions.publishing')
+                  : t('actions.publish')
+                : t('actions.next')}
             </Button>
           </>
         )}
       </DialogShell.Footer>
     </DialogShell>
   )
-}
-
-function labelForStep(step: Step): string {
-  if (step === 'review') return 'Review'
-  if (step === 'metadata') return 'Metadata'
-  if (step === 'visibility') return 'Visibility'
-  if (step === 'confirm') return 'Confirm'
-  return 'Done'
 }

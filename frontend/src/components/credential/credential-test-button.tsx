@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Loader2, Activity } from 'lucide-react'
 
@@ -26,9 +27,10 @@ export function CredentialTestButton({
   preview,
   size = 'sm',
   variant = 'outline',
-  label = 'Test',
+  label,
   onResult,
 }: CredentialTestButtonProps) {
+  const t = useTranslations('credentials.testButton')
   const test = useTestCredential()
   const previewTest = usePreviewTestCredential()
   const [pending, setPending] = useState(false)
@@ -43,13 +45,13 @@ export function CredentialTestButton({
           : null
       if (!result) return
       if (result.success) {
-        toast.success(result.message || 'Credential test succeeded')
+        toast.success(result.message || t('succeeded'))
       } else {
-        toast.error(result.message || 'Credential test failed')
+        toast.error(result.message || t('failed'))
       }
       onResult?.(result.success)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Test failed'
+      const msg = e instanceof Error ? e.message : t('failed')
       toast.error(msg)
       onResult?.(false)
     } finally {
@@ -70,7 +72,7 @@ export function CredentialTestButton({
       ) : (
         <Activity className="size-3.5" />
       )}
-      {label}
+      {label ?? t('label')}
     </Button>
   )
 }

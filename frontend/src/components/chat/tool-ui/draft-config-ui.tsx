@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
+import { useTranslations } from 'next-intl'
 import {
   BlocksIcon,
   BotIcon,
@@ -107,6 +108,7 @@ function DraftConfigSummary({
   draft: DraftConfig
   image_url?: string | null
 }) {
+  const t = useTranslations('chat.builderApproval')
   const tools = draft.tools ?? []
   const middlewares = draft.middlewares ?? []
   return (
@@ -160,7 +162,7 @@ function DraftConfigSummary({
             style={{ color: T.muted, letterSpacing: '-0.005em' }}
           >
             <WrenchIcon className="size-3" />
-            도구 ({tools.length})
+            {t('draftTools', { count: tools.length })}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {tools.map((tool) => (
@@ -176,7 +178,7 @@ function DraftConfigSummary({
             style={{ color: T.muted, letterSpacing: '-0.005em' }}
           >
             <BlocksIcon className="size-3" />
-            미들웨어 ({middlewares.length})
+            {t('draftMiddlewares', { count: middlewares.length })}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {middlewares.map((mw) => (
@@ -194,12 +196,13 @@ function DraftConfigSummary({
 // ---------------------------------------------------------------------------
 
 function DraftConfigCardView({ args }: { args: DraftConfigArgs }) {
+  const t = useTranslations('chat.builderApproval')
   const draft = args.draft || {}
   const image = args.image_url ?? draft.image_url ?? null
   return (
     <div className="my-3">
       <PhaseCard
-        header={<DraftHeader title={args.title || '에이전트 설정 미리보기'} variant="plain" />}
+        header={<DraftHeader title={args.title || t('draftPreviewTitle')} variant="plain" />}
       >
         <DraftConfigSummary draft={draft} image_url={image} />
       </PhaseCard>
@@ -225,6 +228,7 @@ function FeedbackTextarea({
   onChange: (v: string) => void
   disabled: boolean
 }) {
+  const t = useTranslations('chat.builderApproval')
   const [focused, setFocused] = useState(false)
   const composingRef = useRef(false)
   return (
@@ -243,7 +247,7 @@ function FeedbackTextarea({
         onKeyDown={(e) => {
           if (e.key === 'Enter' && composingRef.current) e.stopPropagation()
         }}
-        placeholder="수정 의견을 입력하세요 (예: 도구를 X로 바꿔줘)..."
+        placeholder={t('placeholderWithExample')}
         rows={2}
         disabled={disabled}
         className="w-full resize-none font-sans text-[13.5px] outline-none transition-[border-color,box-shadow] duration-150"
@@ -275,6 +279,7 @@ function DraftApprovalActions({
   feedbackOpen: boolean
   setFeedbackOpen: (v: boolean) => void
 }) {
+  const t = useTranslations('chat.builderApproval')
   return (
     <div className="flex items-center justify-between" style={{ padding: '10px 14px' }}>
       <button
@@ -285,7 +290,7 @@ function DraftApprovalActions({
         style={{ color: T.muted, background: 'transparent', borderRadius: 6 }}
       >
         <PencilIcon className="size-3" />
-        {feedbackOpen ? '의견 닫기' : '수정 의견 작성'}
+        {feedbackOpen ? t('closeFeedback') : t('writeFeedback')}
       </button>
       <div className="flex items-center gap-2">
         <button
@@ -311,7 +316,7 @@ function DraftApprovalActions({
           }}
         >
           <XIcon className="size-3" strokeWidth={2.5} />
-          수정 요청
+          {t('requestRevision')}
         </button>
         <button
           type="button"
@@ -335,7 +340,7 @@ function DraftApprovalActions({
           }}
         >
           <CheckIcon className="size-3" strokeWidth={3} />
-          최종 승인
+          {t('finalApprove')}
         </button>
       </div>
     </div>
@@ -349,9 +354,10 @@ function DraftApprovalView({
   args: DraftConfigArgs
   status: 'running' | 'complete' | 'incomplete' | 'requires-action'
 }) {
+  const t = useTranslations('chat.builderApproval')
   const form = useApprovalForm({
     isComplete: status === 'complete',
-    approveDisplay: '최종 승인',
+    approveDisplay: t('finalApproveLabel'),
   })
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const draft = args.draft || {}
@@ -360,7 +366,7 @@ function DraftApprovalView({
   return (
     <div className="my-3">
       <PhaseCard
-        header={<DraftHeader title={args.title || '최종 확인'} variant="gradient" />}
+        header={<DraftHeader title={args.title || t('finalConfirmTitle')} variant="gradient" />}
         footer={
           // 결정 끝나면 footer(수정 요청 / 최종 승인 + textarea) 전체 unmount.
           form.isLocked ? null : (

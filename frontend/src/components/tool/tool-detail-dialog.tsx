@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
 
@@ -25,6 +26,8 @@ export function ToolDetailDialog(props: Props) {
 }
 
 function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
+  const t = useTranslations('tool.detailDialog')
+  const tc = useTranslations('common')
   const { data: tool, isLoading } = useTool(toolId)
   const { data: definition } = useToolType(tool?.definition_key)
   const update = useUpdateTool()
@@ -35,9 +38,9 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
     if (!tool) return
     try {
       await update.mutateAsync({ id: tool.id, data: { credential_id: next } })
-      toast.success('Credential updated')
+      toast.success(t('toast.credentialUpdated'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Update failed')
+      toast.error(e instanceof Error ? e.message : t('toast.updateFailed'))
     }
   }
 
@@ -45,10 +48,10 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
     if (!tool) return
     try {
       await remove.mutateAsync(tool.id)
-      toast.success('Tool deleted')
+      toast.success(t('toast.deleted'))
       onOpenChange(false)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Delete failed')
+      toast.error(e instanceof Error ? e.message : t('toast.deleteFailed'))
     }
   }
 
@@ -56,13 +59,13 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
     <DialogShell open={open} onOpenChange={onOpenChange} size="lg">
       {isLoading || !tool ? (
         <>
-          <DialogShell.Header title="Loading tool…" />
+          <DialogShell.Header title={t('loading')} />
           <DialogShell.Body>
             <Skeleton className="h-32 w-full rounded-lg" />
           </DialogShell.Body>
           <DialogShell.Footer>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {tc('close')}
             </Button>
           </DialogShell.Footer>
         </>
@@ -81,7 +84,7 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
           <DialogShell.Body>
             {definition?.credential_definition_keys.length ? (
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">Credential</label>
+                <label className="text-xs font-medium">{t('credential')}</label>
                 <CredentialPicker
                   value={tool.credential_id}
                   onChange={handleCredentialChange}
@@ -96,7 +99,7 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
             {confirming ? (
               <div className="flex-1">
                 <DeleteConfirmInline
-                  entity="tool"
+                  entity={t('entity')}
                   onCancel={() => setConfirming(false)}
                   onConfirm={handleDelete}
                   pending={remove.isPending}
@@ -110,11 +113,11 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
                 onClick={() => setConfirming(true)}
               >
                 <Trash2 className="size-3.5" />
-                Delete
+                {t('delete')}
               </Button>
             )}
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {tc('close')}
             </Button>
           </DialogShell.Footer>
         </>

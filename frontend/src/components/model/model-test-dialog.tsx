@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 
 import { DialogShell } from '@/components/shared/dialog-shell'
 import {
@@ -32,6 +33,7 @@ export function ModelTestDialog({
   open,
   onOpenChange,
 }: ModelTestDialogProps) {
+  const t = useTranslations('model.testDialog')
   const { data: credentials } = useCredentials()
   const { data: definitions } = useCredentialTypes()
   const [credentialId, setCredentialId] = useState<string>('')
@@ -68,7 +70,7 @@ export function ModelTestDialog({
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
       <DialogShell.Header
-        title={`Test ${model.display_name}`}
+        title={t('title', { name: model.display_name })}
         description={
           <span className="font-mono text-xs">
             {model.provider} · {model.model_name}
@@ -77,7 +79,7 @@ export function ModelTestDialog({
       />
       <DialogShell.Body>
         <div className="space-y-1.5">
-          <label htmlFor="test-cred">LLM credential</label>
+          <label htmlFor="test-cred">{t('llmCredential')}</label>
           <Select
             value={credentialId}
             onValueChange={(v) => v && setCredentialId(v)}
@@ -91,15 +93,15 @@ export function ModelTestDialog({
               <SelectValue
                 placeholder={
                   llmCredentials.length === 0
-                    ? 'No LLM credential available'
-                    : 'Select credential'
+                    ? t('noCredential')
+                    : t('selectCredential')
                 }
               >
                 {(selected) =>
                   llmCredentials.find((c) => c.id === selected)?.name ??
                   (llmCredentials.length === 0
-                    ? 'No LLM credential available'
-                    : 'Select credential')
+                    ? t('noCredential')
+                    : t('selectCredential'))
                 }
               </SelectValue>
             </SelectTrigger>
@@ -126,7 +128,7 @@ export function ModelTestDialog({
 
         {llmCredentials.length === 0 && (
           <p className="rounded border border-dashed p-3 text-xs text-muted-foreground">
-            Add an LLM credential first on the Credentials page.
+            {t('emptyCredential')}
           </p>
         )}
       </DialogShell.Body>

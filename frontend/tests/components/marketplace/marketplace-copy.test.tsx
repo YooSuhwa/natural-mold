@@ -70,29 +70,29 @@ function item(overrides: Partial<MarketplaceItem> = {}): MarketplaceItem {
 }
 
 describe('marketplace Korean copy', () => {
-  it('derives Korean primary CTA labels', () => {
-    expect(derivePrimaryCta(item()).label).toBe('설치')
+  it('derives primary CTA kinds for translated labels', () => {
+    expect(derivePrimaryCta(item()).kind).toBe('install')
     expect(
       derivePrimaryCta(
         item({
           installation: { installed: true, status: 'needs_setup', update_available: false, dirty: false },
         }),
-      ).label,
-    ).toBe('설정')
+      ).kind,
+    ).toBe('setup')
     expect(
       derivePrimaryCta(
         item({
           installation: { installed: true, status: 'active', update_available: true, dirty: false },
         }),
-      ).label,
-    ).toBe('업데이트')
+      ).kind,
+    ).toBe('update')
     expect(
       derivePrimaryCta(
         item({
           installation: { installed: true, status: 'active', update_available: false, dirty: false },
         }),
-      ).label,
-    ).toBe('열기')
+      ).kind,
+    ).toBe('open')
   })
 
   it('renders Korean card CTA and marketplace badges', () => {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   type ColumnDef,
   type ColumnFiltersState,
@@ -86,7 +87,7 @@ export function DataTable<T>({
   onRowClick,
   pageSize = 10,
   loading = false,
-  emptyTitle = '항목이 없어요',
+  emptyTitle,
   emptyDescription,
   emptyAction,
   enableRowSelection = false,
@@ -94,6 +95,8 @@ export function DataTable<T>({
   getRowId,
   toolbar,
 }: DataTableProps<T>) {
+  const t = useTranslations('common.dataTable')
+  const resolvedEmptyTitle = emptyTitle ?? t('emptyDefault')
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [search, setSearch] = useState('')
@@ -126,7 +129,7 @@ export function DataTable<T>({
         id: '__select',
         header: ({ table }) => (
           <Checkbox
-            aria-label="모든 행 선택"
+            aria-label={t('selectAll')}
             checked={table.getIsAllPageRowsSelected()}
             indeterminate={table.getIsSomePageRowsSelected()}
             onCheckedChange={(value) =>
@@ -137,7 +140,7 @@ export function DataTable<T>({
         ),
         cell: ({ row }) => (
           <Checkbox
-            aria-label="행 선택"
+            aria-label={t('selectRow')}
             checked={row.getIsSelected()}
             disabled={!row.getCanSelect()}
             onCheckedChange={(value) => row.toggleSelected(Boolean(value))}
@@ -149,7 +152,7 @@ export function DataTable<T>({
       } as ColumnDef<T, unknown>,
       ...columns,
     ] as ColumnDef<T, unknown>[]
-  }, [columns, enableRowSelection])
+  }, [columns, enableRowSelection, t])
 
   const table = useReactTable({
     data: filtered,
@@ -191,7 +194,7 @@ export function DataTable<T>({
           {searchable && (
             <SearchInput
               containerClassName="w-full sm:w-72"
-              placeholder={searchPlaceholder ?? '검색...'}
+              placeholder={searchPlaceholder ?? t('searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -262,7 +265,7 @@ export function DataTable<T>({
               <TableRow>
                 <TableCell colSpan={tableColumns.length} className="p-0">
                   <EmptyState
-                    title={emptyTitle}
+                    title={resolvedEmptyTitle}
                     description={emptyDescription}
                     action={emptyAction}
                     className="border-0"
@@ -292,8 +295,11 @@ export function DataTable<T>({
       {table.getPageCount() > 1 && (
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
-            {table.getState().pagination.pageIndex + 1}페이지 / {table.getPageCount()}페이지 ·{' '}
-            {table.getFilteredRowModel().rows.length}개 항목
+            {t('pagination', {
+              page: table.getState().pagination.pageIndex + 1,
+              totalPages: table.getPageCount(),
+              count: table.getFilteredRowModel().rows.length,
+            })}
           </span>
           <div className="flex gap-1">
             <Button
@@ -303,7 +309,7 @@ export function DataTable<T>({
               disabled={!table.getCanPreviousPage()}
             >
               <ChevronLeft className="size-4" />
-              이전
+              {t('previous')}
             </Button>
             <Button
               variant="outline"
@@ -311,7 +317,7 @@ export function DataTable<T>({
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
             >
-              다음
+              {t('next')}
               <ChevronRight className="size-4" />
             </Button>
           </div>
@@ -330,6 +336,7 @@ function DataTableFilter({
   value: string
   onValueChange: (value: string) => void
 }) {
+  const t = useTranslations('common.dataTable')
   return (
     <Select
       value={value || 'all'}
@@ -339,7 +346,7 @@ function DataTableFilter({
         <SelectValue placeholder={filter.label} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="all">전체 {filter.label}</SelectItem>
+        <SelectItem value="all">{t('allFilter', { label: filter.label })}</SelectItem>
         {filter.options.map((opt) => (
           <SelectItem key={opt.value} value={opt.value}>
             {opt.label}

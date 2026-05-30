@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -18,8 +19,8 @@ interface UpdateStrategyDialogProps {
 
 interface StrategyOption {
   value: UpdateStrategy
-  label: string
-  description: string
+  labelKey: string
+  descriptionKey: string
   /** True when this strategy is risky in the dirty case. */
   destructiveWhenDirty?: boolean
 }
@@ -27,22 +28,19 @@ interface StrategyOption {
 const STRATEGIES: StrategyOption[] = [
   {
     value: 'overwrite',
-    label: 'Overwrite my edits',
-    description:
-      '설치본을 최신 버전으로 덮어쓰고 직접 편집한 내용은 버립니다. dirty 상태에서는 데이터 손실이 발생합니다.',
+    labelKey: 'strategies.overwrite.label',
+    descriptionKey: 'strategies.overwrite.description',
     destructiveWhenDirty: true,
   },
   {
     value: 'install_new_copy',
-    label: 'Install as a new copy',
-    description:
-      '현재 설치본은 그대로 두고 별도 새 skill row로 최신 버전을 추가 설치합니다. 두 카피를 모두 관리해야 합니다.',
+    labelKey: 'strategies.install_new_copy.label',
+    descriptionKey: 'strategies.install_new_copy.description',
   },
   {
     value: 'keep_current',
-    label: 'Keep current install',
-    description:
-      '업데이트를 적용하지 않습니다. 다음 update available 상태가 다시 표시될 때까지 그대로 유지.',
+    labelKey: 'strategies.keep_current.label',
+    descriptionKey: 'strategies.keep_current.description',
   },
 ]
 
@@ -67,6 +65,7 @@ function UpdateStrategyDialogInner({
   open,
   onOpenChange,
 }: UpdateStrategyDialogProps) {
+  const t = useTranslations('marketplace.updateStrategy')
   // dirty 상태이면 destructive strategy를 1차 선택지로 띄우지 않는다 — 안전한
   // install_new_copy 를 default 로. 사용자가 의식적으로 overwrite 를 선택해야
   // 한다.
@@ -91,21 +90,21 @@ function UpdateStrategyDialogInner({
       await update.mutateAsync({ strategy })
       toast.success(
         strategy === 'overwrite'
-          ? `Updated ${item.name}`
-          : `Installed new copy of ${item.name}`,
+          ? t('toast.updated', { name: item.name })
+          : t('toast.installedNewCopy', { name: item.name }),
       )
       onOpenChange(false)
     } catch (err) {
       if (err instanceof ApiError) {
         setErrorMessage(
           err.code === 'marketplace_dirty_installation'
-            ? 'dirty 상태입니다. overwrite 또는 install_new_copy 중 하나를 명시적으로 선택해야 합니다.'
+            ? t('errors.dirty')
             : err.code === 'marketplace_item_disabled'
-              ? '원본 marketplace 항목이 비활성화되었습니다.'
-              : err.message || '업데이트에 실패했습니다.',
+              ? t('errors.disabled')
+              : err.message || t('errors.failed'),
         )
       } else {
-        setErrorMessage('네트워크 오류가 발생했습니다. 다시 시도하세요.')
+        setErrorMessage(t('errors.network'))
       }
     }
   }
@@ -113,11 +112,11 @@ function UpdateStrategyDialogInner({
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
       <DialogShell.Header
-        title={`Update ${item.name}`}
+        title={t('title', { name: item.name })}
         description={
           dirty
-            ? '설치본을 직접 편집한 흔적이 있습니다. 업데이트 전략을 명시적으로 선택해야 합니다.'
-            : '최신 마켓플레이스 버전으로 업데이트합니다.'
+            ? t('description.dirty')
+            : t('description.default')
         }
       />
 
@@ -128,7 +127,7 @@ function UpdateStrategyDialogInner({
           </div>
         ) : null}
 
-        <fieldset className="space-y-2" aria-label="Update strategy">
+        <fieldset className="space-y-2" aria-label={t('ariaLabel')}>
           {STRATEGIES.map((opt) => {
             const selected = strategy === opt.value
             const warning = dirty && opt.destructiveWhenDirty
@@ -151,11 +150,11 @@ function UpdateStrategyDialogInner({
                   className="mt-0.5"
                 />
                 <div className="flex-1 text-sm">
-                  <p className="font-medium text-foreground">{opt.label}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{opt.description}</p>
+                  <p className="font-medium text-foreground">{t(opt.labelKey)}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t(opt.descriptionKey)}</p>
                   {warning ? (
                     <p className="mt-1 text-xs text-status-warn">
-                      ⚠ dirty 상태에서 이 옵션은 직접 편집 내용을 영구히 삭제합니다.
+                      {t('dirtyWarning')}
                     </p>
                   ) : null}
                 </div>
@@ -166,7 +165,7 @@ function UpdateStrategyDialogInner({
 
         {item.latest_version ? (
           <p className="mt-3 text-xs text-muted-foreground">
-            Latest version:{' '}
+            {t('latestVersion')}{' '}
             <span className="font-medium text-foreground">
               v{item.latest_version.version_label}
             </span>
@@ -176,10 +175,10 @@ function UpdateStrategyDialogInner({
 
       <DialogShell.Footer>
         <Button variant="outline" onClick={() => onOpenChange(false)}>
-          Cancel
+          {t('actions.cancel')}
         </Button>
         <Button onClick={handleConfirm} disabled={update.isPending}>
-          {update.isPending ? 'Updating…' : 'Confirm'}
+          {update.isPending ? t('actions.updating') : t('actions.confirm')}
         </Button>
       </DialogShell.Footer>
     </DialogShell>

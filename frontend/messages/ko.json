@@ -6,6 +6,7 @@
   "auth": {
     "login": {
       "title": "로그인",
+      "formTitle": "계정에 로그인",
       "subtitle": "계정 정보를 입력해 주세요",
       "email": "이메일",
       "password": "비밀번호",
@@ -19,7 +20,8 @@
       "or": "또는",
       "noAccount": "계정이 없으신가요?",
       "registerLink": "회원가입",
-      "expiredNotice": "로그인이 필요합니다",
+    "expiredNotice": "로그인이 필요합니다",
+    "emailPlaceholder": "you@example.com",
       "benefits": {
         "title": "AI 에이전트를 코드 한 줄 없이",
         "item1": "노코드 빌더",
@@ -29,9 +31,12 @@
     },
     "register": {
       "title": "회원가입",
+      "formTitle": "새 계정 만들기",
       "subtitle": "Moldy 계정을 만들어보세요",
       "name": "이름",
-      "email": "이메일",
+      "namePlaceholder": "홍길동",
+    "email": "이메일",
+    "emailPlaceholder": "you@example.com",
       "password": "비밀번호",
       "passwordConfirm": "비밀번호 확인",
       "terms": "서비스 이용약관 및 개인정보처리방침에 동의합니다 (필수)",
@@ -40,8 +45,10 @@
       "haveAccount": "이미 계정이 있으신가요?",
       "loginLink": "로그인",
       "mismatch": "비밀번호가 일치하지 않습니다",
-      "strength": {
-        "tooShort": "비밀번호는 8자 이상이어야 합니다",
+      "termsRequired": "약관 동의가 필요합니다",
+    "strength": {
+      "label": "비밀번호 강도",
+      "tooShort": "비밀번호는 8자 이상이어야 합니다",
         "weak": "약함",
         "medium": "보통",
         "strong": "강함",
@@ -49,7 +56,25 @@
       }
     },
     "hero": {
-      "socialProof": "<strong>200+ 팀</strong>이 Moldy로 에이전트를 만들고 있어요"
+      "brand": "Moldy",
+      "category": "AI Agent Builder",
+      "copyright": "© 2026 Moldy contributors",
+      "socialProof": "<strong>200+ 팀</strong>이 Moldy로 에이전트를 만들고 있어요",
+      "loginTitleLine1": "다시 만나서",
+      "loginTitleLine2": "반가워요 👋",
+      "registerTitleLine1": "첫 에이전트,",
+      "registerTitleLine2": "같이 만들어볼까요?",
+      "loginSubtitle": "작업하던 에이전트를 이어서 빌드하거나, 새 아이디어를 시작해보세요.",
+      "registerSubtitle": "가입 즉시 사용 가능한 템플릿과 도구가 기다리고 있어요.",
+      "features": {
+        "noCode": "대화로 만드는 노코드 에이전트",
+        "branching": "LangGraph 분기 · 시간여행 지원",
+        "security": "암호화된 API 키 · 안전한 도구 호출"
+      }
+    },
+    "password": {
+      "show": "비밀번호 표시",
+      "hide": "비밀번호 숨김"
     },
     "errors": {
       "invalidCredentials": "이메일 또는 비밀번호가 올바르지 않습니다",
@@ -69,7 +94,12 @@
       "title": "Moldy에 오신 것을 환영합니다",
       "subtitle": "AI 에이전트를 만들 준비가 거의 끝났어요",
       "body": "AI 에이전트를 만들려면 LLM API 키를 등록해야 합니다.",
-      "providers": "다음 중 하나를 등록해 주세요",
+    "providers": "다음 중 하나를 등록해 주세요",
+    "providerList": {
+      "openai": "OpenAI API Key",
+      "anthropic": "Anthropic API Key",
+      "google": "Google AI Studio API Key"
+    },
       "encryptedNote": "키는 암호화되어 저장되며 본인만 볼 수 있습니다.",
       "later": "나중에",
       "register": "지금 등록",
@@ -99,10 +129,69 @@
     "close": "닫기",
     "done": "완료",
     "yesterday": "어제",
+    "dataTable": {
+      "searchPlaceholder": "검색...",
+      "emptyDefault": "항목이 없어요",
+      "selectAll": "모든 행 선택",
+      "selectRow": "행 선택",
+      "allFilter": "전체 {label}",
+      "pagination": "{page}페이지 / {totalPages}페이지 · {count}개 항목",
+      "previous": "이전",
+      "next": "다음"
+    },
+      "relativeTime": {
+        "justNow": "방금 전",
+        "secondsAgo": "{count}초 전",
+        "minutesAgo": "{count}분 전",
+        "hoursAgo": "{count}시간 전",
+        "daysAgo": "{count}일 전"
+      },
+      "validation": {
+        "required": "{field}은(는) 필수입니다",
+        "minLength": "최소 {min}자 이상이어야 합니다",
+        "maxLength": "최대 {max}자까지 입력할 수 있습니다",
+        "invalidFormat": "형식이 올바르지 않습니다",
+        "number": "숫자를 입력해야 합니다",
+        "min": "최소값은 {min}입니다",
+        "max": "최대값은 {max}입니다",
+        "invalidJson": "JSON 형식이 올바르지 않습니다"
+      },
+      "errorState": {
+        "title": "문제가 발생했습니다",
+        "retry": "다시 시도"
+      },
+    "status": {
+      "active": "활성",
+      "connected": "연결됨",
+      "auth_needed": "인증 필요",
+      "expired": "만료됨",
+      "disabled": "비활성",
+      "error": "오류",
+      "unreachable": "연결 불가",
+      "unknown": "알 수 없음",
+      "healthy": "정상",
+      "degraded": "주의",
+      "unhealthy": "비정상"
+    },
     "comingSoon": {
       "default": "이 기능은 준비 중입니다",
       "fileAttach": "파일 첨부 기능은 준비 중입니다",
       "trash": "휴지통 기능은 준비 중입니다"
+    },
+    "detailDialog": {
+      "loading": "{entity} 불러오는 중...",
+      "failed": "{entity}을(를) 불러오지 못했습니다"
+    },
+    "deleteConfirm": {
+      "title": "이 {entity}을(를) 삭제할까요?",
+      "confirm": "삭제 확인"
+    },
+    "a11y": {
+      "close": "닫기",
+      "sidebar": "사이드바",
+      "mobileSidebarDescription": "모바일 사이드바를 표시합니다.",
+      "toggleSidebar": "사이드바 전환",
+      "breadcrumb": "탐색 경로"
     }
   },
   "sidebar": {
@@ -143,6 +232,11 @@
       "light": "라이트 모드",
       "dark": "다크 모드",
       "system": "시스템"
+    },
+    "language": {
+      "label": "언어",
+      "ko": "한국어",
+      "en": "영어"
     },
     "settings": "환경설정",
     "logout": "로그아웃",
@@ -206,6 +300,7 @@
         "subtitle": "자연어로 설명해 주시면 Moldy가 도구·모델·트리거를 단계별로 제안해드릴게요."
       },
       "chatPlaceholder": "예: 매일 아침 8시에 관심 키워드 뉴스를 검색해서 슬랙으로 보내주세요.",
+      "startButtonAria": "에이전트 만들기 시작",
       "altDivider": "다른 방법으로 시작하기",
       "examples": {
         "heading": "이런 건 어때요?",
@@ -255,7 +350,11 @@
       "pageTitle": "템플릿으로 시작하기",
       "subtitle": "검증된 템플릿에서 골라 30초 만에 첫 에이전트를 만드세요.",
       "category": {
+        "ariaLabel": "템플릿 카테고리",
         "all": "전체",
+        "productivityValue": "생산성",
+        "communicationValue": "커뮤니케이션",
+        "dataValue": "데이터",
         "productivity": "생산성",
         "communication": "커뮤니케이션",
         "data": "데이터"
@@ -335,6 +434,20 @@
       "cancelConfirm": "에이전트 생성을 취소하시겠습니까?",
       "cancelDescription": "진행 중인 내용은 저장되지 않습니다.",
       "userRequestLabel": "요청:"
+    },
+    "conversational": {
+      "welcomeTitle": "자연어로 에이전트 만들기",
+      "welcomeDescription": "만들고 싶은 에이전트를 자연어로 설명해주세요. 8단계로 함께 만들어나갑니다 — 의도 분석, 도구 추천, 미들웨어, 시스템 프롬프트, 이미지 생성을 한 번에.",
+      "example": "예: \"인터넷 검색하는 에이전트를 만들어줘\", \"매일 아침 9시 주식 시세 알려주는 에이전트 만들어줘\"",
+      "back": "뒤로 가기",
+      "sessionLabel": "세션 #{id}",
+      "builderModelLabel": "대화형 에이전트 빌더 · GPT-4 Turbo",
+      "builderAgentSubtitle": "에이전트 빌더",
+      "builderAgentName": "에이전트 빌더",
+      "breadcrumb": {
+        "create": "에이전트 만들기",
+        "conversational": "대화로 만들기"
+      }
     },
     "card": {
       "status": {
@@ -480,6 +593,7 @@
         "addButton": "트리거 추가",
         "addNew": "자동 실행 추가"
       },
+      "testWarning": "⚠ MVP: 현재 Fix 에이전트와 동일한 endpoint를 사용합니다. 일반 채팅 분리는 후속 PR에서 진행됩니다.",
       "manageModels": "모델 관리",
       "image": {
         "generate": "캐릭터 생성",
@@ -569,10 +683,17 @@
         "description": "에이전트에 적용할 미들웨어를 선택하세요.",
         "searchPlaceholder": "미들웨어 검색...",
         "noResults": "검색 결과 없음",
+        "selectedEmpty": "선택된 미들웨어가 없습니다.",
+        "current": "현재 선택 ({count})",
+        "available": "추가 가능",
+        "empty": "표시할 미들웨어가 없습니다.",
+        "remove": "제거",
+        "removeNamed": "{name} 제거",
         "selectToPreview": "미리보기할 미들웨어를 선택하세요",
         "configSchema": "설정 스키마",
         "providerOnly": "{provider} 전용",
         "add": "추가",
+        "addNamed": "{name} 추가",
         "addCount": "추가 ({count})",
         "categories": {
           "all": "전체",
@@ -582,6 +703,48 @@
           "reliability": "안정성",
           "provider": "프로바이더"
         }
+      },
+      "toolsSkillsDialog": {
+        "mode": {
+          "all": {
+            "title": "도구 · 스킬 추가",
+            "description": "카탈로그 도구, 등록한 도구, MCP 도구, 스킬을 한 곳에서 관리합니다."
+          },
+          "tools": {
+            "title": "도구 추가",
+            "description": "카탈로그 도구, 등록한 도구, MCP 도구를 한 곳에서 관리합니다."
+          },
+          "skills": {
+            "title": "스킬 추가",
+            "description": "에이전트가 사용할 스킬을 선택합니다."
+          }
+        },
+        "current": "현재 선택 ({count})",
+        "selectedEmpty": "선택된 항목이 없습니다.",
+        "catalogEmpty": "표시할 카탈로그 항목이 없습니다.",
+        "toolsEmpty": "아직 등록한 도구가 없습니다. /tools에서 인스턴스를 만들어주세요.",
+        "mcpEmpty": "MCP 도구가 없습니다. /mcp-servers에서 서버를 추가하면 자동으로 표시됩니다.",
+        "skillsEmpty": "아직 등록한 스킬이 없습니다. /skills에서 업로드해주세요.",
+        "noResults": "검색 결과가 없습니다.",
+        "tabs": {
+          "catalog": "Catalog",
+          "tools": "My Tools",
+          "mcp": "MCP",
+          "skills": "Skills"
+        },
+        "kind": {
+          "tool": "도구",
+          "mcp": "MCP",
+          "skill": "스킬",
+          "catalog": "카탈로그"
+        },
+        "remove": "제거",
+        "removeNamed": "{name} 제거",
+        "create": "만들기",
+        "createNamed": "{name} 만들기",
+        "search": "검색",
+        "add": "추가",
+        "addNamed": "{name} 추가"
       },
       "toolbar": {
         "hideChat": "채팅 숨기기",
@@ -685,6 +848,7 @@
       "cancel": "취소",
       "noSchedules": "등록된 스케줄 없음",
       "add": "추가",
+      "unreadCount": "{count}개 안읽음",
       "resultStorage": {
         "title": "결과 저장",
         "description": "실행 결과는 대화에 저장되고, 읽지 않은 결과는 배지로 표시됩니다.",
@@ -717,6 +881,74 @@
         "sat": "토",
         "sun": "일"
       }
+    }
+  },
+  "scheduleCenter": {
+    "eyebrow": "자동 실행",
+    "title": "스케줄",
+    "description": "모든 에이전트의 예약 실행과 읽지 않은 자동 응답을 한 곳에서 확인합니다.",
+    "listTitle": "전체 스케줄",
+    "searchPlaceholder": "스케줄 검색",
+    "agentFallback": "에이전트",
+    "none": "없음",
+    "notYet": "아직 없음",
+    "resultConversationFallback": "결과 대화",
+    "reset": "초기화",
+    "badges": {
+      "active": "활성 {count}",
+      "unread": "{count}개 안읽음"
+    },
+    "format": {
+      "interval": "매 {minutes}분",
+      "oneTime": "1회 실행",
+      "cron": "Cron"
+    },
+    "status": {
+      "active": "활성",
+      "paused": "일시정지",
+      "completed": "완료",
+      "error": "오류"
+    },
+    "filters": {
+      "status": "상태 필터",
+      "allStatus": "전체 상태",
+      "agent": "에이전트 필터",
+      "allAgents": "전체 에이전트"
+    },
+    "columns": {
+      "schedule": "스케줄",
+      "agent": "에이전트",
+      "frequency": "주기",
+      "status": "상태",
+      "nextRun": "다음 실행",
+      "lastRun": "마지막 실행",
+      "result": "결과",
+      "actions": "작업"
+    },
+    "actions": {
+      "runNow": "즉시 실행",
+      "pause": "일시정지",
+      "resume": "재개",
+      "edit": "수정",
+      "history": "실행 이력",
+      "delete": "삭제"
+    },
+    "empty": {
+      "filtered": "조건에 맞는 스케줄이 없습니다.",
+      "description": "아직 등록된 스케줄이 없습니다. 에이전트 설정에서 자동 실행을 추가해 보세요."
+    },
+    "history": {
+      "title": "실행 이력",
+      "runNow": "즉시 실행",
+      "scheduled": "예약 실행",
+      "openConversation": "결과 대화 열기",
+      "empty": "아직 실행 이력이 없습니다."
+    },
+    "delete": {
+      "title": "스케줄 삭제",
+      "description": "이 스케줄을 삭제합니다. 이미 생성된 결과 대화는 삭제되지 않습니다.",
+      "cancel": "취소",
+      "confirm": "삭제"
     }
   },
   "chat": {
@@ -781,7 +1013,9 @@
     },
     "input": {
       "placeholder": "메시지 입력...",
-      "sendButton": "전송"
+      "sendButton": "전송",
+      "attachComingSoon": "파일 첨부 (준비 중)",
+      "templateComingSoon": "템플릿에서 가져오기 (준비 중)"
     },
     "tokenUsage": {
       "title": "토큰 사용량",
@@ -809,13 +1043,173 @@
       "attachmentTooLarge": "파일이 너무 큽니다",
       "attachmentRejected": "이 파일 형식은 지원되지 않습니다",
       "attachmentUploading": "업로드 중...",
+      "attachmentRemove": "첨부 파일 제거",
       "stop": "중단"
+    },
+    "share": {
+      "title": "대화 공유",
+      "description": "누구나 링크로 이 대화를 읽기 전용으로 볼 수 있어요.",
+      "loading": "불러오는 중…",
+      "linkLabel": "공유 링크",
+      "copyLink": "링크 복사",
+      "copy": "복사",
+      "copied": "복사됨",
+      "sharedHint": "링크를 받은 사람은 로그인 없이 이 대화의 메시지를 볼 수 있어요. 새 메시지나 편집이 일어나도 공개된 스냅샷은 유지됩니다.",
+      "privateHint": "아직 비공개 대화입니다. 공유 링크를 만들면 누구나 읽기 전용으로 접근할 수 있어요.",
+      "revoke": "공유 해제",
+      "create": "공유 링크 만들기",
+      "toast": {
+        "copied": "공유 링크를 복사했어요.",
+        "copyFailed": "복사에 실패했습니다.",
+        "created": "공유 링크가 생성됐습니다.",
+        "createFailed": "공유 링크 생성 실패",
+        "revoked": "공유를 해제했습니다.",
+        "revokeFailed": "공유 해제 실패"
+      }
+    },
+    "markdown": {
+      "copy": "복사",
+      "copied": "복사됨",
+      "imageLoadFailed": "이미지를 불러오지 못했어요",
+      "imagePreview": "이미지 미리보기",
+      "moreLines": "{count}줄 더"
+    },
+    "mermaid": {
+      "renderFailed": "Mermaid 렌더링에 실패했습니다"
+    },
+    "toolUi": {
+      "subAgent": {
+        "fallbackName": "서브 에이전트",
+        "invocation": "서브 에이전트 호출"
+      }
+    },
+    "builderApproval": {
+      "placeholder": "수정 의견을 입력하세요...",
+      "shortPlaceholder": "수정 의견을 입력하세요",
+      "placeholderWithExample": "수정 의견을 입력하세요 (예: 도구를 X로 바꿔줘)...",
+      "approvedStatus": "승인되었습니다. 다음 단계로 진행합니다...",
+      "revisionStatus": "수정 요청을 전달했습니다...",
+      "requestRevision": "수정 요청",
+      "approve": "승인",
+      "finalApprove": "최종 승인",
+      "writeFeedback": "수정 의견 작성",
+      "closeFeedback": "의견 닫기",
+      "reviewRequiredPrefix": "· 검토 필요",
+      "reviewRequired": "검토 필요",
+      "promptRevisionFallback": "프롬프트를 다시 작성해주세요",
+      "systemPrompt": "시스템 프롬프트",
+      "promptFeedbackPlaceholder": "프롬프트에 대한 수정 의견을 적어주세요",
+      "approveAndContinue": "승인하고 진행",
+      "draftTools": "도구 ({count})",
+      "draftMiddlewares": "미들웨어 ({count})",
+      "draftPreviewTitle": "에이전트 설정 미리보기",
+      "finalConfirmTitle": "최종 확인",
+      "finalApproveLabel": "최종 승인"
+    },
+    "imageGeneration": {
+      "disabled": "이미지 생성 비활성화",
+      "skip": "넘어가기",
+      "generate": "생성하기",
+      "choiceTitle": "에이전트 이미지를 생성하시겠습니까?",
+      "reviewRequired": "검토 필요",
+      "autoPrompt": "자동 생성 프롬프트 (편집 가능)",
+      "agentImageAlt": "에이전트 이미지",
+      "noImage": "이미지가 없습니다.",
+      "regeneratePrompt": "재생성 프롬프트 (편집 가능)",
+      "confirm": "확정",
+      "regenerate": "재생성",
+      "previewTitle": "이미지 미리보기"
+    },
+    "intentSummary": {
+      "title": "의도 수집 완료",
+      "clarifyingTitle": "확인이 필요해요",
+      "agentName": "에이전트 이름",
+      "description": "설명",
+      "confidence": {
+        "high": "확신도 높음",
+        "medium": "확신도 보통",
+        "low": "확신도 낮음"
+      }
+    },
+    "phaseTimeline": {
+      "title": "진행 상황",
+      "progress": "· {done}/{total} 단계 완료",
+      "phaseLabel": "Phase {phaseId} {status}",
+      "phaseNameFallback": "Phase {phaseId}",
+      "completedLabel": "완료",
+      "startedLabel": "시작",
+      "names": {
+        "1": "프로젝트 초기화",
+        "2": "사용자 의도 분석",
+        "3": "도구 추천",
+        "4": "미들웨어 추천",
+        "5": "시스템 프롬프트 작성",
+        "6": "에이전트 이미지 생성",
+        "7": "에이전트 설정 저장",
+        "8": "에이전트 빌드"
+      },
+      "status": {
+        "completed": "완료",
+        "in_progress": "진행중",
+        "pending": "대기"
+      }
+    },
+    "recommendation": {
+      "recommended": "추천",
+      "reason": "사유",
+      "feedbackPlaceholder": "추가하거나 빼고 싶은 도구, 변경 사유를 적어주세요",
+      "approved": "승인 완료",
+      "approve": "승인",
+      "approveAndContinue": "승인하고 진행",
+      "requestRevision": "수정 요청",
+      "writeFeedback": "수정 의견 작성",
+      "closeFeedback": "의견 닫기",
+      "middlewareTitle": "미들웨어 추천",
+      "toolTitle": "도구 추천",
+      "empty": "추천된 항목이 없습니다."
     },
     "toolCall": {
       "calling": "호출 중...",
       "completed": "완료",
       "parameters": "파라미터",
-      "results": "결과"
+      "results": "결과",
+      "serializeFailed": "직렬화할 수 없는 결과입니다.",
+      "search": {
+        "defaultTitle": "웹 검색",
+        "running": "검색 중…",
+        "count": "{count}건"
+      },
+      "plan": {
+        "title": "Plan",
+        "completed": "완료",
+        "inProgress": "진행중",
+        "pending": "대기",
+        "loading": "계획 수립 중…"
+      },
+      "file": {
+        "read": "Read",
+        "write": "Write",
+        "edit": "Edit"
+      },
+      "expandToPanel": "Expand to panel"
+    },
+    "rightRail": {
+      "closePanel": "Close panel",
+      "outline": "Outline",
+      "messageOutline": "Message outline",
+      "noHeadings": "No headings detected in this message.",
+      "agent": "Agent",
+      "input": "Input",
+      "output": "Output",
+      "subagentPending": "Sub-agent execution detail will appear here as it streams.",
+      "noResult": "No result.",
+      "arguments": "Arguments",
+      "result": "Result",
+      "status": {
+        "running": "Running",
+        "complete": "Complete",
+        "incomplete": "Incomplete"
+      }
     },
     "streaming": {
       "thinking": "생각 중..."
@@ -823,7 +1217,8 @@
     "reconnect": {
       "reconnecting": "연결 재시도 중...",
       "failed": "연결을 다시 맺지 못했어요. 메시지를 다시 전송하거나 새로고침해주세요.",
-      "stale": "응답이 끊어져 일부가 누락되었을 수 있어요. 메시지를 다시 시도해주세요."
+      "stale": "응답이 끊어져 일부가 누락되었을 수 있어요. 메시지를 다시 시도해주세요.",
+      "credentialRequiredAction": "{message}\n\n[키 등록하러 가기](/credentials)"
     },
     "loading": {
       "witty": {
@@ -871,6 +1266,7 @@
       "recent": "최근 항목",
       "menu": {
         "rename": "이름 변경",
+        "share": "공유",
         "pin": "고정",
         "unpin": "고정 해제",
         "delete": "삭제"
@@ -884,11 +1280,31 @@
         "title": "대화를 삭제하시겠습니까?",
         "description": "이 작업은 되돌릴 수 없습니다. 대화의 모든 메시지가 삭제됩니다."
       }
+    },
+    "skillsRow": {
+      "label": "스킬:"
+    },
+    "branch": {
+      "previous": "이전 분기",
+      "next": "다음 분기"
     }
   },
   "tool": {
     "page": {
-      "title": "도구 관리",
+      "title": "도구",
+      "description": "카탈로그에서 도구를 골라 추가하거나, 이미 등록한 도구를 관리하세요.",
+      "viewMode": "도구 보기 모드",
+      "tabs": {
+        "catalog": "카탈로그",
+        "manage": "관리 ({count})"
+      },
+      "columns": {
+        "name": "이름",
+        "type": "종류",
+        "credential": "자격증명",
+        "status": "상태",
+        "lastUsed": "최근 사용"
+      },
       "addTool": "도구 추가",
       "filter": {
         "all": "All",
@@ -927,8 +1343,10 @@
       "noResultsForQuery": "\"{query}\"에 해당하는 도구를 찾을 수 없습니다.",
       "resetFilters": "필터 초기화",
       "empty": {
-        "title": "등록된 도구가 없습니다.",
-        "description": "도구를 추가하여 에이전트에 연결하세요."
+        "title": "아직 도구가 없어요",
+        "description": "카탈로그에서 원하는 도구를 골라 시작해 보세요.",
+        "action": "카탈로그 둘러보기",
+        "filtered": "검색 결과가 없어요"
       },
       "toast": {
         "deleteFailed": "도구 삭제에 실패했습니다"
@@ -1013,6 +1431,23 @@
       "changeKey": "인증 변경",
       "toolSyncFailed": "연결은 저장됐지만 도구 자격증명 동기화에 실패했습니다."
     },
+    "catalog": {
+      "categoriesLabel": "카테고리",
+      "categories": {
+        "all": "전체",
+        "general": "일반",
+        "search": "검색",
+        "productivity": "생산성",
+        "communication": "커뮤니케이션",
+        "automation": "자동화"
+      },
+      "searchPlaceholder": "도구 검색",
+      "empty": {
+        "title": "조건에 맞는 도구가 없어요",
+        "description": "다른 카테고리나 검색어를 시도해 보세요."
+      },
+      "requiresCredential": "자격증명 필요"
+    },
     "mcpServer": {
       "toolCount": "{count}개 도구",
       "authNotSet": "인증 미설정",
@@ -1035,11 +1470,357 @@
         "saveFailed": "저장에 실패했습니다",
         "deleteFailed": "삭제에 실패했습니다"
       }
+    },
+    "createDialog": {
+      "toast": {
+        "created": "도구가 생성되었습니다",
+        "saveFailed": "저장에 실패했습니다"
+      },
+      "title": "새 {toolName}",
+      "name": "이름",
+      "description": "설명",
+      "optional": "선택 사항",
+      "credential": "자격증명",
+      "submit": "도구 생성"
+    },
+    "detailDialog": {
+      "toast": {
+        "credentialUpdated": "자격증명이 업데이트되었습니다",
+        "updateFailed": "업데이트에 실패했습니다",
+        "deleted": "도구가 삭제되었습니다",
+        "deleteFailed": "삭제에 실패했습니다"
+      },
+      "loading": "도구 불러오는 중...",
+      "credential": "자격증명",
+      "delete": "삭제",
+      "entity": "도구"
+    },
+    "runPanel": {
+      "invalidJson": "실행 인자는 올바른 JSON이어야 합니다",
+      "ranIn": "{duration}ms 만에 실행되었습니다",
+      "failed": "실행에 실패했습니다",
+      "runtimeArgs": "실행 인자 (JSON)",
+      "run": "실행"
+    }
+  },
+  "mcp": {
+    "page": {
+      "title": "MCP 서버",
+      "description": "MCP 서버를 연결해 원격 도구를 가져오세요.",
+      "columns": {
+        "name": "이름",
+        "transport": "전송 방식",
+        "tools": "도구",
+        "status": "상태",
+        "lastResponse": "최근 응답"
+      },
+      "actions": {
+        "checkNow": "상태 확인",
+        "checkNowFor": "{name} 상태 확인",
+        "import": "불러오기",
+        "export": "내보내기",
+        "new": "새 MCP 서버"
+      },
+      "empty": {
+        "title": "아직 MCP 서버가 없어요",
+        "description": "서버를 추가하면 원격 도구를 가져와 자격증명에 연결할 수 있어요.",
+        "action": "서버 추가",
+        "filtered": "검색 결과가 없어요"
+      },
+      "searchPlaceholder": "서버 검색",
+      "relative": {
+        "secondsAgo": "{count}초 전",
+        "minutesAgo": "{count}분 전",
+        "hoursAgo": "{count}시간 전",
+        "daysAgo": "{count}일 전"
+      },
+      "toast": {
+        "exported": "서버 {count}개를 내보냈어요",
+        "exportFailed": "내보내기 실패",
+        "healthCheckFailed": "상태 확인 실패"
+      }
+    },
+    "detail": {
+      "toast": {
+        "connected": "연결되었습니다 ({count}개 도구)",
+        "connectionFailed": "연결에 실패했습니다",
+        "testFailed": "테스트에 실패했습니다",
+        "importedTools": "{count}개 도구를 가져왔습니다",
+        "discoveryFailed": "도구 탐색에 실패했습니다",
+        "deleted": "서버가 삭제되었습니다",
+        "deleteFailed": "삭제에 실패했습니다",
+        "credentialUpdated": "자격증명이 업데이트되었습니다",
+        "updateFailed": "업데이트에 실패했습니다",
+        "healthCheckFailed": "상태 확인에 실패했습니다"
+      },
+      "loading": "MCP 서버 불러오는 중...",
+      "system": "시스템",
+      "test": "테스트",
+      "refreshTools": "도구 새로고침",
+      "endpoint": "엔드포인트",
+      "credential": "자격증명",
+      "importedTools": "가져온 도구 ({count})",
+      "delete": "삭제",
+      "serverEntity": "서버",
+      "health": "상태",
+      "checkNow": "지금 확인"
+    },
+    "toolTable": {
+      "empty": "아직 탐색된 도구가 없어요.",
+      "columns": {
+        "tool": "도구",
+        "description": "설명",
+        "schema": "스키마"
+      },
+      "collapse": "접기",
+      "expand": "펼치기",
+      "disabled": "비활성",
+      "stale": "오래됨",
+      "lastSeen": "마지막 확인: {date}",
+      "neverSeen": "탐색 프로브에서 확인된 적이 없습니다"
+    },
+    "importDialog": {
+      "title": "MCP 서버 불러오기",
+      "description": "Claude Desktop 설정을 붙여넣거나 JSON 파일을 업로드하세요. 비밀 값은 저장하지 않으며 자격증명은 별도로 연결합니다.",
+      "jsonPayload": "JSON payload",
+      "uploadJson": ".json 업로드",
+      "overwrite": "같은 이름의 기존 서버 덮어쓰기",
+      "submit": "불러오기",
+      "readFileFailed": "파일을 읽지 못했습니다",
+      "importFailed": "불러오기에 실패했습니다",
+      "summary": "생성 {created}, 업데이트 {updated}, 건너뜀 {skipped}",
+      "summaryWithErrors": "생성 {created}, 업데이트 {updated}, 건너뜀 {skipped} — 오류 {errors}개",
+      "ready": "{count}개 서버 준비됨:",
+      "more": "+{count}개 더",
+      "created": "생성 {count}",
+      "updated": "업데이트 {count}",
+      "skipped": "건너뜀 {count}",
+      "errors": "오류 {count}개",
+      "parseErrors": {
+        "invalidJson": "JSON 형식이 올바르지 않습니다",
+        "missingServers": "최상위 mcpServers 객체가 필요합니다",
+        "serversMustBeMap": "mcpServers는 객체 맵이어야 합니다",
+        "serversEmpty": "mcpServers가 비어 있습니다"
+      }
+    },
+    "wizard": {
+      "toast": {
+        "required": "필수 항목을 먼저 입력하세요",
+        "probeFailed": "프로브에 실패했습니다",
+        "importFailedAfterSave": "서버는 추가됐지만 도구 가져오기에 실패했습니다. 상세 페이지에서 다시 시도하세요.",
+        "savedToggleLater": "서버가 저장되었습니다. 필요한 경우 상세 페이지에서 {count}개 도구를 끄세요.",
+        "added": "MCP 서버가 추가되었습니다",
+        "addFailed": "서버 추가에 실패했습니다"
+      },
+      "title": "새 MCP 서버",
+      "description": "레지스트리 프리셋을 선택하거나 직접 연결한 뒤 저장 전에 도구를 미리 확인하세요.",
+      "tabs": {
+        "basics": "1 · 기본",
+        "auth": "2 · 인증",
+        "tools": "3 · 도구"
+      },
+      "actions": {
+        "continueAuth": "인증으로 계속 →",
+        "back": "이전",
+        "continueTools": "도구로 계속 →",
+        "cancel": "취소",
+        "save": "서버 저장"
+      },
+      "probe": {
+        "needed": "프로브 필요",
+        "pending": "프로브 중…",
+        "ok": "OK · {count}개 도구",
+        "failed": "실패"
+      },
+      "registry": {
+        "title": "빠른 시작",
+        "clear": "프리셋 지우기",
+        "empty": "설정된 레지스트리 프리셋이 없습니다. 아래 수동 폼을 입력하세요."
+      },
+      "manual": {
+        "override": "재정의",
+        "manual": "수동",
+        "name": "이름",
+        "description": "설명",
+        "transport": "전송 방식",
+        "transportOptions": {
+          "stdio": "stdio",
+          "sse": "SSE",
+          "streamable_http": "Streamable HTTP"
+        },
+        "command": "명령",
+        "commandPlaceholder": "npx",
+        "args": "인자",
+        "argsPlaceholder": "-y @modelcontextprotocol/server-github",
+        "add": "추가",
+        "argsHint": "Enter, 쉼표, 공백으로 여러 인자를 한 번에 추가할 수 있습니다.",
+        "envVars": "환경 변수",
+        "url": "URL",
+        "urlPlaceholder": "https://example.com/mcp",
+        "headers": "헤더",
+        "removeArg": "{arg} 제거",
+        "removeRow": "행 제거",
+        "addRow": "행 추가"
+      },
+      "auth": {
+        "credential": "자격증명",
+        "interpolation": "자격증명 보간",
+        "interpolationBody": "헤더나 환경 변수 어디에서든 연결된 자격증명 필드를 참조할 수 있습니다.",
+        "interpolationSuffix": "MCP 클라이언트가 연결 시점에 해당 값을 치환합니다.",
+        "filtered": "{type} 타입 자격증명으로 필터링되었습니다.",
+        "test": "연결 테스트",
+        "connected": "연결됨 — {count}개 도구를 찾았습니다."
+      },
+      "tools": {
+        "discovering": "도구 탐색 중…",
+        "probeFailed": "프로브 실패",
+        "retry": "다시 시도",
+        "empty": "이 서버가 아직 노출한 도구가 없습니다.",
+        "enabled": "{enabled}/{total}개 도구 활성화",
+        "reprobe": "다시 프로브",
+        "params": "{count}개 파라미터"
+      }
+    },
+    "detailDialog": {
+      "loading": "스킬 불러오는 중…",
+      "unsupported": "지원하지 않는 스킬 종류입니다.",
+      "close": "닫기",
+      "save": "저장",
+      "saved": "저장되었습니다",
+      "saveFailed": "저장에 실패했습니다",
+      "deleted": "스킬이 삭제되었습니다",
+      "deleteFailed": "삭제에 실패했습니다",
+      "deleteSkill": "스킬 삭제",
+      "skillEntity": "스킬",
+      "packageEntity": "스킬 전체 패키지",
+      "fileEntity": "파일",
+      "loadFailed": "불러오기에 실패했습니다: {message}",
+      "discardConfirm": "{path}의 저장하지 않은 변경사항을 버릴까요?\n\n확인을 누르면 버리고, 취소를 누르면 계속 편집합니다.",
+      "fileSaved": "{path} 저장 완료",
+      "fileDeleted": "{path} 삭제 완료",
+      "pathRequired": "경로가 필요합니다",
+      "fileExists": "파일이 이미 존재합니다",
+      "fileCreated": "{path} 생성 완료",
+      "createFailed": "생성에 실패했습니다",
+      "files": "파일",
+      "addFile": "파일 추가",
+      "add": "추가",
+      "newPathPlaceholder": "path/to/new-file.md",
+      "create": "생성",
+      "cancel": "취소",
+      "unsavedCount": "{count}개 파일 미저장",
+      "usedBy": "{bytes}b · v{version} · {count}개에서 사용",
+      "saveFile": "파일 저장",
+      "pickFile": "편집을 시작하려면 사이드바에서 파일을 선택하세요.",
+      "unsaved": "• 미저장",
+      "deleteFile": "파일 삭제",
+      "protected": "보호됨",
+      "openOriginal": "원본 열기",
+      "openPdf": "PDF 열기",
+      "binaryFile": "바이너리 파일",
+      "binaryUnavailable": "이 파일 형식은 편집기 미리보기를 사용할 수 없습니다.",
+      "download": "다운로드",
+      "credentialBindingsTitle": "자격증명 연결",
+      "credentialBindingsDescription": "이 스킬이 실행될 때 사용할 자격증명을 선택하세요. 변경사항은 다음 실행부터 적용됩니다.",
+      "credentialPlaceholder": "자격증명 선택",
+      "requiredCredential": "필수",
+      "optionalCredential": "선택",
+      "credentialUpdated": "스킬 자격증명이 업데이트되었습니다",
+      "credentialCleared": "스킬 자격증명 연결을 해제했습니다",
+      "credentialUpdateFailed": "자격증명 업데이트에 실패했습니다"
+    }
+  },
+  "systemCredentials": {
+    "title": "시스템 자격증명",
+    "description": "Fix Agent, 에이전트 빌더, 이미지 생성에 쓰는 운영자 관리 키입니다. 사용자용 선택 목록에는 표시되지 않습니다.",
+    "add": "시스템 자격증명 추가",
+    "loading": "불러오는 중…",
+    "confirmDelete": "시스템 자격증명 \"{name}\"을 삭제할까요?",
+    "fieldCount": "{count}개 필드",
+    "deleteNamed": "{name} 삭제",
+    "operatorOnly": {
+      "title": "운영자 전용",
+      "description": "이 자격증명 사용 비용은 운영자 계정으로 비용이 청구됩니다. 사용자 에이전트 설정, 모델 상태 확인, MCP 마법사에는 노출되지 않습니다. Fix Agent와 에이전트 빌더를 실행하려면 여기에 최소 하나의 LLM 자격증명을 등록하세요."
+    },
+    "empty": {
+      "title": "아직 시스템 자격증명이 없어요",
+      "description": "Fix Agent와 에이전트 빌더를 사용하려면 LLM용 시스템 자격증명을 추가하세요."
+    },
+    "toast": {
+      "deleted": "시스템 자격증명을 삭제했습니다.",
+      "deleteFailed": "삭제에 실패했습니다."
+    }
+  },
+  "systemLlm": {
+    "title": "System LLM 설정",
+    "description": "Builder·Assistant·이미지 생성이 사용하는 시스템 모델을 역할별로 선택합니다. 자격증명 등록은 시스템 자격증명 화면에서 진행하세요.",
+    "loading": "불러오는 중…",
+    "configured": "설정됨",
+    "notConfigured": "미설정",
+    "credential": "자격증명",
+    "model": "모델",
+    "systemCredential": "시스템 자격증명",
+    "none": "선택 안 함",
+    "selectCredential": "자격증명 선택",
+    "selectModel": "모델 선택",
+    "emptyCredentials": "사용 가능한 LLM 시스템 자격증명이 없습니다. 시스템 자격증명 화면에서 먼저 등록하세요.",
+    "loadModels": "모델 목록 불러오기",
+    "selectCredentialFirst": "먼저 시스템 자격증명을 선택하세요.",
+    "modelLoadFailed": "모델 목록을 불러오지 못했습니다. ‘모델 목록 불러오기’로 다시 시도하세요.",
+    "noModels": "이 자격증명에서 사용 가능한 모델이 없습니다.",
+    "provider": "제공자",
+    "baseUrl": "Base URL",
+    "saving": "저장 중…",
+    "save": "저장",
+    "operatorOnly": {
+      "title": "운영자 전용",
+      "description": "세 슬롯을 모두 설정하기 전까지 Builder/Assistant/이미지 생성이 동작하지 않습니다. 제공자는 선택한 시스템 자격증명에서 자동으로 파생되며, openai_compatible/openrouter는 자격증명의 base_url을 그대로 사용합니다."
+    },
+    "roles": {
+      "text_primary": {
+        "label": "텍스트 기본 모델",
+        "description": "Builder/Assistant가 사용하는 기본 텍스트 LLM."
+      },
+      "text_fallback": {
+        "label": "텍스트 폴백 모델",
+        "description": "기본 모델 호출이 실패할 때 사용하는 폴백 텍스트 LLM."
+      },
+      "image": {
+        "label": "이미지 모델",
+        "description": "이미지 생성에 사용하는 모델 (base_url 주입 지원)."
+      }
+    },
+    "toast": {
+      "loadModelsFailed": "모델 목록 로드 실패",
+      "saved": "{role} 저장 완료",
+      "saveFailed": "저장 실패"
     }
   },
   "skill": {
     "pageTitle": "스킬 관리",
-    "searchPlaceholder": "스킬 검색...",
+    "title": "스킬",
+    "description": "에이전트에 붙여 쓰는 마크다운 스니펫과 패키지를 관리하세요.",
+    "new": "새 스킬",
+    "searchPlaceholder": "스킬 검색",
+    "viewMode": {
+      "label": "스킬 보기 모드",
+      "table": "표 보기",
+      "grid": "격자 보기"
+    },
+    "columns": {
+      "skill": "스킬",
+      "kind": "종류",
+      "origin": "출처",
+      "marketplace": "마켓플레이스",
+      "agents": "에이전트",
+      "updatedAt": "수정일"
+    },
+    "filters": {
+      "kind": "종류"
+    },
+    "actions": {
+      "publish": "공개하기"
+    },
     "typeFilter": {
       "all": "전체",
       "text": "텍스트",
@@ -1063,8 +1844,9 @@
     "firstSkill": "첫 스킬 만들기",
     "modified": "{date} 수정",
     "empty": {
-      "title": "아직 스킬이 없습니다",
-      "description": "자주 사용하는 작업 패턴을 스킬로 저장하고 에이전트에 연결하세요."
+      "title": "아직 스킬이 없어요",
+      "description": "텍스트 스니펫을 만들거나 .skill 패키지를 업로드해 보세요.",
+      "filtered": "조건에 맞는 스킬이 없어요"
     },
     "uploadSkill": ".skill 업로드",
     "packageBadge": "패키지",
@@ -1079,6 +1861,471 @@
       "deleteFailed": "스킬 삭제에 실패했습니다",
       "uploaded": "스킬 패키지가 업로드되었습니다",
       "uploadFailed": ".skill 업로드에 실패했습니다"
+    },
+    "createDialog": {
+      "title": "새 스킬",
+      "description": "텍스트 스니펫을 만들거나, 패키지를 업로드하거나, 바로 편집할 수 있는 폴더를 생성하세요.",
+      "tabs": {
+        "text": "텍스트",
+        "package": "패키지",
+        "scratch": "처음부터"
+      },
+      "text": {
+        "name": "이름",
+        "slug": "슬러그",
+        "slugPlaceholder": "(자동 생성)",
+        "description": "설명",
+        "content": "내용 (마크다운)",
+        "required": "이름과 내용은 필수입니다",
+        "created": "스킬이 생성되었습니다",
+        "saveFailed": "저장에 실패했습니다"
+      },
+      "package": {
+        "description": "YAML frontmatter가 있는 SKILL.md와 보조 파일(마크다운, 코드, 이미지)을 포함한 ZIP 아카이브를 업로드하세요. 최대 10MB까지 가능합니다.",
+        "uploaded": "스킬 패키지가 업로드되었습니다",
+        "uploadFailed": "업로드에 실패했습니다",
+        "submit": "업로드"
+      },
+      "scratch": {
+        "description": "SKILL.md 기본 파일만 포함한 빈 패키지 스킬을 만듭니다. 생성 후 상세 편집기가 자동으로 열려 파일을 바로 추가할 수 있습니다.",
+        "name": "이름",
+        "namePlaceholder": "my-helpful-skill",
+        "descriptionLabel": "설명",
+        "descriptionPlaceholder": "이 스킬이 하는 일을 한 문장으로 설명하세요.",
+        "zipFailed": "ZIP 생성에 실패했습니다",
+        "created": "스킬 틀이 생성되었습니다. 편집기를 여는 중...",
+        "failed": "스킬 틀 생성에 실패했습니다",
+        "submit": "틀 만들고 편집"
+      }
+    },
+    "detailDialog": {
+      "loading": "스킬 불러오는 중…",
+      "unsupported": "지원하지 않는 스킬 종류입니다.",
+      "close": "닫기",
+      "save": "저장",
+      "saved": "저장되었습니다",
+      "saveFailed": "저장에 실패했습니다",
+      "deleted": "스킬이 삭제되었습니다",
+      "deleteFailed": "삭제에 실패했습니다",
+      "deleteSkill": "스킬 삭제",
+      "skillEntity": "스킬",
+      "packageEntity": "스킬 전체 패키지",
+      "fileEntity": "파일",
+      "loadFailed": "불러오기에 실패했습니다: {message}",
+      "discardConfirm": "{path}의 저장하지 않은 변경사항을 버릴까요?\n\n확인을 누르면 버리고, 취소를 누르면 계속 편집합니다.",
+      "fileSaved": "{path} 저장 완료",
+      "fileDeleted": "{path} 삭제 완료",
+      "pathRequired": "경로가 필요합니다",
+      "fileExists": "파일이 이미 존재합니다",
+      "fileCreated": "{path} 생성 완료",
+      "createFailed": "생성에 실패했습니다",
+      "files": "파일",
+      "addFile": "파일 추가",
+      "add": "추가",
+      "newPathPlaceholder": "path/to/new-file.md",
+      "create": "생성",
+      "cancel": "취소",
+      "unsavedCount": "{count}개 파일 미저장",
+      "usedBy": "{bytes}b · v{version} · {count}개에서 사용",
+      "saveFile": "파일 저장",
+      "pickFile": "편집을 시작하려면 사이드바에서 파일을 선택하세요.",
+      "unsaved": "• 미저장",
+      "deleteFile": "파일 삭제",
+      "protected": "보호됨",
+      "openOriginal": "원본 열기",
+      "openPdf": "PDF 열기",
+      "binaryFile": "바이너리 파일",
+      "binaryUnavailable": "이 파일 형식은 편집기 미리보기를 사용할 수 없습니다.",
+      "download": "다운로드",
+      "credentialBindingsTitle": "자격증명 연결",
+      "credentialBindingsDescription": "이 스킬이 실행될 때 사용할 자격증명을 선택하세요. 변경사항은 다음 실행부터 적용됩니다.",
+      "credentialPlaceholder": "자격증명 선택",
+      "requiredCredential": "필수",
+      "optionalCredential": "선택",
+      "credentialUpdated": "스킬 자격증명이 업데이트되었습니다",
+      "credentialCleared": "스킬 자격증명 연결을 해제했습니다",
+      "credentialUpdateFailed": "자격증명 업데이트에 실패했습니다"
+    }
+  },
+  "marketplace": {
+    "card": {
+      "resource": {
+        "skill": "스킬",
+        "agent": "에이전트",
+        "mcp": "MCP"
+      },
+      "owner": {
+        "system": "시스템",
+        "community": "커뮤니티"
+      },
+      "cta": {
+        "install": "설치",
+        "open": "열기",
+        "setup": "설정",
+        "update": "업데이트",
+        "review_update": "업데이트 검토",
+        "view_details": "상세 보기",
+        "manage": "관리",
+        "disabled": "비활성화"
+      }
+    },
+    "badges": {
+      "publication": {
+        "not_published": "미게시",
+        "draft": "초안",
+        "published_private": "비공개",
+        "published_restricted": "제한 공개",
+        "published_public_listed": "목록 공개",
+        "published_public_unlisted": "목록 제외 대기",
+        "published_unlisted": "링크 공개",
+        "disabled": "비활성화"
+      },
+      "credential": {
+        "none": "자격증명 없음",
+        "optional": "자격증명 선택",
+        "required": "자격증명 필요",
+        "hosted_proxy": "호스팅 프록시",
+        "manual_login": "수동 로그인"
+      },
+      "origin": {
+        "created_by_me": "내가 만든 항목",
+        "imported_by_me": "내가 가져온 항목",
+        "built_in_k_skill": "기본 제공 · k-skill",
+        "shared_with_me": "나에게 공유됨",
+        "sharedBy": "{name}님이 공유",
+        "community": "커뮤니티",
+        "system_seed": "시스템"
+      }
+    },
+    "catalog": {
+      "title": "마켓플레이스",
+      "description": "공유된 스킬, 에이전트, MCP 서버를 발견하고 설치하세요.",
+      "categoriesLabel": "마켓플레이스 카테고리",
+      "tabs": {
+        "all": "전체",
+        "skills": "스킬",
+        "agents": "에이전트 (Phase 3)",
+        "mcp": "MCP (Phase 2)",
+        "installed": "설치됨"
+      },
+      "empty": {
+        "title": "조건에 맞는 항목이 없어요",
+        "description": "필터를 지우거나 k-skill 카탈로그를 동기화해 보세요 (관리자)."
+      },
+      "comingSoon": {
+        "title": "곧 만나요",
+        "agents": "에이전트 마켓플레이스는 Phase 3에 공개될 예정이에요.",
+        "mcp": "MCP 마켓플레이스는 Phase 2에 공개될 예정이에요."
+      }
+    },
+    "moderation": {
+      "title": "마켓플레이스 운영",
+      "description": "리스팅 승인이 필요한 공개 항목을 관리하세요.",
+      "back": "마켓플레이스로 돌아가기",
+      "loading": "불러오는 중…",
+      "queueTitle": "대기 항목",
+      "syncTitle": "k-skill 동기화 상태",
+      "denied": {
+        "title": "운영자 전용 페이지",
+        "description": "이 페이지는 운영자(super_user)만 접근할 수 있어요."
+      },
+      "queueEmpty": {
+        "title": "처리 대기 항목이 없어요",
+        "description": "공개 게시된 항목이 모두 승인되었습니다."
+      },
+      "actions": {
+        "review": "검토",
+        "approve": "승인",
+        "disable": "비활성화"
+      },
+    "sync": {
+      "count": "항목 수:",
+      "lastUpdated": "마지막 업데이트:",
+      "command": "uv run python -m app.scripts.sync_k_skill --ref main",
+      "cliOnly": "동기화는 CLI에서만 실행할 수 있어요."
+    },
+      "toast": {
+        "disabled": "비활성화 완료",
+        "disableFailed": "비활성화에 실패했어요",
+        "approved": "카탈로그에 게시했어요",
+        "approveFailed": "승인에 실패했어요"
+      }
+    },
+    "detail": {
+      "back": "마켓플레이스로 돌아가기",
+      "saving": "저장 중…",
+      "error": {
+        "notFound": "항목을 찾을 수 없어요",
+        "loadFailed": "항목을 불러오지 못했어요",
+        "description": "이 항목을 찾을 수 없거나 접근 권한이 없습니다."
+      },
+      "versions": {
+        "title": "버전",
+        "emptyTitle": "아직 공개된 버전이 없어요",
+        "emptyDescription": "스킬 상세 페이지에서 첫 버전을 공개할 수 있어요.",
+        "latest": "최신"
+      },
+      "executionProfile": {
+        "title": "실행 프로필",
+        "empty": "등록된 실행 프로필이 없어요.",
+        "supportLevel": {
+          "ready_python": "Python 실행 가능",
+          "proxy_http": "프록시 필요",
+          "node_package": "Node 필요",
+          "browser_or_local": "브라우저/로컬 필요",
+          "manual_only": "수동 설정",
+          "disabled": "지원 안 함"
+        },
+        "labels": {
+          "support_level": "지원 방식",
+          "runners": "실행기",
+          "requires_network": "네트워크",
+          "notes": "메모"
+        },
+        "boolean": {
+          "required": "필요",
+          "notRequired": "불필요"
+        },
+        "none": "없음"
+      },
+      "management": {
+        "admin": "운영 관리",
+        "owner": "소유자 관리",
+        "visibility": "공개 범위:",
+        "help": "<private>비공개 전환</private>: 본인만 보이며 다른 사용자의 신규 설치가 막혀요. <disabled>비활성화</disabled>: 운영 차단 — 다른 사용자의 신규 설치가 영구 차단됩니다. 두 경우 모두 이미 설치된 사본에는 영향이 없어요."
+      },
+      "visibility": {
+        "private": "비공개 (나만)",
+        "restricted": "제한 공유 (지정 사용자)",
+        "public": "공개 (리스팅 대기)",
+        "unlisted": "링크 전용"
+      },
+      "actions": {
+        "unpublish": "비공개로 전환",
+        "unpublishing": "비공개 전환 중…",
+        "enable": "항목 재활성화",
+        "enabling": "재활성화 중…",
+        "disable": "항목 비활성화",
+        "disabling": "비활성화 중…"
+      },
+      "acl": {
+        "title": "공유 대상 (제한 공유)",
+        "empty": "공유된 사용자가 없어요. 새 사용자 추가는 ACL 엔드포인트 직접 호출이 필요합니다 (후속 슬라이스에 마법사 추가 예정).",
+        "revoke": "공유 취소",
+        "lastTargetHint": "마지막 대상을 제거하려면 먼저 공개 범위를 다른 값으로 변경하세요."
+      },
+      "toast": {
+        "requestFailed": "요청에 실패했습니다.",
+        "disabled": "비활성화 완료",
+        "disableFailed": "비활성화에 실패했습니다.",
+        "enabled": "재활성화 완료 — 카탈로그 재노출은 공개 범위/리스팅 설정에 따라 결정됩니다.",
+        "enableFailed": "재활성화에 실패했습니다.",
+        "alreadyPrivate": "이미 비공개 상태입니다.",
+        "unpublished": "비공개 전환 완료 — 카탈로그에서 미노출. 이미 설치된 사본은 영향 없음.",
+        "unpublishFailed": "비공개 전환에 실패했습니다.",
+        "aclRevoked": "공유 취소 완료",
+        "aclRevokeFailed": "공유 취소에 실패했습니다.",
+        "lastAclRequired": "restricted 상태에서는 마지막 ACL 을 비울 수 없습니다. visibility 를 먼저 바꾸세요.",
+        "visibilityFailed": "공개 범위 변경에 실패했습니다.",
+        "aclRequired": "제한 공유 전환은 공유 대상이 최소 1명 필요합니다. 대상 추가 후 다시 시도하세요."
+      },
+      "visibilitySuccess": {
+        "private": "비공개로 전환했습니다. 카탈로그에서 노출 안 됨.",
+        "public": "공개로 전환했습니다. 카탈로그 노출은 super_user 승인 대기.",
+        "unlisted": "링크 전용(unlisted)으로 전환했습니다.",
+        "restricted": "Restricted로 전환했습니다. ACL 대상 추가 필요."
+      }
+    },
+    "filters": {
+      "searchPlaceholder": "마켓플레이스 검색…",
+      "sourceFilter": "출처 필터",
+      "sourcePlaceholder": "출처",
+      "allSources": "전체 출처",
+      "supportFilter": "지원 방식 필터",
+      "supportPlaceholder": "지원 방식",
+      "allSupport": "전체 지원 방식",
+      "installStateFilter": "설치 상태 필터",
+      "installStatePlaceholder": "설치 상태",
+      "allInstallStates": "전체 상태",
+      "pendingOnly": "대기 항목 보기",
+      "reset": "초기화",
+      "support": {
+        "readyPython": "Python 실행 가능",
+        "proxyHttp": "프록시 필요",
+        "nodePackage": "Node 필요",
+        "browserOrLocal": "브라우저/로컬 필요",
+        "manualOnly": "수동 설정",
+        "disabled": "지원 안 함"
+      },
+      "source": {
+        "user": "사용자",
+        "kSkill": "k-skill",
+        "import": "가져오기",
+        "systemSeed": "시스템"
+      },
+      "installState": {
+        "active": "설치됨",
+        "needsSetup": "설정 필요",
+        "disabled": "비활성화"
+      }
+    },
+    "installation": {
+      "active": "설치됨",
+      "needsSetup": "설정 필요",
+      "disabled": "비활성화",
+      "uninstalled": "미설치",
+      "updateAvailable": "업데이트 가능",
+      "dirty": "수정됨"
+    },
+  "installWizard": {
+    "title": "{name} 설치",
+    "steps": {
+      "review": "검토",
+      "credentials": "자격증명",
+      "confirm": "확인",
+      "done": "완료"
+    },
+    "actions": {
+      "close": "닫기",
+      "cancel": "취소",
+      "back": "이전",
+      "install": "설치",
+      "installing": "설치 중…",
+      "next": "다음"
+    },
+    "toast": {
+      "installed": "{name} 설치 완료",
+      "installedNeedsSetup": "{name} 설치 완료 (설정 필요)"
+    },
+    "review": {
+      "resourceType": "리소스 종류:",
+      "latestVersion": "최신 버전:",
+      "supportLevel": "지원 수준:",
+      "customName": "사용자 지정 이름 (선택)"
+    },
+    "credentialHelp": "Skill 실행에 필요한 자격증명을 연결합니다. 필수가 아닌 항목은 건너뛸 수 있고, 필수 항목을 나중에 연결하면 설치는 <code>needs_setup</code> 상태가 됩니다.",
+    "optional": "(선택)",
+    "type": "종류:",
+    "loadingCredentials": "자격증명 불러오는 중…",
+    "selectCredential": "자격증명 선택…",
+    "skip": "나중에 설정 (needs setup)",
+    "missingType": "<type></type> 타입 자격증명이 없습니다.",
+    "createCredential": "Credentials 페이지에서 만들기 →",
+    "requiredMissing": "연결하지 않으면 설치 후 <code>needs_setup</code> 상태로 표시됩니다.",
+    "confirm": {
+      "intro": "다음 작업을 수행합니다:",
+      "createSkill": "내 소유 스킬 행 생성 (origin: imported_by_me)",
+      "copyFiles": "패키지 파일을 데이터 디렉터리로 복사",
+      "bind": "{count}개 자격증명 연결:",
+      "needsSetup": "needs_setup 상태로 표시 — 누락된 필수 자격증명: {keys}",
+      "name": "이름:",
+      "version": "버전:"
+    },
+    "done": {
+      "title": "{name} 설치 완료",
+      "description": "스킬을 열거나 에이전트에 연결해 바로 사용할 수 있습니다."
+    },
+    "errors": {
+        "notFound": "이 항목을 찾을 수 없거나 접근 권한이 없습니다.",
+        "disabled": "이 항목은 비활성화되었습니다.",
+        "credentialMismatch": "선택한 자격증명이 요구사항과 일치하지 않습니다. 다시 선택해주세요.",
+        "credentialRequired": "필수 자격증명이 누락되었습니다.",
+        "failed": "설치에 실패했습니다.",
+        "network": "네트워크 오류가 발생했습니다. 다시 시도하세요."
+      }
+  },
+  "publishWizard": {
+    "title": "{name} 게시",
+    "description": "이 스킬을 마켓플레이스에서 찾을 수 있게 만듭니다.",
+    "steps": {
+      "review": "검토",
+      "metadata": "메타데이터",
+      "visibility": "공개 범위",
+      "confirm": "확인",
+      "done": "완료"
+    },
+    "actions": {
+      "close": "닫기",
+      "cancel": "취소",
+      "back": "이전",
+      "publish": "게시",
+      "publishing": "게시 중…",
+      "next": "다음"
+    },
+    "toast": {
+      "published": "마켓플레이스에 게시되었습니다"
+    },
+    "reviewHint": "마켓플레이스에 게시되기 전 secret 검사가 자동 실행됩니다. 차단된 파일이 있으면 1단계로 돌아와 제거 후 다시 시도하세요.",
+    "review": {
+      "skill": "스킬"
+    },
+    "fields": {
+      "name": "이름",
+      "description": "설명",
+      "releaseNotes": "릴리스 노트 (선택)",
+      "visibility": "공개 범위",
+      "acl": "공유 사용자 ID (쉼표로 구분)"
+    },
+    "visibility": {
+      "private": "비공개 (나만)",
+      "restricted": "제한 공유 (선택한 사용자)",
+      "public": "공개 (리스팅 대기)",
+      "unlisted": "링크 전용"
+    },
+    "aclHint": "Phase 1: user lookup picker는 다음 슬라이스에서 추가됩니다. 임시로 user UUID를 직접 입력하세요.",
+      "publicHint": "공개 publish 후에도 카탈로그 검색 노출은 운영자 승인이 필요합니다.",
+    "confirmIntro": "다음을 수행합니다:",
+    "confirmCreateItem": "마켓플레이스 item 생성",
+    "confirmCreateVersion": "새 version snapshot 생성",
+    "visibilityLabel": "가시성:",
+    "aclSummary": "ACL: {count}명",
+    "done": {
+      "title": "게시 완료",
+      "description": "마켓플레이스 상세 페이지로 이동하는 중…"
+    },
+      "errors": {
+        "aclRequired": "restricted 게시는 최소 1명의 공유 대상이 필요합니다.",
+        "network": "네트워크 오류가 발생했습니다."
+      }
+    },
+  "updateStrategy": {
+    "title": "{name} 업데이트",
+    "ariaLabel": "업데이트 전략",
+    "toast": {
+      "updated": "{name} 업데이트 완료",
+      "installedNewCopy": "{name}의 새 사본을 설치했습니다"
+    },
+    "latestVersion": "최신 버전:",
+    "actions": {
+      "cancel": "취소",
+      "updating": "업데이트 중…",
+      "confirm": "확인"
+    },
+    "dirtyWarning": "⚠ dirty 상태에서 이 옵션은 직접 편집 내용을 영구히 삭제합니다.",
+      "strategies": {
+        "overwrite": {
+          "label": "Overwrite my edits",
+          "description": "설치본을 최신 버전으로 덮어쓰고 직접 편집한 내용은 버립니다. dirty 상태에서는 데이터 손실이 발생합니다."
+        },
+        "install_new_copy": {
+          "label": "Install as a new copy",
+          "description": "현재 설치본은 그대로 두고 별도 새 skill row로 최신 버전을 추가 설치합니다. 두 카피를 모두 관리해야 합니다."
+        },
+        "keep_current": {
+          "label": "Keep current install",
+          "description": "업데이트를 적용하지 않습니다. 다음 update available 상태가 다시 표시될 때까지 그대로 유지."
+        }
+      },
+      "errors": {
+        "dirty": "dirty 상태입니다. overwrite 또는 install_new_copy 중 하나를 명시적으로 선택해야 합니다.",
+        "disabled": "원본 marketplace 항목이 비활성화되었습니다.",
+        "failed": "업데이트에 실패했습니다.",
+        "network": "네트워크 오류가 발생했습니다. 다시 시도하세요."
+      },
+      "description": {
+        "dirty": "설치본을 직접 편집한 흔적이 있습니다. 업데이트 전략을 명시적으로 선택해야 합니다.",
+        "default": "최신 마켓플레이스 버전으로 업데이트합니다."
+      }
     }
   },
   "provider": {
@@ -1132,6 +2379,17 @@
     },
     "provider": "제공자",
     "providerPlaceholder": "제공자 선택",
+    "sourceBadge": {
+      "manual": "수동",
+      "catalog": "카탈로그",
+      "manualTooltip": "사용자 지정 ID입니다. 가격 또는 컨텍스트 정보가 없습니다.",
+      "catalogTooltip": "{source} 카탈로그의 가격 및 기능 메타데이터입니다. 실제 호출은 사용자의 자격증명으로 제공자 SDK를 사용합니다.",
+      "source": {
+        "openrouter": "OpenRouter",
+        "litellm": "LiteLLM",
+        "manual": "수동"
+      }
+    },
     "providers": {
       "openai": "OpenAI",
       "anthropic": "Anthropic",
@@ -1186,10 +2444,320 @@
     "functionCalling": "함수 호출",
     "reasoning": "추론",
     "modalities": "모달리티",
+    "visibleToUsers": "사용자에게 표시",
     "allCapabilities": "전체 기능",
     "agentCount": "{count}개 에이전트 사용 중",
     "cannotDeleteInUse": "사용 중인 모델은 삭제할 수 없습니다",
-    "deleteProviderWarning": "이 Provider를 삭제하면 연결된 {count}개 모델의 API 키 참조가 끊어집니다."
+    "deleteProviderWarning": "이 Provider를 삭제하면 연결된 {count}개 모델의 API 키 참조가 끊어집니다.",
+    "catalog": {
+      "title": "모델",
+      "description": "LLM 카탈로그 — 가격, 기능 플래그, 자격증명별 모델 탐색.",
+      "new": "새 모델",
+      "hiddenBadge": "숨김",
+      "searchPlaceholder": "이름이나 모델 ID로 검색",
+      "columns": {
+        "model": "모델",
+        "price": "단가",
+        "context": "컨텍스트",
+        "benchmarks": "벤치마크",
+        "source": "출처",
+        "status": "상태",
+        "agents": "에이전트"
+      },
+      "actions": {
+        "checkNow": "상태 확인",
+        "checkNowFor": "{name} 상태 확인",
+        "test": "테스트",
+        "testFor": "{name} 테스트",
+        "testSelected": "선택 테스트"
+      },
+      "filters": {
+        "hasBenchmark": "벤치마크 있음",
+        "showHidden": "숨김 포함"
+      },
+      "health": {
+        "healthy": "정상",
+        "degraded": "저하",
+        "unhealthy": "비정상",
+        "unknown": "미확인"
+      },
+      "empty": {
+        "title": "아직 모델이 없어요",
+        "description": "저장된 LLM 자격증명에서 모델을 탐색하거나 직접 모델 ID를 입력해 보세요.",
+        "filtered": "조건에 맞는 모델이 없어요"
+      },
+      "toast": {
+        "noCredential": "사용 가능한 LLM 자격증명이 없어요. 먼저 등록해 주세요.",
+        "healthCheckFailed": "상태 확인 실패"
+      }
+    },
+    "relativeTime": {
+      "secondsAgo": "{count}초 전",
+      "minutesAgo": "{count}분 전",
+      "hoursAgo": "{count}시간 전",
+      "daysAgo": "{count}일 전"
+    },
+    "connectionTest": {
+    "costBanner": "이 테스트는 실제 API를 호출합니다 (예상 ~$0.0001).",
+    "metrics": {
+      "latency": "지연 시간:",
+      "tokens": "토큰:",
+      "cost": "비용:"
+    },
+      "idle": "준비됨 — Test 버튼을 눌러 시작하세요.",
+      "testNow": "지금 테스트",
+      "testingPrefix": "연결 테스트 중:",
+      "testingSuffix": "...",
+      "thisModel": "이 모델",
+      "success": "연결 성공",
+      "successWithModel": "연결 성공 — {model}",
+      "response": "응답: {response}",
+      "hideDetails": "상세 숨기기",
+      "showDetails": "상세 보기",
+      "retry": "다시 시도",
+      "unknownError": "알 수 없는 오류",
+      "copied": "클립보드에 복사했습니다",
+      "copy": "복사",
+      "errorKind": {
+        "auth": "인증 실패",
+        "not_found": "모델 없음",
+        "rate_limit": "호출 한도",
+        "timeout": "시간 초과",
+        "other": "오류"
+      },
+      "tabs": {
+        "request": "요청",
+        "response": "응답",
+        "curl": "Curl"
+      },
+      "empty": {
+        "request": "(요청 데이터 없음)",
+        "response": "(응답 데이터 없음)",
+        "curl": "(curl 명령 없음)"
+      }
+    },
+    "addDialog": {
+      "title": "모델 추가",
+      "description": "자격증명으로 모델을 탐색하거나, 프리뷰/비공개 배포용 사용자 지정 ID를 직접 입력하세요.",
+      "tabs": {
+        "discover": "탐색",
+        "custom": "사용자 지정 ID"
+      },
+      "customHint": "탐색에 나타나지 않는 신규/비공개 모델에 사용하세요. 명시적인 가격이 없으면 비용 추적이 부정확할 수 있습니다. Custom ID의 벤치마크 순위는 자동으로 가져오지 않으며, 모델이 공개 카탈로그에 포함되면 다음 카탈로그 cron 주기에 채워집니다.",
+      "toast": {
+        "added": "모델이 추가되었습니다",
+        "saveFailed": "저장에 실패했습니다"
+      },
+      "fields": {
+        "provider": "제공자",
+        "modelId": "모델 ID",
+        "displayName": "표시 이름",
+        "baseUrl": "Base URL",
+        "inputPrice": "입력 $/1M",
+        "outputPrice": "출력 $/1M",
+        "contextWindow": "컨텍스트 윈도우",
+        "testCredential": "자격증명으로 테스트"
+      },
+      "providers": {
+        "openai": "OpenAI",
+        "anthropic": "Anthropic",
+        "google": "Google",
+        "openrouter": "OpenRouter",
+        "openai_compatible": "OpenAI 호환",
+        "azure_openai": "Azure OpenAI",
+        "other": "기타"
+      },
+      "placeholders": {
+        "modelId": "gpt-5-preview",
+        "displayName": "GPT-5 Preview (기본값: 모델 ID)",
+        "baseUrl": "https://api.example.com/v1",
+        "selectCredential": "자격증명 선택"
+      },
+      "actions": {
+        "hideTest": "테스트 숨기기",
+        "test": "테스트",
+        "save": "모델 저장"
+      }
+    },
+    "discoverPanel": {
+      "toast": {
+        "discoveryFailed": "탐색에 실패했습니다",
+        "saved": "{count}개 모델을 저장했습니다",
+        "saveFailed": "저장에 실패했습니다"
+      },
+      "llmCredential": "LLM 자격증명",
+      "noCredential": "사용 가능한 LLM 자격증명이 없습니다",
+      "selectCredential": "자격증명 선택",
+      "discover": "탐색",
+      "emptyCredential": "먼저 자격증명 페이지에서 LLM 자격증명(OpenAI, OpenRouter 등)을 추가한 뒤 모델을 탐색하세요.",
+      "emptyResults": "반환된 모델이 없습니다. 사용자 지정 ID 탭에서 모델을 직접 추가해 보세요.",
+      "searchPlaceholder": "모델 검색",
+      "toggleAll": "전체 전환",
+      "selectModel": "{name} 선택",
+      "testModel": "{name} 테스트",
+      "alreadyRegistered": "이미 등록됨",
+      "test": "테스트",
+      "inputPrice": "입력 {price}",
+      "outputPrice": "출력 {price}",
+      "context": "컨텍스트 {count}",
+      "selectedSummary": "{selected}개 선택 · {shown}개 표시",
+      "saveSelected": "선택 항목 저장"
+    },
+    "editDialog": {
+      "toast": {
+        "updated": "모델이 업데이트되었습니다",
+        "deleted": "모델이 삭제되었습니다",
+        "saveFailed": "저장에 실패했습니다",
+        "deleteFailed": "삭제에 실패했습니다",
+        "deleteInUse": "삭제할 수 없습니다. 이 모델을 사용 중인 에이전트를 먼저 다른 모델로 변경하세요.",
+        "noCredential": "사용 가능한 LLM 자격증명이 없습니다. 먼저 등록해 주세요.",
+        "healthCheckFailed": "상태 확인에 실패했습니다"
+      },
+      "tabs": {
+        "info": "정보",
+        "health": "상태"
+      },
+      "customIdBenchmarkHint": "사용자 지정 ID 모델은 공개 벤치마크와 자동 매칭되지 않습니다. 모델이 공개 카탈로그에 포함되면 탐색 과정에서 점수가 채워집니다.",
+      "testHint": "자격증명이 이 모델에 실제로 연결되는지 끝까지 확인합니다.",
+      "testConnection": "연결 테스트",
+      "hideTest": "테스트 숨기기",
+      "selectCredential": "자격증명 선택",
+      "fields": {
+        "displayName": "표시 이름",
+        "inputPrice": "입력 $/1M 토큰",
+        "outputPrice": "출력 $/1M 토큰",
+        "contextWindow": "컨텍스트 윈도우",
+        "maxOutputTokens": "최대 출력 토큰",
+        "vision": "비전 입력",
+        "functionCalling": "함수 호출",
+        "reasoning": "추론",
+        "setDefault": "기본값으로 설정"
+      },
+      "usage": "{count}개 에이전트에서 사용 중",
+      "delete": "삭제",
+      "deleteConfirm": "이 모델을 삭제할까요?",
+      "cancel": "취소",
+      "confirm": "확인",
+      "save": "변경사항 저장",
+      "health": {
+        "latestProbe": "최근 프로브",
+        "empty": "아직 프로브가 없습니다",
+        "checkNow": "지금 확인"
+      }
+    },
+    "testDialog": {
+      "title": "{name} 테스트",
+      "bulkTitle": "{count}개 모델 테스트",
+      "bulkDescription": "각 행은 선택한 자격증명으로 병렬 실행됩니다.",
+      "llmCredential": "LLM 자격증명",
+      "noCredential": "사용 가능한 LLM 자격증명이 없습니다",
+      "selectCredential": "자격증명 선택",
+      "emptyCredential": "먼저 자격증명 페이지에서 LLM 자격증명을 추가하세요.",
+      "progress": "{completed}/{total} 완료",
+      "success": "{count}개 성공",
+      "failed": "{count}개 실패"
+    },
+    "rankings": {
+      "noData": "순위 데이터 없음",
+      "info": "{label} 정보",
+      "title": "벤치마크 순위",
+      "summaryInfo": "순위 정보",
+      "tooltip": "공개 벤치마크 점수입니다. 카탈로그 cron이 약 6시간마다 갱신합니다.",
+      "emptyHint": "아직 벤치마크 점수가 없습니다. 카탈로그 cron이 약 6시간마다 갱신합니다.",
+      "badgeTitle": "{label}: {value}",
+      "items": {
+        "lmarena": {
+          "label": "LMArena",
+          "short": "LMArena",
+          "tooltip": "LMArena Chatbot Arena ELO 점수입니다. 높을수록 좋으며 약 6시간마다 갱신됩니다."
+        },
+        "livebench": {
+          "label": "LiveBench",
+          "short": "LiveBench",
+          "tooltip": "LiveBench 종합 점수(0-100)입니다. 높을수록 좋으며 약 6시간마다 갱신됩니다."
+        },
+        "aa_index": {
+          "label": "AA Index",
+          "short": "AA",
+          "tooltip": "Artificial Analysis Intelligence Index(0-100)입니다. 높을수록 좋으며 약 6시간마다 갱신됩니다."
+        }
+      }
+    },
+    "select": {
+      "customHint": "사용자 지정 ID는 카탈로그 가격을 건너뜁니다. 정확한 비용 추적이 필요하면 자주 쓰는 모델을 모델 페이지에 등록하세요.",
+      "providerPlaceholder": "provider",
+      "providerLabel": "사용자 지정 제공자",
+      "modelPlaceholder": "model id",
+      "modelLabel": "사용자 지정 모델 ID",
+      "test": "테스트",
+      "fromList": "목록에서 선택",
+      "selectCredential": "자격증명 선택",
+      "testFailed": "테스트에 실패했습니다. 이 모델을 사용하기 전에 위 오류를 먼저 수정하세요.",
+      "useCustom": "사용자 지정 모델 ID 사용",
+      "custom": "사용자 지정"
+    }
+  },
+  "shared": {
+    "validation": {
+      "required": "{field}은(는) 필수입니다.",
+      "minLength": "{min}자 이상 입력해 주세요.",
+      "maxLength": "{max}자 이하로 입력해 주세요.",
+      "invalidFormat": "형식이 올바르지 않습니다.",
+      "number": "숫자를 입력해 주세요.",
+      "min": "{min} 이상이어야 합니다.",
+      "max": "{max} 이하여야 합니다.",
+      "invalidJson": "올바른 JSON 형식이 아닙니다."
+    },
+    "healthHistory": {
+      "loadFailed": "상태 확인 기록을 불러오지 못했습니다.",
+      "empty": "Health check 기록 없음 — \"Check now\" 버튼으로 시작하세요.",
+      "noLatency": "Latency 데이터가 없는 probe입니다 (모두 실패).",
+      "latencyTitle": "지연 시간 (ms)",
+      "summary": "최소 {min} · 최대 {max} · {count}개 프로브",
+      "chartLabel": "지연 시간 이력 선 차트",
+      "statusTimeline": "상태 타임라인",
+      "oldestNewest": "오래된 순 → 최신 순",
+      "pointTitle": "{relative} · {status} · {latency}ms",
+      "probeAt": "{checkedAt}의 {status} 프로브",
+      "latencyValue": "지연 시간: {value}ms",
+      "noMessage": "메시지 없음",
+      "relative": {
+        "seconds": "{count}초 전",
+        "minutes": "{count}분 전",
+        "hours": "{count}시간 전",
+        "days": "{count}일 전"
+      },
+      "status": {
+        "healthy": "정상",
+        "degraded": "저하",
+        "unhealthy": "비정상",
+        "unknown": "알 수 없음"
+      }
+    }
+  },
+  "sharedConversation": {
+    "brand": "Moldy",
+    "headerCta": "나만의 에이전트 만들기 →",
+    "eyebrow": "공유된 대화",
+    "history": "대화 기록",
+    "empty": "아직 메시지가 없는 대화입니다.",
+    "titleFallback": "제목 없는 대화",
+    "readingTime": {
+      "underOneMinute": "1분 이내",
+      "minutes": "약 {minutes}분 읽기"
+    },
+    "footer": {
+      "title": "나만의 AI 에이전트를 만들어 보세요",
+      "description": "Moldy로 도구·스킬을 조합한 에이전트를 노코드로 구축하고 공유하세요.",
+      "cta": "Moldy 시작하기 →",
+      "messageCount": "{count}개 메시지",
+      "madeWith": "Moldy로 만든 대화"
+    },
+    "error": {
+      "title": "공유된 대화를 찾을 수 없어요",
+      "description": "링크가 만료됐거나 공유가 해제된 것 같아요. 작성자에게 새 링크를 요청해 주세요.",
+      "home": "홈으로 돌아가기"
+    }
   },
   "appSettings": {
     "title": "설정",
@@ -1370,6 +2938,91 @@
       "manageConnections": "연결 관리"
     }
   },
+  "credentials": {
+    "page": {
+      "title": "자격증명",
+      "description": "도구와 MCP 서버에서 사용하는 API 키와 OAuth 권한을 관리하세요.",
+      "new": "새 자격증명",
+      "columns": {
+        "name": "이름",
+        "type": "종류",
+        "status": "상태",
+        "lastUsed": "최근 사용",
+        "lastTested": "최근 테스트"
+      },
+      "filters": {
+        "type": "종류",
+        "status": "상태"
+      },
+      "statuses": {
+        "active": "활성",
+        "authNeeded": "인증 필요",
+        "expired": "만료",
+        "disabled": "비활성"
+      },
+      "empty": {
+        "title": "아직 자격증명이 없어요",
+        "description": "API 키나 OAuth 권한을 추가하면 도구가 인증할 수 있어요.",
+        "action": "자격증명 추가",
+        "filtered": "조건에 맞는 자격증명이 없어요"
+      },
+      "searchPlaceholder": "자격증명 검색"
+    },
+    "create": {
+      "toast": {
+        "saved": "자격증명이 저장되었습니다",
+        "saveFailed": "저장에 실패했습니다"
+      },
+      "title": "새 자격증명",
+      "titleWithType": "새 {type} 자격증명",
+      "description": {
+        "form": "필수 항목을 입력하고 저장 전에 테스트하세요.",
+        "catalog": "카탈로그에서 자격증명 종류를 선택하세요."
+      },
+      "searchPlaceholder": "자격증명 종류 검색",
+      "emptyDefinitions": "조건에 맞는 정의가 없어요",
+      "back": "뒤로",
+      "name": "이름",
+      "namePlaceholder": "예: 운영용 OpenAI",
+      "save": "자격증명 저장"
+    },
+    "detail": {
+      "toast": {
+        "statusChanged": "자격증명 상태가 {status}(으)로 변경되었습니다",
+        "updateFailed": "업데이트에 실패했습니다",
+        "deleted": "자격증명이 삭제되었습니다",
+        "deleteFailed": "삭제에 실패했습니다",
+        "oauthStartFailed": "OAuth 시작에 실패했습니다"
+      },
+      "loading": "자격증명 불러오는 중...",
+      "enable": "활성화",
+      "disable": "비활성화",
+      "reauthorize": "다시 인증",
+      "delete": "삭제",
+      "rows": {
+        "id": "ID",
+        "keyId": "키 ID",
+        "created": "생성일",
+        "lastUsed": "최근 사용",
+        "lastTested": "최근 테스트",
+        "storedFields": "저장된 필드"
+      },
+      "audit": {
+        "title": "최근 감사 로그",
+        "empty": "아직 감사 로그가 없어요"
+      },
+      "entity": "자격증명"
+    },
+    "picker": {
+      "placeholder": "자격증명 선택",
+      "none": "사용 안 함"
+    },
+    "testButton": {
+      "label": "테스트",
+      "succeeded": "자격증명 테스트에 성공했습니다",
+      "failed": "자격증명 테스트에 실패했습니다"
+    }
+  },
   "usage": {
     "pageTitle": "사용량",
     "subtitle": "기간별 토큰 사용량과 비용을 한눈에 확인하세요.",
@@ -1422,6 +3075,19 @@
       "cost": "비용",
       "tokens": "토큰",
       "requests": "요청"
+    },
+    "charts": {
+      "empty": "데이터 없음 — 에이전트 실행 후 표시됩니다",
+      "barMetric": {
+        "cost": "대상별 Cost (USD)",
+        "tokens": "대상별 Tokens",
+        "requests": "대상별 Requests"
+      },
+      "lineMetric": {
+        "cost": "Cost (USD)",
+        "tokens": "Tokens (in + out)",
+        "requests": "Requests"
+      }
     },
     "downloadCsv": "CSV 다운로드",
     "tableTitle": "원본 데이터",

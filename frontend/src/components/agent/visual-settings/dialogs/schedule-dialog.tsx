@@ -220,6 +220,7 @@ function ConversationCombobox({
   untitledLabel,
   label,
 }: ConversationComboboxProps) {
+  const t = useTranslations('agent.schedule')
   const listboxId = useId()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -290,7 +291,7 @@ function ConversationCombobox({
                       <span className="block truncate font-medium">{title}</span>
                       <span className="block truncate text-xxs text-muted-foreground">
                         {conversation.unread_count > 0
-                          ? `${conversation.unread_count}개 안읽음`
+                          ? t('unreadCount', { count: conversation.unread_count })
                           : formatConversationDate(conversation.updated_at)}
                       </span>
                     </span>

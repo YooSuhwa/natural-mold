@@ -29,7 +29,7 @@ async function readStreamErrorBody(
   const { code, message } = await parseApiErrorBody(response, { clone: true })
   return {
     code,
-    message: message ?? `요청이 거부되었습니다 (HTTP ${response.status})`,
+    message: message ?? `HTTP ${response.status}`,
   }
 }
 

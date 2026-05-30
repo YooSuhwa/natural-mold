@@ -2,6 +2,7 @@
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
+import { useTranslations } from 'next-intl'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 
@@ -13,9 +14,9 @@ interface SubagentArgs {
   prompt?: string
 }
 
-function resolveAgentName(args: SubagentArgs | undefined): string {
-  if (!args) return 'Sub-agent'
-  return args.agent_name || args.subagent_type || 'Sub-agent'
+function resolveAgentName(args: SubagentArgs | undefined, fallback: string): string {
+  if (!args) return fallback
+  return args.agent_name || args.subagent_type || fallback
 }
 
 function resolveInput(args: SubagentArgs | undefined): string {
@@ -30,8 +31,9 @@ interface SubAgentCardProps {
 }
 
 function SubAgentCard({ toolCallId, args, statusType }: SubAgentCardProps) {
+  const t = useTranslations('chat.toolUi.subAgent')
   const setRail = useSetAtom(chatRightRailAtom)
-  const agentName = resolveAgentName(args)
+  const agentName = resolveAgentName(args, t('fallbackName'))
   const input = resolveInput(args)
 
   return (
@@ -39,7 +41,7 @@ function SubAgentCard({ toolCallId, args, statusType }: SubAgentCardProps) {
       kind="subagent"
       status={pillStatusFromAssistantUi(statusType)}
       title={agentName}
-      meta={input || 'Sub-agent invocation'}
+      meta={input || t('invocation')}
       onClick={() =>
         setRail({
           mode: 'subagent',

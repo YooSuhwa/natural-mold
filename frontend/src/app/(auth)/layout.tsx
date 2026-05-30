@@ -9,13 +9,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, type CSSProperties, type ReactNode } from 'react'
 
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
+import { API_BASE } from '@/lib/api/client'
 import type { User } from '@/lib/types/user'
-
-const FEATURES = [
-  '대화로 만드는 노코드 에이전트',
-  'LangGraph 분기 · 시간여행 지원',
-  '암호화된 API 키 · 안전한 도구 호출',
-]
 
 const AVATAR_COLORS = ['oklch(0.596 0.145 163.225)', 'oklch(0.78 0.15 75)', 'oklch(0.7 0.15 240)']
 
@@ -75,13 +70,16 @@ const BUBBLES: Bubble[] = [
   { top: '30%', left: '46%', size: 14, animation: 'auth-drift1 9s ease-in-out infinite' },
 ]
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8001'
-
 export default function AuthLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const t = useTranslations()
   const isLogin = !pathname.includes('/register')
+  const features = [
+    t('auth.hero.features.noCode'),
+    t('auth.hero.features.branching'),
+    t('auth.hero.features.security'),
+  ]
 
   // Raw fetch bypasses apiFetch/withAuthRetry so a 401 here does NOT trigger
   // fireSessionExpired() → queryClient.clear(). If we used useSession() instead,
@@ -282,7 +280,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                 color: 'oklch(0.145 0 0)',
               }}
             >
-              Moldy
+              {t('auth.hero.brand')}
             </span>
           </div>
         </header>
@@ -338,7 +336,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                   flexShrink: 0,
                 }}
               />
-              AI Agent Builder
+              {t('auth.hero.category')}
             </span>
 
             <h2
@@ -354,15 +352,15 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             >
               {isLogin ? (
                 <>
-                  다시 만나서
+                  {t('auth.hero.loginTitleLine1')}
                   <br />
-                  반가워요 👋
+                  {t('auth.hero.loginTitleLine2')}
                 </>
               ) : (
                 <>
-                  첫 에이전트,
+                  {t('auth.hero.registerTitleLine1')}
                   <br />
-                  같이 만들어볼까요?
+                  {t('auth.hero.registerTitleLine2')}
                 </>
               )}
             </h2>
@@ -378,12 +376,12 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
               }}
             >
               {isLogin
-                ? '작업하던 에이전트를 이어서 빌드하거나, 새 아이디어를 시작해보세요.'
-                : '가입 즉시 사용 가능한 템플릿과 도구가 기다리고 있어요.'}
+                ? t('auth.hero.loginSubtitle')
+                : t('auth.hero.registerSubtitle')}
             </p>
 
             <div style={{ display: 'grid', gap: 10, marginTop: 24 }}>
-              {FEATURES.map((text) => (
+              {features.map((text) => (
                 <div
                   key={text}
                   className="auth-feature"
@@ -548,7 +546,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                       transition: 'color .15s',
                     }}
                   >
-                    로그인
+                    {t('auth.login.submit')}
                   </Link>
                   <Link
                     href="/register"
@@ -571,7 +569,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                       transition: 'color .15s',
                     }}
                   >
-                    회원가입
+                    {t('auth.register.submit')}
                   </Link>
                 </div>
 
@@ -591,7 +589,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
             color: 'oklch(0.556 0 0)',
           }}
         >
-          © 2026 Moldy contributors
+          {t('auth.hero.copyright')}
         </footer>
       </div>
     </>

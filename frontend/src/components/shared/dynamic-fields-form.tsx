@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import type { useTranslations } from 'next-intl'
 import { Eye, EyeOff, AlertCircle, Clock } from 'lucide-react'
 
 import { Input } from '@/components/ui/input'
@@ -18,6 +19,8 @@ import {
 import { cn } from '@/lib/utils'
 import type { FieldDef, FieldOption } from '@/lib/types/credential'
 
+type ValidationTranslator = ReturnType<typeof useTranslations<'shared.validation'>>
+
 export interface DynamicFieldsFormProps {
   fields: FieldDef[]
   value: Record<string, unknown>
@@ -32,9 +35,13 @@ export interface DynamicFieldsFormProps {
  * Validate a single value against the FieldDef's typeOptions/required rules.
  * Returns an error message string, or null if valid.
  */
-export function validateField(field: FieldDef, raw: unknown): string | null {
+export function validateField(
+  field: FieldDef,
+  raw: unknown,
+  t: ValidationTranslator,
+): string | null {
   const isEmpty = raw === undefined || raw === null || raw === ''
-  if (field.required && isEmpty) return `${field.display_name} is required`
+  if (field.required && isEmpty) return t('required', { field: field.display_name })
   if (isEmpty) return null
 
   const opts = field.type_options ?? {}
@@ -42,14 +49,14 @@ export function validateField(field: FieldDef, raw: unknown): string | null {
   if (field.kind === 'string' || field.kind === 'password' || field.kind === 'multiline') {
     const s = String(raw)
     if (opts.min_length !== undefined && s.length < opts.min_length) {
-      return `Minimum length is ${opts.min_length}`
+      return t('minLength', { min: opts.min_length })
     }
     if (opts.max_length !== undefined && s.length > opts.max_length) {
-      return `Maximum length is ${opts.max_length}`
+      return t('maxLength', { max: opts.max_length })
     }
     if (opts.regex) {
       try {
-        if (!new RegExp(opts.regex).test(s)) return 'Format is invalid'
+        if (!new RegExp(opts.regex).test(s)) return t('invalidFormat')
       } catch {
         // ignore bad regex from server
       }
@@ -58,16 +65,16 @@ export function validateField(field: FieldDef, raw: unknown): string | null {
 
   if (field.kind === 'number') {
     const n = Number(raw)
-    if (Number.isNaN(n)) return 'Must be a number'
-    if (opts.min !== undefined && n < opts.min) return `Minimum is ${opts.min}`
-    if (opts.max !== undefined && n > opts.max) return `Maximum is ${opts.max}`
+    if (Number.isNaN(n)) return t('number')
+    if (opts.min !== undefined && n < opts.min) return t('min', { min: opts.min })
+    if (opts.max !== undefined && n > opts.max) return t('max', { max: opts.max })
   }
 
   if (field.kind === 'json') {
     try {
       JSON.parse(typeof raw === 'string' ? raw : JSON.stringify(raw))
     } catch {
-      return 'Invalid JSON'
+      return t('invalidJson')
     }
   }
 
@@ -81,6 +88,7 @@ export function validateField(field: FieldDef, raw: unknown): string | null {
 export function validateFields(
   fields: FieldDef[],
   values: Record<string, unknown>,
+  t: ValidationTranslator,
   { skipRequired = false }: { skipRequired?: boolean } = {},
 ): Record<string, string> {
   const errors: Record<string, string> = {}
@@ -88,7 +96,7 @@ export function validateFields(
     if (f.runtime_only) continue
     if (!shouldShow(f, values)) continue
     const fieldToValidate = skipRequired ? { ...f, required: false } : f
-    const message = validateField(fieldToValidate, values[f.name])
+    const message = validateField(fieldToValidate, values[f.name], t)
     if (message) errors[f.name] = message
   }
   return errors

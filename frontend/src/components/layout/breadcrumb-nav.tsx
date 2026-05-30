@@ -55,6 +55,7 @@ function MarketplaceItemName({ id }: { id: string }) {
 export function BreadcrumbNav() {
   const pathname = usePathname()
   const t = useTranslations()
+  const ta = useTranslations('common.a11y')
   const segments = pathname.split('/').filter(Boolean)
 
   if (segments.length === 0) return null
@@ -98,7 +99,7 @@ export function BreadcrumbNav() {
   }
 
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm min-w-0">
+    <nav aria-label={ta('breadcrumb')} className="flex items-center gap-1.5 text-sm min-w-0">
       <Link
         href="/"
         className="text-muted-foreground hover:text-foreground transition-colors shrink-0"

@@ -1,5 +1,6 @@
 'use client'
 
+import { useTranslations } from 'next-intl'
 import { Loader2Icon, CheckCircle2Icon, AlertCircleIcon, WrenchIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ChatImage } from '@/components/chat/markdown-content'
@@ -30,8 +31,9 @@ function safeParseJson(text: string): unknown {
 
 /** Best-effort pretty rendering for tool args/result values. */
 function ResultRenderer({ value }: { value: unknown }) {
+  const t = useTranslations('chat.rightRail')
   if (value === null || value === undefined) {
-    return <p className="text-xs text-muted-foreground">No result.</p>
+    return <p className="text-xs text-muted-foreground">{t('noResult')}</p>
   }
 
   if (typeof value === 'string') {
@@ -85,24 +87,25 @@ function ResultRenderer({ value }: { value: unknown }) {
 }
 
 function StatusBadge({ status }: { status: ToolResultPayload['status'] }) {
+  const t = useTranslations('chat.rightRail.status')
   if (!status) return null
 
   const config = {
     running: {
       Icon: Loader2Icon,
-      label: 'Running',
+      label: t('running'),
       className: 'bg-status-warn/10 text-status-warn',
       iconClassName: 'animate-spin',
     },
     complete: {
       Icon: CheckCircle2Icon,
-      label: 'Complete',
+      label: t('complete'),
       className: 'bg-status-success/10 text-status-success',
       iconClassName: '',
     },
     incomplete: {
       Icon: AlertCircleIcon,
-      label: 'Incomplete',
+      label: t('incomplete'),
       className: 'bg-status-danger/10 text-status-danger',
       iconClassName: '',
     },
@@ -125,6 +128,7 @@ function StatusBadge({ status }: { status: ToolResultPayload['status'] }) {
 }
 
 export function ToolResultPanelContent({ payload }: Props) {
+  const t = useTranslations('chat.rightRail')
   const hasArgs =
     payload.args !== undefined &&
     payload.args !== null &&
@@ -143,7 +147,7 @@ export function ToolResultPanelContent({ payload }: Props) {
       {hasArgs ? (
         <section>
           <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Arguments
+            {t('arguments')}
           </h3>
           <ResultRenderer value={payload.args} />
         </section>
@@ -151,7 +155,7 @@ export function ToolResultPanelContent({ payload }: Props) {
 
       <section>
         <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Result
+          {t('result')}
         </h3>
         <ResultRenderer value={payload.result} />
       </section>

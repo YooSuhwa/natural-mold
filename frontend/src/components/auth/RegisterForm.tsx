@@ -41,14 +41,16 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
     e.preventDefault()
     setTouched({ name: true, email: true, password: true, agreed: true })
     if (formInvalid) return
-    void onSubmit({ name: name.trim(), email, password })
+    void onSubmit({ name: name.trim(), email, password }).catch(() => {
+      // Mutation state renders the mapped auth error; avoid a dev overlay.
+    })
   }
 
   return (
     <form onSubmit={handleSubmit} aria-busy={isLoading} noValidate>
       <header style={{ marginBottom: 20 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', margin: '0 0 6px' }}>
-          새 계정 만들기
+          {t('auth.register.formTitle')}
         </h1>
         {/* <p style={{ fontSize: 13.5, color: 'oklch(0.556 0 0)', margin: 0 }}>
           30초면 가입할 수 있어요
@@ -78,7 +80,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
               autoComplete="name"
               required
               maxLength={80}
-              placeholder="홍길동"
+              placeholder={t('auth.register.namePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               onBlur={() => setTouched((p) => ({ ...p, name: true }))}
@@ -106,7 +108,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
               autoComplete="email"
               inputMode="email"
               required
-              placeholder="you@example.com"
+              placeholder={t('auth.register.emailPlaceholder')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               onBlur={() => setTouched((p) => ({ ...p, email: true }))}
@@ -151,7 +153,9 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
               <button
                 type="button"
                 aria-pressed={showPassword}
-                aria-label={showPassword ? '비밀번호 숨김' : '비밀번호 표시'}
+                aria-label={
+                  showPassword ? t('auth.password.hide') : t('auth.password.show')
+                }
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
@@ -188,7 +192,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
                   paddingLeft: 26,
                 }}
               >
-                약관 동의가 필요합니다
+                {t('auth.register.termsRequired')}
               </p>
             ) : null}
           </div>

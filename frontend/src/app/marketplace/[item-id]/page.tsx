@@ -3,6 +3,7 @@
 import { use, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { ChevronLeftIcon, SparklesIcon } from 'lucide-react'
 
@@ -41,43 +42,26 @@ import {
 import type { MarketplaceItemPatchBody, MarketplaceVisibility } from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 
-const SUPPORT_LEVEL_LABELS: Record<string, string> = {
-  ready_python: 'Python 실행 가능',
-  proxy_http: '프록시 필요',
-  node_package: 'Node 필요',
-  browser_or_local: '브라우저/로컬 필요',
-  manual_only: '수동 설정',
-  disabled: '지원 안 함',
-}
-
-const EXECUTION_PROFILE_LABELS: Record<string, string> = {
-  support_level: '지원 방식',
-  runners: '실행기',
-  requires_network: '네트워크',
-  notes: '메모',
-}
-
-const VISIBILITY_SUCCESS_MESSAGE: Record<Exclude<MarketplaceVisibility, 'system'>, string> = {
-  private: '비공개로 전환했습니다. 카탈로그에서 노출 안 됨.',
-  public: '공개로 전환했습니다. 카탈로그 노출은 super_user 승인 대기.',
-  unlisted: '링크 전용(unlisted)으로 전환했습니다.',
-  restricted: 'Restricted로 전환했습니다. ACL 대상 추가 필요.',
-}
-
 function shortHash(value?: string | null): string | null {
   if (!value) return null
   return value.slice(0, 7)
 }
 
-function formatExecutionProfileValue(key: string, value: unknown): string {
+function formatExecutionProfileValue(
+  key: string,
+  value: unknown,
+  t: (key: string) => string,
+): string {
   if (key === 'support_level' && typeof value === 'string') {
-    return SUPPORT_LEVEL_LABELS[value] ?? value
+    return t(`executionProfile.supportLevel.${value}`)
   }
   if (key === 'requires_network' && typeof value === 'boolean') {
-    return value ? '필요' : '불필요'
+    return value
+      ? t('executionProfile.boolean.required')
+      : t('executionProfile.boolean.notRequired')
   }
   if (Array.isArray(value)) {
-    return value.length > 0 ? value.join(', ') : '없음'
+    return value.length > 0 ? value.join(', ') : t('executionProfile.none')
   }
   if (value == null || value === '') return '—'
   return String(value)
@@ -88,6 +72,8 @@ interface PageProps {
 }
 
 export default function MarketplaceItemDetailPage({ params }: PageProps) {
+  const t = useTranslations('marketplace.detail')
+  const tCard = useTranslations('marketplace.card')
   const { 'item-id': itemId } = use(params)
   const router = useRouter()
   const { data: user } = useSession()
@@ -124,11 +110,11 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
             className="inline-flex items-center gap-1 text-sm text-primary-strong"
           >
             <ChevronLeftIcon className="size-4" />
-            마켓플레이스로 돌아가기
+            {t('back')}
           </Link>
           <ErrorState
-            title={notFound ? '항목을 찾을 수 없어요' : '항목을 불러오지 못했어요'}
-            description="이 항목을 찾을 수 없거나 접근 권한이 없습니다."
+            title={notFound ? t('error.notFound') : t('error.loadFailed')}
+            description={t('error.description')}
           />
         </div>
       </div>
@@ -166,7 +152,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
       await action()
       toast.success(successMsg)
     } catch (err) {
-      const fallback = options?.fallback ?? '요청에 실패했습니다.'
+      const fallback = options?.fallback ?? t('toast.requestFailed')
       if (err instanceof ApiError) {
         toast.error(options?.codeMap?.[err.code ?? ''] ?? err.message ?? fallback)
       } else {
@@ -177,8 +163,8 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
 
   async function handleDisable() {
     if (!item) return
-    await runMutation(() => disableItem.mutateAsync(item.id), '비활성화 완료', {
-      fallback: '비활성화에 실패했습니다.',
+    await runMutation(() => disableItem.mutateAsync(item.id), t('toast.disabled'), {
+      fallback: t('toast.disableFailed'),
     })
   }
 
@@ -186,30 +172,29 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
     if (!item) return
     await runMutation(
       () => enableItem.mutateAsync(item.id),
-      '재활성화 완료 — 카탈로그 재노출은 공개 범위/리스팅 설정에 따라 결정됩니다.',
-      { fallback: '재활성화에 실패했습니다.' },
+      t('toast.enabled'),
+      { fallback: t('toast.enableFailed') },
     )
   }
 
   async function handleUnpublish() {
     if (!item) return
     if (item.visibility === 'private') {
-      toast.info('이미 비공개 상태입니다.')
+      toast.info(t('toast.alreadyPrivate'))
       return
     }
     await runMutation(
       () => patchItem.mutateAsync({ visibility: 'private' }),
-      '비공개 전환 완료 — 카탈로그에서 미노출. 이미 설치된 사본은 영향 없음.',
-      { fallback: '비공개 전환에 실패했습니다.' },
+      t('toast.unpublished'),
+      { fallback: t('toast.unpublishFailed') },
     )
   }
 
   async function handleRevokeAcl(userId: string) {
-    await runMutation(() => removeACL.mutateAsync(userId), '공유 취소 완료', {
-      fallback: '공유 취소에 실패했습니다.',
+    await runMutation(() => removeACL.mutateAsync(userId), t('toast.aclRevoked'), {
+      fallback: t('toast.aclRevokeFailed'),
       codeMap: {
-        marketplace_acl_required:
-          'restricted 상태에서는 마지막 ACL 을 비울 수 없습니다. visibility 를 먼저 바꾸세요.',
+        marketplace_acl_required: t('toast.lastAclRequired'),
       },
     })
   }
@@ -219,12 +204,11 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
     if (!item || next === item.visibility || next === 'system') return
     await runMutation(
       () => patchItem.mutateAsync({ visibility: next } satisfies MarketplaceItemPatchBody),
-      VISIBILITY_SUCCESS_MESSAGE[next],
+      t(`visibilitySuccess.${next}`),
       {
-        fallback: '공개 범위 변경에 실패했습니다.',
+        fallback: t('toast.visibilityFailed'),
         codeMap: {
-          marketplace_acl_required:
-            '제한 공유 전환은 공유 대상이 최소 1명 필요합니다. 대상 추가 후 다시 시도하세요.',
+          marketplace_acl_required: t('toast.aclRequired'),
         },
       },
     )
@@ -238,7 +222,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
           className="inline-flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ChevronLeftIcon className="size-4" />
-          마켓플레이스로 돌아가기
+          {t('back')}
         </Link>
 
         <PageHeader
@@ -247,7 +231,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
           action={
             <div className="flex items-center gap-2">
               <Button variant={cta.variant} disabled={cta.disabled} onClick={handlePrimary}>
-                {cta.label}
+                {tCard(`cta.${cta.kind}`)}
               </Button>
             </div>
           }
@@ -264,14 +248,14 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
         <div className="grid gap-4 lg:grid-cols-2">
           <Card className="border border-border bg-card">
             <CardHeader>
-              <CardTitle className="text-sm">버전</CardTitle>
+              <CardTitle className="text-sm">{t('versions.title')}</CardTitle>
             </CardHeader>
             <CardContent>
               {!versions || versions.length === 0 ? (
                 <EmptyState
                   icon={<SparklesIcon className="size-5" />}
-                  title="아직 공개된 버전이 없어요"
-                  description="스킬 상세 페이지에서 첫 버전을 공개할 수 있어요."
+                  title={t('versions.emptyTitle')}
+                  description={t('versions.emptyDescription')}
                 />
               ) : (
                 <ul className="space-y-2 text-sm">
@@ -288,7 +272,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                           </Badge>
                           {v.id === item.latest_version?.id ? (
                             <Badge className="bg-status-success/10 text-status-success text-[10px]">
-                              최신
+                              {t('versions.latest')}
                             </Badge>
                           ) : null}
                         </div>
@@ -310,7 +294,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
 
           <Card className="border border-border bg-card">
             <CardHeader>
-              <CardTitle className="text-sm">실행 프로필</CardTitle>
+              <CardTitle className="text-sm">{t('executionProfile.title')}</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground">
               {item.execution_profile ? (
@@ -318,14 +302,14 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                   {Object.entries(item.execution_profile).map(([key, value]) => (
                     <div key={key} className="grid gap-1 rounded-md bg-muted/40 px-3 py-2 sm:grid-cols-[120px_1fr]">
                       <dt className="font-medium text-foreground">
-                        {EXECUTION_PROFILE_LABELS[key] ?? key}
+                        {t(`executionProfile.labels.${key}`) || key}
                       </dt>
-                      <dd>{formatExecutionProfileValue(key, value)}</dd>
+                      <dd>{formatExecutionProfileValue(key, value, t)}</dd>
                     </div>
                   ))}
                 </dl>
               ) : (
-                <p>등록된 실행 프로필이 없어요.</p>
+                <p>{t('executionProfile.empty')}</p>
               )}
             </CardContent>
           </Card>
@@ -335,13 +319,13 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
           <Card className="border border-border bg-card">
             <CardHeader>
               <CardTitle className="text-sm">
-                {user?.is_super_user ? '운영 관리' : '소유자 관리'}
+                {user?.is_super_user ? t('management.admin') : t('management.owner')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {isOwner ? (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">공개 범위:</span>
+                  <span className="text-muted-foreground">{t('management.visibility')}</span>
                   <Select
                     value={item.visibility}
                     onValueChange={(v) => v && handleVisibilityChange(v as MarketplaceVisibility)}
@@ -350,14 +334,14 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="private">비공개 (나만)</SelectItem>
-                      <SelectItem value="restricted">제한 공유 (지정 사용자)</SelectItem>
-                      <SelectItem value="public">공개 (리스팅 대기)</SelectItem>
-                      <SelectItem value="unlisted">링크 전용</SelectItem>
+                      <SelectItem value="private">{t('visibility.private')}</SelectItem>
+                      <SelectItem value="restricted">{t('visibility.restricted')}</SelectItem>
+                      <SelectItem value="public">{t('visibility.public')}</SelectItem>
+                      <SelectItem value="unlisted">{t('visibility.unlisted')}</SelectItem>
                     </SelectContent>
                   </Select>
                   {patchItem.isPending ? (
-                    <span className="text-xs text-muted-foreground">저장 중…</span>
+                    <span className="text-xs text-muted-foreground">{t('saving')}</span>
                   ) : null}
                 </div>
               ) : null}
@@ -368,12 +352,12 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                     onClick={handleUnpublish}
                     disabled={patchItem.isPending}
                   >
-                    {patchItem.isPending ? '비공개 전환 중…' : '비공개로 전환'}
+                    {patchItem.isPending ? t('actions.unpublishing') : t('actions.unpublish')}
                   </Button>
                 ) : null}
                 {item.status === 'disabled' ? (
                   <Button onClick={handleEnable} disabled={enableItem.isPending}>
-                    {enableItem.isPending ? '재활성화 중…' : '항목 재활성화'}
+                    {enableItem.isPending ? t('actions.enabling') : t('actions.enable')}
                   </Button>
                 ) : (
                   <Button
@@ -381,24 +365,23 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                     onClick={handleDisable}
                     disabled={disableItem.isPending}
                   >
-                    {disableItem.isPending ? '비활성화 중…' : '항목 비활성화'}
+                    {disableItem.isPending ? t('actions.disabling') : t('actions.disable')}
                   </Button>
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                <span className="font-medium">비공개 전환</span>: 본인만 보이며 다른 사용자의 신규
-                설치가 막혀요. <span className="font-medium">비활성화</span>: 운영 차단 — 다른
-                사용자의 신규 설치가 영구 차단됩니다. 두 경우 모두 이미 설치된 사본에는 영향이
-                없어요.
+                {t.rich('management.help', {
+                  private: (chunks) => <span className="font-medium">{chunks}</span>,
+                  disabled: (chunks) => <span className="font-medium">{chunks}</span>,
+                })}
               </p>
 
               {isOwner && item.visibility === 'restricted' && item.acl_user_ids ? (
                 <div className="space-y-2 border-t border-border/60 pt-3">
-                  <p className="text-sm font-medium">공유 대상 (제한 공유)</p>
+                  <p className="text-sm font-medium">{t('acl.title')}</p>
                   {item.acl_user_ids.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      공유된 사용자가 없어요. 새 사용자 추가는 ACL 엔드포인트 직접 호출이 필요합니다
-                      (후속 슬라이스에 마법사 추가 예정).
+                      {t('acl.empty')}
                     </p>
                   ) : (
                     <ul className="space-y-1">
@@ -414,14 +397,14 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                             onClick={() => handleRevokeAcl(uid)}
                             disabled={removeACL.isPending}
                           >
-                            공유 취소
+                            {t('acl.revoke')}
                           </Button>
                         </li>
                       ))}
                     </ul>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    마지막 대상을 제거하려면 먼저 공개 범위를 다른 값으로 변경하세요.
+                    {t('acl.lastTargetHint')}
                   </p>
                 </div>
               ) : null}

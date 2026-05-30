@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Download, FilePlus2, Loader2, Save, Trash2 } from 'lucide-react'
 
@@ -11,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
+import { CredentialPicker } from '@/components/credential/credential-picker'
 import { SkillPackageTree } from './skill-package-tree'
 import {
   useDeleteSkill,
@@ -21,6 +23,12 @@ import {
   useSkillFiles,
   useUpdateSkillContent,
 } from '@/lib/hooks/use-skills'
+import {
+  useDeleteSkillCredentialBinding,
+  useSetSkillCredentialBinding,
+  useSkillCredentialBindings,
+  useSkillCredentialRequirements,
+} from '@/lib/hooks/use-marketplace'
 import { skillsApi } from '@/lib/api/skills'
 
 interface Props {
@@ -30,6 +38,7 @@ interface Props {
 }
 
 export function SkillDetailDialog({ skillId, open, onOpenChange }: Props) {
+  const t = useTranslations('skill.detailDialog')
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="xl" height="tall">
       {skillId ? (
@@ -37,13 +46,13 @@ export function SkillDetailDialog({ skillId, open, onOpenChange }: Props) {
         <SkillDetailBody key={skillId} skillId={skillId} onClose={() => onOpenChange(false)} />
       ) : (
         <>
-          <DialogShell.Header title="Loading skill…" />
+          <DialogShell.Header title={t('loading')} />
           <DialogShell.Body>
             <Skeleton className="h-40 w-full rounded-lg" />
           </DialogShell.Body>
           <DialogShell.Footer>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {t('close')}
             </Button>
           </DialogShell.Footer>
         </>
@@ -53,6 +62,7 @@ export function SkillDetailDialog({ skillId, open, onOpenChange }: Props) {
 }
 
 function SkillDetailBody({ skillId, onClose }: { skillId: string; onClose: () => void }) {
+  const t = useTranslations('skill.detailDialog')
   const { data: skill } = useSkill(skillId)
   const isText = skill?.kind === 'text'
   const isPackage = skill?.kind === 'package'
@@ -60,13 +70,13 @@ function SkillDetailBody({ skillId, onClose }: { skillId: string; onClose: () =>
   if (!skill) {
     return (
       <>
-        <DialogShell.Header title="Loading skill…" />
+        <DialogShell.Header title={t('loading')} />
         <DialogShell.Body>
           <Skeleton className="h-40 w-full rounded-lg" />
         </DialogShell.Body>
         <DialogShell.Footer>
           <Button variant="outline" onClick={onClose}>
-            Close
+            {t('close')}
           </Button>
         </DialogShell.Footer>
       </>
@@ -109,11 +119,11 @@ function SkillDetailBody({ skillId, onClose }: { skillId: string; onClose: () =>
     <>
       {header}
       <DialogShell.Body>
-        <p className="text-sm text-muted-foreground">Unsupported skill kind.</p>
+        <p className="text-sm text-muted-foreground">{t('unsupported')}</p>
       </DialogShell.Body>
       <DialogShell.Footer>
         <Button variant="outline" onClick={onClose}>
-          Close
+          {t('close')}
         </Button>
       </DialogShell.Footer>
     </>
@@ -125,6 +135,7 @@ function SkillDetailBody({ skillId, onClose }: { skillId: string; onClose: () =>
 // ─────────────────────────────────────────────────────────────────────────
 
 function TextSkillEditor({ skillId, onClose }: { skillId: string; onClose: () => void }) {
+  const t = useTranslations('skill.detailDialog')
   const { data: textContent } = useSkillContent(skillId, true)
   const update = useUpdateSkillContent()
   const remove = useDeleteSkill()
@@ -142,25 +153,26 @@ function TextSkillEditor({ skillId, onClose }: { skillId: string; onClose: () =>
   async function handleSave() {
     try {
       await update.mutateAsync({ id: skillId, data: { content: editor } })
-      toast.success('Saved')
+      toast.success(t('saved'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Save failed')
+      toast.error(e instanceof Error ? e.message : t('saveFailed'))
     }
   }
 
   async function handleDelete() {
     try {
       await remove.mutateAsync(skillId)
-      toast.success('Skill deleted')
+      toast.success(t('deleted'))
       onClose()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Delete failed')
+      toast.error(e instanceof Error ? e.message : t('deleteFailed'))
     }
   }
 
   return (
     <>
       <DialogShell.Body>
+        <SkillCredentialBindingsPanel skillId={skillId} />
         <Textarea
           value={editor}
           rows={20}
@@ -172,7 +184,7 @@ function TextSkillEditor({ skillId, onClose }: { skillId: string; onClose: () =>
         {confirming ? (
           <div className="flex-1">
             <DeleteConfirmInline
-              entity="skill"
+              entity={t('skillEntity')}
               onCancel={() => setConfirming(false)}
               onConfirm={handleDelete}
               pending={remove.isPending}
@@ -186,11 +198,11 @@ function TextSkillEditor({ skillId, onClose }: { skillId: string; onClose: () =>
             onClick={() => setConfirming(true)}
           >
             <Trash2 className="size-3.5" />
-            Delete skill
+            {t('deleteSkill')}
           </Button>
         )}
         <Button variant="outline" onClick={onClose}>
-          Close
+          {t('close')}
         </Button>
         <Button onClick={handleSave} disabled={update.isPending}>
           {update.isPending ? (
@@ -198,7 +210,7 @@ function TextSkillEditor({ skillId, onClose }: { skillId: string; onClose: () =>
           ) : (
             <Save className="size-4" />
           )}
-          Save
+          {t('save')}
         </Button>
       </DialogShell.Footer>
     </>
@@ -257,6 +269,7 @@ function isPdf(path: string): boolean {
 }
 
 function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: () => void }) {
+  const t = useTranslations('skill.detailDialog')
   const { data: skill } = useSkill(skillId)
   const { data: files } = useSkillFiles(skillId)
   const setFile = useSetSkillFile(skillId)
@@ -311,7 +324,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
       })
       .catch((e) => {
         if (cancelled) return
-        toast.error(`Load failed: ${e instanceof Error ? e.message : 'unknown'}`)
+        toast.error(t('loadFailed', { message: e instanceof Error ? e.message : 'unknown' }))
       })
     return () => {
       cancelled = true
@@ -334,7 +347,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
     if (path === selectedPath) return
     if (currentDirty) {
       const ok = window.confirm(
-        `Discard unsaved changes to ${selectedPath}?\n\nClick OK to discard, Cancel to keep editing.`,
+        t('discardConfirm', { path: selectedPath ?? '' }),
       )
       if (!ok) return
       // Drop the draft for the previously-selected path.
@@ -378,9 +391,9 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
         next.delete(selectedPath)
         return next
       })
-      toast.success(`Saved ${selectedPath}`)
+      toast.success(t('fileSaved', { path: selectedPath }))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Save failed')
+      toast.error(e instanceof Error ? e.message : t('saveFailed'))
     }
   }
 
@@ -399,27 +412,27 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
         next.delete(selectedPath)
         return next
       })
-      toast.success(`Deleted ${selectedPath}`)
+      toast.success(t('fileDeleted', { path: selectedPath }))
       setConfirmingFileDelete(false)
       setSelectedPath(null) // re-default to SKILL.md on next render
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Delete failed')
+      toast.error(e instanceof Error ? e.message : t('deleteFailed'))
     }
   }
 
   async function handleAddFile() {
     const trimmed = newPath.trim().replace(/^\/+/, '')
     if (!trimmed) {
-      toast.error('Path required')
+      toast.error(t('pathRequired'))
       return
     }
     if (fileEntries.some((f) => f.path === trimmed)) {
-      toast.error('File already exists')
+      toast.error(t('fileExists'))
       return
     }
     try {
       await setFile.mutateAsync({ path: trimmed, content: '' })
-      toast.success(`Created ${trimmed}`)
+      toast.success(t('fileCreated', { path: trimmed }))
       setNewPath('')
       setAdding(false)
       // Seed remote cache so the editor opens with the empty content immediately.
@@ -430,17 +443,17 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
       })
       setSelectedPath(trimmed)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Create failed')
+      toast.error(e instanceof Error ? e.message : t('createFailed'))
     }
   }
 
   async function handleDeleteSkill() {
     try {
       await removeSkill.mutateAsync(skillId)
-      toast.success('Skill deleted')
+      toast.success(t('deleted'))
       onClose()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Delete failed')
+      toast.error(e instanceof Error ? e.message : t('deleteFailed'))
     }
   }
 
@@ -450,17 +463,17 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
         <DialogShell.Sidebar className="w-[260px]">
           <div className="mb-3 flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Files
+              {t('files')}
             </h3>
             <Button
               size="sm"
               variant="ghost"
               className="h-7 px-2 text-xs"
               onClick={() => setAdding((v) => !v)}
-              aria-label="Add file"
+              aria-label={t('addFile')}
             >
               <FilePlus2 className="size-3.5" />
-              Add
+              {t('add')}
             </Button>
           </div>
           {adding ? (
@@ -468,7 +481,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
               <Input
                 value={newPath}
                 onChange={(e) => setNewPath(e.target.value)}
-                placeholder="path/to/new-file.md"
+                placeholder={t('newPathPlaceholder')}
                 className="h-7 text-xs"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleAddFile()
@@ -486,7 +499,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
                   onClick={handleAddFile}
                   disabled={setFile.isPending || !newPath.trim()}
                 >
-                  Create
+                  {t('create')}
                 </Button>
                 <Button
                   size="sm"
@@ -497,7 +510,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
                     setNewPath('')
                   }}
                 >
-                  Cancel
+                  {t('cancel')}
                 </Button>
               </div>
             </div>
@@ -505,12 +518,13 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
           <SkillPackageTree files={files ?? []} selectedPath={selectedPath} onSelect={selectFile} />
           {dirtyPaths.size > 0 ? (
             <p className="mt-3 text-[10px] text-muted-foreground">
-              {dirtyPaths.size} unsaved file{dirtyPaths.size > 1 ? 's' : ''}
+              {t('unsavedCount', { count: dirtyPaths.size })}
             </p>
           ) : null}
         </DialogShell.Sidebar>
 
         <DialogShell.Body className="flex flex-col gap-3 py-4">
+          <SkillCredentialBindingsPanel skillId={skillId} />
           <FileEditorPane
             skillId={skillId}
             selectedPath={selectedPath}
@@ -532,7 +546,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
         {confirmingSkillDelete ? (
           <div className="flex-1">
             <DeleteConfirmInline
-              entity="skill (entire package)"
+              entity={t('packageEntity')}
               onCancel={() => setConfirmingSkillDelete(false)}
               onConfirm={handleDeleteSkill}
               pending={removeSkill.isPending}
@@ -546,14 +560,18 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
             onClick={() => setConfirmingSkillDelete(true)}
           >
             <Trash2 className="size-3.5" />
-            Delete skill
+            {t('deleteSkill')}
           </Button>
         )}
         <span className="text-[10px] text-muted-foreground">
-          {skill?.size_bytes ?? 0}b · v{skill?.version ?? '—'} · used by {skill?.used_by_count ?? 0}
+          {t('usedBy', {
+            bytes: skill?.size_bytes ?? 0,
+            version: skill?.version ?? '—',
+            count: skill?.used_by_count ?? 0,
+          })}
         </span>
         <Button variant="outline" onClick={onClose}>
-          Close
+          {t('close')}
         </Button>
         <Button onClick={handleSave} disabled={!currentDirty || setFile.isPending}>
           {setFile.isPending ? (
@@ -561,10 +579,93 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
           ) : (
             <Save className="size-4" />
           )}
-          Save file
+          {t('saveFile')}
         </Button>
       </DialogShell.Footer>
     </>
+  )
+}
+
+function SkillCredentialBindingsPanel({ skillId }: { skillId: string }) {
+  const t = useTranslations('skill.detailDialog')
+  const { data: requirements, isLoading: requirementsLoading } =
+    useSkillCredentialRequirements(skillId)
+  const { data: bindings, isLoading: bindingsLoading } = useSkillCredentialBindings(skillId)
+  const setBinding = useSetSkillCredentialBinding(skillId)
+  const deleteBinding = useDeleteSkillCredentialBinding(skillId)
+
+  const bindingByKey = useMemo(() => {
+    const map = new Map<string, string>()
+    bindings?.forEach((binding) => {
+      map.set(binding.requirement_key, binding.credential_id)
+    })
+    return map
+  }, [bindings])
+
+  const loading = requirementsLoading || bindingsLoading
+  const pending = setBinding.isPending || deleteBinding.isPending
+
+  async function handleCredentialChange(requirementKey: string, credentialId: string | null) {
+    try {
+      if (credentialId) {
+        await setBinding.mutateAsync({ requirementKey, credentialId })
+        toast.success(t('credentialUpdated'))
+      } else {
+        await deleteBinding.mutateAsync(requirementKey)
+        toast.success(t('credentialCleared'))
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('credentialUpdateFailed'))
+    }
+  }
+
+  if (loading) {
+    return <Skeleton className="h-20 w-full rounded-lg" />
+  }
+
+  if (!requirements?.length) {
+    return null
+  }
+
+  return (
+    <section className="rounded-lg border border-border/70 bg-muted/20 p-3">
+      <div className="mb-3 space-y-0.5">
+        <h3 className="text-sm font-semibold text-foreground">{t('credentialBindingsTitle')}</h3>
+        <p className="text-xs text-muted-foreground">{t('credentialBindingsDescription')}</p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {requirements.map((requirement) => {
+          const current = bindingByKey.get(requirement.key) ?? null
+          return (
+            <div key={requirement.key} className="space-y-1.5">
+              <div className="flex min-h-5 items-center gap-2">
+                <label className="text-xs font-medium text-foreground">
+                  {requirement.label || requirement.key}
+                </label>
+                <Badge variant={requirement.required ? 'default' : 'secondary'} className="h-5">
+                  {requirement.required ? t('requiredCredential') : t('optionalCredential')}
+                </Badge>
+              </div>
+              {requirement.description ? (
+                <p className="line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+                  {requirement.description}
+                </p>
+              ) : null}
+              <CredentialPicker
+                value={current}
+                onChange={(next) => handleCredentialChange(requirement.key, next)}
+                definitionKeys={[requirement.definition_key]}
+                disabled={pending}
+                placeholder={t('credentialPlaceholder')}
+              />
+              <p className="font-mono text-[10px] text-muted-foreground/80">
+                {requirement.definition_key}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
@@ -601,10 +702,11 @@ function FileEditorPane({
   onCancelDelete,
   onConfirmDelete,
 }: FileEditorPaneProps) {
+  const t = useTranslations('skill.detailDialog')
   if (!selectedPath) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Pick a file from the sidebar to begin editing.
+        {t('pickFile')}
       </div>
     )
   }
@@ -617,7 +719,7 @@ function FileEditorPane({
         </code>
         {currentDirty ? (
           <Badge variant="secondary" className="bg-status-warn/15 text-[10px] text-status-warn">
-            • unsaved
+            {t('unsaved')}
           </Badge>
         ) : null}
         {!isSkillMd ? (
@@ -628,18 +730,18 @@ function FileEditorPane({
             onClick={onAskDelete}
           >
             <Trash2 className="size-3.5" />
-            Delete file
+            {t('deleteFile')}
           </Button>
         ) : (
           <Badge variant="secondary" className="ml-auto text-[10px] text-muted-foreground">
-            protected
+            {t('protected')}
           </Badge>
         )}
       </div>
 
       {confirmingFileDelete ? (
         <DeleteConfirmInline
-          entity="file"
+          entity={t('fileEntity')}
           onCancel={onCancelDelete}
           onConfirm={onConfirmDelete}
           pending={deletePending}
@@ -670,6 +772,7 @@ function FileContentArea({
   loading: boolean
   onEdit: (value: string) => void
 }) {
+  const t = useTranslations('skill.detailDialog')
   if (isImageFile(path)) {
     return (
       <div className="flex flex-1 flex-col items-center gap-3 overflow-auto rounded-md border border-border/60 bg-muted/20 p-4">
@@ -685,7 +788,7 @@ function FileContentArea({
           rel="noreferrer"
           className="inline-flex items-center gap-1 text-xs text-primary-strong hover:underline"
         >
-          <Download className="size-3" /> Open original
+          <Download className="size-3" /> {t('openOriginal')}
         </a>
       </div>
     )
@@ -701,7 +804,7 @@ function FileContentArea({
           rel="noreferrer"
           className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs hover:bg-muted"
         >
-          <Download className="size-3.5" /> Open PDF
+          <Download className="size-3.5" /> {t('openPdf')}
         </a>
       </div>
     )
@@ -710,9 +813,9 @@ function FileContentArea({
   if (!isTextFile(path)) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-md border border-border/60 bg-muted/20 p-6 text-center">
-        <p className="text-sm font-medium">Binary file</p>
+        <p className="text-sm font-medium">{t('binaryFile')}</p>
         <p className="text-xs text-muted-foreground">
-          Editor preview is not available for this file type.
+          {t('binaryUnavailable')}
         </p>
         <a
           href={skillsApi.fileUrl(skillId, path)}
@@ -720,7 +823,7 @@ function FileContentArea({
           rel="noreferrer"
           className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs hover:bg-muted"
         >
-          <Download className="size-3.5" /> Download
+          <Download className="size-3.5" /> {t('download')}
         </a>
       </div>
     )

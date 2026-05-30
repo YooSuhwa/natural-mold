@@ -11,6 +11,7 @@
  */
 
 import { useMemo } from 'react'
+import { useTranslations } from 'next-intl'
 
 import type { UsageDailyEntry, UsageMetric } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -24,12 +25,6 @@ interface SpendBarChartProps {
   limit?: number
   className?: string
   label?: string
-}
-
-const METRIC_LABEL: Record<UsageMetric, string> = {
-  cost: 'Cost (USD) by target',
-  tokens: 'Tokens by target',
-  requests: 'Requests by target',
 }
 
 const METRIC_ACCENT: Record<UsageMetric, string> = {
@@ -57,6 +52,7 @@ export function SpendBarChart({
   className,
   label,
 }: SpendBarChartProps) {
+  const t = useTranslations('usage.charts')
   const ranked = useMemo(() => {
     return [...data]
       .sort((a, b) => metricValue(b, metric) - metricValue(a, metric))
@@ -72,14 +68,14 @@ export function SpendBarChart({
         )}
         data-testid="spend-bar-chart-empty"
       >
-        데이터 없음 — 에이전트 실행 후 표시됩니다
+        {t('empty')}
       </div>
     )
   }
 
   const max = Math.max(...ranked.map((d) => metricValue(d, metric)), 0.0001)
   const accent = METRIC_ACCENT[metric]
-  const heading = label ?? METRIC_LABEL[metric]
+  const heading = label ?? t(`barMetric.${metric}`)
 
   return (
     <div
