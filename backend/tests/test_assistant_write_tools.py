@@ -7,6 +7,7 @@ We monkeypatch that factory to use the test DB session maker throughout.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from unittest.mock import patch
 
@@ -14,6 +15,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
+from app.models.agent_trigger import AgentTrigger
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
@@ -88,7 +90,12 @@ def patch_write_session():
 
 def _extract_schedule_id(result: str) -> str:
     """Extract schedule ID from create_cron_schedule result string."""
-    return result.split("ID: ")[1].rstrip(")")
+    match = re.search(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+        result,
+    )
+    assert match is not None
+    return match.group(0)
 
 
 def _build_write_tools(db: AsyncSession, agent_id: uuid.UUID):
@@ -593,11 +600,47 @@ async def test_create_cron_schedule_recurring(db: AsyncSession, patch_write_sess
     result = await tool.ainvoke(
         {
             "schedule_type": "recurring",
+            "name": "매 시간 뉴스",
             "message": "매 시간 뉴스 검색",
             "cron_expression": "0 * * * *",
         }
     )
     assert "생성 완료" in result
+
+    trigger = await db.get(AgentTrigger, uuid.UUID(_extract_schedule_id(result)))
+    assert trigger is not None
+    assert trigger.name == "매 시간 뉴스"
+    assert trigger.trigger_type == "cron"
+    assert trigger.schedule_config == {"cron_expression": "0 * * * *"}
+    assert trigger.timezone == "Asia/Seoul"
+    assert trigger.conversation_policy == "schedule_thread"
+
+
+@pytest.mark.asyncio
+async def test_create_cron_schedule_interval(db: AsyncSession, patch_write_session):
+    agent_id, _ = await _seed_full(db)
+    tools = _build_write_tools(db, agent_id)
+    tool = _find_tool(tools, "create_cron_schedule")
+
+    result = await tool.ainvoke(
+        {
+            "schedule_type": "interval",
+            "name": "10분 모니터링",
+            "message": "상태 확인",
+            "interval_minutes": 10,
+            "timezone": "Asia/Seoul",
+            "conversation_policy": "schedule_thread",
+        }
+    )
+    assert "생성 완료" in result
+
+    trigger = await db.get(AgentTrigger, uuid.UUID(_extract_schedule_id(result)))
+    assert trigger is not None
+    assert trigger.name == "10분 모니터링"
+    assert trigger.trigger_type == "interval"
+    assert trigger.schedule_config == {"interval_minutes": 10}
+    assert trigger.timezone == "Asia/Seoul"
+    assert trigger.conversation_policy == "schedule_thread"
 
 
 @pytest.mark.asyncio
@@ -610,7 +653,7 @@ async def test_create_cron_schedule_one_time(db: AsyncSession, patch_write_sessi
         {
             "schedule_type": "one_time",
             "message": "내일 리포트",
-            "scheduled_at": "2026-04-08T09:00:00",
+            "scheduled_at": "2026-06-08T09:00:00",
         }
     )
     assert "생성 완료" in result
@@ -708,6 +751,41 @@ async def test_update_cron_schedule(db: AsyncSession, patch_write_session):
         }
     )
     assert "수정 완료" in result
+
+    trigger = await db.get(AgentTrigger, uuid.UUID(schedule_id))
+    assert trigger is not None
+    assert trigger.schedule_config == {"cron_expression": "30 * * * *"}
+    assert trigger.input_message == "30분마다 검색"
+
+
+@pytest.mark.asyncio
+async def test_update_cron_schedule_by_name_requires_unique_match(
+    db: AsyncSession, patch_write_session
+):
+    agent_id, _ = await _seed_full(db)
+    tools = _build_write_tools(db, agent_id)
+    create_tool = _find_tool(tools, "create_cron_schedule")
+    update_tool = _find_tool(tools, "update_cron_schedule")
+
+    for message in ("첫 번째", "두 번째"):
+        result = await create_tool.ainvoke(
+            {
+                "schedule_type": "recurring",
+                "name": "아침 뉴스",
+                "message": message,
+                "cron_expression": "0 9 * * *",
+            }
+        )
+        assert "생성 완료" in result
+
+    result = await update_tool.ainvoke(
+        {
+            "schedule_name": "아침 뉴스",
+            "cron_expression": "30 9 * * *",
+        }
+    )
+    assert "여러 개" in result
+    assert "ID" in result
 
 
 @pytest.mark.asyncio
