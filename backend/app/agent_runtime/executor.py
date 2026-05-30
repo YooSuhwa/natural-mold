@@ -34,6 +34,7 @@ from app.agent_runtime.streaming import stream_agent_response
 from app.agent_runtime.temporal import build_temporal_context_prompt
 from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_for_runtime
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
+from app.exceptions import AppError
 from app.hooks import HookContext, HookResult, hooks
 from app.marketplace.skill_runtime import (
     SkillRuntimeDescriptor,
@@ -68,6 +69,21 @@ _WRITE_TOOL_KEYWORDS = frozenset(
         "reserve",
     }
 )
+
+
+class MiddlewareModelCredentialRequiredError(AppError):
+    """Raised when middleware model config has no user-owned provider key."""
+
+    def __init__(self, provider: str) -> None:
+        super().__init__(
+            code="middleware_model_credential_required",
+            message=(
+                f"미들웨어 모델({provider})에 사용할 본인의 LLM API 키가 등록되어 있지 않습니다. "
+                "/credentials 페이지에서 해당 제공자의 키를 등록하거나 미들웨어 모델 설정을 "
+                "변경해주세요."
+            ),
+            status=422,
+        )
 
 
 def _expand_shell_vars(
@@ -550,8 +566,9 @@ def _resolve_middleware_model_params(
 ) -> list[dict[str, Any]]:
     """미들웨어 config의 model 문자열을 BaseChatModel 객체로 사전 해석.
 
-    provider_api_keys에 해당 프로바이더 키가 없으면 api_key=None 전달
-    → LangChain env var 폴백 차단, 인증 실패로 안전하게 처리.
+    User-facing agent runtime must not fall through to env/system credentials.
+    The caller provides only user-owned provider keys; missing keys become a
+    clear 422 error before LangChain model construction.
     """
     resolved = []
     for config in configs:
@@ -560,8 +577,14 @@ def _resolve_middleware_model_params(
             val = params.get(field_name)
             if isinstance(val, str) and ":" in val:
                 prov, mname = val.split(":", 1)
+                api_key = provider_api_keys.get(prov)
+                if not api_key:
+                    raise MiddlewareModelCredentialRequiredError(prov)
                 params[field_name] = create_chat_model(
-                    prov, mname, api_key=provider_api_keys.get(prov)
+                    prov,
+                    mname,
+                    api_key=api_key,
+                    allow_env_fallback=False,
                 )
         resolved.append({**config, "params": params})
     return resolved

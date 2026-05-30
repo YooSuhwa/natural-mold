@@ -211,8 +211,10 @@ async def test_list_messages_conversation_not_found(client: AsyncClient):
 async def test_send_message_streaming(client: AsyncClient):
     agent_id, _ = await _seed_agent()
     conv_id = await _seed_conversation(agent_id)
+    captured_args: list = []
 
     async def mock_stream(*args, **kwargs):
+        captured_args.extend(args)
         yield 'event: message_start\ndata: {"id": "test-msg", "role": "assistant"}\n\n'
         yield 'event: content_delta\ndata: {"delta": "Hello"}\n\n'
         yield 'event: message_end\ndata: {"content": "Hello", "usage": {}}\n\n'
@@ -229,6 +231,7 @@ async def test_send_message_streaming(client: AsyncClient):
     assert "message_start" in body
     assert "content_delta" in body
     assert "message_end" in body
+    assert captured_args[0].provider_api_keys == {"openai": "test-api-key"}
 
 
 @pytest.mark.asyncio

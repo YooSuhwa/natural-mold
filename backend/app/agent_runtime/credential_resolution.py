@@ -10,8 +10,10 @@ Tiered policy:
   1. ``agent.llm_credential`` (the agent's explicit binding).
   2. ``agent.model.default_credential_id`` (captured at Add-model time —
      respects user intent without forcing every agent to re-bind).
-  3. ``None`` — caller falls back to env-var (Builder/Assistant sub-agents
-     and bootstrap flows).
+  3. Provider-matched user-owned credential.
+
+Missing user credentials raise ``LLMCredentialRequiredError``. Builder,
+Assistant, and other service flows use ``system_credential_resolver`` instead.
 """
 
 from __future__ import annotations
@@ -59,8 +61,8 @@ async def resolve_llm_api_key_for_agent(
 ) -> str | None:
     """Decrypt the best available credential for ``agent`` and return its key.
 
-    Returns ``None`` when no usable credential exists; the model factory will
-    fall through to env-var fallback.
+    Raises ``LLMCredentialRequiredError`` when no usable user-owned credential
+    exists.
 
     INFO 레벨 trace 를 한 줄씩 emit — 어느 단계에서 키가 결정/실패했는지
     backend stdout 로 진단 가능 (silent fail 회귀 방지).

@@ -164,6 +164,31 @@ class TestCreateChatModel:
         kwargs = mock_cls.call_args[1]
         assert "api_key" not in kwargs
 
+    def test_api_key_none_can_disable_settings_fallback(self):
+        """User-facing runtime can opt out of env/system fallback entirely."""
+        mock_cls = MagicMock()
+        with (
+            patch.dict(
+                "app.agent_runtime.model_factory.PROVIDER_MAP",
+                {"openai": mock_cls},
+            ),
+            patch.dict(
+                "app.agent_runtime.model_factory.PROVIDER_API_KEY_MAP",
+                {"openai": "settings-fallback"},
+            ),
+        ):
+            from app.agent_runtime.model_factory import create_chat_model
+
+            create_chat_model(
+                "openai",
+                "gpt-4o",
+                api_key=None,
+                allow_env_fallback=False,
+            )
+
+        kwargs = mock_cls.call_args[1]
+        assert "api_key" not in kwargs
+
     def test_explicit_api_key_overrides_settings(self):
         """Explicit api_key parameter should take precedence over settings."""
         mock_cls = MagicMock()

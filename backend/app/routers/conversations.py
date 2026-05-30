@@ -15,7 +15,6 @@ from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agen
 from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
-from app.agent_runtime.model_factory import env_provider_keys
 from app.agent_runtime.streaming import format_sse
 from app.config import settings
 from app.database import async_session
@@ -101,9 +100,9 @@ async def _resolve_agent_context(
             ),
         )
 
-    # Tiered: agent.llm_credential → model.default_credential_id → env fallback.
-    # Lets users skip the per-agent credential pick when their model already
-    # carries the right default.
+    # Tiered user-owned policy: agent.llm_credential → model.default_credential_id
+    # → provider-matched user credential. System/env credentials are reserved
+    # for service flows, not user chat runtime.
     api_key = await resolve_llm_api_key_for_agent(db, agent)
     base_url = agent.model.base_url
 
@@ -112,6 +111,7 @@ async def _resolve_agent_context(
     )
 
     fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
+    provider_api_keys = {agent.model.provider: api_key} if api_key else None
 
     return AgentConfig(
         provider=agent.model.provider,
@@ -125,7 +125,7 @@ async def _resolve_agent_context(
         middleware_configs=agent.middleware_configs,
         agent_skills=chat_service.build_agent_skills(agent) or None,
         agent_id=str(agent.id),
-        provider_api_keys=env_provider_keys(),
+        provider_api_keys=provider_api_keys,
         cost_per_input_token=(
             float(agent.model.cost_per_input_token) if agent.model.cost_per_input_token else None
         ),

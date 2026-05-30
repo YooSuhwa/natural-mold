@@ -397,6 +397,7 @@ async def test_execute_trigger_passes_messages():
         await execute_trigger(str(trigger_id))
 
     # args: (cfg: AgentConfig, messages_history: list)
+    assert captured_args[0].provider_api_keys == {"openai": "test-api-key"}
     assert captured_args[1] == [{"role": "user", "content": "뉴스 검색해줘"}]
 
 
