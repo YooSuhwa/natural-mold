@@ -8,8 +8,18 @@ import '@xyflow/react/dist/style.css'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useUpdateAgent, useCreateAgent } from '@/lib/hooks/use-agents'
+import { useCreateTrigger, useDeleteTrigger, useUpdateTrigger } from '@/lib/hooks/use-triggers'
 import { toggleSetItem } from '@/lib/utils'
-import type { Agent, Model, Tool, Skill, AgentTrigger, MiddlewareRegistryItem } from '@/lib/types'
+import type {
+  Agent,
+  Model,
+  Tool,
+  Skill,
+  AgentTrigger,
+  MiddlewareRegistryItem,
+  TriggerCreateRequest,
+  TriggerUpdateRequest,
+} from '@/lib/types'
 import { Toolbar } from './toolbar'
 import { AgentNode } from './nodes/agent-node'
 import { ChannelsNode } from './nodes/channels-node'
@@ -85,6 +95,37 @@ export function VisualSettingsFlow({
   const t = useTranslations('agent.visualSettings')
   const updateAgent = useUpdateAgent(agentId ?? '')
   const createAgent = useCreateAgent()
+  const { mutate: createTriggerMutate, isPending: isCreatingTrigger } = useCreateTrigger(
+    agentId ?? '',
+  )
+  const { mutate: updateTriggerMutate, isPending: isUpdatingTrigger } = useUpdateTrigger(
+    agentId ?? '',
+  )
+  const { mutate: deleteTriggerMutate, isPending: isDeletingTrigger } = useDeleteTrigger(
+    agentId ?? '',
+  )
+  const handleCreateTrigger = useCallback(
+    (data: TriggerCreateRequest) => {
+      if (!agentId) return
+      createTriggerMutate(data)
+    },
+    [agentId, createTriggerMutate],
+  )
+  const handleUpdateTrigger = useCallback(
+    (triggerId: string, data: TriggerUpdateRequest) => {
+      if (!agentId) return
+      updateTriggerMutate({ triggerId, data })
+    },
+    [agentId, updateTriggerMutate],
+  )
+  const handleDeleteTrigger = useCallback(
+    (triggerId: string) => {
+      if (!agentId) return
+      deleteTriggerMutate(triggerId)
+    },
+    [agentId, deleteTriggerMutate],
+  )
+  const isTriggerPending = isCreatingTrigger || isUpdatingTrigger || isDeletingTrigger
 
   // Internal state (uncontrolled fallback). 사용되지 않을 때도 hooks 규칙상 항상 호출.
   const [internalName, setInternalName] = useState(agent?.name ?? '')
@@ -149,9 +190,7 @@ export function VisualSettingsFlow({
     ? controlledHandlers!.onTemperatureChange
     : setInternalTemperature
   const setTopP = isControlled ? controlledHandlers!.onTopPChange : setInternalTopP
-  const setMaxTokens = isControlled
-    ? controlledHandlers!.onMaxTokensChange
-    : setInternalMaxTokens
+  const setMaxTokens = isControlled ? controlledHandlers!.onMaxTokensChange : setInternalMaxTokens
 
   // Sync state from agent prop (edit mode only, uncontrolled only)
   useEffect(() => {
@@ -478,6 +517,19 @@ export function VisualSettingsFlow({
             },
           }
         }
+        if (node.id === 'schedule') {
+          return {
+            ...node,
+            data: {
+              triggers,
+              agentId: agentId ?? '',
+              onCreateTrigger: handleCreateTrigger,
+              onUpdateTrigger: handleUpdateTrigger,
+              onDeleteTrigger: handleDeleteTrigger,
+              isPending: isTriggerPending,
+            },
+          }
+        }
         if (node.id === 'toolbox') {
           return {
             ...node,
@@ -547,6 +599,11 @@ export function VisualSettingsFlow({
     toggleSubAgent,
     toggleMiddleware,
     agentId,
+    triggers,
+    handleCreateTrigger,
+    handleUpdateTrigger,
+    handleDeleteTrigger,
+    isTriggerPending,
     setNodes,
   ])
 

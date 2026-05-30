@@ -1,12 +1,19 @@
 import { useState } from 'react'
 import Link from 'next/link'
-import { ExternalLinkIcon, Trash2Icon, PlayIcon, PauseIcon, PlusIcon } from 'lucide-react'
+import {
+  ExternalLinkIcon,
+  Trash2Icon,
+  PlayIcon,
+  PauseIcon,
+  PlusIcon,
+  PencilIcon,
+} from 'lucide-react'
 import { useTranslations, useFormatter } from 'next-intl'
 import { useTriggers, useCreateTrigger, useUpdateTrigger } from '@/lib/hooks/use-triggers'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { ScheduleForm } from '@/components/agent/visual-settings/dialogs/schedule-dialog'
+import { ScheduleDialog } from '@/components/agent/visual-settings/dialogs/schedule-dialog'
 import type { AgentTrigger } from '@/lib/types'
 
 interface TriggersTabProps {
@@ -22,6 +29,7 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
   const updateTrigger = useUpdateTrigger(agentId)
 
   const [showForm, setShowForm] = useState(false)
+  const [editingTrigger, setEditingTrigger] = useState<AgentTrigger | null>(null)
 
   function statusLabel(status: string) {
     if (status === 'active') return t('trigger.active')
@@ -131,6 +139,14 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
                   <Button
                     variant="ghost"
                     size="icon-sm"
+                    aria-label={t('trigger.edit')}
+                    onClick={() => setEditingTrigger(trigger)}
+                  >
+                    <PencilIcon className="size-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
                     aria-label={t('trigger.delete')}
                     onClick={() =>
                       onRequestDelete({
@@ -148,23 +164,31 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
         </div>
       ) : null}
 
-      {showForm ? (
-        <div className="rounded-lg border p-4">
-          <ScheduleForm
-            isPending={createTrigger.isPending}
-            onCancel={() => setShowForm(false)}
-            onSubmit={async (req) => {
-              await createTrigger.mutateAsync(req)
-              setShowForm(false)
-            }}
-          />
-        </div>
-      ) : (
-        <Button variant="outline" size="sm" onClick={() => setShowForm(true)}>
-          <PlusIcon className="size-4" />
-          {t('trigger.addNew')}
-        </Button>
-      )}
+      <Button variant="outline" size="sm" onClick={() => setShowForm(true)}>
+        <PlusIcon className="size-4" />
+        {t('trigger.addNew')}
+      </Button>
+      <ScheduleDialog
+        open={showForm || !!editingTrigger}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowForm(false)
+            setEditingTrigger(null)
+          }
+        }}
+        agentId={agentId}
+        trigger={editingTrigger}
+        isPending={createTrigger.isPending || updateTrigger.isPending}
+        onSubmit={async (payload) => {
+          if ('triggerId' in payload) {
+            await updateTrigger.mutateAsync({ triggerId: payload.triggerId, data: payload.data })
+            setEditingTrigger(null)
+          } else {
+            await createTrigger.mutateAsync(payload)
+            setShowForm(false)
+          }
+        }}
+      />
     </div>
   )
 }

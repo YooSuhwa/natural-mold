@@ -407,6 +407,7 @@ export default function SchedulesPage() {
         open={!!editingTrigger}
         onOpenChange={(open) => !open && setEditingTrigger(null)}
         trigger={editingTrigger}
+        agentId={editingTrigger?.agent_id}
         isPending={updateTrigger.isPending}
         onSubmit={handleEdit}
       />

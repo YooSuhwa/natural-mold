@@ -11,6 +11,7 @@ import type { AgentTrigger, TriggerCreateRequest, TriggerUpdateRequest } from '@
 
 export interface ScheduleNodeData {
   triggers: AgentTrigger[]
+  agentId: string
   onCreateTrigger: (data: TriggerCreateRequest) => void
   onUpdateTrigger: (triggerId: string, data: TriggerUpdateRequest) => void
   onDeleteTrigger: (triggerId: string) => void
@@ -71,6 +72,7 @@ export function ScheduleNode({ data }: NodeProps) {
 
   const {
     triggers = [],
+    agentId = '',
     onCreateTrigger = () => {},
     onUpdateTrigger = () => {},
     onDeleteTrigger = () => {},
@@ -164,6 +166,7 @@ export function ScheduleNode({ data }: NodeProps) {
           if (!v) setEditingTrigger(null)
         }}
         onSubmit={handleSubmit}
+        agentId={agentId}
         trigger={editingTrigger}
         isPending={isPending}
       />

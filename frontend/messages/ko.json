@@ -471,6 +471,7 @@
         "runCount": "실행 횟수: {count}회",
         "pause": "일시정지",
         "resume": "재개",
+        "edit": "수정",
         "delete": "트리거 삭제",
         "deleteConfirm": "이 트리거를 삭제하시겠습니까?",
         "intervalLabel": "실행 간격 (분)",
@@ -664,13 +665,18 @@
         "prompt": "프롬프트 (선택)",
         "maxRuns": "최대 실행",
         "autoPause": "실패 후 정지",
-        "endAt": "종료 시각"
+        "endAt": "종료 시각",
+        "resultPolicy": "결과 저장 방식",
+        "conversation": "기존 대화 선택",
+        "maxRunsValue": "최대 실행 횟수",
+        "autoPauseValue": "실패 허용 횟수"
       },
       "placeholders": {
         "name": "예: 매일 아침 뉴스 요약",
         "cron": "0 9 * * 1-5",
         "prompt": "각 실행 시 에이전트에 전달할 메시지...",
-        "conversationId": "기존 대화 ID"
+        "conversationId": "기존 대화 ID",
+        "conversation": "대화 선택"
       },
       "cronFormat": "형식: 분 시 일 월 요일",
       "promptDefault": "기본값: \"Cron trigger fired.\"",
@@ -684,7 +690,19 @@
         "description": "실행 결과는 대화에 저장되고, 읽지 않은 결과는 배지로 표시됩니다.",
         "scheduleThread": "스케줄 전용 대화에 계속 쌓기",
         "newPerRun": "실행할 때마다 새 대화 만들기",
-        "selectedConversation": "기존 대화 ID에 저장"
+        "selectedConversation": "기존 대화에 저장",
+        "noConversations": "선택할 수 있는 대화가 없습니다",
+        "untitledConversation": "제목 없는 대화"
+      },
+      "limits": {
+        "unlimited": "무제한",
+        "limited": "제한",
+        "disabled": "사용 안 함",
+        "enabled": "사용",
+        "maxRunsLimited": "최대 실행 횟수 제한",
+        "maxRunsUnlimited": "최대 실행 횟수 무제한",
+        "autoPauseEnabled": "실패 후 정지 사용",
+        "autoPauseDisabled": "실패 후 정지 사용 안 함"
       },
       "everyNMin": "매 {mins}분",
       "atTimeDays": "{time}, {days}",
