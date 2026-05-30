@@ -17,19 +17,19 @@ from app.services import trace_storage
 from tests.conftest import TEST_USER_ID, TestSession
 
 
-async def _seed_conversation() -> uuid.UUID:
+async def _seed_conversation(*, owner_id: uuid.UUID = TEST_USER_ID) -> uuid.UUID:
     """Insert minimal User + Model + Agent + Conversation, return conversation_id."""
     async with TestSession() as db:
-        existing_user = await db.get(User, TEST_USER_ID)
+        existing_user = await db.get(User, owner_id)
         if existing_user is None:
-            db.add(User(id=TEST_USER_ID, email="test@test.com", name="Test"))
+            db.add(User(id=owner_id, email=f"{owner_id}@test.com", name="Test"))
         model = Model(
             provider="openai", model_name="gpt-4o", display_name="GPT-4o"
         )
         db.add(model)
         await db.flush()
         agent = Agent(
-            user_id=TEST_USER_ID,
+            user_id=owner_id,
             name="Trace Tester",
             description=None,
             system_prompt="...",
@@ -192,6 +192,34 @@ async def test_get_traces_endpoint_returns_persisted_turns(client: AsyncClient) 
     # event shape
     assert body[0]["events"][0]["event"] == "message_start"
     assert body[0]["last_event_id"].startswith("msg-1-")
+
+
+@pytest.mark.asyncio
+async def test_get_traces_endpoint_requires_auth(raw_client: AsyncClient) -> None:
+    conv_id = await _seed_conversation()
+    async with TestSession() as db:
+        await trace_storage.record_turn(
+            db, conversation_id=conv_id, events=_events_for_msg("private-msg")
+        )
+        await db.commit()
+
+    response = await raw_client.get(f"/api/conversations/{conv_id}/traces")
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_traces_endpoint_hides_other_users_conversation(
+    client: AsyncClient,
+) -> None:
+    conv_id = await _seed_conversation(owner_id=uuid.uuid4())
+    async with TestSession() as db:
+        await trace_storage.record_turn(
+            db, conversation_id=conv_id, events=_events_for_msg("foreign-msg")
+        )
+        await db.commit()
+
+    response = await client.get(f"/api/conversations/{conv_id}/traces")
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
