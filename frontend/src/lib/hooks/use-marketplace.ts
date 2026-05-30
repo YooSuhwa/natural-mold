@@ -249,6 +249,7 @@ export function useSetSkillCredentialBinding(skillId: string) {
         queryKey: ['skills', skillId, 'credential-bindings'],
       })
       qc.invalidateQueries({ queryKey: ['skills'] })
+      qc.invalidateQueries({ queryKey: ['skills', skillId] })
       qc.invalidateQueries({ queryKey: ITEMS_KEY })
     },
   })
@@ -264,6 +265,7 @@ export function useDeleteSkillCredentialBinding(skillId: string) {
         queryKey: ['skills', skillId, 'credential-bindings'],
       })
       qc.invalidateQueries({ queryKey: ['skills'] })
+      qc.invalidateQueries({ queryKey: ['skills', skillId] })
     },
   })
 }

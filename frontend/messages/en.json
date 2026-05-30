@@ -1740,7 +1740,15 @@
       "openPdf": "Open Pdf",
       "binaryFile": "Binary File",
       "binaryUnavailable": "Binary Unavailable",
-      "download": "Download"
+      "download": "Download",
+      "credentialBindingsTitle": "Credential bindings",
+      "credentialBindingsDescription": "Choose the credential this skill should use when it runs. Changes apply from the next run.",
+      "credentialPlaceholder": "Select a credential",
+      "requiredCredential": "Required",
+      "optionalCredential": "Optional",
+      "credentialUpdated": "Skill credential updated.",
+      "credentialCleared": "Skill credential disconnected.",
+      "credentialUpdateFailed": "Failed to update credential."
     }
   },
   "systemCredentials": {
@@ -1949,7 +1957,15 @@
       "openPdf": "Open Pdf",
       "binaryFile": "Binary File",
       "binaryUnavailable": "Binary Unavailable",
-      "download": "Download"
+      "download": "Download",
+      "credentialBindingsTitle": "Credential bindings",
+      "credentialBindingsDescription": "Choose the credential this skill should use when it runs. Changes apply from the next run.",
+      "credentialPlaceholder": "Select a credential",
+      "requiredCredential": "Required",
+      "optionalCredential": "Optional",
+      "credentialUpdated": "Skill credential updated.",
+      "credentialCleared": "Skill credential disconnected.",
+      "credentialUpdateFailed": "Failed to update credential."
     }
   },
   "marketplace": {
@@ -3017,6 +3033,10 @@
         "empty": "No items yet."
       },
       "entity": "Credentials"
+    },
+    "picker": {
+      "placeholder": "Select a credential",
+      "none": "Do not use"
     },
     "testButton": {
       "label": "Test",
