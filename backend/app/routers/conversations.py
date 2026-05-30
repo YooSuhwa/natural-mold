@@ -489,6 +489,7 @@ async def delete_conversation(
 async def list_traces(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
     """W5 — return all turn traces (SSE event arrays) for a conversation.
 
@@ -496,7 +497,7 @@ async def list_traces(
     ordered by ``created_at`` ascending. Used by W6 shared page chip
     rendering and (later) W3-out for resume.
     """
-    conv = await chat_service.get_conversation(db, conversation_id)
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
     return await trace_storage.get_traces_for_conversation(db, conversation_id)
