@@ -469,6 +469,10 @@ export interface AgentTrigger {
   last_status: 'running' | 'success' | 'failed' | 'skipped' | null
   last_error: string | null
   run_count: number
+  failure_count: number
+  max_runs: number | null
+  end_at: string | null
+  auto_pause_after_failures: number | null
   created_at: string
   updated_at: string
   agent_name?: string | null
@@ -483,6 +487,9 @@ export interface TriggerCreateRequest {
   input_message: string
   timezone?: string
   conversation_policy?: string
+  max_runs?: number | null
+  end_at?: string | null
+  auto_pause_after_failures?: number | null
 }
 
 export interface TriggerUpdateRequest {
@@ -493,6 +500,9 @@ export interface TriggerUpdateRequest {
   timezone?: string
   conversation_policy?: string
   status?: AgentTrigger['status']
+  max_runs?: number | null
+  end_at?: string | null
+  auto_pause_after_failures?: number | null
 }
 
 export interface TriggerRun {

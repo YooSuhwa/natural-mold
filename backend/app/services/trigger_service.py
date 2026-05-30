@@ -34,6 +34,22 @@ def _parse_datetime(raw: Any, timezone: str) -> datetime:
     return dt.astimezone(UTC).replace(tzinfo=None)
 
 
+def _normalize_optional_datetime(raw: datetime | None) -> datetime | None:
+    if raw is None:
+        return None
+    if raw.tzinfo is None:
+        return raw
+    return raw.astimezone(UTC).replace(tzinfo=None)
+
+
+def _validate_positive_optional(value: int | None, field_name: str) -> int | None:
+    if value is None:
+        return None
+    if int(value) < 1:
+        raise ValueError(f"{field_name} must be >= 1")
+    return int(value)
+
+
 def normalize_schedule_config(
     trigger_type: str,
     schedule_config: dict[str, Any],
@@ -104,6 +120,10 @@ def _serialize_trigger(
         "last_status": trigger.last_status,
         "last_error": trigger.last_error,
         "run_count": trigger.run_count,
+        "failure_count": trigger.failure_count,
+        "max_runs": trigger.max_runs,
+        "end_at": trigger.end_at,
+        "auto_pause_after_failures": trigger.auto_pause_after_failures,
         "created_at": trigger.created_at,
         "updated_at": trigger.updated_at,
         "agent_name": agent_name,
@@ -194,6 +214,12 @@ async def create_trigger(
         input_message=data.input_message,
         timezone=timezone,
         conversation_policy=data.conversation_policy or DEFAULT_CONVERSATION_POLICY,
+        max_runs=_validate_positive_optional(data.max_runs, "max_runs"),
+        end_at=_normalize_optional_datetime(data.end_at),
+        auto_pause_after_failures=_validate_positive_optional(
+            data.auto_pause_after_failures,
+            "auto_pause_after_failures",
+        ),
     )
     db.add(trigger)
     await db.commit()
@@ -236,6 +262,15 @@ async def update_trigger(
         if data.status not in VALID_STATUSES:
             raise ValueError("invalid trigger status")
         trigger.status = data.status
+    if data.max_runs is not None:
+        trigger.max_runs = _validate_positive_optional(data.max_runs, "max_runs")
+    if data.end_at is not None:
+        trigger.end_at = _normalize_optional_datetime(data.end_at)
+    if data.auto_pause_after_failures is not None:
+        trigger.auto_pause_after_failures = _validate_positive_optional(
+            data.auto_pause_after_failures,
+            "auto_pause_after_failures",
+        )
 
     await db.commit()
     await db.refresh(trigger)
@@ -254,8 +289,14 @@ async def delete_trigger(db: AsyncSession, trigger: AgentTrigger) -> None:
 async def sync_scheduler_for_trigger(db: AsyncSession, trigger: AgentTrigger) -> None:
     from app.scheduler import add_trigger_job, remove_trigger_job
 
+    max_runs_reached = trigger.max_runs is not None and trigger.run_count >= trigger.max_runs
+    end_at_reached = trigger.end_at is not None and trigger.end_at <= _now()
     if trigger.status != "active":
         remove_trigger_job(trigger.id)
+        trigger.next_run_at = None
+    elif max_runs_reached or end_at_reached:
+        remove_trigger_job(trigger.id)
+        trigger.status = "completed"
         trigger.next_run_at = None
     else:
         trigger.next_run_at = add_trigger_job(
@@ -330,17 +371,27 @@ async def finish_trigger_run(
     trigger.last_status = status
     trigger.last_error = error_message
     if status == "success":
+        trigger.failure_count = 0
         trigger.run_count += 1
         if conversation is not None:
             conversation.unread_count += 1
             conversation.last_unread_at = finished_at
             conversation.last_activity_source = "schedule"
             conversation.updated_at = finished_at
-        if trigger.trigger_type == "one_time":
+        if trigger.trigger_type == "one_time" or (
+            trigger.max_runs is not None and trigger.run_count >= trigger.max_runs
+        ):
             trigger.status = "completed"
             trigger.next_run_at = None
     if status == "failed":
+        trigger.failure_count += 1
         trigger.last_error = error_message
+        if (
+            trigger.auto_pause_after_failures is not None
+            and trigger.failure_count >= trigger.auto_pause_after_failures
+        ):
+            trigger.status = "paused"
+            trigger.next_run_at = None
     await db.commit()
     if trigger.status == "active":
         await refresh_next_run_at(db, trigger)

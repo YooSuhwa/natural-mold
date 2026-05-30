@@ -630,6 +630,8 @@ async def test_create_cron_schedule_interval(db: AsyncSession, patch_write_sessi
             "interval_minutes": 10,
             "timezone": "Asia/Seoul",
             "conversation_policy": "schedule_thread",
+            "max_runs": 3,
+            "auto_pause_after_failures": 2,
         }
     )
     assert "생성 완료" in result
@@ -641,6 +643,8 @@ async def test_create_cron_schedule_interval(db: AsyncSession, patch_write_sessi
     assert trigger.schedule_config == {"interval_minutes": 10}
     assert trigger.timezone == "Asia/Seoul"
     assert trigger.conversation_policy == "schedule_thread"
+    assert trigger.max_runs == 3
+    assert trigger.auto_pause_after_failures == 2
 
 
 @pytest.mark.asyncio

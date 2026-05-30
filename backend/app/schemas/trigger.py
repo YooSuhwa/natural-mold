@@ -14,6 +14,9 @@ class TriggerCreate(BaseModel):
     input_message: str
     timezone: str | None = None
     conversation_policy: str | None = None
+    max_runs: int | None = None
+    end_at: datetime | None = None
+    auto_pause_after_failures: int | None = None
 
 
 class TriggerUpdate(BaseModel):
@@ -24,6 +27,9 @@ class TriggerUpdate(BaseModel):
     timezone: str | None = None
     conversation_policy: str | None = None
     status: str | None = None  # "active" | "paused" | "completed" | "error"
+    max_runs: int | None = None
+    end_at: datetime | None = None
+    auto_pause_after_failures: int | None = None
 
 
 class TriggerResponse(BaseModel):
@@ -42,6 +48,10 @@ class TriggerResponse(BaseModel):
     last_status: str | None
     last_error: str | None
     run_count: int
+    failure_count: int
+    max_runs: int | None
+    end_at: datetime | None
+    auto_pause_after_failures: int | None
     created_at: datetime
     updated_at: datetime
     agent_name: str | None = None

@@ -81,6 +81,32 @@ async def test_trigger_crud(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_trigger_guardrails_are_persisted(client: AsyncClient):
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+
+    resp = await client.post(
+        f"/api/agents/{agent_id}/triggers",
+        json={
+            "name": "제한 있는 스케줄",
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 10},
+            "input_message": "상태 확인",
+            "max_runs": 3,
+            "auto_pause_after_failures": 2,
+            "end_at": "2026-06-30T00:00:00Z",
+        },
+    )
+
+    assert resp.status_code == 201
+    trigger = resp.json()
+    assert trigger["max_runs"] == 3
+    assert trigger["auto_pause_after_failures"] == 2
+    assert trigger["end_at"] == "2026-06-30T00:00:00"
+    assert trigger["failure_count"] == 0
+
+
+@pytest.mark.asyncio
 async def test_global_trigger_management_routes(client: AsyncClient):
     model_id = await _create_model(client)
     agent_id = await _create_agent(client, model_id)

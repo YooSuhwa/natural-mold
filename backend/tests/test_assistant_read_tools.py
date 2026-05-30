@@ -463,6 +463,8 @@ async def test_list_cron_schedules_with_trigger(db: AsyncSession, patch_read_ses
     assert data[0]["name"] == "스케줄"
     assert data[0]["timezone"] == "Asia/Seoul"
     assert data[0]["conversation_policy"] == "schedule_thread"
+    assert data[0]["max_runs"] is None
+    assert data[0]["failure_count"] == 0
     assert "recent_status" in data[0]
 
 
@@ -497,6 +499,7 @@ async def test_get_cron_schedule(db: AsyncSession, patch_read_session):
     assert data["message"] == "상세 조회 테스트"
     assert data["timezone"] == "Asia/Seoul"
     assert data["conversation_policy"] == "schedule_thread"
+    assert data["auto_pause_after_failures"] is None
     assert "result_conversation_id" in data
 
 

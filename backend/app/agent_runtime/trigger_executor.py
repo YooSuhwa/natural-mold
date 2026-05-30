@@ -94,6 +94,34 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             await db.refresh(run)
             return run
 
+        if trigger.max_runs is not None and trigger.run_count >= trigger.max_runs:
+            logger.info("Trigger %s skipped (max_runs reached)", trigger_id)
+            trigger.status = "completed"
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=None,
+                status="skipped",
+                error_message="max_runs reached",
+            )
+            await db.refresh(run)
+            return run
+
+        if trigger.end_at is not None and trigger.end_at <= datetime.now(UTC).replace(tzinfo=None):
+            logger.info("Trigger %s skipped (end_at reached)", trigger_id)
+            trigger.status = "completed"
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=None,
+                status="skipped",
+                error_message="end_at reached",
+            )
+            await db.refresh(run)
+            return run
+
         # Single source of truth for prefetch — same call the conversations
         # router uses, so no field on ``agent`` is lazy-loaded later.
         agent = await chat_service.get_agent_with_tools(db, trigger.agent_id, trigger.user_id)

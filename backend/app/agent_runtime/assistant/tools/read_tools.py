@@ -332,6 +332,10 @@ def build_read_tools(
             "last_run_at": str(t.last_run_at) if t.last_run_at else None,
             "next_run_at": str(t.next_run_at) if t.next_run_at else None,
             "run_count": t.run_count,
+            "failure_count": t.failure_count,
+            "max_runs": t.max_runs,
+            "end_at": str(t.end_at) if t.end_at else None,
+            "auto_pause_after_failures": t.auto_pause_after_failures,
         }
 
     async def list_cron_schedules() -> str:

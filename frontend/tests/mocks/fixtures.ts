@@ -279,6 +279,10 @@ export const mockTrigger: AgentTrigger = {
   last_status: null,
   last_error: null,
   run_count: 0,
+  failure_count: 0,
+  max_runs: null,
+  end_at: null,
+  auto_pause_after_failures: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 }

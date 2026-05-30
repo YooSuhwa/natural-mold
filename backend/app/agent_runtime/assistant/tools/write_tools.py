@@ -659,6 +659,9 @@ def build_write_tools(
         scheduled_at: str | None = None,
         timezone: str | None = None,
         conversation_policy: str | None = None,
+        max_runs: int | None = None,
+        end_at: str | None = None,
+        auto_pause_after_failures: int | None = None,
     ) -> str:
         """크론 스케줄을 생성합니다.
 
@@ -671,6 +674,9 @@ def build_write_tools(
             scheduled_at: 1회 실행 시점 ISO 8601 (one_time일 때 필수)
             timezone: IANA timezone (기본 Asia/Seoul)
             conversation_policy: 결과 저장 정책 (기본 schedule_thread)
+            max_runs: 최대 성공 실행 횟수
+            end_at: 종료 시각 ISO 8601
+            auto_pause_after_failures: 연속 실패 자동 일시정지 임계치
         """
         normalized_type = schedule_type.strip().lower()
         trigger_type = "cron" if normalized_type in {"recurring", "cron"} else normalized_type
@@ -712,6 +718,9 @@ def build_write_tools(
                         input_message=message,
                         timezone=timezone or "Asia/Seoul",
                         conversation_policy=conversation_policy or "schedule_thread",
+                        max_runs=max_runs,
+                        end_at=end_at,
+                        auto_pause_after_failures=auto_pause_after_failures,
                     ),
                 )
             except ValueError as exc:
@@ -788,6 +797,9 @@ def build_write_tools(
         timezone: str | None = None,
         conversation_policy: str | None = None,
         status: str | None = None,
+        max_runs: int | None = None,
+        end_at: str | None = None,
+        auto_pause_after_failures: int | None = None,
     ) -> str:
         """크론 스케줄을 수정합니다.
 
@@ -802,6 +814,9 @@ def build_write_tools(
             timezone: 새 timezone
             conversation_policy: 새 결과 저장 정책
             status: 새 상태
+            max_runs: 새 최대 성공 실행 횟수
+            end_at: 새 종료 시각 ISO 8601
+            auto_pause_after_failures: 새 연속 실패 자동 일시정지 임계치
         """
         async with async_session_factory() as session:
             trigger, error = await _resolve_trigger_for_write(session, schedule_id, schedule_name)
@@ -828,6 +843,12 @@ def build_write_tools(
                 update.conversation_policy = conversation_policy
             if status is not None:
                 update.status = status
+            if max_runs is not None:
+                update.max_runs = max_runs
+            if end_at is not None:
+                update.end_at = end_at
+            if auto_pause_after_failures is not None:
+                update.auto_pause_after_failures = auto_pause_after_failures
             try:
                 await trigger_service.update_trigger(session, trigger, update)
             except ValueError as exc:
