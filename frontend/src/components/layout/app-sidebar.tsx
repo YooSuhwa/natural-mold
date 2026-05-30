@@ -65,7 +65,8 @@ import { useAgents } from '@/lib/hooks/use-agents'
 import { useLogout } from '@/lib/hooks/useAuth'
 import { useTriggerSummary } from '@/lib/hooks/use-triggers'
 import { connectorsExpandedAtom, marketplaceExpandedAtom } from '@/lib/stores/sidebar-store'
-import { LOCALE_COOKIE_NAME, SUPPORTED_LOCALES, isSupportedLocale } from '../../i18n/locales'
+import { persistLocaleCookie } from '../../i18n/client-locale'
+import { SUPPORTED_LOCALES, isSupportedLocale } from '../../i18n/locales'
 
 type NavChild = { label: string; href: string; icon: LucideIcon; isActive: boolean }
 type ResourceItem = { label: string; href: string; icon: LucideIcon; badge?: number }
@@ -238,7 +239,7 @@ export function AppSidebar() {
   function changeLocale(nextLocale: string) {
     setLanguageOpen(false)
     if (!isSupportedLocale(nextLocale) || nextLocale === currentLocale) return
-    document.cookie = `${LOCALE_COOKIE_NAME}=${nextLocale}; path=/; max-age=31536000; SameSite=Lax`
+    persistLocaleCookie(nextLocale)
     router.refresh()
   }
 
