@@ -570,8 +570,11 @@ async def test_interrupt_on_with_write_tools(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    # interrupt_on should be None — "Web Search" doesn't match _WRITE_TOOL_KEYWORDS
-    assert build_kwargs["interrupt_on"] is None
+    # "Web Search" doesn't match _WRITE_TOOL_KEYWORDS, but interactive agents
+    # still wrap ask_user through the standard respond interrupt policy.
+    assert build_kwargs["interrupt_on"] == {
+        "ask_user": {"allowed_decisions": ["respond"]},
+    }
 
 
 @pytest.mark.asyncio
@@ -587,7 +590,7 @@ async def test_interrupt_on_without_hitl_middleware(
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
 ):
-    """No HiTL middleware → interrupt_on is None."""
+    """No HiTL middleware → ask_user still gets standard respond interrupt policy."""
     from app.agent_runtime.executor import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
@@ -606,7 +609,9 @@ async def test_interrupt_on_without_hitl_middleware(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    assert build_kwargs["interrupt_on"] is None
+    assert build_kwargs["interrupt_on"] == {
+        "ask_user": {"allowed_decisions": ["respond"]},
+    }
 
 
 @pytest.mark.asyncio

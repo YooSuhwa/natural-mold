@@ -8,6 +8,24 @@ from langchain_core.tools import tool
 from langgraph.types import interrupt
 
 
+def _extract_respond_message(response: object) -> str:
+    """Return the user's message from LangChain's standard HITL resume shape."""
+
+    if isinstance(response, dict):
+        decisions = response.get("decisions")
+        if isinstance(decisions, list):
+            for decision in decisions:
+                if not isinstance(decision, dict):
+                    continue
+                if decision.get("type") == "respond":
+                    message = decision.get("message")
+                    if isinstance(message, str):
+                        return message
+                    if message is not None:
+                        return str(message)
+    return str(response)
+
+
 @tool
 def ask_user(question: str, options: list[str] | None = None) -> str:
     """사용자에게 질문하고 응답을 기다립니다.
@@ -33,4 +51,4 @@ def ask_user(question: str, options: list[str] | None = None) -> str:
             "options": options or [],
         }
     )
-    return str(response)
+    return _extract_respond_message(response)

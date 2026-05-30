@@ -32,6 +32,11 @@ interface ApprovalArgs {
   timeout_seconds?: number
   /** 승인 식별자 — deadline 리셋 키로 사용 */
   approval_id?: string
+  /** 표준 HiTL interrupt 내 action index */
+  hitl_action_index?: number
+  hitl_total_actions?: number
+  hitl_interrupt_id?: string | null
+  allowed_decisions?: StandardDecision['type'][]
 }
 
 type Decision = 'approved' | 'modified' | 'rejected'
@@ -168,6 +173,17 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const isPending =
       status.type !== 'complete' && status.type !== 'running' && result === undefined
 
+    const resumeDecision = useCallback(
+      async (standardDecision: StandardDecision, displayText?: string) => {
+        if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
+          await hitl.registerDecision(args.hitl_action_index, standardDecision, displayText)
+          return
+        }
+        await hitl?.onResumeDecisions([standardDecision], displayText)
+      },
+      [args?.hitl_action_index, hitl],
+    )
+
     const handleDecision = useCallback(
       async (d: Decision, opts?: { reasonOverride?: string }) => {
         setDecision(d)
@@ -195,17 +211,17 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
         addResult(response)
 
         // addResult/result는 Tool UI 내부 표시용 — backend wire는 Decision으로 변환.
-        const decision = toDecision(d, response, args?.tool_name)
-        if (!decision) {
+        const standardDecision = toDecision(d, response, args?.tool_name)
+        if (!standardDecision) {
           // edit인데 tool_name 미상 — backend가 무효 edited_action으로 거절할 것이므로 abort.
           setJsonError(t('invalidJson'))
           setSubmitting(false)
           setDecision(null)
           return
         }
-        await hitl?.onResumeDecisions([decision], styles[d].label)
+        await resumeDecision(standardDecision, styles[d].label)
       },
-      [addResult, hitl, rejectReason, editedArgs, t, styles, args],
+      [addResult, rejectReason, editedArgs, t, styles, args, resumeDecision],
     )
 
     // 만료 시 자동 reject — handleDecision 변동에 영향받지 않도록 ref로 보관

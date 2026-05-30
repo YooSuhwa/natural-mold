@@ -22,6 +22,11 @@ interface AskUserArgs {
   timeout_seconds?: number
   /** 입력 식별자 — deadline 리셋 키로 사용 */
   approval_id?: string
+  /** 표준 HiTL interrupt 내 action index */
+  hitl_action_index?: number
+  hitl_total_actions?: number
+  hitl_interrupt_id?: string | null
+  allowed_decisions?: string[]
 }
 
 type Answers = Record<number, unknown>
@@ -180,6 +185,16 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted'>('idle')
 
     const questions = useMemo(() => normalizeQuestions(args ?? {}), [args])
+    const submitDecision = useCallback(
+      async (decision: ReturnType<typeof toRespond>, displayText?: string) => {
+        if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
+          await hitl.registerDecision(args.hitl_action_index, decision, displayText)
+          return
+        }
+        await hitl?.onResumeDecisions([decision], displayText)
+      },
+      [args?.hitl_action_index, hitl],
+    )
 
     // 입력 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
     const fallbackIdRef = useRef<string>(`ask-user-${Math.random().toString(36).slice(2)}`)
@@ -222,10 +237,10 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
             .join(' | ')
 
         const message = typeof payload === 'string' ? payload : JSON.stringify(payload)
-        await hitl?.onResumeDecisions([toRespond(message)], displayText)
+        await submitDecision(toRespond(message), displayText)
         setSubmitState('submitted')
       },
-      [answers, questions, hitl],
+      [answers, questions, submitDecision],
     )
 
     // 만료 시 빈 답변으로 자동 제출 — 에이전트 graph가 무한히 paused되지 않도록
@@ -315,7 +330,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
                       // 질문 1개 + single_select → 즉시 제출
                       if (questions.length === 1) {
                         setSubmitState('submitted')
-                        hitl?.onResumeDecisions([toRespond(v)], v)
+                        void submitDecision(toRespond(v), v)
                       }
                     }}
                   />

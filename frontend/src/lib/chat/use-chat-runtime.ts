@@ -26,6 +26,11 @@ import { withAutoResume } from '@/lib/sse/with-auto-resume'
 import { StreamApiError } from '@/lib/sse/parse-sse'
 import { createStreamGuard } from '@/lib/sse/stream-guard'
 import type { FeedbackAdapter, AttachmentAdapter } from '@assistant-ui/react'
+import {
+  createHiTLDecisionCoordinator,
+  standardInterruptToToolCalls,
+  type HiTLDecisionCoordinator,
+} from './standard-interrupt'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
 
@@ -198,6 +203,14 @@ export function useChatRuntime({
   const abortRef = useRef<AbortController | null>(null)
   // 가장 최근에 emit된 interrupt_id (resume 시 stale 검증용)
   const lastInterruptIdRef = useRef<string | null>(null)
+  const pendingHiTLCoordinatorRef = useRef<HiTLDecisionCoordinator | null>(null)
+  const resumeHiTLDecisionRef = useRef<
+    (
+      decisions: Decision[],
+      displayText?: string,
+      interruptId?: string | null,
+    ) => Promise<void>
+  >(async () => {})
   // W3-out M5 — primary POST 응답 헤더 ``X-Run-Id`` 와 마지막 SSE event id.
   // GET ``/stream?run_id=&last_event_id=`` 재연결에 사용. stream 이 끝나거나
   // 새 stream 이 시작되면 ``prepareStream`` 에서 reset.
@@ -239,6 +252,7 @@ export function useChatRuntime({
     const controller = new AbortController()
     abortRef.current = controller
     setIsRunning(true)
+    pendingHiTLCoordinatorRef.current = null
     runIdRef.current = null
     lastEventIdRef.current = null
     setReconnectState('idle')
@@ -453,6 +467,20 @@ export function useChatRuntime({
               if (data.action_requests.length === 0 && data.review_configs.length === 0) {
                 toast.error(tPage('interruptStateLost'), { id: TOAST_ID_INTERRUPT_LOST })
                 break
+              }
+              pendingHiTLCoordinatorRef.current = createHiTLDecisionCoordinator({
+                totalActions: data.action_requests.length,
+                interruptId: data.interrupt_id ?? null,
+                resume: async (decisions, displayText, interruptId) => {
+                  pendingHiTLCoordinatorRef.current = null
+                  await resumeHiTLDecisionRef.current(decisions, displayText, interruptId)
+                },
+              })
+              const syntheticToolCalls = standardInterruptToToolCalls(data)
+              if (syntheticToolCalls.length > 0) {
+                toolCalls.push(...syntheticToolCalls)
+                toolCallsDirty = true
+                setStreamingMessages(buildStreamState())
               }
               onStandardInterrupt?.(data)
               break
@@ -693,8 +721,8 @@ export function useChatRuntime({
    * helper 가 phase 별 native shape 으로 변환한다.
    */
   const onResumeDecisions = useCallback(
-    async (decisions: Decision[], displayText?: string) => {
-      const intrId = lastInterruptIdRef.current
+    async (decisions: Decision[], displayText?: string, interruptId?: string | null) => {
+      const intrId = interruptId ?? lastInterruptIdRef.current
       const userMsg = displayText ? createOptimisticMessage('user', displayText) : null
 
       if (resumeFn) {
@@ -709,6 +737,22 @@ export function useChatRuntime({
       )
     },
     [conversationId, resumeFn, _runStream],
+  )
+
+  useEffect(() => {
+    resumeHiTLDecisionRef.current = onResumeDecisions
+  }, [onResumeDecisions])
+
+  const registerDecision = useCallback(
+    async (actionIndex: number, decision: Decision, displayText?: string) => {
+      const coordinator = pendingHiTLCoordinatorRef.current
+      if (!coordinator) {
+        await onResumeDecisions([decision], displayText)
+        return
+      }
+      await coordinator.registerDecision(actionIndex, decision, displayText)
+    },
+    [onResumeDecisions],
   )
 
   const onCancel = useCallback(async () => {
@@ -821,5 +865,5 @@ export function useChatRuntime({
     [streamFn, _runStream],
   )
 
-  return { runtime, onResumeDecisions, sendMessage }
+  return { runtime, onResumeDecisions, registerDecision, sendMessage }
 }

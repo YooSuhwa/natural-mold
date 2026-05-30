@@ -1,12 +1,12 @@
-"""HiTL middleware 명시 인스턴스화 회귀 가드 (ADR-012 Phase 1).
+"""HiTL top-level interrupt_on 회귀 가드 (ADR-012 표준 경로).
 
 검증 대상:
-- ``HumanInTheLoopMiddleware`` 가 명시적으로 인스턴스화되어 deep agent 의
-  미들웨어 list 에 들어가는가
+- ``HumanInTheLoopMiddleware`` 를 수동 인스턴스화하지 않고 deepagents
+  top-level ``interrupt_on`` 인자로 넘기는가
 - 트리거(invoke) 모드에서는 미들웨어가 주입되지 않는가
-- 도구별 정책(``interrupt_on`` dict)이 인스턴스에 그대로 전달되는가
+- 도구별 정책(``interrupt_on`` dict)이 build_agent에 그대로 전달되는가
 - 명시 dict 가 없을 때 ``_WRITE_TOOL_KEYWORDS`` 자동 추출이 동작하는가
-- ``create_deep_agent(interrupt_on=...)`` 자동 주입은 비활성(``None``)인가
+- explicit HiTL 설정이 없어도 대화형 ask_user는 respond 정책에 포함되는가
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ def _hitl_instances(middleware: list | None) -> list[HumanInTheLoopMiddleware]:
 
 
 # ---------------------------------------------------------------------------
-# 1. 명시 dict 제공 → 인스턴스 주입
+# 1. 명시 dict 제공 → top-level interrupt_on 전달
 # ---------------------------------------------------------------------------
 
 
@@ -49,7 +49,7 @@ def _hitl_instances(middleware: list | None) -> list[HumanInTheLoopMiddleware]:
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
 @patch("app.agent_runtime.executor.create_chat_model")
 @patch("app.agent_runtime.executor.create_tool_for_runtime")
-async def test_hitl_middleware_instance_injected_when_interrupt_on_provided(
+async def test_hitl_policy_passed_through_top_level_when_interrupt_on_provided(
     mock_factory: MagicMock,
     mock_model_factory: MagicMock,
     mock_convert: MagicMock,
@@ -57,7 +57,7 @@ async def test_hitl_middleware_instance_injected_when_interrupt_on_provided(
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
 ):
-    """interrupt_on dict 명시 → HumanInTheLoopMiddleware 인스턴스가 list 에 추가."""
+    """interrupt_on dict 명시 → build_agent top-level interrupt_on으로 전달."""
     from app.agent_runtime.executor import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
@@ -89,9 +89,11 @@ async def test_hitl_middleware_instance_injected_when_interrupt_on_provided(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    middleware = build_kwargs["middleware"]
-    hitl = _hitl_instances(middleware)
-    assert len(hitl) == 1, "HumanInTheLoopMiddleware 인스턴스가 정확히 하나 주입되어야 함"
+    assert build_kwargs["interrupt_on"] == {
+        "send_email": True,
+        "ask_user": {"allowed_decisions": ["respond"]},
+    }
+    assert _hitl_instances(build_kwargs["middleware"]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -148,8 +150,9 @@ async def test_hitl_middleware_not_injected_in_trigger_mode(
     assert _hitl_instances(middleware) == [], (
         "트리거 모드에서는 HumanInTheLoopMiddleware 가 주입되면 안 됨"
     )
-    # build_agent 의 interrupt_on 인자도 None — deepagents 자동 주입 차단
     assert build_kwargs["interrupt_on"] is None
+    tool_names = [tool.name for tool in mock_build.call_args.args[1]]
+    assert "ask_user" not in tool_names
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +175,7 @@ async def test_hitl_middleware_per_tool_policy_applied(
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
 ):
-    """interrupt_on dict 가 미들웨어 인스턴스에 그대로 보존돼야 함."""
+    """interrupt_on dict 가 build_agent top-level 인자로 그대로 보존돼야 함."""
     from app.agent_runtime.executor import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
@@ -205,14 +208,11 @@ async def test_hitl_middleware_per_tool_policy_applied(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    hitl = _hitl_instances(build_kwargs["middleware"])
-    assert len(hitl) == 1
-    # HumanInTheLoopMiddleware 는 ``interrupt_on`` 을 ``tool_configs`` 속성에
-    # 보관 (langchain.agents.middleware.human_in_the_loop 구현). 키 보존만 검증.
-    instance = hitl[0]
-    stored = getattr(instance, "tool_configs", None) or getattr(instance, "interrupt_on", None)
-    assert stored is not None
-    assert set(stored.keys()) == {"delete_record", "send_email"}
+    assert build_kwargs["interrupt_on"] == {
+        **policy,
+        "ask_user": {"allowed_decisions": ["respond"]},
+    }
+    assert _hitl_instances(build_kwargs["middleware"]) == []
 
 
 # ---------------------------------------------------------------------------
@@ -270,17 +270,15 @@ async def test_hitl_middleware_auto_extraction_from_write_keywords(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    hitl = _hitl_instances(build_kwargs["middleware"])
-    assert len(hitl) == 1, "쓰기 도구가 있으면 HumanInTheLoopMiddleware 가 주입돼야 함"
-    instance = hitl[0]
-    stored = getattr(instance, "tool_configs", None) or getattr(instance, "interrupt_on", None)
-    assert stored is not None
-    assert "create_calendar_event" in stored
-    assert "search_documents" not in stored
+    assert build_kwargs["interrupt_on"] == {
+        "create_calendar_event": True,
+        "ask_user": {"allowed_decisions": ["respond"]},
+    }
+    assert _hitl_instances(build_kwargs["middleware"]) == []
 
 
 # ---------------------------------------------------------------------------
-# 5. deepagents 자동 주입 회피 (interrupt_on=None)
+# 5. ask_user 기본 respond 정책
 # ---------------------------------------------------------------------------
 
 
@@ -291,7 +289,7 @@ async def test_hitl_middleware_auto_extraction_from_write_keywords(
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
 @patch("app.agent_runtime.executor.create_chat_model")
 @patch("app.agent_runtime.executor.create_tool_for_runtime")
-async def test_deepagents_interrupt_on_param_is_none_when_explicit_instance(
+async def test_ask_user_interrupt_policy_added_without_hitl_middleware_config(
     mock_factory: MagicMock,
     mock_model_factory: MagicMock,
     mock_convert: MagicMock,
@@ -299,11 +297,7 @@ async def test_deepagents_interrupt_on_param_is_none_when_explicit_instance(
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
 ):
-    """명시 인스턴스 경로 사용 시 build_agent 의 interrupt_on 인자는 항상 None.
-
-    이로써 ``create_deep_agent`` 의 자동 ``HumanInTheLoopMiddleware`` 주입이
-    비활성화돼 미들웨어 중복 등록을 방지한다.
-    """
+    """대화형 모드에서는 explicit HiTL 설정이 없어도 ask_user respond 정책 포함."""
     from app.agent_runtime.executor import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
@@ -321,19 +315,15 @@ async def test_deepagents_interrupt_on_param_is_none_when_explicit_instance(
 
     async for _ in execute_agent_stream(
         _cfg(
-            tools_config=[{"definition_key": "builtin:send_message", "name": "send_message"}],
-            middleware_configs=[
-                {
-                    "type": "human_in_the_loop",
-                    "params": {"interrupt_on": {"send_message": True}},
-                }
-            ],
+            tools_config=[{"definition_key": "builtin:search", "name": "search"}],
+            middleware_configs=[],
         ),
         [],
     ):
         pass
 
     build_kwargs = mock_build.call_args[1]
-    # 명시 인스턴스가 미들웨어 list 에 있고, build_agent 의 interrupt_on 인자는 None
-    assert len(_hitl_instances(build_kwargs["middleware"])) == 1
-    assert build_kwargs["interrupt_on"] is None
+    assert build_kwargs["interrupt_on"] == {
+        "ask_user": {"allowed_decisions": ["respond"]},
+    }
+    assert _hitl_instances(build_kwargs["middleware"]) == []
