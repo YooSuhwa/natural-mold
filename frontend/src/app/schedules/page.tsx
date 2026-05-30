@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
   AlertCircleIcon,
@@ -11,6 +11,7 @@ import {
   PencilIcon,
   PlayIcon,
   RefreshCwIcon,
+  SearchIcon,
   Trash2Icon,
 } from 'lucide-react'
 import { useFormatter } from 'next-intl'
@@ -18,10 +19,18 @@ import { useFormatter } from 'next-intl'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { ScheduleDialog } from '@/components/agent/visual-settings/dialogs/schedule-dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   useAllTriggers,
   useDeleteTriggerGlobal,
@@ -54,6 +63,9 @@ function statusVariant(status: AgentTrigger['status']): 'default' | 'secondary' 
   return 'secondary'
 }
 
+const ALL_STATUSES = 'all'
+const ALL_AGENTS = 'all'
+
 export default function SchedulesPage() {
   const { data: triggers, isLoading } = useAllTriggers()
   const updateTrigger = useUpdateTriggerGlobal()
@@ -61,6 +73,10 @@ export default function SchedulesPage() {
   const runNow = useRunTriggerNow()
   const format = useFormatter()
 
+  const [searchQuery, setSearchQuery] = useState('')
+  const deferredSearchQuery = useDeferredValue(searchQuery)
+  const [statusFilter, setStatusFilter] = useState<string>(ALL_STATUSES)
+  const [agentFilter, setAgentFilter] = useState<string>(ALL_AGENTS)
   const [editingTrigger, setEditingTrigger] = useState<AgentTrigger | null>(null)
   const [historyTrigger, setHistoryTrigger] = useState<AgentTrigger | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<AgentTrigger | null>(null)
@@ -77,6 +93,41 @@ export default function SchedulesPage() {
   const activeCount = useMemo(
     () => (triggers ?? []).filter((trigger) => trigger.status === 'active').length,
     [triggers],
+  )
+  const agentOptions = useMemo(() => {
+    const options = new Map<string, string>()
+    for (const trigger of triggers ?? []) {
+      options.set(trigger.agent_id, trigger.agent_name ?? '에이전트')
+    }
+    return Array.from(options, ([id, name]) => ({ id, name })).sort((a, b) =>
+      a.name.localeCompare(b.name, 'ko'),
+    )
+  }, [triggers])
+  const filteredTriggers = useMemo(() => {
+    const normalizedQuery = deferredSearchQuery.trim().toLocaleLowerCase()
+    return (triggers ?? []).filter((trigger) => {
+      if (statusFilter !== ALL_STATUSES && trigger.status !== statusFilter) return false
+      if (agentFilter !== ALL_AGENTS && trigger.agent_id !== agentFilter) return false
+      if (!normalizedQuery) return true
+      const haystack = [
+        trigger.name,
+        trigger.input_message,
+        trigger.agent_name,
+        trigger.schedule_conversation_title,
+        formatSchedule(trigger),
+        statusLabel(trigger.status),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase()
+      return haystack.includes(normalizedQuery)
+    })
+  }, [agentFilter, deferredSearchQuery, statusFilter, triggers])
+  const hasActiveFilters =
+    searchQuery.trim().length > 0 || statusFilter !== ALL_STATUSES || agentFilter !== ALL_AGENTS
+  const selectedAgentNameById = useMemo(
+    () => new Map(agentOptions.map((agent) => [agent.id, agent.name])),
+    [agentOptions],
   )
 
   function formatDate(value: string | null) {
@@ -126,8 +177,77 @@ export default function SchedulesPage() {
       </div>
 
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">전체 스케줄</CardTitle>
+        <CardHeader className="gap-3 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-base">전체 스케줄</CardTitle>
+            <div className="text-xs text-muted-foreground">
+              {filteredTriggers.length} / {(triggers ?? []).length}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 md:flex-row">
+            <div className="relative min-w-0 flex-1">
+              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="스케줄 검색"
+                className="pl-8"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full bg-background md:w-[150px]" aria-label="상태 필터">
+                <SelectValue>
+                  {(selected) =>
+                    selected === ALL_STATUSES
+                      ? '전체 상태'
+                      : statusLabel(selected as AgentTrigger['status'])
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_STATUSES}>전체 상태</SelectItem>
+                <SelectItem value="active">활성</SelectItem>
+                <SelectItem value="paused">일시정지</SelectItem>
+                <SelectItem value="completed">완료</SelectItem>
+                <SelectItem value="error">오류</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={agentFilter} onValueChange={setAgentFilter}>
+              <SelectTrigger
+                className="w-full bg-background md:w-[190px]"
+                aria-label="에이전트 필터"
+              >
+                <SelectValue>
+                  {(selected) =>
+                    !selected || selected === ALL_AGENTS
+                      ? '전체 에이전트'
+                      : (selectedAgentNameById.get(selected) ?? '에이전트')
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL_AGENTS}>전체 에이전트</SelectItem>
+                {agentOptions.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {hasActiveFilters ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery('')
+                  setStatusFilter(ALL_STATUSES)
+                  setAgentFilter(ALL_AGENTS)
+                }}
+              >
+                초기화
+              </Button>
+            ) : null}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
@@ -152,7 +272,7 @@ export default function SchedulesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {triggers.map((trigger) => (
+                  {filteredTriggers.map((trigger) => (
                     <tr key={trigger.id} className="border-b last:border-0">
                       <td className="px-4 py-3 align-top">
                         <div className="font-medium">{trigger.name}</div>
@@ -269,6 +389,11 @@ export default function SchedulesPage() {
                   ))}
                 </tbody>
               </table>
+              {filteredTriggers.length === 0 ? (
+                <div className="border-t p-10 text-center text-sm text-muted-foreground">
+                  조건에 맞는 스케줄이 없습니다.
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="p-10 text-center text-sm text-muted-foreground">

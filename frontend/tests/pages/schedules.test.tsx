@@ -40,4 +40,23 @@ describe('SchedulesPage', () => {
       expect(mockRunNow).toHaveBeenCalledWith('trigger-1')
     })
   })
+
+  it('filters schedules by search query', async () => {
+    const user = userEvent.setup()
+    render(<SchedulesPage />)
+
+    await user.type(screen.getByPlaceholderText('스케줄 검색'), 'morning')
+
+    expect(screen.queryByText('Hourly update')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Good morning report').length).toBeGreaterThan(0)
+  })
+
+  it('shows an empty state when filters match nothing', async () => {
+    const user = userEvent.setup()
+    render(<SchedulesPage />)
+
+    await user.type(screen.getByPlaceholderText('스케줄 검색'), '없는 스케줄')
+
+    expect(screen.getByText('조건에 맞는 스케줄이 없습니다.')).toBeInTheDocument()
+  })
 })
