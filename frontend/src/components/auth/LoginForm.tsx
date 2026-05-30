@@ -120,6 +120,7 @@ export function LoginForm({
               <button
                 type="button"
                 aria-disabled
+                tabIndex={-1}
                 className="text-xs hover:underline opacity-60 cursor-not-allowed"
                 style={{
                   color: 'oklch(0.596 0.145 163.225)',
@@ -147,6 +148,7 @@ export function LoginForm({
               <button
                 type="button"
                 aria-pressed={showPassword}
+                tabIndex={-1}
                 aria-label={
                   showPassword ? t('auth.password.hide') : t('auth.password.show')
                 }

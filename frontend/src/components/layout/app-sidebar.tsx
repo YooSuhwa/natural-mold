@@ -6,6 +6,7 @@ import {
   BookOpenIcon,
   BrainIcon,
   CalendarClockIcon,
+  CheckIcon,
   ChevronRightIcon,
   Globe2Icon,
   HomeIcon,
@@ -30,15 +31,14 @@ import { useTheme } from 'next-themes'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { UserMenu } from '@/components/auth/UserMenu'
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
@@ -139,6 +139,7 @@ export function AppSidebar() {
 
   const [connectorsExpanded, setConnectorsExpanded] = useAtom(connectorsExpandedAtom)
   const [marketplaceExpanded, setMarketplaceExpanded] = useAtom(marketplaceExpandedAtom)
+  const [languageOpen, setLanguageOpen] = useState(false)
 
   const buildItems = [
     { label: t('nav.home'), href: '/', icon: HomeIcon },
@@ -235,6 +236,7 @@ export function AppSidebar() {
   const languageLabel = t('language.label')
 
   function changeLocale(nextLocale: string) {
+    setLanguageOpen(false)
     if (!isSupportedLocale(nextLocale) || nextLocale === currentLocale) return
     document.cookie = `${LOCALE_COOKIE_NAME}=${nextLocale}; path=/; max-age=31536000; SameSite=Lax`
     router.refresh()
@@ -470,13 +472,16 @@ export function AppSidebar() {
             type="button"
             onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
             suppressHydrationWarning
-            className="rounded-md bg-sidebar-accent p-1.5 text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/80"
+            className="inline-flex h-7 items-center justify-center rounded-md px-1.5 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
             aria-label={themeToggleLabel}
             title={themeToggleLabel}
           >
             {isDarkTheme ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
           </button>
-          <DropdownMenu>
+          <DropdownMenu
+            open={languageOpen}
+            onOpenChange={setLanguageOpen}
+          >
             <DropdownMenuTrigger
               render={<button type="button" />}
               className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
@@ -487,13 +492,20 @@ export function AppSidebar() {
               <span>{currentLocale.toUpperCase()}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="center" className="w-36">
-              <DropdownMenuRadioGroup value={currentLocale} onValueChange={changeLocale}>
-                {SUPPORTED_LOCALES.map((option) => (
-                  <DropdownMenuRadioItem key={option} value={option}>
-                    {t(`language.${option}`)}
-                  </DropdownMenuRadioItem>
-                ))}
-              </DropdownMenuRadioGroup>
+              {SUPPORTED_LOCALES.map((option) => (
+                <DropdownMenuItem
+                  key={option}
+                  onClick={() => changeLocale(option)}
+                  className="justify-between"
+                >
+                  <span>{t(`language.${option}`)}</span>
+                  {option === currentLocale ? (
+                    <CheckIcon className="size-4 text-primary-strong" />
+                  ) : (
+                    <span className="size-4" />
+                  )}
+                </DropdownMenuItem>
+              ))}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
