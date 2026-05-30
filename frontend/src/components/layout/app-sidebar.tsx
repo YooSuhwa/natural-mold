@@ -11,7 +11,6 @@ import {
   KeyRoundIcon,
   LayoutTemplateIcon,
   type LucideIcon,
-  MonitorIcon,
   MoonIcon,
   Plug2Icon,
   PlusIcon,
@@ -120,7 +119,7 @@ export function AppSidebar() {
   const pathname = usePathname()
   const { data: agents, isLoading } = useAgents()
   const { data: triggerSummary } = useTriggerSummary()
-  const { setTheme, theme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
   const { toggleSidebar } = useSidebar()
   const t = useTranslations('sidebar')
   const { data: user } = useSession()
@@ -217,6 +216,9 @@ export function AppSidebar() {
 
   const newAgentButtonClass =
     'h-11 rounded-xl border border-emerald-200/80 bg-emerald-100/50 font-semibold text-emerald-800 hover:border-emerald-300/80 hover:bg-emerald-100/70 hover:text-emerald-900 active:bg-emerald-100/80 active:text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-200'
+
+  const isDarkTheme = resolvedTheme === 'dark'
+  const themeToggleLabel = isDarkTheme ? t('theme.light') : t('theme.dark')
 
   return (
     <Sidebar collapsible="icon">
@@ -441,26 +443,19 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      {/* Theme Toggle */}
       <SidebarFooter>
         <SidebarSeparator />
         <div className="flex items-center justify-center gap-1 px-2 py-1 group-data-[collapsible=icon]:hidden">
-          {[
-            { value: 'light' as const, icon: SunIcon },
-            { value: 'dark' as const, icon: MoonIcon },
-            { value: 'system' as const, icon: MonitorIcon },
-          ].map(({ value, icon: Icon }) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setTheme(value)}
-              suppressHydrationWarning
-              className={`rounded-md p-1.5 transition-colors ${theme === value ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-sidebar-accent'}`}
-              aria-label={t(`theme.${value}`)}
-            >
-              <Icon className="size-4" />
-            </button>
-          ))}
+          <button
+            type="button"
+            onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
+            suppressHydrationWarning
+            className="rounded-md bg-sidebar-accent p-1.5 text-sidebar-accent-foreground transition-colors hover:bg-sidebar-accent/80"
+            aria-label={themeToggleLabel}
+            title={themeToggleLabel}
+          >
+            {isDarkTheme ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
+          </button>
         </div>
 
         {/* User Profile */}
