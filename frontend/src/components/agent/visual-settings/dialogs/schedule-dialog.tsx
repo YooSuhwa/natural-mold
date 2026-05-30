@@ -18,6 +18,7 @@ import {
 import type { AgentTrigger, TriggerCreateRequest, TriggerUpdateRequest } from '@/lib/types'
 
 type ScheduleType = 'minutes' | 'daily' | 'weekly' | 'monthly' | 'advanced'
+type ConversationPolicy = 'schedule_thread' | 'new_per_run' | 'selected_conversation'
 
 const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
 const WEEKDAY_CRON = [1, 2, 3, 4, 5, 6, 0] as const
@@ -142,6 +143,12 @@ export function ScheduleForm({
   const [form, setForm] = useState(getDefaultForm)
   const [scheduleName, setScheduleName] = useState('')
   const [inputMessage, setInputMessage] = useState('')
+  const [conversationPolicy, setConversationPolicy] =
+    useState<ConversationPolicy>('schedule_thread')
+  const [targetConversationId, setTargetConversationId] = useState('')
+  const [maxRuns, setMaxRuns] = useState('')
+  const [endAt, setEndAt] = useState('')
+  const [autoPauseAfterFailures, setAutoPauseAfterFailures] = useState('')
 
   const typeOptions: { value: ScheduleType; label: string; icon: typeof ClockIcon }[] = [
     { value: 'minutes', label: t('types.minutes'), icon: TYPE_ICONS.minutes },
@@ -158,10 +165,27 @@ export function ScheduleForm({
       setForm(parsed)
       setScheduleName(trigger.name)
       setInputMessage(trigger.input_message)
+      setConversationPolicy(
+        trigger.conversation_policy === 'new_per_run' ||
+          trigger.conversation_policy === 'selected_conversation'
+          ? trigger.conversation_policy
+          : 'schedule_thread',
+      )
+      setTargetConversationId(trigger.target_conversation_id ?? '')
+      setMaxRuns(trigger.max_runs ? String(trigger.max_runs) : '')
+      setEndAt(trigger.end_at ? trigger.end_at.slice(0, 16) : '')
+      setAutoPauseAfterFailures(
+        trigger.auto_pause_after_failures ? String(trigger.auto_pause_after_failures) : '',
+      )
     } else {
       setForm(getDefaultForm())
       setScheduleName('')
       setInputMessage('')
+      setConversationPolicy('schedule_thread')
+      setTargetConversationId('')
+      setMaxRuns('')
+      setEndAt('')
+      setAutoPauseAfterFailures('')
     }
   }, [trigger])
   /* eslint-enable react-hooks/set-state-in-effect */
@@ -175,39 +199,53 @@ export function ScheduleForm({
     })
   }, [])
 
+  function withCommonOptions(req: TriggerCreateRequest): TriggerCreateRequest {
+    const trimmedTarget = targetConversationId.trim()
+    const parsedMaxRuns = maxRuns.trim() ? Number(maxRuns) : null
+    const parsedFailures = autoPauseAfterFailures.trim() ? Number(autoPauseAfterFailures) : null
+
+    return {
+      ...req,
+      conversation_policy: conversationPolicy,
+      target_conversation_id:
+        conversationPolicy === 'selected_conversation' && trimmedTarget ? trimmedTarget : null,
+      max_runs: parsedMaxRuns && parsedMaxRuns > 0 ? parsedMaxRuns : null,
+      end_at: endAt ? new Date(endAt).toISOString() : null,
+      auto_pause_after_failures:
+        parsedFailures && parsedFailures > 0 ? parsedFailures : null,
+    }
+  }
+
   function buildRequest(): TriggerCreateRequest {
     switch (form.type) {
       case 'minutes':
-        return {
+        return withCommonOptions({
           name: scheduleName.trim() || undefined,
           trigger_type: 'interval',
           schedule_config: { interval_minutes: form.intervalMinutes },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
           timezone: 'Asia/Seoul',
-          conversation_policy: 'schedule_thread',
-        }
+        })
       case 'daily':
-        return {
+        return withCommonOptions({
           name: scheduleName.trim() || undefined,
           trigger_type: 'cron',
           schedule_config: { cron_expression: `${form.minute} ${form.hour} * * *` },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
           timezone: 'Asia/Seoul',
-          conversation_policy: 'schedule_thread',
-        }
+        })
       case 'weekly': {
         const days = Array.from(form.weekdays).sort().join(',') || '*'
-        return {
+        return withCommonOptions({
           name: scheduleName.trim() || undefined,
           trigger_type: 'cron',
           schedule_config: { cron_expression: `${form.minute} ${form.hour} * * ${days}` },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
           timezone: 'Asia/Seoul',
-          conversation_policy: 'schedule_thread',
-        }
+        })
       }
       case 'monthly':
-        return {
+        return withCommonOptions({
           name: scheduleName.trim() || undefined,
           trigger_type: 'cron',
           schedule_config: {
@@ -215,17 +253,15 @@ export function ScheduleForm({
           },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
           timezone: 'Asia/Seoul',
-          conversation_policy: 'schedule_thread',
-        }
+        })
       case 'advanced':
-        return {
+        return withCommonOptions({
           name: scheduleName.trim() || undefined,
           trigger_type: 'cron',
           schedule_config: { cron_expression: form.cronExpression.trim() },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
           timezone: 'Asia/Seoul',
-          conversation_policy: 'schedule_thread',
-        }
+        })
     }
   }
 
@@ -389,6 +425,56 @@ export function ScheduleForm({
       <div className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
         <div className="font-medium text-foreground">{t('resultStorage.title')}</div>
         <p className="mt-1">{t('resultStorage.description')}</p>
+        <Select
+          value={conversationPolicy}
+          onValueChange={(value) => setConversationPolicy(value as ConversationPolicy)}
+        >
+          <SelectTrigger className="mt-3 h-8 bg-background">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="schedule_thread">{t('resultStorage.scheduleThread')}</SelectItem>
+            <SelectItem value="new_per_run">{t('resultStorage.newPerRun')}</SelectItem>
+            <SelectItem value="selected_conversation">
+              {t('resultStorage.selectedConversation')}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        {conversationPolicy === 'selected_conversation' ? (
+          <Input
+            value={targetConversationId}
+            onChange={(e) => setTargetConversationId(e.target.value)}
+            placeholder={t('placeholders.conversationId')}
+            className="mt-2 h-8 bg-background font-mono text-xs"
+          />
+        ) : null}
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 rounded-lg border bg-background p-3">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium">{t('labels.maxRuns')}</label>
+          <Input
+            type="number"
+            min={1}
+            value={maxRuns}
+            onChange={(e) => setMaxRuns(e.target.value)}
+            placeholder="∞"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium">{t('labels.autoPause')}</label>
+          <Input
+            type="number"
+            min={1}
+            value={autoPauseAfterFailures}
+            onChange={(e) => setAutoPauseAfterFailures(e.target.value)}
+            placeholder="—"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium">{t('labels.endAt')}</label>
+          <Input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)} />
+        </div>
       </div>
 
       <div className="flex justify-end gap-2">

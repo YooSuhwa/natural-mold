@@ -634,12 +634,16 @@
         "dayOfMonth": "매월",
         "time": "시간 (KST)",
         "cron": "Cron 표현식",
-        "prompt": "프롬프트 (선택)"
+        "prompt": "프롬프트 (선택)",
+        "maxRuns": "최대 실행",
+        "autoPause": "실패 후 정지",
+        "endAt": "종료 시각"
       },
       "placeholders": {
         "name": "예: 매일 아침 뉴스 요약",
         "cron": "0 9 * * 1-5",
-        "prompt": "각 실행 시 에이전트에 전달할 메시지..."
+        "prompt": "각 실행 시 에이전트에 전달할 메시지...",
+        "conversationId": "기존 대화 ID"
       },
       "cronFormat": "형식: 분 시 일 월 요일",
       "promptDefault": "기본값: \"Cron trigger fired.\"",
@@ -650,7 +654,10 @@
       "add": "추가",
       "resultStorage": {
         "title": "결과 저장",
-        "description": "실행 결과는 첫 실행 때 만들어지는 스케줄 전용 대화에 계속 쌓이고, 읽지 않은 결과는 배지로 표시됩니다."
+        "description": "실행 결과는 대화에 저장되고, 읽지 않은 결과는 배지로 표시됩니다.",
+        "scheduleThread": "스케줄 전용 대화에 계속 쌓기",
+        "newPerRun": "실행할 때마다 새 대화 만들기",
+        "selectedConversation": "기존 대화 ID에 저장"
       },
       "everyNMin": "매 {mins}분",
       "atTimeDays": "{time}, {days}",

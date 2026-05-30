@@ -290,14 +290,19 @@ async def update_trigger(
         )
     if data.input_message is not None:
         trigger.input_message = data.input_message
-    if data.conversation_policy is not None or data.target_conversation_id is not None:
+    provided_fields = data.model_fields_set
+    if "conversation_policy" in provided_fields or "target_conversation_id" in provided_fields:
         conversation_policy = _validate_conversation_policy(
             data.conversation_policy or trigger.conversation_policy
         )
         target_conversation_id = await _validate_target_conversation(
             db,
             agent_id=trigger.agent_id,
-            target_conversation_id=data.target_conversation_id or trigger.target_conversation_id,
+            target_conversation_id=(
+                data.target_conversation_id
+                if "target_conversation_id" in provided_fields
+                else trigger.target_conversation_id
+            ),
             conversation_policy=conversation_policy,
         )
         trigger.conversation_policy = conversation_policy
@@ -306,11 +311,11 @@ async def update_trigger(
         if data.status not in VALID_STATUSES:
             raise ValueError("invalid trigger status")
         trigger.status = data.status
-    if data.max_runs is not None:
+    if "max_runs" in provided_fields:
         trigger.max_runs = _validate_positive_optional(data.max_runs, "max_runs")
-    if data.end_at is not None:
+    if "end_at" in provided_fields:
         trigger.end_at = _normalize_optional_datetime(data.end_at)
-    if data.auto_pause_after_failures is not None:
+    if "auto_pause_after_failures" in provided_fields:
         trigger.auto_pause_after_failures = _validate_positive_optional(
             data.auto_pause_after_failures,
             "auto_pause_after_failures",
