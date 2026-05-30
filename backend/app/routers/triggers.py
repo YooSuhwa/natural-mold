@@ -7,27 +7,126 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import (
+    agent_not_found,
     invalid_schedule_config,
     invalid_trigger_type,
     trigger_not_found,
 )
-from app.scheduler import add_trigger_job, pause_trigger_job, remove_trigger_job
-from app.schemas.trigger import TriggerCreate, TriggerResponse, TriggerUpdate
+from app.schemas.trigger import (
+    TriggerCreate,
+    TriggerResponse,
+    TriggerRunResponse,
+    TriggerSummaryResponse,
+    TriggerUpdate,
+)
 from app.services import trigger_service
 
-router = APIRouter(prefix="/api/agents/{agent_id}/triggers", tags=["triggers"])
+router = APIRouter(tags=["triggers"])
 
 
-@router.get("", response_model=list[TriggerResponse])
-async def list_triggers(
+def _map_trigger_validation(exc: ValueError) -> None:
+    if "trigger_type" in str(exc):
+        raise invalid_trigger_type() from exc
+    raise invalid_schedule_config() from exc
+
+
+@router.get("/api/triggers", response_model=list[TriggerResponse])
+async def list_all_triggers(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await trigger_service.list_user_triggers(db, user.id)
+
+
+@router.get("/api/triggers/summary", response_model=TriggerSummaryResponse)
+async def trigger_summary(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await trigger_service.schedule_summary(db, user.id)
+
+
+@router.patch("/api/triggers/{trigger_id}", response_model=TriggerResponse)
+async def update_trigger_global(
+    trigger_id: uuid.UUID,
+    data: TriggerUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+):
+    trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
+    if not trigger:
+        raise trigger_not_found()
+    try:
+        return await trigger_service.update_trigger(db, trigger, data)
+    except ValueError as exc:
+        _map_trigger_validation(exc)
+
+
+@router.delete("/api/triggers/{trigger_id}", status_code=204)
+async def delete_trigger_global(
+    trigger_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+):
+    trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
+    if not trigger:
+        raise trigger_not_found()
+    await trigger_service.delete_trigger(db, trigger)
+
+
+@router.post("/api/triggers/{trigger_id}/run-now", response_model=TriggerRunResponse)
+async def run_trigger_now(
+    trigger_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+):
+    trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
+    if not trigger:
+        raise trigger_not_found()
+
+    from app.agent_runtime.trigger_executor import execute_trigger
+
+    run = await execute_trigger(str(trigger_id), force=True)
+    if run is None:
+        raise trigger_not_found()
+    return run
+
+
+@router.get("/api/triggers/{trigger_id}/runs", response_model=list[TriggerRunResponse])
+async def list_trigger_runs(
+    trigger_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
+    if not trigger:
+        raise trigger_not_found()
+    return await trigger_service.list_trigger_runs(db, trigger_id, user.id)
+
+
+@router.get(
+    "/api/agents/{agent_id}/triggers",
+    response_model=list[TriggerResponse],
+)
+async def list_agent_triggers(
     agent_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    return await trigger_service.list_triggers(db, agent_id)
+    agent = await trigger_service.get_owned_agent(db, agent_id, user.id)
+    if not agent:
+        raise agent_not_found()
+    return await trigger_service.list_triggers(db, agent_id, user.id)
 
 
-@router.post("", response_model=TriggerResponse, status_code=201)
+@router.post(
+    "/api/agents/{agent_id}/triggers",
+    response_model=TriggerResponse,
+    status_code=201,
+)
 async def create_trigger(
     agent_id: uuid.UUID,
     data: TriggerCreate,
@@ -35,25 +134,20 @@ async def create_trigger(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ):
-    # Validate trigger type
-    if data.trigger_type not in ("interval", "cron"):
-        raise invalid_trigger_type()
-
-    if data.trigger_type == "interval":
-        minutes = data.schedule_config.get("interval_minutes")
-        if not minutes or not isinstance(minutes, (int, float)) or minutes < 1:
-            raise invalid_schedule_config()
-
-    trigger = await trigger_service.create_trigger(db, agent_id, user.id, data)
-
-    # Register job with scheduler
-    add_trigger_job(trigger.id, trigger.trigger_type, trigger.schedule_config)
-
-    return trigger
+    agent = await trigger_service.get_owned_agent(db, agent_id, user.id)
+    if not agent:
+        raise agent_not_found()
+    try:
+        return await trigger_service.create_trigger(db, agent_id, user.id, data)
+    except ValueError as exc:
+        _map_trigger_validation(exc)
 
 
-@router.put("/{trigger_id}", response_model=TriggerResponse)
-async def update_trigger(
+@router.put(
+    "/api/agents/{agent_id}/triggers/{trigger_id}",
+    response_model=TriggerResponse,
+)
+async def update_agent_trigger(
     agent_id: uuid.UUID,
     trigger_id: uuid.UUID,
     data: TriggerUpdate,
@@ -64,27 +158,17 @@ async def update_trigger(
     trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
     if not trigger or trigger.agent_id != agent_id:
         raise trigger_not_found()
-
-    trigger = await trigger_service.update_trigger(db, trigger, data)
-
-    # Update scheduler job
-    if data.status == "paused":
-        pause_trigger_job(trigger.id)
-    elif data.status == "active":
-        # Re-register with possibly updated schedule
-        remove_trigger_job(trigger.id)
-        add_trigger_job(trigger.id, trigger.trigger_type, trigger.schedule_config)
-    elif data.trigger_type or data.schedule_config:
-        # Schedule changed, re-register
-        remove_trigger_job(trigger.id)
-        if trigger.status == "active":
-            add_trigger_job(trigger.id, trigger.trigger_type, trigger.schedule_config)
-
-    return trigger
+    try:
+        return await trigger_service.update_trigger(db, trigger, data)
+    except ValueError as exc:
+        _map_trigger_validation(exc)
 
 
-@router.delete("/{trigger_id}", status_code=204)
-async def delete_trigger(
+@router.delete(
+    "/api/agents/{agent_id}/triggers/{trigger_id}",
+    status_code=204,
+)
+async def delete_agent_trigger(
     agent_id: uuid.UUID,
     trigger_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -94,6 +178,4 @@ async def delete_trigger(
     trigger = await trigger_service.get_trigger(db, trigger_id, user.id)
     if not trigger or trigger.agent_id != agent_id:
         raise trigger_not_found()
-
-    remove_trigger_job(trigger.id)
     await trigger_service.delete_trigger(db, trigger)

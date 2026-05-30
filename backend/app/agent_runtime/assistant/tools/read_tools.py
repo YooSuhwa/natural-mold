@@ -313,25 +313,45 @@ def build_read_tools(
 
     # ------ 15. list_cron_schedules ------
 
+    def _serialize_schedule_for_assistant(t: AgentTrigger) -> dict[str, object]:
+        return {
+            "id": str(t.id),
+            "name": t.name,
+            "type": t.trigger_type,
+            "schedule": t.schedule_config,
+            "message": t.input_message,
+            "status": t.status,
+            "timezone": t.timezone,
+            "conversation_policy": t.conversation_policy,
+            "result_conversation_id": (
+                str(t.schedule_conversation_id) if t.schedule_conversation_id else None
+            ),
+            "target_conversation_id": (
+                str(t.target_conversation_id) if t.target_conversation_id else None
+            ),
+            "last_status": t.last_status,
+            "recent_status": t.last_status,
+            "last_error": t.last_error,
+            "last_run_at": str(t.last_run_at) if t.last_run_at else None,
+            "next_run_at": str(t.next_run_at) if t.next_run_at else None,
+            "run_count": t.run_count,
+            "failure_count": t.failure_count,
+            "max_runs": t.max_runs,
+            "end_at": str(t.end_at) if t.end_at else None,
+            "auto_pause_after_failures": t.auto_pause_after_failures,
+        }
+
     async def list_cron_schedules() -> str:
         """에이전트의 크론 스케줄 목록을 조회합니다."""
         async with async_session_factory() as session:
             result = await session.execute(
-                select(AgentTrigger).where(AgentTrigger.agent_id == agent_id)
+                select(AgentTrigger).where(
+                    AgentTrigger.agent_id == agent_id,
+                    AgentTrigger.user_id == user_id,
+                )
             )
             triggers = result.scalars().all()
-            items = [
-                {
-                    "id": str(t.id),
-                    "type": t.trigger_type,
-                    "schedule": t.schedule_config,
-                    "message": t.input_message,
-                    "status": t.status,
-                    "last_run_at": str(t.last_run_at) if t.last_run_at else None,
-                    "run_count": t.run_count,
-                }
-                for t in triggers
-            ]
+            items = [_serialize_schedule_for_assistant(t) for t in triggers]
             return json.dumps(items, ensure_ascii=False, indent=2)
 
     # ------ 16. get_cron_schedule ------
@@ -349,23 +369,16 @@ def build_read_tools(
         async with async_session_factory() as session:
             result = await session.execute(
                 select(AgentTrigger).where(
-                    AgentTrigger.id == sid, AgentTrigger.agent_id == agent_id
+                    AgentTrigger.id == sid,
+                    AgentTrigger.agent_id == agent_id,
+                    AgentTrigger.user_id == user_id,
                 )
             )
             t = result.scalar_one_or_none()
             if not t:
                 return "스케줄을 찾을 수 없습니다."
             return json.dumps(
-                {
-                    "id": str(t.id),
-                    "type": t.trigger_type,
-                    "schedule": t.schedule_config,
-                    "message": t.input_message,
-                    "status": t.status,
-                    "last_run_at": str(t.last_run_at) if t.last_run_at else None,
-                    "next_run_at": str(t.next_run_at) if t.next_run_at else None,
-                    "run_count": t.run_count,
-                },
+                _serialize_schedule_for_assistant(t),
                 ensure_ascii=False,
             )
 

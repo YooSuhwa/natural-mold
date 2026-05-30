@@ -122,11 +122,13 @@ export function ConversationList({
 
   function renderItem(conv: Conversation) {
     const isActive = params.conversationId === conv.id
+    const unreadCount = conv.unread_count ?? 0
     return (
       <div
         key={conv.id}
         className={cn(
           'group flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted',
+          unreadCount > 0 && !isActive && 'bg-amber-50/70 dark:bg-amber-500/10',
           isActive &&
             'bg-emerald-50 font-medium ring-1 ring-emerald-200/60 hover:bg-emerald-50 dark:bg-emerald-500/10 dark:ring-emerald-500/20 dark:hover:bg-emerald-500/10',
         )}
@@ -142,6 +144,11 @@ export function ConversationList({
           )}
           <span className="truncate">{conv.title ?? t('fallbackTitle')}</span>
         </Link>
+        {unreadCount > 0 ? (
+          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        ) : null}
         <span className="shrink-0 text-xs text-muted-foreground">
           {formatRelativeShort(conv.updated_at, tCommon('yesterday'))}
         </span>

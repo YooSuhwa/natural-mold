@@ -36,6 +36,10 @@ class ConversationResponse(BaseModel):
     agent_id: uuid.UUID
     title: str | None
     is_pinned: bool
+    unread_count: int = 0
+    last_read_at: UtcDatetime | None = None
+    last_unread_at: UtcDatetime | None = None
+    last_activity_source: str = "user"
     created_at: UtcDatetime
     updated_at: UtcDatetime
 

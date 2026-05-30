@@ -9,6 +9,16 @@ describe('triggersApi', () => {
     expect(triggers).toHaveLength(2)
   })
 
+  it('listAll() returns all user triggers', async () => {
+    const triggers = await triggersApi.listAll()
+    expect(triggers).toEqual(mockTriggerList)
+  })
+
+  it('summary() returns aggregate schedule state', async () => {
+    const summary = await triggersApi.summary()
+    expect(summary).toEqual({ total_unread: 0, active_count: 1 })
+  })
+
   it('create() sends POST and returns new trigger', async () => {
     const trigger = await triggersApi.create('agent-1', {
       trigger_type: 'interval',
@@ -33,6 +43,24 @@ describe('triggersApi', () => {
   it('delete() sends DELETE and returns undefined', async () => {
     const result = await triggersApi.delete('agent-1', 'trigger-1')
     expect(result).toBeUndefined()
+  })
+
+  it('updateGlobal() sends PATCH and returns updated trigger', async () => {
+    const trigger = await triggersApi.updateGlobal('trigger-1', { status: 'paused' })
+    expect(trigger.id).toBe('trigger-1')
+    expect(trigger.status).toBe('paused')
+  })
+
+  it('runNow() returns a trigger run record', async () => {
+    const run = await triggersApi.runNow('trigger-1')
+    expect(run.trigger_id).toBe('trigger-1')
+    expect(run.status).toBe('success')
+  })
+
+  it('runs() returns trigger run history', async () => {
+    const runs = await triggersApi.runs('trigger-1')
+    expect(runs).toHaveLength(1)
+    expect(runs[0].trigger_id).toBe('trigger-1')
   })
 
   it('list() returns triggers with correct types', async () => {

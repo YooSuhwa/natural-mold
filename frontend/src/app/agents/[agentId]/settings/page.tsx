@@ -2,7 +2,13 @@
 
 import { use, useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeftIcon, ClipboardListIcon, Loader2Icon, Trash2Icon, WorkflowIcon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  ClipboardListIcon,
+  Loader2Icon,
+  Trash2Icon,
+  WorkflowIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import type { Agent } from '@/lib/types'
@@ -72,7 +78,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const [justCreated, setJustCreated] = useState(false)
   const [deletingTriggerTarget, setDeletingTriggerTarget] = useState<{
     id: string
-    interval: number
+    description: string
   } | null>(null)
 
   // 만들기 페이지에서 carry된 첫 메시지 검사 → Fix 탭 활성 + 자동 전송 + create-hero 유지
@@ -145,9 +151,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       }
       const prevMwTypes = new Set(prev.middleware_configs?.map((mc) => mc.type) ?? [])
       if (setsEqual(selectedMiddlewareTypes, prevMwTypes)) {
-        setSelectedMiddlewareTypes(
-          new Set(agent.middleware_configs?.map((mc) => mc.type) ?? []),
-        )
+        setSelectedMiddlewareTypes(new Set(agent.middleware_configs?.map((mc) => mc.type) ?? []))
       }
       if (arraysEqual(openerQuestions, prev.opener_questions ?? [])) {
         setOpenerQuestions(agent.opener_questions ?? [])
@@ -350,9 +354,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             </AlertDialogContent>
           </AlertDialog>
           <Button onClick={handleSave} disabled={updateAgent.isPending || !isDirty}>
-            {updateAgent.isPending ? (
-              <Loader2Icon className="mr-1 size-4 animate-spin" />
-            ) : null}
+            {updateAgent.isPending ? <Loader2Icon className="mr-1 size-4 animate-spin" /> : null}
             {t('save')}
           </Button>
         </div>
@@ -388,9 +390,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                 systemPrompt={systemPrompt}
                 onSystemPromptChange={setSystemPrompt}
                 selectedSubAgentIds={selectedSubAgentIds}
-                onToggleSubAgent={(id) =>
-                  setSelectedSubAgentIds((prev) => toggleSetItem(prev, id))
-                }
+                onToggleSubAgent={(id) => setSelectedSubAgentIds((prev) => toggleSetItem(prev, id))}
                 currentAgentId={agentId}
                 modelId={modelId}
                 onModelIdChange={setModelId}
@@ -408,24 +408,21 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                 fallbackIds={fallbackIds}
                 onFallbackIdsChange={setFallbackIds}
                 selectedToolIds={selectedToolIds}
-                onToggleTool={(id) =>
-                  setSelectedToolIds((prev) => toggleSetItem(prev, id))
-                }
+                onToggleTool={(id) => setSelectedToolIds((prev) => toggleSetItem(prev, id))}
                 selectedMcpToolIds={selectedMcpToolIds}
-                onToggleMcpTool={(id) =>
-                  setSelectedMcpToolIds((prev) => toggleSetItem(prev, id))
-                }
+                onToggleMcpTool={(id) => setSelectedMcpToolIds((prev) => toggleSetItem(prev, id))}
                 selectedSkillIds={selectedSkillIds}
-                onToggleSkill={(id) =>
-                  setSelectedSkillIds((prev) => toggleSetItem(prev, id))
-                }
+                onToggleSkill={(id) => setSelectedSkillIds((prev) => toggleSetItem(prev, id))}
                 selectedMiddlewareTypes={selectedMiddlewareTypes}
                 onToggleMiddleware={(type) =>
                   setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type))
                 }
               />
             </TabsContent>
-            <TabsContent value="visual" className="flex flex-1 min-h-0 flex-col overflow-hidden p-0">
+            <TabsContent
+              value="visual"
+              className="flex flex-1 min-h-0 flex-col overflow-hidden p-0"
+            >
               {agent && (
                 <ReactFlowProvider>
                   <VisualSettingsFlow
@@ -459,12 +456,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                       onTemperatureChange: setTemperature,
                       onTopPChange: setTopP,
                       onMaxTokensChange: setMaxTokens,
-                      onToggleTool: (id) =>
-                        setSelectedToolIds((prev) => toggleSetItem(prev, id)),
+                      onToggleTool: (id) => setSelectedToolIds((prev) => toggleSetItem(prev, id)),
                       onToggleMcpTool: (id) =>
                         setSelectedMcpToolIds((prev) => toggleSetItem(prev, id)),
-                      onToggleSkill: (id) =>
-                        setSelectedSkillIds((prev) => toggleSetItem(prev, id)),
+                      onToggleSkill: (id) => setSelectedSkillIds((prev) => toggleSetItem(prev, id)),
                       onToggleSubAgent: (id) =>
                         setSelectedSubAgentIds((prev) => toggleSetItem(prev, id)),
                       onToggleMiddleware: (type) =>
@@ -498,11 +493,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         open={!!deletingTriggerTarget}
         onOpenChange={(v) => !v && setDeletingTriggerTarget(null)}
         title={t('trigger.deleteConfirm')}
-        description={
-          deletingTriggerTarget
-            ? t('trigger.interval', { minutes: deletingTriggerTarget.interval })
-            : ''
-        }
+        description={deletingTriggerTarget?.description ?? ''}
         cancelLabel={tc('cancel')}
         confirmLabel={tc('delete')}
         isPending={deleteTrigger.isPending}

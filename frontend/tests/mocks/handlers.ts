@@ -13,6 +13,8 @@ import {
   mockMessageList,
   mockTriggerList,
   mockTrigger,
+  mockTriggerRun,
+  mockTriggerSummary,
   mockUsageSummary,
   mockCreationSession,
   mockCreationMessageResult,
@@ -223,7 +225,48 @@ export const handlers = [
     })
   }),
 
+  http.post(`${API_BASE}/api/conversations/:id/read`, ({ params }) => {
+    const conversation = mockConversationList.find((c) => c.id === params.id)
+    return HttpResponse.json({
+      ...(conversation ?? mockConversationList[0]),
+      unread_count: 0,
+      last_read_at: '2026-01-01T01:00:00Z',
+    })
+  }),
+
   // ── Triggers ───────────────────────────────────────────────────
+  http.get(`${API_BASE}/api/triggers`, () => {
+    return HttpResponse.json(mockTriggerList)
+  }),
+
+  http.get(`${API_BASE}/api/triggers/summary`, () => {
+    return HttpResponse.json(mockTriggerSummary)
+  }),
+
+  http.patch(`${API_BASE}/api/triggers/:triggerId`, async ({ params, request }) => {
+    const body = (await request.json()) as Record<string, unknown>
+    return HttpResponse.json({
+      ...mockTrigger,
+      id: params.triggerId,
+      ...body,
+    })
+  }),
+
+  http.delete(`${API_BASE}/api/triggers/:triggerId`, () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  http.post(`${API_BASE}/api/triggers/:triggerId/run-now`, ({ params }) => {
+    return HttpResponse.json({
+      ...mockTriggerRun,
+      trigger_id: params.triggerId,
+    })
+  }),
+
+  http.get(`${API_BASE}/api/triggers/:triggerId/runs`, ({ params }) => {
+    return HttpResponse.json([{ ...mockTriggerRun, trigger_id: params.triggerId }])
+  }),
+
   http.get(`${API_BASE}/api/agents/:agentId/triggers`, () => {
     return HttpResponse.json(mockTriggerList)
   }),

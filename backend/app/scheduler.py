@@ -4,10 +4,12 @@ import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import settings
@@ -37,40 +39,84 @@ def _job_id(trigger_id: uuid.UUID) -> str:
     return f"trigger_{trigger_id}"
 
 
+def _naive_utc(dt: datetime | None) -> datetime | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(UTC).replace(tzinfo=None)
+
+
+def get_trigger_job_next_run_at(trigger_id: uuid.UUID) -> datetime | None:
+    scheduler = get_scheduler()
+    job = scheduler.get_job(_job_id(trigger_id))
+    if not job:
+        return None
+    return _naive_utc(job.next_run_time)
+
+
 def add_trigger_job(
     trigger_id: uuid.UUID, trigger_type: str, schedule_config: dict[str, Any]
-) -> None:
+) -> datetime | None:
     """Register a scheduled job for a trigger."""
     from app.agent_runtime.trigger_executor import execute_trigger
 
     scheduler = get_scheduler()
     if not scheduler.running:
         logger.debug("Scheduler not running; skipping job registration for %s", trigger_id)
-        return
+        return None
 
     job_id = _job_id(trigger_id)
+    timezone_name = str(schedule_config.get("timezone") or "Asia/Seoul")
+    timezone = ZoneInfo(timezone_name)
+    job = None
 
     if trigger_type == "interval":
         minutes = schedule_config.get("interval_minutes", 10)
-        scheduler.add_job(
+        job = scheduler.add_job(
             execute_trigger,
-            IntervalTrigger(minutes=minutes),
+            IntervalTrigger(minutes=minutes, timezone=timezone),
             id=job_id,
             args=[str(trigger_id)],
             replace_existing=True,
+            coalesce=True,
+            max_instances=1,
         )
         logger.info("Scheduled trigger %s: every %d minutes", trigger_id, minutes)
 
     elif trigger_type == "cron":
         expr = schedule_config.get("cron_expression", "0 * * * *")
-        scheduler.add_job(
+        job = scheduler.add_job(
             execute_trigger,
-            CronTrigger.from_crontab(expr),
+            CronTrigger.from_crontab(expr, timezone=timezone),
             id=job_id,
             args=[str(trigger_id)],
             replace_existing=True,
+            coalesce=True,
+            max_instances=1,
         )
         logger.info("Scheduled trigger %s: cron %s", trigger_id, expr)
+
+    elif trigger_type == "one_time":
+        raw_run_at = schedule_config.get("scheduled_at")
+        if not raw_run_at:
+            logger.warning("Trigger %s has no scheduled_at; not scheduled", trigger_id)
+            return None
+        run_at = datetime.fromisoformat(str(raw_run_at).replace("Z", "+00:00"))
+        if run_at.tzinfo is None:
+            run_at = run_at.replace(tzinfo=timezone)
+        job = scheduler.add_job(
+            execute_trigger,
+            DateTrigger(run_date=run_at, timezone=timezone),
+            id=job_id,
+            args=[str(trigger_id)],
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )
+        logger.info("Scheduled trigger %s: one-time %s", trigger_id, raw_run_at)
+
+    return _naive_utc(job.next_run_time if job else None)
 
 
 def remove_trigger_job(trigger_id: uuid.UUID) -> None:

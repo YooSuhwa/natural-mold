@@ -21,6 +21,29 @@ vi.mock('@/lib/hooks/use-agents', () => ({
   useAgents: () => ({ data: [], isLoading: false }),
 }))
 
+vi.mock('@/lib/hooks/use-triggers', () => ({
+  useTriggerSummary: () => ({ data: { total_unread: 0, active_count: 0 } }),
+}))
+
+vi.mock('@/lib/auth/session', () => ({
+  useSession: () => ({
+    data: {
+      id: 'user-1',
+      name: 'Test User',
+      email: 'test@example.com',
+      is_super_user: false,
+    },
+  }),
+}))
+
+vi.mock('jotai', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('jotai')>()
+  return {
+    ...actual,
+    useAtom: () => [true, vi.fn()],
+  }
+})
+
 vi.mock('@/components/ui/sidebar', () => ({
   SidebarProvider: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="sidebar-provider">{children}</div>
@@ -38,6 +61,7 @@ vi.mock('@/components/ui/sidebar', () => ({
   SidebarMenu: ({ children }: { children: React.ReactNode }) => <ul>{children}</ul>,
   SidebarMenuButton: ({ children }: { children: React.ReactNode }) => <button>{children}</button>,
   SidebarMenuItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
+  SidebarMenuBadge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   SidebarMenuSub: ({ children }: { children: React.ReactNode }) => <ul>{children}</ul>,
   SidebarMenuSubItem: ({ children }: { children: React.ReactNode }) => <li>{children}</li>,
   SidebarMenuSubButton: ({ children }: { children: React.ReactNode }) => (

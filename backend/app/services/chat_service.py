@@ -51,6 +51,7 @@ __all__ = [
     "link_attachments_to_conversation",
     "list_conversations",
     "list_messages_from_checkpointer",
+    "mark_conversation_read",
     "maybe_set_auto_title",
     "save_token_usage",
     "touch_conversation",
@@ -114,6 +115,14 @@ async def update_conversation(
         conv.title = data.title
     if data.is_pinned is not None:
         conv.is_pinned = data.is_pinned
+    await db.commit()
+    await db.refresh(conv)
+    return conv
+
+
+async def mark_conversation_read(db: AsyncSession, conv: Conversation) -> Conversation:
+    conv.unread_count = 0
+    conv.last_read_at = datetime.now(UTC).replace(tzinfo=None)
     await db.commit()
     await db.refresh(conv)
     return conv
@@ -408,7 +417,10 @@ async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> No
     await db.execute(
         update(Conversation)
         .where(Conversation.id == conversation_id)
-        .values(updated_at=datetime.now(UTC).replace(tzinfo=None))
+        .values(
+            updated_at=datetime.now(UTC).replace(tzinfo=None),
+            last_activity_source="user",
+        )
     )
     await db.commit()
 

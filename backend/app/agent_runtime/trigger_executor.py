@@ -20,8 +20,9 @@ from app.agent_runtime.executor import AgentConfig, execute_agent_invoke
 from app.agent_runtime.model_factory import env_provider_keys
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
+from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.model import Model
-from app.services import chat_service
+from app.services import chat_service, trigger_service
 
 logger = logging.getLogger(__name__)
 
@@ -67,16 +68,63 @@ async def _resolve_fallback_chain(db, fallback_list):
 # None).
 
 
-async def execute_trigger(trigger_id: str) -> None:
+async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTriggerRun | None:
     """Called by APScheduler when a trigger fires."""
 
     trigger_uuid = uuid.UUID(trigger_id)
 
     async with async_session() as db:
         trigger = await db.get(AgentTrigger, trigger_uuid)
-        if not trigger or trigger.status != "active":
-            logger.info("Trigger %s skipped (not found or inactive)", trigger_id)
+        if not trigger:
+            logger.info("Trigger %s skipped (not found)", trigger_id)
             return
+
+        run = await trigger_service.start_trigger_run(
+            db,
+            trigger,
+            source="run_now" if force else "scheduled",
+        )
+
+        if trigger.status != "active" and not force:
+            logger.info("Trigger %s skipped (inactive)", trigger_id)
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=None,
+                status="skipped",
+                error_message="trigger is not active",
+            )
+            await db.refresh(run)
+            return run
+
+        if trigger.max_runs is not None and trigger.run_count >= trigger.max_runs:
+            logger.info("Trigger %s skipped (max_runs reached)", trigger_id)
+            trigger.status = "completed"
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=None,
+                status="skipped",
+                error_message="max_runs reached",
+            )
+            await db.refresh(run)
+            return run
+
+        if trigger.end_at is not None and trigger.end_at <= datetime.now(UTC).replace(tzinfo=None):
+            logger.info("Trigger %s skipped (end_at reached)", trigger_id)
+            trigger.status = "completed"
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=None,
+                status="skipped",
+                error_message="end_at reached",
+            )
+            await db.refresh(run)
+            return run
 
         # Single source of truth for prefetch — same call the conversations
         # router uses, so no field on ``agent`` is lazy-loaded later.
@@ -84,21 +132,48 @@ async def execute_trigger(trigger_id: str) -> None:
         if not agent:
             logger.warning("Trigger %s: agent not found", trigger_id)
             trigger.status = "error"
-            await db.commit()
-            return
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=None,
+                status="failed",
+                error_message="agent not found",
+            )
+            await db.refresh(run)
+            return run
 
-        now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
-        conv = await chat_service.create_conversation(db, agent.id, title=f"자동 실행: {now_str}")
-
-        effective_prompt = chat_service.build_effective_prompt(agent)
-        tools_config = await chat_service.build_tools_config(agent, db=db)
-        agent_skills = chat_service.build_agent_skills(agent)
+        conversation = await trigger_service.resolve_schedule_conversation(db, trigger)
 
         if agent.model is None:
             logger.warning(
                 "Trigger %s: agent has no model bound — skipping run", trigger_id
             )
-            return
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=conversation,
+                status="failed",
+                error_message="agent has no model bound",
+            )
+            await db.refresh(run)
+            return run
+
+        now_str = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
+        logger.info(
+            "Trigger %s executing in conversation %s at %s",
+            trigger_id,
+            conversation.id,
+            now_str,
+        )
+
+        effective_prompt = chat_service.build_effective_prompt(agent)
+        tools_config = await chat_service.build_tools_config(
+            agent, db=db, conversation_id=str(conversation.id)
+        )
+        agent_skills = chat_service.build_agent_skills(agent)
+
         api_key = await resolve_llm_api_key_for_agent(db, agent)
         base_url = agent.model.base_url
 
@@ -111,7 +186,7 @@ async def execute_trigger(trigger_id: str) -> None:
             base_url=base_url,
             system_prompt=effective_prompt,
             tools_config=tools_config,
-            thread_id=str(conv.id),
+            thread_id=str(conversation.id),
             model_params=agent.model_params,
             middleware_configs=agent.middleware_configs,
             agent_skills=agent_skills or None,
@@ -125,16 +200,38 @@ async def execute_trigger(trigger_id: str) -> None:
             model_fallback_chain=fallback_chain,
         )
         try:
-            await execute_agent_invoke(cfg, [{"role": "user", "content": trigger.input_message}])
-        except Exception:
+            output = await execute_agent_invoke(
+                cfg,
+                [{"role": "user", "content": trigger.input_message}],
+            )
+        except Exception as exc:
             logger.exception("Trigger %s: agent execution failed", trigger_id)
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=conversation,
+                status="failed",
+                error_message=str(exc),
+                thread_id=str(conversation.id),
+            )
+            await db.refresh(run)
+            return run
 
-        trigger.last_run_at = datetime.now(UTC).replace(tzinfo=None)
-        trigger.run_count += 1
-        await db.commit()
+        await trigger_service.finish_trigger_run(
+            db,
+            trigger=trigger,
+            run=run,
+            conversation=conversation,
+            status="success",
+            output_preview=str(output) if output is not None else None,
+            thread_id=str(conversation.id),
+        )
+        await db.refresh(run)
 
         logger.info(
             "Trigger %s executed successfully (run #%d)",
             trigger_id,
             trigger.run_count,
         )
+        return run

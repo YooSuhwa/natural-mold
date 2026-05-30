@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useEffect, useCallback, useMemo } from 'react'
+import { use, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSetAtom } from 'jotai'
 import {
@@ -12,11 +12,12 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
-import type { Agent, Message } from '@/lib/types'
+import type { Agent, Conversation, Message } from '@/lib/types'
 import { useAgent } from '@/lib/hooks/use-agents'
 import {
   useMessagesEnvelope,
   useCreateConversation,
+  useMarkConversationRead,
   conversationKeys,
 } from '@/lib/hooks/use-conversations'
 import { useQueryClient } from '@tanstack/react-query'
@@ -58,17 +59,32 @@ export default function ChatPage({
   const { data: envelope, isLoading: messagesLoading } = useMessagesEnvelope(conversationId)
   const messages = envelope?.messages ?? EMPTY_MESSAGES
   const createConversation = useCreateConversation(agentId)
+  const markConversationRead = useMarkConversationRead(agentId)
+  const { mutate: markRead, isPending: isMarkingRead } = markConversationRead
   const t = useTranslations('chat.page')
   const setSessionTokenUsage = useSetAtom(sessionTokenUsageAtom)
 
   // 캐시에서 현재 대화 제목만 추출 (전체 목록 구독 방지)
-  const currentTitle = queryClient
-    .getQueryData<{ id: string; title?: string | null }[]>(conversationKeys.list(agentId))
-    ?.find((c) => c.id === conversationId)?.title
+  const currentConversation = queryClient
+    .getQueryData<Conversation[]>(conversationKeys.list(agentId))
+    ?.find((c) => c.id === conversationId)
+  const currentTitle = currentConversation?.title
+  const markedReadKeyRef = useRef<string | null>(null)
 
   useEffect(() => {
     setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
+    markedReadKeyRef.current = null
   }, [conversationId, setSessionTokenUsage])
+
+  useEffect(() => {
+    if (messagesLoading || isMarkingRead) return
+    const unreadCount = currentConversation?.unread_count ?? 0
+    if (unreadCount <= 0) return
+    const markReadKey = `${conversationId}:${unreadCount}`
+    if (markedReadKeyRef.current === markReadKey) return
+    markedReadKeyRef.current = markReadKey
+    markRead(conversationId)
+  }, [conversationId, currentConversation?.unread_count, isMarkingRead, markRead, messagesLoading])
 
   const streamFn = useCallback(
     (content: string, signal: AbortSignal, options?: StreamChatOptions) =>

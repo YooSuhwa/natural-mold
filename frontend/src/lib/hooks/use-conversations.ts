@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
-import type { ConversationUpdateRequest } from '@/lib/types'
+import type { Conversation, ConversationUpdateRequest } from '@/lib/types'
 
 export const conversationKeys = {
   list: (agentId: string) => ['agents', agentId, 'conversations'] as const,
@@ -62,5 +62,21 @@ export function useDeleteConversation(agentId: string) {
   return useMutation({
     mutationFn: (id: string) => conversationsApi.delete(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: conversationKeys.list(agentId) }),
+  })
+}
+
+export function useMarkConversationRead(agentId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (conversationId: string) => conversationsApi.markRead(conversationId),
+    onSuccess: (conversation) => {
+      qc.setQueryData<Conversation[]>(conversationKeys.list(agentId), (current) =>
+        current?.map((item) => (item.id === conversation.id ? { ...item, ...conversation } : item)),
+      )
+      qc.invalidateQueries({ queryKey: conversationKeys.list(agentId), refetchType: 'inactive' })
+      qc.invalidateQueries({ queryKey: ['agents'] })
+      qc.invalidateQueries({ queryKey: ['triggers'] })
+      qc.invalidateQueries({ queryKey: ['triggers', 'summary'] })
+    },
   })
 }

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from httpx import AsyncClient
 
+from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.model import Model
-from tests.conftest import TestSession
+from tests.conftest import TEST_USER_ID, TestSession
 
 
 async def _create_model(client: AsyncClient) -> str:
@@ -75,6 +78,137 @@ async def test_trigger_crud(client: AsyncClient):
     # Verify deleted
     resp = await client.get(f"/api/agents/{agent_id}/triggers")
     assert len(resp.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_trigger_guardrails_are_persisted(client: AsyncClient):
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+
+    resp = await client.post(
+        f"/api/agents/{agent_id}/triggers",
+        json={
+            "name": "제한 있는 스케줄",
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 10},
+            "input_message": "상태 확인",
+            "max_runs": 3,
+            "auto_pause_after_failures": 2,
+            "end_at": "2026-06-30T00:00:00Z",
+        },
+    )
+
+    assert resp.status_code == 201
+    trigger = resp.json()
+    assert trigger["max_runs"] == 3
+    assert trigger["auto_pause_after_failures"] == 2
+    assert trigger["end_at"] == "2026-06-30T00:00:00"
+    assert trigger["failure_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_trigger_selected_conversation_policy_is_persisted(client: AsyncClient):
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+    conversation_resp = await client.post(
+        f"/api/agents/{agent_id}/conversations",
+        json={"title": "기존 세션"},
+    )
+    assert conversation_resp.status_code == 201
+    conversation_id = conversation_resp.json()["id"]
+
+    resp = await client.post(
+        f"/api/agents/{agent_id}/triggers",
+        json={
+            "name": "기존 세션에 쓰기",
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 10},
+            "input_message": "상태 확인",
+            "conversation_policy": "selected_conversation",
+            "target_conversation_id": conversation_id,
+        },
+    )
+
+    assert resp.status_code == 201
+    trigger = resp.json()
+    assert trigger["conversation_policy"] == "selected_conversation"
+    assert trigger["target_conversation_id"] == conversation_id
+
+
+@pytest.mark.asyncio
+async def test_global_trigger_management_routes(client: AsyncClient):
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+
+    resp = await client.post(
+        f"/api/agents/{agent_id}/triggers",
+        json={
+            "name": "아침 뉴스",
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 15},
+            "input_message": "뉴스 요약",
+        },
+    )
+    assert resp.status_code == 201
+    trigger = resp.json()
+    trigger_id = trigger["id"]
+
+    resp = await client.get("/api/triggers")
+    assert resp.status_code == 200
+    triggers = resp.json()
+    assert len(triggers) == 1
+    assert triggers[0]["name"] == "아침 뉴스"
+    assert triggers[0]["agent_name"] == "Test Agent"
+
+    resp = await client.get("/api/triggers/summary")
+    assert resp.status_code == 200
+    assert resp.json() == {"total_unread": 0, "active_count": 1}
+
+    resp = await client.patch(f"/api/triggers/{trigger_id}", json={"status": "paused"})
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "paused"
+
+    resp = await client.delete(f"/api/triggers/{trigger_id}")
+    assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_global_trigger_runs_history(client: AsyncClient):
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+
+    resp = await client.post(
+        f"/api/agents/{agent_id}/triggers",
+        json={
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 30},
+            "input_message": "상태 확인",
+        },
+    )
+    assert resp.status_code == 201
+    trigger_id = resp.json()["id"]
+
+    async with TestSession() as db:
+        db.add(
+            AgentTriggerRun(
+                trigger_id=uuid.UUID(trigger_id),
+                agent_id=uuid.UUID(agent_id),
+                user_id=TEST_USER_ID,
+                status="success",
+                input_message="상태 확인",
+            )
+        )
+        await db.commit()
+
+    resp = await client.get(f"/api/triggers/{trigger_id}/runs")
+    assert resp.status_code == 200
+    runs = resp.json()
+    assert len(runs) == 1
+    assert runs[0]["status"] == "success"
+    assert runs[0]["source"] == "scheduled"
+    assert "duration_ms" in runs[0]
+    assert "output_preview" in runs[0]
+    assert "thread_id" in runs[0]
 
 
 @pytest.mark.asyncio

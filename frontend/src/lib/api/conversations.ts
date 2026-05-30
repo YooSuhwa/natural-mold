@@ -18,6 +18,10 @@ export const conversationsApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+  markRead: (conversationId: string) =>
+    apiFetch<Conversation>(`/api/conversations/${conversationId}/read`, {
+      method: 'POST',
+    }),
   delete: (conversationId: string) =>
     apiFetch<void>(`/api/conversations/${conversationId}`, {
       method: 'DELETE',

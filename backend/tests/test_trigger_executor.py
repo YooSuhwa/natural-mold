@@ -96,6 +96,17 @@ async def test_execute_trigger_success():
         assert trigger is not None
         assert trigger.run_count == 1
         assert trigger.last_run_at is not None
+        from app.models.agent_trigger_run import AgentTriggerRun
+
+        result = await db.execute(
+            select(AgentTriggerRun).where(AgentTriggerRun.trigger_id == trigger_id)
+        )
+        run = result.scalar_one()
+        assert run.source == "scheduled"
+        assert run.duration_ms is not None
+        assert run.duration_ms >= 0
+        assert run.thread_id == str(run.conversation_id)
+        assert run.output_preview == "뉴스 결과입니다"
 
 
 @pytest.mark.asyncio
@@ -128,9 +139,19 @@ async def test_execute_trigger_inactive():
 
     # run_count should still be 0
     async with TestSession() as db:
+        from sqlalchemy import select
+
+        from app.models.agent_trigger_run import AgentTriggerRun
+
         trigger = await db.get(AgentTrigger, trigger_id)
         assert trigger is not None
         assert trigger.run_count == 0
+        assert trigger.last_status == "skipped"
+        result = await db.execute(
+            select(AgentTriggerRun).where(AgentTriggerRun.trigger_id == trigger_id)
+        )
+        run = result.scalar_one()
+        assert run.status == "skipped"
 
 
 @pytest.mark.asyncio
@@ -172,7 +193,7 @@ async def test_execute_trigger_agent_not_found():
 
 @pytest.mark.asyncio
 async def test_execute_trigger_execution_error():
-    """Agent execution failure should still save error message and update run count."""
+    """Agent execution failure records a failed run without success-counting it."""
     trigger_id, _ = await _seed_full_setup()
 
     with (
@@ -192,8 +213,10 @@ async def test_execute_trigger_execution_error():
     async with TestSession() as db:
         trigger = await db.get(AgentTrigger, trigger_id)
         assert trigger is not None
-        assert trigger.run_count == 1
+        assert trigger.run_count == 0
         assert trigger.last_run_at is not None
+        assert trigger.last_status == "failed"
+        assert "LLM call failed" in (trigger.last_error or "")
 
 
 @pytest.mark.asyncio
@@ -219,6 +242,133 @@ async def test_execute_trigger_run_count_incremented():
         trigger = await db.get(AgentTrigger, trigger_id)
         assert trigger is not None
         assert trigger.run_count == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_run_now_records_source():
+    """Forced runs should be marked as run_now in run history."""
+    trigger_id, _ = await _seed_full_setup()
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="manual result",
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        await execute_trigger(str(trigger_id), force=True)
+
+    async with TestSession() as db:
+        from app.models.agent_trigger_run import AgentTriggerRun
+
+        result = await db.execute(
+            select(AgentTriggerRun).where(AgentTriggerRun.trigger_id == trigger_id)
+        )
+        run = result.scalar_one()
+        assert run.source == "run_now"
+        assert run.output_preview == "manual result"
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_completes_when_max_runs_reached():
+    """A successful run that reaches max_runs should complete the trigger."""
+    trigger_id, _ = await _seed_full_setup()
+    async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        trigger.max_runs = 1
+        await db.commit()
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="done",
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        await execute_trigger(str(trigger_id))
+
+    async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        assert trigger.run_count == 1
+        assert trigger.status == "completed"
+        assert trigger.next_run_at is None
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_skips_when_max_runs_already_reached():
+    """A trigger past max_runs should not invoke the agent again."""
+    trigger_id, _ = await _seed_full_setup()
+    async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        trigger.max_runs = 1
+        trigger.run_count = 1
+        await db.commit()
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="done",
+        ) as mock_invoke,
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        await execute_trigger(str(trigger_id))
+
+    mock_invoke.assert_not_called()
+    async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        assert trigger.status == "completed"
+        assert trigger.last_status == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_auto_pauses_after_failure_threshold():
+    """Repeated failures should pause the trigger when configured."""
+    trigger_id, _ = await _seed_full_setup()
+    async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        trigger.auto_pause_after_failures = 1
+        await db.commit()
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            side_effect=RuntimeError("provider down"),
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        await execute_trigger(str(trigger_id))
+
+    async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        assert trigger.failure_count == 1
+        assert trigger.status == "paused"
+        assert "provider down" in (trigger.last_error or "")
 
 
 @pytest.mark.asyncio
@@ -252,7 +402,7 @@ async def test_execute_trigger_passes_messages():
 
 @pytest.mark.asyncio
 async def test_execute_trigger_creates_conversation():
-    """A new conversation should be created for the trigger run."""
+    """A schedule-thread conversation should be created for the trigger run."""
     trigger_id, agent_id = await _seed_full_setup()
 
     with (
@@ -274,7 +424,78 @@ async def test_execute_trigger_creates_conversation():
         convs = result.scalars().all()
         assert len(convs) == 1
         assert convs[0].title is not None
-        assert "자동 실행" in convs[0].title
+        assert "스케줄:" in convs[0].title
+        assert convs[0].unread_count == 1
+        assert convs[0].last_activity_source == "schedule"
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_new_per_run_creates_a_new_conversation_each_time():
+    """new_per_run policy should not reuse the previous schedule conversation."""
+    trigger_id, agent_id = await _seed_full_setup()
+    async with TestSession() as db:
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        trigger.conversation_policy = "new_per_run"
+        await db.commit()
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="ok",
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        await execute_trigger(str(trigger_id))
+        await execute_trigger(str(trigger_id))
+
+    async with TestSession() as db:
+        result = await db.execute(select(Conversation).where(Conversation.agent_id == agent_id))
+        convs = result.scalars().all()
+        assert len(convs) == 2
+        assert all(conv.unread_count == 1 for conv in convs)
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_selected_conversation_uses_target_conversation():
+    """selected_conversation policy should write into the configured conversation."""
+    trigger_id, agent_id = await _seed_full_setup()
+    async with TestSession() as db:
+        target = Conversation(agent_id=agent_id, title="기존 대화")
+        db.add(target)
+        await db.flush()
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        trigger.conversation_policy = "selected_conversation"
+        trigger.target_conversation_id = target.id
+        await db.commit()
+        target_id = target.id
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="ok",
+        ),
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        await execute_trigger(str(trigger_id))
+
+    async with TestSession() as db:
+        target = await db.get(Conversation, target_id)
+        assert target is not None
+        assert target.unread_count == 1
+        result = await db.execute(select(Conversation).where(Conversation.agent_id == agent_id))
+        assert len(result.scalars().all()) == 1
 
 
 @pytest.mark.asyncio

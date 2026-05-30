@@ -453,6 +453,22 @@ async def update_conversation(
     return await chat_service.update_conversation(db, conv, data)
 
 
+@router.post(
+    "/api/conversations/{conversation_id}/read",
+    response_model=ConversationResponse,
+)
+async def mark_conversation_read(
+    conversation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+):
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
+    if not conv:
+        raise conversation_not_found()
+    return await chat_service.mark_conversation_read(db, conv)
+
+
 @router.delete("/api/conversations/{conversation_id}", status_code=204)
 async def delete_conversation(
     conversation_id: uuid.UUID,

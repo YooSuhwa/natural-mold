@@ -26,7 +26,7 @@ interface RightPanelProps {
   agentImageUrl: string | null
   openerQuestions: string[]
   onOpenerQuestionsChange: (q: string[]) => void
-  onRequestDeleteTrigger: (target: { id: string; interval: number }) => void
+  onRequestDeleteTrigger: (target: { id: string; description: string }) => void
   /** 새 에이전트 만들기 모드 — agentId 의존 탭은 placeholder */
   createMode?: boolean
   /** createMode일 때 Fix 첫 메시지 콜백 (createAgent + redirect 부모 처리) */
@@ -104,11 +104,7 @@ export function RightPanel({
         {!agentId ? (
           <CreateModePlaceholder label={t('createModeLocked')} />
         ) : (
-          <TestChatPanel
-            agentId={agentId}
-            agentName={agentName}
-            agentImageUrl={agentImageUrl}
-          />
+          <TestChatPanel agentId={agentId} agentName={agentName} agentImageUrl={agentImageUrl} />
         )}
       </TabsContent>
 

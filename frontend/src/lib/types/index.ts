@@ -82,6 +82,7 @@ export interface Agent {
   image_url: string | null
   opener_questions: string[] | null
   llm_credential_id?: string | null
+  unread_count: number
   /**
    * M10 — fallback model UUIDs tried in order when the primary model fails.
    * Backend column is `agents.model_fallback_list` (Postgres ARRAY of UUID).
@@ -144,6 +145,10 @@ export interface Conversation {
   agent_id: string
   title: string | null
   is_pinned: boolean
+  unread_count: number
+  last_read_at: string | null
+  last_unread_at: string | null
+  last_activity_source: string
   created_at: string
   updated_at: string
 }
@@ -451,28 +456,81 @@ export interface AssistantToolCallResult {
 export interface AgentTrigger {
   id: string
   agent_id: string
-  trigger_type: 'interval' | 'cron'
-  schedule_config: { interval_minutes?: number; cron_expression?: string }
+  name: string
+  trigger_type: 'interval' | 'cron' | 'one_time'
+  schedule_config: { interval_minutes?: number; cron_expression?: string; scheduled_at?: string }
   input_message: string
-  status: 'active' | 'paused' | 'error'
+  timezone: string
+  conversation_policy: string
+  schedule_conversation_id: string | null
+  target_conversation_id: string | null
+  status: 'active' | 'paused' | 'completed' | 'error'
   last_run_at: string | null
   next_run_at: string | null
+  last_status: 'running' | 'success' | 'failed' | 'skipped' | null
+  last_error: string | null
   run_count: number
+  failure_count: number
+  max_runs: number | null
+  end_at: string | null
+  auto_pause_after_failures: number | null
   created_at: string
   updated_at: string
+  agent_name?: string | null
+  schedule_conversation_title?: string | null
+  schedule_conversation_unread_count?: number
 }
 
 export interface TriggerCreateRequest {
-  trigger_type: 'interval' | 'cron'
+  name?: string
+  trigger_type: 'interval' | 'cron' | 'one_time'
   schedule_config: Record<string, unknown>
   input_message: string
+  timezone?: string
+  conversation_policy?: string
+  target_conversation_id?: string | null
+  max_runs?: number | null
+  end_at?: string | null
+  auto_pause_after_failures?: number | null
 }
 
 export interface TriggerUpdateRequest {
-  trigger_type?: string
+  name?: string
+  trigger_type?: AgentTrigger['trigger_type']
   schedule_config?: Record<string, unknown>
   input_message?: string
-  status?: string
+  timezone?: string
+  conversation_policy?: string
+  target_conversation_id?: string | null
+  status?: AgentTrigger['status']
+  max_runs?: number | null
+  end_at?: string | null
+  auto_pause_after_failures?: number | null
+}
+
+export interface TriggerRun {
+  id: string
+  trigger_id: string
+  agent_id: string
+  user_id: string
+  conversation_id: string | null
+  status: 'running' | 'success' | 'failed' | 'skipped'
+  source: 'scheduled' | 'run_now'
+  input_message: string
+  error_message: string | null
+  output_preview: string | null
+  duration_ms: number | null
+  thread_id: string | null
+  checkpoint_id: string | null
+  trace_id: string | null
+  started_at: string
+  finished_at: string | null
+  created_at: string
+}
+
+export interface TriggerSummary {
+  total_unread: number
+  active_count: number
 }
 
 // ---------- Legacy aliases (transitional — kept so existing visual-settings

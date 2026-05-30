@@ -74,6 +74,10 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
+  useMarkConversationRead: () => ({
+    mutate: vi.fn(),
+    isPending: false,
+  }),
   useConversations: () => ({
     data: [],
     isLoading: false,

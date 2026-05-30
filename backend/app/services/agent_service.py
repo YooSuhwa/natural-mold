@@ -50,13 +50,14 @@ async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
         select(
             Conversation.agent_id.label("agent_id"),
             func.max(Conversation.updated_at).label("last_used_at"),
+            func.coalesce(func.sum(Conversation.unread_count), 0).label("unread_count"),
         )
         .group_by(Conversation.agent_id)
         .subquery()
     )
 
     result = await db.execute(
-        select(Agent, last_used_subq.c.last_used_at)
+        select(Agent, last_used_subq.c.last_used_at, last_used_subq.c.unread_count)
         .outerjoin(last_used_subq, Agent.id == last_used_subq.c.agent_id)
         .where(Agent.user_id == user_id)
         .options(*_selectin_agent())
@@ -66,9 +67,10 @@ async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
     )
     rows = result.all()
     agents: list[Agent] = []
-    for agent, last_used in rows:
+    for agent, last_used, unread_count in rows:
         # Stash on the ORM instance — picked up by ``_agent_to_response``.
         agent._last_used_at = last_used
+        agent._unread_count = int(unread_count or 0)
         agents.append(agent)
     return agents
 
@@ -79,7 +81,18 @@ async def get_agent(db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -
         .where(Agent.id == agent_id, Agent.user_id == user_id)
         .options(*_selectin_agent())
     )
-    return result.scalar_one_or_none()
+    agent = result.scalar_one_or_none()
+    if agent is None:
+        return None
+    from app.models.conversation import Conversation
+
+    unread_result = await db.execute(
+        select(func.coalesce(func.sum(Conversation.unread_count), 0)).where(
+            Conversation.agent_id == agent_id
+        )
+    )
+    agent._unread_count = int(unread_result.scalar_one() or 0)
+    return agent
 
 
 def _build_tool_links(tool_ids: list[uuid.UUID]) -> list[AgentToolLink]:
