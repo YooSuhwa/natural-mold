@@ -7,8 +7,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agent_runtime.executor import AgentConfig
+from app.tools.risk import default_deepagents_interrupt_policy
 
 TEMPORAL_TOOL_NAMES = {"current_datetime", "resolve_relative_date"}
+
+
+def _expected_interrupt_policy() -> dict:
+    return {
+        **default_deepagents_interrupt_policy(),
+        "ask_user": {"allowed_decisions": ["respond"]},
+    }
 
 
 def _cfg(**overrides) -> AgentConfig:
@@ -570,11 +578,9 @@ async def test_interrupt_on_with_write_tools(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    # "Web Search" doesn't match _WRITE_TOOL_KEYWORDS, but interactive agents
-    # still wrap ask_user through the standard respond interrupt policy.
-    assert build_kwargs["interrupt_on"] == {
-        "ask_user": {"allowed_decisions": ["respond"]},
-    }
+    # Read-only tools do not add approval, but interactive agents still wrap
+    # ask_user and DeepAgents write tools through the standard policy.
+    assert build_kwargs["interrupt_on"] == _expected_interrupt_policy()
 
 
 @pytest.mark.asyncio
@@ -609,9 +615,7 @@ async def test_interrupt_on_without_hitl_middleware(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    assert build_kwargs["interrupt_on"] == {
-        "ask_user": {"allowed_decisions": ["respond"]},
-    }
+    assert build_kwargs["interrupt_on"] == _expected_interrupt_policy()
 
 
 @pytest.mark.asyncio

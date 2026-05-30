@@ -34,6 +34,7 @@ class ToolDefinitionSchema(BaseModel):
     parameters: list[ToolFieldSchema] = Field(default_factory=list)
     credential_definition_keys: list[str] = Field(default_factory=list)
     requires_credential: bool = False
+    risk: dict[str, Any] = Field(default_factory=dict)
 
 
 # ---- CRUD ------------------------------------------------------------------

@@ -22,7 +22,11 @@ from tests.conftest import TEST_USER_ID, TestSession
 
 
 async def _seed_full_setup(
-    *, with_tools: bool = False, trigger_status: str = "active"
+    *,
+    with_tools: bool = False,
+    trigger_status: str = "active",
+    tool_definition_key: str = "builtin:web_search",
+    tool_name: str = "Web Search",
 ) -> tuple[uuid.UUID, uuid.UUID]:
     """Create User + Model + Agent + Trigger. Return (trigger_id, agent_id)."""
     async with TestSession() as db:
@@ -43,9 +47,9 @@ async def _seed_full_setup(
 
         if with_tools:
             tool = Tool(
-                name="Web Search",
-                definition_key="builtin:web_search",
-                description="Search",
+                name=tool_name,
+                definition_key=tool_definition_key,
+                description=tool_name,
             )
             db.add(tool)
             await db.flush()
@@ -531,6 +535,48 @@ async def test_execute_trigger_with_tools_config():
     assert entry["definition_key"] == "builtin:web_search"
     assert entry["credentials"] is None
     assert entry["credential_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_execute_trigger_blocks_external_mutation_tool():
+    """Scheduled runs must not auto-execute tools that require live approval."""
+    trigger_id, _ = await _seed_full_setup(
+        with_tools=True,
+        tool_definition_key="gmail_send",
+        tool_name="Gmail Send",
+    )
+
+    with (
+        patch(
+            "app.agent_runtime.trigger_executor.execute_agent_invoke",
+            return_value="should not run",
+        ) as mock_invoke,
+        patch(
+            "app.agent_runtime.trigger_executor.async_session",
+            TestSession,
+        ),
+    ):
+        from app.agent_runtime.trigger_executor import execute_trigger
+
+        await execute_trigger(str(trigger_id))
+
+    mock_invoke.assert_not_called()
+    async with TestSession() as db:
+        from app.models.agent_trigger_run import AgentTriggerRun
+
+        trigger = await db.get(AgentTrigger, trigger_id)
+        assert trigger is not None
+        assert trigger.run_count == 0
+        assert trigger.last_status == "failed"
+        assert "tool risk policy" in (trigger.last_error or "")
+        assert "Gmail Send" in (trigger.last_error or "")
+
+        result = await db.execute(
+            select(AgentTriggerRun).where(AgentTriggerRun.trigger_id == trigger_id)
+        )
+        run = result.scalar_one()
+        assert run.status == "failed"
+        assert "Gmail Send" in (run.error_message or "")
 
 
 @pytest.mark.asyncio

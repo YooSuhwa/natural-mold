@@ -12,6 +12,7 @@ from typing import Any
 
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.parameters import FieldDef, FieldKind
+from app.tools.risk import ToolRiskLevel
 
 
 async def _runner(ctx: ToolRunContext) -> dict[str, Any]:
@@ -68,5 +69,10 @@ definition = ToolDefinition(
         ),
     ],
     credential_definition_keys=["http_bearer"],
+    risk_level=ToolRiskLevel.EXTERNAL_MUTATION,
+    requires_approval=True,
+    allowed_decisions=("approve", "edit", "reject"),
+    trigger_safe=False,
+    risk_reason="Posts messages to an external Google Chat webhook",
     runner=_runner,
 )

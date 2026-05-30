@@ -5,7 +5,7 @@
   top-level ``interrupt_on`` 인자로 넘기는가
 - 트리거(invoke) 모드에서는 미들웨어가 주입되지 않는가
 - 도구별 정책(``interrupt_on`` dict)이 build_agent에 그대로 전달되는가
-- 명시 dict 가 없을 때 ``_WRITE_TOOL_KEYWORDS`` 자동 추출이 동작하는가
+- 명시 dict 가 없을 때 tool risk metadata 기반 자동 정책이 동작하는가
 - explicit HiTL 설정이 없어도 대화형 ask_user는 respond 정책에 포함되는가
 """
 
@@ -17,6 +17,7 @@ import pytest
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 
 from app.agent_runtime.executor import AgentConfig
+from app.tools.risk import ToolRiskLevel, default_deepagents_interrupt_policy, risk_metadata_dict
 
 
 def _cfg(**overrides) -> AgentConfig:
@@ -35,6 +36,14 @@ def _cfg(**overrides) -> AgentConfig:
 
 def _hitl_instances(middleware: list | None) -> list[HumanInTheLoopMiddleware]:
     return [m for m in (middleware or []) if isinstance(m, HumanInTheLoopMiddleware)]
+
+
+def _expected_policy(*, extra: dict | None = None) -> dict:
+    return {
+        **default_deepagents_interrupt_policy(),
+        **(extra or {}),
+        "ask_user": {"allowed_decisions": ["respond"]},
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -89,10 +98,7 @@ async def test_hitl_policy_passed_through_top_level_when_interrupt_on_provided(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    assert build_kwargs["interrupt_on"] == {
-        "send_email": True,
-        "ask_user": {"allowed_decisions": ["respond"]},
-    }
+    assert build_kwargs["interrupt_on"] == _expected_policy(extra={"send_email": True})
     assert _hitl_instances(build_kwargs["middleware"]) == []
 
 
@@ -208,15 +214,12 @@ async def test_hitl_middleware_per_tool_policy_applied(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    assert build_kwargs["interrupt_on"] == {
-        **policy,
-        "ask_user": {"allowed_decisions": ["respond"]},
-    }
+    assert build_kwargs["interrupt_on"] == _expected_policy(extra=policy)
     assert _hitl_instances(build_kwargs["middleware"]) == []
 
 
 # ---------------------------------------------------------------------------
-# 4. _WRITE_TOOL_KEYWORDS 자동 추출
+# 4. risk metadata 기반 자동 추출
 # ---------------------------------------------------------------------------
 
 
@@ -227,7 +230,7 @@ async def test_hitl_middleware_per_tool_policy_applied(
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
 @patch("app.agent_runtime.executor.create_chat_model")
 @patch("app.agent_runtime.executor.create_tool_for_runtime")
-async def test_hitl_middleware_auto_extraction_from_write_keywords(
+async def test_hitl_middleware_auto_extraction_from_risk_metadata(
     mock_factory: MagicMock,
     mock_model_factory: MagicMock,
     mock_convert: MagicMock,
@@ -235,7 +238,7 @@ async def test_hitl_middleware_auto_extraction_from_write_keywords(
     mock_stream: MagicMock,
     mock_checkpointer: MagicMock,
 ):
-    """params 에 interrupt_on 이 없으면 쓰기 키워드 매칭 도구만 자동 추출."""
+    """params 에 interrupt_on 이 없으면 risk metadata가 있는 도구만 자동 추출."""
     from app.agent_runtime.executor import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
@@ -243,9 +246,18 @@ async def test_hitl_middleware_auto_extraction_from_write_keywords(
     mock_build.return_value = MagicMock()
 
     write_tool = MagicMock()
-    write_tool.name = "create_calendar_event"  # "create" 키워드 매치
+    write_tool.name = "create_calendar_event"
+    write_tool.metadata = {
+        "moldy_risk": risk_metadata_dict(
+            ToolRiskLevel.EXTERNAL_MUTATION,
+            allowed_decisions=("approve", "edit", "reject"),
+            trigger_safe=False,
+            reason="calendar mutation",
+        )
+    }
     read_tool = MagicMock()
-    read_tool.name = "search_documents"  # 매치 없음
+    read_tool.name = "search_documents"
+    read_tool.metadata = {"moldy_risk": risk_metadata_dict(ToolRiskLevel.READ_ONLY)}
 
     def factory(tc):
         return write_tool if "create" in tc["definition_key"] else read_tool
@@ -270,10 +282,13 @@ async def test_hitl_middleware_auto_extraction_from_write_keywords(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    assert build_kwargs["interrupt_on"] == {
-        "create_calendar_event": True,
-        "ask_user": {"allowed_decisions": ["respond"]},
-    }
+    assert build_kwargs["interrupt_on"] == _expected_policy(
+        extra={
+            "create_calendar_event": {
+                "allowed_decisions": ["approve", "edit", "reject"]
+            }
+        }
+    )
     assert _hitl_instances(build_kwargs["middleware"]) == []
 
 
@@ -323,7 +338,5 @@ async def test_ask_user_interrupt_policy_added_without_hitl_middleware_config(
         pass
 
     build_kwargs = mock_build.call_args[1]
-    assert build_kwargs["interrupt_on"] == {
-        "ask_user": {"allowed_decisions": ["respond"]},
-    }
+    assert build_kwargs["interrupt_on"] == _expected_policy()
     assert _hitl_instances(build_kwargs["middleware"]) == []

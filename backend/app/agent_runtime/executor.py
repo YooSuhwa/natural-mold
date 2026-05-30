@@ -41,6 +41,14 @@ from app.marketplace.skill_runtime import (
     build_skill_runtime_context,
     resolve_runtime_credentials,
 )
+from app.tools.risk import (
+    attach_tool_risk,
+    default_deepagents_interrupt_policy,
+    execute_in_skill_risk,
+    interrupt_policy_for_tool,
+    mcp_tool_risk,
+    merge_interrupt_policies,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,21 +62,6 @@ _TEMPORAL_BUILTIN_TOOL_KEYS = (
     "builtin:current_datetime",
     "builtin:resolve_relative_date",
 )
-
-# HiTL: interrupt_on 자동 생성 시 쓰기/실행 도구만 대상으로 하는 키워드
-_WRITE_TOOL_KEYWORDS = frozenset(
-    {
-        "book",
-        "create",
-        "send",
-        "delete",
-        "update",
-        "write",
-        "execute",
-        "reserve",
-    }
-)
-
 
 class MiddlewareModelCredentialRequiredError(AppError):
     """Raised when middleware model config has no user-owned provider key."""
@@ -361,7 +354,7 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
 
         return result
 
-    return StructuredTool.from_function(
+    tool = StructuredTool.from_function(
         coroutine=execute_in_skill,
         name="execute_in_skill",
         description=(
@@ -370,6 +363,7 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             "Output files (images etc.) will be in OUTPUT_FILES."
         ),
     )
+    return attach_tool_risk(tool, execute_in_skill_risk())
 
 
 def build_agent(
@@ -459,11 +453,12 @@ def _create_mcp_error_stub(name: str) -> BaseTool:
     async def _call(**kwargs: Any) -> str:
         return f"MCP tool '{name}' is temporarily unavailable. Please try again later."
 
-    return StructuredTool.from_function(
+    tool = StructuredTool.from_function(
         coroutine=_call,
         name=name,
         description=f"MCP tool (currently unavailable): {name}",
     )
+    return attach_tool_risk(tool, mcp_tool_risk(name))
 
 
 async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
@@ -537,6 +532,7 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
             for t in server_tools:
                 if t.name in needed:
                     _hide_auth_params_from_schema(t, auth_param_keys)
+                    attach_tool_risk(t, mcp_tool_risk(t.name))
                     collected.append((t, key))
         except Exception:
             logger.warning("MCP tool loading failed for %s", key, exc_info=True)
@@ -650,14 +646,13 @@ def _append_temporal_tools(tools: list[BaseTool]) -> None:
         existing.add(tool.name)
 
 
-def _auto_interrupt_on_from_tools(tools: list[BaseTool]) -> dict[str, bool]:
-    """Infer conservative HiTL coverage for side-effecting tools."""
+def _default_interrupt_on_from_tools(tools: list[BaseTool]) -> dict[str, Any]:
+    """Build the minimum HITL policy from attached tool risk metadata."""
 
-    return {
-        tool.name: True
-        for tool in tools
-        if any(keyword in tool.name.lower() for keyword in _WRITE_TOOL_KEYWORDS)
-    }
+    policy = default_deepagents_interrupt_policy()
+    for tool in tools:
+        policy.update(interrupt_policy_for_tool(tool))
+    return policy
 
 
 def _build_interrupt_on_policy(
@@ -677,16 +672,13 @@ def _build_interrupt_on_policy(
     if is_trigger_mode:
         return None
 
-    interrupt_on: dict[str, Any] | None = None
+    interrupt_on: dict[str, Any] = _default_interrupt_on_from_tools(tools)
     for mw_config in middleware_configs or []:
         if mw_config.get("type") != "human_in_the_loop":
             continue
         explicit = mw_config.get("params", {}).get("interrupt_on")
-        if isinstance(explicit, dict) and explicit:
-            interrupt_on = dict(explicit)
-        else:
-            inferred = _auto_interrupt_on_from_tools(tools)
-            interrupt_on = inferred or None
+        if isinstance(explicit, dict):
+            interrupt_on = merge_interrupt_policies(interrupt_on, explicit)
         break
 
     policy = dict(interrupt_on or {})

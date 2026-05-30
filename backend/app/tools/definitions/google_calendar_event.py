@@ -8,6 +8,7 @@ from app.credentials.authenticate import apply_authentication
 from app.credentials.registry import registry as credential_registry
 from app.tools.domain import ToolDefinition, ToolRunContext
 from app.tools.parameters import FieldDef, FieldKind
+from app.tools.risk import ToolRiskLevel
 
 _TIMEZONE = "Asia/Seoul"
 
@@ -115,5 +116,10 @@ definition = ToolDefinition(
         ),
     ],
     credential_definition_keys=["google_workspace_oauth2"],
+    risk_level=ToolRiskLevel.EXTERNAL_MUTATION,
+    requires_approval=True,
+    allowed_decisions=("approve", "edit", "reject"),
+    trigger_safe=False,
+    risk_reason="Creates Google Calendar events",
     runner=_runner,
 )
