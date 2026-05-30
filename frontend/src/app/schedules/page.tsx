@@ -36,7 +36,7 @@ function formatSchedule(trigger: AgentTrigger) {
     return `매 ${trigger.schedule_config.interval_minutes ?? 10}분`
   }
   if (trigger.trigger_type === 'one_time') {
-    return trigger.schedule_config.scheduled_at ?? '1회 실행'
+    return '1회 실행'
   }
   return trigger.schedule_config.cron_expression ?? 'Cron'
 }
@@ -174,8 +174,17 @@ export default function SchedulesPage() {
                           {trigger.agent_name ?? '에이전트'}
                         </Link>
                       </td>
-                      <td className="px-4 py-3 align-top font-mono text-xs">
-                        {formatSchedule(trigger)}
+                      <td className="px-4 py-3 align-top text-xs">
+                        <span
+                          className={trigger.trigger_type === 'one_time' ? undefined : 'font-mono'}
+                        >
+                          {formatSchedule(trigger)}
+                        </span>
+                        {trigger.trigger_type === 'one_time' ? (
+                          <div className="mt-1 text-muted-foreground">
+                            {formatDate(trigger.schedule_config.scheduled_at ?? null)}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 align-top">
                         <Badge variant={statusVariant(trigger.status)}>

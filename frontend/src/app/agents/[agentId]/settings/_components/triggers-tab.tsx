@@ -7,10 +7,11 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { ScheduleForm } from '@/components/agent/visual-settings/dialogs/schedule-dialog'
+import type { AgentTrigger } from '@/lib/types'
 
 interface TriggersTabProps {
   agentId: string
-  onRequestDelete: (target: { id: string; interval: number }) => void
+  onRequestDelete: (target: { id: string; description: string }) => void
 }
 
 export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
@@ -27,6 +28,22 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
     if (status === 'paused') return t('trigger.paused')
     if (status === 'completed') return t('trigger.completed')
     return t('trigger.error')
+  }
+
+  function scheduleSummary(trigger: AgentTrigger) {
+    if (trigger.trigger_type === 'interval') {
+      return t('trigger.interval', {
+        minutes: trigger.schedule_config.interval_minutes ?? 10,
+      })
+    }
+    if (trigger.trigger_type === 'one_time') {
+      if (!trigger.schedule_config.scheduled_at) return t('trigger.oneTime')
+      return format.dateTime(new Date(trigger.schedule_config.scheduled_at), {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      })
+    }
+    return trigger.schedule_config.cron_expression ?? ''
   }
 
   return (
@@ -50,17 +67,11 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
                       {statusLabel(trigger.status)}
                     </Badge>
                     <span className="font-medium text-sm">{trigger.name}</span>
-                    {trigger.trigger_type === 'interval' ? (
-                      <span className="text-sm">
-                        {t('trigger.interval', {
-                          minutes: trigger.schedule_config.interval_minutes ?? 10,
-                        })}
-                      </span>
-                    ) : (
-                      <span className="font-mono text-xs">
-                        {trigger.schedule_config.cron_expression}
-                      </span>
-                    )}
+                    <span
+                      className={trigger.trigger_type === 'cron' ? 'font-mono text-xs' : 'text-sm'}
+                    >
+                      {scheduleSummary(trigger)}
+                    </span>
                   </div>
                   <p className="text-xs text-muted-foreground truncate max-w-md">
                     &quot;{trigger.input_message}&quot;
@@ -124,7 +135,7 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
                     onClick={() =>
                       onRequestDelete({
                         id: trigger.id,
-                        interval: trigger.schedule_config?.interval_minutes ?? 0,
+                        description: `${trigger.name} · ${scheduleSummary(trigger)}`,
                       })
                     }
                   >

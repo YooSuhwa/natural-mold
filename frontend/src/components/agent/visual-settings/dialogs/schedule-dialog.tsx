@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select'
 import type { AgentTrigger, TriggerCreateRequest, TriggerUpdateRequest } from '@/lib/types'
 
-type ScheduleType = 'minutes' | 'daily' | 'weekly' | 'monthly' | 'advanced'
+type ScheduleType = 'minutes' | 'one_time' | 'daily' | 'weekly' | 'monthly' | 'advanced'
 type ConversationPolicy = 'schedule_thread' | 'new_per_run' | 'selected_conversation'
 
 const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const
@@ -44,6 +44,19 @@ interface ScheduleFormProps {
 function parseTriggerToForm(trigger: AgentTrigger) {
   const config = trigger.schedule_config
 
+  if (trigger.trigger_type === 'one_time') {
+    return {
+      type: 'one_time' as ScheduleType,
+      intervalMinutes: 10,
+      hour: '09',
+      minute: '00',
+      weekdays: new Set<number>(),
+      monthDay: '1',
+      cronExpression: '',
+      scheduledAt: toDateTimeLocal(config.scheduled_at),
+    }
+  }
+
   if (trigger.trigger_type === 'interval') {
     return {
       type: 'minutes' as ScheduleType,
@@ -53,6 +66,7 @@ function parseTriggerToForm(trigger: AgentTrigger) {
       weekdays: new Set<number>(),
       monthDay: '1',
       cronExpression: '',
+      scheduledAt: defaultScheduledAt(),
     }
   }
 
@@ -74,6 +88,7 @@ function parseTriggerToForm(trigger: AgentTrigger) {
         weekdays: new Set(days),
         monthDay: '1',
         cronExpression: cron,
+        scheduledAt: defaultScheduledAt(),
       }
     }
 
@@ -86,6 +101,7 @@ function parseTriggerToForm(trigger: AgentTrigger) {
         weekdays: new Set<number>(),
         monthDay: cronDom,
         cronExpression: cron,
+        scheduledAt: defaultScheduledAt(),
       }
     }
 
@@ -97,6 +113,7 @@ function parseTriggerToForm(trigger: AgentTrigger) {
       weekdays: new Set<number>(),
       monthDay: '1',
       cronExpression: cron,
+      scheduledAt: defaultScheduledAt(),
     }
   }
 
@@ -108,6 +125,7 @@ function parseTriggerToForm(trigger: AgentTrigger) {
     weekdays: new Set<number>(),
     monthDay: '1',
     cronExpression: cron,
+    scheduledAt: defaultScheduledAt(),
   }
 }
 
@@ -120,15 +138,31 @@ function getDefaultForm() {
     weekdays: new Set<number>(),
     monthDay: '1',
     cronExpression: '',
+    scheduledAt: defaultScheduledAt(),
   }
 }
 
 const TYPE_ICONS: Record<ScheduleType, typeof ClockIcon> = {
   minutes: ClockIcon,
+  one_time: CalendarIcon,
   daily: CalendarIcon,
   weekly: CalendarIcon,
   monthly: CalendarIcon,
   advanced: SettingsIcon,
+}
+
+function defaultScheduledAt() {
+  const date = new Date()
+  date.setHours(date.getHours() + 1, 0, 0, 0)
+  return toDateTimeLocal(date.toISOString())
+}
+
+function toDateTimeLocal(value: string | undefined) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
 }
 
 function conversationPolicyLabel(
@@ -161,6 +195,7 @@ export function ScheduleForm({
 
   const typeOptions: { value: ScheduleType; label: string; icon: typeof ClockIcon }[] = [
     { value: 'minutes', label: t('types.minutes'), icon: TYPE_ICONS.minutes },
+    { value: 'one_time', label: t('types.oneTime'), icon: TYPE_ICONS.one_time },
     { value: 'daily', label: t('types.daily'), icon: TYPE_ICONS.daily },
     { value: 'weekly', label: t('types.weekly'), icon: TYPE_ICONS.weekly },
     { value: 'monthly', label: t('types.monthly'), icon: TYPE_ICONS.monthly },
@@ -220,8 +255,7 @@ export function ScheduleForm({
         conversationPolicy === 'selected_conversation' && trimmedTarget ? trimmedTarget : null,
       max_runs: parsedMaxRuns && parsedMaxRuns > 0 ? parsedMaxRuns : null,
       end_at: endAt ? new Date(endAt).toISOString() : null,
-      auto_pause_after_failures:
-        parsedFailures && parsedFailures > 0 ? parsedFailures : null,
+      auto_pause_after_failures: parsedFailures && parsedFailures > 0 ? parsedFailures : null,
     }
   }
 
@@ -232,6 +266,14 @@ export function ScheduleForm({
           name: scheduleName.trim() || undefined,
           trigger_type: 'interval',
           schedule_config: { interval_minutes: form.intervalMinutes },
+          input_message: inputMessage.trim() || 'Cron trigger fired.',
+          timezone: 'Asia/Seoul',
+        })
+      case 'one_time':
+        return withCommonOptions({
+          name: scheduleName.trim() || undefined,
+          trigger_type: 'one_time',
+          schedule_config: { scheduled_at: new Date(form.scheduledAt).toISOString() },
           input_message: inputMessage.trim() || 'Cron trigger fired.',
           timezone: 'Asia/Seoul',
         })
@@ -278,7 +320,9 @@ export function ScheduleForm({
     onSubmit(buildRequest())
   }
 
-  const canSubmit = form.type !== 'advanced' || form.cronExpression.trim().length > 0
+  const canSubmit =
+    (form.type !== 'advanced' || form.cronExpression.trim().length > 0) &&
+    (form.type !== 'one_time' || form.scheduledAt.trim().length > 0)
 
   return (
     <div className="space-y-4">
@@ -333,91 +377,108 @@ export function ScheduleForm({
           </div>
         )}
 
-          {(form.type === 'daily' || form.type === 'weekly' || form.type === 'monthly') && (
-            <>
-              {form.type === 'weekly' && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium">{t('labels.days')}</label>
-                  <div className="flex gap-1">
-                    {WEEKDAY_KEYS.map((key, i) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => toggleWeekday(WEEKDAY_CRON[i])}
-                        className={`rounded-md px-2 py-1 text-xs transition-colors ${
-                          form.weekdays.has(WEEKDAY_CRON[i])
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                        }`}
-                      >
-                        {t(`weekdays.${key}`)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+        {form.type === 'one_time' && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">{t('labels.scheduledAt')}</label>
+            <Input
+              type="datetime-local"
+              aria-label={t('labels.scheduledAt')}
+              value={form.scheduledAt}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  scheduledAt: e.target.value,
+                }))
+              }
+            />
+          </div>
+        )}
 
-              {form.type === 'monthly' && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium">{t('labels.dayOfMonth')}</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={31}
-                    value={form.monthDay}
-                    onChange={(e) => setForm((prev) => ({ ...prev, monthDay: e.target.value }))}
-                    className="w-20"
-                  />
-                </div>
-              )}
-
+        {(form.type === 'daily' || form.type === 'weekly' || form.type === 'monthly') && (
+          <>
+            {form.type === 'weekly' && (
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">{t('labels.time')}</label>
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="number"
-                    min={0}
-                    max={23}
-                    value={form.hour}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        hour: e.target.value.padStart(2, '0'),
-                      }))
-                    }
-                    className="w-16 text-center"
-                  />
-                  <span className="text-sm font-medium">:</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={59}
-                    value={form.minute}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        minute: e.target.value.padStart(2, '0'),
-                      }))
-                    }
-                    className="w-16 text-center"
-                  />
+                <label className="text-xs font-medium">{t('labels.days')}</label>
+                <div className="flex gap-1">
+                  {WEEKDAY_KEYS.map((key, i) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => toggleWeekday(WEEKDAY_CRON[i])}
+                      className={`rounded-md px-2 py-1 text-xs transition-colors ${
+                        form.weekdays.has(WEEKDAY_CRON[i])
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      }`}
+                    >
+                      {t(`weekdays.${key}`)}
+                    </button>
+                  ))}
                 </div>
               </div>
-            </>
-          )}
+            )}
 
-          {form.type === 'advanced' && (
+            {form.type === 'monthly' && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">{t('labels.dayOfMonth')}</label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={form.monthDay}
+                  onChange={(e) => setForm((prev) => ({ ...prev, monthDay: e.target.value }))}
+                  className="w-20"
+                />
+              </div>
+            )}
+
             <div className="space-y-1.5">
-              <label className="text-xs font-medium">{t('labels.cron')}</label>
-              <Input
-                value={form.cronExpression}
-                onChange={(e) => setForm((prev) => ({ ...prev, cronExpression: e.target.value }))}
-                placeholder={t('placeholders.cron')}
-                className="font-mono text-sm"
-              />
-              <p className="text-xxs text-muted-foreground">{t('cronFormat')}</p>
+              <label className="text-xs font-medium">{t('labels.time')}</label>
+              <div className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={form.hour}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      hour: e.target.value.padStart(2, '0'),
+                    }))
+                  }
+                  className="w-16 text-center"
+                />
+                <span className="text-sm font-medium">:</span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={form.minute}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      minute: e.target.value.padStart(2, '0'),
+                    }))
+                  }
+                  className="w-16 text-center"
+                />
+              </div>
             </div>
-          )}
+          </>
+        )}
+
+        {form.type === 'advanced' && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">{t('labels.cron')}</label>
+            <Input
+              value={form.cronExpression}
+              onChange={(e) => setForm((prev) => ({ ...prev, cronExpression: e.target.value }))}
+              placeholder={t('placeholders.cron')}
+              className="font-mono text-sm"
+            />
+            <p className="text-xxs text-muted-foreground">{t('cronFormat')}</p>
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5">
