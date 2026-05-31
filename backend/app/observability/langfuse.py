@@ -96,6 +96,17 @@ class LangfuseRunContext:
             logger.warning("Langfuse root span creation failed", exc_info=True)
             return nullcontext()
 
+    def flush(self) -> None:
+        if not self.enabled or self.client is None:
+            return
+        flusher = getattr(self.client, "flush", None)
+        if not callable(flusher):
+            return
+        try:
+            flusher()
+        except Exception:
+            logger.warning("Langfuse flush failed", exc_info=True)
+
 
 def _has_langfuse_config() -> bool:
     return bool(
@@ -173,10 +184,14 @@ def _get_langfuse_client() -> Any:
     return _CLIENT
 
 
-def _build_callback_handler() -> Any:
+def _build_callback_handler(*, trace_id: str) -> Any:
     from langfuse.langchain import CallbackHandler
 
-    return CallbackHandler()
+    return CallbackHandler(
+        public_key=settings.langfuse_public_key,
+        update_trace=True,
+        trace_context={"trace_id": trace_id},
+    )
 
 
 def _trace_id_for_run(client: Any, run_id: str) -> str:
@@ -209,18 +224,28 @@ def _trace_url_for_id(client: Any, trace_id: str) -> str | None:
     return f"{base}/traces/{trace_id}"
 
 
+def _tags_for_run(cfg: Any, *, source: str) -> list[str]:
+    tags = ["moldy", "agent-chat", f"source:{source}"]
+    agent_id = getattr(cfg, "agent_id", None)
+    if agent_id:
+        tags.append(f"agent:{agent_id}")
+    return tags
+
+
 def _metadata_for_run(cfg: Any, *, run_id: str, source: str) -> dict[str, Any]:
     user_id = getattr(cfg, "user_id", None)
     conversation_id = getattr(cfg, "thread_id", None)
     agent_id = getattr(cfg, "agent_id", None)
+    agent_name = getattr(cfg, "agent_name", None)
     model_id = getattr(cfg, "model_id", None)
     checkpoint_id = getattr(cfg, "checkpoint_id", None)
     return {
         "langfuse_user_id": str(user_id) if user_id else None,
         "langfuse_session_id": str(conversation_id) if conversation_id else None,
-        "langfuse_tags": ["moldy", "agent-chat", f"source:{source}"],
+        "langfuse_tags": _tags_for_run(cfg, source=source),
         "moldy_user_id": str(user_id) if user_id else None,
         "moldy_agent_id": str(agent_id) if agent_id else None,
+        "moldy_agent_name": str(agent_name) if agent_name else None,
         "moldy_conversation_id": str(conversation_id) if conversation_id else None,
         "moldy_run_id": run_id,
         "moldy_model_id": str(model_id) if model_id else None,
@@ -245,14 +270,14 @@ def build_langfuse_run_context(
 
     try:
         client = _get_langfuse_client()
-        callback = _build_callback_handler()
         trace_id = _trace_id_for_run(client, run_id)
+        callback = _build_callback_handler(trace_id=trace_id)
         trace = LangfuseTraceRecord(
             provider="langfuse",
             trace_id=trace_id,
             trace_url=_trace_url_for_id(client, trace_id),
         )
-        tags = ["moldy", "agent-chat", f"source:{source}"]
+        tags = _tags_for_run(cfg, source=source)
         return LangfuseRunContext(
             enabled=True,
             trace=trace,

@@ -428,6 +428,9 @@ async def test_execute_stream_attaches_langfuse_trace_context(monkeypatch):
                 "tags": ["moldy", "source:chat"],
             }
 
+        def flush(self):
+            pass
+
     monkeypatch.setattr("app.agent_runtime.executor._prepare_agent", fake_prepare_agent)
     monkeypatch.setattr("app.agent_runtime.executor.stream_agent_response", fake_stream)
     monkeypatch.setattr(
@@ -864,6 +867,9 @@ async def test_execute_agent_invoke_attaches_langfuse_trace_context(monkeypatch)
                 "metadata": self.metadata,
                 "tags": ["moldy", "source:trigger"],
             }
+
+        def flush(self):
+            pass
 
     monkeypatch.setattr("app.agent_runtime.executor._prepare_agent", fake_prepare_agent)
     monkeypatch.setattr(

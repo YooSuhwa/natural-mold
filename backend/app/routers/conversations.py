@@ -125,6 +125,7 @@ async def _resolve_agent_context(
         middleware_configs=agent.middleware_configs,
         agent_skills=chat_service.build_agent_skills(agent) or None,
         agent_id=str(agent.id),
+        agent_name=agent.name,
         provider_api_keys=provider_api_keys,
         cost_per_input_token=(
             float(agent.model.cost_per_input_token) if agent.model.cost_per_input_token else None

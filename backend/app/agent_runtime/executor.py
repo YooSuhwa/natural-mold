@@ -183,6 +183,7 @@ class AgentConfig:
     middleware_configs: list[dict[str, Any]] | None = None
     agent_skills: list[dict[str, Any]] | None = None
     agent_id: str | None = None
+    agent_name: str | None = None
     provider_api_keys: dict[str, str | None] | None = None
     cost_per_input_token: float | None = None
     cost_per_output_token: float | None = None
@@ -977,6 +978,8 @@ async def _run_agent_stream(
         if ctx is not None:
             await hooks.run_failure(ctx, exc)
         raise
+    finally:
+        langfuse_ctx.flush()
     if stream_errors:
         if ctx is not None:
             await hooks.run_failure(ctx, stream_errors[0].error)
@@ -1131,6 +1134,8 @@ async def execute_agent_invoke(
         if ctx is not None:
             await hooks.run_failure(ctx, exc)
         raise
+    finally:
+        langfuse_ctx.flush()
 
     messages = result.get("messages", [])
     text = ""

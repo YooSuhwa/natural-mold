@@ -18,6 +18,7 @@ def _cfg(**overrides: Any) -> AgentConfig:
         "tools_config": [],
         "thread_id": "conv-123",
         "agent_id": "agent-123",
+        "agent_name": "Support Assistant",
         "user_id": "user-123",
         "model_id": "model-123",
         "checkpoint_id": "checkpoint-123",
@@ -59,14 +60,19 @@ def test_langfuse_context_auto_enables_when_connection_env_exists(monkeypatch) -
             return nullcontext()
 
     class FakeHandler:
-        pass
+        def __init__(self, *, trace_id: str):
+            self.trace_id = trace_id
 
     monkeypatch.setattr(settings, "langfuse_enabled", None, raising=False)
     monkeypatch.setattr(settings, "langfuse_public_key", "pk-lf-test", raising=False)
     monkeypatch.setattr(settings, "langfuse_secret_key", "sk-lf-test", raising=False)
     monkeypatch.setattr(settings, "langfuse_base_url", "https://langfuse.local", raising=False)
     monkeypatch.setattr(langfuse_obs, "_get_langfuse_client", lambda: FakeClient())
-    monkeypatch.setattr(langfuse_obs, "_build_callback_handler", lambda: FakeHandler())
+    monkeypatch.setattr(
+        langfuse_obs,
+        "_build_callback_handler",
+        lambda *, trace_id: FakeHandler(trace_id=trace_id),
+    )
 
     ctx = langfuse_obs.build_langfuse_run_context(_cfg(), run_id="run-123", source="chat")
 
@@ -91,7 +97,8 @@ def test_langfuse_context_builds_metadata_and_trace_record(monkeypatch) -> None:
             return nullcontext()
 
     class FakeHandler:
-        pass
+        def __init__(self, *, trace_id: str):
+            self.trace_id = trace_id
 
     monkeypatch.setattr(settings, "langfuse_enabled", True, raising=False)
     monkeypatch.setattr(settings, "langfuse_public_key", "pk-lf-test", raising=False)
@@ -99,7 +106,11 @@ def test_langfuse_context_builds_metadata_and_trace_record(monkeypatch) -> None:
     monkeypatch.setattr(settings, "langfuse_base_url", "https://langfuse.local", raising=False)
     monkeypatch.setattr(settings, "langfuse_sample_rate", 1.0, raising=False)
     monkeypatch.setattr(langfuse_obs, "_get_langfuse_client", lambda: FakeClient())
-    monkeypatch.setattr(langfuse_obs, "_build_callback_handler", lambda: FakeHandler())
+    monkeypatch.setattr(
+        langfuse_obs,
+        "_build_callback_handler",
+        lambda *, trace_id: FakeHandler(trace_id=trace_id),
+    )
 
     ctx = langfuse_obs.build_langfuse_run_context(
         _cfg(),
@@ -114,14 +125,19 @@ def test_langfuse_context_builds_metadata_and_trace_record(monkeypatch) -> None:
     assert ctx.metadata["langfuse_user_id"] == "user-123"
     assert ctx.metadata["langfuse_session_id"] == "conv-123"
     assert ctx.metadata["moldy_agent_id"] == "agent-123"
+    assert ctx.metadata["moldy_agent_name"] == "Support Assistant"
     assert ctx.metadata["moldy_run_id"] == "run-123"
     assert ctx.metadata["moldy_source"] == "regenerate"
+    assert "agent:agent-123" in ctx.tags
 
     config = ctx.configure_config({"configurable": {"thread_id": "conv-123"}})
     assert config["configurable"] == {"thread_id": "conv-123"}
     assert config["callbacks"] and isinstance(config["callbacks"][0], FakeHandler)
+    assert config["callbacks"][0].trace_id == "run12300000000000000000000000000"
     assert config["metadata"]["moldy_conversation_id"] == "conv-123"
+    assert config["metadata"]["moldy_agent_name"] == "Support Assistant"
     assert "source:regenerate" in config["tags"]
+    assert "agent:agent-123" in config["tags"]
 
 
 def test_langfuse_context_init_failure_is_noop(monkeypatch) -> None:

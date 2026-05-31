@@ -78,11 +78,13 @@ describe('TraceDebuggerView', () => {
 
     render(<TraceDebuggerView conversationId="conv-debug" />)
 
-    expect(await screen.findByText('Trace debugger')).toBeInTheDocument()
-    expect(await screen.findByText('AgentPrism')).toBeInTheDocument()
-    expect(await screen.findByText('Langfuse')).toBeInTheDocument()
-    expect((await screen.findAllByText('agent.chat')).length).toBeGreaterThan(0)
+    expect(await screen.findByText('Trace 상세')).toBeInTheDocument()
+    expect(await screen.findByText('수행정보')).toBeInTheDocument()
+    expect(await screen.findByText('Span 상세')).toBeInTheDocument()
+    expect(await screen.findByText('로그보기')).toBeInTheDocument()
+    expect((await screen.findAllByText('Conversation traces')).length).toBeGreaterThan(0)
     expect((await screen.findAllByText('Moldy assistant turn')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('agent.chat')).not.toBeInTheDocument()
     expect(screen.getByText('web_search')).toBeInTheDocument()
 
     const user = userEvent.setup()
@@ -94,7 +96,7 @@ describe('TraceDebuggerView', () => {
     })
   })
 
-  it('shows message_events fallback when Langfuse detail is unavailable', async () => {
+  it('keeps fallback traces visible without fallback chrome', async () => {
     server.use(
       http.get(`${API_BASE}/api/conversations/:conversationId/debug/traces`, () =>
         HttpResponse.json({
@@ -114,7 +116,9 @@ describe('TraceDebuggerView', () => {
 
     render(<TraceDebuggerView conversationId="conv-debug" />)
 
-    expect(await screen.findByText('Langfuse disabled')).toBeInTheDocument()
-    expect(await screen.findByText('message_events fallback')).toBeInTheDocument()
+    expect(await screen.findByText('Trace 상세')).toBeInTheDocument()
+    expect(await screen.findByText('Moldy assistant turn')).toBeInTheDocument()
+    expect(screen.queryByText('Langfuse disabled')).not.toBeInTheDocument()
+    expect(screen.queryByText('message_events fallback')).not.toBeInTheDocument()
   })
 })

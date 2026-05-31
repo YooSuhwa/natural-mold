@@ -91,6 +91,17 @@ def _event_kind(event_name: str) -> str:
     return "event"
 
 
+def _root_input_from_events(record: MessageEvent) -> Any | None:
+    for event in record.events or []:
+        if event.get("event") != "message_start":
+            continue
+        data = event.get("data")
+        if not isinstance(data, dict):
+            return None
+        return data.get("input")
+    return None
+
+
 def spans_from_message_events(record: MessageEvent) -> list[DebugTraceSpan]:
     root_id = f"{record.assistant_msg_id}:root"
     spans = [
@@ -103,10 +114,11 @@ def spans_from_message_events(record: MessageEvent) -> list[DebugTraceSpan]:
             started_at=record.created_at,
             ended_at=record.completed_at,
             duration_ms=_duration_ms(record.created_at, record.completed_at),
-            input={"provider": "message_events"},
+            input=_root_input_from_events(record),
             output=_last_message_output(record),
             metadata={
                 "moldy_run_id": record.assistant_msg_id,
+                "provider": "message_events",
                 "external_trace_provider": record.external_trace_provider,
                 "external_trace_id": record.external_trace_id,
             },
@@ -178,6 +190,10 @@ def spans_from_observations(rows: list[dict[str, Any]]) -> list[DebugTraceSpan]:
                 },
             )
         )
+    span_ids = {span.id for span in spans}
+    for span in spans:
+        if span.parent_id and span.parent_id not in span_ids:
+            span.parent_id = None
     return spans
 
 

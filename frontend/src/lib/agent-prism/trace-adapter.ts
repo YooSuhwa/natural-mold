@@ -54,12 +54,29 @@ function observationsForTrace(
   trace: DebugTraceSummary,
   detail: DebugTraceDetailResponse | undefined,
 ): LangfuseObservation[] {
-  const rawRows = Array.isArray(detail?.raw) ? detail.raw : []
-  if (rawRows.length > 0) {
-    return rawRows.map((row, index) => normalizeRawObservation(row, trace, index))
-  }
-  const spans = detail?.spans?.length ? detail.spans : [rootSpanFromTrace(trace)]
+  const spans = detail?.spans?.length
+    ? hideDuplicateTraceRootSpans(detail.spans, trace)
+    : [rootSpanFromTrace(trace)]
   return spans.map((span, index) => spanToObservation(span, trace, index))
+}
+
+function hideDuplicateTraceRootSpans(
+  spans: DebugTraceSpan[],
+  trace: DebugTraceSummary,
+): DebugTraceSpan[] {
+  const rootSpans = spans.filter((span) => span.parent_id == null)
+  const hasRuntimeRoot = rootSpans.some(
+    (span) => span.kind !== 'span' && span.name !== trace.name,
+  )
+  if (!hasRuntimeRoot) return spans
+  return spans.filter((span) => {
+    const isTraceShellRoot =
+      span.parent_id == null &&
+      span.kind === 'span' &&
+      span.name === trace.name &&
+      span.output == null
+    return !isTraceShellRoot
+  })
 }
 
 function traceToRecord(trace: DebugTraceSummary, spans: TraceSpan[]): TraceRecord {
@@ -103,49 +120,6 @@ function traceToLangfuseTrace(trace: DebugTraceSummary): LangfuseDocument['trace
   }
 }
 
-function normalizeRawObservation(
-  row: Record<string, unknown>,
-  trace: DebugTraceSummary,
-  index: number,
-): LangfuseObservation {
-  const id = String(row.id ?? `observation:${index + 1}`)
-  const startTime = stringValue(row.startTime ?? row.start_time) ?? trace.started_at
-  const endTime =
-    stringValue(row.endTime ?? row.end_time) ?? trace.completed_at ?? startTime ?? trace.started_at
-  const rawType = stringValue(row.type) ?? 'SPAN'
-  const level = levelFromStatus(stringValue(row.level ?? row.status))
-
-  return {
-    id,
-    traceId: String(row.traceId ?? row.trace_id ?? trace.trace_id),
-    projectId: String(row.projectId ?? row.project_id ?? DEFAULT_PROJECT_ID),
-    environment: String(row.environment ?? DEFAULT_ENVIRONMENT),
-    parentObservationId:
-      stringValue(row.parentObservationId ?? row.parent_observation_id) || null,
-    startTime,
-    endTime,
-    name: String(row.name ?? rawType.toLowerCase()),
-    metadata: metadataForAgentPrism(row.metadata),
-    type: typeFromValue(rawType),
-    level,
-    input: stringifyForAgentPrism(row.input),
-    output: stringifyForAgentPrism(row.output),
-    statusMessage: stringValue(row.statusMessage ?? row.status_message),
-    version: stringValue(row.version),
-    promptId: stringValue(row.promptId ?? row.prompt_id),
-    createdAt: stringValue(row.createdAt ?? row.created_at) ?? startTime,
-    updatedAt: stringValue(row.updatedAt ?? row.updated_at) ?? endTime,
-    latency: numberValue(row.latency),
-    timeToFirstToken: numberValue(row.timeToFirstToken ?? row.time_to_first_token),
-    model: stringValue(row.model ?? row.providedModelName),
-    internalModelId: stringValue(row.internalModelId ?? row.internal_model_id),
-    promptName: stringValue(row.promptName ?? row.prompt_name),
-    promptVersion: numberValue(row.promptVersion ?? row.prompt_version),
-    usageDetails: objectValue(row.usageDetails ?? row.usage ?? row.usage_details),
-    costDetails: objectValue(row.costDetails ?? row.cost ?? row.cost_details),
-  }
-}
-
 function spanToObservation(
   span: DebugTraceSpan,
   trace: DebugTraceSummary,
@@ -172,8 +146,8 @@ function spanToObservation(
     metadata: metadataForAgentPrism(metadata),
     type: typeFromKind(span.kind),
     level: levelFromStatus(span.status),
-    input: stringifyForAgentPrism(span.input),
-    output: stringifyForAgentPrism(span.output),
+    input: formatIOForAgentPrism(span.input, 'input'),
+    output: formatIOForAgentPrism(span.output, 'output'),
     statusMessage: span.status === 'failed' || span.kind === 'error' ? span.name : null,
     createdAt: startTime,
     updatedAt: endTime,
@@ -192,10 +166,11 @@ function rootSpanFromTrace(trace: DebugTraceSummary): DebugTraceSpan {
     started_at: trace.started_at,
     ended_at: trace.completed_at,
     duration_ms: trace.duration_ms,
-    input: { provider: trace.provider },
+    input: null,
     output: trace.fallback_reason ? { fallback_reason: trace.fallback_reason } : null,
     metadata: {
       moldy_run_id: trace.moldy_run_id,
+      provider: trace.provider,
       langfuse_url: trace.langfuse_url,
     },
   }
@@ -239,26 +214,6 @@ function typeFromKind(kind: string): LangfuseObservationType {
   }
 }
 
-function typeFromValue(value: string): LangfuseObservationType {
-  const normalized = value.toUpperCase()
-  const allowed: LangfuseObservationType[] = [
-    'EVENT',
-    'SPAN',
-    'GENERATION',
-    'AGENT',
-    'TOOL',
-    'CHAIN',
-    'RETRIEVER',
-    'EVALUATOR',
-    'EMBEDDING',
-    'GUARDRAIL',
-    'UNKNOWN',
-  ]
-  return allowed.includes(normalized as LangfuseObservationType)
-    ? (normalized as LangfuseObservationType)
-    : 'SPAN'
-}
-
 function usageFromMetadata(
   span: DebugTraceSpan,
   trace: DebugTraceSummary,
@@ -281,14 +236,95 @@ function metadataForAgentPrism(value: unknown): string {
   return JSON.stringify({ attributes: metadata })
 }
 
-function stringifyForAgentPrism(value: unknown): string | null {
+function formatIOForAgentPrism(value: unknown, section: 'input' | 'output'): string | null {
   if (value == null) return null
-  if (typeof value === 'string') return value
+  const messageText = messageTextForSection(value, section)
+  if (messageText) return messageText
+  if (typeof value === 'string') {
+    const parsed = parseJsonString(value)
+    if (parsed !== undefined) {
+      const parsedMessageText = messageTextForSection(parsed, section)
+      if (parsedMessageText) return parsedMessageText
+    }
+    return value
+  }
   return JSON.stringify(value, null, 2)
 }
 
-function stringValue(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null
+function messageTextForSection(value: unknown, section: 'input' | 'output'): string | null {
+  const messages = extractMessages(value)
+  if (!messages.length) return null
+  const preferredRoles =
+    section === 'input' ? new Set(['human', 'user']) : new Set(['ai', 'assistant'])
+  const preferred = [...messages].reverse().find((message) => {
+    const role = messageRole(message)
+    return role ? preferredRoles.has(role) : false
+  })
+  const fallback = [...messages].reverse().find((message) => contentText(message.content))
+  return contentText((preferred ?? fallback)?.content) ?? null
+}
+
+type MessageLike = {
+  role?: unknown
+  type?: unknown
+  content?: unknown
+  update?: unknown
+  messages?: unknown
+}
+
+function extractMessages(value: unknown): MessageLike[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => extractMessages(item))
+  }
+  if (!isRecord(value)) return []
+  if (Array.isArray(value.messages)) {
+    return value.messages.flatMap((item) => extractMessages(item))
+  }
+  if (isRecord(value.update) && Array.isArray(value.update.messages)) {
+    return value.update.messages.flatMap((item) => extractMessages(item))
+  }
+  if ('content' in value) {
+    return [value]
+  }
+  return []
+}
+
+function messageRole(message: MessageLike): string | null {
+  const role = typeof message.role === 'string' ? message.role : message.type
+  return typeof role === 'string' ? role.toLowerCase() : null
+}
+
+function contentText(content: unknown): string | null {
+  if (typeof content === 'string') {
+    const trimmed = content.trim()
+    return trimmed || null
+  }
+  if (Array.isArray(content)) {
+    const parts = content.map(contentBlockText).filter((part): part is string => Boolean(part))
+    return parts.length ? parts.join('\n') : null
+  }
+  return null
+}
+
+function contentBlockText(block: unknown): string | null {
+  if (typeof block === 'string') return block
+  if (!isRecord(block)) return null
+  const text = block.text
+  return typeof text === 'string' ? text : null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function parseJsonString(value: string): unknown {
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return undefined
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return undefined
+  }
 }
 
 function numberValue(value: unknown): number | undefined {

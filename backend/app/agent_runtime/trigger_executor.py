@@ -204,6 +204,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             middleware_configs=agent.middleware_configs,
             agent_skills=agent_skills or None,
             agent_id=str(agent.id),
+            agent_name=agent.name,
             provider_api_keys=provider_api_keys,
             user_id=str(agent.user_id),
             model_id=str(agent.model.id) if agent.model else None,

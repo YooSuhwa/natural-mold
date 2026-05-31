@@ -37,7 +37,14 @@ async def _seed_conversation(*, owner_id: uuid.UUID = TEST_USER_ID) -> uuid.UUID
 
 def _events(msg_id: str, *, failed: bool = False) -> list[dict]:
     body = [
-        {"id": f"{msg_id}-1", "event": "message_start", "data": {"id": msg_id}},
+        {
+            "id": f"{msg_id}-1",
+            "event": "message_start",
+            "data": {
+                "id": msg_id,
+                "input": {"messages": [{"role": "user", "content": "debug this trace"}]},
+            },
+        },
         {
             "id": f"{msg_id}-2",
             "event": "tool_call_start",
@@ -153,4 +160,43 @@ async def test_debug_trace_detail_falls_back_to_message_events(
     assert body["trace"]["status"] == "failed"
     assert body["fallback_reason"] == "langfuse unavailable"
     assert body["spans"][0]["name"] == "Moldy assistant turn"
+    assert body["spans"][0]["input"] == {
+        "messages": [{"role": "user", "content": "debug this trace"}]
+    }
     assert any(span["kind"] == "error" for span in body["spans"])
+
+
+@pytest.mark.asyncio
+async def test_debug_trace_detail_roots_orphan_langfuse_observations(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conv_id = await _seed_conversation()
+    await _seed_trace(conv_id, trace_id="lf-trace-orphan")
+
+    async def _fake_fetch(*_args, **_kwargs):
+        return [
+            {
+                "id": "obs-child",
+                "parentObservationId": "missing-parent",
+                "name": "ChatOpenAI",
+                "type": "GENERATION",
+                "level": "DEFAULT",
+                "input": {"messages": [{"role": "user", "content": "debug this trace"}]},
+            }
+        ], None
+
+    monkeypatch.setattr(
+        "app.services.trace_debug_service.fetch_langfuse_observations",
+        _fake_fetch,
+    )
+
+    response = await client.get(f"/api/conversations/{conv_id}/debug/traces/lf-trace-orphan")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["spans"][0]["id"] == "obs-child"
+    assert body["spans"][0]["parent_id"] is None
+    assert body["spans"][0]["input"] == {
+        "messages": [{"role": "user", "content": "debug this trace"}]
+    }
