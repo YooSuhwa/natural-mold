@@ -126,7 +126,7 @@ test.describe('Model Fallback', () => {
     let lastPatchBody: Record<string, unknown> | null = null
     let agentSnapshot: typeof FAKE_AGENT = { ...FAKE_AGENT }
 
-    await page.route('**/api/models', (route) =>
+    await page.route(/\/api\/models(?:\?.*)?$/, (route) =>
       route.fulfill({ json: FAKE_MODELS }),
     )
     await page.route('**/api/tools', (route) => route.fulfill({ json: [] }))

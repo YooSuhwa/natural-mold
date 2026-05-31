@@ -108,6 +108,8 @@ test.describe('M11 — Model ranking column', () => {
 
   test('sorting by benchmark can pin missing rows below populated rows', async ({ page }) => {
     await page.goto('/models')
+    await expect(page.getByText('Claude 3.5 Sonnet')).toBeVisible()
+    await expect(page.getByText('Mystery Preview')).toBeVisible()
 
     const benchmarkHeader = page.getByRole('button', { name: '벤치마크' })
     await benchmarkHeader.click()
@@ -120,9 +122,18 @@ test.describe('M11 — Model ranking column', () => {
       }
     }
 
+    await expect.poll(async () => {
+      const { ranked, unranked } = await rankedOrder()
+      return ranked > -1 && unranked > -1
+    }).toBe(true)
+
     let { ranked, unranked } = await rankedOrder()
     if (unranked < ranked) {
       await benchmarkHeader.click()
+      await expect.poll(async () => {
+        const { ranked, unranked } = await rankedOrder()
+        return ranked > -1 && unranked > -1
+      }).toBe(true)
       const nextOrder = await rankedOrder()
       ranked = nextOrder.ranked
       unranked = nextOrder.unranked
