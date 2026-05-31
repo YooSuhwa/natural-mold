@@ -1816,6 +1816,8 @@
     "title": "스킬",
     "description": "에이전트에 붙여 쓰는 마크다운 스니펫과 패키지를 관리하세요.",
     "new": "새 스킬",
+    "count": "{count}개",
+    "agentsCount": "{count}개 에이전트",
     "searchPlaceholder": "스킬 검색",
     "viewMode": {
       "label": "스킬 보기 모드",
@@ -1834,7 +1836,8 @@
       "kind": "종류"
     },
     "actions": {
-      "publish": "공개하기"
+      "publish": "공개하기",
+      "manage": "관리"
     },
     "typeFilter": {
       "all": "전체",

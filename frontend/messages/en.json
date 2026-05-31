@@ -1837,7 +1837,9 @@
     "title": "Skills",
     "description": "Create and manage reusable instructions and executable skill packages.",
     "new": "New",
-    "searchPlaceholder": "Search Placeholder",
+    "count": "{count}",
+    "agentsCount": "{count} agents",
+    "searchPlaceholder": "Search skills",
     "viewMode": {
       "label": "Label",
       "table": "Table",
@@ -1855,7 +1857,8 @@
       "kind": "Kind"
     },
     "actions": {
-      "publish": "Publish"
+      "publish": "Publish",
+      "manage": "Manage"
     },
     "typeFilter": {
       "all": "All",
