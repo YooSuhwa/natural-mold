@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -396,6 +397,65 @@ async def test_execute_stream_passes_thread_id_in_config(
 
 
 @pytest.mark.asyncio
+async def test_execute_stream_attaches_langfuse_trace_context(monkeypatch):
+    from app.agent_runtime.executor import execute_agent_stream
+
+    async def fake_prepare_agent(*args, **kwargs):
+        return MagicMock(), [], {"configurable": {"thread_id": "conv-123"}}
+
+    captured_config = {}
+
+    async def fake_stream(_agent, _messages, config, **_kwargs):
+        captured_config.update(config)
+        yield "done"
+
+    class FakeLangfuseContext:
+        trace = SimpleNamespace(
+            provider="langfuse",
+            trace_id="lf-trace-run-123",
+            trace_url="https://langfuse.local/project/moldy/traces/lf-trace-run-123",
+        )
+        metadata = {
+            "moldy_run_id": "run-123",
+            "moldy_source": "chat",
+        }
+
+        def configure_config(self, config):
+            return {
+                **config,
+                "callbacks": ["langfuse-callback"],
+                "metadata": self.metadata,
+                "tags": ["moldy", "source:chat"],
+            }
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr("app.agent_runtime.executor._prepare_agent", fake_prepare_agent)
+    monkeypatch.setattr("app.agent_runtime.executor.stream_agent_response", fake_stream)
+    monkeypatch.setattr(
+        "app.agent_runtime.executor.build_langfuse_run_context",
+        lambda *_args, **_kwargs: FakeLangfuseContext(),
+    )
+
+    langfuse_sink = []
+    async for _ in execute_agent_stream(
+        _cfg(agent_id="agent-123", user_id="user-123"),
+        [{"role": "user", "content": "hi"}],
+        run_id="run-123",
+        moldy_source="chat",
+        langfuse_sink=langfuse_sink,
+    ):
+        pass
+
+    assert captured_config["configurable"]["thread_id"] == "conv-123"
+    assert captured_config["callbacks"] == ["langfuse-callback"]
+    assert captured_config["metadata"]["moldy_run_id"] == "run-123"
+    assert captured_config["tags"] == ["moldy", "source:chat"]
+    assert langfuse_sink[0].trace_id == "lf-trace-run-123"
+
+
+@pytest.mark.asyncio
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")
 @patch("app.agent_runtime.executor.build_agent")
@@ -774,3 +834,57 @@ async def test_ask_user_not_included_in_invoke(
     tool_names = [t.name for t in tools_passed]
     assert "ask_user" not in tool_names
     assert TEMPORAL_TOOL_NAMES.issubset(set(tool_names))
+
+
+@pytest.mark.asyncio
+async def test_execute_agent_invoke_attaches_langfuse_trace_context(monkeypatch):
+    from app.agent_runtime.executor import execute_agent_invoke
+
+    class FakeAgent:
+        config: dict | None = None
+
+        async def ainvoke(self, _payload, *, config):
+            self.config = config
+            return {"messages": [SimpleNamespace(content="trigger output")]}
+
+    fake_agent = FakeAgent()
+
+    async def fake_prepare_agent(*args, **kwargs):
+        return fake_agent, ["msg"], {"configurable": {"thread_id": "conv-trigger"}}
+
+    class FakeLangfuseContext:
+        trace = SimpleNamespace(
+            provider="langfuse",
+            trace_id="lf-trace-trigger",
+            trace_url="https://langfuse.local/project/moldy/traces/lf-trace-trigger",
+        )
+        metadata = {"moldy_run_id": "trigger-run-1", "moldy_source": "trigger"}
+
+        def configure_config(self, config):
+            return {
+                **config,
+                "callbacks": ["langfuse-callback"],
+                "metadata": self.metadata,
+                "tags": ["moldy", "source:trigger"],
+            }
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr("app.agent_runtime.executor._prepare_agent", fake_prepare_agent)
+    monkeypatch.setattr(
+        "app.agent_runtime.executor.build_langfuse_run_context",
+        lambda *_args, **_kwargs: FakeLangfuseContext(),
+    )
+
+    output = await execute_agent_invoke(
+        _cfg(agent_id="agent-123", user_id="user-123"),
+        [{"role": "user", "content": "scheduled"}],
+        run_id="trigger-run-1",
+        moldy_source="trigger",
+    )
+
+    assert output == "trigger output"
+    assert fake_agent.config is not None
+    assert fake_agent.config["callbacks"] == ["langfuse-callback"]
+    assert fake_agent.config["metadata"]["moldy_run_id"] == "trigger-run-1"

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, PlainSerializer, model_validator
+from pydantic import BaseModel, Field, PlainSerializer, model_validator
 
 
 def _utc_iso(dt: datetime) -> str:
@@ -259,3 +259,48 @@ class TurnTraceResponse(BaseModel):
     completed_at: UtcDatetime | None
 
     model_config = {"from_attributes": True}
+
+
+class DebugTraceSpan(BaseModel):
+    id: str
+    parent_id: str | None = None
+    name: str
+    kind: str
+    status: str
+    started_at: UtcDatetime | None = None
+    ended_at: UtcDatetime | None = None
+    duration_ms: int | None = None
+    input: Any | None = None
+    output: Any | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DebugTraceSummary(BaseModel):
+    trace_id: str
+    provider: str
+    name: str
+    status: str
+    source: str | None = None
+    started_at: UtcDatetime
+    completed_at: UtcDatetime | None = None
+    duration_ms: int | None = None
+    total_tokens: int | None = None
+    moldy_run_id: str
+    langfuse_url: str | None = None
+    fallback: bool = False
+    fallback_reason: str | None = None
+
+
+class DebugTraceListResponse(BaseModel):
+    conversation_id: uuid.UUID
+    langfuse_enabled: bool
+    traces: list[DebugTraceSummary]
+    fallback_reason: str | None = None
+
+
+class DebugTraceDetailResponse(BaseModel):
+    conversation_id: uuid.UUID
+    trace: DebugTraceSummary
+    spans: list[DebugTraceSpan]
+    raw: list[dict[str, Any]] | dict[str, Any] | None = None
+    fallback_reason: str | None = None

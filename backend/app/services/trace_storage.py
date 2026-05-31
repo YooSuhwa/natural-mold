@@ -51,10 +51,7 @@ def _resolve_linked_ids(
 ) -> list[str] | None:
     if not raw_msg_ids:
         return None
-    return [
-        str(parse_msg_id(raw, conversation_id, idx))
-        for idx, raw in enumerate(raw_msg_ids)
-    ]
+    return [str(parse_msg_id(raw, conversation_id, idx)) for idx, raw in enumerate(raw_msg_ids)]
 
 
 async def append_events(
@@ -93,14 +90,10 @@ async def append_events(
         return None
 
     last_id = events_chunk[-1].get("id") if events_chunk else None
-    last_event_id = (
-        last_id if isinstance(last_id, str) and last_id else None
-    )
+    last_event_id = last_id if isinstance(last_id, str) and last_id else None
 
     existing = await db.execute(
-        select(MessageEvent).where(
-            MessageEvent.assistant_msg_id == assistant_msg_id
-        )
+        select(MessageEvent).where(MessageEvent.assistant_msg_id == assistant_msg_id)
     )
     record = existing.scalar_one_or_none()
 
@@ -123,7 +116,8 @@ async def append_events(
         if isinstance(evt.get("id"), str)
     }
     new_events = [
-        evt for evt in events_chunk
+        evt
+        for evt in events_chunk
         if not (isinstance(evt.get("id"), str) and evt.get("id") in existing_ids)
     ]
 
@@ -147,6 +141,9 @@ async def finalize_turn(
     status: TraceStatus = "completed",
     raw_msg_ids: list[str] | None = None,
     conversation_id: uuid.UUID | None = None,
+    external_trace_provider: str | None = None,
+    external_trace_id: str | None = None,
+    external_trace_url: str | None = None,
 ) -> MessageEvent | None:
     """Mark a streaming turn as finished and attach linked message ids.
 
@@ -165,9 +162,7 @@ async def finalize_turn(
     Caller commits the session.
     """
     existing = await db.execute(
-        select(MessageEvent).where(
-            MessageEvent.assistant_msg_id == assistant_msg_id
-        )
+        select(MessageEvent).where(MessageEvent.assistant_msg_id == assistant_msg_id)
     )
     record = existing.scalar_one_or_none()
     if record is None:
@@ -178,6 +173,10 @@ async def finalize_turn(
     if raw_msg_ids:
         conv_id = conversation_id or record.conversation_id
         record.linked_message_ids = _resolve_linked_ids(conv_id, raw_msg_ids)
+    if external_trace_provider or external_trace_id or external_trace_url:
+        record.external_trace_provider = external_trace_provider
+        record.external_trace_id = external_trace_id
+        record.external_trace_url = external_trace_url
     return record
 
 
@@ -188,6 +187,9 @@ async def record_turn(
     events: list[dict[str, Any]],
     raw_msg_ids: list[str] | None = None,
     status: TraceStatus = "completed",
+    external_trace_provider: str | None = None,
+    external_trace_id: str | None = None,
+    external_trace_url: str | None = None,
 ) -> MessageEvent | None:
     """[DEPRECATED — 신규 호출자 추가 금지] one-shot turn persistence shim.
 
@@ -224,9 +226,7 @@ async def record_turn(
 
     msg_id = _extract_msg_id(events) or str(uuid.uuid4())
     last_event_id = events[-1].get("id")
-    last_id = (
-        last_event_id if isinstance(last_event_id, str) and last_event_id else None
-    )
+    last_id = last_event_id if isinstance(last_event_id, str) and last_event_id else None
 
     linked_ids = _resolve_linked_ids(conversation_id, raw_msg_ids)
 
@@ -237,6 +237,9 @@ async def record_turn(
         events=events,
         last_event_id=last_id,
         linked_message_ids=linked_ids,
+        external_trace_provider=external_trace_provider,
+        external_trace_id=external_trace_id,
+        external_trace_url=external_trace_url,
         status=status,
         completed_at=now,
         # ORM-level explicit set — server_default(now())와 별도로 SQLite/PG
@@ -260,9 +263,7 @@ async def get_traces_for_conversation(
     return list(result.scalars().all())
 
 
-async def get_trace_by_msg_id(
-    db: AsyncSession, assistant_msg_id: str
-) -> MessageEvent | None:
+async def get_trace_by_msg_id(db: AsyncSession, assistant_msg_id: str) -> MessageEvent | None:
     """Lookup a single turn trace by its assistant message id."""
     result = await db.execute(
         select(MessageEvent).where(MessageEvent.assistant_msg_id == assistant_msg_id)

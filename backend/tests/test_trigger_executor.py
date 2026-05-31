@@ -381,9 +381,11 @@ async def test_execute_trigger_passes_messages():
     trigger_id, _ = await _seed_full_setup()
 
     captured_args: list = []
+    captured_kwargs: dict = {}
 
     async def mock_invoke(*args, **kwargs):
         captured_args.extend(args)
+        captured_kwargs.update(kwargs)
         return "Part1 Part2"
 
     with (
@@ -403,6 +405,8 @@ async def test_execute_trigger_passes_messages():
     # args: (cfg: AgentConfig, messages_history: list)
     assert captured_args[0].provider_api_keys == {"openai": "test-api-key"}
     assert captured_args[1] == [{"role": "user", "content": "뉴스 검색해줘"}]
+    assert captured_kwargs["moldy_source"] == "trigger"
+    assert captured_kwargs["run_id"]
 
 
 @pytest.mark.asyncio

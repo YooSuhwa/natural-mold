@@ -61,6 +61,46 @@ def format_sse(event: str, data: dict[str, Any], *, event_id: str | None = None)
     return f"event: {event}\ndata: {payload}\n\n"
 
 
+def _message_to_trace_input(message: Any) -> dict[str, Any] | Any:
+    if isinstance(message, dict):
+        return {key: _trace_input_payload(value) for key, value in message.items()}
+
+    msg_type = getattr(message, "type", None)
+    content = getattr(message, "content", None)
+    if isinstance(msg_type, str) and content is not None:
+        payload: dict[str, Any] = {
+            "role": "user" if msg_type == "human" else msg_type,
+            "content": content_to_text(content),
+        }
+        name = getattr(message, "name", None)
+        if isinstance(name, str) and name:
+            payload["name"] = name
+        msg_id = getattr(message, "id", None)
+        if isinstance(msg_id, str) and msg_id:
+            payload["id"] = msg_id
+        return payload
+
+    return _trace_input_payload(message)
+
+
+def _trace_input_payload(value: Any) -> Any:
+    if value is None or isinstance(value, str | int | float | bool):
+        return value
+    if isinstance(value, Command):
+        return {"resume": _trace_input_payload(value.resume)}
+    if isinstance(value, dict):
+        return {key: _trace_input_payload(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [_message_to_trace_input(item) for item in value]
+    return str(value)
+
+
+def _debug_input_for_message_start(actual_input: Any) -> Any:
+    if actual_input is None:
+        return None
+    return redact_keys(_trace_input_payload(actual_input))
+
+
 # Middleware-internal schema names (LLMToolSelectorMiddleware 등) — UI 노출 X.
 _INTERNAL_TOOL_NAMES: frozenset[str] = frozenset({"ToolSelectionResponse"})
 
@@ -282,7 +322,11 @@ async def stream_agent_response(
     # 실행되도록 message_start emit 직후부터 message_end 도달까지 outer
     # try/finally 로 감싼다. 클라이언트 disconnect 시(generator aclose)에도
     # finally 가 동작해 broker.close 가 보장된다.
-    yield emit(event_names.MESSAGE_START, {"id": msg_id, "role": "assistant"})
+    start_data: dict[str, Any] = {"id": msg_id, "role": "assistant"}
+    debug_input = _debug_input_for_message_start(actual_input)
+    if debug_input is not None:
+        start_data["input"] = debug_input
+    yield emit(event_names.MESSAGE_START, start_data)
     try:
         try:
             async for chunk in agent.astream(

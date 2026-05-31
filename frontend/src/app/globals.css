@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "../components/agent-prism/theme/theme.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -52,6 +53,133 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@theme inline {
+  --color-agentprism-background: oklch(var(--agentprism-background));
+  --color-agentprism-foreground: oklch(var(--agentprism-foreground));
+  --color-agentprism-primary: oklch(var(--agentprism-primary));
+  --color-agentprism-primary-foreground: oklch(var(--agentprism-primary-foreground));
+  --color-agentprism-secondary: oklch(var(--agentprism-secondary));
+  --color-agentprism-secondary-foreground: oklch(var(--agentprism-secondary-foreground));
+  --color-agentprism-muted: oklch(var(--agentprism-muted));
+  --color-agentprism-muted-foreground: oklch(var(--agentprism-muted-foreground));
+  --color-agentprism-accent: oklch(var(--agentprism-accent));
+  --color-agentprism-accent-foreground: oklch(var(--agentprism-accent-foreground));
+  --color-agentprism-brand: oklch(var(--agentprism-brand));
+  --color-agentprism-brand-foreground: oklch(var(--agentprism-brand-foreground));
+  --color-agentprism-brand-secondary: oklch(var(--agentprism-brand-secondary));
+  --color-agentprism-brand-secondary-foreground: oklch(
+    var(--agentprism-brand-secondary-foreground)
+  );
+  --color-agentprism-border: oklch(var(--agentprism-border));
+  --color-agentprism-border-subtle: oklch(var(--agentprism-border-subtle));
+  --color-agentprism-border-strong: oklch(var(--agentprism-border-strong));
+  --color-agentprism-border-inverse: oklch(var(--agentprism-border-inverse));
+  --color-agentprism-success: oklch(var(--agentprism-success));
+  --color-agentprism-success-muted: oklch(var(--agentprism-success-muted));
+  --color-agentprism-success-muted-foreground: oklch(
+    var(--agentprism-success-muted-foreground)
+  );
+  --color-agentprism-error: oklch(var(--agentprism-error));
+  --color-agentprism-error-muted: oklch(var(--agentprism-error-muted));
+  --color-agentprism-error-muted-foreground: oklch(
+    var(--agentprism-error-muted-foreground)
+  );
+  --color-agentprism-warning: oklch(var(--agentprism-warning));
+  --color-agentprism-warning-muted: oklch(var(--agentprism-warning-muted));
+  --color-agentprism-warning-muted-foreground: oklch(
+    var(--agentprism-warning-muted-foreground)
+  );
+  --color-agentprism-pending: oklch(var(--agentprism-pending));
+  --color-agentprism-pending-muted: oklch(var(--agentprism-pending-muted));
+  --color-agentprism-pending-muted-foreground: oklch(
+    var(--agentprism-pending-muted-foreground)
+  );
+  --color-agentprism-code-string: oklch(var(--agentprism-code-string));
+  --color-agentprism-code-number: oklch(var(--agentprism-code-number));
+  --color-agentprism-code-key: oklch(var(--agentprism-code-key));
+  --color-agentprism-code-base: oklch(var(--agentprism-code-base));
+  --color-agentprism-badge-default: oklch(var(--agentprism-badge-default));
+  --color-agentprism-badge-default-foreground: oklch(
+    var(--agentprism-badge-default-foreground)
+  );
+  --color-agentprism-avatar-llm: oklch(var(--agentprism-avatar-llm));
+  --color-agentprism-badge-llm: oklch(var(--agentprism-badge-llm));
+  --color-agentprism-badge-llm-foreground: oklch(
+    var(--agentprism-badge-llm-foreground)
+  );
+  --color-agentprism-timeline-llm: oklch(var(--agentprism-timeline-llm));
+  --color-agentprism-avatar-agent: oklch(var(--agentprism-avatar-agent));
+  --color-agentprism-badge-agent: oklch(var(--agentprism-badge-agent));
+  --color-agentprism-badge-agent-foreground: oklch(
+    var(--agentprism-badge-agent-foreground)
+  );
+  --color-agentprism-timeline-agent: oklch(var(--agentprism-timeline-agent));
+  --color-agentprism-avatar-tool: oklch(var(--agentprism-avatar-tool));
+  --color-agentprism-badge-tool: oklch(var(--agentprism-badge-tool));
+  --color-agentprism-badge-tool-foreground: oklch(
+    var(--agentprism-badge-tool-foreground)
+  );
+  --color-agentprism-timeline-tool: oklch(var(--agentprism-timeline-tool));
+  --color-agentprism-avatar-chain: oklch(var(--agentprism-avatar-chain));
+  --color-agentprism-badge-chain: oklch(var(--agentprism-badge-chain));
+  --color-agentprism-badge-chain-foreground: oklch(
+    var(--agentprism-badge-chain-foreground)
+  );
+  --color-agentprism-timeline-chain: oklch(var(--agentprism-timeline-chain));
+  --color-agentprism-avatar-retrieval: oklch(var(--agentprism-avatar-retrieval));
+  --color-agentprism-badge-retrieval: oklch(var(--agentprism-badge-retrieval));
+  --color-agentprism-badge-retrieval-foreground: oklch(
+    var(--agentprism-badge-retrieval-foreground)
+  );
+  --color-agentprism-timeline-retrieval: oklch(
+    var(--agentprism-timeline-retrieval)
+  );
+  --color-agentprism-avatar-embedding: oklch(var(--agentprism-avatar-embedding));
+  --color-agentprism-badge-embedding: oklch(var(--agentprism-badge-embedding));
+  --color-agentprism-badge-embedding-foreground: oklch(
+    var(--agentprism-badge-embedding-foreground)
+  );
+  --color-agentprism-timeline-embedding: oklch(
+    var(--agentprism-timeline-embedding)
+  );
+  --color-agentprism-avatar-guardrail: oklch(var(--agentprism-avatar-guardrail));
+  --color-agentprism-badge-guardrail: oklch(var(--agentprism-badge-guardrail));
+  --color-agentprism-badge-guardrail-foreground: oklch(
+    var(--agentprism-badge-guardrail-foreground)
+  );
+  --color-agentprism-timeline-guardrail: oklch(
+    var(--agentprism-timeline-guardrail)
+  );
+  --color-agentprism-avatar-create-agent: oklch(
+    var(--agentprism-avatar-create-agent)
+  );
+  --color-agentprism-badge-create-agent: oklch(var(--agentprism-badge-create-agent));
+  --color-agentprism-badge-create-agent-foreground: oklch(
+    var(--agentprism-badge-create-agent-foreground)
+  );
+  --color-agentprism-timeline-create-agent: oklch(
+    var(--agentprism-timeline-create-agent)
+  );
+  --color-agentprism-avatar-span: oklch(var(--agentprism-avatar-span));
+  --color-agentprism-badge-span: oklch(var(--agentprism-badge-span));
+  --color-agentprism-badge-span-foreground: oklch(
+    var(--agentprism-badge-span-foreground)
+  );
+  --color-agentprism-timeline-span: oklch(var(--agentprism-timeline-span));
+  --color-agentprism-avatar-event: oklch(var(--agentprism-avatar-event));
+  --color-agentprism-badge-event: oklch(var(--agentprism-badge-event));
+  --color-agentprism-badge-event-foreground: oklch(
+    var(--agentprism-badge-event-foreground)
+  );
+  --color-agentprism-timeline-event: oklch(var(--agentprism-timeline-event));
+  --color-agentprism-avatar-unknown: oklch(var(--agentprism-avatar-unknown));
+  --color-agentprism-badge-unknown: oklch(var(--agentprism-badge-unknown));
+  --color-agentprism-badge-unknown-foreground: oklch(
+    var(--agentprism-badge-unknown-foreground)
+  );
+  --color-agentprism-timeline-unknown: oklch(var(--agentprism-timeline-unknown));
 }
 
 :root {

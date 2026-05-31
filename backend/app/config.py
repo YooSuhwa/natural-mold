@@ -131,6 +131,18 @@ class Settings(BaseSettings):
     share_snapshot_cache_ttl_s: float = 60.0
     share_snapshot_cache_max: int = 1024
 
+    # Langfuse trace debugger POC. When unset, tracing auto-enables if the
+    # public key, secret key, and base URL are configured. Set false to force
+    # the message_events fallback even when credentials exist.
+    langfuse_enabled: bool | None = None
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_base_url: str = ""
+    langfuse_project: str = "moldy"
+    langfuse_capture_input_output: bool = True
+    langfuse_redaction_enabled: bool = True
+    langfuse_sample_rate: float = 1.0
+
     # ----- ADR-016: multi-user auth -----
     # JWT signing secret. MUST be set in production (>= 32 bytes, random).
     # If empty in dev, ``app.auth.jwt`` generates an ephemeral key at import

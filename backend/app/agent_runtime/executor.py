@@ -11,6 +11,7 @@ import sys
 import time
 import uuid as _uuid
 from collections.abc import AsyncGenerator
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -43,6 +44,7 @@ from app.marketplace.skill_runtime import (
     build_skill_runtime_context,
     resolve_runtime_credentials,
 )
+from app.observability.langfuse import LangfuseTraceRecord, build_langfuse_run_context
 from app.tools.risk import (
     attach_tool_risk,
     default_deepagents_interrupt_policy,
@@ -65,6 +67,7 @@ _TEMPORAL_BUILTIN_TOOL_KEYS = (
     "builtin:resolve_relative_date",
 )
 
+
 class MiddlewareModelCredentialRequiredError(AppError):
     """Raised when middleware model config has no user-owned provider key."""
 
@@ -80,9 +83,7 @@ class MiddlewareModelCredentialRequiredError(AppError):
         )
 
 
-def _expand_shell_vars(
-    value: str, *, env: dict[str, str], local_vars: dict[str, str]
-) -> str:
+def _expand_shell_vars(value: str, *, env: dict[str, str], local_vars: dict[str, str]) -> str:
     """Expand the small shell-var subset used in k-skill curl examples."""
 
     def lookup(name: str) -> str:
@@ -121,15 +122,10 @@ def _prepare_skill_subprocess_args(
     index = 0
     while index < len(raw_args) and _SHELL_ASSIGNMENT_RE.match(raw_args[index]):
         name, raw_value = raw_args[index].split("=", 1)
-        local_vars[name] = _expand_shell_vars(
-            raw_value, env=env, local_vars=local_vars
-        )
+        local_vars[name] = _expand_shell_vars(raw_value, env=env, local_vars=local_vars)
         index += 1
 
-    args = [
-        _expand_shell_vars(arg, env=env, local_vars=local_vars)
-        for arg in raw_args[index:]
-    ]
+    args = [_expand_shell_vars(arg, env=env, local_vars=local_vars) for arg in raw_args[index:]]
     if not args:
         return None, "Error: command must start with python or curl."
 
@@ -187,6 +183,7 @@ class AgentConfig:
     middleware_configs: list[dict[str, Any]] | None = None
     agent_skills: list[dict[str, Any]] | None = None
     agent_id: str | None = None
+    agent_name: str | None = None
     provider_api_keys: dict[str, str | None] | None = None
     cost_per_input_token: float | None = None
     cost_per_output_token: float | None = None
@@ -234,14 +231,8 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
     """
 
     output_dir = ctx.output_dir
-    api_file_prefix = (
-        f"/api/conversations/{ctx.thread_id}/files/" if ctx.thread_id else ""
-    )
-    _path_re = (
-        re.compile(re.escape(str(output_dir)) + r"/([^\s\n]+)")
-        if api_file_prefix
-        else None
-    )
+    api_file_prefix = f"/api/conversations/{ctx.thread_id}/files/" if ctx.thread_id else ""
+    _path_re = re.compile(re.escape(str(output_dir)) + r"/([^\s\n]+)") if api_file_prefix else None
 
     async def execute_in_skill(skill_directory: str, command: str) -> str:
         """스킬 디렉토리에서 Python 스크립트를 실행합니다.
@@ -261,18 +252,13 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             # to a real on-disk directory, refuse it when it wasn't
             # attached to this agent. This is the regression guard for
             # the legacy broad ``/skills/`` mount that leaked siblings.
-            return (
-                f"Error: skill not attached to this agent: {requested_slug}"
-            )
+            return f"Error: skill not attached to this agent: {requested_slug}"
 
         # Resolve against the per-thread runtime root so traversal
         # attempts (``../``, absolute paths like ``/etc/passwd``) all
         # fail the ``is_relative_to`` check below.
         resolved = descriptor.runtime_storage_path.resolve()
-        if (
-            not resolved.is_relative_to(ctx.runtime_root.resolve())
-            or not resolved.is_dir()
-        ):
+        if not resolved.is_relative_to(ctx.runtime_root.resolve()) or not resolved.is_dir():
             return f"Error: invalid skill directory: {skill_directory}"
 
         await asyncio.to_thread(output_dir.mkdir, parents=True, exist_ok=True)
@@ -302,9 +288,7 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
                 env[env_name] = value
                 injected_env[env_name] = value
 
-        args, error = _prepare_skill_subprocess_args(
-            command, resolved=resolved, env=env
-        )
+        args, error = _prepare_skill_subprocess_args(command, resolved=resolved, env=env)
         if error is not None or args is None:
             return error or "Error: invalid command."
 
@@ -317,9 +301,7 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
         )
         timeout_seconds = _skill_timeout_seconds(descriptor)
         try:
-            stdout, stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=timeout_seconds
-            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
         except TimeoutError:
             proc.kill()
             await proc.wait()
@@ -761,9 +743,7 @@ async def _prepare_agent(
             from app.database import async_session as _async_session_factory
 
             async with _async_session_factory() as _runtime_db:
-                await resolve_runtime_credentials(
-                    skill_ctx, db=_runtime_db, cfg=cfg
-                )
+                await resolve_runtime_credentials(skill_ctx, db=_runtime_db, cfg=cfg)
         skills_virtual_prefix = f"/runtime/{cfg.thread_id}/skills/"
         skills_sources = [skills_virtual_prefix]
         langchain_tools.append(_create_skill_execute_tool(skill_ctx))
@@ -791,9 +771,7 @@ async def _prepare_agent(
             # on the actual mount point. Cheaper than threading the
             # thread_id through ``build_skills_prompt``'s public API
             # (which is also used by non-runtime callers).
-            skills_block = skills_block.replace(
-                "/skills/", skills_virtual_prefix
-            )
+            skills_block = skills_block.replace("/skills/", skills_virtual_prefix)
             system_prompt += "\n" + skills_block
 
     memory_sources: list[str] | None = None
@@ -897,9 +875,7 @@ def _hook_ctx_for_agent(cfg: AgentConfig) -> HookContext | None:
     )
 
 
-def _hook_result_from_usage(
-    duration_ms: int, usage_sink: dict[str, Any]
-) -> HookResult:
+def _hook_result_from_usage(duration_ms: int, usage_sink: dict[str, Any]) -> HookResult:
     """Build a :class:`HookResult` from streaming-captured usage.
 
     Streaming surfaces ``prompt_tokens`` / ``completion_tokens`` /
@@ -930,6 +906,8 @@ async def _run_agent_stream(
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
+    moldy_source: str = "chat",
+    langfuse_sink: list[LangfuseTraceRecord] | None = None,
 ) -> AsyncGenerator[str, None]:
     """공용 stream runner — execute/resume의 prep + hook + 예외 처리 통합 (P0-B).
 
@@ -955,6 +933,15 @@ async def _run_agent_stream(
     if actual_input is _USE_PREPPED_LC_MESSAGES:
         actual_input = lc_messages if lc_messages else None
 
+    langfuse_ctx = build_langfuse_run_context(
+        cfg,
+        run_id=run_id,
+        source=moldy_source,
+    )
+    config = langfuse_ctx.configure_config(config)
+    if langfuse_sink is not None and langfuse_ctx.trace is not None:
+        langfuse_sink.append(langfuse_ctx.trace)
+
     ctx = _hook_ctx_for_agent(cfg)
     if ctx is not None:
         if hook_metadata_extra:
@@ -964,26 +951,35 @@ async def _run_agent_stream(
     usage_sink: dict[str, Any] = {}
     stream_errors = error_sink if error_sink is not None else []
 
+    activate = getattr(langfuse_ctx, "activate", None)
+    activation = (
+        activate(input_payload=actual_input, output_payload=None)
+        if callable(activate)
+        else nullcontext()
+    )
     try:
-        async for chunk in stream_agent_response(
-            agent,
-            actual_input,
-            config,
-            cost_per_input_token=cfg.cost_per_input_token,
-            cost_per_output_token=cfg.cost_per_output_token,
-            usage_sink=usage_sink,
-            trace_sink=trace_sink,
-            msg_id_sink=msg_id_sink,
-            error_sink=stream_errors,
-            broker=broker,
-            persist_callback=persist_callback,
-            run_id=run_id,
-        ):
-            yield chunk
+        with activation:
+            async for chunk in stream_agent_response(
+                agent,
+                actual_input,
+                config,
+                cost_per_input_token=cfg.cost_per_input_token,
+                cost_per_output_token=cfg.cost_per_output_token,
+                usage_sink=usage_sink,
+                trace_sink=trace_sink,
+                msg_id_sink=msg_id_sink,
+                error_sink=stream_errors,
+                broker=broker,
+                persist_callback=persist_callback,
+                run_id=run_id,
+            ):
+                yield chunk
     except Exception as exc:
         if ctx is not None:
             await hooks.run_failure(ctx, exc)
         raise
+    finally:
+        langfuse_ctx.flush()
     if stream_errors:
         if ctx is not None:
             await hooks.run_failure(ctx, stream_errors[0].error)
@@ -991,9 +987,7 @@ async def _run_agent_stream(
     if ctx is not None:
         await hooks.run_post(
             ctx,
-            _hook_result_from_usage(
-                int((time.monotonic() - started) * 1000), usage_sink
-            ),
+            _hook_result_from_usage(int((time.monotonic() - started) * 1000), usage_sink),
         )
 
 
@@ -1013,6 +1007,8 @@ async def execute_agent_stream(
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
+    moldy_source: str = "chat",
+    langfuse_sink: list[LangfuseTraceRecord] | None = None,
 ) -> AsyncGenerator[str, None]:
     """스트리밍 실행 (채팅용).
 
@@ -1043,6 +1039,8 @@ async def execute_agent_stream(
             broker=broker,
             persist_callback=persist_callback,
             run_id=run_id,
+            moldy_source=moldy_source,
+            langfuse_sink=langfuse_sink,
         ):
             yield chunk
         return
@@ -1057,6 +1055,8 @@ async def execute_agent_stream(
         broker=broker,
         persist_callback=persist_callback,
         run_id=run_id,
+        moldy_source=moldy_source,
+        langfuse_sink=langfuse_sink,
     ):
         yield chunk
 
@@ -1071,6 +1071,8 @@ async def resume_agent_stream(
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
+    moldy_source: str = "resume",
+    langfuse_sink: list[LangfuseTraceRecord] | None = None,
 ) -> AsyncGenerator[str, None]:
     """인터럽트 재개 스트리밍 (HiTL resume)."""
     from langgraph.types import Command
@@ -1086,6 +1088,8 @@ async def resume_agent_stream(
         broker=broker,
         persist_callback=persist_callback,
         run_id=run_id,
+        moldy_source=moldy_source,
+        langfuse_sink=langfuse_sink,
     ):
         yield chunk
 
@@ -1093,6 +1097,9 @@ async def resume_agent_stream(
 async def execute_agent_invoke(
     cfg: AgentConfig,
     messages_history: list[dict[str, str]],
+    *,
+    run_id: str | None = None,
+    moldy_source: str = "trigger",
 ) -> str:
     """비스트리밍 실행 (트리거용). 최종 응답 텍스트만 반환."""
     agent, lc_messages, config = await _prepare_agent(
@@ -1101,17 +1108,34 @@ async def execute_agent_invoke(
         is_trigger_mode=True,
     )
 
+    effective_run_id = run_id or str(_uuid.uuid4())
+    langfuse_ctx = build_langfuse_run_context(
+        cfg,
+        run_id=effective_run_id,
+        source=moldy_source,
+    )
+    config = langfuse_ctx.configure_config(config)
+
     ctx = _hook_ctx_for_agent(cfg)
     if ctx is not None:
         await hooks.run_pre(ctx)
     started = time.monotonic()
 
+    activate = getattr(langfuse_ctx, "activate", None)
+    activation = (
+        activate(input_payload={"messages": lc_messages}, output_payload=None)
+        if callable(activate)
+        else nullcontext()
+    )
     try:
-        result = await agent.ainvoke({"messages": lc_messages}, config=config)
+        with activation:
+            result = await agent.ainvoke({"messages": lc_messages}, config=config)
     except Exception as exc:
         if ctx is not None:
             await hooks.run_failure(ctx, exc)
         raise
+    finally:
+        langfuse_ctx.flush()
 
     messages = result.get("messages", [])
     text = ""

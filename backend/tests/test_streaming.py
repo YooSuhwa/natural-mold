@@ -121,6 +121,26 @@ async def test_stream_message_start_and_end():
 
 
 @pytest.mark.asyncio
+async def test_stream_message_start_includes_debug_input():
+    """Fallback trace debugger needs the turn input, not just provider metadata."""
+    agent = MockAgent([])
+
+    events = [
+        e
+        async for e in stream_agent_response(
+            agent,
+            [{"role": "user", "content": "debug this trace"}],
+            {},
+        )
+    ]
+
+    start_payload = json.loads(events[0].split("data: ")[1].strip())
+    assert start_payload["input"] == {
+        "messages": [{"role": "user", "content": "debug this trace"}]
+    }
+
+
+@pytest.mark.asyncio
 async def test_stream_content_delta():
     ai_chunk = _make_ai_chunk("Hello world")
     agent = MockAgent([(ai_chunk, {})])
