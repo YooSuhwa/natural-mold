@@ -121,6 +121,31 @@ bash scripts/worktree-setup.sh
 `data/` 디렉토리 변경을 자동 reload 트리거하지 않도록 `--reload-dir app` 추가
 권장 안내도 출력한다.
 
+#### worktree E2E seed / env 동기화
+
+`backend/.env.example`에 새 변수가 추가되어도 이미 존재하는 main checkout의
+`backend/.env`에는 자동 반영되지 않는다. worktree는 main `backend/.env`를
+symlink로 공유하므로, 새 worktree에서 Playwright E2E를 바로 돌리려면 main
+`backend/.env`에 아래 값이 있는지 먼저 확인한다:
+
+```dotenv
+E2E_SEED_USER_ENABLED=true
+E2E_USER_EMAIL=playwright-e2e@moldy.dev
+E2E_USER_PASSWORD=correct horse battery staple 42
+E2E_USER_NAME=E2E User
+```
+
+dev 환경에서 backend가 시작되면 `seed_e2e_user`가 위 계정을 DB에 super_user로
+생성하거나 갱신한다. `APP_ENV=production`에서는 `E2E_SEED_USER_ENABLED=true`여도
+항상 스킵된다. frontend E2E는 `frontend/.env.local`의 `E2E_USER_*` 값을
+우선 사용하고, 호환을 위해 기존 `E2E_EMAIL` / `E2E_PASSWORD`도 fallback으로
+읽는다.
+
+Tavily/Deep Research 구현 작업을 이어갈 때도 같은 원칙을 따른다.
+`TAVILY_API_KEY`는 per-user credential이 아니라 backend hosted key로 main
+`backend/.env`에 둔다. 상세 계획은
+`docs/superpowers/plans/2026-05-31-deep-research-tavily.md`를 기준으로 한다.
+
 #### worktree dev 서버 포트/CORS 규칙
 
 워크트리에서 backend/frontend dev 서버를 띄울 때는 **frontend port,
@@ -158,6 +183,9 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8010 pnpm dev -- --port 3010
 
 - `bash scripts/worktree-setup.sh`가 실행되어 `backend/.env`와 `backend/data`
   가 main checkout을 가리키는 symlink인지 확인
+- main `backend/.env`에 E2E seed 값(`E2E_SEED_USER_ENABLED`, `E2E_USER_EMAIL`,
+  `E2E_USER_PASSWORD`, `E2E_USER_NAME`)이 있는지 확인
+- Deep Research/Tavily 작업이면 main `backend/.env`에 `TAVILY_API_KEY`가 있는지 확인
 - frontend가 실제로 뜬 origin이 backend의 `CORS_ALLOWED_ORIGINS`에 포함되는지 확인
 - frontend의 `NEXT_PUBLIC_API_BASE_URL`이 실제 backend port를 가리키는지 확인
 - Next.js가 포트 충돌로 자동 선택한 임의 포트를 그대로 쓰지 말고 `pnpm dev -- --port <port>`로 고정
@@ -311,6 +339,8 @@ lib/types/      → Backend 스키마와 1:1 대응하는 TS 타입
 | `ENCRYPTION_KEY` | O | Cipher V2 마스터 키 (HKDF info=`moldy-encryption-v1`). 복수 키 회전 지원 |
 | `JWT_SECRET` | O | JWT HS256 서명 키 (ADR-016) |
 | LLM 키 (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` 등) | X (선택) | UI Credentials에서 등록 권장 (ADR-013). ENV에 있으면 dev에서 system credential로 bootstrap, production은 skip |
+| `E2E_SEED_USER_ENABLED`, `E2E_USER_EMAIL`, `E2E_USER_PASSWORD`, `E2E_USER_NAME` | X | 로컬 Playwright E2E용 더미 super_user seed. `APP_ENV=production`에서는 항상 skip |
+| `TAVILY_API_KEY` | X | Tavily hosted search / Deep Research 계획용 backend key. per-user credential로 넣지 않는다 |
 | 나머지 (Naver, Google 등) | X | 해당 도구 사용 시에만 필요 |
 
 ENV에서 자동으로 생성되는 `is_system=True` credentials는 production 환경에서는 자동 생성을 건너뛰고, super_user가 직접 관리한다.
