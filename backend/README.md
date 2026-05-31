@@ -14,7 +14,15 @@ uv sync
 uv run alembic upgrade head
 
 # 개발 서버 (http://localhost:8001/docs)
-uv run uvicorn app.main:app --reload --port 8001
+uv run uvicorn app.main:app --reload --reload-dir app --port 8001
+```
+
+worktree에서 frontend 포트를 바꿔 띄우면 backend CORS도 같은 origin으로 맞춰야
+합니다. 예: frontend `3010`, backend `8010`.
+
+```bash
+CORS_ALLOWED_ORIGINS=http://localhost:3010,http://127.0.0.1:3010 \
+  uv run uvicorn app.main:app --reload --reload-dir app --port 8010
 ```
 
 ## 주요 명령

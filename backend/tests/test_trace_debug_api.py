@@ -148,6 +148,10 @@ async def test_debug_trace_detail_falls_back_to_message_events(
         return [], "langfuse unavailable"
 
     monkeypatch.setattr(
+        "app.services.trace_debug_service.is_langfuse_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
         "app.services.trace_debug_service.fetch_langfuse_observations",
         _fake_fetch,
     )
@@ -186,6 +190,10 @@ async def test_debug_trace_detail_roots_orphan_langfuse_observations(
             }
         ], None
 
+    monkeypatch.setattr(
+        "app.services.trace_debug_service.is_langfuse_enabled",
+        lambda: True,
+    )
     monkeypatch.setattr(
         "app.services.trace_debug_service.fetch_langfuse_observations",
         _fake_fetch,

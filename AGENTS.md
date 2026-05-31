@@ -121,6 +121,48 @@ bash scripts/worktree-setup.sh
 `data/` 디렉토리 변경을 자동 reload 트리거하지 않도록 `--reload-dir app` 추가
 권장 안내도 출력한다.
 
+#### worktree dev 서버 포트/CORS 규칙
+
+워크트리에서 backend/frontend dev 서버를 띄울 때는 **frontend port,
+backend port, CORS origin, `NEXT_PUBLIC_API_BASE_URL`을 한 세트로 맞춰야
+한다.** 이 규칙을 지키지 않으면 브라우저에서 CORS, HttpOnly cookie, CSRF,
+API base URL이 서로 어긋나 로그인/요청/DB 연결이 깨진 것처럼 보인다.
+
+기본 권장값은 한 번에 하나의 worktree만 실행하고 고정 포트를 쓰는 것이다:
+
+```bash
+# backend
+cd backend
+uv run uvicorn app.main:app --reload --port 8001 --reload-dir app
+
+# frontend
+cd frontend
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev -- --port 3000
+```
+
+여러 worktree를 동시에 띄워야 하면 각 worktree마다 포트 쌍을 명시한다.
+예를 들어 frontend `3010`, backend `8010`을 쓸 때:
+
+```bash
+# backend
+cd backend
+CORS_ALLOWED_ORIGINS=http://localhost:3010,http://127.0.0.1:3010 \
+  uv run uvicorn app.main:app --reload --port 8010 --reload-dir app
+
+# frontend
+cd frontend
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8010 pnpm dev -- --port 3010
+```
+
+에이전트는 worktree에서 dev 서버를 실행하거나 진단할 때 다음을 먼저 확인한다:
+
+- `bash scripts/worktree-setup.sh`가 실행되어 `backend/.env`와 `backend/data`
+  가 main checkout을 가리키는 symlink인지 확인
+- frontend가 실제로 뜬 origin이 backend의 `CORS_ALLOWED_ORIGINS`에 포함되는지 확인
+- frontend의 `NEXT_PUBLIC_API_BASE_URL`이 실제 backend port를 가리키는지 확인
+- Next.js가 포트 충돌로 자동 선택한 임의 포트를 그대로 쓰지 말고 `pnpm dev -- --port <port>`로 고정
+- 여러 backend를 같은 DB에 동시에 붙이면 APScheduler/trigger 작업이 중복 실행될 수 있으므로 장시간 동시 실행은 피하거나 scheduler 비활성화 옵션을 별도로 둔다
+
 ### 1. 런타임 설치
 
 ```bash
