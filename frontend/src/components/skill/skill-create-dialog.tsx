@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DialogShell } from '@/components/shared/dialog-shell'
+import { DomainIconTile } from '@/components/shared/icon'
 import { FormFooter } from '@/components/shared/form-footer'
 import {
   useCreateTextSkill,
@@ -65,6 +66,7 @@ function SkillCreateBody({
   return (
     <>
       <DialogShell.Header
+        icon={<DomainIconTile iconId="skill" className="size-9" iconClassName="size-5" />}
         title={t('title')}
         description={t('description')}
       />

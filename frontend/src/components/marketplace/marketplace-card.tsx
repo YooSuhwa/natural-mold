@@ -3,28 +3,18 @@
 import Link from 'next/link'
 import { memo } from 'react'
 import { useTranslations } from 'next-intl'
-import type { LucideIcon } from 'lucide-react'
-import { BotIcon, ServerIcon, SparklesIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { DomainIconTile, getDomainIconIdForResource } from '@/components/shared/icon'
 import { CredentialBadge } from '@/components/marketplace/badges/credential-badge'
 import { InstallationBadge } from '@/components/marketplace/badges/installation-badge'
 import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
 import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { SupportBadge } from '@/components/marketplace/badges/support-badge'
-import type {
-  MarketplaceItem,
-  MarketplaceResourceType,
-} from '@/lib/types/marketplace'
+import type { MarketplaceItem } from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 import { cn } from '@/lib/utils'
-
-const RESOURCE_ICONS: Record<MarketplaceResourceType, LucideIcon> = {
-  skill: SparklesIcon,
-  agent: BotIcon,
-  mcp: ServerIcon,
-}
 
 export type PrimaryCtaKind =
   | 'install'
@@ -97,7 +87,6 @@ interface MarketplaceCardProps {
 
 function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProps) {
   const t = useTranslations('marketplace.card')
-  const Icon = RESOURCE_ICONS[item.resource_type] ?? SparklesIcon
   const cta = derivePrimaryCta(item)
   const ctaLabel = t(`cta.${cta.kind}`)
   const ownerLabel = item.is_system ? t('owner.system') : t('owner.community')
@@ -113,9 +102,9 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
       )}
     >
       <CardHeader className="flex-row items-start gap-3 pb-3">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary-strong">
-          <Icon className="size-5" aria-hidden />
-        </div>
+        <DomainIconTile
+          iconId={item.icon_id ?? getDomainIconIdForResource(item.resource_type)}
+        />
         <div className="min-w-0 flex-1">
           <Link
             href={`/marketplace/${item.id}`}

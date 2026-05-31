@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { ChevronLeftIcon, SparklesIcon } from 'lucide-react'
+import { ChevronLeftIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ErrorState } from '@/components/shared/error-state'
 import { PageHeader } from '@/components/shared/page-header'
+import { DomainIconTile, getDomainIconIdForResource } from '@/components/shared/icon'
 import { CredentialBadge } from '@/components/marketplace/badges/credential-badge'
 import { InstallationBadge } from '@/components/marketplace/badges/installation-badge'
 import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
@@ -225,17 +226,25 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
           {t('back')}
         </Link>
 
-        <PageHeader
-          title={item.name}
-          description={item.description ?? undefined}
-          action={
-            <div className="flex items-center gap-2">
-              <Button variant={cta.variant} disabled={cta.disabled} onClick={handlePrimary}>
-                {tCard(`cta.${cta.kind}`)}
-              </Button>
-            </div>
-          }
-        />
+        <div className="flex items-start gap-3">
+          <DomainIconTile
+            iconId={item.icon_id ?? getDomainIconIdForResource(item.resource_type)}
+            className="mt-0.5 size-11"
+            iconClassName="size-6"
+          />
+          <PageHeader
+            className="flex-1"
+            title={item.name}
+            description={item.description ?? undefined}
+            action={
+              <div className="flex items-center gap-2">
+                <Button variant={cta.variant} disabled={cta.disabled} onClick={handlePrimary}>
+                  {tCard(`cta.${cta.kind}`)}
+                </Button>
+              </div>
+            }
+          />
+        </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <OriginBadge summary={item.origin_summary} />
@@ -253,7 +262,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
             <CardContent>
               {!versions || versions.length === 0 ? (
                 <EmptyState
-                  icon={<SparklesIcon className="size-5" />}
+                  iconId={item.icon_id ?? getDomainIconIdForResource(item.resource_type)}
                   title={t('versions.emptyTitle')}
                   description={t('versions.emptyDescription')}
                 />

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Activity, Download, Plus, Server, Upload } from 'lucide-react'
+import { Activity, Download, Plus, Upload } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { announceHealthResult } from '@/lib/health-check-toast'
@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { DataTable } from '@/components/ui/data-table'
 import { StatusChip } from '@/components/shared/status-chip'
 import { EmptyState } from '@/components/shared/empty-state'
+import { DomainIconTile, getDomainIconIdForMcpTransport } from '@/components/shared/icon'
 import { McpServerWizard } from '@/components/mcp/mcp-server-wizard'
 import { McpServerDetailDialog } from '@/components/mcp/mcp-server-detail-dialog'
 import { McpImportDialog } from '@/components/mcp/mcp-import-dialog'
@@ -82,7 +83,16 @@ export default function McpServersPage() {
       {
         accessorKey: 'name',
         header: t('columns.name'),
-        cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+        cell: ({ row }) => (
+          <span className="inline-flex items-center gap-2 font-medium">
+            <DomainIconTile
+              iconId={getDomainIconIdForMcpTransport(row.original.transport)}
+              className="size-8"
+              iconClassName="size-4"
+            />
+            {row.original.name}
+          </span>
+        ),
       },
       {
         accessorKey: 'transport',
@@ -178,7 +188,7 @@ export default function McpServersPage() {
 
         {!isLoading && data.length === 0 ? (
           <EmptyState
-            icon={<Server className="size-6" />}
+            iconId="mcp"
             title={t('empty.title')}
             description={t('empty.description')}
             action={

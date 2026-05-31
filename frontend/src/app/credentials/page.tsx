@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { Plus, KeyRound } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
 import { Button } from '@/components/ui/button'
@@ -130,7 +130,7 @@ export default function CredentialsPage() {
 
         {!isLoading && data.length === 0 ? (
           <EmptyState
-            icon={<KeyRound className="size-6" />}
+            iconId="credential"
             title={t('empty.title')}
             description={t('empty.description')}
             action={

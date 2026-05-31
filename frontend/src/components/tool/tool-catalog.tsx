@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
 import { SearchInput } from '@/components/shared/search-input'
-import { DomainIcon } from '@/components/shared/icon'
+import { DomainIconTile } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
 import { useToolTypes } from '@/lib/hooks/use-tools'
 import type { ToolDefinition } from '@/lib/types/tool'
@@ -95,6 +95,7 @@ export function ToolCatalog({ onPick }: ToolCatalogProps) {
           </div>
         ) : filtered.length === 0 ? (
           <EmptyState
+            iconId="tool"
             title={t('empty.title')}
             description={t('empty.description')}
           />
@@ -111,7 +112,12 @@ export function ToolCatalog({ onPick }: ToolCatalogProps) {
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-start gap-3">
-                    <DomainIcon iconId={d.icon_id ?? d.key} className="size-5 mt-0.5" />
+                    <DomainIconTile
+                      iconId={d.icon_id ?? d.key}
+                      fallback="tool"
+                      className="size-9"
+                      iconClassName="size-5"
+                    />
                     <div className="min-w-0 flex-1">
                       <CardTitle className="text-sm">{d.display_name}</CardTitle>
                       <CardDescription className="line-clamp-2 text-xs">

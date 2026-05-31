@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Plus, Wrench } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
@@ -99,9 +99,9 @@ export default function ToolsPage() {
     [definitionLabels, credentialMap, t],
   )
 
-  const tabs: { value: Tab; label: string }[] = [
-    { value: 'catalog', label: t('tabs.catalog') },
-    { value: 'manage', label: t('tabs.manage', { count: tools?.length ?? 0 }) },
+  const tabs: { value: Tab; label: string; iconId: string }[] = [
+    { value: 'catalog', label: t('tabs.catalog'), iconId: 'registry' },
+    { value: 'manage', label: t('tabs.manage', { count: tools?.length ?? 0 }), iconId: 'tool' },
   ]
 
   return (
@@ -133,6 +133,7 @@ export default function ToolsPage() {
                     : 'font-medium text-muted-foreground hover:text-foreground',
                 )}
               >
+                <DomainIcon iconId={t.iconId} className="size-4 text-current" />
                 {t.label}
               </button>
             )
@@ -143,7 +144,7 @@ export default function ToolsPage() {
           <ToolCatalog onPick={setPickedDefinition} />
         ) : !isLoading && (tools ?? []).length === 0 ? (
           <EmptyState
-            icon={<Wrench className="size-6" />}
+            iconId="tool"
             title={t('empty.title')}
             description={t('empty.description')}
             action={

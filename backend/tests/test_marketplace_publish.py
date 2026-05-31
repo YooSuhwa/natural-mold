@@ -299,18 +299,24 @@ async def test_patch_item_metadata(
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         r1 = await client.post(
             f"/api/marketplace/items/from-skill/{skill.id}",
-            json={"visibility": "public", "name": "P1"},
+            json={"visibility": "public", "name": "P1", "icon_id": "skill_package"},
         )
         item_id = r1.json()["id"]
         version_before = r1.json()["latest_version"]["id"]
+        assert r1.json()["icon_id"] == "skill_package"
 
         r2 = await client.patch(
             f"/api/marketplace/items/{item_id}",
-            json={"description": "new desc", "tags": ["alpha", "beta"]},
+            json={
+                "description": "new desc",
+                "tags": ["alpha", "beta"],
+                "icon_id": "agent",
+            },
         )
 
     assert r2.status_code == 200, r2.text
     assert r2.json()["description"] == "new desc"
+    assert r2.json()["icon_id"] == "agent"
     assert set(r2.json()["tags"] or []) == {"alpha", "beta"}
     # PATCH must not bump the version.
     assert r2.json()["latest_version"]["id"] == version_before

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { DynamicFieldsForm, validateFields } from '@/components/shared/dynamic-fields-form'
 import { CredentialPicker } from '@/components/credential/credential-picker'
-import { DomainIcon } from '@/components/shared/icon'
+import { DomainIconTile } from '@/components/shared/icon'
 import { useCreateTool } from '@/lib/hooks/use-tools'
 import type { ToolDefinition } from '@/lib/types/tool'
 import type { FieldDef } from '@/lib/types/credential'
@@ -85,7 +85,14 @@ export function ToolCreateDialog({
   return (
     <DialogShell open={open} onOpenChange={handleClose} size="lg" height="fixed">
       <DialogShell.Header
-        icon={<DomainIcon iconId={definition.icon_id ?? definition.key} className="size-5" />}
+        icon={
+          <DomainIconTile
+            iconId={definition.icon_id ?? definition.key}
+            fallback="tool"
+            className="size-9"
+            iconClassName="size-5"
+          />
+        }
         title={t('title', { toolName: definition.display_name })}
         description={definition.description}
       />

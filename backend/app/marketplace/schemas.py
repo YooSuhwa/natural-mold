@@ -137,6 +137,7 @@ class MarketplaceItemOut(BaseModel):
     name: str
     slug: str
     description: str | None = None
+    icon_id: str | None = None
     icon_url: str | None = None
     visibility: Literal["private", "restricted", "public", "unlisted", "system"]
     status: Literal["draft", "published", "deprecated", "disabled"]
@@ -233,6 +234,7 @@ class PublishSkillIn(BaseModel):
     visibility: Literal["private", "restricted", "public", "unlisted"]
     name: str
     description: str | None = None
+    icon_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     categories: list[str] = Field(default_factory=list)
     release_notes: str | None = None
@@ -258,6 +260,7 @@ class MarketplaceItemPatchIn(BaseModel):
 
     name: str | None = None
     description: str | None = None
+    icon_id: str | None = None
     icon_url: str | None = None
     tags: list[str] | None = None
     categories: list[str] | None = None

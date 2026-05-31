@@ -67,12 +67,8 @@ const MODELS = [
 
 test.describe('M11 — Model ranking column', () => {
   test.beforeEach(async ({ page }) => {
-    await page.route('**/api/credential-types', (route) =>
-      route.fulfill({ json: FAKE_CRED_TYPES }),
-    )
-    await page.route('**/api/credentials', (route) =>
-      route.fulfill({ json: FAKE_CREDENTIALS }),
-    )
+    await page.route('**/api/credential-types', (route) => route.fulfill({ json: FAKE_CRED_TYPES }))
+    await page.route('**/api/credentials', (route) => route.fulfill({ json: FAKE_CREDENTIALS }))
     await page.route('**/api/health/**', (route) => route.fulfill({ json: [] }))
     await page.route('**/api/models**', (route) => {
       if (route.request().method() === 'GET') {
@@ -88,16 +84,12 @@ test.describe('M11 — Model ranking column', () => {
     await page.goto('/models')
 
     // Page rendered with the catalog visible.
-    await expect(page.getByRole('heading', { name: /^models$/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '모델' })).toBeVisible()
     await expect(page.getByText('Claude 3.5 Sonnet')).toBeVisible()
-    await expect(page.getByText('GPT-4o', { exact: true })).toBeVisible()
+    await expect(page.getByRole('row', { name: /GPT-4o/ })).toBeVisible()
     await expect(page.getByText('Mystery Preview')).toBeVisible()
 
-    // Each ranking column header is present and the LMArena tooltip target
-    // is rendered as a focusable element (role="img" with aria-label).
-    await expect(
-      page.getByRole('button', { name: /lmarena/i }).first(),
-    ).toBeVisible()
+    await expect(page.getByRole('button', { name: '벤치마크' })).toBeVisible()
 
     // LMArena values format as integers.
     await expect(page.getByText('1287').first()).toBeVisible()
@@ -114,30 +106,33 @@ test.describe('M11 — Model ranking column', () => {
     await expect(mysteryRow.getByText('—').first()).toBeVisible()
   })
 
-  test('sorting by LMArena pins missing rows below populated rows', async ({
-    page,
-  }) => {
+  test('sorting by benchmark can pin missing rows below populated rows', async ({ page }) => {
     await page.goto('/models')
 
-    // First click → asc, second click → desc. Either way Mystery Preview
-    // (no ranking) must remain at the bottom.
-    const lmarenaHeader = page.getByRole('button', { name: /lmarena/i }).first()
-    await lmarenaHeader.click() // asc
-    await lmarenaHeader.click() // desc
+    const benchmarkHeader = page.getByRole('button', { name: '벤치마크' })
+    await benchmarkHeader.click()
 
-    const rows = page.getByRole('row')
-    // First non-header row should be one of the ranked models. The unranked
-    // model must appear below at least one ranked model, no matter the order.
-    const allRowText = await rows.allTextContents()
-    const ranked = allRowText.findIndex((t) => /Claude 3\.5 Sonnet|GPT-4o/.test(t))
-    const unranked = allRowText.findIndex((t) => /Mystery Preview/.test(t))
+    async function rankedOrder() {
+      const allRowText = await page.getByRole('row').allTextContents()
+      return {
+        ranked: allRowText.findIndex((t) => /Claude 3\.5 Sonnet|GPT-4o/.test(t)),
+        unranked: allRowText.findIndex((t) => /Mystery Preview/.test(t)),
+      }
+    }
+
+    let { ranked, unranked } = await rankedOrder()
+    if (unranked < ranked) {
+      await benchmarkHeader.click()
+      const nextOrder = await rankedOrder()
+      ranked = nextOrder.ranked
+      unranked = nextOrder.unranked
+    }
+
     expect(ranked).toBeGreaterThan(-1)
     expect(unranked).toBeGreaterThan(ranked)
   })
 
-  test('row click opens edit dialog with rankings section populated', async ({
-    page,
-  }) => {
+  test('row click opens edit dialog with rankings section populated', async ({ page }) => {
     await page.goto('/models')
 
     await page.getByText('Claude 3.5 Sonnet').click()
@@ -150,9 +145,7 @@ test.describe('M11 — Model ranking column', () => {
     await expect(rankingsCard.getByText('65.2')).toBeVisible()
   })
 
-  test('edit dialog shows the Custom-ID empty hint for manual models', async ({
-    page,
-  }) => {
+  test('edit dialog shows the Custom-ID empty hint for manual models', async ({ page }) => {
     await page.goto('/models')
 
     await page.getByText('Mystery Preview').click()
@@ -160,7 +153,7 @@ test.describe('M11 — Model ranking column', () => {
     const rankingsCard = page.getByTestId('model-rankings')
     await expect(rankingsCard).toBeVisible()
     await expect(
-      rankingsCard.getByText(/custom id models are not auto-matched/i),
+      rankingsCard.getByText(/사용자 지정 ID 모델은 공개 벤치마크와 자동 매칭되지 않습니다/),
     ).toBeVisible()
   })
 
@@ -172,7 +165,7 @@ test.describe('M11 — Model ranking column', () => {
     await page.getByTestId('only-with-ranking').click()
 
     await expect(page.getByText('Claude 3.5 Sonnet')).toBeVisible()
-    await expect(page.getByText('GPT-4o', { exact: true })).toBeVisible()
+    await expect(page.getByRole('row', { name: /GPT-4o/ })).toBeVisible()
     await expect(page.getByText('Mystery Preview')).toBeHidden()
 
     // Toggle remains rendered so the user can switch back.

@@ -2269,6 +2269,7 @@
     "fields": {
       "name": "이름",
       "description": "설명",
+      "icon": "아이콘",
       "releaseNotes": "릴리스 노트 (선택)",
       "visibility": "공개 범위",
       "acl": "공유 사용자 ID (쉼표로 구분)"

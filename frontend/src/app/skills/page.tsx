@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
-import { Plus, BookOpen, LayoutGrid, Rows } from 'lucide-react'
+import { Plus, LayoutGrid, Rows } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,11 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/ca
 import { PageHeader } from '@/components/shared/page-header'
 import { DataTable, type FilterDef } from '@/components/ui/data-table'
 import { EmptyState } from '@/components/shared/empty-state'
+import {
+  DomainIcon,
+  DomainIconTile,
+  getDomainIconIdForSkillKind,
+} from '@/components/shared/icon'
 import { SkillCreateDialog } from '@/components/skill/skill-create-dialog'
 import { SkillDetailDialog } from '@/components/skill/skill-detail-dialog'
 import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
@@ -106,19 +111,26 @@ export default function SkillsPage() {
         cell: ({ row }) => {
           const skill = row.original
           return (
-            <div className="min-w-[240px] space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium text-foreground">{skill.name}</span>
-                {skill.version ? (
-                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                    v{skill.version}
-                  </span>
-                ) : null}
+            <div className="flex min-w-[240px] items-start gap-3">
+              <DomainIconTile
+                iconId={getDomainIconIdForSkillKind(skill.kind)}
+                className="size-8"
+                iconClassName="size-4"
+              />
+              <div className="min-w-0 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-foreground">{skill.name}</span>
+                  {skill.version ? (
+                    <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                      v{skill.version}
+                    </span>
+                  ) : null}
+                </div>
+                <p className="line-clamp-2 max-w-[360px] text-xs leading-5 text-muted-foreground">
+                  {skill.description ?? skill.slug}
+                </p>
+                <p className="font-mono text-[11px] text-muted-foreground/80">{skill.slug}</p>
               </div>
-              <p className="line-clamp-2 max-w-[360px] text-xs leading-5 text-muted-foreground">
-                {skill.description ?? skill.slug}
-              </p>
-              <p className="font-mono text-[11px] text-muted-foreground/80">{skill.slug}</p>
             </div>
           )
         },
@@ -128,9 +140,13 @@ export default function SkillsPage() {
         accessorKey: 'kind',
         header: t('columns.kind'),
         cell: ({ row }) => (
-          <Badge variant="secondary" className="text-[10px]">
-            {row.original.kind}
-          </Badge>
+            <Badge variant="secondary" className="text-[10px]">
+              <DomainIcon
+                iconId={getDomainIconIdForSkillKind(row.original.kind)}
+                className="mr-1 size-3 text-current"
+              />
+              {row.original.kind}
+            </Badge>
         ),
         filterFn: 'equals',
       },
@@ -227,7 +243,7 @@ export default function SkillsPage() {
 
         {!isLoading && data.length === 0 ? (
           <EmptyState
-            icon={<BookOpen className="size-6" />}
+            iconId="skill"
             title={t('empty.title')}
             description={t('empty.description')}
             action={
@@ -261,7 +277,12 @@ export default function SkillsPage() {
               >
                 <CardHeader>
                   <div className="flex items-center gap-2">
-                    <CardTitle className="text-sm">{s.name}</CardTitle>
+                    <DomainIconTile
+                      iconId={getDomainIconIdForSkillKind(s.kind)}
+                      className="size-8"
+                      iconClassName="size-4"
+                    />
+                    <CardTitle className="min-w-0 truncate text-sm">{s.name}</CardTitle>
                     <Badge variant="secondary" className="text-[10px]">
                       {s.kind}
                     </Badge>

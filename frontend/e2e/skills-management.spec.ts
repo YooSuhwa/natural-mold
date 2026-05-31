@@ -31,13 +31,16 @@ test.describe('Skills page', () => {
     })
 
     await page.goto('/skills')
-    await page.getByRole('button', { name: /create first skill|new skill/i }).first().click()
+    await page
+      .getByRole('button', { name: /새 스킬|첫 스킬 만들기/ })
+      .first()
+      .click()
 
-    await page.getByLabel('Name').fill('Greeting snippet')
-    await page.getByLabel(/Content/).fill('# Hello\nThis is a snippet.')
+    await page.getByLabel(/이름/).fill('Greeting snippet')
+    await page.getByLabel(/내용 \(마크다운\)/).fill('# Hello\nThis is a snippet.')
 
-    await page.getByRole('button', { name: /^save$/i }).click()
-    await expect(page.getByText(/skill created/i)).toBeVisible()
+    await page.getByRole('button', { name: '저장' }).click()
+    await expect(page.getByText('스킬이 생성되었습니다')).toBeVisible()
     await expect(page.getByText('Greeting snippet')).toBeVisible()
   })
 })

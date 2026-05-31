@@ -1,10 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { EmptyState } from '@/components/shared/empty-state'
+import { DomainIcon } from '@/components/shared/icon'
 import { PageHeader } from '@/components/shared/page-header'
 import { MarketplaceCard, type PrimaryCta } from '@/components/marketplace/marketplace-card'
 import { MarketplaceFilterBar } from '@/components/marketplace/marketplace-filter-bar'
@@ -22,12 +22,12 @@ import type {
 
 type Tab = 'all' | 'skills' | 'agents' | 'mcp' | 'installed'
 
-const TABS: { value: Tab; labelKey: string; disabled?: boolean }[] = [
-  { value: 'all', labelKey: 'tabs.all' },
-  { value: 'skills', labelKey: 'tabs.skills' },
-  { value: 'agents', labelKey: 'tabs.agents', disabled: true },
-  { value: 'mcp', labelKey: 'tabs.mcp', disabled: true },
-  { value: 'installed', labelKey: 'tabs.installed' },
+const TABS: { value: Tab; labelKey: string; iconId: string; disabled?: boolean }[] = [
+  { value: 'all', labelKey: 'tabs.all', iconId: 'marketplace' },
+  { value: 'skills', labelKey: 'tabs.skills', iconId: 'skill' },
+  { value: 'agents', labelKey: 'tabs.agents', iconId: 'agent', disabled: true },
+  { value: 'mcp', labelKey: 'tabs.mcp', iconId: 'mcp', disabled: true },
+  { value: 'installed', labelKey: 'tabs.installed', iconId: 'package' },
 ]
 
 function resourceFilter(tab: Tab): MarketplaceResourceType | undefined {
@@ -104,6 +104,7 @@ export default function MarketplaceCatalogPage() {
                   tabOption.disabled && 'cursor-not-allowed opacity-50 hover:text-muted-foreground',
                 )}
               >
+                <DomainIcon iconId={tabOption.iconId} className="size-4 text-current" />
                 {t(tabOption.labelKey)}
               </button>
             )
@@ -123,7 +124,7 @@ export default function MarketplaceCatalogPage() {
                 <CardGridSkeleton />
               ) : !items || items.length === 0 ? (
                 <EmptyState
-                  icon={<SparklesIcon className="size-6" />}
+                  iconId="marketplace"
                   title={t('empty.title')}
                   description={t('empty.description')}
                 />
@@ -137,7 +138,7 @@ export default function MarketplaceCatalogPage() {
             </>
           ) : (
             <EmptyState
-              icon={<SparklesIcon className="size-6" />}
+              iconId={tab === 'agents' ? 'agent' : 'mcp'}
               title={t('comingSoon.title')}
               description={
                 tab === 'agents'
