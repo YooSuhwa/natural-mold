@@ -11,12 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type {
-  Decision,
-  Message,
-  SSEEvent,
-  StandardInterruptPayload,
-} from '@/lib/types'
+import type { Decision, Message, SSEEvent, StandardInterruptPayload } from '@/lib/types'
 import { useChatRuntime } from '../use-chat-runtime'
 
 // ── 가벼운 mocks ──────────────────────────────────────────────────────────
@@ -47,17 +42,13 @@ function createWrapper() {
     },
   })
   return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    )
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
 }
 
 /** Build an SSE stream with `message_start` → custom events → `message_end`.
  *  IDs are unique so streamGuard dedup never blocks our events. */
-function makeStreamFn(
-  customEvents: SSEEvent[],
-): (content: string) => AsyncGenerator<SSEEvent> {
+function makeStreamFn(customEvents: SSEEvent[]): (content: string) => AsyncGenerator<SSEEvent> {
   return async function* () {
     yield {
       event: 'message_start' as const,
@@ -79,9 +70,7 @@ function makeStreamFn(
 
 const STANDARD_PAYLOAD: StandardInterruptPayload = {
   interrupt_id: 'ns-1',
-  action_requests: [
-    { name: 'send_email', args: { to: 'x@y' }, description: 'Send' },
-  ],
+  action_requests: [{ name: 'send_email', args: { to: 'x@y' }, description: 'Send' }],
   review_configs: [
     {
       action_name: 'send_email',
@@ -127,9 +116,7 @@ afterEach(() => {
 describe('useChatRuntime — case "interrupt" 표준 경로', () => {
   it('표준 chunk가 도착하면 onStandardInterrupt가 1회 호출된다', async () => {
     const { onStandardInterrupt, options } = buildHookOptions({
-      events: [
-        { event: 'interrupt', data: STANDARD_PAYLOAD },
-      ],
+      events: [{ event: 'interrupt', data: STANDARD_PAYLOAD }],
     })
     const { result } = renderHook(() => useChatRuntime(options), {
       wrapper: createWrapper(),
@@ -145,9 +132,7 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
 
   it('표준 chunk가 도착하면 내부 tool UI 호출도 합성한다', async () => {
     const { options } = buildHookOptions({
-      events: [
-        { event: 'interrupt', data: STANDARD_PAYLOAD },
-      ],
+      events: [{ event: 'interrupt', data: STANDARD_PAYLOAD }],
     })
     const onMessagesCommit = vi.fn<(messages: Message[]) => void>()
     const { result } = renderHook(
@@ -185,6 +170,75 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
         },
       },
     ])
+  })
+
+  it('이미 stream에 나온 ask_user tool call에는 interrupt metadata만 병합한다', async () => {
+    const questionFlowPayload: StandardInterruptPayload = {
+      interrupt_id: 'ns-ask-user',
+      action_requests: [
+        {
+          name: 'ask_user',
+          args: {
+            mode: 'question_flow',
+            title: '에이전트 설정 확인',
+            questions: [
+              {
+                id: 'agent_name',
+                label: '에이전트 이름',
+                type: 'single_select',
+                options: [{ id: 'research', label: '리서치 에이전트' }],
+                required: true,
+              },
+            ],
+          },
+        },
+      ],
+      review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+    }
+    const { options } = buildHookOptions({
+      events: [
+        {
+          event: 'tool_call_start',
+          data: {
+            tool_name: 'ask_user',
+            parameters: questionFlowPayload.action_requests[0].args,
+          },
+        },
+        { event: 'interrupt', data: questionFlowPayload },
+      ],
+    })
+    const onMessagesCommit = vi.fn<(messages: Message[]) => void>()
+    const { result } = renderHook(
+      () =>
+        useChatRuntime({
+          ...options,
+          onMessagesCommit,
+        }),
+      {
+        wrapper: createWrapper(),
+      },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    await waitFor(() => expect(onMessagesCommit).toHaveBeenCalled())
+    const committed = onMessagesCommit.mock.calls.at(-1)?.[0] ?? []
+    const assistant = committed.find((message) => message.role === 'assistant')
+    expect(assistant?.tool_calls).toHaveLength(1)
+    expect(assistant?.tool_calls?.[0]).toMatchObject({
+      name: 'ask_user',
+      args: {
+        mode: 'question_flow',
+        title: '에이전트 설정 확인',
+        approval_id: 'ns-ask-user:0',
+        allowed_decisions: ['respond'],
+        hitl_interrupt_id: 'ns-ask-user',
+        hitl_action_index: 0,
+        hitl_total_actions: 1,
+      },
+    })
   })
 
   it('multi-action(action_requests.length >= 2) 표준 chunk는 한 번에 통째로 전달', async () => {
@@ -234,9 +288,7 @@ describe('useChatRuntime — case "interrupt" 표준 경로', () => {
       review_configs: [],
     }
     const { onStandardInterrupt, options } = buildHookOptions({
-      events: [
-        { event: 'interrupt', data: fallbackStd },
-      ],
+      events: [{ event: 'interrupt', data: fallbackStd }],
     })
     const { result } = renderHook(() => useChatRuntime(options), {
       wrapper: createWrapper(),
@@ -337,8 +389,6 @@ describe('useChatRuntime — onResumeDecisions', () => {
 
     const decisions: Decision[] = [{ type: 'approve' }]
     // throw 없이 즉시 resolve.
-    await expect(
-      result.current.onResumeDecisions(decisions),
-    ).resolves.toBeUndefined()
+    await expect(result.current.onResumeDecisions(decisions)).resolves.toBeUndefined()
   })
 })

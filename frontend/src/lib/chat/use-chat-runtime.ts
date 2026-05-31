@@ -58,6 +58,50 @@ function isMutationToolName(name: string | undefined): boolean {
   return MUTATION_PREFIXES.some((p) => name.startsWith(p))
 }
 
+const HITL_METADATA_KEYS = new Set([
+  'approval_id',
+  'allowed_decisions',
+  'hitl_interrupt_id',
+  'hitl_action_index',
+  'hitl_total_actions',
+])
+
+function stripHitLMetadata(args: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(args).filter(([key]) => !HITL_METADATA_KEYS.has(key)))
+}
+
+function equivalentToolArgs(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): boolean {
+  return JSON.stringify(stripHitLMetadata(left)) === JSON.stringify(stripHitLMetadata(right))
+}
+
+function appendInterruptToolCalls(
+  toolCalls: ToolCallInfo[],
+  syntheticToolCalls: ToolCallInfo[],
+): void {
+  for (const synthetic of syntheticToolCalls) {
+    let merged = false
+    if (synthetic.name === 'ask_user') {
+      for (let index = toolCalls.length - 1; index >= 0; index -= 1) {
+        const existing = toolCalls[index]
+        if (existing.name === synthetic.name && equivalentToolArgs(existing.args, synthetic.args)) {
+          toolCalls[index] = {
+            ...existing,
+            args: { ...existing.args, ...synthetic.args },
+          }
+          merged = true
+          break
+        }
+      }
+    }
+    if (!merged) {
+      toolCalls.push(synthetic)
+    }
+  }
+}
+
 /**
  * messages refetch 결과에 새 assistant 메시지가 도착했는지 판정.
  *
@@ -97,10 +141,7 @@ function messageSnapshot(message: Message): string {
   ].join('\u001f')
 }
 
-export function sameMessageSnapshot(
-  prev: readonly Message[],
-  next: readonly Message[],
-): boolean {
+export function sameMessageSnapshot(prev: readonly Message[], next: readonly Message[]): boolean {
   if (prev.length !== next.length) return false
   return prev.every((message, index) => {
     const other = next[index]
@@ -205,11 +246,7 @@ export function useChatRuntime({
   const lastInterruptIdRef = useRef<string | null>(null)
   const pendingHiTLCoordinatorRef = useRef<HiTLDecisionCoordinator | null>(null)
   const resumeHiTLDecisionRef = useRef<
-    (
-      decisions: Decision[],
-      displayText?: string,
-      interruptId?: string | null,
-    ) => Promise<void>
+    (decisions: Decision[], displayText?: string, interruptId?: string | null) => Promise<void>
   >(async () => {})
   // W3-out M5 — primary POST 응답 헤더 ``X-Run-Id`` 와 마지막 SSE event id.
   // GET ``/stream?run_id=&last_event_id=`` 재연결에 사용. stream 이 끝나거나
@@ -478,7 +515,7 @@ export function useChatRuntime({
               })
               const syntheticToolCalls = standardInterruptToToolCalls(data)
               if (syntheticToolCalls.length > 0) {
-                toolCalls.push(...syntheticToolCalls)
+                appendInterruptToolCalls(toolCalls, syntheticToolCalls)
                 toolCallsDirty = true
                 setStreamingMessages(buildStreamState())
               }

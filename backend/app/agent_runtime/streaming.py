@@ -105,15 +105,19 @@ def _interrupt_to_standard_chunk(
             "review_configs": intr_value["review_configs"],
         }
     if intr_value.get("type") == "ask_user":
-        question = intr_value.get("question") or ""
-        options = intr_value.get("options") or []
+        args = {key: value for key, value in intr_value.items() if key != "type"}
+        if "mode" not in args:
+            args = {
+                "question": args.get("question") or "",
+                "options": args.get("options") or [],
+            }
         return {
             "interrupt_id": intr_id,
             "action_requests": [
                 {
                     "id": intr_id or "ask_user",
                     "name": "ask_user",
-                    "args": {"question": question, "options": options},
+                    "args": args,
                     "type": "tool_call",
                 }
             ],

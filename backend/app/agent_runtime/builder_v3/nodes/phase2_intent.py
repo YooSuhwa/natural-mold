@@ -33,6 +33,7 @@ from app.agent_runtime.builder_v3.nodes._helpers import (
     ensure_todos,
     get_last_user_text,
     make_pending_tool_card,
+    parse_question_flow_response,
 )
 from app.agent_runtime.builder_v3.state import BuilderState
 
@@ -43,6 +44,102 @@ logger = logging.getLogger(__name__)
 _FALLBACK_NAMES = {"Custom Agent", "맞춤 에이전트", ""}
 
 _ASK_QUESTION = "만들고 싶은 에이전트의 이름을 무엇으로 하시겠습니까?"
+
+_TONE_OPTIONS = [
+    {"id": "friendly", "label": "친근하고 캐주얼한 어조"},
+    {"id": "professional", "label": "전문적으로"},
+    {"id": "concise", "label": "간결하게"},
+]
+_OUTPUT_STYLE_OPTIONS = [
+    {"id": "summary", "label": "간단한 요약과 주요 포인트"},
+    {"id": "detailed", "label": "자세한 설명"},
+    {"id": "checklist", "label": "체크리스트 중심"},
+]
+
+
+def _build_phase2_ask_user_payload(name_options: list[str]) -> dict[str, Any]:
+    """Phase 2 설정 확인을 ask_user question_flow payload로 만든다."""
+    cleaned_names = [name for name in name_options if name.strip()]
+    return {
+        "mode": "question_flow",
+        "title": "에이전트 설정 확인",
+        "questions": [
+            {
+                "id": "agent_name",
+                "label": "에이전트 이름",
+                "question": _ASK_QUESTION,
+                "type": "single_select",
+                "options": [{"id": name, "label": name} for name in cleaned_names],
+                "required": True,
+            },
+            {
+                "id": "response_tone",
+                "label": "답변 톤",
+                "type": "single_select",
+                "options": _TONE_OPTIONS,
+                "required": True,
+            },
+            {
+                "id": "output_style",
+                "label": "결과 스타일",
+                "type": "single_select",
+                "options": _OUTPUT_STYLE_OPTIONS,
+                "required": True,
+            },
+        ],
+    }
+
+
+def _option_label(options: list[dict[str, str]], option_id: str) -> str:
+    for option in options:
+        if option.get("id") == option_id:
+            return option.get("label", option_id)
+    return option_id
+
+
+def _selected_label(
+    question_id: str,
+    answers: dict[str, list[str]],
+    labels: dict[str, str],
+    *,
+    options: list[dict[str, str]] | None = None,
+) -> str:
+    label = labels.get(question_id, "").strip()
+    if label:
+        return label
+
+    selected = [value for value in answers.get(question_id, []) if value.strip()]
+    if not selected:
+        return ""
+    if options is None:
+        return selected[0]
+    return ", ".join(_option_label(options, value) for value in selected)
+
+
+def _phase2_selection_summary(
+    *,
+    name: str,
+    response_tone: str,
+    output_style: str,
+) -> str:
+    parts = [
+        f"에이전트 이름: {name}" if name else "",
+        f"답변 톤: {response_tone}" if response_tone else "",
+        f"결과 스타일: {output_style}" if output_style else "",
+    ]
+    return " | ".join(part for part in parts if part)
+
+
+def _fallback_name_options(state: BuilderState) -> list[str]:
+    intent = state.get("intent") or {}
+    candidates = [
+        str(intent.get("agent_name_ko") or "").strip(),
+        str(intent.get("agent_name") or "").strip(),
+        "검색 에이전트",
+        "도우미 봇",
+        "어시스턴트",
+    ]
+    return [name for name in candidates if name and name not in _FALLBACK_NAMES][:3]
 
 
 def _build_combined_request(state: BuilderState) -> str:
@@ -78,7 +175,7 @@ async def _suggest_name_options(user_request: str) -> list[str]:
     system = (
         "당신은 AI 에이전트 네이밍 전문가입니다. "
         "사용자의 요청을 보고 어울리는 에이전트 이름 3개를 한국어로 제시합니다. "
-        "JSON 배열 형식으로만 응답하세요. 예: [\"이름1\", \"이름2\", \"이름3\"]"
+        'JSON 배열 형식으로만 응답하세요. 예: ["이름1", "이름2", "이름3"]'
     )
     task = (
         f"사용자 요청: '{user_request}'\n\n"
@@ -122,11 +219,7 @@ async def phase2_analyze_intent(state: BuilderState) -> dict:
     # 단, last_revision_message가 set이면 (router로 phase 8에서 재진입한 경우)
     # 다시 LLM 분석 + ask_user 흐름으로 (intent_confirmed=False로 reset)
     intent_dict = state.get("intent")
-    if (
-        state.get("intent_confirmed")
-        and intent_dict
-        and not state.get("last_revision_message")
-    ):
+    if state.get("intent_confirmed") and intent_dict and not state.get("last_revision_message"):
         complete_msgs = build_phase_complete(
             2,
             ensure_todos(state),
@@ -166,10 +259,7 @@ async def phase2_analyze_intent(state: BuilderState) -> dict:
     # 사용자가 다른 이름을 원하면 Phase 8 router에서 phase 2로 점프 가능.
     msgs, tool_call_id = make_pending_tool_card(
         "ask_user",
-        {
-            "question": _ASK_QUESTION,
-            "options": name_options,
-        },
+        _build_phase2_ask_user_payload(name_options),
         intro_text="이제 사용자 의도를 분석하겠습니다.",
     )
 
@@ -177,6 +267,7 @@ async def phase2_analyze_intent(state: BuilderState) -> dict:
         "messages": msgs,
         # intent는 임시 저장 (intent_confirmed=False 상태)
         "intent": intent_obj.model_dump(mode="json"),
+        "phase2_name_options": name_options,
         "pending_tool_call_id": tool_call_id,
     }
 
@@ -188,14 +279,16 @@ async def phase2_analyze_intent(state: BuilderState) -> dict:
 
 async def phase2_intent_wait(state: BuilderState) -> dict:
     """interrupt 호출 → 응답 처리. dict만 반환, 라우팅은 graph.py 가 결정."""
+    name_options = state.get("phase2_name_options") or _fallback_name_options(state)
     answer = interrupt(
         {
             "type": "ask_user",
-            "question": _ASK_QUESTION,
+            **_build_phase2_ask_user_payload(name_options),
         }
     )
 
     answer_text = str(answer or "").strip()
+    structured_answers, structured_labels = parse_question_flow_response(answer)
     pending_tc_id = state.get("pending_tool_call_id")
 
     # 빈 응답 → intent_confirmed=False로 둠 (analyze 재진입)
@@ -208,15 +301,44 @@ async def phase2_intent_wait(state: BuilderState) -> dict:
         }
 
     intent_dict: dict[str, Any] = dict(state.get("intent") or {})
-    intent_dict["agent_name_ko"] = answer_text
-    if not intent_dict.get("agent_name") or intent_dict["agent_name"] in _FALLBACK_NAMES:
-        intent_dict["agent_name"] = answer_text
 
-    close_msgs = close_pending_tool_card(pending_tc_id, "ask_user", answer_text)
+    selected_name = _selected_label("agent_name", structured_answers, structured_labels)
+    selected_tone = _selected_label(
+        "response_tone",
+        structured_answers,
+        structured_labels,
+        options=_TONE_OPTIONS,
+    )
+    selected_style = _selected_label(
+        "output_style",
+        structured_answers,
+        structured_labels,
+        options=_OUTPUT_STYLE_OPTIONS,
+    )
+    receipt_text = _phase2_selection_summary(
+        name=selected_name,
+        response_tone=selected_tone,
+        output_style=selected_style,
+    )
+
+    if not selected_name:
+        selected_name = answer_text
+    if not receipt_text:
+        receipt_text = selected_name
+
+    intent_dict["agent_name_ko"] = selected_name
+    if not intent_dict.get("agent_name") or intent_dict["agent_name"] in _FALLBACK_NAMES:
+        intent_dict["agent_name"] = selected_name
+    if selected_tone:
+        intent_dict["response_tone"] = selected_tone
+    if selected_style:
+        intent_dict["output_style"] = selected_style
+
+    close_msgs = close_pending_tool_card(pending_tc_id, "ask_user", receipt_text)
     return {
         "intent": intent_dict,
         "intent_confirmed": True,
-        "messages": [*close_msgs, HumanMessage(content=answer_text)],
+        "messages": [*close_msgs, HumanMessage(content=receipt_text)],
         "last_revision_message": None,  # router로 들어왔던 revision 소비 완료
         "pending_tool_call_id": None,
     }

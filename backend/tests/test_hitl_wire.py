@@ -297,6 +297,57 @@ class TestInterruptToStandardChunk:
         assert "tool_name" not in review
         assert review["allowed_decisions"] == ["respond"]
 
+    def test_ask_user_native_preserves_extended_question_flow_args(self):
+        """native ask_user v2 payload는 mode/questions/title을 그대로 frontend로 전달."""
+        intr_value = {
+            "type": "ask_user",
+            "mode": "question_flow",
+            "title": "에이전트 설정 확인",
+            "questions": [
+                {
+                    "id": "tone",
+                    "label": "답변 톤",
+                    "type": "single_select",
+                    "options": [
+                        {"id": "concise", "label": "간결하게"},
+                        {"id": "detailed", "label": "자세하게"},
+                    ],
+                    "required": True,
+                }
+            ],
+        }
+
+        chunk = _interrupt_to_standard_chunk("ns-flow-1", intr_value)
+
+        assert chunk is not None
+        assert chunk["action_requests"][0]["args"] == {
+            "mode": "question_flow",
+            "title": "에이전트 설정 확인",
+            "questions": intr_value["questions"],
+        }
+
+    def test_ask_user_native_preserves_option_list_args(self):
+        """native ask_user option_list payload는 min/max 선택 제한을 유지한다."""
+        intr_value = {
+            "type": "ask_user",
+            "mode": "option_list",
+            "title": "사용할 도구를 선택하세요",
+            "minSelections": 1,
+            "maxSelections": 3,
+            "options": [{"id": "web", "label": "Web Search", "description": "최신 정보 검색"}],
+        }
+
+        chunk = _interrupt_to_standard_chunk("ns-options-1", intr_value)
+
+        assert chunk is not None
+        assert chunk["action_requests"][0]["args"] == {
+            "mode": "option_list",
+            "title": "사용할 도구를 선택하세요",
+            "minSelections": 1,
+            "maxSelections": 3,
+            "options": intr_value["options"],
+        }
+
     def test_unknown_shape_returns_none(self):
         """알 수 없는 dict shape은 skip (None)."""
         assert _interrupt_to_standard_chunk("ns", {"random": "stuff"}) is None
@@ -395,3 +446,29 @@ class TestAskUserFallbackResumeParser:
     def test_ask_user_falls_back_to_string_response(self):
         with patch("app.agent_runtime.tools.ask_user.interrupt", return_value="옵션 B"):
             assert ask_user.invoke({"question": "어느 쪽?"}) == "옵션 B"
+
+    def test_ask_user_accepts_question_flow_payload(self):
+        with patch("app.agent_runtime.tools.ask_user.interrupt", return_value="완료") as intr:
+            assert (
+                ask_user.invoke(
+                    {
+                        "mode": "question_flow",
+                        "title": "에이전트 설정 확인",
+                        "questions": [
+                            {
+                                "id": "tone",
+                                "label": "답변 톤",
+                                "type": "single_select",
+                                "options": [{"id": "concise", "label": "간결하게"}],
+                            }
+                        ],
+                    }
+                )
+                == "완료"
+            )
+
+        payload = intr.call_args.args[0]
+        assert payload["type"] == "ask_user"
+        assert payload["mode"] == "question_flow"
+        assert payload["title"] == "에이전트 설정 확인"
+        assert payload["questions"][0]["id"] == "tone"

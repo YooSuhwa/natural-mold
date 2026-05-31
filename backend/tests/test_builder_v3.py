@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
@@ -248,6 +250,83 @@ async def test_phase2_to_phase3_with_intent_confirmed_via_resume(monkeypatch):
         for m in msgs
     )
     assert has_recommendation, "Phase 3 recommendation_approval 카드가 emit되어야 함"
+
+
+@pytest.mark.asyncio
+async def test_phase2_question_flow_payload_and_structured_resume(monkeypatch):
+    """Phase 2 ask_user v2는 3개 이상 질문을 제공하고 JSON 응답을 intent에 반영한다."""
+    from app.agent_runtime.builder_v3 import graph as graph_module
+    from app.agent_runtime.builder_v3.nodes import phase2_intent
+    from app.schemas.builder import AgentCreationIntent
+
+    fake_intent = AgentCreationIntent(
+        agent_name="Research Agent",
+        agent_name_ko="리서치 에이전트",
+        agent_description="자료를 조사하고 정리하는 에이전트",
+        primary_task_type="자료 조사",
+        use_cases=["자료 조사"],
+    )
+
+    async def _fake_analyze(req: str):
+        return fake_intent
+
+    async def _fake_suggest(req: str):
+        return ["리서치봇", "조사도우미", "자료요약가"]
+
+    monkeypatch.setattr(phase2_intent, "analyze_intent", _fake_analyze)
+    monkeypatch.setattr(phase2_intent, "_suggest_name_options", _fake_suggest)
+
+    from app.agent_runtime.builder_v3.nodes import phase3_tools
+
+    async def _fake_recommend_tools(intent, catalog):
+        return []
+
+    monkeypatch.setattr(phase3_tools, "recommend_tools", _fake_recommend_tools)
+
+    saver = InMemorySaver()
+    compiled = graph_module.compile_graph(checkpointer=saver)
+    config = {"configurable": {"thread_id": "test-thread-question-flow"}}
+
+    result = await compiled.ainvoke(
+        {
+            "messages": [],
+            "user_request": "조사 에이전트를 만들어줘",
+            "session_id": "test-session-question-flow",
+            "current_phase": 1,
+            "tools_catalog": [],
+            "middlewares_catalog": [],
+            "default_model_name": "",
+        },
+        config=config,
+    )
+
+    interrupt_payload = next(
+        intr.value for intr in result["__interrupt__"] if isinstance(intr.value, dict)
+    )
+    assert interrupt_payload["type"] == "ask_user"
+    assert interrupt_payload["mode"] == "question_flow"
+    assert len(interrupt_payload["questions"]) >= 3
+
+    response = {
+        "mode": "question_flow",
+        "answers": {
+            "agent_name": ["리서치봇"],
+            "response_tone": ["professional"],
+            "output_style": ["detailed"],
+        },
+        "labels": {
+            "agent_name": "리서치봇",
+            "response_tone": "전문적으로",
+            "output_style": "자세한 설명",
+        },
+    }
+    await compiled.ainvoke(Command(resume=json.dumps(response, ensure_ascii=False)), config=config)
+
+    state = await compiled.aget_state(config)
+    assert state.values.get("intent_confirmed") is True
+    assert state.values["intent"]["agent_name_ko"] == "리서치봇"
+    assert state.values["intent"]["response_tone"] == "전문적으로"
+    assert state.values["intent"]["output_style"] == "자세한 설명"
 
 
 def test_phase8_error_routes_to_end_not_router():

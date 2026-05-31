@@ -155,6 +155,51 @@ def parse_choice_response(
     return "", ""
 
 
+def parse_question_flow_response(
+    response: Any,
+) -> tuple[dict[str, list[str]], dict[str, str]]:
+    """ask_user question_flow resume 응답 → (answers, labels) 정규화.
+
+    Frontend는 현재 ``respond(message)`` contract를 유지하기 위해 structured
+    selection을 JSON string으로 보낸다. Builder wait 노드는 이 값을 복원하고,
+    legacy plain string 응답은 빈 structured 응답으로 돌려 backward compatibility를
+    유지한다.
+    """
+    if isinstance(response, str):
+        stripped = response.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, dict):
+                    response = parsed
+            except (json.JSONDecodeError, ValueError):
+                return {}, {}
+
+    if not isinstance(response, dict) or response.get("mode") != "question_flow":
+        return {}, {}
+
+    answers_raw = response.get("answers")
+    labels_raw = response.get("labels")
+
+    answers: dict[str, list[str]] = {}
+    if isinstance(answers_raw, dict):
+        for key, value in answers_raw.items():
+            if isinstance(value, list):
+                answers[str(key)] = [str(item) for item in value if item is not None]
+            elif value is not None:
+                answers[str(key)] = [str(value)]
+
+    labels: dict[str, str] = {}
+    if isinstance(labels_raw, dict):
+        for key, value in labels_raw.items():
+            if isinstance(value, list):
+                labels[str(key)] = ", ".join(str(item) for item in value if item is not None)
+            elif value is not None:
+                labels[str(key)] = str(value)
+
+    return answers, labels
+
+
 def build_approval_result(
     *,
     state: BuilderState,
