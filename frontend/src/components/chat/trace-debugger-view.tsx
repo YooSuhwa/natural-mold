@@ -280,8 +280,7 @@ function RunInfoPanel({
   traces: DebugTraceSummary[]
   spans: TraceSpan[]
 }) {
-  const errorCount = spans.filter((span) => span.status === 'error' || span.status === 'failed')
-    .length
+  const errorCount = spans.filter((span) => span.status === 'error').length
   const toolCount = spans.filter((span) => span.type === 'tool_execution').length
   const llmCount = spans.filter((span) => span.type === 'llm_call').length
   const failed = traces.some((trace) => trace.status === 'failed')
