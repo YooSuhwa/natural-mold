@@ -54,6 +54,41 @@ useEffect(() => {
 
 이 패턴은 `components/{credential,skill,tool,mcp}/*-detail-dialog.tsx`와 `shared/base-detail-dialog.tsx`에서 사용 중.
 
+## Playwright E2E 인증 세션 규칙
+
+E2E 테스트에서 로그인 때문에 실패가 반복될 때, 각 spec/test가 로그인 폼을 직접
+통과하게 만들지 않는다. 표준 방식은 **Playwright global setup에서 한 번 API
+로그인 세션을 만들고 `storageState`로 모든 브라우저 컨텍스트에 주입**하는 것이다.
+
+권장 구조:
+
+- `e2e/global-setup.mjs`에서 테스트 시작 전에 `/api/auth/login` 호출
+- E2E 전용 계정은 환경 변수로 받는다. 권장 이름은
+  `E2E_USER_EMAIL`, `E2E_USER_PASSWORD`이며, 로컬 dev/test에서만 안전한
+  기본값을 둘 수 있다. 운영/공유 staging 계정 비밀번호를 repo에 하드코딩하지 않는다
+- 로그인 실패 시 같은 E2E 계정으로 `/api/auth/register` 시도; 이미 존재하면
+  `409` 이후 다시 로그인
+- 로그인 성공 후 `api.storageState({ path: './e2e/.auth/user.json' })`로
+  HttpOnly auth cookie와 CSRF cookie가 포함된 세션 저장
+- `playwright.config.ts`에서 `globalSetup`과
+  `use.storageState: './e2e/.auth/user.json'`를 등록해 모든 페이지 테스트가
+  로그인된 상태로 시작
+- `PW_SKIP_BACKEND=1` mock-only 모드에서는 global setup이 가짜
+  `moldy_rt`, `moldy_csrf` cookie를 저장하고, `e2e/fixtures.ts`가
+  `/api/auth/me`를 E2E 유저로 mock
+- `APIRequestContext`로 직접 생성/수정하는 smoke 테스트는 API 로그인 응답의
+  `csrf_token`을 받아 mutation 요청에 `X-CSRF-Token` header로 넣는다
+
+E2E auth failure를 고칠 때 먼저 확인할 것:
+
+- global setup이 같은 E2E 계정으로 login → register fallback → login 순서를 타는지
+- `playwright.config.ts`에 `globalSetup`과 `storageState`가 살아있는지
+- `e2e/.auth/user.json`은 생성 산출물이므로 커밋하지 않는지
+- 테스트가 로그인 페이지 UI에 의존하지 않고 `/` 진입 시 바로 dashboard/authenticated
+  shell을 기대하는지
+- mock-only 테스트가 `PW_SKIP_BACKEND=1`에서 `/api/auth/me`를 mock하고 있는지
+- CSRF가 필요한 API 직접 호출에 `X-CSRF-Token`이 포함되어 있는지
+
 ## 디자인 토큰 + DialogShell
 
 다이얼로그를 신설/마이그레이션할 때:

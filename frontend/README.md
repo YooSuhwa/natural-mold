@@ -1,36 +1,62 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Moldy Frontend
 
-## Getting Started
+Next.js 16 + React 19 기반 Moldy 웹 클라이언트입니다. 전체 프로젝트 세팅은
+루트 [`README.md`](../README.md)를 먼저 참고하세요.
 
-First, run the development server:
+## 빠른 시작
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+cp .env.example .env.local
+pnpm dev -- --port 3000
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`NEXT_PUBLIC_API_BASE_URL`은 실제 backend 포트를 가리켜야 합니다. 기본값은
+`http://localhost:8001`입니다.
 
-This project uses [`next/font/local`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to load the local Pretendard variable font.
+## Worktree 포트/CORS
 
-## Learn More
+frontend 포트가 바뀌면 backend의 `CORS_ALLOWED_ORIGINS`도 같은 origin을 허용해야
+합니다. 예: frontend `3010`, backend `8010`.
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# backend
+cd ../backend
+CORS_ALLOWED_ORIGINS=http://localhost:3010,http://127.0.0.1:3010 \
+  uv run uvicorn app.main:app --reload --reload-dir app --port 8010
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# frontend
+cd ../frontend
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8010 pnpm dev -- --port 3010
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Next.js가 포트 충돌로 자동 선택한 포트를 그대로 쓰면 CORS/cookie/CSRF가 어긋날 수
+있으므로 `--port`로 고정하세요.
 
-## Deploy on Vercel
+## 테스트
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+pnpm lint
+pnpm exec tsc --noEmit
+pnpm test --run
+pnpm build
+pnpm test:e2e
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Playwright E2E 인증
+
+E2E는 각 테스트가 로그인 폼을 반복해서 통과하지 않고, global setup에서 한 번 API
+로그인 세션을 만들어 `storageState`로 주입하는 방식을 사용합니다.
+
+`frontend/.env.example`의 테스트 계정 값을 필요하면 로컬/CI에서 덮어씁니다:
+
+```env
+E2E_USER_EMAIL=e2e@moldy.local
+E2E_USER_PASSWORD=e2e-password-change-me
+```
+
+권장 흐름은 `login → register fallback → login → e2e/.auth/user.json 저장`입니다.
+`e2e/.auth/`는 생성 산출물이므로 커밋하지 않습니다. `PW_SKIP_BACKEND=1`은
+모든 `/api/*` 요청을 mock하는 spec에서만 사용하세요.
