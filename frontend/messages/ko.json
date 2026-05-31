@@ -1304,9 +1304,11 @@
       "title": "도구",
       "description": "카탈로그에서 도구를 골라 추가하거나, 이미 등록한 도구를 관리하세요.",
       "viewMode": "도구 보기 모드",
+      "count": "{count}개",
       "tabs": {
         "catalog": "카탈로그",
-        "manage": "관리 ({count})"
+        "manage": "관리",
+        "installed": "설치됨"
       },
       "columns": {
         "name": "이름",
@@ -1452,11 +1454,14 @@
         "automation": "자동화"
       },
       "searchPlaceholder": "도구 검색",
+      "count": "{count}개",
       "empty": {
         "title": "조건에 맞는 도구가 없어요",
         "description": "다른 카테고리나 검색어를 시도해 보세요."
       },
-      "requiresCredential": "자격증명 필요"
+      "requiresCredential": "자격증명 필요",
+      "selectAction": "선택",
+      "manageAction": "관리"
     },
     "mcpServer": {
       "toolCount": "{count}개 도구",

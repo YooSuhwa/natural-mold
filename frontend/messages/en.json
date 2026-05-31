@@ -1325,9 +1325,11 @@
       "title": "Tools",
       "description": "Manage tools agents can use, including built-ins, custom tools, and MCP tools.",
       "viewMode": "View Mode",
+      "count": "{count} tools",
       "tabs": {
         "catalog": "Catalog",
-        "manage": "Manage ({count})"
+        "manage": "Manage",
+        "installed": "Installed"
       },
       "columns": {
         "name": "Name",
@@ -1473,11 +1475,14 @@
         "automation": "Automation"
       },
       "searchPlaceholder": "Search Placeholder",
+      "count": "{count} tools",
       "empty": {
         "title": "Empty",
         "description": "No tools match the current filters."
       },
-      "requiresCredential": "Requires Credential"
+      "requiresCredential": "Requires Credential",
+      "selectAction": "Select",
+      "manageAction": "Manage"
     },
     "mcpServer": {
       "toolCount": "{count} tools",

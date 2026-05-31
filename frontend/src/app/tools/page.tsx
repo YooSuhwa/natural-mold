@@ -1,39 +1,44 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import type { ColumnDef } from '@tanstack/react-table'
 import { Plus, Wrench } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
-import { PageHeader } from '@/components/shared/page-header'
-import { DataTable } from '@/components/ui/data-table'
-import { DomainIcon } from '@/components/shared/icon'
-import { StatusChip } from '@/components/shared/status-chip'
 import { EmptyState } from '@/components/shared/empty-state'
-import { ToolCatalog } from '@/components/tool/tool-catalog'
+import { SearchInput } from '@/components/shared/search-input'
+import {
+  CountedLineTabs,
+  ResourcePage,
+  ResourcePanel,
+  ResourceToolbar,
+} from '@/components/shared/resource-layout'
+import { InstalledToolCatalog, ToolCatalog } from '@/components/tool/tool-catalog'
 import { ToolCreateDialog } from '@/components/tool/tool-create-dialog'
 import { ToolDetailDialog } from '@/components/tool/tool-detail-dialog'
-import { cn } from '@/lib/utils'
 import { useTools, useToolTypes } from '@/lib/hooks/use-tools'
 import { useCredentials } from '@/lib/hooks/use-credentials'
-import type { ToolDefinition, ToolInstance } from '@/lib/types/tool'
+import type { ToolDefinition } from '@/lib/types/tool'
 
-type Tab = 'catalog' | 'manage'
-
-function formatDate(value: string | null): string {
-  if (!value) return '—'
-  return new Date(value).toLocaleString()
-}
+const ALL_TAB = 'all'
+const INSTALLED_TAB = 'installed'
 
 export default function ToolsPage() {
   const t = useTranslations('tool.page')
-  const { data: tools, isLoading } = useTools()
-  const { data: definitions } = useToolTypes()
+  const tCatalog = useTranslations('tool.catalog')
+  const { data: tools, isLoading: isToolsLoading } = useTools()
+  const { data: definitions, isLoading: isDefinitionsLoading } = useToolTypes()
   const { data: credentials } = useCredentials()
-  const [tab, setTab] = useState<Tab>('catalog')
+  const [activeTab, setActiveTab] = useState<string>(ALL_TAB)
+  const [search, setSearch] = useState('')
   const [pickedDefinition, setPickedDefinition] = useState<ToolDefinition | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
+
+  const categories = useMemo(() => {
+    const set = new Set<string>()
+    definitions?.forEach((d) => set.add(d.category || 'general'))
+    return [ALL_TAB, ...Array.from(set).sort(), INSTALLED_TAB]
+  }, [definitions])
 
   const definitionLabels = useMemo(() => {
     const m = new Map<string, ToolDefinition>()
@@ -47,136 +52,133 @@ export default function ToolsPage() {
     return m
   }, [credentials])
 
-  const columns = useMemo<ColumnDef<ToolInstance>[]>(
-    () => [
-      {
-        id: 'name',
-        accessorKey: 'name',
-        header: t('columns.name'),
-        cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
-      },
-      {
-        id: 'definition_key',
-        accessorKey: 'definition_key',
-        header: t('columns.type'),
-        cell: ({ row }) => {
-          const def = definitionLabels.get(row.original.definition_key)
-          return (
-            <span className="inline-flex items-center gap-2">
-              <DomainIcon iconId={def?.icon_id ?? row.original.definition_key} className="size-4" />
-              <span>{def?.display_name ?? row.original.definition_key}</span>
-            </span>
-          )
-        },
-      },
-      {
-        id: 'credential',
-        header: t('columns.credential'),
-        cell: ({ row }) => {
-          const id = row.original.credential_id
-          if (!id) return <span className="text-xs text-muted-foreground">—</span>
-          const status = credentialMap.get(id) ?? 'unknown'
-          return <StatusChip variant={status} />
-        },
-      },
-      {
-        id: 'enabled',
-        accessorKey: 'enabled',
-        header: t('columns.status'),
-        cell: ({ row }) => <StatusChip variant={row.original.enabled ? 'active' : 'disabled'} />,
-      },
-      {
-        id: 'last_used_at',
-        accessorKey: 'last_used_at',
-        header: t('columns.lastUsed'),
-        cell: ({ row }) => (
-          <span className="text-xs text-muted-foreground">
-            {formatDate(row.original.last_used_at)}
-          </span>
-        ),
-      },
-    ],
-    [definitionLabels, credentialMap, t],
-  )
+  const normalizedSearch = search.trim().toLowerCase()
 
-  const tabs: { value: Tab; label: string }[] = [
-    { value: 'catalog', label: t('tabs.catalog') },
-    { value: 'manage', label: t('tabs.manage', { count: tools?.length ?? 0 }) },
-  ]
+  const filteredTools = useMemo(() => {
+    if (!tools) return []
+    if (!normalizedSearch) return tools
+    return tools.filter((tool) => {
+      const definition = definitionLabels.get(tool.definition_key)
+      return [
+        tool.name,
+        tool.description,
+        tool.definition_key,
+        definition?.display_name,
+        definition?.description,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalizedSearch))
+    })
+  }, [definitionLabels, normalizedSearch, tools])
+
+  function formatTabLabel(value: string): string {
+    if (value === INSTALLED_TAB) return t('tabs.installed')
+    if (
+      value === 'all' ||
+      value === 'general' ||
+      value === 'search' ||
+      value === 'productivity' ||
+      value === 'communication' ||
+      value === 'automation'
+    ) {
+      return tCatalog(`categories.${value}`)
+    }
+    return value
+  }
+
+  function countDefinitions(value: string): number {
+    if (!definitions) return 0
+    return definitions.filter((definition) => {
+      if (value !== ALL_TAB && (definition.category || 'general') !== value) return false
+      if (!normalizedSearch) return true
+      return (
+        definition.display_name.toLowerCase().includes(normalizedSearch) ||
+        definition.description.toLowerCase().includes(normalizedSearch) ||
+        definition.key.toLowerCase().includes(normalizedSearch)
+      )
+    }).length
+  }
+
+  const tabs = categories.map((value) => ({
+    value,
+    label: formatTabLabel(value),
+    countLabel: t('count', {
+      count: value === INSTALLED_TAB ? filteredTools.length : countDefinitions(value),
+    }),
+  }))
+
+  const isInstalledTab = activeTab === INSTALLED_TAB
+  const hasInstalledTools = (tools ?? []).length > 0
 
   return (
-    <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
-      <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
-        <PageHeader
-          title={t('title')}
-          description={t('description')}
-        />
+    <ResourcePage title={t('title')} description={t('description')}>
+      <ResourcePanel>
+        <ResourcePanel.Toolbar>
+          <CountedLineTabs
+            ariaLabel={t('viewMode')}
+            value={activeTab}
+            tabs={tabs}
+            onValueChange={setActiveTab}
+          />
+          <ResourceToolbar>
+            <SearchInput
+              containerClassName="flex-1 sm:max-w-[360px]"
+              placeholder={t('searchPlaceholder')}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </ResourceToolbar>
+        </ResourcePanel.Toolbar>
 
-        <div
-          role="tablist"
-          aria-label={t('viewMode')}
-          className="inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/60 p-1"
-        >
-          {tabs.map((t) => {
-            const isActive = tab === t.value
-            return (
-              <button
-                key={t.value}
-                type="button"
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => setTab(t.value)}
-                className={cn(
-                  'inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors',
-                  isActive
-                    ? 'bg-background font-semibold text-foreground shadow-sm'
-                    : 'font-medium text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {t.label}
-              </button>
+        <ResourcePanel.Body className="bg-background/30">
+          {isInstalledTab ? (
+            !isToolsLoading && filteredTools.length === 0 ? (
+              <EmptyState
+                icon={<Wrench className="size-6" />}
+                title={hasInstalledTools ? t('empty.filtered') : t('empty.title')}
+                description={hasInstalledTools ? undefined : t('empty.description')}
+                className="bg-card/50"
+                action={
+                  hasInstalledTools ? undefined : (
+                    <Button onClick={() => setActiveTab(ALL_TAB)}>
+                      <Plus className="size-4" />
+                      {t('empty.action')}
+                    </Button>
+                  )
+                }
+              />
+            ) : (
+              <InstalledToolCatalog
+                tools={filteredTools}
+                definitions={definitions}
+                credentialStatuses={credentialMap}
+                isLoading={isToolsLoading}
+                onOpen={(tool) => setDetailId(tool.id)}
+              />
             )
-          })}
-        </div>
+          ) : (
+            <ToolCatalog
+              category={activeTab}
+              definitions={definitions}
+              isLoading={isDefinitionsLoading}
+              search={search}
+              onPick={setPickedDefinition}
+            />
+          )}
+        </ResourcePanel.Body>
+      </ResourcePanel>
 
-        {tab === 'catalog' ? (
-          <ToolCatalog onPick={setPickedDefinition} />
-        ) : !isLoading && (tools ?? []).length === 0 ? (
-          <EmptyState
-            icon={<Wrench className="size-6" />}
-            title={t('empty.title')}
-            description={t('empty.description')}
-            action={
-              <Button onClick={() => setTab('catalog')}>
-                <Plus className="size-4" />
-                {t('empty.action')}
-              </Button>
-            }
-          />
-        ) : (
-          <DataTable
-            columns={columns}
-            data={tools ?? []}
-            loading={isLoading}
-            searchable
-            searchPlaceholder={t('searchPlaceholder')}
-            onRowClick={(row) => setDetailId(row.id)}
-            emptyTitle={t('empty.filtered')}
-          />
-        )}
-
-        <ToolCreateDialog
-          definition={pickedDefinition}
-          open={!!pickedDefinition}
-          onOpenChange={(open) => !open && setPickedDefinition(null)}
-          onCreated={() => setTab('manage')}
-        />
-        <ToolDetailDialog
-          toolId={detailId}
-          open={!!detailId}
-          onOpenChange={(open) => !open && setDetailId(null)}
-        />
-      </div>
-    </div>
+      <ToolCreateDialog
+        definition={pickedDefinition}
+        open={!!pickedDefinition}
+        onOpenChange={(open) => !open && setPickedDefinition(null)}
+        onCreated={() => setActiveTab(INSTALLED_TAB)}
+      />
+      <ToolDetailDialog
+        toolId={detailId}
+        open={!!detailId}
+        onOpenChange={(open) => !open && setDetailId(null)}
+      />
+    </ResourcePage>
   )
 }

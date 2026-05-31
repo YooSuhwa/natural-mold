@@ -64,6 +64,30 @@ async def test_tool_types_catalog(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_tool_display_names_fit_korean_ui(client: AsyncClient) -> None:
+    response = await client.get("/api/tool-types")
+    assert response.status_code == 200
+    names = {item["key"]: item["display_name"] for item in response.json()}
+    assert all("—" not in name for name in names.values())
+    expected = {
+        "http_request": "HTTP 요청",
+        "gmail_send": "Gmail 보내기",
+        "google_calendar_event": "Google 캘린더",
+        "google_search_web": "Google 웹 검색",
+        "google_search_image": "Google 이미지 검색",
+        "google_search_news": "Google 뉴스 검색",
+        "naver_search_blog": "네이버 블로그 검색",
+        "naver_search_news": "네이버 뉴스 검색",
+        "naver_search_image": "네이버 이미지 검색",
+        "naver_search_shop": "네이버 쇼핑 검색",
+        "naver_search_local": "네이버 지역 검색",
+    }
+    for key, display_name in expected.items():
+        assert names[key] == display_name
+    assert names["google_chat_message"] == "Google Chat"
+
+
+@pytest.mark.asyncio
 async def test_tool_type_detail_carries_parameters(client: AsyncClient) -> None:
     response = await client.get("/api/tool-types/http_request")
     assert response.status_code == 200

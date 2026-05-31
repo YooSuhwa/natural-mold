@@ -65,7 +65,7 @@ async def _runner(ctx: ToolRunContext) -> dict[str, Any]:
 
 definition = ToolDefinition(
     key="google_calendar_event",
-    display_name="Google Calendar — Create Event",
+    display_name="Google 캘린더",
     description="Create a Google Calendar event using a Workspace OAuth2 credential.",
     icon_id="calendar",
     category="calendar",

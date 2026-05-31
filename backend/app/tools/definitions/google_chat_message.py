@@ -43,7 +43,7 @@ async def _runner(ctx: ToolRunContext) -> dict[str, Any]:
 
 definition = ToolDefinition(
     key="google_chat_message",
-    display_name="Google Chat — Send Message",
+    display_name="Google Chat",
     description=(
         "Post a message to a Google Chat space via incoming webhook. The "
         "webhook URL may be supplied inline or stored as an HTTP credential."
