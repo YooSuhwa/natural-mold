@@ -81,9 +81,9 @@ pnpm dev
 # → http://localhost:3000
 ```
 
-서버 시작 시 기본 모델(GPT-5.5, Claude Sonnet 4.6, Gemini 등) + 시스템 도구
-+ 에이전트 템플릿이 자동 시드됩니다. 단, **에이전트를 만들고 쓰려면 아래 운영자
-초기 설정이 필요**합니다.
+서버 시작 시 기본 모델(GPT-5.5, Claude Sonnet 4.6, Gemini 등), 시스템 도구,
+에이전트 템플릿, 로컬 Playwright E2E 계정이 자동 시드됩니다. 단,
+**에이전트를 만들고 쓰려면 아래 운영자 초기 설정이 필요**합니다.
 
 ### 서버 기동 후 초기 설정 (운영자)
 
@@ -172,7 +172,17 @@ pnpm test:e2e                         # Playwright E2E
 
 E2E는 테스트마다 로그인 폼을 통과하지 않고, Playwright global setup에서 한 번 API
 로그인 세션을 만든 뒤 `storageState`를 모든 브라우저 컨텍스트에 주입하는 방식을
-사용합니다. frontend 환경 파일에는 전용 테스트 계정을 둡니다:
+사용합니다. `backend/.env.example`은 로컬 개발용으로 `E2E_SEED_USER_ENABLED=true`를
+켜 두며, 백엔드 시작 시 아래 더미 super_user를 DB에 생성하거나 갱신합니다.
+`APP_ENV=production`에서는 이 seed가 자동으로 스킵됩니다.
+
+```bash
+E2E_USER_EMAIL=playwright-e2e@moldy.dev
+E2E_USER_PASSWORD=correct horse battery staple 42
+E2E_USER_NAME=E2E User
+```
+
+frontend 환경 파일도 같은 전용 테스트 계정 값을 사용합니다:
 
 ```bash
 cd frontend
@@ -189,6 +199,13 @@ pnpm test:e2e
 > **Pre-push hook**: `git push` 시점에 `.husky/pre-push`가 backend pytest +
 > frontend vitest를 자동 실행하여 회귀가 push되지 않도록 차단합니다. 우회는
 > `git push --no-verify` (WIP 브랜치 한정).
+
+### Tavily + Deep Research 계획
+
+Tavily hosted search tool과 Deep Research marketplace skill 통합 계획은
+`docs/superpowers/plans/2026-05-31-deep-research-tavily.md`에 정리되어 있습니다.
+계획의 핵심은 `TAVILY_API_KEY`를 backend `.env`에 두고, Deep Research skill이
+`tavily_search`를 런타임 의존성으로 자동 주입받게 하는 것입니다.
 
 ## 📸 Screenshots
 
