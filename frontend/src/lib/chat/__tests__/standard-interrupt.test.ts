@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Decision, StandardInterruptPayload } from '@/lib/types'
-import {
-  createHiTLDecisionCoordinator,
-  standardInterruptToToolCalls,
-} from '../standard-interrupt'
+import { createHiTLDecisionCoordinator, standardInterruptToToolCalls } from '../standard-interrupt'
 
 describe('standardInterruptToToolCalls', () => {
   it('maps ask_user respond-only action into the ask_user tool UI args', () => {
@@ -33,6 +30,38 @@ describe('standardInterruptToToolCalls', () => {
         },
       },
     ])
+  })
+
+  it('preserves extended ask_user args for question_flow mode', () => {
+    const payload: StandardInterruptPayload = {
+      interrupt_id: 'intr-flow',
+      action_requests: [
+        {
+          name: 'ask_user',
+          args: {
+            mode: 'question_flow',
+            title: '에이전트 설정 확인',
+            questions: [
+              {
+                id: 'tone',
+                label: '답변 톤',
+                type: 'single_select',
+                options: [{ id: 'concise', label: '간결하게' }],
+                required: true,
+              },
+            ],
+          },
+        },
+      ],
+      review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+    }
+
+    expect(standardInterruptToToolCalls(payload)[0]?.args).toMatchObject({
+      mode: 'question_flow',
+      title: '에이전트 설정 확인',
+      questions: payload.action_requests[0]?.args.questions,
+      hitl_interrupt_id: 'intr-flow',
+    })
   })
 
   it('maps approval actions into synthetic request_approval tool UI args', () => {
@@ -107,10 +136,7 @@ describe('createHiTLDecisionCoordinator', () => {
 
     expect(resume).toHaveBeenCalledTimes(1)
     expect(resume).toHaveBeenCalledWith(
-      [
-        { type: 'approve' },
-        { type: 'reject', message: '아니요' },
-      ],
+      [{ type: 'approve' }, { type: 'reject', message: '아니요' }],
       '승인 | 거부',
       'intr-multi',
     )

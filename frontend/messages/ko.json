@@ -995,7 +995,14 @@
       "confirm": "확인",
       "expiresIn": "남은 시간",
       "expired": "만료됨",
-      "autoSkipped": "시간 초과로 건너뜀"
+      "autoSkipped": "시간 초과로 건너뜀",
+      "stepStatus": "{current}/{total} 단계",
+      "back": "이전",
+      "next": "다음",
+      "complete": "완료",
+      "clear": "초기화",
+      "selectionRange": "{min}개 이상 {max}개 이하 선택",
+      "confirmSelection": "선택 확인 ({count})"
     },
     "clarifying": {
       "directInput": "직접 입력",

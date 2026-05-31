@@ -8,16 +8,22 @@ import { cn, toggleSetItem } from '@/lib/utils'
 import { toRespond } from '@/lib/chat/decision-mappers'
 import { useHiTL } from '@/lib/chat/hitl-context'
 import { useApprovalDeadline } from '@/lib/hooks/use-approval-deadline'
-import type { UserInputQuestion } from '@/lib/types'
+import type { UserInputOption, UserInputQuestion } from '@/lib/types'
 import { CountdownBadge } from './countdown-badge'
+import { QuestionFlowCard } from './question-flow-card'
+import { OptionListCard } from './option-list-card'
 
 interface AskUserArgs {
+  mode?: 'question_flow' | 'option_list'
+  title?: string
   /** 복수 질문 */
   questions?: UserInputQuestion[]
   /** 단일 질문 폴백 */
   question?: string
   type?: UserInputQuestion['type']
-  options?: UserInputQuestion['options']
+  options?: Array<string | UserInputOption>
+  minSelections?: number
+  maxSelections?: number
   /** 입력 만료 timeout (초) — 미지정 시 5분 */
   timeout_seconds?: number
   /** 입력 식별자 — deadline 리셋 키로 사용 */
@@ -131,9 +137,46 @@ function TextInput({
   )
 }
 
+function formatStructuredResult(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return null
+  const payload = value as {
+    mode?: unknown
+    labels?: unknown
+  }
+
+  if (payload.mode === 'option_list' && Array.isArray(payload.labels)) {
+    return payload.labels.map(String).join(', ')
+  }
+
+  if (payload.mode === 'question_flow' && typeof payload.labels === 'object' && payload.labels) {
+    return Object.values(payload.labels)
+      .map((label) => (Array.isArray(label) ? label.map(String).join(', ') : String(label)))
+      .filter(Boolean)
+      .join(' | ')
+  }
+
+  return null
+}
+
+export function formatUserInputResult(result: unknown): string {
+  if (typeof result === 'string') {
+    const trimmed = result.trim()
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown
+        return formatStructuredResult(parsed) ?? result
+      } catch {
+        return result
+      }
+    }
+    return result
+  }
+  return formatStructuredResult(result) ?? JSON.stringify(result)
+}
+
 function CompletedBadge({ result }: { result: unknown }) {
   const t = useTranslations('chat.userInput')
-  const display = typeof result === 'string' ? result : JSON.stringify(result)
+  const display = formatUserInputResult(result)
   return (
     <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs dark:border-emerald-900 dark:bg-emerald-950">
       <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500" />
@@ -146,9 +189,7 @@ function CompletedBadge({ result }: { result: unknown }) {
 }
 
 /** string[] → {label}[] 변환 */
-function normalizeOptions(
-  options?: (string | { label: string; description?: string })[],
-): UserInputQuestion['options'] {
+function normalizeOptions(options?: Array<string | UserInputOption>): UserInputQuestion['options'] {
   if (!options || options.length === 0) return undefined
   return options.map((o) => (typeof o === 'string' ? { label: o } : o))
 }
@@ -158,18 +199,23 @@ function normalizeQuestions(args: AskUserArgs): UserInputQuestion[] {
   if (args.questions && args.questions.length > 0) {
     return args.questions.map((q) => ({
       ...q,
-      options: normalizeOptions(q.options as (string | { label: string })[]),
+      question: q.question ?? q.label ?? q.id ?? '',
+      label: q.label ?? q.question ?? q.id,
+      options: normalizeOptions(q.options),
       type: q.type ?? (q.options?.length ? 'single_select' : 'text'),
+      required: q.required ?? true,
     }))
   }
   if (args.question) {
-    const opts = normalizeOptions(args.options as (string | { label: string })[] | undefined)
+    const opts = normalizeOptions(args.options)
     return [
       {
         question: args.question,
+        label: args.question,
         // options가 있으면 자동으로 single_select
         type: args.type ?? (opts?.length ? 'single_select' : 'text'),
         options: opts,
+        required: true,
       },
     ]
   }
@@ -183,8 +229,10 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     const hitl = useHiTL()
     const [answers, setAnswers] = useState<Answers>({})
     const [submitState, setSubmitState] = useState<'idle' | 'submitting' | 'submitted'>('idle')
+    const [submittedDisplay, setSubmittedDisplay] = useState<string | null>(null)
 
     const questions = useMemo(() => normalizeQuestions(args ?? {}), [args])
+    const optionListOptions = useMemo(() => normalizeOptions(args?.options) ?? [], [args?.options])
     const submitDecision = useCallback(
       async (decision: ReturnType<typeof toRespond>, displayText?: string) => {
         if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
@@ -194,6 +242,16 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
         await hitl?.onResumeDecisions([decision], displayText)
       },
       [args?.hitl_action_index, hitl],
+    )
+
+    const submitResponse = useCallback(
+      async (message: string, displayText: string) => {
+        setSubmitState('submitting')
+        setSubmittedDisplay(displayText)
+        await submitDecision(toRespond(message), displayText)
+        setSubmitState('submitted')
+      },
+      [submitDecision],
     )
 
     // 입력 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
@@ -212,11 +270,12 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
         // 응답 직렬화
         const response: Record<string, unknown> = {}
         questions.forEach((q, i) => {
+          const key = q.question ?? q.label ?? q.id ?? `question_${i + 1}`
           const val = answers[i]
           if (val instanceof Set) {
-            response[q.question] = Array.from(val)
+            response[key] = Array.from(val)
           } else {
-            response[q.question] = val ?? ''
+            response[key] = val ?? ''
           }
         })
 
@@ -237,6 +296,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
             .join(' | ')
 
         const message = typeof payload === 'string' ? payload : JSON.stringify(payload)
+        setSubmittedDisplay(displayText)
         await submitDecision(toRespond(message), displayText)
         setSubmitState('submitted')
       },
@@ -247,8 +307,8 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     const expireMessage = t('autoSkipped')
     const handleExpire = useCallback(() => {
       if (submitState !== 'idle') return
-      void handleSubmit({ skipReason: expireMessage })
-    }, [handleSubmit, submitState, expireMessage])
+      void submitResponse(expireMessage, expireMessage)
+    }, [submitResponse, submitState, expireMessage])
 
     const { remaining, isUrgent, formatted, extend } = useApprovalDeadline({
       approvalId,
@@ -278,7 +338,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
 
     // ── 완료 상태 ──
     if (status.type === 'complete' || result !== undefined || submitState === 'submitted') {
-      return <CompletedBadge result={result ?? answers[0]} />
+      return <CompletedBadge result={submittedDisplay ?? result ?? answers[0]} />
     }
 
     // ── 로딩 상태 ──
@@ -316,76 +376,99 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
         </div>
 
         {/* Questions */}
-        <div className="space-y-4">
-          {questions.map((q, i) => {
-            switch (q.type) {
-              case 'single_select':
-                return (
-                  <SingleSelectInput
-                    key={i}
-                    question={q}
-                    selected={(answers[i] as string) ?? null}
-                    onSelect={(v) => {
-                      updateAnswer(i, v)
-                      // 질문 1개 + single_select → 즉시 제출
-                      if (questions.length === 1) {
-                        setSubmitState('submitted')
-                        void submitDecision(toRespond(v), v)
-                      }
-                    }}
-                  />
-                )
-              case 'multi_select':
-                return (
-                  <MultiSelectInput
-                    key={i}
-                    question={q}
-                    selected={(answers[i] as Set<string>) ?? new Set<string>()}
-                    onToggle={(v) => toggleMulti(i, v)}
-                  />
-                )
-              case 'text':
-              default:
-                return (
-                  <TextInput
-                    key={i}
-                    question={q}
-                    value={(answers[i] as string) ?? ''}
-                    onChange={(v) => updateAnswer(i, v)}
-                    onFocus={extend}
-                    placeholder={t('placeholder')}
-                  />
-                )
-            }
-          })}
-        </div>
+        {args?.mode === 'question_flow' ? (
+          <QuestionFlowCard
+            id={approvalId}
+            title={args.title}
+            questions={questions}
+            submitting={submitState === 'submitting'}
+            onInteract={extend}
+            onSubmit={(response) => submitResponse(response.message, response.displayText)}
+          />
+        ) : args?.mode === 'option_list' ? (
+          <OptionListCard
+            id={approvalId}
+            title={args.title}
+            options={optionListOptions}
+            minSelections={args.minSelections}
+            maxSelections={args.maxSelections}
+            submitting={submitState === 'submitting'}
+            onInteract={extend}
+            onSubmit={(response) => submitResponse(response.message, response.displayText)}
+          />
+        ) : (
+          <>
+            <div className="space-y-4">
+              {questions.map((q, i) => {
+                switch (q.type) {
+                  case 'single_select':
+                    return (
+                      <SingleSelectInput
+                        key={i}
+                        question={q}
+                        selected={(answers[i] as string) ?? null}
+                        onSelect={(v) => {
+                          updateAnswer(i, v)
+                          // 질문 1개 + single_select → 즉시 제출
+                          if (questions.length === 1) {
+                            void submitResponse(v, v)
+                          }
+                        }}
+                      />
+                    )
+                  case 'multi_select':
+                    return (
+                      <MultiSelectInput
+                        key={i}
+                        question={q}
+                        selected={(answers[i] as Set<string>) ?? new Set<string>()}
+                        onToggle={(v) => toggleMulti(i, v)}
+                      />
+                    )
+                  case 'text':
+                  default:
+                    return (
+                      <TextInput
+                        key={i}
+                        question={q}
+                        value={(answers[i] as string) ?? ''}
+                        onChange={(v) => updateAnswer(i, v)}
+                        onFocus={extend}
+                        placeholder={t('placeholder')}
+                      />
+                    )
+                }
+              })}
+            </div>
 
-        {/* Submit */}
-        <div className="mt-4 flex justify-end">
-          <button
-            type="button"
-            onClick={() => handleSubmit()}
-            disabled={!allAnswered || submitState === 'submitting'}
-            className={cn(
-              'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-all',
-              allAnswered && submitState === 'idle'
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'cursor-not-allowed bg-muted text-muted-foreground',
-            )}
-          >
-            {submitState === 'submitting' ? (
-              <>
-                <Loader2Icon className="size-3 animate-spin" />
-                {t('sending')}
-              </>
-            ) : (
-              <>
-                <SendIcon className="size-3" />
-                {t('confirm')}
-              </>
-            )}
-          </button>
-        </div>
+            {/* Submit */}
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => handleSubmit()}
+                disabled={!allAnswered || submitState === 'submitting'}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-all',
+                  allAnswered && submitState === 'idle'
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                    : 'cursor-not-allowed bg-muted text-muted-foreground',
+                )}
+              >
+                {submitState === 'submitting' ? (
+                  <>
+                    <Loader2Icon className="size-3 animate-spin" />
+                    {t('sending')}
+                  </>
+                ) : (
+                  <>
+                    <SendIcon className="size-3" />
+                    {t('confirm')}
+                  </>
+                )}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     )
   },

@@ -74,6 +74,7 @@ class BuilderState(TypedDict, total=False):
 
     # phase 2가 사용자 이름 확인을 받았는지 (재진입 시 ask_user 스킵 여부)
     intent_confirmed: bool
+    phase2_name_options: list[str]
 
     # phase 6 분기 신호 (skip/confirm 시 True → graph가 phase7로 라우팅)
     image_skipped: bool

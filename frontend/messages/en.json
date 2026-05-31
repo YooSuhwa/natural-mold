@@ -1016,7 +1016,14 @@
       "confirm": "Confirm",
       "expiresIn": "Expires In",
       "expired": "Expired",
-      "autoSkipped": "Auto Skipped"
+      "autoSkipped": "Auto Skipped",
+      "stepStatus": "Step {current} of {total}",
+      "back": "Back",
+      "next": "Next",
+      "complete": "Complete",
+      "clear": "Clear",
+      "selectionRange": "Select {min} to {max}",
+      "confirmSelection": "Confirm ({count})"
     },
     "clarifying": {
       "directInput": "Direct Input",

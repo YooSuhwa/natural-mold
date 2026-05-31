@@ -1,5 +1,39 @@
 # Lessons — Cumulative Patterns (across sessions)
 
+## Session 9 (2026-05-31) — ask_user QuestionFlow / OptionList
+
+### Keep HiTL tool identity stable; branch on payload mode
+**상황**: `ask_user`에 단계형 질문과 옵션 리스트 UI를 추가하면서 별도
+`question_flow`/`option_list` 도구를 만들 수 있었음.
+
+**패턴**:
+1. Runtime tool name과 interrupt policy는 `ask_user` 하나로 유지한다.
+2. `mode`/`questions`/`minSelections`/`maxSelections` 같은 UI shape는 payload args로 둔다.
+3. Streaming bridge는 native interrupt dict에서 `type`만 빼고 나머지를 그대로
+   frontend에 전달한다.
+4. Frontend는 `respond(message)` contract를 유지하되, structured 답변은 JSON string으로
+   직렬화하고 사람이 보는 receipt는 label text로 별도 보관한다.
+
+**효과**: 기존 persisted tool call, approval policy, Builder pending-card 패턴을 깨지
+않고 새 UI를 추가할 수 있다. 중복 도구를 만들면 정책/registry/test surface가 동시에
+늘어나므로 피한다.
+
+### Browser harnesses belong outside the product tree and should be short-lived
+**상황**: 로컬 DB/LLM 상태에 의존하지 않고 React Tool UI를 브라우저에서 눌러보려고
+`/private/tmp`에 임시 Vite harness를 만들었음.
+
+**규칙**: 임시 하네스는 프로젝트 설정으로 착각될 수 있으므로, 목적을 명확히 설명하고
+검증 직후 삭제한다. 실제 제품 설정 파일은 기능 구현 이유가 없으면 건드리지 않는다.
+
+### Pending tool call + standard interrupt can double-render the same card
+**상황**: Builder가 pending `ask_user` AI tool call을 먼저 emit하고, 같은 pause에서
+standard interrupt event도 emit했다. Frontend가 interrupt를 synthetic tool call로
+항상 추가하면 같은 ask_user 카드가 두 번 보인다.
+
+**패턴**: interrupt synthetic tool call을 추가하기 전에 같은 이름과 같은 args의 기존
+`ask_user` tool call이 있는지 확인한다. 있으면 새 카드를 push하지 말고 기존 args에
+`hitl_*` metadata만 병합한다.
+
 ## Session 6 (2026-04-28) — Agent Edit Workbench
 
 ### Hybrid controlled/uncontrolled component pattern

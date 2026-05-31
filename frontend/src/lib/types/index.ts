@@ -339,10 +339,20 @@ export type SSEEvent = { id?: string } & (
   | { event: 'stale'; data: StalePayload }
 )
 
+export interface UserInputOption {
+  id?: string
+  label: string
+  description?: string
+  disabled?: boolean
+}
+
 export interface UserInputQuestion {
-  question: string
+  id?: string
+  label?: string
+  question?: string
   type: 'single_select' | 'multi_select' | 'text'
-  options?: Array<{ label: string; description?: string }>
+  options?: UserInputOption[]
+  required?: boolean
 }
 
 // ---------- Usage ---------------------------------------------------------
