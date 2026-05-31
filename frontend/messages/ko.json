@@ -2974,6 +2974,51 @@
       "title": "자격증명",
       "description": "도구와 MCP 서버에서 사용하는 API 키와 OAuth 권한을 관리하세요.",
       "new": "새 자격증명",
+      "count": "{count}개",
+      "fieldCount": "{count}개 필드",
+      "shared": "공유됨",
+      "tabs": {
+        "label": "자격증명 상태",
+        "all": "전체",
+        "active": "활성",
+        "auth_needed": "인증 필요",
+        "expired": "만료",
+        "disabled": "비활성",
+        "unknown": "알 수 없음"
+      },
+      "providerLabels": {
+        "anthropic": "Anthropic",
+        "azure_openai": "Azure OpenAI",
+        "coupang_partners": "쿠팡 파트너스",
+        "dart_api": "DART Open API",
+        "foresttrip_account": "숲나들e 계정",
+        "google_genai": "Google 생성형 AI",
+        "google_search": "구글 맞춤 검색",
+        "google_workspace_oauth2": "구글 워크스페이스 OAuth2",
+        "http_api_key": "HTTP API 키",
+        "http_basic": "HTTP 기본 인증",
+        "http_bearer": "HTTP Bearer 토큰",
+        "kipris_plus_api": "KIPRIS Plus API",
+        "ktx_account": "KTX 계정",
+        "mcp_oauth2": "MCP OAuth2 클라이언트",
+        "naver_search": "네이버 검색",
+        "odsay_api": "ODsay API",
+        "openai": "OpenAI",
+        "openai_compatible": "OpenAI 호환 엔드포인트",
+        "openrouter": "OpenRouter",
+        "srt_account": "SRT 계정"
+      },
+      "categories": {
+        "account": "계정",
+        "api": "API",
+        "general": "일반",
+        "http": "HTTP",
+        "llm": "LLM",
+        "mcp": "MCP",
+        "oauth": "OAuth",
+        "search": "검색",
+        "system": "시스템"
+      },
       "columns": {
         "name": "이름",
         "type": "종류",
@@ -2990,6 +3035,9 @@
         "authNeeded": "인증 필요",
         "expired": "만료",
         "disabled": "비활성"
+      },
+      "actions": {
+        "manage": "관리"
       },
       "empty": {
         "title": "아직 자격증명이 없어요",
