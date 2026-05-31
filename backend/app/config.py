@@ -172,6 +172,13 @@ class Settings(BaseSettings):
     # operator account exists in production. See ADR-016 §8.4.
     allow_first_user_as_admin: bool = True
 
+    # Local Playwright E2E bootstrap account. Disabled by default in code so
+    # tests and production are not affected unless env explicitly opts in.
+    e2e_seed_user_enabled: bool = False
+    e2e_user_email: str = "playwright-e2e@moldy.dev"
+    e2e_user_password: str = "correct horse battery staple 42"
+    e2e_user_name: str = "E2E User"
+
     # CORS allowed origins. Comma-separated origins, e.g.
     # "https://moldy.dev,https://staging.moldy.dev". Default permits the
     # local dev frontend (Next 16 on :3000). ``allow_credentials=true`` is

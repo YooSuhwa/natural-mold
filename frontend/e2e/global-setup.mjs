@@ -7,9 +7,10 @@ const dirname = path.dirname(fileURLToPath(import.meta.url))
 const authFile = path.join(dirname, '.auth', 'user.json')
 
 const apiBase = process.env.E2E_API_BASE_URL ?? 'http://localhost:8001'
-const email = process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
-const password = process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
-const name = process.env.E2E_NAME ?? 'E2E User'
+const email = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
+const password =
+  process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
+const name = process.env.E2E_USER_NAME ?? process.env.E2E_NAME ?? 'E2E User'
 
 async function failWithBody(label, response) {
   const body = await response.text().catch(() => '')

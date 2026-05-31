@@ -2,8 +2,9 @@ import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
 
 const API_BASE = process.env.E2E_API_BASE_URL ?? 'http://localhost:8001'
-const E2E_EMAIL = process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
-const E2E_PASSWORD = process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
+const E2E_EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
+const E2E_PASSWORD =
+  process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
 
 async function loginApi(request: APIRequestContext): Promise<Record<string, string>> {
   const res = await request.post(`${API_BASE}/api/auth/login`, {
