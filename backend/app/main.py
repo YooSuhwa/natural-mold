@@ -83,6 +83,7 @@ from app.seed.bootstrap_from_env import bootstrap_system_credentials
 from app.seed.default_marketplace_skills import seed_default_marketplace_skills
 from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_templates import DEFAULT_TEMPLATES
+from app.seed.e2e_user import seed_e2e_user
 from app.services.spend_writer import spend_queue
 
 
@@ -116,6 +117,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 db.add(Template(**tmpl_data))
 
         await db.commit()
+
+        try:
+            await seed_e2e_user(db)
+            await db.commit()
+        except Exception:  # noqa: BLE001 — local e2e seed is non-fatal
+            await db.rollback()
+            logger.exception("seed_e2e_user failed — continuing startup.")
 
         try:
             await seed_default_marketplace_skills(db)
