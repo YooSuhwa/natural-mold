@@ -293,6 +293,20 @@ class TestLegacyRoutersStillWork:
             ):
                 assert key in r, f"GET /api/skills row missing {key!r}"
 
+    @pytest.mark.asyncio
+    async def test_skill_response_includes_execution_profile(
+        self, client: AsyncClient, db: AsyncSession
+    ) -> None:
+        row = _make_skill_row(name="profile-probe", kind="package")
+        row.execution_profile = {"tool_dependencies": ["tavily_search"]}
+        db.add(row)
+        await db.commit()
+
+        resp = await client.get(f"/api/skills/{row.id}")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["execution_profile"] == {"tool_dependencies": ["tavily_search"]}
+
 
 # ===========================================================================
 # Slice A embed contract — origin_summary / publication_summary / installation

@@ -2108,6 +2108,8 @@
           "support_level": "Support level",
           "runners": "Runners",
           "requires_network": "Requires network",
+          "timeout_seconds": "Timeout",
+          "tool_dependencies": "Hosted tools",
           "notes": "Notes"
         },
         "boolean": {
@@ -2229,6 +2231,7 @@
         "resourceType": "Resource Type",
         "latestVersion": "Latest Version",
         "supportLevel": "Support Level",
+        "hostedTools": "Includes hosted tools:",
         "customName": "Custom Name"
       },
       "credentialHelp": "Credential Help",

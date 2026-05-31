@@ -1,6 +1,7 @@
 // Skill domain types — mirrors backend `app/schemas/skill.py`.
 
 import type {
+  ExecutionProfile,
   InstallationSummary,
   ResourceOriginSummary,
   ResourcePublicationSummary,
@@ -20,6 +21,7 @@ export interface Skill {
   size_bytes: number
   used_by_count: number
   package_metadata: Record<string, unknown> | null
+  execution_profile: ExecutionProfile | null
   last_modified_at: string
   created_at: string
   updated_at: string
