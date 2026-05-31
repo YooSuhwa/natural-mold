@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import {
-  SparklesIcon,
   MessageSquareIcon,
   LayoutTemplateIcon,
   PenLineIcon,
@@ -264,7 +263,7 @@ export default function DashboardPage() {
         ) : (
           <EmptyState
             className="rounded-2xl border-solid bg-card p-8"
-            icon={<SparklesIcon className="size-6" />}
+            iconId="agent"
             title={t('empty.title')}
             description={t('empty.description')}
           />

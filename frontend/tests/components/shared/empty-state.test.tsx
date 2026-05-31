@@ -13,6 +13,11 @@ describe('EmptyState', () => {
     expect(screen.getByTestId('test-icon')).toBeInTheDocument()
   })
 
+  it('renders a Lucide domain icon from iconId', () => {
+    const { container } = render(<EmptyState iconId="mcp" title="No servers" />)
+    expect(container.querySelector('svg.lucide-server')).toBeInTheDocument()
+  })
+
   it('renders action button when provided', () => {
     render(<EmptyState title="No items" action={<button>Create Item</button>} />)
     expect(screen.getByRole('button', { name: 'Create Item' })).toBeInTheDocument()

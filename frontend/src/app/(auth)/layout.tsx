@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2Icon } from 'lucide-react'
+import { CheckCircle2Icon, SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -13,8 +13,6 @@ import { API_BASE } from '@/lib/api/client'
 import type { User } from '@/lib/types/user'
 
 const AVATAR_COLORS = ['oklch(0.596 0.145 163.225)', 'oklch(0.78 0.15 75)', 'oklch(0.7 0.15 240)']
-
-const STAR_PATH = 'M12 1 L13.5 9.5 L22 11 L13.5 12.5 L12 21 L10.5 12.5 L2 11 L10.5 9.5 Z'
 
 type Sparkle = {
   top: string
@@ -194,25 +192,24 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
         {/* Sparkle stars */}
         {SPARKLES.map((s, i) => (
-          <svg
+          <SparklesIcon
             key={`star-${i}`}
             aria-hidden
             className="auth-star"
-            viewBox="0 0 24 24"
             width={s.size}
             height={s.size}
+            strokeWidth={2.2}
             style={{
               position: 'fixed',
               top: s.top,
               left: s.left,
+              color: s.color,
               pointerEvents: 'none',
               zIndex: 0,
               animation: s.animation,
               filter: `drop-shadow(0 0 6px ${s.color})`,
             }}
-          >
-            <path d={STAR_PATH} fill={s.color} />
-          </svg>
+          />
         ))}
 
         {/* Bubbles */}

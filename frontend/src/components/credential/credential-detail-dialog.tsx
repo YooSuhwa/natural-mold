@@ -8,7 +8,7 @@ import { KeyRound, Power, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { StatusChip } from '@/components/shared/status-chip'
-import { DomainIcon } from '@/components/shared/icon'
+import { DomainIconTile } from '@/components/shared/icon'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
 import { CredentialTestButton } from './credential-test-button'
@@ -91,7 +91,14 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
       ) : (
         <>
           <DialogShell.Header
-            icon={<DomainIcon iconId={credential.definition_key} className="size-5" />}
+            icon={
+              <DomainIconTile
+                iconId={credential.definition_key}
+                fallback="credential"
+                className="size-9"
+                iconClassName="size-5"
+              />
+            }
             title={credential.name}
             description={credential.definition_key}
             actions={<StatusChip variant={credential.status} />}

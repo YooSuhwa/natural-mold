@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { Activity, Loader2, RefreshCw, Server, Trash2 } from 'lucide-react'
+import { Activity, Loader2, RefreshCw, Trash2 } from 'lucide-react'
 
 import { announceHealthResult } from '@/lib/health-check-toast'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { StatusChip } from '@/components/shared/status-chip'
 import { HealthHistoryChart } from '@/components/shared/health-history-chart'
 import { DialogShell } from '@/components/shared/dialog-shell'
+import { DomainIconTile, getDomainIconIdForMcpTransport } from '@/components/shared/icon'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
 import { CredentialPicker } from '@/components/credential/credential-picker'
 import { McpToolTable } from './mcp-tool-table'
@@ -109,7 +110,13 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
       ) : (
         <>
           <DialogShell.Header
-            icon={<Server className="size-5" />}
+            icon={
+              <DomainIconTile
+                iconId={getDomainIconIdForMcpTransport(server.transport)}
+                className="size-9"
+                iconClassName="size-5"
+              />
+            }
             title={server.name}
             description={server.transport}
             actions={

@@ -102,6 +102,7 @@ class MarketplaceItem(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     slug: Mapped[str] = mapped_column(String(220), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    icon_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     icon_url: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     visibility: Mapped[str] = mapped_column(String(20), nullable=False, default="private")

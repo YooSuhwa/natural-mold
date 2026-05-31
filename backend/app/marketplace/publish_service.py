@@ -324,6 +324,7 @@ async def publish_skill(
                 name=body.name,
                 slug=item_slug,
                 description=body.description,
+                icon_id=body.icon_id,
                 visibility=body.visibility,
                 status="draft",
                 moderation_status="approved",
@@ -427,6 +428,7 @@ async def publish_skill(
         item.name = body.name
         item.slug = _slugify(body.name)
         item.description = body.description
+        item.icon_id = body.icon_id
         item.tags = list(body.tags) or None
         item.categories = list(body.categories) or None
     else:
@@ -435,6 +437,8 @@ async def publish_skill(
         # path so a private-→-public transition doesn't need two calls.
         if body.description is not None:
             item.description = body.description
+        if body.icon_id is not None:
+            item.icon_id = body.icon_id
         if body.tags:
             item.tags = list(body.tags)
         if body.categories:
@@ -495,6 +499,8 @@ async def patch_item(
         item.name = body.name
     if body.description is not None:
         item.description = body.description
+    if body.icon_id is not None:
+        item.icon_id = body.icon_id
     if body.icon_url is not None:
         item.icon_url = body.icon_url
     if body.tags is not None:

@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   Loader2,
   Plus,
-  Server,
   X,
   XCircle,
 } from 'lucide-react'
@@ -18,7 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Checkbox } from '@/components/ui/checkbox'
 import { CredentialPicker } from '@/components/credential/credential-picker'
-import { DomainIcon } from '@/components/shared/icon'
+import { DomainIconTile } from '@/components/shared/icon'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import {
   useCreateFromRegistry,
@@ -256,7 +255,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
   return (
     <>
       <DialogShell.Header
-        icon={<Server className="size-5" />}
+        icon={<DomainIconTile iconId="mcp" className="size-9" iconClassName="size-5" />}
         title={t('title')}
         description={t('description')}
         actions={<ProbeBadge state={probeState} />}
@@ -492,9 +491,10 @@ function RegistrySection({
                     : 'border-border'
                 }`}
               >
-                <DomainIcon
+                <DomainIconTile
                   iconId={entry.icon_id ?? 'server'}
-                  className="size-5"
+                  className="size-9"
+                  iconClassName="size-5"
                 />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">

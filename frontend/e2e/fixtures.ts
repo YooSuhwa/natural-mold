@@ -6,7 +6,26 @@ type ErrorCollector = {
   network: string[]
 }
 
-export const test = base.extend<{ errors: ErrorCollector }>({
+const E2E_USER = {
+  id: '00000000-0000-4000-8000-000000000001',
+  email: process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev',
+  name: process.env.E2E_NAME ?? 'E2E User',
+  is_super_user: true,
+  is_active: true,
+  created_at: '2026-01-01T00:00:00.000Z',
+  last_login_at: null,
+}
+
+export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
+  authMock: [
+    async ({ page }, use) => {
+      if (process.env.PW_SKIP_BACKEND === '1') {
+        await page.route('**/api/auth/me', (route) => route.fulfill({ json: E2E_USER }))
+      }
+      await use()
+    },
+    { auto: true },
+  ],
   errors: async ({ page }, use) => {
     const errors: ErrorCollector = { console: [], page: [], network: [] }
 

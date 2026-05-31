@@ -92,22 +92,28 @@ const NEW_SERVER = {
 }
 
 test.describe('MCP server wizard — From Registry', () => {
-  test('GitHub card → auto-fill → credential picker → save → table row', async ({
-    page,
-  }) => {
+  test('GitHub card → auto-fill → credential picker → save → table row', async ({ page }) => {
     let servers: Array<Record<string, unknown>> = []
 
-    await page.route('**/api/mcp-server-types', (route) =>
-      route.fulfill({ json: REGISTRY }),
-    )
-    await page.route('**/api/credential-types', (route) =>
-      route.fulfill({ json: FAKE_CRED_TYPES }),
-    )
-    await page.route('**/api/credentials', (route) =>
-      route.fulfill({ json: FAKE_CREDENTIALS }),
-    )
-    await page.route(/\/api\/mcp-servers$/, (route) =>
-      route.fulfill({ json: servers }),
+    await page.route('**/api/mcp-server-types', (route) => route.fulfill({ json: REGISTRY }))
+    await page.route('**/api/credential-types', (route) => route.fulfill({ json: FAKE_CRED_TYPES }))
+    await page.route('**/api/credentials', (route) => route.fulfill({ json: FAKE_CREDENTIALS }))
+    await page.route(/\/api\/mcp-servers$/, (route) => route.fulfill({ json: servers }))
+    await page.route('**/api/mcp-servers/probe', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          status: 'connected',
+          tools: [
+            {
+              name: 'list_repos',
+              description: 'List repositories',
+              input_schema: {},
+            },
+          ],
+          error: null,
+        },
+      }),
     )
     await page.route('**/api/mcp-servers/from-registry', (route) => {
       servers = [NEW_SERVER]
@@ -138,36 +144,32 @@ test.describe('MCP server wizard — From Registry', () => {
     await page.goto('/mcp-servers')
 
     await page
-      .getByRole('button', { name: /new mcp server/i })
+      .getByRole('button', { name: /새 MCP 서버|서버 추가/ })
       .first()
       .click()
 
-    // Step 1: From Registry tab is the default.
-    await expect(page.getByRole('tab', { name: /from registry/i })).toBeVisible()
+    // Step 1: Registry quick-start is visible.
+    await expect(page.getByText('빠른 시작')).toBeVisible()
 
     // Click GitHub card.
     await page.getByTestId('registry-card-github').click()
 
     // Auto-filled name should be visible.
-    await expect(page.getByLabel('Name')).toHaveValue('GitHub')
+    await expect(page.getByLabel('이름')).toHaveValue('GitHub')
 
-    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    await page.getByRole('button', { name: '인증으로 계속 →' }).click()
 
     // Step 2: Auth — credential filter limits to http_bearer.
-    await expect(page.getByText(/Filtered to credentials of type/)).toBeVisible()
+    await expect(page.getByText('http_bearer 타입 자격증명으로 필터링되었습니다.')).toBeVisible()
     // Pick the bearer credential
     await page.getByRole('combobox').click()
     await page.getByRole('option', { name: /GitHub PAT/i }).click()
 
-    await page.getByRole('button', { name: 'Next', exact: true }).click()
+    await page.getByRole('button', { name: '도구로 계속 →' }).click()
 
-    // Step 3: Discover
-    await expect(page.getByText(/we'll connect to the server/i)).toBeVisible()
-    await page.getByRole('button', { name: 'Next', exact: true }).click()
-
-    // Step 4: Confirm
-    await expect(page.getByText(/1 tool imported/i)).toBeVisible()
-    await page.getByRole('button', { name: /done/i }).click()
+    // Step 3: Discover + save
+    await expect(page.getByText('1/1개 도구 활성화')).toBeVisible()
+    await page.getByRole('button', { name: '서버 저장' }).click()
 
     // After close, the table should show the new server (mocked list).
     await expect(page.getByText('GitHub').first()).toBeVisible()

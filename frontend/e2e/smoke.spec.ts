@@ -1,4 +1,18 @@
 import { test, expect } from './fixtures'
+import type { APIRequestContext } from '@playwright/test'
+
+const API_BASE = process.env.E2E_API_BASE_URL ?? 'http://localhost:8001'
+const E2E_EMAIL = process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
+const E2E_PASSWORD = process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
+
+async function loginApi(request: APIRequestContext): Promise<Record<string, string>> {
+  const res = await request.post(`${API_BASE}/api/auth/login`, {
+    data: { email: E2E_EMAIL, password: E2E_PASSWORD },
+  })
+  expect(res.ok()).toBeTruthy()
+  const body = (await res.json()) as { csrf_token: string }
+  return { 'X-CSRF-Token': body.csrf_token }
+}
 
 // ---------------------------------------------------------------------------
 // Smoke Test - Static Pages
@@ -11,13 +25,11 @@ test.describe('Smoke Test - Static Pages', () => {
 
     const main = page.getByRole('main')
 
-    // Verify hero text rendered
-    await expect(page.getByRole('heading', { name: '안녕하세요!' })).toBeVisible()
+    // Verify personalized dashboard hero rendered
+    await expect(page.getByRole('heading', { name: /E2E User님/ })).toBeVisible()
     // Verify quick action cards
     await expect(main.getByText('대화로 만들기')).toBeVisible()
     await expect(main.getByText('템플릿으로 만들기')).toBeVisible()
-    // Verify "새 에이전트" button (scoped to main to avoid sidebar duplicate)
-    await expect(main.getByRole('link', { name: '새 에이전트' })).toBeVisible()
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
@@ -27,12 +39,9 @@ test.describe('Smoke Test - Static Pages', () => {
     await page.goto('/agents/new')
     await page.waitForLoadState('domcontentloaded')
 
-    // 페이지 hero + chat input + 2개 옵션 카드 (manual / template)
-    await expect(
-      page.getByRole('heading', { name: '생성하려는 에이전트에 대해 알려주세요' }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: '무엇을 만들고 싶으세요?' })).toBeVisible()
     const main = page.getByRole('main')
-    await expect(main.getByText('에이전트 직접 만들기')).toBeVisible()
+    await expect(main.getByText('직접 만들기')).toBeVisible()
     await expect(main.getByText('템플릿으로 만들기')).toBeVisible()
 
     expect(errors.console).toEqual([])
@@ -57,11 +66,9 @@ test.describe('Smoke Test - Static Pages', () => {
     await page.goto('/tools')
     await page.waitForLoadState('domcontentloaded')
 
-    await expect(page.getByRole('heading', { name: '도구 관리' })).toBeVisible()
-    // "도구 추가" button
-    await expect(page.getByRole('button', { name: '도구 추가' }).first()).toBeVisible()
-    // Filter buttons
-    await expect(page.getByRole('button', { name: /All/ })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '도구' })).toBeVisible()
+    await expect(page.getByRole('tab', { name: '카탈로그' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '전체' })).toBeVisible()
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
@@ -71,10 +78,8 @@ test.describe('Smoke Test - Static Pages', () => {
     await page.goto('/models')
     await page.waitForLoadState('domcontentloaded')
 
-    await expect(page.getByRole('heading', { name: '모델 관리' })).toBeVisible()
-    // 기본 탭: Providers / Models. Models 탭으로 전환 후 "모델 추가" 버튼 확인
-    await page.getByRole('tab', { name: 'Models' }).click()
-    await expect(page.getByRole('button', { name: '모델 추가' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '모델' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /새 모델|모델 추가/ }).first()).toBeVisible()
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
@@ -84,7 +89,7 @@ test.describe('Smoke Test - Static Pages', () => {
     await page.goto('/usage')
     await page.waitForLoadState('domcontentloaded')
 
-    await expect(page.getByRole('heading', { name: '토큰 사용량' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '사용량' })).toBeVisible()
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
@@ -96,19 +101,25 @@ test.describe('Smoke Test - Static Pages', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Smoke Test - Dynamic Pages', () => {
+  test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
+
   let agentId: string
   let conversationId: string
+  let csrfHeaders: Record<string, string>
 
   test.beforeAll(async ({ request }) => {
+    csrfHeaders = await loginApi(request)
+
     // Fetch available models
-    const modelsRes = await request.get('http://localhost:8001/api/models')
+    const modelsRes = await request.get(`${API_BASE}/api/models`)
     expect(modelsRes.ok()).toBeTruthy()
     const models = await modelsRes.json()
     expect(models.length).toBeGreaterThan(0)
     const modelId = models[0].id
 
     // Create test agent
-    const agentRes = await request.post('http://localhost:8001/api/agents', {
+    const agentRes = await request.post(`${API_BASE}/api/agents`, {
+      headers: csrfHeaders,
       data: {
         name: 'E2E Smoke Agent',
         system_prompt: 'You are a test agent for E2E smoke tests.',
@@ -120,10 +131,10 @@ test.describe('Smoke Test - Dynamic Pages', () => {
     agentId = agent.id
 
     // Create conversation
-    const convRes = await request.post(
-      `http://localhost:8001/api/agents/${agentId}/conversations`,
-      { data: {} }
-    )
+    const convRes = await request.post(`${API_BASE}/api/agents/${agentId}/conversations`, {
+      headers: csrfHeaders,
+      data: {},
+    })
     expect(convRes.ok()).toBeTruthy()
     const conversation = await convRes.json()
     conversationId = conversation.id
@@ -131,7 +142,9 @@ test.describe('Smoke Test - Dynamic Pages', () => {
 
   test.afterAll(async ({ request }) => {
     if (agentId) {
-      await request.delete(`http://localhost:8001/api/agents/${agentId}`)
+      await request.delete(`${API_BASE}/api/agents/${agentId}`, {
+        headers: csrfHeaders ?? (await loginApi(request)),
+      })
     }
   })
 
@@ -161,8 +174,7 @@ test.describe('Smoke Test - Dynamic Pages', () => {
 
     const main = page.getByRole('main')
 
-    // Page header
-    await expect(main.getByText('에이전트 설정: E2E Smoke Agent')).toBeVisible()
+    await expect(page.locator('header input').first()).toHaveValue('E2E Smoke Agent')
     // Form labels
     await expect(main.getByText('시스템 프롬프트')).toBeVisible()
     // "저장" button
@@ -196,12 +208,18 @@ test.describe('Smoke Test - Dynamic Pages', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Smoke Test - Dialogs', () => {
+  test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
+
   let agentId: string
+  let csrfHeaders: Record<string, string>
 
   test.beforeAll(async ({ request }) => {
-    const modelsRes = await request.get('http://localhost:8001/api/models')
+    csrfHeaders = await loginApi(request)
+
+    const modelsRes = await request.get(`${API_BASE}/api/models`)
     const models = await modelsRes.json()
-    const agentRes = await request.post('http://localhost:8001/api/agents', {
+    const agentRes = await request.post(`${API_BASE}/api/agents`, {
+      headers: csrfHeaders,
       data: {
         name: 'E2E Dialog Agent',
         system_prompt: 'Test agent for dialog smoke tests.',
@@ -214,7 +232,9 @@ test.describe('Smoke Test - Dialogs', () => {
 
   test.afterAll(async ({ request }) => {
     if (agentId) {
-      await request.delete(`http://localhost:8001/api/agents/${agentId}`)
+      await request.delete(`${API_BASE}/api/agents/${agentId}`, {
+        headers: csrfHeaders ?? (await loginApi(request)),
+      })
     }
   })
 
@@ -222,13 +242,15 @@ test.describe('Smoke Test - Dialogs', () => {
     await page.goto('/models')
     await page.waitForLoadState('domcontentloaded')
 
-    // "모델 추가" 버튼은 Models 탭에서만 노출
-    await page.getByRole('tab', { name: 'Models' }).click()
-    await page.getByRole('button', { name: '모델 추가' }).click()
+    await page.getByRole('button', { name: '새 모델' }).click()
     // Verify dialog content
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByRole('heading', { name: '모델 추가' })).toBeVisible()
-    await expect(dialog.getByText('새 LLM 모델을 등록합니다.')).toBeVisible()
+    await expect(
+      dialog.getByText(
+        '자격증명으로 모델을 탐색하거나, 프리뷰/비공개 배포용 사용자 지정 ID를 직접 입력하세요.',
+      ),
+    ).toBeVisible()
     // Close by pressing Escape
     await page.keyboard.press('Escape')
 
@@ -236,20 +258,16 @@ test.describe('Smoke Test - Dialogs', () => {
     expect(errors.network).toEqual([])
   })
 
-  test('tools page - "도구 추가" dialog opens', async ({ page, errors }) => {
+  test('tools page - tool create dialog opens', async ({ page, errors }) => {
     await page.goto('/tools')
     await page.waitForLoadState('domcontentloaded')
 
-    await page.getByRole('button', { name: '도구 추가' }).first().click()
-    // Verify dialog content
+    await page
+      .getByRole('button', { name: /HTTP Request/ })
+      .first()
+      .click()
     const dialog = page.getByRole('dialog')
-    await expect(dialog.getByRole('heading', { name: '도구 추가' })).toBeVisible()
-    await expect(
-      dialog.getByText('MCP 서버를 등록하거나 커스텀 도구를 직접 정의하세요.')
-    ).toBeVisible()
-    // Tabs should be visible
-    await expect(dialog.getByRole('tab', { name: 'MCP 서버' })).toBeVisible()
-    await expect(dialog.getByRole('tab', { name: '직접 정의' })).toBeVisible()
+    await expect(dialog.getByRole('heading', { name: '새 HTTP Request' })).toBeVisible()
     // Close
     await page.keyboard.press('Escape')
 
@@ -262,9 +280,7 @@ test.describe('Smoke Test - Dialogs', () => {
     await page.waitForLoadState('domcontentloaded')
 
     // Find a prebuilt tool with a key config button.
-    const authButton = page
-      .getByRole('button', { name: /키 설정|개별 키 설정|키 변경/ })
-      .first()
+    const authButton = page.getByRole('button', { name: /키 설정|개별 키 설정|키 변경/ }).first()
 
     if (await authButton.isVisible()) {
       // Normal click opens both the Card's detail Sheet and the auth Dialog.
@@ -296,9 +312,7 @@ test.describe('Smoke Test - Dialogs', () => {
           .catch(() => false)
 
         if (dialogVisible) {
-          await expect(
-            page.getByText('이 도구를 사용하려면 API 키를 설정하세요.')
-          ).toBeVisible()
+          await expect(page.getByText('이 도구를 사용하려면 API 키를 설정하세요.')).toBeVisible()
         }
         // If still not visible, the Card click always takes precedence - this is a known
         // event propagation issue. The button renders correctly, which is what the smoke
@@ -328,7 +342,7 @@ test.describe('Smoke Test - Dialogs', () => {
     const dialog = page.getByRole('alertdialog')
     await expect(dialog.getByText('에이전트를 삭제하시겠습니까?')).toBeVisible()
     await expect(
-      dialog.getByText('이 작업은 되돌릴 수 없습니다. 에이전트와 관련된 모든 대화가 삭제됩니다.')
+      dialog.getByText('이 작업은 되돌릴 수 없습니다. 에이전트와 관련된 모든 대화가 삭제됩니다.'),
     ).toBeVisible()
     // Cancel and confirm buttons inside dialog
     await expect(dialog.getByRole('button', { name: '취소' })).toBeVisible()
@@ -346,10 +360,7 @@ test.describe('Smoke Test - Dialogs', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Smoke Test - Conversational Creation', () => {
-  test('/agents/new/conversational - page loads with mocked session', async ({
-    page,
-    errors,
-  }) => {
+  test('/agents/new/conversational - page loads with mocked session', async ({ page, errors }) => {
     // Mock the creation session start API
     await page.route('**/api/agents/create-session', (route) => {
       if (route.request().method() === 'POST') {
@@ -372,16 +383,9 @@ test.describe('Smoke Test - Conversational Creation', () => {
 
     // Header
     await expect(page.getByRole('heading', { name: '에이전트 만들기' })).toBeVisible()
-    // Initial prompt
-    await expect(page.getByText('어떤 에이전트를 만들고 싶으세요?')).toBeVisible()
-    // Textarea placeholder
-    await expect(
-      page.getByPlaceholder(
-        '예: "한글과컴퓨터 관련 뉴스를 매일 요약해주는 에이전트"'
-      )
-    ).toBeVisible()
-    // "시작" button
-    await expect(page.getByRole('button', { name: '시작' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '자연어로 에이전트 만들기' })).toBeVisible()
+    await expect(page.getByPlaceholder('메시지 입력...')).toBeVisible()
+    await expect(page.getByRole('button', { name: '전송' })).toBeVisible()
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])
