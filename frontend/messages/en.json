@@ -1543,6 +1543,17 @@
     "page": {
       "title": "MCP Servers",
       "description": "Connect MCP servers and import their tools into Moldy.",
+      "count": "{count}",
+      "toolCount": "{count} tools",
+      "tabs": {
+        "label": "MCP server status",
+        "all": "All",
+        "connected": "Connected",
+        "auth_needed": "Auth needed",
+        "unreachable": "Offline",
+        "disabled": "Disabled",
+        "unknown": "Unknown"
+      },
       "columns": {
         "name": "Name",
         "transport": "Transport",
@@ -1555,7 +1566,8 @@
         "checkNowFor": "Check {name} now",
         "import": "Import",
         "export": "Export",
-        "new": "New"
+        "new": "New",
+        "manage": "Manage"
       },
       "empty": {
         "title": "Empty",
@@ -1563,7 +1575,7 @@
         "action": "Action",
         "filtered": "Filtered"
       },
-      "searchPlaceholder": "Search Placeholder",
+      "searchPlaceholder": "Search servers",
       "relative": {
         "secondsAgo": "{count} seconds ago",
         "minutesAgo": "{count} minutes ago",
