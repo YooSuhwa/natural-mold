@@ -2032,11 +2032,12 @@
       "title": "Marketplace",
       "description": "Browse agents, tools, and skills shared through the marketplace.",
       "categoriesLabel": "Categories Label",
+      "count": "{count} items",
       "tabs": {
         "all": "All",
         "skills": "Skills",
         "agents": "Agents",
-        "mcp": "MCP (Phase 2)",
+        "mcp": "MCP",
         "installed": "Installed"
       },
       "empty": {

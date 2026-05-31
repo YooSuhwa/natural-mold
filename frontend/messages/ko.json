@@ -2011,11 +2011,12 @@
       "title": "마켓플레이스",
       "description": "공유된 스킬, 에이전트, MCP 서버를 발견하고 설치하세요.",
       "categoriesLabel": "마켓플레이스 카테고리",
+      "count": "{count}개",
       "tabs": {
         "all": "전체",
         "skills": "스킬",
-        "agents": "에이전트 (Phase 3)",
-        "mcp": "MCP (Phase 2)",
+        "agents": "에이전트",
+        "mcp": "MCP",
         "installed": "설치됨"
       },
       "empty": {
