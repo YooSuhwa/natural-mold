@@ -363,6 +363,9 @@
         "placeholder": "Search by template name, description, or tool...",
         "ariaLabel": "Search templates"
       },
+      "gallery": {
+        "count": "{count} templates"
+      },
       "sort": {
         "newest": "Newest",
         "name": "Name",

@@ -137,4 +137,16 @@ describe('TemplateSelectionPage', () => {
     const createButtons = screen.getAllByText('시작')
     expect(createButtons.length).toBe(mockTemplateList.length)
   })
+
+  it('uses one count surface and pins the custom-template CTA to the page bottom', () => {
+    mockUseTemplates.mockReturnValue({
+      data: mockTemplateList,
+      isLoading: false,
+    })
+    render(<TemplateSelectionPage />)
+
+    expect(screen.getAllByText(`${mockTemplateList.length}개`)).toHaveLength(1)
+    expect(screen.queryByText('Agent Gallery')).not.toBeInTheDocument()
+    expect(screen.getByText('원하는 템플릿이 없나요?').closest('a')).toHaveClass('mt-auto')
+  })
 })

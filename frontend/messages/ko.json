@@ -363,6 +363,9 @@
         "placeholder": "템플릿 이름, 설명, 도구로 검색…",
         "ariaLabel": "템플릿 검색"
       },
+      "gallery": {
+        "count": "{count}개"
+      },
       "sort": {
         "newest": "최신순",
         "name": "이름순",
