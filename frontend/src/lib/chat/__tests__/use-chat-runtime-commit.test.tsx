@@ -15,19 +15,37 @@
 import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest'
 import type { Message, SSEEvent } from '@/lib/types'
+import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { sameMessageSnapshot, useChatRuntime } from '../use-chat-runtime'
 
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
 }))
 
+const jotaiMock = vi.hoisted(() => {
+  const setters = new WeakMap<object, Mock>()
+  const useSetAtom = vi.fn((atom: object) => {
+    let setter = setters.get(atom)
+    if (!setter) {
+      setter = vi.fn()
+      setters.set(atom, setter)
+    }
+    return setter
+  })
+
+  return {
+    getSetter: (atom: object) => setters.get(atom),
+    useSetAtom,
+  }
+})
+
 vi.mock('jotai', async () => {
   const actual = await vi.importActual<typeof import('jotai')>('jotai')
   return {
     ...actual,
-    useSetAtom: () => vi.fn(),
+    useSetAtom: jotaiMock.useSetAtom,
     useAtomValue: () => undefined,
   }
 })
@@ -68,8 +86,16 @@ function makeStreamFn(customEvents: SSEEvent[]): (content: string) => AsyncGener
   }
 }
 
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
+
 /** 빌더 / AssistantPanel / TestChatPanel 의 실제 패턴을 재현한 하네스. */
-function useCommitHarness(events: SSEEvent[]) {
+function useCommitHarness(events: SSEEvent[], onCommit?: (messages: Message[]) => void) {
   const [messages, setMessages] = useState<Message[]>([])
   const streamFn = useMemo(
     () =>
@@ -79,9 +105,32 @@ function useCommitHarness(events: SSEEvent[]) {
       ) => AsyncGenerator<SSEEvent>,
     [events],
   )
-  const onMessagesCommit = useCallback((msgs: Message[]) => {
-    setMessages((prev) => [...prev, ...msgs])
-  }, [])
+  const onMessagesCommit = useCallback(
+    (msgs: Message[]) => {
+      onCommit?.(msgs)
+      setMessages((prev) => [...prev, ...msgs])
+    },
+    [onCommit],
+  )
+  const chat = useChatRuntime({ messages, streamFn, onMessagesCommit })
+  return { ...chat, messages }
+}
+
+function useCommitHarnessWithStream(
+  streamFn: (
+    content: string,
+    signal: AbortSignal,
+  ) => AsyncGenerator<SSEEvent>,
+  onCommit?: (messages: Message[]) => void,
+) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const onMessagesCommit = useCallback(
+    (msgs: Message[]) => {
+      onCommit?.(msgs)
+      setMessages((prev) => [...prev, ...msgs])
+    },
+    [onCommit],
+  )
   const chat = useChatRuntime({ messages, streamFn, onMessagesCommit })
   return { ...chat, messages }
 }
@@ -181,6 +230,95 @@ describe('useChatRuntime — onMessagesCommit dedup', () => {
     }, {})
     expect(roleCount.assistant).toBe(1)
     expect(roleCount.tool).toBe(1)
+  })
+
+  it('새 stream이 시작된 뒤 stale stream cleanup은 commit 하지 않는다', async () => {
+    const firstYielded = deferred()
+    const releaseFirst = deferred()
+    const commitSpy = vi.fn()
+    const streamFn = vi.fn((content: string) => {
+      if (content === 'first') {
+        return (async function* () {
+          yield {
+            event: 'content_delta' as const,
+            id: 'first-delta',
+            data: { content: 'old answer' },
+          }
+          firstYielded.resolve()
+          await releaseFirst.promise
+          yield {
+            event: 'message_end' as const,
+            id: 'first-end',
+            data: { usage: {} },
+          }
+        })()
+      }
+
+      return (async function* () {
+        yield {
+          event: 'content_delta' as const,
+          id: 'second-delta',
+          data: { content: 'new answer' },
+        }
+        yield {
+          event: 'message_end' as const,
+          id: 'second-end',
+          data: { usage: {} },
+        }
+      })()
+    })
+
+    const { result } = renderHook(
+      () =>
+        useCommitHarnessWithStream(
+          streamFn as unknown as (
+            content: string,
+            signal: AbortSignal,
+          ) => AsyncGenerator<SSEEvent>,
+          commitSpy,
+        ),
+      { wrapper: createWrapper() },
+    )
+
+    let firstPromise!: Promise<void>
+    await act(async () => {
+      firstPromise = result.current.sendMessage('first')
+      await firstYielded.promise
+    })
+
+    await act(async () => {
+      await result.current.sendMessage('second')
+    })
+
+    await act(async () => {
+      releaseFirst.resolve()
+      await firstPromise
+    })
+
+    expect(commitSpy).toHaveBeenCalledTimes(1)
+    expect(
+      result.current.messages.filter((m) => m.role === 'assistant').map((m) => m.content),
+    ).toEqual(['new answer'])
+  })
+
+  it('usage가 없는 content flush는 token usage atom을 반복 갱신하지 않는다', async () => {
+    const { result } = renderHook(
+      () =>
+        useCommitHarness([
+          { event: 'content_delta', data: { content: 'Hello' } },
+          { event: 'content_delta', data: { content: ' world' } },
+        ]),
+      { wrapper: createWrapper() },
+    )
+    const tokenUsageSetter = jotaiMock.getSetter(sessionTokenUsageAtom)
+    expect(tokenUsageSetter).toBeDefined()
+    const callsBeforeStream = tokenUsageSetter?.mock.calls.length ?? 0
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    expect(tokenUsageSetter).toHaveBeenCalledTimes(callsBeforeStream)
   })
 
   it('messages refetch에서 branch/attachment/feedback/usage 변경도 snapshot 변경으로 본다', () => {

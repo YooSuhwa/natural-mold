@@ -264,11 +264,11 @@ test.describe('Smoke Test - Dialogs', () => {
     await page.waitForLoadState('domcontentloaded')
 
     await page
-      .getByRole('button', { name: /HTTP Request/ })
+      .getByRole('button', { name: /HTTP 요청|HTTP Request/ })
       .first()
       .click()
     const dialog = page.getByRole('dialog')
-    await expect(dialog.getByRole('heading', { name: '새 HTTP Request' })).toBeVisible()
+    await expect(dialog.getByRole('heading', { name: /새 (HTTP 요청|HTTP Request)/ })).toBeVisible()
     // Close
     await page.keyboard.press('Escape')
 

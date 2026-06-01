@@ -254,7 +254,10 @@ export default function ChatPage({
       </section>
 
       {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
-      <ChatRightRail className="overflow-hidden rounded-xl border border-border bg-card shadow-sm" />
+      <ChatRightRail
+        conversationId={conversationId}
+        className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+      />
     </div>
   )
 }

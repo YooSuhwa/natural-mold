@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   ThreadPrimitive,
   MessagePrimitive,
@@ -58,6 +58,10 @@ import {
   BuilderUserEditComposer,
   BuilderUserMessage,
 } from '@/components/chat/builder-overrides'
+import {
+  ChatConversationContext,
+  useChatConversationId,
+} from '@/components/chat/conversation-context'
 
 export { GenericToolFallback }
 
@@ -266,11 +270,6 @@ function RegenerateButton() {
   )
 }
 
-/** M-CHAT1b — wraps the thread so child BranchPicker buttons know which
- * conversation to switch branches on. Optional — when absent the picker
- * hides itself. */
-const ConversationContext = createContext<string | null>(null)
-
 interface BranchMeta {
   branches?: string[]
   siblingCheckpointIds?: string[]
@@ -311,7 +310,7 @@ function canRenderBranchPicker(
 
 function BranchPicker() {
   const t = useTranslations('chat.branch')
-  const conversationId = useContext(ConversationContext)
+  const conversationId = useChatConversationId()
   const queryClient = useQueryClient()
   const [pendingCheckpointId, setPendingCheckpointId] = useState<string | null>(null)
   const meta = useAssistantState(
@@ -601,7 +600,7 @@ export function AssistantThread({
   )
 
   return (
-    <ConversationContext.Provider value={conversationId ?? null}>
+    <ChatConversationContext.Provider value={conversationId ?? null}>
       <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
         <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto">
           <ThreadPrimitive.Empty>
@@ -647,7 +646,7 @@ export function AssistantThread({
           </div>
         )}
       </ThreadPrimitive.Root>
-    </ConversationContext.Provider>
+    </ChatConversationContext.Provider>
   )
 }
 

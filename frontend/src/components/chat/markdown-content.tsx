@@ -93,6 +93,17 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   )
 }
 
+function PlainCodeBlock({ language, code }: { language: string; code: string }) {
+  return (
+    <code
+      data-language={language || undefined}
+      className="block overflow-x-auto whitespace-pre rounded-md bg-card p-3 font-mono text-xs leading-relaxed text-foreground/90"
+    >
+      {code}
+    </code>
+  )
+}
+
 export function ChatImage({ src, alt }: { src: string; alt: string }) {
   const t = useTranslations('chat.markdown')
   const [open, setOpen] = useState(false)
@@ -183,7 +194,10 @@ export function buildMarkdownComponents({
       if (match) {
         const language = match[1]
         const code = String(children).replace(/\n$/, '')
-        // mermaid 다이어그램: 스트리밍 중에는 raw code(불완전 파싱 방지), 완료 후 SVG 렌더
+        if (isStreaming) {
+          return <PlainCodeBlock language={language} code={code} />
+        }
+        // mermaid 다이어그램: 완료 후에만 SVG 렌더
         if (language === 'mermaid' && !isStreaming) {
           return (
             <Suspense fallback={<CodeBlock language="mermaid" code={code} />}>

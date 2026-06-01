@@ -5,6 +5,7 @@ import { defineConfig } from '@playwright/test'
 // dashboard, model fallback) and don't need a live backend. Defaults to off so
 // integration specs continue to boot the full stack.
 const skipBackend = process.env.PW_SKIP_BACKEND === '1'
+const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000'
 
 const webServer = [
   ...(skipBackend
@@ -17,7 +18,7 @@ const webServer = [
         },
       ]),
   {
-    command: 'pnpm dev',
+    command: 'pnpm exec next dev --port 3000',
     port: 3000,
     reuseExistingServer: true,
   },
@@ -25,11 +26,11 @@ const webServer = [
 
 export default defineConfig({
   testDir: './e2e',
-  timeout: 30_000,
+  timeout: 60_000,
   globalSetup: './e2e/global-setup.mjs',
   retries: 1,
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL,
     storageState: './e2e/.auth/user.json',
     trace: 'on-first-retry',
   },

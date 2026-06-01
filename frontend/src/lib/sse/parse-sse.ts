@@ -113,6 +113,42 @@ export interface StreamSSEPostOptions {
   onRunId?: (runId: string) => void
 }
 
+export interface HeadIndexQueue<T> {
+  push(item: T): void
+  take(): T | undefined
+  length(): number
+}
+
+export function createHeadIndexQueue<T>({
+  compactAfter = 64,
+}: { compactAfter?: number } = {}): HeadIndexQueue<T> {
+  const buffer: T[] = []
+  let head = 0
+
+  const compact = () => {
+    if (head === 0) return
+    if (head < compactAfter && head < buffer.length) return
+    buffer.splice(0, head)
+    head = 0
+  }
+
+  return {
+    push(item) {
+      buffer.push(item)
+    },
+    take() {
+      if (head >= buffer.length) return undefined
+      const item = buffer[head]
+      head += 1
+      compact()
+      return item
+    },
+    length() {
+      return buffer.length - head
+    },
+  }
+}
+
 /**
  * Generic POST-based SSE stream. Sends a JSON body to the given path and
  * yields parsed SSE events.
@@ -136,7 +172,7 @@ export async function* streamSSEPost<TEvent extends string>(
   options?: StreamSSEPostOptions,
 ): AsyncGenerator<SSEEvent<TEvent>> {
   // Callback-driven fetchEventSource → generator로 bridge.
-  const buffer: SSEEvent<TEvent>[] = []
+  const buffer = createHeadIndexQueue<SSEEvent<TEvent>>()
   let resolver: (() => void) | null = null
   let terminalError: Error | null = null
   let closed = false
@@ -229,8 +265,9 @@ export async function* streamSSEPost<TEvent extends string>(
   })
 
   while (true) {
-    if (buffer.length > 0) {
-      yield buffer.shift()!
+    if (buffer.length() > 0) {
+      const event = buffer.take()
+      if (event) yield event
       continue
     }
     if (closed) {
