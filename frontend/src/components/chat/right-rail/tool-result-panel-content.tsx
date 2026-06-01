@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 import { Loader2Icon, CheckCircle2Icon, AlertCircleIcon, WrenchIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -29,59 +30,78 @@ function safeParseJson(text: string): unknown {
   }
 }
 
-/** Best-effort pretty rendering for tool args/result values. */
-function ResultRenderer({ value }: { value: unknown }) {
-  const t = useTranslations('chat.rightRail')
-  if (value === null || value === undefined) {
-    return <p className="text-xs text-muted-foreground">{t('noResult')}</p>
-  }
+type PreparedResult =
+  | { kind: 'empty' }
+  | { kind: 'image'; src: string }
+  | { kind: 'link'; href: string }
+  | { kind: 'json'; text: string }
+  | { kind: 'text'; text: string }
+
+function prepareResultValue(value: unknown): PreparedResult {
+  if (value === null || value === undefined) return { kind: 'empty' }
 
   if (typeof value === 'string') {
     const trimmed = value.trim()
 
-    // 이미지 URL이면 인라인 표시
     if (isImageUrl(trimmed)) {
-      return <ChatImage src={trimmed} alt="tool result" />
+      return { kind: 'image', src: trimmed }
     }
 
-    // 일반 URL이면 링크
     if (isUrl(trimmed)) {
-      return (
-        <a
-          href={trimmed}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="break-all text-xs text-primary-strong underline hover:opacity-80"
-        >
-          {trimmed}
-        </a>
-      )
+      return { kind: 'link', href: trimmed }
     }
 
-    // JSON 문자열이면 파싱해서 pretty
     const looksLikeJson =
       (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
       (trimmed.startsWith('[') && trimmed.endsWith(']'))
     const parsedJson = looksLikeJson ? safeParseJson(trimmed) : null
     if (parsedJson !== null) {
-      return (
-        <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all rounded-md border border-border/60 bg-card p-3 font-mono text-[11px] leading-relaxed text-foreground/90">
-          {JSON.stringify(parsedJson, null, 2)}
-        </pre>
-      )
+      return { kind: 'json', text: JSON.stringify(parsedJson, null, 2) }
     }
 
+    return { kind: 'text', text: value }
+  }
+
+  return { kind: 'json', text: JSON.stringify(value, null, 2) }
+}
+
+/** Best-effort pretty rendering for tool args/result values. */
+function ResultRenderer({ value }: { value: unknown }) {
+  const t = useTranslations('chat.rightRail')
+  const prepared = useMemo(() => prepareResultValue(value), [value])
+
+  if (prepared.kind === 'empty') {
+    return <p className="text-xs text-muted-foreground">{t('noResult')}</p>
+  }
+
+  if (prepared.kind === 'image') {
+    return <ChatImage src={prepared.src} alt="tool result" />
+  }
+
+  if (prepared.kind === 'link') {
+    return (
+      <a
+        href={prepared.href}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="break-all text-xs text-primary-strong underline hover:opacity-80"
+      >
+        {prepared.href}
+      </a>
+    )
+  }
+
+  if (prepared.kind === 'text') {
     return (
       <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-card p-3 text-xs leading-relaxed text-foreground/90">
-        {value}
+        {prepared.text}
       </pre>
     )
   }
 
-  // object / array → JSON pretty
   return (
     <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all rounded-md border border-border/60 bg-card p-3 font-mono text-[11px] leading-relaxed text-foreground/90">
-      {JSON.stringify(value, null, 2)}
+      {prepared.text}
     </pre>
   )
 }

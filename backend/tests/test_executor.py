@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,6 +10,7 @@ import pytest
 
 from app.agent_runtime.executor import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
+from app.marketplace.skill_runtime import SkillToolContext
 from app.tools.risk import default_deepagents_interrupt_policy
 
 TEMPORAL_TOOL_NAMES = {"current_datetime", "resolve_relative_date"}
@@ -34,6 +36,39 @@ def _cfg(**overrides) -> AgentConfig:
     )
     defaults.update(overrides)
     return AgentConfig(**defaults)  # type: ignore[arg-type]
+
+
+def _deep_research_skill() -> dict[str, object]:
+    return {
+        "id": "00000000-0000-0000-0000-0000000000d1",
+        "slug": "deep-research",
+        "name": "Deep Research",
+        "description": "Deep research",
+        "storage_path": "skills/deep-research",
+        "execution_profile": {"tool_dependencies": ["tavily_search"]},
+    }
+
+
+def _stub_skill_context(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "app.agent_runtime.executor.build_skill_runtime_context",
+        lambda *_args, **_kwargs: SkillToolContext(
+            thread_id="t-1",
+            output_dir=tmp_path / "outputs",
+            runtime_root=tmp_path / "runtime",
+            descriptors={},
+        ),
+    )
+
+
+def _capture_runtime_tool_configs(captured: list[dict[str, object]]):
+    def _factory(config: dict[str, object]):
+        captured.append(dict(config))
+        tool = MagicMock()
+        tool.name = str(config.get("name"))
+        return tool
+
+    return _factory
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +304,167 @@ async def test_execute_stream_runtime_tool_called_per_entry(
     tools_passed = mock_build.call_args[0][1]
     # 2 user tools + temporal helpers + ask_user auto-injected helper
     assert len(tools_passed) == 5
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.executor.FilesystemBackend")
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+@patch("app.agent_runtime.executor.create_tool_for_runtime")
+async def test_execute_stream_injects_skill_tool_dependency(
+    mock_factory: MagicMock,
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+    mock_fs_backend_cls: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    from app.agent_runtime.executor import execute_agent_stream
+
+    _stub_skill_context(monkeypatch, tmp_path)
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = []
+    mock_build.return_value = MagicMock()
+    captured_configs: list[dict[str, object]] = []
+    mock_factory.side_effect = _capture_runtime_tool_configs(captured_configs)
+
+    async def fake_stream(*args, **kwargs):
+        yield "done"
+
+    mock_stream.return_value = fake_stream()
+    cfg = _cfg(agent_skills=[_deep_research_skill()])
+
+    async for _ in execute_agent_stream(cfg, []):
+        pass
+
+    assert cfg.tools_config == []
+    assert captured_configs == [
+        {
+            "tool_id": "skill-dependency:tavily_search",
+            "definition_key": "tavily_search",
+            "name": "tavily_search",
+            "description": "Hosted Tavily web search used by attached skills.",
+            "parameters": {},
+            "credential_id": None,
+            "credentials": None,
+            "user_id": None,
+            "agent_id": None,
+            "is_skill_dependency": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.executor.FilesystemBackend")
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+@patch("app.agent_runtime.executor.create_tool_for_runtime")
+async def test_execute_stream_dedupes_exact_skill_dependency_name(
+    mock_factory: MagicMock,
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+    mock_fs_backend_cls: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    from app.agent_runtime.executor import execute_agent_stream
+
+    _stub_skill_context(monkeypatch, tmp_path)
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = []
+    mock_build.return_value = MagicMock()
+    captured_configs: list[dict[str, object]] = []
+    mock_factory.side_effect = _capture_runtime_tool_configs(captured_configs)
+
+    async def fake_stream(*args, **kwargs):
+        yield "done"
+
+    mock_stream.return_value = fake_stream()
+    explicit_tool = {
+        "tool_id": "tool-1",
+        "definition_key": "tavily_search",
+        "name": "tavily_search",
+        "description": "User-added Tavily",
+        "parameters": {},
+        "credential_id": None,
+        "credentials": None,
+    }
+
+    async for _ in execute_agent_stream(
+        _cfg(tools_config=[explicit_tool], agent_skills=[_deep_research_skill()]),
+        [],
+    ):
+        pass
+
+    assert captured_configs == [explicit_tool]
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.executor.FilesystemBackend")
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+@patch("app.agent_runtime.executor.create_tool_for_runtime")
+async def test_execute_stream_keeps_stable_dependency_alias_when_explicit_tool_has_different_name(
+    mock_factory: MagicMock,
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+    mock_fs_backend_cls: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    from app.agent_runtime.executor import execute_agent_stream
+
+    _stub_skill_context(monkeypatch, tmp_path)
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = []
+    mock_build.return_value = MagicMock()
+    captured_configs: list[dict[str, object]] = []
+    mock_factory.side_effect = _capture_runtime_tool_configs(captured_configs)
+
+    async def fake_stream(*args, **kwargs):
+        yield "done"
+
+    mock_stream.return_value = fake_stream()
+    explicit_tool = {
+        "tool_id": "tool-1",
+        "definition_key": "tavily_search",
+        "name": "Research Search",
+        "description": "User-added Tavily under a friendly name",
+        "parameters": {},
+        "credential_id": None,
+        "credentials": None,
+    }
+
+    async for _ in execute_agent_stream(
+        _cfg(tools_config=[explicit_tool], agent_skills=[_deep_research_skill()]),
+        [],
+    ):
+        pass
+
+    assert [config["name"] for config in captured_configs] == [
+        "Research Search",
+        "tavily_search",
+    ]
+    assert captured_configs[1]["definition_key"] == "tavily_search"
+    assert captured_configs[1]["is_skill_dependency"] is True
 
 
 @pytest.mark.asyncio

@@ -70,6 +70,7 @@ class SkillResponse(BaseModel):
     size_bytes: int
     used_by_count: int
     package_metadata: dict[str, Any] | None
+    execution_profile: dict[str, Any] | None = None
     last_modified_at: datetime
     created_at: datetime
     updated_at: datetime
@@ -91,6 +92,7 @@ class SkillBrief(BaseModel):
     slug: str
     kind: Literal["text", "package"]
     description: str | None
+    execution_profile: dict[str, Any] | None = None
 
     model_config = {"from_attributes": True}
 

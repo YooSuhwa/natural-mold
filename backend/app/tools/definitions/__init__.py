@@ -28,10 +28,12 @@ from app.tools.definitions.naver_search import (
 from app.tools.definitions.naver_search import (
     shop_definition as naver_search_shop,
 )
+from app.tools.definitions.tavily_search import definition as tavily_search
 from app.tools.registry import registry
 
 for _definition in (
     http_request,
+    tavily_search,
     naver_search_blog,
     naver_search_news,
     naver_search_image,
@@ -60,4 +62,5 @@ __all__ = [
     "naver_search_local",
     "naver_search_news",
     "naver_search_shop",
+    "tavily_search",
 ]

@@ -1,7 +1,4 @@
-import {
-  fetchEventSource,
-  type EventSourceMessage,
-} from '@microsoft/fetch-event-source'
+import { fetchEventSource, type EventSourceMessage } from '@microsoft/fetch-event-source'
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
 import { ApiError, parseApiErrorBody } from '@/lib/api/errors'
 import { csrfStore } from '@/lib/auth/csrf'
@@ -75,7 +72,7 @@ export async function* parseSSEStream<TEvent extends string>(
         // ``id:x`` 둘 다 유효. 일부 프록시가 공백을 제거하면 startsWith 매칭이
         // 깨져 lastEventId 추적이 망가졌었음. colon-split 로 통일.
         const colon = line.indexOf(':')
-        if (colon < 0) continue  // comment 라인 (``: ...``) 또는 빈 줄
+        if (colon < 0) continue // comment 라인 (``: ...``) 또는 빈 줄
         const field = line.slice(0, colon)
         const rawValue = line.slice(colon + 1)
         const value = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue
@@ -113,6 +110,42 @@ export interface StreamSSEPostOptions {
   onRunId?: (runId: string) => void
 }
 
+export interface HeadIndexQueue<T> {
+  push(item: T): void
+  take(): T | undefined
+  length(): number
+}
+
+export function createHeadIndexQueue<T>({
+  compactAfter = 64,
+}: { compactAfter?: number } = {}): HeadIndexQueue<T> {
+  const buffer: T[] = []
+  let head = 0
+
+  const compact = () => {
+    if (head === 0) return
+    if (head < compactAfter && head < buffer.length) return
+    buffer.splice(0, head)
+    head = 0
+  }
+
+  return {
+    push(item) {
+      buffer.push(item)
+    },
+    take() {
+      if (head >= buffer.length) return undefined
+      const item = buffer[head]
+      head += 1
+      compact()
+      return item
+    },
+    length() {
+      return buffer.length - head
+    },
+  }
+}
+
 /**
  * Generic POST-based SSE stream. Sends a JSON body to the given path and
  * yields parsed SSE events.
@@ -136,7 +169,7 @@ export async function* streamSSEPost<TEvent extends string>(
   options?: StreamSSEPostOptions,
 ): AsyncGenerator<SSEEvent<TEvent>> {
   // Callback-driven fetchEventSource → generator로 bridge.
-  const buffer: SSEEvent<TEvent>[] = []
+  const buffer = createHeadIndexQueue<SSEEvent<TEvent>>()
   let resolver: (() => void) | null = null
   let terminalError: Error | null = null
   let closed = false
@@ -199,7 +232,7 @@ export async function* streamSSEPost<TEvent extends string>(
       try {
         const data: unknown = JSON.parse(msg.data)
         buffer.push({
-          event: ((msg.event || defaultEvent) as TEvent),
+          event: (msg.event || defaultEvent) as TEvent,
           data,
           id: msg.id || undefined,
         })
@@ -229,8 +262,9 @@ export async function* streamSSEPost<TEvent extends string>(
   })
 
   while (true) {
-    if (buffer.length > 0) {
-      yield buffer.shift()!
+    if (buffer.length() > 0) {
+      const event = buffer.take()
+      if (event) yield event
       continue
     }
     if (closed) {
@@ -272,7 +306,10 @@ export interface StreamSSEGetResumeOptions<TEvent extends string> {
 /** GET 기반 stream 이 4xx/5xx 로 reject 됐을 때 throw 되는 에러.
  *  ``withAutoResume`` 가 ``status >= 500`` / 네트워크 에러만 retry 하는 데 사용. */
 export class StreamHttpError extends Error {
-  constructor(public status: number, public statusText: string) {
+  constructor(
+    public status: number,
+    public statusText: string,
+  ) {
     super(`Stream HTTP ${status} ${statusText}`)
     this.name = 'StreamHttpError'
   }

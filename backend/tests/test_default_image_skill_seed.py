@@ -84,18 +84,110 @@ async def test_seed_default_image_skill_is_idempotent(
     await db.commit()
 
     items = (
-        await db.execute(
-            select(MarketplaceItem).where(
-                MarketplaceItem.source_kind == "system_seed",
-                MarketplaceItem.source_external_id == "image-generation",
+        (
+            await db.execute(
+                select(MarketplaceItem).where(
+                    MarketplaceItem.source_kind == "system_seed",
+                    MarketplaceItem.source_external_id == "image-generation",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(items) == 1
 
     versions = (
-        await db.execute(
-            select(MarketplaceVersion).where(MarketplaceVersion.item_id == items[0].id)
+        (
+            await db.execute(
+                select(MarketplaceVersion).where(MarketplaceVersion.item_id == items[0].id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
+    assert len(versions) == 1
+
+
+@pytest.mark.asyncio
+async def test_seed_default_deep_research_skill_creates_tool_dependency_profile(
+    db: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.seed import default_marketplace_skills
+
+    monkeypatch.setattr(default_marketplace_skills.settings, "data_root", str(tmp_path))
+
+    await default_marketplace_skills.seed_default_marketplace_skills(db)
+    await db.commit()
+
+    item = (
+        await db.execute(
+            select(MarketplaceItem).where(
+                MarketplaceItem.source_kind == "system_seed",
+                MarketplaceItem.source_external_id == "deep-research",
+            )
+        )
+    ).scalar_one()
+    assert item.is_system is True
+    assert item.is_listed is True
+    assert item.visibility == "system"
+    assert item.status == "published"
+    assert item.slug == "deep-research"
+    assert item.latest_version_id is not None
+
+    version = await db.get(MarketplaceVersion, item.latest_version_id)
+    assert version is not None
+    assert version.payload["name"] == "deep-research"
+    assert version.storage_path is not None
+    assert version.storage_path.startswith("marketplace/system-skills/")
+    assert (resolve_data_path(version.storage_path) / "SKILL.md").exists()
+    assert version.credential_requirements == []
+    assert version.execution_profile == {
+        "support_level": "ready_python",
+        "runners": ["python"],
+        "requires_network": True,
+        "tool_dependencies": ["tavily_search"],
+        "timeout_seconds": 420,
+        "notes": (
+            "Uses hosted Tavily Search through a runtime tool dependency; "
+            "no user credential binding is required."
+        ),
+    }
+
+
+@pytest.mark.asyncio
+async def test_seed_default_deep_research_skill_is_idempotent(
+    db: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.seed import default_marketplace_skills
+
+    monkeypatch.setattr(default_marketplace_skills.settings, "data_root", str(tmp_path))
+
+    await default_marketplace_skills.seed_default_marketplace_skills(db)
+    await default_marketplace_skills.seed_default_marketplace_skills(db)
+    await db.commit()
+
+    items = (
+        (
+            await db.execute(
+                select(MarketplaceItem).where(
+                    MarketplaceItem.source_kind == "system_seed",
+                    MarketplaceItem.source_external_id == "deep-research",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(items) == 1
+
+    versions = (
+        (
+            await db.execute(
+                select(MarketplaceVersion).where(MarketplaceVersion.item_id == items[0].id)
+            )
+        )
+        .scalars()
+        .all()
+    )
     assert len(versions) == 1

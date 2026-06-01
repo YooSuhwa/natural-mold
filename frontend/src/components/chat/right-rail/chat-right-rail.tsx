@@ -1,28 +1,48 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import {
-  chatRightRailAtom,
-  type RightRailState,
-} from '@/lib/stores/chat-right-rail'
+import { chatRightRailAtom, type RightRailState } from '@/lib/stores/chat-right-rail'
 import { SubagentPanelContent } from './subagent-panel-content'
 import { ToolResultPanelContent } from './tool-result-panel-content'
 import { OutlinePanelContent } from './outline-panel-content'
 
 interface Props {
   className?: string
+  conversationId?: string | null
 }
 
 const PANEL_WIDTH_CLASS = 'w-[380px]'
 
-export function ChatRightRail({ className }: Props) {
+function conversationIdForState(state: RightRailState): string | null | undefined {
+  if (state.mode === 'subagent') return state.subagent.conversationId
+  if (state.mode === 'tool-result') return state.toolResult.conversationId
+  if (state.mode === 'outline') return state.outline.conversationId
+  return undefined
+}
+
+export function ChatRightRail({ className, conversationId }: Props) {
   const t = useTranslations('chat.rightRail')
   const [state, setState] = useAtom(chatRightRailAtom)
-  const isOpen = state.mode !== 'none'
+  const stateConversationId = conversationIdForState(state)
+  const isStaleConversation =
+    state.mode !== 'none' &&
+    conversationId !== undefined &&
+    conversationId !== null &&
+    stateConversationId !== undefined &&
+    stateConversationId !== null &&
+    stateConversationId !== conversationId
+  const isOpen = state.mode !== 'none' && !isStaleConversation
+
+  useEffect(() => {
+    if (isStaleConversation) {
+      setState({ mode: 'none' })
+    }
+  }, [isStaleConversation, setState])
 
   return (
     <>
@@ -83,15 +103,11 @@ function RailFrame({ state, className, onClose }: RailFrameProps) {
         </Button>
       </header>
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        {state.mode === 'subagent' ? (
-          <SubagentPanelContent payload={state.subagent} />
-        ) : null}
+        {state.mode === 'subagent' ? <SubagentPanelContent payload={state.subagent} /> : null}
         {state.mode === 'tool-result' ? (
           <ToolResultPanelContent payload={state.toolResult} />
         ) : null}
-        {state.mode === 'outline' ? (
-          <OutlinePanelContent payload={state.outline} />
-        ) : null}
+        {state.mode === 'outline' ? <OutlinePanelContent payload={state.outline} /> : null}
       </div>
     </div>
   )

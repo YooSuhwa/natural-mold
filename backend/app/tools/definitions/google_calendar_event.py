@@ -14,10 +14,7 @@ _TIMEZONE = "Asia/Seoul"
 
 
 def _events_url(calendar_id: str) -> str:
-    return (
-        "https://www.googleapis.com/calendar/v3/calendars/"
-        f"{calendar_id}/events"
-    )
+    return f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
 
 
 async def _runner(ctx: ToolRunContext) -> dict[str, Any]:
@@ -65,7 +62,7 @@ async def _runner(ctx: ToolRunContext) -> dict[str, Any]:
 
 definition = ToolDefinition(
     key="google_calendar_event",
-    display_name="Google Calendar — Create Event",
+    display_name="Google 캘린더",
     description="Create a Google Calendar event using a Workspace OAuth2 credential.",
     icon_id="calendar",
     category="calendar",

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Google Custom Search
     google_cse_id: str = ""
 
+    # Tavily Search (hosted backend key for Deep Research)
+    tavily_api_key: str = ""
+
     # Google Chat Webhook
     google_chat_webhook_url: str = ""
 

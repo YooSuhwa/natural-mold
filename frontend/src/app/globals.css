@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "../components/agent-prism/theme/theme.css";
 
 @custom-variant dark (&:is(.dark *));
 

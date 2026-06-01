@@ -3,6 +3,7 @@
 import { ListIcon } from 'lucide-react'
 import { useSetAtom } from 'jotai'
 import { cn } from '@/lib/utils'
+import { useChatConversationId } from '@/components/chat/conversation-context'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 
 interface Props {
@@ -26,13 +27,14 @@ export function OutlineTrigger({
   label = 'Outline',
 }: Props) {
   const setRail = useSetAtom(chatRightRailAtom)
+  const conversationId = useChatConversationId()
 
   if (!content || !content.trim()) return null
 
   const handleClick = () => {
     setRail({
       mode: 'outline',
-      outline: { messageId, content },
+      outline: { conversationId, messageId, content },
     })
   }
 

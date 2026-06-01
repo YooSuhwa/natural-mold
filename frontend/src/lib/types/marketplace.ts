@@ -5,12 +5,7 @@
 
 export type MarketplaceResourceType = 'agent' | 'mcp' | 'skill'
 
-export type MarketplaceVisibility =
-  | 'private'
-  | 'restricted'
-  | 'public'
-  | 'unlisted'
-  | 'system'
+export type MarketplaceVisibility = 'private' | 'restricted' | 'public' | 'unlisted' | 'system'
 
 export type MarketplaceStatus = 'draft' | 'published' | 'deprecated' | 'disabled'
 
@@ -32,11 +27,7 @@ export type PublicationState =
   | 'published_unlisted'
   | 'disabled'
 
-export type InstallationStatus =
-  | 'active'
-  | 'needs_setup'
-  | 'disabled'
-  | 'uninstalled'
+export type InstallationStatus = 'active' | 'needs_setup' | 'disabled' | 'uninstalled'
 
 export type CredentialSummaryStatus =
   | 'none'
@@ -93,6 +84,8 @@ export interface ExecutionProfile {
   support_level?: SupportLevel
   runners?: string[]
   requires_network?: boolean
+  timeout_seconds?: number
+  tool_dependencies?: string[]
   notes?: string | null
   [key: string]: unknown
 }

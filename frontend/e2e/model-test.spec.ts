@@ -123,7 +123,7 @@ test.describe('Model connection test', () => {
   })
 
   test('row Test → success card → Show Details → Curl tab → Copy', async ({ page }) => {
-    await page.route('**/api/models', (route) => route.fulfill({ json: [FAKE_MODEL] }))
+    await page.route(/\/api\/models(?:\?.*)?$/, (route) => route.fulfill({ json: [FAKE_MODEL] }))
     await page.route('**/api/models/model-1/test**', (route) =>
       route.fulfill({ json: SUCCESS_RESPONSE }),
     )
@@ -153,7 +153,7 @@ test.describe('Model connection test', () => {
   })
 
   test('Custom ID tab → mock 401 → 인증 실패', async ({ page }) => {
-    await page.route('**/api/models', (route) => route.fulfill({ json: [] }))
+    await page.route(/\/api\/models(?:\?.*)?$/, (route) => route.fulfill({ json: [] }))
     await page.route('**/api/models/test-preview', (route) =>
       route.fulfill({ json: AUTH_ERROR_RESPONSE }),
     )

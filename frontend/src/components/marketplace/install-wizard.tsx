@@ -22,10 +22,7 @@ import { ApiError } from '@/lib/api/client'
 import { useInstallItem, useMarketplaceVersion } from '@/lib/hooks/use-marketplace'
 import { useCredentials } from '@/lib/hooks/use-credentials'
 import type { Credential } from '@/lib/types/credential'
-import type {
-  CredentialRequirement,
-  MarketplaceItem,
-} from '@/lib/types/marketplace'
+import type { CredentialRequirement, MarketplaceItem } from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
 
 type Step = 'review' | 'credentials' | 'confirm' | 'done'
@@ -268,16 +265,20 @@ function ReviewStep({
   setName: (v: string) => void
 }) {
   const t = useTranslations('marketplace.installWizard.review')
+  const toolDependencies = item.execution_profile?.tool_dependencies ?? []
   return (
     <div className="space-y-4">
       <div className="text-sm text-muted-foreground">
         <p>
-          {t('resourceType')} <span className="font-medium text-foreground">{item.resource_type}</span>
+          {t('resourceType')}{' '}
+          <span className="font-medium text-foreground">{item.resource_type}</span>
         </p>
         {item.latest_version ? (
           <p>
             {t('latestVersion')}{' '}
-            <span className="font-medium text-foreground">v{item.latest_version.version_label}</span>
+            <span className="font-medium text-foreground">
+              v{item.latest_version.version_label}
+            </span>
           </p>
         ) : null}
         {item.execution_profile?.support_level ? (
@@ -289,6 +290,13 @@ function ReviewStep({
           </p>
         ) : null}
       </div>
+
+      {toolDependencies.length > 0 ? (
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          {t('hostedTools')}{' '}
+          <span className="font-medium text-foreground">{toolDependencies.join(', ')}</span>
+        </div>
+      ) : null}
 
       <div className="space-y-1.5">
         <label htmlFor="name-override" className="block">
@@ -365,9 +373,7 @@ function RequirementRow({
   isLoading: boolean
 }) {
   const t = useTranslations('marketplace.installWizard')
-  const matched = credentials.filter(
-    (c) => c.definition_key === requirement.definition_key,
-  )
+  const matched = credentials.filter((c) => c.definition_key === requirement.definition_key)
   const hasMatch = matched.length > 0
   const isRequiredAndMissing = requirement.required && value === SKIP_VALUE
 
@@ -380,7 +386,9 @@ function RequirementRow({
             {requirement.required ? (
               <span className="ml-1.5 text-destructive">*</span>
             ) : (
-              <span className="ml-1.5 text-xs font-normal text-muted-foreground">{t('optional')}</span>
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                {t('optional')}
+              </span>
             )}
           </p>
           {requirement.description ? (
@@ -495,9 +503,7 @@ function DoneStep({ item, onClose }: { item: MarketplaceItem; onClose: () => voi
   return (
     <div className="flex flex-col items-center justify-center space-y-3 text-center">
       <p className="text-base font-medium">{t('title', { name: item.name })}</p>
-      <p className="text-sm text-muted-foreground">
-        {t('description')}
-      </p>
+      <p className="text-sm text-muted-foreground">{t('description')}</p>
       <Button variant="outline" onClick={onClose}>
         {tc('close')}
       </Button>

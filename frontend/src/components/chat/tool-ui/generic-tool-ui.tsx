@@ -1,11 +1,13 @@
 'use client'
 
+import { useMemo } from 'react'
 import { PanelRightOpenIcon } from 'lucide-react'
 import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 import { ChatImage } from '@/components/chat/markdown-content'
+import { useChatConversationId } from '@/components/chat/conversation-context'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 
 // ──────────────────────────────────────────────
@@ -104,7 +106,15 @@ function ToolFallbackBody({
 }) {
   const t = useTranslations('chat.toolCall')
   const serializeFailed = t('serializeFailed')
-  const imageUrls = hasResult ? extractImageUrls(result) : []
+  const argsText = useMemo(
+    () => (hasArgs ? formatToolValue(args, serializeFailed) : ''),
+    [args, hasArgs, serializeFailed],
+  )
+  const resultText = useMemo(
+    () => (hasResult ? formatToolValue(result, serializeFailed) : ''),
+    [hasResult, result, serializeFailed],
+  )
+  const imageUrls = useMemo(() => (hasResult ? extractImageUrls(result) : []), [hasResult, result])
 
   return (
     <div className="space-y-2">
@@ -114,7 +124,7 @@ function ToolFallbackBody({
             {t('parameters')}
           </div>
           <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-            {formatToolValue(args, serializeFailed)}
+            {argsText}
           </pre>
         </div>
       )}
@@ -124,7 +134,7 @@ function ToolFallbackBody({
             {t('results')}
           </div>
           <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
-            {formatToolValue(result, serializeFailed)}
+            {resultText}
           </pre>
         </div>
       )}
@@ -148,6 +158,7 @@ export function ToolFallbackPanel({
 }: ToolFallbackPanelProps) {
   const t = useTranslations('chat.toolCall')
   const setRail = useSetAtom(chatRightRailAtom)
+  const conversationId = useChatConversationId()
   const hasArgs = args && Object.keys(args).length > 0
   const hasResult = result !== undefined && result !== null
   const railStatus =
@@ -159,6 +170,7 @@ export function ToolFallbackPanel({
     setRail({
       mode: 'tool-result',
       toolResult: {
+        conversationId,
         toolCallId,
         toolName,
         args,
