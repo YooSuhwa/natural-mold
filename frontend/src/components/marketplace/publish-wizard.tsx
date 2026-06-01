@@ -16,6 +16,12 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { DialogShell } from '@/components/shared/dialog-shell'
+import {
+  DomainIconPicker,
+  DomainIconTile,
+  getDomainIconIdForSkillKind,
+  type DomainIconId,
+} from '@/components/shared/icon'
 import { ApiError } from '@/lib/api/client'
 import { usePublishSkill } from '@/lib/hooks/use-marketplace'
 import type { Skill } from '@/lib/types/skill'
@@ -49,6 +55,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
   const [step, setStep] = useState<Step>('review')
   const [name, setName] = useState(skill?.name ?? '')
   const [description, setDescription] = useState(skill?.description ?? '')
+  const [iconId, setIconId] = useState<DomainIconId>(getDomainIconIdForSkillKind(skill?.kind))
   const [releaseNotes, setReleaseNotes] = useState('')
   const [visibility, setVisibility] = useState<PublishSkillBody['visibility']>('private')
   const [aclInput, setAclInput] = useState('')
@@ -84,6 +91,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
           visibility,
           name: name || skill.name,
           description: description || null,
+          icon_id: iconId,
           release_notes: releaseNotes || null,
           acl_user_ids: aclUserIds,
         },
@@ -159,8 +167,17 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
               <p>{t('reviewHint')}</p>
               <div className="rounded-md bg-muted p-3 text-xs">
                 <p className="font-medium">{t('review.skill')}</p>
-                <p>{skill.name}</p>
-                <p className="text-muted-foreground">{skill.kind}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <DomainIconTile
+                    iconId={iconId}
+                    className="size-8 bg-background text-foreground"
+                    iconClassName="size-4 text-foreground/80"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate">{skill.name}</p>
+                    <p className="text-muted-foreground">{skill.kind}</p>
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}
@@ -179,6 +196,10 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
                   value={description ?? ''}
                   onChange={(e) => setDescription(e.target.value)}
                 />
+              </div>
+              <div className="space-y-1.5">
+                <span className="text-sm font-medium">{t('fields.icon')}</span>
+                <DomainIconPicker value={iconId} onChange={setIconId} />
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="pub-notes">{t('fields.releaseNotes')}</label>

@@ -26,9 +26,11 @@ const webServer = [
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
+  globalSetup: './e2e/global-setup.mjs',
   retries: 1,
   use: {
     baseURL: 'http://localhost:3000',
+    storageState: './e2e/.auth/user.json',
     trace: 'on-first-retry',
   },
   webServer,

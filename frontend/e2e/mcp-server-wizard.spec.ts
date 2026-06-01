@@ -3,7 +3,7 @@ import { test, expect } from './fixtures'
 // E2E: MCP server wizard happy path with mocked backend.
 
 test.describe('MCP server wizard', () => {
-  test('user can step through the 4-step wizard and import tools', async ({ page }) => {
+  test('user can step through the wizard and import tools', async ({ page }) => {
     let servers: Array<Record<string, unknown>> = []
     const baseServer = {
       id: 'server-1',
@@ -26,6 +26,7 @@ test.describe('MCP server wizard', () => {
     }
 
     await page.route('**/api/credentials', (route) => route.fulfill({ json: [] }))
+    await page.route('**/api/mcp-server-types', (route) => route.fulfill({ json: [] }))
     await page.route(/\/api\/mcp-servers$/, (route) => {
       if (route.request().method() === 'POST') {
         servers = [baseServer]
@@ -33,6 +34,22 @@ test.describe('MCP server wizard', () => {
       }
       return route.fulfill({ json: servers })
     })
+    await page.route('**/api/mcp-servers/probe', (route) =>
+      route.fulfill({
+        json: {
+          success: true,
+          status: 'connected',
+          tools: [
+            {
+              name: 'echo',
+              description: 'Echo input',
+              input_schema: {},
+            },
+          ],
+          error: null,
+        },
+      }),
+    )
     await page.route('**/api/mcp-servers/server-1/discover', (route) =>
       route.fulfill({
         json: {
@@ -56,23 +73,24 @@ test.describe('MCP server wizard', () => {
     )
 
     await page.goto('/mcp-servers')
-    await page.getByRole('button', { name: /new mcp server/i }).first().click()
+    await page
+      .getByRole('button', { name: /새 MCP 서버|서버 추가/ })
+      .first()
+      .click()
 
     // Step 1: basics
-    await page.getByLabel('Name').fill('Local MCP')
+    await page.getByLabel('이름').fill('Local MCP')
     await page.getByLabel('URL').fill('https://example.com/mcp')
-    await page.getByRole('button', { name: /next/i }).click()
+    await page.getByRole('button', { name: '인증으로 계속 →' }).click()
 
     // Step 2: auth — skip
-    await expect(page.getByText(/optionally bind a credential/i)).toBeVisible()
-    await page.getByRole('button', { name: /next/i }).click()
+    await expect(page.getByText('자격증명 보간')).toBeVisible()
+    await page.getByRole('button', { name: '도구로 계속 →' }).click()
 
-    // Step 3: discover
-    await expect(page.getByText(/we'll connect to the server/i)).toBeVisible()
-    await page.getByRole('button', { name: /next/i }).click()
+    // Step 3: discover + save
+    await expect(page.getByText('1/1개 도구 활성화')).toBeVisible()
+    await page.getByRole('button', { name: '서버 저장' }).click()
 
-    // Step 4: confirm
-    await expect(page.getByText(/1 tool imported/i)).toBeVisible()
-    await page.getByRole('button', { name: /done/i }).click()
+    await expect(page.getByText('Local MCP').first()).toBeVisible()
   })
 })

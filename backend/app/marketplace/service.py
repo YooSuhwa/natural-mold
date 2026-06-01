@@ -234,6 +234,7 @@ async def _project_item(
         name=item.name,
         slug=item.slug,
         description=item.description,
+        icon_id=item.icon_id,
         icon_url=item.icon_url,
         visibility=item.visibility,  # type: ignore[arg-type]
         status=item.status,  # type: ignore[arg-type]

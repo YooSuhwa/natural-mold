@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { useTranslations } from 'next-intl'
 import { Loader2Icon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -20,26 +21,21 @@ interface Props {
 export function FormFooter({
   onCancel,
   onSubmit,
-  cancelLabel = 'Cancel',
-  submitLabel = 'Save',
+  cancelLabel,
+  submitLabel,
   pending,
   disabled,
   extraActions,
   submitForm,
   submitVariant = 'default',
 }: Props) {
+  const t = useTranslations('common')
+
   return (
     <>
-      {extraActions ? (
-        <div className="mr-auto flex items-center gap-2">{extraActions}</div>
-      ) : null}
-      <Button
-        variant="outline"
-        onClick={onCancel}
-        disabled={pending}
-        className="min-w-[80px]"
-      >
-        {cancelLabel}
+      {extraActions ? <div className="mr-auto flex items-center gap-2">{extraActions}</div> : null}
+      <Button variant="outline" onClick={onCancel} disabled={pending} className="min-w-[80px]">
+        {cancelLabel ?? t('cancel')}
       </Button>
       <Button
         type={submitForm ? 'submit' : 'button'}
@@ -50,7 +46,7 @@ export function FormFooter({
         className="min-w-[80px]"
       >
         {pending ? <Loader2Icon className="mr-1 size-4 animate-spin" /> : null}
-        {submitLabel}
+        {submitLabel ?? t('save')}
       </Button>
     </>
   )

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { Activity, Plus, Brain, Eye, EyeOff, Wrench, Lightbulb, Zap } from 'lucide-react'
+import { Activity, Plus, Eye, EyeOff, Wrench, Lightbulb, Zap } from 'lucide-react'
 import type { ColumnDef } from '@tanstack/react-table'
 
 import { announceHealthResult } from '@/lib/health-check-toast'
@@ -354,7 +354,7 @@ export default function ModelsPage() {
 
         {!isLoading && allModels.length === 0 ? (
           <EmptyState
-            icon={<Brain className="size-6" />}
+            iconId="model"
             title={t('catalog.empty.title')}
             description={t('catalog.empty.description')}
             action={

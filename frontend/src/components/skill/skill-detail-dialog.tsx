@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DialogShell } from '@/components/shared/dialog-shell'
+import { DomainIconTile, getDomainIconIdForSkillKind } from '@/components/shared/icon'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
 import { CredentialPicker } from '@/components/credential/credential-picker'
 import { SkillPackageTree } from './skill-package-tree'
@@ -85,6 +86,13 @@ function SkillDetailBody({ skillId, onClose }: { skillId: string; onClose: () =>
 
   const header = (
     <DialogShell.Header
+      icon={
+        <DomainIconTile
+          iconId={getDomainIconIdForSkillKind(skill.kind)}
+          className="size-9"
+          iconClassName="size-5"
+        />
+      }
       title={
         <span className="inline-flex items-center gap-2">
           {skill.name}

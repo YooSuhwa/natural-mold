@@ -3,25 +3,18 @@
 import Link from 'next/link'
 import { memo } from 'react'
 import { useTranslations } from 'next-intl'
-import type { LucideIcon } from 'lucide-react'
-import { BotIcon, ServerIcon, SparklesIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { DomainIcon, getDomainIconIdForResource } from '@/components/shared/icon'
 import { CredentialBadge } from '@/components/marketplace/badges/credential-badge'
 import { InstallationBadge } from '@/components/marketplace/badges/installation-badge'
 import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
 import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { SupportBadge } from '@/components/marketplace/badges/support-badge'
-import type { MarketplaceItem, MarketplaceResourceType } from '@/lib/types/marketplace'
+import type { MarketplaceItem } from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 import { cn } from '@/lib/utils'
-
-const RESOURCE_ICONS: Record<MarketplaceResourceType, LucideIcon> = {
-  skill: SparklesIcon,
-  agent: BotIcon,
-  mcp: ServerIcon,
-}
 
 type MarketplaceCardTone = {
   card: string
@@ -122,7 +115,6 @@ interface MarketplaceCardProps {
 
 function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProps) {
   const t = useTranslations('marketplace.card')
-  const Icon = RESOURCE_ICONS[item.resource_type] ?? SparklesIcon
   const cta = derivePrimaryCta(item)
   const ctaLabel = t(`cta.${cta.kind}`)
   const ownerLabel = item.is_system ? t('owner.system') : t('owner.community')
@@ -150,7 +142,10 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
             tone.icon,
           )}
         >
-          <Icon className="size-5" aria-hidden />
+          <DomainIcon
+            iconId={item.icon_id ?? getDomainIconIdForResource(item.resource_type)}
+            className="size-5 text-current"
+          />
         </div>
         <div className="shrink-0">
           <Button

@@ -3,14 +3,15 @@
 import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { ArrowLeft, Search } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { FormFooter } from '@/components/shared/form-footer'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SearchInput } from '@/components/shared/search-input'
-import { DomainIcon } from '@/components/shared/icon'
+import { DomainIconTile } from '@/components/shared/icon'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Card } from '@/components/ui/card'
 import {
   DynamicFieldsForm,
@@ -133,9 +134,7 @@ export function CredentialCreateModal({
               onChange={(e) => setSearch(e.target.value)}
             />
             {filteredDefinitions.length === 0 ? (
-              <p className="rounded border border-dashed p-6 text-center text-sm text-muted-foreground">
-                <Search className="mx-auto mb-2 size-5" /> {t('emptyDefinitions')}
-              </p>
+              <EmptyState iconId="search" title={t('emptyDefinitions')} className="p-6" />
             ) : (
               <div
                 role="list"
@@ -152,7 +151,12 @@ export function CredentialCreateModal({
                     }}
                     className="flex items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:border-primary/40 hover:bg-muted/40"
                   >
-                    <DomainIcon iconId={d.icon_id ?? d.key} className="size-5" />
+                    <DomainIconTile
+                      iconId={d.icon_id ?? d.key}
+                      fallback="credential"
+                      className="size-9"
+                      iconClassName="size-5"
+                    />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{d.display_name}</p>
                       <p className="truncate text-[11px] text-muted-foreground">
@@ -181,7 +185,12 @@ export function CredentialCreateModal({
                 </Button>
               )}
               <Card className="flex-1 px-3 py-2 flex items-center gap-2">
-                <DomainIcon iconId={definition.icon_id ?? definition.key} />
+                <DomainIconTile
+                  iconId={definition.icon_id ?? definition.key}
+                  fallback="credential"
+                  className="size-8"
+                  iconClassName="size-4"
+                />
                 <span className="text-sm font-medium">{definition.display_name}</span>
               </Card>
             </div>

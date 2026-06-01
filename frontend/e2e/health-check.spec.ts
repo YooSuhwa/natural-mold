@@ -126,16 +126,15 @@ test.describe('Health check', () => {
 
     await page.goto('/models')
 
-    await expect(page.getByRole('heading', { name: /^models$/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '모델' })).toBeVisible()
     await expect(page.getByText('GPT-4o mini')).toBeVisible()
 
     // Initial healthy chip
-    await expect(page.getByText('Healthy', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('정상', { exact: true }).first()).toBeVisible()
 
-    // Click "Check" action — request fires, list refetches, chip swaps to Degraded
+    // Click "상태 확인" action — request fires, list refetches, chip swaps to 주의.
     await page.getByTestId('check-now-model-1').click()
-    await expect(page.getByText(/health check complete/i)).toBeVisible()
-    await expect(page.getByText('Degraded', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('주의', { exact: true }).first()).toBeVisible()
   })
 
   test('Row click → Health tab → 30-entry chart', async ({ page }) => {
@@ -158,6 +157,6 @@ test.describe('Health check', () => {
     await expect(timeline.locator('[data-status]')).toHaveCount(30)
 
     // Latest probe metadata is surfaced in the panel header
-    await expect(page.getByText(/Latest probe/i)).toBeVisible()
+    await expect(page.getByText(/최근 프로브/)).toBeVisible()
   })
 })

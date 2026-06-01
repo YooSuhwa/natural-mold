@@ -126,6 +126,7 @@ export interface MarketplaceItem {
   name: string
   slug: string
   description: string | null
+  icon_id?: string | null
   icon_url?: string | null
   visibility: MarketplaceVisibility
   status: MarketplaceStatus
@@ -221,6 +222,7 @@ export interface PublishSkillBody {
   visibility: 'private' | 'restricted' | 'public' | 'unlisted'
   name: string
   description?: string | null
+  icon_id?: string | null
   tags?: string[]
   categories?: string[]
   release_notes?: string | null
@@ -235,6 +237,7 @@ export interface PublishNewVersionBody {
 export interface MarketplaceItemPatchBody {
   name?: string | null
   description?: string | null
+  icon_id?: string | null
   icon_url?: string | null
   tags?: string[] | null
   categories?: string[] | null

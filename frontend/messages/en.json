@@ -2314,6 +2314,7 @@
       "fields": {
         "name": "Name",
         "description": "Description",
+        "icon": "Icon",
         "releaseNotes": "Release Notes",
         "visibility": "Visibility",
         "acl": "Acl"

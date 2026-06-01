@@ -8,7 +8,7 @@ import { Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
-import { DomainIcon } from '@/components/shared/icon'
+import { DomainIconTile } from '@/components/shared/icon'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { DeleteConfirmInline } from '@/components/shared/delete-confirm-inline'
 import { CredentialPicker } from '@/components/credential/credential-picker'
@@ -72,7 +72,14 @@ function ToolDetailDialogInner({ toolId, open, onOpenChange }: Props) {
       ) : (
         <>
           <DialogShell.Header
-            icon={<DomainIcon iconId={definition?.icon_id ?? tool.definition_key} />}
+            icon={
+              <DomainIconTile
+                iconId={definition?.icon_id ?? tool.definition_key}
+                fallback="tool"
+                className="size-9"
+                iconClassName="size-5"
+              />
+            }
             title={tool.name}
             description={
               <span className="inline-flex items-center gap-2">
