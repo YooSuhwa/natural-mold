@@ -93,6 +93,8 @@ export interface ExecutionProfile {
   support_level?: SupportLevel
   runners?: string[]
   requires_network?: boolean
+  timeout_seconds?: number
+  tool_dependencies?: string[]
   notes?: string | null
   [key: string]: unknown
 }

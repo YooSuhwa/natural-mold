@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.agent_runtime.executor import _create_mcp_error_stub, _create_skill_execute_tool
+from app.agent_runtime.skill_tool_dependencies import build_skill_dependency_tool_configs
 from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_for_runtime
 from app.marketplace.skill_runtime import SkillToolContext
-from app.tools.risk import ToolRiskLevel, get_tool_risk
+from app.tools.risk import ToolRiskLevel, get_tool_risk, risk_from_tool_config
 
 
 def test_builtin_read_only_tool_has_read_only_risk_metadata():
@@ -32,6 +35,26 @@ def test_registry_mutation_tool_has_external_mutation_metadata():
     assert risk.risk_level == ToolRiskLevel.EXTERNAL_MUTATION
     assert risk.requires_approval is True
     assert risk.trigger_safe is False
+
+
+def test_tavily_search_is_read_only_and_trigger_safe():
+    risk = risk_from_tool_config({"definition_key": "tavily_search"})
+
+    assert risk.risk_level == ToolRiskLevel.READ_ONLY
+    assert risk.requires_approval is False
+    assert risk.trigger_safe is True
+
+
+def test_skill_dependency_resolver_rejects_unsupported_dependency():
+    with pytest.raises(ValueError, match="Unsupported skill tool dependency: unknown_tool"):
+        build_skill_dependency_tool_configs(
+            agent_skills=[
+                {"execution_profile": {"tool_dependencies": ["unknown_tool"]}},
+            ],
+            existing_tool_configs=[],
+            user_id="user-1",
+            agent_id="agent-1",
+        )
 
 
 def test_mcp_tool_defaults_to_external_mutation_metadata():

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -49,6 +50,7 @@ async def test_tool_types_catalog(client: AsyncClient) -> None:
     keys = {item["key"] for item in response.json()}
     assert {
         "http_request",
+        "tavily_search",
         "naver_search_blog",
         "naver_search_news",
         "naver_search_image",
@@ -417,6 +419,93 @@ async def test_run_naver_search_uses_credential_headers(db: AsyncSession) -> Non
     assert "openapi.naver.com/v1/search/blog.json" in captured["url"]
     assert captured["client_id"] == "id-1"
     assert captured["client_secret"] == "sec-2"
+
+
+# -- Runner: Tavily hosted search -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_tavily_search_uses_hosted_env_key(monkeypatch) -> None:
+    monkeypatch.setattr("app.config.settings.tavily_api_key", "tvly-test")
+
+    definition = tool_registry.get("tavily_search")
+    assert definition is not None
+    assert definition.credential_definition_keys == []
+    assert definition.runner is not None
+
+    captured: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["auth"] = request.headers.get("authorization")
+        captured["body"] = json.loads(request.content.decode())
+        return httpx.Response(
+            200,
+            json={
+                "query": "langgraph deep agents",
+                "answer": "Deep Agents build on LangGraph.",
+                "results": [
+                    {
+                        "title": "Deep Agents",
+                        "url": "https://example.com/deep-agents",
+                        "content": "Deep Agents are built for long-running work.",
+                        "raw_content": "x" * 6100,
+                        "score": 0.97,
+                        "published_date": "2026-05-31",
+                    }
+                ],
+                "response_time": 0.2,
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await definition.runner(
+            ToolRunContext(
+                parameters={
+                    "query": "langgraph deep agents",
+                    "max_results": 99,
+                    "search_depth": "advanced",
+                    "topic": "news",
+                    "time_range": "week",
+                    "include_answer": "true",
+                    "include_raw_content": True,
+                },
+                credentials=None,
+                http_client=client,
+            )
+        )
+
+    body = cast(dict[str, object], captured["body"])
+    assert captured["url"] == "https://api.tavily.com/search"
+    assert captured["auth"] == "Bearer tvly-test"
+    assert body["max_results"] == 10
+    assert body["search_depth"] == "advanced"
+    assert result["answer"] == "Deep Agents build on LangGraph."
+    assert result["results"][0]["raw_content"].endswith("...[truncated]")
+
+
+@pytest.mark.asyncio
+async def test_run_tavily_search_requires_hosted_key(monkeypatch) -> None:
+    monkeypatch.setattr("app.config.settings.tavily_api_key", "")
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+
+    definition = tool_registry.get("tavily_search")
+    assert definition is not None
+    assert definition.runner is not None
+
+    transport = httpx.MockTransport(lambda _request: httpx.Response(200))
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(
+            ValueError,
+            match="TAVILY_API_KEY is not configured on the backend server",
+        ):
+            await definition.runner(
+                ToolRunContext(
+                    parameters={"query": "langgraph deep agents"},
+                    credentials=None,
+                    http_client=client,
+                )
+            )
 
 
 # -- Runner: validation / error envelope -------------------------------------

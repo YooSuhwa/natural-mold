@@ -105,7 +105,7 @@ test.describe('Health check', () => {
   test.beforeEach(async ({ page }) => {
     await page.route('**/api/credential-types', (route) => route.fulfill({ json: FAKE_CRED_TYPES }))
     await page.route('**/api/credentials', (route) => route.fulfill({ json: FAKE_CREDENTIALS }))
-    await page.route('**/api/models', (route) => route.fulfill({ json: [FAKE_MODEL] }))
+    await page.route(/\/api\/models(?:\?.*)?$/, (route) => route.fulfill({ json: [FAKE_MODEL] }))
   })
 
   test('Status column + Check now refreshes the chip', async ({ page }) => {

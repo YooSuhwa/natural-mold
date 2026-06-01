@@ -2111,6 +2111,8 @@
           "support_level": "지원 방식",
           "runners": "실행기",
           "requires_network": "네트워크",
+          "timeout_seconds": "타임아웃",
+          "tool_dependencies": "호스팅 도구",
           "notes": "메모"
         },
         "boolean": {
@@ -2232,6 +2234,7 @@
       "resourceType": "리소스 종류:",
       "latestVersion": "최신 버전:",
       "supportLevel": "지원 수준:",
+      "hostedTools": "포함된 호스팅 도구:",
       "customName": "사용자 지정 이름 (선택)"
     },
     "credentialHelp": "Skill 실행에 필요한 자격증명을 연결합니다. 필수가 아닌 항목은 건너뛸 수 있고, 필수 항목을 나중에 연결하면 설치는 <code>needs_setup</code> 상태가 됩니다.",
