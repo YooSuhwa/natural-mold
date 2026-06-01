@@ -32,7 +32,13 @@ def test_list_registry_exposes_all_curated_entries() -> None:
     entries = mcp_registry.list_registry()
     keys = {e["key"] for e in entries}
     assert {"github", "linear", "jira", "slack", "notion"}.issubset(keys)
-    assert len(entries) >= 5
+    assert {
+        "hancom-gw",
+        "hancom-mile",
+        "hancom-org-chart",
+        "maepsi",
+    }.issubset(keys)
+    assert len(entries) >= 9
 
 
 def test_get_registry_entry_returns_full_payload() -> None:
@@ -58,6 +64,26 @@ def test_stdio_entries_carry_command_and_args() -> None:
     assert any("${credential." in v for v in slack["env_vars"].values())
 
 
+def test_local_first_party_entries_use_mcp_secret_where_needed() -> None:
+    gw = mcp_registry.get_registry_entry("hancom-gw")
+    mile = mcp_registry.get_registry_entry("hancom-mile")
+    org = mcp_registry.get_registry_entry("hancom-org-chart")
+    maepsi = mcp_registry.get_registry_entry("maepsi")
+
+    assert gw is not None
+    assert gw["url"] == "http://localhost:18003/mcp"
+    assert gw["credential_definition_key"] == "mcp_secret"
+    assert mile is not None
+    assert mile["url"] == "http://localhost:18004/mcp"
+    assert mile["credential_definition_key"] == "mcp_secret"
+    assert maepsi is not None
+    assert maepsi["url"] == "http://localhost:18001/mcp/"
+    assert maepsi["credential_definition_key"] == "mcp_secret"
+    assert org is not None
+    assert org["url"] == "http://localhost:18002/mcp"
+    assert org["credential_definition_key"] is None
+
+
 # ---------------------------------------------------------------------------
 # Catalog router: GET /api/mcp-server-types
 # ---------------------------------------------------------------------------
@@ -69,7 +95,17 @@ async def test_router_lists_registry_entries(client: AsyncClient) -> None:
     assert response.status_code == 200, response.text
     body = response.json()
     keys = {e["key"] for e in body}
-    assert {"github", "linear", "jira", "slack", "notion"}.issubset(keys)
+    assert {
+        "github",
+        "linear",
+        "jira",
+        "slack",
+        "notion",
+        "hancom-gw",
+        "hancom-mile",
+        "hancom-org-chart",
+        "maepsi",
+    }.issubset(keys)
 
 
 @pytest.mark.asyncio
@@ -96,9 +132,7 @@ async def test_router_unknown_registry_entry_returns_404(
 
 
 @pytest.mark.asyncio
-async def test_create_from_registry_streamable_http(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_create_from_registry_streamable_http(client: AsyncClient, db: AsyncSession) -> None:
     response = await client.post(
         "/api/mcp-servers/from-registry",
         json={"registry_key": "github", "name": "My GitHub"},
@@ -111,9 +145,7 @@ async def test_create_from_registry_streamable_http(
     assert body["credential_id"] is None
 
     server_id = uuid.UUID(body["id"])
-    row = (
-        await db.execute(select(McpServer).where(McpServer.id == server_id))
-    ).scalar_one()
+    row = (await db.execute(select(McpServer).where(McpServer.id == server_id))).scalar_one()
     assert row.transport == "streamable_http"
     assert row.url == "https://api.githubcopilot.com/mcp/"
 
@@ -135,9 +167,7 @@ async def test_create_from_registry_stdio_carries_command_and_env(
 
 
 @pytest.mark.asyncio
-async def test_create_from_registry_with_credential(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_create_from_registry_with_credential(client: AsyncClient, db: AsyncSession) -> None:
     """``credential_id`` is wired through verbatim (FK validity checked at PG)."""
 
     # Create a credential first via the credentials API so the FK lands valid.

@@ -28,6 +28,8 @@ from app.credentials.interpolation import resolve_deep
 from app.hooks import HookContext, HookResult, hooks
 from app.mcp.domain import McpServerInfo, McpToolDescriptor
 
+MOLDY_CREDENTIAL_HEADER = "X-Moldy-Credential"
+
 
 def build_headers(
     static_headers: dict[str, Any] | None,
@@ -35,14 +37,17 @@ def build_headers(
 ) -> dict[str, str]:
     """Merge static headers with credential interpolation. Returns ``{}`` if empty."""
 
-    if not static_headers:
-        return {}
-    resolved = resolve_deep(dict(static_headers), credentials or {})
+    credential_payload = credentials or {}
+    resolved = resolve_deep(dict(static_headers or {}), credential_payload)
     out: dict[str, str] = {}
     for key, value in resolved.items():
         if value is None:
             continue
         out[str(key)] = str(value)
+    if credential_payload.get("secret") is not None and not any(
+        key.lower() == MOLDY_CREDENTIAL_HEADER.lower() for key in out
+    ):
+        out[MOLDY_CREDENTIAL_HEADER] = str(credential_payload["secret"])
     return out
 
 
@@ -328,4 +333,9 @@ def _build_mcp_hook_context(
     )
 
 
-__all__ = ["build_env_vars", "build_headers", "connect_and_list"]
+__all__ = [
+    "MOLDY_CREDENTIAL_HEADER",
+    "build_env_vars",
+    "build_headers",
+    "connect_and_list",
+]

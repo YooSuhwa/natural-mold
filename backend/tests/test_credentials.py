@@ -37,7 +37,7 @@ async def test_credential_types_catalog(client: AsyncClient) -> None:
     assert response.status_code == 200
     body = response.json()
     keys = {item["key"] for item in body}
-    assert {"naver_search", "openai", "anthropic", "http_bearer"} <= keys
+    assert {"naver_search", "openai", "anthropic", "http_bearer", "mcp_secret"} <= keys
 
 
 @pytest.mark.asyncio
@@ -60,9 +60,7 @@ async def test_credential_type_unknown(client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_credential_round_trip(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_create_credential_round_trip(client: AsyncClient, db: AsyncSession) -> None:
     response = await client.post(
         "/api/credentials",
         json={
@@ -81,9 +79,7 @@ async def test_create_credential_round_trip(
     assert body["status"] == "active"
 
     # Decrypt and verify the original payload survives the round-trip.
-    row = (
-        await db.execute(select(Credential).where(Credential.id == cred_id))
-    ).scalar_one()
+    row = (await db.execute(select(Credential).where(Credential.id == cred_id))).scalar_one()
     decrypted = credential_service.decrypt_data(row.data_encrypted)
     assert decrypted == {"client_id": "id-123", "client_secret": "secret-xyz"}
     assert row.key_id == get_active_key_id()
@@ -168,18 +164,14 @@ async def test_patch_credential_updates_data_and_key_id(
     assert sorted(body["field_keys"]) == ["api_key", "organization"]
 
     row = (
-        await db.execute(
-            select(Credential).where(Credential.id == uuid.UUID(cred_id))
-        )
+        await db.execute(select(Credential).where(Credential.id == uuid.UUID(cred_id)))
     ).scalar_one()
     decrypted = credential_service.decrypt_data(row.data_encrypted)
     assert decrypted == {"api_key": "rotated", "organization": "org-1"}
 
 
 @pytest.mark.asyncio
-async def test_patch_name_only_preserves_data(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_patch_name_only_preserves_data(client: AsyncClient, db: AsyncSession) -> None:
     create = await client.post(
         "/api/credentials",
         json={
@@ -190,30 +182,22 @@ async def test_patch_name_only_preserves_data(
     )
     cred_id = create.json()["id"]
     initial = (
-        await db.execute(
-            select(Credential).where(Credential.id == uuid.UUID(cred_id))
-        )
+        await db.execute(select(Credential).where(Credential.id == uuid.UUID(cred_id)))
     ).scalar_one()
     initial_blob = initial.data_encrypted
 
-    patch = await client.patch(
-        f"/api/credentials/{cred_id}", json={"name": "After"}
-    )
+    patch = await client.patch(f"/api/credentials/{cred_id}", json={"name": "After"})
     assert patch.status_code == 200
     assert patch.json()["name"] == "After"
 
     row = (
-        await db.execute(
-            select(Credential).where(Credential.id == uuid.UUID(cred_id))
-        )
+        await db.execute(select(Credential).where(Credential.id == uuid.UUID(cred_id)))
     ).scalar_one()
     assert row.data_encrypted == initial_blob
 
 
 @pytest.mark.asyncio
-async def test_delete_credential(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_delete_credential(client: AsyncClient, db: AsyncSession) -> None:
     create = await client.post(
         "/api/credentials",
         json={
@@ -266,9 +250,7 @@ async def test_audit_log_records_create_and_update(
 
 
 @pytest.mark.asyncio
-async def test_other_user_cannot_access(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_other_user_cannot_access(client: AsyncClient, db: AsyncSession) -> None:
     """A credential created by another user is invisible via the API."""
 
     other_id = uuid.uuid4()

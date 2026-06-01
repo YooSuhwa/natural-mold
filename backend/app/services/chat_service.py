@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, selectinload
 
 from app.credentials import service as credential_service
+from app.mcp.client import build_headers
 from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.mcp_server import McpServer
@@ -249,9 +250,7 @@ async def list_messages_from_checkpointer(
         # Sibling map keyed by the raw langchain id.
         raw_id = str(getattr(node.message, "id", None) or f"synthetic-{idx}")
         sibling_entries = tree.branches_by_message.get(raw_id, [])
-        resp.siblings = [
-            _sibling_uuid(s.message_id, idx) for s in sibling_entries
-        ]
+        resp.siblings = [_sibling_uuid(s.message_id, idx) for s in sibling_entries]
         resp.sibling_checkpoint_ids = [s.checkpoint_id for s in sibling_entries]
         resp.branch_index = node.branch_index
         resp.branch_total = node.branch_total
@@ -425,9 +424,7 @@ async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> No
     await db.commit()
 
 
-async def clear_active_branch_override(
-    db: AsyncSession, conversation_id: uuid.UUID
-) -> None:
+async def clear_active_branch_override(db: AsyncSession, conversation_id: uuid.UUID) -> None:
     """Reset ``active_branch_checkpoint_id`` so the next list call falls back
     to the newest leaf — used after edit/regenerate where the new branch is
     the most recent and should automatically become active."""
@@ -591,9 +588,7 @@ async def build_tools_config(
                 "description": tool.description,
                 "parameters": dict(tool.parameters or {}),
                 "credentials": credentials,
-                "credential_id": (
-                    str(tool.credential_id) if tool.credential_id else None
-                ),
+                "credential_id": (str(tool.credential_id) if tool.credential_id else None),
                 # Hook-framework correlation — wire down to ``tool_factory``.
                 "user_id": str(agent.user_id),
                 "agent_id": str(agent.id),
@@ -618,9 +613,7 @@ async def build_tools_config(
                     server.credential.data_encrypted
                 )
             except Exception:  # noqa: BLE001
-                logger.exception(
-                    "credential decryption failed for mcp server %s", server.id
-                )
+                logger.exception("credential decryption failed for mcp server %s", server.id)
 
         configs.append(
             {
@@ -633,7 +626,10 @@ async def build_tools_config(
                 # ``mcp_server_url``).
                 "mcp_server_url": server.url,
                 "mcp_tool_name": mcp_tool.name,
-                "mcp_transport_headers": dict(server.headers or {}),
+                "mcp_transport_headers": build_headers(
+                    dict(server.headers or {}),
+                    mcp_credentials,
+                ),
                 "credentials": mcp_credentials,
                 "user_id": str(agent.user_id),
                 "agent_id": str(agent.id),
