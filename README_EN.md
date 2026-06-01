@@ -70,12 +70,13 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # set ENCRYPTION_KEYS / JWT_SECRET (LLM keys via UI)
 uv sync                               # install dependencies
-uv run alembic upgrade head           # run migrations (head: m45)
+uv run alembic upgrade head           # run migrations (head: m52)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
 # 4. Frontend (new terminal)
 cd frontend
+cp .env.example .env.local            # NEXT_PUBLIC_API_BASE_URL / E2E account defaults
 pnpm install
 pnpm dev
 # → http://localhost:3000
@@ -107,6 +108,44 @@ assistant, image generation) require the operator to pick which models to use
 Then build agents through the conversational builder (`/agents`) and chat. Regular
 users register their own keys at `/credentials`.
 
+### Worktree dev port / CORS rules
+
+When working in a git worktree, run `bash scripts/worktree-setup.sh` first so that
+`backend/.env` and `backend/data` point at the main checkout via symlinks. Sharing
+the same PostgreSQL, `ENCRYPTION_KEYS`, and `JWT_SECRET` keeps existing credential
+decryption and login sessions from breaking.
+
+The backend/frontend dev servers must keep **frontend port, backend port, CORS
+origin, and `NEXT_PUBLIC_API_BASE_URL` as one matched set**. Recommended default:
+
+```bash
+# backend
+cd backend
+uv run uvicorn app.main:app --reload --reload-dir app --port 8001
+
+# frontend
+cd frontend
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev -- --port 3000
+```
+
+To run several worktrees at once, pin the port pairs explicitly:
+
+```bash
+# backend (:8010)
+cd backend
+CORS_ALLOWED_ORIGINS=http://localhost:3010,http://127.0.0.1:3010 \
+  uv run uvicorn app.main:app --reload --reload-dir app --port 8010
+
+# frontend (:3010)
+cd frontend
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8010 pnpm dev -- --port 3010
+```
+
+Always fix the port with `pnpm dev -- --port <port>` — if Next.js picks a random
+port on conflict, CORS / cookies / CSRF can drift. Attaching multiple backends to
+the same DB can double-run APScheduler/trigger jobs, so be careful with long
+concurrent sessions.
+
 ### Run everything with Docker Compose
 
 ```bash
@@ -129,11 +168,49 @@ pnpm lint                             # ESLint
 pnpm exec tsc --noEmit                # type check
 pnpm test --run                       # vitest (jsdom)
 pnpm build                            # production build
+pnpm test:e2e                         # Playwright E2E
 ```
+
+### Playwright E2E auth
+
+E2E does not log in through the form per test. Instead, Playwright's global setup
+performs one API login, then injects the resulting `storageState` into every
+browser context. `backend/.env.example` ships `E2E_SEED_USER_ENABLED=true` for
+local dev, so the backend creates/refreshes the dummy super_user below on startup.
+This seed is skipped automatically when `APP_ENV=production`.
+
+```bash
+E2E_USER_EMAIL=playwright-e2e@moldy.dev
+E2E_USER_PASSWORD=correct horse battery staple 42
+E2E_USER_NAME=E2E User
+```
+
+The frontend env file uses the same dedicated test account:
+
+```bash
+cd frontend
+cp .env.example .env.local
+# adjust E2E_USER_EMAIL / E2E_USER_PASSWORD if needed
+pnpm test:e2e
+```
+
+The recommended flow is `login → register fallback → login → save to
+e2e/.auth/user.json`. `frontend/e2e/.auth/` is generated output and is not
+committed. E2E setup code that creates/updates via the API must pass the login
+response's `csrf_token` as an `X-CSRF-Token` header.
 
 > **Pre-push hook**: `git push` triggers `.husky/pre-push`, which runs backend
 > pytest + frontend vitest. Failing tests block the push so regressions cannot
 > reach the remote. Bypass with `git push --no-verify` for WIP branches only.
+
+### Tavily + Deep Research
+
+The Tavily hosted search tool (`tavily_search`) is wired to the Deep Research
+marketplace skill. Set `TAVILY_API_KEY` in the backend `.env` and the Deep
+Research skill **auto-injects `tavily_search` as a runtime tool dependency**, so
+it runs citation-backed multi-step web research without the user attaching any
+tool manually. (Design background:
+`docs/superpowers/plans/2026-05-31-deep-research-tavily.md`)
 
 ## 📸 Screenshots
 
@@ -159,7 +236,8 @@ pnpm build                            # production build
 <details>
 <summary><b>💬 Chat + branching</b></summary>
 
-- **SSE streaming** — Token-level live output with tool-call visualization
+- **SSE streaming** — Token-level live output with tool-call visualization;
+  plain code-block rendering while streaming + O(1) SSE queue keep long replies fast
 - **LangGraph fork** — Editing a user message or regenerating an assistant turn
   forks a new branch; checkpoint IDs power "time travel"
 - **BranchPicker** — `<N/M>` arrows compare sibling responses (assistant-ui integration)
@@ -176,12 +254,15 @@ pnpm build                            # production build
 <details>
 <summary><b>🛠️ Tools · Skills · MCP</b></summary>
 
-- **Built-in tool catalog** — DuckDuckGo, web scraper, current time, Naver
-  search (5), Google CSE (3), Gmail (2), Calendar (3), Google Chat webhook
+- **Built-in tool catalog** — DuckDuckGo, web scraper, current time, relative-date
+  resolver (`resolve_relative_date`), Tavily search, Naver search (5), Google CSE (3),
+  Gmail send, Google Calendar, Google Chat webhook, HTTP request
 - **MCP integration** — Register stdio + HTTP servers via `langchain-mcp-adapters`,
   with import / export and health-check polling
 - **Skill system** — `SKILL.md` (YAML frontmatter) plus auxiliary files; inline
   multi-file editor; create skills from scratch, upload, or import
+- **Skill runtime dependencies** — Tools a skill declares are auto-injected at
+  agent runtime (e.g. Deep Research → Tavily); no manual tool attachment needed
 - **Custom tools** — Define tool parameters with Pydantic schemas
 
 </details>
@@ -205,9 +286,15 @@ pnpm build                            # production build
 
 - **Schedule triggers** — APScheduler-backed cron / interval, per-agent input
   message, Google Chat webhook notifications
+- **Schedule guardrails** — Max run count (`max_runs`), end time (`end_at`),
+  auto-pause after consecutive failures (`auto_pause_after_failures`)
+- **Conversation policy** — Each trigger can start a fresh conversation or reuse a target one
+- **Run history** — `agent_trigger_runs` records per-run source / output preview /
+  duration / thread · checkpoint · trace IDs
 - **Token usage tracking** — Per-agent / per-model / daily token + estimated cost
 - **Daily spend** — Roll-ups by user / agent / model
-- **LangSmith tracing** — Execution traces forwarded automatically
+- **Tracing** — LangSmith auto-forwarding + Langfuse external traces
+  (provider / id / url recorded on `message_events`)
 
 </details>
 
@@ -234,6 +321,8 @@ pnpm build                            # production build
 - **Publish / install separation** — Installing creates an independent copy in your account, decoupled from the original
 - **Version snapshots** — `marketplace_versions` stores an immutable history of every published version
 - **Credential binding** — Map skill-required credentials to your own keys at install time
+- **Tool dependency surfacing** — The install wizard shows tools a skill needs
+  (e.g. Tavily) and auto-injects them at runtime
 - **Moderation** — super_user reviews submissions at `/marketplace/admin/moderation`
 
 </details>
@@ -271,7 +360,7 @@ pnpm build                            # production build
 
 - **Router** (`app/routers/`) — HTTP endpoints, request / response shaping
 - **Service** (`app/services/`) — Business logic, DB queries, transactions
-- **Model** (`app/models/`) — SQLAlchemy ORM, ~40 tables as of m45
+- **Model** (`app/models/`) — SQLAlchemy ORM, 36 tables as of m52
 
 ### Frontend pattern
 
@@ -299,7 +388,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + domain
 │   │   ├── agent_runtime/       # AI execution engine
 │   │   └── seed/                # seed data
-│   ├── alembic/versions/        # migrations (up to m45)
+│   ├── alembic/versions/        # migrations (up to m52)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
@@ -333,6 +422,7 @@ See `backend/.env.example` for the full list. Minimum keys to boot:
 | `JWT_SECRET` | yes | JWT HS256 signing key (ADR-016 multi-user auth) |
 | LLM keys (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`, …) | optional | Register via UI Credentials (ADR-013). ENV is an optional dev bootstrap |
 | `LANGSMITH_API_KEY` | optional | LangSmith tracing |
+| `TAVILY_API_KEY` | optional | Hosted key for Tavily search / Deep Research skill |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | optional | Naver search tools |
 | `GOOGLE_API_KEY` / `GOOGLE_CSE_ID` | optional | Google CSE tools |
 | Google OAuth2 token | optional | Gmail / Calendar tools (`scripts/google_oauth_setup.py`) |

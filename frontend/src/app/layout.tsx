@@ -5,6 +5,7 @@ import { NextIntlClientProvider } from 'next-intl'
 import { getLocale, getMessages, getTimeZone, getTranslations } from 'next-intl/server'
 import { Toaster } from 'sonner'
 import './globals.css'
+import '@/components/agent-prism/theme/theme.css'
 import { AppLayout } from '@/components/layout/app-layout'
 
 const pretendard = localFont({

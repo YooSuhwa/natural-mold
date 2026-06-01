@@ -69,7 +69,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # ENCRYPTION_KEYS / JWT_SECRET 등 입력 (LLM 키는 UI에서 등록)
 uv sync                               # 의존성 설치
-uv run alembic upgrade head           # DB 마이그레이션 (현재 head: m45)
+uv run alembic upgrade head           # DB 마이그레이션 (현재 head: m52)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
@@ -200,12 +200,13 @@ pnpm test:e2e
 > frontend vitest를 자동 실행하여 회귀가 push되지 않도록 차단합니다. 우회는
 > `git push --no-verify` (WIP 브랜치 한정).
 
-### Tavily + Deep Research 계획
+### Tavily + Deep Research
 
-Tavily hosted search tool과 Deep Research marketplace skill 통합 계획은
-`docs/superpowers/plans/2026-05-31-deep-research-tavily.md`에 정리되어 있습니다.
-계획의 핵심은 `TAVILY_API_KEY`를 backend `.env`에 두고, Deep Research skill이
-`tavily_search`를 런타임 의존성으로 자동 주입받게 하는 것입니다.
+Tavily hosted search tool(`tavily_search`)과 Deep Research 마켓플레이스 skill이
+연동되어 있습니다. backend `.env`에 `TAVILY_API_KEY`를 두면 Deep Research skill이
+`tavily_search`를 **런타임 tool dependency로 자동 주입**받아, 사용자가 별도로 도구를
+붙이지 않아도 citation 기반 멀티스텝 웹 리서치를 수행합니다. (설계 배경:
+`docs/superpowers/plans/2026-05-31-deep-research-tavily.md`)
 
 ## 📸 Screenshots
 
@@ -231,7 +232,8 @@ Tavily hosted search tool과 Deep Research marketplace skill 통합 계획은
 <details>
 <summary><b>💬 채팅 + 분기</b></summary>
 
-- **SSE 스트리밍** — 토큰 단위 실시간 출력, 도구 호출 시각화
+- **SSE 스트리밍** — 토큰 단위 실시간 출력, 도구 호출 시각화. 스트리밍 중
+  코드 블록 plain 렌더 + SSE 큐 O(1) 처리 등으로 장문 응답 성능 최적화
 - **LangGraph fork** — 사용자 메시지 편집 / 어시스턴트 재생성 시 새 분기 생성,
   체크포인트 ID 기반 시간여행
 - **BranchPicker** — `<N/M>` 좌우 화살표로 형제 응답 비교 (assistant-ui 통합)
@@ -248,12 +250,15 @@ Tavily hosted search tool과 Deep Research marketplace skill 통합 계획은
 <details>
 <summary><b>🛠️ 도구 · 스킬 · MCP</b></summary>
 
-- **빌트인 도구 카탈로그** — DuckDuckGo / 웹 스크래퍼 / 현재 시각 / Naver 검색
-  5종 / Google CSE 3종 / Gmail 2종 / Calendar 3종 / Google Chat Webhook
+- **빌트인 도구 카탈로그** — DuckDuckGo / 웹 스크래퍼 / 현재 시각 / 상대 날짜
+  해석(`resolve_relative_date`) / Tavily 검색 / Naver 검색 5종 / Google CSE 3종 /
+  Gmail 보내기 / Google 캘린더 / Google Chat Webhook / HTTP 요청
 - **MCP 통합** — stdio + HTTP 서버 등록, `langchain-mcp-adapters` 기반,
   import/export, health check polling
 - **Skill 시스템** — SKILL.md(YAML frontmatter) + 보조 파일을 묶은 스킬 패키지,
   multi-file 인라인 에디터, scratch/upload/import 3가지 생성 방식
+- **Skill 런타임 의존성** — Skill이 선언한 tool dependency를 에이전트 실행 시
+  자동 주입 (예: Deep Research → Tavily). 사용자가 도구를 수동으로 붙일 필요 없음
 - **사용자 정의 도구** — Pydantic 스키마로 도구 파라미터 정의
 
 </details>
@@ -277,9 +282,15 @@ Tavily hosted search tool과 Deep Research marketplace skill 통합 계획은
 
 - **스케줄 트리거** — APScheduler 기반 cron / interval, 에이전트별 입력 메시지
   지정, Google Chat Webhook 알림
+- **스케줄 가드레일** — 최대 실행 횟수(`max_runs`), 종료 시각(`end_at`),
+  연속 실패 시 자동 일시정지(`auto_pause_after_failures`)
+- **대화 정책** — 트리거마다 새 대화 생성 / 지정 대화 재사용 선택
+- **실행 이력** — `agent_trigger_runs`에 실행별 source / 출력 미리보기 /
+  소요시간 / thread·checkpoint·trace ID 기록
 - **토큰 사용량 추적** — 에이전트별 / 모델별 / 일별 토큰 + 추정 비용
 - **Daily spend** — 사용자 / 에이전트 / 모델 단위 일별 집계
-- **LangSmith 트레이싱** — 실행 트레이스 자동 전송
+- **트레이싱** — LangSmith 자동 전송 + Langfuse 외부 트레이스 연동
+  (`message_events`에 external trace provider/id/url 기록)
 
 </details>
 
@@ -306,6 +317,8 @@ Tavily hosted search tool과 Deep Research marketplace skill 통합 계획은
 - **원본-설치본 분리** — 설치 시 사용자 계정에 독립 복사본 생성, 원본 업데이트와 독립 동작
 - **버전 스냅샷** — `marketplace_versions` 테이블에 immutable 버전 이력 관리
 - **Credential 바인딩** — Skill별 필요 credential을 설치 시점에 사용자 계정 키로 매핑
+- **Tool dependency 표시** — Skill이 요구하는 도구(예: Tavily)를 설치 마법사에서
+  안내하고 실행 시 자동 주입
 - **모더레이션** — super_user가 `/marketplace/admin/moderation`에서 공개 심사
 
 </details>
@@ -343,7 +356,7 @@ Tavily hosted search tool과 Deep Research marketplace skill 통합 계획은
 
 - **Router** (`app/routers/`) — HTTP 엔드포인트, 요청·응답 변환
 - **Service** (`app/services/`) — 비즈니스 로직, DB 쿼리, 트랜잭션
-- **Model** (`app/models/`) — SQLAlchemy ORM, ~40개 테이블 (m45 기준)
+- **Model** (`app/models/`) — SQLAlchemy ORM, 36개 테이블 (m52 기준)
 
 ### Frontend 패턴
 
@@ -371,7 +384,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + 도메인
 │   │   ├── agent_runtime/       # AI 실행 엔진
 │   │   └── seed/                # 시드 데이터
-│   ├── alembic/versions/        # 마이그레이션 (m45까지)
+│   ├── alembic/versions/        # 마이그레이션 (m52까지)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
@@ -405,6 +418,7 @@ natural-mold/
 | `JWT_SECRET` | O | JWT HS256 서명 키 (ADR-016 멀티유저 인증) |
 | LLM 키 (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 등) | - | UI Credentials에서 등록 권장 (ADR-013). ENV는 dev bootstrap용 선택값 |
 | `LANGSMITH_API_KEY` | - | LangSmith 트레이싱 (선택) |
+| `TAVILY_API_KEY` | - | Tavily 검색 / Deep Research skill용 hosted 키 (선택) |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | - | 네이버 검색 도구 |
 | `GOOGLE_API_KEY` / `GOOGLE_CSE_ID` | - | Google CSE 도구 |
 | Google OAuth2 토큰 | - | Gmail / Calendar 도구 (`scripts/google_oauth_setup.py`) |
