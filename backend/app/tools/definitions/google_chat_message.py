@@ -19,15 +19,11 @@ async def _runner(ctx: ToolRunContext) -> dict[str, Any]:
     webhook_url: str | None = None
     if ctx.credentials is not None:
         # Accept either {"token": URL} (http_bearer style) or {"webhook_url": URL}
-        webhook_url = (
-            ctx.credentials.get("webhook_url") or ctx.credentials.get("token")
-        )
+        webhook_url = ctx.credentials.get("webhook_url") or ctx.credentials.get("token")
     if not webhook_url:
         webhook_url = ctx.parameters.get("webhook_url")
     if not webhook_url:
-        raise ValueError(
-            "webhook_url is required (either as a parameter or via a credential)"
-        )
+        raise ValueError("webhook_url is required (either as a parameter or via a credential)")
 
     text = ctx.parameters.get("message") or ""
     if not text:
@@ -63,9 +59,7 @@ definition = ToolDefinition(
             display_name="Webhook URL (optional if credential provided)",
             kind=FieldKind.PASSWORD,
             type_options={"password": True},
-            description=(
-                "If a credential is attached, its value overrides this field."
-            ),
+            description=("If a credential is attached, its value overrides this field."),
         ),
     ],
     credential_definition_keys=["http_bearer"],

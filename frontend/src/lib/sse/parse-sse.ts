@@ -1,7 +1,4 @@
-import {
-  fetchEventSource,
-  type EventSourceMessage,
-} from '@microsoft/fetch-event-source'
+import { fetchEventSource, type EventSourceMessage } from '@microsoft/fetch-event-source'
 import { API_BASE, fireSessionExpired } from '@/lib/api/client'
 import { ApiError, parseApiErrorBody } from '@/lib/api/errors'
 import { csrfStore } from '@/lib/auth/csrf'
@@ -75,7 +72,7 @@ export async function* parseSSEStream<TEvent extends string>(
         // ``id:x`` 둘 다 유효. 일부 프록시가 공백을 제거하면 startsWith 매칭이
         // 깨져 lastEventId 추적이 망가졌었음. colon-split 로 통일.
         const colon = line.indexOf(':')
-        if (colon < 0) continue  // comment 라인 (``: ...``) 또는 빈 줄
+        if (colon < 0) continue // comment 라인 (``: ...``) 또는 빈 줄
         const field = line.slice(0, colon)
         const rawValue = line.slice(colon + 1)
         const value = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue
@@ -235,7 +232,7 @@ export async function* streamSSEPost<TEvent extends string>(
       try {
         const data: unknown = JSON.parse(msg.data)
         buffer.push({
-          event: ((msg.event || defaultEvent) as TEvent),
+          event: (msg.event || defaultEvent) as TEvent,
           data,
           id: msg.id || undefined,
         })
@@ -309,7 +306,10 @@ export interface StreamSSEGetResumeOptions<TEvent extends string> {
 /** GET 기반 stream 이 4xx/5xx 로 reject 됐을 때 throw 되는 에러.
  *  ``withAutoResume`` 가 ``status >= 500`` / 네트워크 에러만 retry 하는 데 사용. */
 export class StreamHttpError extends Error {
-  constructor(public status: number, public statusText: string) {
+  constructor(
+    public status: number,
+    public statusText: string,
+  ) {
     super(`Stream HTTP ${status} ${statusText}`)
     this.name = 'StreamHttpError'
   }

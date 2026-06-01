@@ -6,10 +6,7 @@ import { useTranslations } from 'next-intl'
 import { XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import {
-  chatRightRailAtom,
-  type RightRailState,
-} from '@/lib/stores/chat-right-rail'
+import { chatRightRailAtom, type RightRailState } from '@/lib/stores/chat-right-rail'
 import { SubagentPanelContent } from './subagent-panel-content'
 import { ToolResultPanelContent } from './tool-result-panel-content'
 import { OutlinePanelContent } from './outline-panel-content'
@@ -106,15 +103,11 @@ function RailFrame({ state, className, onClose }: RailFrameProps) {
         </Button>
       </header>
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        {state.mode === 'subagent' ? (
-          <SubagentPanelContent payload={state.subagent} />
-        ) : null}
+        {state.mode === 'subagent' ? <SubagentPanelContent payload={state.subagent} /> : null}
         {state.mode === 'tool-result' ? (
           <ToolResultPanelContent payload={state.toolResult} />
         ) : null}
-        {state.mode === 'outline' ? (
-          <OutlinePanelContent payload={state.outline} />
-        ) : null}
+        {state.mode === 'outline' ? <OutlinePanelContent payload={state.outline} /> : null}
       </div>
     </div>
   )

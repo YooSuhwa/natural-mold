@@ -82,10 +82,24 @@ vi.mock('@assistant-ui/react', () => {
           metadata: { custom: {}, submittedFeedback: undefined },
         },
       }),
+    useAuiState: (selector: (state: unknown) => unknown) =>
+      selector({
+        composer: { dictation: null, isEditing: true, text: '' },
+        thread: { isDisabled: false },
+      }),
     useAui: () => ({
-      thread: () => ({ cancelRun: vi.fn() }),
+      composer: () => ({
+        addAttachment: vi.fn(),
+        getState: () => ({ isEditing: true, isEmpty: true }),
+        send: vi.fn(),
+        setText: vi.fn(),
+      }),
+      thread: () => ({
+        cancelRun: vi.fn(),
+        getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),
+      }),
     }),
-    makeAssistantToolUI: (config: unknown) => () => <div data-testid="tool-ui" />,
+    makeAssistantToolUI: () => () => <div data-testid="tool-ui" />,
   }
 })
 

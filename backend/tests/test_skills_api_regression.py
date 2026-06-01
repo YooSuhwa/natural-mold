@@ -72,7 +72,7 @@ def _zip_minimal_skill(name: str = "demo") -> bytes:
     with zipfile.ZipFile(buf, "w") as zf:
         zf.writestr(
             "SKILL.md",
-            f"---\nname: {name}\ndescription: \"demo\"\nversion: \"1.0.0\"\n---\n\nBody\n",
+            f'---\nname: {name}\ndescription: "demo"\nversion: "1.0.0"\n---\n\nBody\n',
         )
     return buf.getvalue()
 
@@ -84,9 +84,7 @@ def _zip_minimal_skill(name: str = "demo") -> bytes:
 
 class TestM41ColumnDefaults:
     @pytest.mark.asyncio
-    async def test_new_skill_defaults_origin_kind_created_by_me(
-        self, db: AsyncSession
-    ) -> None:
+    async def test_new_skill_defaults_origin_kind_created_by_me(self, db: AsyncSession) -> None:
         """Plain ``Skill()`` without origin_kind must default to 'created_by_me'.
 
         Failing this means a new text skill (created from /skills POST)
@@ -117,9 +115,7 @@ class TestM41ColumnDefaults:
         assert row.source_marketplace_item_id is None
 
     @pytest.mark.asyncio
-    async def test_m41_backfill_marks_package_skills_imported_by_me(
-        self, db: AsyncSession
-    ) -> None:
+    async def test_m41_backfill_marks_package_skills_imported_by_me(self, db: AsyncSession) -> None:
         """Apply the m41 backfill SQL verbatim — package rows must flip.
 
         Mirror of ``m41_skills_marketplace_columns.py:179-184`` UPDATE.
@@ -138,8 +134,7 @@ class TestM41ColumnDefaults:
         # Apply backfill SQL — same statements ship in m41.
         await db.execute(
             text(
-                "UPDATE skills SET source_kind = 'user' "
-                "WHERE source_kind IS NULL AND kind = 'text'"
+                "UPDATE skills SET source_kind = 'user' WHERE source_kind IS NULL AND kind = 'text'"
             )
         )
         await db.execute(
@@ -149,10 +144,7 @@ class TestM41ColumnDefaults:
             )
         )
         await db.execute(
-            text(
-                "UPDATE skills SET origin_kind = 'imported_by_me' "
-                "WHERE kind = 'package'"
-            )
+            text("UPDATE skills SET origin_kind = 'imported_by_me' WHERE kind = 'package'")
         )
         await db.commit()
 
@@ -208,9 +200,7 @@ class TestRuntimeDictContract:
 
 class TestLegacyRoutersStillWork:
     @pytest.mark.asyncio
-    async def test_legacy_text_skill_create_still_works(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_legacy_text_skill_create_still_works(self, client: AsyncClient) -> None:
         resp = await client.post(
             "/api/skills",
             json={
@@ -242,9 +232,7 @@ class TestLegacyRoutersStillWork:
         assert body["kind"] == "text"
 
     @pytest.mark.asyncio
-    async def test_legacy_upload_package_still_works(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_legacy_upload_package_still_works(self, client: AsyncClient) -> None:
         """Package upload via multipart must succeed after m41 columns added.
 
         Slice C will add secret_scan to this path — but Slice A must not
@@ -335,9 +323,7 @@ class TestResponseEmbedsAfterSliceA:
             "publication_summary",
             "installation",
         ):
-            assert embed_key in body, (
-                f"SkillResponse missing {embed_key} embed — Slice A 회귀"
-            )
+            assert embed_key in body, f"SkillResponse missing {embed_key} embed — Slice A 회귀"
 
     @pytest.mark.asyncio
     async def test_get_skill_includes_origin_summary_for_text_skill(
@@ -399,10 +385,7 @@ class TestSkillsPromptBlock:
         ]
         block = build_skills_prompt(skills)
         assert block.startswith("\n## Available Skills")
-        assert (
-            "The agent has access to the following skills mounted under /skills/:"
-            in block
-        )
+        assert "The agent has access to the following skills mounted under /skills/:" in block
         assert "- **Spell Check**: Korean spell checker" in block
         assert "Read `/skills/spell-check/SKILL.md`" in block
         # Empty description fallback contract — Slice E must not break this.
@@ -495,9 +478,7 @@ class TestUploadOriginKindForNewUploads:
 
 class TestAgentSkillLinkAfterM42:
     @pytest.mark.asyncio
-    async def test_link_creation_without_config_unchanged(
-        self, db: AsyncSession
-    ) -> None:
+    async def test_link_creation_without_config_unchanged(self, db: AsyncSession) -> None:
         """write_tools.py:398 still calls ``AgentSkillLink(skill_id=s.id)``
         with no ``config`` kwarg. The link row must persist with config=None.
         """
@@ -526,9 +507,7 @@ class TestAgentSkillLinkAfterM42:
         assert link.agent_id == agent.id
 
     @pytest.mark.asyncio
-    async def test_link_accepts_credential_bindings_override(
-        self, db: AsyncSession
-    ) -> None:
+    async def test_link_accepts_credential_bindings_override(self, db: AsyncSession) -> None:
         """Slice D wires ``config['credential_bindings']`` — verify the JSON
         column round-trips so Slice E can consume it deterministically.
         """
@@ -555,10 +534,6 @@ class TestAgentSkillLinkAfterM42:
         await db.commit()
 
         reloaded = (
-            await db.execute(
-                select(AgentSkillLink).where(AgentSkillLink.skill_id == skill.id)
-            )
+            await db.execute(select(AgentSkillLink).where(AgentSkillLink.skill_id == skill.id))
         ).scalar_one()
-        assert reloaded.config == {
-            "credential_bindings": {"srt": str(binding_cred_id)}
-        }
+        assert reloaded.config == {"credential_bindings": {"srt": str(binding_cred_id)}}

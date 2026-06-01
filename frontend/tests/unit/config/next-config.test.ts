@@ -10,16 +10,17 @@ describe('Next config', () => {
     expect(packageJson.scripts.build).toBe('next build --webpack')
   })
 
-  it('does not expand the Turbopack root outside the frontend app', () => {
+  it('keeps the Turbopack root inside this repository workspace', () => {
     const source = readFileSync(resolve(__dirname, '../../../next.config.ts'), 'utf8')
 
-    expect(source).not.toMatch(/root:\s*['"]\.\.['"]/)
+    expect(source).not.toMatch(/root:\s*['"]\.\.\/\.\.['"]/)
   })
 
-  it('pins the Turbopack root to the frontend config directory', () => {
+  it('pins the Turbopack root to the workspace root that contains pnpm-linked deps', () => {
     const source = readFileSync(resolve(__dirname, '../../../next.config.ts'), 'utf8')
 
     expect(source).toContain('fileURLToPath(import.meta.url)')
-    expect(source).toMatch(/turbopack:\s*{[\s\S]*root:\s*frontendRoot/)
+    expect(source).toContain('const workspaceRoot = dirname(frontendRoot)')
+    expect(source).toMatch(/turbopack:\s*{[\s\S]*root:\s*workspaceRoot/)
   })
 })

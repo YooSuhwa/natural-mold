@@ -14,10 +14,7 @@ _TIMEZONE = "Asia/Seoul"
 
 
 def _events_url(calendar_id: str) -> str:
-    return (
-        "https://www.googleapis.com/calendar/v3/calendars/"
-        f"{calendar_id}/events"
-    )
+    return f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events"
 
 
 async def _runner(ctx: ToolRunContext) -> dict[str, Any]:

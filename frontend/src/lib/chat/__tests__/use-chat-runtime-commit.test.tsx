@@ -117,10 +117,7 @@ function useCommitHarness(events: SSEEvent[], onCommit?: (messages: Message[]) =
 }
 
 function useCommitHarnessWithStream(
-  streamFn: (
-    content: string,
-    signal: AbortSignal,
-  ) => AsyncGenerator<SSEEvent>,
+  streamFn: (content: string, signal: AbortSignal) => AsyncGenerator<SSEEvent>,
   onCommit?: (messages: Message[]) => void,
 ) {
   const [messages, setMessages] = useState<Message[]>([])
@@ -139,7 +136,7 @@ function useUnstableEmptyMessagesHarness() {
   const [, setTick] = useState(0)
   const streamFn = useMemo(
     () =>
-      (async function* () {}) as unknown as (
+      async function* () {} as unknown as (
         content: string,
         signal: AbortSignal,
       ) => AsyncGenerator<SSEEvent>,
@@ -271,10 +268,7 @@ describe('useChatRuntime — onMessagesCommit dedup', () => {
     const { result } = renderHook(
       () =>
         useCommitHarnessWithStream(
-          streamFn as unknown as (
-            content: string,
-            signal: AbortSignal,
-          ) => AsyncGenerator<SSEEvent>,
+          streamFn as unknown as (content: string, signal: AbortSignal) => AsyncGenerator<SSEEvent>,
           commitSpy,
         ),
       { wrapper: createWrapper() },
@@ -365,17 +359,20 @@ describe('useChatRuntime — onMessagesCommit dedup', () => {
     ).toBe(false)
     expect(sameMessageSnapshot([base], [{ ...base, feedback: { rating: 'down' } }])).toBe(false)
     expect(
-      sameMessageSnapshot([base], [
-        {
-          ...base,
-          usage: {
-            prompt_tokens: 1,
-            completion_tokens: 3,
-            cache_creation_tokens: 0,
-            cache_read_tokens: 0,
+      sameMessageSnapshot(
+        [base],
+        [
+          {
+            ...base,
+            usage: {
+              prompt_tokens: 1,
+              completion_tokens: 3,
+              cache_creation_tokens: 0,
+              cache_read_tokens: 0,
+            },
           },
-        },
-      ]),
+        ],
+      ),
     ).toBe(false)
   })
 })

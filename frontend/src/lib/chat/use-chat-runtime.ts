@@ -15,11 +15,7 @@ import type {
   ToolCallInfo,
   TokenUsageBreakdown,
 } from '@/lib/types'
-import {
-  sessionTokenUsageAtom,
-  reconnectStateAtom,
-  type TokenUsage,
-} from '@/lib/stores/chat-store'
+import { sessionTokenUsageAtom, reconnectStateAtom, type TokenUsage } from '@/lib/stores/chat-store'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
 import { streamResumeDecisions } from '@/lib/sse/stream-resume'
@@ -365,7 +361,10 @@ export function useChatRuntime({
     return merged
   }, [messages, streamingMessages])
 
-  const streamingUsageTotals = useMemo(() => sumMessageUsage(streamingMessages), [streamingMessages])
+  const streamingUsageTotals = useMemo(
+    () => sumMessageUsage(streamingMessages),
+    [streamingMessages],
+  )
 
   // W7-2 — Composer 토큰 바는 persisted messages usage + streaming assistant의
   // message_end usage로 derive한다. content_delta flush마다 긴 messages 전체를
@@ -677,15 +676,17 @@ export function useChatRuntime({
   // 새 assistant 메시지가 refetch 결과에 도착했는지로 "정말 persist 됐는지" 판정.
   // run_id ↔ messages.id 직접 비교는 형식이 달라 (uuid4 vs uuid5(raw_id)) 매칭
   // 불가 — id 매칭 대신 ``hasNewAssistantMessage`` set-diff 휴리스틱 사용.
-  const [prevMessages, setPrevMessages] = useState(messages)
-  const prevMessagesKey = useMemo(() => messagesCheapKey(prevMessages), [prevMessages])
+  const prevMessagesRef = useRef(messages)
   const messagesKey = useMemo(() => messagesCheapKey(messages), [messages])
   useEffect(() => {
+    const prevMessages = prevMessagesRef.current
+    const prevMessagesKey = messagesCheapKey(prevMessages)
+
     if (prevMessages === messages) return
     if (prevMessagesKey === messagesKey && sameMessageSnapshot(prevMessages, messages)) return
     if (isRunning && streamingMessages.length > 0) return
 
-    setPrevMessages(messages)
+    prevMessagesRef.current = messages
     if (streamingMessages.length === 0) return
     if (hasNewAssistantMessage(prevMessages, messages)) {
       setStreamingMessages([])
@@ -696,7 +697,7 @@ export function useChatRuntime({
       // 보인다 (id 가 ``opt-{uuid}`` vs backend UUID 라 매칭 불가).
       setStreamingMessages((sm) => sm.filter((m) => m.role !== 'user'))
     }
-  }, [isRunning, messages, messagesKey, prevMessages, prevMessagesKey, streamingMessages.length])
+  }, [isRunning, messages, messagesKey, streamingMessages.length])
 
   /** P0-C — shared stream runner for new/edit/reload/resume.
    *

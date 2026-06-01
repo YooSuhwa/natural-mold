@@ -19,6 +19,7 @@ from app.credentials.definitions.k_skill_proxy import definition as k_skill_prox
 from app.credentials.definitions.kipris_plus_api import definition as kipris_plus_api
 from app.credentials.definitions.ktx_account import definition as ktx_account
 from app.credentials.definitions.mcp_oauth2 import definition as mcp_oauth2
+from app.credentials.definitions.mcp_secret import definition as mcp_secret
 from app.credentials.definitions.naver_search import definition as naver_search
 from app.credentials.definitions.odsay_api import definition as odsay_api
 from app.credentials.definitions.openai import definition as openai
@@ -42,6 +43,7 @@ for _definition in (
     http_bearer,
     http_api_key,
     http_basic,
+    mcp_secret,
     mcp_oauth2,
     # ADR-017 Slice D — 8 new definitions for marketplace skills.
     srt_account,
@@ -71,6 +73,7 @@ __all__ = [
     "k_skill_proxy",
     "kipris_plus_api",
     "ktx_account",
+    "mcp_secret",
     "mcp_oauth2",
     "naver_search",
     "odsay_api",

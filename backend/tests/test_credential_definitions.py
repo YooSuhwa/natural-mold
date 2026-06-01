@@ -37,10 +37,10 @@ def test_all_8_definitions_registered() -> None:
     assert not missing, f"missing definitions in registry: {missing}"
 
 
-def test_total_definition_count_is_21() -> None:
-    # 13 baseline (ADR-016 era) + 8 marketplace additions (Slice D).
+def test_total_definition_count_is_22() -> None:
+    # 13 baseline (ADR-016 era) + MCP Secret + 8 marketplace additions.
     keys = {d.key for d in registry.all()}
-    assert len(keys) == 21, sorted(keys)
+    assert len(keys) == 22, sorted(keys)
 
 
 def test_srt_account_fields() -> None:

@@ -68,5 +68,57 @@
     },
     "credential_definition_key": "http_bearer",
     "documentation_url": "https://github.com/makenotion/notion-mcp-server"
+  },
+  "hancom-gw": {
+    "key": "hancom-gw",
+    "display_name": "Hancom Groupware",
+    "description": "Access Hancom groupware budgets, expenses, attendance, notices, and approvals",
+    "icon_id": "server",
+    "transport": "streamable_http",
+    "url": "http://localhost:18003/mcp",
+    "command": null,
+    "args": null,
+    "env_vars": {},
+    "credential_definition_key": "mcp_secret",
+    "documentation_url": null
+  },
+  "hancom-mile": {
+    "key": "hancom-mile",
+    "display_name": "Hancom Mile Meeting",
+    "description": "Search, inspect, and reserve Hancom Mile meeting rooms",
+    "icon_id": "calendar",
+    "transport": "streamable_http",
+    "url": "http://localhost:18004/mcp",
+    "command": null,
+    "args": null,
+    "env_vars": {},
+    "credential_definition_key": "mcp_secret",
+    "documentation_url": null
+  },
+  "hancom-org-chart": {
+    "key": "hancom-org-chart",
+    "display_name": "Hancom Org Chart",
+    "description": "Search Hancom employees and department structure from the crawled org chart dataset",
+    "icon_id": "users",
+    "transport": "streamable_http",
+    "url": "http://localhost:18002/mcp",
+    "command": null,
+    "args": null,
+    "env_vars": {},
+    "credential_definition_key": null,
+    "documentation_url": null
+  },
+  "maepsi": {
+    "key": "maepsi",
+    "display_name": "Maepsi",
+    "description": "Fetch today's outfit recommendation for a Maepsi user",
+    "icon_id": "image",
+    "transport": "streamable_http",
+    "url": "http://localhost:18001/mcp/",
+    "command": null,
+    "args": null,
+    "env_vars": {},
+    "credential_definition_key": "mcp_secret",
+    "documentation_url": null
   }
 }

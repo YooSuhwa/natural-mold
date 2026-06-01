@@ -174,18 +174,12 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
   )
 }
 
-export function buildMarkdownComponents({
-  isStreaming,
-}: {
-  isStreaming: boolean
-}): Components {
+export function buildMarkdownComponents({ isStreaming }: { isStreaming: boolean }): Components {
   return {
     p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
     strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
     em: ({ children }) => <em className="italic">{children}</em>,
-    ul: ({ children }) => (
-      <ul className="mb-2 ml-4 list-disc space-y-0.5 last:mb-0">{children}</ul>
-    ),
+    ul: ({ children }) => <ul className="mb-2 ml-4 list-disc space-y-0.5 last:mb-0">{children}</ul>,
     ol: ({ children }) => (
       <ol className="mb-2 ml-4 list-decimal space-y-0.5 last:mb-0">{children}</ol>
     ),
@@ -249,11 +243,7 @@ interface MarkdownContentProps {
   isStreaming?: boolean
 }
 
-export function MarkdownContent({
-  content,
-  className,
-  isStreaming = false,
-}: MarkdownContentProps) {
+export function MarkdownContent({ content, className, isStreaming = false }: MarkdownContentProps) {
   const components = useMemo(() => buildMarkdownComponents({ isStreaming }), [isStreaming])
   return (
     <div className={cn('prose-chat', className)}>

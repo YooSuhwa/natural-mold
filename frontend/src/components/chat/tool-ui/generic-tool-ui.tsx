@@ -114,10 +114,7 @@ function ToolFallbackBody({
     () => (hasResult ? formatToolValue(result, serializeFailed) : ''),
     [hasResult, result, serializeFailed],
   )
-  const imageUrls = useMemo(
-    () => (hasResult ? extractImageUrls(result) : []),
-    [hasResult, result],
-  )
+  const imageUrls = useMemo(() => (hasResult ? extractImageUrls(result) : []), [hasResult, result])
 
   return (
     <div className="space-y-2">

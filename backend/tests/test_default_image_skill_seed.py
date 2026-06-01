@@ -84,20 +84,28 @@ async def test_seed_default_image_skill_is_idempotent(
     await db.commit()
 
     items = (
-        await db.execute(
-            select(MarketplaceItem).where(
-                MarketplaceItem.source_kind == "system_seed",
-                MarketplaceItem.source_external_id == "image-generation",
+        (
+            await db.execute(
+                select(MarketplaceItem).where(
+                    MarketplaceItem.source_kind == "system_seed",
+                    MarketplaceItem.source_external_id == "image-generation",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(items) == 1
 
     versions = (
-        await db.execute(
-            select(MarketplaceVersion).where(MarketplaceVersion.item_id == items[0].id)
+        (
+            await db.execute(
+                select(MarketplaceVersion).where(MarketplaceVersion.item_id == items[0].id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(versions) == 1
 
 
@@ -160,18 +168,26 @@ async def test_seed_default_deep_research_skill_is_idempotent(
     await db.commit()
 
     items = (
-        await db.execute(
-            select(MarketplaceItem).where(
-                MarketplaceItem.source_kind == "system_seed",
-                MarketplaceItem.source_external_id == "deep-research",
+        (
+            await db.execute(
+                select(MarketplaceItem).where(
+                    MarketplaceItem.source_kind == "system_seed",
+                    MarketplaceItem.source_external_id == "deep-research",
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(items) == 1
 
     versions = (
-        await db.execute(
-            select(MarketplaceVersion).where(MarketplaceVersion.item_id == items[0].id)
+        (
+            await db.execute(
+                select(MarketplaceVersion).where(MarketplaceVersion.item_id == items[0].id)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert len(versions) == 1

@@ -177,9 +177,7 @@ async def _seed_image_generation_skill(
         await db.flush()
     else:
         item.name = "Image Generation"
-        item.description = (
-            "Generate images through a user-provided OpenAI-compatible endpoint."
-        )
+        item.description = "Generate images through a user-provided OpenAI-compatible endpoint."
         item.is_listed = True
         item.source_kind = "system_seed"
         item.source_external_id = "image-generation"

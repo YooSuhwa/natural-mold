@@ -58,6 +58,7 @@ import {
   BuilderUserEditComposer,
   BuilderUserMessage,
 } from '@/components/chat/builder-overrides'
+import { ImeSafeComposerInput } from '@/components/chat/ime-safe-composer-input'
 import {
   ChatConversationContext,
   useChatConversationId,
@@ -429,7 +430,7 @@ function UserMessageEditor() {
   const t = useTranslations('chat.message')
   return (
     <ComposerPrimitive.Root className="flex flex-col gap-2 rounded-2xl border bg-background p-2 shadow-sm">
-      <ComposerPrimitive.Input
+      <ImeSafeComposerInput
         className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-none"
         autoFocus
       />
@@ -706,7 +707,7 @@ function ThreadComposer({
       )}
 
       {/* Textarea */}
-      <ComposerPrimitive.Input
+      <ImeSafeComposerInput
         placeholder={t('placeholder')}
         submitMode="enter"
         className={cn(

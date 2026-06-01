@@ -22,6 +22,8 @@ from app.credentials import service as credential_service
 from app.mcp import client as mcp_client
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
+from app.models.mcp_server import McpServer
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
@@ -104,6 +106,64 @@ async def test_build_tools_config_includes_decrypted_credentials(
     assert entry["credentials"] == {"client_id": "nv-id", "client_secret": "nv-secret"}
     assert entry["credential_id"] == str(tool_cred.id)
     assert entry["parameters"] == {"query": "moldy"}
+
+
+@pytest.mark.asyncio
+async def test_build_tools_config_injects_mcp_secret_header(
+    db: AsyncSession,
+) -> None:
+    model = await _seed_user_and_model(db)
+    mcp_cred = await credential_service.create(
+        db,
+        user_id=TEST_USER_ID,
+        definition_key="mcp_secret",
+        name="groupware cookie",
+        data={"secret": "SESSION=abc"},
+    )
+
+    agent = Agent(
+        user_id=TEST_USER_ID,
+        name="MCP Agent",
+        system_prompt="hi",
+        model_id=model.id,
+    )
+    db.add(agent)
+    await db.flush()
+
+    server = McpServer(
+        user_id=TEST_USER_ID,
+        name="Hancom GW",
+        transport="streamable_http",
+        url="http://localhost:18003/mcp",
+        credential_id=mcp_cred.id,
+        headers={},
+        env_vars={},
+    )
+    db.add(server)
+    await db.flush()
+
+    mcp_tool = McpTool(
+        server_id=server.id,
+        name="get_budget",
+        description="budget",
+        input_schema={"type": "object"},
+        enabled=True,
+    )
+    db.add(mcp_tool)
+    await db.flush()
+    db.add(AgentMcpToolLink(agent_id=agent.id, mcp_tool_id=mcp_tool.id))
+    await db.commit()
+
+    fetched = await chat_service.get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    assert fetched is not None
+
+    configs = await chat_service.build_tools_config(fetched, db=db)
+    assert len(configs) == 1
+    entry = configs[0]
+    assert entry["definition_key"] == "mcp"
+    assert entry["mcp_transport_headers"] == {
+        "X-Moldy-Credential": "SESSION=abc",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -319,6 +379,63 @@ async def test_mcp_connect_and_list_interpolates_credentials() -> None:
     assert result["success"] is True
     assert result["server_info"]["name"] == "fake"
     assert captured_headers["Authorization"] == "Bearer secret-token"
+
+
+@pytest.mark.asyncio
+async def test_mcp_connect_and_list_auto_injects_mcp_secret_header() -> None:
+    captured_headers: dict[str, str] = {}
+
+    class _FakeServerInfo:
+        name = "fake"
+        version = "1"
+
+    class _FakeInitResult:
+        serverInfo = _FakeServerInfo()
+
+    class _FakeToolsResult:
+        tools = []
+
+    class _FakeSession:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_exc) -> None:
+            return None
+
+        async def initialize(self):
+            return _FakeInitResult()
+
+        async def list_tools(self):
+            return _FakeToolsResult()
+
+    def _fake_streamable(_url, headers=None):
+        captured_headers.update(headers or {})
+
+        class _Conn:
+            async def __aenter__(self):
+                return (None, None, None)
+
+            async def __aexit__(self, *_exc):
+                return None
+
+        return _Conn()
+
+    with (
+        patch("mcp.client.session.ClientSession", _FakeSession),
+        patch("mcp.client.streamable_http.streamablehttp_client", _fake_streamable),
+    ):
+        result = await mcp_client.connect_and_list(
+            transport="streamable_http",
+            url="https://mcp.example.com/api",
+            headers={},
+            credentials={"secret": "per-user-secret"},
+        )
+
+    assert result["success"] is True
+    assert captured_headers == {"X-Moldy-Credential": "per-user-secret"}
 
 
 @pytest.mark.asyncio
