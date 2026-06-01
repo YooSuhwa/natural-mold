@@ -20,6 +20,7 @@ import { CHAT_FINAL_REMARK_PLUGINS } from './markdown-plugins'
 import { ToolFallbackPanel } from './tool-ui/generic-tool-ui'
 import { parsePhaseNarration, type PhaseSegment } from './builder-phase-parser'
 import { SystemEventChip } from './system-event-chip'
+import { ImeSafeComposerInput } from './ime-safe-composer-input'
 
 /**
  * Builder-variant 메시지/컴포저 오버라이드.
@@ -65,7 +66,7 @@ export function BuilderUserEditComposer() {
           className="flex flex-col gap-2 rounded-[18px] p-2"
           style={{ background: T.bubble, border: `1px solid ${T.border}` }}
         >
-          <ComposerPrimitive.Input
+          <ImeSafeComposerInput
             className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-[14.5px] leading-relaxed outline-none"
             style={{ color: T.ink }}
             autoFocus
@@ -107,11 +108,10 @@ function BuilderAssistantTextPart() {
     <div className="flex flex-col gap-3">
       {segments.map((seg, idx) => {
         if (seg.kind === 'event') {
-          const name = tPhase(`names.${seg.phaseId}`) || tPhase('phaseNameFallback', { phaseId: seg.phaseId })
+          const name =
+            tPhase(`names.${seg.phaseId}`) || tPhase('phaseNameFallback', { phaseId: seg.phaseId })
           const status =
-            seg.transition === 'completed'
-              ? tPhase('completedLabel')
-              : tPhase('startedLabel')
+            seg.transition === 'completed' ? tPhase('completedLabel') : tPhase('startedLabel')
           const label = tPhase('phaseLabel', { phaseId: seg.phaseId, status })
           return (
             <SystemEventChip
@@ -198,7 +198,14 @@ export function BuilderAssistantMessage({
   const resolvedAgentSubtitle = agentSubtitle ?? t('builderAgentSubtitle')
   return (
     <div className="group relative flex items-start gap-3">
-      <Image src={MASCOT_SRC} alt={t('builderAgentName')} width={38} height={38} unoptimized className="shrink-0" />
+      <Image
+        src={MASCOT_SRC}
+        alt={t('builderAgentName')}
+        width={38}
+        height={38}
+        unoptimized
+        className="shrink-0"
+      />
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-baseline gap-1.5">
           <span className="text-[12.5px] font-semibold" style={{ color: T.ink }}>
@@ -292,7 +299,7 @@ function BuilderSendButton() {
  * Spec:
  *  - Outer padding 12/28/18, gradient bg (transparent → #fafafa)
  *  - Card: white, 16 radius, mint focus-within 4px box-shadow ring
- *  - ComposerPrimitive.Input submitMode="enter" — assistant-ui가 IME composition 내부 처리
+ *  - ImeSafeComposerInput submitMode="enter" — Chrome/IME 조합 입력을 composer 상태에 즉시 동기화
  *  - Toolbar: 파일/템플릿 IconBtn(시각만) + 1×16 divider + 모델 메타 + Send/Stop 토글
  */
 export function BuilderComposer({ modelLabel }: { modelLabel?: string }) {
@@ -313,7 +320,7 @@ export function BuilderComposer({ modelLabel }: { modelLabel?: string }) {
             boxShadow: '0 2px 10px -6px oklch(0.4 0.1 163 / 0.08)',
           }}
         >
-          <ComposerPrimitive.Input
+          <ImeSafeComposerInput
             placeholder={t('placeholder')}
             submitMode="enter"
             className="min-h-[52px] max-h-[180px] w-full resize-none bg-transparent px-[18px] pt-[14px] pb-1.5 text-[14.5px] outline-none disabled:cursor-not-allowed"
