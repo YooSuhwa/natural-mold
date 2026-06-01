@@ -268,6 +268,7 @@ function ReviewStep({
   setName: (v: string) => void
 }) {
   const t = useTranslations('marketplace.installWizard.review')
+  const toolDependencies = item.execution_profile?.tool_dependencies ?? []
   return (
     <div className="space-y-4">
       <div className="text-sm text-muted-foreground">
@@ -289,6 +290,15 @@ function ReviewStep({
           </p>
         ) : null}
       </div>
+
+      {toolDependencies.length > 0 ? (
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          {t('hostedTools')}{' '}
+          <span className="font-medium text-foreground">
+            {toolDependencies.join(', ')}
+          </span>
+        </div>
+      ) : null}
 
       <div className="space-y-1.5">
         <label htmlFor="name-override" className="block">

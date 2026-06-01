@@ -32,6 +32,7 @@ from app.agent_runtime.middleware_registry import (
     get_provider_middleware,
 )
 from app.agent_runtime.model_factory import create_chat_model
+from app.agent_runtime.skill_tool_dependencies import build_skill_dependency_tool_configs
 from app.agent_runtime.streaming import StreamErrorRecord, stream_agent_response
 from app.agent_runtime.temporal import build_temporal_context_prompt
 from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_for_runtime
@@ -704,7 +705,17 @@ async def _prepare_agent(
     langchain_tools: list[BaseTool] = []
     mcp_configs: list[dict] = []
 
-    for tc in cfg.tools_config:
+    runtime_tool_configs = [
+        *cfg.tools_config,
+        *build_skill_dependency_tool_configs(
+            agent_skills=cfg.agent_skills or [],
+            existing_tool_configs=cfg.tools_config,
+            user_id=cfg.user_id,
+            agent_id=cfg.agent_id,
+        ),
+    ]
+
+    for tc in runtime_tool_configs:
         if tc.get("mcp_server_url"):
             # 임시 호환: 옛 chat_service가 채워주던 MCP 항목. M5 이후로는
             # build_tools_config가 더 이상 채우지 않으므로 dead branch에 가깝지만

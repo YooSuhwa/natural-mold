@@ -1,4 +1,4 @@
-import { render, screen } from '../test-utils'
+import { render, screen, userEvent } from '../test-utils'
 import SkillsPage from '@/app/skills/page'
 import type { Skill } from '@/lib/types/skill'
 
@@ -45,18 +45,32 @@ describe('SkillsPage', () => {
     mockUseSkills.mockReturnValue({ data: [skill], isLoading: false })
   })
 
-  it('uses a compact table without the empty credential placeholder column', () => {
+  it('uses a unified tabbed card panel without the old table chrome', () => {
     render(<SkillsPage />)
 
-    expect(screen.getByRole('columnheader', { name: '스킬' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '전체 1개' })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('스킬 검색')).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: '스킬' })).not.toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: '자격증명' })).not.toBeInTheDocument()
     expect(screen.getByText('한국 날씨를 조회합니다.')).toBeInTheDocument()
     expect(screen.getByText('korea-weather')).toBeInTheDocument()
   })
 
-  it('keeps table and grid view controls near the page action', () => {
+  it('renders skills as catalog-style cards by default', () => {
     render(<SkillsPage />)
 
-    expect(screen.getByRole('tablist', { name: '스킬 보기 모드' })).toHaveClass('ml-auto')
+    const card = screen.getByRole('button', { name: /Korea Weather/ })
+    expect(card).toHaveClass('border-transparent')
+    expect(card.className).toMatch(/\bbg-(violet|sky|emerald|amber|rose)-50\/75\b/)
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('filters skills from the shared tab row', async () => {
+    const user = userEvent.setup()
+    render(<SkillsPage />)
+
+    await user.click(screen.getByRole('tab', { name: /패키지/ }))
+
+    expect(screen.getByRole('tab', { name: '패키지 1개' })).toHaveAttribute('aria-selected', 'true')
   })
 })

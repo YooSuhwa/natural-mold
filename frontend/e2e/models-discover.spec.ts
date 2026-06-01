@@ -135,7 +135,7 @@ test.describe('Models page', () => {
   test('user can discover models from a credential and save selections', async ({ page }) => {
     let models: Array<Record<string, unknown>> = []
 
-    await page.route(/\/api\/models(\?.*)?$/, (route) => {
+    await page.route(/\/api\/models(?:\?.*)?$/, (route) => {
       if (route.request().method() === 'POST') {
         const body = route.request().postDataJSON() as Record<string, unknown>
         const created = makeModel(
@@ -190,7 +190,7 @@ test.describe('Models page', () => {
   test('user can register a custom model id', async ({ page }) => {
     let models: Array<Record<string, unknown>> = []
 
-    await page.route(/\/api\/models(\?.*)?$/, (route) => {
+    await page.route(/\/api\/models(?:\?.*)?$/, (route) => {
       if (route.request().method() === 'POST') {
         const body = route.request().postDataJSON() as Record<string, unknown>
         const created = makeModel(

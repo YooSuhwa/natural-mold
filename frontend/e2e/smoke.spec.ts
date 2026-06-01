@@ -1,7 +1,8 @@
 import { test, expect } from './fixtures'
 import type { APIRequestContext } from '@playwright/test'
 
-const API_BASE = process.env.E2E_API_BASE_URL ?? 'http://localhost:8001'
+const BACKEND_PORT = process.env.E2E_BACKEND_PORT ?? '8001'
+const API_BASE = process.env.E2E_API_BASE_URL ?? `http://localhost:${BACKEND_PORT}`
 const E2E_EMAIL = process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
 const E2E_PASSWORD =
   process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
