@@ -4,6 +4,7 @@ import { makeAssistantToolUI } from '@assistant-ui/react'
 import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
+import { useChatConversationId } from '@/components/chat/conversation-context'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 
 interface SubagentArgs {
@@ -33,6 +34,7 @@ interface SubAgentCardProps {
 function SubAgentCard({ toolCallId, args, statusType }: SubAgentCardProps) {
   const t = useTranslations('chat.toolUi.subAgent')
   const setRail = useSetAtom(chatRightRailAtom)
+  const conversationId = useChatConversationId()
   const agentName = resolveAgentName(args, t('fallbackName'))
   const input = resolveInput(args)
 
@@ -45,7 +47,7 @@ function SubAgentCard({ toolCallId, args, statusType }: SubAgentCardProps) {
       onClick={() =>
         setRail({
           mode: 'subagent',
-          subagent: { toolCallId, agentName, input },
+          subagent: { conversationId, toolCallId, agentName, input },
         })
       }
     />

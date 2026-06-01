@@ -3,12 +3,14 @@ import { atom } from 'jotai'
 export type RightRailMode = 'none' | 'subagent' | 'tool-result' | 'outline'
 
 export interface SubagentPayload {
+  conversationId?: string | null
   toolCallId: string
   agentName: string
   input?: string
 }
 
 export interface ToolResultPayload {
+  conversationId?: string | null
   toolCallId: string
   toolName: string
   args?: unknown
@@ -17,6 +19,7 @@ export interface ToolResultPayload {
 }
 
 export interface OutlinePayload {
+  conversationId?: string | null
   messageId: string
   content: string
 }

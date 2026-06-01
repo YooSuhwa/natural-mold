@@ -59,6 +59,16 @@ describe('MarkdownContent', () => {
     expect(screen.getByRole('button', { name: '복사' })).toBeInTheDocument()
   })
 
+  it('renders fenced code as a plain block while streaming', () => {
+    const { container } = render(<MarkdownContent content={'```js\nconst x = 1\n```'} isStreaming />)
+
+    expect(screen.queryByRole('button', { name: '복사' })).not.toBeInTheDocument()
+    expect(container.querySelector('.code-block-wrapper')).not.toBeInTheDocument()
+    const code = container.querySelector('pre code')
+    expect(code).toBeInTheDocument()
+    expect(code).toHaveTextContent('const x = 1')
+  })
+
   it('accepts custom className', () => {
     const { container } = render(<MarkdownContent content="Hello" className="custom-class" />)
     expect(container.firstChild).toHaveClass('custom-class')

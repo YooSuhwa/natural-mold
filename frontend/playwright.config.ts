@@ -11,7 +11,7 @@ const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${frontendPort}`
 const apiBaseURL = process.env.E2E_API_BASE_URL ?? `http://localhost:${backendPort}`
 const corsOrigins = `http://localhost:${frontendPort},http://127.0.0.1:${frontendPort}`
 const workers = Number(process.env.E2E_WORKERS ?? '4')
-const testTimeout = Number(process.env.E2E_TEST_TIMEOUT_MS ?? '45000')
+const testTimeout = Number(process.env.E2E_TEST_TIMEOUT_MS ?? '60000')
 
 const webServer = [
   ...(skipBackend

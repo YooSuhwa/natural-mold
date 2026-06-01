@@ -44,4 +44,33 @@ describe('CollapsiblePill', () => {
 
     expect(screen.getByText(/직렬화할 수 없는 결과/)).toBeInTheDocument()
   })
+
+  it('memoizes heavy tool value formatting while expanded for stable payloads', async () => {
+    const args = { city: '울산' }
+    const result = { ok: true, items: Array.from({ length: 10 }, (_, index) => ({ index })) }
+    const stringifySpy = vi.spyOn(JSON, 'stringify')
+
+    const { rerender } = render(
+      <ToolFallbackPanel
+        toolName="large_result_tool"
+        args={args}
+        result={result}
+        status="complete"
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand' }))
+    const stringifyCallsAfterExpand = stringifySpy.mock.calls.length
+
+    rerender(
+      <ToolFallbackPanel
+        toolName="large_result_tool"
+        args={args}
+        result={result}
+        status="complete"
+      />,
+    )
+
+    expect(stringifySpy).toHaveBeenCalledTimes(stringifyCallsAfterExpand)
+  })
 })

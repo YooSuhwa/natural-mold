@@ -15,7 +15,11 @@ import type {
   ToolCallInfo,
   TokenUsageBreakdown,
 } from '@/lib/types'
-import { sessionTokenUsageAtom, reconnectStateAtom } from '@/lib/stores/chat-store'
+import {
+  sessionTokenUsageAtom,
+  reconnectStateAtom,
+  type TokenUsage,
+} from '@/lib/stores/chat-store'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
 import { streamResumeDecisions } from '@/lib/sse/stream-resume'
@@ -149,6 +153,45 @@ export function sameMessageSnapshot(prev: readonly Message[], next: readonly Mes
   })
 }
 
+function messagesCheapKey(messages: readonly Message[]): string {
+  const first = messages[0]
+  const last = messages[messages.length - 1]
+  let lastAssistantId = ''
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role === 'assistant') {
+      lastAssistantId = message.id
+      break
+    }
+  }
+
+  return [messages.length, first?.id ?? '', last?.id ?? '', lastAssistantId].join('\u001f')
+}
+
+function addUsageTotals(totals: TokenUsage, usage: TokenUsageBreakdown | null | undefined): void {
+  if (!usage) return
+  totals.inputTokens += usage.prompt_tokens
+  totals.outputTokens += usage.completion_tokens
+  totals.cost += usage.estimated_cost ?? 0
+}
+
+function sumMessageUsage(messages: readonly Message[]): TokenUsage {
+  const totals: TokenUsage = { inputTokens: 0, outputTokens: 0, cost: 0 }
+  for (const message of messages) {
+    addUsageTotals(totals, message.usage)
+  }
+  return totals
+}
+
+function sameTokenUsage(left: TokenUsage | null, right: TokenUsage): boolean {
+  return (
+    left !== null &&
+    left.inputTokens === right.inputTokens &&
+    left.outputTokens === right.outputTokens &&
+    left.cost === right.cost
+  )
+}
+
 function createOptimisticMessage(
   role: 'user' | 'assistant' | 'tool',
   content: string,
@@ -257,6 +300,7 @@ export function useChatRuntime({
   // chunk가 새 stream에 끼어드는 것을 막고, 같은 id 중복 chunk를 dedup한다.
   // ``createStreamGuard``는 순수 함수라 useState 초기값으로 안전.
   const streamGuardRef = useRef(createStreamGuard())
+  const lastTokenUsageRef = useRef<TokenUsage | null>(null)
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
   const setReconnectState = useSetAtom(reconnectStateAtom)
   const queryClient = useQueryClient()
@@ -308,7 +352,12 @@ export function useChatRuntime({
   const allMessages = useMemo(() => {
     const seen = new Set<string>()
     const merged: typeof messages = []
-    for (const m of [...messages, ...streamingMessages]) {
+    for (const m of messages) {
+      if (seen.has(m.id)) continue
+      seen.add(m.id)
+      merged.push(m)
+    }
+    for (const m of streamingMessages) {
       if (seen.has(m.id)) continue
       seen.add(m.id)
       merged.push(m)
@@ -316,29 +365,33 @@ export function useChatRuntime({
     return merged
   }, [messages, streamingMessages])
 
-  // W7-2 — Composer 토큰 바는 ``allMessages``의 usage 합으로 derive한다.
-  // 이전 동작은 SSE ``message_end``에서만 누적했으므로 새로고침/대화 전환
-  // 후 atom이 0으로 reset되어 토큰 바가 사라졌다. messages가 fetch되면
-  // ``MessageResponse.usage``(W7-2)에 4종이 들어 있으므로 절대값을 다시 계산.
-  // 스트리밍 중에도 ``streamingMessages``의 ``messageUsage``가 합산되어 같은
-  // 값이 유지된다.
+  const streamingUsageTotals = useMemo(() => sumMessageUsage(streamingMessages), [streamingMessages])
+
+  // W7-2 — Composer 토큰 바는 persisted messages usage + streaming assistant의
+  // message_end usage로 derive한다. content_delta flush마다 긴 messages 전체를
+  // 다시 순회하지 않도록 persisted messages 변화와 usage 값 변화에만 반응한다.
   useEffect(() => {
-    let inputTokens = 0
-    let outputTokens = 0
-    let perMessageCost = 0
-    for (const m of allMessages) {
-      if (!m.usage) continue
-      inputTokens += m.usage.prompt_tokens
-      outputTokens += m.usage.completion_tokens
-      perMessageCost += m.usage.estimated_cost ?? 0
-    }
+    const persistedUsage = sumMessageUsage(messages)
+    const inputTokens = persistedUsage.inputTokens + streamingUsageTotals.inputTokens
+    const outputTokens = persistedUsage.outputTokens + streamingUsageTotals.outputTokens
+    const perMessageCost = persistedUsage.cost + streamingUsageTotals.cost
     // server-side 합산값(``token_usages`` 테이블)이 있으면 우선. 없으면 메시지
     // 별 cost를 합산. fetch 경로의 메시지엔 보통 ``estimated_cost``가 비어 있어
     // 0이지만, streaming.py가 ``message_end``에 cost를 박은 streaming 메시지는
     // 살아있어 실시간 표시에도 약간 도움.
     const cost = totalCost ?? perMessageCost
-    setTokenUsage({ inputTokens, outputTokens, cost })
-  }, [allMessages, totalCost, setTokenUsage])
+    const nextUsage: TokenUsage = { inputTokens, outputTokens, cost }
+    if (sameTokenUsage(lastTokenUsageRef.current, nextUsage)) return
+    lastTokenUsageRef.current = nextUsage
+    setTokenUsage(nextUsage)
+  }, [
+    messages,
+    totalCost,
+    setTokenUsage,
+    streamingUsageTotals.inputTokens,
+    streamingUsageTotals.outputTokens,
+    streamingUsageTotals.cost,
+  ])
 
   // Message[] → ThreadMessage[] 변환 (tool 메시지 자동 병합)
   const threadMessages = useExternalMessageConverter({
@@ -399,15 +452,20 @@ export function useChatRuntime({
       // Streamdown 이 누적 텍스트 전체를 재파싱해 길어질수록 누적 비용이 커진다.
       // rAF tick(약 16ms = 60fps)에 한 번씩만 flush 해서 동일한 시각적 부드러움을
       // 유지하면서 렌더 횟수를 줄인다.
-      let rafScheduled = false
+      let rafId: number | null = null
+      const cancelPendingFlush = () => {
+        if (rafId === null) return
+        cancelAnimationFrame(rafId)
+        rafId = null
+      }
       const flushStreamState = () => {
-        rafScheduled = false
+        rafId = null
+        if (streamGuardRef.current.isStale(token)) return
         setStreamingMessages(buildStreamState())
       }
       const scheduleFlush = () => {
-        if (rafScheduled) return
-        rafScheduled = true
-        requestAnimationFrame(flushStreamState)
+        if (rafId !== null) return
+        rafId = requestAnimationFrame(flushStreamState)
       }
 
       try {
@@ -576,6 +634,11 @@ export function useChatRuntime({
           throw err
         }
       } finally {
+        const isStaleStream = streamGuardRef.current.isStale(token)
+        const hadPendingFlush = rafId !== null
+        cancelPendingFlush()
+        if (isStaleStream) return
+
         setIsRunning(false)
         const finalMsgs = buildStreamState()
         if (onMessagesCommit) {
@@ -586,13 +649,12 @@ export function useChatRuntime({
           // MessageRepository.link 가 "duplicate id in parent tree" 로 throw.
           setStreamingMessages([])
           onMessagesCommit(finalMsgs)
-        } else if (rafScheduled) {
+        } else if (hadPendingFlush) {
           // refetch-driven 경로(일반 채팅): streamingMessages 는 비우지 않고
           // backend messages refetch 까지 유지 — 답변이 화면에서 잠깐 사라
           // 졌다 다시 나타나는 깜박임을 막는다. rAF-batched 마지막 flush 만
           // 동기로 적용해 최종 텍스트가 화면에 즉시 반영되게 한다. cleanup
           // 은 아래 prevMessagesRef 비교 블록(line 519~)이 담당.
-          rafScheduled = false
           setStreamingMessages(finalMsgs)
         }
         // interrupt(HiTL)도 그래프가 일시정지된 stream 종료 — backend는 ask_user tool_call을
@@ -615,23 +677,26 @@ export function useChatRuntime({
   // 새 assistant 메시지가 refetch 결과에 도착했는지로 "정말 persist 됐는지" 판정.
   // run_id ↔ messages.id 직접 비교는 형식이 달라 (uuid4 vs uuid5(raw_id)) 매칭
   // 불가 — id 매칭 대신 ``hasNewAssistantMessage`` set-diff 휴리스틱 사용.
-  // React-approved "storing information from previous renders" pattern.
-  // useState instead of useRef avoids react-hooks/refs during render.
   const [prevMessages, setPrevMessages] = useState(messages)
-  if (prevMessages !== messages && !sameMessageSnapshot(prevMessages, messages)) {
+  const prevMessagesKey = useMemo(() => messagesCheapKey(prevMessages), [prevMessages])
+  const messagesKey = useMemo(() => messagesCheapKey(messages), [messages])
+  useEffect(() => {
+    if (prevMessages === messages) return
+    if (prevMessagesKey === messagesKey && sameMessageSnapshot(prevMessages, messages)) return
+    if (isRunning && streamingMessages.length > 0) return
+
     setPrevMessages(messages)
-    if (!isRunning && streamingMessages.length > 0) {
-      if (hasNewAssistantMessage(prevMessages, messages)) {
-        setStreamingMessages([])
-      } else {
-        // assistant 미커밋(끊긴 turn) — partial assistant + tool 결과는 유지하되,
-        // user 메시지는 보통 backend 가 POST 진입 직후 저장하므로 ``messages`` 에
-        // 이미 들어있다. optimistic user copy 를 그대로 두면 user 버블이 중복으로
-        // 보인다 (id 가 ``opt-{uuid}`` vs backend UUID 라 매칭 불가).
-        setStreamingMessages((sm) => sm.filter((m) => m.role !== 'user'))
-      }
+    if (streamingMessages.length === 0) return
+    if (hasNewAssistantMessage(prevMessages, messages)) {
+      setStreamingMessages([])
+    } else {
+      // assistant 미커밋(끊긴 turn) — partial assistant + tool 결과는 유지하되,
+      // user 메시지는 보통 backend 가 POST 진입 직후 저장하므로 ``messages`` 에
+      // 이미 들어있다. optimistic user copy 를 그대로 두면 user 버블이 중복으로
+      // 보인다 (id 가 ``opt-{uuid}`` vs backend UUID 라 매칭 불가).
+      setStreamingMessages((sm) => sm.filter((m) => m.role !== 'user'))
     }
-  }
+  }, [isRunning, messages, messagesKey, prevMessages, prevMessagesKey, streamingMessages.length])
 
   /** P0-C — shared stream runner for new/edit/reload/resume.
    *
@@ -689,8 +754,9 @@ export function useChatRuntime({
         onFailed: (err) => {
           // 사용자 cancel(AbortError) 또는 stale stream(Edit/Regenerate/새 turn)
           // 은 toast 무음. 두 가드 모두 통과한 진짜 실패만 사용자 알림.
+          if (streamGuardRef.current.isStale(token)) return
           setReconnectState('idle')
-          if (signal.aborted || streamGuardRef.current.isStale(token)) return
+          if (signal.aborted) return
           // Actionable backend errors (e.g. ``llm_credential_required``)
           // surface as an inline assistant-side message instead of a toast
           // so the user sees the guidance in chat flow without a duplicate

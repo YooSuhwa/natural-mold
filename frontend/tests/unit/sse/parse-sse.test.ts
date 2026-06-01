@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { createEventDeduper, parseSSEStream, streamSSEPost } from '@/lib/sse/parse-sse'
+import {
+  createEventDeduper,
+  createHeadIndexQueue,
+  parseSSEStream,
+  streamSSEPost,
+} from '@/lib/sse/parse-sse'
 
 const API_BASE = 'http://localhost:8001'
 
@@ -268,6 +273,21 @@ describe('streamSSEPost', () => {
         body: JSON.stringify({ message: 'hi' }),
       }),
     )
+  })
+
+  it('head index queue drains FIFO and compacts consumed events', () => {
+    const queue = createHeadIndexQueue<{ id: number }>({ compactAfter: 2 })
+
+    queue.push({ id: 1 })
+    queue.push({ id: 2 })
+    queue.push({ id: 3 })
+
+    expect(queue.length()).toBe(3)
+    expect(queue.take()).toEqual({ id: 1 })
+    expect(queue.take()).toEqual({ id: 2 })
+    expect(queue.length()).toBe(1)
+    expect(queue.take()).toEqual({ id: 3 })
+    expect(queue.take()).toBeUndefined()
   })
 
   it('HTTP 에러 응답 시 예외를 던진다', async () => {
