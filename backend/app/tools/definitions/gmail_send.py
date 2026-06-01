@@ -56,7 +56,7 @@ async def _runner(ctx: ToolRunContext) -> dict[str, Any]:
 
 definition = ToolDefinition(
     key="gmail_send",
-    display_name="Gmail — Send Email",
+    display_name="Gmail 보내기",
     description="Send an email via Gmail using a Google Workspace OAuth2 credential.",
     icon_id="gmail",
     category="email",

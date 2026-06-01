@@ -69,7 +69,7 @@ def _params() -> list[FieldDef]:
 
 web_definition = ToolDefinition(
     key="google_search_web",
-    display_name="Google Web Search",
+    display_name="Google 웹 검색",
     description="Search the web via Google Custom Search.",
     icon_id="google",
     category="search",
@@ -80,7 +80,7 @@ web_definition = ToolDefinition(
 
 image_definition = ToolDefinition(
     key="google_search_image",
-    display_name="Google Image Search",
+    display_name="Google 이미지 검색",
     description="Search images via Google Custom Search.",
     icon_id="google",
     category="search",
@@ -91,7 +91,7 @@ image_definition = ToolDefinition(
 
 news_definition = ToolDefinition(
     key="google_search_news",
-    display_name="Google News Search",
+    display_name="Google 뉴스 검색",
     description="Search news via Google Custom Search.",
     icon_id="google",
     category="search",

@@ -363,6 +363,9 @@
         "placeholder": "Search by template name, description, or tool...",
         "ariaLabel": "Search templates"
       },
+      "gallery": {
+        "count": "{count} templates"
+      },
       "sort": {
         "newest": "Newest",
         "name": "Name",
@@ -1322,9 +1325,11 @@
       "title": "Tools",
       "description": "Manage tools agents can use, including built-ins, custom tools, and MCP tools.",
       "viewMode": "View Mode",
+      "count": "{count} tools",
       "tabs": {
         "catalog": "Catalog",
-        "manage": "Manage ({count})"
+        "manage": "Manage",
+        "installed": "Installed"
       },
       "columns": {
         "name": "Name",
@@ -1470,11 +1475,14 @@
         "automation": "Automation"
       },
       "searchPlaceholder": "Search Placeholder",
+      "count": "{count} tools",
       "empty": {
         "title": "Empty",
         "description": "No tools match the current filters."
       },
-      "requiresCredential": "Requires Credential"
+      "requiresCredential": "Requires Credential",
+      "selectAction": "Select",
+      "manageAction": "Manage"
     },
     "mcpServer": {
       "toolCount": "{count} tools",
@@ -1535,6 +1543,17 @@
     "page": {
       "title": "MCP Servers",
       "description": "Connect MCP servers and import their tools into Moldy.",
+      "count": "{count}",
+      "toolCount": "{count} tools",
+      "tabs": {
+        "label": "MCP server status",
+        "all": "All",
+        "connected": "Connected",
+        "auth_needed": "Auth needed",
+        "unreachable": "Offline",
+        "disabled": "Disabled",
+        "unknown": "Unknown"
+      },
       "columns": {
         "name": "Name",
         "transport": "Transport",
@@ -1547,7 +1566,8 @@
         "checkNowFor": "Check {name} now",
         "import": "Import",
         "export": "Export",
-        "new": "New"
+        "new": "New",
+        "manage": "Manage"
       },
       "empty": {
         "title": "Empty",
@@ -1555,7 +1575,7 @@
         "action": "Action",
         "filtered": "Filtered"
       },
-      "searchPlaceholder": "Search Placeholder",
+      "searchPlaceholder": "Search servers",
       "relative": {
         "secondsAgo": "{count} seconds ago",
         "minutesAgo": "{count} minutes ago",
@@ -1829,7 +1849,9 @@
     "title": "Skills",
     "description": "Create and manage reusable instructions and executable skill packages.",
     "new": "New",
-    "searchPlaceholder": "Search Placeholder",
+    "count": "{count}",
+    "agentsCount": "{count} agents",
+    "searchPlaceholder": "Search skills",
     "viewMode": {
       "label": "Label",
       "table": "Table",
@@ -1847,7 +1869,8 @@
       "kind": "Kind"
     },
     "actions": {
-      "publish": "Publish"
+      "publish": "Publish",
+      "manage": "Manage"
     },
     "typeFilter": {
       "all": "All",
@@ -2029,11 +2052,12 @@
       "title": "Marketplace",
       "description": "Browse agents, tools, and skills shared through the marketplace.",
       "categoriesLabel": "Categories Label",
+      "count": "{count} items",
       "tabs": {
         "all": "All",
         "skills": "Skills",
         "agents": "Agents",
-        "mcp": "MCP (Phase 2)",
+        "mcp": "MCP",
         "installed": "Installed"
       },
       "empty": {
@@ -2972,6 +2996,51 @@
       "title": "Credentials",
       "description": "Manage API keys and OAuth grants used by tools and MCP servers.",
       "new": "New",
+      "count": "{count}",
+      "fieldCount": "{count} fields",
+      "shared": "Shared",
+      "tabs": {
+        "label": "Credential status",
+        "all": "All",
+        "active": "Active",
+        "auth_needed": "Auth needed",
+        "expired": "Expired",
+        "disabled": "Disabled",
+        "unknown": "Unknown"
+      },
+      "providerLabels": {
+        "anthropic": "Anthropic",
+        "azure_openai": "Azure OpenAI",
+        "coupang_partners": "Coupang Partners",
+        "dart_api": "DART Open API",
+        "foresttrip_account": "Forest Trip Account",
+        "google_genai": "Google Generative AI",
+        "google_search": "Google Custom Search",
+        "google_workspace_oauth2": "Google Workspace OAuth2",
+        "http_api_key": "HTTP API Key",
+        "http_basic": "HTTP Basic Auth",
+        "http_bearer": "HTTP Bearer Token",
+        "kipris_plus_api": "KIPRIS Plus API",
+        "ktx_account": "KTX Account",
+        "mcp_oauth2": "MCP OAuth2 Client",
+        "naver_search": "Naver Search",
+        "odsay_api": "ODsay API",
+        "openai": "OpenAI",
+        "openai_compatible": "OpenAI Compatible Endpoint",
+        "openrouter": "OpenRouter",
+        "srt_account": "SRT Account"
+      },
+      "categories": {
+        "account": "Account",
+        "api": "API",
+        "general": "General",
+        "http": "HTTP",
+        "llm": "LLM",
+        "mcp": "MCP",
+        "oauth": "OAuth",
+        "search": "Search",
+        "system": "System"
+      },
       "columns": {
         "name": "Name",
         "type": "Type",
@@ -2989,13 +3058,16 @@
         "expired": "Expired",
         "disabled": "Inactive"
       },
+      "actions": {
+        "manage": "Manage"
+      },
       "empty": {
         "title": "Empty",
         "description": "Add API keys or OAuth grants so tools can authenticate.",
         "action": "Action",
         "filtered": "Filtered"
       },
-      "searchPlaceholder": "Search Placeholder"
+      "searchPlaceholder": "Search credentials"
     },
     "create": {
       "toast": {

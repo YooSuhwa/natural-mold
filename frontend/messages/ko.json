@@ -363,6 +363,9 @@
         "placeholder": "템플릿 이름, 설명, 도구로 검색…",
         "ariaLabel": "템플릿 검색"
       },
+      "gallery": {
+        "count": "{count}개"
+      },
       "sort": {
         "newest": "최신순",
         "name": "이름순",
@@ -1301,9 +1304,11 @@
       "title": "도구",
       "description": "카탈로그에서 도구를 골라 추가하거나, 이미 등록한 도구를 관리하세요.",
       "viewMode": "도구 보기 모드",
+      "count": "{count}개",
       "tabs": {
         "catalog": "카탈로그",
-        "manage": "관리 ({count})"
+        "manage": "관리",
+        "installed": "설치됨"
       },
       "columns": {
         "name": "이름",
@@ -1449,11 +1454,14 @@
         "automation": "자동화"
       },
       "searchPlaceholder": "도구 검색",
+      "count": "{count}개",
       "empty": {
         "title": "조건에 맞는 도구가 없어요",
         "description": "다른 카테고리나 검색어를 시도해 보세요."
       },
-      "requiresCredential": "자격증명 필요"
+      "requiresCredential": "자격증명 필요",
+      "selectAction": "선택",
+      "manageAction": "관리"
     },
     "mcpServer": {
       "toolCount": "{count}개 도구",
@@ -1514,6 +1522,17 @@
     "page": {
       "title": "MCP 서버",
       "description": "MCP 서버를 연결해 원격 도구를 가져오세요.",
+      "count": "{count}개",
+      "toolCount": "{count}개 도구",
+      "tabs": {
+        "label": "MCP 서버 상태",
+        "all": "전체",
+        "connected": "연결됨",
+        "auth_needed": "인증 필요",
+        "unreachable": "오프라인",
+        "disabled": "비활성",
+        "unknown": "알 수 없음"
+      },
       "columns": {
         "name": "이름",
         "transport": "전송 방식",
@@ -1526,7 +1545,8 @@
         "checkNowFor": "{name} 상태 확인",
         "import": "불러오기",
         "export": "내보내기",
-        "new": "새 MCP 서버"
+        "new": "새 MCP 서버",
+        "manage": "관리"
       },
       "empty": {
         "title": "아직 MCP 서버가 없어요",
@@ -1808,6 +1828,8 @@
     "title": "스킬",
     "description": "에이전트에 붙여 쓰는 마크다운 스니펫과 패키지를 관리하세요.",
     "new": "새 스킬",
+    "count": "{count}개",
+    "agentsCount": "{count}개 에이전트",
     "searchPlaceholder": "스킬 검색",
     "viewMode": {
       "label": "스킬 보기 모드",
@@ -1826,7 +1848,8 @@
       "kind": "종류"
     },
     "actions": {
-      "publish": "공개하기"
+      "publish": "공개하기",
+      "manage": "관리"
     },
     "typeFilter": {
       "all": "전체",
@@ -2008,11 +2031,12 @@
       "title": "마켓플레이스",
       "description": "공유된 스킬, 에이전트, MCP 서버를 발견하고 설치하세요.",
       "categoriesLabel": "마켓플레이스 카테고리",
+      "count": "{count}개",
       "tabs": {
         "all": "전체",
         "skills": "스킬",
-        "agents": "에이전트 (Phase 3)",
-        "mcp": "MCP (Phase 2)",
+        "agents": "에이전트",
+        "mcp": "MCP",
         "installed": "설치됨"
       },
       "empty": {
@@ -2951,6 +2975,51 @@
       "title": "자격증명",
       "description": "도구와 MCP 서버에서 사용하는 API 키와 OAuth 권한을 관리하세요.",
       "new": "새 자격증명",
+      "count": "{count}개",
+      "fieldCount": "{count}개 필드",
+      "shared": "공유됨",
+      "tabs": {
+        "label": "자격증명 상태",
+        "all": "전체",
+        "active": "활성",
+        "auth_needed": "인증 필요",
+        "expired": "만료",
+        "disabled": "비활성",
+        "unknown": "알 수 없음"
+      },
+      "providerLabels": {
+        "anthropic": "Anthropic",
+        "azure_openai": "Azure OpenAI",
+        "coupang_partners": "쿠팡 파트너스",
+        "dart_api": "DART Open API",
+        "foresttrip_account": "숲나들e 계정",
+        "google_genai": "Google 생성형 AI",
+        "google_search": "구글 맞춤 검색",
+        "google_workspace_oauth2": "구글 워크스페이스 OAuth2",
+        "http_api_key": "HTTP API 키",
+        "http_basic": "HTTP 기본 인증",
+        "http_bearer": "HTTP Bearer 토큰",
+        "kipris_plus_api": "KIPRIS Plus API",
+        "ktx_account": "KTX 계정",
+        "mcp_oauth2": "MCP OAuth2 클라이언트",
+        "naver_search": "네이버 검색",
+        "odsay_api": "ODsay API",
+        "openai": "OpenAI",
+        "openai_compatible": "OpenAI 호환 엔드포인트",
+        "openrouter": "OpenRouter",
+        "srt_account": "SRT 계정"
+      },
+      "categories": {
+        "account": "계정",
+        "api": "API",
+        "general": "일반",
+        "http": "HTTP",
+        "llm": "LLM",
+        "mcp": "MCP",
+        "oauth": "OAuth",
+        "search": "검색",
+        "system": "시스템"
+      },
       "columns": {
         "name": "이름",
         "type": "종류",
@@ -2967,6 +3036,9 @@
         "authNeeded": "인증 필요",
         "expired": "만료",
         "disabled": "비활성"
+      },
+      "actions": {
+        "manage": "관리"
       },
       "empty": {
         "title": "아직 자격증명이 없어요",

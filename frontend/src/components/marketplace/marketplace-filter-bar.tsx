@@ -3,6 +3,7 @@
 import { SearchIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
+import { ResourceToolbar } from '@/components/shared/resource-layout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -12,10 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type {
-  InstallationStatus,
-  MarketplaceListFilters,
-} from '@/lib/types/marketplace'
+import type { InstallationStatus, MarketplaceListFilters } from '@/lib/types/marketplace'
 
 interface MarketplaceFilterBarProps {
   filters: MarketplaceListFilters
@@ -25,11 +23,7 @@ interface MarketplaceFilterBarProps {
 
 const ALL = '__all__'
 
-export function MarketplaceFilterBar({
-  filters,
-  onChange,
-  superUser,
-}: MarketplaceFilterBarProps) {
+export function MarketplaceFilterBar({ filters, onChange, superUser }: MarketplaceFilterBarProps) {
   const t = useTranslations('marketplace.filters')
   const supportOptions = [
     { value: 'ready_python', label: t('support.readyPython') },
@@ -49,6 +43,13 @@ export function MarketplaceFilterBar({
     { value: 'needs_setup', label: t('installState.needsSetup') },
     { value: 'disabled', label: t('installState.disabled') },
   ]
+  const sourceLabel =
+    sourceOptions.find((opt) => opt.value === filters.source_kind)?.label ?? t('allSources')
+  const supportLabel =
+    supportOptions.find((opt) => opt.value === filters.support_level)?.label ?? t('allSupport')
+  const installStateLabel =
+    installStateOptions.find((opt) => opt.value === filters.install_state)?.label ??
+    t('allInstallStates')
   const update = (patch: Partial<MarketplaceListFilters>) => {
     onChange({ ...filters, ...patch })
   }
@@ -58,8 +59,8 @@ export function MarketplaceFilterBar({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="relative min-w-[200px] flex-1">
+    <ResourceToolbar className="flex-wrap">
+      <div className="relative min-w-[220px] flex-1 sm:max-w-[360px]">
         <SearchIcon
           className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
           aria-hidden
@@ -79,7 +80,7 @@ export function MarketplaceFilterBar({
         }
       >
         <SelectTrigger className="min-w-[140px]" aria-label={t('sourceFilter')}>
-          <SelectValue placeholder={t('sourcePlaceholder')} />
+          <SelectValue>{sourceLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>{t('allSources')}</SelectItem>
@@ -98,7 +99,7 @@ export function MarketplaceFilterBar({
         }
       >
         <SelectTrigger className="min-w-[160px]" aria-label={t('supportFilter')}>
-          <SelectValue placeholder={t('supportPlaceholder')} />
+          <SelectValue>{supportLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>{t('allSupport')}</SelectItem>
@@ -119,7 +120,7 @@ export function MarketplaceFilterBar({
         }
       >
         <SelectTrigger className="min-w-[160px]" aria-label={t('installStateFilter')}>
-          <SelectValue placeholder={t('installStatePlaceholder')} />
+          <SelectValue>{installStateLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>{t('allInstallStates')}</SelectItem>
@@ -148,6 +149,6 @@ export function MarketplaceFilterBar({
       <Button variant="ghost" size="sm" onClick={reset}>
         {t('reset')}
       </Button>
-    </div>
+    </ResourceToolbar>
   )
 }

@@ -1,11 +1,6 @@
 import { render, screen } from '../../test-utils'
-import {
-  derivePrimaryCta,
-  MarketplaceCard,
-} from '@/components/marketplace/marketplace-card'
+import { derivePrimaryCta, MarketplaceCard } from '@/components/marketplace/marketplace-card'
 import { MarketplaceFilterBar } from '@/components/marketplace/marketplace-filter-bar'
-import { InstallationBadge } from '@/components/marketplace/badges/installation-badge'
-import { SupportBadge } from '@/components/marketplace/badges/support-badge'
 import type { MarketplaceItem } from '@/lib/types/marketplace'
 
 vi.mock('next/link', () => ({
@@ -75,7 +70,12 @@ describe('marketplace Korean copy', () => {
     expect(
       derivePrimaryCta(
         item({
-          installation: { installed: true, status: 'needs_setup', update_available: false, dirty: false },
+          installation: {
+            installed: true,
+            status: 'needs_setup',
+            update_available: false,
+            dirty: false,
+          },
         }),
       ).kind,
     ).toBe('setup')
@@ -89,7 +89,12 @@ describe('marketplace Korean copy', () => {
     expect(
       derivePrimaryCta(
         item({
-          installation: { installed: true, status: 'active', update_available: false, dirty: false },
+          installation: {
+            installed: true,
+            status: 'active',
+            update_available: false,
+            dirty: false,
+          },
         }),
       ).kind,
     ).toBe('open')
@@ -117,6 +122,17 @@ describe('marketplace Korean copy', () => {
     expect(screen.getByText('프록시 필요')).toBeInTheDocument()
   })
 
+  it('uses the template-inspired pastel marketplace card treatment', () => {
+    render(<MarketplaceCard item={item()} />)
+
+    const card = screen.getByText('이미지 생성').closest('[data-slot="card"]')
+    const iconShell = card?.querySelector('svg')?.parentElement
+
+    expect(card).toHaveClass('border-transparent')
+    expect(card?.className).toMatch(/\bbg-(violet|sky|emerald|amber|rose)-50\/75\b/)
+    expect(iconShell?.className).toMatch(/\bbg-(violet|sky|emerald|amber|rose)-100\b/)
+  })
+
   it('renders Korean filter placeholders and actions', () => {
     render(<MarketplaceFilterBar filters={{}} onChange={vi.fn()} superUser />)
 
@@ -124,6 +140,10 @@ describe('marketplace Korean copy', () => {
     expect(screen.getByRole('combobox', { name: '출처 필터' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: '지원 방식 필터' })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: '설치 상태 필터' })).toBeInTheDocument()
+    expect(screen.getByText('전체 출처')).toBeInTheDocument()
+    expect(screen.getByText('전체 지원 방식')).toBeInTheDocument()
+    expect(screen.getByText('전체 상태')).toBeInTheDocument()
+    expect(screen.queryByText('__all__')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '대기 항목 보기' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '초기화' })).toBeInTheDocument()
   })
