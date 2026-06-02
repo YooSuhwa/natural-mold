@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from langchain_core.tools import BaseTool
 
@@ -33,6 +34,35 @@ _TRIGGER_BLOCKED_LEVELS = {
     ToolRiskLevel.CODE_EXECUTION,
     ToolRiskLevel.UNKNOWN,
 }
+_TRUSTED_READ_ONLY_MCP_HOSTS = frozenset(
+    {
+        "hancom-gw-mcp.apps.orca.cloud.hancom.com",
+    }
+)
+_TRUSTED_READ_ONLY_LOCAL_MCP_PORTS = frozenset({18001, 18002, 18003, 18004})
+_READ_ONLY_MCP_NAME_PREFIXES = (
+    "get_",
+    "list_",
+    "search_",
+    "read_",
+    "fetch_",
+    "lookup_",
+    "find_",
+    "query_",
+    "select_",
+)
+_READ_ONLY_MCP_DESCRIPTION_HINTS = (
+    "조회",
+    "목록",
+    "검색",
+    "상세",
+    "현황",
+    "read",
+    "list",
+    "search",
+    "lookup",
+    "fetch",
+)
 
 
 @dataclass(frozen=True)
@@ -152,7 +182,63 @@ def builtin_tool_risk(definition_key: str) -> ToolRiskMetadata:
     )
 
 
-def mcp_tool_risk(name: str) -> ToolRiskMetadata:
+def _mcp_metadata_read_only(metadata: Any) -> bool:
+    if not isinstance(metadata, dict):
+        return False
+    return metadata.get("readOnlyHint") is True
+
+
+def _is_trusted_read_only_mcp_url(raw_url: Any) -> bool:
+    if not isinstance(raw_url, str) or not raw_url:
+        return False
+    parsed = urlparse(raw_url)
+    host = parsed.hostname or ""
+    if host in _TRUSTED_READ_ONLY_MCP_HOSTS:
+        return True
+    return host in {"localhost", "127.0.0.1", "::1"} and (
+        parsed.port in _TRUSTED_READ_ONLY_LOCAL_MCP_PORTS
+    )
+
+
+def _trusted_mcp_config_url(config: dict[str, Any] | None) -> bool:
+    if not config:
+        return False
+    return _is_trusted_read_only_mcp_url(config.get("mcp_server_url") or config.get("url"))
+
+
+def _looks_like_read_only_mcp_tool(name: str, description: str | None) -> bool:
+    lowered_name = name.lower()
+    if lowered_name.startswith(_READ_ONLY_MCP_NAME_PREFIXES):
+        return True
+    lowered_description = (description or "").lower()
+    return any(hint in lowered_description for hint in _READ_ONLY_MCP_DESCRIPTION_HINTS)
+
+
+def _trusted_mcp_config_read_only(config: dict[str, Any] | None, fallback_name: str) -> bool:
+    if not _trusted_mcp_config_url(config):
+        return False
+    assert config is not None
+    name = str(config.get("mcp_tool_name") or config.get("name") or fallback_name)
+    description = config.get("description")
+    desc = description if isinstance(description, str) else None
+    return _looks_like_read_only_mcp_tool(name, desc)
+
+
+def mcp_tool_risk(
+    name: str,
+    *,
+    metadata: dict[str, Any] | None = None,
+    config: dict[str, Any] | None = None,
+) -> ToolRiskMetadata:
+    if _trusted_mcp_config_url(config) and (
+        _mcp_metadata_read_only(metadata) or _trusted_mcp_config_read_only(config, name)
+    ):
+        return coerce_tool_risk(
+            risk_metadata_dict(
+                ToolRiskLevel.READ_ONLY,
+                reason=f"MCP tool '{name}' is marked read-only",
+            )
+        )
     return coerce_tool_risk(
         risk_metadata_dict(
             ToolRiskLevel.EXTERNAL_MUTATION,
@@ -235,7 +321,11 @@ def trigger_blocked_tools(
 def risk_from_tool_config(config: dict[str, Any]) -> ToolRiskMetadata:
     definition_key = str(config.get("definition_key") or "")
     if definition_key == "mcp":
-        return mcp_tool_risk(str(config.get("name") or config.get("mcp_tool_name") or "mcp"))
+        return mcp_tool_risk(
+            str(config.get("name") or config.get("mcp_tool_name") or "mcp"),
+            metadata=config.get("mcp_tool_metadata"),
+            config=config,
+        )
     if definition_key.startswith("builtin:"):
         return builtin_tool_risk(definition_key)
 
@@ -253,9 +343,7 @@ def risk_from_tool_config(config: dict[str, Any]) -> ToolRiskMetadata:
 
 
 def format_trigger_block_reason(blocked: list[TriggerBlockedTool]) -> str:
-    details = ", ".join(
-        f"{item.name} ({item.risk_level.value}: {item.reason})" for item in blocked
-    )
+    details = ", ".join(f"{item.name} ({item.risk_level.value}: {item.reason})" for item in blocked)
     return f"Blocked by tool risk policy: {details}"
 
 
