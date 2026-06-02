@@ -35,8 +35,8 @@
   제안하고 합의된 시점에 실제 에이전트를 생성합니다. 폼을 채우는 대신 **요구사항을
   설명**하면 됩니다.
 - **도구·스킬·MCP 통합 카탈로그** — 빌트인 검색/스크래퍼/캘린더/Gmail 같은
-  prebuilt 도구, 외부 **MCP 서버**(stdio/HTTP), 사용자 정의 **Skill**(SKILL.md
-  + 보조 파일)을 한 화면에서 관리합니다.
+  prebuilt 도구, 레지스트리 기반 **MCP 서버**(stdio/SSE/Streamable HTTP),
+  사용자 정의 **Skill**(SKILL.md + 보조 파일)을 한 화면에서 관리합니다.
 - **분기 가능한 대화** — LangGraph checkpointer 기반의 **fork & 시간여행**으로
   메시지 편집·재생성 시 새 분기로 갈라지고, 좌우 화살표로 형제 응답을 비교할 수
   있습니다.
@@ -208,6 +208,24 @@ Tavily hosted search tool(`tavily_search`)과 Deep Research 마켓플레이스 s
 붙이지 않아도 citation 기반 멀티스텝 웹 리서치를 수행합니다. (설계 배경:
 `docs/superpowers/plans/2026-05-31-deep-research-tavily.md`)
 
+### MCP 레지스트리와 MCP Secret
+
+`/mcp-servers` → **새 MCP 서버**에서 레지스트리 프리셋을 고르면 transport, URL,
+stdio command/env template이 자동으로 채워지고, 저장 전 **도구 프로브**로 실제 노출
+도구를 확인할 수 있습니다. 현재 프리셋은 GitHub, Linear, Atlassian Jira, Slack,
+Notion과 로컬 first-party MCP(Hancom Groupware, Hancom Mile Meeting, Hancom Org
+Chart, Maepsi)를 포함합니다.
+
+인증이 필요한 first-party MCP 프리셋은 `/credentials`에서 `MCP Secret` 타입
+credential을 만든 뒤 마법사 **인증** 탭에서 연결합니다. Moldy는 연결/실행 시
+`secret` 값을 `X-Moldy-Credential` 헤더로 자동 전달합니다. 수동 MCP 서버를 등록할
+때도 헤더나 stdio 환경 변수 값에 `{{ $credentials.<field> }}` 형식으로 연결된
+credential 필드를 보간할 수 있습니다.
+
+로컬 first-party MCP 프리셋의 기본 URL은 `localhost:18001`~`18004` 대역입니다.
+이 서버들은 `docker compose up`에 포함되지 않으므로, 해당 프리셋을 쓰려면 MCP 서버
+프로세스를 별도로 실행한 뒤 프로브하세요.
+
 ## 📸 Screenshots
 
 > 준비 중. 주요 화면은 `docs/PRD-screens.md`에 와이어프레임으로 정리되어 있습니다.
@@ -234,6 +252,8 @@ Tavily hosted search tool(`tavily_search`)과 Deep Research 마켓플레이스 s
 
 - **SSE 스트리밍** — 토큰 단위 실시간 출력, 도구 호출 시각화. 스트리밍 중
   코드 블록 plain 렌더 + SSE 큐 O(1) 처리 등으로 장문 응답 성능 최적화
+- **IME-safe 입력창** — 한글 등 조합형 입력 중 Enter/편집/재생성이 조합 문자열을
+  깨뜨리지 않도록 composer 상태를 안전하게 동기화
 - **LangGraph fork** — 사용자 메시지 편집 / 어시스턴트 재생성 시 새 분기 생성,
   체크포인트 ID 기반 시간여행
 - **BranchPicker** — `<N/M>` 좌우 화살표로 형제 응답 비교 (assistant-ui 통합)
@@ -253,8 +273,12 @@ Tavily hosted search tool(`tavily_search`)과 Deep Research 마켓플레이스 s
 - **빌트인 도구 카탈로그** — DuckDuckGo / 웹 스크래퍼 / 현재 시각 / 상대 날짜
   해석(`resolve_relative_date`) / Tavily 검색 / Naver 검색 5종 / Google CSE 3종 /
   Gmail 보내기 / Google 캘린더 / Google Chat Webhook / HTTP 요청
-- **MCP 통합** — stdio + HTTP 서버 등록, `langchain-mcp-adapters` 기반,
-  import/export, health check polling
+- **MCP 통합** — stdio + SSE + Streamable HTTP 서버 등록,
+  `langchain-mcp-adapters` 기반 import/export, health check polling
+- **MCP 레지스트리 프리셋** — GitHub / Linear / Jira / Slack / Notion /
+  Hancom / Maepsi 서버를 `/mcp-servers` 마법사에서 선택하고 저장 전 도구 프로브
+- **MCP Secret credential** — first-party MCP 서버에 per-user secret을
+  `X-Moldy-Credential` 헤더로 자동 전달
 - **Skill 시스템** — SKILL.md(YAML frontmatter) + 보조 파일을 묶은 스킬 패키지,
   multi-file 인라인 에디터, scratch/upload/import 3가지 생성 방식
 - **Skill 런타임 의존성** — Skill이 선언한 tool dependency를 에이전트 실행 시
@@ -269,6 +293,7 @@ Tavily hosted search tool(`tavily_search`)과 Deep Research 마켓플레이스 s
 - **Cipher V2 암호화** — HKDF-SHA256 + AES-256-GCM, 단일 블롭 Base64
 - **Vault 통합** — `hvac` 기반 external secrets 지원
 - **System / User 크리덴셜 분리** — 운영자 관리 vs 사용자 개인 키
+- **MCP Secret** — 로컬 first-party MCP 서버용 per-user secret credential
 - **한국 서비스 8종** — SRT · KTX · 산림청 숲길 · KIPRIS · DART · ODsay · 쿠팡 파트너스 · K-Skill 프록시
 - **모델 discovery** — 크리덴셜로 LLM API에 직접 질의해 사용 가능 모델 + 가격
   + 컨텍스트 윈도우 자동 가져오기

@@ -35,8 +35,9 @@ resulting agent or schedule it to run on its own.
   proposes build options step by step, and only commits to creating the agent
   once you agree. **Describe requirements** instead of filling out a long form.
 - **Unified tool / skill / MCP catalog** — Manage prebuilt tools (web search,
-  scraper, Gmail, Calendar, …), external **MCP servers** (stdio / HTTP), and
-  user-defined **Skills** (a `SKILL.md` plus auxiliary files) from a single UI.
+  scraper, Gmail, Calendar, ...), registry-backed **MCP servers** (stdio / SSE /
+  Streamable HTTP), and user-defined **Skills** (a `SKILL.md` plus auxiliary
+  files) from a single UI.
 - **Branching conversations** — Built on the LangGraph checkpointer so editing
   a user message or regenerating an assistant reply forks a new branch.
   `<N/M>` arrows let you flip between sibling responses.
@@ -82,9 +83,9 @@ pnpm dev
 # → http://localhost:3000
 ```
 
-The first run seeds default models (GPT-5.5, Claude Sonnet 4.6, Gemini, …),
-system tools, and agent templates. However, **operator setup below is required
-before you can build and use agents**.
+The first run seeds default models (GPT-5.5, Claude Sonnet 4.6, Gemini, ...),
+system tools, agent templates, and the local Playwright E2E account. However,
+**operator setup below is required before you can build and use agents**.
 
 ### Post-boot setup (operator)
 
@@ -212,6 +213,24 @@ it runs citation-backed multi-step web research without the user attaching any
 tool manually. (Design background:
 `docs/superpowers/plans/2026-05-31-deep-research-tavily.md`)
 
+### MCP Registry and MCP Secret
+
+At `/mcp-servers` -> **New MCP Server**, choose a registry preset to pre-fill
+transport, URL, and stdio command/env templates, then run a **tool probe**
+before saving to see what the server actually exposes. Current presets include
+GitHub, Linear, Atlassian Jira, Slack, Notion, and local first-party MCP servers
+(Hancom Groupware, Hancom Mile Meeting, Hancom Org Chart, Maepsi).
+
+For first-party MCP presets that require auth, create an `MCP Secret` credential
+at `/credentials`, then attach it in the wizard's **Auth** tab. Moldy forwards
+the `secret` value as the `X-Moldy-Credential` header during connection and
+runtime execution. For manually registered MCP servers, headers and stdio env
+vars can interpolate the attached credential with `{{ $credentials.<field> }}`.
+
+Local first-party MCP presets default to the `localhost:18001`-`18004` range.
+Those servers are not included in `docker compose up`, so start the MCP server
+process separately before probing those presets.
+
 ## 📸 Screenshots
 
 > Coming soon. Screen wireframes are documented in `docs/PRD-screens.md`.
@@ -238,6 +257,8 @@ tool manually. (Design background:
 
 - **SSE streaming** — Token-level live output with tool-call visualization;
   plain code-block rendering while streaming + O(1) SSE queue keep long replies fast
+- **IME-safe composer** — Korean and other composition-based input stays intact
+  across Enter, edit, and regenerate flows while composer state syncs safely
 - **LangGraph fork** — Editing a user message or regenerating an assistant turn
   forks a new branch; checkpoint IDs power "time travel"
 - **BranchPicker** — `<N/M>` arrows compare sibling responses (assistant-ui integration)
@@ -257,8 +278,12 @@ tool manually. (Design background:
 - **Built-in tool catalog** — DuckDuckGo, web scraper, current time, relative-date
   resolver (`resolve_relative_date`), Tavily search, Naver search (5), Google CSE (3),
   Gmail send, Google Calendar, Google Chat webhook, HTTP request
-- **MCP integration** — Register stdio + HTTP servers via `langchain-mcp-adapters`,
-  with import / export and health-check polling
+- **MCP integration** — Register stdio + SSE + Streamable HTTP servers via
+  `langchain-mcp-adapters`, with import / export and health-check polling
+- **MCP registry presets** — Pick GitHub / Linear / Jira / Slack / Notion /
+  Hancom / Maepsi servers in the `/mcp-servers` wizard and probe tools before saving
+- **MCP Secret credential** — Automatically forwards a per-user secret to
+  first-party MCP servers via the `X-Moldy-Credential` header
 - **Skill system** — `SKILL.md` (YAML frontmatter) plus auxiliary files; inline
   multi-file editor; create skills from scratch, upload, or import
 - **Skill runtime dependencies** — Tools a skill declares are auto-injected at
@@ -273,6 +298,7 @@ tool manually. (Design background:
 - **Cipher V2 encryption** — HKDF-SHA256 + AES-256-GCM single-blob Base64
 - **Vault integration** — `hvac`-based external secrets
 - **System / user split** — Operator-managed credentials vs. per-user keys
+- **MCP Secret** — Per-user secret credential for local first-party MCP servers
 - **Korean service integrations (8 types)** — SRT · KTX · Forest Trip · KIPRIS · DART · ODsay · Coupang Partners · K-Skill Proxy
 - **Model discovery** — Probe LLM APIs through a credential to auto-pull the
   available model list, pricing, and context window
