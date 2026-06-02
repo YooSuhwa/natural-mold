@@ -40,15 +40,18 @@ deploy a fork please verify:
 
 1. **Secrets** — never hardcode API keys; load from env vars or HashiCorp Vault
    (`hvac` integration).
-2. **Encryption at rest** — Cipher V2 (Fernet + HKDF-SHA256) is used for
-   credential blobs. Rotate `ENCRYPTION_KEY` and surface key rotation through
+2. **Encryption at rest** — Cipher V2 uses HKDF-SHA256 + AES-256-GCM for
+   credential blobs. Configure `ENCRYPTION_KEYS`, keep retired keys available
+   for decryption during rotation, and track the active key through
    `credentials.key_id`.
 3. **Transport** — terminate HTTPS at the edge (nginx / cloud LB). The
    FastAPI app does not redirect HTTP→HTTPS by itself.
 4. **Database** — enforce strong Postgres credentials and restrict network
    access. Backups should be encrypted.
-5. **Mock auth** — the bundled `get_current_user` returns a fixed mock user.
-   Replace with a real auth provider before exposing publicly.
+5. **Authentication bootstrap** — Moldy uses JWT auth with HttpOnly cookies,
+   CSRF double-submit protection, refresh-token rotation, and a `super_user`
+   operator role. Disable `ALLOW_FIRST_USER_AS_ADMIN` after the first operator
+   account exists in production.
 6. **Public share links** — `/api/shares/{token}` is unauthenticated by
    design; consider rate-limiting (slowapi) before exposing externally.
 7. **Dependencies** — keep `langchain`, `langgraph`, `deepagents`, MCP
