@@ -13,10 +13,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# ``={{ $credentials.<name> }}`` — leading ``=`` is optional (expression marker
-# borrowed from prior art, see NOTICES.md). The field name is restricted to
-# identifier characters to keep parsing unambiguous and to forbid path
-# traversal / function calls.
+# ``={{ $credentials.<name> }}`` — leading ``=`` is an optional expression
+# marker. The field name is restricted to identifier characters to keep parsing
+# unambiguous and to forbid path traversal / function calls.
 _PATTERN = re.compile(
     r"=?\{\{\s*\$credentials\.(?P<name>[A-Za-z_][A-Za-z0-9_]*)\s*\}\}"
 )

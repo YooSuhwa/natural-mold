@@ -3,8 +3,6 @@
 A :class:`CredentialDefinition` is registered once per credential family (Naver
 Search, OpenAI, ...). It declares form fields, optional generic authentication,
 an optional connectivity test request, and OAuth2 pre-authentication hooks.
-
-Algorithm/structure attribution: see NOTICES.md.
 """
 
 from __future__ import annotations

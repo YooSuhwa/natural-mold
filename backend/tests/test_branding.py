@@ -1,8 +1,7 @@
 """Branding/license guard test — runs scripts/check_branding.py as a CI gate.
 
 This test fails the test suite if forbidden identifiers, npm scopes, or asset
-hashes are introduced. The single attribution file (NOTICES.md) and governance
-documents are exempt by design — see scripts/check_branding.py for the policy.
+hashes are introduced. See scripts/check_branding.py for the current policy.
 """
 
 from __future__ import annotations

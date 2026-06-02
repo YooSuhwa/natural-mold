@@ -10,11 +10,6 @@ the user's responsibility.
 The dispatch by ``definition_key`` keeps the per-provider quirks isolated;
 common output is the :class:`DiscoveredModel` dataclass with a ``source``
 ("openrouter" | "litellm" | "manual") indicating where the pricing came from.
-
-The List/Custom-ID resourceLocator pattern (and the host-based ``is_custom_api``
-branch driving filter strictness) is borrowed from prior art — see
-``NOTICES.md`` for attribution. Implementation, identifiers, and string
-contents are Moldy-native.
 """
 
 from __future__ import annotations

@@ -1,11 +1,8 @@
 """Field definitions for credential / tool dynamic forms.
 
-Mirrors the information structure of a generic node-parameter system:
 ``FieldKind`` is the renderer hint, ``FieldDef`` carries display + validation
 metadata. ``display_options.show`` enables conditional rendering driven by
 sibling field values.
-
-Algorithm/structure attribution: see NOTICES.md.
 """
 
 from __future__ import annotations

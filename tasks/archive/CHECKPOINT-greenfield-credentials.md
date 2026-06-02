@@ -11,7 +11,7 @@
 
 ## 결정 사항 (불변)
 
-1. Cipher: n8n 알고리즘 차용, HKDF-SHA256(info=`b'moldy-encryption-v1'`), 단일 블롭 Base64(`[version 1B][salt 32B][authTag 16B][ciphertext]`), 멀티키 식별은 `credentials.key_id` 별도 컬럼.
+1. Cipher: HKDF-SHA256(info=`b'moldy-encryption-v1'`), 단일 블롭 Base64(`[version 1B][salt 32B][authTag 16B][ciphertext]`), 멀티키 식별은 `credentials.key_id` 별도 컬럼.
 2. LLM 모델: `models` 유지(api_key_encrypted 제거), `agents.llm_credential_id` FK 추가, `llm_providers` 폐기.
 3. 단일 PR.
 4. Vault provider 실구현 (HVAC SDK, feature flag).
@@ -30,9 +30,8 @@
 
 ## M1: 브랜딩 검증 + Cipher V2 (피차이 + 베조스 DRI)
 
-- [ ] `scripts/check_branding.py` (`\bn8n\b` 0건, `@n8n/*` 패키지 0건, 로고 SHA-256 블랙리스트, 화이트리스트 `NOTICES.md`)
-- [ ] `NOTICES.md` (차용 출처 명기, 라이선스 메모)
-- [ ] `backend/app/security/cipher.py` (n8n 알고리즘, info=`moldy-encryption-v1`)
+- [ ] `scripts/check_branding.py` (설정된 금지 식별자, 패키지 prefix, 자산 SHA-256 블랙리스트 검사)
+- [ ] `backend/app/security/cipher.py` (info=`moldy-encryption-v1`)
 - [ ] `backend/app/security/key_provider.py` (활성 키 + 검증 키들)
 - [ ] `backend/app/config.py` `encryption_keys: list[str]` (비면 부팅 실패)
 - [ ] `backend/.env.example` `ENCRYPTION_KEYS` 예시
@@ -123,21 +122,21 @@
 
 ---
 
-## M7: 모델 카탈로그 + 디스커버리 (LiteLLM + n8n 하이브리드)
+## M7: 모델 카탈로그 + 디스커버리 (LiteLLM + 자체 필터링)
 
 **DRI**: 젠슨 (Backend) + 팀쿡/저커버그 (Frontend) + 베조스 (검증)
-**왜**: M5에서 `models` 테이블을 read-only로 축소했으나, 신모델 추가가 시드 코드 수정+재시작으로만 가능 → 비실용적. n8n의 resourceLocator 패턴(List/Custom ID 두 모드) + 옛 LiteLLM enrichment 차용하여 UI에서 모델 추가/관리 가능하게 복원.
+**왜**: M5에서 `models` 테이블을 read-only로 축소했으나, 신모델 추가가 시드 코드 수정+재시작으로만 가능 → 비실용적. List/Custom ID 두 모드 + LiteLLM enrichment로 UI에서 모델 추가/관리 가능하게 복원.
 
 ### 차용 패턴
-- **n8n resourceLocator**: 모델 선택을 List(디스커버리) + Custom ID(직접 입력) 두 모드
-- **n8n isCustomAPI 분기**: 공식 host 화이트리스트 / 호환 endpoint 모두 노출
-- **n8n modelFiltering helper**: provider별 필터 룰 단일 진입점
+- 모델 선택을 List(디스커버리) + Custom ID(직접 입력) 두 모드로 구성
+- 공식 host 화이트리스트 / 호환 endpoint 모두 노출
+- provider별 필터 룰 단일 진입점
 - **OpenRouter pricing 우선** + **LiteLLM 카탈로그 fallback** + **수동 override**
 - **multi-provider Gateway 정의**: OpenAI Compatible / OpenRouter (선택: Vercel AI Gateway)
 
 ### 백엔드
 - [ ] `app/services/model_metadata.py` 복원 (LiteLLM enrich, 옛 코드 차용)
-- [ ] `app/services/model_filtering.py` 신규 — `should_include_model(provider, model_id, is_custom_api)` (n8n 패턴)
+- [ ] `app/services/model_filtering.py` 신규 — `should_include_model(provider, model_id, is_custom_api)`
 - [ ] `app/services/model_discovery.py` 재작성 — Credential 기반 dispatch + isCustomAPI 분기
 - [ ] `app/credentials/definitions/` 신규 정의: `openrouter`, `openai_compatible` (vercel_ai_gateway는 후속)
 - [ ] `app/routers/models.py` 보강: POST/PATCH/DELETE 추가, Source 배지(litellm/openrouter/manual)
@@ -151,7 +150,7 @@
 - [ ] `frontend/src/components/model/model-edit-dialog.tsx` 신규 — 가격 override
 - [ ] `frontend/src/components/model/model-discover-panel.tsx` 신규 — Credential 선택 + 결과 리스트 + 다중 선택
 - [ ] `frontend/src/components/layout/app-sidebar.tsx` — Models 항목 추가
-- [ ] `frontend/src/components/model/model-select.tsx` 업그레이드 — resourceLocator 패턴 (List/Custom ID)
+- [ ] `frontend/src/components/model/model-select.tsx` 업그레이드 — List/Custom ID 두 모드
 - [ ] `frontend/src/lib/api/models.ts`, `lib/hooks/use-models.ts`, `lib/types/model.ts` 보강
 - [ ] `frontend/e2e/models-discover.spec.ts` 신규
 

@@ -1,6 +1,4 @@
-// Model catalog client. M7 reintroduces CRUD + credential-driven discovery
-// (resourceLocator pattern: List vs Custom ID — see NOTICES.md).
-// M8 adds connection test endpoints (registered + preview, prior art via NOTICES.md).
+// Model catalog client: CRUD, credential-driven discovery, and connection tests.
 
 import { apiFetch } from './client'
 import type {

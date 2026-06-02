@@ -1,7 +1,4 @@
-"""Abstract base for external secret providers (env / Vault / future backends).
-
-Algorithm/structure attribution: see NOTICES.md.
-"""
+"""Abstract base for external secret providers (env / Vault / future backends)."""
 
 from __future__ import annotations
 
