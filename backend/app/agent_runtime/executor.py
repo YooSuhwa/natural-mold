@@ -462,6 +462,7 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     servers: dict[str, dict] = {}
     tool_filter: dict[str, set[str]] = {}  # server_key → {tool_names}
     tool_auth: dict[str, dict] = {}  # tool_name → auth_config
+    tool_configs: dict[tuple[str, str], dict] = {}  # (server_key, tool_name) → runtime config
 
     for tc in mcp_configs:
         url = tc["mcp_server_url"]
@@ -487,6 +488,7 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
             tool_filter[key] = set()
 
         tool_filter[key].add(tool_name)
+        tool_configs[(key, tool_name)] = tc
 
         auth = tc.get("auth_config")
         if auth:
@@ -519,7 +521,22 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
             for t in server_tools:
                 if t.name in needed:
                     _hide_auth_params_from_schema(t, auth_param_keys)
-                    attach_tool_risk(t, mcp_tool_risk(t.name))
+                    risk_config = dict(tool_configs.get((key, t.name), {}))
+                    risk_config.setdefault("definition_key", "mcp")
+                    risk_config.setdefault("name", t.name)
+                    risk_config.setdefault("mcp_tool_name", t.name)
+                    risk_config.setdefault("mcp_server_url", config.get("url"))
+                    if t.description and not risk_config.get("description"):
+                        risk_config["description"] = t.description
+                    metadata = getattr(t, "metadata", None)
+                    attach_tool_risk(
+                        t,
+                        mcp_tool_risk(
+                            t.name,
+                            metadata=metadata if isinstance(metadata, dict) else None,
+                            config=risk_config,
+                        ),
+                    )
                     collected.append((t, key))
         except Exception:
             logger.warning("MCP tool loading failed for %s", key, exc_info=True)
