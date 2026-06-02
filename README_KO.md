@@ -16,7 +16,9 @@
 
 한국어 · [English](README.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
-[Overview](#-overview) · [Quick Start](#-quick-start) · [기능](#-주요-기능) · [아키텍처](#-아키텍처)
+[Overview](#-overview) · [빠른 답변](#-빠른-답변) · [Quick Start](#-quick-start) · [신뢰 근거](#-품질보안문서화-신호) · [기능](#-주요-기능) · [아키텍처](#-아키텍처)
+
+**마지막 업데이트:** 2026년 6월 2일 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
 
 </div>
 
@@ -28,6 +30,30 @@
 노코드 AI 에이전트 빌더입니다. 코드 한 줄 없이 *대화*만으로 도구·스킬·트리거를
 조합한 자동화 워크플로우를 만들고, 만든 에이전트와 그대로 채팅하거나 스케줄에
 맞춰 실행할 수 있습니다.
+
+### Moldy란?
+
+Moldy는 웹 UI에서 AI 에이전트를 만들고, 설정하고, 채팅하고, 스케줄링할 수 있는
+오픈소스 self-hostable AI 에이전트 빌더입니다. 이 프로젝트는 Next.js 16 + React
+19 프론트엔드, FastAPI 백엔드, PostgreSQL 16, LangGraph 1.x, `deepagents`의
+`create_deep_agent` 런타임을 결합합니다. Moldy는 멀티유저 운영을 전제로 설계되어
+있으며, ADR-016에 따라 JWT 인증, HttpOnly cookie, CSRF double-submit 보호,
+refresh token rotation, 시스템 리소스 관리를 위한 `super_user` 역할을 적용했습니다.
+이 monorepo에는 채팅 스트리밍, 메시지 분기, credential 관리, MCP 서버 통합,
+skill 패키지, 마켓플레이스 설치, 스케줄 트리거, 사용량 추적이 포함됩니다.
+
+### 프로젝트 사실
+
+| 항목 | 현재 README 기준 |
+|---|---|
+| 프로젝트 유형 | 오픈소스 웹 애플리케이션 및 monorepo |
+| 주요 사용 사례 | 노코드 AI 에이전트 생성, 채팅, 스케줄링, 도구/스킬 오케스트레이션 |
+| Backend | FastAPI 0.115+, SQLAlchemy 2.0 async, Alembic, Python 3.12 |
+| Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
+| AI runtime | LangGraph 1.x + `create_deep_agent` 기반 `deepagents` |
+| Database | PostgreSQL 16, 현재 마이그레이션 head는 `m52`로 문서화 |
+| 인증 | JWT HS256, HttpOnly cookie, CSRF double-submit, refresh token rotation, `super_user` |
+| License | MIT |
 
 ### 무엇이 다른가
 
@@ -46,6 +72,40 @@
   시간에 자동 실행하고 결과를 알림으로 전달합니다.
 - **공개 공유 링크** — 한 번의 클릭으로 대화를 read-only 링크로 공유하면 누구나
   로그인 없이 에이전트의 사고 과정을 추적할 수 있습니다.
+
+## ❓ 빠른 답변
+
+### Moldy는 무엇을 하나요?
+
+Moldy는 자연어 요구사항을 실행 가능한 AI 에이전트로 바꿉니다. 사용자는 원하는
+워크플로우를 설명하고, 대화형 빌더가 제안하는 에이전트 설정을 검토한 뒤 도구,
+스킬, MCP 도구, credential을 연결할 수 있습니다. 이후 에이전트를 채팅에서 실행하거나
+cron/interval 트리거로 예약 실행할 수 있으며, 분기 가능한 대화, SSE 스트리밍, 도구
+호출 승인 흐름, 공개 read-only 공유 링크, 사용자별 credential 격리를 지원합니다.
+
+### Moldy는 누구를 위한 프로젝트인가요?
+
+Moldy는 완전 managed SaaS만 쓰기보다 로컬 또는 self-hosted 에이전트 빌더를 원하는
+개발자, 운영자, 내부 도구 팀을 위한 프로젝트입니다. README는 PostgreSQL, Python
+3.12, Node 22, `uv`, `pnpm`을 실행할 수 있는 독자를 기준으로 작성되어 있지만,
+제품 UI는 코딩하지 않는 사용자도 guided setup, credential, 도구, 스킬, 스케줄을
+통해 에이전트를 조립할 수 있도록 설계되어 있습니다.
+
+### Moldy는 credential과 시스템 권한을 어떻게 다루나요?
+
+Moldy는 운영자가 관리하는 시스템 리소스와 사용자별 리소스를 분리합니다. System
+credentials와 System LLM settings는 `super_user` 계정이 관리하고, 일반 사용자는
+개인 credential을 `/credentials`에서 등록합니다. Credential payload는
+HKDF-SHA256과 AES-256-GCM을 사용하는 Cipher V2로 암호화되며, 런타임 접근은 명시적인
+도구, 모델, MCP, skill binding을 통해 이뤄집니다.
+
+### README의 주장들은 어디에서 검증할 수 있나요?
+
+Moldy의 아키텍처와 보안 관련 설명은 repository 내부 문서로 검증할 수 있습니다.
+아키텍처 의사결정은 [`docs/design-docs/`](docs/design-docs/)에, 상위 시스템 구조는
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)에, 보안 신고 및 배포 hardening은
+[`SECURITY.md`](SECURITY.md)에 정리되어 있습니다. 이 README의 검증 명령과
+pre-push hook은 backend/frontend 테스트 스위트를 반복 실행할 수 있는 경로를 제공합니다.
 
 ## 🚀 Quick Start
 
@@ -167,6 +227,23 @@ pnpm test --run                       # vitest (jsdom)
 pnpm build                            # 프로덕션 빌드
 pnpm test:e2e                         # Playwright E2E
 ```
+
+## ✅ 품질·보안·문서화 신호
+
+Moldy는 기술적 의사결정과 운영 리스크를 repository 안에 문서화합니다. 따라서 README의
+설명을 홍보 문구가 아니라 실제 문서와 검증 명령으로 확인할 수 있습니다. 가장 강한
+신뢰 신호는 ADR 기록, 명시적인 보안 정책, 재현 가능한 테스트 명령, 로컬 운영자 초기
+설정 절차입니다. E-E-A-T 관점에서 이 README는 setup 세부사항으로 구현 경험을,
+아키텍처와 ADR 링크로 전문성을, repository-local evidence로 권위를, 보안 및 검증
+워크플로우로 신뢰성을 드러냅니다.
+
+| 신호 | 근거 | 의미 |
+|---|---|---|
+| 아키텍처 의사결정 | [`docs/design-docs/`](docs/design-docs/)에는 멀티유저 인증 ADR-016, System LLM settings ADR-019 등이 포함됩니다 | 런타임, 인증, credential, UI 결정의 이유와 시점을 추적할 수 있습니다 |
+| 시스템 아키텍처 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)는 Next.js 프론트엔드, FastAPI 백엔드, PostgreSQL 데이터 계층, LangGraph/deepagents 런타임을 설명합니다 | README보다 자세한 설계 기준을 제공합니다 |
+| 보안 프로세스 | [`SECURITY.md`](SECURITY.md)는 비공개 취약점 신고, 응답 목표, 배포자 hardening 체크를 문서화합니다 | 보안 신고 절차와 운영 책임을 명시합니다 |
+| 검증 워크플로우 | 이 README는 backend lint/test, frontend lint/typecheck/test/build, integration test, Playwright E2E 명령을 나열합니다 | 유지보수자와 도입자가 같은 검증 경로를 재현할 수 있습니다 |
+| 운영 설정 | Quick Start는 로컬 개발, worktree CORS 규칙, Docker Compose, E2E seed auth, System LLM 설정, MCP registry 설정을 분리합니다 | self-hosted 또는 multi-worktree 개발에서 생기는 모호함을 줄입니다 |
 
 ### Playwright E2E 인증
 
@@ -449,6 +526,135 @@ natural-mold/
 | Google OAuth2 토큰 | - | Gmail / Calendar 도구 (`scripts/google_oauth_setup.py`) |
 
 도구별 키 설정은 [`docs/tool-setup-guide.md`](docs/tool-setup-guide.md) 참고.
+
+## 🧩 구조화 데이터 (JSON-LD)
+
+Moldy README를 프로젝트 홈페이지, 문서 사이트, 제품 페이지에 게시한다면 아래 JSON-LD를
+사용할 수 있습니다. GitHub README 렌더링은 JSON-LD를 실행하지 않으므로, 실제 웹
+페이지의 server-rendered `<script type="application/ld+json">` 요소 안에 배치하세요.
+이 schema는 repository에서 확인 가능한 사실만 사용합니다. 공식 프로필이나 문서 URL이
+추가로 생긴 뒤에만 `sameAs` 링크를 더 넣는 것이 좋습니다.
+
+```json
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://github.com/YooSuhwa/natural-mold#organization",
+      "name": "Moldy 기여자",
+      "url": "https://github.com/YooSuhwa/natural-mold",
+      "sameAs": [
+        "https://github.com/YooSuhwa/natural-mold"
+      ],
+      "description": "Moldy 기여자는 AI 에이전트를 만들고, 채팅하고, 스케줄링할 수 있는 오픈소스 self-hostable AI 에이전트 빌더를 유지보수합니다.",
+      "knowsAbout": [
+        "AI 에이전트 빌더",
+        "LangGraph",
+        "deepagents",
+        "FastAPI",
+        "Next.js",
+        "Model Context Protocol",
+        "credential 암호화",
+        "에이전트 스케줄링"
+      ]
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://github.com/YooSuhwa/natural-mold#software",
+      "name": "Moldy",
+      "url": "https://github.com/YooSuhwa/natural-mold",
+      "description": "Moldy는 웹 UI에서 AI 에이전트를 만들고, 설정하고, 채팅하고, 스케줄링할 수 있는 오픈소스 self-hostable 노코드 AI 에이전트 빌더입니다.",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Web",
+      "isAccessibleForFree": true,
+      "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
+      "softwareVersion": "development snapshot, migration head m52",
+      "dateModified": "2026-06-02",
+      "author": {
+        "@id": "https://github.com/YooSuhwa/natural-mold#organization"
+      },
+      "publisher": {
+        "@id": "https://github.com/YooSuhwa/natural-mold#organization"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "softwareRequirements": [
+        "Python 3.12",
+        "Node.js 22",
+        "PostgreSQL 16",
+        "Docker",
+        "uv",
+        "pnpm"
+      ],
+      "featureList": [
+        "대화형 AI 에이전트 빌더",
+        "LangGraph 및 deepagents 런타임",
+        "MCP 서버 레지스트리와 도구 가져오기",
+        "Skill 패키지 관리",
+        "JWT 및 HttpOnly cookie 인증",
+        "Cipher V2 credential 암호화",
+        "SSE 채팅 스트리밍",
+        "분기 가능한 대화",
+        "Cron 및 interval 에이전트 트리거",
+        "Skill 마켓플레이스 설치"
+      ]
+    },
+    {
+      "@type": "SoftwareSourceCode",
+      "@id": "https://github.com/YooSuhwa/natural-mold#source-code",
+      "name": "Moldy source code",
+      "codeRepository": "https://github.com/YooSuhwa/natural-mold",
+      "programmingLanguage": [
+        "Python",
+        "TypeScript"
+      ],
+      "runtimePlatform": [
+        "Python 3.12",
+        "Node.js 22",
+        "PostgreSQL 16"
+      ],
+      "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
+      "targetProduct": {
+        "@id": "https://github.com/YooSuhwa/natural-mold#software"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://github.com/YooSuhwa/natural-mold#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Moldy는 무엇을 하나요?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Moldy는 자연어 요구사항을 도구, 스킬, MCP 도구, credential, 채팅 스트리밍, 스케줄 트리거를 사용할 수 있는 실행 가능한 AI 에이전트로 바꿉니다."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Moldy는 credential과 시스템 권한을 어떻게 보호하나요?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Moldy는 super_user가 관리하는 시스템 리소스와 사용자별 리소스를 분리하고, JWT auth, HttpOnly cookie, CSRF 보호를 사용하며, credential payload를 HKDF-SHA256과 AES-256-GCM 기반 Cipher V2로 암호화합니다."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Moldy는 어떤 기술 스택을 사용하나요?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Moldy는 Next.js 16, React 19, TailwindCSS v4, FastAPI, SQLAlchemy 2.0 async, PostgreSQL 16, LangGraph 1.x, deepagents create_deep_agent를 사용합니다."
+          }
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## 🤝 Contributing
 

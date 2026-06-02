@@ -2,7 +2,8 @@
 
 FastAPI + SQLAlchemy + LangChain/LangGraph로 동작하는 AI 에이전트 빌더 백엔드.
 
-전체 프로젝트 개요/스택/세팅은 루트 [`README.md`](../README.md) 참조.
+전체 프로젝트 개요/스택/세팅은 루트 [`README.md`](../README.md) /
+[`README_KO.md`](../README_KO.md) 참조.
 
 ## 빠른 시작
 

@@ -1,7 +1,7 @@
 # Moldy Frontend
 
 Next.js 16 + React 19 기반 Moldy 웹 클라이언트입니다. 전체 프로젝트 세팅은
-루트 [`README.md`](../README.md)를 먼저 참고하세요.
+루트 [`README.md`](../README.md) / [`README_KO.md`](../README_KO.md)를 먼저 참고하세요.
 
 ## 빠른 시작
 

@@ -16,7 +16,9 @@
 
 [한국어](README_KO.md) · English · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
-[Overview](#-overview) · [Quick Start](#-quick-start) · [Features](#-features) · [Architecture](#-architecture)
+[Overview](#-overview) · [Quick Answers](#-quick-answers) · [Quick Start](#-quick-start) · [Trust](#-quality-security-and-documentation-signals) · [Features](#-features) · [Architecture](#-architecture)
+
+**Last updated:** June 2, 2026 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
 
 </div>
 
@@ -28,6 +30,31 @@
 filling in forms. Describe what you want in natural language and a meta-agent
 assembles the tools, skills, and triggers for you. You can then chat with the
 resulting agent or schedule it to run on its own.
+
+### What Is Moldy?
+
+Moldy is an open-source, self-hostable AI agent builder for creating, configuring,
+chatting with, and scheduling AI agents from a web UI. The project combines a
+Next.js 16 + React 19 frontend, a FastAPI backend, PostgreSQL 16, LangGraph 1.x,
+and the `deepagents` `create_deep_agent` runtime. Moldy is built for multi-user
+operation: ADR-016 added JWT auth, HttpOnly cookies, CSRF double-submit
+protection, refresh-token rotation, and a `super_user` role for system resources.
+The monorepo includes chat streaming, message branching, credential management,
+MCP server integration, skill packages, marketplace installation, scheduled
+triggers, and usage tracking.
+
+### Project Facts
+
+| Fact | Current README State |
+|---|---|
+| Project type | Open-source web application and monorepo |
+| Primary use case | No-code AI agent creation, chat, scheduling, and tool/skill orchestration |
+| Backend | FastAPI 0.115+, SQLAlchemy 2.0 async, Alembic, Python 3.12 |
+| Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
+| AI runtime | LangGraph 1.x + `deepagents` via `create_deep_agent` |
+| Database | PostgreSQL 16, current migration head documented as `m52` |
+| Authentication | JWT HS256, HttpOnly cookies, CSRF double-submit, refresh-token rotation, `super_user` |
+| License | MIT |
 
 ### What's different
 
@@ -48,6 +75,43 @@ resulting agent or schedule it to run on its own.
   and pipe the result to a notification channel (Google Chat webhook, etc.).
 - **Public share links** — One click turns a conversation into a read-only
   link anyone can open without signing in to follow the agent's reasoning.
+
+## ❓ Quick Answers
+
+### What Does Moldy Do?
+
+Moldy turns natural-language requirements into runnable AI agents. A user can
+describe a workflow, let the conversational builder propose an agent
+configuration, attach tools, skills, MCP tools, and credentials, then run that
+agent in chat or through cron/interval triggers. The app supports branchable
+conversations, SSE streaming, tool-call approval flows, public read-only share
+links, and per-user credential isolation.
+
+### Who Is Moldy For?
+
+Moldy is for developers, operators, and internal-tool teams that want a local or
+self-hosted agent builder rather than a fully managed SaaS-only workflow. The
+README assumes the reader can run PostgreSQL, Python 3.12, Node 22, `uv`, and
+`pnpm`, while the product UI is designed so non-coding users can assemble agents
+through guided setup, credentials, tools, skills, and schedules.
+
+### How Does Moldy Handle Credentials and System Access?
+
+Moldy separates operator-managed system resources from per-user resources.
+System credentials and System LLM settings are managed by `super_user` accounts,
+while ordinary users register personal credentials at `/credentials`. Credential
+payloads are encrypted with Cipher V2, using HKDF-SHA256 and AES-256-GCM, and
+runtime access is mediated through explicit tool, model, MCP, and skill bindings.
+
+### What Claims Can Be Verified in This Repository?
+
+Moldy's architecture and security claims are backed by repository-local evidence.
+Architecture decisions live in [`docs/design-docs/`](docs/design-docs/), the
+high-level system map lives in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
+security reporting and deployer hardening live in [`SECURITY.md`](SECURITY.md),
+and repeatable verification commands are listed in this README. The backend and
+frontend also include test suites that are exercised by the documented commands
+and the pre-push hook.
 
 ## 🚀 Quick Start
 
@@ -171,6 +235,25 @@ pnpm test --run                       # vitest (jsdom)
 pnpm build                            # production build
 pnpm test:e2e                         # Playwright E2E
 ```
+
+## ✅ Quality, Security, and Documentation Signals
+
+Moldy documents its technical decisions and operational risks inside the
+repository, so readers can verify the README's claims without relying on
+unsupported positioning copy. The strongest trust signals are the ADR record,
+the explicit security policy, the reproducible test commands, and the local
+operator setup instructions. For E-E-A-T, this README exposes implementation
+experience through setup details, expertise through architecture and ADR links,
+authoritativeness through repository evidence, and trust through security and
+verification workflows.
+
+| Signal | Evidence | Why It Matters |
+|---|---|---|
+| Architecture decisions | [`docs/design-docs/`](docs/design-docs/) includes ADR-016 for multi-user auth and ADR-019 for System LLM settings | Shows when and why major runtime, auth, credential, and UI decisions were made |
+| System architecture | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) maps the Next.js frontend, FastAPI backend, PostgreSQL data layer, and LangGraph/deepagents runtime | Gives reviewers a traceable design reference beyond the README |
+| Security process | [`SECURITY.md`](SECURITY.md) documents private vulnerability reporting, response targets, and deployer hardening checks | Makes security reporting and production responsibilities explicit |
+| Verification workflow | This README lists backend lint/tests, frontend lint/typecheck/tests/build, integration tests, and Playwright E2E commands | Lets maintainers and adopters reproduce the validation path |
+| Operational setup | The Quick Start separates local dev, worktree CORS rules, Docker Compose, E2E seed auth, System LLM setup, and MCP registry setup | Reduces ambiguity for self-hosted or multi-worktree development |
 
 ### Playwright E2E auth
 
@@ -454,6 +537,136 @@ See `backend/.env.example` for the full list. Minimum keys to boot:
 | Google OAuth2 token | optional | Gmail / Calendar tools (`scripts/google_oauth_setup.py`) |
 
 Per-tool key setup is documented in [`docs/tool-setup-guide.md`](docs/tool-setup-guide.md).
+
+## 🧩 Structured Data (JSON-LD)
+
+Moldy can use the following JSON-LD on a project homepage, documentation site,
+or product page that republishes this README. GitHub README rendering does not
+execute JSON-LD, so place this block in a server-rendered
+`<script type="application/ld+json">` element on the actual web page. The schema
+uses only repository-visible facts; add additional `sameAs` links only after
+official profiles or documentation URLs exist.
+
+```json
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://github.com/YooSuhwa/natural-mold#organization",
+      "name": "Moldy contributors",
+      "url": "https://github.com/YooSuhwa/natural-mold",
+      "sameAs": [
+        "https://github.com/YooSuhwa/natural-mold"
+      ],
+      "description": "Moldy contributors maintain an open-source, self-hostable AI agent builder for creating, chatting with, and scheduling AI agents.",
+      "knowsAbout": [
+        "AI agent builders",
+        "LangGraph",
+        "deepagents",
+        "FastAPI",
+        "Next.js",
+        "Model Context Protocol",
+        "credential encryption",
+        "agent scheduling"
+      ]
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://github.com/YooSuhwa/natural-mold#software",
+      "name": "Moldy",
+      "url": "https://github.com/YooSuhwa/natural-mold",
+      "description": "Moldy is an open-source, self-hostable no-code AI agent builder for creating, configuring, chatting with, and scheduling AI agents from a web UI.",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Web",
+      "isAccessibleForFree": true,
+      "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
+      "softwareVersion": "development snapshot, migration head m52",
+      "dateModified": "2026-06-02",
+      "author": {
+        "@id": "https://github.com/YooSuhwa/natural-mold#organization"
+      },
+      "publisher": {
+        "@id": "https://github.com/YooSuhwa/natural-mold#organization"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "softwareRequirements": [
+        "Python 3.12",
+        "Node.js 22",
+        "PostgreSQL 16",
+        "Docker",
+        "uv",
+        "pnpm"
+      ],
+      "featureList": [
+        "Conversational AI agent builder",
+        "LangGraph and deepagents runtime",
+        "MCP server registry and tool import",
+        "Skill package management",
+        "JWT and HttpOnly cookie authentication",
+        "Cipher V2 credential encryption",
+        "SSE chat streaming",
+        "Branchable conversations",
+        "Cron and interval agent triggers",
+        "Marketplace installation for skills"
+      ]
+    },
+    {
+      "@type": "SoftwareSourceCode",
+      "@id": "https://github.com/YooSuhwa/natural-mold#source-code",
+      "name": "Moldy source code",
+      "codeRepository": "https://github.com/YooSuhwa/natural-mold",
+      "programmingLanguage": [
+        "Python",
+        "TypeScript"
+      ],
+      "runtimePlatform": [
+        "Python 3.12",
+        "Node.js 22",
+        "PostgreSQL 16"
+      ],
+      "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
+      "targetProduct": {
+        "@id": "https://github.com/YooSuhwa/natural-mold#software"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://github.com/YooSuhwa/natural-mold#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What does Moldy do?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Moldy turns natural-language requirements into runnable AI agents that can use tools, skills, MCP tools, credentials, chat streaming, and scheduled triggers."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How does Moldy protect credentials and system access?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Moldy separates super_user-managed system resources from per-user resources, uses JWT auth with HttpOnly cookies and CSRF protection, and encrypts credential payloads with Cipher V2 using HKDF-SHA256 and AES-256-GCM."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What technology stack does Moldy use?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Moldy uses Next.js 16, React 19, TailwindCSS v4, FastAPI, SQLAlchemy 2.0 async, PostgreSQL 16, LangGraph 1.x, and deepagents create_deep_agent."
+          }
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## 🤝 Contributing
 
