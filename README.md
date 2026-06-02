@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="docs/images/moldy-mascot.webp" alt="Moldy 마스코트" width="160">
+<img src="docs/images/moldy-mascot.webp" alt="Moldy mascot" width="160">
 
 # Moldy
 
-**대화로 만드는 AI 에이전트 빌더 — FastAPI + LangGraph + deepagents**
+**A no-code AI agent builder you talk to — FastAPI + LangGraph + deepagents**
 
 [![Python](https://img.shields.io/badge/Python-3.12+-blue.svg)]()
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)]()
@@ -14,9 +14,9 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[한국어](README.md) · [English](README_EN.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
+[한국어](README_KO.md) · English · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
-[Overview](#-overview) · [Quick Start](#-quick-start) · [기능](#-주요-기능) · [아키텍처](#-아키텍처)
+[Overview](#-overview) · [Quick Start](#-quick-start) · [Features](#-features) · [Architecture](#-architecture)
 
 </div>
 
@@ -24,96 +24,100 @@
 
 ## 🧐 Overview
 
-**Moldy**는 자연어로 원하는 업무를 설명하면 AI가 에이전트를 자동 구성해 주는
-노코드 AI 에이전트 빌더입니다. 코드 한 줄 없이 *대화*만으로 도구·스킬·트리거를
-조합한 자동화 워크플로우를 만들고, 만든 에이전트와 그대로 채팅하거나 스케줄에
-맞춰 실행할 수 있습니다.
+**Moldy** is a no-code AI agent builder you configure by *talking* instead of
+filling in forms. Describe what you want in natural language and a meta-agent
+assembles the tools, skills, and triggers for you. You can then chat with the
+resulting agent or schedule it to run on its own.
 
-### 무엇이 다른가
+### What's different
 
-- **대화형 빌더** — 메타 에이전트가 사용자의 의도를 파악해 빌드 옵션을 단계적으로
-  제안하고 합의된 시점에 실제 에이전트를 생성합니다. 폼을 채우는 대신 **요구사항을
-  설명**하면 됩니다.
-- **도구·스킬·MCP 통합 카탈로그** — 빌트인 검색/스크래퍼/캘린더/Gmail 같은
-  prebuilt 도구, 레지스트리 기반 **MCP 서버**(stdio/SSE/Streamable HTTP),
-  사용자 정의 **Skill**(SKILL.md + 보조 파일)을 한 화면에서 관리합니다.
-- **분기 가능한 대화** — LangGraph checkpointer 기반의 **fork & 시간여행**으로
-  메시지 편집·재생성 시 새 분기로 갈라지고, 좌우 화살표로 형제 응답을 비교할 수
-  있습니다.
-- **HITL(Human-in-the-Loop)** — 도구 호출 승인, 사용자 입력 요청, 명확화 질문
-  같은 인터럽트 패턴을 **카운트다운 + 자동 연장** UX로 처리합니다.
-- **노코드 트리거** — cron · interval 기반 스케줄 트리거로 에이전트를 정해진
-  시간에 자동 실행하고 결과를 알림으로 전달합니다.
-- **공개 공유 링크** — 한 번의 클릭으로 대화를 read-only 링크로 공유하면 누구나
-  로그인 없이 에이전트의 사고 과정을 추적할 수 있습니다.
+- **Conversational builder** — A meta-agent interviews you about your intent,
+  proposes build options step by step, and only commits to creating the agent
+  once you agree. **Describe requirements** instead of filling out a long form.
+- **Unified tool / skill / MCP catalog** — Manage prebuilt tools (web search,
+  scraper, Gmail, Calendar, ...), registry-backed **MCP servers** (stdio / SSE /
+  Streamable HTTP), and user-defined **Skills** (a `SKILL.md` plus auxiliary
+  files) from a single UI.
+- **Branching conversations** — Built on the LangGraph checkpointer so editing
+  a user message or regenerating an assistant reply forks a new branch.
+  `<N/M>` arrows let you flip between sibling responses.
+- **Human-in-the-Loop** — Tool-call approvals, user-input prompts, and
+  clarifying-question interrupts come with a **countdown timer + auto-extend**
+  UX that promotes urgency without forcing you to babysit the agent.
+- **No-code triggers** — Cron / interval schedules run agents at chosen times
+  and pipe the result to a notification channel (Google Chat webhook, etc.).
+- **Public share links** — One click turns a conversation into a read-only
+  link anyone can open without signing in to follow the agent's reasoning.
 
 ## 🚀 Quick Start
 
-### 사전 요구사항
+### Prerequisites
 
-- [mise](https://mise.jdx.dev/) — Python 3.12 · Node 22 자동 관리
-- [Docker](https://www.docker.com/) — PostgreSQL 16 컨테이너용
-- [pnpm](https://pnpm.io/) — Node 패키지 매니저
-- LLM API 키 — OpenAI / Anthropic / OpenRouter / OpenAI-compatible(LiteLLM 등) 중 하나. ENV에 넣을 필요 없이 **부팅 후 UI에서 등록**합니다 (ADR-013)
+- [mise](https://mise.jdx.dev/) — auto-manages Python 3.12 + Node 22
+- [Docker](https://www.docker.com/) — for the PostgreSQL 16 container
+- [pnpm](https://pnpm.io/) — Node package manager
+- An LLM API key — one of OpenAI / Anthropic / OpenRouter / OpenAI-compatible (e.g. LiteLLM). No need to put it in ENV; **register it in the UI after boot** (ADR-013)
 
-### 로컬 개발
+### Local development
 
 ```bash
-# 1. 런타임 설치
+# 1. Install runtimes
 mise install                          # Python 3.12 + Node 22
 
-# 2. PostgreSQL 시작
+# 2. Start PostgreSQL
 docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 
 # 3. Backend
 cd backend
-cp .env.example .env                  # ENCRYPTION_KEYS / JWT_SECRET 등 입력 (LLM 키는 UI에서 등록)
-uv sync                               # 의존성 설치
-uv run alembic upgrade head           # DB 마이그레이션 (현재 head: m52)
+cp .env.example .env                  # set ENCRYPTION_KEYS / JWT_SECRET (LLM keys via UI)
+uv sync                               # install dependencies
+uv run alembic upgrade head           # run migrations (head: m52)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
-# 4. Frontend (새 터미널)
+# 4. Frontend (new terminal)
 cd frontend
-cp .env.example .env.local            # NEXT_PUBLIC_API_BASE_URL / E2E 계정 기본값
+cp .env.example .env.local            # NEXT_PUBLIC_API_BASE_URL / E2E account defaults
 pnpm install
 pnpm dev
 # → http://localhost:3000
 ```
 
-서버 시작 시 기본 모델(GPT-5.5, Claude Sonnet 4.6, Gemini 등), 시스템 도구,
-에이전트 템플릿, 로컬 Playwright E2E 계정이 자동 시드됩니다. 단,
-**에이전트를 만들고 쓰려면 아래 운영자 초기 설정이 필요**합니다.
+The first run seeds default models (GPT-5.5, Claude Sonnet 4.6, Gemini, ...),
+system tools, agent templates, and the local Playwright E2E account. However,
+**operator setup below is required before you can build and use agents**.
 
-### 서버 기동 후 초기 설정 (운영자)
+### Post-boot setup (operator)
 
-LLM 키는 ENV가 아닌 UI에서 등록하고, system 기능(빌더·어시스턴트·이미지)은
-운영자가 사용할 모델을 직접 골라야 동작합니다 (ADR-013/016/019).
+LLM keys are registered in the UI (not ENV), and system features (builder,
+assistant, image generation) require the operator to pick which models to use
+(ADR-013/016/019).
 
-1. **첫 계정 = 운영자** — http://localhost:3000 에서 회원가입. 첫 사용자는
-   `super_user`로 자동 승격됩니다 (ADR-016, `ALLOW_FIRST_USER_AS_ADMIN=true`;
-   운영 환경에서는 계정 생성 후 꺼주세요).
-2. **LLM 크리덴셜 등록** — `/settings/system-credentials`에서 OpenAI ·
-   Anthropic · OpenRouter · OpenAI-compatible(LiteLLM 등) 키를 등록합니다.
-3. **System LLM 모델 선택 (ADR-019, 필수)** — `/settings/system-llm`에서
-   `text_primary` · `text_fallback` · `image` 세 슬롯의 모델을 고릅니다.
-   크리덴셜 선택 → "모델 목록 불러오기" → 모델 선택. **이 설정 전에는 빌더 ·
-   어시스턴트 · 이미지 생성이 동작하지 않습니다**(조용한 실패 없이 명시적 에러).
-4. **에이전트용 모델 연결** — `/models`에서 일반 에이전트가 쓸 모델에 크리덴셜을
-   연결하거나 discovery로 자동 등록합니다.
+1. **First account = operator** — Sign up at http://localhost:3000. The first
+   user is auto-promoted to `super_user` (ADR-016, `ALLOW_FIRST_USER_AS_ADMIN=true`;
+   turn it off after the operator account exists in production).
+2. **Register LLM credentials** — At `/settings/system-credentials`, add OpenAI ·
+   Anthropic · OpenRouter · OpenAI-compatible (e.g. LiteLLM) keys.
+3. **Pick System LLM models (ADR-019, required)** — At `/settings/system-llm`,
+   choose a model for each of the `text_primary` · `text_fallback` · `image`
+   slots (select credential → "Load models" → pick a model). **Until this is
+   configured, the builder, assistant, and image generation will not work**
+   (explicit error, no silent failure).
+4. **Wire models for agents** — At `/models`, attach a credential to the models
+   your agents will use, or auto-register them via discovery.
 
-이후 대화형 빌더(`/agents`)로 에이전트를 만들고 채팅할 수 있습니다. 일반
-사용자는 본인 키를 `/credentials`에서 등록해 사용합니다.
+Then build agents through the conversational builder (`/agents`) and chat. Regular
+users register their own keys at `/credentials`.
 
-### Worktree 개발 포트/CORS 규칙
+### Worktree dev port / CORS rules
 
-git worktree에서 작업할 때는 먼저 `bash scripts/worktree-setup.sh`를 실행해
-`backend/.env`와 `backend/data`가 main checkout을 가리키는 symlink인지 맞춥니다.
-같은 PostgreSQL, `ENCRYPTION_KEYS`, `JWT_SECRET`을 공유해야 기존 credential 복호화와
-로그인 세션이 깨지지 않습니다.
+When working in a git worktree, run `bash scripts/worktree-setup.sh` first so that
+`backend/.env` and `backend/data` point at the main checkout via symlinks. Sharing
+the same PostgreSQL, `ENCRYPTION_KEYS`, and `JWT_SECRET` keeps existing credential
+decryption and login sessions from breaking.
 
-backend/frontend dev 서버는 **frontend port, backend port, CORS origin,
-`NEXT_PUBLIC_API_BASE_URL`을 한 세트로** 맞춰야 합니다. 기본 권장 조합:
+The backend/frontend dev servers must keep **frontend port, backend port, CORS
+origin, and `NEXT_PUBLIC_API_BASE_URL` as one matched set**. Recommended default:
 
 ```bash
 # backend
@@ -125,7 +129,7 @@ cd frontend
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8001 pnpm dev -- --port 3000
 ```
 
-여러 worktree를 동시에 띄울 때는 포트 쌍을 명시합니다:
+To run several worktrees at once, pin the port pairs explicitly:
 
 ```bash
 # backend (:8010)
@@ -138,43 +142,43 @@ cd frontend
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8010 pnpm dev -- --port 3010
 ```
 
-Next.js가 포트 충돌로 임의 포트를 고르게 두면 CORS/cookie/CSRF가 어긋날 수
-있으므로 항상 `pnpm dev -- --port <port>`로 고정하세요. 여러 backend를 같은 DB에
-동시에 붙이면 APScheduler/trigger 작업이 중복 실행될 수 있어 장시간 동시 실행은
-주의가 필요합니다.
+Always fix the port with `pnpm dev -- --port <port>` — if Next.js picks a random
+port on conflict, CORS / cookies / CSRF can drift. Attaching multiple backends to
+the same DB can double-run APScheduler/trigger jobs, so be careful with long
+concurrent sessions.
 
-### Docker Compose 전체 실행
+### Run everything with Docker Compose
 
 ```bash
 docker compose up -d                  # postgres + backend + frontend
-# 이후 위의 "서버 기동 후 초기 설정"을 따라 운영자 온보딩을 진행하세요.
+# Then follow "Post-boot setup" above for operator onboarding.
 ```
 
-### 검증 명령
+### Verification commands
 
 ```bash
 # Backend
 cd backend
-uv run ruff check .                   # 린트
-uv run pytest                         # 단위 테스트 (aiosqlite, Postgres 불필요)
-uv run pytest -m integration          # 통합 테스트 (Postgres 필요)
+uv run ruff check .                   # lint
+uv run pytest                         # unit tests (aiosqlite, no Postgres needed)
+uv run pytest -m integration          # integration tests (Postgres required)
 
 # Frontend
 cd frontend
 pnpm lint                             # ESLint
-pnpm exec tsc --noEmit                # 타입체크
+pnpm exec tsc --noEmit                # type check
 pnpm test --run                       # vitest (jsdom)
-pnpm build                            # 프로덕션 빌드
+pnpm build                            # production build
 pnpm test:e2e                         # Playwright E2E
 ```
 
-### Playwright E2E 인증
+### Playwright E2E auth
 
-E2E는 테스트마다 로그인 폼을 통과하지 않고, Playwright global setup에서 한 번 API
-로그인 세션을 만든 뒤 `storageState`를 모든 브라우저 컨텍스트에 주입하는 방식을
-사용합니다. `backend/.env.example`은 로컬 개발용으로 `E2E_SEED_USER_ENABLED=true`를
-켜 두며, 백엔드 시작 시 아래 더미 super_user를 DB에 생성하거나 갱신합니다.
-`APP_ENV=production`에서는 이 seed가 자동으로 스킵됩니다.
+E2E does not log in through the form per test. Instead, Playwright's global setup
+performs one API login, then injects the resulting `storageState` into every
+browser context. `backend/.env.example` ships `E2E_SEED_USER_ENABLED=true` for
+local dev, so the backend creates/refreshes the dummy super_user below on startup.
+This seed is skipped automatically when `APP_ENV=production`.
 
 ```bash
 E2E_USER_EMAIL=playwright-e2e@moldy.dev
@@ -182,178 +186,179 @@ E2E_USER_PASSWORD=correct horse battery staple 42
 E2E_USER_NAME=E2E User
 ```
 
-frontend 환경 파일도 같은 전용 테스트 계정 값을 사용합니다:
+The frontend env file uses the same dedicated test account:
 
 ```bash
 cd frontend
 cp .env.example .env.local
-# 필요 시 E2E_USER_EMAIL / E2E_USER_PASSWORD 수정
+# adjust E2E_USER_EMAIL / E2E_USER_PASSWORD if needed
 pnpm test:e2e
 ```
 
-권장 흐름은 `login → register fallback → login → e2e/.auth/user.json 저장`입니다.
-`frontend/e2e/.auth/`는 생성 산출물이므로 커밋하지 않습니다. API로 직접
-생성/수정하는 E2E setup 코드는 로그인 응답의 `csrf_token`을
-`X-CSRF-Token` header로 넣어야 합니다.
+The recommended flow is `login → register fallback → login → save to
+e2e/.auth/user.json`. `frontend/e2e/.auth/` is generated output and is not
+committed. E2E setup code that creates/updates via the API must pass the login
+response's `csrf_token` as an `X-CSRF-Token` header.
 
-> **Pre-push hook**: `git push` 시점에 `.husky/pre-push`가 backend pytest +
-> frontend vitest를 자동 실행하여 회귀가 push되지 않도록 차단합니다. 우회는
-> `git push --no-verify` (WIP 브랜치 한정).
+> **Pre-push hook**: `git push` triggers `.husky/pre-push`, which runs backend
+> pytest + frontend vitest. Failing tests block the push so regressions cannot
+> reach the remote. Bypass with `git push --no-verify` for WIP branches only.
 
 ### Tavily + Deep Research
 
-Tavily hosted search tool(`tavily_search`)과 Deep Research 마켓플레이스 skill이
-연동되어 있습니다. backend `.env`에 `TAVILY_API_KEY`를 두면 Deep Research skill이
-`tavily_search`를 **런타임 tool dependency로 자동 주입**받아, 사용자가 별도로 도구를
-붙이지 않아도 citation 기반 멀티스텝 웹 리서치를 수행합니다. (설계 배경:
+The Tavily hosted search tool (`tavily_search`) is wired to the Deep Research
+marketplace skill. Set `TAVILY_API_KEY` in the backend `.env` and the Deep
+Research skill **auto-injects `tavily_search` as a runtime tool dependency**, so
+it runs citation-backed multi-step web research without the user attaching any
+tool manually. (Design background:
 `docs/superpowers/plans/2026-05-31-deep-research-tavily.md`)
 
-### MCP 레지스트리와 MCP Secret
+### MCP Registry and MCP Secret
 
-`/mcp-servers` → **새 MCP 서버**에서 레지스트리 프리셋을 고르면 transport, URL,
-stdio command/env template이 자동으로 채워지고, 저장 전 **도구 프로브**로 실제 노출
-도구를 확인할 수 있습니다. 현재 프리셋은 GitHub, Linear, Atlassian Jira, Slack,
-Notion과 로컬 first-party MCP(Hancom Groupware, Hancom Mile Meeting, Hancom Org
-Chart, Maepsi)를 포함합니다.
+At `/mcp-servers` -> **New MCP Server**, choose a registry preset to pre-fill
+transport, URL, and stdio command/env templates, then run a **tool probe**
+before saving to see what the server actually exposes. Current presets include
+GitHub, Linear, Atlassian Jira, Slack, Notion, and local first-party MCP servers
+(Hancom Groupware, Hancom Mile Meeting, Hancom Org Chart, Maepsi).
 
-인증이 필요한 first-party MCP 프리셋은 `/credentials`에서 `MCP Secret` 타입
-credential을 만든 뒤 마법사 **인증** 탭에서 연결합니다. Moldy는 연결/실행 시
-`secret` 값을 `X-Moldy-Credential` 헤더로 자동 전달합니다. 수동 MCP 서버를 등록할
-때도 헤더나 stdio 환경 변수 값에 `{{ $credentials.<field> }}` 형식으로 연결된
-credential 필드를 보간할 수 있습니다.
+For first-party MCP presets that require auth, create an `MCP Secret` credential
+at `/credentials`, then attach it in the wizard's **Auth** tab. Moldy forwards
+the `secret` value as the `X-Moldy-Credential` header during connection and
+runtime execution. For manually registered MCP servers, headers and stdio env
+vars can interpolate the attached credential with `{{ $credentials.<field> }}`.
 
-로컬 first-party MCP 프리셋의 기본 URL은 `localhost:18001`~`18004` 대역입니다.
-이 서버들은 `docker compose up`에 포함되지 않으므로, 해당 프리셋을 쓰려면 MCP 서버
-프로세스를 별도로 실행한 뒤 프로브하세요.
+Local first-party MCP presets default to the `localhost:18001`-`18004` range.
+Those servers are not included in `docker compose up`, so start the MCP server
+process separately before probing those presets.
 
 ## 📸 Screenshots
 
-> 준비 중. 주요 화면은 `docs/PRD-screens.md`에 와이어프레임으로 정리되어 있습니다.
+> Coming soon. Screen wireframes are documented in `docs/PRD-screens.md`.
 
-## ✨ 주요 기능
+## ✨ Features
 
 <details>
-<summary><b>🤖 에이전트 시스템</b></summary>
+<summary><b>🤖 Agent system</b></summary>
 
-- **deepagents 엔진** — `create_deep_agent` + LangGraph 컴파일된 그래프 위에
-  메시지 트리, 분기, 체크포인트 관리
-- **대화형 빌더** — 메타 에이전트가 자연어 요구사항을 인터뷰하며 빌드 옵션을
-  제안 (`agent_runtime/creation_agent.py`)
-- **에이전트 템플릿** — 사전 정의된 에이전트로 즉시 시작
-- **Sub-agents** — 다단계 위임 (에이전트가 다른 에이전트를 도구처럼 호출)
-- **미들웨어 시스템** — 22종 미들웨어 카탈로그 (context engineering, planning,
-  safety, reliability, provider-specific)
-- **모델 fallback 체인** — primary 모델 실패 시 대체 모델 자동 호출 (최대 5단계)
+- **deepagents engine** — `create_deep_agent` over a compiled LangGraph that
+  manages the message tree, branches, and checkpoints
+- **Conversational builder** — Meta-agent interviews requirements and proposes
+  build options (`agent_runtime/builder_v3/`)
+- **Agent templates** — Pre-built agents you can spawn instantly
+- **Sub-agents** — Multi-level delegation (an agent invokes another agent as a tool)
+- **Middleware system** — 22 middlewares across context engineering, planning,
+  safety, reliability, and provider-specific categories
+- **Model fallback chain** — Up to 5 fallback models if the primary call fails
 
 </details>
 
 <details>
-<summary><b>💬 채팅 + 분기</b></summary>
+<summary><b>💬 Chat + branching</b></summary>
 
-- **SSE 스트리밍** — 토큰 단위 실시간 출력, 도구 호출 시각화. 스트리밍 중
-  코드 블록 plain 렌더 + SSE 큐 O(1) 처리 등으로 장문 응답 성능 최적화
-- **IME-safe 입력창** — 한글 등 조합형 입력 중 Enter/편집/재생성이 조합 문자열을
-  깨뜨리지 않도록 composer 상태를 안전하게 동기화
-- **LangGraph fork** — 사용자 메시지 편집 / 어시스턴트 재생성 시 새 분기 생성,
-  체크포인트 ID 기반 시간여행
-- **BranchPicker** — `<N/M>` 좌우 화살표로 형제 응답 비교 (assistant-ui 통합)
-- **HITL countdown** — 도구 승인 / 사용자 입력 / 명확화 질문 인터럽트에 카운트다운
-  타이머 + 만료 시 자동 연장 + 긴급 상태 스타일
-- **메시지 액션** — 복사·편집·재생성·thumb 피드백·삭제·검색
-- **Mermaid / KaTeX / 코드 블록** — 마크다운 렌더링, 이미지 lightbox
-- **첨부 파일** — 이미지/문서 업로드 후 메시지에 인라인 표시
-- **공개 공유 링크** — read-only 페이지 (`/shared/{token}`), 소프트 삭제로 즉시
-  무효화
-
-</details>
-
-<details>
-<summary><b>🛠️ 도구 · 스킬 · MCP</b></summary>
-
-- **빌트인 도구 카탈로그** — DuckDuckGo / 웹 스크래퍼 / 현재 시각 / 상대 날짜
-  해석(`resolve_relative_date`) / Tavily 검색 / Naver 검색 5종 / Google CSE 3종 /
-  Gmail 보내기 / Google 캘린더 / Google Chat Webhook / HTTP 요청
-- **MCP 통합** — stdio + SSE + Streamable HTTP 서버 등록,
-  `langchain-mcp-adapters` 기반 import/export, health check polling
-- **MCP 레지스트리 프리셋** — GitHub / Linear / Jira / Slack / Notion /
-  Hancom / Maepsi 서버를 `/mcp-servers` 마법사에서 선택하고 저장 전 도구 프로브
-- **MCP Secret credential** — first-party MCP 서버에 per-user secret을
-  `X-Moldy-Credential` 헤더로 자동 전달
-- **Skill 시스템** — SKILL.md(YAML frontmatter) + 보조 파일을 묶은 스킬 패키지,
-  multi-file 인라인 에디터, scratch/upload/import 3가지 생성 방식
-- **Skill 런타임 의존성** — Skill이 선언한 tool dependency를 에이전트 실행 시
-  자동 주입 (예: Deep Research → Tavily). 사용자가 도구를 수동으로 붙일 필요 없음
-- **사용자 정의 도구** — Pydantic 스키마로 도구 파라미터 정의
+- **SSE streaming** — Token-level live output with tool-call visualization;
+  plain code-block rendering while streaming + O(1) SSE queue keep long replies fast
+- **IME-safe composer** — Korean and other composition-based input stays intact
+  across Enter, edit, and regenerate flows while composer state syncs safely
+- **LangGraph fork** — Editing a user message or regenerating an assistant turn
+  forks a new branch; checkpoint IDs power "time travel"
+- **BranchPicker** — `<N/M>` arrows compare sibling responses (assistant-ui integration)
+- **HITL countdown** — Timer + auto-extend + urgent-state styling for tool
+  approvals, user-input requests, and clarifying questions
+- **Message actions** — Copy, edit, regenerate, thumb feedback, delete, search
+- **Markdown surface** — Mermaid diagrams, KaTeX math, code blocks, image lightbox
+- **Attachments** — Inline image / document uploads embedded into messages
+- **Public share links** — Read-only `/shared/{token}` page; soft-deleting the
+  link invalidates it instantly
 
 </details>
 
 <details>
-<summary><b>🔐 크리덴셜 · 모델 관리</b></summary>
+<summary><b>🛠️ Tools · Skills · MCP</b></summary>
 
-- **Cipher V2 암호화** — HKDF-SHA256 + AES-256-GCM, 단일 블롭 Base64
-- **Vault 통합** — `hvac` 기반 external secrets 지원
-- **System / User 크리덴셜 분리** — 운영자 관리 vs 사용자 개인 키
-- **MCP Secret** — 로컬 first-party MCP 서버용 per-user secret credential
-- **한국 서비스 8종** — SRT · KTX · 산림청 숲길 · KIPRIS · DART · ODsay · 쿠팡 파트너스 · K-Skill 프록시
-- **모델 discovery** — 크리덴셜로 LLM API에 직접 질의해 사용 가능 모델 + 가격
-  + 컨텍스트 윈도우 자동 가져오기
-- **모델 health check** — 주기적 probe로 모델 가용성 모니터링
-- **벤치마크 랭킹** — LMArena · LiveBench · AAIndex 점수 표시
+- **Built-in tool catalog** — DuckDuckGo, web scraper, current time, relative-date
+  resolver (`resolve_relative_date`), Tavily search, Naver search (5), Google CSE (3),
+  Gmail send, Google Calendar, Google Chat webhook, HTTP request
+- **MCP integration** — Register stdio + SSE + Streamable HTTP servers via
+  `langchain-mcp-adapters`, with import / export and health-check polling
+- **MCP registry presets** — Pick GitHub / Linear / Jira / Slack / Notion /
+  Hancom / Maepsi servers in the `/mcp-servers` wizard and probe tools before saving
+- **MCP Secret credential** — Automatically forwards a per-user secret to
+  first-party MCP servers via the `X-Moldy-Credential` header
+- **Skill system** — `SKILL.md` (YAML frontmatter) plus auxiliary files; inline
+  multi-file editor; create skills from scratch, upload, or import
+- **Skill runtime dependencies** — Tools a skill declares are auto-injected at
+  agent runtime (e.g. Deep Research → Tavily); no manual tool attachment needed
+- **Custom tools** — Define tool parameters with Pydantic schemas
 
 </details>
 
 <details>
-<summary><b>⏰ 트리거 · 사용량 · 관측성</b></summary>
+<summary><b>🔐 Credentials · model management</b></summary>
 
-- **스케줄 트리거** — APScheduler 기반 cron / interval, 에이전트별 입력 메시지
-  지정, Google Chat Webhook 알림
-- **스케줄 가드레일** — 최대 실행 횟수(`max_runs`), 종료 시각(`end_at`),
-  연속 실패 시 자동 일시정지(`auto_pause_after_failures`)
-- **대화 정책** — 트리거마다 새 대화 생성 / 지정 대화 재사용 선택
-- **실행 이력** — `agent_trigger_runs`에 실행별 source / 출력 미리보기 /
-  소요시간 / thread·checkpoint·trace ID 기록
-- **토큰 사용량 추적** — 에이전트별 / 모델별 / 일별 토큰 + 추정 비용
-- **Daily spend** — 사용자 / 에이전트 / 모델 단위 일별 집계
-- **트레이싱** — LangSmith 자동 전송 + Langfuse 외부 트레이스 연동
-  (`message_events`에 external trace provider/id/url 기록)
+- **Cipher V2 encryption** — HKDF-SHA256 + AES-256-GCM single-blob Base64
+- **Vault integration** — `hvac`-based external secrets
+- **System / user split** — Operator-managed credentials vs. per-user keys
+- **MCP Secret** — Per-user secret credential for local first-party MCP servers
+- **Korean service integrations (8 types)** — SRT · KTX · Forest Trip · KIPRIS · DART · ODsay · Coupang Partners · K-Skill Proxy
+- **Model discovery** — Probe LLM APIs through a credential to auto-pull the
+  available model list, pricing, and context window
+- **Model health checks** — Periodic probes monitor reachability
+- **Benchmark rankings** — Surface LMArena, LiveBench, AAIndex scores
+
+</details>
+
+<details>
+<summary><b>⏰ Triggers · usage · observability</b></summary>
+
+- **Schedule triggers** — APScheduler-backed cron / interval, per-agent input
+  message, Google Chat webhook notifications
+- **Schedule guardrails** — Max run count (`max_runs`), end time (`end_at`),
+  auto-pause after consecutive failures (`auto_pause_after_failures`)
+- **Conversation policy** — Each trigger can start a fresh conversation or reuse a target one
+- **Run history** — `agent_trigger_runs` records per-run source / output preview /
+  duration / thread · checkpoint · trace IDs
+- **Token usage tracking** — Per-agent / per-model / daily token + estimated cost
+- **Daily spend** — Roll-ups by user / agent / model
+- **Tracing** — LangSmith auto-forwarding + Langfuse external traces
+  (provider / id / url recorded on `message_events`)
 
 </details>
 
 <details>
 <summary><b>🎨 Frontend</b></summary>
 
-- **Next.js 16 + React 19** — App Router, Server Components 우선
-- **TailwindCSS v4 + shadcn/ui** — 디자인 토큰 기반 (`--primary-strong` emerald),
-  ADR-010 디자인 시스템
-- **DialogShell 패턴** — 모든 다이얼로그를 토큰 사이즈(`md`/`lg`/`xl`/`console`)로
-  통일, lightbox용 `srOnly` 헤더 prop
-- **TanStack Query** — 서버 상태 관리 (캐싱 + invalidation)
-- **Jotai** — 클라이언트 상태 (사이드바, 우측 패널 등)
-- **assistant-ui** — 채팅 메시지 트리, BranchPicker, ActionBar
-- **i18n** — next-intl 기반, 한국어 기본
-- **반응형** — 모바일 사이드바 = Sheet, 데스크톱 = SidebarProvider
+- **Next.js 16 + React 19** — App Router, Server Components first
+- **TailwindCSS v4 + shadcn/ui** — Token-based design (`--primary-strong` emerald),
+  per ADR-010
+- **DialogShell pattern** — Every dialog uses size tokens (`md`/`lg`/`xl`/`console`);
+  `srOnly` header prop for lightbox-style dialogs
+- **TanStack Query** — Server state with caching + invalidation
+- **Jotai** — Client state (sidebar, right rail, etc.)
+- **assistant-ui** — Chat message tree, BranchPicker, ActionBar
+- **i18n** — Powered by next-intl, Korean as the default locale
+- **Responsive** — Mobile sidebar uses Sheet; desktop uses SidebarProvider
 
 </details>
 
 <details>
-<summary><b>🛒 마켓플레이스</b></summary>
+<summary><b>🛒 Marketplace</b></summary>
 
-- **카탈로그** — Agent / MCP 서버 / Skill을 공개 마켓플레이스에 게시하고 한 클릭으로 설치
-- **원본-설치본 분리** — 설치 시 사용자 계정에 독립 복사본 생성, 원본 업데이트와 독립 동작
-- **버전 스냅샷** — `marketplace_versions` 테이블에 immutable 버전 이력 관리
-- **Credential 바인딩** — Skill별 필요 credential을 설치 시점에 사용자 계정 키로 매핑
-- **Tool dependency 표시** — Skill이 요구하는 도구(예: Tavily)를 설치 마법사에서
-  안내하고 실행 시 자동 주입
-- **모더레이션** — super_user가 `/marketplace/admin/moderation`에서 공개 심사
+- **Catalog** — Publish Agents, MCP servers, and Skills to a shared marketplace; install with one click
+- **Publish / install separation** — Installing creates an independent copy in your account, decoupled from the original
+- **Version snapshots** — `marketplace_versions` stores an immutable history of every published version
+- **Credential binding** — Map skill-required credentials to your own keys at install time
+- **Tool dependency surfacing** — The install wizard shows tools a skill needs
+  (e.g. Tavily) and auto-injects them at runtime
+- **Moderation** — super_user reviews submissions at `/marketplace/admin/moderation`
 
 </details>
 
-## 🏗️ 아키텍처
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Frontend (Next.js)                      │
-│  app/ (라우트) → components/ (UI) → lib/api,hooks,stores        │
+│  app/ (routes) → components/ (UI) → lib/api,hooks,stores        │
 │  ↓ fetch + SSE (EventSource)                                   │
 └─────────────────────────────────────────────────────────────────┘
                                  ↓
@@ -362,98 +367,98 @@ credential 필드를 보간할 수 있습니다.
 │  routers/ → services/ → models/ (SQLAlchemy 2.0 async)         │
 │                                                                 │
 │  agent_runtime/                                                 │
-│    ├ builder_v3/ (대화형 메타 빌더 — 최신)                      │
+│    ├ builder_v3/ (conversational meta builder — latest)         │
 │    ├ executor (create_deep_agent + astream)                     │
-│    ├ streaming (LangGraph events → SSE chunks, orjson)          │
-│    ├ event_broker (이벤트 브로드캐스트)                          │
-│    ├ tool_factory (prebuilt + MCP + custom 통합)               │
-│    ├ model_factory (provider별 LLM)                             │
-│    └ trigger_executor (스케줄 → 메시지 실행)                     │
+│    ├ streaming (LangGraph events → SSE chunks via orjson)       │
+│    ├ event_broker (event broadcast)                             │
+│    ├ tool_factory (prebuilt + MCP + custom)                     │
+│    ├ model_factory (per-provider LLM)                           │
+│    └ trigger_executor (schedule → message)                      │
 │                                                                 │
-│  scheduler.py — APScheduler 싱글턴                              │
+│  scheduler.py — APScheduler singleton                           │
 └─────────────────────────────────────────────────────────────────┘
                   ↓                              ↓
-       PostgreSQL (모델/대화/도구)      LangGraph PostgresSaver
-                                        (체크포인트 = 메시지 트리)
+       PostgreSQL (models / chats / tools)  LangGraph PostgresSaver
+                                            (checkpoints = message tree)
 ```
 
-### 3계층 구조
+### Three-tier backend
 
-- **Router** (`app/routers/`) — HTTP 엔드포인트, 요청·응답 변환
-- **Service** (`app/services/`) — 비즈니스 로직, DB 쿼리, 트랜잭션
-- **Model** (`app/models/`) — SQLAlchemy ORM, 36개 테이블 (m52 기준)
+- **Router** (`app/routers/`) — HTTP endpoints, request / response shaping
+- **Service** (`app/services/`) — Business logic, DB queries, transactions
+- **Model** (`app/models/`) — SQLAlchemy ORM, 36 tables as of m52
 
-### Frontend 패턴
+### Frontend pattern
 
-- API 클라이언트 (`lib/api/`) → TanStack Query 훅 (`lib/hooks/`) → 컴포넌트
-- 채팅 SSE는 `lib/sse/`의 EventSource 래퍼로 토큰 단위 처리
-- 디자인 토큰은 `lib/design-tokens.ts` + `app/globals.css` (oklch 기반)
+- API client (`lib/api/`) → TanStack Query hooks (`lib/hooks/`) → components
+- Chat SSE flows through an EventSource wrapper in `lib/sse/`
+- Design tokens live in `lib/design-tokens.ts` + `app/globals.css` (oklch-based)
 
-자세한 내용은 [`CLAUDE.md`](CLAUDE.md) (개발자 핸드북) 참고.
+See [`CLAUDE.md`](CLAUDE.md) for the developer handbook with deeper conventions.
 
-## 📁 프로젝트 구조
+## 📁 Project structure
 
 ```
 natural-mold/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py              # FastAPI 앱 팩토리 + lifespan
+│   │   ├── main.py              # FastAPI app factory + lifespan
 │   │   ├── config.py            # pydantic-settings (.env)
 │   │   ├── database.py          # async engine + session
 │   │   ├── dependencies.py      # get_db, get_current_user, require_super_user, verify_csrf
-│   │   ├── scheduler.py         # APScheduler 싱글턴
+│   │   ├── scheduler.py         # APScheduler singleton
 │   │   ├── models/              # SQLAlchemy ORM
-│   │   ├── schemas/             # Pydantic 스키마
-│   │   ├── routers/             # HTTP 라우터
-│   │   ├── services/            # 비즈니스 로직
-│   │   ├── credentials/         # Cipher V2 + 도메인
-│   │   ├── agent_runtime/       # AI 실행 엔진
-│   │   └── seed/                # 시드 데이터
-│   ├── alembic/versions/        # 마이그레이션 (m52까지)
+│   │   ├── schemas/             # Pydantic schemas
+│   │   ├── routers/             # HTTP routers
+│   │   ├── services/            # business logic
+│   │   ├── credentials/         # Cipher V2 + domain
+│   │   ├── agent_runtime/       # AI execution engine
+│   │   └── seed/                # seed data
+│   ├── alembic/versions/        # migrations (up to m52)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
-│       ├── app/                 # Next.js App Router (23+ 라우트)
-│       ├── components/          # UI 컴포넌트
+│       ├── app/                 # Next.js App Router (23+ routes)
+│       ├── components/          # UI components
 │       └── lib/                 # api, hooks, stores, sse, types
 ├── docs/
-│   ├── PRD.md                   # 제품 요구사항
-│   ├── PRD-screens.md           # 화면 와이어프레임
-│   ├── ARCHITECTURE.md          # 시스템 아키텍처
-│   ├── design-docs/             # ADR (디자인 결정)
-│   ├── marketplace-resources-prd.md  # 마켓플레이스 PRD
-│   └── tool-setup-guide.md      # 도구 API 키 설정
-├── tasks/                       # 작업 메모 + archive/
+│   ├── PRD.md                   # product requirements
+│   ├── PRD-screens.md           # screen wireframes
+│   ├── ARCHITECTURE.md          # system architecture
+│   ├── design-docs/             # ADRs (design decisions)
+│   ├── marketplace-resources-prd.md  # marketplace PRD
+│   └── tool-setup-guide.md      # tool API key setup
+├── tasks/                       # working notes + archive/
 ├── docker-compose.yml
-├── HANDOFF.md                   # 세션 인계 문서
-├── TASKS.md                     # Phase별 태스크 트래커
-├── CLAUDE.md                    # 개발자 핸드북
+├── HANDOFF.md                   # session handoff doc
+├── TASKS.md                     # phased task tracker
+├── CLAUDE.md                    # developer handbook
 ├── CONTRIBUTING.md
 └── SECURITY.md
 ```
 
-## 🔧 환경변수
+## 🔧 Environment variables
 
-전체 목록은 `backend/.env.example` 참고. 최소 동작 키:
+See `backend/.env.example` for the full list. Minimum keys to boot:
 
-| 변수 | 필수 | 설명 |
+| Variable | Required | Description |
 |------|------|------|
-| `DATABASE_URL` | O | PostgreSQL async URL (`postgresql+asyncpg://...`) |
-| `ENCRYPTION_KEY` | O | Cipher V2 마스터 키 (HKDF-SHA256 + AES-256-GCM) |
-| `JWT_SECRET` | O | JWT HS256 서명 키 (ADR-016 멀티유저 인증) |
-| LLM 키 (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` 등) | - | UI Credentials에서 등록 권장 (ADR-013). ENV는 dev bootstrap용 선택값 |
-| `LANGSMITH_API_KEY` | - | LangSmith 트레이싱 (선택) |
-| `TAVILY_API_KEY` | - | Tavily 검색 / Deep Research skill용 hosted 키 (선택) |
-| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | - | 네이버 검색 도구 |
-| `GOOGLE_API_KEY` / `GOOGLE_CSE_ID` | - | Google CSE 도구 |
-| Google OAuth2 토큰 | - | Gmail / Calendar 도구 (`scripts/google_oauth_setup.py`) |
+| `DATABASE_URL` | yes | PostgreSQL async URL (`postgresql+asyncpg://...`) |
+| `ENCRYPTION_KEY` | yes | Cipher V2 master key (HKDF-SHA256 + AES-256-GCM) |
+| `JWT_SECRET` | yes | JWT HS256 signing key (ADR-016 multi-user auth) |
+| LLM keys (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`, …) | optional | Register via UI Credentials (ADR-013). ENV is an optional dev bootstrap |
+| `LANGSMITH_API_KEY` | optional | LangSmith tracing |
+| `TAVILY_API_KEY` | optional | Hosted key for Tavily search / Deep Research skill |
+| `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | optional | Naver search tools |
+| `GOOGLE_API_KEY` / `GOOGLE_CSE_ID` | optional | Google CSE tools |
+| Google OAuth2 token | optional | Gmail / Calendar tools (`scripts/google_oauth_setup.py`) |
 
-도구별 키 설정은 [`docs/tool-setup-guide.md`](docs/tool-setup-guide.md) 참고.
+Per-tool key setup is documented in [`docs/tool-setup-guide.md`](docs/tool-setup-guide.md).
 
 ## 🤝 Contributing
 
-기여 방법은 [`CONTRIBUTING.md`](CONTRIBUTING.md) 참고. 보안 이슈는
-[`SECURITY.md`](SECURITY.md) 절차대로.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Security issues should follow the
+process in [`SECURITY.md`](SECURITY.md).
 
 ## 📄 License
 
@@ -463,7 +468,7 @@ natural-mold/
 
 <div align="center">
 
-세부 컨벤션·디자인 토큰·long-horizon 워크플로우는 [`CLAUDE.md`](CLAUDE.md)와
-[`frontend/AGENTS.md`](frontend/AGENTS.md)를 참고하세요.
+For deeper conventions, design tokens, and long-horizon workflows see
+[`CLAUDE.md`](CLAUDE.md) and [`frontend/AGENTS.md`](frontend/AGENTS.md).
 
 </div>
