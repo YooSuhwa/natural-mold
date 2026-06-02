@@ -7,8 +7,6 @@ buckets — ``headers``, ``params``, ``body``, ``basic`` — using the
 :func:`apply_authentication` produces a request-options dict ready for ``httpx``;
 :class:`CredentialAuth` adapts the same logic to ``httpx.Auth`` for streaming
 clients.
-
-Algorithm/structure attribution: see NOTICES.md.
 """
 
 from __future__ import annotations

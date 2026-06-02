@@ -3,8 +3,6 @@
 Concurrency note: this module is intentionally pure. The caller is responsible
 for serializing concurrent refresh attempts on the same credential row, e.g.
 by acquiring ``SELECT ... FOR UPDATE`` before invoking :func:`refresh_oauth_token`.
-
-Algorithm/structure attribution: see NOTICES.md.
 """
 
 from __future__ import annotations

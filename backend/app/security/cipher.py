@@ -1,12 +1,11 @@
 """Cipher V2 — AES-256-GCM with HKDF-SHA256 key derivation.
 
-Algorithm reference (third-party, attribution in NOTICES.md):
 - HKDF-SHA256 derives both the AES key and IV from a per-message random salt
   combined with the instance key.
 - AES-256-GCM provides authenticated encryption.
 - Output is a single Base64-encoded blob: ``[version 1B][salt 32B][authTag 16B][ciphertext]``.
-- The HKDF info string ``moldy-encryption-v1`` is intentionally distinct from the
-  source algorithm's identifier; the version byte ``0x01`` signals this scheme.
+- The HKDF info string ``moldy-encryption-v1`` and version byte ``0x01`` identify
+  this scheme.
 
 Multi-key handling (rotation):
 - The active key encrypts new data; all configured keys are tried in order

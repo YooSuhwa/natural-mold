@@ -81,7 +81,7 @@
 
 | 도메인 | 등급 | 비고 |
 |---|:---:|---|
-| Cipher V2 (security/) | A | 23 tests, 차용 알고리즘(NOTICES.md 출처 명기) + moldy-encryption-v1, key_id 멀티키 검증 완료 |
+| Cipher V2 (security/) | A | 23 tests, moldy-encryption-v1, key_id 멀티키 검증 완료 |
 | Credential 도메인 (credentials/) | A | 16 tests + OAuth2 + Tester + Vault, GenericAuth + interpolation + audit log |
 | Tools 도메인 (tools/) | A | 12 도구 정의, ToolDefinition 단일 경로, GenericAuth 통일 |
 | MCP (mcp/) | B+ | 디스커버리 + OAuth, agent_mcp_servers 링크 테이블 미구현 (후속) |
@@ -92,7 +92,7 @@
 | 마이그레이션 m18 | A- | DROP+CREATE+ALTER, downgrade NotImplementedError, dialect-aware. 실제 PostgreSQL upgrade 미실행 |
 | 프론트엔드 디자인 시스템 | A | DataTable + dynamic-fields-form 일관 적용 |
 | 프론트엔드 페이지 (4) | A | credentials/tools/mcp-servers/skills 동작, build PASS |
-| 브랜딩/라이선스 가드 | A | NOTICES.md 출처 명기, CI 게이트 강제 |
+| 브랜딩/라이선스 가드 | A | CI 게이트 강제 |
 
 ### 변경 통계
 

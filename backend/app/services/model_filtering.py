@@ -6,10 +6,6 @@ models pollute the picker. Each LLM provider has its own naming convention, so
 APIs (Ollama, vLLM, Azure-style deployments behind an OpenAI-compatible
 endpoint) include all models because the user is responsible for what they
 expose.
-
-The filter rule structure (provider-keyed prefix/substring blocklists +
-``is_custom_api`` short-circuit) is borrowed from prior art — see
-``NOTICES.md`` for attribution. All identifiers and strings are Moldy-native.
 """
 
 from __future__ import annotations

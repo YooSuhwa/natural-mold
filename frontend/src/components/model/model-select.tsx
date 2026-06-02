@@ -29,14 +29,14 @@ interface ModelSelectProps {
    * shapes themselves.
    */
   onChange?: (pick: ModelPick) => void
-  /** Enables the Custom-ID toggle (resourceLocator id mode — see NOTICES.md). */
+  /** Enables the Custom-ID toggle. */
   allowCustomId?: boolean
   className?: string
   placeholder?: string
 }
 
 /**
- * Two-mode model picker (resourceLocator pattern — see NOTICES.md).
+ * Two-mode model picker.
  *
  * - **List** (default): shows the catalog from `/api/models`, returns a
  *   `model_id`. Existing callers using `onValueChange` keep working.
