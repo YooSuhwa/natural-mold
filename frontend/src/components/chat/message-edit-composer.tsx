@@ -14,6 +14,7 @@ import {
 import { useAui, useAuiState } from '@assistant-ui/react'
 
 import { cn } from '@/lib/utils'
+import { requestThreadComposerFocus } from './composer-focus'
 
 type SubmitMode = 'enter' | 'ctrlEnter' | 'none'
 type MessageEditComposerRootProps = FormHTMLAttributes<HTMLFormElement>
@@ -53,6 +54,7 @@ export function MessageEditComposerRoot({
     const state = composer.getState()
     if (!state.isEditing || state.isEmpty) return
     composer.send()
+    requestThreadComposerFocus()
   }
 
   return (
@@ -74,6 +76,7 @@ export function useMessageEditComposerControls() {
     const composer = aui.message().composer()
     if (composer.getState().canCancel) {
       composer.cancel()
+      requestThreadComposerFocus()
     }
   }, [aui])
 

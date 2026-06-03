@@ -277,6 +277,7 @@ export function BuilderComposer({ modelLabel }: { modelLabel?: string }) {
           className="moldy-builder-composer-root group"
         >
           <ImeSafeComposerInput
+            autoFocus
             placeholder={t('placeholder')}
             submitMode="enter"
             className="moldy-builder-composer-input"

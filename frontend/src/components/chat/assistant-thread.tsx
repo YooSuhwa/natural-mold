@@ -645,6 +645,7 @@ export function AssistantThread({
               showTokenBar={showTokenBar}
               compact={compact}
               enableAttachments={enableAttachments}
+              focusKey={conversationId}
             />
           </div>
         )}
@@ -676,11 +677,13 @@ function ThreadComposer({
   showTokenBar,
   compact,
   enableAttachments = false,
+  focusKey,
 }: {
   modelName?: string
   showTokenBar?: boolean
   compact?: boolean
   enableAttachments?: boolean
+  focusKey?: string | null
 }) {
   const t = useTranslations('chat.input')
   const tMsg = useTranslations('chat.message')
@@ -711,6 +714,8 @@ function ThreadComposer({
 
       {/* Textarea */}
       <ImeSafeComposerInput
+        autoFocus
+        autoFocusKey={focusKey}
         placeholder={t('placeholder')}
         submitMode="enter"
         className={cn(

@@ -67,6 +67,7 @@ vi.mock('@assistant-ui/react', () => {
       }),
     useAuiState: (selector: (state: unknown) => unknown) =>
       selector({
+        composer: { dictation: null, isEditing: true, text: '' },
         message: {
           composer: {
             canCancel: true,
