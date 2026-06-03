@@ -97,3 +97,24 @@ E2E auth failure를 고칠 때 먼저 확인할 것:
 - 강조색은 `--primary`(채팅 사용자 메시지 배경) / `--primary-strong`(링크·탭 인디케이터). raw `bg-emerald-*` 금지 — Sprint 2 정리 대상.
 - 시맨틱 상태색: `--status-{success,info,warn,danger,accent}`. raw `bg-amber-*`/`bg-sky-*` 금지.
 - 상세 스펙: `docs/design-docs/ADR-010-ui-tokens-and-dialog-shell.md`
+
+## Moldy 디자인 시스템 가드
+
+제품 화면 코드에서 surface, radius, shadow, typography, focus 예외를 새로 만들지 않는다.
+새 화면/컴포넌트 작업 후 아래 명령을 실행한다:
+
+```bash
+pnpm lint:design-system
+```
+
+가드가 막는 것:
+
+- `rounded-xl/2xl/3xl` 직접 사용 — `moldy-card`, `moldy-panel`, `moldy-skeleton-card`, `moldy-muted-panel` 등 공용 surface class로 이동
+- `shadow-sm/md/lg/xl/2xl` 및 `shadow-[...]` 직접 사용 — `moldy-popover`, `moldy-floating-icon-button`, `moldy-side-panel` 등 elevation class로 이동
+- `bg-[#...]`, `text-[#...]`, `border-[#...]` raw hex utility — `--primary`, `--status-*`, `--moldy-*` semantic token으로 이동
+- `text-[...]`, `outline-none`, `transition-all` — Moldy typography/focus/explicit transition 규칙 사용
+- 임의 `style={...}` — 동적 layout/library API만 `scripts/check-design-system.mjs` allowlist에 이유와 함께 명시
+
+현재 허용된 inline style 예외는 tree depth indentation, syntax highlighter theme,
+usage bar width, resource grid columns, Agent Prism trace/timeline layout, phase
+progress ratio뿐이다. 예외를 늘릴 때는 먼저 공용 class/토큰으로 표현 가능한지 확인한다.

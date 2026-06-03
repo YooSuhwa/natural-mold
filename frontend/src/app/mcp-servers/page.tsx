@@ -225,7 +225,7 @@ export default function McpServersPage() {
               {isLoading ? (
                 <ResourceGrid minColumnWidth={252}>
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="h-[188px] rounded-xl" />
+                    <Skeleton key={index} className="moldy-skeleton-card h-[188px]" />
                   ))}
                 </ResourceGrid>
               ) : isFilteredEmpty ? (

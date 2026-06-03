@@ -6,71 +6,14 @@ import { useTranslations } from 'next-intl'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
 import { API_BASE } from '@/lib/api/client'
 import type { User } from '@/lib/types/user'
 
-const AVATAR_COLORS = ['var(--primary-strong)', 'var(--status-warn)', 'var(--status-info)']
-
-type Sparkle = {
-  top: string
-  left: string
-  size: number
-  color: string
-  animation: string
-}
-
-const SPARKLES: Sparkle[] = [
-  {
-    top: '18%',
-    left: '14%',
-    size: 14,
-    color: 'var(--auth-sparkle-mint)',
-    animation: 'auth-twinkle-1 5s ease-in-out infinite',
-  },
-  {
-    top: '62%',
-    left: '40%',
-    size: 10,
-    color: 'var(--auth-sparkle-amber)',
-    animation: 'auth-twinkle-2 6.5s ease-in-out infinite',
-  },
-  {
-    top: '22%',
-    left: '74%',
-    size: 18,
-    color: 'var(--auth-sparkle-mint)',
-    animation: 'auth-twinkle-3 7s ease-in-out infinite',
-  },
-  {
-    top: '78%',
-    left: '10%',
-    size: 12,
-    color: 'var(--auth-sparkle-amber)',
-    animation: 'auth-twinkle-1 5.5s ease-in-out infinite',
-  },
-  {
-    top: '88%',
-    left: '52%',
-    size: 16,
-    color: 'var(--auth-sparkle-mint)',
-    animation: 'auth-twinkle-2 4.5s ease-in-out infinite',
-  },
-]
-
-type AuthStarStyle = CSSProperties & {
-  '--auth-star-top': string
-  '--auth-star-left': string
-  '--auth-star-size': string
-  '--auth-star-color': string
-  '--auth-star-animation': string
-}
-
-type AuthAvatarStyle = CSSProperties & {
-  '--auth-avatar-color': string
-}
+const AUTH_STAR_COUNT = 5
+const AUTH_AVATAR_COUNT = 3
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
@@ -107,19 +50,12 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
     <div className="auth-shell">
         {/* Sparkle stars */}
-        {SPARKLES.map((s, i) => (
+        {Array.from({ length: AUTH_STAR_COUNT }).map((_, i) => (
           <SparklesIcon
             key={`star-${i}`}
             aria-hidden
-            className="auth-star"
+            className={`auth-star auth-star-${i + 1}`}
             strokeWidth={2.2}
-            style={{
-              '--auth-star-top': s.top,
-              '--auth-star-left': s.left,
-              '--auth-star-size': `${s.size}px`,
-              '--auth-star-color': s.color,
-              '--auth-star-animation': s.animation,
-            } as AuthStarStyle}
           />
         ))}
 
@@ -131,7 +67,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
               alt="Moldy"
               width={30}
               height={30}
-              className="size-[30px] shrink-0 object-contain drop-shadow-sm"
+              className="auth-brand-logo size-[30px] shrink-0 object-contain"
               priority
             />
             <span className="auth-brand-text">
@@ -182,12 +118,11 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
 
             <div className="auth-social-proof">
               <div className="auth-avatar-stack">
-                {AVATAR_COLORS.map((bg, i) => (
+                {Array.from({ length: AUTH_AVATAR_COUNT }).map((_, i) => (
                   <span
                     key={`avatar-${i}`}
                     aria-hidden
                     className="auth-avatar-dot"
-                    style={{ '--auth-avatar-color': bg } as AuthAvatarStyle}
                   />
                 ))}
               </div>

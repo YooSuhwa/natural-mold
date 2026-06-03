@@ -133,7 +133,7 @@ function ChatInput({
         onCompositionEnd={onCompositionEnd}
         placeholder={placeholder}
         rows={4}
-        className="min-h-[110px] w-full resize-none rounded-2xl bg-transparent px-5 pb-2 pt-4 text-sm leading-relaxed text-foreground outline-hidden placeholder:text-muted-foreground"
+        className="moldy-composer-input min-h-[110px] w-full resize-none bg-transparent px-5 pb-2 pt-4 text-sm leading-relaxed text-foreground outline-hidden placeholder:text-muted-foreground"
       />
       <div className="flex justify-end px-3 pb-3">
         <Button
@@ -143,7 +143,7 @@ function ChatInput({
           disabled={!hasInput}
           aria-label={submitLabel}
           className={[
-            'size-9 rounded-xl transition-colors',
+            'moldy-composer-submit size-9 transition-colors',
             hasInput
               ? 'bg-primary-strong text-white hover:bg-primary-strong/90'
               : 'bg-muted text-muted-foreground hover:bg-muted',

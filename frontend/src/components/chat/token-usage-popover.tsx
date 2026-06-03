@@ -58,7 +58,7 @@ export function TokenUsagePopover() {
       {open && (
         <div
           role="tooltip"
-          className="absolute bottom-full left-0 z-20 mb-1 w-56 rounded-lg border bg-popover p-2.5 moldy-ui-caption shadow-md"
+          className="moldy-popover absolute bottom-full left-0 z-20 mb-1 w-56 p-2.5 moldy-ui-caption"
         >
           <div className="mb-1.5 flex items-center justify-between border-b pb-1.5 text-foreground">
             <span className="font-medium">{t('title')}</span>

@@ -81,7 +81,7 @@ export function ToolCatalog({
       {isLoading ? (
         <ResourceGrid minColumnWidth={240}>
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-[152px] rounded-xl" />
+            <Skeleton key={i} className="moldy-skeleton-card h-[152px]" />
           ))}
         </ResourceGrid>
       ) : filtered.length === 0 ? (
@@ -141,7 +141,7 @@ export function InstalledToolCatalog({
     return (
       <ResourceGrid minColumnWidth={240}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-[152px] rounded-xl" />
+          <Skeleton key={i} className="moldy-skeleton-card h-[152px]" />
         ))}
       </ResourceGrid>
     )

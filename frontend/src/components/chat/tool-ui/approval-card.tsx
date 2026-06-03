@@ -101,7 +101,7 @@ function ApprovalBadge({ result }: { result: unknown }) {
   return (
     <div
       className={cn(
-        'moldy-status-surface flex items-center gap-2 rounded-xl px-3 py-2 text-xs',
+        'moldy-status-surface moldy-status-card flex items-center gap-2 text-xs',
         style.tone,
       )}
     >

@@ -31,7 +31,7 @@ export function SettingsPanel({ agentId, imageUrl, name }: SettingsPanelProps) {
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 rounded-xl border bg-background p-6">
+    <div className="moldy-card flex flex-col items-center gap-4 p-6">
       <div className="relative">
         <AgentAvatar imageUrl={imageUrl} name={name} size="xl" />
         {isPending && (

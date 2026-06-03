@@ -145,7 +145,7 @@ export function RightPanel({
 
 function CreateModePlaceholder({ label }: { label: string }) {
   return (
-    <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed bg-muted/20 p-8 text-center">
+    <div className="moldy-muted-panel flex flex-1 items-center justify-center p-8 text-center">
       <p className="max-w-xs text-sm text-muted-foreground">{label}</p>
     </div>
   )

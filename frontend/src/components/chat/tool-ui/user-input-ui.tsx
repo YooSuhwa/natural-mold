@@ -178,7 +178,7 @@ function CompletedBadge({ result }: { result: unknown }) {
   const t = useTranslations('chat.userInput')
   const display = formatUserInputResult(result)
   return (
-    <div className="moldy-status-surface moldy-status-success flex items-center gap-2 rounded-xl px-3 py-2 text-xs">
+    <div className="moldy-status-surface moldy-status-success moldy-status-card flex items-center gap-2 text-xs">
       <CheckCircle2Icon className="moldy-status-icon size-3.5 shrink-0" />
       <span className="moldy-status-text font-medium">{t('completed')}</span>
       {display && (

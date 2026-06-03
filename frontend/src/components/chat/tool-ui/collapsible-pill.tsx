@@ -147,7 +147,7 @@ export function CollapsiblePill({
         type="button"
         onClick={onClick}
         className={cn(
-          'group flex w-full items-center gap-2 rounded-xl border border-border/60 bg-card/50 px-3 py-2 text-left text-xs transition-colors hover:bg-card',
+          'moldy-tool-pill group flex w-full items-center gap-2 px-3 py-2 text-left text-xs',
           containerClass,
           className,
         )}
@@ -161,7 +161,7 @@ export function CollapsiblePill({
   return (
     <div
       className={cn(
-        'w-full rounded-xl border border-border/50 text-xs transition-colors',
+        'moldy-tool-pill w-full text-xs',
         containerClass,
         className,
       )}
