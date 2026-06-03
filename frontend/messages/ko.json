@@ -1189,6 +1189,12 @@
         "running": "검색 중…",
         "count": "{count}건"
       },
+      "deepResearch": {
+        "completed": "리서치 완료",
+        "running": "리서치 중 · 검색 {count}회",
+        "sourceCount": "출처 {count}개",
+        "resultCount": "{count}건"
+      },
       "plan": {
         "title": "Plan",
         "completed": "완료",

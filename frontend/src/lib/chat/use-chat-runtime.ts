@@ -31,6 +31,7 @@ import {
   standardInterruptToToolCalls,
   type HiTLDecisionCoordinator,
 } from './standard-interrupt'
+import { compactDeepResearchMessages } from './deep-research-summary'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
 
@@ -358,7 +359,7 @@ export function useChatRuntime({
       seen.add(m.id)
       merged.push(m)
     }
-    return merged
+    return compactDeepResearchMessages(merged)
   }, [messages, streamingMessages])
 
   const streamingUsageTotals = useMemo(
@@ -488,17 +489,25 @@ export function useChatRuntime({
             case 'tool_call_start': {
               const toolName = event.data.tool_name
               const params = event.data.parameters as Record<string, unknown>
+              const eventToolCallId =
+                typeof event.data.tool_call_id === 'string' && event.data.tool_call_id.trim()
+                  ? event.data.tool_call_id.trim()
+                  : null
               // phase_timeline은 단일 카드 갱신 (불변 패턴 — 같은 인덱스에 새 객체로 교체)
               if (toolName === PHASE_TIMELINE_TOOL_NAME) {
                 const idx = toolCalls.findIndex((tc) => tc.name === PHASE_TIMELINE_TOOL_NAME)
                 if (idx >= 0) {
-                  toolCalls[idx] = { ...toolCalls[idx], args: params }
+                  toolCalls[idx] = {
+                    ...toolCalls[idx],
+                    id: eventToolCallId ?? toolCalls[idx].id,
+                    args: params,
+                  }
                   toolCallsDirty = true
                   setStreamingMessages(buildStreamState())
                   break
                 }
               }
-              const tcId = `tc-${crypto.randomUUID()}`
+              const tcId = eventToolCallId ?? `tc-${crypto.randomUUID()}`
               toolCalls.push({ id: tcId, name: toolName, args: params })
               toolCallsDirty = true
               setStreamingMessages(buildStreamState())
@@ -506,7 +515,37 @@ export function useChatRuntime({
             }
             case 'tool_call_result': {
               const eventToolName = (event.data as { tool_name?: string }).tool_name
+              const eventToolCallId =
+                typeof event.data.tool_call_id === 'string' && event.data.tool_call_id.trim()
+                  ? event.data.tool_call_id.trim()
+                  : null
               const resultStr = String(event.data.result ?? '')
+
+              const upsertToolResult = (tc: ToolCallInfo) => {
+                const trIdx = toolResults.findIndex((tr) => tr.tool_call_id === tc.id)
+                if (trIdx >= 0) {
+                  toolResults[trIdx] = { ...toolResults[trIdx], content: resultStr }
+                } else {
+                  toolResults.push({
+                    id: `tr-${crypto.randomUUID()}`,
+                    conversation_id: '',
+                    role: 'tool',
+                    content: resultStr,
+                    tool_calls: null,
+                    tool_call_id: tc.id ?? null,
+                    created_at: new Date().toISOString(),
+                  })
+                }
+                setStreamingMessages(buildStreamState())
+              }
+
+              if (eventToolCallId) {
+                const tc = toolCalls.find((candidate) => candidate.id === eventToolCallId)
+                if (tc) {
+                  upsertToolResult(tc)
+                  break
+                }
+              }
 
               // phase_timeline result는 tool_name 기반으로 매칭 (lastTc 의존 X)
               // — 다른 tool이 사이에 emit되어도 정확히 timeline 카드만 갱신
@@ -516,39 +555,25 @@ export function useChatRuntime({
                   .filter((i) => i >= 0)
                   .pop()
                 if (tcIdx !== undefined) {
-                  const tc = toolCalls[tcIdx]
-                  const trIdx = toolResults.findIndex((tr) => tr.tool_call_id === tc.id)
-                  if (trIdx >= 0) {
-                    toolResults[trIdx] = { ...toolResults[trIdx], content: resultStr }
-                  } else {
-                    toolResults.push({
-                      id: `tr-${crypto.randomUUID()}`,
-                      conversation_id: '',
-                      role: 'tool',
-                      content: resultStr,
-                      tool_calls: null,
-                      tool_call_id: tc.id ?? null,
-                      created_at: new Date().toISOString(),
-                    })
-                  }
-                  setStreamingMessages(buildStreamState())
+                  upsertToolResult(toolCalls[tcIdx])
                   break
                 }
               }
 
-              // 일반 tool: 마지막 tool_call에 매칭
-              const lastTc = toolCalls[toolCalls.length - 1]
-              if (!lastTc) break
-              toolResults.push({
-                id: `tr-${crypto.randomUUID()}`,
-                conversation_id: '',
-                role: 'tool',
-                content: resultStr,
-                tool_calls: null,
-                tool_call_id: lastTc.id ?? null,
-                created_at: new Date().toISOString(),
-              })
-              setStreamingMessages(buildStreamState())
+              // Legacy SSE에는 tool_call_id가 없다. 이때는 같은 tool_name의 아직
+              // result가 붙지 않은 호출에 FIFO로 매칭한다.
+              const usedToolCallIds = new Set(
+                toolResults.map((result) => result.tool_call_id).filter(Boolean),
+              )
+              const matchingTc = toolCalls.find(
+                (tc) =>
+                  tc.name === eventToolName &&
+                  Boolean(tc.id) &&
+                  !usedToolCallIds.has(tc.id ?? null),
+              )
+              if (matchingTc) {
+                upsertToolResult(matchingTc)
+              }
               break
             }
             case 'interrupt': {

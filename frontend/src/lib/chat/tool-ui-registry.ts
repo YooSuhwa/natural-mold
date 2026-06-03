@@ -5,11 +5,13 @@ import { ApprovalCard } from '@/components/chat/tool-ui/approval-card'
 import { ClarifyingQuestionUI } from '@/components/chat/tool-ui/clarifying-question-ui'
 import {
   WebSearchToolUI,
+  TavilySearchToolUI,
   NaverBlogSearchToolUI,
   NaverNewsSearchToolUI,
   GoogleSearchToolUI,
   GoogleNewsSearchToolUI,
 } from '@/components/chat/tool-ui/search-tool-ui'
+import { DeepResearchSummaryToolUI } from '@/components/chat/tool-ui/deep-research-summary-ui'
 import {
   ReadFileToolUI,
   WriteFileToolUI,
@@ -36,6 +38,8 @@ export const ALL_TOOL_UI = [
   ClarifyingQuestionUI,
   PlanToolUI,
   SubAgentToolUI,
+  DeepResearchSummaryToolUI,
+  TavilySearchToolUI,
   WebSearchToolUI,
   NaverBlogSearchToolUI,
   NaverNewsSearchToolUI,

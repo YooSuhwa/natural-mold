@@ -368,8 +368,11 @@ export interface StalePayload {
 export type SSEEvent = { id?: string } & (
   | { event: 'message_start'; data: { id: string; role: string } }
   | { event: 'content_delta'; data: { delta?: string; content?: string } }
-  | { event: 'tool_call_start'; data: { tool_name: string; parameters: Record<string, unknown> } }
-  | { event: 'tool_call_result'; data: { tool_name: string; result: string } }
+  | {
+      event: 'tool_call_start'
+      data: { tool_call_id?: string; tool_name: string; parameters: Record<string, unknown> }
+    }
+  | { event: 'tool_call_result'; data: { tool_call_id?: string; tool_name: string; result: string } }
   | {
       event: 'message_end'
       data: {

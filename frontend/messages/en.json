@@ -1210,6 +1210,12 @@
         "running": "Running",
         "count": "{count} results"
       },
+      "deepResearch": {
+        "completed": "Research complete",
+        "running": "Researching · {count} searches",
+        "sourceCount": "{count} sources",
+        "resultCount": "{count} results"
+      },
       "plan": {
         "title": "Plan",
         "completed": "Done",
