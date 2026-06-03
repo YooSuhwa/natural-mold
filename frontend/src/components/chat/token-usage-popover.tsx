@@ -1,11 +1,11 @@
 'use client'
 
-import { useState } from 'react'
 import { InfoIcon } from 'lucide-react'
 import { useAssistantState } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { formatCostUsd } from '@/components/usage/format'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { TokenUsageBreakdown } from '@/lib/types'
 
 interface AssistantMetadataCustom {
@@ -26,7 +26,6 @@ function formatNumber(n: number): string {
  */
 export function TokenUsagePopover() {
   const t = useTranslations('chat.tokenUsage')
-  const [open, setOpen] = useState(false)
   const usage = useAssistantState(
     (s) => (s.message?.metadata?.custom as AssistantMetadataCustom | undefined)?.usage,
   )
@@ -36,57 +35,60 @@ export function TokenUsagePopover() {
   if (total === 0) return null
 
   return (
-    <span
-      className="relative inline-flex items-center"
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          'flex items-center gap-1 rounded-md px-1.5 py-0.5 moldy-ui-micro transition-colors hover:bg-accent',
-          'text-muted-foreground hover:text-foreground',
-        )}
-        aria-label={t('toggleAria')}
-        aria-expanded={open}
+    <Tooltip>
+      <TooltipTrigger
+        render={(triggerProps) => {
+          const { className, ...props } = triggerProps
+          return (
+            <button
+              {...props}
+              type="button"
+              className={cn(
+                className,
+                'flex items-center gap-1 rounded-md px-1.5 py-0.5 moldy-ui-micro transition-colors hover:bg-accent',
+                'text-muted-foreground hover:text-foreground',
+              )}
+              aria-label={t('toggleAria')}
+            >
+              <InfoIcon className="size-3" />
+              <span className="tabular-nums">{formatNumber(total)}</span>
+            </button>
+          )
+        }}
+      />
+      <TooltipContent
+        role="tooltip"
+        side="top"
+        align="start"
+        sideOffset={6}
+        className="moldy-popover block w-56 max-w-none bg-popover p-2.5 moldy-ui-caption text-popover-foreground"
       >
-        <InfoIcon className="size-3" />
-        <span className="tabular-nums">{formatNumber(total)}</span>
-      </button>
-
-      {open && (
-        <div
-          role="tooltip"
-          className="moldy-popover absolute bottom-full left-0 z-20 mb-1 w-56 p-2.5 moldy-ui-caption"
-        >
-          <div className="mb-1.5 flex items-center justify-between border-b pb-1.5 text-foreground">
-            <span className="font-medium">{t('title')}</span>
-            <span className="tabular-nums text-muted-foreground">
-              {formatNumber(total)} {t('total')}
-            </span>
-          </div>
-          <Row label={t('input')} value={usage.prompt_tokens} />
-          <Row label={t('output')} value={usage.completion_tokens} />
-          <Row
-            label={t('cacheCreation')}
-            value={usage.cache_creation_tokens}
-            muted={usage.cache_creation_tokens === 0}
-          />
-          <Row
-            label={t('cacheRead')}
-            value={usage.cache_read_tokens}
-            muted={usage.cache_read_tokens === 0}
-          />
-          {usage.estimated_cost !== undefined && usage.estimated_cost > 0 && (
-            <div className="mt-1.5 flex items-center justify-between border-t pt-1.5 text-foreground">
-              <span>{t('cost')}</span>
-              <span className="tabular-nums">{formatCostUsd(usage.estimated_cost)}</span>
-            </div>
-          )}
+        <div className="mb-1.5 flex items-center justify-between border-b pb-1.5 text-foreground">
+          <span className="font-medium">{t('title')}</span>
+          <span className="tabular-nums text-muted-foreground">
+            {formatNumber(total)} {t('total')}
+          </span>
         </div>
-      )}
-    </span>
+        <Row label={t('input')} value={usage.prompt_tokens} />
+        <Row label={t('output')} value={usage.completion_tokens} />
+        <Row
+          label={t('cacheCreation')}
+          value={usage.cache_creation_tokens}
+          muted={usage.cache_creation_tokens === 0}
+        />
+        <Row
+          label={t('cacheRead')}
+          value={usage.cache_read_tokens}
+          muted={usage.cache_read_tokens === 0}
+        />
+        {usage.estimated_cost !== undefined && usage.estimated_cost > 0 && (
+          <div className="mt-1.5 flex items-center justify-between border-t pt-1.5 text-foreground">
+            <span>{t('cost')}</span>
+            <span className="tabular-nums">{formatCostUsd(usage.estimated_cost)}</span>
+          </div>
+        )}
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
