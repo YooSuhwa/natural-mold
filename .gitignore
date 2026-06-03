@@ -74,6 +74,7 @@ backend/data/
 workspace/
 .codex/
 .playwright-mcp/
+output/
 
 # Redis dump (M-MCP2)
 dump.rdb
