@@ -116,6 +116,13 @@ def invalid_schedule_config() -> ValidationError:
     )
 
 
+def agent_identity_requires_fixed() -> ValidationError:
+    return ValidationError(
+        "AGENT_IDENTITY_REQUIRES_FIXED",
+        "자동 실행에는 에이전트 고정 credential 사용(fixed)이 필요합니다",
+    )
+
+
 def session_not_preview() -> ValidationError:
     return ValidationError("SESSION_NOT_PREVIEW", "프리뷰 상태의 세션만 확인할 수 있습니다")
 

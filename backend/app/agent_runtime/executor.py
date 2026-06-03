@@ -196,6 +196,12 @@ class AgentConfig:
     user_id: str | None = None
     model_id: str | None = None
     llm_credential_id: str | None = None
+    agent_owner_user_id: str | None = None
+    caller_user_id: str | None = None
+    credential_subject_user_id: str | None = None
+    identity_mode: str | None = None
+    agent_runtime_name: str | None = None
+    subagents_config: list[dict[str, Any]] | None = None
     # Optional ordered fallback chain. Each entry is
     # ``{"provider": str, "model_name": str, "base_url": str | None,
     #   "model_id": str | None}`` and is tried in order when the primary
@@ -367,6 +373,7 @@ def build_agent(
     memory: list[str] | None = None,
     permissions: list[FilesystemPermission] | None = None,
     name: str | None = None,
+    subagents: list[dict[str, Any]] | None = None,
 ) -> Any:
     """Build a moldy agent. Returns CompiledStateGraph."""
     return create_deep_agent(
@@ -382,6 +389,7 @@ def build_agent(
         memory=memory,
         permissions=permissions,
         name=name,
+        subagents=subagents,
     )
 
 
@@ -1014,7 +1022,8 @@ async def _prepare_agent(
         skills=skills_sources,
         memory=memory_sources,
         permissions=permissions,
-        name=f"agent_{cfg.thread_id[:8]}",
+        name=cfg.agent_runtime_name or f"agent_{cfg.thread_id[:8]}",
+        subagents=cfg.subagents_config,
     )
     timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
     last_mark = time.perf_counter()
@@ -1078,6 +1087,9 @@ def _hook_ctx_for_agent(cfg: AgentConfig) -> HookContext | None:
         "provider": cfg.provider,
         "model_name": cfg.model_name,
         "thread_id": cfg.thread_id,
+        "identity_mode": cfg.identity_mode,
+        "credential_subject_user_id": cfg.credential_subject_user_id,
+        "agent_runtime_name": cfg.agent_runtime_name,
     }
     return HookContext(
         request_id=str(_uuid.uuid4()),

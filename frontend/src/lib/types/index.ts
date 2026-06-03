@@ -11,6 +11,8 @@ export * from './usage'
 
 // ---------- Agent ---------------------------------------------------------
 
+export type AgentIdentityMode = 'fixed' | 'per_user'
+
 export interface AgentBrief {
   id: string
   name: string
@@ -56,6 +58,8 @@ export interface MiddlewareConfigEntry {
 
 export interface Agent {
   id: string
+  runtime_name: string
+  identity_mode: AgentIdentityMode
   name: string
   description: string | null
   system_prompt: string
@@ -111,6 +115,7 @@ export interface AgentCreateRequest {
   description?: string
   system_prompt: string
   model_id: string
+  identity_mode?: AgentIdentityMode
   tool_ids?: string[]
   mcp_tool_ids?: string[]
   skill_ids?: string[]
@@ -128,6 +133,7 @@ export interface AgentUpdateRequest {
   description?: string
   system_prompt?: string
   model_id?: string
+  identity_mode?: AgentIdentityMode
   tool_ids?: string[]
   mcp_tool_ids?: string[]
   skill_ids?: string[]

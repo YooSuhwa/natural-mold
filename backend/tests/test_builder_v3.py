@@ -305,7 +305,8 @@ async def test_phase2_question_flow_payload_and_structured_resume(monkeypatch):
     )
     assert interrupt_payload["type"] == "ask_user"
     assert interrupt_payload["mode"] == "question_flow"
-    assert len(interrupt_payload["questions"]) >= 3
+    assert len(interrupt_payload["questions"]) >= 4
+    assert any(q["id"] == "identity_mode" for q in interrupt_payload["questions"])
 
     response = {
         "mode": "question_flow",
@@ -313,11 +314,13 @@ async def test_phase2_question_flow_payload_and_structured_resume(monkeypatch):
             "agent_name": ["리서치봇"],
             "response_tone": ["professional"],
             "output_style": ["detailed"],
+            "identity_mode": ["fixed"],
         },
         "labels": {
             "agent_name": "리서치봇",
             "response_tone": "전문적으로",
             "output_style": "자세한 설명",
+            "identity_mode": "에이전트 고정 credential",
         },
     }
     await compiled.ainvoke(Command(resume=json.dumps(response, ensure_ascii=False)), config=config)
@@ -327,6 +330,30 @@ async def test_phase2_question_flow_payload_and_structured_resume(monkeypatch):
     assert state.values["intent"]["agent_name_ko"] == "리서치봇"
     assert state.values["intent"]["response_tone"] == "전문적으로"
     assert state.values["intent"]["output_style"] == "자세한 설명"
+    assert state.values["intent"]["identity_mode"] == "fixed"
+
+
+def test_phase7_draft_copies_identity_mode():
+    from app.agent_runtime.builder_v3.nodes.phase7_save import _build_draft
+
+    draft = _build_draft(
+        {
+            "intent": {
+                "agent_name": "Research Agent",
+                "agent_name_ko": "리서치 에이전트",
+                "agent_description": "자료를 조사하는 에이전트",
+                "primary_task_type": "자료 조사",
+                "use_cases": ["자료 조사"],
+                "identity_mode": "fixed",
+            },
+            "tools": [],
+            "middlewares": [],
+            "system_prompt": "You research.",
+            "default_model_name": "GPT-4o",
+        }
+    )
+
+    assert draft.identity_mode == "fixed"
 
 
 def test_phase8_error_routes_to_end_not_router():

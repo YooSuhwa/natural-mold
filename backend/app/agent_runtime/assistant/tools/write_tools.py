@@ -15,12 +15,13 @@
 12. update_middleware_config
 13. update_chat_openers
 14. update_agent_metadata
-15. update_recursion_limit
-16. create_cron_schedule
-17. update_cron_schedule
-18. delete_cron_schedule
-19. enable_cron_schedule
-20. disable_cron_schedule
+15. update_agent_identity_mode
+16. update_recursion_limit
+17. create_cron_schedule
+18. update_cron_schedule
+19. delete_cron_schedule
+20. enable_cron_schedule
+21. disable_cron_schedule
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.assistant.tools.helpers import get_agent_with_eager_load
+from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
 from app.agent_runtime.middleware_registry import MIDDLEWARE_REGISTRY
 from app.database import async_session as async_session_factory
 from app.models.agent import Agent
@@ -628,7 +630,48 @@ def build_write_tools(
             await session.commit()
             return f"에이전트 메타데이터 변경 완료: {', '.join(changes)}"
 
-    # ------ 13. update_recursion_limit ------
+    # ------ 13. update_agent_identity_mode ------
+
+    async def update_agent_identity_mode(identity_mode: str) -> str:
+        """credential 사용 방식을 변경합니다.
+
+        Args:
+            identity_mode: "per_user" 또는 "fixed"
+        """
+        normalized = identity_mode.strip().lower()
+        try:
+            validate_identity_mode(normalized)
+        except Exception:
+            return "credential 사용 방식은 'per_user' 또는 'fixed'만 가능합니다."
+
+        async with async_session_factory() as session:
+            agent = await _get_agent_with_session(session)
+            if not agent:
+                return "에이전트를 찾을 수 없습니다."
+            if normalized == agent.identity_mode:
+                return f"credential 사용 방식이 이미 '{normalized}'입니다."
+
+            if normalized == AGENT_IDENTITY_PER_USER:
+                active_count = await session.scalar(
+                    select(func.count())
+                    .select_from(AgentTrigger)
+                    .where(
+                        AgentTrigger.agent_id == agent_id,
+                        AgentTrigger.user_id == user_id,
+                        AgentTrigger.status == "active",
+                    )
+                )
+                if active_count:
+                    return (
+                        "활성 스케줄이 있는 에이전트는 사용자별 credential 모드로 "
+                        "변경할 수 없습니다. 먼저 스케줄을 비활성화하세요."
+                    )
+
+            agent.identity_mode = normalized
+            await session.commit()
+            return f"credential 사용 모드 변경 완료: {normalized}"
+
+    # ------ 14. update_recursion_limit ------
 
     async def update_recursion_limit(limit: int) -> str:
         """재귀 한도를 변경합니다.
@@ -897,7 +940,14 @@ def build_write_tools(
             trigger, error = await _resolve_trigger_for_write(session, schedule_id, schedule_name)
             if error or not trigger:
                 return error or "스케줄을 찾을 수 없습니다."
-            await trigger_service.update_trigger(session, trigger, TriggerUpdate(status="active"))
+            try:
+                await trigger_service.update_trigger(
+                    session,
+                    trigger,
+                    TriggerUpdate(status="active"),
+                )
+            except ValueError as exc:
+                return f"스케줄 설정이 올바르지 않습니다: {exc}"
             return "스케줄 활성화 완료."
 
     # ------ 18. disable_cron_schedule ------
@@ -1001,6 +1051,11 @@ def build_write_tools(
             coroutine=update_agent_metadata,
             name="update_agent_metadata",
             description="에이전트 이름/설명 변경 (둘 중 하나 또는 둘 다)",
+        ),
+        StructuredTool.from_function(
+            coroutine=update_agent_identity_mode,
+            name="update_agent_identity_mode",
+            description="credential 사용 방식 변경 (per_user 또는 fixed)",
         ),
         StructuredTool.from_function(
             coroutine=update_recursion_limit,

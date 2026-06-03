@@ -17,6 +17,12 @@ from sqlalchemy import select
 
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.executor import AgentConfig, execute_agent_invoke
+from app.agent_runtime.identity import (
+    AgentIdentityError,
+    AgentRunSource,
+    make_agent_runtime_name,
+    resolve_agent_run_identity,
+)
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
@@ -156,8 +162,39 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             await db.refresh(run)
             return run
 
+        try:
+            identity = resolve_agent_run_identity(
+                agent_id=agent.id,
+                agent_owner_user_id=agent.user_id,
+                runtime_name=agent.runtime_name or make_agent_runtime_name(agent.id),
+                identity_mode=agent.identity_mode,
+                source=AgentRunSource.TRIGGER,
+                caller_user_id=None,
+            )
+        except AgentIdentityError as exc:
+            logger.warning("Trigger %s blocked by identity policy: %s", trigger_id, exc)
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=None,
+                status="failed",
+                error_message=str(exc),
+            )
+            await db.refresh(run)
+            return run
+
+        run.identity_mode = identity.identity_mode
+        run.agent_runtime_name = identity.runtime_name
+        run.credential_subject_user_id = identity.credential_subject_user_id
+
         effective_prompt = chat_service.build_effective_prompt(agent)
-        tools_config = await chat_service.build_tools_config(agent, db=db, conversation_id=None)
+        tools_config = await chat_service.build_tools_config(
+            agent,
+            db=db,
+            conversation_id=None,
+            identity=identity,
+        )
         agent_skills = chat_service.build_agent_skills(agent)
         blocked_tools = trigger_blocked_tools(
             tools_config,
@@ -186,7 +223,7 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             now_str,
         )
 
-        api_key = await resolve_llm_api_key_for_agent(db, agent)
+        api_key = await resolve_llm_api_key_for_agent(db, agent, identity=identity)
         base_url = agent.model.base_url
 
         fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
@@ -212,6 +249,11 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
                 str(agent.llm_credential.id) if agent.llm_credential is not None else None
             ),
             model_fallback_chain=fallback_chain,
+            agent_owner_user_id=str(agent.user_id),
+            caller_user_id=None,
+            credential_subject_user_id=str(identity.credential_subject_user_id),
+            identity_mode=identity.identity_mode,
+            agent_runtime_name=identity.runtime_name,
         )
         try:
             output = await execute_agent_invoke(

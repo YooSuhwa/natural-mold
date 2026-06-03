@@ -95,6 +95,8 @@ async def test_get_agent_config(db: AsyncSession, patch_read_session):
     data = json.loads(result)
     assert data["name"] == "Read Test Agent"
     assert data["agent_id"] == str(agent_id)
+    assert data["runtime_name"].startswith("agent_")
+    assert data["identity_mode"] == "fixed"
     assert len(data["tools"]) == 1
     assert data["tools"][0]["name"] == "Web Search"
     assert "gpt-4o" in data["model_name"]

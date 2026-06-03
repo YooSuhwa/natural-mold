@@ -501,6 +501,18 @@
       "instructionPlaceholder": "에이전트 지침을 입력하세요",
       "instructionFullscreen": "전체화면",
       "characterCount": "{count}자",
+      "identity": {
+        "title": "Credential 사용 방식",
+        "description": "실행 시 누구의 credential을 사용할지 선택하세요.",
+        "perUser": {
+          "title": "사용자별",
+          "description": "채팅 실행은 호출자의 credential을 사용합니다."
+        },
+        "fixed": {
+          "title": "에이전트 고정",
+          "description": "스케줄 실행은 소유자 credential을 사용합니다."
+        }
+      },
       "subAgents": {
         "title": "서브에이전트",
         "description": "다른 에이전트를 협업자로 추가합니다",

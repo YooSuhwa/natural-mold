@@ -16,6 +16,7 @@ import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
+import type { AgentIdentityMode } from '@/lib/types'
 import { toggleSetItem } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -66,6 +67,7 @@ export default function ManualCreationPage() {
   const [description, setDescription] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [modelId, setModelId] = useState('')
+  const [identityMode, setIdentityMode] = useState<AgentIdentityMode>('per_user')
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
   const [selectedMcpToolIds, setSelectedMcpToolIds] = useState<Set<string>>(new Set())
   const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set())
@@ -110,6 +112,7 @@ export default function ManualCreationPage() {
       description,
       systemPrompt,
       modelId,
+      identityMode,
       temperature,
       topP,
       maxTokens,
@@ -124,6 +127,7 @@ export default function ManualCreationPage() {
       description,
       systemPrompt,
       modelId,
+      identityMode,
       temperature,
       topP,
       maxTokens,
@@ -141,6 +145,7 @@ export default function ManualCreationPage() {
       onDescriptionChange: setDescription,
       onSystemPromptChange: setSystemPrompt,
       onModelIdChange: setModelId,
+      onIdentityModeChange: setIdentityMode,
       onTemperatureChange: setTemperature,
       onTopPChange: setTopP,
       onMaxTokensChange: setMaxTokens,
@@ -176,6 +181,7 @@ export default function ManualCreationPage() {
       description: description.trim() || undefined,
       system_prompt: systemPrompt,
       model_id: modelId,
+      identity_mode: identityMode,
       tool_ids: Array.from(selectedToolIds),
       mcp_tool_ids: Array.from(selectedMcpToolIds),
       skill_ids: Array.from(selectedSkillIds),
@@ -278,6 +284,8 @@ export default function ManualCreationPage() {
             <FormMode
               systemPrompt={systemPrompt}
               onSystemPromptChange={setSystemPrompt}
+              identityMode={identityMode}
+              onIdentityModeChange={setIdentityMode}
               selectedSubAgentIds={selectedSubAgentIds}
               onToggleSubAgent={(id) =>
                 setSelectedSubAgentIds((prev) => toggleSetItem(prev, id))

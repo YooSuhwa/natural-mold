@@ -29,7 +29,9 @@ def _build_task_description(user_request: str) -> str:
         "2. 에이전트 설명 (상세한 기능 설명)\n"
         "3. 주요 작업 유형 (primary_task_type)\n"
         "4. 에이전트의 주요 기능들\n"
-        "5. 사용자가 원하는 기능의 특징\n\n"
+        "5. 사용자가 원하는 기능의 특징\n"
+        "6. credential 사용 방식(identity_mode): 사용자마다 credential을 쓰는 per_user가 "
+        "기본이고, 스케줄/자동 실행이 명확하면 fixed\n\n"
         "사용자의 요청을 정리하고 AgentCreationIntent 형식으로 반환해주세요."
     )
 
@@ -53,6 +55,7 @@ async def analyze_intent(user_request: str) -> AgentCreationIntent:
         agent_name_ko="맞춤 에이전트",
         agent_description=f"사용자 요청에 따라 생성된 에이전트: {user_request}",
         primary_task_type="일반 작업 수행",
+        identity_mode="per_user",
         use_cases=["사용자 요청 처리"],
         required_capabilities=["일반 대화"],
     )

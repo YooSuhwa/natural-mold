@@ -68,7 +68,7 @@ def _stub_llm_credential_resolution(monkeypatch):
     (``monkeypatch.undo()`` or per-test re-patch).
     """
 
-    async def _fake_resolve(_db, _agent):
+    async def _fake_resolve(_db, _agent, **_kwargs):
         return "test-api-key"
 
     monkeypatch.setattr(

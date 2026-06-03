@@ -12,6 +12,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
 from app.agent_runtime.middleware_registry import get_middleware_registry
 from app.agent_runtime.streaming import format_sse
 from app.database import async_session as async_session_factory
@@ -221,6 +222,9 @@ async def confirm_build(db: AsyncSession, session: BuilderSession) -> Agent | No
             description=config.get("description", ""),
             system_prompt=config.get("system_prompt", ""),
             model_id=model.id,
+            identity_mode=validate_identity_mode(
+                config.get("identity_mode") or AGENT_IDENTITY_PER_USER
+            ),
             middleware_configs=[
                 {"type": mw_name, "params": {}} for mw_name in config.get("middlewares", [])
             ],

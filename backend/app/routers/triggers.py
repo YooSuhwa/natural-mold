@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import (
+    agent_identity_requires_fixed,
     agent_not_found,
     invalid_schedule_config,
     invalid_trigger_type,
@@ -25,6 +26,8 @@ router = APIRouter(tags=["triggers"])
 
 
 def _map_trigger_validation(exc: ValueError) -> None:
+    if "identity_mode must be fixed" in str(exc):
+        raise agent_identity_requires_fixed() from exc
     if "trigger_type" in str(exc):
         raise invalid_trigger_type() from exc
     raise invalid_schedule_config() from exc

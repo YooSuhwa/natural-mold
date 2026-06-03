@@ -522,6 +522,18 @@
       "instructionPlaceholder": "Enter agent instructions",
       "instructionFullscreen": "Fullscreen",
       "characterCount": "{count} characters",
+      "identity": {
+        "title": "Credential Usage",
+        "description": "Choose whose credentials this agent uses at runtime.",
+        "perUser": {
+          "title": "Per user",
+          "description": "Chat runs use each caller's credentials."
+        },
+        "fixed": {
+          "title": "Agent fixed",
+          "description": "Scheduled runs use the owner's credentials."
+        }
+      },
       "subAgents": {
         "title": "Subagents",
         "description": "Add other agents as collaborators.",

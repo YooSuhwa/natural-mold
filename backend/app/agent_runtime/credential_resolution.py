@@ -19,10 +19,12 @@ Assistant, and other service flows use ``system_credential_resolver`` instead.
 from __future__ import annotations
 
 import logging
+import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.identity import AgentRunIdentity
 from app.credentials import service as credential_service
 from app.credentials.service import PROVIDER_TO_DEFINITION_KEY
 from app.exceptions import AppError
@@ -58,6 +60,8 @@ class LLMCredentialRequiredError(AppError):
 async def resolve_llm_api_key_for_agent(
     db: AsyncSession,
     agent: Agent,
+    *,
+    identity: AgentRunIdentity | None = None,
 ) -> str | None:
     """Decrypt the best available credential for ``agent`` and return its key.
 
@@ -68,12 +72,30 @@ async def resolve_llm_api_key_for_agent(
     backend stdout 로 진단 가능 (silent fail 회귀 방지).
     """
 
+    subject_user_id = (
+        identity.credential_subject_user_id if identity is not None else agent.user_id
+    )
+
     cred = getattr(agent, "llm_credential", None)
     if cred is not None:
-        key = await _decrypt_api_key(cred)
-        if key is not None:
-            logger.info("agent %s: api_key from agent.llm_credential", agent.id)
-            return key
+        if _credential_owned_by_subject(cred, subject_user_id):
+            key = await _decrypt_api_key(cred)
+            if key is not None:
+                logger.info(
+                    "agent %s: api_key from agent.llm_credential for subject %s",
+                    agent.id,
+                    subject_user_id,
+                )
+                return key
+        else:
+            logger.warning(
+                "agent %s: llm_credential_id=%s not owned by credential subject %s",
+                agent.id,
+                cred.id,
+                subject_user_id,
+            )
+            cred = None
+    if cred is not None:
         logger.warning(
             "agent %s: llm_credential decrypt returned None, trying model.default",
             agent.id,
@@ -81,11 +103,8 @@ async def resolve_llm_api_key_for_agent(
 
     model = getattr(agent, "model", None)
     if model is not None and model.default_credential_id is not None:
-        # Same-user check is implicit: the model belongs to the agent's user
-        # and the FK was set by that user — but we still verify ownership
-        # before decrypting in case of legacy data.
         fallback_cred = await credential_service.get_for_user(
-            db, model.default_credential_id, agent.user_id
+            db, model.default_credential_id, subject_user_id
         )
         if fallback_cred is not None:
             key = await _decrypt_api_key(fallback_cred)
@@ -105,7 +124,7 @@ async def resolve_llm_api_key_for_agent(
                 "agent %s: model.default_credential_id=%s not owned by user %s",
                 agent.id,
                 model.default_credential_id,
-                agent.user_id,
+                subject_user_id,
             )
 
     # 3rd tier — auto-match user-owned credential by provider. The two
@@ -122,7 +141,7 @@ async def resolve_llm_api_key_for_agent(
             await db.execute(
                 select(Credential)
                 .where(
-                    Credential.user_id == agent.user_id,
+                    Credential.user_id == subject_user_id,
                     Credential.is_system.is_(False),
                     Credential.definition_key == definition_key,
                     Credential.status == "active",
@@ -153,9 +172,17 @@ async def resolve_llm_api_key_for_agent(
     logger.info(
         "agent %s: no user-owned LLM credential for owner %s — raising",
         agent.id,
-        agent.user_id,
+        subject_user_id,
     )
     raise LLMCredentialRequiredError()
+
+
+def _credential_owned_by_subject(cred: Credential, subject_user_id: uuid.UUID) -> bool:
+    return (
+        cred.user_id == subject_user_id
+        and bool(getattr(cred, "is_system", False)) is False
+        and getattr(cred, "status", "active") == "active"
+    )
 
 
 async def _decrypt_api_key(cred: Credential) -> str | None:

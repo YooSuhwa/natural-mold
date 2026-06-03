@@ -7,7 +7,9 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
 
 # ---------------------------------------------------------------------------
 # BuilderStatus StrEnum
@@ -73,11 +75,20 @@ class AgentCreationIntent(BaseModel):
     tool_preferences: str = Field(default="", description="선호하는 도구 유형")
     output_style: str = Field(default="간단한 요약과 주요 포인트", description="결과물 형태")
     response_tone: str = Field(default="친근하고 캐주얼한 어조", description="응답 톤")
+    identity_mode: str = Field(
+        default=AGENT_IDENTITY_PER_USER,
+        description="credential 사용 주체: per_user 또는 fixed",
+    )
     use_cases: list[str] = Field(
         default_factory=list, min_length=1, description="사용 사례 (최소 1개)"
     )
     constraints: list[str] = Field(default_factory=list, description="제약 조건")
     required_capabilities: list[str] = Field(default_factory=list, description="필수 기능")
+
+    @field_validator("identity_mode")
+    @classmethod
+    def _validate_identity_mode(cls, v: str) -> str:
+        return validate_identity_mode(v)
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +141,12 @@ class DraftAgentConfig(BaseModel):
     model_name: str = Field(default="")
     primary_task_type: str = ""
     use_cases: list[str] = Field(default_factory=list)
+    identity_mode: str = Field(default=AGENT_IDENTITY_PER_USER)
+
+    @field_validator("identity_mode")
+    @classmethod
+    def _validate_identity_mode(cls, v: str) -> str:
+        return validate_identity_mode(v)
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.credentials.validation import require_user_credential
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.mcp import discovery
 from app.mcp.client import connect_and_list
@@ -162,6 +163,10 @@ async def create_server(
     _csrf: None = Depends(verify_csrf),
 ) -> McpServerResponse:
     _validate_payload_consistency(payload.transport, payload.url, payload.command)
+    if payload.credential_id is not None:
+        await require_user_credential(
+            db, credential_id=payload.credential_id, user_id=user.id
+        )
     server = McpServer(
         user_id=user.id,
         name=payload.name,
@@ -210,6 +215,10 @@ async def create_server_from_registry(
     url = entry.get("url")
     command = entry.get("command")
     _validate_payload_consistency(transport, url, command)
+    if payload.credential_id is not None:
+        await require_user_credential(
+            db, credential_id=payload.credential_id, user_id=user.id
+        )
 
     server = McpServer(
         user_id=user.id,
@@ -553,6 +562,10 @@ async def update_server(
     if "headers" in fields_set and payload.headers is not None:
         server.headers = dict(payload.headers)
     if "credential_id" in fields_set:
+        if payload.credential_id is not None:
+            await require_user_credential(
+                db, credential_id=payload.credential_id, user_id=user.id
+            )
         server.credential_id = payload.credential_id
     if "status" in fields_set and payload.status is not None:
         server.status = payload.status

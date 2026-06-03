@@ -17,6 +17,11 @@ from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agen
 from app.agent_runtime.event_broker import EventBroker, slice_events_after
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
+from app.agent_runtime.identity import (
+    AgentRunSource,
+    make_agent_runtime_name,
+    resolve_agent_run_identity,
+)
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
 from app.config import settings
 from app.database import async_session
@@ -125,14 +130,26 @@ async def _resolve_agent_context(
             ),
         )
 
+    identity = resolve_agent_run_identity(
+        agent_id=agent.id,
+        agent_owner_user_id=agent.user_id,
+        runtime_name=agent.runtime_name or make_agent_runtime_name(agent.id),
+        identity_mode=agent.identity_mode,
+        source=AgentRunSource.CHAT,
+        caller_user_id=user.id,
+    )
+
     # Tiered user-owned policy: agent.llm_credential → model.default_credential_id
     # → provider-matched user credential. System/env credentials are reserved
     # for service flows, not user chat runtime.
-    api_key = await resolve_llm_api_key_for_agent(db, agent)
+    api_key = await resolve_llm_api_key_for_agent(db, agent, identity=identity)
     base_url = agent.model.base_url
 
     tools_config = await chat_service.build_tools_config(
-        agent, db=db, conversation_id=str(conversation_id)
+        agent,
+        db=db,
+        conversation_id=str(conversation_id),
+        identity=identity,
     )
 
     fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
@@ -158,13 +175,18 @@ async def _resolve_agent_context(
         cost_per_output_token=(
             float(agent.model.cost_per_output_token) if agent.model.cost_per_output_token else None
         ),
-        user_id=str(agent.user_id),
+        user_id=str(user.id),
         model_id=str(agent.model.id) if agent.model else None,
         llm_credential_id=(
             str(agent.llm_credential.id) if agent.llm_credential is not None else None
         ),
         model_fallback_chain=fallback_chain,
         checkpoint_id=checkpoint_id,
+        agent_owner_user_id=str(agent.user_id),
+        caller_user_id=str(user.id),
+        credential_subject_user_id=str(identity.credential_subject_user_id),
+        identity_mode=identity.identity_mode,
+        agent_runtime_name=identity.runtime_name,
     )
 
 

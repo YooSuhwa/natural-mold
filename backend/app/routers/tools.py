@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.credentials.validation import require_user_credential
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.models.tool import Tool
 from app.schemas.tool import (
@@ -118,6 +119,7 @@ async def create_tool(
         raise HTTPException(
             status_code=400, detail=f"unknown definition '{payload.definition_key}'"
         )
+    await require_user_credential(db, credential_id=payload.credential_id, user_id=user.id)
 
     tool = Tool(
         user_id=user.id,
@@ -159,6 +161,7 @@ async def update_tool(
     if payload.parameters is not None:
         tool.parameters = payload.parameters
     if payload.credential_id is not None or "credential_id" in payload.model_fields_set:
+        await require_user_credential(db, credential_id=payload.credential_id, user_id=user.id)
         tool.credential_id = payload.credential_id
     if payload.enabled is not None:
         tool.enabled = payload.enabled

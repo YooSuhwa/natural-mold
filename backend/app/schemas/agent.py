@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER, validate_identity_mode
 from app.schemas.skill import SkillBrief as SkillBrief  # noqa: F401 — used in AgentResponse
 
 MAX_OPENER_QUESTIONS = 12
@@ -87,6 +88,7 @@ class AgentCreate(BaseModel):
     opener_questions: list[str] | None = None
     # Optional ordered list of fallback model ids — see model_factory.
     model_fallback_ids: list[uuid.UUID] | None = None
+    identity_mode: str = AGENT_IDENTITY_PER_USER
 
     @field_validator("opener_questions")
     @classmethod
@@ -99,6 +101,11 @@ class AgentCreate(BaseModel):
         # Create는 None을 받지 않으므로 헬퍼 결과는 항상 list[UUID].
         cleaned = _validate_sub_agent_ids(v)
         return cleaned if cleaned is not None else []
+
+    @field_validator("identity_mode")
+    @classmethod
+    def _validate_identity_mode(cls, v: str) -> str:
+        return validate_identity_mode(v)
 
 
 class AgentUpdate(BaseModel):
@@ -118,6 +125,7 @@ class AgentUpdate(BaseModel):
     model_params: dict[str, Any] | None = None
     opener_questions: list[str] | None = None
     model_fallback_ids: list[uuid.UUID] | None = None
+    identity_mode: str | None = None
 
     @field_validator("opener_questions")
     @classmethod
@@ -128,6 +136,11 @@ class AgentUpdate(BaseModel):
     @classmethod
     def _validate_sub_agent_ids(cls, v: list[uuid.UUID] | None) -> list[uuid.UUID] | None:
         return _validate_sub_agent_ids(v)
+
+    @field_validator("identity_mode")
+    @classmethod
+    def _validate_identity_mode(cls, v: str | None) -> str | None:
+        return validate_identity_mode(v) if v is not None else None
 
 
 class ModelBrief(BaseModel):
@@ -186,6 +199,8 @@ class AgentSummaryResponse(BaseModel):
 
 class AgentResponse(BaseModel):
     id: uuid.UUID
+    runtime_name: str
+    identity_mode: str
     name: str
     description: str | None
     system_prompt: str

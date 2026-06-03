@@ -34,6 +34,11 @@ class AgentTriggerRun(Base):
     thread_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     checkpoint_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
     trace_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    identity_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    agent_runtime_name: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    credential_subject_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     started_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False
     )

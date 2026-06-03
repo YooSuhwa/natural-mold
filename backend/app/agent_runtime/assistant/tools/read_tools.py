@@ -85,6 +85,8 @@ def build_read_tools(
         return json.dumps(
             {
                 "agent_id": str(agent.id),
+                "runtime_name": agent.runtime_name,
+                "identity_mode": agent.identity_mode,
                 "name": agent.name,
                 "description": agent.description,
                 "system_prompt": agent.system_prompt,

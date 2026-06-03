@@ -46,6 +46,7 @@ def _build_draft(state: BuilderState) -> DraftAgentConfig:
         model_name=state.get("default_model_name", ""),
         primary_task_type=intent.primary_task_type,
         use_cases=list(intent.use_cases),
+        identity_mode=intent.identity_mode,
     )
 
 

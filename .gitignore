@@ -67,6 +67,7 @@ logs/
 
 # Runtime data (conversations, skills, uploads)
 backend/data/
+backend/data.bak*/
 # worktree에서 backend가 root cwd로 실행될 때 생기는 동일 데이터 경로
 /data/
 

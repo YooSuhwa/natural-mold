@@ -196,6 +196,67 @@ async def test_create_tool_skips_runtime_only_required_check(
 
 
 @pytest.mark.asyncio
+async def test_create_tool_rejects_cross_user_credential(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    other_user_id = uuid.uuid4()
+    db.add(User(id=other_user_id, email="other-tools@test.com", name="Other"))
+    cred = await credential_service.create(
+        db,
+        user_id=other_user_id,
+        definition_key="http_bearer",
+        name="other bearer",
+        data={"token": "secret"},
+    )
+    await db.commit()
+
+    response = await client.post(
+        "/api/tools",
+        json={
+            "definition_key": "http_request",
+            "name": "Bad Credential",
+            "parameters": {"method": "GET", "url": "https://example.com"},
+            "credential_id": str(cred.id),
+        },
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_tool_rejects_system_credential(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    system_cred = await credential_service.create(
+        db,
+        user_id=None,
+        definition_key="http_bearer",
+        name="system bearer",
+        data={"token": "secret"},
+        is_system=True,
+    )
+    await db.commit()
+    create = await client.post(
+        "/api/tools",
+        json={
+            "definition_key": "http_request",
+            "name": "Needs Credential",
+            "parameters": {"method": "GET", "url": "https://example.com"},
+        },
+    )
+    tool_id = create.json()["id"]
+
+    response = await client.patch(
+        f"/api/tools/{tool_id}",
+        json={"credential_id": str(system_cred.id)},
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_list_tools_filters(client: AsyncClient) -> None:
     await client.post(
         "/api/tools",
