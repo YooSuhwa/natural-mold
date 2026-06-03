@@ -9,10 +9,10 @@ import { useToggleFavorite } from '@/lib/hooks/use-agents'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { cn } from '@/lib/utils'
 import { formatRelativeKo } from '@/lib/utils/format-relative-time'
-import type { Agent } from '@/lib/types'
+import type { Agent, AgentSummary } from '@/lib/types'
 
 interface AgentCardProps {
-  agent: Agent
+  agent: Agent | AgentSummary
 }
 
 const STATUS_DOT = {
@@ -45,7 +45,13 @@ export function AgentCard({ agent }: AgentCardProps) {
     e.stopPropagation()
   }
 
-  const fallbackCount = agent.model_fallback_ids?.length ?? 0
+  const modelName =
+    'model_display_name' in agent
+      ? agent.model_display_name
+      : agent.model?.display_name
+  const fallbackCount =
+    'fallback_count' in agent ? agent.fallback_count : agent.model_fallback_ids?.length ?? 0
+  const toolCount = 'tool_count' in agent ? agent.tool_count : agent.tools.length
 
   return (
     <Link
@@ -97,7 +103,7 @@ export function AgentCard({ agent }: AgentCardProps) {
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
             <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-medium">
               <CpuIcon className="size-3" />
-              {agent.model?.display_name ?? (
+              {modelName ?? (
                 <span className="moldy-status-warn moldy-status-text">{t('noModel')}</span>
               )}
             </span>
@@ -110,10 +116,10 @@ export function AgentCard({ agent }: AgentCardProps) {
                 +{fallbackCount} fallback
               </span>
             )}
-            {agent.tools.length > 0 && (
+            {toolCount > 0 && (
               <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-medium">
                 <WrenchIcon className="size-3" />
-                {agent.tools.length}
+                {toolCount}
               </span>
             )}
           </div>

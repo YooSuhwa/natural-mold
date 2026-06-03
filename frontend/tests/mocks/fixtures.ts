@@ -1,9 +1,11 @@
 import type {
   Agent,
+  AgentSummary,
   Model,
   Tool,
   Template,
   Conversation,
+  ConversationListEnvelope,
   Message,
   AgentTrigger,
   TriggerRun,
@@ -15,6 +17,7 @@ import type {
   BuilderSession,
   BuilderDraftConfig,
 } from '@/lib/types'
+import type { MarketplaceItem, MarketplaceItemsPage } from '@/lib/types/marketplace'
 
 // Legacy type — was in @/lib/api/creation-session (removed in v2)
 export interface CreationMessageResult {
@@ -62,6 +65,39 @@ export const mockAgentList: Agent[] = [
     id: 'agent-2',
     name: 'Second Agent',
     description: 'Another test agent',
+  },
+]
+
+export const mockAgentSummaryList: AgentSummary[] = [
+  {
+    id: 'agent-1',
+    name: 'Test Agent',
+    description: 'A test agent',
+    status: 'active',
+    is_favorite: false,
+    image_url: null,
+    model_display_name: 'GPT-4o',
+    tool_count: 1,
+    fallback_count: 0,
+    unread_count: 0,
+    last_used_at: '2026-01-02T00:00:00Z',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+  {
+    id: 'agent-2',
+    name: 'Second Agent',
+    description: 'Another test agent',
+    status: 'active',
+    is_favorite: false,
+    image_url: null,
+    model_display_name: 'GPT-4o',
+    tool_count: 1,
+    fallback_count: 0,
+    unread_count: 0,
+    last_used_at: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
   },
 ]
 
@@ -237,6 +273,12 @@ export const mockConversationList: Conversation[] = [
     title: 'Second Conversation',
   },
 ]
+
+export const mockConversationPage: ConversationListEnvelope = {
+  items: mockConversationList,
+  next_cursor: 'cursor-next',
+  has_more: true,
+}
 
 export const mockMessage: Message = {
   id: 'msg-1',
@@ -420,4 +462,65 @@ export const mockBuilderSession: BuilderSession = {
   error_message: null,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
+}
+
+// ── Marketplace ───────────────────────────────────────────────────
+
+export const mockMarketplaceItem: MarketplaceItem = {
+  id: 'item-1',
+  resource_type: 'skill',
+  name: '이미지 생성',
+  slug: 'image-generation',
+  description: '이미지를 생성합니다.',
+  visibility: 'public',
+  status: 'published',
+  is_system: false,
+  is_listed: true,
+  tags: [],
+  categories: [],
+  locale: 'ko-KR',
+  created_at: '2026-05-01T00:00:00Z',
+  updated_at: '2026-05-02T00:00:00Z',
+  latest_version: {
+    id: 'version-1',
+    version_label: '0.1.0',
+    version_number: 1,
+    content_hash: 'abc123',
+    created_at: '2026-05-02T00:00:00Z',
+  },
+  credential_summary: {
+    status: 'none',
+    required_count: 0,
+    optional_count: 0,
+    missing_required_count: 0,
+  },
+  execution_profile: { support_level: 'ready_python' },
+  origin_summary: null,
+  publication_summary: {
+    state: 'not_published',
+    is_listed: true,
+    shared_user_count: 0,
+  },
+  installation: {
+    installed: false,
+    update_available: false,
+    dirty: false,
+  },
+}
+
+export const mockMarketplaceItemsPage: MarketplaceItemsPage = {
+  items: [
+    mockMarketplaceItem,
+    {
+      ...mockMarketplaceItem,
+      id: 'item-2',
+      name: '문서 요약',
+      slug: 'document-summary',
+    },
+  ],
+  limit: 24,
+  offset: 0,
+  total: 2,
+  has_more: false,
+  next_offset: null,
 }

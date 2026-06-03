@@ -11,6 +11,7 @@ S3 migration would only swap the storage backend, not the API shape.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from pathlib import Path
@@ -49,6 +50,11 @@ def _ensure_dir() -> Path:
     return base
 
 
+def _write_upload_file(storage_path: Path, contents: bytes) -> None:
+    storage_path.parent.mkdir(parents=True, exist_ok=True)
+    storage_path.write_bytes(contents)
+
+
 def _safe_extension(filename: str) -> str:
     """Return a sanitized extension (with leading dot) or empty string."""
 
@@ -82,10 +88,10 @@ async def create_upload(
         )
 
     upload_id = uuid.uuid4()
-    base = _ensure_dir()
+    base = await asyncio.to_thread(_ensure_dir)
     ext = _safe_extension(file.filename or "")
     storage_path = base / f"{upload_id}{ext}"
-    storage_path.write_bytes(contents)
+    await asyncio.to_thread(_write_upload_file, storage_path, contents)
 
     row = MessageAttachment(
         id=upload_id,
@@ -117,7 +123,8 @@ async def get_upload(
         raise file_not_found()
 
     path = Path(row.storage_path)
-    if not path.is_file():
+    exists = await asyncio.to_thread(path.is_file)
+    if not exists:
         raise file_not_found()
     return FileResponse(
         path,

@@ -1,8 +1,9 @@
 import { apiFetch } from './client'
-import type { Agent, AgentCreateRequest, AgentUpdateRequest } from '@/lib/types'
+import type { Agent, AgentCreateRequest, AgentSummary, AgentUpdateRequest } from '@/lib/types'
 
 export const agentsApi = {
   list: () => apiFetch<Agent[]>('/api/agents'),
+  summary: () => apiFetch<AgentSummary[]>('/api/agents/summary'),
   get: (id: string) => apiFetch<Agent>(`/api/agents/${id}`),
   create: (data: AgentCreateRequest) =>
     apiFetch<Agent>('/api/agents', { method: 'POST', body: JSON.stringify(data) }),

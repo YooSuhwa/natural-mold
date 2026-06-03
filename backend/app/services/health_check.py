@@ -14,14 +14,16 @@ ready" cases (MCP ``auth_needed``).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import settings
 from app.credentials import service as credential_service
 from app.mcp import client as mcp_client
 from app.models.credential import Credential
@@ -183,7 +185,11 @@ async def check_mcp_server(
     return history
 
 
-async def check_all_active(db: AsyncSession) -> dict[str, int]:
+async def check_all_active(
+    db: AsyncSession,
+    *,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+) -> dict[str, int]:
     """Probe every active model + MCP server. Used by the cron job.
 
     Returns counters so callers can log a one-line summary. Skips rows
@@ -199,25 +205,74 @@ async def check_all_active(db: AsyncSession) -> dict[str, int]:
         "degraded": 0,
     }
 
-    models = (
-        await db.execute(select(Model).order_by(Model.created_at.asc()))
-    ).scalars().all()
-    for model in models:
-        cred = await _resolve_model_credential(db, model)
-        history = await check_model(db, model=model, credential=cred)
-        counters["models_checked"] += 1
-        counters[history.status] = counters.get(history.status, 0) + 1
-        await db.commit()
+    model_ids = list(
+        (
+            await db.execute(select(Model.id).order_by(Model.created_at.asc()))
+        ).scalars().all()
+    )
+    server_ids = list(
+        (
+            await db.execute(
+                select(McpServer.id).where(McpServer.status != "disabled")
+            )
+        ).scalars().all()
+    )
 
-    servers = (
-        await db.execute(select(McpServer).where(McpServer.status != "disabled"))
-    ).scalars().all()
-    for server in servers:
-        cred = await _resolve_credential(db, server.credential_id)
-        history = await check_mcp_server(db, server=server, credential=cred)
-        counters["mcp_servers_checked"] += 1
-        counters[history.status] = counters.get(history.status, 0) + 1
-        await db.commit()
+    if session_factory is None:
+        for model_id in model_ids:
+            model = await db.get(Model, model_id)
+            if model is None:
+                continue
+            cred = await _resolve_model_credential(db, model)
+            history = await check_model(db, model=model, credential=cred)
+            counters["models_checked"] += 1
+            counters[history.status] = counters.get(history.status, 0) + 1
+            await db.commit()
+
+        for server_id in server_ids:
+            server = await db.get(McpServer, server_id)
+            if server is None:
+                continue
+            cred = await _resolve_credential(db, server.credential_id)
+            history = await check_mcp_server(db, server=server, credential=cred)
+            counters["mcp_servers_checked"] += 1
+            counters[history.status] = counters.get(history.status, 0) + 1
+            await db.commit()
+        logger.info("health check sweep finished: %s", counters)
+        return counters
+
+    semaphore = asyncio.Semaphore(max(1, settings.health_check_concurrency))
+    counter_lock = asyncio.Lock()
+
+    async def record_counter(kind: str, status: str) -> None:
+        async with counter_lock:
+            counters[kind] += 1
+            counters[status] = counters.get(status, 0) + 1
+
+    async def check_model_id(model_id: uuid.UUID) -> None:
+        async with semaphore, session_factory() as session:
+            model = await session.get(Model, model_id)
+            if model is None:
+                return
+            cred = await _resolve_model_credential(session, model)
+            history = await check_model(session, model=model, credential=cred)
+            await session.commit()
+            await record_counter("models_checked", history.status)
+
+    async def check_server_id(server_id: uuid.UUID) -> None:
+        async with semaphore, session_factory() as session:
+            server = await session.get(McpServer, server_id)
+            if server is None:
+                return
+            cred = await _resolve_credential(session, server.credential_id)
+            history = await check_mcp_server(session, server=server, credential=cred)
+            await session.commit()
+            await record_counter("mcp_servers_checked", history.status)
+
+    await asyncio.gather(
+        *(check_model_id(model_id) for model_id in model_ids),
+        *(check_server_id(server_id) for server_id in server_ids),
+    )
 
     logger.info("health check sweep finished: %s", counters)
     return counters

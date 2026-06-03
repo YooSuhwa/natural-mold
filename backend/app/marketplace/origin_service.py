@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.marketplace.schemas import (
     CredentialSummaryOut,
@@ -190,6 +191,68 @@ async def derive_publication_summary_for_skill(
     )
 
 
+async def bulk_derive_publication_summaries_for_skills(
+    db: AsyncSession,
+    skills: Iterable[Skill],
+) -> dict[uuid.UUID, ResourcePublicationSummaryOut]:
+    """Bulk publication summaries keyed by skill id."""
+
+    skill_ids = [skill.id for skill in skills]
+    if not skill_ids:
+        return {}
+
+    links = (
+        await db.execute(
+            select(MarketplacePublicationLink).where(
+                MarketplacePublicationLink.source_skill_id.in_(skill_ids)
+            )
+        )
+    ).scalars().all()
+    by_skill = {link.source_skill_id: link for link in links if link.source_skill_id}
+    item_ids = [link.item_id for link in links]
+    items_by_id: dict[uuid.UUID, MarketplaceItem] = {}
+    if item_ids:
+        items = (
+            await db.execute(
+                select(MarketplaceItem)
+                .where(MarketplaceItem.id.in_(item_ids))
+                .options(selectinload(MarketplaceItem.latest_version))
+            )
+        ).scalars().all()
+        items_by_id = {item.id: item for item in items}
+
+    acl_counts: dict[uuid.UUID, int] = {}
+    if item_ids:
+        rows = (
+            await db.execute(
+                select(MarketplaceItemACL.item_id, func.count(MarketplaceItemACL.id))
+                .where(MarketplaceItemACL.item_id.in_(item_ids))
+                .group_by(MarketplaceItemACL.item_id)
+            )
+        ).all()
+        acl_counts = {item_id: int(count or 0) for item_id, count in rows}
+
+    summaries: dict[uuid.UUID, ResourcePublicationSummaryOut] = {}
+    for skill_id in skill_ids:
+        link = by_skill.get(skill_id)
+        item = items_by_id.get(link.item_id) if link else None
+        if item is None:
+            summaries[skill_id] = ResourcePublicationSummaryOut(state="not_published")
+            continue
+        latest = item.latest_version
+        summaries[skill_id] = ResourcePublicationSummaryOut(
+            state=_derive_publication_state(item),  # type: ignore[arg-type]
+            item_id=item.id,
+            visibility=item.visibility,  # type: ignore[arg-type]
+            status=item.status,  # type: ignore[arg-type]
+            is_listed=item.is_listed,
+            latest_version_id=latest.id if latest else None,
+            version_number=latest.version_number if latest else None,
+            shared_user_count=acl_counts.get(item.id, 0),
+        )
+    return summaries
+
+
 # ---------------------------------------------------------------------------
 # Installation
 # ---------------------------------------------------------------------------
@@ -265,6 +328,125 @@ async def derive_installation_summary(
     )
 
 
+def _installation_resource_id(installation: MarketplaceInstallation) -> uuid.UUID | None:
+    if installation.resource_type == "skill":
+        return installation.installed_skill_id
+    if installation.resource_type == "agent":
+        return installation.installed_agent_id
+    if installation.resource_type == "mcp":
+        return installation.installed_mcp_server_id
+    return None
+
+
+async def bulk_derive_installation_summaries(
+    db: AsyncSession,
+    *,
+    items: Iterable[MarketplaceItem],
+    user_id: uuid.UUID,
+) -> dict[uuid.UUID, MarketplaceInstallationSummary]:
+    """Bulk installation summaries keyed by marketplace item id."""
+
+    items_by_id = {item.id: item for item in items}
+    if not items_by_id:
+        return {}
+    installations = (
+        await db.execute(
+            select(MarketplaceInstallation).where(
+                MarketplaceInstallation.item_id.in_(items_by_id),
+                MarketplaceInstallation.user_id == user_id,
+            )
+        )
+    ).scalars().all()
+
+    skill_ids = [
+        installation.installed_skill_id
+        for installation in installations
+        if installation.installed_skill_id is not None
+    ]
+    skills_by_id: dict[uuid.UUID, Skill] = {}
+    if skill_ids:
+        from app.models.skill import Skill
+
+        skills = (
+            await db.execute(select(Skill).where(Skill.id.in_(skill_ids)))
+        ).scalars().all()
+        skills_by_id = {skill.id: skill for skill in skills}
+
+    summaries = {
+        item_id: MarketplaceInstallationSummary(installed=False)
+        for item_id in items_by_id
+    }
+    for installation in installations:
+        item = items_by_id[installation.item_id]
+        dirty = bool(installation.is_dirty)
+        status = installation.install_status
+        if installation.installed_skill_id is not None:
+            skill = skills_by_id.get(installation.installed_skill_id)
+            if skill is not None and skill.is_dirty:
+                dirty = True
+            if skill is not None and status == "active":
+                from app.marketplace.credential_requirements import missing_required_keys
+
+                class _UserLike:
+                    def __init__(self, uid: uuid.UUID) -> None:
+                        self.id = uid
+
+                missing = await missing_required_keys(
+                    db,
+                    skill=skill,
+                    user=_UserLike(user_id),  # type: ignore[arg-type]
+                )
+                if missing:
+                    status = "needs_setup"
+
+        summaries[item.id] = MarketplaceInstallationSummary(
+            installed=installation.install_status != "uninstalled",
+            installation_id=installation.id,
+            installed_resource_id=_installation_resource_id(installation),
+            status=status,  # type: ignore[arg-type]
+            update_available=(
+                item.latest_version_id is not None
+                and installation.version_id != item.latest_version_id
+            ),
+            dirty=dirty,
+        )
+    return summaries
+
+
+async def bulk_derive_skill_installation_summaries(
+    db: AsyncSession,
+    skills: Iterable[Skill],
+) -> dict[uuid.UUID, MarketplaceInstallationSummary | None]:
+    """Bulk skill installation summaries keyed by installed skill id."""
+
+    skills_by_id = {skill.id: skill for skill in skills}
+    if not skills_by_id:
+        return {}
+    rows = (
+        await db.execute(
+            select(MarketplaceInstallation).where(
+                MarketplaceInstallation.installed_skill_id.in_(skills_by_id)
+            )
+        )
+    ).scalars().all()
+    summaries: dict[uuid.UUID, MarketplaceInstallationSummary | None] = {
+        skill_id: None for skill_id in skills_by_id
+    }
+    for row in rows:
+        if row.installed_skill_id is None:
+            continue
+        skill = skills_by_id[row.installed_skill_id]
+        summaries[row.installed_skill_id] = MarketplaceInstallationSummary(
+            installed=row.install_status != "uninstalled",
+            installation_id=row.id,
+            installed_resource_id=row.installed_skill_id,
+            status=row.install_status,  # type: ignore[arg-type]
+            update_available=False,
+            dirty=bool(row.is_dirty or skill.is_dirty),
+        )
+    return summaries
+
+
 # ---------------------------------------------------------------------------
 # Credential summary (server hint for "needs setup")
 # ---------------------------------------------------------------------------
@@ -336,6 +518,9 @@ async def mark_installation_dirty(
 
 
 __all__ = [
+    "bulk_derive_installation_summaries",
+    "bulk_derive_publication_summaries_for_skills",
+    "bulk_derive_skill_installation_summaries",
     "derive_credential_summary",
     "derive_installation_summary",
     "derive_origin_summary_for_skill",

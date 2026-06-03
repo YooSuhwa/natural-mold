@@ -10,6 +10,7 @@ import type {
   MarketplaceItem,
   MarketplaceItemACLBody,
   MarketplaceItemPatchBody,
+  MarketplaceItemsPage,
   MarketplaceListFilters,
   MarketplaceVersionDetail,
   MarketplaceVersionSummary,
@@ -54,6 +55,9 @@ export const marketplaceApi = {
   // ---- Catalog ----
   list: (filters?: MarketplaceListFilters) =>
     apiFetch<MarketplaceItem[]>(`/api/marketplace/items${buildSearch(filters)}`),
+
+  page: (filters?: MarketplaceListFilters) =>
+    apiFetch<MarketplaceItemsPage>(`/api/marketplace/items/page${buildSearch(filters)}`),
 
   get: (itemId: string) =>
     apiFetch<MarketplaceItem>(`/api/marketplace/items/${itemId}`),

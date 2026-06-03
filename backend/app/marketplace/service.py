@@ -28,6 +28,7 @@ from app.marketplace.access import (
     is_owner,
 )
 from app.marketplace.origin_service import (
+    bulk_derive_installation_summaries,
     derive_credential_summary,
     derive_installation_summary,
 )
@@ -36,6 +37,7 @@ from app.marketplace.schemas import (
     MarketplaceInstallationSummary,
     MarketplaceItemListFilters,
     MarketplaceItemOut,
+    MarketplaceItemsPage,
     MarketplaceVersionDetail,
     MarketplaceVersionSummary,
     ResourcePublicationSummaryOut,
@@ -163,6 +165,94 @@ def _apply_filters(stmt, filters: MarketplaceItemListFilters):
     return stmt
 
 
+def _catalog_stmt(user: CurrentUser, filters: MarketplaceItemListFilters):
+    public_listed_only = filters.is_listed is None
+    stmt = _base_catalog_query(user, public_listed_only=public_listed_only)
+    stmt = _apply_filters(stmt, filters)
+    if filters.installed is not None:
+        exists_clause = _installed_for_user_exists(user.id)
+        stmt = stmt.where(
+            exists_clause if filters.installed else ~exists_clause
+        )
+    return stmt
+
+
+def _catalog_rows_stmt(user: CurrentUser, filters: MarketplaceItemListFilters):
+    return (
+        _catalog_stmt(user, filters)
+        .options(
+            selectinload(MarketplaceItem.latest_version),
+            selectinload(MarketplaceItem.acl_entries),
+        )
+        .order_by(
+            MarketplaceItem.is_listed.desc(),
+            MarketplaceItem.published_at.desc().nullslast(),
+            MarketplaceItem.created_at.desc(),
+        )
+    )
+
+
+def _has_post_load_filters(filters: MarketplaceItemListFilters) -> bool:
+    return bool(filters.install_state or filters.support_level or filters.category)
+
+
+async def _fetch_catalog_rows(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    filters: MarketplaceItemListFilters,
+    limit: int,
+    offset: int,
+) -> list[MarketplaceItem]:
+    stmt = _catalog_rows_stmt(user, filters).limit(limit).offset(offset)
+    return list((await db.execute(stmt)).scalars().unique().all())
+
+
+async def _apply_post_load_filters(
+    db: AsyncSession,
+    *,
+    rows: Sequence[MarketplaceItem],
+    user: CurrentUser,
+    filters: MarketplaceItemListFilters,
+) -> list[MarketplaceItem]:
+    filtered = list(rows)
+
+    # ``installed`` 는 위에서 이미 SQL 로 처리됨. ``install_state`` (active /
+    # needs_setup / disabled) 는 derive_installation_summary 가 결정하는
+    # 동적 상태(예: credential gap 으로 active → needs_setup 승급) 이므로
+    # 여전히 post-load 단계에서만 정확히 적용 가능.
+    if filters.install_state:
+        installation_summaries = await bulk_derive_installation_summaries(
+            db, items=filtered, user_id=user.id
+        )
+        kept = []
+        for item in filtered:
+            summary = installation_summaries.get(
+                item.id,
+                MarketplaceInstallationSummary(installed=False),
+            )
+            if summary.status == filters.install_state:
+                kept.append(item)
+        filtered = kept
+    if filters.support_level:
+        filtered = [
+            i
+            for i in filtered
+            if i.latest_version is not None
+            and (i.latest_version.execution_profile or {}).get("support_level")
+            == filters.support_level
+        ]
+    if filters.category:
+        filtered = [
+            i
+            for i in filtered
+            if isinstance(i.categories, list)
+            and any(c in i.categories for c in filters.category)
+        ]
+
+    return filtered
+
+
 # ---------------------------------------------------------------------------
 # Item → response projection
 # ---------------------------------------------------------------------------
@@ -172,6 +262,9 @@ async def _project_item(
     db: AsyncSession,
     item: MarketplaceItem,
     user: CurrentUser,
+    *,
+    installation_summary: MarketplaceInstallationSummary | None = None,
+    has_publication_link: bool | None = None,
 ) -> MarketplaceItemOut:
     latest_version_summary: MarketplaceVersionSummary | None = None
     if item.latest_version_id is not None:
@@ -189,8 +282,8 @@ async def _project_item(
     )
     credential_summary: CredentialSummaryOut = derive_credential_summary(requirements)
 
-    installation: MarketplaceInstallationSummary = await derive_installation_summary(
-        db, item=item, user_id=user.id
+    installation: MarketplaceInstallationSummary = installation_summary or (
+        await derive_installation_summary(db, item=item, user_id=user.id)
     )
 
     # publication_summary는 viewer 본인이 publish한 자기 리소스인지 보여주는 정보.
@@ -200,14 +293,15 @@ async def _project_item(
     # 정신상 source resource를 잃은 owner는 marketplace 원본에서 재install이
     # 합리적이므로, publication_link 존재 여부까지 함께 확인해야 한다.
     owner_view = is_owner(item, user)
-    has_publication_link = False
-    if owner_view:
-        link_exists = await db.execute(
-            select(MarketplacePublicationLink.id)
-            .where(MarketplacePublicationLink.item_id == item.id)
-            .limit(1)
-        )
-        has_publication_link = link_exists.scalar_one_or_none() is not None
+    if has_publication_link is None:
+        has_publication_link = False
+        if owner_view:
+            link_exists = await db.execute(
+                select(MarketplacePublicationLink.id)
+                .where(MarketplacePublicationLink.item_id == item.id)
+                .limit(1)
+            )
+            has_publication_link = link_exists.scalar_one_or_none() is not None
 
     publication_visible = owner_view and has_publication_link
 
@@ -268,6 +362,43 @@ async def _project_item(
     )
 
 
+async def _bulk_publication_link_item_ids(
+    db: AsyncSession, items: Sequence[MarketplaceItem], user: CurrentUser
+) -> set[uuid.UUID]:
+    owner_item_ids = [item.id for item in items if is_owner(item, user)]
+    if not owner_item_ids:
+        return set()
+    rows = (
+        await db.execute(
+            select(MarketplacePublicationLink.item_id).where(
+                MarketplacePublicationLink.item_id.in_(owner_item_ids)
+            )
+        )
+    ).scalars().all()
+    return set(rows)
+
+
+async def _project_items(
+    db: AsyncSession,
+    items: Sequence[MarketplaceItem],
+    user: CurrentUser,
+) -> list[MarketplaceItemOut]:
+    installation_summaries = await bulk_derive_installation_summaries(
+        db, items=items, user_id=user.id
+    )
+    publication_link_item_ids = await _bulk_publication_link_item_ids(db, items, user)
+    return [
+        await _project_item(
+            db,
+            item,
+            user,
+            installation_summary=installation_summaries.get(item.id),
+            has_publication_link=item.id in publication_link_item_ids,
+        )
+        for item in items
+    ]
+
+
 def _publication_state_for_owner(item: MarketplaceItem) -> str:
     if item.status == "draft":
         return "draft"
@@ -302,62 +433,110 @@ async def list_items(
     limit: int = 50,
     offset: int = 0,
 ) -> Sequence[MarketplaceItemOut]:
-    # Spec §10.1 — explicit ``?is_listed=...`` overrides the default
-    # listed-public-only gate so super_user moderation views can pull the
-    # unlisted queue (``?is_listed=false``).
-    public_listed_only = filters.is_listed is None
-    stmt = _base_catalog_query(user, public_listed_only=public_listed_only)
-    stmt = _apply_filters(stmt, filters)
-    # ``installed`` 는 SQL 단계에서 처리 — pagination 정확성을 위해.
-    # post-load 후처리는 limit 안에 들어온 row 만 검사하므로, user installation
-    # 이 base catalog ordering 의 첫 페이지 밖에 있으면 결과에 누락된다.
-    if filters.installed is not None:
-        exists_clause = _installed_for_user_exists(user.id)
-        stmt = stmt.where(
-            exists_clause if filters.installed else ~exists_clause
+    rows = await _fetch_catalog_rows(
+        db, user=user, filters=filters, limit=limit, offset=offset
+    )
+    rows = await _apply_post_load_filters(
+        db, rows=rows, user=user, filters=filters
+    )
+    return await _project_items(db, rows, user)
+
+
+async def _count_catalog_items(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    filters: MarketplaceItemListFilters,
+) -> int | None:
+    if _has_post_load_filters(filters):
+        return None
+    stmt = _catalog_stmt(user, filters)
+    return await db.scalar(select(func.count()).select_from(stmt.subquery()))
+
+
+async def _scan_post_filtered_page(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    filters: MarketplaceItemListFilters,
+    limit: int,
+    offset: int,
+) -> tuple[list[MarketplaceItem], bool, int | None]:
+    batch_size = max(limit * 3, 50)
+    raw_offset = 0
+    filtered_seen = 0
+    page_rows: list[MarketplaceItem] = []
+    has_more = False
+    exhausted = False
+
+    while True:
+        raw_rows = await _fetch_catalog_rows(
+            db,
+            user=user,
+            filters=filters,
+            limit=batch_size,
+            offset=raw_offset,
         )
-    stmt = stmt.options(
-        selectinload(MarketplaceItem.latest_version),
-        selectinload(MarketplaceItem.acl_entries),
-    )
-    stmt = stmt.order_by(
-        MarketplaceItem.is_listed.desc(),
-        MarketplaceItem.published_at.desc().nullslast(),
-        MarketplaceItem.created_at.desc(),
-    )
-    stmt = stmt.limit(limit).offset(offset)
-    rows = (await db.execute(stmt)).scalars().unique().all()
+        if not raw_rows:
+            exhausted = True
+            break
 
-    # ``installed`` 는 위에서 이미 SQL 로 처리됨. ``install_state`` (active /
-    # needs_setup / disabled) 는 derive_installation_summary 가 결정하는
-    # 동적 상태(예: credential gap 으로 active → needs_setup 승급) 이므로
-    # 여전히 post-load 단계에서만 정확히 적용 가능.
-    if filters.install_state:
-        kept = []
-        for item in rows:
-            summary = await derive_installation_summary(
-                db, item=item, user_id=user.id
-            )
-            if summary.status == filters.install_state:
-                kept.append(item)
-        rows = kept
-    if filters.support_level:
-        rows = [
-            i
-            for i in rows
-            if i.latest_version is not None
-            and (i.latest_version.execution_profile or {}).get("support_level")
-            == filters.support_level
-        ]
-    if filters.category:
-        rows = [
-            i
-            for i in rows
-            if isinstance(i.categories, list)
-            and any(c in i.categories for c in filters.category)
-        ]
+        filtered_rows = await _apply_post_load_filters(
+            db, rows=raw_rows, user=user, filters=filters
+        )
+        for item in filtered_rows:
+            if filtered_seen < offset:
+                filtered_seen += 1
+                continue
+            if len(page_rows) < limit:
+                page_rows.append(item)
+                filtered_seen += 1
+                continue
+            has_more = True
+            break
 
-    return [await _project_item(db, item, user) for item in rows]
+        if has_more:
+            break
+        if len(raw_rows) < batch_size:
+            exhausted = True
+            break
+        raw_offset += batch_size
+
+    return page_rows, has_more, filtered_seen if exhausted else None
+
+
+async def list_items_page(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    filters: MarketplaceItemListFilters,
+    limit: int = 50,
+    offset: int = 0,
+) -> MarketplaceItemsPage:
+    if _has_post_load_filters(filters):
+        rows, has_more, total = await _scan_post_filtered_page(
+            db, user=user, filters=filters, limit=limit, offset=offset
+        )
+    else:
+        raw_rows = await _fetch_catalog_rows(
+            db,
+            user=user,
+            filters=filters,
+            limit=limit + 1,
+            offset=offset,
+        )
+        has_more = len(raw_rows) > limit
+        rows = raw_rows[:limit]
+        total = await _count_catalog_items(db, user=user, filters=filters)
+
+    return MarketplaceItemsPage(
+        items=await _project_items(db, rows, user),
+        limit=limit,
+        offset=offset,
+        total=total,
+        has_more=has_more,
+        next_offset=offset + limit if has_more else None,
+    )
 
 
 async def get_item(
@@ -440,6 +619,7 @@ __all__ = [
     "get_item",
     "get_version",
     "list_items",
+    "list_items_page",
     "list_versions",
     "project_item",
 ]

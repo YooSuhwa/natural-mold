@@ -13,7 +13,7 @@ import {
   ChevronRightIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useAgents } from '@/lib/hooks/use-agents'
+import { useAgentSummaries } from '@/lib/hooks/use-agents'
 import { useSession } from '@/lib/auth/session'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -29,7 +29,7 @@ import { AgentCard } from '@/components/agent/agent-card'
 import { AgentCardSkeleton } from '@/components/agent/agent-card-skeleton'
 import { EmptyState } from '@/components/shared/empty-state'
 import { cn } from '@/lib/utils'
-import type { Agent } from '@/lib/types'
+import type { AgentSummary } from '@/lib/types'
 
 type SortKey = 'latest' | 'name' | 'favorite'
 
@@ -51,7 +51,7 @@ function pickGreetingKey(date: Date = new Date()): GreetingKey {
 
 export default function DashboardPage() {
   const t = useTranslations('dashboard')
-  const { data: agents, isLoading: agentsLoading } = useAgents()
+  const { data: agents, isLoading: agentsLoading } = useAgentSummaries()
   const { data: user } = useSession()
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortKey>('latest')
@@ -69,7 +69,7 @@ export default function DashboardPage() {
 
   const filteredAgents = useMemo(() => {
     if (!agents) return []
-    let result: Agent[] = agents
+    let result: AgentSummary[] = agents
 
     if (search.trim()) {
       const q = search.trim().toLowerCase()
@@ -89,7 +89,9 @@ export default function DashboardPage() {
       if (sortBy === 'favorite') {
         if (a.is_favorite !== b.is_favorite) return a.is_favorite ? -1 : 1
       }
-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      const aTime = new Date(a.last_used_at ?? a.updated_at).getTime()
+      const bTime = new Date(b.last_used_at ?? b.updated_at).getTime()
+      return bTime - aTime
     })
 
     return result

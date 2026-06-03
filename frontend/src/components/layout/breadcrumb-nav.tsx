@@ -6,7 +6,7 @@ import { ChevronRightIcon, HomeIcon } from 'lucide-react'
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { useAgent } from '@/lib/hooks/use-agents'
-import { useConversations } from '@/lib/hooks/use-conversations'
+import { useConversationPages } from '@/lib/hooks/use-conversations'
 import { useMarketplaceItem } from '@/lib/hooks/use-marketplace'
 
 const ROUTE_LABELS: Record<string, string> = {
@@ -39,8 +39,10 @@ function ConversationTitle({
   agentId: string
   conversationId: string
 }) {
-  const { data: conversations } = useConversations(agentId)
-  const conv = conversations?.find((c) => c.id === conversationId)
+  const { data: conversationPages } = useConversationPages(agentId, { limit: 30 })
+  const conv = conversationPages?.pages
+    .flatMap((page) => page.items)
+    .find((c) => c.id === conversationId)
   return <>{conv?.title ?? conversationId}</>
 }
 

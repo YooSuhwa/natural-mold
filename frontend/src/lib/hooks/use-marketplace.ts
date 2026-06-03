@@ -25,6 +25,15 @@ export function useMarketplaceItems(filters?: MarketplaceListFilters) {
   })
 }
 
+export function useMarketplaceItemsPage(filters?: MarketplaceListFilters, enabled = true) {
+  return useQuery({
+    queryKey: ['marketplace', 'items', 'page', filters ?? {}],
+    queryFn: () => marketplaceApi.page(filters),
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
 export function useMarketplaceItem(itemId: string | null | undefined) {
   return useQuery({
     queryKey: ['marketplace', 'items', itemId],

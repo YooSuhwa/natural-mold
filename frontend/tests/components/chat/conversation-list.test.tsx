@@ -54,9 +54,11 @@ const mockConversations = [
 ]
 
 const mockUseConversations = vi.fn()
+const mockUseConversationPages = vi.fn()
 
 vi.mock('@/lib/hooks/use-conversations', () => ({
   useConversations: (...args: unknown[]) => mockUseConversations(...args),
+  useConversationPages: (...args: unknown[]) => mockUseConversationPages(...args),
   useCreateConversation: () => ({
     mutateAsync: vi.fn().mockResolvedValue({ id: 'conv-new' }),
     isPending: false,
@@ -77,7 +79,14 @@ vi.mock('@/components/shared/delete-confirm-dialog', () => ({
 
 describe('ConversationList', () => {
   beforeEach(() => {
-    mockUseConversations.mockReturnValue({ data: mockConversations, isLoading: false })
+    mockUseConversations.mockReturnValue({ data: [], isLoading: false })
+    mockUseConversationPages.mockReturnValue({
+      data: { pages: [{ items: mockConversations, next_cursor: null, has_more: false }] },
+      isLoading: false,
+      hasNextPage: false,
+      fetchNextPage: vi.fn(),
+      isFetchingNextPage: false,
+    })
   })
 
   it('renders agent name in card header', () => {
@@ -130,7 +139,13 @@ describe('ConversationList', () => {
   })
 
   it('shows loading skeletons initially', () => {
-    mockUseConversations.mockReturnValue({ data: undefined, isLoading: true })
+    mockUseConversationPages.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      hasNextPage: false,
+      fetchNextPage: vi.fn(),
+      isFetchingNextPage: false,
+    })
     const { container } = render(<ConversationList agentId="agent-1" />)
     const skeletons = container.querySelectorAll("[data-slot='skeleton']")
     expect(skeletons.length).toBeGreaterThan(0)
@@ -150,5 +165,23 @@ describe('ConversationList', () => {
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith('/agents/agent-1/conversations/conv-new')
     })
+  })
+
+  it('loads another server page when more conversations are available', async () => {
+    const user = userEvent.setup()
+    const fetchNextPage = vi.fn()
+    mockUseConversationPages.mockReturnValue({
+      data: { pages: [{ items: mockConversations, next_cursor: 'next', has_more: true }] },
+      isLoading: false,
+      hasNextPage: true,
+      fetchNextPage,
+      isFetchingNextPage: false,
+    })
+
+    render(<ConversationList agentId="agent-1" />)
+
+    await user.click(screen.getByRole('button', { name: '더 보기' }))
+
+    expect(fetchNextPage).toHaveBeenCalled()
   })
 })

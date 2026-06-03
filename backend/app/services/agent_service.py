@@ -75,6 +75,93 @@ async def list_agents(db: AsyncSession, user_id: uuid.UUID) -> list[Agent]:
     return agents
 
 
+async def list_agent_summaries(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
+    """List user's agents as lean dashboard/sidebar summary rows."""
+
+    from app.models.conversation import Conversation
+
+    user_agent_ids = select(Agent.id).where(Agent.user_id == user_id).subquery()
+
+    conversation_summary = (
+        select(
+            Conversation.agent_id.label("agent_id"),
+            func.max(Conversation.updated_at).label("last_used_at"),
+            func.coalesce(func.sum(Conversation.unread_count), 0).label("unread_count"),
+        )
+        .where(Conversation.agent_id.in_(select(user_agent_ids.c.id)))
+        .group_by(Conversation.agent_id)
+        .subquery()
+    )
+    tool_summary = (
+        select(
+            AgentToolLink.agent_id.label("agent_id"),
+            func.count(AgentToolLink.tool_id).label("tool_count"),
+        )
+        .group_by(AgentToolLink.agent_id)
+        .subquery()
+    )
+    mcp_tool_summary = (
+        select(
+            AgentMcpToolLink.agent_id.label("agent_id"),
+            func.count(AgentMcpToolLink.mcp_tool_id).label("mcp_tool_count"),
+        )
+        .group_by(AgentMcpToolLink.agent_id)
+        .subquery()
+    )
+
+    result = await db.execute(
+        select(
+            Agent.id,
+            Agent.name,
+            Agent.description,
+            Agent.status,
+            Agent.is_favorite,
+            Agent.image_path,
+            Agent.model_fallback_list,
+            Agent.created_at,
+            Agent.updated_at,
+            Model.display_name.label("model_display_name"),
+            conversation_summary.c.last_used_at,
+            conversation_summary.c.unread_count,
+            tool_summary.c.tool_count,
+            mcp_tool_summary.c.mcp_tool_count,
+        )
+        .join(Model, Agent.model_id == Model.id, isouter=True)
+        .outerjoin(conversation_summary, Agent.id == conversation_summary.c.agent_id)
+        .outerjoin(tool_summary, Agent.id == tool_summary.c.agent_id)
+        .outerjoin(mcp_tool_summary, Agent.id == mcp_tool_summary.c.agent_id)
+        .where(Agent.user_id == user_id)
+        .order_by(func.coalesce(conversation_summary.c.last_used_at, Agent.created_at).desc())
+    )
+
+    summaries: list[dict] = []
+    for row in result.mappings():
+        tool_count = int(row["tool_count"] or 0) + int(row["mcp_tool_count"] or 0)
+        image_url = (
+            f"/api/agents/{row['id']}/image?t={int(row['updated_at'].timestamp())}"
+            if row["image_path"]
+            else None
+        )
+        summaries.append(
+            {
+                "id": row["id"],
+                "name": row["name"],
+                "description": row["description"],
+                "status": row["status"],
+                "is_favorite": row["is_favorite"],
+                "image_url": image_url,
+                "model_display_name": row["model_display_name"],
+                "tool_count": tool_count,
+                "fallback_count": len(row["model_fallback_list"] or []),
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "last_used_at": row["last_used_at"],
+                "unread_count": int(row["unread_count"] or 0),
+            }
+        )
+    return summaries
+
+
 async def get_agent(db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -> Agent | None:
     result = await db.execute(
         select(Agent)

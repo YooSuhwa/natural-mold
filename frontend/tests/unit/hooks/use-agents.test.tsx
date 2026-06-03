@@ -3,12 +3,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import {
   useAgents,
+  useAgentSummaries,
   useAgent,
   useCreateAgent,
   useUpdateAgent,
   useDeleteAgent,
 } from '@/lib/hooks/use-agents'
-import { mockAgentList, mockAgent } from '../../mocks/fixtures'
+import { mockAgentList, mockAgent, mockAgentSummaryList } from '../../mocks/fixtures'
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -31,6 +32,15 @@ describe('useAgents', () => {
   it('returns loading state initially', () => {
     const { result } = renderHook(() => useAgents(), { wrapper: createWrapper() })
     expect(result.current.isLoading).toBe(true)
+  })
+})
+
+describe('useAgentSummaries', () => {
+  it('fetches lean agent summary list', async () => {
+    const { result } = renderHook(() => useAgentSummaries(), { wrapper: createWrapper() })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual(mockAgentSummaryList)
   })
 })
 

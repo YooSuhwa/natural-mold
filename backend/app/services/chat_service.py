@@ -14,12 +14,14 @@ preserved to keep those callers thin.
 
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, selectinload
 
@@ -49,8 +51,10 @@ __all__ = [
     "get_conversation",
     "get_owned_conversation",
     "get_owned_conversation_with_agent",
+    "is_agent_owned_by_user",
     "link_attachments_to_conversation",
     "list_conversations",
+    "list_conversations_page",
     "list_messages_from_checkpointer",
     "mark_conversation_read",
     "maybe_set_auto_title",
@@ -72,6 +76,84 @@ async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conv
         .order_by(Conversation.is_pinned.desc(), Conversation.updated_at.desc())
     )
     return list(result.scalars().all())
+
+
+async def is_agent_owned_by_user(
+    db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    result = await db.execute(
+        select(Agent.id).where(Agent.id == agent_id, Agent.user_id == user_id).limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+def _encode_conversation_cursor(conversation: Conversation) -> str:
+    payload = {
+        "is_pinned": bool(conversation.is_pinned),
+        "updated_at": conversation.updated_at.isoformat(),
+        "id": str(conversation.id),
+    }
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_conversation_cursor(cursor: str) -> tuple[bool, datetime, uuid.UUID]:
+    padded = cursor + "=" * (-len(cursor) % 4)
+    try:
+        payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+        return (
+            bool(payload["is_pinned"]),
+            datetime.fromisoformat(str(payload["updated_at"])),
+            uuid.UUID(str(payload["id"])),
+        )
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid conversation cursor") from exc
+
+
+async def list_conversations_page(
+    db: AsyncSession,
+    agent_id: uuid.UUID,
+    *,
+    limit: int,
+    cursor: str | None = None,
+    q: str | None = None,
+) -> tuple[list[Conversation], str | None, bool]:
+    query = select(Conversation).where(Conversation.agent_id == agent_id)
+
+    search = (q or "").strip()
+    if search:
+        query = query.where(
+            func.lower(func.coalesce(Conversation.title, "")).like(
+                f"%{search.lower()}%"
+            )
+        )
+
+    if cursor:
+        is_pinned, updated_at, cursor_id = _decode_conversation_cursor(cursor)
+        same_bucket_after = and_(
+            Conversation.is_pinned == is_pinned,
+            or_(
+                Conversation.updated_at < updated_at,
+                and_(Conversation.updated_at == updated_at, Conversation.id < cursor_id),
+            ),
+        )
+        if is_pinned:
+            query = query.where(or_(Conversation.is_pinned.is_(False), same_bucket_after))
+        else:
+            query = query.where(same_bucket_after)
+
+    result = await db.execute(
+        query.order_by(
+            Conversation.is_pinned.desc(),
+            Conversation.updated_at.desc(),
+            Conversation.id.desc(),
+        ).limit(limit + 1)
+    )
+    rows = list(result.scalars().all())
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = _encode_conversation_cursor(items[-1]) if has_more and items else None
+    return items, next_cursor, has_more
 
 
 async def create_conversation(
@@ -187,30 +269,20 @@ async def list_messages_from_checkpointer(
 
     messages = [node.message for node in tree.nodes]
 
-    new_stored: dict[str, str] = dict(conversation.message_timestamps or {})
+    stored_timestamps: dict[str, str] = dict(conversation.message_timestamps or {})
     timestamps: list[datetime] = []
-    now = datetime.now(UTC).replace(tzinfo=None)
-    changed = False
+    fallback_base = conversation.created_at
 
     for idx, msg in enumerate(messages):
         msg_uuid = parse_msg_id(getattr(msg, "id", None), conversation.id, idx)
         key = str(msg_uuid)
-        iso = new_stored.get(key)
-        if iso:
-            ts = datetime.fromisoformat(iso)
-        else:
-            ts = now + timedelta(milliseconds=idx)
-            new_stored[key] = ts.isoformat()
-            changed = True
-        timestamps.append(ts)
-
-    if changed:
-        await db.execute(
-            update(Conversation)
-            .where(Conversation.id == conversation.id)
-            .values(message_timestamps=new_stored)
+        iso = stored_timestamps.get(key)
+        ts = (
+            datetime.fromisoformat(iso)
+            if iso
+            else fallback_base + timedelta(milliseconds=idx)
         )
-        await db.commit()
+        timestamps.append(ts)
 
     # W7-4 — conversation의 agent에 연결된 model 단가를 한 번 조회해 넘긴다.
     # 메시지마다 model이 다를 수 있으나(fallback chain) 단순화 — 95% 케이스인
@@ -560,6 +632,25 @@ async def build_tools_config(
     """
 
     configs: list[dict[str, Any]] = []
+    credential_cache: dict[uuid.UUID, dict[str, Any] | None] = {}
+
+    async def decrypt_cached(credential: Any) -> dict[str, Any] | None:
+        cached = credential_cache.get(credential.id)
+        if credential.id in credential_cache:
+            return cached
+        try:
+            cached = await credential_service.decrypt_with_external(
+                credential.data_encrypted
+            )
+        except Exception:  # noqa: BLE001 — surface as missing creds, never crash chat
+            logger.exception(
+                "credential decryption failed for credential %s",
+                credential.id,
+            )
+            cached = None
+        credential_cache[credential.id] = cached
+        return cached
+
     for link in agent.tool_links:
         tool = link.tool
         if tool is None or not tool.enabled:
@@ -568,17 +659,7 @@ async def build_tools_config(
         credentials: dict[str, Any] | None = None
         credential = getattr(tool, "credential", None)
         if credential is not None:
-            try:
-                credentials = await credential_service.decrypt_with_external(
-                    credential.data_encrypted
-                )
-            except Exception:  # noqa: BLE001 — surface as missing creds, never crash chat
-                logger.exception(
-                    "credential decryption failed for tool %s (credential %s)",
-                    tool.id,
-                    credential.id,
-                )
-                credentials = None
+            credentials = await decrypt_cached(credential)
 
         configs.append(
             {
@@ -608,12 +689,7 @@ async def build_tools_config(
 
         mcp_credentials: dict[str, Any] | None = None
         if server.credential is not None:
-            try:
-                mcp_credentials = await credential_service.decrypt_with_external(
-                    server.credential.data_encrypted
-                )
-            except Exception:  # noqa: BLE001
-                logger.exception("credential decryption failed for mcp server %s", server.id)
+            mcp_credentials = await decrypt_cached(server.credential)
 
         configs.append(
             {

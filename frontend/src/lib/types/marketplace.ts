@@ -141,6 +141,15 @@ export interface MarketplaceItem {
   installation: InstallationSummary
 }
 
+export interface MarketplaceItemsPage {
+  items: MarketplaceItem[]
+  limit: number
+  offset: number
+  total?: number | null
+  has_more: boolean
+  next_offset?: number | null
+}
+
 // ---------------------------------------------------------------------------
 // Credential requirements (skill side + publish side)
 // ---------------------------------------------------------------------------

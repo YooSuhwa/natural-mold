@@ -11,13 +11,68 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncConnection
 
 from app.config import settings
-from app.database import async_session
+from app.database import async_session, engine
 
 logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
+_scheduler_leader_connection: AsyncConnection | None = None
+_SCHEDULER_ADVISORY_LOCK_ID = 0x4D4F4C4459534348
+
+
+async def try_acquire_scheduler_leader() -> bool:
+    """Acquire a process-level scheduler leader lock.
+
+    PostgreSQL uses a session advisory lock so only one backend process
+    registers APScheduler jobs. Non-Postgres test/dev engines are no-op
+    leaders.
+    """
+
+    global _scheduler_leader_connection
+    if _scheduler_leader_connection is not None:
+        return True
+    if engine.dialect.name != "postgresql":
+        logger.info("Scheduler leader lock skipped for dialect=%s", engine.dialect.name)
+        return True
+
+    conn = await engine.connect()
+    acquired = bool(
+        (
+            await conn.execute(
+                text("select pg_try_advisory_lock(:lock_id)"),
+                {"lock_id": _SCHEDULER_ADVISORY_LOCK_ID},
+            )
+        ).scalar()
+    )
+    if not acquired:
+        await conn.close()
+        logger.warning("Scheduler leader lock not acquired; skipping scheduler jobs")
+        return False
+    _scheduler_leader_connection = conn
+    logger.info("Scheduler leader lock acquired")
+    return True
+
+
+async def release_scheduler_leader() -> None:
+    """Release the process-level scheduler leader lock if held."""
+
+    global _scheduler_leader_connection
+    conn = _scheduler_leader_connection
+    _scheduler_leader_connection = None
+    if conn is None:
+        return
+    try:
+        if engine.dialect.name == "postgresql":
+            await conn.execute(
+                text("select pg_advisory_unlock(:lock_id)"),
+                {"lock_id": _SCHEDULER_ADVISORY_LOCK_ID},
+            )
+    finally:
+        await conn.close()
 
 
 def get_scheduler() -> AsyncIOScheduler:
@@ -328,7 +383,10 @@ async def health_check_all_active() -> dict[str, int]:
     from app.services import health_check as health_check_service
 
     async with async_session() as db:
-        return await health_check_service.check_all_active(db)
+        return await health_check_service.check_all_active(
+            db,
+            session_factory=async_session,
+        )
 
 
 def register_health_check_job() -> None:

@@ -1276,6 +1276,8 @@
       "empty": "대화가 없습니다",
       "searchPlaceholder": "대화 검색",
       "searchEmpty": "검색 결과 없음",
+      "loadMore": "더 보기",
+      "loadingMore": "불러오는 중...",
       "editAgent": "에이전트 설정",
       "close": "대화 목록 닫기",
       "pinned": "즐겨찾기",

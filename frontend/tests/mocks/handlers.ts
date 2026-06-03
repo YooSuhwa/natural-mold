@@ -1,6 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import {
   mockAgentList,
+  mockAgentSummaryList,
   mockAgent,
   mockModelList,
   mockModel,
@@ -9,6 +10,7 @@ import {
   mockTemplateList,
   mockTemplate,
   mockConversationList,
+  mockConversationPage,
   mockConversation,
   mockMessageList,
   mockTriggerList,
@@ -24,6 +26,7 @@ import {
   mockMcpConnection,
   mockCredentialList,
   mockCredential,
+  mockMarketplaceItemsPage,
 } from './fixtures'
 
 const API_BASE = 'http://localhost:8001'
@@ -32,6 +35,10 @@ export const handlers = [
   // ── Agents ─────────────────────────────────────────────────────
   http.get(`${API_BASE}/api/agents`, () => {
     return HttpResponse.json(mockAgentList)
+  }),
+
+  http.get(`${API_BASE}/api/agents/summary`, () => {
+    return HttpResponse.json(mockAgentSummaryList)
   }),
 
   http.get(`${API_BASE}/api/agents/:id`, ({ params }) => {
@@ -205,6 +212,10 @@ export const handlers = [
     return HttpResponse.json(mockConversationList)
   }),
 
+  http.get(`${API_BASE}/api/agents/:agentId/conversations/page`, () => {
+    return HttpResponse.json(mockConversationPage)
+  }),
+
   http.post(`${API_BASE}/api/agents/:agentId/conversations`, async ({ params, request }) => {
     const body = (await request.json()) as Record<string, unknown>
     return HttpResponse.json({
@@ -304,6 +315,15 @@ export const handlers = [
 
   http.get(`${API_BASE}/api/usage/summary`, () => {
     return HttpResponse.json(mockUsageSummary)
+  }),
+
+  // ── Marketplace ─────────────────────────────────────────────────
+  http.get(`${API_BASE}/api/marketplace/items/page`, () => {
+    return HttpResponse.json(mockMarketplaceItemsPage)
+  }),
+
+  http.get(`${API_BASE}/api/marketplace/items`, () => {
+    return HttpResponse.json(mockMarketplaceItemsPage.items)
   }),
 
   // ── Creation Session ───────────────────────────────────────────

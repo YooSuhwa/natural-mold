@@ -23,11 +23,15 @@ import { ImeSafeComposerInput } from './ime-safe-composer-input'
 import {
   BuilderAssistantName,
   BuilderAssistantSubtitle,
-  BuilderEditComposer,
   BuilderIconButton,
   BuilderMessageBubble,
   BuilderMessageText,
 } from './tool-ui/builder-primitives'
+import {
+  MessageEditComposerInput,
+  MessageEditComposerRoot,
+  useMessageEditComposerControls,
+} from './message-edit-composer'
 
 /**
  * Builder-variant 메시지/컴포저 오버라이드.
@@ -56,22 +60,30 @@ export function BuilderUserMessage({ metaRow }: { metaRow: React.ReactNode }) {
 
 export function BuilderUserEditComposer() {
   const t = useTranslations('chat.message')
+  const { canCancel, canSend, cancel } = useMessageEditComposerControls()
   return (
     <div className="flex justify-end">
       <div className="flex w-full max-w-[72%] flex-col items-end">
-        <ComposerPrimitive.Root asChild>
-          <BuilderEditComposer>
-            <ImeSafeComposerInput className="moldy-builder-edit-input" autoFocus />
-            <div className="flex items-center justify-end gap-1">
-              <ComposerPrimitive.Cancel className="moldy-builder-button moldy-builder-button-ghost h-7 px-2">
-                {t('editCancel')}
-              </ComposerPrimitive.Cancel>
-              <ComposerPrimitive.Send className="moldy-builder-button moldy-builder-button-primary h-7 px-2">
-                {t('editSave')}
-              </ComposerPrimitive.Send>
-            </div>
-          </BuilderEditComposer>
-        </ComposerPrimitive.Root>
+        <MessageEditComposerRoot className="moldy-builder-edit-composer">
+          <MessageEditComposerInput className="moldy-builder-edit-input" autoFocus />
+          <div className="flex items-center justify-end gap-1">
+            <button
+              type="button"
+              disabled={!canCancel}
+              onClick={cancel}
+              className="moldy-builder-button moldy-builder-button-ghost h-7 px-2 disabled:pointer-events-none disabled:opacity-50"
+            >
+              {t('editCancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={!canSend}
+              className="moldy-builder-button moldy-builder-button-primary h-7 px-2 disabled:pointer-events-none disabled:opacity-50"
+            >
+              {t('editSave')}
+            </button>
+          </div>
+        </MessageEditComposerRoot>
       </div>
     </div>
   )

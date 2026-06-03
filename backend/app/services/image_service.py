@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import functools
 import logging
@@ -26,6 +27,11 @@ _IMAGE_PROVIDER_BASE_URLS: dict[str, str] = {
     "openrouter": "https://openrouter.ai/api/v1",
     "openai": "https://api.openai.com/v1",
 }
+
+
+def _save_agent_image(save_path: Path, image_bytes: bytes) -> None:
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    save_path.write_bytes(image_bytes)
 
 
 def resolve_image_base_url(resolved: ResolvedSystemModel) -> str:
@@ -190,9 +196,8 @@ async def generate_agent_image(
     else:
         ext = "png"
     save_dir = Path(settings.agent_image_dir) / str(agent.id)
-    save_dir.mkdir(parents=True, exist_ok=True)
     save_path = save_dir / f"avatar.{ext}"
-    save_path.write_bytes(image_bytes)
+    await asyncio.to_thread(_save_agent_image, save_path, image_bytes)
 
     # Update DB
     agent.image_path = str(save_path)

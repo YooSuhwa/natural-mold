@@ -1,6 +1,6 @@
 import { render, screen, within } from '../test-utils'
 import MarketplaceCatalogPage from '@/app/marketplace/page'
-import type { MarketplaceItem } from '@/lib/types/marketplace'
+import type { MarketplaceItem, MarketplaceItemsPage } from '@/lib/types/marketplace'
 
 vi.mock('next/link', () => ({
   default: ({
@@ -26,11 +26,11 @@ vi.mock('@/components/marketplace/update-strategy-dialog', () => ({
   UpdateStrategyDialog: () => null,
 }))
 
-const mockUseMarketplaceItems = vi.fn()
+const mockUseMarketplaceItemsPage = vi.fn()
 const mockUseSession = vi.fn()
 
 vi.mock('@/lib/hooks/use-marketplace', () => ({
-  useMarketplaceItems: (...args: unknown[]) => mockUseMarketplaceItems(...args),
+  useMarketplaceItemsPage: (...args: unknown[]) => mockUseMarketplaceItemsPage(...args),
 }))
 
 vi.mock('@/lib/auth/session', () => ({
@@ -85,11 +85,18 @@ function marketplaceItem(overrides: Partial<MarketplaceItem> = {}): MarketplaceI
 describe('MarketplaceCatalogPage', () => {
   beforeEach(() => {
     mockUseSession.mockReturnValue({ data: { is_super_user: false } })
-    mockUseMarketplaceItems.mockReturnValue({
-      data: [
-        marketplaceItem(),
-        marketplaceItem({ id: 'item-2', name: '문서 요약', slug: 'document-summary' }),
-      ],
+    mockUseMarketplaceItemsPage.mockReturnValue({
+      data: {
+        items: [
+          marketplaceItem(),
+          marketplaceItem({ id: 'item-2', name: '문서 요약', slug: 'document-summary' }),
+        ],
+        limit: 24,
+        offset: 0,
+        total: 2,
+        has_more: false,
+        next_offset: null,
+      } satisfies MarketplaceItemsPage,
       isLoading: false,
     })
   })

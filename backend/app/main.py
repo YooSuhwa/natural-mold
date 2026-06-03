@@ -77,6 +77,8 @@ from app.scheduler import (
     register_mcp_health_job,
     register_refresh_token_gc_job,
     register_skill_runtime_cleanup_job,
+    release_scheduler_leader,
+    try_acquire_scheduler_leader,
 )
 from app.security.production_check import enforce_production_safety
 from app.seed.bootstrap_from_env import bootstrap_system_credentials
@@ -174,37 +176,42 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # without blocking agent runs. Must start before any hook is invoked.
     await spend_queue.start()
 
-    # Start scheduler and reload active triggers.
+    # Start scheduler and reload active triggers. In multi-process deploys,
+    # only the process holding the Postgres advisory lock registers jobs.
     scheduler = get_scheduler()
-    scheduler.start()
+    scheduler_is_leader = await try_acquire_scheduler_leader()
+    if scheduler_is_leader:
+        scheduler.start()
 
-    # Recurring credential key rotation (re-encrypts rows under stale keys).
-    register_credential_rotation_job()
-    # Recurring health check for active models / MCP servers.
-    register_health_check_job()
-    # Recurring multi-source model catalog rebuild.
-    register_catalog_update_job()
-    # Lightweight per-server MCP health polling (refreshes health_status only).
-    register_mcp_health_job()
-    # W3-out M4 — EventBroker GC (60s interval, TTL 300s).
-    register_broker_eviction_job()
-    # ADR-016 §4.2 — refresh-token whitelist GC (nightly).
-    register_refresh_token_gc_job()
-    # ADR-017 Slice E — per-thread skill runtime root cleanup
-    # (10m interval, 1h retention). Also run once at startup to clear
-    # anything left over from a previous server crash.
-    cleanup_skill_runtime_roots()
-    register_skill_runtime_cleanup_job()
+        # Recurring credential key rotation (re-encrypts rows under stale keys).
+        register_credential_rotation_job()
+        # Recurring health check for active models / MCP servers.
+        register_health_check_job()
+        # Recurring multi-source model catalog rebuild.
+        register_catalog_update_job()
+        # Lightweight per-server MCP health polling (refreshes health_status only).
+        register_mcp_health_job()
+        # W3-out M4 — EventBroker GC (60s interval, TTL 300s).
+        register_broker_eviction_job()
+        # ADR-016 §4.2 — refresh-token whitelist GC (nightly).
+        register_refresh_token_gc_job()
+        # ADR-017 Slice E — per-thread skill runtime root cleanup
+        # (10m interval, 1h retention). Also run once at startup to clear
+        # anything left over from a previous server crash.
+        cleanup_skill_runtime_roots()
+        register_skill_runtime_cleanup_job()
 
-    async with async_session() as db:
-        result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))
-        for trigger in result.scalars():
-            trigger.next_run_at = add_trigger_job(
-                trigger.id,
-                trigger.trigger_type,
-                {**trigger.schedule_config, "timezone": trigger.timezone},
+        async with async_session() as db:
+            result = await db.execute(
+                select(AgentTrigger).where(AgentTrigger.status == "active")
             )
-        await db.commit()
+            for trigger in result.scalars():
+                trigger.next_run_at = add_trigger_job(
+                    trigger.id,
+                    trigger.trigger_type,
+                    {**trigger.schedule_config, "timezone": trigger.timezone},
+                )
+            await db.commit()
 
     yield
     # Shutdown — order matters (rules/async-lifespan.md):
@@ -226,11 +233,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await asyncio.sleep(0)
 
     # 3. background scheduler 종료.
-    scheduler.shutdown(wait=False)
+    if scheduler.running:
+        scheduler.shutdown(wait=False)
+    await release_scheduler_leader()
 
     # 4. Drain the spend queue so in-flight aggregates make it to the DB
     # before the process exits. ``stop`` swallows its own errors.
     await spend_queue.stop()
+
+    from app.agent_runtime.tool_factory import close_tool_http_client
+
+    await close_tool_http_client()
 
     from app.agent_runtime.checkpointer import shutdown_checkpointer
 

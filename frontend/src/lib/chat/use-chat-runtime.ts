@@ -206,6 +206,13 @@ function createOptimisticMessage(
   }
 }
 
+const BACKEND_MESSAGE_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isBackendMessageId(id: string | null | undefined): id is string {
+  return typeof id === 'string' && BACKEND_MESSAGE_ID_PATTERN.test(id)
+}
+
 interface StreamFnOptions {
   /** Pre-uploaded attachment ids that should ride along with this message. */
   attachmentIds?: string[]
@@ -906,10 +913,7 @@ export function useChatRuntime({
       // Refetch race guard — optimistic id(`opt-…`)는 backend UUID 검증에서
       // 튕긴다(422). 이 경로는 refetch가 streamingMessages를 교체하지 못한
       // 상태에서 사용자가 곧장 편집을 눌렀을 때 발생한다. 새 turn으로 폴백.
-      const hasBackendId =
-        message.sourceId !== undefined &&
-        message.sourceId !== null &&
-        !message.sourceId.startsWith('opt-')
+      const hasBackendId = isBackendMessageId(message.sourceId)
       const useFork = conversationId && hasBackendId
       await _runStream(
         (signal, onRunId) =>
@@ -938,9 +942,10 @@ export function useChatRuntime({
           const merged = [...messages, ...streamingMessages]
           const idx = merged.findIndex((m) => m.id === parentId)
           const next = idx >= 0 ? merged[idx + 1] : undefined
-          // Optimistic id(`opt-…`)는 backend UUID 검증을 통과하지 못한다 — 빈
-          // targetMessageId로 폴백하면 backend가 최신 assistant tip을 자동 선택.
-          if (next?.role === 'assistant' && !next.id.startsWith('opt-')) {
+          // Client-only ids(`opt-…`, `stream-…`)는 backend UUID 검증을 통과하지
+          // 못한다 — 빈 targetMessageId로 폴백하면 backend가 최신 assistant tip을
+          // 자동 선택한다.
+          if (next?.role === 'assistant' && isBackendMessageId(next.id)) {
             targetMessageId = next.id
             // Index inside ``messages`` (not merged) for the cache truncate.
             assistantIdxInMessages = messages.findIndex((m) => m.id === next.id)

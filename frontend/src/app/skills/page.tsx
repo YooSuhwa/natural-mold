@@ -27,7 +27,7 @@ import {
   resourceMetaClassName,
   type ResourceTone,
 } from '@/lib/resource-tones'
-import type { Skill } from '@/lib/types/skill'
+import type { Skill, SkillKind } from '@/lib/types/skill'
 import { cn } from '@/lib/utils'
 
 type CreateTab = 'text' | 'package' | 'scratch'
@@ -42,11 +42,18 @@ function formatDate(value: string | null): string {
 
 export default function SkillsPage() {
   const t = useTranslations('skill')
-  const { data: skills, isLoading } = useSkills()
   const [createOpen, setCreateOpen] = useState(false)
   const [createTab, setCreateTab] = useState<CreateTab>('text')
   const [activeTab, setActiveTab] = useState<SkillTab>(ALL_TAB)
   const [search, setSearch] = useState('')
+  const normalizedSearch = search.trim().toLowerCase()
+  const skillQueryParams = useMemo(() => {
+    const params: { kind?: SkillKind; q?: string } = {}
+    if (activeTab !== ALL_TAB) params.kind = activeTab
+    if (normalizedSearch) params.q = normalizedSearch
+    return Object.keys(params).length > 0 ? params : undefined
+  }, [activeTab, normalizedSearch])
+  const { data: skills, isLoading } = useSkills(skillQueryParams)
   // Deep-link from /marketplace Open button: `/skills?detailId=...`.
   // useState lazy initializer runs once at mount (post-hydration on client,
   // safely returns null during SSR/prerender). Avoids effect+setState pattern
@@ -63,7 +70,6 @@ export default function SkillsPage() {
   }
 
   const data = useMemo(() => skills ?? [], [skills])
-  const normalizedSearch = search.trim().toLowerCase()
 
   const filteredSkills = useMemo(() => {
     return data.filter((skill) => {

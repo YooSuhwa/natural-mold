@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String
+from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func
 
@@ -75,4 +75,41 @@ class MessageEvent(Base):
         server_default=func.now(),
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         onupdate=lambda: datetime.now(UTC).replace(tzinfo=None),
+    )
+
+
+class MessageEventChunk(Base):
+    """Append-only payload chunks for a streaming assistant turn."""
+
+    __tablename__ = "message_event_chunks"
+    __table_args__ = (
+        UniqueConstraint(
+            "message_event_id",
+            "first_event_id",
+            name="uq_message_event_chunks_event_first_id",
+        ),
+        Index("ix_message_event_chunks_message_seq", "message_event_id", "seq_start"),
+        Index("ix_message_event_chunks_assistant_seq", "assistant_msg_id", "seq_start"),
+        Index("ix_message_event_chunks_conversation_created", "conversation_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    message_event_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("message_events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("conversations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    assistant_msg_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    seq_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    seq_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    first_event_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    last_event_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    event_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    events: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(UTC).replace(tzinfo=None),
+        nullable=False,
     )

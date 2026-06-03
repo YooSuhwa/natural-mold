@@ -1,11 +1,13 @@
 'use client'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
-import type { Conversation, ConversationUpdateRequest } from '@/lib/types'
+import type { Conversation, ConversationPageParams, ConversationUpdateRequest } from '@/lib/types'
 
 export const conversationKeys = {
   list: (agentId: string) => ['agents', agentId, 'conversations'] as const,
+  pages: (agentId: string, params: Omit<ConversationPageParams, 'cursor'>) =>
+    ['agents', agentId, 'conversations', 'page', params] as const,
   messages: (conversationId: string) => ['conversations', conversationId, 'messages'] as const,
   debugTraces: (conversationId: string) =>
     ['conversations', conversationId, 'debug-traces'] as const,
@@ -17,6 +19,27 @@ export function useConversations(agentId: string) {
   return useQuery({
     queryKey: conversationKeys.list(agentId),
     queryFn: () => conversationsApi.list(agentId),
+    enabled: !!agentId,
+  })
+}
+
+export function useConversationPages(
+  agentId: string,
+  params: Omit<ConversationPageParams, 'cursor'> = {},
+) {
+  const pageParams = {
+    limit: params.limit ?? 30,
+    q: params.q?.trim() || undefined,
+  }
+  return useInfiniteQuery({
+    queryKey: conversationKeys.pages(agentId, pageParams),
+    queryFn: ({ pageParam }) =>
+      conversationsApi.page(agentId, {
+        ...pageParams,
+        cursor: pageParam,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled: !!agentId,
   })
 }

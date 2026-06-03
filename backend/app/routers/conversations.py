@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -31,6 +33,7 @@ from app.models.model import Model
 from app.observability.langfuse import LangfuseTraceRecord, is_langfuse_enabled
 from app.schemas.conversation import (
     ConversationCreate,
+    ConversationListEnvelope,
     ConversationResponse,
     ConversationUpdate,
     DebugTraceDetailResponse,
@@ -44,7 +47,7 @@ from app.schemas.conversation import (
     TurnTraceResponse,
 )
 from app.services import chat_service, thread_branch_service, trace_debug_service, trace_storage
-from app.services.image_preview import get_or_create_image_preview
+from app.services.image_preview import get_or_create_image_preview_async
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +59,31 @@ _SSE_HEADERS = {
     "X-Accel-Buffering": "no",
 }
 
+_REGENERATE_PREVIOUS_ANSWER_LIMIT = 1200
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _with_regeneration_guidance(cfg: AgentConfig, target_msg: Any) -> AgentConfig:
+    """Make retry visibly useful without polluting persisted thread messages."""
+
+    from app.agent_runtime.message_utils import content_to_text
+
+    previous_answer = content_to_text(getattr(target_msg, "content", "")).strip()
+    if len(previous_answer) > _REGENERATE_PREVIOUS_ANSWER_LIMIT:
+        previous_answer = previous_answer[:_REGENERATE_PREVIOUS_ANSWER_LIMIT].rstrip() + "\n..."
+
+    guidance = (
+        "\n\n## 재생성 요청\n"
+        "사용자가 방금 assistant 답변 재생성을 요청했습니다. 같은 사용자 메시지에 대해 "
+        "정확성은 유지하되, 이전 답변과 다른 표현, 구조, 관점의 대안 답변을 작성하세요. "
+        "이전 답변을 그대로 반복하거나 문장 구조를 거의 복사하지 마세요."
+    )
+    if previous_answer:
+        guidance += f"\n\n### 이전 assistant 답변\n{previous_answer}"
+    return replace(cfg, system_prompt=f"{cfg.system_prompt}{guidance}")
 
 
 async def _resolve_agent_context(
@@ -425,6 +450,37 @@ async def _finalize_trace(
 # ---------------------------------------------------------------------------
 # CRUD
 # ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/api/agents/{agent_id}/conversations/page",
+    response_model=ConversationListEnvelope,
+)
+async def list_conversations_page(
+    agent_id: uuid.UUID,
+    limit: int = Query(30, ge=1, le=100),
+    cursor: str | None = Query(None),
+    q: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    if not await chat_service.is_agent_owned_by_user(db, agent_id, user.id):
+        raise agent_not_found()
+    try:
+        items, next_cursor, has_more = await chat_service.list_conversations_page(
+            db,
+            agent_id,
+            limit=limit,
+            cursor=cursor,
+            q=q,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid cursor") from exc
+    return ConversationListEnvelope(
+        items=items,
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
 
 
 @router.get(
@@ -1164,6 +1220,7 @@ async def regenerate_message(
     )
 
     cfg = await _resolve_agent_context(db, conversation_id, user, checkpoint_id=checkpoint_id)
+    cfg = _with_regeneration_guidance(cfg, target_msg)
     await chat_service.touch_conversation(db, conversation_id)
     # Regenerate creates a new leaf — drop any prior user-pinned branch.
     await chat_service.clear_active_branch_override(db, conversation_id)
@@ -1245,11 +1302,12 @@ async def get_conversation_file(
 
     base = Path(settings.conversation_output_dir) / str(conversation_id)
     target = (base / file_path).resolve()
-    if not target.is_relative_to(base.resolve()) or not target.is_file():
+    target_exists = await asyncio.to_thread(target.is_file)
+    if not target.is_relative_to(base.resolve()) or not target_exists:
         raise file_not_found()
     if variant == "preview":
         resolved_base = base.resolve()
-        preview = get_or_create_image_preview(
+        preview = await get_or_create_image_preview_async(
             target,
             cache_dir=resolved_base / ".previews",
             cache_name=target.relative_to(resolved_base).as_posix(),
