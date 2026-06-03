@@ -1,6 +1,8 @@
 import { apiFetch } from './client'
 import type {
   Conversation,
+  ConversationListEnvelope,
+  ConversationPageParams,
   ConversationUpdateRequest,
   DebugTraceDetailResponse,
   DebugTraceListResponse,
@@ -8,8 +10,21 @@ import type {
   MessagesEnvelope,
 } from '@/lib/types'
 
+function buildConversationPageSearch(params?: ConversationPageParams): string {
+  const search = new URLSearchParams()
+  if (typeof params?.limit === 'number') search.set('limit', String(params.limit))
+  if (params?.cursor) search.set('cursor', params.cursor)
+  if (params?.q) search.set('q', params.q)
+  const qs = search.toString()
+  return qs ? `?${qs}` : ''
+}
+
 export const conversationsApi = {
   list: (agentId: string) => apiFetch<Conversation[]>(`/api/agents/${agentId}/conversations`),
+  page: (agentId: string, params?: ConversationPageParams) =>
+    apiFetch<ConversationListEnvelope>(
+      `/api/agents/${agentId}/conversations/page${buildConversationPageSearch(params)}`,
+    ),
   create: (agentId: string, title?: string) =>
     apiFetch<Conversation>(`/api/agents/${agentId}/conversations`, {
       method: 'POST',

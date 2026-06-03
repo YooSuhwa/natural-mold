@@ -90,6 +90,39 @@ def _build_runtime_args_schema(
 
 logger = logging.getLogger(__name__)
 
+_TOOL_HTTP_CLIENT: httpx.AsyncClient | None = None
+
+
+def get_tool_http_client() -> httpx.AsyncClient:
+    """Return the shared outbound client used by runtime tools."""
+
+    global _TOOL_HTTP_CLIENT
+    if _TOOL_HTTP_CLIENT is None or getattr(_TOOL_HTTP_CLIENT, "is_closed", False) is True:
+        _TOOL_HTTP_CLIENT = httpx.AsyncClient(
+            timeout=settings.tool_call_timeout,
+            verify=get_outbound_ssl_context(),
+            follow_redirects=True,
+            headers={"User-Agent": "Mozilla/5.0 (Moldy Agent Builder)"},
+        )
+    return _TOOL_HTTP_CLIENT
+
+
+async def close_tool_http_client() -> None:
+    """Close and clear the shared runtime-tool HTTP client."""
+
+    global _TOOL_HTTP_CLIENT
+    client = _TOOL_HTTP_CLIENT
+    _TOOL_HTTP_CLIENT = None
+    if client is not None and getattr(client, "is_closed", False) is not True:
+        await client.aclose()
+
+
+def reset_tool_http_client_for_tests() -> None:
+    """Clear the cached client without awaiting close; test-only helper."""
+
+    global _TOOL_HTTP_CLIENT
+    _TOOL_HTTP_CLIENT = None
+
 
 # ---------------------------------------------------------------------------
 # Built-in helpers (no API key required)
@@ -121,14 +154,9 @@ def _build_web_scraper_tool() -> BaseTool:
             return "Error: beautifulsoup4 패키지가 설치되지 않았습니다."
 
         try:
-            async with httpx.AsyncClient(
-                timeout=settings.tool_call_timeout,
-                verify=get_outbound_ssl_context(),
-                follow_redirects=True,
-                headers={"User-Agent": "Mozilla/5.0 (Moldy Agent Builder)"},
-            ) as client:
-                resp = await client.get(url)
-                resp.raise_for_status()
+            client = get_tool_http_client()
+            resp = await client.get(url)
+            resp.raise_for_status()
         except httpx.HTTPError as exc:
             return f"Error: 페이지를 가져올 수 없습니다 — {exc}"
 
@@ -346,16 +374,13 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
             await hooks.run_pre(hook_ctx)
         started = time.monotonic()
         try:
-            async with httpx.AsyncClient(
-                timeout=settings.tool_call_timeout,
-                verify=get_outbound_ssl_context(),
-            ) as client:
-                run_ctx = ToolRunContext(
-                    parameters=merged,
-                    credentials=credentials,
-                    http_client=client,
-                )
-                output = await runner(run_ctx)
+            client = get_tool_http_client()
+            run_ctx = ToolRunContext(
+                parameters=merged,
+                credentials=credentials,
+                http_client=client,
+            )
+            output = await runner(run_ctx)
         except Exception as exc:
             if hook_ctx is not None:
                 await hooks.run_failure(hook_ctx, exc)
@@ -390,4 +415,9 @@ def create_tool_for_runtime(tool_config: dict[str, Any]) -> BaseTool | None:
     return attach_tool_risk(tool, risk_from_definition(definition))
 
 
-__all__ = ["create_builtin_tool", "create_tool_for_runtime"]
+__all__ = [
+    "close_tool_http_client",
+    "create_builtin_tool",
+    "create_tool_for_runtime",
+    "get_tool_http_client",
+]

@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from '../test-utils'
 import AgentPage from '@/app/agents/[agentId]/page'
-import { mockConversationList } from '../mocks/fixtures'
+import { mockConversationPage } from '../mocks/fixtures'
 
 vi.mock('next/link', () => ({
   default: ({
@@ -26,13 +26,13 @@ vi.mock('next/navigation', () => ({
 }))
 
 const mockConversationsApi = {
-  list: vi.fn(),
+  page: vi.fn(),
   create: vi.fn(),
 }
 
 vi.mock('@/lib/api/conversations', () => ({
   conversationsApi: {
-    list: (...args: unknown[]) => mockConversationsApi.list(...args),
+    page: (...args: unknown[]) => mockConversationsApi.page(...args),
     create: (...args: unknown[]) => mockConversationsApi.create(...args),
   },
 }))
@@ -52,22 +52,27 @@ vi.mock('react', async () => {
 describe('AgentPage (redirect)', () => {
   beforeEach(() => {
     mockReplace.mockClear()
-    mockConversationsApi.list.mockClear()
+    mockConversationsApi.page.mockClear()
     mockConversationsApi.create.mockClear()
   })
 
   it('redirects to latest conversation when conversations exist', async () => {
-    mockConversationsApi.list.mockResolvedValue(mockConversationList)
+    mockConversationsApi.page.mockResolvedValue(mockConversationPage)
 
     render(<AgentPage params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>} />)
 
     await waitFor(() => {
+      expect(mockConversationsApi.page).toHaveBeenCalledWith('agent-1', { limit: 1 })
       expect(mockReplace).toHaveBeenCalledWith('/agents/agent-1/conversations/conv-1')
     })
   })
 
   it('creates a new conversation and redirects when none exist', async () => {
-    mockConversationsApi.list.mockResolvedValue([])
+    mockConversationsApi.page.mockResolvedValue({
+      items: [],
+      next_cursor: null,
+      has_more: false,
+    })
     mockConversationsApi.create.mockResolvedValue({
       id: 'conv-new',
       agent_id: 'agent-1',
@@ -82,7 +87,7 @@ describe('AgentPage (redirect)', () => {
   })
 
   it('shows error message when API fails', async () => {
-    mockConversationsApi.list.mockRejectedValue(new Error('fail'))
+    mockConversationsApi.page.mockRejectedValue(new Error('fail'))
 
     render(<AgentPage params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>} />)
 

@@ -242,6 +242,50 @@ class TestDefaultListing:
             )
 
 
+@pytest.mark.asyncio
+async def test_admin_set_item_listed_returns_projected_item(
+    seeded: dict[str, MarketplaceItem | uuid.UUID],
+) -> None:
+    item = seeded["public_unlisted"]
+    assert isinstance(item, MarketplaceItem)
+
+    async with await _client_for_user(_user(SUPER_ID, is_super=True)) as client:
+        resp = await client.post(
+            f"/api/marketplace/admin/items/{item.id}/listed",
+            json={"is_listed": True},
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["id"] == str(item.id)
+    assert body["is_listed"] is True
+
+
+@pytest.mark.asyncio
+async def test_items_page_returns_envelope_before_uuid_detail_route(
+    seeded: dict[str, MarketplaceItem | uuid.UUID],
+) -> None:
+    async with await _client_for_user(_user(REGULAR_ID)) as client:
+        resp = await client.get("/api/marketplace/items/page?limit=2&offset=0")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert set(body) == {
+        "items",
+        "limit",
+        "offset",
+        "total",
+        "has_more",
+        "next_offset",
+    }
+    assert body["limit"] == 2
+    assert body["offset"] == 0
+    assert body["total"] == 4
+    assert body["has_more"] is True
+    assert body["next_offset"] == 2
+    assert len(body["items"]) == 2
+
+
 # ===========================================================================
 # Explicit ?is_listed=true|false
 # ===========================================================================

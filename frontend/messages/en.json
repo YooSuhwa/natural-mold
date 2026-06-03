@@ -1297,6 +1297,8 @@
       "empty": "No items yet.",
       "searchPlaceholder": "Search Placeholder",
       "searchEmpty": "Search Empty",
+      "loadMore": "Load more",
+      "loadingMore": "Loading...",
       "editAgent": "Edit Agent",
       "close": "Close",
       "pinned": "Favorite",

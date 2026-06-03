@@ -888,9 +888,20 @@ async def _prepare_agent(
     (a) ``ask_user`` 도구 미주입(호출 시 영원히 hang), (b) HiTL ``interrupt_on``
     을 None 으로 강제 override 하여 위험 도구 승인 게이트도 자동 통과.
     """
+    prepare_started = time.perf_counter()
+    last_mark = prepare_started
+    timings: dict[str, int] = {}
+
+    def mark_timing(name: str) -> None:
+        nonlocal last_mark
+        now = time.perf_counter()
+        timings[name] = int((now - last_mark) * 1000)
+        last_mark = now
+
     system_prompt = cfg.system_prompt
     model_candidates = _build_model_candidates(cfg)
     model = model_candidates[0]
+    mark_timing("model_ms")
 
     # 1. 도구 생성 — 단일 경로 (definition_key + credentials).
     # MCP는 향후 별도 mcp_configs 키로 전달 (PoC 단계에서는 비어있음).
@@ -922,6 +933,7 @@ async def _prepare_agent(
     mcp_tools = await _build_mcp_tools(mcp_configs)
     langchain_tools.extend(mcp_tools)
     _append_temporal_tools(langchain_tools)
+    mark_timing("tools_ms")
 
     # 3. 미들웨어 — deepagents 빌트인 타입 제외 후, model 문자열을 BaseChatModel로 사전 해석
     configured_mw_types = {
@@ -939,6 +951,7 @@ async def _prepare_agent(
     )
     middleware += build_middleware_instances(resolved_mw)
     middleware += get_provider_middleware(cfg.provider)
+    mark_timing("middleware_ms")
 
     # 4. Backend + Skills + Memory 구성
     backend = FilesystemBackend(root_dir=str(_DATA_DIR), virtual_mode=True)
@@ -1013,10 +1026,12 @@ async def _prepare_agent(
         include_ask_user=any(t.name == "ask_user" for t in langchain_tools),
         is_trigger_mode=is_trigger_mode,
     )
+    mark_timing("skills_filesystem_ms")
 
     # 5. 에이전트 빌드 — create_deep_agent + checkpointer
     from app.agent_runtime.checkpointer import get_checkpointer
 
+    build_started = time.perf_counter()
     agent = build_agent(
         model,
         langchain_tools,
@@ -1030,8 +1045,11 @@ async def _prepare_agent(
         permissions=permissions,
         name=f"agent_{cfg.thread_id[:8]}",
     )
+    timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
+    last_mark = time.perf_counter()
 
     lc_messages = _inject_temporal_context(convert_to_langchain_messages(messages_history))
+    mark_timing("messages_ms")
     config: dict[str, Any] = {"configurable": {"thread_id": cfg.thread_id}}
     recursion_limit = _configured_recursion_limit(cfg)
     if recursion_limit is not None:
@@ -1041,6 +1059,18 @@ async def _prepare_agent(
         # a new branch from that point. The new run's checkpoints chain back to
         # this id, and `alist` reveals both branches as siblings of the parent.
         config["configurable"]["checkpoint_id"] = cfg.checkpoint_id
+
+    timings["total_ms"] = int((time.perf_counter() - prepare_started) * 1000)
+    timing_payload = " ".join(f"{key}={value}" for key, value in timings.items())
+    log_message = (
+        "agent_prepare_timing "
+        f"agent_id={cfg.agent_id} thread_id={cfg.thread_id} "
+        f"tools={len(langchain_tools)} skills={len(cfg.agent_skills or [])} "
+        f"{timing_payload}"
+    )
+    logger.debug(log_message)
+    if timings["total_ms"] >= 250:
+        logger.info(log_message)
 
     return agent, lc_messages, config
 

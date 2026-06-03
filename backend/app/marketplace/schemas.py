@@ -163,6 +163,17 @@ class MarketplaceItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MarketplaceItemsPage(BaseModel):
+    """Offset page envelope for catalog screens that must not load all rows."""
+
+    items: list[MarketplaceItemOut]
+    limit: int
+    offset: int
+    total: int | None = None
+    has_more: bool
+    next_offset: int | None = None
+
+
 # ---------------------------------------------------------------------------
 # Credential requirements
 # ---------------------------------------------------------------------------
@@ -314,6 +325,7 @@ __all__ = [
     "MarketplaceItemAdminListedIn",
     "MarketplaceItemListFilters",
     "MarketplaceItemOut",
+    "MarketplaceItemsPage",
     "MarketplaceItemPatchIn",
     "MarketplaceVersionFromSkillIn",
     "MarketplaceVersionDetail",

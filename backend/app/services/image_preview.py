@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from hashlib import sha256
 from pathlib import Path
@@ -53,3 +54,17 @@ def get_or_create_image_preview(
     except Exception:  # noqa: BLE001
         logger.exception("Failed to create image preview for %s", target)
         return None
+
+
+async def get_or_create_image_preview_async(
+    target: Path,
+    *,
+    cache_dir: Path,
+    cache_name: str,
+) -> Path | None:
+    return await asyncio.to_thread(
+        get_or_create_image_preview,
+        target,
+        cache_dir=cache_dir,
+        cache_name=cache_name,
+    )

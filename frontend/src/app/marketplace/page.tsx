@@ -17,7 +17,7 @@ import { InstallWizard } from '@/components/marketplace/install-wizard'
 import { UpdateStrategyDialog } from '@/components/marketplace/update-strategy-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/lib/auth/session'
-import { useMarketplaceItems } from '@/lib/hooks/use-marketplace'
+import { useMarketplaceItemsPage } from '@/lib/hooks/use-marketplace'
 import type {
   MarketplaceItem,
   MarketplaceListFilters,
@@ -59,9 +59,15 @@ export default function MarketplaceCatalogPage() {
   }, [filters, tab])
 
   const enabled = tab !== 'agents' && tab !== 'mcp'
-  const { data: items, isLoading } = useMarketplaceItems(enabled ? effectiveFilters : undefined)
+  const { data: itemsPage, isLoading } = useMarketplaceItemsPage(
+    enabled ? { ...effectiveFilters, limit: 24, offset: 0 } : undefined,
+    enabled,
+  )
+  const items = itemsPage?.items
   const countLabel =
-    enabled && !isLoading && items ? t('count', { count: items.length }) : undefined
+    enabled && !isLoading && items
+      ? t('count', { count: itemsPage?.total ?? items.length })
+      : undefined
   const tabs = TABS.map((tabOption) => ({
     value: tabOption.value,
     label: t(tabOption.labelKey),

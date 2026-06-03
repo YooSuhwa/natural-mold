@@ -4,11 +4,12 @@ import type { ReactNode } from 'react'
 import {
   conversationKeys,
   useConversations,
+  useConversationPages,
   useMessages,
   useCreateConversation,
   useMarkConversationRead,
 } from '@/lib/hooks/use-conversations'
-import { mockConversationList, mockMessageList } from '../../mocks/fixtures'
+import { mockConversationList, mockConversationPage, mockMessageList } from '../../mocks/fixtures'
 
 function createWrapperWithClient() {
   const queryClient = new QueryClient({
@@ -46,6 +47,18 @@ describe('useConversations', () => {
       wrapper: createWrapper(),
     })
     expect(result.current.isLoading).toBe(true)
+  })
+})
+
+describe('useConversationPages', () => {
+  it('fetches the first server-paginated conversation page', async () => {
+    const { result } = renderHook(
+      () => useConversationPages('agent-1', { limit: 30, q: 'research' }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.pages[0]).toEqual(mockConversationPage)
   })
 })
 

@@ -89,10 +89,25 @@ async def _serialize_skill(db: AsyncSession, skill: Skill, user: CurrentUser) ->
 async def _serialize_skills(
     db: AsyncSession, skills: list[Skill], user: CurrentUser
 ) -> list[SkillResponse]:
-    # Sequential is fine in Slice A — typical list is < 50 rows and the
-    # publication/installation queries are pk-indexed. ``bulk_derive_*``
-    # will batch when Slice B adds installs at scale.
-    return [await _serialize_skill(db, s, user) for s in skills]
+    publications = await origin_service.bulk_derive_publication_summaries_for_skills(
+        db, skills
+    )
+    installations = await origin_service.bulk_derive_skill_installation_summaries(
+        db, skills
+    )
+    responses: list[SkillResponse] = []
+    for skill in skills:
+        response = SkillResponse.model_validate(skill)
+        response.origin_summary = origin_service.derive_origin_summary_for_skill(
+            skill, user
+        )
+        response.publication_summary = publications.get(
+            skill.id,
+            ResourcePublicationSummaryOut(state="not_published"),
+        )
+        response.installation = installations.get(skill.id)
+        responses.append(response)
+    return responses
 
 
 @router.get("", response_model=list[SkillResponse])

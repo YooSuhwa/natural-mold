@@ -109,6 +109,63 @@ async def test_build_tools_config_includes_decrypted_credentials(
 
 
 @pytest.mark.asyncio
+async def test_build_tools_config_decrypts_shared_credential_once(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = await _seed_user_and_model(db)
+    tool_cred = await credential_service.create(
+        db,
+        user_id=TEST_USER_ID,
+        definition_key="naver_search",
+        name="naver creds",
+        data={"client_id": "nv-id", "client_secret": "nv-secret"},
+    )
+
+    agent = Agent(
+        user_id=TEST_USER_ID,
+        name="Shared Cred Agent",
+        system_prompt="hi",
+        model_id=model.id,
+    )
+    db.add(agent)
+    await db.flush()
+
+    for name, definition_key in [
+        ("Naver Blog", "naver_search_blog"),
+        ("Naver News", "naver_search_news"),
+    ]:
+        tool = Tool(
+            user_id=TEST_USER_ID,
+            name=name,
+            definition_key=definition_key,
+            parameters={"query": "moldy"},
+            credential_id=tool_cred.id,
+        )
+        db.add(tool)
+        await db.flush()
+        db.add(AgentToolLink(agent_id=agent.id, tool_id=tool.id))
+    await db.commit()
+
+    decrypt_calls = 0
+
+    async def fake_decrypt(_encrypted: str) -> dict[str, str]:
+        nonlocal decrypt_calls
+        decrypt_calls += 1
+        return {"client_id": "nv-id", "client_secret": "nv-secret"}
+
+    monkeypatch.setattr(credential_service, "decrypt_with_external", fake_decrypt)
+
+    fetched = await chat_service.get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    assert fetched is not None
+    configs = await chat_service.build_tools_config(fetched, db=db)
+
+    assert len(configs) == 2
+    assert decrypt_calls == 1
+    assert {entry["credential_id"] for entry in configs} == {str(tool_cred.id)}
+
+
+@pytest.mark.asyncio
 async def test_build_tools_config_injects_mcp_secret_header(
     db: AsyncSession,
 ) -> None:

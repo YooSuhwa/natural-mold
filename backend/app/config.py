@@ -56,6 +56,7 @@ class Settings(BaseSettings):
 
     # Daily health check sweep (APScheduler crontab format; default: 04:00 UTC)
     health_check_cron: str = "0 4 * * *"
+    health_check_concurrency: int = 4
     # Daily refresh-token GC (APScheduler crontab; default: 05:00 UTC).
     # Deletes ``refresh_tokens`` rows whose ``expires_at`` is older than the
     # retention window — keeps replay history available for that window so

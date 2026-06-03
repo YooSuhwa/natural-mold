@@ -19,6 +19,7 @@ from app.schemas.agent import (
     AgentBrief,
     AgentCreate,
     AgentResponse,
+    AgentSummaryResponse,
     AgentUpdate,
     GenerateImageResponse,
     McpToolBrief,
@@ -26,7 +27,7 @@ from app.schemas.agent import (
 )
 from app.schemas.skill import SkillBrief
 from app.services import agent_service, image_service
-from app.services.image_preview import get_or_create_image_preview
+from app.services.image_preview import get_or_create_image_preview_async
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
 middleware_router = APIRouter(tags=["middlewares"])
@@ -115,6 +116,14 @@ async def list_agents(
 ):
     agents = await agent_service.list_agents(db, user.id)
     return [_agent_to_response(a) for a in agents]
+
+
+@router.get("/summary", response_model=list[AgentSummaryResponse])
+async def list_agent_summaries(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    return await agent_service.list_agent_summaries(db, user.id)
 
 
 @router.post("", response_model=AgentResponse, status_code=201)
@@ -225,7 +234,7 @@ async def get_agent_image(
         return Response(status_code=204)
     target = Path(agent.image_path)
     if variant == "preview":
-        preview = get_or_create_image_preview(
+        preview = await get_or_create_image_preview_async(
             target,
             cache_dir=target.parent / ".previews",
             cache_name=f"agent-{agent.id}",

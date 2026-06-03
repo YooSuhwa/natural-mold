@@ -81,7 +81,7 @@ async def test_append_events_creates_new_row() -> None:
         assert record.status == "streaming"
         assert record.last_event_id == f"{msg_id}-3"
         assert record.completed_at is None  # finalize_turn이 아직 안 불림
-        assert len(record.events) == 3
+        assert len(await trace_storage.load_events(db, record)) == 3
 
 
 @pytest.mark.asyncio
@@ -114,6 +114,55 @@ async def test_append_events_merges_into_existing() -> None:
         assert ids == [f"{msg_id}-{i}" for i in range(1, 7)]
         assert fetched.last_event_id == f"{msg_id}-6"
         assert fetched.status == "streaming"
+
+
+@pytest.mark.asyncio
+async def test_append_events_stores_payload_in_append_only_chunks() -> None:
+    from sqlalchemy import select
+
+    from app.models.message_event import MessageEvent, MessageEventChunk
+
+    conv_id = await _seed_conversation()
+    msg_id = "msg-partial-chunks"
+
+    async with TestSession() as db:
+        await trace_storage.append_events(
+            db,
+            conversation_id=conv_id,
+            assistant_msg_id=msg_id,
+            events_chunk=_chunk(msg_id, 1, 2),
+        )
+        await trace_storage.append_events(
+            db,
+            conversation_id=conv_id,
+            assistant_msg_id=msg_id,
+            events_chunk=_chunk(msg_id, 3, 2),
+        )
+        await db.commit()
+
+    async with TestSession() as db:
+        row = (
+            await db.execute(
+                select(MessageEvent).where(MessageEvent.assistant_msg_id == msg_id)
+            )
+        ).scalar_one()
+        chunks = (
+            await db.execute(
+                select(MessageEventChunk)
+                .where(MessageEventChunk.message_event_id == row.id)
+                .order_by(MessageEventChunk.seq_start)
+            )
+        ).scalars().all()
+
+        assert row.events == []
+        assert [chunk.seq_start for chunk in chunks] == [1, 3]
+        assert [chunk.seq_end for chunk in chunks] == [2, 4]
+        assert [event["id"] for event in await trace_storage.load_events(db, row)] == [
+            f"{msg_id}-1",
+            f"{msg_id}-2",
+            f"{msg_id}-3",
+            f"{msg_id}-4",
+        ]
 
 
 @pytest.mark.asyncio
@@ -379,4 +428,4 @@ async def test_append_events_sets_updated_at_on_insert_and_update() -> None:
         await db.commit()
         assert record is not None
         assert record.updated_at is not None
-        assert len(record.events) == 2
+        assert len(await trace_storage.load_events(db, record)) == 2

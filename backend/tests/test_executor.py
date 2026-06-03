@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -152,6 +153,39 @@ def test_build_agent_returns_agent(mock_create: MagicMock):
 
     result = build_agent(MagicMock(), [], "prompt")
     assert result is sentinel
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+async def test_prepare_agent_logs_timing_spans(
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_checkpointer: MagicMock,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from app.agent_runtime import executor
+
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = [HumanMessage(content="hello")]
+    mock_build.return_value = MagicMock()
+    mock_checkpointer.return_value = MagicMock()
+    caplog.set_level(logging.DEBUG, logger="app.agent_runtime.executor")
+
+    await executor._prepare_agent(
+        _cfg(thread_id="thread-timing"),
+        messages_history=[{"role": "user", "content": "hello"}],
+    )
+
+    messages = [record.message for record in caplog.records]
+    timing = next(message for message in messages if "agent_prepare_timing" in message)
+    assert "model_ms" in timing
+    assert "tools_ms" in timing
+    assert "middleware_ms" in timing
+    assert "build_agent_ms" in timing
 
 
 # ---------------------------------------------------------------------------

@@ -1,12 +1,22 @@
 import { describe, it, expect } from 'vitest'
 import { agentsApi } from '@/lib/api/agents'
-import { mockAgentList, mockAgent } from '../../mocks/fixtures'
+import { mockAgentList, mockAgent, mockAgentSummaryList } from '../../mocks/fixtures'
 
 describe('agentsApi', () => {
   it('list() returns all agents', async () => {
     const agents = await agentsApi.list()
     expect(agents).toEqual(mockAgentList)
     expect(agents).toHaveLength(2)
+  })
+
+  it('summary() returns lean agent card payload', async () => {
+    const agents = await agentsApi.summary()
+    expect(agents).toEqual(mockAgentSummaryList)
+    expect(agents[0]).toMatchObject({
+      id: 'agent-1',
+      model_display_name: 'GPT-4o',
+      tool_count: 1,
+    })
   })
 
   it('get() returns a single agent by id', async () => {
