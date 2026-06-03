@@ -8,6 +8,7 @@
     "build": "next build --webpack && node scripts/prune-standalone-sharp.mjs",
     "start": "next start",
     "lint": "eslint",
+    "lint:design-system": "node scripts/check-design-system.mjs",
     "lint:i18n": "node scripts/check-static-i18n.mjs",
     "lint:i18n:strict": "node scripts/check-static-i18n.mjs --strict-ascii",
     "format": "prettier --write 'src/**/*.{ts,tsx}'",
