@@ -51,8 +51,9 @@ vi.mock('@/lib/hooks/use-agents', () => ({
 
 vi.mock('@/lib/hooks/use-conversations', () => ({
   conversationKeys: {
-    all: ['conversations'] as const,
     list: (agentId: string) => ['conversations', agentId] as const,
+    pages: (agentId: string, params: unknown) =>
+      ['agents', agentId, 'conversations', 'page', params] as const,
     messages: (conversationId: string) => ['messages', conversationId] as const,
     debugTraces: (conversationId: string) => ['debug-traces', conversationId] as const,
     debugTraceDetail: (conversationId: string, traceId: string) =>
@@ -84,6 +85,13 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
   useConversations: () => ({
     data: [],
     isLoading: false,
+  }),
+  useConversationPages: () => ({
+    data: { pages: [{ items: [], next_cursor: null, has_more: false }] },
+    isLoading: false,
+    hasNextPage: false,
+    fetchNextPage: vi.fn(),
+    isFetchingNextPage: false,
   }),
   useConversationDebugTraces: () => ({
     data: { conversation_id: 'conv-1', langfuse_enabled: false, traces: [], fallback_reason: null },

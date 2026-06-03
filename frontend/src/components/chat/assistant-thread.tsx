@@ -60,6 +60,11 @@ import {
 } from '@/components/chat/builder-overrides'
 import { ImeSafeComposerInput } from '@/components/chat/ime-safe-composer-input'
 import {
+  MessageEditComposerInput,
+  MessageEditComposerRoot,
+  useMessageEditComposerControls,
+} from '@/components/chat/message-edit-composer'
+import {
   ChatConversationContext,
   useChatConversationId,
 } from '@/components/chat/conversation-context'
@@ -428,25 +433,22 @@ function FeedbackButtons() {
  * ``MessagePrimitive.If editing`` is true). */
 function UserMessageEditor() {
   const t = useTranslations('chat.message')
+  const { canCancel, canSend, cancel } = useMessageEditComposerControls()
   return (
-    <ComposerPrimitive.Root className="flex flex-col gap-2 rounded-2xl border bg-background p-2 shadow-sm">
-      <ImeSafeComposerInput
+    <MessageEditComposerRoot className="flex flex-col gap-2 rounded-2xl border bg-background p-2 shadow-sm">
+      <MessageEditComposerInput
         className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-none"
         autoFocus
       />
       <div className="flex items-center justify-end gap-1">
-        <ComposerPrimitive.Cancel asChild>
-          <Button type="button" size="sm" variant="ghost">
-            {t('editCancel')}
-          </Button>
-        </ComposerPrimitive.Cancel>
-        <ComposerPrimitive.Send asChild>
-          <Button type="submit" size="sm">
-            {t('editSave')}
-          </Button>
-        </ComposerPrimitive.Send>
+        <Button type="button" size="sm" variant="ghost" disabled={!canCancel} onClick={cancel}>
+          {t('editCancel')}
+        </Button>
+        <Button type="submit" size="sm" disabled={!canSend}>
+          {t('editSave')}
+        </Button>
       </div>
-    </ComposerPrimitive.Root>
+    </MessageEditComposerRoot>
   )
 }
 
