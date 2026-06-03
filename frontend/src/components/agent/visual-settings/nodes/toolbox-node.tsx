@@ -52,7 +52,7 @@ export function ToolboxNode({ data }: { data: ToolboxNodeData }) {
       <Handle type="target" position={Position.Left} className="!bg-indigo-500 !w-2.5 !h-2.5" />
       <div className="nowheel w-[220px] rounded-xl border bg-card shadow-md">
         <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.toolbox')}
           </span>
           <Button variant="ghost" size="icon-xs" onClick={() => setDialogOpen(true)}>

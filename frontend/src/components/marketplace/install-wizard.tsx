@@ -186,7 +186,7 @@ function InstallWizardInner({ item, open, onOpenChange }: InstallWizardProps) {
                     : 'text-muted-foreground',
                 )}
               >
-                <span className="inline-flex size-5 items-center justify-center rounded-full bg-muted text-[10px]">
+                <span className="inline-flex size-5 items-center justify-center rounded-full bg-muted moldy-ui-micro">
                   {i + 1}
                 </span>
                 <span className="capitalize">{t(`steps.${s}`)}</span>

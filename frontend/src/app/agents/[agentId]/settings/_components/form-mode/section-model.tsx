@@ -39,7 +39,7 @@ export function SectionModel(props: SectionModelProps) {
           <span className="truncate text-sm text-muted-foreground">{summary}</span>
           {fallbackCount > 0 && (
             <span
-              className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300"
+              className="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 moldy-ui-micro font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300"
               data-testid="section-model-fallback-badge"
             >
               +{fallbackCount} fallback

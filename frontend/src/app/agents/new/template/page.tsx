@@ -248,7 +248,7 @@ function FiltersBar({
               'h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-none',
               'placeholder:text-muted-foreground',
               'transition-[border-color,box-shadow]',
-              'focus:border-emerald-300 focus:shadow-[0_0_0_3px_oklch(0.596_0.145_163.225/0.12)]',
+              'focus:border-[var(--moldy-border-mint)] focus:shadow-[var(--moldy-shadow-focus)]',
               'dark:focus:border-emerald-500/40',
             )}
           />
@@ -321,7 +321,7 @@ function TemplateCard({
         </span>
         <span
           className={cn(
-            'inline-flex min-w-0 max-w-[120px] items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold leading-none',
+            'inline-flex min-w-0 max-w-[120px] items-center gap-1 rounded-md border px-2 py-1 moldy-ui-caption font-semibold leading-none',
             tone.badge,
           )}
         >
@@ -330,7 +330,7 @@ function TemplateCard({
         </span>
       </div>
 
-      <span className="mt-3 line-clamp-1 text-[15px] font-bold leading-tight text-foreground">
+      <span className="mt-3 line-clamp-1 moldy-ui-card-title font-bold leading-tight text-foreground">
         {template.name}
       </span>
 
@@ -352,7 +352,7 @@ function TemplateCard({
             </span>
           ))}
           {extraToolsCount > 0 && (
-            <span className="text-[10.5px] font-medium leading-none text-muted-foreground">
+            <span className="moldy-ui-meta font-medium leading-none text-muted-foreground">
               {toolsMoreFormatter(extraToolsCount)}
             </span>
           )}

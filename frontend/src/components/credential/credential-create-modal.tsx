@@ -159,7 +159,7 @@ export function CredentialCreateModal({
                     />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{d.display_name}</p>
-                      <p className="truncate text-[11px] text-muted-foreground">
+                      <p className="truncate moldy-ui-caption text-muted-foreground">
                         {d.category}
                       </p>
                     </div>

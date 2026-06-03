@@ -145,7 +145,7 @@ export default function DashboardPage() {
                   <p className="text-base font-semibold tracking-tight">
                     {t('quickAction.conversational.label')}
                   </p>
-                  <Badge className="bg-emerald-600 text-[10px] tracking-wide text-white hover:bg-emerald-600 dark:bg-emerald-500">
+                  <Badge className="bg-emerald-600 moldy-ui-micro tracking-wide text-white hover:bg-emerald-600 dark:bg-emerald-500">
                     {t('recommended')}
                   </Badge>
                 </div>

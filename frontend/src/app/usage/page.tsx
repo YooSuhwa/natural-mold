@@ -183,7 +183,7 @@ export default function UsagePage() {
           <ResourcePanel.Toolbar className="border-b-0">
             <div className="flex flex-wrap items-end gap-3" data-testid="usage-filter-bar">
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium text-muted-foreground">
+            <span className="moldy-ui-caption font-medium text-muted-foreground">
               {t('filters.range')}
             </span>
             <Select value={preset} onValueChange={(v) => v && setPreset(v as RangePreset)}>
@@ -202,7 +202,7 @@ export default function UsagePage() {
           {preset === 'custom' && (
             <>
               <div className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-medium text-muted-foreground">
+                <span className="moldy-ui-caption font-medium text-muted-foreground">
                   {t('filters.from')}
                 </span>
                 <Input
@@ -214,7 +214,7 @@ export default function UsagePage() {
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-medium text-muted-foreground">
+                <span className="moldy-ui-caption font-medium text-muted-foreground">
                   {t('filters.to')}
                 </span>
                 <Input
@@ -229,7 +229,7 @@ export default function UsagePage() {
           )}
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium text-muted-foreground">
+            <span className="moldy-ui-caption font-medium text-muted-foreground">
               {t('filters.kind')}
             </span>
             <PillTabs
@@ -242,7 +242,7 @@ export default function UsagePage() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium text-muted-foreground">
+            <span className="moldy-ui-caption font-medium text-muted-foreground">
               {t('filters.groupBy')}
             </span>
             <PillTabs
@@ -255,7 +255,7 @@ export default function UsagePage() {
           </div>
 
           <div className="ml-auto flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium text-muted-foreground">
+            <span className="moldy-ui-caption font-medium text-muted-foreground">
               {t('filters.metric')}
             </span>
             <PillTabs

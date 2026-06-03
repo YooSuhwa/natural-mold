@@ -145,7 +145,7 @@ export function ConversationList({
           <span className="truncate">{conv.title ?? t('fallbackTitle')}</span>
         </Link>
         {unreadCount > 0 ? (
-          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">
+          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1.5 moldy-ui-caption font-semibold text-white">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         ) : null}

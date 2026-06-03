@@ -30,7 +30,7 @@ export function MiddlewaresNode({ data }: { data: MiddlewaresNodeData }) {
       <div className="nowheel w-[220px] rounded-xl border bg-card shadow-md">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.middlewares')}
           </span>
           <div className="flex items-center gap-0.5">

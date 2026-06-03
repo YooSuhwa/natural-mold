@@ -127,18 +127,18 @@ export default function ModelsPage() {
               <p className="truncate text-sm font-medium">
                 {row.original.display_name}
                 {row.original.is_default && (
-                  <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
+                  <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 moldy-ui-micro font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
                     {t('defaultBadge')}
                   </span>
                 )}
                 {!row.original.is_visible && (
-                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border">
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 moldy-ui-micro font-medium text-muted-foreground ring-1 ring-border">
                     <EyeOff className="size-3" />
                     {t('catalog.hiddenBadge')}
                   </span>
                 )}
               </p>
-              <p className="truncate font-mono text-[11px] text-muted-foreground">
+              <p className="truncate font-mono moldy-ui-caption text-muted-foreground">
                 {row.original.provider} · {row.original.model_name}
               </p>
               <CapabilityIcons model={row.original} />
@@ -152,7 +152,7 @@ export default function ModelsPage() {
         accessorFn: (row) => row.cost_per_input_token ?? 0,
         header: t('catalog.columns.price'),
         cell: ({ row }) => (
-          <div className="flex min-w-[118px] flex-col gap-0.5 font-mono text-[11px] tabular-nums">
+          <div className="flex min-w-[118px] flex-col gap-0.5 font-mono moldy-ui-caption tabular-nums">
             <span>
               <span className="mr-1 font-sans text-muted-foreground">{t('inputModalities')}</span>
               {formatTokenPrice(row.original.cost_per_input_token)}
@@ -418,7 +418,7 @@ function HealthCell({
   return (
     <div className="flex flex-col items-start gap-0.5">
       <StatusChip variant={entry.status} />
-      <span className="text-[10px] text-muted-foreground">
+      <span className="moldy-ui-micro text-muted-foreground">
         {format(entry.checked_at)}
       </span>
     </div>

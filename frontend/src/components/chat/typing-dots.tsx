@@ -15,7 +15,7 @@ export interface TypingDotsProps {
  */
 export function TypingDots({ label }: TypingDotsProps) {
   return (
-    <div className="flex items-center gap-2 text-[12.5px]" style={{ color: T.muted }}>
+    <div className="flex items-center gap-2 moldy-ui-compact" style={{ color: T.muted }}>
       <span className="inline-flex items-center gap-1" style={{ paddingTop: 2 }}>
         {[0, 1, 2].map((i) => (
           <span

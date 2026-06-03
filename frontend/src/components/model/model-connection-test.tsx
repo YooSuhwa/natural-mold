@@ -141,7 +141,7 @@ export function ModelConnectionTest(props: Props) {
       data-testid="model-connection-test"
     >
       {showCostBanner && (
-        <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <p className="rounded border border-amber-300 bg-amber-50 p-2 moldy-ui-caption text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           {t('costBanner')}
         </p>
       )}
@@ -247,7 +247,7 @@ function SuccessCard({
             </p>
           )}
 
-          <ul className="grid grid-cols-1 gap-1 text-[11px] text-emerald-900/90 sm:grid-cols-3 dark:text-emerald-100/90">
+          <ul className="grid grid-cols-1 gap-1 moldy-ui-caption text-emerald-900/90 sm:grid-cols-3 dark:text-emerald-100/90">
             <li>
               <span className="font-medium">{t('metrics.latency')}</span>{' '}
               {result.latency_ms.toLocaleString()} ms
@@ -364,7 +364,7 @@ function DetailsPanel({ result }: { result: ModelTestResponse }) {
 
 function CodeBlock({ code }: { code: string }) {
   return (
-    <pre className="max-h-64 overflow-auto rounded border bg-muted p-3 font-mono text-[11px] leading-relaxed">
+    <pre className="max-h-64 overflow-auto rounded border bg-muted p-3 font-mono moldy-ui-caption leading-relaxed">
       {code}
     </pre>
   )

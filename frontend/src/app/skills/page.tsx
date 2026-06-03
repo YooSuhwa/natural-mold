@@ -251,7 +251,7 @@ function SkillCard({
         </span>
         <span
           className={cn(
-            'inline-flex min-w-0 max-w-[120px] items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold leading-none',
+            'inline-flex min-w-0 max-w-[120px] items-center gap-1 rounded-md border px-2 py-1 moldy-ui-caption font-semibold leading-none',
             tone.badge,
           )}
         >
@@ -260,7 +260,7 @@ function SkillCard({
         </span>
       </div>
 
-      <span className="mt-3 line-clamp-1 text-[15px] font-bold leading-tight text-foreground">
+      <span className="mt-3 line-clamp-1 moldy-ui-card-title font-bold leading-tight text-foreground">
         {skill.name}
       </span>
       <p className="mt-2 line-clamp-2 min-h-[2.65em] text-xs leading-[1.45] text-muted-foreground">
@@ -272,7 +272,7 @@ function SkillCard({
         <span className={skillMetaClassName}>{agentsLabel}</span>
         {updatedLabel ? <span className={skillMetaClassName}>{updatedLabel}</span> : null}
       </div>
-      <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground/80">{skill.slug}</p>
+      <p className="mt-2 truncate font-mono moldy-ui-caption text-muted-foreground/80">{skill.slug}</p>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         <OriginBadge summary={skill.origin_summary} />

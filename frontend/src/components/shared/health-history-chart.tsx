@@ -158,7 +158,7 @@ function LatencyLineChart({ entries }: { entries: HealthCheckEntry[] }) {
     <div className="rounded-lg border bg-card p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <h4 className="text-xs font-semibold text-foreground">{t('latencyTitle')}</h4>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="moldy-ui-micro text-muted-foreground">
           {t('summary', {
             min: Math.round(stats.min),
             max: Math.round(stats.max),
@@ -232,7 +232,7 @@ function StatusTimelineStrip({ entries }: { entries: HealthCheckEntry[] }) {
     <div className="rounded-lg border bg-card p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <h4 className="text-xs font-semibold text-foreground">{t('statusTimeline')}</h4>
-        <p className="text-[10px] text-muted-foreground">{t('oldestNewest')}</p>
+        <p className="moldy-ui-micro text-muted-foreground">{t('oldestNewest')}</p>
       </div>
       <div className="flex items-stretch gap-0.5" data-testid="status-timeline">
         {entries.map((e) => (
@@ -258,12 +258,12 @@ function StatusTimelineStrip({ entries }: { entries: HealthCheckEntry[] }) {
                   {t(`status.${e.status}`)} · {formatRelativeTime(e.checked_at, t)}
                 </p>
                 {typeof e.latency_ms === 'number' && (
-                  <p className="text-[10px] opacity-80">
+                  <p className="moldy-ui-micro opacity-80">
                     {t('latencyValue', { value: e.latency_ms })}
                   </p>
                 )}
                 {e.error_kind && (
-                  <p className="text-[10px] opacity-80">
+                  <p className="moldy-ui-micro opacity-80">
                     {e.error_kind}: {e.error_message ?? t('noMessage')}
                   </p>
                 )}
@@ -287,7 +287,7 @@ function Legend() {
     { status: 'unknown', labelKey: 'status.unknown' },
   ]
   return (
-    <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-3 moldy-ui-micro text-muted-foreground">
       {items.map((i) => (
         <span key={i.status} className="inline-flex items-center gap-1">
           <span className={cn('inline-block size-2 rounded-sm', STATUS_BG[i.status])} />

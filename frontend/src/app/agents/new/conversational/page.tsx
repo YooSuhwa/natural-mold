@@ -131,23 +131,13 @@ export default function ConversationalCreationPage({
   )
 
   return (
-    <div className="flex h-screen flex-col" style={{ background: '#fafafa' }}>
-      <header
-        className="flex shrink-0 items-center gap-3.5 bg-white"
-        style={{
-          padding: '14px 28px',
-          borderBottom: '1px solid oklch(0.93 0.005 163)',
-        }}
-      >
+    <div className="flex h-screen flex-col bg-background">
+      <header className="flex shrink-0 items-center gap-3.5 border-b border-[var(--builder-border)] bg-[var(--builder-surface)] px-7 py-3.5">
         <Link href="/" aria-label={t('back')}>
           <Button
             variant="outline"
             size="icon-sm"
-            className="size-[30px] rounded-lg"
-            style={{
-              borderColor: 'oklch(0.93 0.005 163)',
-              color: 'oklch(0.35 0.005 163)',
-            }}
+            className="size-[30px] rounded-lg border-[var(--builder-border)] text-[var(--builder-ink-2)]"
             aria-label={t('back')}
           >
             <ChevronLeftIcon className="size-3.5" strokeWidth={2} />
@@ -155,13 +145,12 @@ export default function ConversationalCreationPage({
         </Link>
 
         <nav
-          className="flex items-center gap-1.5 text-[13px]"
-          style={{ color: 'oklch(0.55 0.01 163)' }}
+          className="flex items-center gap-1.5 text-[13px] text-[var(--builder-muted)]"
         >
           <HomeIcon className="size-3.5 opacity-55" />
           <span>{t('breadcrumb.create')}</span>
           <ChevronRightIcon className="size-3 opacity-45" />
-          <span className="font-semibold" style={{ color: 'oklch(0.18 0.005 163)' }}>
+          <span className="font-semibold text-[var(--builder-ink)]">
             {t('breadcrumb.conversational')}
           </span>
         </nav>
@@ -169,25 +158,8 @@ export default function ConversationalCreationPage({
         <div className="flex-1" />
 
         {sessionId && (
-          <div
-            className="inline-flex items-center gap-1.5 font-mono text-[11px]"
-            style={{
-              padding: '4px 9px',
-              borderRadius: 6,
-              background: 'oklch(0.985 0.008 163)',
-              border: '1px solid oklch(0.93 0.005 163)',
-              color: 'oklch(0.55 0.01 163)',
-            }}
-          >
-            <span
-              className="rounded-full"
-              style={{
-                width: 6,
-                height: 6,
-                background: 'oklch(0.596 0.145 163.225)',
-                boxShadow: '0 0 0 3px oklch(0.96 0.04 163)',
-              }}
-            />
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] px-2.5 py-1 font-mono moldy-ui-caption text-[var(--builder-muted)]">
+            <span className="size-1.5 rounded-full bg-[var(--builder-primary)] shadow-[0_0_0_3px_var(--builder-primary-bg)]" />
             {t('sessionLabel', { id: sessionId.slice(0, 8) })}
           </div>
         )}

@@ -152,7 +152,7 @@ export function ModelDialog({
               max={2}
               step={0.1}
             />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
+            <div className="flex justify-between moldy-ui-micro text-muted-foreground">
               <span>{t('temperature.accurate')}</span>
               <span>{t('temperature.creative')}</span>
             </div>
@@ -272,7 +272,7 @@ function FallbackSection({
                 data-testid={`fallback-row-${index}`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="w-5 text-center font-mono text-[10px] text-muted-foreground">
+                  <span className="w-5 text-center font-mono moldy-ui-micro text-muted-foreground">
                     {index + 1}
                   </span>
                   <Select value={id} onValueChange={(v) => v && onChangeAt(index, v)}>
@@ -288,7 +288,7 @@ function FallbackSection({
                         <SelectItem key={m.id} value={m.id}>
                           <span className="flex items-center gap-2">
                             <span>{m.display_name}</span>
-                            <span className="text-[10px] text-muted-foreground">{m.provider}</span>
+                            <span className="moldy-ui-micro text-muted-foreground">{m.provider}</span>
                           </span>
                         </SelectItem>
                       ))}
@@ -326,7 +326,7 @@ function FallbackSection({
                 </div>
                 {isDup && (
                   <p
-                    className="ml-7 text-[11px] text-amber-600"
+                    className="ml-7 moldy-ui-caption text-amber-600"
                     data-testid={`fallback-duplicate-${index}`}
                   >
                     {t('duplicateWarning')}

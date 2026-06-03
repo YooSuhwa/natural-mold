@@ -106,8 +106,8 @@ const STATUS_TONES: Record<string, ResourceToneName> = {
   unhealthy: 'rose',
 }
 
-export const resourceMetaClassName =
-  'inline-flex max-w-[140px] items-center rounded-md border border-white/80 bg-white/60 px-1.5 py-0.5 text-[10.5px] font-semibold leading-none text-foreground shadow-sm dark:border-white/10 dark:bg-white/10'
+export const resourceMetaClassName = 'moldy-resource-meta'
+export const resourceStatusChipClassName = 'moldy-resource-status-chip'
 
 export function getResourceTone(name: string | null | undefined): ResourceTone {
   const key = normalizeKey(name)
@@ -121,10 +121,7 @@ export function getStatusResourceTone(status: string | null | undefined): Resour
 
 export function resourceCardClassName(tone: ResourceTone, className?: string): string {
   return cn(
-    'group relative flex cursor-pointer flex-col rounded-xl border border-border/70 p-4 text-left',
-    'shadow-[var(--moldy-shadow-card)] transition-[background-color,border-color,box-shadow,transform] duration-150',
-    'hover:-translate-y-px hover:shadow-[0_22px_46px_-34px_rgba(15,23,42,0.45)]',
-    'focus-visible:-translate-y-px focus-visible:border-[var(--primary-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+    'moldy-resource-card group',
     tone.card,
     className,
   )

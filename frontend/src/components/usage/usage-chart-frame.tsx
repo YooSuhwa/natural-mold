@@ -30,7 +30,7 @@ export function UsageChartFrame({
     <section className={cn('moldy-chart-panel', className)} data-testid={testId}>
       <div className="mb-3 flex min-w-0 items-baseline justify-between gap-3">
         <h4 className="min-w-0 truncate text-sm font-semibold text-foreground">{title}</h4>
-        <p className="shrink-0 text-[10px] tabular-nums text-muted-foreground">{meta}</p>
+        <p className="shrink-0 moldy-ui-micro tabular-nums text-muted-foreground">{meta}</p>
       </div>
       {children}
     </section>

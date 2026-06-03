@@ -52,9 +52,6 @@ export function LoginForm({
         <h1 className="mb-1.5 text-[22px] font-bold leading-tight text-foreground">
           {t('auth.login.formTitle')}
         </h1>
-        {/* <p style={{ fontSize: 13.5, color: 'oklch(0.556 0 0)', margin: 0 }}>
-          이메일과 비밀번호로 계속하기
-        </p> */}
       </header>
 
       {showCallbackNotice ? (

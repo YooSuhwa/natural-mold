@@ -52,9 +52,6 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
         <h1 className="mb-1.5 text-[22px] font-bold leading-tight text-foreground">
           {t('auth.register.formTitle')}
         </h1>
-        {/* <p style={{ fontSize: 13.5, color: 'oklch(0.556 0 0)', margin: 0 }}>
-          30초면 가입할 수 있어요
-        </p> */}
       </header>
 
       {mapped && mapped.field === null ? (

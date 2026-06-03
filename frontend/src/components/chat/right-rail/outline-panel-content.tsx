@@ -88,7 +88,7 @@ export function OutlinePanelContent({ payload }: Props) {
         <p className="rounded-md border border-dashed border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground">
           {t('noHeadings')}
         </p>
-        <p className="text-[10px] text-muted-foreground/70">message_id: {payload.messageId}</p>
+        <p className="moldy-ui-micro text-muted-foreground/70">message_id: {payload.messageId}</p>
       </div>
     )
   }
@@ -133,7 +133,7 @@ export function OutlinePanelContent({ payload }: Props) {
           ))}
         </ul>
       </nav>
-      <p className="text-[10px] text-muted-foreground/70">message_id: {payload.messageId}</p>
+      <p className="moldy-ui-micro text-muted-foreground/70">message_id: {payload.messageId}</p>
     </div>
   )
 }

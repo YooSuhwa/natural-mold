@@ -89,7 +89,7 @@ export function SpendBarChart({
               data-testid="spend-bar-row"
             >
               <span
-                className="w-32 shrink-0 truncate text-[11px] text-foreground/80"
+                className="w-32 shrink-0 truncate moldy-ui-caption text-foreground/80"
                 title={labelText}
               >
                 {labelText}
@@ -100,7 +100,7 @@ export function SpendBarChart({
                   style={{ width: `${widthPct}%`, backgroundColor: accent }}
                 />
               </div>
-              <span className="w-24 shrink-0 text-right font-mono text-[11px] tabular-nums text-foreground/90">
+              <span className="w-24 shrink-0 text-right font-mono moldy-ui-caption tabular-nums text-foreground/90">
                 {formatMetric(v, metric)}
               </span>
             </div>

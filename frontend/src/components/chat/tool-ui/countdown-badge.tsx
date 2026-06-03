@@ -23,7 +23,7 @@ export function CountdownBadge({
   return (
     <div
       className={cn(
-        'flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums',
+        'flex items-center gap-1 rounded-full px-2 py-0.5 moldy-ui-caption font-medium tabular-nums',
         expired
           ? 'bg-status-warn/15 text-status-warn'
           : isUrgent

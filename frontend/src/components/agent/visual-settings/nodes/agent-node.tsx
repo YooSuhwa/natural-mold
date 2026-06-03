@@ -87,7 +87,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
       <Handle type="target" position={Position.Left} className="!bg-amber-500 !w-2.5 !h-2.5" />
       <div className="nowheel w-[280px] rounded-xl border bg-card shadow-md">
         <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.agent')}
           </span>
           <Button variant="ghost" size="icon-sm" onClick={() => handleOpenChange(true)}>
@@ -161,7 +161,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">{ts('temperatureLabel')}</span>
-                        <span className="font-mono text-[10px] tabular-nums">
+                        <span className="font-mono moldy-ui-micro tabular-nums">
                           {editTemp.toFixed(1)}
                         </span>
                       </div>
@@ -178,7 +178,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">{ts('topPLabel')}</span>
-                        <span className="font-mono text-[10px] tabular-nums">
+                        <span className="font-mono moldy-ui-micro tabular-nums">
                           {editTopP.toFixed(1)}
                         </span>
                       </div>
@@ -248,7 +248,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
             <p className="text-xs text-muted-foreground truncate">{data.description}</p>
           )}
           <p className="text-xs text-muted-foreground">{data.modelName}</p>
-          <p className="line-clamp-4 text-[11px] leading-relaxed text-muted-foreground/80 whitespace-pre-wrap">
+          <p className="line-clamp-4 moldy-ui-caption leading-relaxed text-muted-foreground/80 whitespace-pre-wrap">
             {data.systemPrompt}
           </p>
         </div>

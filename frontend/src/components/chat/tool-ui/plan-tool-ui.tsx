@@ -101,7 +101,7 @@ function PlanToolView({
                 </span>
                 <span
                   className={cn(
-                    'shrink-0 rounded-full px-1.5 py-0.5 text-[10px]',
+                    'shrink-0 rounded-full px-1.5 py-0.5 moldy-ui-micro',
                     s.bg,
                     s.color,
                   )}

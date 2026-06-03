@@ -362,8 +362,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
       <div className="w-full rounded-xl border bg-background p-4 shadow-sm">
         {/* Header */}
         <div className="mb-3 flex items-center gap-2">
-          {/* 따옴표 아이콘 — 너무 진한 톤이라 builder 사양의 --primary-bg-strong(oklch(0.92 0.06 163))로 완화. */}
-          <MessageSquareQuoteIcon className="size-4" style={{ color: 'oklch(0.92 0.06 163)' }} />
+          <MessageSquareQuoteIcon className="size-4 text-[var(--builder-primary-bg-strong)]" />
           <span className="text-sm font-medium">{t('inputRequired')}</span>
           <CountdownBadge
             formatted={formatted}

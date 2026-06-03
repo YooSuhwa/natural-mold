@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import { useTranslations } from 'next-intl'
-import { ChevronRightIcon, KeyRound, Plus } from 'lucide-react'
+import { KeyRound, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/shared/status-chip'
@@ -11,7 +11,13 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { SearchInput } from '@/components/shared/search-input'
 import {
   CountedLineTabs,
+  ResourceBadge,
+  ResourceCardAction,
+  ResourceCardMeta,
+  ResourceCardSubtext,
+  ResourceCardTitle,
   ResourceGrid,
+  ResourceMetaStack,
   ResourcePage,
   ResourcePanel,
   ResourceToolbar,
@@ -23,7 +29,7 @@ import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import {
   getResourceTone,
   resourceCardClassName,
-  resourceMetaClassName,
+  resourceStatusChipClassName,
   type ResourceTone,
 } from '@/lib/resource-tones'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
@@ -320,59 +326,36 @@ function CredentialCard({
             className="size-4.5"
           />
         </span>
-        <span
-          className={cn(
-            'inline-flex min-w-0 max-w-[132px] items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold leading-none',
-            tone.badge,
-          )}
-        >
-          <span className={cn('size-1.5 shrink-0 rounded-full', tone.dot)} />
-          <span className="truncate">{providerLabel}</span>
-        </span>
+        <ResourceBadge tone={tone}>{providerLabel}</ResourceBadge>
       </div>
 
-      <span className="mt-3 line-clamp-1 text-[15px] font-bold leading-tight text-foreground">
-        {credential.name}
-      </span>
+      <ResourceCardTitle>{credential.name}</ResourceCardTitle>
       {categoryLabel ? (
-        <p className="mt-2 truncate text-[11px] font-medium text-muted-foreground/80">
-          {categoryLabel}
-        </p>
+        <ResourceCardSubtext>{categoryLabel}</ResourceCardSubtext>
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         <StatusChip
           variant={credential.status}
-          className="max-w-[128px] bg-white/55 text-[10.5px] shadow-sm ring-white/80 dark:bg-white/10 dark:ring-white/10"
+          className={resourceStatusChipClassName}
         />
-        <span className={credentialMetaClassName}>{fieldCountLabel}</span>
+        <ResourceCardMeta>{fieldCountLabel}</ResourceCardMeta>
         {credential.is_shared ? (
-          <span className={credentialMetaClassName}>{sharedLabel}</span>
+          <ResourceCardMeta>{sharedLabel}</ResourceCardMeta>
         ) : null}
       </div>
 
-      <div className="mt-3 space-y-1 text-[11px] text-muted-foreground">
+      <ResourceMetaStack>
         {lastUsedLabel ? <p>{lastUsedLabel}</p> : null}
         {lastTestedLabel ? <p>{lastTestedLabel}</p> : null}
-      </div>
+      </ResourceMetaStack>
 
       <div className="mt-auto flex items-center justify-end pt-3">
-        <span
-          className={cn(
-            'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-[color,transform] duration-150',
-            'group-hover:translate-x-0.5 group-hover:text-[var(--primary-strong)]',
-            'group-focus-visible:translate-x-0.5 group-focus-visible:text-[var(--primary-strong)]',
-          )}
-        >
-          {manageLabel}
-          <ChevronRightIcon aria-hidden className="size-3" />
-        </span>
+        <ResourceCardAction>{manageLabel}</ResourceCardAction>
       </div>
     </div>
   )
 }
-
-const credentialMetaClassName = resourceMetaClassName
 
 function credentialCardClassName(tone: ResourceTone): string {
   return resourceCardClassName(tone, 'min-h-[178px]')

@@ -226,10 +226,10 @@ export function AppSidebar() {
   )
 
   const activeMenuClass =
-    'border border-transparent text-sidebar-foreground/80 hover:border-sidebar-border/70 hover:bg-white/70 hover:text-sidebar-accent-foreground data-active:border-[var(--moldy-border-mint)] data-active:bg-white data-active:font-semibold data-active:text-primary-strong data-active:shadow-[0_12px_28px_-24px_oklch(0.36_0.13_164_/_0.46)] data-active:hover:bg-white data-active:hover:text-primary-strong dark:hover:bg-white/5 dark:data-active:bg-white/8'
+    'border border-transparent text-sidebar-foreground/80 hover:border-sidebar-border/70 hover:bg-white/70 hover:text-sidebar-accent-foreground data-active:border-[var(--moldy-border-mint)] data-active:bg-white data-active:font-semibold data-active:text-primary-strong data-active:shadow-[var(--moldy-sidebar-active-shadow)] data-active:hover:bg-white data-active:hover:text-primary-strong dark:hover:bg-white/5 dark:data-active:bg-white/8'
 
   const newAgentButtonClass =
-    'h-11 rounded-2xl border border-primary-strong/25 bg-[linear-gradient(135deg,var(--moldy-mint),white)] font-semibold text-sidebar-accent-foreground shadow-[0_16px_34px_-28px_oklch(0.34_0.13_164_/_0.55)] hover:border-primary-strong/35 hover:bg-primary/70 hover:text-primary-strong active:bg-primary/80 dark:bg-[linear-gradient(135deg,var(--moldy-mint),var(--sidebar))] dark:hover:bg-sidebar-accent'
+    'h-11 rounded-2xl border border-primary-strong/25 bg-[linear-gradient(135deg,var(--moldy-mint),white)] font-semibold text-sidebar-accent-foreground shadow-[var(--moldy-sidebar-active-shadow)] hover:border-primary-strong/35 hover:bg-primary/70 hover:text-primary-strong active:bg-primary/80 dark:bg-[linear-gradient(135deg,var(--moldy-mint),var(--sidebar))] dark:hover:bg-sidebar-accent'
 
   const isDarkTheme = resolvedTheme === 'dark'
   const themeToggleLabel = isDarkTheme ? t('theme.light') : t('theme.dark')
@@ -246,7 +246,7 @@ export function AppSidebar() {
   return (
     <Sidebar
       collapsible="icon"
-      className="border-r border-sidebar-border bg-sidebar shadow-[18px_0_52px_-44px_oklch(0.34_0.1_164_/_0.45)]"
+      className="border-r border-sidebar-border bg-sidebar shadow-[var(--moldy-sidebar-rail-shadow)]"
     >
       <SidebarHeader className="px-4 py-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
         {/* Expanded state: logo + brand + toggle (radio ON) */}

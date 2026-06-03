@@ -1,7 +1,6 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { BUILDER_TOKENS as T } from './builder-tokens'
 
 export interface ClarifyingQuestionsCardProps {
   /** 헤더 라벨. 기본 `확인이 필요해요`. */
@@ -23,35 +22,18 @@ export function ClarifyingQuestionsCard({
   const t = useTranslations('chat.intentSummary')
   const resolvedLabel = label ?? t('clarifyingTitle')
   return (
-    <div
-      className="rounded-[12px]"
-      style={{
-        background: T.surfaceAlt,
-        border: `1px solid ${T.border}`,
-        padding: '14px 16px',
-      }}
-    >
-      <div
-        className="mb-2 text-[12.5px] font-semibold"
-        style={{ color: T.muted, letterSpacing: '-0.005em' }}
-      >
-          {resolvedLabel}
+    <div className="rounded-xl border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] px-4 py-3.5">
+      <div className="mb-2 moldy-ui-compact font-semibold text-[var(--builder-muted)]">
+        {resolvedLabel}
       </div>
-      <ul
-        className="m-0 list-disc text-[14px]"
-        style={{
-          paddingLeft: 18,
-          lineHeight: 1.7,
-          color: T.ink2,
-        }}
-      >
+      <ul className="m-0 list-disc pl-[18px] text-sm leading-relaxed text-[var(--builder-ink-2)]">
         {items.map((item, idx) => {
           const text = typeof item === 'string' ? item : item.text
           const hint = typeof item === 'string' ? undefined : item.hint
           return (
             <li key={idx}>
               {text}
-              {hint && <span style={{ color: T.mutedSoft }}> ({hint})</span>}
+              {hint && <span className="text-[var(--builder-muted-soft)]"> ({hint})</span>}
             </li>
           )
         })}

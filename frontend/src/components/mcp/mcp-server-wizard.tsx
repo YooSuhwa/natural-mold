@@ -501,11 +501,11 @@ function RegistrySection({
                     {entry.display_name}
                   </p>
                   {entry.description ? (
-                    <p className="line-clamp-1 text-[11px] text-muted-foreground">
+                    <p className="line-clamp-1 moldy-ui-caption text-muted-foreground">
                       {entry.description}
                     </p>
                   ) : null}
-                  <p className="mt-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  <p className="mt-1 moldy-ui-micro uppercase tracking-wide text-muted-foreground">
                     {entry.transport}
                   </p>
                 </div>
@@ -614,7 +614,7 @@ function ManualSection({
               {args.map((arg, i) => (
                 <span
                   key={`${arg}-${i}`}
-                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-mono text-[11px]"
+                  className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-mono moldy-ui-caption"
                 >
                   {arg}
                   <button
@@ -646,7 +646,7 @@ function ManualSection({
                 {t('add')}
               </Button>
             </div>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="moldy-ui-caption text-muted-foreground">
               {t('argsHint')}
             </p>
           </div>
@@ -891,12 +891,12 @@ function ToolsTab({
                   <span className="truncate font-mono text-xs font-medium">
                     {tool.name}
                   </span>
-                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 moldy-ui-micro text-muted-foreground">
                     {t('params', { count: paramCount })}
                   </span>
                 </div>
                 {tool.description ? (
-                  <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
+                  <p className="mt-0.5 line-clamp-2 moldy-ui-caption text-muted-foreground">
                     {tool.description}
                   </p>
                 ) : null}

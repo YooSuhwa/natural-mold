@@ -294,7 +294,7 @@ function SelectedRow({
       <KindIcon kind={kind} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{name}</p>
-        <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>
+        <p className="truncate moldy-ui-caption text-muted-foreground">{subtitle}</p>
       </div>
       <Button
         size="sm"
@@ -394,11 +394,11 @@ function CatalogRow({ definition }: { definition: CredentialDefinition }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate text-sm font-medium">{definition.display_name}</p>
-          <Badge variant="secondary" className="shrink-0 text-[10px]">
+          <Badge variant="secondary" className="shrink-0 moldy-ui-micro">
             {definition.category}
           </Badge>
         </div>
-        <p className="truncate font-mono text-[11px] text-muted-foreground">
+        <p className="truncate font-mono moldy-ui-caption text-muted-foreground">
           {definition.key}
         </p>
       </div>
@@ -622,9 +622,9 @@ function AvailableRow({
       <KindIcon kind={kind} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{name}</p>
-        <p className="truncate text-[11px] text-muted-foreground">{subtitle}</p>
+        <p className="truncate moldy-ui-caption text-muted-foreground">{subtitle}</p>
         {description && (
-          <p className="mt-0.5 line-clamp-2 text-[11px] text-muted-foreground">
+          <p className="mt-0.5 line-clamp-2 moldy-ui-caption text-muted-foreground">
             {description}
           </p>
         )}

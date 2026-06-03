@@ -169,7 +169,7 @@ export function SpendLineChart({ data, metric, className, label }: SpendLineChar
       </svg>
       {/* X-axis labels — show first / mid / last to avoid overlap */}
       {sorted.length > 0 && (
-        <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+        <div className="mt-1 flex justify-between moldy-ui-micro text-muted-foreground">
           <span>{sorted[0].date}</span>
           {sorted.length > 2 && <span>{sorted[Math.floor(sorted.length / 2)].date}</span>}
           {sorted.length > 1 && <span>{sorted[sorted.length - 1].date}</span>}

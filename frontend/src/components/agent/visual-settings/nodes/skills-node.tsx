@@ -30,14 +30,14 @@ export function SkillsNode({ data }: { data: SkillsNodeData }) {
       <div className="nowheel w-[220px] rounded-xl border bg-card shadow-md">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.skills')}
           </span>
           <div className="flex items-center gap-0.5">
             <Button variant="ghost" size="icon-xs" onClick={() => setDialogOpen(true)}>
               <PlusIcon className="size-3" />
             </Button>
-            <Button variant="ghost" size="xs" disabled className="text-[10px] opacity-40">
+            <Button variant="ghost" size="xs" disabled className="moldy-ui-micro opacity-40">
               {t('skills.create')}
             </Button>
           </div>

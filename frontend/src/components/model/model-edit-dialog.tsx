@@ -445,7 +445,7 @@ function ModelHealthPanel({
               {typeof latest.latency_ms === 'number' && (
                 <span className="text-xs text-muted-foreground">{latest.latency_ms} ms</span>
               )}
-              <span className="text-[10px] text-muted-foreground">
+              <span className="moldy-ui-micro text-muted-foreground">
                 {new Date(latest.checked_at).toLocaleString()}
               </span>
             </div>
@@ -453,7 +453,7 @@ function ModelHealthPanel({
             <p className="text-xs text-muted-foreground">{t('health.empty')}</p>
           )}
           {latest?.error_message && (
-            <p className="line-clamp-2 break-words text-[10px] text-destructive">
+            <p className="line-clamp-2 break-words moldy-ui-micro text-destructive">
               {latest.error_kind}: {latest.error_message}
             </p>
           )}

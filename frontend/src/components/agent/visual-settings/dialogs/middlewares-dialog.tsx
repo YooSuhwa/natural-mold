@@ -176,7 +176,7 @@ function AvailableColumn({
             key={cat}
             type="button"
             onClick={() => onCategoryChange(cat)}
-            className={`rounded-full px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
+            className={`rounded-full px-2.5 py-0.5 moldy-ui-caption font-medium transition-colors ${
               category === cat
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
@@ -220,7 +220,7 @@ function SelectedCard({
     <MiddlewareCard
       item={item}
       align="center"
-      subtitle={<p className="truncate font-mono text-[11px] text-muted-foreground">{item.type}</p>}
+      subtitle={<p className="truncate font-mono moldy-ui-caption text-muted-foreground">{item.type}</p>}
       categoryBadgeVariant="secondary"
       action={
         <Button
@@ -252,11 +252,11 @@ function AvailableCard({
     <MiddlewareCard
       item={item}
       align="start"
-      subtitle={<p className="line-clamp-2 text-[11px] text-muted-foreground">{item.description}</p>}
+      subtitle={<p className="line-clamp-2 moldy-ui-caption text-muted-foreground">{item.description}</p>}
       categoryBadgeVariant="outline"
       extraBadge={
         item.provider_specific ? (
-          <Badge variant="secondary" className="shrink-0 text-[10px]">
+          <Badge variant="secondary" className="shrink-0 moldy-ui-micro">
             {item.provider_specific}
           </Badge>
         ) : null
@@ -300,7 +300,7 @@ function MiddlewareCard({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate text-sm font-medium">{item.display_name}</p>
-          <Badge variant={categoryBadgeVariant} className="shrink-0 text-[10px]">
+          <Badge variant={categoryBadgeVariant} className="shrink-0 moldy-ui-micro">
             {item.category}
           </Badge>
           {extraBadge}

@@ -193,7 +193,7 @@ function AvailableCard({ agent, onAdd }: { agent: Agent; onAdd: () => void }) {
           </span>
         )}
         {agent.model && (
-          <span className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground/80">
+          <span className="mt-0.5 truncate font-mono moldy-ui-caption text-muted-foreground/80">
             {agent.model.display_name}
           </span>
         )}

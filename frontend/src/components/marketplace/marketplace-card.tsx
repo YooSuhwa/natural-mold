@@ -132,7 +132,7 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
       <CardContent className="flex flex-1 flex-col px-0 pb-0 pt-0">
         <Link
           href={`/marketplace/${item.id}`}
-          className="mt-3 line-clamp-1 text-[15px] font-bold leading-tight text-foreground hover:text-primary-strong"
+          className="mt-3 line-clamp-1 moldy-ui-card-title font-bold leading-tight text-foreground hover:text-primary-strong"
         >
           {item.name}
         </Link>
@@ -153,7 +153,7 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
           <SupportBadge profile={item.execution_profile} />
         </div>
 
-        <div className="mt-auto flex items-center justify-between pt-3 text-[11px] text-muted-foreground">
+        <div className="mt-auto flex items-center justify-between pt-3 moldy-ui-caption text-muted-foreground">
           <InstallationBadge summary={item.installation} />
           {versionLabel ? (
             <span>

@@ -74,7 +74,7 @@ function MessageTimestamp() {
   )
   if (!createdAt) return null
   return (
-    <span className="text-[10px] text-muted-foreground">
+    <span className="moldy-ui-micro text-muted-foreground">
       {formatRelativeShort(createdAt, tCommon('yesterday'))}
     </span>
   )
@@ -358,7 +358,7 @@ function BranchPicker() {
   const display = currentIdx + 1
   const isSwitching = pendingCheckpointId !== null
   return (
-    <span className="inline-flex items-center gap-0.5 text-[10px] tabular-nums text-muted-foreground">
+    <span className="inline-flex items-center gap-0.5 moldy-ui-micro tabular-nums text-muted-foreground">
       <button
         type="button"
         className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
@@ -773,7 +773,7 @@ function StopButton() {
       type="button"
       onClick={handleStop}
       aria-label={tMsg('stop')}
-      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-input bg-background px-3 text-[12.5px] font-medium text-foreground/80 transition-colors hover:bg-accent"
+      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-input bg-background px-3 moldy-ui-compact font-medium text-foreground/80 transition-colors hover:bg-accent"
     >
       <span aria-hidden className="block size-[9px] rounded-sm bg-foreground/80" />
       {tMsg('stop')}
@@ -804,7 +804,7 @@ function AttachmentChip() {
         <AttachmentPrimitive.Name />
       </span>
       {isUploading && (
-        <span className="text-[10px] text-muted-foreground">{tMsg('attachmentUploading')}</span>
+        <span className="moldy-ui-micro text-muted-foreground">{tMsg('attachmentUploading')}</span>
       )}
       <AttachmentPrimitive.Remove asChild>
         <button

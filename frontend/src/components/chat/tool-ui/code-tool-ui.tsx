@@ -109,12 +109,12 @@ function CodeBlock({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border/40 bg-zinc-950 text-[11px]">
+    <div className="overflow-hidden rounded-lg border border-border/40 bg-zinc-950 moldy-ui-caption">
       {/* File header */}
       <div className="flex items-center justify-between border-b border-white/10 bg-zinc-900 px-3 py-1.5">
         <span className="font-mono text-zinc-400">{filename}</span>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-zinc-500">{lang}</span>
+          <span className="moldy-ui-micro text-zinc-500">{lang}</span>
           <button
             type="button"
             onClick={handleCopy}
@@ -166,7 +166,7 @@ function DiffBlock({
   filename: string
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border/40 bg-zinc-950 text-[11px]">
+    <div className="overflow-hidden rounded-lg border border-border/40 bg-zinc-950 moldy-ui-caption">
       <div className="border-b border-white/10 bg-zinc-900 px-3 py-1.5">
         <span className="font-mono text-zinc-400">{filename}</span>
       </div>

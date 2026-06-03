@@ -1,17 +1,23 @@
 'use client'
 
 import { useMemo } from 'react'
-import { ChevronRightIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Skeleton } from '@/components/ui/skeleton'
 import { DomainIcon } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
-import { ResourceGrid } from '@/components/shared/resource-layout'
+import {
+  ResourceBadge,
+  ResourceCardAction,
+  ResourceCardDescription,
+  ResourceCardMeta,
+  ResourceCardTitle,
+  ResourceGrid,
+} from '@/components/shared/resource-layout'
 import { StatusChip } from '@/components/shared/status-chip'
 import {
   getResourceTone,
   resourceCardClassName,
-  resourceMetaClassName,
+  resourceStatusChipClassName,
   type ResourceTone,
 } from '@/lib/resource-tones'
 import { cn } from '@/lib/utils'
@@ -191,43 +197,22 @@ function ToolDefinitionCard({
         >
           <DomainIcon iconId={definition.icon_id ?? definition.key} className="size-4.5" />
         </span>
-        <span
-          className={cn(
-            'inline-flex min-w-0 max-w-[120px] items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold leading-none',
-            tone.badge,
-          )}
-        >
-          <span className={cn('size-1.5 shrink-0 rounded-full', tone.dot)} />
-          <span className="truncate">{categoryLabel}</span>
-        </span>
+        <ResourceBadge tone={tone}>{categoryLabel}</ResourceBadge>
       </div>
 
-      <span className="mt-3 line-clamp-1 text-[15px] font-bold leading-tight text-foreground">
-        {definition.display_name}
-      </span>
-      <p className="mt-2 line-clamp-2 min-h-[2.65em] text-xs leading-[1.45] text-muted-foreground">
-        {definition.description}
-      </p>
+      <ResourceCardTitle>{definition.display_name}</ResourceCardTitle>
+      <ResourceCardDescription>{definition.description}</ResourceCardDescription>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         {definition.requires_credential ? (
-          <span className="inline-flex max-w-[128px] items-center rounded border border-white/80 bg-white/55 px-1.5 py-0.5 text-[10.5px] font-semibold text-foreground shadow-sm dark:border-white/10 dark:bg-white/10">
+          <ResourceCardMeta>
             <span className="truncate leading-none">{requiresCredentialLabel}</span>
-          </span>
+          </ResourceCardMeta>
         ) : null}
       </div>
 
       <div className="mt-auto flex items-center justify-end pt-3">
-        <span
-          className={cn(
-            'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-[color,transform] duration-150',
-            'group-hover:translate-x-0.5 group-hover:text-[var(--primary-strong)]',
-            'group-focus-visible:translate-x-0.5 group-focus-visible:text-[var(--primary-strong)]',
-          )}
-        >
-          {actionLabel}
-          <ChevronRightIcon aria-hidden className="size-3" />
-        </span>
+        <ResourceCardAction>{actionLabel}</ResourceCardAction>
       </div>
     </button>
   )
@@ -265,52 +250,31 @@ function InstalledToolCard({
         >
           <DomainIcon iconId={definition?.icon_id ?? tool.definition_key} className="size-4.5" />
         </span>
-        <span
-          className={cn(
-            'inline-flex min-w-0 max-w-[120px] items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold leading-none',
-            tone.badge,
-          )}
-        >
-          <span className={cn('size-1.5 shrink-0 rounded-full', tone.dot)} />
-          <span className="truncate">{categoryLabel}</span>
-        </span>
+        <ResourceBadge tone={tone}>{categoryLabel}</ResourceBadge>
       </div>
 
-      <span className="mt-3 line-clamp-1 text-[15px] font-bold leading-tight text-foreground">
-        {tool.name}
-      </span>
-      <p className="mt-2 line-clamp-2 min-h-[2.65em] text-xs leading-[1.45] text-muted-foreground">
-        {description}
-      </p>
+      <ResourceCardTitle>{tool.name}</ResourceCardTitle>
+      <ResourceCardDescription>{description}</ResourceCardDescription>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         <StatusChip
           variant={tool.enabled ? 'active' : 'disabled'}
-          className="max-w-[128px] bg-white/55 text-[10.5px] shadow-sm ring-white/80 dark:bg-white/10 dark:ring-white/10"
+          className={resourceStatusChipClassName}
         />
         {tool.credential_id ? (
           <StatusChip
             variant={credentialStatus ?? 'unknown'}
-            className="max-w-[128px] bg-white/55 text-[10.5px] shadow-sm ring-white/80 dark:bg-white/10 dark:ring-white/10"
+            className={resourceStatusChipClassName}
           />
         ) : definition?.requires_credential ? (
-          <span className={resourceMetaClassName}>
+          <ResourceCardMeta>
             <span className="truncate leading-none">{requiresCredentialLabel}</span>
-          </span>
+          </ResourceCardMeta>
         ) : null}
       </div>
 
       <div className="mt-auto flex items-center justify-end pt-3">
-        <span
-          className={cn(
-            'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-[color,transform] duration-150',
-            'group-hover:translate-x-0.5 group-hover:text-[var(--primary-strong)]',
-            'group-focus-visible:translate-x-0.5 group-focus-visible:text-[var(--primary-strong)]',
-          )}
-        >
-          {actionLabel}
-          <ChevronRightIcon aria-hidden className="size-3" />
-        </span>
+        <ResourceCardAction>{actionLabel}</ResourceCardAction>
       </div>
     </button>
   )

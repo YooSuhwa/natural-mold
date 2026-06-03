@@ -13,7 +13,22 @@ import {
   WrenchIcon,
   XIcon,
 } from 'lucide-react'
-import { BUILDER_TOKENS as T } from './builder-tokens'
+import {
+  BuilderActionRow,
+  BuilderBody,
+  BuilderButton,
+  BuilderFeedbackWrap,
+  BuilderHeaderIcon,
+  BuilderMuted,
+  BuilderPath,
+  BuilderPhaseLabel,
+  BuilderRow,
+  BuilderRowIcon,
+  BuilderSummary,
+  BuilderTag,
+  BuilderTextarea,
+  BuilderTitle,
+} from './builder-primitives'
 import { PhaseCard, PhaseCardFooter, PhaseCardHeader } from './phase-card'
 import { useApprovalForm, type ApprovalFormState } from './use-approval-form'
 
@@ -81,34 +96,13 @@ function ToolRecommendationHeader({
   const HeaderIcon = cardKind === 'middleware' ? BlocksIcon : WrenchIcon
   return (
     <PhaseCardHeader>
-      <span
-        className="inline-flex shrink-0 items-center justify-center"
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 7,
-          background: T.primaryBg,
-          color: T.primary,
-        }}
-      >
+      <BuilderHeaderIcon>
         <HeaderIcon className="size-3" />
-      </span>
-      <span
-        className="text-[13.5px] font-semibold"
-        style={{ color: T.ink, letterSpacing: '-0.01em' }}
-      >
-        {title}
-      </span>
-      <span className="text-[12px]" style={{ color: T.muted }}>
-        · {count}개 · 검토 필요
-      </span>
+      </BuilderHeaderIcon>
+      <BuilderTitle>{title}</BuilderTitle>
+      <BuilderMuted>· {count}개 · 검토 필요</BuilderMuted>
       <div className="flex-1" />
-      <span
-        className="text-[10.5px] font-semibold uppercase"
-        style={{ color: T.primaryInk, letterSpacing: '0.04em' }}
-      >
-        PHASE {phase}
-      </span>
+      <BuilderPhaseLabel>PHASE {phase}</BuilderPhaseLabel>
     </PhaseCardHeader>
   )
 }
@@ -121,74 +115,29 @@ function ToolRow({ item, cardKind }: { item: ToolItem; cardKind: ItemKind }) {
   const path = getItemPath(item, rowKind)
 
   return (
-    <div
-      className="flex gap-3 rounded-[10px] transition-colors"
-      style={{ padding: '12px 10px' }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = T.surfaceAlt
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent'
-      }}
-    >
-      <span
-        className="inline-flex shrink-0 items-center justify-center"
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 9,
-          background: T.primaryBg,
-          color: T.primary,
-        }}
-      >
+    <BuilderRow>
+      <BuilderRowIcon>
         <Icon className="size-4" />
-      </span>
+      </BuilderRowIcon>
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
-          <code className="font-mono text-[13.5px] font-semibold" style={{ color: T.ink }}>
-            {name}
-          </code>
-          <span
-            className="text-[10.5px] font-semibold"
-            style={{
-              padding: '1px 6px',
-              borderRadius: 999,
-              background: T.primaryBg,
-              color: T.primaryInk,
-              letterSpacing: '-0.005em',
-            }}
-          >
-            {t('recommended')}
-          </span>
+          <code className="moldy-builder-code font-mono">{name}</code>
+          <BuilderTag>{t('recommended')}</BuilderTag>
         </div>
-        <div className="mb-1.5 inline-flex items-center gap-1" style={{ color: T.muted }}>
+        <div className="mb-1.5 inline-flex items-center gap-1 text-[var(--builder-muted)]">
           <FolderIcon className="size-2.5" />
-          <code
-            className="font-mono text-[11.5px]"
-            style={{
-              padding: '2px 7px',
-              borderRadius: 5,
-              background: T.borderSoft,
-              border: `1px solid ${T.border}`,
-              color: T.muted,
-            }}
-          >
-            {path}
-          </code>
+          <BuilderPath>{path}</BuilderPath>
         </div>
         {item.reason && (
-          <p
-            className="text-[13px]"
-            style={{ color: T.ink2, lineHeight: 1.6, letterSpacing: '-0.005em' }}
-          >
-            <span className="mr-1.5 font-semibold" style={{ color: T.muted }}>
+          <p className="moldy-builder-copy">
+            <span className="mr-1.5 font-semibold text-[var(--builder-muted)]">
               {t('reason')}
             </span>
             {item.reason}
           </p>
         )}
       </div>
-    </div>
+    </BuilderRow>
   )
 }
 
@@ -202,16 +151,13 @@ function FeedbackTextarea({
   disabled: boolean
 }) {
   const t = useTranslations('chat.recommendation')
-  const [focused, setFocused] = useState(false)
   const composingRef = useRef(false)
 
   return (
-    <div style={{ padding: '12px 14px 4px' }}>
-      <textarea
+    <BuilderFeedbackWrap>
+      <BuilderTextarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         onCompositionStart={() => {
           composingRef.current = true
         }}
@@ -228,19 +174,8 @@ function FeedbackTextarea({
         placeholder={t('feedbackPlaceholder')}
         rows={2}
         disabled={disabled}
-        className="w-full resize-none font-sans text-[13.5px] outline-none transition-[border-color,box-shadow] duration-150"
-        style={{
-          padding: '10px 12px',
-          background: T.surface,
-          border: `1px solid ${focused ? T.primaryDim : T.border}`,
-          borderRadius: 9,
-          color: T.ink,
-          lineHeight: 1.55,
-          letterSpacing: '-0.005em',
-          boxShadow: focused ? T.focusShadow : 'none',
-        }}
       />
-    </div>
+    </BuilderFeedbackWrap>
   )
 }
 
@@ -255,61 +190,25 @@ function ApproveButton({
 }) {
   const t = useTranslations('chat.recommendation')
   return (
-    <button
-      type="button"
+    <BuilderButton
+      tone="primary"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-white transition-colors active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
-      style={{
-        height: 32,
-        padding: '0 16px',
-        borderRadius: 9,
-        background: T.primary,
-        boxShadow: T.primaryShadow,
-        letterSpacing: '-0.005em',
-      }}
-      onMouseEnter={(e) => {
-        if (disabled) return
-        e.currentTarget.style.background = T.primaryHover
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = T.primary
-      }}
+      className="px-4"
     >
       <CheckIcon className="size-3" strokeWidth={3} />
       {submitted ? t('approved') : t('approveAndContinue')}
-    </button>
+    </BuilderButton>
   )
 }
 
 function RejectButton({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
   const t = useTranslations('chat.recommendation')
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-      style={{
-        height: 32,
-        padding: '0 13px',
-        borderRadius: 9,
-        background: T.surface,
-        border: `1px solid ${T.border}`,
-        color: T.ink2,
-        letterSpacing: '-0.005em',
-      }}
-      onMouseEnter={(e) => {
-        if (disabled) return
-        e.currentTarget.style.background = T.surfaceAlt
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = T.surface
-      }}
-    >
+    <BuilderButton tone="secondary" onClick={onClick} disabled={disabled}>
       <XIcon className="size-3" strokeWidth={2.5} />
       {t('requestRevision')}
-    </button>
+    </BuilderButton>
   )
 }
 
@@ -326,17 +225,15 @@ function FooterRow({
   const { submitted, isLocked, handleApprove, handleRevision } = form
 
   return (
-    <div className="flex items-center justify-between" style={{ padding: '10px 14px' }}>
-      <button
-        type="button"
+    <BuilderActionRow>
+      <BuilderButton
+        tone="ghost"
         onClick={() => setFeedbackOpen(!feedbackOpen)}
         disabled={isLocked}
-        className="inline-flex items-center gap-1.5 text-[12.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-        style={{ color: T.muted, background: 'transparent', borderRadius: 6 }}
       >
         <PencilIcon className="size-3" />
         {feedbackOpen ? t('closeFeedback') : t('writeFeedback')}
-      </button>
+      </BuilderButton>
       <div className="flex items-center gap-2">
         <RejectButton onClick={handleRevision} disabled={isLocked} />
         <ApproveButton
@@ -345,7 +242,7 @@ function FooterRow({
           submitted={submitted === 'approved'}
         />
       </div>
-    </div>
+    </BuilderActionRow>
   )
 }
 
@@ -400,29 +297,17 @@ function RecommendationApproval({
           )
         }
       >
-        <div style={{ padding: '6px 8px' }}>
+        <BuilderBody>
           {items.length === 0 && (
-            <p className="text-[13px]" style={{ padding: '12px 10px', color: T.muted }}>
+            <p className="px-2.5 py-3 text-[13px] text-[var(--builder-muted)]">
               {t('empty')}
             </p>
           )}
           {items.map((item, idx) => (
             <ToolRow key={idx} item={item} cardKind={cardKind} />
           ))}
-        </div>
-        {args.summary && (
-          <div
-            className="text-[13px]"
-            style={{
-              padding: '0 18px 14px',
-              color: T.ink2,
-              lineHeight: 1.6,
-              letterSpacing: '-0.005em',
-            }}
-          >
-            {args.summary}
-          </div>
-        )}
+        </BuilderBody>
+        {args.summary && <BuilderSummary>{args.summary}</BuilderSummary>}
       </PhaseCard>
     </div>
   )

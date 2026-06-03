@@ -2,7 +2,7 @@
 
 import { CheckIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { BUILDER_TOKENS as T } from './builder-tokens'
+import { BuilderBody, BuilderMuted, BuilderPill } from './builder-primitives'
 import { PhaseCard, PhaseCardHeader } from './phase-card'
 
 export type IntentConfidence = 'high' | 'medium' | 'low'
@@ -30,26 +30,17 @@ function IntentSummaryHeader({
   const t = useTranslations('chat.intentSummary')
   return (
     <PhaseCardHeader variant="gradient">
-      <span
-        className="inline-flex shrink-0 items-center justify-center rounded-full text-white"
-        style={{ width: 18, height: 18, background: T.primary }}
-      >
+      <span className="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--builder-primary)] text-white">
         <CheckIcon className="size-2.5" strokeWidth={3.5} />
       </span>
-      <span
-        className="text-[12.5px] font-semibold"
-        style={{ color: T.primaryInk, letterSpacing: '-0.005em' }}
-      >
+      <span className="moldy-ui-compact font-semibold text-[var(--builder-primary-ink)]">
         {t('title')}
       </span>
-      <span className="text-[11.5px]" style={{ color: T.muted }}>
+      <BuilderMuted className="moldy-ui-caption-plus">
         · {phaseLabel}
-      </span>
+      </BuilderMuted>
       <div className="flex-1" />
-      <span
-        className="text-[10.5px] font-semibold uppercase tabular-nums"
-        style={{ color: T.muted, letterSpacing: '0.04em' }}
-      >
+      <span className="moldy-ui-meta font-semibold uppercase tabular-nums text-[var(--builder-muted)]">
         {t(`confidence.${confidence}`)}
       </span>
     </PhaseCardHeader>
@@ -58,10 +49,7 @@ function IntentSummaryHeader({
 
 function IntentLabel({ text }: { text: string }) {
   return (
-    <div
-      className="mb-1 text-[11.5px] font-semibold"
-      style={{ color: T.muted, letterSpacing: '-0.005em' }}
-    >
+    <div className="mb-1 moldy-ui-caption-plus font-semibold text-[var(--builder-muted)]">
       {text}
     </div>
   )
@@ -84,49 +72,27 @@ export function IntentSummaryCard({
   const t = useTranslations('chat.intentSummary')
   return (
     <PhaseCard header={<IntentSummaryHeader confidence={confidence} phaseLabel={phaseLabel} />}>
-      <div style={{ padding: '16px 18px 18px' }}>
+      <BuilderBody loose>
         <IntentLabel text={t('agentName')} />
-        <div
-          className="mb-3.5 text-[19px] font-bold"
-          style={{ color: T.ink, letterSpacing: '-0.015em' }}
-        >
+        <div className="mb-3.5 text-[19px] font-bold text-[var(--builder-ink)]">
           {name}
         </div>
 
         <IntentLabel text={t('description')} />
-        <p
-          className="mb-3.5 text-[14px]"
-          style={{
-            color: T.ink2,
-            lineHeight: 1.65,
-            letterSpacing: '-0.005em',
-            textWrap: 'pretty',
-          }}
-        >
+        <p className="mb-3.5 text-sm leading-relaxed text-[var(--builder-ink-2)] [text-wrap:pretty]">
           {description}
         </p>
 
         {tags && tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {tags.map((tag) => (
-              <span
-                key={tag}
-                className="text-[11.5px] font-medium"
-                style={{
-                  padding: '3px 9px',
-                  borderRadius: 999,
-                  background: T.surfaceAlt,
-                  border: `1px solid ${T.border}`,
-                  color: T.ink2,
-                  letterSpacing: '-0.005em',
-                }}
-              >
+              <BuilderPill key={tag}>
                 {tag}
-              </span>
+              </BuilderPill>
             ))}
           </div>
         )}
-      </div>
+      </BuilderBody>
     </PhaseCard>
   )
 }

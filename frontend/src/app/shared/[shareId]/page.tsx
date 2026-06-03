@@ -118,7 +118,7 @@ function Hero({
 
   return (
     <section className="pt-16 pb-2 text-center sm:pt-24">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <p className="moldy-ui-caption font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         {t('eyebrow')}
       </p>
       <h1 className="mt-5 text-3xl font-light leading-tight tracking-tight text-foreground sm:text-4xl">
@@ -135,7 +135,7 @@ function Hero({
           <p className="text-sm font-semibold text-foreground">
             {data.agent.name}
           </p>
-          <p className="text-[11px] tracking-wide text-muted-foreground">
+          <p className="moldy-ui-caption tracking-wide text-muted-foreground">
             {dateLabel}
           </p>
         </div>
@@ -272,7 +272,7 @@ function DividerLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3">
       <span className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
-      <span className="select-none text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <span className="select-none moldy-ui-micro font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         {children}
       </span>
       <span className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
@@ -374,7 +374,7 @@ function SharedFooter({
         </Link>
       </div>
 
-      <div className="mt-6 flex flex-col items-center gap-2 text-[11px] text-muted-foreground sm:flex-row sm:justify-between">
+      <div className="mt-6 flex flex-col items-center gap-2 moldy-ui-caption text-muted-foreground sm:flex-row sm:justify-between">
         <div className="flex items-center gap-2">
           <span>{dateLabel}</span>
           <span className="size-0.5 rounded-full bg-border" />

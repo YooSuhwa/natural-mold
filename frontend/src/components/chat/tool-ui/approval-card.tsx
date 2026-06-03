@@ -143,7 +143,7 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
       </button>
       {expanded && (
         <div className="border-t border-border/40 px-3 py-2">
-          <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
+          <pre className="whitespace-pre-wrap break-all font-mono moldy-ui-caption text-foreground/80">
             {JSON.stringify(args, null, 2)}
           </pre>
         </div>

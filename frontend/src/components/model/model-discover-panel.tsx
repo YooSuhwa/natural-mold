@@ -193,7 +193,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                     <span className="inline-flex items-center gap-2">
                       <DomainIcon iconId={selected.definition_key} className="size-4" />
                       <span>{selected.name}</span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="moldy-ui-micro text-muted-foreground">
                         {definitionLabel(selected.definition_key)}
                       </span>
                     </span>
@@ -207,7 +207,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                   <span className="inline-flex items-center gap-2">
                     <DomainIcon iconId={c.definition_key} className="size-4" />
                     <span>{c.name}</span>
-                    <span className="text-[10px] text-muted-foreground">
+                    <span className="moldy-ui-micro text-muted-foreground">
                       {definitionLabel(c.definition_key)}
                     </span>
                   </span>
@@ -285,7 +285,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                       </span>
                       <ModelSourceBadge source={m.source} />
                       {disabled && (
-                        <span className="text-[10px] text-muted-foreground">
+                        <span className="moldy-ui-micro text-muted-foreground">
                           {t('alreadyRegistered')}
                         </span>
                       )}
@@ -305,10 +305,10 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                         <Zap className="size-3" /> {t('test')}
                       </Button>
                     </div>
-                    <p className="truncate font-mono text-[11px] text-muted-foreground">
+                    <p className="truncate font-mono moldy-ui-caption text-muted-foreground">
                       {m.provider} · {m.model_name}
                     </p>
-                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 moldy-ui-caption text-muted-foreground">
                       <span>
                         {t('inputPrice', { price: formatTokenPrice(m.cost_per_input_token) })}
                       </span>

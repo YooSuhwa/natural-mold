@@ -14,13 +14,20 @@ import {
 } from '@assistant-ui/react'
 import { LayoutGridIcon, PaperclipIcon, SendIcon } from 'lucide-react'
 
-import { BUILDER_TOKENS as T } from './tool-ui/builder-tokens'
 import { buildMarkdownComponents } from './markdown-content'
 import { CHAT_FINAL_REMARK_PLUGINS } from './markdown-plugins'
 import { ToolFallbackPanel } from './tool-ui/generic-tool-ui'
 import { parsePhaseNarration, type PhaseSegment } from './builder-phase-parser'
 import { SystemEventChip } from './system-event-chip'
 import { ImeSafeComposerInput } from './ime-safe-composer-input'
+import {
+  BuilderAssistantName,
+  BuilderAssistantSubtitle,
+  BuilderEditComposer,
+  BuilderIconButton,
+  BuilderMessageBubble,
+  BuilderMessageText,
+} from './tool-ui/builder-primitives'
 
 /**
  * Builder-variant 메시지/컴포저 오버라이드.
@@ -38,19 +45,9 @@ export function BuilderUserMessage({ metaRow }: { metaRow: React.ReactNode }) {
   return (
     <div className="group relative flex justify-end">
       <div className="flex w-full max-w-[72%] flex-col items-end">
-        <div
-          className="text-[14.5px]"
-          style={{
-            background: T.bubble,
-            color: T.ink,
-            padding: '11px 16px',
-            borderRadius: '18px 18px 4px 18px',
-            lineHeight: 1.55,
-            letterSpacing: '-0.005em',
-          }}
-        >
+        <BuilderMessageBubble>
           <MessagePrimitive.Content />
-        </div>
+        </BuilderMessageBubble>
         {metaRow}
       </div>
     </div>
@@ -62,26 +59,18 @@ export function BuilderUserEditComposer() {
   return (
     <div className="flex justify-end">
       <div className="flex w-full max-w-[72%] flex-col items-end">
-        <ComposerPrimitive.Root
-          className="flex flex-col gap-2 rounded-[18px] p-2"
-          style={{ background: T.bubble, border: `1px solid ${T.border}` }}
-        >
-          <ImeSafeComposerInput
-            className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-[14.5px] leading-relaxed outline-none"
-            style={{ color: T.ink }}
-            autoFocus
-          />
-          <div className="flex items-center justify-end gap-1">
-            <ComposerPrimitive.Cancel className="rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent">
-              {t('editCancel')}
-            </ComposerPrimitive.Cancel>
-            <ComposerPrimitive.Send
-              className="rounded-md px-2 py-1 text-[12px] font-semibold text-white"
-              style={{ background: T.primary }}
-            >
-              {t('editSave')}
-            </ComposerPrimitive.Send>
-          </div>
+        <ComposerPrimitive.Root asChild>
+          <BuilderEditComposer>
+            <ImeSafeComposerInput className="moldy-builder-edit-input" autoFocus />
+            <div className="flex items-center justify-end gap-1">
+              <ComposerPrimitive.Cancel className="moldy-builder-button moldy-builder-button-ghost h-7 px-2">
+                {t('editCancel')}
+              </ComposerPrimitive.Cancel>
+              <ComposerPrimitive.Send className="moldy-builder-button moldy-builder-button-primary h-7 px-2">
+                {t('editSave')}
+              </ComposerPrimitive.Send>
+            </div>
+          </BuilderEditComposer>
         </ComposerPrimitive.Root>
       </div>
     </div>
@@ -123,19 +112,11 @@ function BuilderAssistantTextPart() {
           )
         }
         return (
-          <div
-            key={`txt-${idx}`}
-            className="text-[14.5px]"
-            style={{
-              lineHeight: 1.65,
-              color: T.ink,
-              letterSpacing: '-0.005em',
-            }}
-          >
+          <BuilderMessageText key={`txt-${idx}`}>
             <Markdown components={components} remarkPlugins={CHAT_FINAL_REMARK_PLUGINS}>
               {seg.text}
             </Markdown>
-          </div>
+          </BuilderMessageText>
         )
       })}
     </div>
@@ -208,12 +189,8 @@ export function BuilderAssistantMessage({
       />
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-baseline gap-1.5">
-          <span className="text-[12.5px] font-semibold" style={{ color: T.ink }}>
-            {t('builderAgentName')}
-          </span>
-          <span className="text-[11px]" style={{ color: T.mutedSoft }}>
-            {resolvedAgentSubtitle}
-          </span>
+          <BuilderAssistantName>{t('builderAgentName')}</BuilderAssistantName>
+          <BuilderAssistantSubtitle>{resolvedAgentSubtitle}</BuilderAssistantSubtitle>
         </div>
         {children}
         {metaRow}
@@ -225,23 +202,12 @@ export function BuilderAssistantMessage({
 /** 좌측 툴바 IconBtn — 파일첨부 / 템플릿 (시각 stub, 클릭 시 title 표시만). */
 function IconBtn({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <button
-      type="button"
+    <BuilderIconButton
       aria-label={label}
       title={label}
-      className="inline-flex size-[30px] items-center justify-center rounded-lg transition-colors"
-      style={{ color: T.muted, background: 'transparent' }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = T.surfaceAlt
-        e.currentTarget.style.color = T.ink2
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'transparent'
-        e.currentTarget.style.color = T.muted
-      }}
     >
       {children}
-    </button>
+    </BuilderIconButton>
   )
 }
 
@@ -261,17 +227,9 @@ function BuilderStopButton() {
       type="button"
       onClick={handleStop}
       aria-label={tMsg('stop')}
-      className="inline-flex h-8 items-center gap-1.5 text-[12.5px] font-medium transition-colors"
-      style={{
-        padding: '0 12px',
-        borderRadius: 9,
-        background: T.surface,
-        border: `1px solid ${T.border}`,
-        color: T.ink2,
-        letterSpacing: '-0.005em',
-      }}
+      className="moldy-builder-stop"
     >
-      <span aria-hidden style={{ width: 9, height: 9, borderRadius: 2, background: T.ink2 }} />
+      <span aria-hidden className="moldy-builder-stop-mark" />
       {tMsg('stop')}
     </button>
   )
@@ -282,11 +240,7 @@ function BuilderSendButton() {
   const t = useTranslations('chat.input')
   return (
     <ComposerPrimitive.Send
-      className="inline-flex size-8 items-center justify-center text-white transition-colors disabled:cursor-not-allowed"
-      style={{
-        borderRadius: 9,
-        background: T.primary,
-      }}
+      className="moldy-builder-send disabled:cursor-not-allowed"
       aria-label={t('sendButton')}
     >
       <SendIcon className="size-3.5" />
@@ -305,57 +259,28 @@ function BuilderSendButton() {
 export function BuilderComposer({ modelLabel }: { modelLabel?: string }) {
   const t = useTranslations('chat.input')
   return (
-    <div
-      style={{
-        padding: '12px 28px 18px',
-        background: 'linear-gradient(180deg, transparent 0%, #fafafa 30%)',
-      }}
-    >
-      <div className="mx-auto" style={{ maxWidth: 880 }}>
+    <div className="moldy-builder-composer-shell">
+      <div className="moldy-builder-composer-inner mx-auto">
         <ComposerPrimitive.Root
-          className="group rounded-[16px] transition-[border-color,box-shadow] duration-150 focus-within:shadow-[0_0_0_4px_oklch(0.96_0.04_163),0_2px_10px_-6px_oklch(0.4_0.1_163/0.15)] focus-within:[border-color:oklch(0.78_0.085_163)]"
-          style={{
-            background: T.surface,
-            border: `1px solid ${T.border}`,
-            boxShadow: '0 2px 10px -6px oklch(0.4 0.1 163 / 0.08)',
-          }}
+          className="moldy-builder-composer-root group"
         >
           <ImeSafeComposerInput
             placeholder={t('placeholder')}
             submitMode="enter"
-            className="min-h-[52px] max-h-[180px] w-full resize-none bg-transparent px-[18px] pt-[14px] pb-1.5 text-[14.5px] outline-none disabled:cursor-not-allowed"
-            style={{
-              lineHeight: 1.55,
-              letterSpacing: '-0.005em',
-              color: T.ink,
-            }}
+            className="moldy-builder-composer-input"
             rows={2}
           />
-          <div
-            className="flex items-center justify-between"
-            style={{ padding: '6px 10px 10px 14px' }}
-          >
+          <div className="moldy-builder-composer-toolbar flex items-center justify-between">
             <div className="flex items-center gap-1">
               <IconBtn label={t('attachComingSoon')}>
-                <PaperclipIcon className="size-[15px]" />
+                <PaperclipIcon className="size-4" />
               </IconBtn>
               <IconBtn label={t('templateComingSoon')}>
-                <LayoutGridIcon className="size-[15px]" />
+                <LayoutGridIcon className="size-4" />
               </IconBtn>
-              <span
-                aria-hidden
-                style={{
-                  display: 'inline-block',
-                  width: 1,
-                  height: 16,
-                  margin: '0 4px',
-                  background: T.border,
-                }}
-              />
+              <span aria-hidden className="moldy-builder-composer-divider" />
               {modelLabel && (
-                <span className="text-[11.5px]" style={{ color: T.mutedSoft }}>
-                  {modelLabel}
-                </span>
+                <span className="moldy-builder-model-label">{modelLabel}</span>
               )}
             </div>
             <ThreadPrimitive.If running={false}>

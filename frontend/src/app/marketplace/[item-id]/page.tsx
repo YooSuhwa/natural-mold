@@ -276,17 +276,17 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                       <div className="min-w-0 space-y-1">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-medium">v{v.version_label}</span>
-                          <Badge variant="secondary" className="text-[10px]">
+                          <Badge variant="secondary" className="moldy-ui-micro">
                             #{v.version_number}
                           </Badge>
                           {v.id === item.latest_version?.id ? (
-                            <Badge className="bg-status-success/10 text-status-success text-[10px]">
+                            <Badge className="bg-status-success/10 text-status-success moldy-ui-micro">
                               {t('versions.latest')}
                             </Badge>
                           ) : null}
                         </div>
                         {shortHash(v.content_hash) ? (
-                          <code className="font-mono text-[11px] text-muted-foreground">
+                          <code className="font-mono moldy-ui-caption text-muted-foreground">
                             {shortHash(v.content_hash)}
                           </code>
                         ) : null}

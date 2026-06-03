@@ -2,7 +2,6 @@
 
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
-import { BUILDER_TOKENS as T } from './builder-tokens'
 
 interface PhaseCardProps {
   /** Header strip (e.g. IntentSummaryHeader, ToolRecommendationHeader). */
@@ -22,19 +21,12 @@ interface PhaseCardProps {
  *
  * Spec:
  *  - bg `--surface` / 1px border `--border` / radius 14
- *  - shadow `0 1px 2px oklch(0.4 0.05 163 / 0.04)`
+ *  - shadow via `--builder-card-shadow`
  *  - overflow hidden — header strip이 카드 모서리까지 닿게
  */
 export function PhaseCard({ header, children, footer, className }: PhaseCardProps) {
   return (
-    <div
-      className={cn('overflow-hidden rounded-[14px]', className)}
-      style={{
-        background: T.surface,
-        border: `1px solid ${T.border}`,
-        boxShadow: T.cardShadow,
-      }}
-    >
+    <div className={cn('moldy-phase-card', className)}>
       {header}
       <div>{children}</div>
       {footer}
@@ -56,20 +48,8 @@ interface PhaseCardHeaderProps {
  * - plain: white + bottom border (review/approval 카드 — 도구 추천 등)
  */
 export function PhaseCardHeader({ children, variant = 'plain', className }: PhaseCardHeaderProps) {
-  const background =
-    variant === 'gradient'
-      ? `linear-gradient(90deg, ${T.primaryBg} 0%, ${T.primaryBgSoft} 100%)`
-      : T.surface
-
   return (
-    <div
-      className={cn('flex items-center gap-2', className)}
-      style={{
-        padding: variant === 'gradient' ? '11px 16px' : '12px 16px',
-        background,
-        borderBottom: `1px solid ${T.border}`,
-      }}
-    >
+    <div className={cn('moldy-phase-card-header', className)} data-variant={variant}>
       {children}
     </div>
   )
@@ -86,15 +66,5 @@ interface PhaseCardFooterProps {
  * surfaceAlt 배경 + top border. 내부 padding/레이아웃은 사용처가 자유롭게 정의.
  */
 export function PhaseCardFooter({ children, className }: PhaseCardFooterProps) {
-  return (
-    <div
-      className={cn(className)}
-      style={{
-        borderTop: `1px solid ${T.border}`,
-        background: T.surfaceAlt,
-      }}
-    >
-      {children}
-    </div>
-  )
+  return <div className={cn('moldy-phase-card-footer', className)}>{children}</div>
 }

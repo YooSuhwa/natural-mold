@@ -4,12 +4,21 @@ import { useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import { CheckIcon, FileTextIcon, PencilIcon, XIcon } from 'lucide-react'
-import { BUILDER_TOKENS as T } from './builder-tokens'
 import {
   BuilderFeedbackTextarea,
   MintActionButton,
   OutlineActionButton,
 } from './builder-form-controls'
+import {
+  BuilderActionRow,
+  BuilderBody,
+  BuilderButton,
+  BuilderHeaderIcon,
+  BuilderMuted,
+  BuilderPhaseLabel,
+  BuilderSummary,
+  BuilderTitle,
+} from './builder-primitives'
 import { PhaseCard, PhaseCardFooter, PhaseCardHeader } from './phase-card'
 import { useApprovalForm } from './use-approval-form'
 
@@ -24,34 +33,13 @@ function PromptApprovalHeader({ phase, title }: { phase: number; title: string }
   const t = useTranslations('chat.builderApproval')
   return (
     <PhaseCardHeader>
-      <span
-        className="inline-flex shrink-0 items-center justify-center"
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 7,
-          background: T.primaryBg,
-          color: T.primary,
-        }}
-      >
+      <BuilderHeaderIcon>
         <FileTextIcon className="size-3" />
-      </span>
-      <span
-        className="text-[13.5px] font-semibold"
-        style={{ color: T.ink, letterSpacing: '-0.01em' }}
-      >
-        {title}
-      </span>
-      <span className="text-[12px]" style={{ color: T.muted }}>
-        {t('reviewRequiredPrefix')}
-      </span>
+      </BuilderHeaderIcon>
+      <BuilderTitle>{title}</BuilderTitle>
+      <BuilderMuted>{t('reviewRequiredPrefix')}</BuilderMuted>
       <div className="flex-1" />
-      <span
-        className="text-[10.5px] font-semibold uppercase"
-        style={{ color: T.primaryInk, letterSpacing: '0.04em' }}
-      >
-        PHASE {phase}
-      </span>
+      <BuilderPhaseLabel>PHASE {phase}</BuilderPhaseLabel>
     </PhaseCardHeader>
   )
 }
@@ -87,17 +75,15 @@ function PromptApproval({
                   placeholder={t('promptFeedbackPlaceholder')}
                 />
               )}
-              <div className="flex items-center justify-between" style={{ padding: '10px 14px' }}>
-                <button
-                  type="button"
+              <BuilderActionRow>
+                <BuilderButton
+                  tone="ghost"
                   onClick={() => setFeedbackOpen(!feedbackOpen)}
                   disabled={form.isLocked}
-                  className="inline-flex items-center gap-1.5 text-[12.5px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                  style={{ color: T.muted, background: 'transparent', borderRadius: 6 }}
                 >
                   <PencilIcon className="size-3" />
                   {feedbackOpen ? t('closeFeedback') : t('writeFeedback')}
-                </button>
+                </BuilderButton>
                 <div className="flex items-center gap-2">
                   <OutlineActionButton
                     onClick={form.handleRevision}
@@ -112,39 +98,15 @@ function PromptApproval({
                     icon={<CheckIcon className="size-3" strokeWidth={3} />}
                   />
                 </div>
-              </div>
+              </BuilderActionRow>
             </PhaseCardFooter>
           )
         }
       >
-        <div style={{ padding: '14px 18px 16px' }}>
-          <pre
-            className="max-h-96 overflow-y-auto whitespace-pre-wrap font-mono text-[12.5px]"
-            style={{
-              padding: '12px 14px',
-              borderRadius: 10,
-              background: T.surfaceAlt,
-              border: `1px solid ${T.border}`,
-              color: T.ink2,
-              lineHeight: 1.6,
-              letterSpacing: '-0.005em',
-            }}
-          >
-            {prompt}
-          </pre>
-          {args.summary && (
-            <p
-              className="mt-3 text-[13px]"
-              style={{
-                color: T.ink2,
-                lineHeight: 1.6,
-                letterSpacing: '-0.005em',
-              }}
-            >
-              {args.summary}
-            </p>
-          )}
-        </div>
+        <BuilderBody loose>
+          <pre className="moldy-builder-pre">{prompt}</pre>
+        </BuilderBody>
+        {args.summary && <BuilderSummary>{args.summary}</BuilderSummary>}
       </PhaseCard>
     </div>
   )
