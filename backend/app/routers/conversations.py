@@ -4,6 +4,7 @@ import asyncio
 import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -58,9 +59,31 @@ _SSE_HEADERS = {
     "X-Accel-Buffering": "no",
 }
 
+_REGENERATE_PREVIOUS_ANSWER_LIMIT = 1200
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _with_regeneration_guidance(cfg: AgentConfig, target_msg: Any) -> AgentConfig:
+    """Make retry visibly useful without polluting persisted thread messages."""
+
+    from app.agent_runtime.message_utils import content_to_text
+
+    previous_answer = content_to_text(getattr(target_msg, "content", "")).strip()
+    if len(previous_answer) > _REGENERATE_PREVIOUS_ANSWER_LIMIT:
+        previous_answer = previous_answer[:_REGENERATE_PREVIOUS_ANSWER_LIMIT].rstrip() + "\n..."
+
+    guidance = (
+        "\n\n## 재생성 요청\n"
+        "사용자가 방금 assistant 답변 재생성을 요청했습니다. 같은 사용자 메시지에 대해 "
+        "정확성은 유지하되, 이전 답변과 다른 표현, 구조, 관점의 대안 답변을 작성하세요. "
+        "이전 답변을 그대로 반복하거나 문장 구조를 거의 복사하지 마세요."
+    )
+    if previous_answer:
+        guidance += f"\n\n### 이전 assistant 답변\n{previous_answer}"
+    return replace(cfg, system_prompt=f"{cfg.system_prompt}{guidance}")
 
 
 async def _resolve_agent_context(
@@ -1197,6 +1220,7 @@ async def regenerate_message(
     )
 
     cfg = await _resolve_agent_context(db, conversation_id, user, checkpoint_id=checkpoint_id)
+    cfg = _with_regeneration_guidance(cfg, target_msg)
     await chat_service.touch_conversation(db, conversation_id)
     # Regenerate creates a new leaf — drop any prior user-pinned branch.
     await chat_service.clear_active_branch_override(db, conversation_id)
