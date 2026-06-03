@@ -46,6 +46,12 @@ class ConversationResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ConversationListEnvelope(BaseModel):
+    items: list[ConversationResponse]
+    next_cursor: str | None = None
+    has_more: bool = False
+
+
 class Decision(BaseModel):
     """단일 tool_call에 대한 인간 결정.
 

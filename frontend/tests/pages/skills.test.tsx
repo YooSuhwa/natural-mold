@@ -5,7 +5,7 @@ import type { Skill } from '@/lib/types/skill'
 const mockUseSkills = vi.fn()
 
 vi.mock('@/lib/hooks/use-skills', () => ({
-  useSkills: () => mockUseSkills(),
+  useSkills: (...args: unknown[]) => mockUseSkills(...args),
 }))
 
 vi.mock('@/components/skill/skill-create-dialog', () => ({
@@ -71,6 +71,7 @@ describe('SkillsPage', () => {
 
     await user.click(screen.getByRole('tab', { name: /패키지/ }))
 
+    expect(mockUseSkills).toHaveBeenLastCalledWith({ kind: 'package' })
     expect(screen.getByRole('tab', { name: '패키지 1개' })).toHaveAttribute('aria-selected', 'true')
   })
 })

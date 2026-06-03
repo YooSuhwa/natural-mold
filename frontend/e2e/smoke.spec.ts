@@ -69,8 +69,9 @@ test.describe('Smoke Test - Static Pages', () => {
     await page.waitForLoadState('domcontentloaded')
 
     await expect(page.getByRole('heading', { name: '도구' })).toBeVisible()
-    await expect(page.getByRole('tab', { name: '카탈로그' })).toBeVisible()
-    await expect(page.getByRole('button', { name: '전체' })).toBeVisible()
+    await expect(page.getByRole('tablist', { name: '도구 보기 모드' })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /전체/ })).toBeVisible()
+    await expect(page.getByPlaceholder('도구 검색...')).toBeVisible()
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])

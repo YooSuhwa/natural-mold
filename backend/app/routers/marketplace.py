@@ -46,6 +46,7 @@ from app.marketplace.schemas import (
     MarketplaceItemListFilters,
     MarketplaceItemOut,
     MarketplaceItemPatchIn,
+    MarketplaceItemsPage,
     MarketplaceVersionDetail,
     MarketplaceVersionFromSkillIn,
     MarketplaceVersionSummary,
@@ -97,6 +98,40 @@ async def list_items(
         await catalog_service.list_items(
             db, user=user, filters=filters, limit=limit, offset=offset
         )
+    )
+
+
+@router.get("/items/page", response_model=MarketplaceItemsPage)
+async def list_items_page(
+    resource_type: str | None = Query(default=None, pattern="^(agent|mcp|skill)$"),
+    q: str | None = Query(default=None, max_length=120),
+    visibility: list[str] | None = Query(default=None),
+    category: list[str] | None = Query(default=None),
+    installed: bool | None = Query(default=None),
+    install_state: str | None = Query(
+        default=None, pattern="^(active|needs_setup|disabled|uninstalled)$"
+    ),
+    support_level: str | None = Query(default=None, max_length=40),
+    source_kind: str | None = Query(default=None, max_length=40),
+    is_listed: bool | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+) -> MarketplaceItemsPage:
+    filters = MarketplaceItemListFilters(
+        resource_type=resource_type,  # type: ignore[arg-type]
+        q=q,
+        visibility=visibility,  # type: ignore[arg-type]
+        category=category,
+        installed=installed,
+        install_state=install_state,  # type: ignore[arg-type]
+        support_level=support_level,
+        source_kind=source_kind,
+        is_listed=is_listed,
+    )
+    return await catalog_service.list_items_page(
+        db, user=user, filters=filters, limit=limit, offset=offset
     )
 
 
@@ -450,7 +485,7 @@ async def admin_set_item_listed(
     await db.flush()
     await db.refresh(item)
 
-    loaded = await catalog_service.get_item_for_user(db, item_id=item_id, user=user)
+    loaded = await catalog_service.get_item(db, item_id=item_id, user=user)
     if loaded is None:
         raise marketplace_item_not_found()
     return await catalog_service.project_item(db, item=loaded, user=user)

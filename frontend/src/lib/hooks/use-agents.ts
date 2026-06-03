@@ -8,6 +8,10 @@ export function useAgents() {
   return useQuery({ queryKey: ['agents'], queryFn: agentsApi.list })
 }
 
+export function useAgentSummaries() {
+  return useQuery({ queryKey: ['agents', 'summary'], queryFn: agentsApi.summary })
+}
+
 export function useAgent(id: string) {
   return useQuery({ queryKey: ['agents', id], queryFn: () => agentsApi.get(id), enabled: !!id })
 }

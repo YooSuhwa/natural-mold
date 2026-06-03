@@ -8,7 +8,9 @@ from httpx import AsyncClient
 from PIL import Image
 
 from app.models.agent import Agent
+from app.models.conversation import Conversation
 from app.models.model import Model
+from app.models.tool import AgentToolLink, Tool
 from tests.conftest import TestSession
 
 
@@ -71,6 +73,53 @@ async def test_agent_crud(client: AsyncClient):
 
     resp = await client.get("/api/agents")
     assert len(resp.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_list_agent_summaries_returns_lean_card_payload(client: AsyncClient):
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+
+    async with TestSession() as db:
+        agent = await db.get(Agent, uuid.UUID(agent_id))
+        assert agent is not None
+        agent.is_favorite = True
+        agent.model_fallback_list = [model_id]
+        tool = Tool(
+            name="Web Search",
+            definition_key="builtin:web_search",
+            description="Search the web",
+        )
+        db.add(tool)
+        await db.flush()
+        db.add(AgentToolLink(agent_id=agent.id, tool_id=tool.id))
+        db.add(Conversation(agent_id=agent.id, title="Recent", unread_count=3))
+        await db.commit()
+
+    resp = await client.get("/api/agents/summary")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    summary = data[0]
+    assert summary == {
+        "id": agent_id,
+        "name": "Opener Agent",
+        "description": "test",
+        "status": "active",
+        "is_favorite": True,
+        "image_url": None,
+        "model_display_name": "GPT-4o",
+        "tool_count": 1,
+        "fallback_count": 1,
+        "created_at": summary["created_at"],
+        "updated_at": summary["updated_at"],
+        "last_used_at": summary["last_used_at"],
+        "unread_count": 3,
+    }
+    assert summary["last_used_at"] is not None
+    assert "system_prompt" not in summary
+    assert "tools" not in summary
 
 
 @pytest.mark.asyncio

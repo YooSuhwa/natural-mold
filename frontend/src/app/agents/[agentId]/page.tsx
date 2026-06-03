@@ -16,10 +16,10 @@ export default function AgentPage({ params }: { params: Promise<{ agentId: strin
     let cancelled = false
     async function redirect() {
       try {
-        const conversations = await conversationsApi.list(agentId)
+        const page = await conversationsApi.page(agentId, { limit: 1 })
         if (cancelled) return
-        if (conversations.length > 0) {
-          const latest = conversations[0]
+        if (page.items.length > 0) {
+          const latest = page.items[0]
           router.replace(`/agents/${agentId}/conversations/${latest.id}`)
         } else {
           const conv = await conversationsApi.create(agentId)

@@ -17,7 +17,7 @@ import {
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
-  useConversations,
+  useConversationPages,
   useCreateConversation,
   useUpdateConversation,
   useDeleteConversation,
@@ -56,7 +56,17 @@ export function ConversationList({
 }: ConversationListProps) {
   const params = useParams<{ conversationId: string }>()
   const router = useRouter()
-  const { data: conversations, isLoading } = useConversations(agentId)
+  const [searchQuery, setSearchQuery] = useState('')
+  const {
+    data: conversationPages,
+    isLoading,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useConversationPages(agentId, {
+    limit: 30,
+    q: searchQuery.trim() || undefined,
+  })
   const createConversation = useCreateConversation(agentId)
   const updateConversation = useUpdateConversation(agentId)
   const deleteConversation = useDeleteConversation(agentId)
@@ -67,21 +77,11 @@ export function ConversationList({
   const [renameTarget, setRenameTarget] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [shareTarget, setShareTarget] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
 
-  // 검색어가 있으면 핀/일반 구분 없이 단일 필터, 없으면 핀 우선 정렬
-  const orderedConversations = useMemo(() => {
-    if (!conversations) return []
-    const query = searchQuery.trim().toLowerCase()
-    if (query) {
-      return conversations.filter((c) =>
-        (c.title ?? '').toLowerCase().includes(query),
-      )
-    }
-    const pinned = conversations.filter((c) => c.is_pinned)
-    const unpinned = conversations.filter((c) => !c.is_pinned)
-    return [...pinned, ...unpinned]
-  }, [conversations, searchQuery])
+  const orderedConversations = useMemo(
+    () => conversationPages?.pages.flatMap((page) => page.items) ?? [],
+    [conversationPages],
+  )
 
   const isSearching = searchQuery.trim().length > 0
 
@@ -242,7 +242,20 @@ export function ConversationList({
             ))}
           </div>
         ) : orderedConversations.length > 0 ? (
-          <div className="space-y-0.5 p-2">{orderedConversations.map(renderItem)}</div>
+          <div className="space-y-0.5 p-2">
+            {orderedConversations.map(renderItem)}
+            {hasNextPage ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2 w-full"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage ? t('loadingMore') : t('loadMore')}
+              </Button>
+            ) : null}
+          </div>
         ) : (
           <div className="p-4 text-center text-xs text-muted-foreground">
             {isSearching ? t('searchEmpty') : t('empty')}

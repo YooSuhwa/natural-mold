@@ -90,6 +90,22 @@ export interface Agent {
   model_fallback_ids?: string[] | null
 }
 
+export interface AgentSummary {
+  id: string
+  name: string
+  description: string | null
+  status: string
+  is_favorite: boolean
+  image_url: string | null
+  model_display_name: string | null
+  tool_count: number
+  fallback_count: number
+  created_at: string
+  updated_at: string
+  last_used_at?: string | null
+  unread_count: number
+}
+
 export interface AgentCreateRequest {
   name: string
   description?: string
@@ -151,6 +167,18 @@ export interface Conversation {
   last_activity_source: string
   created_at: string
   updated_at: string
+}
+
+export interface ConversationListEnvelope {
+  items: Conversation[]
+  next_cursor: string | null
+  has_more: boolean
+}
+
+export interface ConversationPageParams {
+  limit?: number
+  cursor?: string | null
+  q?: string | null
 }
 
 export interface ConversationUpdateRequest {

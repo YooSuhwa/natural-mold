@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -65,6 +66,22 @@ async def _seed_conversation(agent_id: uuid.UUID) -> uuid.UUID:
         return conv.id
 
 
+async def _seed_conversation_with_title(
+    agent_id: uuid.UUID,
+    title: str,
+    *,
+    is_pinned: bool = False,
+    updated_at: datetime | None = None,
+) -> uuid.UUID:
+    async with TestSession() as db:
+        conv = Conversation(agent_id=agent_id, title=title, is_pinned=is_pinned)
+        if updated_at is not None:
+            conv.updated_at = updated_at
+        db.add(conv)
+        await db.commit()
+        return conv.id
+
+
 # ---------------------------------------------------------------------------
 # GET /api/agents/{agent_id}/conversations
 # ---------------------------------------------------------------------------
@@ -87,6 +104,51 @@ async def test_list_conversations_with_data(client: AsyncClient):
     resp = await client.get(f"/api/agents/{agent_id}/conversations")
     assert resp.status_code == 200
     assert len(resp.json()) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_conversations_page_searches_and_limits_on_server(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    base = datetime.now(UTC).replace(tzinfo=None)
+    pinned_id = await _seed_conversation_with_title(
+        agent_id,
+        "Pinned Research",
+        is_pinned=True,
+        updated_at=base + timedelta(minutes=3),
+    )
+    recent_id = await _seed_conversation_with_title(
+        agent_id,
+        "Research Notes",
+        updated_at=base + timedelta(minutes=2),
+    )
+    await _seed_conversation_with_title(
+        agent_id,
+        "Cooking Notes",
+        updated_at=base + timedelta(minutes=4),
+    )
+
+    resp = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"limit": 1, "q": "research"},
+    )
+
+    assert resp.status_code == 200
+    page = resp.json()
+    assert set(page) == {"items", "next_cursor", "has_more"}
+    assert page["has_more"] is True
+    assert page["next_cursor"]
+    assert [item["id"] for item in page["items"]] == [str(pinned_id)]
+
+    resp = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"limit": 2, "q": "research", "cursor": page["next_cursor"]},
+    )
+
+    assert resp.status_code == 200
+    second_page = resp.json()
+    assert second_page["has_more"] is False
+    assert second_page["next_cursor"] is None
+    assert [item["id"] for item in second_page["items"]] == [str(recent_id)]
 
 
 @pytest.mark.asyncio
@@ -195,6 +257,47 @@ async def test_list_messages_with_data(client: AsyncClient):
     assert len(msgs) == 2
     assert msgs[0]["role"] == "user"
     assert msgs[1]["role"] == "assistant"
+
+
+@pytest.mark.asyncio
+async def test_list_messages_does_not_write_missing_timestamps_on_read(client: AsyncClient):
+    from langchain_core.messages import AIMessage, HumanMessage
+    from sqlalchemy import select
+
+    agent_id, _ = await _seed_agent()
+    conv_id = await _seed_conversation(agent_id)
+
+    msgs_list = [
+        HumanMessage(content="Hello", id=str(uuid.uuid4())),
+        AIMessage(content="Hi!", id=str(uuid.uuid4())),
+    ]
+    mock_checkpoint = {"channel_values": {"messages": msgs_list}}
+    mock_tuple = type("CT", (), {"checkpoint": mock_checkpoint})()
+
+    async def _alist(_config):
+        yield type(
+            "CT",
+            (),
+            {
+                "config": {"configurable": {"checkpoint_id": "ck1"}},
+                "parent_config": None,
+                "checkpoint": {"channel_values": {"messages": msgs_list}},
+            },
+        )()
+
+    with patch("app.agent_runtime.checkpointer.get_checkpointer") as mock_cp:
+        mock_cp.return_value.aget_tuple = AsyncMock(return_value=mock_tuple)
+        mock_cp.return_value.alist = _alist
+        resp = await client.get(f"/api/conversations/{conv_id}/messages")
+
+    assert resp.status_code == 200
+    async with TestSession() as db:
+        stored = (
+            await db.execute(
+                select(Conversation.message_timestamps).where(Conversation.id == conv_id)
+            )
+        ).scalar_one()
+        assert stored == {}
 
 
 @pytest.mark.asyncio

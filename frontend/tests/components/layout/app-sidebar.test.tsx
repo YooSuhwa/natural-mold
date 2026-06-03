@@ -1,6 +1,6 @@
 import { render, screen } from '../../test-utils'
 import { AppSidebar } from '@/components/layout/app-sidebar'
-import { mockAgentList } from '../../mocks/fixtures'
+import { mockAgentSummaryList } from '../../mocks/fixtures'
 
 vi.mock('next/link', () => ({
   default: ({
@@ -18,11 +18,11 @@ vi.mock('next/link', () => ({
   ),
 }))
 
-const mockUseAgents = vi.fn()
+const mockUseAgentSummaries = vi.fn()
 const mockUseTriggerSummary = vi.fn()
 
 vi.mock('@/lib/hooks/use-agents', () => ({
-  useAgents: () => mockUseAgents(),
+  useAgentSummaries: () => mockUseAgentSummaries(),
 }))
 
 vi.mock('@/lib/hooks/use-triggers', () => ({
@@ -136,7 +136,7 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
 
 describe('AppSidebar', () => {
   beforeEach(() => {
-    mockUseAgents.mockReturnValue({ data: undefined, isLoading: false })
+    mockUseAgentSummaries.mockReturnValue({ data: undefined, isLoading: false })
     mockUseTriggerSummary.mockReturnValue({ data: { total_unread: 0, active_count: 0 } })
   })
 
@@ -166,8 +166,8 @@ describe('AppSidebar', () => {
   })
 
   it('shows recent agents when loaded', () => {
-    mockUseAgents.mockReturnValue({
-      data: mockAgentList,
+    mockUseAgentSummaries.mockReturnValue({
+      data: mockAgentSummaryList,
       isLoading: false,
     })
     render(<AppSidebar />)
@@ -177,7 +177,7 @@ describe('AppSidebar', () => {
   })
 
   it('shows loading skeletons for recent agents', () => {
-    mockUseAgents.mockReturnValue({ data: undefined, isLoading: true })
+    mockUseAgentSummaries.mockReturnValue({ data: undefined, isLoading: true })
     const { container } = render(<AppSidebar />)
     const skeletons = container.querySelectorAll("[data-slot='skeleton']")
     expect(skeletons.length).toBeGreaterThan(0)
@@ -189,7 +189,7 @@ describe('AppSidebar', () => {
   })
 
   it('does not show recent agents section when empty', () => {
-    mockUseAgents.mockReturnValue({ data: [], isLoading: false })
+    mockUseAgentSummaries.mockReturnValue({ data: [], isLoading: false })
     render(<AppSidebar />)
     expect(screen.queryByText('최근 에이전트')).not.toBeInTheDocument()
   })

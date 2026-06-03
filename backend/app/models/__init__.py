@@ -25,7 +25,7 @@ from app.models.marketplace import (
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.message_attachment import MessageAttachment
-from app.models.message_event import MessageEvent
+from app.models.message_event import MessageEvent, MessageEventChunk
 from app.models.message_feedback import MessageFeedback
 from app.models.model import Model
 from app.models.refresh_token import RefreshToken
@@ -63,6 +63,7 @@ __all__ = [
     "McpTool",
     "MessageAttachment",
     "MessageEvent",
+    "MessageEventChunk",
     "MessageFeedback",
     "Model",
     "RefreshToken",

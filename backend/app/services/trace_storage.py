@@ -21,9 +21,10 @@ from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.agent_runtime.message_utils import parse_msg_id
-from app.models.message_event import MessageEvent
+from app.models.message_event import MessageEvent, MessageEventChunk
 
 # Status enum for message_events.status — DB CHECK 제약과 일치.
 TraceStatus = Literal["streaming", "completed", "failed"]
@@ -62,24 +63,19 @@ async def append_events(
     events_chunk: list[dict[str, Any]],
     status: TraceStatus = "streaming",
 ) -> MessageEvent | None:
-    """Partial flush — UPSERT a chunk of events into the turn's row.
+    """Partial flush — append event payload into chunk rows for the turn.
 
     W3-out M2의 핵심 hot path. ``stream_agent_response`` 의 emit 클로저가
     32 events 또는 2초마다 호출. dedup-by-id로 boundary 중복(같은 chunk가
     재시도 등으로 두 번 도달)을 방지한다.
 
     Behavior:
-    - row가 없으면 INSERT. ``events`` 는 ``events_chunk`` 그대로.
-    - row가 있으면 ``events = existing_events + (events_chunk - existing_ids)``
-      로 application-side concat 후 UPDATE.
+    - row가 없으면 INSERT. Parent ``events`` 는 legacy 호환용으로 비워둔다.
+    - row가 있으면 payload는 ``message_event_chunks`` 에 append-only insert.
     - ``last_event_id`` = ``events_chunk[-1]["id"]`` (chunk 비면 no-op).
     - ``status`` 는 caller가 명시. 기본 'streaming'.
     - ``updated_at`` 은 model의 ``onupdate=now()`` 가 자동 갱신
       (INSERT 시도 server_default 적용).
-
-    PoC 단순화 — application-side dedup은 row당 events 수가 작은 동안
-    저렴하다. 한 turn이 5000 events를 넘기 시작하면 SQL CTE 또는 별도
-    ``events_chunks`` 테이블로 옮긴다 (plan의 후속 PR 항목).
 
     Caller commits the session.
 
@@ -101,20 +97,15 @@ async def append_events(
         record = MessageEvent(
             conversation_id=conversation_id,
             assistant_msg_id=assistant_msg_id,
-            events=list(events_chunk),
+            events=[],
             last_event_id=last_event_id,
             status=status,
             # completed_at은 finalize_turn에서 set. streaming 동안은 None.
         )
         db.add(record)
-        return record
+        await db.flush()
 
-    # Dedup-by-id: 기존 events에 이미 있는 id는 skip하고 새 id만 append.
-    existing_ids: set[str] = {
-        evt.get("id")  # type: ignore[misc]
-        for evt in (record.events or [])
-        if isinstance(evt.get("id"), str)
-    }
+    existing_ids = await _load_existing_event_ids(db, record)
     new_events = [
         evt
         for evt in events_chunk
@@ -125,13 +116,72 @@ async def append_events(
         # Nothing changed — skip UPDATE to avoid useless WAL write.
         return record
 
-    merged_events: list[dict[str, Any]] = list(record.events or []) + new_events
-    record.events = merged_events
+    if new_events:
+        seq_start = len(existing_ids) + 1
+        seq_end = seq_start + len(new_events) - 1
+        event_ids = [
+            str(evt.get("id"))
+            for evt in new_events
+            if isinstance(evt.get("id"), str) and evt.get("id")
+        ]
+        db.add(
+            MessageEventChunk(
+                message_event_id=record.id,
+                conversation_id=conversation_id,
+                assistant_msg_id=assistant_msg_id,
+                seq_start=seq_start,
+                seq_end=seq_end,
+                first_event_id=event_ids[0] if event_ids else None,
+                last_event_id=event_ids[-1] if event_ids else None,
+                event_ids=event_ids,
+                events=list(new_events),
+            )
+        )
     if last_event_id:
         record.last_event_id = last_event_id
     record.status = status
     # ``onupdate=`` 가 ORM flush 시 updated_at을 갱신.
     return record
+
+
+async def _load_existing_event_ids(db: AsyncSession, record: MessageEvent) -> set[str]:
+    ids: set[str] = {
+        evt.get("id")  # type: ignore[misc]
+        for evt in (record.events or [])
+        if isinstance(evt.get("id"), str)
+    }
+    result = await db.execute(
+        select(MessageEventChunk.event_ids)
+        .where(MessageEventChunk.message_event_id == record.id)
+        .order_by(MessageEventChunk.seq_start)
+    )
+    for chunk_ids in result.scalars().all():
+        ids.update(str(event_id) for event_id in (chunk_ids or []) if event_id)
+    return ids
+
+
+async def load_events(db: AsyncSession, record: MessageEvent) -> list[dict[str, Any]]:
+    """Return legacy row events plus append-only chunk events, deduped by id."""
+
+    events: list[dict[str, Any]] = list(record.events or [])
+    result = await db.execute(
+        select(MessageEventChunk.events)
+        .where(MessageEventChunk.message_event_id == record.id)
+        .order_by(MessageEventChunk.seq_start, MessageEventChunk.created_at)
+    )
+    for chunk_events in result.scalars().all():
+        events.extend(chunk_events or [])
+
+    seen: set[str] = set()
+    merged: list[dict[str, Any]] = []
+    for event in events:
+        event_id = event.get("id")
+        if isinstance(event_id, str) and event_id:
+            if event_id in seen:
+                continue
+            seen.add(event_id)
+        merged.append(event)
+    return merged
 
 
 async def finalize_turn(
@@ -260,7 +310,10 @@ async def get_traces_for_conversation(
         .where(MessageEvent.conversation_id == conversation_id)
         .order_by(MessageEvent.created_at)
     )
-    return list(result.scalars().all())
+    records = list(result.scalars().all())
+    for record in records:
+        set_committed_value(record, "events", await load_events(db, record))
+    return records
 
 
 async def get_trace_by_msg_id(db: AsyncSession, assistant_msg_id: str) -> MessageEvent | None:
@@ -268,4 +321,7 @@ async def get_trace_by_msg_id(db: AsyncSession, assistant_msg_id: str) -> Messag
     result = await db.execute(
         select(MessageEvent).where(MessageEvent.assistant_msg_id == assistant_msg_id)
     )
-    return result.scalar_one_or_none()
+    record = result.scalar_one_or_none()
+    if record is not None:
+        set_committed_value(record, "events", await load_events(db, record))
+    return record

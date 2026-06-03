@@ -15,7 +15,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
@@ -70,29 +70,36 @@ async def _latest_for(
 ) -> dict[uuid.UUID, HealthCheckHistory]:
     """Return the most recent ``HealthCheckHistory`` per ``target_id``.
 
-    Implemented with a single ``ORDER BY`` query plus an in-process reduce
-    to avoid a per-target round-trip (N+1). For modest catalog sizes the
-    payload stays small; if it grows, a window-function variant would slot
-    in here without changing the caller contract.
+    Uses SQL windowing so the DB returns one row per target instead of
+    loading every history row and reducing in Python.
     """
 
     if not target_ids:
         return {}
+    ranked = (
+        select(
+            HealthCheckHistory.id.label("id"),
+            func.row_number()
+            .over(
+                partition_by=HealthCheckHistory.target_id,
+                order_by=HealthCheckHistory.checked_at.desc(),
+            )
+            .label("rn"),
+        )
+        .where(
+            HealthCheckHistory.target_kind == target_kind,
+            HealthCheckHistory.target_id.in_(target_ids),
+        )
+        .subquery()
+    )
     rows = (
         await db.execute(
             select(HealthCheckHistory)
-            .where(
-                HealthCheckHistory.target_kind == target_kind,
-                HealthCheckHistory.target_id.in_(target_ids),
-            )
-            .order_by(HealthCheckHistory.checked_at.desc())
+            .join(ranked, HealthCheckHistory.id == ranked.c.id)
+            .where(ranked.c.rn == 1)
         )
     ).scalars().all()
-    latest: dict[uuid.UUID, HealthCheckHistory] = {}
-    for row in rows:
-        if row.target_id not in latest:
-            latest[row.target_id] = row
-    return latest
+    return {row.target_id: row for row in rows}
 
 
 def _summary_from(

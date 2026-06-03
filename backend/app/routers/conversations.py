@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -31,6 +32,7 @@ from app.models.model import Model
 from app.observability.langfuse import LangfuseTraceRecord, is_langfuse_enabled
 from app.schemas.conversation import (
     ConversationCreate,
+    ConversationListEnvelope,
     ConversationResponse,
     ConversationUpdate,
     DebugTraceDetailResponse,
@@ -44,7 +46,7 @@ from app.schemas.conversation import (
     TurnTraceResponse,
 )
 from app.services import chat_service, thread_branch_service, trace_debug_service, trace_storage
-from app.services.image_preview import get_or_create_image_preview
+from app.services.image_preview import get_or_create_image_preview_async
 
 logger = logging.getLogger(__name__)
 
@@ -425,6 +427,37 @@ async def _finalize_trace(
 # ---------------------------------------------------------------------------
 # CRUD
 # ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/api/agents/{agent_id}/conversations/page",
+    response_model=ConversationListEnvelope,
+)
+async def list_conversations_page(
+    agent_id: uuid.UUID,
+    limit: int = Query(30, ge=1, le=100),
+    cursor: str | None = Query(None),
+    q: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    if not await chat_service.is_agent_owned_by_user(db, agent_id, user.id):
+        raise agent_not_found()
+    try:
+        items, next_cursor, has_more = await chat_service.list_conversations_page(
+            db,
+            agent_id,
+            limit=limit,
+            cursor=cursor,
+            q=q,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid cursor") from exc
+    return ConversationListEnvelope(
+        items=items,
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
 
 
 @router.get(
@@ -1245,11 +1278,12 @@ async def get_conversation_file(
 
     base = Path(settings.conversation_output_dir) / str(conversation_id)
     target = (base / file_path).resolve()
-    if not target.is_relative_to(base.resolve()) or not target.is_file():
+    target_exists = await asyncio.to_thread(target.is_file)
+    if not target.is_relative_to(base.resolve()) or not target_exists:
         raise file_not_found()
     if variant == "preview":
         resolved_base = base.resolve()
-        preview = get_or_create_image_preview(
+        preview = await get_or_create_image_preview_async(
             target,
             cache_dir=resolved_base / ".previews",
             cache_name=target.relative_to(resolved_base).as_posix(),

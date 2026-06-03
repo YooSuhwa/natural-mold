@@ -61,7 +61,7 @@ import {
 } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/lib/auth/session'
-import { useAgents } from '@/lib/hooks/use-agents'
+import { useAgentSummaries } from '@/lib/hooks/use-agents'
 import { useLogout } from '@/lib/hooks/useAuth'
 import { useTriggerSummary } from '@/lib/hooks/use-triggers'
 import { connectorsExpandedAtom, marketplaceExpandedAtom } from '@/lib/stores/sidebar-store'
@@ -129,7 +129,7 @@ function CollapsibleNavItem({
 export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { data: agents, isLoading } = useAgents()
+  const { data: agents, isLoading } = useAgentSummaries()
   const { data: triggerSummary } = useTriggerSummary()
   const { resolvedTheme, setTheme } = useTheme()
   const locale = useLocale()

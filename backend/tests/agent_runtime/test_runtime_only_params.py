@@ -14,11 +14,19 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.agent_runtime import tool_factory
 from app.agent_runtime.tool_factory import (
     _build_runtime_args_schema,
     create_tool_for_runtime,
 )
 from app.tools.registry import registry as tool_registry
+
+
+@pytest.fixture(autouse=True)
+def _reset_tool_http_client() -> None:
+    tool_factory.reset_tool_http_client_for_tests()
+    yield
+    tool_factory.reset_tool_http_client_for_tests()
 
 
 def _naver_news_config(
@@ -116,3 +124,26 @@ async def test_runtime_arg_overrides_stored_query_at_invocation() -> None:
 
     assert "verify" in client_cls.call_args.kwargs
     assert captured["params"]["query"] == "한컴 최신 뉴스"
+
+
+@pytest.mark.asyncio
+async def test_registry_tool_reuses_shared_http_client_across_invocations() -> None:
+    captured_clients: list[Any] = []
+
+    async def fake_runner(ctx: Any) -> dict[str, Any]:
+        captured_clients.append(ctx.http_client)
+        return {"items": []}
+
+    definition = tool_registry.require("naver_search_news")
+    with patch.object(definition, "runner", fake_runner):
+        tool = create_tool_for_runtime(_naver_news_config(stored_params={"query": "pinned"}))
+        assert tool is not None
+        with patch("app.agent_runtime.tool_factory.httpx.AsyncClient") as client_cls:
+            client_cls.return_value.__aenter__ = AsyncMock(return_value=object())
+            client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            await tool.coroutine(query="첫 번째")
+            await tool.coroutine(query="두 번째")
+
+    assert client_cls.call_count == 1
+    assert len(captured_clients) == 2
+    assert captured_clients[0] is captured_clients[1]
