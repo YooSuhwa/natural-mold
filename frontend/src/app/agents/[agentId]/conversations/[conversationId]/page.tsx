@@ -229,7 +229,7 @@ export default function ChatPage({
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="flex gap-3">
                   <Skeleton className="size-8 rounded-full" />
-                  <Skeleton className="h-16 flex-1 rounded-2xl" />
+                  <Skeleton className="moldy-skeleton-message h-16 flex-1" />
                 </div>
               ))}
             </div>

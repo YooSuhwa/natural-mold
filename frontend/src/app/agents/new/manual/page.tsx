@@ -35,7 +35,7 @@ function VisualFlowLoading() {
   return (
     <div className="flex h-full min-h-[420px] flex-col gap-3 p-4">
       <Skeleton className="h-9 w-48" />
-      <Skeleton className="min-h-0 flex-1 rounded-xl" />
+      <Skeleton className="moldy-skeleton-card min-h-0 flex-1" />
     </div>
   )
 }

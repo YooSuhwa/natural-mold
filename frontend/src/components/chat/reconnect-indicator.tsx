@@ -16,7 +16,7 @@ export function ReconnectIndicator() {
       <div
         role="status"
         aria-live="polite"
-        className="inline-flex items-center gap-2 rounded-full border border-border bg-muted/70 px-3 py-1 text-xs text-muted-foreground shadow-sm"
+        className="moldy-status-pill inline-flex items-center gap-2 px-3 py-1 text-xs text-muted-foreground"
       >
         <Loader2 className="size-3 animate-spin" />
         <span>{t('reconnecting')}</span>

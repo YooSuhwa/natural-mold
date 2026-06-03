@@ -335,7 +335,7 @@ function EmptyConversation() {
   const t = useTranslations('sharedConversation')
   return (
     <div className="py-16 text-center">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-primary">
+      <div className="moldy-empty-icon mx-auto mb-4 size-12">
         <MessageSquareIcon className="size-5 text-primary-foreground" />
       </div>
       <p className="text-sm text-muted-foreground">
@@ -409,8 +409,8 @@ function SharedSkeleton() {
           </div>
         </div>
         <div className="mt-14 space-y-8">
-          <Skeleton className="ml-auto h-16 w-3/4 rounded-2xl" />
-          <Skeleton className="h-24 w-3/4 rounded-2xl" />
+          <Skeleton className="moldy-skeleton-message ml-auto h-16 w-3/4" />
+          <Skeleton className="moldy-skeleton-message h-24 w-3/4" />
         </div>
       </main>
     </div>
@@ -421,8 +421,8 @@ function SharedError() {
   const t = useTranslations('sharedConversation')
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
-      <div className="mb-4 flex size-14 items-center justify-center rounded-2xl bg-destructive/10">
-        <AlertCircleIcon className="size-6 text-destructive" />
+      <div className="moldy-error-icon mb-4 size-14">
+        <AlertCircleIcon className="size-6" />
       </div>
       <h1 className="text-lg font-semibold tracking-tight text-foreground">
         {t('error.title')}

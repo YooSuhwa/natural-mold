@@ -256,7 +256,7 @@ function ConversationCombobox({
       </button>
 
       {open ? (
-        <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border bg-popover shadow-lg">
+        <div className="moldy-popover absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden">
           <div className="flex items-center gap-2 border-b px-2.5 py-2">
             <SearchIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <input

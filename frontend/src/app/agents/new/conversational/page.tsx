@@ -159,7 +159,7 @@ export default function ConversationalCreationPage({
 
         {sessionId && (
           <div className="inline-flex items-center gap-1.5 rounded-md border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] px-2.5 py-1 font-mono moldy-ui-caption moldy-builder-color-muted">
-            <span className="size-1.5 rounded-full bg-[var(--builder-primary)] shadow-[0_0_0_3px_var(--builder-primary-bg)]" />
+            <span className="moldy-status-success moldy-status-dot-soft size-1.5" />
             {t('sessionLabel', { id: sessionId.slice(0, 8) })}
           </div>
         )}

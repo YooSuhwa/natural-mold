@@ -16,7 +16,7 @@ import { useTranslations } from 'next-intl'
 import type { UsageDailyEntry, UsageMetric } from '@/lib/types'
 
 import { formatCostUsd, formatRequests, formatTokens } from './format'
-import { USAGE_METRIC_ACCENT, UsageChartEmpty, UsageChartFrame } from './usage-chart-frame'
+import { UsageChartEmpty, UsageChartFrame } from './usage-chart-frame'
 
 interface SpendBarChartProps {
   data: UsageDailyEntry[]
@@ -62,7 +62,6 @@ export function SpendBarChart({
   }
 
   const max = Math.max(...ranked.map((d) => metricValue(d, metric)), 0.0001)
-  const accent = USAGE_METRIC_ACCENT[metric]
   const heading = label ?? t(`barMetric.${metric}`)
 
   return (
@@ -96,8 +95,9 @@ export function SpendBarChart({
               </span>
               <div className="relative h-5 flex-1 overflow-hidden rounded-md bg-muted/40">
                 <div
-                  className="h-full rounded-md transition-[width]"
-                  style={{ width: `${widthPct}%`, backgroundColor: accent }}
+                  className="moldy-usage-bar h-full rounded-md transition-[width]"
+                  data-usage-metric={metric}
+                  style={{ width: `${widthPct}%` }}
                 />
               </div>
               <span className="w-24 shrink-0 text-right font-mono moldy-ui-caption tabular-nums text-foreground/90">

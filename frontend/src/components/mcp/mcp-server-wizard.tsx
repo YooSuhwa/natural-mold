@@ -486,9 +486,7 @@ function RegistrySection({
                 onClick={() => onSelect(entry)}
                 data-testid={`registry-card-${entry.key}`}
                 className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-left transition-[background-color,border-color,box-shadow] hover:bg-muted/50 ${
-                  isSelected
-                    ? 'border-primary-strong/60 bg-primary-strong/10 shadow-sm'
-                    : 'border-border'
+                  isSelected ? 'moldy-selected-card' : 'border-border'
                 }`}
               >
                 <DomainIconTile

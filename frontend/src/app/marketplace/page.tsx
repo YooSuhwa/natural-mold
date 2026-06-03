@@ -158,7 +158,7 @@ function CardGridSkeleton() {
   return (
     <ResourceGrid minColumnWidth={300}>
       {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="h-44 w-full rounded-xl" />
+        <Skeleton key={i} className="moldy-skeleton-card h-44 w-full" />
       ))}
     </ResourceGrid>
   )

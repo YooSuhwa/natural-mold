@@ -55,7 +55,7 @@ function SourceBadges({ domains }: { domains: string[] }) {
         <span
           key={domain}
           title={domain}
-          className="inline-flex size-6 items-center justify-center rounded-full border border-background bg-muted moldy-ui-micro font-semibold text-muted-foreground shadow-sm"
+          className="moldy-avatar-chip inline-flex size-6 items-center justify-center moldy-ui-micro font-semibold"
         >
           {domainInitial(domain)}
         </span>

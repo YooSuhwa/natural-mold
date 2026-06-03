@@ -523,6 +523,10 @@
     gap: 9px;
   }
 
+  .auth-brand-logo {
+    filter: drop-shadow(0 1px 1px oklch(0.28 0.04 164 / 0.22));
+  }
+
   .auth-brand-text,
   .auth-heading {
     color: var(--auth-heading);
@@ -634,7 +638,18 @@
     height: 22px;
     border: 2px solid var(--auth-card-bg);
     border-radius: 999px;
-    background: var(--auth-avatar-color);
+  }
+
+  .auth-avatar-dot:nth-child(1) {
+    background: var(--primary-strong);
+  }
+
+  .auth-avatar-dot:nth-child(2) {
+    background: var(--status-warn);
+  }
+
+  .auth-avatar-dot:nth-child(3) {
+    background: var(--status-info);
   }
 
   .auth-avatar-dot + .auth-avatar-dot {
@@ -737,15 +752,54 @@
 
   .auth-star {
     position: fixed;
-    top: var(--auth-star-top);
-    left: var(--auth-star-left);
     z-index: 0;
-    width: var(--auth-star-size);
-    height: var(--auth-star-size);
-    color: var(--auth-star-color);
     pointer-events: none;
-    animation: var(--auth-star-animation);
     filter: drop-shadow(0 0 6px currentColor);
+  }
+
+  .auth-star-1 {
+    top: 18%;
+    left: 14%;
+    width: 14px;
+    height: 14px;
+    color: var(--auth-sparkle-mint);
+    animation: auth-twinkle-1 5s ease-in-out infinite;
+  }
+
+  .auth-star-2 {
+    top: 62%;
+    left: 40%;
+    width: 10px;
+    height: 10px;
+    color: var(--auth-sparkle-amber);
+    animation: auth-twinkle-2 6.5s ease-in-out infinite;
+  }
+
+  .auth-star-3 {
+    top: 22%;
+    left: 74%;
+    width: 18px;
+    height: 18px;
+    color: var(--auth-sparkle-mint);
+    animation: auth-twinkle-3 7s ease-in-out infinite;
+  }
+
+  .auth-star-4 {
+    top: 78%;
+    left: 10%;
+    width: 12px;
+    height: 12px;
+    color: var(--auth-sparkle-amber);
+    animation: auth-twinkle-1 5.5s ease-in-out infinite;
+  }
+
+  .auth-star-5 {
+    top: 88%;
+    left: 52%;
+    width: 16px;
+    height: 16px;
+    color: var(--auth-sparkle-mint);
+    animation: auth-twinkle-2 4.5s ease-in-out infinite;
   }
 
   .auth-footer {
@@ -761,6 +815,22 @@
     border-radius: var(--radius-lg);
     background: var(--card);
     padding: 1rem;
+  }
+
+  .moldy-usage-bar {
+    background: var(--moldy-usage-bar-color);
+  }
+
+  .moldy-usage-bar[data-usage-metric="cost"] {
+    --moldy-usage-bar-color: var(--usage-chart-cost);
+  }
+
+  .moldy-usage-bar[data-usage-metric="tokens"] {
+    --moldy-usage-bar-color: var(--usage-chart-tokens);
+  }
+
+  .moldy-usage-bar[data-usage-metric="requests"] {
+    --moldy-usage-bar-color: var(--usage-chart-requests);
   }
 
   .moldy-content-visibility {
@@ -840,6 +910,91 @@
     overflow: hidden;
   }
 
+  .moldy-skeleton-card {
+    border-radius: var(--moldy-radius-card);
+  }
+
+  .moldy-skeleton-message {
+    border-radius: var(--radius-2xl);
+  }
+
+  .moldy-popover {
+    border: 1px solid var(--border);
+    border-radius: var(--moldy-radius-control);
+    background: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow: var(--moldy-shadow-card);
+  }
+
+  .moldy-side-panel {
+    border-left: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+    background: var(--card);
+    box-shadow: var(--moldy-shadow-card);
+  }
+
+  .moldy-segmented-tabs {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    gap: 0.25rem;
+    overflow-x: auto;
+    border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+    border-radius: var(--moldy-radius-card);
+    background: color-mix(in oklch, var(--background) 70%, transparent);
+    padding: 0.25rem;
+  }
+
+  .moldy-segmented-tab {
+    display: inline-flex;
+    height: 2rem;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 0.375rem;
+    white-space: nowrap;
+    border-radius: var(--moldy-radius-control);
+    padding-inline: 0.875rem;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .moldy-segmented-tab:hover {
+    color: var(--foreground);
+  }
+
+  .moldy-segmented-tab[data-active="true"] {
+    background: var(--background);
+    color: var(--foreground);
+    font-weight: 600;
+    box-shadow: var(--moldy-shadow-soft);
+  }
+
+  .moldy-chat-bubble-user {
+    border: 1px solid color-mix(in oklch, var(--primary-strong) 15%, transparent);
+    border-radius: var(--radius-2xl);
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .moldy-floating-icon-button {
+    border: 1px solid var(--border);
+    border-radius: var(--moldy-radius-pill);
+    background: var(--background);
+    box-shadow: var(--moldy-shadow-soft);
+    transition:
+      background-color 0.15s ease,
+      opacity 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .moldy-floating-icon-button:hover {
+    background: var(--accent);
+  }
+
   .moldy-empty-state {
     display: flex;
     flex-direction: column;
@@ -877,6 +1032,24 @@
     background: color-mix(in oklch, var(--status-danger) 5%, var(--card));
     padding: 2.5rem 1.5rem;
     text-align: center;
+  }
+
+  .moldy-empty-icon,
+  .moldy-error-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-2xl);
+  }
+
+  .moldy-empty-icon {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+
+  .moldy-error-icon {
+    background: color-mix(in oklch, var(--status-danger) 10%, transparent);
+    color: var(--status-danger);
   }
 
   .moldy-page-kicker {
@@ -973,6 +1146,11 @@
     color: color-mix(in oklch, var(--moldy-status-color) 72%, var(--foreground));
   }
 
+  .moldy-status-card {
+    border-radius: var(--moldy-radius-card);
+    padding: 0.5rem 0.75rem;
+  }
+
   .moldy-status-soft {
     background: color-mix(in oklch, var(--moldy-status-color) 12%, transparent);
     color: color-mix(in oklch, var(--moldy-status-color) 74%, var(--foreground));
@@ -994,6 +1172,68 @@
   .moldy-status-dot {
     background: var(--moldy-status-color);
     box-shadow: 0 0 0 3px color-mix(in oklch, var(--moldy-status-color) 16%, transparent);
+  }
+
+  .moldy-status-dot-soft {
+    border-radius: var(--moldy-radius-pill);
+    background: var(--moldy-status-color);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--moldy-status-color) 16%, transparent);
+  }
+
+  .moldy-status-pill {
+    border: 1px solid var(--border);
+    border-radius: var(--moldy-radius-pill);
+    background: color-mix(in oklch, var(--muted) 70%, transparent);
+    box-shadow: var(--moldy-shadow-soft);
+  }
+
+  .moldy-tool-pill {
+    border: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
+    border-radius: var(--moldy-radius-card);
+    background: color-mix(in oklch, var(--card) 50%, transparent);
+    transition:
+      background-color 0.15s ease,
+      border-color 0.15s ease,
+      color 0.15s ease;
+  }
+
+  .moldy-tool-pill:hover {
+    background: var(--card);
+  }
+
+  .moldy-selected-card {
+    border-color: color-mix(in oklch, var(--primary-strong) 60%, transparent);
+    background: color-mix(in oklch, var(--primary-strong) 10%, transparent);
+    box-shadow: var(--moldy-shadow-soft);
+  }
+
+  .moldy-primary-action {
+    display: inline-flex;
+    height: 2.5rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--moldy-radius-control);
+    background: var(--primary-strong);
+    padding-inline: 1rem;
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 600;
+    box-shadow: var(--moldy-shadow-soft);
+    transition:
+      background-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .moldy-primary-action:hover {
+    background: color-mix(in oklch, var(--primary-strong) 86%, black 14%);
+  }
+
+  .moldy-primary-action:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--ring);
   }
 
   .moldy-action-pill {
@@ -1083,6 +1323,57 @@
   .moldy-code-copy:hover,
   .moldy-code-copy:focus-visible {
     color: var(--moldy-code-text);
+  }
+
+  .moldy-json-panel,
+  .moldy-image-preview {
+    border-radius: var(--moldy-radius-card);
+  }
+
+  .moldy-image-preview {
+    box-shadow: var(--moldy-shadow-soft);
+  }
+
+  .moldy-composer-input {
+    border-radius: var(--radius-2xl);
+  }
+
+  .moldy-composer-submit {
+    border-radius: var(--moldy-radius-card);
+  }
+
+  .moldy-search-input {
+    border-radius: var(--moldy-radius-control);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+
+  .moldy-search-input:focus-visible {
+    border-color: var(--moldy-border-mint);
+    box-shadow: var(--moldy-shadow-focus);
+  }
+
+  .moldy-muted-panel {
+    border: 1px dashed var(--border);
+    border-radius: var(--moldy-radius-card);
+    background: color-mix(in oklch, var(--muted) 20%, transparent);
+  }
+
+  .moldy-avatar-chip {
+    border: 1px solid var(--background);
+    border-radius: var(--moldy-radius-pill);
+    background: var(--muted);
+    color: var(--muted-foreground);
+    box-shadow: var(--moldy-shadow-soft);
+  }
+
+  .moldy-agentprism-tab-trigger[data-state="active"] {
+    box-shadow: var(--moldy-shadow-soft);
+  }
+
+  .dark .moldy-agentprism-tab-trigger[data-state="active"] {
+    box-shadow: none;
   }
 
   .moldy-trace-grid {

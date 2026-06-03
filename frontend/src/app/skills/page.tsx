@@ -150,7 +150,7 @@ export default function SkillsPage() {
               {isLoading ? (
                 <ResourceGrid minColumnWidth={240}>
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="h-[176px] rounded-xl" />
+                    <Skeleton key={index} className="moldy-skeleton-card h-[176px]" />
                   ))}
                 </ResourceGrid>
               ) : isFilteredEmpty ? (

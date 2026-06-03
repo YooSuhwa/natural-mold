@@ -523,7 +523,7 @@ export function AssistantThread({
         return (
           <div className="group relative flex justify-end gap-3 [contain-intrinsic-size:0_96px] [content-visibility:auto]">
             <div className="flex w-full max-w-[80%] flex-col items-end">
-              <div className="rounded-2xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground ring-1 ring-primary-strong/15">
+              <div className="moldy-chat-bubble-user px-4 py-2.5 text-sm leading-relaxed">
                 <MessagePrimitive.Content />
               </div>
               {metaRow}
@@ -662,7 +662,8 @@ function ScrollToBottomButton() {
     <ThreadPrimitive.ScrollToBottom asChild>
       <button
         type="button"
-        className="mx-auto mb-2 flex size-8 items-center justify-center rounded-full border bg-background shadow-sm transition-opacity hover:bg-accent"
+        aria-label="Scroll to bottom"
+        className="moldy-floating-icon-button mx-auto mb-2 flex size-8 items-center justify-center"
       >
         <ArrowDownIcon className="size-4" />
       </button>

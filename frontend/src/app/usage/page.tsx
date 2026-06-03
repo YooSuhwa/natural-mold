@@ -274,7 +274,7 @@ export default function UsagePage() {
         <ResourcePanel className="flex-none">
           <ResourcePanel.Body className="space-y-3 bg-background/25">
           {dailyLoading ? (
-            <Skeleton className="h-64 w-full rounded-xl" />
+            <Skeleton className="moldy-skeleton-card h-64 w-full" />
           ) : entries.length === 0 ? (
             <EmptyState
               icon={<BarChart3Icon className="size-6" />}
@@ -290,7 +290,7 @@ export default function UsagePage() {
         </ResourcePanel>
 
         {/* Raw data table + CSV export */}
-        <Card className="border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)]">
+        <Card className="moldy-card">
           <CardHeader className="flex flex-row items-center justify-between gap-3 pb-2">
             <CardTitle className="text-sm">{t('tableTitle')}</CardTitle>
             <Button
@@ -373,7 +373,7 @@ function PillTabs<T extends string>({
       role="tablist"
       aria-label={ariaLabel}
       data-testid={testId}
-      className="inline-flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border/70 bg-background/70 p-1"
+      className="moldy-segmented-tabs"
     >
       {tabs.map((t) => {
         const isActive = value === t.value
@@ -385,11 +385,9 @@ function PillTabs<T extends string>({
             aria-selected={isActive}
             onClick={() => onChange(t.value)}
             className={cn(
-              'inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 text-sm transition-colors',
-              isActive
-                ? 'bg-background font-semibold text-foreground shadow-sm'
-                : 'font-medium text-muted-foreground hover:text-foreground',
+              'moldy-segmented-tab',
             )}
+            data-active={isActive ? 'true' : undefined}
           >
             {t.label}
           </button>
@@ -401,7 +399,7 @@ function PillTabs<T extends string>({
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <Card className="border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)]">
+    <Card className="moldy-card">
       <CardHeader className="pb-1">
         <CardTitle className="text-sm font-medium text-foreground/70">{label}</CardTitle>
       </CardHeader>

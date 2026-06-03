@@ -18,7 +18,7 @@ export const DetailsViewJsonOutput: FC<JsonViewerProps> = ({
   return (
     <JSONPretty
       booleanStyle={`color: ${colors.blue[800]};`}
-      className={`overflow-x-hidden rounded-xl p-4 text-left ${className}`}
+      className={`moldy-json-panel overflow-x-hidden p-4 text-left ${className}`}
       data={content}
       id={`json-pretty-${id}`}
       keyStyle={`color: oklch(var(--${agentPrismPrefix}-code-key));`}

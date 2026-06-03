@@ -788,7 +788,7 @@ function FileContentArea({
         <img
           src={skillsApi.fileUrl(skillId, path)}
           alt={path}
-          className="max-h-[420px] max-w-full rounded shadow-sm"
+          className="moldy-image-preview max-h-[420px] max-w-full"
         />
         <a
           href={skillsApi.fileUrl(skillId, path)}

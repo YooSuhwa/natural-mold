@@ -175,9 +175,7 @@ function CreateConversationLink({ label }: { label: string }) {
     <Link
       href="/agents/new"
       className={cn(
-        'inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold text-white shadow-sm transition-colors',
-        'bg-[var(--primary-strong)] hover:bg-[var(--primary-strong-hover)]',
-        'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        'moldy-primary-action',
       )}
     >
       <PlusIcon aria-hidden className="size-4" />
@@ -245,10 +243,8 @@ function FiltersBar({
             placeholder={searchPlaceholder}
             aria-label={searchAriaLabel}
             className={cn(
-              'h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-hidden',
+              'moldy-search-input h-9 w-full border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-hidden',
               'placeholder:text-muted-foreground',
-              'transition-[border-color,box-shadow]',
-              'focus:border-[var(--moldy-border-mint)] focus:shadow-[var(--moldy-shadow-focus)]',
             )}
           />
         </div>
@@ -382,7 +378,7 @@ function TemplateCard({
 
 function NoSearchResults({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center">
+    <div className="moldy-muted-panel flex flex-col items-center gap-2 px-6 py-12 text-center">
       <SearchIcon aria-hidden className="size-7 text-muted-foreground/50" />
       <div className="text-sm font-semibold text-foreground">{title}</div>
       <div className="text-xs text-muted-foreground">{subtitle}</div>
@@ -398,7 +394,7 @@ function TemplateGridSkeleton() {
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
-          className="flex min-h-[152px] flex-col rounded-xl border border-border bg-card p-4"
+          className="moldy-card flex min-h-[152px] flex-col p-4"
         >
           <div className="flex items-center justify-between">
             <Skeleton className="size-9 rounded-lg" />

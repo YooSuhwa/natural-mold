@@ -28,10 +28,9 @@ const THEMES = {
   },
   pill: {
     list: "h-9 inline-flex gap-1 p-1 bg-agentprism-secondary rounded-lg",
-    trigger: `px-3 ${BASE_TRIGGER} rounded-md
+    trigger: `moldy-agentprism-tab-trigger px-3 ${BASE_TRIGGER} rounded-md
       text-agentprism-muted-foreground data-[state=active]:text-agentprism-foreground
-      data-[state=inactive]:[&:not(:disabled)]:hover:bg-agentprism-background/50 data-[state=active]:bg-agentprism-background data-[state=active]:shadow-sm
-      dark:data-[state=active]:shadow-none`,
+      data-[state=inactive]:[&:not(:disabled)]:hover:bg-agentprism-background/50 data-[state=active]:bg-agentprism-background`,
   },
 } as const;
 
