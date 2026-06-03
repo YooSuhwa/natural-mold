@@ -7,10 +7,7 @@ so a user can pick "GitHub" / "Linear" / etc. and get a working
 :class:`~app.models.mcp_server.McpServer` row without re-typing the wire
 config.
 
-The MCP server catalog pattern is borrowed from prior art — a curated
-"connector library" that maps human-readable names to ready-to-run wire
-configs (see ``NOTICES.md`` for attribution). The actual entry shape and
-contents are Moldy-native.
+The entry shape and contents are Moldy-native.
 """
 
 from __future__ import annotations

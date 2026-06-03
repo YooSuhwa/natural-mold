@@ -182,7 +182,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     register_credential_rotation_job()
     # Recurring health check for active models / MCP servers.
     register_health_check_job()
-    # Recurring multi-source model catalog rebuild (LiteLLM/OpenRouter/llm-prices/pydantic).
+    # Recurring multi-source model catalog rebuild.
     register_catalog_update_job()
     # Lightweight per-server MCP health polling (refreshes health_status only).
     register_mcp_health_job()

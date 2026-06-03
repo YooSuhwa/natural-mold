@@ -11,10 +11,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.scheduler import (
     BROKER_EVICTION_JOB_ID,
+    CATALOG_BOOTSTRAP_JOB_ID,
+    CATALOG_UPDATE_JOB_ID,
     add_trigger_job,
     evict_expired_brokers,
     pause_trigger_job,
     register_broker_eviction_job,
+    register_catalog_update_job,
     remove_trigger_job,
     resume_trigger_job,
 )
@@ -233,6 +236,48 @@ def test_evict_expired_brokers_swallows_exceptions() -> None:
 
     with patch("app.agent_runtime.event_broker.registry", Boom()):
         evict_expired_brokers()  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Model catalog update jobs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_register_catalog_update_job_bootstraps_when_catalog_missing(
+    running_scheduler: AsyncIOScheduler,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    catalog_path = tmp_path / "catalog.json"
+    monkeypatch.setattr(
+        "app.services.model_catalog_updater.get_catalog_path",
+        lambda: catalog_path,
+    )
+
+    register_catalog_update_job()
+
+    assert running_scheduler.get_job(CATALOG_UPDATE_JOB_ID) is not None
+    assert running_scheduler.get_job(CATALOG_BOOTSTRAP_JOB_ID) is not None
+
+
+@pytest.mark.anyio
+async def test_register_catalog_update_job_skips_bootstrap_when_catalog_exists(
+    running_scheduler: AsyncIOScheduler,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    catalog_path = tmp_path / "catalog.json"
+    catalog_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "app.services.model_catalog_updater.get_catalog_path",
+        lambda: catalog_path,
+    )
+
+    register_catalog_update_job()
+
+    assert running_scheduler.get_job(CATALOG_UPDATE_JOB_ID) is not None
+    assert running_scheduler.get_job(CATALOG_BOOTSTRAP_JOB_ID) is None
 
 
 # ---------------------------------------------------------------------------
