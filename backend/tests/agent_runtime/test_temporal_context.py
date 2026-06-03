@@ -22,12 +22,16 @@ def test_temporal_context_prompt_includes_today_and_this_weekend() -> None:
 
     prompt = build_temporal_context_prompt(now=now)
 
-    assert "현재 기준 날짜와 시간" in prompt
+    assert "현재 기준 날짜" in prompt
     assert "2026-05-29" in prompt
     assert "금요일" in prompt
     assert "Asia/Seoul" in prompt
+    assert "11시대" in prompt
+    assert "11:33" not in prompt
+    assert "11:33:00" not in prompt
     assert "이번 주말: 2026-05-30(토요일) ~ 2026-05-31(일요일)" in prompt
     assert "상대 날짜" in prompt
+    assert "분 단위" in prompt
 
 
 def test_resolve_relative_date_expression_this_weekend() -> None:

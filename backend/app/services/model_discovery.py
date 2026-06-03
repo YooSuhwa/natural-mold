@@ -41,6 +41,29 @@ _TIMEOUT = 15.0
 # Provider source labels (kept loose to ease future provider additions).
 PricingSource = Literal["openrouter", "litellm", "manual"]
 
+_ANTHROPIC_DISCOVERY_FALLBACKS: tuple[dict[str, Any], ...] = (
+    {
+        "model_name": "claude-sonnet-4-6",
+        "display_name": "Claude Sonnet 4.6",
+        "context_window": 200000,
+        "max_output_tokens": 64000,
+        "cost_per_input_token": Decimal("0.000003"),
+        "cost_per_output_token": Decimal("0.000015"),
+        "supports_vision": True,
+        "supports_function_calling": True,
+    },
+    {
+        "model_name": "claude-haiku-4-5",
+        "display_name": "Claude Haiku 4.5",
+        "context_window": 200000,
+        "max_output_tokens": 64000,
+        "cost_per_input_token": Decimal("0.000001"),
+        "cost_per_output_token": Decimal("0.000005"),
+        "supports_vision": True,
+        "supports_function_calling": True,
+    },
+)
+
 
 @dataclass
 class DiscoveredModel:
@@ -172,7 +195,20 @@ async def _discover_anthropic(data: dict[str, Any]) -> list[DiscoveredModel]:
     """
 
     out: list[DiscoveredModel] = []
-    for model_id in get_anthropic_models():
+    model_ids = get_anthropic_models()
+    if not model_ids:
+        return [
+            DiscoveredModel(
+                provider="anthropic",
+                source="litellm",
+                input_modalities=["text", "image"],
+                output_modalities=["text"],
+                **item,
+            )
+            for item in _ANTHROPIC_DISCOVERY_FALLBACKS
+        ]
+
+    for model_id in model_ids:
         enriched = enrich_model(model_id)
         out.append(_from_enriched("anthropic", model_id, enriched, False))
     out.sort(key=lambda m: m.model_name)

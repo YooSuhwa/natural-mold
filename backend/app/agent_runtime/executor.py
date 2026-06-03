@@ -21,7 +21,9 @@ from urllib.parse import urlparse
 from deepagents import create_deep_agent
 from deepagents.backends import FilesystemBackend
 from deepagents.middleware.filesystem import FilesystemPermission
+from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.tools import BaseTool, StructuredTool
 
 from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
@@ -505,17 +507,29 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
     # 2. 서버별로 도구 로딩 + 필터링 — (tool, origin) 쌍으로 추적
     collected: list[tuple[BaseTool, str]] = []
 
+    from app.agent_runtime.mcp_cache import MCPToolWithRetry, get_cached_mcp_tools
     from app.config import settings as _settings
 
     for key, config in servers.items():
         try:
-            client = MultiServerMCPClient(
-                {key: config},  # type: ignore[arg-type]  # dict는 Connection TypedDict 호환
-                tool_interceptors=interceptors,  # type: ignore[arg-type]
-            )
-            server_tools = await asyncio.wait_for(
-                client.get_tools(),
-                timeout=_settings.mcp_connection_timeout,
+            async def _load_server_tools(
+                *,
+                cache_key: str = key,
+                server_config: dict[str, Any] = config,
+            ) -> list[BaseTool]:
+                client = MultiServerMCPClient(
+                    {cache_key: server_config},  # type: ignore[arg-type]  # dict는 Connection TypedDict 호환
+                    tool_interceptors=interceptors,  # type: ignore[arg-type]
+                )
+                return await asyncio.wait_for(
+                    client.get_tools(),
+                    timeout=_settings.mcp_connection_timeout,
+                )
+
+            server_tools = await get_cached_mcp_tools(
+                key,
+                _load_server_tools,
+                ttl_seconds=max(1.0, float(_settings.mcp_connection_timeout) * 30),
             )
             needed = tool_filter[key]
             for t in server_tools:
@@ -529,15 +543,21 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
                     if t.description and not risk_config.get("description"):
                         risk_config["description"] = t.description
                     metadata = getattr(t, "metadata", None)
-                    attach_tool_risk(
+                    wrapped = MCPToolWithRetry(
                         t,
+                        max_retries=2,
+                        retry_delay=0.25,
+                        timeout_seconds=float(_settings.mcp_connection_timeout),
+                    )
+                    attach_tool_risk(
+                        wrapped,
                         mcp_tool_risk(
-                            t.name,
+                            wrapped.name,
                             metadata=metadata if isinstance(metadata, dict) else None,
                             config=risk_config,
                         ),
                     )
-                    collected.append((t, key))
+                    collected.append((wrapped, key))
         except Exception:
             logger.warning("MCP tool loading failed for %s", key, exc_info=True)
             for tool_name in tool_filter[key]:
@@ -589,7 +609,36 @@ def _resolve_middleware_model_params(
     return resolved
 
 
-def _build_model_with_fallback(cfg: AgentConfig) -> BaseChatModel:
+def _model_constructor_params(cfg: AgentConfig) -> dict[str, Any]:
+    params = dict(cfg.model_params or {})
+    params.pop("recursion_limit", None)
+    return params
+
+
+def _configured_recursion_limit(cfg: AgentConfig) -> int | None:
+    raw = (cfg.model_params or {}).get("recursion_limit")
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _model_chain(cfg: AgentConfig) -> list[dict[str, Any]]:
+    chain: list[dict[str, Any]] = [
+        {
+            "provider": cfg.provider,
+            "model_name": cfg.model_name,
+            "base_url": cfg.base_url,
+        }
+    ]
+    chain.extend(cfg.model_fallback_chain or [])
+    return chain
+
+
+def _build_model_candidates(cfg: AgentConfig) -> list[BaseChatModel]:
     """Construct the primary chat model, walking ``model_fallback_chain``
     when the primary raises a recoverable error.
 
@@ -602,40 +651,130 @@ def _build_model_with_fallback(cfg: AgentConfig) -> BaseChatModel:
     from app.agent_runtime.model_factory import _is_fallback_recoverable
 
     last_error: BaseException | None = None
-    chain: list[dict[str, Any]] = []
-    chain.append(
-        {
-            "provider": cfg.provider,
-            "model_name": cfg.model_name,
-            "base_url": cfg.base_url,
-        }
-    )
-    for entry in cfg.model_fallback_chain or []:
-        chain.append(entry)
+    candidates: list[BaseChatModel] = []
+    params = _model_constructor_params(cfg)
+    chain = _model_chain(cfg)
 
     for idx, entry in enumerate(chain):
         try:
-            return create_chat_model(
-                entry["provider"],
-                entry["model_name"],
-                cfg.api_key,
-                entry.get("base_url"),
-                **(cfg.model_params or {}),
+            candidates.append(
+                create_chat_model(
+                    entry["provider"],
+                    entry["model_name"],
+                    cfg.api_key,
+                    entry.get("base_url"),
+                    **params,
+                )
             )
         except Exception as exc:  # noqa: BLE001
             last_error = exc
-            if idx == len(chain) - 1 or not _is_fallback_recoverable(exc):
-                raise
-            logger.info(
-                "model %s/%s failed; trying fallback (%d remaining)",
+            if not candidates:
+                if idx == len(chain) - 1 or not _is_fallback_recoverable(exc):
+                    raise
+                logger.info(
+                    "model %s/%s failed; trying fallback (%d remaining)",
+                    entry["provider"],
+                    entry["model_name"],
+                    len(chain) - idx - 1,
+                )
+                continue
+            logger.warning(
+                "fallback model %s/%s could not be constructed; runtime fallback will skip it",
                 entry["provider"],
                 entry["model_name"],
-                len(chain) - idx - 1,
+                exc_info=True,
             )
 
-    # Unreachable: the loop either returns or re-raises, but mypy isn't sure.
+    if candidates:
+        return candidates
     assert last_error is not None
     raise last_error
+
+
+def _build_model_with_fallback(cfg: AgentConfig) -> BaseChatModel:
+    """Backward-compatible helper that returns the first constructible candidate."""
+
+    return _build_model_candidates(cfg)[0]
+
+
+def _is_retryable_model_error(exc: Exception) -> bool:
+    from app.agent_runtime.model_factory import _is_fallback_recoverable
+
+    if _is_fallback_recoverable(exc):
+        return True
+    return isinstance(exc, ValueError) and "No generations found in stream" in str(exc)
+
+
+def _has_visible_ai_content(response: ModelResponse[Any] | AIMessage) -> bool:
+    messages = [response] if isinstance(response, AIMessage) else list(response.result)
+    for message in messages:
+        if getattr(message, "type", None) != "ai":
+            continue
+        if getattr(message, "tool_calls", None):
+            return True
+        content = getattr(message, "content", None)
+        if isinstance(content, str):
+            if content.strip():
+                return True
+            continue
+        if isinstance(content, list):
+            for block in content:
+                if isinstance(block, str) and block.strip():
+                    return True
+                if isinstance(block, dict) and str(block.get("text") or "").strip():
+                    return True
+    return False
+
+
+class EmptyContentRetryMiddleware(AgentMiddleware):
+    """Retry model calls that return an empty assistant message without tool calls."""
+
+    def __init__(self, *, max_retries: int = 1) -> None:
+        super().__init__()
+        self.max_retries = max(0, max_retries)
+        self.tools = []
+
+    def wrap_model_call(self, request: ModelRequest, handler: Any) -> Any:
+        response = None
+        for attempt in range(self.max_retries + 1):
+            response = handler(request)
+            if _has_visible_ai_content(response) or attempt >= self.max_retries:
+                return response
+        return response
+
+    async def awrap_model_call(self, request: ModelRequest, handler: Any) -> Any:
+        response = None
+        for attempt in range(self.max_retries + 1):
+            response = await handler(request)
+            if _has_visible_ai_content(response) or attempt >= self.max_retries:
+                return response
+        return response
+
+
+def _build_default_reliability_middleware(
+    model_candidates: list[BaseChatModel],
+    *,
+    configured_types: set[str],
+) -> list[Any]:
+    from langchain.agents.middleware import ModelFallbackMiddleware, ModelRetryMiddleware
+
+    middleware: list[Any] = []
+    if len(model_candidates) > 1:
+        middleware.append(ModelFallbackMiddleware(*model_candidates[1:]))
+    if "model_retry" not in configured_types:
+        middleware.append(
+            ModelRetryMiddleware(
+                max_retries=2,
+                retry_on=_is_retryable_model_error,
+                on_failure="error",
+                initial_delay=1.0,
+                backoff_factor=2.0,
+                max_delay=60.0,
+                jitter=True,
+            )
+        )
+    middleware.append(EmptyContentRetryMiddleware(max_retries=1))
+    return middleware
 
 
 def _append_temporal_tools(tools: list[BaseTool]) -> None:
@@ -702,6 +841,41 @@ def _selected_skill_slugs(agent_skills: list[dict[str, Any]] | None) -> list[str
     return slugs
 
 
+def _content_with_temporal_context(content: Any) -> Any:
+    block = build_temporal_context_prompt().strip()
+    if isinstance(content, str):
+        return f"{block}\n\n{content}" if content else block
+    if isinstance(content, list):
+        return [{"type": "text", "text": block}, *content]
+    return f"{block}\n\n{content}"
+
+
+def _copy_message_with_content(message: BaseMessage, content: Any) -> BaseMessage:
+    if hasattr(message, "model_copy"):
+        return message.model_copy(update={"content": content})
+    copied = message.copy()  # type: ignore[attr-defined]
+    copied.content = content
+    return copied
+
+
+def _inject_temporal_context(messages: list[BaseMessage]) -> list[BaseMessage]:
+    """Attach relative-date grounding to the latest human message for this turn."""
+
+    if not messages:
+        return messages
+    updated = list(messages)
+    for idx in range(len(updated) - 1, -1, -1):
+        message = updated[idx]
+        if getattr(message, "type", None) != "human":
+            continue
+        updated[idx] = _copy_message_with_content(
+            message,
+            _content_with_temporal_context(getattr(message, "content", "")),
+        )
+        return updated
+    return updated
+
+
 async def _prepare_agent(
     cfg: AgentConfig,
     *,
@@ -714,8 +888,9 @@ async def _prepare_agent(
     (a) ``ask_user`` 도구 미주입(호출 시 영원히 hang), (b) HiTL ``interrupt_on``
     을 None 으로 강제 override 하여 위험 도구 승인 게이트도 자동 통과.
     """
-    system_prompt = cfg.system_prompt + build_temporal_context_prompt()
-    model = _build_model_with_fallback(cfg)
+    system_prompt = cfg.system_prompt
+    model_candidates = _build_model_candidates(cfg)
+    model = model_candidates[0]
 
     # 1. 도구 생성 — 단일 경로 (definition_key + credentials).
     # MCP는 향후 별도 mcp_configs 키로 전달 (PoC 단계에서는 비어있음).
@@ -749,11 +924,20 @@ async def _prepare_agent(
     _append_temporal_tools(langchain_tools)
 
     # 3. 미들웨어 — deepagents 빌트인 타입 제외 후, model 문자열을 BaseChatModel로 사전 해석
+    configured_mw_types = {
+        str(c.get("type"))
+        for c in (cfg.middleware_configs or [])
+        if c.get("type")
+    }
     filtered_mw = [
         c for c in (cfg.middleware_configs or []) if c.get("type") not in DEEPAGENT_BUILTIN_TYPES
     ]
     resolved_mw = _resolve_middleware_model_params(filtered_mw, cfg.provider_api_keys or {})
-    middleware = build_middleware_instances(resolved_mw)
+    middleware = _build_default_reliability_middleware(
+        model_candidates,
+        configured_types=configured_mw_types,
+    )
+    middleware += build_middleware_instances(resolved_mw)
     middleware += get_provider_middleware(cfg.provider)
 
     # 4. Backend + Skills + Memory 구성
@@ -847,8 +1031,11 @@ async def _prepare_agent(
         name=f"agent_{cfg.thread_id[:8]}",
     )
 
-    lc_messages = convert_to_langchain_messages(messages_history)
+    lc_messages = _inject_temporal_context(convert_to_langchain_messages(messages_history))
     config: dict[str, Any] = {"configurable": {"thread_id": cfg.thread_id}}
+    recursion_limit = _configured_recursion_limit(cfg)
+    if recursion_limit is not None:
+        config["recursion_limit"] = recursion_limit
     if cfg.checkpoint_id:
         # LangGraph time-travel: invoking with an explicit checkpoint_id forks
         # a new branch from that point. The new run's checkpoints chain back to
