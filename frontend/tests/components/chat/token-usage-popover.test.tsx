@@ -71,6 +71,28 @@ describe('TokenUsagePopover', () => {
     expect(screen.getByText('$0.0123')).toBeInTheDocument()
   })
 
+  it('상세 팝오버는 부모 overflow에 잘리지 않도록 포털로 렌더한다', async () => {
+    mockUseAssistantState.mockReturnValue({
+      prompt_tokens: 1200,
+      completion_tokens: 300,
+      cache_creation_tokens: 800,
+      cache_read_tokens: 200,
+      estimated_cost: 0.0123,
+    })
+    const user = userEvent.setup()
+    const { container } = render(
+      <div className="overflow-hidden">
+        <TokenUsagePopover />
+      </div>,
+    )
+
+    await user.hover(screen.getByRole('button', { name: '토큰 사용량 보기' }))
+
+    const tooltip = screen.getByRole('tooltip')
+    expect(tooltip).toHaveTextContent('토큰 사용량')
+    expect(container).not.toContainElement(tooltip)
+  })
+
   it('estimated_cost가 0이면 비용 행을 숨긴다', async () => {
     mockUseAssistantState.mockReturnValue({
       prompt_tokens: 100,
