@@ -255,6 +255,7 @@ def register_credential_rotation_job() -> None:
 # ---------------------------------------------------------------------------
 
 CATALOG_UPDATE_JOB_ID = "catalog_update"
+CATALOG_BOOTSTRAP_JOB_ID = "catalog_update_bootstrap"
 
 
 async def update_model_catalog() -> dict[str, Any]:
@@ -277,6 +278,36 @@ def register_catalog_update_job() -> None:
         cron_setting_name="catalog_update_cron",
         log_label="model catalog update",
     )
+    _register_catalog_bootstrap_job_if_missing()
+
+
+def _register_catalog_bootstrap_job_if_missing() -> None:
+    """Queue an immediate catalog refresh on fresh clones with no generated catalog."""
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        logger.debug("Scheduler not running; skipping model catalog bootstrap")
+        return
+
+    try:
+        from app.services.model_catalog_updater import get_catalog_path
+    except Exception:  # noqa: BLE001
+        logger.exception("could not resolve model catalog path; bootstrap not scheduled")
+        return
+
+    catalog_path = get_catalog_path()
+    if catalog_path.exists():
+        return
+
+    scheduler.add_job(
+        update_model_catalog,
+        DateTrigger(run_date=datetime.now(UTC)),
+        id=CATALOG_BOOTSTRAP_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info("Scheduled model catalog bootstrap because %s is missing", catalog_path)
 
 
 # ---------------------------------------------------------------------------

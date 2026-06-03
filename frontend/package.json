@@ -84,6 +84,11 @@
     "vitest": "^4.1.2"
   },
   "pnpm": {
+    "ignoredOptionalDependencies": [
+      "sharp",
+      "@img/sharp-*",
+      "@img/sharp-libvips-*"
+    ],
     "onlyBuiltDependencies": [
       "msw"
     ]

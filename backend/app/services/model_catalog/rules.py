@@ -22,7 +22,7 @@ def apply_aliases(model_name: str, aliases: dict[str, str]) -> str:
     return aliases.get(model_name, model_name)
 
 
-# -- Input normalization (ai-model-list pattern; see NOTICES.md) -------------
+# -- Input normalization -----------------------------------------------------
 #
 # Same model can be addressed via many surface forms:
 #   "gpt-4o"
@@ -30,8 +30,7 @@ def apply_aliases(model_name: str, aliases: dict[str, str]) -> str:
 #   "openrouter/openai/gpt-4o"
 #   "openai/gpt-4o:turbo"
 # A single normalize → alias-lookup pipeline collapses all variants to one
-# canonical key before any catalog lookup. This mirrors the algorithm in
-# ``ai-model-list/pipeline/{normalize,resolve}.py``.
+# canonical key before any catalog lookup.
 
 KNOWN_PROVIDER_SLUGS: frozenset[str] = frozenset(
     {

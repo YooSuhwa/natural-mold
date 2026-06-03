@@ -13,8 +13,7 @@ Source-priority for filling sparse fields when multiple normalizers contribute:
   curated > openrouter > litellm > llm_prices > pydantic_genai
 
 Higher-priority sources win for *non-null* fields; null fields fall through to
-the next source. This matches the additive/sparse rule the upstream
-ai-model-list project uses (see ``NOTICES.md``).
+the next source.
 """
 
 from __future__ import annotations

@@ -25,8 +25,8 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
-# Raw URLs (ENTERPILOT/ai-model-price-list). All MIT/Apache-2.0 / unspecified
-# upstream — see NOTICES.md for attribution.
+# Runtime-fetched source snapshots. These payloads are written only to the
+# gitignored model_catalog cache, not tracked in the source tree.
 SOURCES: dict[str, str] = {
     "litellm": "https://raw.githubusercontent.com/ENTERPILOT/ai-model-price-list/main/sources/litellm_model_prices.json",
     "openrouter": "https://raw.githubusercontent.com/ENTERPILOT/ai-model-price-list/main/sources/openrouter_models.json",

@@ -12,6 +12,13 @@
     "lint-staged": "^16.4.0",
     "prettier": "^3.8.1"
   },
+  "pnpm": {
+    "ignoredOptionalDependencies": [
+      "sharp",
+      "@img/sharp-*",
+      "@img/sharp-libvips-*"
+    ]
+  },
   "lint-staged": {
     "backend/**/*.py": [
       "uv run --directory backend ruff check --fix",
