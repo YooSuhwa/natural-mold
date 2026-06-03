@@ -395,35 +395,32 @@ async def stream_agent_response(
                             if key in emitted_tool_call_keys:
                                 continue
                             emitted_tool_call_keys.add(key)
-                        yield emit(
-                            event_names.TOOL_CALL_START,
-                            {
-                                "tool_name": tc_name,
-                                # ADR-017 §13.2 — heuristic key-pattern
-                                # redaction (password / api_key / secret /
-                                # token / access_key / refresh_token) so
-                                # SSE consumers don't see secret-shaped
-                                # values from any tool that accepts an
-                                # auth-style argument. Skill tool already
-                                # redacts its own results at the executor
-                                # layer; this protects MCP/regular tools.
-                                "parameters": redact_keys(tc.get("args", {})),
-                            },
-                        )
+                        start_payload = {
+                            "tool_name": tc_name,
+                            # ADR-017 §13.2 — heuristic key-pattern
+                            # redaction (password / api_key / secret /
+                            # token / access_key / refresh_token) so
+                            # SSE consumers don't see secret-shaped
+                            # values from any tool that accepts an
+                            # auth-style argument. Skill tool already
+                            # redacts its own results at the executor
+                            # layer; this protects MCP/regular tools.
+                            "parameters": redact_keys(tc.get("args", {})),
+                        }
+                        if tc_id:
+                            start_payload["tool_call_id"] = tc_id
+                        yield emit(event_names.TOOL_CALL_START, start_payload)
 
                 if msg.type == "tool":
                     tool_name = msg.name if hasattr(msg, "name") else ""
                     # Internal middleware tool result도 UI 노출 X (start와 대칭)
                     if tool_name not in _INTERNAL_TOOL_NAMES:
-                        yield emit(
-                            event_names.TOOL_CALL_RESULT,
-                            {
-                                "tool_name": tool_name,
-                                "result": msg.content
-                                if isinstance(msg.content, str)
-                                else str(msg.content),
-                            },
-                        )
+                        result = msg.content if isinstance(msg.content, str) else str(msg.content)
+                        result_payload = {"tool_name": tool_name, "result": result}
+                        tool_call_id = getattr(msg, "tool_call_id", None)
+                        if isinstance(tool_call_id, str) and tool_call_id:
+                            result_payload["tool_call_id"] = tool_call_id
+                        yield emit(event_names.TOOL_CALL_RESULT, result_payload)
 
                 # LangChain ``usage_metadata``는 input/output 외에
                 # ``input_token_details``로 cache_creation/cache_read를 분리해 전달

@@ -23,8 +23,11 @@ and tell the user that the backend operator must configure `TAVILY_API_KEY`.
    ambiguous, ask a concise follow-up before searching.
 2. Determine the current year from the system context and include freshness terms
    in queries when the topic depends on current information.
-3. Create 6-12 search queries that cover the main question, opposing evidence,
-   recent updates, and primary-source candidates.
+3. Create 3-5 search queries for ordinary research requests. If the user
+   explicitly asks for deep research, competitor analysis, recent trend
+   analysis, or a heavily sourced report, create 6-12 search queries that cover
+   the main question, opposing evidence, recent updates, and primary-source
+   candidates.
 4. Call `tavily_search` for each query. Use `search_depth="advanced"` when
    accuracy matters more than latency, and keep `max_results` focused.
 5. Track source title, URL, publication date when available, relevance, and the

@@ -4,6 +4,7 @@ import { makeAssistantToolUI } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import { ExternalLinkIcon, GlobeIcon } from 'lucide-react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
+import { parseSearchResults, type SearchResultItem } from './search-tool-data'
 
 // ──────────────────────────────────────────────
 // Types
@@ -12,34 +13,6 @@ import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
 interface SearchArgs {
   query?: string
   [key: string]: unknown
-}
-
-interface SearchResultItem {
-  title?: string
-  url?: string
-  link?: string
-  snippet?: string
-  content?: string
-}
-
-// ──────────────────────────────────────────────
-// 결과 파서 — 문자열 / 배열 / 객체 모두 처리
-// ──────────────────────────────────────────────
-
-function parseSearchResults(raw: unknown): SearchResultItem[] {
-  if (!raw) return []
-  if (Array.isArray(raw)) return raw as SearchResultItem[]
-  if (typeof raw === 'object') return [raw as SearchResultItem]
-  if (typeof raw === 'string') {
-    try {
-      const parsed: unknown = JSON.parse(raw)
-      if (Array.isArray(parsed)) return parsed as SearchResultItem[]
-      if (typeof parsed === 'object' && parsed !== null) return [parsed as SearchResultItem]
-    } catch {
-      return [{ snippet: raw }]
-    }
-  }
-  return []
 }
 
 // ──────────────────────────────────────────────
@@ -140,6 +113,11 @@ function SearchRender({
 // ──────────────────────────────────────────────
 // SearchToolUI — web_search + Naver + Google
 // ──────────────────────────────────────────────
+
+export const TavilySearchToolUI = makeAssistantToolUI<SearchArgs, unknown>({
+  toolName: 'tavily_search',
+  render: SearchRender,
+})
 
 export const WebSearchToolUI = makeAssistantToolUI<SearchArgs, unknown>({
   toolName: 'web_search',

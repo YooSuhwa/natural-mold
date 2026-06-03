@@ -229,6 +229,59 @@ describe('useChatRuntime — onMessagesCommit dedup', () => {
     expect(roleCount.tool).toBe(1)
   })
 
+  it('동일 도구 반복 호출 result를 tool_call_id 기준으로 매칭한다', async () => {
+    const { result } = renderHook(
+      () =>
+        useCommitHarness([
+          {
+            event: 'tool_call_start',
+            data: {
+              tool_call_id: 'call-a',
+              tool_name: 'web_search',
+              parameters: { q: 'A' },
+            },
+          },
+          {
+            event: 'tool_call_start',
+            data: {
+              tool_call_id: 'call-b',
+              tool_name: 'web_search',
+              parameters: { q: 'B' },
+            },
+          },
+          {
+            event: 'tool_call_result',
+            data: { tool_call_id: 'call-a', tool_name: 'web_search', result: 'result A' },
+          },
+          {
+            event: 'tool_call_result',
+            data: { tool_call_id: 'call-b', tool_name: 'web_search', result: 'result B' },
+          },
+        ]),
+      { wrapper: createWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    const assistant = result.current.messages.find((m) => m.role === 'assistant')
+    expect(assistant?.tool_calls).toEqual([
+      { id: 'call-a', name: 'web_search', args: { q: 'A' } },
+      { id: 'call-b', name: 'web_search', args: { q: 'B' } },
+    ])
+
+    const resultByCallId = Object.fromEntries(
+      result.current.messages
+        .filter((m) => m.role === 'tool')
+        .map((m) => [m.tool_call_id, m.content]),
+    )
+    expect(resultByCallId).toEqual({
+      'call-a': 'result A',
+      'call-b': 'result B',
+    })
+  })
+
   it('새 stream이 시작된 뒤 stale stream cleanup은 commit 하지 않는다', async () => {
     const firstYielded = deferred()
     const releaseFirst = deferred()

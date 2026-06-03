@@ -74,20 +74,23 @@ def _make_ai_chunk(content: str, usage_metadata: dict | None = None) -> MagicMoc
     return msg
 
 
-def _make_tool_call_chunk(tool_name: str, args: dict) -> MagicMock:
+def _make_tool_call_chunk(tool_name: str, args: dict, tool_call_id: str | None = None) -> MagicMock:
     msg = MagicMock()
     msg.content = ""
     msg.type = "ai"
-    msg.tool_calls = [{"name": tool_name, "args": args}]
+    msg.tool_calls = [{"name": tool_name, "args": args, "id": tool_call_id}]
     msg.usage_metadata = None
     return msg
 
 
-def _make_tool_result_chunk(tool_name: str, result: str) -> MagicMock:
+def _make_tool_result_chunk(
+    tool_name: str, result: str, tool_call_id: str | None = None
+) -> MagicMock:
     msg = MagicMock()
     msg.content = result
     msg.type = "tool"
     msg.name = tool_name
+    msg.tool_call_id = tool_call_id
     msg.tool_calls = []
     msg.usage_metadata = None
     return msg
@@ -206,6 +209,33 @@ async def test_stream_tool_call_result():
     data = json.loads(result_events[0].split("data: ")[1].strip())
     assert data["tool_name"] == "web_search"
     assert data["result"] == "search results here"
+
+
+@pytest.mark.asyncio
+async def test_stream_preserves_repeated_tool_call_ids():
+    chunks = [
+        (_make_tool_call_chunk("tavily_search", {"query": "A"}, "call-a"), {}),
+        (_make_tool_call_chunk("tavily_search", {"query": "B"}, "call-b"), {}),
+        (_make_tool_result_chunk("tavily_search", "result A", "call-a"), {}),
+        (_make_tool_result_chunk("tavily_search", "result B", "call-b"), {}),
+    ]
+    agent = MockAgent(chunks)
+
+    events = [e async for e in stream_agent_response(agent, [], {})]
+
+    start_payloads = [
+        json.loads(e.split("data: ")[1].strip())
+        for e in events
+        if "tool_call_start" in e
+    ]
+    result_payloads = [
+        json.loads(e.split("data: ")[1].strip())
+        for e in events
+        if "tool_call_result" in e
+    ]
+
+    assert [payload["tool_call_id"] for payload in start_payloads] == ["call-a", "call-b"]
+    assert [payload["tool_call_id"] for payload in result_payloads] == ["call-a", "call-b"]
 
 
 @pytest.mark.asyncio
