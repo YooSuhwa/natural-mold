@@ -220,7 +220,7 @@ function ToolDefinitionCard({
       <div className="mt-auto flex items-center justify-end pt-3">
         <span
           className={cn(
-            'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-all duration-150',
+            'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-[color,transform] duration-150',
             'group-hover:translate-x-0.5 group-hover:text-[var(--primary-strong)]',
             'group-focus-visible:translate-x-0.5 group-focus-visible:text-[var(--primary-strong)]',
           )}
@@ -303,7 +303,7 @@ function InstalledToolCard({
       <div className="mt-auto flex items-center justify-end pt-3">
         <span
           className={cn(
-            'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-all duration-150',
+            'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-[color,transform] duration-150',
             'group-hover:translate-x-0.5 group-hover:text-[var(--primary-strong)]',
             'group-focus-visible:translate-x-0.5 group-focus-visible:text-[var(--primary-strong)]',
           )}

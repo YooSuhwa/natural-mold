@@ -14,9 +14,9 @@ import { useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 
 import type { UsageDailyEntry, UsageMetric } from '@/lib/types'
-import { cn } from '@/lib/utils'
 
 import { formatCostUsd, formatRequests, formatTokens } from './format'
+import { USAGE_METRIC_ACCENT, UsageChartEmpty, UsageChartFrame } from './usage-chart-frame'
 
 interface SpendBarChartProps {
   data: UsageDailyEntry[]
@@ -25,12 +25,6 @@ interface SpendBarChartProps {
   limit?: number
   className?: string
   label?: string
-}
-
-const METRIC_ACCENT: Record<UsageMetric, string> = {
-  cost: 'rgb(16 185 129)',
-  tokens: 'rgb(59 130 246)',
-  requests: 'rgb(168 85 247)',
 }
 
 function metricValue(entry: UsageDailyEntry, metric: UsageMetric): number {
@@ -61,33 +55,27 @@ export function SpendBarChart({
 
   if (ranked.length === 0) {
     return (
-      <div
-        className={cn(
-          'rounded-lg border border-dashed bg-muted/20 p-6 text-center text-xs text-muted-foreground',
-          className,
-        )}
-        data-testid="spend-bar-chart-empty"
-      >
+      <UsageChartEmpty className={className} testId="spend-bar-chart-empty">
         {t('empty')}
-      </div>
+      </UsageChartEmpty>
     )
   }
 
   const max = Math.max(...ranked.map((d) => metricValue(d, metric)), 0.0001)
-  const accent = METRIC_ACCENT[metric]
+  const accent = USAGE_METRIC_ACCENT[metric]
   const heading = label ?? t(`barMetric.${metric}`)
 
   return (
-    <div
-      className={cn('rounded-lg border bg-card p-4', className)}
-      data-testid="spend-bar-chart"
-    >
-      <div className="mb-3 flex items-baseline justify-between">
-        <h4 className="text-sm font-semibold text-foreground">{heading}</h4>
-        <p className="text-[10px] text-muted-foreground">
+    <UsageChartFrame
+      title={heading}
+      meta={
+        <>
           top {ranked.length} of {data.length}
-        </p>
-      </div>
+        </>
+      }
+      className={className}
+      testId="spend-bar-chart"
+    >
       <div className="space-y-2">
         {ranked.map((entry, i) => {
           const v = metricValue(entry, metric)
@@ -119,6 +107,6 @@ export function SpendBarChart({
           )
         })}
       </div>
-    </div>
+    </UsageChartFrame>
   )
 }

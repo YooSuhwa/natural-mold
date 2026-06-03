@@ -135,7 +135,7 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
                 disabled={disabled}
                 onClick={() => handleClick(opt)}
                 className={cn(
-                  'rounded-full border px-3 py-1.5 text-xs transition-all',
+                  'rounded-full border px-3 py-1.5 text-xs transition-[background-color,border-color,color,box-shadow]',
                   STATE_CLASS[state],
                 )}
               >

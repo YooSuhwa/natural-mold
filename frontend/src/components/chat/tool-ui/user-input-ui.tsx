@@ -56,7 +56,7 @@ function SingleSelectInput({
             type="button"
             onClick={() => onSelect(opt.label)}
             className={cn(
-              'rounded-full border px-3 py-1.5 text-xs transition-all',
+              'rounded-full border px-3 py-1.5 text-xs transition-[background-color,border-color,color,box-shadow]',
               selected === opt.label
                 ? 'border-primary bg-primary/10 text-primary-strong ring-1 ring-primary/30'
                 : 'border-border hover:border-primary/50 hover:bg-accent',
@@ -89,7 +89,7 @@ function MultiSelectInput({
             <label
               key={opt.label}
               className={cn(
-                'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-xs transition-all',
+                'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-xs transition-[background-color,border-color]',
                 checked ? 'border-primary/50 bg-primary/5' : 'border-border hover:bg-accent',
               )}
             >
@@ -448,7 +448,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
                 onClick={() => handleSubmit()}
                 disabled={!allAnswered || submitState === 'submitting'}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-all',
+                  'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-[background-color,color,opacity]',
                   allAnswered && submitState === 'idle'
                     ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                     : 'cursor-not-allowed bg-muted text-muted-foreground',

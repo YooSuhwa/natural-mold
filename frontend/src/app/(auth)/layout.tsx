@@ -27,46 +27,50 @@ const SPARKLES: Sparkle[] = [
     top: '18%',
     left: '14%',
     size: 14,
-    color: 'oklch(0.75 0.13 163)',
+    color: 'var(--auth-sparkle-mint)',
     animation: 'auth-twinkle-1 5s ease-in-out infinite',
   },
   {
     top: '62%',
     left: '40%',
     size: 10,
-    color: 'oklch(0.82 0.14 80)',
+    color: 'var(--auth-sparkle-amber)',
     animation: 'auth-twinkle-2 6.5s ease-in-out infinite',
   },
   {
     top: '22%',
     left: '74%',
     size: 18,
-    color: 'oklch(0.75 0.13 163)',
+    color: 'var(--auth-sparkle-mint)',
     animation: 'auth-twinkle-3 7s ease-in-out infinite',
   },
   {
     top: '78%',
     left: '10%',
     size: 12,
-    color: 'oklch(0.82 0.14 80)',
+    color: 'var(--auth-sparkle-amber)',
     animation: 'auth-twinkle-1 5.5s ease-in-out infinite',
   },
   {
     top: '88%',
     left: '52%',
     size: 16,
-    color: 'oklch(0.75 0.13 163)',
+    color: 'var(--auth-sparkle-mint)',
     animation: 'auth-twinkle-2 4.5s ease-in-out infinite',
   },
 ]
 
-type Bubble = { top: string; left: string; size: number; animation: string }
+type AuthStarStyle = CSSProperties & {
+  '--auth-star-top': string
+  '--auth-star-left': string
+  '--auth-star-size': string
+  '--auth-star-color': string
+  '--auth-star-animation': string
+}
 
-const BUBBLES: Bubble[] = [
-  { top: '12%', left: '28%', size: 18, animation: 'auth-drift1 11s ease-in-out infinite' },
-  { top: '68%', left: '82%', size: 22, animation: 'auth-drift2 13s ease-in-out infinite' },
-  { top: '30%', left: '46%', size: 14, animation: 'auth-drift1 9s ease-in-out infinite' },
-]
+type AuthAvatarStyle = CSSProperties & {
+  '--auth-avatar-color': string
+}
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname()
@@ -101,154 +105,27 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
   if (user) return null
 
   return (
-    <>
-      <style>{`
-        @keyframes auth-float-mascot {
-          0%, 100% { transform: rotate(6deg) translateY(0); }
-          50% { transform: rotate(6deg) translateY(-5px); }
-        }
-        @keyframes auth-drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-6px,-10px)} }
-        @keyframes auth-drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(8px,-6px)} }
-        @keyframes auth-twinkle-1 { 0%,100%{opacity:.4;transform:scale(.9)} 50%{opacity:1;transform:scale(1.05)} }
-        @keyframes auth-twinkle-2 { 0%,100%{opacity:.55;transform:scale(1)} 50%{opacity:.95;transform:scale(1.1)} }
-        @keyframes auth-twinkle-3 { 0%,100%{opacity:.45;transform:scale(.95)} 50%{opacity:1;transform:scale(1)} }
-        .auth-tab-indicator {
-          position: absolute; top: 3px; bottom: 3px; left: 3px;
-          width: calc(50% - 3px);
-          background: var(--moldy-surface-raised);
-          border-radius: 7px;
-          box-shadow: 0 1px 2px oklch(0 0 0 / 0.06), 0 1px 1px oklch(0 0 0 / 0.04);
-          transition: transform .25s cubic-bezier(.2,.7,.2,1);
-        }
-        [data-tab="register"] .auth-tab-indicator { transform: translateX(100%); }
-
-        .dark .auth-shell {
-          background: linear-gradient(135deg, oklch(0.18 0.01 200) 0%, oklch(0.2 0.04 163) 60%, oklch(0.16 0.02 200) 100%) !important;
-        }
-        .dark .auth-card {
-          background: oklch(0.22 0.01 163) !important;
-          border-color: oklch(0.3 0.012 163) !important;
-          box-shadow: 0 24px 60px -24px oklch(0 0 0 / 0.55), 0 1px 0 oklch(1 0 0 / 0.04) inset !important;
-        }
-        .dark .auth-card .auth-tab-indicator { background: oklch(0.3 0.015 163); }
-        .dark .auth-halo { opacity: .6; }
-        .dark .auth-star { opacity: .7; }
-        .dark .auth-bubble { opacity: .55; }
-        .dark .auth-mascot-halo { opacity: .35; }
-        .dark .auth-muted { color: oklch(0.7 0.01 200) !important; }
-        .dark .auth-strong { color: oklch(0.95 0.01 163) !important; }
-        .dark .auth-heading { color: oklch(0.97 0.01 163) !important; }
-        .dark .auth-link { color: oklch(0.78 0.12 163) !important; }
-      `}</style>
-
-      <div
-        className="auth-shell"
-        style={{
-          minHeight: '100vh',
-          background:
-            'linear-gradient(135deg, var(--moldy-surface) 0%, var(--background) 58%, var(--moldy-sky) 100%)',
-          position: 'relative',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        {/* Ambient halos */}
-        <div
-          aria-hidden
-          className="auth-halo"
-          style={{
-            position: 'fixed',
-            top: -100,
-            right: -160,
-            width: 620,
-            height: 620,
-            borderRadius: '50%',
-            background:
-              'radial-gradient(circle, oklch(0.86 0.13 163 / 0.32) 0%, oklch(0.92 0.07 130 / 0.18) 40%, transparent 70%)',
-            filter: 'blur(8px)',
-            animation: 'auth-drift1 12s ease-in-out infinite',
-            pointerEvents: 'none',
-            zIndex: 0,
-          }}
-        />
-        <div
-          aria-hidden
-          className="auth-halo"
-          style={{
-            position: 'fixed',
-            bottom: -180,
-            left: -120,
-            width: 460,
-            height: 460,
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, oklch(0.88 0.09 130 / 0.4) 0%, transparent 70%)',
-            filter: 'blur(6px)',
-            animation: 'auth-drift2 14s ease-in-out infinite',
-            pointerEvents: 'none',
-            zIndex: 0,
-          }}
-        />
-
+    <div className="auth-shell">
         {/* Sparkle stars */}
         {SPARKLES.map((s, i) => (
           <SparklesIcon
             key={`star-${i}`}
             aria-hidden
             className="auth-star"
-            width={s.size}
-            height={s.size}
             strokeWidth={2.2}
             style={{
-              position: 'fixed',
-              top: s.top,
-              left: s.left,
-              color: s.color,
-              pointerEvents: 'none',
-              zIndex: 0,
-              animation: s.animation,
-              filter: `drop-shadow(0 0 6px ${s.color})`,
-            }}
-          />
-        ))}
-
-        {/* Bubbles */}
-        {BUBBLES.map((b, i) => (
-          <div
-            key={`bubble-${i}`}
-            aria-hidden
-            className="auth-bubble"
-            style={{
-              position: 'fixed',
-              top: b.top,
-              left: b.left,
-              width: b.size,
-              height: b.size,
-              borderRadius: '50%',
-              background:
-                'radial-gradient(circle at 35% 35%, oklch(1 0 0 / 0.9), oklch(0.92 0.08 163 / 0.45) 60%, transparent)',
-              boxShadow: '0 4px 10px -4px oklch(0.6 0.1 163 / 0.3)',
-              pointerEvents: 'none',
-              zIndex: 0,
-              animation: b.animation,
-            }}
+              '--auth-star-top': s.top,
+              '--auth-star-left': s.left,
+              '--auth-star-size': `${s.size}px`,
+              '--auth-star-color': s.color,
+              '--auth-star-animation': s.animation,
+            } as AuthStarStyle}
           />
         ))}
 
         {/* Top bar */}
-        <header
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            zIndex: 50,
-            display: 'flex',
-            alignItems: 'center',
-            padding: '22px 40px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+        <header className="auth-topbar">
+          <div className="auth-brand">
             <Image
               src="/logo.webp"
               alt="Moldy"
@@ -257,85 +134,22 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
               className="size-[30px] shrink-0 object-contain drop-shadow-sm"
               priority
             />
-            <span
-              className="auth-heading"
-              style={{
-                fontWeight: 600,
-                fontSize: 16,
-                letterSpacing: 0,
-                color: 'oklch(0.145 0 0)',
-              }}
-            >
+            <span className="auth-brand-text">
               {t('auth.hero.brand')}
             </span>
           </div>
         </header>
 
         {/* Main */}
-        <main
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'stretch',
-            padding: 0,
-            position: 'relative',
-            zIndex: 1,
-            gap: 0,
-            minHeight: '100vh',
-            maxWidth: 1280,
-            width: '100%',
-            margin: '0 auto',
-          }}
-        >
+        <main className="auth-main">
           {/* Hero — visible on large screens only */}
-          <div
-            className="hidden lg:flex"
-            style={{
-              flex: 1,
-              flexDirection: 'column',
-              justifyContent: 'center',
-              padding: '120px 0 64px 80px',
-            }}
-          >
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                width: 'fit-content',
-                fontSize: 12,
-                fontWeight: 600,
-                color: 'var(--primary-foreground)',
-                background: 'var(--primary)',
-                border: '1px solid var(--moldy-border-mint)',
-                padding: '5px 11px',
-                borderRadius: 999,
-                marginBottom: 18,
-              }}
-            >
-              <span
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: '50%',
-                  background: 'var(--primary-strong)',
-                  flexShrink: 0,
-                }}
-              />
+          <div className="auth-hero hidden lg:flex">
+            <span className="auth-category">
+              <span className="auth-category-dot" />
               {t('auth.hero.category')}
             </span>
 
-            <h2
-              className="auth-heading"
-              style={{
-                fontSize: 42,
-                fontWeight: 700,
-                letterSpacing: 0,
-                lineHeight: 1.1,
-                margin: '0 0 16px',
-                color: 'oklch(0.145 0 0)',
-              }}
-            >
+            <h2 className="auth-heading auth-hero-title">
               {isLogin ? (
                 <>
                   {t('auth.hero.loginTitleLine1')}
@@ -351,78 +165,36 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
               )}
             </h2>
 
-            <p
-              className="auth-muted"
-              style={{
-                fontSize: 15.5,
-                color: 'oklch(0.556 0 0)',
-                lineHeight: 1.6,
-                maxWidth: 400,
-                margin: 0,
-              }}
-            >
+            <p className="auth-hero-copy">
               {isLogin
                 ? t('auth.hero.loginSubtitle')
                 : t('auth.hero.registerSubtitle')}
             </p>
 
-            <div style={{ display: 'grid', gap: 10, marginTop: 24 }}>
+            <div className="auth-feature-list">
               {features.map((text) => (
-                <div
-                  key={text}
-                  className="auth-feature"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    fontSize: 14,
-                    color: 'oklch(0.3 0.02 163)',
-                  }}
-                >
-                  <CheckCircle2Icon
-                    size={16}
-                    style={{ color: 'var(--primary-strong)', flexShrink: 0 }}
-                  />
+                <div key={text} className="auth-feature">
+                  <CheckCircle2Icon className="size-4 shrink-0 text-primary-strong" />
                   {text}
                 </div>
               ))}
             </div>
 
-            <div
-              className="auth-muted"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                marginTop: 28,
-                color: 'oklch(0.556 0 0)',
-                fontSize: 13,
-              }}
-            >
-              <div style={{ display: 'flex' }}>
+            <div className="auth-social-proof">
+              <div className="auth-avatar-stack">
                 {AVATAR_COLORS.map((bg, i) => (
                   <span
                     key={`avatar-${i}`}
                     aria-hidden
-                    style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: '50%',
-                      background: bg,
-                      border: '2px solid white',
-                      marginLeft: i === 0 ? 0 : -8,
-                      display: 'inline-block',
-                    }}
+                    className="auth-avatar-dot"
+                    style={{ '--auth-avatar-color': bg } as AuthAvatarStyle}
                   />
                 ))}
               </div>
               <span>
                 {t.rich('auth.hero.socialProof', {
                   strong: (chunks) => (
-                    <strong
-                      className="auth-strong"
-                      style={{ color: 'oklch(0.145 0 0)', fontWeight: 600 }}
-                    >
+                    <strong className="auth-strong">
                       {chunks}
                     </strong>
                   ),
@@ -432,104 +204,37 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           </div>
 
           {/* Card column */}
-          <div
-            style={{
-              width: 540,
-              flexShrink: 0,
-              padding: '120px 80px 64px 0',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <div
-              style={{ width: '100%', maxWidth: 380, position: 'relative' } satisfies CSSProperties}
-            >
+          <div className="auth-card-column">
+            <div className="auth-card-wrap">
               {/* Floating mascot */}
-              <div
-                aria-hidden
-                style={{
-                  position: 'absolute',
-                  top: -110,
-                  right: -14,
-                  zIndex: 2,
-                  pointerEvents: 'none',
-                  animation: 'auth-float-mascot 5s ease-in-out infinite',
-                }}
-              >
-                <div
-                  className="auth-mascot-halo"
-                  style={{
-                    position: 'absolute',
-                    inset: '14% 5% -2% 5%',
-                    borderRadius: '50%',
-                  background:
-                    'radial-gradient(circle, oklch(0.85 0.13 163 / 0.5), transparent 65%)',
-                    filter: 'blur(18px)',
-                  }}
-                />
+              <div aria-hidden className="auth-mascot">
+                <div className="auth-mascot-halo" />
                 <Image
                   src="/moldy-mascot.webp"
                   alt=""
                   width={170}
                   height={170}
-                  style={{
-                    position: 'relative',
-                    filter: 'drop-shadow(0 14px 20px oklch(0.4 0.1 163 / 0.25))',
-                  }}
+                  className="auth-mascot-image"
                   draggable={false}
                   priority
                 />
               </div>
 
               {/* Card */}
-              <div
-                className="auth-card"
-                style={{
-                  background: '#fff',
-                  borderRadius: 22,
-                  padding: '30px 34px 28px',
-                  border: '1px solid var(--border)',
-                  boxShadow: 'var(--moldy-shadow-card), 0 2px 0 oklch(1 0 0 / 0.6) inset',
-                  position: 'relative',
-                }}
-              >
+              <div className="auth-card">
                 {/* Tab switcher */}
                 <div
                   data-tab={isLogin ? 'login' : 'register'}
                   role="tablist"
-                  style={{
-                    position: 'relative',
-                    display: 'flex',
-                    gap: 2,
-                    padding: 3,
-                    background: 'var(--moldy-surface)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 10,
-                    marginBottom: 22,
-                  }}
+                  className="auth-tabs"
                 >
                   <span className="auth-tab-indicator" aria-hidden />
                   <Link
                     href="/login"
                     role="tab"
                     aria-selected={isLogin}
-                    style={{
-                      flex: 1,
-                      height: 36,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      textDecoration: 'none',
-                      fontSize: 13,
-                      fontWeight: 500,
-                      letterSpacing: 0,
-                      color: isLogin ? 'oklch(0.145 0 0)' : 'oklch(0.556 0 0)',
-                      borderRadius: 7,
-                      position: 'relative',
-                      zIndex: 1,
-                      transition: 'color .15s',
-                    }}
+                    data-active={isLogin}
+                    className="auth-tab focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {t('auth.login.submit')}
                   </Link>
@@ -537,22 +242,8 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                     href="/register"
                     role="tab"
                     aria-selected={!isLogin}
-                    style={{
-                      flex: 1,
-                      height: 36,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      textDecoration: 'none',
-                      fontSize: 13,
-                      fontWeight: 500,
-                      letterSpacing: 0,
-                      color: !isLogin ? 'oklch(0.145 0 0)' : 'oklch(0.556 0 0)',
-                      borderRadius: 7,
-                      position: 'relative',
-                      zIndex: 1,
-                      transition: 'color .15s',
-                    }}
+                    data-active={!isLogin}
+                    className="auth-tab focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {t('auth.register.submit')}
                   </Link>
@@ -564,19 +255,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           </div>
         </main>
 
-        <footer
-          className="auth-muted"
-          style={{
-            position: 'relative',
-            zIndex: 1,
-            padding: '0 80px 24px',
-            fontSize: 12,
-            color: 'oklch(0.556 0 0)',
-          }}
-        >
+        <footer className="auth-footer">
           {t('auth.hero.copyright')}
         </footer>
       </div>
-    </>
   )
 }

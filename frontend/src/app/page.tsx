@@ -131,7 +131,7 @@ export default function DashboardPage() {
         >
           <Card
             className={cn(
-              'h-full min-h-[152px] gap-3 border border-emerald-200/60 bg-gradient-to-br from-emerald-50 to-emerald-50/40 p-1.5 ring-0 transition-all duration-150',
+              'h-full min-h-[152px] gap-3 border border-emerald-200/60 bg-gradient-to-br from-emerald-50 to-emerald-50/40 p-1.5 ring-0 transition-[border-color,box-shadow,transform] duration-150',
               'hover:-translate-y-px hover:border-emerald-300/80 hover:shadow-md',
               'dark:border-emerald-500/20 dark:from-emerald-950/40 dark:to-emerald-950/10',
             )}
@@ -301,7 +301,7 @@ function SecondaryActionCard({ href, icon, label, description, tone }: Secondary
     >
       <Card
         className={cn(
-          'h-full gap-0 py-0 transition-all duration-150',
+          'h-full gap-0 py-0 transition-[box-shadow,transform] duration-150',
           'hover:-translate-y-px hover:shadow-md hover:ring-foreground/15',
         )}
       >
@@ -318,7 +318,7 @@ function SecondaryActionCard({ href, icon, label, description, tone }: Secondary
             <p className="text-sm font-semibold tracking-tight">{label}</p>
             <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{description}</p>
           </div>
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-card text-muted-foreground ring-1 shadow-sm ring-foreground/5 transition-all group-hover:translate-x-0.5 group-hover:text-foreground group-hover:shadow dark:bg-background/60">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-card text-muted-foreground ring-1 shadow-sm ring-foreground/5 transition-[box-shadow,color,transform] group-hover:translate-x-0.5 group-hover:text-foreground group-hover:shadow dark:bg-background/60">
             <ChevronRightIcon className="size-3.5" />
           </span>
         </CardContent>

@@ -58,7 +58,7 @@ interface PhaseCardHeaderProps {
 export function PhaseCardHeader({ children, variant = 'plain', className }: PhaseCardHeaderProps) {
   const background =
     variant === 'gradient'
-      ? `linear-gradient(90deg, ${T.primaryBg} 0%, oklch(0.97 0.025 163) 100%)`
+      ? `linear-gradient(90deg, ${T.primaryBg} 0%, ${T.primaryBgSoft} 100%)`
       : T.surface
 
   return (

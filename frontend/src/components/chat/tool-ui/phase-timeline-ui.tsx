@@ -3,6 +3,7 @@
 import { makeAssistantToolUI, useAssistantState } from '@assistant-ui/react'
 import { CheckIcon, SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { BUILDER_TOKENS as T } from './builder-tokens'
 
 type PhaseStatus = 'pending' | 'in_progress' | 'completed'
 
@@ -58,22 +59,6 @@ function deriveInProgress(todos: PhaseTodo[]): PhaseTodo[] {
   next[idx] = { ...next[idx], status: 'in_progress' }
   return next
 }
-
-/** Builder ProgressRail 전용 토큰. 빌더 화면 한정 색이라 globals.css로 승격하지 않고 모듈 스코프로 보유. */
-const T = {
-  border: 'oklch(0.93 0.005 163)',
-  surface: '#ffffff',
-  ink: 'oklch(0.18 0.005 163)',
-  muted: 'oklch(0.55 0.01 163)',
-  mutedSoft: 'oklch(0.72 0.01 163)',
-  primary: 'oklch(0.596 0.145 163.225)',
-  primaryBg: 'oklch(0.96 0.04 163)',
-  primaryBgStrong: 'oklch(0.92 0.06 163)',
-  trackBg: 'oklch(0.95 0.005 163)',
-  connectorRest: 'oklch(0.91 0.005 163)',
-  pendingDot: 'oklch(0.85 0.005 163)',
-  activeBadgeFg: 'oklch(0.32 0.1 163)',
-} as const
 
 function PhaseDot({ status }: { status: PhaseStatus }) {
   const base = {
@@ -131,7 +116,7 @@ function StatusBadge({ status }: { status: PhaseStatus }) {
     status === 'completed'
       ? { bg: T.primaryBg, fg: T.primary, border: 'transparent' }
       : status === 'in_progress'
-        ? { bg: T.primaryBgStrong, fg: T.activeBadgeFg, border: 'transparent' }
+        ? { bg: T.primaryBgStrong, fg: T.primaryInk, border: 'transparent' }
         : { bg: 'transparent', fg: T.mutedSoft, border: T.border }
 
   return (

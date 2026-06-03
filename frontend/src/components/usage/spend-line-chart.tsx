@@ -16,9 +16,9 @@ import { useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 
 import type { UsageDailyEntry, UsageMetric } from '@/lib/types'
-import { cn } from '@/lib/utils'
 
 import { formatCostUsd, formatRequests, formatTokens } from './format'
+import { USAGE_METRIC_ACCENT, UsageChartEmpty, UsageChartFrame } from './usage-chart-frame'
 
 interface SpendLineChartProps {
   data: UsageDailyEntry[]
@@ -26,12 +26,6 @@ interface SpendLineChartProps {
   className?: string
   /** Optional override of the chart label shown above the y-axis hint. */
   label?: string
-}
-
-const METRIC_ACCENT: Record<UsageMetric, string> = {
-  cost: 'rgb(16 185 129)', // emerald-500
-  tokens: 'rgb(59 130 246)', // blue-500
-  requests: 'rgb(168 85 247)', // purple-500
 }
 
 function metricValue(entry: UsageDailyEntry, metric: UsageMetric): number {
@@ -56,15 +50,9 @@ export function SpendLineChart({ data, metric, className, label }: SpendLineChar
 
   if (sorted.length === 0) {
     return (
-      <div
-        className={cn(
-          'rounded-lg border border-dashed bg-muted/20 p-6 text-center text-xs text-muted-foreground',
-          className,
-        )}
-        data-testid="spend-line-chart-empty"
-      >
+      <UsageChartEmpty className={className} testId="spend-line-chart-empty">
         {t('empty')}
-      </div>
+      </UsageChartEmpty>
     )
   }
 
@@ -101,21 +89,20 @@ export function SpendLineChart({ data, metric, className, label }: SpendLineChar
   // 4 evenly spaced y-axis ticks for context.
   const ticks = [0, 0.33, 0.66, 1].map((t) => min + t * (max - min))
 
-  const accent = METRIC_ACCENT[metric]
+  const accent = USAGE_METRIC_ACCENT[metric]
   const heading = label ?? t(`lineMetric.${metric}`)
 
   return (
-    <div
-      className={cn('rounded-lg border bg-card p-4', className)}
-      data-testid="spend-line-chart"
+    <UsageChartFrame
+      title={heading}
+      meta={
+        <>
+          {sorted.length} day{sorted.length === 1 ? '' : 's'} · max {formatMetric(max, metric)}
+        </>
+      }
+      className={className}
+      testId="spend-line-chart"
     >
-      <div className="mb-3 flex items-baseline justify-between">
-        <h4 className="text-sm font-semibold text-foreground">{heading}</h4>
-        <p className="text-[10px] text-muted-foreground">
-          {sorted.length} day{sorted.length === 1 ? '' : 's'} · max{' '}
-          {formatMetric(max, metric)}
-        </p>
-      </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="h-56 w-full"
@@ -188,6 +175,6 @@ export function SpendLineChart({ data, metric, className, label }: SpendLineChar
           {sorted.length > 1 && <span>{sorted[sorted.length - 1].date}</span>}
         </div>
       )}
-    </div>
+    </UsageChartFrame>
   )
 }

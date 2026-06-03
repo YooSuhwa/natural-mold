@@ -21,7 +21,7 @@ type ButtonVariant =
   | "success";
 
 const BASE_CLASSES =
-  "inline-flex items-center justify-center font-medium transition-all duration-200";
+  "inline-flex items-center justify-center font-medium transition-[background-color,border-color,color,box-shadow,opacity] duration-200";
 
 const sizeClasses = {
   "6": "h-6 px-2 gap-1 text-xs",

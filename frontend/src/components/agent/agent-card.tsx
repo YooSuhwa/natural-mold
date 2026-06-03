@@ -54,7 +54,7 @@ export function AgentCard({ agent }: AgentCardProps) {
     >
       <Card
         className={cn(
-          'h-full gap-3 py-5 transition-all duration-150',
+          'h-full gap-3 py-5 transition-[box-shadow,transform] duration-150',
           'hover:-translate-y-px hover:shadow-[0_10px_22px_-12px_rgba(16,185,129,0.22)]',
           'hover:ring-emerald-300/70 dark:hover:ring-emerald-400/30',
         )}

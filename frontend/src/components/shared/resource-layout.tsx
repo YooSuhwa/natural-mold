@@ -175,7 +175,7 @@ type ResourceGridProps = {
 function ResourceGrid({ children, minColumnWidth = 214, className, style }: ResourceGridProps) {
   return (
     <div
-      className={cn('grid gap-3', className)}
+      className={cn('moldy-content-visibility grid gap-3', className)}
       style={{
         gridTemplateColumns: `repeat(auto-fill, minmax(${minColumnWidth}px, 1fr))`,
         ...style,

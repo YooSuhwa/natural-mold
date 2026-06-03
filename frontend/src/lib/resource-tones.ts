@@ -122,7 +122,7 @@ export function getStatusResourceTone(status: string | null | undefined): Resour
 export function resourceCardClassName(tone: ResourceTone, className?: string): string {
   return cn(
     'group relative flex cursor-pointer flex-col rounded-xl border border-border/70 p-4 text-left',
-    'shadow-[var(--moldy-shadow-card)] transition-all duration-150',
+    'shadow-[var(--moldy-shadow-card)] transition-[background-color,border-color,box-shadow,transform] duration-150',
     'hover:-translate-y-px hover:shadow-[0_22px_46px_-34px_rgba(15,23,42,0.45)]',
     'focus-visible:-translate-y-px focus-visible:border-[var(--primary-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
     tone.card,
