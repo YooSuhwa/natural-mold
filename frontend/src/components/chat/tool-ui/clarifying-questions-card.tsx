@@ -22,7 +22,7 @@ export function ClarifyingQuestionsCard({
   const t = useTranslations('chat.intentSummary')
   const resolvedLabel = label ?? t('clarifyingTitle')
   return (
-    <div className="rounded-xl border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] px-4 py-3.5">
+    <div className="moldy-chat-card px-4 py-3.5">
       <div className="mb-2 moldy-ui-compact font-semibold moldy-builder-color-muted">
         {resolvedLabel}
       </div>

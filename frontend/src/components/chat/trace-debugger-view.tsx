@@ -88,14 +88,14 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
   const handleCollapseAll = () => setExpandedSpansOverride([])
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#f7f8fb] p-3 dark:bg-slate-950/40">
-      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background shadow-sm">
-        <header className="shrink-0 border-b px-5 py-3">
+    <div className="moldy-app-surface flex min-h-0 flex-1 flex-col overflow-hidden p-3">
+      <section className="moldy-panel flex min-h-0 flex-1 flex-col overflow-hidden">
+        <header className="moldy-panel-header shrink-0 px-5 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h1 className="flex min-w-0 items-center gap-2 font-heading text-lg font-semibold">
                 <span className="truncate">Trace 상세</span>
-                <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs font-medium text-muted-foreground">
+                <span className="moldy-resource-meta max-w-none font-mono">
                   {conversationId}
                 </span>
               </h1>
@@ -132,7 +132,7 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(420px,1fr)_minmax(360px,42%)] gap-px overflow-hidden bg-border">
+        <div className="moldy-trace-grid grid min-h-0 flex-1 grid-cols-[280px_minmax(420px,1fr)_minmax(360px,42%)] gap-px overflow-hidden">
           {loading ? (
             <>
               <TraceSkeleton />
@@ -140,7 +140,7 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
               <TraceSkeleton />
             </>
           ) : viewerData.length === 0 ? (
-            <div className="col-span-3 flex h-full items-center justify-center bg-background text-sm text-muted-foreground">
+            <div className="moldy-trace-panel col-span-3 flex h-full items-center justify-center text-sm text-muted-foreground">
               No trace rows
             </div>
           ) : (
@@ -197,14 +197,14 @@ function TraceRunLayout({
   return (
     <>
       <RunInfoPanel traces={traces} spans={metricSpans} />
-      <main className="flex min-h-0 flex-col bg-background px-5 py-4">
+      <main className="moldy-trace-panel flex min-h-0 flex-col px-5 py-4">
         <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
           <h2 className="font-heading text-lg font-semibold">Span 상세</h2>
           <span className="text-xs text-muted-foreground">
             {traceCount} traces · {metricSpans.length} spans
           </span>
         </div>
-        <div className="min-h-0 flex-1 overflow-hidden rounded-md border bg-agentprism-background p-3">
+        <div className="moldy-trace-tree min-h-0 flex-1 overflow-hidden p-3">
           <TraceViewerTreeViewContainer
             searchValue={searchValue}
             setSearchValue={setSearchValue}
@@ -220,9 +220,9 @@ function TraceRunLayout({
           />
         </div>
       </main>
-      <aside className="min-h-0 bg-[#f4f4f5] p-4 dark:bg-slate-900">
+      <aside className="moldy-trace-rail min-h-0 p-4">
         {selectedSpan ? (
-          <DetailsView data={selectedSpan} className="rounded-md bg-background" />
+          <DetailsView data={selectedSpan} className="moldy-card bg-background" />
         ) : (
           <TraceViewerPlaceholder title="Select a span to see the details" />
         )}
@@ -290,8 +290,8 @@ function RunInfoPanel({
   const totalTokens = traces.reduce((sum, trace) => sum + (trace.total_tokens ?? 0), 0)
 
   return (
-    <aside className="flex min-h-0 flex-col overflow-y-auto bg-[#f4f7ff] px-5 py-4 dark:bg-slate-950">
-      <section className="rounded-md border bg-background p-4 shadow-sm">
+    <aside className="moldy-trace-rail flex min-h-0 flex-col overflow-y-auto px-5 py-4">
+      <section className="moldy-card p-4">
         <div className="mb-4 flex items-center justify-between gap-2">
           <h2 className="font-heading text-base font-semibold">수행정보</h2>
           <Badge variant={failed ? 'destructive' : 'outline'}>
@@ -309,7 +309,7 @@ function RunInfoPanel({
 
       <section className="mt-5 space-y-3">
         <h2 className="font-heading text-base font-semibold">필터링</h2>
-        <div className="rounded-md border bg-background p-4 shadow-sm">
+        <div className="moldy-card p-4">
           <div className="mb-4 flex items-center gap-2 text-sm">
             <FilterIcon className="size-4 text-muted-foreground" />
             <span>Total</span>
@@ -349,7 +349,7 @@ function Metric({ label, value }: { label: string; value: number }) {
 
 function FilterEmptyState({ title }: { title: string }) {
   return (
-    <div className="rounded-md border bg-background p-4 shadow-sm">
+    <div className="moldy-card p-4">
       <div className="mb-3 flex items-center gap-2 text-sm font-medium">
         <CheckCircle2Icon className="size-4 text-muted-foreground" />
         {title}
@@ -412,7 +412,7 @@ function formatNumber(value: number | null | undefined): string {
 
 function TraceSkeleton() {
   return (
-    <div className="space-y-3 bg-background p-4">
+    <div className="moldy-trace-panel space-y-3 p-4">
       <Skeleton className="h-5 w-32" />
       <Skeleton className="h-10 w-full" />
       <Skeleton className="h-20 w-full" />

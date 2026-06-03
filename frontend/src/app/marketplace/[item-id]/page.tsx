@@ -89,7 +89,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+      <div className="moldy-app-surface flex flex-1 flex-col overflow-auto">
         <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
           <Skeleton className="h-8 w-48" />
           <Skeleton className="h-32 w-full rounded-xl" />
@@ -104,7 +104,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
       error instanceof ApiError &&
       (error.code === 'marketplace_item_not_found' || error.status === 404)
     return (
-      <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+      <div className="moldy-app-surface flex flex-1 flex-col overflow-auto">
         <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
           <Link
             href="/marketplace"
@@ -216,7 +216,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+    <div className="moldy-app-surface flex flex-1 flex-col overflow-auto">
       <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <Link
           href="/marketplace"

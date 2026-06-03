@@ -23,9 +23,7 @@ interface ModelSourceBadgeProps {
  * pricing or context window data is available.
  */
 
-const CATALOG_CLASSES =
-  'bg-sky-100 text-sky-700 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30'
-
+const CATALOG_CLASSES = 'moldy-status-surface moldy-status-info'
 const MANUAL_CLASSES = 'bg-muted text-muted-foreground ring-border'
 
 const SOURCE_LABEL_KEY: Record<ModelSource, string> = {

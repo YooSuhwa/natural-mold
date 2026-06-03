@@ -90,7 +90,7 @@ function DeepResearchSummaryCard({
 
   return (
     <div className="my-3">
-      <div className="rounded-xl border border-border/70 bg-card shadow-sm">
+      <div className="moldy-chat-card">
         <button
           type="button"
           className="flex w-full items-center gap-3 px-4 py-3 text-left"

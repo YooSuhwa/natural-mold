@@ -16,9 +16,9 @@ interface AgentCardProps {
 }
 
 const STATUS_DOT = {
-  active: 'bg-emerald-500 ring-emerald-500/20',
-  error: 'bg-red-500 ring-red-500/20',
-  inactive: 'bg-amber-500 ring-amber-500/20',
+  active: 'moldy-status-success moldy-status-dot',
+  error: 'moldy-status-danger moldy-status-dot',
+  inactive: 'moldy-status-warn moldy-status-dot',
 } as const
 
 export function AgentCard({ agent }: AgentCardProps) {
@@ -50,13 +50,11 @@ export function AgentCard({ agent }: AgentCardProps) {
   return (
     <Link
       href={`/agents/${agent.id}`}
-      className="group block rounded-xl focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="moldy-card-link group"
     >
       <Card
         className={cn(
-          'h-full gap-3 py-5 transition-[box-shadow,transform] duration-150',
-          'hover:-translate-y-px hover:shadow-[0_10px_22px_-12px_rgba(16,185,129,0.22)]',
-          'hover:ring-emerald-300/70 dark:hover:ring-emerald-400/30',
+          'moldy-card-hover h-full gap-3 py-5',
         )}
       >
         <CardHeader className="gap-2 px-5">
@@ -84,8 +82,8 @@ export function AgentCard({ agent }: AgentCardProps) {
                 className={cn(
                   'size-4 transition-colors',
                   agent.is_favorite
-                    ? 'fill-amber-400 text-amber-400'
-                    : 'text-muted-foreground hover:text-amber-400',
+                    ? 'moldy-status-warn moldy-status-fill text-status-warn'
+                    : 'text-muted-foreground hover:text-status-warn',
                 )}
               />
             </button>
@@ -100,12 +98,12 @@ export function AgentCard({ agent }: AgentCardProps) {
             <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 font-medium">
               <CpuIcon className="size-3" />
               {agent.model?.display_name ?? (
-                <span className="text-amber-600 dark:text-amber-300">{t('noModel')}</span>
+                <span className="moldy-status-warn moldy-status-text">{t('noModel')}</span>
               )}
             </span>
             {fallbackCount > 0 && (
               <span
-                className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300"
+                className="moldy-status-surface moldy-status-warn inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-medium"
                 title={t('fallbackTitle', { count: fallbackCount })}
                 data-testid="agent-card-fallback-badge"
               >

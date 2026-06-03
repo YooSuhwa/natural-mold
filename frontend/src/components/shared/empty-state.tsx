@@ -24,14 +24,12 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-primary-strong/25 bg-[var(--moldy-surface)] p-12 text-center shadow-[var(--moldy-shadow-card)]',
+        'moldy-empty-state',
         className,
       )}
     >
       {icon ? (
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground ring-1 ring-primary-strong/15">
-          {icon}
-        </div>
+        <div className="moldy-empty-state-icon">{icon}</div>
       ) : iconId ? (
         <EmptyStateIcon iconId={iconId} fallback={iconFallback} />
       ) : null}

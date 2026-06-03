@@ -191,7 +191,7 @@ function ToolDefinitionCard({
       <div className="flex items-start justify-between gap-3">
         <span
           className={cn(
-            'inline-flex size-9 shrink-0 items-center justify-center rounded-xl ring-1',
+            'moldy-resource-icon',
             tone.icon,
           )}
         >
@@ -244,7 +244,7 @@ function InstalledToolCard({
       <div className="flex items-start justify-between gap-3">
         <span
           className={cn(
-            'inline-flex size-9 shrink-0 items-center justify-center rounded-xl ring-1',
+            'moldy-resource-icon',
             tone.icon,
           )}
         >

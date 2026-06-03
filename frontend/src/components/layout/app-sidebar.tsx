@@ -225,11 +225,9 @@ export function AppSidebar() {
     [agents],
   )
 
-  const activeMenuClass =
-    'border border-transparent text-sidebar-foreground/80 hover:border-sidebar-border/70 hover:bg-white/70 hover:text-sidebar-accent-foreground data-active:border-[var(--moldy-border-mint)] data-active:bg-white data-active:font-semibold data-active:text-primary-strong data-active:shadow-[var(--moldy-sidebar-active-shadow)] data-active:hover:bg-white data-active:hover:text-primary-strong dark:hover:bg-white/5 dark:data-active:bg-white/8'
+  const activeMenuClass = 'moldy-sidebar-nav-item'
 
-  const newAgentButtonClass =
-    'h-11 rounded-2xl border border-primary-strong/25 bg-[linear-gradient(135deg,var(--moldy-mint),white)] font-semibold text-sidebar-accent-foreground shadow-[var(--moldy-sidebar-active-shadow)] hover:border-primary-strong/35 hover:bg-primary/70 hover:text-primary-strong active:bg-primary/80 dark:bg-[linear-gradient(135deg,var(--moldy-mint),var(--sidebar))] dark:hover:bg-sidebar-accent'
+  const newAgentButtonClass = 'moldy-sidebar-new-agent'
 
   const isDarkTheme = resolvedTheme === 'dark'
   const themeToggleLabel = isDarkTheme ? t('theme.light') : t('theme.dark')
@@ -244,10 +242,7 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar
-      collapsible="icon"
-      className="border-r border-sidebar-border bg-sidebar shadow-[var(--moldy-sidebar-rail-shadow)]"
-    >
+    <Sidebar collapsible="icon" className="moldy-sidebar-rail">
       <SidebarHeader className="px-4 py-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
         {/* Expanded state: logo + brand + toggle (radio ON) */}
         <div className="flex items-center justify-between group-data-[collapsible=icon]:hidden">
@@ -264,7 +259,7 @@ export function AppSidebar() {
           <button
             type="button"
             onClick={toggleSidebar}
-            className="rounded-lg border border-transparent p-1.5 text-primary-strong transition-colors hover:border-sidebar-border hover:bg-white/70 dark:hover:bg-white/5"
+            className="moldy-sidebar-control rounded-lg border border-transparent p-1.5 text-primary-strong hover:border-sidebar-border"
             aria-label={t('toggleSidebar')}
           >
             <ToggleRightIcon className="size-5" />
@@ -476,7 +471,7 @@ export function AppSidebar() {
             type="button"
             onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
             suppressHydrationWarning
-            className="inline-flex h-7 items-center justify-center rounded-lg px-1.5 text-sidebar-foreground/60 transition-colors hover:bg-white/70 hover:text-sidebar-accent-foreground dark:hover:bg-white/5"
+            className="moldy-sidebar-control inline-flex h-7 items-center justify-center rounded-lg px-1.5"
             aria-label={themeToggleLabel}
             title={themeToggleLabel}
           >
@@ -488,7 +483,7 @@ export function AppSidebar() {
           >
             <DropdownMenuTrigger
               render={<button type="button" />}
-              className="inline-flex h-7 items-center gap-1 rounded-lg px-1.5 text-xs font-semibold text-sidebar-foreground/60 transition-colors hover:bg-white/70 hover:text-sidebar-accent-foreground data-open:bg-white/80 data-open:text-sidebar-accent-foreground dark:hover:bg-white/5 dark:data-open:bg-white/8"
+              className="moldy-sidebar-control inline-flex h-7 items-center gap-1 rounded-lg px-1.5 text-xs font-semibold data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
               aria-label={languageLabel}
               title={languageLabel}
             >

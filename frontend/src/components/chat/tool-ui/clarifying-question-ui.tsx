@@ -109,7 +109,7 @@ export const ClarifyingQuestionUI = makeAssistantToolUI<ClarifyingArgs, string>(
     }
 
     return (
-      <div className="mt-2 rounded-xl border bg-background p-4 shadow-sm">
+      <div className="moldy-chat-card mt-2 p-4">
         <div className="mb-3 flex items-start gap-2">
           <MessageCircleQuestionIcon className="mt-0.5 size-4 shrink-0 text-primary-strong" />
           <p className="flex-1 text-sm font-medium">{question}</p>

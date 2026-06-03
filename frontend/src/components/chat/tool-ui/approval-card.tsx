@@ -68,27 +68,24 @@ function useDecisionStyles() {
   const t = useTranslations('chat.approval')
   return {
     approved: {
-      border: 'border-emerald-200 dark:border-emerald-900',
-      bg: 'bg-emerald-50 dark:bg-emerald-950',
+      tone: 'moldy-status-success',
       icon: CheckIcon,
-      iconColor: 'text-emerald-500',
-      textColor: 'text-emerald-700 dark:text-emerald-300',
+      iconColor: 'moldy-status-icon',
+      textColor: 'moldy-status-text',
       label: t('approved'),
     },
     modified: {
-      border: 'border-blue-200 dark:border-blue-900',
-      bg: 'bg-blue-50 dark:bg-blue-950',
+      tone: 'moldy-status-info',
       icon: PencilIcon,
-      iconColor: 'text-blue-500',
-      textColor: 'text-blue-700 dark:text-blue-300',
+      iconColor: 'moldy-status-icon',
+      textColor: 'moldy-status-text',
       label: t('editApproved'),
     },
     rejected: {
-      border: 'border-red-200 dark:border-red-900',
-      bg: 'bg-red-50 dark:bg-red-950',
+      tone: 'moldy-status-danger',
       icon: XIcon,
-      iconColor: 'text-red-500',
-      textColor: 'text-red-700 dark:text-red-300',
+      iconColor: 'moldy-status-icon',
+      textColor: 'moldy-status-text',
       label: t('rejected'),
     },
   } as const
@@ -104,9 +101,8 @@ function ApprovalBadge({ result }: { result: unknown }) {
   return (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-xl border px-3 py-2 text-xs',
-        style.border,
-        style.bg,
+        'moldy-status-surface flex items-center gap-2 rounded-xl px-3 py-2 text-xs',
+        style.tone,
       )}
     >
       <Icon className={cn('size-3.5 shrink-0', style.iconColor)} />
@@ -248,7 +244,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     // ── 로딩 상태 ──
     if (status.type === 'running') {
       return (
-        <div className="flex items-center gap-2 rounded-xl border bg-muted/20 px-3 py-2 text-xs">
+        <div className="moldy-chat-card flex items-center gap-2 px-3 py-2 text-xs">
           <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
           <span className="text-muted-foreground">{t('preparing')}</span>
         </div>
@@ -261,10 +257,10 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const toolArgs = args?.tool_args
 
     return (
-      <div className="w-full rounded-xl border border-amber-200 bg-amber-50/50 shadow-sm dark:border-amber-900 dark:bg-amber-950/30">
+      <div className="moldy-chat-card moldy-status-surface moldy-status-warn w-full">
         {/* Header */}
-        <div className="flex items-center gap-2 border-b border-amber-200/50 px-4 py-3 dark:border-amber-900/50">
-          <ShieldCheckIcon className="size-4 text-amber-600 dark:text-amber-400" />
+        <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
+          <ShieldCheckIcon className="moldy-status-icon size-4" />
           <span className="text-sm font-medium">{t('approvalRequired')}</span>
           <CountdownBadge
             formatted={formatted}
@@ -299,7 +295,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
               }}
               onFocus={onInteract}
               placeholder={t('rejectReasonPlaceholder')}
-              className="w-full resize-none rounded-lg border border-red-200 bg-background px-3 py-2 text-xs outline-hidden placeholder:text-muted-foreground focus:ring-1 focus:ring-red-300 dark:border-red-900"
+              className="moldy-field-status moldy-status-danger w-full resize-none rounded-lg border bg-background px-3 py-2 text-xs outline-hidden placeholder:text-muted-foreground"
               rows={2}
             />
           )}
@@ -316,7 +312,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                 }}
                 onFocus={onInteract}
                 placeholder={t('editArgsPlaceholder')}
-                className="w-full resize-none rounded-lg border border-blue-200 bg-background px-3 py-2 font-mono text-xs outline-hidden placeholder:text-muted-foreground focus:ring-1 focus:ring-blue-300 dark:border-blue-900"
+                className="moldy-field-status moldy-status-info w-full resize-none rounded-lg border bg-background px-3 py-2 font-mono text-xs outline-hidden placeholder:text-muted-foreground"
                 rows={4}
               />
               {jsonError && <p className="mt-1 text-xs text-destructive">{jsonError}</p>}
@@ -330,7 +326,8 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
               <button
                 type="button"
                 onClick={() => handleDecision('approved')}
-                className="flex items-center gap-1.5 rounded-full bg-emerald-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-emerald-700"
+                data-variant="solid"
+                className="moldy-action-pill moldy-status-success"
               >
                 <CheckIcon className="size-3" />
                 {t('approve')}
@@ -344,7 +341,8 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                     setShowEdit(true)
                     setEditedArgs(toolArgs ? JSON.stringify(toolArgs, null, 2) : '{}')
                   }}
-                  className="flex items-center gap-1.5 rounded-full border border-blue-300 px-4 py-2 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-50 dark:border-blue-800 dark:text-blue-300 dark:hover:bg-blue-950"
+                  data-variant="outline"
+                  className="moldy-action-pill moldy-status-info"
                 >
                   <PencilIcon className="size-3" />
                   {t('edit')}
@@ -353,7 +351,8 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                 <button
                   type="button"
                   onClick={() => handleDecision('modified')}
-                  className="flex items-center gap-1.5 rounded-full bg-blue-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-blue-700"
+                  data-variant="solid"
+                  className="moldy-action-pill moldy-status-info"
                 >
                   <PencilIcon className="size-3" />
                   {t('editAndApprove')}
@@ -365,7 +364,8 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                 <button
                   type="button"
                   onClick={() => setDecision('rejected')}
-                  className="flex items-center gap-1.5 rounded-full border border-red-300 px-4 py-2 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
+                  data-variant="outline"
+                  className="moldy-action-pill moldy-status-danger"
                 >
                   <XIcon className="size-3" />
                   {t('reject')}
@@ -374,7 +374,8 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                 <button
                   type="button"
                   onClick={() => handleDecision('rejected')}
-                  className="flex items-center gap-1.5 rounded-full bg-red-600 px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-red-700"
+                  data-variant="solid"
+                  className="moldy-action-pill moldy-status-danger"
                 >
                   <XIcon className="size-3" />
                   {t('rejectConfirm')}

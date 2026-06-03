@@ -142,10 +142,10 @@ function ChatInput({
           onClick={onSubmit}
           disabled={!hasInput}
           aria-label={submitLabel}
-            className={[
-              'size-9 rounded-xl transition-colors',
-              hasInput
-              ? 'bg-[var(--primary-strong)] text-white hover:bg-[var(--builder-primary-hover)]'
+          className={[
+            'size-9 rounded-xl transition-colors',
+            hasInput
+              ? 'bg-primary-strong text-white hover:bg-primary-strong/90'
               : 'bg-muted text-muted-foreground hover:bg-muted',
           ].join(' ')}
         >
@@ -182,8 +182,7 @@ function ExamplePrompts({
             className={[
               'inline-flex items-center gap-1.5 rounded-full border px-3 transition-colors',
               'h-8 border-border bg-background text-xs text-foreground sm:text-sm',
-              'hover:border-emerald-200 hover:bg-emerald-50',
-              'dark:hover:border-emerald-500/30 dark:hover:bg-emerald-950/30',
+              'hover:border-primary-strong/30 hover:bg-primary',
             ].join(' ')}
           >
             <span className="text-sm leading-none">{p.emoji}</span>
@@ -225,14 +224,14 @@ function AltMethods({
           title={manualTitle}
           description={manualDescription}
           icon={<PenLineIcon className="size-4" />}
-          iconClassName="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300"
+          iconClassName="moldy-dashboard-action-icon moldy-status-accent"
         />
         <AltMethodCard
           href="/agents/new/template"
           title={templateTitle}
           description={templateDescription}
           icon={<LayoutTemplateIcon className="size-4" />}
-          iconClassName="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300"
+          iconClassName="moldy-dashboard-action-icon moldy-status-info"
         />
       </div>
     </div>

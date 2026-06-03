@@ -249,7 +249,6 @@ function FiltersBar({
               'placeholder:text-muted-foreground',
               'transition-[border-color,box-shadow]',
               'focus:border-[var(--moldy-border-mint)] focus:shadow-[var(--moldy-shadow-focus)]',
-              'dark:focus:border-emerald-500/40',
             )}
           />
         </div>
@@ -313,7 +312,7 @@ function TemplateCard({
       <div className="flex items-start justify-between gap-3">
         <span
           className={cn(
-            'inline-flex size-9 shrink-0 items-center justify-center rounded-xl ring-1',
+            'moldy-resource-icon',
             tone.icon,
           )}
         >
@@ -436,11 +435,7 @@ function BottomCta({
     <Link
       href="/agents/new"
       className={cn(
-        'group mt-auto flex shrink-0 items-center gap-4 rounded-lg border border-emerald-100/60 p-4 transition-colors',
-        'bg-gradient-to-r from-emerald-50 via-emerald-50/50 to-background',
-        'hover:from-emerald-50 hover:to-emerald-50/30',
-        'dark:border-emerald-500/15',
-        'dark:from-emerald-950/30 dark:via-emerald-950/15 dark:to-background',
+        'moldy-dashboard-action group mt-auto flex shrink-0 items-center gap-4 rounded-lg p-4',
       )}
     >
       <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card moldy-color-primary-strong">

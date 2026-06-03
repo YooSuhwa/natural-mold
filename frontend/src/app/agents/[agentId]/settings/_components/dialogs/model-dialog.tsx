@@ -326,7 +326,7 @@ function FallbackSection({
                 </div>
                 {isDup && (
                   <p
-                    className="ml-7 moldy-ui-caption text-amber-600"
+                    className="moldy-status-warn moldy-status-text ml-7 moldy-ui-caption"
                     data-testid={`fallback-duplicate-${index}`}
                   >
                     {t('duplicateWarning')}

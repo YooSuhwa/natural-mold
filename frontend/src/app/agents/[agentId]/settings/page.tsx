@@ -407,8 +407,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-gradient-to-b from-emerald-50/35 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
-      <header className="flex items-start gap-3 border-b border-border/70 bg-[var(--moldy-surface-raised)] px-6 py-3 shadow-[var(--moldy-shadow-card)]">
+    <div className="moldy-app-surface flex flex-1 flex-col overflow-hidden">
+      <header className="moldy-panel-header flex items-start gap-3 px-6 py-3">
         <Button variant="ghost" size="icon-sm" onClick={handleBack} aria-label={t('back')}>
           <ArrowLeftIcon className="size-4" />
         </Button>
@@ -463,7 +463,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       </header>
 
       <main className="grid flex-1 grid-cols-1 gap-3 overflow-hidden p-3 lg:grid-cols-2">
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)]">
+        <section className="moldy-panel flex min-h-0 flex-col overflow-hidden">
           <Tabs
             value={leftTab}
             onValueChange={(v) => setLeftTab(v as LeftTab)}
@@ -473,14 +473,14 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
               <TabsList variant="line" className="h-auto">
                 <TabsTrigger
                   value="form"
-                  className="gap-1 px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
+                  className="gap-1 px-4 py-2.5 after:bg-primary-strong data-active:text-primary-strong"
                 >
                   <ClipboardListIcon className="size-3.5" />
                   {t('tabs.form')}
                 </TabsTrigger>
                 <TabsTrigger
                   value="visual"
-                  className="gap-1 px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
+                  className="gap-1 px-4 py-2.5 after:bg-primary-strong data-active:text-primary-strong"
                 >
                   <WorkflowIcon className="size-3.5" />
                   {t('tabs.visual')}
@@ -537,7 +537,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
           </Tabs>
         </section>
 
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)]">
+        <section className="moldy-panel flex min-h-0 flex-col overflow-hidden">
           <RightPanel
             tab={rightTab}
             onTabChange={setRightTab}

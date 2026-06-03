@@ -136,12 +136,12 @@ export function ModelConnectionTest(props: Props) {
     <div
       className={
         className ??
-        'space-y-3 rounded-lg border bg-background p-4 text-sm shadow-sm'
+        'moldy-card space-y-3 p-4 text-sm'
       }
       data-testid="model-connection-test"
     >
       {showCostBanner && (
-        <p className="rounded border border-amber-300 bg-amber-50 p-2 moldy-ui-caption text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+        <p className="moldy-status-surface moldy-status-warn rounded p-2 moldy-ui-caption">
           {t('costBanner')}
         </p>
       )}
@@ -228,26 +228,26 @@ function SuccessCard({
 
   return (
     <div
-      className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+      className="moldy-status-surface moldy-status-success rounded-lg p-4"
       data-testid="connection-success"
     >
       <div className="flex items-start gap-3">
-        <CheckCircle2 className="size-6 shrink-0 text-emerald-600 dark:text-emerald-400" />
+        <CheckCircle2 className="moldy-status-icon size-6 shrink-0" />
         <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+          <p className="moldy-status-text text-sm font-semibold">
             {modelLabel ? t('successWithModel', { model: modelLabel }) : t('success')}
           </p>
 
           {result.response && (
             <p
-              className="line-clamp-3 text-xs text-emerald-900/80 dark:text-emerald-100/80"
+              className="moldy-status-muted-text line-clamp-3 text-xs"
               title={result.response}
             >
               {t('response', { response: result.response })}
             </p>
           )}
 
-          <ul className="grid grid-cols-1 gap-1 moldy-ui-caption text-emerald-900/90 sm:grid-cols-3 dark:text-emerald-100/90">
+          <ul className="moldy-status-muted-text grid grid-cols-1 gap-1 moldy-ui-caption sm:grid-cols-3">
             <li>
               <span className="font-medium">{t('metrics.latency')}</span>{' '}
               {result.latency_ms.toLocaleString()} ms

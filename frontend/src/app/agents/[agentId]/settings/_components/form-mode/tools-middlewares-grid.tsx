@@ -162,11 +162,11 @@ function ToolsSkillsBox({
               key={item.key}
               icon={
                 item.kind === 'tool' ? (
-                  <WrenchIcon className="size-3.5 text-indigo-500" />
+                  <WrenchIcon className="moldy-status-accent moldy-status-icon size-3.5" />
                 ) : item.kind === 'mcp' ? (
-                  <ServerIcon className="size-3.5 text-sky-500" />
+                  <ServerIcon className="moldy-status-info moldy-status-icon size-3.5" />
                 ) : (
-                  <SparklesIcon className="size-3.5 text-emerald-500" />
+                  <SparklesIcon className="moldy-status-success moldy-status-icon size-3.5" />
                 )
               }
               name={item.name}

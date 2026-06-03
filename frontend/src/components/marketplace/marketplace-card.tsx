@@ -107,7 +107,7 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
       <CardHeader className="flex flex-row items-start justify-between gap-3 rounded-t-md px-0 pb-0 pt-0">
         <div
           className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-xl ring-1',
+            'moldy-resource-icon',
             tone.icon,
           )}
         >

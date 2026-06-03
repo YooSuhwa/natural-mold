@@ -13,10 +13,7 @@ export function PageHeader({ title, description, action, className }: PageHeader
     <div className={cn('flex items-start justify-between gap-4', className)}>
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-center gap-2">
-          <span
-            aria-hidden
-            className="size-2.5 rounded-full bg-primary-strong shadow-[0_0_0_4px_var(--primary)]"
-          />
+          <span aria-hidden className="moldy-page-kicker" />
           <h1 className="moldy-page-title leading-tight">{title}</h1>
         </div>
         {description && (

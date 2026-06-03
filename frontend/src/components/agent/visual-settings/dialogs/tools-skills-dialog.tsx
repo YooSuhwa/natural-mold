@@ -315,22 +315,22 @@ function KindIcon({ kind }: { kind: AvailableKind }) {
   const config = {
     tool: {
       Icon: WrenchIcon,
-      className: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400',
+      className: 'moldy-dashboard-action-icon moldy-status-accent',
       label: t('tool'),
     },
     mcp: {
       Icon: ServerIcon,
-      className: 'bg-sky-100 text-sky-600 dark:bg-sky-950/40 dark:text-sky-400',
+      className: 'moldy-dashboard-action-icon moldy-status-info',
       label: t('mcp'),
     },
     skill: {
       Icon: SparklesIcon,
-      className: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400',
+      className: 'moldy-dashboard-action-icon moldy-status-success',
       label: t('skill'),
     },
     catalog: {
       Icon: PackageIcon,
-      className: 'bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400',
+      className: 'moldy-dashboard-action-icon moldy-status-warn',
       label: t('catalog'),
     },
   }[kind]

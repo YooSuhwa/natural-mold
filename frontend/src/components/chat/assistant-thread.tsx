@@ -429,7 +429,7 @@ function FeedbackButtons() {
 function UserMessageEditor() {
   const t = useTranslations('chat.message')
   return (
-    <ComposerPrimitive.Root className="flex flex-col gap-2 rounded-2xl border bg-background p-2 shadow-sm">
+    <ComposerPrimitive.Root className="moldy-chat-card flex flex-col gap-2 p-2">
       <ImeSafeComposerInput
         className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-hidden"
         autoFocus
@@ -685,7 +685,7 @@ function ThreadComposer({
   const hasTokens = showTokenBar && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)
 
   return (
-    <ComposerPrimitive.Root className="overflow-hidden rounded-2xl border border-border/70 bg-background/95 shadow-[var(--moldy-shadow-card)]">
+    <ComposerPrimitive.Root className="moldy-chat-card">
       {/* Model & Token bar */}
       {(modelName || hasTokens) && (
         <div className="flex items-center gap-3 border-b border-border/60 bg-primary/35 px-3.5 py-1.5 text-xs text-muted-foreground">

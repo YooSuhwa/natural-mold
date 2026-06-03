@@ -111,7 +111,7 @@ interface ImageChoiceArgs {
 function ImageChoiceUnavailable({ message }: { message?: string }) {
   const t = useTranslations('chat.imageGeneration')
   return (
-    <div className="my-3 flex items-start gap-2 rounded-xl border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] px-3.5 py-3">
+    <div className="moldy-chat-card my-3 flex items-start gap-2 px-3.5 py-3">
       <AlertTriangleIcon className="size-4 shrink-0 moldy-builder-color-muted" />
       <div>
         <div className="moldy-ui-compact font-semibold moldy-builder-color-ink">
@@ -232,7 +232,7 @@ function ImageApprovalBody({
   return (
     <BuilderBody loose className="flex flex-col gap-3">
       {error ? (
-        <div className="flex items-start gap-2 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5 moldy-ui-compact leading-normal text-red-800 dark:border-red-500/25 dark:bg-red-500/10 dark:text-red-200">
+        <div className="moldy-status-surface moldy-status-danger flex items-start gap-2 rounded-lg px-3 py-2.5 moldy-ui-compact leading-normal">
           <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
           <span>{error}</span>
         </div>
@@ -241,7 +241,7 @@ function ImageApprovalBody({
         <img
           src={resolveImageUrl(imageUrl) ?? ''}
           alt={t('agentImageAlt')}
-          className="mx-auto size-48 rounded-xl border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] object-contain"
+          className="moldy-card mx-auto size-48 object-contain"
         />
       ) : (
         <p className="moldy-ui-body-sm moldy-builder-color-muted-soft">

@@ -28,17 +28,17 @@ interface HealthHistoryChartProps {
 }
 
 const STATUS_COLOR: Record<HealthStatus, string> = {
-  healthy: 'rgb(16 185 129)', // emerald-500
-  degraded: 'rgb(245 158 11)', // amber-500
-  unhealthy: 'rgb(244 63 94)', // rose-500
-  unknown: 'rgb(148 163 184)', // slate-400
+  healthy: 'var(--status-success)',
+  degraded: 'var(--status-warn)',
+  unhealthy: 'var(--status-danger)',
+  unknown: 'var(--muted-foreground)',
 }
 
 const STATUS_BG: Record<HealthStatus, string> = {
-  healthy: 'bg-emerald-500',
-  degraded: 'bg-amber-500',
-  unhealthy: 'bg-rose-500',
-  unknown: 'bg-slate-400',
+  healthy: 'bg-status-success',
+  degraded: 'bg-status-warn',
+  unhealthy: 'bg-status-danger',
+  unknown: 'bg-muted-foreground/60',
 }
 
 export function HealthHistoryChart({

@@ -6,9 +6,9 @@ import { cn } from '@/lib/utils'
 import { TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 /**
- * Underline-style tab list with the project's accent (emerald) styling.
+ * Underline-style tab list with the project's Moldy accent styling.
  *
- * Same building blocks as `TabsList variant="line"` + the emerald active
+ * Same building blocks as `TabsList variant="line"` + the primary active
  * styling we already use in the agent workbench right panel + manual create
  * page's form/visual switcher. Centralized here so the same look can be
  * shared by other surfaces (e.g. tools/skills dialog right pane).
@@ -21,7 +21,7 @@ function LineTabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   return (
     <TabsTrigger
       className={cn(
-        'px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400',
+        'px-4 py-2.5 after:bg-primary-strong data-active:text-primary-strong',
         className,
       )}
       {...props}

@@ -127,7 +127,7 @@ export default function ModelsPage() {
               <p className="truncate text-sm font-medium">
                 {row.original.display_name}
                 {row.original.is_default && (
-                  <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 moldy-ui-micro font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
+                  <span className="moldy-status-surface moldy-status-success ml-2 inline-flex items-center rounded-full px-1.5 py-0.5 moldy-ui-micro font-medium">
                     {t('defaultBadge')}
                   </span>
                 )}

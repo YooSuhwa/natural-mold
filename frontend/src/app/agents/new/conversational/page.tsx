@@ -21,7 +21,7 @@ function WelcomeContent() {
   const t = useTranslations('agent.conversational')
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-6 py-12 text-center">
-      <div className="flex size-16 items-center justify-center rounded-2xl bg-violet-100 text-violet-600 dark:bg-violet-950 dark:text-violet-400">
+      <div className="moldy-dashboard-action-icon moldy-status-accent flex size-16 items-center justify-center">
         <SparklesIcon className="size-8" />
       </div>
       <div>

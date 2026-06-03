@@ -49,8 +49,12 @@ export function ToolboxNode({ data }: { data: ToolboxNodeData }) {
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="!bg-indigo-500 !w-2.5 !h-2.5" />
-      <div className="nowheel w-[220px] rounded-xl border bg-card shadow-md">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="moldy-flow-handle moldy-flow-handle-toolbox"
+      />
+      <div className="moldy-flow-node nowheel w-[220px]">
         <div className="flex items-center justify-between border-b px-3 py-2">
           <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.toolbox')}

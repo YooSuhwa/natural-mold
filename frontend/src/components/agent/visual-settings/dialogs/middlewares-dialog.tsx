@@ -293,8 +293,12 @@ function MiddlewareCard({
   action: React.ReactNode
 }) {
   return (
-    <div className={`flex gap-3 rounded-lg border p-3 ${align === 'center' ? 'items-center' : 'items-start'}`}>
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+    <div
+      className={`flex gap-3 rounded-lg border p-3 ${
+        align === 'center' ? 'items-center' : 'items-start'
+      }`}
+    >
+      <span className="moldy-dashboard-action-icon moldy-status-warn flex size-8 shrink-0 items-center justify-center rounded-md">
         <LayersIcon className="size-4" />
       </span>
       <div className="min-w-0 flex-1">

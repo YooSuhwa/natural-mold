@@ -73,7 +73,7 @@ export function ChatRightRail({ className, conversationId }: Props) {
             className="absolute inset-0 bg-background/60 backdrop-blur-sm"
             onClick={() => setState({ mode: 'none' })}
           />
-          <div className="absolute inset-y-0 right-0 w-[88vw] max-w-[380px] border-l border-border/60 bg-card shadow-xl">
+          <div className="absolute inset-y-0 right-0 w-[88vw] max-w-[380px] border-l border-border/60 bg-card shadow-[var(--moldy-shadow-card)]">
             <RailFrame
               state={state}
               className="h-full w-full"

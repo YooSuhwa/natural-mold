@@ -178,11 +178,11 @@ function CompletedBadge({ result }: { result: unknown }) {
   const t = useTranslations('chat.userInput')
   const display = formatUserInputResult(result)
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs dark:border-emerald-900 dark:bg-emerald-950">
-      <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500" />
-      <span className="font-medium text-emerald-700 dark:text-emerald-300">{t('completed')}</span>
+    <div className="moldy-status-surface moldy-status-success flex items-center gap-2 rounded-xl px-3 py-2 text-xs">
+      <CheckCircle2Icon className="moldy-status-icon size-3.5 shrink-0" />
+      <span className="moldy-status-text font-medium">{t('completed')}</span>
       {display && (
-        <span className="truncate text-emerald-600/80 dark:text-emerald-400/80">{display}</span>
+        <span className="moldy-status-muted-text truncate">{display}</span>
       )}
     </div>
   )
@@ -344,7 +344,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     // ── 로딩 상태 ──
     if (status.type === 'running') {
       return (
-        <div className="flex items-center gap-2 rounded-xl border bg-muted/20 px-3 py-2 text-xs">
+        <div className="moldy-chat-card flex items-center gap-2 px-3 py-2 text-xs">
           <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
           <span className="text-muted-foreground">{t('preparing')}</span>
         </div>
@@ -359,7 +359,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     })
 
     return (
-      <div className="w-full rounded-xl border bg-background p-4 shadow-sm">
+      <div className="moldy-chat-card w-full p-4">
         {/* Header */}
         <div className="mb-3 flex items-center gap-2">
           <MessageSquareQuoteIcon className="size-4 moldy-builder-color-primary-bg-strong" />

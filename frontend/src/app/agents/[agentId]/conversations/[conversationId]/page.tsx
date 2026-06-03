@@ -144,9 +144,9 @@ export default function ChatPage({
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
 
   return (
-    <div className="flex min-h-0 flex-1 gap-3 overflow-hidden bg-gradient-to-b from-emerald-50/35 via-background to-background p-3 dark:from-emerald-950/15 dark:via-background dark:to-background">
+    <div className="moldy-app-surface flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
       {/* 좌측 사이드바 카드 (데스크톱) */}
-      <aside className="hidden w-72 shrink-0 overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)] md:block">
+      <aside className="moldy-panel hidden w-72 shrink-0 overflow-hidden md:block">
         <ConversationList
           agentId={agentId}
           agentName={agent?.name}
@@ -156,8 +156,8 @@ export default function ChatPage({
       </aside>
 
       {/* 메인 채팅 카드 */}
-      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)]">
-        <div className="flex items-center justify-between border-b border-border/60 bg-card/55 px-4 py-2.5">
+      <section className="moldy-panel flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="moldy-panel-header flex items-center justify-between px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Sheet>
               <SheetTrigger
@@ -256,7 +256,7 @@ export default function ChatPage({
       {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
       <ChatRightRail
         conversationId={conversationId}
-        className="overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)]"
+        className="moldy-panel overflow-hidden"
       />
     </div>
   )

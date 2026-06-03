@@ -27,7 +27,7 @@ function ResourcePage({
   return (
     <div
       className={cn(
-        'flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-emerald-50/35 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background',
+        'moldy-app-surface flex min-h-0 flex-1 flex-col overflow-hidden',
         'relative',
         className,
       )}

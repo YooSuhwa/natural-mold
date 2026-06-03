@@ -57,7 +57,7 @@ export function AgentAvatar({
         unoptimized
         onError={() => setHasError(true)}
         className={cn(
-          'shrink-0 rounded-full bg-emerald-100 object-cover dark:bg-emerald-900',
+          'shrink-0 rounded-full bg-primary object-cover',
           container,
           className,
         )}
@@ -68,7 +68,7 @@ export function AgentAvatar({
   return (
     <div
       className={cn(
-        'flex shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-200',
+        'flex shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground',
         container,
         className,
       )}
