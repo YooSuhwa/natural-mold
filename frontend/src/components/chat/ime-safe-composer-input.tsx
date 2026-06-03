@@ -13,6 +13,7 @@ import {
 import { useAui, useAuiState } from '@assistant-ui/react'
 
 import { cn } from '@/lib/utils'
+import { autoFocusComposerInput, focusTextareaAtEnd } from './composer-focus'
 
 type SubmitMode = 'enter' | 'ctrlEnter' | 'none'
 
@@ -20,6 +21,8 @@ type ImeSafeComposerInputProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement
   submitMode?: SubmitMode
   submitOnEnter?: boolean
   addAttachmentOnPaste?: boolean
+  autoFocusKey?: string | number | null
+  restoreFocusOnTextClear?: boolean
 }
 
 function assignRef<T>(ref: ForwardedRef<T>, value: T | null): void {
@@ -46,6 +49,8 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       submitMode,
       submitOnEnter,
       addAttachmentOnPaste = true,
+      autoFocusKey,
+      restoreFocusOnTextClear = true,
       ...props
     },
     forwardedRef,
@@ -58,6 +63,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     const externalValue = useAuiState((state) =>
       state.composer.isEditing ? state.composer.text : '',
     )
+    const previousExternalValueRef = useRef(externalValue)
     const runtimeDisabled = useAuiState(
       (state) => state.thread.isDisabled || state.composer.dictation?.inputDisabled,
     )
@@ -75,9 +81,8 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       if (!autoFocus || isDisabled) return
       const textarea = textareaRef.current
       if (!textarea) return
-      textarea.focus({ preventScroll: true })
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length)
-    }, [autoFocus, isDisabled])
+      autoFocusComposerInput(textarea)
+    }, [autoFocus, autoFocusKey, isDisabled])
 
     useEffect(() => {
       if (compositionRef.current) return
@@ -85,6 +90,25 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
       if (!textarea || textarea.value === externalValue) return
       textarea.value = externalValue
     }, [externalValue])
+
+    useEffect(() => {
+      const previousExternalValue = previousExternalValueRef.current
+      previousExternalValueRef.current = externalValue
+
+      if (!restoreFocusOnTextClear || isDisabled) return
+      if (previousExternalValue === '' || externalValue !== '') return
+
+      const focus = () => {
+        focusTextareaAtEnd(textareaRef.current)
+      }
+
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(focus)
+        return
+      }
+
+      window.setTimeout(focus, 0)
+    }, [externalValue, isDisabled, restoreFocusOnTextClear])
 
     const syncText = useCallback(
       (next: string) => {
@@ -146,6 +170,7 @@ export const ImeSafeComposerInput = forwardRef<HTMLTextAreaElement, ImeSafeCompo
     return (
       <textarea
         {...props}
+        data-moldy-composer-input="true"
         ref={setTextareaRef}
         defaultValue={externalValue}
         disabled={isDisabled}
