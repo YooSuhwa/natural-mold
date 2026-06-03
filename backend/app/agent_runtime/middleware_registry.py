@@ -234,7 +234,7 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
         "provider_specific": "anthropic",
     },
     "anthropic_memory": {
-        "name": "AnthropicMemoryMiddleware",
+        "name": "StateClaudeMemoryMiddleware",
         "display_name": "Anthropic 지속 메모리",
         "description": "Anthropic의 지속 메모리 기능을 활용합니다",
         "category": "provider",
@@ -242,7 +242,7 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
         "provider_specific": "anthropic",
     },
     "anthropic_bash_tool": {
-        "name": "AnthropicBashToolMiddleware",
+        "name": "ClaudeBashToolMiddleware",
         "display_name": "Anthropic Bash 도구",
         "description": "Claude 모델에서 Bash 명령어 실행을 지원합니다",
         "category": "provider",
@@ -250,7 +250,7 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
         "provider_specific": "anthropic",
     },
     "anthropic_file_search": {
-        "name": "AnthropicFileSearchMiddleware",
+        "name": "StateFileSearchMiddleware",
         "display_name": "Anthropic 파일 검색",
         "description": "Claude 모델에서 대용량 문서 검색을 지원합니다",
         "category": "provider",
@@ -258,7 +258,7 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
         "provider_specific": "anthropic",
     },
     "anthropic_text_editor": {
-        "name": "AnthropicTextEditorMiddleware",
+        "name": "StateClaudeTextEditorMiddleware",
         "display_name": "Anthropic 텍스트 편집기",
         "description": "Claude 모델에서 텍스트 편집 도구를 지원합니다",
         "category": "provider",
@@ -277,6 +277,15 @@ MIDDLEWARE_REGISTRY: dict[str, dict[str, Any]] = {
 
 # Map middleware type key → class name for dynamic import
 _CLASS_MAP: dict[str, str] = {k: v["name"] for k, v in MIDDLEWARE_REGISTRY.items()}
+
+_MODULE_MAP: dict[str, str] = {
+    "anthropic_prompt_caching": "langchain_anthropic.middleware",
+    "anthropic_memory": "langchain_anthropic.middleware",
+    "anthropic_bash_tool": "langchain_anthropic.middleware",
+    "anthropic_file_search": "langchain_anthropic.middleware",
+    "anthropic_text_editor": "langchain_anthropic.middleware",
+    "openai_moderation": "langchain_openai.middleware",
+}
 
 
 def _patched_llm_tool_selector_class() -> type | None:
@@ -321,7 +330,7 @@ def _patched_llm_tool_selector_class() -> type | None:
 
 
 def _resolve_middleware_class(middleware_type: str) -> type | None:
-    """Attempt to import a middleware class from langchain.agents.middleware.
+    """Attempt to import a middleware class from its owning package.
 
     Returns None if the package is not installed or the class is unavailable.
     """
@@ -335,7 +344,9 @@ def _resolve_middleware_class(middleware_type: str) -> type | None:
     try:
         import importlib
 
-        module = importlib.import_module("langchain.agents.middleware")
+        module = importlib.import_module(
+            _MODULE_MAP.get(middleware_type, "langchain.agents.middleware")
+        )
         return getattr(module, class_name, None)
     except (ImportError, ModuleNotFoundError):
         return None
@@ -372,9 +383,8 @@ def build_middleware_instances(middleware_configs: list[dict[str, Any]]) -> list
 
         cls = _resolve_middleware_class(middleware_type)
         if cls is None:
-            logger.debug(
-                "Middleware class for '%s' not available (langchain.agents.middleware "
-                "not installed or class missing). Skipping.",
+            logger.warning(
+                "Middleware class for '%s' not available. Skipping.",
                 middleware_type,
             )
             continue
@@ -418,7 +428,8 @@ def get_provider_middleware(provider: str) -> list:
     Returns an empty list if the middleware classes are not importable.
     """
     provider_map: dict[str, list[str]] = {
-        "anthropic": ["anthropic_prompt_caching"],
+        # DeepAgents injects Anthropic prompt caching itself.
+        "anthropic": [],
         "openai": ["openai_moderation"],
     }
     types = provider_map.get(provider, [])
@@ -448,6 +459,7 @@ DEEPAGENT_AUTO_INJECTED_TYPES: frozenset[str] = frozenset(
 EXPLICITLY_INSTANTIATED_TYPES: frozenset[str] = frozenset(
     {
         "human_in_the_loop",
+        "model_fallback",
     }
 )
 

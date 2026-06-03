@@ -16,10 +16,16 @@ Moldy-native; the wrapper does not import or copy any external code.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import inspect
+import json
 import logging
 import os
 import ssl
 import uuid
+from collections import OrderedDict
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 import certifi
@@ -68,6 +74,9 @@ PROVIDER_API_KEY_MAP = _ENV_FALLBACK
 # ``settings`` may be mutated in tests; we intentionally take the value once.
 _ENV_DEFAULTS: dict[str, str] = dict(_ENV_FALLBACK)
 
+_MODEL_CACHE_MAXSIZE = 64
+_MODEL_CACHE: OrderedDict[tuple[Any, ...], BaseChatModel] = OrderedDict()
+
 
 async def sync_env_fallback_from_credentials(db: AsyncSession) -> None:
     """Refresh ``_ENV_FALLBACK`` from the credentials table (ADR-013).
@@ -96,6 +105,83 @@ async def sync_env_fallback_from_credentials(db: AsyncSession) -> None:
     for env_key, cred_key in cred_keys.items():
         if not _ENV_FALLBACK.get(env_key) and cred_key:
             _ENV_FALLBACK[env_key] = cred_key
+    clear_model_cache()
+
+
+def _api_key_fingerprint(api_key: str | None) -> str | None:
+    if not api_key:
+        return None
+    return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(k): _jsonable(v)
+            for k, v in sorted(value.items(), key=lambda item: str(item[0]))
+        }
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return repr(value)
+
+
+def _model_cache_key(
+    *,
+    provider: str,
+    model_name: str,
+    resolved_key: str | None,
+    base_url: str | None,
+    kwargs: dict[str, Any],
+) -> tuple[Any, ...]:
+    key_kwargs = {
+        k: v
+        for k, v in kwargs.items()
+        if k not in {"api_key", "http_async_client", "http_client"}
+    }
+    return (
+        provider,
+        model_name,
+        base_url,
+        _api_key_fingerprint(resolved_key),
+        json.dumps(_jsonable(key_kwargs), sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _close_maybe_async(value: Any) -> None:
+    if value is None:
+        return
+    for method_name in ("close", "aclose"):
+        method = getattr(value, method_name, None)
+        if not callable(method):
+            continue
+        try:
+            result = method()
+        except Exception:  # noqa: BLE001
+            logger.debug("model cache client close failed", exc_info=True)
+            continue
+        if inspect.isawaitable(result):
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                asyncio.run(result)
+            else:
+                loop.create_task(result)
+        return
+
+
+def _close_cached_model(model: BaseChatModel) -> None:
+    for attr in ("http_async_client", "http_client", "async_client", "client"):
+        _close_maybe_async(getattr(model, attr, None))
+
+
+def clear_model_cache() -> None:
+    """Clear cached model instances and close owned HTTP clients when present."""
+
+    while _MODEL_CACHE:
+        _, model = _MODEL_CACHE.popitem()
+        _close_cached_model(model)
 
 
 # SSL 컨텍스트.
@@ -161,9 +247,27 @@ def create_chat_model(
     _apply_openai_compatible_base_url(provider, kwargs)
 
     kwargs["stream_usage"] = True
+    cache_key = _model_cache_key(
+        provider=provider,
+        model_name=model_name,
+        resolved_key=resolved_key,
+        base_url=base_url,
+        kwargs=kwargs,
+    )
+    cached = _MODEL_CACHE.get(cache_key)
+    if cached is not None:
+        _MODEL_CACHE.move_to_end(cache_key)
+        return cached
+
     _apply_openai_ssl_clients(cls, kwargs)
 
-    return cls(**kwargs)
+    model = cls(**kwargs)
+    _MODEL_CACHE[cache_key] = model
+    _MODEL_CACHE.move_to_end(cache_key)
+    while len(_MODEL_CACHE) > _MODEL_CACHE_MAXSIZE:
+        _, evicted = _MODEL_CACHE.popitem(last=False)
+        _close_cached_model(evicted)
+    return model
 
 
 def env_provider_keys() -> dict[str, str | None]:
@@ -562,6 +666,7 @@ __all__ = [
     "create_chat_model",
     "create_chat_model_for_test",
     "create_chat_model_with_fallback",
+    "clear_model_cache",
     "env_provider_keys",
     "is_gpt5_family",
     "sync_env_fallback_from_credentials",

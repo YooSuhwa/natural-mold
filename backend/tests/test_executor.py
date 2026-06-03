@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from langchain_core.messages import HumanMessage
 
 from app.agent_runtime.executor import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord
@@ -225,13 +226,16 @@ async def test_execute_stream_no_tools(
     from app.agent_runtime.executor import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
-    mock_convert.return_value = []
+    mock_convert.return_value = [HumanMessage(content="오늘 일정 알려줘")]
     mock_build.return_value = MagicMock()
+    captured_stream_messages = {}
 
-    async def fake_stream(*args, **kwargs):
+    async def fake_stream(_agent, input_, config, **_kwargs):
+        captured_stream_messages["messages"] = input_
+        captured_stream_messages["config"] = config
         yield "event: message_end\ndata: {}\n\n"
 
-    mock_stream.return_value = fake_stream()
+    mock_stream.side_effect = fake_stream
 
     chunks = []
     cfg = _cfg(api_key="sk-test", system_prompt="Hello", thread_id="thread-1")
@@ -246,7 +250,14 @@ async def test_execute_stream_no_tools(
     assert "ask_user" in tool_names
 
     system_prompt = mock_build.call_args[0][2]
-    assert "현재 기준 날짜와 시간" in system_prompt
+    assert system_prompt == "Hello"
+    assert "현재 기준 날짜" not in system_prompt
+
+    messages = captured_stream_messages["messages"]
+    assert len(messages) == 1
+    assert isinstance(messages[0], HumanMessage)
+    assert "현재 기준 날짜" in messages[0].content
+    assert "오늘 일정 알려줘" in messages[0].content
 
 
 @pytest.mark.asyncio
@@ -590,6 +601,42 @@ async def test_execute_stream_passes_thread_id_in_config(
         pass
 
     assert captured_config["configurable"]["thread_id"] == "my-thread-42"
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+async def test_execute_stream_passes_recursion_limit_in_config(
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+):
+    from app.agent_runtime.executor import execute_agent_stream
+
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = [HumanMessage(content="hi")]
+    mock_build.return_value = MagicMock()
+
+    captured_config = {}
+
+    async def capture_stream(agent, messages, config, **_kwargs):
+        captured_config.update(config)
+        yield "done"
+
+    mock_stream.side_effect = capture_stream
+
+    async for _ in execute_agent_stream(
+        _cfg(model_params={"recursion_limit": 77}),
+        [{"role": "user", "content": "hi"}],
+    ):
+        pass
+
+    assert captured_config["recursion_limit"] == 77
 
 
 @pytest.mark.asyncio

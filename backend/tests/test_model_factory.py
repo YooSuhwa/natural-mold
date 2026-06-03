@@ -4,6 +4,17 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _clear_model_cache_between_tests():
+    from app.agent_runtime.model_factory import clear_model_cache
+
+    clear_model_cache()
+    yield
+    clear_model_cache()
+
 
 class TestCreateChatModel:
     """Tests for create_chat_model()."""
@@ -208,6 +219,40 @@ class TestCreateChatModel:
 
         kwargs = mock_cls.call_args[1]
         assert kwargs["api_key"] == "explicit-key"
+
+    def test_reuses_cached_model_for_same_config(self):
+        mock_cls = MagicMock()
+        mock_cls.side_effect = [MagicMock(name="first"), MagicMock(name="second")]
+        with patch.dict(
+            "app.agent_runtime.model_factory.PROVIDER_MAP",
+            {"openai": mock_cls},
+        ):
+            from app.agent_runtime.model_factory import clear_model_cache, create_chat_model
+
+            clear_model_cache()
+            first = create_chat_model("openai", "gpt-4o", api_key="sk-same")
+            second = create_chat_model("openai", "gpt-4o", api_key="sk-same")
+            clear_model_cache()
+
+        assert first is second
+        assert mock_cls.call_count == 1
+
+    def test_cache_key_uses_api_key_fingerprint(self):
+        mock_cls = MagicMock()
+        mock_cls.side_effect = [MagicMock(name="first"), MagicMock(name="second")]
+        with patch.dict(
+            "app.agent_runtime.model_factory.PROVIDER_MAP",
+            {"openai": mock_cls},
+        ):
+            from app.agent_runtime.model_factory import clear_model_cache, create_chat_model
+
+            clear_model_cache()
+            first = create_chat_model("openai", "gpt-4o", api_key="sk-one")
+            second = create_chat_model("openai", "gpt-4o", api_key="sk-two")
+            clear_model_cache()
+
+        assert first is not second
+        assert mock_cls.call_count == 2
 
 
 class TestCreateChatModelGpt5Family:

@@ -130,6 +130,12 @@ def _validate_payload_consistency(
         )
 
 
+async def _invalidate_runtime_mcp_cache() -> None:
+    from app.agent_runtime.mcp_cache import clear_mcp_tool_cache
+
+    await clear_mcp_tool_cache()
+
+
 # -- CRUD --------------------------------------------------------------------
 
 
@@ -172,6 +178,7 @@ async def create_server(
     db.add(server)
     await db.commit()
     await db.refresh(server)
+    await _invalidate_runtime_mcp_cache()
     return _server_to_response(server)
 
 
@@ -220,6 +227,7 @@ async def create_server_from_registry(
     db.add(server)
     await db.commit()
     await db.refresh(server)
+    await _invalidate_runtime_mcp_cache()
     return _server_to_response(server)
 
 
@@ -464,6 +472,7 @@ async def import_servers(
             result.errors.append(McpImportError(name=name, reason=str(exc)))
 
     await db.commit()
+    await _invalidate_runtime_mcp_cache()
     return result
 
 
@@ -551,6 +560,7 @@ async def update_server(
     _validate_payload_consistency(server.transport, server.url, server.command)
     await db.commit()
     await db.refresh(server)
+    await _invalidate_runtime_mcp_cache()
     return _server_to_response(server)
 
 
@@ -567,6 +577,7 @@ async def delete_server(
         await db.delete(row)
     await db.delete(server)
     await db.commit()
+    await _invalidate_runtime_mcp_cache()
 
 
 # -- Connectivity probes ------------------------------------------------------
@@ -582,6 +593,7 @@ async def test_server(
     server = await _load_owned(db, server_id, user.id)
     probe: dict[str, Any] = await discovery.test_server(db, server)
     await db.commit()
+    await _invalidate_runtime_mcp_cache()
     return McpTestResponse(
         success=probe["success"],
         status=server.status,
@@ -601,6 +613,7 @@ async def discover_server_tools(
     server = await _load_owned(db, server_id, user.id)
     probe, tools = await discovery.discover_tools(db, server)
     await db.commit()
+    await _invalidate_runtime_mcp_cache()
     return McpDiscoverResponse(
         success=probe["success"],
         status=server.status,

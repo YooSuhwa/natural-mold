@@ -126,6 +126,22 @@ def test_resolve_middleware_class_llm_tool_selector():
     assert result is None or isinstance(result, type)
 
 
+def test_resolve_provider_specific_openai_moderation_class():
+    result = _resolve_middleware_class("openai_moderation")
+
+    assert result is not None
+    assert result.__module__.startswith("langchain_openai.middleware")
+    assert result.__name__ == "OpenAIModerationMiddleware"
+
+
+def test_resolve_provider_specific_anthropic_text_editor_class():
+    result = _resolve_middleware_class("anthropic_text_editor")
+
+    assert result is not None
+    assert result.__module__.startswith("langchain_anthropic.middleware")
+    assert result.__name__ == "StateClaudeTextEditorMiddleware"
+
+
 # ---------------------------------------------------------------------------
 # build_middleware_instances
 # ---------------------------------------------------------------------------
@@ -201,13 +217,13 @@ def test_get_provider_middleware_unknown():
 
 
 def test_get_provider_middleware_anthropic():
-    """Anthropic provider returns list (may be empty if not installed)."""
+    """Anthropic prompt caching is injected by deepagents, not by Moldy's provider path."""
     result = get_provider_middleware("anthropic")
-    # Returns empty if langchain.agents.middleware not installed
-    assert isinstance(result, list)
+    assert result == []
 
 
 def test_get_provider_middleware_openai():
-    """OpenAI provider returns list (may be empty if not installed)."""
+    """OpenAI provider auto-adds moderation when the package is installed."""
     result = get_provider_middleware("openai")
-    assert isinstance(result, list)
+    assert len(result) == 1
+    assert type(result[0]).__name__ == "OpenAIModerationMiddleware"

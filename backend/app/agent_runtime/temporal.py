@@ -160,9 +160,10 @@ def build_temporal_context_prompt(
     ctx = build_temporal_context(now=now, timezone=timezone)
     weekend = ctx["this_weekend"]
     next_week = ctx["next_week"]
+    hour_bucket = f"{int(str(ctx['time']).split(':', 1)[0]):02d}시대"
     return (
-        "\n\n## 현재 기준 날짜와 시간\n"
-        f"- 현재: {ctx['date']} {ctx['weekday']} {ctx['time']} ({ctx['timezone']})\n"
+        "\n\n## 현재 기준 날짜\n"
+        f"- 현재: {ctx['date']} {ctx['weekday']} {hour_bucket} ({ctx['timezone']})\n"
         f"- 이번 주말: {weekend['start_date']}({weekend['weekday_start']})"
         f" ~ {weekend['end_date']}({weekend['weekday_end']})\n"
         f"- 다음 주: {next_week['start_date']}({next_week['weekday_start']})"
@@ -170,7 +171,9 @@ def build_temporal_context_prompt(
         "- 오늘, 내일, 이번 주말, 다음주 수요일, 최근 같은 상대 날짜 표현은 "
         "반드시 위 기준으로 해석하세요.\n"
         "- 날씨, 뉴스, 일정, 예약처럼 날짜가 중요한 외부 조회 전에는 "
-        "필요하면 resolve_relative_date 도구로 ISO 날짜 범위를 확인하세요."
+        "필요하면 resolve_relative_date 도구로 ISO 날짜 범위를 확인하세요.\n"
+        "- 분 단위의 정확한 현재 시각, 마감, 예약 가능 여부처럼 시간 정밀도가 "
+        "중요한 작업은 current_datetime 도구로 확인하세요."
     )
 
 

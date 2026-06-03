@@ -199,6 +199,56 @@ def test_executor_chain_no_fallback_keeps_legacy_behaviour() -> None:
     assert calls == [("openai", "gpt-4o")]
 
 
+def test_executor_builds_primary_and_runtime_fallback_candidates() -> None:
+    from app.agent_runtime.executor import _build_model_candidates
+
+    calls, fake = _wire_create_model_failures(fail_count=0)
+    cfg = AgentConfig(
+        provider="openai",
+        model_name="gpt-4o",
+        api_key=None,
+        base_url=None,
+        system_prompt="hi",
+        tools_config=[],
+        thread_id="t",
+        model_fallback_chain=[
+            {"provider": "anthropic", "model_name": "claude-sonnet", "base_url": None},
+            {"provider": "google", "model_name": "gemini-pro", "base_url": None},
+        ],
+    )
+
+    with patch("app.agent_runtime.executor.create_chat_model", side_effect=fake):
+        candidates = _build_model_candidates(cfg)
+
+    assert [candidate.marker for candidate in candidates] == [
+        "openai/gpt-4o",
+        "anthropic/claude-sonnet",
+        "google/gemini-pro",
+    ]
+    assert calls == [
+        ("openai", "gpt-4o"),
+        ("anthropic", "claude-sonnet"),
+        ("google", "gemini-pro"),
+    ]
+
+
+def test_default_reliability_middleware_adds_runtime_fallback_and_retry() -> None:
+    from langchain.agents.middleware import ModelFallbackMiddleware, ModelRetryMiddleware
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+
+    from app.agent_runtime.executor import _build_default_reliability_middleware
+
+    primary = FakeListChatModel(responses=["primary"])
+    fallback = FakeListChatModel(responses=["fallback"])
+
+    middleware = _build_default_reliability_middleware([primary, fallback], configured_types=set())
+
+    assert any(isinstance(item, ModelFallbackMiddleware) for item in middleware)
+    assert any(isinstance(item, ModelRetryMiddleware) for item in middleware)
+    fallback_mw = next(item for item in middleware if isinstance(item, ModelFallbackMiddleware))
+    assert fallback_mw.models[0] is fallback
+
+
 # ---------------------------------------------------------------------------
 # create_chat_model_with_fallback (ORM + audit log)
 # ---------------------------------------------------------------------------
