@@ -137,7 +137,7 @@ export default function ConversationalCreationPage({
           <Button
             variant="outline"
             size="icon-sm"
-            className="size-[30px] rounded-lg border-[var(--builder-border)] text-[var(--builder-ink-2)]"
+            className="size-[30px] rounded-lg border-[var(--builder-border)] moldy-builder-color-ink-2"
             aria-label={t('back')}
           >
             <ChevronLeftIcon className="size-3.5" strokeWidth={2} />
@@ -145,12 +145,12 @@ export default function ConversationalCreationPage({
         </Link>
 
         <nav
-          className="flex items-center gap-1.5 text-[13px] text-[var(--builder-muted)]"
+          className="flex items-center gap-1.5 moldy-ui-body-sm moldy-builder-color-muted"
         >
           <HomeIcon className="size-3.5 opacity-55" />
           <span>{t('breadcrumb.create')}</span>
           <ChevronRightIcon className="size-3 opacity-45" />
-          <span className="font-semibold text-[var(--builder-ink)]">
+          <span className="font-semibold moldy-builder-color-ink">
             {t('breadcrumb.conversational')}
           </span>
         </nav>
@@ -158,7 +158,7 @@ export default function ConversationalCreationPage({
         <div className="flex-1" />
 
         {sessionId && (
-          <div className="inline-flex items-center gap-1.5 rounded-md border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] px-2.5 py-1 font-mono moldy-ui-caption text-[var(--builder-muted)]">
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] px-2.5 py-1 font-mono moldy-ui-caption moldy-builder-color-muted">
             <span className="size-1.5 rounded-full bg-[var(--builder-primary)] shadow-[0_0_0_3px_var(--builder-primary-bg)]" />
             {t('sessionLabel', { id: sessionId.slice(0, 8) })}
           </div>

@@ -1,5 +1,6 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { makeAssistantToolUI, useAssistantState } from '@assistant-ui/react'
 import { CheckIcon, SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -99,9 +100,10 @@ function ProgressRail({ todos }: { todos: PhaseTodo[] }) {
   const total = items.length || 1
   const done = items.filter((t) => t.status === 'completed').length
   const ratio = Math.min(100, (done / total) * 100)
+  const phaseStyle = { '--phase-ratio': `${ratio}%` } as CSSProperties
 
   return (
-    <div className="moldy-phase-rail">
+    <div className="moldy-phase-rail" style={phaseStyle}>
       <div className="mb-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <BuilderHeaderIcon>
@@ -113,43 +115,17 @@ function ProgressRail({ todos }: { todos: PhaseTodo[] }) {
           </BuilderMuted>
         </div>
         <div className="moldy-phase-progress-track">
-          <div
-            className="h-full rounded-full transition-[width] duration-300"
-            style={{ width: `${ratio}%`, background: 'var(--builder-primary)' }}
-          />
+          <div className="moldy-phase-progress-fill" />
         </div>
       </div>
 
       <ol className="relative m-0 list-none p-0">
-        <span
-          aria-hidden
-          className="absolute"
-          style={{
-            left: 11,
-            top: 12,
-            bottom: 12,
-            width: 1.5,
-            background: `linear-gradient(180deg, var(--builder-primary) 0%, var(--builder-primary) ${ratio}%, var(--builder-connector-rest) ${ratio}%, var(--builder-connector-rest) 100%)`,
-          }}
-        />
+        <span aria-hidden className="moldy-phase-connector" />
         {items.map((todo) => (
-          <li
-            key={todo.id}
-            className="relative flex items-center gap-3"
-            style={{ padding: '6px 0' }}
-          >
+          <li key={todo.id} className="moldy-phase-row">
             <PhaseDot status={todo.status} />
-            <span
-              className={
-                todo.status === 'pending'
-                  ? 'flex-1 text-[13.5px] text-[var(--builder-muted-soft)]'
-                  : 'flex-1 text-[13.5px] text-[var(--builder-ink)]'
-              }
-              style={{
-                fontWeight: todo.status === 'in_progress' ? 600 : 500,
-              }}
-            >
-              <span className="mr-2 moldy-ui-caption font-medium tabular-nums text-[var(--builder-muted)]">
+            <span className="moldy-phase-label" data-status={todo.status}>
+              <span className="mr-2 moldy-ui-caption font-medium tabular-nums moldy-builder-color-muted">
                 {String(todo.id).padStart(2, '0')}
               </span>
               {todo.name}

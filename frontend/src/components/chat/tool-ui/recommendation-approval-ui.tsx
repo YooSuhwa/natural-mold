@@ -124,13 +124,13 @@ function ToolRow({ item, cardKind }: { item: ToolItem; cardKind: ItemKind }) {
           <code className="moldy-builder-code font-mono">{name}</code>
           <BuilderTag>{t('recommended')}</BuilderTag>
         </div>
-        <div className="mb-1.5 inline-flex items-center gap-1 text-[var(--builder-muted)]">
+        <div className="mb-1.5 inline-flex items-center gap-1 moldy-builder-color-muted">
           <FolderIcon className="size-2.5" />
           <BuilderPath>{path}</BuilderPath>
         </div>
         {item.reason && (
           <p className="moldy-builder-copy">
-            <span className="mr-1.5 font-semibold text-[var(--builder-muted)]">
+            <span className="mr-1.5 font-semibold moldy-builder-color-muted">
               {t('reason')}
             </span>
             {item.reason}
@@ -299,7 +299,7 @@ function RecommendationApproval({
       >
         <BuilderBody>
           {items.length === 0 && (
-            <p className="px-2.5 py-3 text-[13px] text-[var(--builder-muted)]">
+            <p className="px-2.5 py-3 moldy-ui-body-sm moldy-builder-color-muted">
               {t('empty')}
             </p>
           )}

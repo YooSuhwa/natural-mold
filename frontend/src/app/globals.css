@@ -819,7 +819,8 @@
 
   .moldy-resource-card:focus-visible {
     border-color: var(--primary-strong);
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     box-shadow: var(--moldy-shadow-hover), 0 0 0 2px var(--ring);
   }
 
@@ -846,6 +847,20 @@
   .moldy-ui-micro {
     font-size: 0.625rem;
     line-height: 1;
+  }
+
+  .moldy-ui-pico {
+    font-size: 0.5rem;
+    line-height: 1;
+  }
+
+  .moldy-ui-nano {
+    font-size: 0.5625rem;
+    line-height: 1;
+  }
+
+  .moldy-ui-button-sm {
+    font-size: 0.8rem;
   }
 
   .moldy-ui-caption {
@@ -876,6 +891,60 @@
   .moldy-ui-card-title {
     font-size: 0.9375rem;
     line-height: 1.15;
+  }
+
+  .moldy-ui-body-sm {
+    font-size: 0.8125rem;
+    line-height: 1.5rem;
+  }
+
+  .moldy-ui-display-compact {
+    font-size: 1.1875rem;
+    line-height: 1.35;
+  }
+
+  .moldy-page-title {
+    color: var(--foreground);
+    font-size: 1.625rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+
+  .moldy-auth-title {
+    color: var(--foreground);
+    font-size: 1.375rem;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .moldy-color-primary-strong {
+    color: var(--primary-strong);
+  }
+
+  .moldy-builder-color-ink {
+    color: var(--builder-ink);
+  }
+
+  .moldy-builder-color-ink-2 {
+    color: var(--builder-ink-2);
+  }
+
+  .moldy-builder-color-muted {
+    color: var(--builder-muted);
+  }
+
+  .moldy-builder-color-muted-soft {
+    color: var(--builder-muted-soft);
+  }
+
+  .moldy-builder-color-primary-ink {
+    color: var(--builder-primary-ink);
+  }
+
+  .moldy-builder-color-primary-bg-strong {
+    color: var(--builder-primary-bg-strong);
   }
 
   .moldy-ui-kicker {
@@ -1234,7 +1303,8 @@
     color: var(--builder-ink);
     font-size: 0.84375rem;
     line-height: 1.55;
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     transition:
       border-color 0.15s ease,
       box-shadow 0.15s ease;
@@ -1336,7 +1406,8 @@
     color: var(--builder-ink);
     font-size: 0.90625rem;
     line-height: 1.625;
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
   }
 
   .moldy-builder-edit-input:focus-visible {
@@ -1377,7 +1448,8 @@
   }
 
   .moldy-builder-icon-button:focus-visible {
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     box-shadow: var(--builder-focus-shadow);
   }
 
@@ -1406,7 +1478,8 @@
   }
 
   .moldy-builder-stop:focus-visible {
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     box-shadow: var(--builder-focus-shadow);
   }
 
@@ -1435,8 +1508,69 @@
   }
 
   .moldy-builder-send:focus-visible {
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
     box-shadow: var(--builder-focus-shadow);
+  }
+
+  .moldy-system-event {
+    margin: 4px 0;
+  }
+
+  .moldy-system-event-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    border: 1px solid var(--builder-primary-bg-strong);
+    border-radius: var(--moldy-radius-pill);
+    background: var(--builder-primary-bg);
+    padding: 6px 13px 6px 9px;
+    color: var(--builder-primary-ink);
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  .moldy-system-event-icon {
+    display: inline-flex;
+    width: 1rem;
+    height: 1rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--moldy-radius-pill);
+    background: var(--builder-primary);
+    color: white;
+  }
+
+  .moldy-system-event-subtle {
+    color: var(--builder-muted);
+    font-weight: 500;
+  }
+
+  .moldy-typing-dots {
+    color: var(--builder-muted);
+  }
+
+  .moldy-typing-dots-track {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding-top: 2px;
+  }
+
+  .moldy-typing-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: var(--moldy-radius-pill);
+    background: var(--builder-primary-dim);
+    animation: cb-bounce 1.2s ease-in-out infinite;
+  }
+
+  .moldy-typing-dot:nth-child(2) {
+    animation-delay: 0.15s;
+  }
+
+  .moldy-typing-dot:nth-child(3) {
+    animation-delay: 0.3s;
   }
 
   .moldy-builder-composer-shell {
@@ -1478,7 +1612,8 @@
     color: var(--builder-ink);
     font-size: 0.90625rem;
     line-height: 1.55;
-    outline: none;
+    outline: 2px solid transparent;
+    outline-offset: 2px;
   }
 
   .moldy-builder-composer-input:disabled {
@@ -1511,6 +1646,52 @@
     overflow: hidden;
     border-radius: var(--moldy-radius-pill);
     background: var(--builder-track-bg);
+  }
+
+  .moldy-phase-progress-fill {
+    width: var(--phase-ratio, 0%);
+    height: 100%;
+    border-radius: var(--moldy-radius-pill);
+    background: var(--builder-primary);
+    transition: width 0.3s ease;
+  }
+
+  .moldy-phase-connector {
+    position: absolute;
+    left: 11px;
+    top: 12px;
+    bottom: 12px;
+    width: 1.5px;
+    background: linear-gradient(
+      180deg,
+      var(--builder-primary) 0%,
+      var(--builder-primary) var(--phase-ratio, 0%),
+      var(--builder-connector-rest) var(--phase-ratio, 0%),
+      var(--builder-connector-rest) 100%
+    );
+  }
+
+  .moldy-phase-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 6px 0;
+  }
+
+  .moldy-phase-label {
+    flex: 1;
+    color: var(--builder-ink);
+    font-size: 0.84375rem;
+    font-weight: 500;
+  }
+
+  .moldy-phase-label[data-status="in_progress"] {
+    font-weight: 700;
+  }
+
+  .moldy-phase-label[data-status="pending"] {
+    color: var(--builder-muted-soft);
   }
 
   .moldy-phase-dot {
@@ -1589,6 +1770,10 @@
     border-radius: var(--moldy-radius-pill);
     background: currentColor;
     animation: cb-pulse 1.6s ease-in-out infinite;
+  }
+
+  .moldy-builder-image-thumb {
+    border: 1px solid var(--builder-border);
   }
 }
 

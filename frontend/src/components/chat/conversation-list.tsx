@@ -135,7 +135,7 @@ export function ConversationList({
       >
         <Link
           href={`/agents/${agentId}/conversations/${conv.id}`}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           {conv.is_pinned ? (
             <PinIcon className="size-3 shrink-0 text-muted-foreground" />

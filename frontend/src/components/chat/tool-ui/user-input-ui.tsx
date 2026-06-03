@@ -130,7 +130,7 @@ function TextInput({
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}
         placeholder={placeholder}
-        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
         rows={3}
       />
     </div>
@@ -362,7 +362,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
       <div className="w-full rounded-xl border bg-background p-4 shadow-sm">
         {/* Header */}
         <div className="mb-3 flex items-center gap-2">
-          <MessageSquareQuoteIcon className="size-4 text-[var(--builder-primary-bg-strong)]" />
+          <MessageSquareQuoteIcon className="size-4 moldy-builder-color-primary-bg-strong" />
           <span className="text-sm font-medium">{t('inputRequired')}</span>
           <CountdownBadge
             formatted={formatted}

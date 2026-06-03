@@ -88,20 +88,19 @@ function DraftConfigSummary({
           <img
             src={resolveImageUrl(image_url) ?? ''}
             alt="agent"
-            className="size-16 shrink-0 rounded-lg object-contain"
-            style={{ border: '1px solid var(--builder-border)' }}
+            className="moldy-builder-image-thumb size-16 shrink-0 rounded-lg object-contain"
           />
         ) : (
-          <div className="flex size-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--builder-border)] text-[var(--builder-muted-soft)]">
+          <div className="flex size-16 shrink-0 items-center justify-center rounded-lg border border-dashed border-[var(--builder-border)] moldy-builder-color-muted-soft">
             <BotIcon className="size-6" />
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <div className="moldy-ui-card-title font-semibold text-[var(--builder-ink)]">
+          <div className="moldy-ui-card-title font-semibold moldy-builder-color-ink">
             {draft.name_ko || draft.name}
           </div>
           {draft.name && draft.name_ko !== draft.name && (
-            <div className="moldy-ui-caption-plus text-[var(--builder-muted-soft)]">
+            <div className="moldy-ui-caption-plus moldy-builder-color-muted-soft">
               {draft.name}
             </div>
           )}
@@ -114,7 +113,7 @@ function DraftConfigSummary({
       </div>
       {tools.length > 0 && (
         <div>
-          <div className="mb-1.5 flex items-center gap-1.5 moldy-ui-caption-plus font-semibold text-[var(--builder-muted)]">
+          <div className="mb-1.5 flex items-center gap-1.5 moldy-ui-caption-plus font-semibold moldy-builder-color-muted">
             <WrenchIcon className="size-3" />
             {t('draftTools', { count: tools.length })}
           </div>
@@ -127,7 +126,7 @@ function DraftConfigSummary({
       )}
       {middlewares.length > 0 && (
         <div>
-          <div className="mb-1.5 flex items-center gap-1.5 moldy-ui-caption-plus font-semibold text-[var(--builder-muted)]">
+          <div className="mb-1.5 flex items-center gap-1.5 moldy-ui-caption-plus font-semibold moldy-builder-color-muted">
             <BlocksIcon className="size-3" />
             {t('draftMiddlewares', { count: middlewares.length })}
           </div>

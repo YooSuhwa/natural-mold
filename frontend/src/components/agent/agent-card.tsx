@@ -50,7 +50,7 @@ export function AgentCard({ agent }: AgentCardProps) {
   return (
     <Link
       href={`/agents/${agent.id}`}
-      className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="group block rounded-xl focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       <Card
         className={cn(
@@ -90,7 +90,7 @@ export function AgentCard({ agent }: AgentCardProps) {
               />
             </button>
           </div>
-          <CardDescription className="line-clamp-2 min-h-[2.5rem] text-[13px] leading-relaxed">
+          <CardDescription className="line-clamp-2 min-h-[2.5rem] moldy-ui-body-sm leading-relaxed">
             {agent.description || t('noDescription')}
           </CardDescription>
         </CardHeader>

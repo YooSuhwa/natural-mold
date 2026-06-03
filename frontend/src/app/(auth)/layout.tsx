@@ -234,7 +234,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                     role="tab"
                     aria-selected={isLogin}
                     data-active={isLogin}
-                    className="auth-tab focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="auth-tab focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {t('auth.login.submit')}
                   </Link>
@@ -243,7 +243,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                     role="tab"
                     aria-selected={!isLogin}
                     data-active={!isLogin}
-                    className="auth-tab focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="auth-tab focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {t('auth.register.submit')}
                   </Link>

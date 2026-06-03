@@ -49,7 +49,7 @@ export function LoginForm({
   return (
     <form onSubmit={handleSubmit} aria-busy={isLoading} noValidate>
       <header className="mb-5">
-        <h1 className="mb-1.5 text-[22px] font-bold leading-tight text-foreground">
+        <h1 className="mb-1.5 moldy-auth-title">
           {t('auth.login.formTitle')}
         </h1>
       </header>
@@ -138,7 +138,7 @@ export function LoginForm({
                   showPassword ? t('auth.password.hide') : t('auth.password.show')
                 }
                 onClick={() => setShowPassword((v) => !v)}
-                className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
                 {showPassword ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
               </button>

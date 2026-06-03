@@ -127,7 +127,7 @@ export default function DashboardPage() {
         {/* Primary: 대화로 만들기 */}
         <Link
           href="/agents/new"
-          className="group rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="group rounded-xl focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <Card
             className={cn(
@@ -297,7 +297,7 @@ function SecondaryActionCard({ href, icon, label, description, tone }: Secondary
   return (
     <Link
       href={href}
-      className="group rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="group rounded-xl focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       <Card
         className={cn(

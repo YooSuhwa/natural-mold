@@ -177,7 +177,7 @@ function CreateConversationLink({ label }: { label: string }) {
       className={cn(
         'inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold text-white shadow-sm transition-colors',
         'bg-[var(--primary-strong)] hover:bg-[var(--primary-strong-hover)]',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
       )}
     >
       <PlusIcon aria-hidden className="size-4" />
@@ -245,7 +245,7 @@ function FiltersBar({
             placeholder={searchPlaceholder}
             aria-label={searchAriaLabel}
             className={cn(
-              'h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-none',
+              'h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-hidden',
               'placeholder:text-muted-foreground',
               'transition-[border-color,box-shadow]',
               'focus:border-[var(--moldy-border-mint)] focus:shadow-[var(--moldy-shadow-focus)]',
@@ -366,8 +366,8 @@ function TemplateCard({
           <span
             className={cn(
               'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-[color,transform] duration-150',
-              'group-hover:translate-x-0.5 group-hover:text-[var(--primary-strong)]',
-              'group-focus-visible:translate-x-0.5 group-focus-visible:text-[var(--primary-strong)]',
+              'group-hover:translate-x-0.5 group-hover:text-primary-strong',
+              'group-focus-visible:translate-x-0.5 group-focus-visible:text-primary-strong',
             )}
           >
             {startLabel}
@@ -443,14 +443,14 @@ function BottomCta({
         'dark:from-emerald-950/30 dark:via-emerald-950/15 dark:to-background',
       )}
     >
-      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-[var(--primary-strong)]">
+      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card moldy-color-primary-strong">
         <SparklesIcon className="size-5" />
       </span>
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold text-foreground">{title}</div>
         <div className="mt-0.5 text-xs text-muted-foreground">{subtitle}</div>
       </div>
-      <span className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-[var(--primary-strong)] transition-transform group-hover:translate-x-0.5">
+      <span className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold moldy-color-primary-strong transition-transform group-hover:translate-x-0.5">
         {action}
         <ChevronRightIcon aria-hidden className="size-3.5" />
       </span>

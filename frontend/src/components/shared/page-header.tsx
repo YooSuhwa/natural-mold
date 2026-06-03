@@ -17,7 +17,7 @@ export function PageHeader({ title, description, action, className }: PageHeader
             aria-hidden
             className="size-2.5 rounded-full bg-primary-strong shadow-[0_0_0_4px_var(--primary)]"
           />
-          <h1 className="text-[26px] font-bold leading-tight text-foreground">{title}</h1>
+          <h1 className="moldy-page-title leading-tight">{title}</h1>
         </div>
         {description && (
           <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{description}</p>

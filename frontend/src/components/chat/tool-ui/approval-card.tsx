@@ -299,7 +299,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
               }}
               onFocus={onInteract}
               placeholder={t('rejectReasonPlaceholder')}
-              className="w-full resize-none rounded-lg border border-red-200 bg-background px-3 py-2 text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-red-300 dark:border-red-900"
+              className="w-full resize-none rounded-lg border border-red-200 bg-background px-3 py-2 text-xs outline-hidden placeholder:text-muted-foreground focus:ring-1 focus:ring-red-300 dark:border-red-900"
               rows={2}
             />
           )}
@@ -316,7 +316,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
                 }}
                 onFocus={onInteract}
                 placeholder={t('editArgsPlaceholder')}
-                className="w-full resize-none rounded-lg border border-blue-200 bg-background px-3 py-2 font-mono text-xs outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-blue-300 dark:border-blue-900"
+                className="w-full resize-none rounded-lg border border-blue-200 bg-background px-3 py-2 font-mono text-xs outline-hidden placeholder:text-muted-foreground focus:ring-1 focus:ring-blue-300 dark:border-blue-900"
                 rows={4}
               />
               {jsonError && <p className="mt-1 text-xs text-destructive">{jsonError}</p>}

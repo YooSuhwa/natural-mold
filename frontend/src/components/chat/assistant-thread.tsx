@@ -431,7 +431,7 @@ function UserMessageEditor() {
   return (
     <ComposerPrimitive.Root className="flex flex-col gap-2 rounded-2xl border bg-background p-2 shadow-sm">
       <ImeSafeComposerInput
-        className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-none"
+        className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-hidden"
         autoFocus
       />
       <div className="flex items-center justify-end gap-1">
@@ -711,7 +711,7 @@ function ThreadComposer({
         placeholder={t('placeholder')}
         submitMode="enter"
         className={cn(
-          'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none',
+          'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-hidden',
           'placeholder:text-muted-foreground',
           'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
           compact ? 'min-h-[40px] max-h-[120px]' : 'min-h-[44px] max-h-[160px]',

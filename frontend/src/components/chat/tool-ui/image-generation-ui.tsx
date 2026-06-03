@@ -73,7 +73,7 @@ function PromptEditor({
   const composingRef = useRef(false)
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="moldy-ui-caption-plus font-semibold text-[var(--builder-muted)]">
+      <label className="moldy-ui-caption-plus font-semibold moldy-builder-color-muted">
         {label}
       </label>
       <BuilderTextarea
@@ -90,7 +90,7 @@ function PromptEditor({
         }}
         rows={rows}
         disabled={disabled}
-        className="bg-[var(--builder-surface-alt)] moldy-ui-compact text-[var(--builder-ink-2)] disabled:cursor-not-allowed"
+        className="bg-[var(--builder-surface-alt)] moldy-ui-compact moldy-builder-color-ink-2 disabled:cursor-not-allowed"
       />
     </div>
   )
@@ -112,13 +112,13 @@ function ImageChoiceUnavailable({ message }: { message?: string }) {
   const t = useTranslations('chat.imageGeneration')
   return (
     <div className="my-3 flex items-start gap-2 rounded-xl border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] px-3.5 py-3">
-      <AlertTriangleIcon className="size-4 shrink-0 text-[var(--builder-muted)]" />
+      <AlertTriangleIcon className="size-4 shrink-0 moldy-builder-color-muted" />
       <div>
-        <div className="moldy-ui-compact font-semibold text-[var(--builder-ink)]">
+        <div className="moldy-ui-compact font-semibold moldy-builder-color-ink">
           {t('disabled')}
         </div>
         {message && (
-          <p className="mt-1 moldy-ui-compact leading-relaxed text-[var(--builder-ink-2)]">
+          <p className="mt-1 moldy-ui-compact leading-relaxed moldy-builder-color-ink-2">
             {message}
           </p>
         )}
@@ -244,7 +244,7 @@ function ImageApprovalBody({
           className="mx-auto size-48 rounded-xl border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] object-contain"
         />
       ) : (
-        <p className="text-[13px] text-[var(--builder-muted-soft)]">
+        <p className="moldy-ui-body-sm moldy-builder-color-muted-soft">
           {t('noImage')}
         </p>
       )}

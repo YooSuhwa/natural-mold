@@ -115,7 +115,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                 <div className="flex items-center gap-2 border-b border-border px-3 py-2">
                   <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
                   <input
-                    className="h-7 flex-1 border-0 bg-transparent text-sm shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:outline-none focus:ring-0"
+                    className="h-7 flex-1 border-0 bg-transparent text-sm shadow-none outline-hidden ring-0 placeholder:text-muted-foreground focus:outline-hidden focus:ring-0"
                     placeholder={t('editDialog.searchModels')}
                     value={modelSearch}
                     onChange={(e) => setModelSearch(e.target.value)}
@@ -136,13 +136,13 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                       ) : (
                         <span className="size-3.5 shrink-0" />
                       )}
-                      <div className="flex size-5 items-center justify-center rounded bg-muted text-[8px] font-bold text-muted-foreground">
+                      <div className="flex size-5 items-center justify-center rounded bg-muted moldy-ui-pico font-bold text-muted-foreground">
                         {getProviderIcon(model.provider)}
                       </div>
                       <div className="flex min-w-0 flex-1 items-center gap-1.5">
                         <span className="text-xs font-medium truncate">{model.display_name}</span>
                         {model.context_window && (
-                          <Badge variant="outline" className="shrink-0 text-[8px] px-1 py-0">
+                          <Badge variant="outline" className="shrink-0 moldy-ui-pico px-1 py-0">
                             {formatContextWindow(model.context_window)}
                           </Badge>
                         )}

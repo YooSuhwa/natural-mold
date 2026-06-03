@@ -1,7 +1,5 @@
 'use client'
 
-import { BUILDER_TOKENS as T } from './tool-ui/builder-tokens'
-
 export interface TypingDotsProps {
   /** 옆에 표시할 보조 라벨. 예: `의도를 정리하고 있어요…` */
   label?: string
@@ -15,19 +13,10 @@ export interface TypingDotsProps {
  */
 export function TypingDots({ label }: TypingDotsProps) {
   return (
-    <div className="flex items-center gap-2 moldy-ui-compact" style={{ color: T.muted }}>
-      <span className="inline-flex items-center gap-1" style={{ paddingTop: 2 }}>
+    <div className="moldy-typing-dots flex items-center gap-2 moldy-ui-compact">
+      <span className="moldy-typing-dots-track">
         {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            className="rounded-full"
-            style={{
-              width: 6,
-              height: 6,
-              background: T.primaryDim,
-              animation: `cb-bounce 1.2s ease-in-out ${i * 0.15}s infinite`,
-            }}
-          />
+          <span key={i} className="moldy-typing-dot" />
         ))}
       </span>
       {label && <span>{label}</span>}

@@ -33,14 +33,14 @@ function IntentSummaryHeader({
       <span className="inline-flex size-[18px] shrink-0 items-center justify-center rounded-full bg-[var(--builder-primary)] text-white">
         <CheckIcon className="size-2.5" strokeWidth={3.5} />
       </span>
-      <span className="moldy-ui-compact font-semibold text-[var(--builder-primary-ink)]">
+      <span className="moldy-ui-compact font-semibold moldy-builder-color-primary-ink">
         {t('title')}
       </span>
       <BuilderMuted className="moldy-ui-caption-plus">
         · {phaseLabel}
       </BuilderMuted>
       <div className="flex-1" />
-      <span className="moldy-ui-meta font-semibold uppercase tabular-nums text-[var(--builder-muted)]">
+      <span className="moldy-ui-meta font-semibold uppercase tabular-nums moldy-builder-color-muted">
         {t(`confidence.${confidence}`)}
       </span>
     </PhaseCardHeader>
@@ -49,7 +49,7 @@ function IntentSummaryHeader({
 
 function IntentLabel({ text }: { text: string }) {
   return (
-    <div className="mb-1 moldy-ui-caption-plus font-semibold text-[var(--builder-muted)]">
+    <div className="mb-1 moldy-ui-caption-plus font-semibold moldy-builder-color-muted">
       {text}
     </div>
   )
@@ -74,12 +74,12 @@ export function IntentSummaryCard({
     <PhaseCard header={<IntentSummaryHeader confidence={confidence} phaseLabel={phaseLabel} />}>
       <BuilderBody loose>
         <IntentLabel text={t('agentName')} />
-        <div className="mb-3.5 text-[19px] font-bold text-[var(--builder-ink)]">
+        <div className="mb-3.5 moldy-ui-display-compact font-bold moldy-builder-color-ink">
           {name}
         </div>
 
         <IntentLabel text={t('description')} />
-        <p className="mb-3.5 text-sm leading-relaxed text-[var(--builder-ink-2)] [text-wrap:pretty]">
+        <p className="mb-3.5 text-sm leading-relaxed moldy-builder-color-ink-2 [text-wrap:pretty]">
           {description}
         </p>
 

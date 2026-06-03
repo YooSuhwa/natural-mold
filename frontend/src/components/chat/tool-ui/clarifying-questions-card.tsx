@@ -23,17 +23,17 @@ export function ClarifyingQuestionsCard({
   const resolvedLabel = label ?? t('clarifyingTitle')
   return (
     <div className="rounded-xl border border-[var(--builder-border)] bg-[var(--builder-surface-alt)] px-4 py-3.5">
-      <div className="mb-2 moldy-ui-compact font-semibold text-[var(--builder-muted)]">
+      <div className="mb-2 moldy-ui-compact font-semibold moldy-builder-color-muted">
         {resolvedLabel}
       </div>
-      <ul className="m-0 list-disc pl-[18px] text-sm leading-relaxed text-[var(--builder-ink-2)]">
+      <ul className="m-0 list-disc pl-[18px] text-sm leading-relaxed moldy-builder-color-ink-2">
         {items.map((item, idx) => {
           const text = typeof item === 'string' ? item : item.text
           const hint = typeof item === 'string' ? undefined : item.hint
           return (
             <li key={idx}>
               {text}
-              {hint && <span className="text-[var(--builder-muted-soft)]"> ({hint})</span>}
+              {hint && <span className="moldy-builder-color-muted-soft"> ({hint})</span>}
             </li>
           )
         })}

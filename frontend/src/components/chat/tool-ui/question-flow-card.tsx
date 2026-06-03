@@ -149,7 +149,7 @@ export function QuestionFlowCard({
             onChange={(event) => updateAnswer(currentId, [event.target.value])}
             onFocus={onInteract}
             placeholder={t('placeholder')}
-            className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+            className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
             rows={3}
           />
         ) : (

@@ -84,7 +84,7 @@ function Hero({ title, subtitle }: { title: string; subtitle: string }) {
         />
       </div>
       <div className="flex flex-col gap-2">
-        <h1 className="text-[26px] font-bold leading-snug tracking-tight">{title}</h1>
+        <h1 className="moldy-page-title leading-snug">{title}</h1>
         <p className="mx-auto max-w-[480px] text-sm leading-relaxed text-muted-foreground">
           {subtitle}
         </p>
@@ -133,7 +133,7 @@ function ChatInput({
         onCompositionEnd={onCompositionEnd}
         placeholder={placeholder}
         rows={4}
-        className="min-h-[110px] w-full resize-none rounded-2xl bg-transparent px-5 pb-2 pt-4 text-sm leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
+        className="min-h-[110px] w-full resize-none rounded-2xl bg-transparent px-5 pb-2 pt-4 text-sm leading-relaxed text-foreground outline-hidden placeholder:text-muted-foreground"
       />
       <div className="flex justify-end px-3 pb-3">
         <Button
@@ -170,7 +170,7 @@ function ExamplePrompts({
   return (
     <div>
       <div className="mb-2.5 flex items-center gap-1.5">
-        <SparklesIcon className="size-3 text-[var(--primary-strong)]" />
+        <SparklesIcon className="size-3 moldy-color-primary-strong" />
         <span className="text-xs font-semibold text-muted-foreground">{heading}</span>
       </div>
       <div className="flex flex-wrap gap-2">

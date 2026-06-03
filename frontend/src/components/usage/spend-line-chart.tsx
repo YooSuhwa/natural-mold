@@ -127,7 +127,7 @@ export function SpendLineChart({ data, metric, className, label }: SpendLineChar
                 x={PAD_X - 6}
                 y={y + 3}
                 textAnchor="end"
-                className="fill-muted-foreground text-[9px]"
+                className="fill-muted-foreground moldy-ui-nano"
               >
                 {formatMetric(tick, metric)}
               </text>
