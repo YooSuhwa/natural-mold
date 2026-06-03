@@ -12,7 +12,7 @@ import { filterLlmCredentials, resolveCredentialForModel } from '@/lib/utils/cre
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { PageHeader } from '@/components/shared/page-header'
+import { ResourcePage, ResourcePanel } from '@/components/shared/resource-layout'
 import { DataTable, type FilterDef } from '@/components/ui/data-table'
 import { DomainIcon } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -127,18 +127,18 @@ export default function ModelsPage() {
               <p className="truncate text-sm font-medium">
                 {row.original.display_name}
                 {row.original.is_default && (
-                  <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
+                  <span className="moldy-status-surface moldy-status-success ml-2 inline-flex items-center rounded-full px-1.5 py-0.5 moldy-ui-micro font-medium">
                     {t('defaultBadge')}
                   </span>
                 )}
                 {!row.original.is_visible && (
-                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border">
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 moldy-ui-micro font-medium text-muted-foreground ring-1 ring-border">
                     <EyeOff className="size-3" />
                     {t('catalog.hiddenBadge')}
                   </span>
                 )}
               </p>
-              <p className="truncate font-mono text-[11px] text-muted-foreground">
+              <p className="truncate font-mono moldy-ui-caption text-muted-foreground">
                 {row.original.provider} · {row.original.model_name}
               </p>
               <CapabilityIcons model={row.original} />
@@ -152,7 +152,7 @@ export default function ModelsPage() {
         accessorFn: (row) => row.cost_per_input_token ?? 0,
         header: t('catalog.columns.price'),
         cell: ({ row }) => (
-          <div className="flex min-w-[118px] flex-col gap-0.5 font-mono text-[11px] tabular-nums">
+          <div className="flex min-w-[118px] flex-col gap-0.5 font-mono moldy-ui-caption tabular-nums">
             <span>
               <span className="mr-1 font-sans text-muted-foreground">{t('inputModalities')}</span>
               {formatTokenPrice(row.original.cost_per_input_token)}
@@ -339,68 +339,69 @@ export default function ModelsPage() {
   )
 
   return (
-    <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
-      <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
-        <PageHeader
-          title={t('catalog.title')}
-          description={t('catalog.description')}
-          action={
-            <Button onClick={() => setAddOpen(true)}>
-              <Plus className="size-4" />
-              {t('catalog.new')}
-            </Button>
-          }
-        />
+    <ResourcePage
+      title={t('catalog.title')}
+      description={t('catalog.description')}
+      contentClassName="max-w-[1180px] pb-20"
+      action={
+        <Button onClick={() => setAddOpen(true)}>
+          <Plus className="size-4" />
+          {t('catalog.new')}
+        </Button>
+      }
+    >
+      <ResourcePanel>
+        <ResourcePanel.Body className="bg-background/25">
+          {!isLoading && allModels.length === 0 ? (
+            <EmptyState
+              iconId="model"
+              title={t('catalog.empty.title')}
+              description={t('catalog.empty.description')}
+              action={
+                <Button onClick={() => setAddOpen(true)}>
+                  <Plus className="size-4" />
+                  {t('addModel')}
+                </Button>
+              }
+            />
+          ) : (
+            <DataTable
+              columns={columns}
+              data={data}
+              loading={isLoading}
+              searchable
+              searchPlaceholder={t('catalog.searchPlaceholder')}
+              globalFilterFn={(row, query) => {
+                const m = row as Model
+                return (
+                  m.display_name.toLowerCase().includes(query) ||
+                  m.model_name.toLowerCase().includes(query)
+                )
+              }}
+              filters={filters}
+              enableRowSelection
+              onRowSelectionChange={setSelected}
+              toolbar={toolbar}
+              onRowClick={(row) => setEditing(row)}
+              emptyTitle={t('catalog.empty.filtered')}
+            />
+          )}
+        </ResourcePanel.Body>
+      </ResourcePanel>
 
-        {!isLoading && allModels.length === 0 ? (
-          <EmptyState
-            iconId="model"
-            title={t('catalog.empty.title')}
-            description={t('catalog.empty.description')}
-            action={
-              <Button onClick={() => setAddOpen(true)}>
-                <Plus className="size-4" />
-                {t('addModel')}
-              </Button>
-            }
-          />
-        ) : (
-          <DataTable
-            columns={columns}
-            data={data}
-            loading={isLoading}
-            searchable
-            searchPlaceholder={t('catalog.searchPlaceholder')}
-            globalFilterFn={(row, query) => {
-              const m = row as Model
-              return (
-                m.display_name.toLowerCase().includes(query) ||
-                m.model_name.toLowerCase().includes(query)
-              )
-            }}
-            filters={filters}
-            enableRowSelection
-            onRowSelectionChange={setSelected}
-            toolbar={toolbar}
-            onRowClick={(row) => setEditing(row)}
-            emptyTitle={t('catalog.empty.filtered')}
-          />
-        )}
-
-        <ModelAddDialog open={addOpen} onOpenChange={setAddOpen} />
-        <ModelEditDialog
-          model={editing}
-          open={!!editing}
-          onOpenChange={(open) => !open && setEditing(null)}
-        />
-        <ModelTestDialog
-          model={testing}
-          open={!!testing}
-          onOpenChange={(open) => !open && setTesting(null)}
-        />
-        <ModelTestBulkDialog models={selected} open={bulkTestOpen} onOpenChange={setBulkTestOpen} />
-      </div>
-    </div>
+      <ModelAddDialog open={addOpen} onOpenChange={setAddOpen} />
+      <ModelEditDialog
+        model={editing}
+        open={!!editing}
+        onOpenChange={(open) => !open && setEditing(null)}
+      />
+      <ModelTestDialog
+        model={testing}
+        open={!!testing}
+        onOpenChange={(open) => !open && setTesting(null)}
+      />
+      <ModelTestBulkDialog models={selected} open={bulkTestOpen} onOpenChange={setBulkTestOpen} />
+    </ResourcePage>
   )
 }
 
@@ -417,7 +418,7 @@ function HealthCell({
   return (
     <div className="flex flex-col items-start gap-0.5">
       <StatusChip variant={entry.status} />
-      <span className="text-[10px] text-muted-foreground">
+      <span className="moldy-ui-micro text-muted-foreground">
         {format(entry.checked_at)}
       </span>
     </div>

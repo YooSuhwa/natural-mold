@@ -45,7 +45,7 @@ export function TokenUsagePopover() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-colors hover:bg-accent',
+          'flex items-center gap-1 rounded-md px-1.5 py-0.5 moldy-ui-micro transition-colors hover:bg-accent',
           'text-muted-foreground hover:text-foreground',
         )}
         aria-label={t('toggleAria')}
@@ -58,7 +58,7 @@ export function TokenUsagePopover() {
       {open && (
         <div
           role="tooltip"
-          className="absolute bottom-full left-0 z-20 mb-1 w-56 rounded-lg border bg-popover p-2.5 text-[11px] shadow-md"
+          className="absolute bottom-full left-0 z-20 mb-1 w-56 rounded-lg border bg-popover p-2.5 moldy-ui-caption shadow-md"
         >
           <div className="mb-1.5 flex items-center justify-between border-b pb-1.5 text-foreground">
             <span className="font-medium">{t('title')}</span>

@@ -56,7 +56,7 @@ function SingleSelectInput({
             type="button"
             onClick={() => onSelect(opt.label)}
             className={cn(
-              'rounded-full border px-3 py-1.5 text-xs transition-all',
+              'rounded-full border px-3 py-1.5 text-xs transition-[background-color,border-color,color,box-shadow]',
               selected === opt.label
                 ? 'border-primary bg-primary/10 text-primary-strong ring-1 ring-primary/30'
                 : 'border-border hover:border-primary/50 hover:bg-accent',
@@ -89,7 +89,7 @@ function MultiSelectInput({
             <label
               key={opt.label}
               className={cn(
-                'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-xs transition-all',
+                'flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-xs transition-[background-color,border-color]',
                 checked ? 'border-primary/50 bg-primary/5' : 'border-border hover:bg-accent',
               )}
             >
@@ -130,7 +130,7 @@ function TextInput({
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}
         placeholder={placeholder}
-        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
+        className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-hidden transition-colors placeholder:text-muted-foreground focus:border-primary/50 focus:ring-1 focus:ring-primary/30"
         rows={3}
       />
     </div>
@@ -178,11 +178,11 @@ function CompletedBadge({ result }: { result: unknown }) {
   const t = useTranslations('chat.userInput')
   const display = formatUserInputResult(result)
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs dark:border-emerald-900 dark:bg-emerald-950">
-      <CheckCircle2Icon className="size-3.5 shrink-0 text-emerald-500" />
-      <span className="font-medium text-emerald-700 dark:text-emerald-300">{t('completed')}</span>
+    <div className="moldy-status-surface moldy-status-success flex items-center gap-2 rounded-xl px-3 py-2 text-xs">
+      <CheckCircle2Icon className="moldy-status-icon size-3.5 shrink-0" />
+      <span className="moldy-status-text font-medium">{t('completed')}</span>
       {display && (
-        <span className="truncate text-emerald-600/80 dark:text-emerald-400/80">{display}</span>
+        <span className="moldy-status-muted-text truncate">{display}</span>
       )}
     </div>
   )
@@ -344,7 +344,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     // ── 로딩 상태 ──
     if (status.type === 'running') {
       return (
-        <div className="flex items-center gap-2 rounded-xl border bg-muted/20 px-3 py-2 text-xs">
+        <div className="moldy-chat-card flex items-center gap-2 px-3 py-2 text-xs">
           <Loader2Icon className="size-3.5 animate-spin text-primary-strong" />
           <span className="text-muted-foreground">{t('preparing')}</span>
         </div>
@@ -359,11 +359,10 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     })
 
     return (
-      <div className="w-full rounded-xl border bg-background p-4 shadow-sm">
+      <div className="moldy-chat-card w-full p-4">
         {/* Header */}
         <div className="mb-3 flex items-center gap-2">
-          {/* 따옴표 아이콘 — 너무 진한 톤이라 builder 사양의 --primary-bg-strong(oklch(0.92 0.06 163))로 완화. */}
-          <MessageSquareQuoteIcon className="size-4" style={{ color: 'oklch(0.92 0.06 163)' }} />
+          <MessageSquareQuoteIcon className="size-4 moldy-builder-color-primary-bg-strong" />
           <span className="text-sm font-medium">{t('inputRequired')}</span>
           <CountdownBadge
             formatted={formatted}
@@ -448,7 +447,7 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
                 onClick={() => handleSubmit()}
                 disabled={!allAnswered || submitState === 'submitting'}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-all',
+                  'flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-medium transition-[background-color,color,opacity]',
                   allAnswered && submitState === 'idle'
                     ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                     : 'cursor-not-allowed bg-muted text-muted-foreground',

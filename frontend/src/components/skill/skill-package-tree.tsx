@@ -77,8 +77,8 @@ function TreeItem({
         type="button"
         onClick={() => !node.isDir && onSelect?.(node.path)}
         className={`flex w-full items-center gap-1 rounded px-1 py-0.5 text-left ${
-          isSelected ? 'bg-emerald-100 dark:bg-emerald-500/15' : 'hover:bg-muted'
-        } ${node.isDir ? 'text-foreground/80' : 'text-foreground'}`}
+          isSelected ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+        } ${isSelected ? '' : node.isDir ? 'text-foreground/80' : 'text-foreground'}`}
         style={{ paddingLeft: depth * 12 + 4 }}
       >
         {node.isDir ? (
@@ -89,7 +89,7 @@ function TreeItem({
         {node.isDir ? <Folder className="size-3" /> : null}
         <span>{node.name}</span>
         {!node.isDir && (
-          <span className="ml-auto text-[10px] text-muted-foreground">
+          <span className="ml-auto moldy-ui-micro text-muted-foreground">
             {node.size}b
           </span>
         )}

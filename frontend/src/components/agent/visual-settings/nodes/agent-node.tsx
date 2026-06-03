@@ -84,10 +84,14 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="!bg-amber-500 !w-2.5 !h-2.5" />
-      <div className="nowheel w-[280px] rounded-xl border bg-card shadow-md">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="moldy-flow-handle moldy-flow-handle-agent"
+      />
+      <div className="moldy-flow-node nowheel w-[280px]">
         <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.agent')}
           </span>
           <Button variant="ghost" size="icon-sm" onClick={() => handleOpenChange(true)}>
@@ -115,7 +119,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                 <div className="flex items-center gap-2 border-b border-border px-3 py-2">
                   <SearchIcon className="size-4 shrink-0 text-muted-foreground" />
                   <input
-                    className="h-7 flex-1 border-0 bg-transparent text-sm shadow-none outline-none ring-0 placeholder:text-muted-foreground focus:outline-none focus:ring-0"
+                    className="h-7 flex-1 border-0 bg-transparent text-sm shadow-none outline-hidden ring-0 placeholder:text-muted-foreground focus:outline-hidden focus:ring-0"
                     placeholder={t('editDialog.searchModels')}
                     value={modelSearch}
                     onChange={(e) => setModelSearch(e.target.value)}
@@ -136,13 +140,13 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                       ) : (
                         <span className="size-3.5 shrink-0" />
                       )}
-                      <div className="flex size-5 items-center justify-center rounded bg-muted text-[8px] font-bold text-muted-foreground">
+                      <div className="flex size-5 items-center justify-center rounded bg-muted moldy-ui-pico font-bold text-muted-foreground">
                         {getProviderIcon(model.provider)}
                       </div>
                       <div className="flex min-w-0 flex-1 items-center gap-1.5">
                         <span className="text-xs font-medium truncate">{model.display_name}</span>
                         {model.context_window && (
-                          <Badge variant="outline" className="shrink-0 text-[8px] px-1 py-0">
+                          <Badge variant="outline" className="shrink-0 moldy-ui-pico px-1 py-0">
                             {formatContextWindow(model.context_window)}
                           </Badge>
                         )}
@@ -161,7 +165,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">{ts('temperatureLabel')}</span>
-                        <span className="font-mono text-[10px] tabular-nums">
+                        <span className="font-mono moldy-ui-micro tabular-nums">
                           {editTemp.toFixed(1)}
                         </span>
                       </div>
@@ -178,7 +182,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground">{ts('topPLabel')}</span>
-                        <span className="font-mono text-[10px] tabular-nums">
+                        <span className="font-mono moldy-ui-micro tabular-nums">
                           {editTopP.toFixed(1)}
                         </span>
                       </div>
@@ -248,12 +252,16 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
             <p className="text-xs text-muted-foreground truncate">{data.description}</p>
           )}
           <p className="text-xs text-muted-foreground">{data.modelName}</p>
-          <p className="line-clamp-4 text-[11px] leading-relaxed text-muted-foreground/80 whitespace-pre-wrap">
+          <p className="line-clamp-4 moldy-ui-caption leading-relaxed text-muted-foreground/80 whitespace-pre-wrap">
             {data.systemPrompt}
           </p>
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-indigo-500 !w-2.5 !h-2.5" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="moldy-flow-handle moldy-flow-handle-toolbox"
+      />
     </>
   )
 }

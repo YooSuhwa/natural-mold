@@ -24,19 +24,17 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed p-12 text-center',
+        'moldy-empty-state',
         className,
       )}
     >
       {icon ? (
-        <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          {icon}
-        </div>
+        <div className="moldy-empty-state-icon">{icon}</div>
       ) : iconId ? (
         <EmptyStateIcon iconId={iconId} fallback={iconFallback} />
       ) : null}
       <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">{title}</p>
+        <p className="text-sm font-semibold text-foreground">{title}</p>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
       </div>
       {action}

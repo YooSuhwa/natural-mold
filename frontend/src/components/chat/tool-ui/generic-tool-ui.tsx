@@ -120,20 +120,20 @@ function ToolFallbackBody({
     <div className="space-y-2">
       {hasArgs && (
         <div className="rounded-lg border border-border/40 bg-background p-2.5">
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1.5 moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('parameters')}
           </div>
-          <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
+          <pre className="whitespace-pre-wrap break-all font-mono moldy-ui-caption text-foreground/80">
             {argsText}
           </pre>
         </div>
       )}
       {hasResult && (
         <div className="rounded-lg border border-border/40 bg-background p-2.5">
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1.5 moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('results')}
           </div>
-          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-foreground/80">
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono moldy-ui-caption text-foreground/80">
             {resultText}
           </pre>
         </div>

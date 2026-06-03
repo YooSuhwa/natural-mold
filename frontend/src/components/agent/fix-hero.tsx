@@ -31,9 +31,9 @@ export function FixHero({
           priority
         />
       ) : (
-        <div className="flex size-32 items-center justify-center rounded-full border-2 border-dashed border-violet-400/70 dark:border-violet-500/50">
+        <div className="moldy-status-accent moldy-status-surface flex size-32 items-center justify-center rounded-full border-2 border-dashed">
           <WrenchIcon
-            className="size-14 text-violet-500 dark:text-violet-400"
+            className="moldy-status-icon size-14"
             strokeWidth={2}
           />
         </div>

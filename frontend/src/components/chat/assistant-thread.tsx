@@ -79,7 +79,7 @@ function MessageTimestamp() {
   )
   if (!createdAt) return null
   return (
-    <span className="text-[10px] text-muted-foreground">
+    <span className="moldy-ui-micro text-muted-foreground">
       {formatRelativeShort(createdAt, tCommon('yesterday'))}
     </span>
   )
@@ -363,7 +363,7 @@ function BranchPicker() {
   const display = currentIdx + 1
   const isSwitching = pendingCheckpointId !== null
   return (
-    <span className="inline-flex items-center gap-0.5 text-[10px] tabular-nums text-muted-foreground">
+    <span className="inline-flex items-center gap-0.5 moldy-ui-micro tabular-nums text-muted-foreground">
       <button
         type="button"
         className="inline-flex size-4 items-center justify-center rounded hover:bg-accent disabled:opacity-30"
@@ -435,9 +435,9 @@ function UserMessageEditor() {
   const t = useTranslations('chat.message')
   const { canCancel, canSend, cancel } = useMessageEditComposerControls()
   return (
-    <MessageEditComposerRoot className="flex flex-col gap-2 rounded-2xl border bg-background p-2 shadow-sm">
+    <MessageEditComposerRoot className="moldy-chat-card flex flex-col gap-2 p-2">
       <MessageEditComposerInput
-        className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-none"
+        className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-sm leading-relaxed outline-hidden"
         autoFocus
       />
       <div className="flex items-center justify-end gap-1">
@@ -523,7 +523,7 @@ export function AssistantThread({
         return (
           <div className="group relative flex justify-end gap-3 [contain-intrinsic-size:0_96px] [content-visibility:auto]">
             <div className="flex w-full max-w-[80%] flex-col items-end">
-              <div className="rounded-2xl bg-emerald-100 px-4 py-2.5 text-sm leading-relaxed text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100">
+              <div className="rounded-2xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground ring-1 ring-primary-strong/15">
                 <MessagePrimitive.Content />
               </div>
               {metaRow}
@@ -687,10 +687,10 @@ function ThreadComposer({
   const hasTokens = showTokenBar && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)
 
   return (
-    <ComposerPrimitive.Root className="overflow-hidden rounded-2xl border border-input bg-background shadow-sm">
+    <ComposerPrimitive.Root className="moldy-chat-card">
       {/* Model & Token bar */}
       {(modelName || hasTokens) && (
-        <div className="flex items-center gap-3 border-b border-input/50 px-3.5 py-1.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 border-b border-border/60 bg-primary/35 px-3.5 py-1.5 text-xs text-muted-foreground">
           {modelName && <span className="font-medium text-foreground/70">{modelName}</span>}
           {hasTokens && (
             <TokenBar tokenUsage={tokenUsage} showDivider={false} className="ml-auto" />
@@ -713,7 +713,7 @@ function ThreadComposer({
         placeholder={t('placeholder')}
         submitMode="enter"
         className={cn(
-          'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-none',
+          'w-full resize-none bg-transparent px-3.5 py-2.5 text-sm leading-relaxed outline-hidden',
           'placeholder:text-muted-foreground',
           'disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50',
           compact ? 'min-h-[40px] max-h-[120px]' : 'min-h-[44px] max-h-[160px]',
@@ -775,7 +775,7 @@ function StopButton() {
       type="button"
       onClick={handleStop}
       aria-label={tMsg('stop')}
-      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-input bg-background px-3 text-[12.5px] font-medium text-foreground/80 transition-colors hover:bg-accent"
+      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-input bg-background px-3 moldy-ui-compact font-medium text-foreground/80 transition-colors hover:bg-accent"
     >
       <span aria-hidden className="block size-[9px] rounded-sm bg-foreground/80" />
       {tMsg('stop')}
@@ -806,7 +806,7 @@ function AttachmentChip() {
         <AttachmentPrimitive.Name />
       </span>
       {isUploading && (
-        <span className="text-[10px] text-muted-foreground">{tMsg('attachmentUploading')}</span>
+        <span className="moldy-ui-micro text-muted-foreground">{tMsg('attachmentUploading')}</span>
       )}
       <AttachmentPrimitive.Remove asChild>
         <button

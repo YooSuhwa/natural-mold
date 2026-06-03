@@ -90,12 +90,12 @@ function SystemLlmSettingsPageInner() {
         description={t('description')}
       />
 
-      <div className="rounded-lg border bg-amber-50/40 p-3 text-xs text-amber-900 dark:border-amber-900/30 dark:bg-amber-950/20 dark:text-amber-200">
+      <div className="moldy-status-surface moldy-status-warn rounded-lg p-3 text-xs">
         <p className="flex items-center gap-2 font-medium">
           <SlidersHorizontal className="size-3.5" />
           {t('operatorOnly.title')}
         </p>
-        <p className="mt-1 text-amber-800/80 dark:text-amber-200/70">
+        <p className="moldy-status-muted-text mt-1">
           {t('operatorOnly.description')}
         </p>
       </div>

@@ -64,7 +64,7 @@ export function ToolRunPanel({ toolId }: ToolRunPanelProps) {
         {t('run')}
       </Button>
       {result && (
-        <pre className="max-h-64 overflow-auto rounded border bg-muted/40 p-2 font-mono text-[11px]">
+        <pre className="max-h-64 overflow-auto rounded border bg-muted/40 p-2 font-mono moldy-ui-caption">
           {result}
         </pre>
       )}

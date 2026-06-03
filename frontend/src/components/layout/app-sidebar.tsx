@@ -225,11 +225,9 @@ export function AppSidebar() {
     [agents],
   )
 
-  const activeMenuClass =
-    'data-active:bg-emerald-100/50 data-active:font-semibold data-active:text-emerald-800 data-active:hover:bg-emerald-100/70 data-active:hover:text-emerald-900 dark:data-active:bg-emerald-500/15 dark:data-active:text-emerald-300 dark:data-active:hover:bg-emerald-500/20 dark:data-active:hover:text-emerald-200'
+  const activeMenuClass = 'moldy-sidebar-nav-item'
 
-  const newAgentButtonClass =
-    'h-11 rounded-xl border border-emerald-200/80 bg-emerald-100/50 font-semibold text-emerald-800 hover:border-emerald-300/80 hover:bg-emerald-100/70 hover:text-emerald-900 active:bg-emerald-100/80 active:text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-200'
+  const newAgentButtonClass = 'moldy-sidebar-new-agent'
 
   const isDarkTheme = resolvedTheme === 'dark'
   const themeToggleLabel = isDarkTheme ? t('theme.light') : t('theme.dark')
@@ -244,7 +242,7 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" className="moldy-sidebar-rail">
       <SidebarHeader className="px-4 py-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
         {/* Expanded state: logo + brand + toggle (radio ON) */}
         <div className="flex items-center justify-between group-data-[collapsible=icon]:hidden">
@@ -261,7 +259,7 @@ export function AppSidebar() {
           <button
             type="button"
             onClick={toggleSidebar}
-            className="rounded-md p-1.5 text-primary-strong hover:bg-sidebar-accent transition-colors"
+            className="moldy-sidebar-control rounded-lg border border-transparent p-1.5 text-primary-strong hover:border-sidebar-border"
             aria-label={t('toggleSidebar')}
           >
             <ToggleRightIcon className="size-5" />
@@ -272,7 +270,7 @@ export function AppSidebar() {
           <button
             type="button"
             onClick={toggleSidebar}
-            className="group/toggle relative flex size-8 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent"
+            className="group/toggle relative flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-sidebar-accent"
             aria-label={t('toggleSidebar')}
           >
             <Image
@@ -287,7 +285,7 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="min-h-0 px-1">
         {/* New Agent Button */}
         <SidebarGroup>
           <SidebarGroupContent>
@@ -466,14 +464,14 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="shrink-0 bg-transparent px-3 pb-3">
         <SidebarSeparator />
         <div className="flex items-center justify-center gap-1 px-2 py-1 group-data-[collapsible=icon]:hidden">
           <button
             type="button"
             onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
             suppressHydrationWarning
-            className="inline-flex h-7 items-center justify-center rounded-md px-1.5 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+            className="moldy-sidebar-control inline-flex h-7 items-center justify-center rounded-lg px-1.5"
             aria-label={themeToggleLabel}
             title={themeToggleLabel}
           >
@@ -485,7 +483,7 @@ export function AppSidebar() {
           >
             <DropdownMenuTrigger
               render={<button type="button" />}
-              className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+              className="moldy-sidebar-control inline-flex h-7 items-center gap-1 rounded-lg px-1.5 text-xs font-semibold data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
               aria-label={languageLabel}
               title={languageLabel}
             >

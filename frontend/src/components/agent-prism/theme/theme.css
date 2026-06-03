@@ -243,3 +243,182 @@
     --agentprism-timeline-unknown: 70.7% 0.022 261.325; /* gray.400 */
   }
 }
+
+/* Moldy skin override: keep Agent Prism structure, align the visible palette. */
+:root {
+  --agentprism-background: 99% 0.012 166;
+  --agentprism-foreground: 24% 0.047 172;
+  --agentprism-primary: 26.2% 0.051 172.552;
+  --agentprism-primary-foreground: 100% 0 0;
+  --agentprism-secondary: 95.5% 0.054 163;
+  --agentprism-secondary-foreground: 36% 0.06 170;
+  --agentprism-muted: 98.2% 0.018 166;
+  --agentprism-muted-foreground: 55.6% 0 0;
+  --agentprism-accent: 95.8% 0.035 229;
+  --agentprism-accent-foreground: 26.2% 0.051 172.552;
+
+  --agentprism-brand: 59.6% 0.145 163.225;
+  --agentprism-brand-foreground: 100% 0 0;
+  --agentprism-brand-secondary: 68.5% 0.169 237.323;
+  --agentprism-brand-secondary-foreground: 100% 0 0;
+
+  --agentprism-border: 89% 0.03 163;
+  --agentprism-border-subtle: 94.5% 0.022 163;
+  --agentprism-border-strong: 82% 0.09 163;
+  --agentprism-border-inverse: 26.2% 0.051 172.552;
+
+  --agentprism-success: 59.6% 0.145 163.225;
+  --agentprism-success-muted: 95.5% 0.054 163;
+  --agentprism-success-muted-foreground: 38% 0.1 163;
+  --agentprism-error: 57.7% 0.245 27.325;
+  --agentprism-error-muted: 95.7% 0.037 22;
+  --agentprism-error-muted-foreground: 48% 0.2 27;
+  --agentprism-warning: 76.9% 0.188 70.08;
+  --agentprism-warning-muted: 96.6% 0.057 85;
+  --agentprism-warning-muted-foreground: 48% 0.12 70;
+  --agentprism-pending: 68.5% 0.169 237.323;
+  --agentprism-pending-muted: 95.8% 0.035 229;
+  --agentprism-pending-muted-foreground: 44% 0.12 237;
+
+  --agentprism-code-string: 59.6% 0.145 163.225;
+  --agentprism-code-number: 76.9% 0.188 70.08;
+  --agentprism-code-key: 68.5% 0.169 237.323;
+  --agentprism-code-base: 55.6% 0 0;
+
+  --agentprism-badge-default: 97% 0.004 247;
+  --agentprism-badge-default-foreground: 44% 0.012 247;
+
+  --agentprism-avatar-llm: 68.5% 0.169 237.323;
+  --agentprism-badge-llm: 95.8% 0.035 229;
+  --agentprism-badge-llm-foreground: 44% 0.12 237;
+  --agentprism-timeline-llm: 74.6% 0.16 232.661;
+  --agentprism-avatar-agent: 59.6% 0.145 163.225;
+  --agentprism-badge-agent: 95.5% 0.054 163;
+  --agentprism-badge-agent-foreground: 38% 0.1 163;
+  --agentprism-timeline-agent: 76.5% 0.177 163.223;
+  --agentprism-avatar-tool: 76.9% 0.188 70.08;
+  --agentprism-badge-tool: 96.6% 0.057 85;
+  --agentprism-badge-tool-foreground: 48% 0.12 70;
+  --agentprism-timeline-tool: 82.8% 0.189 84.429;
+  --agentprism-avatar-chain: 60.6% 0.25 292.717;
+  --agentprism-badge-chain: 95.6% 0.035 299;
+  --agentprism-badge-chain-foreground: 45% 0.16 292;
+  --agentprism-timeline-chain: 70.2% 0.183 293.541;
+  --agentprism-avatar-retrieval: 68.5% 0.169 237.323;
+  --agentprism-badge-retrieval: 95.8% 0.035 229;
+  --agentprism-badge-retrieval-foreground: 44% 0.12 237;
+  --agentprism-timeline-retrieval: 74.6% 0.16 232.661;
+  --agentprism-avatar-embedding: 59.6% 0.145 163.225;
+  --agentprism-badge-embedding: 95.5% 0.054 163;
+  --agentprism-badge-embedding-foreground: 38% 0.1 163;
+  --agentprism-timeline-embedding: 76.5% 0.177 163.223;
+  --agentprism-avatar-guardrail: 57.7% 0.245 27.325;
+  --agentprism-badge-guardrail: 95.7% 0.037 22;
+  --agentprism-badge-guardrail-foreground: 48% 0.2 27;
+  --agentprism-timeline-guardrail: 70.4% 0.191 22.216;
+  --agentprism-avatar-create-agent: 60.6% 0.25 292.717;
+  --agentprism-badge-create-agent: 95.6% 0.035 299;
+  --agentprism-badge-create-agent-foreground: 45% 0.16 292;
+  --agentprism-timeline-create-agent: 70.2% 0.183 293.541;
+  --agentprism-avatar-span: 55.6% 0.02 247;
+  --agentprism-badge-span: 97% 0.004 247;
+  --agentprism-badge-span-foreground: 44% 0.012 247;
+  --agentprism-timeline-span: 70% 0.022 247;
+  --agentprism-avatar-event: 59.6% 0.145 163.225;
+  --agentprism-badge-event: 95.5% 0.054 163;
+  --agentprism-badge-event-foreground: 38% 0.1 163;
+  --agentprism-timeline-event: 76.5% 0.177 163.223;
+  --agentprism-avatar-unknown: 55.6% 0.02 247;
+  --agentprism-badge-unknown: 97% 0.004 247;
+  --agentprism-badge-unknown-foreground: 44% 0.012 247;
+  --agentprism-timeline-unknown: 70% 0.022 247;
+}
+
+.dark {
+  --agentprism-background: 18% 0.018 170;
+  --agentprism-foreground: 93.6% 0.028 163;
+  --agentprism-primary: 95% 0.052 163.051;
+  --agentprism-primary-foreground: 18% 0.018 170;
+  --agentprism-secondary: 25% 0.046 163;
+  --agentprism-secondary-foreground: 72% 0.018 163;
+  --agentprism-muted: 22% 0.015 170;
+  --agentprism-muted-foreground: 70.8% 0 0;
+  --agentprism-accent: 24.5% 0.04 229;
+  --agentprism-accent-foreground: 93.6% 0.028 163;
+
+  --agentprism-brand: 76.5% 0.177 163.223;
+  --agentprism-brand-foreground: 14.5% 0 0;
+  --agentprism-brand-secondary: 74.6% 0.16 232.661;
+  --agentprism-brand-secondary-foreground: 14.5% 0 0;
+
+  --agentprism-border: 45% 0.072 163;
+  --agentprism-border-subtle: 34% 0.035 163;
+  --agentprism-border-strong: 56% 0.085 163;
+  --agentprism-border-inverse: 92.8% 0.006 264.531;
+
+  --agentprism-success: 76.5% 0.177 163.223;
+  --agentprism-success-muted: 29% 0.05 163;
+  --agentprism-success-muted-foreground: 86% 0.12 163;
+  --agentprism-error: 70.4% 0.191 22.216;
+  --agentprism-error-muted: 29% 0.07 22;
+  --agentprism-error-muted-foreground: 86% 0.11 22;
+  --agentprism-warning: 82.8% 0.189 84.429;
+  --agentprism-warning-muted: 30% 0.055 85;
+  --agentprism-warning-muted-foreground: 90% 0.15 85;
+  --agentprism-pending: 74.6% 0.16 232.661;
+  --agentprism-pending-muted: 29% 0.052 229;
+  --agentprism-pending-muted-foreground: 86% 0.1 229;
+
+  --agentprism-code-string: 76.5% 0.177 163.223;
+  --agentprism-code-number: 82.8% 0.189 84.429;
+  --agentprism-code-key: 74.6% 0.16 232.661;
+  --agentprism-code-base: 70.8% 0 0;
+
+  --agentprism-badge-default: 24% 0.01 247;
+  --agentprism-badge-default-foreground: 80% 0.014 247;
+
+  --agentprism-avatar-llm: 74.6% 0.16 232.661;
+  --agentprism-badge-llm: 29% 0.052 229;
+  --agentprism-badge-llm-foreground: 86% 0.1 229;
+  --agentprism-timeline-llm: 74.6% 0.16 232.661;
+  --agentprism-avatar-agent: 76.5% 0.177 163.223;
+  --agentprism-badge-agent: 29% 0.05 163;
+  --agentprism-badge-agent-foreground: 86% 0.12 163;
+  --agentprism-timeline-agent: 76.5% 0.177 163.223;
+  --agentprism-avatar-tool: 82.8% 0.189 84.429;
+  --agentprism-badge-tool: 30% 0.055 85;
+  --agentprism-badge-tool-foreground: 90% 0.15 85;
+  --agentprism-timeline-tool: 82.8% 0.189 84.429;
+  --agentprism-avatar-chain: 70.2% 0.183 293.541;
+  --agentprism-badge-chain: 29% 0.07 293;
+  --agentprism-badge-chain-foreground: 84% 0.11 293;
+  --agentprism-timeline-chain: 70.2% 0.183 293.541;
+  --agentprism-avatar-retrieval: 74.6% 0.16 232.661;
+  --agentprism-badge-retrieval: 29% 0.052 229;
+  --agentprism-badge-retrieval-foreground: 86% 0.1 229;
+  --agentprism-timeline-retrieval: 74.6% 0.16 232.661;
+  --agentprism-avatar-embedding: 76.5% 0.177 163.223;
+  --agentprism-badge-embedding: 29% 0.05 163;
+  --agentprism-badge-embedding-foreground: 86% 0.12 163;
+  --agentprism-timeline-embedding: 76.5% 0.177 163.223;
+  --agentprism-avatar-guardrail: 70.4% 0.191 22.216;
+  --agentprism-badge-guardrail: 29% 0.07 22;
+  --agentprism-badge-guardrail-foreground: 86% 0.11 22;
+  --agentprism-timeline-guardrail: 70.4% 0.191 22.216;
+  --agentprism-avatar-create-agent: 70.2% 0.183 293.541;
+  --agentprism-badge-create-agent: 29% 0.07 293;
+  --agentprism-badge-create-agent-foreground: 84% 0.11 293;
+  --agentprism-timeline-create-agent: 70.2% 0.183 293.541;
+  --agentprism-avatar-span: 70.8% 0.014 247;
+  --agentprism-badge-span: 24% 0.01 247;
+  --agentprism-badge-span-foreground: 80% 0.014 247;
+  --agentprism-timeline-span: 70.8% 0.014 247;
+  --agentprism-avatar-event: 76.5% 0.177 163.223;
+  --agentprism-badge-event: 29% 0.05 163;
+  --agentprism-badge-event-foreground: 86% 0.12 163;
+  --agentprism-timeline-event: 76.5% 0.177 163.223;
+  --agentprism-avatar-unknown: 70.8% 0.014 247;
+  --agentprism-badge-unknown: 24% 0.01 247;
+  --agentprism-badge-unknown-foreground: 80% 0.014 247;
+  --agentprism-timeline-unknown: 70.8% 0.014 247;
+}

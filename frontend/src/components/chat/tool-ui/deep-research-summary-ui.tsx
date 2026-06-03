@@ -55,7 +55,7 @@ function SourceBadges({ domains }: { domains: string[] }) {
         <span
           key={domain}
           title={domain}
-          className="inline-flex size-6 items-center justify-center rounded-full border border-background bg-muted text-[10px] font-semibold text-muted-foreground shadow-sm"
+          className="inline-flex size-6 items-center justify-center rounded-full border border-background bg-muted moldy-ui-micro font-semibold text-muted-foreground shadow-sm"
         >
           {domainInitial(domain)}
         </span>
@@ -90,7 +90,7 @@ function DeepResearchSummaryCard({
 
   return (
     <div className="my-3">
-      <div className="rounded-xl border border-border/70 bg-card shadow-sm">
+      <div className="moldy-chat-card">
         <button
           type="button"
           className="flex w-full items-center gap-3 px-4 py-3 text-left"
@@ -143,7 +143,7 @@ function DeepResearchSummaryCard({
                           href={source.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground hover:text-primary-strong hover:underline"
+                          className="flex min-w-0 items-center gap-1.5 moldy-ui-caption text-muted-foreground hover:text-primary-strong hover:underline"
                         >
                           <span className="truncate">
                             {source.title || source.domain}

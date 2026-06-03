@@ -26,11 +26,15 @@ export function MiddlewaresNode({ data }: { data: MiddlewaresNodeData }) {
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="!bg-amber-500 !w-2.5 !h-2.5" />
-      <div className="nowheel w-[220px] rounded-xl border bg-card shadow-md">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="moldy-flow-handle moldy-flow-handle-middlewares"
+      />
+      <div className="moldy-flow-node nowheel w-[220px]">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.middlewares')}
           </span>
           <div className="flex items-center gap-0.5">

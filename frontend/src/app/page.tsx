@@ -100,7 +100,7 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 overflow-hidden p-6">
       {/* Hero */}
-      <section className="relative shrink-0 overflow-hidden rounded-3xl border border-emerald-100/60 bg-gradient-to-br from-emerald-50/60 via-background to-background p-6 sm:p-8 dark:border-emerald-500/10 dark:from-emerald-950/20">
+      <section className="moldy-dashboard-hero relative shrink-0 overflow-hidden p-6 sm:p-8">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0 flex-1 space-y-1.5">
             <p className="text-sm font-medium text-muted-foreground">{t(greetingKey)},</p>
@@ -129,25 +129,23 @@ export default function DashboardPage() {
         {/* Primary: 대화로 만들기 */}
         <Link
           href="/agents/new"
-          className="group rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="moldy-card-link group"
         >
           <Card
             className={cn(
-              'h-full min-h-[152px] gap-3 border border-emerald-200/60 bg-gradient-to-br from-emerald-50 to-emerald-50/40 p-1.5 ring-0 transition-all duration-150',
-              'hover:-translate-y-px hover:border-emerald-300/80 hover:shadow-md',
-              'dark:border-emerald-500/20 dark:from-emerald-950/40 dark:to-emerald-950/10',
+              'moldy-dashboard-action-primary h-full min-h-[152px] gap-3 p-1.5 ring-0',
             )}
           >
             <CardContent className="flex h-full flex-col gap-3 p-5">
               <div className="flex items-center gap-3">
-                <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-300">
+                <div className="moldy-dashboard-action-icon moldy-status-success flex size-11 shrink-0 items-center justify-center">
                   <MessageSquareIcon className="size-[22px]" />
                 </div>
                 <div className="flex items-center gap-2">
                   <p className="text-base font-semibold tracking-tight">
                     {t('quickAction.conversational.label')}
                   </p>
-                  <Badge className="bg-emerald-600 text-[10px] tracking-wide text-white hover:bg-emerald-600 dark:bg-emerald-500">
+                  <Badge className="moldy-dashboard-action-badge moldy-ui-micro tracking-wide hover:opacity-95">
                     {t('recommended')}
                   </Badge>
                 </div>
@@ -155,7 +153,7 @@ export default function DashboardPage() {
               <p className="max-w-[36ch] text-sm leading-relaxed text-muted-foreground">
                 {t('quickAction.conversational.description')}
               </p>
-              <div className="mt-auto flex items-center gap-1 text-sm font-semibold text-emerald-600 transition-transform group-hover:translate-x-0.5 dark:text-emerald-300">
+              <div className="moldy-status-success moldy-status-text mt-auto flex items-center gap-1 text-sm font-semibold transition-transform group-hover:translate-x-0.5">
                 {t('startCta')}
                 <ChevronRightIcon className="size-4" />
               </div>
@@ -218,7 +216,7 @@ export default function DashboardPage() {
                   className={cn(
                     'h-9',
                     showFavoritesOnly &&
-                      'border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300 dark:hover:bg-amber-500/25',
+                      'moldy-status-surface moldy-status-warn hover:opacity-90',
                   )}
                 >
                   <StarIcon className={cn('size-4', showFavoritesOnly && 'fill-current')} />
@@ -256,7 +254,7 @@ export default function DashboardPage() {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed p-8 text-center">
+              <div className="moldy-empty-state p-8">
                 <SearchIcon className="mb-2 size-6 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">{t('noSearchResults')}</p>
               </div>
@@ -264,7 +262,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <EmptyState
-            className="rounded-2xl border-solid bg-card p-8"
+            className="border-solid bg-card p-8"
             iconId="agent"
             title={t('empty.title')}
             description={t('empty.description')}
@@ -279,10 +277,10 @@ type SecondaryTone = 'violet' | 'sky'
 
 const SECONDARY_TONE: Record<SecondaryTone, { iconBg: string }> = {
   violet: {
-    iconBg: 'bg-violet-100 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300',
+    iconBg: 'moldy-status-accent',
   },
   sky: {
-    iconBg: 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300',
+    iconBg: 'moldy-status-info',
   },
 }
 
@@ -299,18 +297,17 @@ function SecondaryActionCard({ href, icon, label, description, tone }: Secondary
   return (
     <Link
       href={href}
-      className="group rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="moldy-card-link group"
     >
       <Card
         className={cn(
-          'h-full gap-0 py-0 transition-all duration-150',
-          'hover:-translate-y-px hover:shadow-md hover:ring-foreground/15',
+          'moldy-dashboard-action h-full gap-0 py-0',
         )}
       >
         <CardContent className="flex h-full items-center gap-3 p-4">
           <div
             className={cn(
-              'flex size-[38px] shrink-0 items-center justify-center rounded-xl',
+              'moldy-dashboard-action-icon flex size-[38px] shrink-0 items-center justify-center',
               iconBg,
             )}
           >
@@ -320,7 +317,7 @@ function SecondaryActionCard({ href, icon, label, description, tone }: Secondary
             <p className="text-sm font-semibold tracking-tight">{label}</p>
             <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{description}</p>
           </div>
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-card text-muted-foreground ring-1 shadow-sm ring-foreground/5 transition-all group-hover:translate-x-0.5 group-hover:text-foreground group-hover:shadow dark:bg-background/60">
+          <span className="moldy-dashboard-arrow">
             <ChevronRightIcon className="size-3.5" />
           </span>
         </CardContent>

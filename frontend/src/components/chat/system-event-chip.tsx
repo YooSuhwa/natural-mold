@@ -1,7 +1,6 @@
 'use client'
 
 import { ArrowRightIcon, CheckIcon } from 'lucide-react'
-import { BUILDER_TOKENS as T } from './tool-ui/builder-tokens'
 
 export type SystemEventKind = 'completed' | 'started'
 
@@ -23,30 +22,13 @@ export interface SystemEventChipProps {
 export function SystemEventChip({ label, sublabel, kind = 'completed' }: SystemEventChipProps) {
   const Icon = kind === 'completed' ? CheckIcon : ArrowRightIcon
   return (
-    <div role="status" className="flex justify-center" style={{ margin: '4px 0' }}>
-      <div
-        className="inline-flex items-center gap-2 text-[12px] font-semibold"
-        style={{
-          padding: '6px 13px 6px 9px',
-          borderRadius: 999,
-          background: T.primaryBg,
-          border: `1px solid ${T.primaryBgStrong}`,
-          color: T.primaryInk,
-          letterSpacing: '-0.005em',
-        }}
-      >
-        <span
-          className="inline-flex items-center justify-center rounded-full text-white"
-          style={{ width: 16, height: 16, background: T.primary }}
-        >
+    <div role="status" className="moldy-system-event flex justify-center">
+      <div className="moldy-system-event-chip">
+        <span className="moldy-system-event-icon">
           <Icon className="size-2.5" strokeWidth={3.5} />
         </span>
         <span>{label}</span>
-        {sublabel && (
-          <span className="font-medium" style={{ color: T.muted }}>
-            · {sublabel}
-          </span>
-        )}
+        {sublabel && <span className="moldy-system-event-subtle">· {sublabel}</span>}
       </div>
     </div>
   )

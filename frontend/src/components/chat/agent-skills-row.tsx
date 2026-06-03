@@ -18,7 +18,7 @@ export function AgentSkillsRow({ skills }: Props) {
   if (!skills || skills.length === 0) return null
 
   return (
-    <div className="flex items-center gap-2 border-b border-border/40 bg-muted/20 px-4 py-2 text-xs">
+    <div className="flex items-center gap-2 border-b border-border/60 bg-primary/35 px-4 py-2 text-xs">
       <BookOpenIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       <span className="shrink-0 font-medium text-muted-foreground">{t('label')}</span>
       <div className="flex flex-wrap gap-1.5">

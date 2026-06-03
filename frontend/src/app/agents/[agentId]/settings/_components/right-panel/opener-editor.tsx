@@ -116,7 +116,7 @@ export function OpenerEditor({ questions, onChange, max = 12 }: OpenerEditorProp
                       onClick={saveEdit}
                       aria-label={t('openerSave')}
                     >
-                      <CheckIcon className="size-4 text-emerald-600 dark:text-emerald-400" />
+                      <CheckIcon className="moldy-status-success moldy-status-icon size-4" />
                     </Button>
                     <Button
                       variant="ghost"

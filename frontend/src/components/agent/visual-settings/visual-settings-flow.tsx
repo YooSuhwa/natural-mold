@@ -59,7 +59,7 @@ interface ControlledVisualHandlers {
   onToggleMiddleware: (type: string) => void
 }
 
-interface VisualSettingsFlowProps {
+export interface VisualSettingsFlowProps {
   agent?: Agent
   agentId?: string
   models: Model[]
@@ -78,14 +78,31 @@ interface VisualSettingsFlowProps {
   controlledHandlers?: ControlledVisualHandlers
 }
 
+const FLOW_EDGE = {
+  schedule: 'var(--flow-edge-schedule)',
+  toolbox: 'var(--flow-edge-toolbox)',
+  subagents: 'var(--flow-edge-subagents)',
+  skills: 'var(--flow-edge-skills)',
+  middlewares: 'var(--flow-edge-middlewares)',
+} as const
+
+const EMPTY_MIDDLEWARES: MiddlewareRegistryItem[] = []
+const EMPTY_TRIGGERS: AgentTrigger[] = []
+
+function edgeStyle(stroke: string, active: boolean, opacity = 0.3): Edge['style'] {
+  return active
+    ? { stroke, strokeWidth: 2 }
+    : { stroke, strokeWidth: 2, strokeDasharray: '5 5', opacity }
+}
+
 export function VisualSettingsFlow({
   agent,
   agentId,
   models,
   tools,
   skills,
-  middlewares = [],
-  triggers = [],
+  middlewares = EMPTY_MIDDLEWARES,
+  triggers = EMPTY_TRIGGERS,
   mode = 'edit',
   embedded = false,
   controlledState,
@@ -439,51 +456,41 @@ export function VisualSettingsFlow({
         source: 'schedule',
         target: 'agent',
         animated: hasSchedules,
-        style: hasSchedules
-          ? { stroke: '#f59e0b', strokeWidth: 2 }
-          : { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.25 },
+        style: edgeStyle(FLOW_EDGE.schedule, hasSchedules, 0.25),
       },
       {
         id: 'channels-agent',
         source: 'channels',
         target: 'agent',
-        style: { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.25 },
+        style: edgeStyle(FLOW_EDGE.schedule, false, 0.25),
       },
       {
         id: 'agent-toolbox',
         source: 'agent',
         target: 'toolbox',
         animated: hasTools,
-        style: hasTools
-          ? { stroke: '#6366f1', strokeWidth: 2 }
-          : { stroke: '#6366f1', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
+        style: edgeStyle(FLOW_EDGE.toolbox, hasTools),
       },
       {
         id: 'agent-subagents',
         source: 'agent',
         target: 'subagents',
         animated: hasSubAgents,
-        style: hasSubAgents
-          ? { stroke: '#8b5cf6', strokeWidth: 2 }
-          : { stroke: '#8b5cf6', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
+        style: edgeStyle(FLOW_EDGE.subagents, hasSubAgents),
       },
       {
         id: 'agent-skills',
         source: 'agent',
         target: 'skills',
         animated: hasSkills,
-        style: hasSkills
-          ? { stroke: '#10b981', strokeWidth: 2 }
-          : { stroke: '#10b981', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
+        style: edgeStyle(FLOW_EDGE.skills, hasSkills),
       },
       {
         id: 'agent-middlewares',
         source: 'agent',
         target: 'middlewares',
         animated: hasMiddlewares,
-        style: hasMiddlewares
-          ? { stroke: '#f59e0b', strokeWidth: 2 }
-          : { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5 5', opacity: 0.3 },
+        style: edgeStyle(FLOW_EDGE.middlewares, hasMiddlewares),
       },
     ],
     [hasSchedules, hasTools, hasSkills, hasSubAgents, hasMiddlewares],
@@ -620,6 +627,7 @@ export function VisualSettingsFlow({
       )}
       <div className="flex-1">
         <ReactFlow
+          className="moldy-visual-flow"
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}

@@ -14,7 +14,7 @@ export function SubagentPanelContent({ payload }: Props) {
   return (
     <div className="space-y-4">
       <section>
-        <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="mb-2 moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
           {t('agent')}
         </h3>
         <p className="text-sm font-medium text-foreground">{payload.agentName}</p>
@@ -22,7 +22,7 @@ export function SubagentPanelContent({ payload }: Props) {
 
       {hasInput ? (
         <section>
-          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="mb-2 moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('input')}
           </h3>
           <pre className="whitespace-pre-wrap break-words rounded-md border border-border/60 bg-card p-3 text-xs leading-relaxed text-foreground/90">
@@ -32,7 +32,7 @@ export function SubagentPanelContent({ payload }: Props) {
       ) : null}
 
       <section>
-        <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="mb-2 moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
           {t('output')}
         </h3>
         <p className="rounded-md border border-dashed border-border/60 bg-muted/40 p-3 text-xs text-muted-foreground">
@@ -40,7 +40,7 @@ export function SubagentPanelContent({ payload }: Props) {
         </p>
       </section>
 
-      <p className="text-[10px] text-muted-foreground/70">tool_call_id: {payload.toolCallId}</p>
+      <p className="moldy-ui-micro text-muted-foreground/70">tool_call_id: {payload.toolCallId}</p>
     </div>
   )
 }

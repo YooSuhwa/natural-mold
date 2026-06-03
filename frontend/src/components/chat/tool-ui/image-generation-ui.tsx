@@ -14,8 +14,16 @@ import {
 import { resolveImageUrl } from '@/lib/utils'
 import { toRespond } from '@/lib/chat/decision-mappers'
 import { useHiTL, type HiTLContextValue } from '@/lib/chat/hitl-context'
-import { BUILDER_TOKENS as T } from './builder-tokens'
 import { MintActionButton, OutlineActionButton } from './builder-form-controls'
+import {
+  BuilderActionRow,
+  BuilderBody,
+  BuilderHeaderIcon,
+  BuilderMuted,
+  BuilderPhaseLabel,
+  BuilderTextarea,
+  BuilderTitle,
+} from './builder-primitives'
 import { PhaseCard, PhaseCardFooter, PhaseCardHeader } from './phase-card'
 
 async function submitChoice(
@@ -37,36 +45,13 @@ function ImageHeader({
 }) {
   return (
     <PhaseCardHeader>
-      <span
-        className="inline-flex shrink-0 items-center justify-center"
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 7,
-          background: T.primaryBg,
-          color: T.primary,
-        }}
-      >
+      <BuilderHeaderIcon>
         <ImageIcon className="size-3" />
-      </span>
-      <span
-        className="text-[13.5px] font-semibold"
-        style={{ color: T.ink, letterSpacing: '-0.01em' }}
-      >
-        {title}
-      </span>
-      {subtitle && (
-        <span className="text-[12px]" style={{ color: T.muted }}>
-          · {subtitle}
-        </span>
-      )}
+      </BuilderHeaderIcon>
+      <BuilderTitle>{title}</BuilderTitle>
+      {subtitle && <BuilderMuted>· {subtitle}</BuilderMuted>}
       <div className="flex-1" />
-      <span
-        className="text-[10.5px] font-semibold uppercase"
-        style={{ color: T.primaryInk, letterSpacing: '0.04em' }}
-      >
-        PHASE {phase}
-      </span>
+      <BuilderPhaseLabel>PHASE {phase}</BuilderPhaseLabel>
     </PhaseCardHeader>
   )
 }
@@ -85,21 +70,15 @@ function PromptEditor({
   disabled: boolean
   rows?: number
 }) {
-  const [focused, setFocused] = useState(false)
   const composingRef = useRef(false)
   return (
     <div className="flex flex-col gap-1.5">
-      <label
-        className="text-[11.5px] font-semibold"
-        style={{ color: T.muted, letterSpacing: '-0.005em' }}
-      >
+      <label className="moldy-ui-caption-plus font-semibold moldy-builder-color-muted">
         {label}
       </label>
-      <textarea
+      <BuilderTextarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         onCompositionStart={() => {
           composingRef.current = true
         }}
@@ -111,17 +90,7 @@ function PromptEditor({
         }}
         rows={rows}
         disabled={disabled}
-        className="w-full resize-none font-sans text-[12.5px] outline-none transition-[border-color,box-shadow] duration-150 disabled:cursor-not-allowed"
-        style={{
-          padding: '10px 12px',
-          background: T.surfaceAlt,
-          border: `1px solid ${focused ? T.primaryDim : T.border}`,
-          borderRadius: 9,
-          color: T.ink2,
-          lineHeight: 1.55,
-          letterSpacing: '-0.005em',
-          boxShadow: focused ? T.focusShadow : 'none',
-        }}
+        className="bg-[var(--builder-surface-alt)] moldy-ui-compact moldy-builder-color-ink-2 disabled:cursor-not-allowed"
       />
     </div>
   )
@@ -142,28 +111,14 @@ interface ImageChoiceArgs {
 function ImageChoiceUnavailable({ message }: { message?: string }) {
   const t = useTranslations('chat.imageGeneration')
   return (
-    <div
-      className="my-3 flex items-start gap-2"
-      style={{
-        padding: '12px 14px',
-        borderRadius: 12,
-        background: T.surfaceAlt,
-        border: `1px solid ${T.border}`,
-      }}
-    >
-      <AlertTriangleIcon className="size-4 shrink-0" style={{ color: T.muted }} />
+    <div className="moldy-chat-card my-3 flex items-start gap-2 px-3.5 py-3">
+      <AlertTriangleIcon className="size-4 shrink-0 moldy-builder-color-muted" />
       <div>
-        <div
-          className="text-[12.5px] font-semibold"
-          style={{ color: T.ink, letterSpacing: '-0.005em' }}
-        >
+        <div className="moldy-ui-compact font-semibold moldy-builder-color-ink">
           {t('disabled')}
         </div>
         {message && (
-          <p
-            className="mt-1 text-[12.5px]"
-            style={{ color: T.ink2, lineHeight: 1.6, letterSpacing: '-0.005em' }}
-          >
+          <p className="mt-1 moldy-ui-compact leading-relaxed moldy-builder-color-ink-2">
             {message}
           </p>
         )}
@@ -211,7 +166,7 @@ function ImageChoice({
         footer={
           isLocked ? null : (
             <PhaseCardFooter>
-              <div className="flex items-center justify-end gap-2" style={{ padding: '10px 14px' }}>
+              <BuilderActionRow className="justify-end">
                 <OutlineActionButton
                   onClick={() => void handle('skip')}
                   disabled={isLocked}
@@ -224,19 +179,19 @@ function ImageChoice({
                   label={t('generate')}
                   icon={<SparklesIcon className="size-3" strokeWidth={2.5} />}
                 />
-              </div>
+              </BuilderActionRow>
             </PhaseCardFooter>
           )
         }
       >
-        <div style={{ padding: '14px 18px 16px' }}>
+        <BuilderBody loose>
           <PromptEditor
             label={t('autoPrompt')}
             value={editPrompt}
             onChange={setEditPrompt}
             disabled={isLocked}
           />
-        </div>
+        </BuilderBody>
       </PhaseCard>
     </div>
   )
@@ -275,19 +230,9 @@ function ImageApprovalBody({
 }) {
   const t = useTranslations('chat.imageGeneration')
   return (
-    <div className="flex flex-col gap-3" style={{ padding: '14px 18px 16px' }}>
+    <BuilderBody loose className="flex flex-col gap-3">
       {error ? (
-        <div
-          className="flex items-start gap-2 text-[12.5px]"
-          style={{
-            padding: '10px 12px',
-            borderRadius: 10,
-            background: 'oklch(0.97 0.05 27)',
-            border: `1px solid oklch(0.85 0.1 27)`,
-            color: 'oklch(0.42 0.15 27)',
-            lineHeight: 1.5,
-          }}
-        >
+        <div className="moldy-status-surface moldy-status-danger flex items-start gap-2 rounded-lg px-3 py-2.5 moldy-ui-compact leading-normal">
           <AlertTriangleIcon className="mt-0.5 size-3.5 shrink-0" />
           <span>{error}</span>
         </div>
@@ -296,11 +241,10 @@ function ImageApprovalBody({
         <img
           src={resolveImageUrl(imageUrl) ?? ''}
           alt={t('agentImageAlt')}
-          className="mx-auto size-48 rounded-[14px] object-contain"
-          style={{ border: `1px solid ${T.border}`, background: T.surfaceAlt }}
+          className="moldy-card mx-auto size-48 object-contain"
         />
       ) : (
-        <p className="text-[13px]" style={{ color: T.mutedSoft }}>
+        <p className="moldy-ui-body-sm moldy-builder-color-muted-soft">
           {t('noImage')}
         </p>
       )}
@@ -310,7 +254,7 @@ function ImageApprovalBody({
         onChange={setPrompt}
         disabled={disabled}
       />
-    </div>
+    </BuilderBody>
   )
 }
 
@@ -344,10 +288,7 @@ function ImageApproval({
         footer={
           isLocked ? null : (
             <PhaseCardFooter>
-              <div
-                className="flex flex-wrap items-center justify-end gap-2"
-                style={{ padding: '10px 14px' }}
-              >
+              <BuilderActionRow className="flex-wrap justify-end">
                 <OutlineActionButton
                   onClick={() => void handle('skip')}
                   disabled={isLocked}
@@ -366,7 +307,7 @@ function ImageApproval({
                   label={t('confirm')}
                   icon={<CheckIcon className="size-3" strokeWidth={3} />}
                 />
-              </div>
+              </BuilderActionRow>
             </PhaseCardFooter>
           )
         }

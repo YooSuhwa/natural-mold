@@ -26,60 +26,22 @@ import {
   ResourceToolbar,
 } from '@/components/shared/resource-layout'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  getResourceTone,
+  resourceCardClassName,
+  resourceMetaClassName,
+  type ResourceTone,
+} from '@/lib/resource-tones'
 import { cn } from '@/lib/utils'
 import type { Template } from '@/lib/types'
 
 type SortKey = 'newest' | 'name'
-type CardTone = {
-  card: string
-  icon: string
-  badge: string
-  dot: string
-}
 
 const CATEGORIES: { value: string; labelKey: string }[] = [
   { value: '', labelKey: 'category.all' },
   { value: 'category.productivityValue', labelKey: 'category.productivity' },
   { value: 'category.communicationValue', labelKey: 'category.communication' },
   { value: 'category.dataValue', labelKey: 'category.data' },
-]
-
-const CARD_TONES: CardTone[] = [
-  {
-    card: 'bg-violet-50/75 hover:border-violet-200 dark:bg-violet-500/10 dark:hover:border-violet-400/30',
-    icon: 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200',
-    badge:
-      'border-violet-100 bg-white/70 text-violet-800 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-200',
-    dot: 'bg-violet-500',
-  },
-  {
-    card: 'bg-sky-50/75 hover:border-sky-200 dark:bg-sky-500/10 dark:hover:border-sky-400/30',
-    icon: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200',
-    badge:
-      'border-sky-100 bg-white/70 text-sky-800 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-200',
-    dot: 'bg-sky-500',
-  },
-  {
-    card: 'bg-emerald-50/75 hover:border-emerald-200 dark:bg-emerald-500/10 dark:hover:border-emerald-400/30',
-    icon: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
-    badge:
-      'border-emerald-100 bg-white/70 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200',
-    dot: 'bg-emerald-500',
-  },
-  {
-    card: 'bg-amber-50/75 hover:border-amber-200 dark:bg-amber-500/10 dark:hover:border-amber-400/30',
-    icon: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200',
-    badge:
-      'border-amber-100 bg-white/70 text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200',
-    dot: 'bg-amber-500',
-  },
-  {
-    card: 'bg-rose-50/75 hover:border-rose-200 dark:bg-rose-500/10 dark:hover:border-rose-400/30',
-    icon: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200',
-    badge:
-      'border-rose-100 bg-white/70 text-rose-800 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200',
-    dot: 'bg-rose-500',
-  },
 ]
 
 export default function TemplateSelectionPage() {
@@ -215,7 +177,7 @@ function CreateConversationLink({ label }: { label: string }) {
       className={cn(
         'inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold text-white shadow-sm transition-colors',
         'bg-[var(--primary-strong)] hover:bg-[var(--primary-strong-hover)]',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+        'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
       )}
     >
       <PlusIcon aria-hidden className="size-4" />
@@ -283,11 +245,10 @@ function FiltersBar({
             placeholder={searchPlaceholder}
             aria-label={searchAriaLabel}
             className={cn(
-              'h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-none',
+              'h-9 w-full rounded-lg border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-hidden',
               'placeholder:text-muted-foreground',
               'transition-[border-color,box-shadow]',
-              'focus:border-emerald-300 focus:shadow-[0_0_0_3px_oklch(0.596_0.145_163.225/0.12)]',
-              'dark:focus:border-emerald-500/40',
+              'focus:border-[var(--moldy-border-mint)] focus:shadow-[var(--moldy-shadow-focus)]',
             )}
           />
         </div>
@@ -332,7 +293,7 @@ function TemplateCard({
   const tools = template.recommended_tools ?? []
   const visibleTools = tools.slice(0, 2)
   const extraToolsCount = tools.length - visibleTools.length
-  const tone = pickCardTone(template)
+  const tone = getResourceTone(template.category)
 
   const disabled = creatingLocked && !isCreating
 
@@ -343,13 +304,7 @@ function TemplateCard({
       disabled={isCreating || disabled}
       aria-label={`${template.name} — ${ariaLabel}`}
       className={cn(
-        'group relative flex min-h-[152px] flex-col rounded-md border border-transparent p-4 text-left',
-        'shadow-[0_10px_24px_-22px_rgba(15,23,42,0.45)] transition-all duration-150',
-        'hover:-translate-y-px hover:shadow-[0_18px_32px_-24px_rgba(15,23,42,0.55)]',
-        'focus-visible:-translate-y-px focus-visible:border-emerald-300 focus-visible:shadow-md',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40',
-        'dark:focus-visible:border-emerald-500/40',
-        tone.card,
+        templateCardClassName(tone),
         isCreating && 'pointer-events-none opacity-70',
         disabled && 'pointer-events-none opacity-50',
       )}
@@ -357,7 +312,7 @@ function TemplateCard({
       <div className="flex items-start justify-between gap-3">
         <span
           className={cn(
-            'inline-flex size-9 shrink-0 items-center justify-center rounded-lg',
+            'moldy-resource-icon',
             tone.icon,
           )}
         >
@@ -365,7 +320,7 @@ function TemplateCard({
         </span>
         <span
           className={cn(
-            'inline-flex min-w-0 max-w-[120px] items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold leading-none',
+            'inline-flex min-w-0 max-w-[120px] items-center gap-1 rounded-md border px-2 py-1 moldy-ui-caption font-semibold leading-none',
             tone.badge,
           )}
         >
@@ -374,7 +329,7 @@ function TemplateCard({
         </span>
       </div>
 
-      <span className="mt-3 line-clamp-1 text-[15px] font-bold leading-tight text-foreground">
+      <span className="mt-3 line-clamp-1 moldy-ui-card-title font-bold leading-tight text-foreground">
         {template.name}
       </span>
 
@@ -389,14 +344,14 @@ function TemplateCard({
           {visibleTools.map((tool) => (
             <span
               key={tool}
-              className="inline-flex max-w-[96px] items-center gap-1 rounded border border-white/80 bg-white/55 px-1.5 py-0.5 text-[10.5px] font-semibold text-foreground shadow-sm dark:border-white/10 dark:bg-white/10"
+              className={cn(resourceMetaClassName, 'max-w-[96px] gap-1')}
             >
               <WrenchIcon aria-hidden className="size-2.5 text-muted-foreground" />
               <span className="truncate leading-none">{tool}</span>
             </span>
           ))}
           {extraToolsCount > 0 && (
-            <span className="text-[10.5px] font-medium leading-none text-muted-foreground">
+            <span className="moldy-ui-meta font-medium leading-none text-muted-foreground">
               {toolsMoreFormatter(extraToolsCount)}
             </span>
           )}
@@ -409,9 +364,9 @@ function TemplateCard({
         ) : (
           <span
             className={cn(
-              'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-all duration-150',
-              'group-hover:translate-x-0.5 group-hover:text-[var(--primary-strong)]',
-              'group-focus-visible:translate-x-0.5 group-focus-visible:text-[var(--primary-strong)]',
+              'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-[color,transform] duration-150',
+              'group-hover:translate-x-0.5 group-hover:text-primary-strong',
+              'group-focus-visible:translate-x-0.5 group-focus-visible:text-primary-strong',
             )}
           >
             {startLabel}
@@ -443,7 +398,7 @@ function TemplateGridSkeleton() {
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
-          className="flex min-h-[152px] flex-col rounded-md border border-border bg-card p-4"
+          className="flex min-h-[152px] flex-col rounded-xl border border-border bg-card p-4"
         >
           <div className="flex items-center justify-between">
             <Skeleton className="size-9 rounded-lg" />
@@ -480,21 +435,17 @@ function BottomCta({
     <Link
       href="/agents/new"
       className={cn(
-        'group mt-auto flex shrink-0 items-center gap-4 rounded-lg border border-emerald-100/60 p-4 transition-colors',
-        'bg-gradient-to-r from-emerald-50 via-emerald-50/50 to-background',
-        'hover:from-emerald-50 hover:to-emerald-50/30',
-        'dark:border-emerald-500/15',
-        'dark:from-emerald-950/30 dark:via-emerald-950/15 dark:to-background',
+        'moldy-dashboard-action group mt-auto flex shrink-0 items-center gap-4 rounded-lg p-4',
       )}
     >
-      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-[var(--primary-strong)]">
+      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-card moldy-color-primary-strong">
         <SparklesIcon className="size-5" />
       </span>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold tracking-[-0.015em] text-foreground">{title}</div>
+        <div className="text-sm font-semibold text-foreground">{title}</div>
         <div className="mt-0.5 text-xs text-muted-foreground">{subtitle}</div>
       </div>
-      <span className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold text-[var(--primary-strong)] transition-transform group-hover:translate-x-0.5">
+      <span className="inline-flex shrink-0 items-center gap-0.5 text-sm font-semibold moldy-color-primary-strong transition-transform group-hover:translate-x-0.5">
         {action}
         <ChevronRightIcon aria-hidden className="size-3.5" />
       </span>
@@ -502,9 +453,6 @@ function BottomCta({
   )
 }
 
-function pickCardTone(template: Template): CardTone {
-  const seed = `${template.category}:${template.name}`
-  let hash = 0
-  for (let i = 0; i < seed.length; i += 1) hash += seed.charCodeAt(i)
-  return CARD_TONES[hash % CARD_TONES.length]
+function templateCardClassName(tone: ResourceTone): string {
+  return resourceCardClassName(tone, 'min-h-[152px]')
 }

@@ -28,17 +28,17 @@ interface HealthHistoryChartProps {
 }
 
 const STATUS_COLOR: Record<HealthStatus, string> = {
-  healthy: 'rgb(16 185 129)', // emerald-500
-  degraded: 'rgb(245 158 11)', // amber-500
-  unhealthy: 'rgb(244 63 94)', // rose-500
-  unknown: 'rgb(148 163 184)', // slate-400
+  healthy: 'var(--status-success)',
+  degraded: 'var(--status-warn)',
+  unhealthy: 'var(--status-danger)',
+  unknown: 'var(--muted-foreground)',
 }
 
 const STATUS_BG: Record<HealthStatus, string> = {
-  healthy: 'bg-emerald-500',
-  degraded: 'bg-amber-500',
-  unhealthy: 'bg-rose-500',
-  unknown: 'bg-slate-400',
+  healthy: 'bg-status-success',
+  degraded: 'bg-status-warn',
+  unhealthy: 'bg-status-danger',
+  unknown: 'bg-muted-foreground/60',
 }
 
 export function HealthHistoryChart({
@@ -158,7 +158,7 @@ function LatencyLineChart({ entries }: { entries: HealthCheckEntry[] }) {
     <div className="rounded-lg border bg-card p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <h4 className="text-xs font-semibold text-foreground">{t('latencyTitle')}</h4>
-        <p className="text-[10px] text-muted-foreground">
+        <p className="moldy-ui-micro text-muted-foreground">
           {t('summary', {
             min: Math.round(stats.min),
             max: Math.round(stats.max),
@@ -232,7 +232,7 @@ function StatusTimelineStrip({ entries }: { entries: HealthCheckEntry[] }) {
     <div className="rounded-lg border bg-card p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <h4 className="text-xs font-semibold text-foreground">{t('statusTimeline')}</h4>
-        <p className="text-[10px] text-muted-foreground">{t('oldestNewest')}</p>
+        <p className="moldy-ui-micro text-muted-foreground">{t('oldestNewest')}</p>
       </div>
       <div className="flex items-stretch gap-0.5" data-testid="status-timeline">
         {entries.map((e) => (
@@ -258,12 +258,12 @@ function StatusTimelineStrip({ entries }: { entries: HealthCheckEntry[] }) {
                   {t(`status.${e.status}`)} · {formatRelativeTime(e.checked_at, t)}
                 </p>
                 {typeof e.latency_ms === 'number' && (
-                  <p className="text-[10px] opacity-80">
+                  <p className="moldy-ui-micro opacity-80">
                     {t('latencyValue', { value: e.latency_ms })}
                   </p>
                 )}
                 {e.error_kind && (
-                  <p className="text-[10px] opacity-80">
+                  <p className="moldy-ui-micro opacity-80">
                     {e.error_kind}: {e.error_message ?? t('noMessage')}
                   </p>
                 )}
@@ -287,7 +287,7 @@ function Legend() {
     { status: 'unknown', labelKey: 'status.unknown' },
   ]
   return (
-    <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground">
+    <div className="flex flex-wrap items-center gap-3 moldy-ui-micro text-muted-foreground">
       {items.map((i) => (
         <span key={i.status} className="inline-flex items-center gap-1">
           <span className={cn('inline-block size-2 rounded-sm', STATUS_BG[i.status])} />

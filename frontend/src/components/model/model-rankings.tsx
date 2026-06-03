@@ -171,7 +171,7 @@ export function RankingsSection({
               data-ranking={key}
               className="flex flex-col gap-0.5 rounded-md border bg-background px-3 py-2"
             >
-              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="moldy-ui-micro font-medium uppercase tracking-wide text-muted-foreground">
                 {t(meta.labelKey)}
               </span>
               {formatted ? (
@@ -185,7 +185,7 @@ export function RankingsSection({
       </div>
 
       {!hasAny && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
+        <p className="mt-2 moldy-ui-caption text-muted-foreground">
           {emptyHint ?? t('emptyHint')}
         </p>
       )}
@@ -213,7 +213,7 @@ export function RankingBadge({ rankingKey, value, className }: RankingBadgeProps
     <span
       data-ranking-badge={rankingKey}
       className={cn(
-        'inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-foreground/80 ring-1 ring-inset ring-border',
+        'inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono moldy-ui-micro tabular-nums text-foreground/80 ring-1 ring-inset ring-border',
         className,
       )}
       title={t('badgeTitle', { label, value: formatted })}

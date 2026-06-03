@@ -1,6 +1,7 @@
 'use client'
 
-import { use, useState, useEffect, useMemo, useRef } from 'react'
+import { use, useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeftIcon,
@@ -29,19 +30,39 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ReactFlowProvider } from '@xyflow/react'
 import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
 import { useSkills } from '@/lib/hooks/use-skills'
 import { useMiddlewares } from '@/lib/hooks/use-middlewares'
 import { useTriggers, useDeleteTrigger } from '@/lib/hooks/use-triggers'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
-import { VisualSettingsFlow } from '@/components/agent/visual-settings/visual-settings-flow'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { FormMode } from './_components/form-mode/form-mode'
 import { RightPanel, type RightTab } from './_components/right-panel/right-panel'
 
 type LeftTab = 'form' | 'visual'
+
+function VisualFlowLoading() {
+  return (
+    <div className="flex h-full min-h-[420px] flex-col gap-3 p-4">
+      <Skeleton className="h-9 w-48" />
+      <Skeleton className="min-h-0 flex-1 rounded-xl" />
+    </div>
+  )
+}
+
+const VisualSettingsIsland = dynamic(
+  () =>
+    import('@/components/agent/visual-settings/visual-settings-island').then(
+      (mod) => mod.VisualSettingsIsland,
+    ),
+  {
+    ssr: false,
+    loading: () => <VisualFlowLoading />,
+  },
+)
+
+const EMPTY_RESOURCE_LIST: never[] = []
 
 export default function AgentSettingsPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params)
@@ -80,6 +101,87 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     id: string
     description: string
   } | null>(null)
+
+  const handleToggleTool = useCallback(
+    (id: string) => setSelectedToolIds((prev) => toggleSetItem(prev, id)),
+    [],
+  )
+  const handleToggleMcpTool = useCallback(
+    (id: string) => setSelectedMcpToolIds((prev) => toggleSetItem(prev, id)),
+    [],
+  )
+  const handleToggleSkill = useCallback(
+    (id: string) => setSelectedSkillIds((prev) => toggleSetItem(prev, id)),
+    [],
+  )
+  const handleToggleSubAgent = useCallback(
+    (id: string) => setSelectedSubAgentIds((prev) => toggleSetItem(prev, id)),
+    [],
+  )
+  const handleToggleMiddleware = useCallback(
+    (type: string) => setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type)),
+    [],
+  )
+  const handleResetModelParams = useCallback(() => {
+    setTemperature(0.7)
+    setTopP(1.0)
+    setMaxTokens(4096)
+  }, [])
+
+  const visualControlledState = useMemo(
+    () => ({
+      name,
+      description,
+      systemPrompt,
+      modelId,
+      temperature,
+      topP,
+      maxTokens,
+      selectedToolIds,
+      selectedMcpToolIds,
+      selectedSkillIds,
+      selectedSubAgentIds,
+      selectedMiddlewareTypes,
+    }),
+    [
+      name,
+      description,
+      systemPrompt,
+      modelId,
+      temperature,
+      topP,
+      maxTokens,
+      selectedToolIds,
+      selectedMcpToolIds,
+      selectedSkillIds,
+      selectedSubAgentIds,
+      selectedMiddlewareTypes,
+    ],
+  )
+
+  const visualControlledHandlers = useMemo(
+    () => ({
+      onNameChange: setName,
+      onDescriptionChange: setDescription,
+      onSystemPromptChange: setSystemPrompt,
+      onModelIdChange: setModelId,
+      onTemperatureChange: setTemperature,
+      onTopPChange: setTopP,
+      onMaxTokensChange: setMaxTokens,
+      onToggleTool: handleToggleTool,
+      onToggleMcpTool: handleToggleMcpTool,
+      onToggleSkill: handleToggleSkill,
+      onToggleSubAgent: handleToggleSubAgent,
+      onToggleMiddleware: handleToggleMiddleware,
+    }),
+    [
+      handleToggleTool,
+      handleToggleMcpTool,
+      handleToggleSkill,
+      handleToggleSubAgent,
+      handleToggleMiddleware,
+    ],
+  )
 
   // 만들기 페이지에서 carry된 첫 메시지 검사 → Fix 탭 활성 + 자동 전송 + create-hero 유지
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -305,8 +407,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex items-start gap-3 border-b px-6 py-3">
+    <div className="moldy-app-surface flex flex-1 flex-col overflow-hidden">
+      <header className="moldy-panel-header flex items-start gap-3 px-6 py-3">
         <Button variant="ghost" size="icon-sm" onClick={handleBack} aria-label={t('back')}>
           <ArrowLeftIcon className="size-4" />
         </Button>
@@ -360,25 +462,25 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         </div>
       </header>
 
-      <main className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
-        <section className="flex min-h-0 flex-col overflow-hidden border-b lg:border-b-0 lg:border-r">
+      <main className="grid flex-1 grid-cols-1 gap-3 overflow-hidden p-3 lg:grid-cols-2">
+        <section className="moldy-panel flex min-h-0 flex-col overflow-hidden">
           <Tabs
             value={leftTab}
             onValueChange={(v) => setLeftTab(v as LeftTab)}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <div className="sticky top-0 z-10 flex justify-center overflow-hidden bg-background">
+            <div className="sticky top-0 z-10 flex justify-center overflow-hidden border-b border-border/60 bg-card/55">
               <TabsList variant="line" className="h-auto">
                 <TabsTrigger
                   value="form"
-                  className="gap-1 px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
+                  className="gap-1 px-4 py-2.5 after:bg-primary-strong data-active:text-primary-strong"
                 >
                   <ClipboardListIcon className="size-3.5" />
                   {t('tabs.form')}
                 </TabsTrigger>
                 <TabsTrigger
                   value="visual"
-                  className="gap-1 px-4 py-2.5 after:bg-emerald-500 data-active:text-emerald-600 dark:after:bg-emerald-400 dark:data-active:text-emerald-400"
+                  className="gap-1 px-4 py-2.5 after:bg-primary-strong data-active:text-primary-strong"
                 >
                   <WorkflowIcon className="size-3.5" />
                   {t('tabs.visual')}
@@ -390,7 +492,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                 systemPrompt={systemPrompt}
                 onSystemPromptChange={setSystemPrompt}
                 selectedSubAgentIds={selectedSubAgentIds}
-                onToggleSubAgent={(id) => setSelectedSubAgentIds((prev) => toggleSetItem(prev, id))}
+                onToggleSubAgent={handleToggleSubAgent}
                 currentAgentId={agentId}
                 modelId={modelId}
                 onModelIdChange={setModelId}
@@ -400,79 +502,42 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
                 onTopPChange={setTopP}
                 maxTokens={maxTokens}
                 onMaxTokensChange={setMaxTokens}
-                onResetModelParams={() => {
-                  setTemperature(0.7)
-                  setTopP(1.0)
-                  setMaxTokens(4096)
-                }}
+                onResetModelParams={handleResetModelParams}
                 fallbackIds={fallbackIds}
                 onFallbackIdsChange={setFallbackIds}
                 selectedToolIds={selectedToolIds}
-                onToggleTool={(id) => setSelectedToolIds((prev) => toggleSetItem(prev, id))}
+                onToggleTool={handleToggleTool}
                 selectedMcpToolIds={selectedMcpToolIds}
-                onToggleMcpTool={(id) => setSelectedMcpToolIds((prev) => toggleSetItem(prev, id))}
+                onToggleMcpTool={handleToggleMcpTool}
                 selectedSkillIds={selectedSkillIds}
-                onToggleSkill={(id) => setSelectedSkillIds((prev) => toggleSetItem(prev, id))}
+                onToggleSkill={handleToggleSkill}
                 selectedMiddlewareTypes={selectedMiddlewareTypes}
-                onToggleMiddleware={(type) =>
-                  setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type))
-                }
+                onToggleMiddleware={handleToggleMiddleware}
               />
             </TabsContent>
             <TabsContent
               value="visual"
               className="flex flex-1 min-h-0 flex-col overflow-hidden p-0"
             >
-              {agent && (
-                <ReactFlowProvider>
-                  <VisualSettingsFlow
-                    agent={agent}
-                    agentId={agentId}
-                    models={models ?? []}
-                    tools={tools ?? []}
-                    skills={skills ?? []}
-                    middlewares={middlewares ?? []}
-                    triggers={triggers ?? []}
-                    embedded
-                    controlledState={{
-                      name,
-                      description,
-                      systemPrompt,
-                      modelId,
-                      temperature,
-                      topP,
-                      maxTokens,
-                      selectedToolIds,
-                      selectedMcpToolIds,
-                      selectedSkillIds,
-                      selectedSubAgentIds,
-                      selectedMiddlewareTypes,
-                    }}
-                    controlledHandlers={{
-                      onNameChange: setName,
-                      onDescriptionChange: setDescription,
-                      onSystemPromptChange: setSystemPrompt,
-                      onModelIdChange: setModelId,
-                      onTemperatureChange: setTemperature,
-                      onTopPChange: setTopP,
-                      onMaxTokensChange: setMaxTokens,
-                      onToggleTool: (id) => setSelectedToolIds((prev) => toggleSetItem(prev, id)),
-                      onToggleMcpTool: (id) =>
-                        setSelectedMcpToolIds((prev) => toggleSetItem(prev, id)),
-                      onToggleSkill: (id) => setSelectedSkillIds((prev) => toggleSetItem(prev, id)),
-                      onToggleSubAgent: (id) =>
-                        setSelectedSubAgentIds((prev) => toggleSetItem(prev, id)),
-                      onToggleMiddleware: (type) =>
-                        setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type)),
-                    }}
-                  />
-                </ReactFlowProvider>
-              )}
+              {leftTab === 'visual' && agent ? (
+                <VisualSettingsIsland
+                  agent={agent}
+                  agentId={agentId}
+                  models={models ?? EMPTY_RESOURCE_LIST}
+                  tools={tools ?? EMPTY_RESOURCE_LIST}
+                  skills={skills ?? EMPTY_RESOURCE_LIST}
+                  middlewares={middlewares ?? EMPTY_RESOURCE_LIST}
+                  triggers={triggers ?? EMPTY_RESOURCE_LIST}
+                  embedded
+                  controlledState={visualControlledState}
+                  controlledHandlers={visualControlledHandlers}
+                />
+              ) : null}
             </TabsContent>
           </Tabs>
         </section>
 
-        <section className="flex min-h-0 flex-col overflow-hidden">
+        <section className="moldy-panel flex min-h-0 flex-col overflow-hidden">
           <RightPanel
             tab={rightTab}
             onTabChange={setRightTab}

@@ -49,10 +49,14 @@ export function ToolboxNode({ data }: { data: ToolboxNodeData }) {
 
   return (
     <>
-      <Handle type="target" position={Position.Left} className="!bg-indigo-500 !w-2.5 !h-2.5" />
-      <div className="nowheel w-[220px] rounded-xl border bg-card shadow-md">
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="moldy-flow-handle moldy-flow-handle-toolbox"
+      />
+      <div className="moldy-flow-node nowheel w-[220px]">
         <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.toolbox')}
           </span>
           <Button variant="ghost" size="icon-xs" onClick={() => setDialogOpen(true)}>
@@ -88,7 +92,7 @@ export function ToolboxNode({ data }: { data: ToolboxNodeData }) {
                 >
                   <span className="truncate text-xs">
                     {tool.name}
-                    <span className="ml-1 text-[9px] text-muted-foreground/70">{t('toolbox.mcp')}</span>
+                    <span className="ml-1 moldy-ui-nano text-muted-foreground/70">{t('toolbox.mcp')}</span>
                   </span>
                   <button
                     onClick={() => onToggleMcpTool(tool.id)}

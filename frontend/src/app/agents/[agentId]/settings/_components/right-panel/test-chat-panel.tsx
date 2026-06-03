@@ -51,8 +51,8 @@ export function TestChatPanel({ agentId, agentName, agentImageUrl }: TestChatPan
   )
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-xl border bg-background">
-      <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-200">
+    <div className="moldy-card flex h-full min-h-0 flex-col">
+      <div className="moldy-status-surface moldy-status-warn border-x-0 border-t-0 px-4 py-2 text-xs">
         {t('testWarning')}
       </div>
       <div className="flex min-h-0 flex-1 flex-col">

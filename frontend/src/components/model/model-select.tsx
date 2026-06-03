@@ -105,7 +105,7 @@ export function ModelSelect({
 
     return (
       <div className={className}>
-        <p className="mb-2 text-[11px] text-muted-foreground">
+        <p className="mb-2 moldy-ui-caption text-muted-foreground">
           {t('customHint')}
         </p>
         <div className="flex gap-2">
@@ -179,7 +179,7 @@ export function ModelSelect({
               }}
             />
             {lastTestResult && !lastTestResult.success && (
-              <p className="text-[11px] text-destructive">
+              <p className="moldy-ui-caption text-destructive">
                 {t('testFailed')}
               </p>
             )}
@@ -206,7 +206,7 @@ export function ModelSelect({
               {selectedModel ? (
                 <span className="flex items-center gap-2">
                   <span>{selectedModel.display_name}</span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="moldy-ui-micro text-muted-foreground">
                     {selectedModel.provider}
                   </span>
                 </span>
@@ -218,7 +218,7 @@ export function ModelSelect({
               <SelectItem key={m.id} value={m.id}>
                 <span className="flex items-center gap-2">
                   <span>{m.display_name}</span>
-                  <span className="text-[10px] text-muted-foreground">
+                  <span className="moldy-ui-micro text-muted-foreground">
                     {m.provider}
                   </span>
                 </span>

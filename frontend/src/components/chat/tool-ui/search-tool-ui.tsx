@@ -28,7 +28,7 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
   if (!title && !url) {
     return (
       <div className="rounded-lg border border-border/40 bg-background p-2">
-        <p className="text-[11px] leading-relaxed text-foreground/80 line-clamp-3">
+        <p className="moldy-ui-caption leading-relaxed text-foreground/80 line-clamp-3">
           {snippet ?? JSON.stringify(item)}
         </p>
       </div>
@@ -47,19 +47,19 @@ function SearchResultCard({ item }: { item: SearchResultItem }) {
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="truncate text-[11px] font-medium text-primary-strong hover:underline"
+                  className="truncate moldy-ui-caption font-medium text-primary-strong hover:underline"
                 >
                   {title}
                 </a>
               ) : (
-                <span className="truncate text-[11px] font-medium">{title}</span>
+                <span className="truncate moldy-ui-caption font-medium">{title}</span>
               )}
               {url && <ExternalLinkIcon className="size-2.5 shrink-0 text-muted-foreground" />}
             </div>
           )}
-          {url && <div className="truncate text-[10px] text-muted-foreground">{url}</div>}
+          {url && <div className="truncate moldy-ui-micro text-muted-foreground">{url}</div>}
           {snippet && (
-            <p className="mt-0.5 text-[11px] leading-relaxed text-foreground/70 line-clamp-2">
+            <p className="mt-0.5 moldy-ui-caption leading-relaxed text-foreground/70 line-clamp-2">
               {snippet}
             </p>
           )}

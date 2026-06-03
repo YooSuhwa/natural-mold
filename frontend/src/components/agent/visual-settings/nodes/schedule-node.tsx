@@ -23,16 +23,17 @@ function useFormatTriggerSummary() {
 
   return useCallback(
     (trigger: AgentTrigger): string => {
+      const config = trigger.schedule_config ?? {}
       if (trigger.trigger_type === 'one_time') {
-        return trigger.schedule_config.scheduled_at ?? trigger.name
+        return config.scheduled_at ?? trigger.name
       }
 
       if (trigger.trigger_type === 'interval') {
-        const mins = trigger.schedule_config.interval_minutes ?? 10
+        const mins = config.interval_minutes ?? 10
         return t('everyNMin', { mins })
       }
 
-      const cron = trigger.schedule_config.cron_expression ?? ''
+      const cron = config.cron_expression ?? ''
       const parts = cron.split(' ')
       if (parts.length !== 5) return cron
 
@@ -106,10 +107,10 @@ export function ScheduleNode({ data }: NodeProps) {
 
   return (
     <>
-      <div className="w-[220px] rounded-xl border bg-card shadow-md nowheel">
+      <div className="moldy-flow-node w-[220px] nowheel">
         {/* Header */}
         <div className="flex items-center justify-between border-b px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('title')}
           </span>
           <Button variant="ghost" size="xs" onClick={handleOpenCreate}>
@@ -133,8 +134,8 @@ export function ScheduleNode({ data }: NodeProps) {
                 >
                   <ClockIcon className="size-3.5 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[11px] font-medium">{trigger.name}</div>
-                    <div className="truncate text-[10px] text-muted-foreground">
+                    <div className="truncate moldy-ui-caption font-medium">{trigger.name}</div>
+                    <div className="truncate moldy-ui-micro text-muted-foreground">
                       {formatTriggerSummary(trigger)}
                     </div>
                   </div>
@@ -158,7 +159,11 @@ export function ScheduleNode({ data }: NodeProps) {
           )}
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-amber-500 !w-2.5 !h-2.5" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="moldy-flow-handle moldy-flow-handle-schedule"
+      />
       <ScheduleDialog
         open={dialogOpen}
         onOpenChange={(v) => {

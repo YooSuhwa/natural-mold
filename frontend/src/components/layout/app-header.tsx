@@ -5,7 +5,7 @@ import { BreadcrumbNav } from '@/components/layout/breadcrumb-nav'
 
 export function AppHeader() {
   return (
-    <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
+    <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border/70 bg-[var(--moldy-surface-raised)] px-4 backdrop-blur">
       {/* Mobile only: sidebar trigger (desktop uses sidebar's built-in toggle) */}
       <SidebarTrigger className="md:hidden cursor-pointer" />
       <BreadcrumbNav />

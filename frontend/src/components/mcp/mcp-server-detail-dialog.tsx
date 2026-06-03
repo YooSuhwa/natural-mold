@@ -250,7 +250,7 @@ function McpHealthSection({ serverId }: { serverId: string }) {
           {typeof latest.latency_ms === 'number' ? (
             <span className="text-muted-foreground">{latest.latency_ms} ms</span>
           ) : null}
-          <span className="text-[10px] text-muted-foreground">
+          <span className="moldy-ui-micro text-muted-foreground">
             {new Date(latest.checked_at).toLocaleString()}
           </span>
         </div>

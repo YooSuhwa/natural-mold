@@ -29,23 +29,19 @@ type Icon = ComponentType<SVGProps<SVGSVGElement>>
 const STYLES: Record<StatusChipVariant, { icon: Icon; classes: string }> = {
   active: {
     icon: CheckCircle2,
-    classes:
-      'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30',
+    classes: 'moldy-status-surface moldy-status-success',
   },
   connected: {
     icon: CheckCircle2,
-    classes:
-      'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30',
+    classes: 'moldy-status-surface moldy-status-success',
   },
   auth_needed: {
     icon: AlertTriangle,
-    classes:
-      'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30',
+    classes: 'moldy-status-surface moldy-status-warn',
   },
   expired: {
     icon: Clock,
-    classes:
-      'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30',
+    classes: 'moldy-status-surface moldy-status-warn',
   },
   disabled: {
     icon: Slash,
@@ -53,13 +49,11 @@ const STYLES: Record<StatusChipVariant, { icon: Icon; classes: string }> = {
   },
   error: {
     icon: XCircle,
-    classes:
-      'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
+    classes: 'moldy-status-surface moldy-status-danger',
   },
   unreachable: {
     icon: XCircle,
-    classes:
-      'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
+    classes: 'moldy-status-surface moldy-status-danger',
   },
   unknown: {
     icon: HelpCircle,
@@ -67,18 +61,15 @@ const STYLES: Record<StatusChipVariant, { icon: Icon; classes: string }> = {
   },
   healthy: {
     icon: CheckCircle2,
-    classes:
-      'bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30',
+    classes: 'moldy-status-surface moldy-status-success',
   },
   degraded: {
     icon: AlertTriangle,
-    classes:
-      'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30',
+    classes: 'moldy-status-surface moldy-status-warn',
   },
   unhealthy: {
     icon: XCircle,
-    classes:
-      'bg-rose-100 text-rose-700 ring-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30',
+    classes: 'moldy-status-surface moldy-status-danger',
   },
 }
 

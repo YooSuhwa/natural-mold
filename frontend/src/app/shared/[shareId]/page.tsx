@@ -118,7 +118,7 @@ function Hero({
 
   return (
     <section className="pt-16 pb-2 text-center sm:pt-24">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <p className="moldy-ui-caption font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         {t('eyebrow')}
       </p>
       <h1 className="mt-5 text-3xl font-light leading-tight tracking-tight text-foreground sm:text-4xl">
@@ -135,7 +135,7 @@ function Hero({
           <p className="text-sm font-semibold text-foreground">
             {data.agent.name}
           </p>
-          <p className="text-[11px] tracking-wide text-muted-foreground">
+          <p className="moldy-ui-caption tracking-wide text-muted-foreground">
             {dateLabel}
           </p>
         </div>
@@ -272,7 +272,7 @@ function DividerLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3">
       <span className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
-      <span className="select-none text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <span className="select-none moldy-ui-micro font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         {children}
       </span>
       <span className="h-px flex-1 bg-gradient-to-r from-transparent via-border to-transparent" />
@@ -283,7 +283,7 @@ function DividerLabel({ children }: { children: React.ReactNode }) {
 function UserMessageItem({ message }: { message: Message }) {
   return (
     <li className="flex justify-end">
-      <div className="max-w-[85%] rounded-2xl bg-muted/60 px-4 py-3 text-sm text-foreground">
+      <div className="moldy-chat-card max-w-[85%] px-4 py-3 text-sm text-foreground">
         <p className="whitespace-pre-wrap break-words leading-relaxed">
           {message.content}
         </p>
@@ -335,8 +335,8 @@ function EmptyConversation() {
   const t = useTranslations('sharedConversation')
   return (
     <div className="py-16 text-center">
-      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-muted">
-        <MessageSquareIcon className="size-5 text-muted-foreground" />
+      <div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-primary">
+        <MessageSquareIcon className="size-5 text-primary-foreground" />
       </div>
       <p className="text-sm text-muted-foreground">
         {t('empty')}
@@ -357,7 +357,7 @@ function SharedFooter({
 
   return (
     <footer className="mx-auto mt-10 w-full max-w-3xl px-5 pb-12 sm:px-6">
-      <div className="rounded-2xl border bg-gradient-to-br from-muted/40 to-background p-6 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:p-8">
+      <div className="moldy-card p-6 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:p-8">
         <div className="text-center sm:text-left">
           <p className="text-base font-semibold tracking-tight text-foreground">
             {t('footer.title')}
@@ -368,13 +368,14 @@ function SharedFooter({
         </div>
         <Link
           href="/"
-          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary-strong px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 sm:mt-0 sm:w-auto"
+          data-variant="solid"
+          className="moldy-action-pill moldy-status-success mt-4 w-full sm:mt-0 sm:w-auto"
         >
           {t('footer.cta')}
         </Link>
       </div>
 
-      <div className="mt-6 flex flex-col items-center gap-2 text-[11px] text-muted-foreground sm:flex-row sm:justify-between">
+      <div className="mt-6 flex flex-col items-center gap-2 moldy-ui-caption text-muted-foreground sm:flex-row sm:justify-between">
         <div className="flex items-center gap-2">
           <span>{dateLabel}</span>
           <span className="size-0.5 rounded-full bg-border" />
@@ -431,7 +432,8 @@ function SharedError() {
       </p>
       <Link
         href="/"
-        className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary-strong px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+        data-variant="solid"
+        className="moldy-action-pill moldy-status-success mt-6"
       >
         <ArrowLeftIcon className="size-4" />
         {t('error.home')}

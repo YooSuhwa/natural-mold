@@ -32,14 +32,7 @@ export default function AgentNewPage() {
   const hasInput = input.trim().length > 0
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
-      <style>{`
-        @keyframes mold-mascot-float {
-          0%, 100% { transform: translateY(0); }
-          50%      { transform: translateY(-5px); }
-        }
-      `}</style>
-
+    <div className="moldy-agent-create-shell flex flex-1 flex-col items-center justify-center overflow-auto">
       <div className="flex w-full max-w-[720px] flex-col gap-7 px-8 py-10">
         <Hero title={t('hero.title')} subtitle={t('hero.subtitle')} />
 
@@ -79,16 +72,7 @@ function Hero({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="flex flex-col items-center gap-4 text-center">
       <div className="relative">
-        <div
-          aria-hidden
-          className="absolute"
-          style={{
-            inset: '15% 5% -5% 5%',
-            borderRadius: '50%',
-            background: 'radial-gradient(circle, oklch(0.85 0.13 163 / 0.4), transparent 65%)',
-            filter: 'blur(16px)',
-          }}
-        />
+        <div aria-hidden className="moldy-agent-create-glow" />
         <Image
           src="/agent-create-hero.webp"
           alt="Moldy"
@@ -96,15 +80,11 @@ function Hero({ title, subtitle }: { title: string; subtitle: string }) {
           height={160}
           priority
           draggable={false}
-          className="relative select-none"
-          style={{
-            filter: 'drop-shadow(0 10px 18px oklch(0.4 0.1 163 / 0.22))',
-            animation: 'mold-mascot-float 5s ease-in-out infinite',
-          }}
+          className="moldy-agent-create-mascot relative select-none"
         />
       </div>
       <div className="flex flex-col gap-2">
-        <h1 className="text-[26px] font-bold leading-snug tracking-tight">{title}</h1>
+        <h1 className="moldy-page-title leading-snug">{title}</h1>
         <p className="mx-auto max-w-[480px] text-sm leading-relaxed text-muted-foreground">
           {subtitle}
         </p>
@@ -139,15 +119,7 @@ function ChatInput({
   hasInput,
 }: ChatInputProps) {
   return (
-    <div
-      className={[
-        'group relative rounded-2xl border border-border bg-card transition',
-        'shadow-[0_2px_8px_-4px_rgba(0,0,0,0.06)]',
-        'focus-within:border-emerald-300',
-        'dark:focus-within:border-emerald-500/40',
-        'focus-within:shadow-[0_0_0_4px_oklch(0.596_0.145_163.225/0.12),0_4px_14px_-8px_oklch(0.4_0.1_163/0.15)]',
-      ].join(' ')}
-    >
+    <div className="moldy-create-input group relative">
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -161,7 +133,7 @@ function ChatInput({
         onCompositionEnd={onCompositionEnd}
         placeholder={placeholder}
         rows={4}
-        className="min-h-[110px] w-full resize-none rounded-2xl bg-transparent px-5 pb-2 pt-4 text-[14.5px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
+        className="min-h-[110px] w-full resize-none rounded-2xl bg-transparent px-5 pb-2 pt-4 text-sm leading-relaxed text-foreground outline-hidden placeholder:text-muted-foreground"
       />
       <div className="flex justify-end px-3 pb-3">
         <Button
@@ -173,7 +145,7 @@ function ChatInput({
           className={[
             'size-9 rounded-xl transition-colors',
             hasInput
-              ? 'bg-[var(--primary-strong)] text-white hover:bg-[var(--primary-strong-hover)]'
+              ? 'bg-primary-strong text-white hover:bg-primary-strong/90'
               : 'bg-muted text-muted-foreground hover:bg-muted',
           ].join(' ')}
         >
@@ -198,7 +170,7 @@ function ExamplePrompts({
   return (
     <div>
       <div className="mb-2.5 flex items-center gap-1.5">
-        <SparklesIcon className="size-3 text-[var(--primary-strong)]" />
+        <SparklesIcon className="size-3 moldy-color-primary-strong" />
         <span className="text-xs font-semibold text-muted-foreground">{heading}</span>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -209,9 +181,8 @@ function ExamplePrompts({
             onClick={() => onPick(p.text)}
             className={[
               'inline-flex items-center gap-1.5 rounded-full border px-3 transition-colors',
-              'h-8 border-border bg-background text-[13px] text-foreground',
-              'hover:border-emerald-200 hover:bg-emerald-50',
-              'dark:hover:border-emerald-500/30 dark:hover:bg-emerald-950/30',
+              'h-8 border-border bg-background text-xs text-foreground sm:text-sm',
+              'hover:border-primary-strong/30 hover:bg-primary',
             ].join(' ')}
           >
             <span className="text-sm leading-none">{p.emoji}</span>
@@ -253,14 +224,14 @@ function AltMethods({
           title={manualTitle}
           description={manualDescription}
           icon={<PenLineIcon className="size-4" />}
-          iconClassName="bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300"
+          iconClassName="moldy-dashboard-action-icon moldy-status-accent"
         />
         <AltMethodCard
           href="/agents/new/template"
           title={templateTitle}
           description={templateDescription}
           icon={<LayoutTemplateIcon className="size-4" />}
-          iconClassName="bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300"
+          iconClassName="moldy-dashboard-action-icon moldy-status-info"
         />
       </div>
     </div>
@@ -284,9 +255,7 @@ function AltMethodCard({
     <Link
       href={href}
       className={[
-        'group flex items-center gap-3 rounded-xl border border-border bg-card p-3 transition-colors',
-        'hover:border-emerald-300/60 hover:bg-muted/40',
-        'dark:hover:border-emerald-500/30',
+        'moldy-create-alt-card group flex items-center gap-3 p-3',
       ].join(' ')}
     >
       <span

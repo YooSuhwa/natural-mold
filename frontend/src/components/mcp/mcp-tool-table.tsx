@@ -126,13 +126,13 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span>{tool.name}</span>
                       {disabled ? (
-                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        <span className="rounded-full bg-muted px-1.5 py-0.5 moldy-ui-micro font-medium text-muted-foreground">
                           {t('disabled')}
                         </span>
                       ) : null}
                       {stale ? (
                         <span
-                          className="rounded-full bg-status-warn/15 px-1.5 py-0.5 text-[10px] font-medium text-status-warn"
+                          className="rounded-full bg-status-warn/15 px-1.5 py-0.5 moldy-ui-micro font-medium text-status-warn"
                           title={
                             tool.last_seen_at
                               ? t('lastSeen', { date: new Date(tool.last_seen_at).toLocaleString() })
@@ -163,7 +163,7 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                         {t('columns.schema')}
                       </Button>
                     ) : (
-                      <span className="text-[10px] text-muted-foreground">—</span>
+                      <span className="moldy-ui-micro text-muted-foreground">—</span>
                     )}
                   </TableCell>
                 </TableRow>
@@ -173,7 +173,7 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                       colSpan={onToggle ? 4 : 3}
                       className="bg-muted/30 p-0"
                     >
-                      <pre className="max-h-64 overflow-auto p-3 font-mono text-[11px] leading-relaxed text-foreground/80">
+                      <pre className="max-h-64 overflow-auto p-3 font-mono moldy-ui-caption leading-relaxed text-foreground/80">
                         {JSON.stringify(tool.input_schema, null, 2)}
                       </pre>
                     </TableCell>

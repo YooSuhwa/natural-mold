@@ -307,7 +307,7 @@ export function DomainIconPicker({
             className={cn(
               'flex size-9 items-center justify-center rounded-md border text-muted-foreground transition-colors',
               'hover:border-primary/40 hover:bg-muted hover:text-foreground',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+              'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
               selected &&
                 'border-primary/40 bg-primary/15 text-primary-strong ring-1 ring-primary/25',
               disabled && 'cursor-not-allowed opacity-50',

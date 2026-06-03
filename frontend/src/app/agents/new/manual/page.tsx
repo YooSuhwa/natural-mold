@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeftIcon,
@@ -10,7 +11,6 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
-import { ReactFlowProvider } from '@xyflow/react'
 import { useCreateAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
 import { useTools } from '@/lib/hooks/use-tools'
@@ -23,7 +23,6 @@ import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
-import { VisualSettingsFlow } from '@/components/agent/visual-settings/visual-settings-flow'
 import { FormMode } from '@/app/agents/[agentId]/settings/_components/form-mode/form-mode'
 import {
   RightPanel,
@@ -31,6 +30,28 @@ import {
 } from '@/app/agents/[agentId]/settings/_components/right-panel/right-panel'
 
 type LeftTab = 'form' | 'visual'
+
+function VisualFlowLoading() {
+  return (
+    <div className="flex h-full min-h-[420px] flex-col gap-3 p-4">
+      <Skeleton className="h-9 w-48" />
+      <Skeleton className="min-h-0 flex-1 rounded-xl" />
+    </div>
+  )
+}
+
+const VisualSettingsIsland = dynamic(
+  () =>
+    import('@/components/agent/visual-settings/visual-settings-island').then(
+      (mod) => mod.VisualSettingsIsland,
+    ),
+  {
+    ssr: false,
+    loading: () => <VisualFlowLoading />,
+  },
+)
+
+const EMPTY_RESOURCE_LIST: never[] = []
 
 export default function ManualCreationPage() {
   const router = useRouter()
@@ -56,6 +77,87 @@ export default function ManualCreationPage() {
   const [openerQuestions, setOpenerQuestions] = useState<string[]>([])
   const [leftTab, setLeftTab] = useState<LeftTab>('form')
   const [rightTab, setRightTab] = useState<RightTab>('fix')
+
+  const handleToggleTool = useCallback(
+    (id: string) => setSelectedToolIds((prev) => toggleSetItem(prev, id)),
+    [],
+  )
+  const handleToggleMcpTool = useCallback(
+    (id: string) => setSelectedMcpToolIds((prev) => toggleSetItem(prev, id)),
+    [],
+  )
+  const handleToggleSkill = useCallback(
+    (id: string) => setSelectedSkillIds((prev) => toggleSetItem(prev, id)),
+    [],
+  )
+  const handleToggleSubAgent = useCallback(
+    (id: string) => setSelectedSubAgentIds((prev) => toggleSetItem(prev, id)),
+    [],
+  )
+  const handleToggleMiddleware = useCallback(
+    (type: string) => setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type)),
+    [],
+  )
+  const handleResetModelParams = useCallback(() => {
+    setTemperature(0.7)
+    setTopP(1.0)
+    setMaxTokens(4096)
+  }, [])
+
+  const visualControlledState = useMemo(
+    () => ({
+      name,
+      description,
+      systemPrompt,
+      modelId,
+      temperature,
+      topP,
+      maxTokens,
+      selectedToolIds,
+      selectedMcpToolIds,
+      selectedSkillIds,
+      selectedSubAgentIds,
+      selectedMiddlewareTypes,
+    }),
+    [
+      name,
+      description,
+      systemPrompt,
+      modelId,
+      temperature,
+      topP,
+      maxTokens,
+      selectedToolIds,
+      selectedMcpToolIds,
+      selectedSkillIds,
+      selectedSubAgentIds,
+      selectedMiddlewareTypes,
+    ],
+  )
+
+  const visualControlledHandlers = useMemo(
+    () => ({
+      onNameChange: setName,
+      onDescriptionChange: setDescription,
+      onSystemPromptChange: setSystemPrompt,
+      onModelIdChange: setModelId,
+      onTemperatureChange: setTemperature,
+      onTopPChange: setTopP,
+      onMaxTokensChange: setMaxTokens,
+      onToggleTool: handleToggleTool,
+      onToggleMcpTool: handleToggleMcpTool,
+      onToggleSkill: handleToggleSkill,
+      onToggleSubAgent: handleToggleSubAgent,
+      onToggleMiddleware: handleToggleMiddleware,
+    }),
+    [
+      handleToggleTool,
+      handleToggleMcpTool,
+      handleToggleSkill,
+      handleToggleSubAgent,
+      handleToggleMiddleware,
+    ],
+  )
 
   // 첫 모델을 기본값으로 prefill
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -189,67 +291,30 @@ export default function ManualCreationPage() {
               onTopPChange={setTopP}
               maxTokens={maxTokens}
               onMaxTokensChange={setMaxTokens}
-              onResetModelParams={() => {
-                setTemperature(0.7)
-                setTopP(1.0)
-                setMaxTokens(4096)
-              }}
+              onResetModelParams={handleResetModelParams}
               selectedToolIds={selectedToolIds}
-              onToggleTool={(id) => setSelectedToolIds((prev) => toggleSetItem(prev, id))}
+              onToggleTool={handleToggleTool}
               selectedMcpToolIds={selectedMcpToolIds}
-              onToggleMcpTool={(id) => setSelectedMcpToolIds((prev) => toggleSetItem(prev, id))}
+              onToggleMcpTool={handleToggleMcpTool}
               selectedSkillIds={selectedSkillIds}
-              onToggleSkill={(id) => setSelectedSkillIds((prev) => toggleSetItem(prev, id))}
+              onToggleSkill={handleToggleSkill}
               selectedMiddlewareTypes={selectedMiddlewareTypes}
-              onToggleMiddleware={(type) =>
-                setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type))
-              }
+              onToggleMiddleware={handleToggleMiddleware}
             />
           </TabsContent>
           <TabsContent value="visual" className="flex flex-1 min-h-0 flex-col overflow-hidden p-0">
-            <ReactFlowProvider>
-              <VisualSettingsFlow
-                models={models}
-                tools={tools ?? []}
-                skills={skills ?? []}
-                middlewares={middlewares ?? []}
-                mode="create"
+            {leftTab === 'visual' ? (
+                <VisualSettingsIsland
+                  models={models}
+                  tools={tools ?? EMPTY_RESOURCE_LIST}
+                  skills={skills ?? EMPTY_RESOURCE_LIST}
+                  middlewares={middlewares ?? EMPTY_RESOURCE_LIST}
+                  mode="create"
                 embedded
-                controlledState={{
-                  name,
-                  description,
-                  systemPrompt,
-                  modelId,
-                  temperature,
-                  topP,
-                  maxTokens,
-                  selectedToolIds,
-                  selectedMcpToolIds,
-                  selectedSkillIds,
-                  selectedSubAgentIds,
-                  selectedMiddlewareTypes,
-                }}
-                controlledHandlers={{
-                  onNameChange: setName,
-                  onDescriptionChange: setDescription,
-                  onSystemPromptChange: setSystemPrompt,
-                  onModelIdChange: setModelId,
-                  onTemperatureChange: setTemperature,
-                  onTopPChange: setTopP,
-                  onMaxTokensChange: setMaxTokens,
-                  onToggleTool: (id) =>
-                    setSelectedToolIds((prev) => toggleSetItem(prev, id)),
-                  onToggleMcpTool: (id) =>
-                    setSelectedMcpToolIds((prev) => toggleSetItem(prev, id)),
-                  onToggleSkill: (id) =>
-                    setSelectedSkillIds((prev) => toggleSetItem(prev, id)),
-                  onToggleSubAgent: (id) =>
-                    setSelectedSubAgentIds((prev) => toggleSetItem(prev, id)),
-                  onToggleMiddleware: (type) =>
-                    setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type)),
-                }}
+                controlledState={visualControlledState}
+                controlledHandlers={visualControlledHandlers}
               />
-            </ReactFlowProvider>
+            ) : null}
           </TabsContent>
         </Tabs>
         </section>

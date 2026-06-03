@@ -1,8 +1,10 @@
 'use client'
 
 import type { CSSProperties, ReactNode } from 'react'
+import { ChevronRightIcon } from 'lucide-react'
 
 import { PageHeader } from '@/components/shared/page-header'
+import { resourceMetaClassName, type ResourceTone } from '@/lib/resource-tones'
 import { cn } from '@/lib/utils'
 
 type ResourcePageProps = {
@@ -25,13 +27,14 @@ function ResourcePage({
   return (
     <div
       className={cn(
-        'flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-emerald-50/35 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background',
+        'moldy-app-surface flex min-h-0 flex-1 flex-col overflow-hidden',
+        'relative',
         className,
       )}
     >
       <div
         className={cn(
-          'mx-auto flex min-h-0 w-full max-w-[1220px] flex-1 flex-col gap-4 px-5 py-6 md:px-8',
+          'mx-auto flex min-h-0 w-full max-w-[1220px] flex-1 flex-col gap-5 px-5 py-6 md:px-8',
           contentClassName,
         )}
       >
@@ -48,16 +51,7 @@ type ResourcePanelRootProps = {
 }
 
 function ResourcePanelRoot({ children, className }: ResourcePanelRootProps) {
-  return (
-    <section
-      className={cn(
-        'flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/90 shadow-[0_16px_45px_-38px_rgba(15,23,42,0.45)] backdrop-blur',
-        className,
-      )}
-    >
-      {children}
-    </section>
-  )
+  return <section className={cn('moldy-resource-panel', className)}>{children}</section>
 }
 
 function ResourcePanelToolbar({
@@ -68,17 +62,13 @@ function ResourcePanelToolbar({
   className?: string
 }) {
   return (
-    <div
-      className={cn('flex shrink-0 flex-col gap-3 border-b border-border/60 p-4 md:p-5', className)}
-    >
-      {children}
-    </div>
+    <div className={cn('moldy-resource-panel-toolbar md:p-5', className)}>{children}</div>
   )
 }
 
 function ResourcePanelBody({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn('min-h-0 flex-1 overflow-y-auto p-4 md:p-5', className)}>{children}</div>
+    <div className={cn('moldy-resource-panel-body md:p-5', className)}>{children}</div>
   )
 }
 
@@ -139,7 +129,7 @@ function CountedLineTabs({
             >
               <span>{tab.label}</span>
               {isActive && tab.countLabel ? (
-                <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
+                <span className="rounded-md bg-primary px-1.5 py-0.5 moldy-ui-caption font-semibold leading-none text-primary-foreground ring-1 ring-primary-strong/15">
                   {tab.countLabel}
                 </span>
               ) : null}
@@ -159,6 +149,10 @@ function ResourceToolbar({ children, className }: { children: ReactNode; classNa
   )
 }
 
+function ResourceSummaryStrip({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('moldy-resource-summary-strip sm:grid-cols-3', className)}>{children}</div>
+}
+
 type ResourceGridProps = {
   children: ReactNode
   minColumnWidth?: number
@@ -169,7 +163,7 @@ type ResourceGridProps = {
 function ResourceGrid({ children, minColumnWidth = 214, className, style }: ResourceGridProps) {
   return (
     <div
-      className={cn('grid gap-3', className)}
+      className={cn('moldy-content-visibility grid gap-3', className)}
       style={{
         gridTemplateColumns: `repeat(auto-fill, minmax(${minColumnWidth}px, 1fr))`,
         ...style,
@@ -180,4 +174,85 @@ function ResourceGrid({ children, minColumnWidth = 214, className, style }: Reso
   )
 }
 
-export { CountedLineTabs, ResourceGrid, ResourcePage, ResourcePanel, ResourceToolbar }
+function ResourceBadge({
+  tone,
+  children,
+  className,
+}: {
+  tone: ResourceTone
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <span className={cn('moldy-resource-badge', tone.badge, className)}>
+      <span className={cn('moldy-resource-badge-dot', tone.dot)} />
+      <span className="truncate">{children}</span>
+    </span>
+  )
+}
+
+function ResourceCardTitle({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={cn('moldy-resource-title', className)}>{children}</span>
+}
+
+function ResourceCardDescription({
+  children,
+  className,
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return <p className={cn('moldy-resource-description', className)}>{children}</p>
+}
+
+function ResourceCardSubtext({
+  children,
+  tone = 'default',
+  className,
+}: {
+  children: ReactNode
+  tone?: 'default' | 'mono'
+  className?: string
+}) {
+  return (
+    <p
+      className={cn('moldy-resource-subtext', className)}
+      data-mono={tone === 'mono' ? 'true' : undefined}
+    >
+      {children}
+    </p>
+  )
+}
+
+function ResourceCardMeta({ children, className }: { children: ReactNode; className?: string }) {
+  return <span className={cn(resourceMetaClassName, className)}>{children}</span>
+}
+
+function ResourceMetaStack({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('moldy-resource-meta-stack space-y-1', className)}>{children}</div>
+}
+
+function ResourceCardAction({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span className={cn('moldy-resource-action', className)}>
+      {children}
+      <ChevronRightIcon aria-hidden className="size-3" />
+    </span>
+  )
+}
+
+export {
+  CountedLineTabs,
+  ResourceBadge,
+  ResourceCardAction,
+  ResourceCardDescription,
+  ResourceCardMeta,
+  ResourceCardSubtext,
+  ResourceCardTitle,
+  ResourceGrid,
+  ResourceMetaStack,
+  ResourcePage,
+  ResourcePanel,
+  ResourceSummaryStrip,
+  ResourceToolbar,
+}

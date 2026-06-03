@@ -15,7 +15,7 @@ export function ErrorState({ title, description, onRetry }: Props) {
   return (
     <div
       role="alert"
-      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-status-danger/30 bg-status-danger/5 px-6 py-10 text-center"
+      className="moldy-error-state"
     >
       <AlertCircleIcon className="size-8 text-status-danger" />
       <div>

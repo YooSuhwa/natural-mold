@@ -35,7 +35,7 @@ export default function MarketplaceModerationPage() {
 
   if (userLoading) {
     return (
-      <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+      <div className="moldy-app-surface flex flex-1 flex-col overflow-auto">
         <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
           <Skeleton className="h-8 w-48" />
         </div>
@@ -45,7 +45,7 @@ export default function MarketplaceModerationPage() {
 
   if (!superUser) {
     return (
-      <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+      <div className="moldy-app-surface flex flex-1 flex-col overflow-auto">
         <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-4 px-6 py-7 pb-20 md:px-8">
           <EmptyState
             icon={<ShieldIcon className="size-6" />}
@@ -79,7 +79,7 @@ export default function MarketplaceModerationPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+    <div className="moldy-app-surface flex flex-1 flex-col overflow-auto">
       <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
         <PageHeader
           title={t('title')}

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type KeyboardEvent } from 'react'
 import { useTranslations } from 'next-intl'
-import { ChevronRightIcon, KeyRound, Plus } from 'lucide-react'
+import { KeyRound, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { StatusChip } from '@/components/shared/status-chip'
@@ -11,7 +11,13 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { SearchInput } from '@/components/shared/search-input'
 import {
   CountedLineTabs,
+  ResourceBadge,
+  ResourceCardAction,
+  ResourceCardMeta,
+  ResourceCardSubtext,
+  ResourceCardTitle,
   ResourceGrid,
+  ResourceMetaStack,
   ResourcePage,
   ResourcePanel,
   ResourceToolbar,
@@ -20,6 +26,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { CredentialCreateModal } from '@/components/credential/credential-create-modal'
 import { CredentialDetailDialog } from '@/components/credential/credential-detail-dialog'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
+import {
+  getResourceTone,
+  resourceCardClassName,
+  resourceStatusChipClassName,
+  type ResourceTone,
+} from '@/lib/resource-tones'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
 import { cn } from '@/lib/utils'
 
@@ -218,7 +230,7 @@ export default function CredentialsPage() {
               {isLoading ? (
                 <ResourceGrid minColumnWidth={252}>
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="h-[178px] rounded-md" />
+                    <Skeleton key={index} className="h-[178px] rounded-xl" />
                   ))}
                 </ResourceGrid>
               ) : isFilteredEmpty ? (
@@ -285,9 +297,7 @@ function CredentialCard({
   manageLabel: string
   onOpen: (id: string) => void
 }) {
-  const tone = pickCredentialCardTone(
-    `${credential.definition_key}:${credential.name}:${credential.status}`,
-  )
+  const tone = getResourceTone(definition?.category ?? credential.definition_key)
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'Enter' && event.key !== ' ') return
@@ -307,7 +317,7 @@ function CredentialCard({
       <div className="flex items-start justify-between gap-3">
         <span
           className={cn(
-            'inline-flex size-9 shrink-0 items-center justify-center rounded-lg',
+            'moldy-resource-icon',
             tone.icon,
           )}
         >
@@ -316,119 +326,37 @@ function CredentialCard({
             className="size-4.5"
           />
         </span>
-        <span
-          className={cn(
-            'inline-flex min-w-0 max-w-[132px] items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold leading-none',
-            tone.badge,
-          )}
-        >
-          <span className={cn('size-1.5 shrink-0 rounded-full', tone.dot)} />
-          <span className="truncate">{providerLabel}</span>
-        </span>
+        <ResourceBadge tone={tone}>{providerLabel}</ResourceBadge>
       </div>
 
-      <span className="mt-3 line-clamp-1 text-[15px] font-bold leading-tight text-foreground">
-        {credential.name}
-      </span>
+      <ResourceCardTitle>{credential.name}</ResourceCardTitle>
       {categoryLabel ? (
-        <p className="mt-2 truncate text-[11px] font-medium text-muted-foreground/80">
-          {categoryLabel}
-        </p>
+        <ResourceCardSubtext>{categoryLabel}</ResourceCardSubtext>
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
         <StatusChip
           variant={credential.status}
-          className="max-w-[128px] bg-white/55 text-[10.5px] shadow-sm ring-white/80 dark:bg-white/10 dark:ring-white/10"
+          className={resourceStatusChipClassName}
         />
-        <span className={credentialMetaClassName}>{fieldCountLabel}</span>
+        <ResourceCardMeta>{fieldCountLabel}</ResourceCardMeta>
         {credential.is_shared ? (
-          <span className={credentialMetaClassName}>{sharedLabel}</span>
+          <ResourceCardMeta>{sharedLabel}</ResourceCardMeta>
         ) : null}
       </div>
 
-      <div className="mt-3 space-y-1 text-[11px] text-muted-foreground">
+      <ResourceMetaStack>
         {lastUsedLabel ? <p>{lastUsedLabel}</p> : null}
         {lastTestedLabel ? <p>{lastTestedLabel}</p> : null}
-      </div>
+      </ResourceMetaStack>
 
       <div className="mt-auto flex items-center justify-end pt-3">
-        <span
-          className={cn(
-            'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-all duration-150',
-            'group-hover:translate-x-0.5 group-hover:text-[var(--primary-strong)]',
-            'group-focus-visible:translate-x-0.5 group-focus-visible:text-[var(--primary-strong)]',
-          )}
-        >
-          {manageLabel}
-          <ChevronRightIcon aria-hidden className="size-3" />
-        </span>
+        <ResourceCardAction>{manageLabel}</ResourceCardAction>
       </div>
     </div>
   )
 }
 
-type CredentialCardTone = {
-  card: string
-  icon: string
-  badge: string
-  dot: string
-}
-
-const CREDENTIAL_CARD_TONES: CredentialCardTone[] = [
-  {
-    card: 'bg-violet-50/75 hover:border-violet-200 dark:bg-violet-500/10 dark:hover:border-violet-400/30',
-    icon: 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200',
-    badge:
-      'border-violet-100 bg-white/70 text-violet-800 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-200',
-    dot: 'bg-violet-500',
-  },
-  {
-    card: 'bg-sky-50/75 hover:border-sky-200 dark:bg-sky-500/10 dark:hover:border-sky-400/30',
-    icon: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200',
-    badge:
-      'border-sky-100 bg-white/70 text-sky-800 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-200',
-    dot: 'bg-sky-500',
-  },
-  {
-    card: 'bg-emerald-50/75 hover:border-emerald-200 dark:bg-emerald-500/10 dark:hover:border-emerald-400/30',
-    icon: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
-    badge:
-      'border-emerald-100 bg-white/70 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200',
-    dot: 'bg-emerald-500',
-  },
-  {
-    card: 'bg-amber-50/75 hover:border-amber-200 dark:bg-amber-500/10 dark:hover:border-amber-400/30',
-    icon: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200',
-    badge:
-      'border-amber-100 bg-white/70 text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200',
-    dot: 'bg-amber-500',
-  },
-  {
-    card: 'bg-rose-50/75 hover:border-rose-200 dark:bg-rose-500/10 dark:hover:border-rose-400/30',
-    icon: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200',
-    badge:
-      'border-rose-100 bg-white/70 text-rose-800 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200',
-    dot: 'bg-rose-500',
-  },
-]
-
-const credentialMetaClassName =
-  'inline-flex max-w-[140px] items-center rounded border border-white/80 bg-white/55 px-1.5 py-0.5 text-[10.5px] font-semibold leading-none text-foreground shadow-sm dark:border-white/10 dark:bg-white/10'
-
-function credentialCardClassName(tone: CredentialCardTone): string {
-  return cn(
-    'group relative flex min-h-[178px] cursor-pointer flex-col rounded-md border border-transparent p-4 text-left',
-    'shadow-[0_10px_24px_-22px_rgba(15,23,42,0.45)] transition-all duration-150',
-    'hover:-translate-y-px hover:shadow-[0_18px_32px_-24px_rgba(15,23,42,0.55)]',
-    'focus-visible:-translate-y-px focus-visible:border-emerald-300 focus-visible:shadow-md',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40',
-    tone.card,
-  )
-}
-
-function pickCredentialCardTone(seed: string): CredentialCardTone {
-  let hash = 0
-  for (let i = 0; i < seed.length; i += 1) hash += seed.charCodeAt(i)
-  return CREDENTIAL_CARD_TONES[hash % CREDENTIAL_CARD_TONES.length]
+function credentialCardClassName(tone: ResourceTone): string {
+  return resourceCardClassName(tone, 'min-h-[178px]')
 }

@@ -190,7 +190,7 @@ export function DataTable<T>({
   return (
     <div className="space-y-3">
       {(searchable || filters?.length || toolbar) && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/70 bg-card/70 p-3">
           {searchable && (
             <SearchInput
               containerClassName="w-full sm:w-72"
@@ -217,7 +217,7 @@ export function DataTable<T>({
         </div>
       )}
 
-      <div className="rounded-lg border">
+      <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-[var(--moldy-shadow-card)]">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

@@ -96,7 +96,7 @@ function SkillDetailBody({ skillId, onClose }: { skillId: string; onClose: () =>
       title={
         <span className="inline-flex items-center gap-2">
           {skill.name}
-          <Badge variant="secondary" className="text-[10px]">
+          <Badge variant="secondary" className="moldy-ui-micro">
             {skill.kind}
           </Badge>
         </span>
@@ -503,7 +503,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
               <div className="flex gap-1">
                 <Button
                   size="sm"
-                  className="h-6 flex-1 text-[11px]"
+                  className="h-6 flex-1 moldy-ui-caption"
                   onClick={handleAddFile}
                   disabled={setFile.isPending || !newPath.trim()}
                 >
@@ -512,7 +512,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-6 flex-1 text-[11px]"
+                  className="h-6 flex-1 moldy-ui-caption"
                   onClick={() => {
                     setAdding(false)
                     setNewPath('')
@@ -525,7 +525,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
           ) : null}
           <SkillPackageTree files={files ?? []} selectedPath={selectedPath} onSelect={selectFile} />
           {dirtyPaths.size > 0 ? (
-            <p className="mt-3 text-[10px] text-muted-foreground">
+            <p className="mt-3 moldy-ui-micro text-muted-foreground">
               {t('unsavedCount', { count: dirtyPaths.size })}
             </p>
           ) : null}
@@ -571,7 +571,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
             {t('deleteSkill')}
           </Button>
         )}
-        <span className="text-[10px] text-muted-foreground">
+        <span className="moldy-ui-micro text-muted-foreground">
           {t('usedBy', {
             bytes: skill?.size_bytes ?? 0,
             version: skill?.version ?? '—',
@@ -655,7 +655,7 @@ function SkillCredentialBindingsPanel({ skillId }: { skillId: string }) {
                 </Badge>
               </div>
               {requirement.description ? (
-                <p className="line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+                <p className="line-clamp-2 moldy-ui-caption leading-4 text-muted-foreground">
                   {requirement.description}
                 </p>
               ) : null}
@@ -666,7 +666,7 @@ function SkillCredentialBindingsPanel({ skillId }: { skillId: string }) {
                 disabled={pending}
                 placeholder={t('credentialPlaceholder')}
               />
-              <p className="font-mono text-[10px] text-muted-foreground/80">
+              <p className="font-mono moldy-ui-micro text-muted-foreground/80">
                 {requirement.definition_key}
               </p>
             </div>
@@ -722,11 +722,11 @@ function FileEditorPane({
   return (
     <>
       <div className="flex items-center gap-2">
-        <code className="rounded bg-muted/50 px-2 py-0.5 font-mono text-[11px]">
+        <code className="rounded bg-muted/50 px-2 py-0.5 font-mono moldy-ui-caption">
           {selectedPath}
         </code>
         {currentDirty ? (
-          <Badge variant="secondary" className="bg-status-warn/15 text-[10px] text-status-warn">
+          <Badge variant="secondary" className="bg-status-warn/15 moldy-ui-micro text-status-warn">
             {t('unsaved')}
           </Badge>
         ) : null}
@@ -741,7 +741,7 @@ function FileEditorPane({
             {t('deleteFile')}
           </Button>
         ) : (
-          <Badge variant="secondary" className="ml-auto text-[10px] text-muted-foreground">
+          <Badge variant="secondary" className="ml-auto moldy-ui-micro text-muted-foreground">
             {t('protected')}
           </Badge>
         )}

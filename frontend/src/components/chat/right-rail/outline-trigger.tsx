@@ -44,7 +44,7 @@ export function OutlineTrigger({
         type="button"
         onClick={handleClick}
         className={cn(
-          'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+          'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 moldy-ui-caption text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
           className,
         )}
         title={label}

@@ -9,21 +9,25 @@ export function ChannelsNode() {
 
   return (
     <>
-      <div className="w-[220px] rounded-xl border bg-card shadow-md">
+      <div className="moldy-flow-node w-[220px]">
         <div className="border-b px-3 py-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('nodes.channels')}
           </span>
         </div>
         <div className="space-y-2 px-3 py-2.5">
           <p className="text-xs text-muted-foreground">{t('channels.count', { count: 0 })}</p>
-          <p className="text-[11px] text-muted-foreground/70">{t('channels.hint')}</p>
+          <p className="moldy-ui-caption text-muted-foreground/70">{t('channels.hint')}</p>
           <Button variant="outline" size="sm" disabled className="w-full text-xs">
             {t('channels.setIdentity')}
           </Button>
         </div>
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-amber-500 !w-2.5 !h-2.5" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="moldy-flow-handle moldy-flow-handle-channels"
+      />
     </>
   )
 }

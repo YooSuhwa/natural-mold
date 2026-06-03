@@ -128,14 +128,14 @@ export function ConversationList({
         key={conv.id}
         className={cn(
           'group flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted',
-          unreadCount > 0 && !isActive && 'bg-amber-50/70 dark:bg-amber-500/10',
+          unreadCount > 0 && !isActive && 'moldy-status-soft moldy-status-warn',
           isActive &&
-            'bg-emerald-50 font-medium ring-1 ring-emerald-200/60 hover:bg-emerald-50 dark:bg-emerald-500/10 dark:ring-emerald-500/20 dark:hover:bg-emerald-500/10',
+            'bg-primary font-medium text-primary-foreground ring-1 ring-primary-strong/20 hover:bg-primary',
         )}
       >
         <Link
           href={`/agents/${agentId}/conversations/${conv.id}`}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
         >
           {conv.is_pinned ? (
             <PinIcon className="size-3 shrink-0 text-muted-foreground" />
@@ -145,7 +145,7 @@ export function ConversationList({
           <span className="truncate">{conv.title ?? t('fallbackTitle')}</span>
         </Link>
         {unreadCount > 0 ? (
-          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-semibold text-white">
+          <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-status-warn px-1.5 moldy-ui-caption font-semibold text-white">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         ) : null}
@@ -187,7 +187,7 @@ export function ConversationList({
   return (
     <div className="flex h-full flex-col">
       {/* Agent card header */}
-      <div className="border-b p-4">
+      <div className="border-b border-border/60 bg-card/55 p-4">
         <div className="flex items-start gap-3">
           <AgentAvatar imageUrl={agentImageUrl ?? null} name={agentName ?? ''} size="md" />
           <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -209,7 +209,7 @@ export function ConversationList({
       </div>
 
       {/* "대화" 라벨 + 새 대화 버튼 */}
-      <div className="flex items-center justify-between border-b px-4 py-2">
+      <div className="flex items-center justify-between border-b border-border/60 px-4 py-2">
         <span className="text-xs font-medium text-muted-foreground">{t('label')}</span>
         <Button
           variant="ghost"
@@ -223,7 +223,7 @@ export function ConversationList({
       </div>
 
       {/* 검색 입력 */}
-      <div className="border-b px-3 py-2">
+      <div className="border-b border-border/60 px-3 py-2">
         <SearchInput
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -264,7 +264,7 @@ export function ConversationList({
       </div>
 
       {/* 휴지통 풋터 (placeholder) */}
-      <div className="border-t p-2">
+      <div className="border-t border-border/60 p-2">
         <Button
           variant="ghost"
           className="w-full justify-start gap-2 px-3 py-2 text-sm font-normal text-muted-foreground"

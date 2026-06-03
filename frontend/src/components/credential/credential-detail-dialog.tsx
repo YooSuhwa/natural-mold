@@ -156,12 +156,12 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
                     >
                       <div className="min-w-0">
                         <p className="font-medium">{log.action}</p>
-                        <p className="text-[11px] text-muted-foreground">
+                        <p className="moldy-ui-caption text-muted-foreground">
                           {log.source}
                           {log.error ? ` · ${log.error}` : ''}
                         </p>
                       </div>
-                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                      <span className="shrink-0 moldy-ui-caption text-muted-foreground">
                         {new Date(log.created_at).toLocaleString()}
                       </span>
                     </li>
@@ -207,7 +207,7 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
   return (
     <div className="flex items-start justify-between gap-2">
       <span className="text-muted-foreground">{label}</span>
-      <span className={mono ? 'text-right font-mono text-[11px] break-all' : 'text-right'}>
+      <span className={mono ? 'text-right font-mono moldy-ui-caption break-all' : 'text-right'}>
         {value}
       </span>
     </div>

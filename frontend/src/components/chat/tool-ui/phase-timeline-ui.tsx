@@ -1,8 +1,10 @@
 'use client'
 
+import type { CSSProperties } from 'react'
 import { makeAssistantToolUI, useAssistantState } from '@assistant-ui/react'
 import { CheckIcon, SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { BuilderHeaderIcon, BuilderMuted, BuilderTitle } from './builder-primitives'
 
 type PhaseStatus = 'pending' | 'in_progress' | 'completed'
 
@@ -59,103 +61,34 @@ function deriveInProgress(todos: PhaseTodo[]): PhaseTodo[] {
   return next
 }
 
-/** Builder ProgressRail 전용 토큰. 빌더 화면 한정 색이라 globals.css로 승격하지 않고 모듈 스코프로 보유. */
-const T = {
-  border: 'oklch(0.93 0.005 163)',
-  surface: '#ffffff',
-  ink: 'oklch(0.18 0.005 163)',
-  muted: 'oklch(0.55 0.01 163)',
-  mutedSoft: 'oklch(0.72 0.01 163)',
-  primary: 'oklch(0.596 0.145 163.225)',
-  primaryBg: 'oklch(0.96 0.04 163)',
-  primaryBgStrong: 'oklch(0.92 0.06 163)',
-  trackBg: 'oklch(0.95 0.005 163)',
-  connectorRest: 'oklch(0.91 0.005 163)',
-  pendingDot: 'oklch(0.85 0.005 163)',
-  activeBadgeFg: 'oklch(0.32 0.1 163)',
-} as const
-
 function PhaseDot({ status }: { status: PhaseStatus }) {
-  const base = {
-    width: 22,
-    height: 22,
-    flexShrink: 0,
-    boxShadow: `0 0 0 4px ${T.surface}`,
-  } as const
-
   if (status === 'completed') {
     return (
-      <span
-        className="inline-flex items-center justify-center rounded-full text-white"
-        style={{ ...base, background: T.primary }}
-      >
+      <span className="moldy-phase-dot" data-status={status}>
         <CheckIcon className="size-3" strokeWidth={3} />
       </span>
     )
   }
   if (status === 'in_progress') {
     return (
-      <span
-        className="inline-flex items-center justify-center rounded-full"
-        style={{ ...base, background: T.surface, border: `2px solid ${T.primary}` }}
-      >
-        <span
-          className="rounded-full"
-          style={{
-            width: 8,
-            height: 8,
-            background: T.primary,
-            animation: 'cb-pulse 1.6s ease-in-out infinite',
-          }}
-        />
+      <span className="moldy-phase-dot" data-status={status}>
+        <span className="moldy-phase-dot-core" data-status={status} />
       </span>
     )
   }
   return (
-    <span
-      className="inline-flex items-center justify-center rounded-full"
-      style={{
-        ...base,
-        background: T.surface,
-        border: `1.5px dashed ${T.pendingDot}`,
-      }}
-    >
-      <span className="rounded-full" style={{ width: 4, height: 4, background: T.pendingDot }} />
+    <span className="moldy-phase-dot" data-status={status}>
+      <span className="moldy-phase-dot-core" data-status={status} />
     </span>
   )
 }
 
 function StatusBadge({ status }: { status: PhaseStatus }) {
   const t = useTranslations('chat.phaseTimeline')
-  const bgFg: { bg: string; fg: string; border: string } =
-    status === 'completed'
-      ? { bg: T.primaryBg, fg: T.primary, border: 'transparent' }
-      : status === 'in_progress'
-        ? { bg: T.primaryBgStrong, fg: T.activeBadgeFg, border: 'transparent' }
-        : { bg: 'transparent', fg: T.mutedSoft, border: T.border }
 
   return (
-    <span
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-full text-[11px] font-semibold"
-      style={{
-        padding: '2px 8px',
-        background: bgFg.bg,
-        color: bgFg.fg,
-        border: `1px solid ${bgFg.border}`,
-        letterSpacing: '-0.005em',
-      }}
-    >
-      {status === 'in_progress' && (
-        <span
-          className="rounded-full"
-          style={{
-            width: 5,
-            height: 5,
-            background: 'currentColor',
-            animation: 'cb-pulse 1.6s ease-in-out infinite',
-          }}
-        />
-      )}
+    <span className="moldy-phase-status" data-status={status}>
+      {status === 'in_progress' && <span className="moldy-phase-status-pulse" />}
       {t(`status.${status}`)}
     </span>
   )
@@ -167,77 +100,32 @@ function ProgressRail({ todos }: { todos: PhaseTodo[] }) {
   const total = items.length || 1
   const done = items.filter((t) => t.status === 'completed').length
   const ratio = Math.min(100, (done / total) * 100)
+  const phaseStyle = { '--phase-ratio': `${ratio}%` } as CSSProperties
 
   return (
-    <div
-      className="rounded-[14px]"
-      style={{
-        background: T.surface,
-        border: `1px solid ${T.border}`,
-        padding: '16px 18px 14px',
-        boxShadow: '0 1px 2px oklch(0.4 0.05 163 / 0.04)',
-      }}
-    >
+    <div className="moldy-phase-rail" style={phaseStyle}>
       <div className="mb-3.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span
-            className="inline-flex items-center justify-center rounded-[7px]"
-            style={{ width: 22, height: 22, background: T.primaryBg, color: T.primary }}
-          >
+          <BuilderHeaderIcon>
             <SparklesIcon className="size-3" />
-          </span>
-          <span
-            className="text-[13.5px] font-semibold"
-            style={{ color: T.ink, letterSpacing: '-0.01em' }}
-          >
-            {t('title')}
-          </span>
-          <span className="text-[12px] tabular-nums" style={{ color: T.muted }}>
+          </BuilderHeaderIcon>
+          <BuilderTitle>{t('title')}</BuilderTitle>
+          <BuilderMuted className="tabular-nums">
             {t('progress', { done, total: items.length })}
-          </span>
+          </BuilderMuted>
         </div>
-        <div
-          className="overflow-hidden rounded-full"
-          style={{ width: 90, height: 5, background: T.trackBg }}
-        >
-          <div
-            className="h-full rounded-full transition-[width] duration-300"
-            style={{ width: `${ratio}%`, background: T.primary }}
-          />
+        <div className="moldy-phase-progress-track">
+          <div className="moldy-phase-progress-fill" />
         </div>
       </div>
 
       <ol className="relative m-0 list-none p-0">
-        <span
-          aria-hidden
-          className="absolute"
-          style={{
-            left: 11,
-            top: 12,
-            bottom: 12,
-            width: 1.5,
-            background: `linear-gradient(180deg, ${T.primary} 0%, ${T.primary} ${ratio}%, ${T.connectorRest} ${ratio}%, ${T.connectorRest} 100%)`,
-          }}
-        />
+        <span aria-hidden className="moldy-phase-connector" />
         {items.map((todo) => (
-          <li
-            key={todo.id}
-            className="relative flex items-center gap-3"
-            style={{ padding: '6px 0' }}
-          >
+          <li key={todo.id} className="moldy-phase-row">
             <PhaseDot status={todo.status} />
-            <span
-              className="flex-1 text-[13.5px]"
-              style={{
-                color: todo.status === 'pending' ? T.mutedSoft : T.ink,
-                fontWeight: todo.status === 'in_progress' ? 600 : 500,
-                letterSpacing: '-0.005em',
-              }}
-            >
-              <span
-                className="mr-2 text-[11px] font-medium tabular-nums"
-                style={{ color: T.muted }}
-              >
+            <span className="moldy-phase-label" data-status={todo.status}>
+              <span className="mr-2 moldy-ui-caption font-medium tabular-nums moldy-builder-color-muted">
                 {String(todo.id).padStart(2, '0')}
               </span>
               {todo.name}

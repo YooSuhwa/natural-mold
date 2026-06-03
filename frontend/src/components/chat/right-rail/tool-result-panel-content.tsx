@@ -100,7 +100,7 @@ function ResultRenderer({ value }: { value: unknown }) {
   }
 
   return (
-    <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all rounded-md border border-border/60 bg-card p-3 font-mono text-[11px] leading-relaxed text-foreground/90">
+    <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all rounded-md border border-border/60 bg-card p-3 font-mono moldy-ui-caption leading-relaxed text-foreground/90">
       {prepared.text}
     </pre>
   )
@@ -137,7 +137,7 @@ function StatusBadge({ status }: { status: ToolResultPayload['status'] }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
+        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 moldy-ui-micro font-medium',
         className,
       )}
     >
@@ -166,7 +166,7 @@ export function ToolResultPanelContent({ payload }: Props) {
 
       {hasArgs ? (
         <section>
-          <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <h3 className="mb-2 moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
             {t('arguments')}
           </h3>
           <ResultRenderer value={payload.args} />
@@ -174,13 +174,13 @@ export function ToolResultPanelContent({ payload }: Props) {
       ) : null}
 
       <section>
-        <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="mb-2 moldy-ui-micro font-semibold uppercase tracking-wider text-muted-foreground">
           {t('result')}
         </h3>
         <ResultRenderer value={payload.result} />
       </section>
 
-      <p className="text-[10px] text-muted-foreground/70">tool_call_id: {payload.toolCallId}</p>
+      <p className="moldy-ui-micro text-muted-foreground/70">tool_call_id: {payload.toolCallId}</p>
     </div>
   )
 }

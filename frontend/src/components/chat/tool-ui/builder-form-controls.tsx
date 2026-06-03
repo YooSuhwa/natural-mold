@@ -1,8 +1,12 @@
 'use client'
 
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
-import { BUILDER_TOKENS as T } from './builder-tokens'
+import {
+  BuilderButton,
+  BuilderFeedbackWrap,
+  BuilderTextarea,
+} from './builder-primitives'
 
 interface BuilderFeedbackTextareaProps {
   value: string
@@ -28,15 +32,12 @@ export function BuilderFeedbackTextarea({
 }: BuilderFeedbackTextareaProps) {
   const t = useTranslations('chat.builderApproval')
   const resolvedPlaceholder = placeholder ?? t('shortPlaceholder')
-  const [focused, setFocused] = useState(false)
   const composingRef = useRef(false)
   return (
-    <div style={{ padding: '12px 14px 4px' }}>
-      <textarea
+    <BuilderFeedbackWrap>
+      <BuilderTextarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
         onCompositionStart={() => {
           composingRef.current = true
         }}
@@ -49,19 +50,8 @@ export function BuilderFeedbackTextarea({
         placeholder={resolvedPlaceholder}
         rows={rows}
         disabled={disabled}
-        className="w-full resize-none font-sans text-[13.5px] outline-none transition-[border-color,box-shadow] duration-150"
-        style={{
-          padding: '10px 12px',
-          background: T.surface,
-          border: `1px solid ${focused ? T.primaryDim : T.border}`,
-          borderRadius: 9,
-          color: T.ink,
-          lineHeight: 1.55,
-          letterSpacing: '-0.005em',
-          boxShadow: focused ? T.focusShadow : 'none',
-        }}
       />
-    </div>
+    </BuilderFeedbackWrap>
   )
 }
 
@@ -75,60 +65,19 @@ interface ActionButtonProps {
 /** 민트 primary 버튼 — 승인/생성/확정 등 메인 액션. */
 export function MintActionButton({ onClick, disabled, label, icon }: ActionButtonProps) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-white transition-colors active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
-      style={{
-        height: 32,
-        padding: '0 16px',
-        borderRadius: 9,
-        background: T.primary,
-        boxShadow: T.primaryShadow,
-        letterSpacing: '-0.005em',
-      }}
-      onMouseEnter={(e) => {
-        if (disabled) return
-        e.currentTarget.style.background = T.primaryHover
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = T.primary
-      }}
-    >
+    <BuilderButton tone="primary" onClick={onClick} disabled={disabled} className="px-4">
       {icon}
       {label}
-    </button>
+    </BuilderButton>
   )
 }
 
 /** 흰 outline 버튼 — 수정 요청/넘어가기/재생성 등 보조 액션. */
 export function OutlineActionButton({ onClick, disabled, label, icon }: ActionButtonProps) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-      style={{
-        height: 32,
-        padding: '0 13px',
-        borderRadius: 9,
-        background: T.surface,
-        border: `1px solid ${T.border}`,
-        color: T.ink2,
-        letterSpacing: '-0.005em',
-      }}
-      onMouseEnter={(e) => {
-        if (disabled) return
-        e.currentTarget.style.background = T.surfaceAlt
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = T.surface
-      }}
-    >
+    <BuilderButton tone="secondary" onClick={onClick} disabled={disabled}>
       {icon}
       {label}
-    </button>
+    </BuilderButton>
   )
 }

@@ -58,7 +58,7 @@ interface ScheduleFormProps {
 }
 
 function parseTriggerToForm(trigger: AgentTrigger) {
-  const config = trigger.schedule_config
+  const config = trigger.schedule_config ?? {}
 
   if (trigger.trigger_type === 'one_time') {
     return {
@@ -263,7 +263,7 @@ function ConversationCombobox({
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder={placeholder}
-              className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              className="h-7 min-w-0 flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground"
             />
           </div>
           <div id={listboxId} role="listbox" className="max-h-44 overflow-y-auto p-1">

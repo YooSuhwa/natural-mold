@@ -109,16 +109,16 @@ function CodeBlock({
   }
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border/40 bg-zinc-950 text-[11px]">
+    <div className="moldy-code-panel moldy-ui-caption">
       {/* File header */}
-      <div className="flex items-center justify-between border-b border-white/10 bg-zinc-900 px-3 py-1.5">
-        <span className="font-mono text-zinc-400">{filename}</span>
+      <div className="moldy-code-header flex items-center justify-between px-3 py-1.5">
+        <span className="moldy-code-muted font-mono">{filename}</span>
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-zinc-500">{lang}</span>
+          <span className="moldy-code-muted moldy-ui-micro">{lang}</span>
           <button
             type="button"
             onClick={handleCopy}
-            className="text-zinc-500 transition-colors hover:text-zinc-300"
+            className="moldy-code-copy"
             aria-label={copied ? t('copied') : t('copy')}
             title={copied ? t('copied') : t('copy')}
           >
@@ -132,17 +132,17 @@ function CodeBlock({
       </div>
       {/* Code */}
       <div className="overflow-x-auto p-3">
-        <pre className="font-mono leading-relaxed text-zinc-300">
+        <pre className="moldy-code-text font-mono leading-relaxed">
           {visibleLines.map((line, i) => (
             <div key={i} className="flex">
-              <span className="mr-4 inline-block w-8 select-none text-right text-zinc-600">
+              <span className="moldy-code-line-number mr-4 inline-block w-8 select-none text-right">
                 {i + 1}
               </span>
               <span className="flex-1">{line || ' '}</span>
             </div>
           ))}
           {truncated && (
-            <div className="mt-1 text-center text-zinc-500">
+            <div className="moldy-code-muted mt-1 text-center">
               … {t('moreLines', { count: lines.length - maxLines })}
             </div>
           )}
@@ -166,9 +166,9 @@ function DiffBlock({
   filename: string
 }) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border/40 bg-zinc-950 text-[11px]">
-      <div className="border-b border-white/10 bg-zinc-900 px-3 py-1.5">
-        <span className="font-mono text-zinc-400">{filename}</span>
+    <div className="moldy-code-panel moldy-ui-caption">
+      <div className="moldy-code-header px-3 py-1.5">
+        <span className="moldy-code-muted font-mono">{filename}</span>
       </div>
       <div className="overflow-x-auto p-3 font-mono leading-relaxed">
         {oldStr.split('\n').map((line, i) => (
