@@ -23,16 +23,17 @@ function useFormatTriggerSummary() {
 
   return useCallback(
     (trigger: AgentTrigger): string => {
+      const config = trigger.schedule_config ?? {}
       if (trigger.trigger_type === 'one_time') {
-        return trigger.schedule_config.scheduled_at ?? trigger.name
+        return config.scheduled_at ?? trigger.name
       }
 
       if (trigger.trigger_type === 'interval') {
-        const mins = trigger.schedule_config.interval_minutes ?? 10
+        const mins = config.interval_minutes ?? 10
         return t('everyNMin', { mins })
       }
 
-      const cron = trigger.schedule_config.cron_expression ?? ''
+      const cron = config.cron_expression ?? ''
       const parts = cron.split(' ')
       if (parts.length !== 5) return cron
 

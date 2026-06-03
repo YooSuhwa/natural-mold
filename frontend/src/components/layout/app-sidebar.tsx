@@ -226,10 +226,10 @@ export function AppSidebar() {
   )
 
   const activeMenuClass =
-    'data-active:bg-emerald-100/50 data-active:font-semibold data-active:text-emerald-800 data-active:hover:bg-emerald-100/70 data-active:hover:text-emerald-900 dark:data-active:bg-emerald-500/15 dark:data-active:text-emerald-300 dark:data-active:hover:bg-emerald-500/20 dark:data-active:hover:text-emerald-200'
+    'border border-transparent text-sidebar-foreground/80 hover:border-sidebar-border/70 hover:bg-white/70 hover:text-sidebar-accent-foreground data-active:border-[var(--moldy-border-mint)] data-active:bg-white data-active:font-semibold data-active:text-primary-strong data-active:shadow-[0_12px_28px_-24px_oklch(0.36_0.13_164_/_0.46)] data-active:hover:bg-white data-active:hover:text-primary-strong dark:hover:bg-white/5 dark:data-active:bg-white/8'
 
   const newAgentButtonClass =
-    'h-11 rounded-xl border border-emerald-200/80 bg-emerald-100/50 font-semibold text-emerald-800 hover:border-emerald-300/80 hover:bg-emerald-100/70 hover:text-emerald-900 active:bg-emerald-100/80 active:text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-500/20 dark:hover:text-emerald-200'
+    'h-11 rounded-2xl border border-primary-strong/25 bg-[linear-gradient(135deg,var(--moldy-mint),white)] font-semibold text-sidebar-accent-foreground shadow-[0_16px_34px_-28px_oklch(0.34_0.13_164_/_0.55)] hover:border-primary-strong/35 hover:bg-primary/70 hover:text-primary-strong active:bg-primary/80 dark:bg-[linear-gradient(135deg,var(--moldy-mint),var(--sidebar))] dark:hover:bg-sidebar-accent'
 
   const isDarkTheme = resolvedTheme === 'dark'
   const themeToggleLabel = isDarkTheme ? t('theme.light') : t('theme.dark')
@@ -244,7 +244,10 @@ export function AppSidebar() {
   }
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar
+      collapsible="icon"
+      className="border-r border-sidebar-border bg-sidebar shadow-[18px_0_52px_-44px_oklch(0.34_0.1_164_/_0.45)]"
+    >
       <SidebarHeader className="px-4 py-4 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:py-2">
         {/* Expanded state: logo + brand + toggle (radio ON) */}
         <div className="flex items-center justify-between group-data-[collapsible=icon]:hidden">
@@ -261,7 +264,7 @@ export function AppSidebar() {
           <button
             type="button"
             onClick={toggleSidebar}
-            className="rounded-md p-1.5 text-primary-strong hover:bg-sidebar-accent transition-colors"
+            className="rounded-lg border border-transparent p-1.5 text-primary-strong transition-colors hover:border-sidebar-border hover:bg-white/70 dark:hover:bg-white/5"
             aria-label={t('toggleSidebar')}
           >
             <ToggleRightIcon className="size-5" />
@@ -272,7 +275,7 @@ export function AppSidebar() {
           <button
             type="button"
             onClick={toggleSidebar}
-            className="group/toggle relative flex size-8 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent"
+            className="group/toggle relative flex size-8 items-center justify-center rounded-lg transition-colors hover:bg-sidebar-accent"
             aria-label={t('toggleSidebar')}
           >
             <Image
@@ -287,7 +290,7 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="min-h-0 px-1">
         {/* New Agent Button */}
         <SidebarGroup>
           <SidebarGroupContent>
@@ -466,14 +469,14 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="shrink-0 bg-transparent px-3 pb-3">
         <SidebarSeparator />
         <div className="flex items-center justify-center gap-1 px-2 py-1 group-data-[collapsible=icon]:hidden">
           <button
             type="button"
             onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
             suppressHydrationWarning
-            className="inline-flex h-7 items-center justify-center rounded-md px-1.5 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+            className="inline-flex h-7 items-center justify-center rounded-lg px-1.5 text-sidebar-foreground/60 transition-colors hover:bg-white/70 hover:text-sidebar-accent-foreground dark:hover:bg-white/5"
             aria-label={themeToggleLabel}
             title={themeToggleLabel}
           >
@@ -485,7 +488,7 @@ export function AppSidebar() {
           >
             <DropdownMenuTrigger
               render={<button type="button" />}
-              className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+              className="inline-flex h-7 items-center gap-1 rounded-lg px-1.5 text-xs font-semibold text-sidebar-foreground/60 transition-colors hover:bg-white/70 hover:text-sidebar-accent-foreground data-open:bg-white/80 data-open:text-sidebar-accent-foreground dark:hover:bg-white/5 dark:data-open:bg-white/8"
               aria-label={languageLabel}
               title={languageLabel}
             >

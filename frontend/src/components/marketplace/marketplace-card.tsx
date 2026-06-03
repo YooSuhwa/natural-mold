@@ -12,37 +12,10 @@ import { InstallationBadge } from '@/components/marketplace/badges/installation-
 import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
 import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { SupportBadge } from '@/components/marketplace/badges/support-badge'
+import { getResourceTone, resourceCardClassName } from '@/lib/resource-tones'
 import type { MarketplaceItem } from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 import { cn } from '@/lib/utils'
-
-type MarketplaceCardTone = {
-  card: string
-  icon: string
-}
-
-const MARKETPLACE_CARD_TONES: MarketplaceCardTone[] = [
-  {
-    card: 'bg-violet-50/75 hover:border-violet-200 dark:bg-violet-500/10 dark:hover:border-violet-400/30',
-    icon: 'bg-violet-100 text-violet-700 ring-violet-200/70 dark:bg-violet-500/20 dark:text-violet-200 dark:ring-violet-400/20',
-  },
-  {
-    card: 'bg-sky-50/75 hover:border-sky-200 dark:bg-sky-500/10 dark:hover:border-sky-400/30',
-    icon: 'bg-sky-100 text-sky-700 ring-sky-200/70 dark:bg-sky-500/20 dark:text-sky-200 dark:ring-sky-400/20',
-  },
-  {
-    card: 'bg-emerald-50/75 hover:border-emerald-200 dark:bg-emerald-500/10 dark:hover:border-emerald-400/30',
-    icon: 'bg-emerald-100 text-emerald-700 ring-emerald-200/70 dark:bg-emerald-500/20 dark:text-emerald-200 dark:ring-emerald-400/20',
-  },
-  {
-    card: 'bg-amber-50/75 hover:border-amber-200 dark:bg-amber-500/10 dark:hover:border-amber-400/30',
-    icon: 'bg-amber-100 text-amber-700 ring-amber-200/70 dark:bg-amber-500/20 dark:text-amber-200 dark:ring-amber-400/20',
-  },
-  {
-    card: 'bg-rose-50/75 hover:border-rose-200 dark:bg-rose-500/10 dark:hover:border-rose-400/30',
-    icon: 'bg-rose-100 text-rose-700 ring-rose-200/70 dark:bg-rose-500/20 dark:text-rose-200 dark:ring-rose-400/20',
-  },
-]
 
 export type PrimaryCtaKind =
   | 'install'
@@ -121,24 +94,20 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
   const resourceLabel = t(`resource.${item.resource_type}`)
   const versionLabel = item.latest_version?.version_label
   const versionDate = item.latest_version?.created_at
-  const tone = pickMarketplaceCardTone(item)
+  const tone = getResourceTone(item.resource_type)
 
   return (
     <Card
       size="sm"
       className={cn(
-        'group/card relative flex h-full min-h-[184px] flex-col rounded-md border border-transparent p-4 text-left',
-        'shadow-[0_10px_24px_-22px_rgba(15,23,42,0.45)] ring-0 transition-all duration-150',
-        'hover:-translate-y-px hover:shadow-[0_18px_32px_-24px_rgba(15,23,42,0.55)]',
-        'focus-within:-translate-y-px focus-within:border-emerald-300 focus-within:shadow-md focus-within:ring-2 focus-within:ring-emerald-400/40',
-        tone.card,
+        resourceCardClassName(tone, 'h-full min-h-[184px] cursor-default py-4'),
         className,
       )}
     >
       <CardHeader className="flex flex-row items-start justify-between gap-3 rounded-t-md px-0 pb-0 pt-0">
         <div
           className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-lg ring-1',
+            'flex size-9 shrink-0 items-center justify-center rounded-xl ring-1',
             tone.icon,
           )}
         >
@@ -200,10 +169,3 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
 
 export const MarketplaceCard = memo(MarketplaceCardInner)
 MarketplaceCard.displayName = 'MarketplaceCard'
-
-function pickMarketplaceCardTone(item: MarketplaceItem): MarketplaceCardTone {
-  const seed = `${item.resource_type}:${item.slug}:${item.name}`
-  let hash = 0
-  for (let i = 0; i < seed.length; i += 1) hash += seed.charCodeAt(i)
-  return MARKETPLACE_CARD_TONES[hash % MARKETPLACE_CARD_TONES.length]
-}

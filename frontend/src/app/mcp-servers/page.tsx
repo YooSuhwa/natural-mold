@@ -24,6 +24,12 @@ import { McpServerDetailDialog } from '@/components/mcp/mcp-server-detail-dialog
 import { McpImportDialog } from '@/components/mcp/mcp-import-dialog'
 import { useExportMcpServers, useMcpServers } from '@/lib/hooks/use-mcp-servers'
 import { useMcpHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
+import {
+  getResourceTone,
+  resourceCardClassName,
+  resourceMetaClassName,
+  type ResourceTone,
+} from '@/lib/resource-tones'
 import type { McpServer } from '@/lib/types/mcp'
 import type { HealthCheckEntry } from '@/lib/types/health'
 import { cn } from '@/lib/utils'
@@ -212,7 +218,7 @@ export default function McpServersPage() {
               {isLoading ? (
                 <ResourceGrid minColumnWidth={252}>
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="h-[188px] rounded-md" />
+                    <Skeleton key={index} className="h-[188px] rounded-xl" />
                   ))}
                 </ResourceGrid>
               ) : isFilteredEmpty ? (
@@ -287,7 +293,7 @@ function McpServerCard({
   onCheckNow: (id: string) => void
   checking: boolean
 }) {
-  const tone = pickMcpCardTone(`${server.transport}:${server.name}:${server.status}`)
+  const tone = getResourceTone(server.transport)
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'Enter' && event.key !== ' ') return
@@ -307,7 +313,7 @@ function McpServerCard({
       <div className="flex items-start justify-between gap-3">
         <span
           className={cn(
-            'inline-flex size-9 shrink-0 items-center justify-center rounded-lg',
+            'inline-flex size-9 shrink-0 items-center justify-center rounded-xl ring-1',
             tone.icon,
           )}
         >
@@ -393,67 +399,8 @@ function formatEndpoint(server: McpServer): string {
   return server.url ?? server.transport
 }
 
-type McpCardTone = {
-  card: string
-  icon: string
-  badge: string
-  dot: string
-}
+const mcpMetaClassName = resourceMetaClassName
 
-const MCP_CARD_TONES: McpCardTone[] = [
-  {
-    card: 'bg-violet-50/75 hover:border-violet-200 dark:bg-violet-500/10 dark:hover:border-violet-400/30',
-    icon: 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200',
-    badge:
-      'border-violet-100 bg-white/70 text-violet-800 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-200',
-    dot: 'bg-violet-500',
-  },
-  {
-    card: 'bg-sky-50/75 hover:border-sky-200 dark:bg-sky-500/10 dark:hover:border-sky-400/30',
-    icon: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200',
-    badge:
-      'border-sky-100 bg-white/70 text-sky-800 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-200',
-    dot: 'bg-sky-500',
-  },
-  {
-    card: 'bg-emerald-50/75 hover:border-emerald-200 dark:bg-emerald-500/10 dark:hover:border-emerald-400/30',
-    icon: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
-    badge:
-      'border-emerald-100 bg-white/70 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200',
-    dot: 'bg-emerald-500',
-  },
-  {
-    card: 'bg-amber-50/75 hover:border-amber-200 dark:bg-amber-500/10 dark:hover:border-amber-400/30',
-    icon: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200',
-    badge:
-      'border-amber-100 bg-white/70 text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200',
-    dot: 'bg-amber-500',
-  },
-  {
-    card: 'bg-rose-50/75 hover:border-rose-200 dark:bg-rose-500/10 dark:hover:border-rose-400/30',
-    icon: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200',
-    badge:
-      'border-rose-100 bg-white/70 text-rose-800 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200',
-    dot: 'bg-rose-500',
-  },
-]
-
-const mcpMetaClassName =
-  'inline-flex max-w-[140px] items-center rounded border border-white/80 bg-white/55 px-1.5 py-0.5 text-[10.5px] font-semibold leading-none text-foreground shadow-sm dark:border-white/10 dark:bg-white/10'
-
-function mcpCardClassName(tone: McpCardTone): string {
-  return cn(
-    'group relative flex min-h-[198px] cursor-pointer flex-col rounded-md border border-transparent p-4 text-left',
-    'shadow-[0_10px_24px_-22px_rgba(15,23,42,0.45)] transition-all duration-150',
-    'hover:-translate-y-px hover:shadow-[0_18px_32px_-24px_rgba(15,23,42,0.55)]',
-    'focus-visible:-translate-y-px focus-visible:border-emerald-300 focus-visible:shadow-md',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40',
-    tone.card,
-  )
-}
-
-function pickMcpCardTone(seed: string): McpCardTone {
-  let hash = 0
-  for (let i = 0; i < seed.length; i += 1) hash += seed.charCodeAt(i)
-  return MCP_CARD_TONES[hash % MCP_CARD_TONES.length]
+function mcpCardClassName(tone: ResourceTone): string {
+  return resourceCardClassName(tone, 'min-h-[198px]')
 }

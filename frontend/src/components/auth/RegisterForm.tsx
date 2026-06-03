@@ -48,8 +48,8 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
 
   return (
     <form onSubmit={handleSubmit} aria-busy={isLoading} noValidate>
-      <header style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', margin: '0 0 6px' }}>
+      <header className="mb-5">
+        <h1 className="mb-1.5 text-[22px] font-bold leading-tight text-foreground">
           {t('auth.register.formTitle')}
         </h1>
         {/* <p style={{ fontSize: 13.5, color: 'oklch(0.556 0 0)', margin: 0 }}>
@@ -58,19 +58,18 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
       </header>
 
       {mapped && mapped.field === null ? (
-        <div style={{ marginBottom: 14 }}>
+        <div className="mb-3.5">
           <AuthAlert>{t(mapped.messageKey)}</AuthAlert>
         </div>
       ) : null}
 
       <fieldset disabled={isLoading} className="contents">
-        <div style={{ display: 'grid', gap: 13 }}>
+        <div className="grid gap-3.5">
           {/* Name */}
           <div>
             <label
               htmlFor="reg-name"
-              className="text-sm font-medium"
-              style={{ display: 'block', marginBottom: 6 }}
+              className="mb-1.5 block text-sm font-medium"
             >
               {t('auth.register.name')}
             </label>
@@ -87,7 +86,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
               aria-invalid={nameError || mapped?.field === 'name' || undefined}
             />
             {nameError ? (
-              <p style={{ fontSize: 12, color: 'oklch(0.577 0.245 27.325)', marginTop: 6 }}>
+              <p className="mt-1.5 text-xs text-destructive">
                 {t('auth.errors.nameRequired')}
               </p>
             ) : null}
@@ -97,8 +96,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
           <div>
             <label
               htmlFor="reg-email"
-              className="text-sm font-medium"
-              style={{ display: 'block', marginBottom: 6 }}
+              className="mb-1.5 block text-sm font-medium"
             >
               {t('auth.register.email')}
             </label>
@@ -116,13 +114,13 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
               aria-describedby={mapped?.field === 'email' ? 'reg-email-error' : undefined}
             />
             {emailError ? (
-              <p style={{ fontSize: 12, color: 'oklch(0.577 0.245 27.325)', marginTop: 6 }}>
+              <p className="mt-1.5 text-xs text-destructive">
                 {t('auth.errors.invalidEmail')}
               </p>
             ) : mapped?.field === 'email' ? (
               <p
                 id="reg-email-error"
-                style={{ fontSize: 12, color: 'oklch(0.577 0.245 27.325)', marginTop: 6 }}
+                className="mt-1.5 text-xs text-destructive"
               >
                 {t(mapped.messageKey)}
               </p>
@@ -133,8 +131,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
           <div>
             <label
               htmlFor="reg-password"
-              className="text-sm font-medium"
-              style={{ display: 'block', marginBottom: 6 }}
+              className="mb-1.5 block text-sm font-medium"
             >
               {t('auth.register.password')}
             </label>
@@ -164,7 +161,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
             </div>
             <PasswordStrengthMeter password={password} />
             {passwordTooShort ? (
-              <p style={{ fontSize: 12, color: 'oklch(0.577 0.245 27.325)', marginTop: 4 }}>
+              <p className="mt-1 text-xs text-destructive">
                 {t('auth.register.strength.tooShort')}
               </p>
             ) : null}
@@ -185,12 +182,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
             </label>
             {agreedError ? (
               <p
-                style={{
-                  fontSize: 12,
-                  color: 'oklch(0.577 0.245 27.325)',
-                  marginTop: 6,
-                  paddingLeft: 26,
-                }}
+                className="mt-1.5 pl-[26px] text-xs text-destructive"
               >
                 {t('auth.register.termsRequired')}
               </p>
@@ -200,9 +192,8 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
           {/* Submit */}
           <Button
             type="submit"
-            className="w-full gap-2"
+            className="mt-0.5 w-full gap-2"
             disabled={isLoading || formInvalid}
-            style={{ marginTop: 2 }}
           >
             {isLoading ? (
               <>

@@ -39,19 +39,20 @@ export function TriggersTab({ agentId, onRequestDelete }: TriggersTabProps) {
   }
 
   function scheduleSummary(trigger: AgentTrigger) {
+    const config = trigger.schedule_config ?? {}
     if (trigger.trigger_type === 'interval') {
       return t('trigger.interval', {
-        minutes: trigger.schedule_config.interval_minutes ?? 10,
+        minutes: config.interval_minutes ?? 10,
       })
     }
     if (trigger.trigger_type === 'one_time') {
-      if (!trigger.schedule_config.scheduled_at) return t('trigger.oneTime')
-      return format.dateTime(new Date(trigger.schedule_config.scheduled_at), {
+      if (!config.scheduled_at) return t('trigger.oneTime')
+      return format.dateTime(new Date(config.scheduled_at), {
         dateStyle: 'medium',
         timeStyle: 'short',
       })
     }
-    return trigger.schedule_config.cron_expression ?? ''
+    return config.cron_expression ?? t('trigger.oneTime')
   }
 
   return (

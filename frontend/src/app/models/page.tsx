@@ -12,7 +12,7 @@ import { filterLlmCredentials, resolveCredentialForModel } from '@/lib/utils/cre
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { PageHeader } from '@/components/shared/page-header'
+import { ResourcePage, ResourcePanel } from '@/components/shared/resource-layout'
 import { DataTable, type FilterDef } from '@/components/ui/data-table'
 import { DomainIcon } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -339,68 +339,69 @@ export default function ModelsPage() {
   )
 
   return (
-    <div className="flex flex-1 flex-col overflow-auto bg-gradient-to-b from-emerald-50/40 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
-      <div className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-6 px-6 py-7 pb-20 md:px-8">
-        <PageHeader
-          title={t('catalog.title')}
-          description={t('catalog.description')}
-          action={
-            <Button onClick={() => setAddOpen(true)}>
-              <Plus className="size-4" />
-              {t('catalog.new')}
-            </Button>
-          }
-        />
+    <ResourcePage
+      title={t('catalog.title')}
+      description={t('catalog.description')}
+      contentClassName="max-w-[1180px] pb-20"
+      action={
+        <Button onClick={() => setAddOpen(true)}>
+          <Plus className="size-4" />
+          {t('catalog.new')}
+        </Button>
+      }
+    >
+      <ResourcePanel>
+        <ResourcePanel.Body className="bg-background/25">
+          {!isLoading && allModels.length === 0 ? (
+            <EmptyState
+              iconId="model"
+              title={t('catalog.empty.title')}
+              description={t('catalog.empty.description')}
+              action={
+                <Button onClick={() => setAddOpen(true)}>
+                  <Plus className="size-4" />
+                  {t('addModel')}
+                </Button>
+              }
+            />
+          ) : (
+            <DataTable
+              columns={columns}
+              data={data}
+              loading={isLoading}
+              searchable
+              searchPlaceholder={t('catalog.searchPlaceholder')}
+              globalFilterFn={(row, query) => {
+                const m = row as Model
+                return (
+                  m.display_name.toLowerCase().includes(query) ||
+                  m.model_name.toLowerCase().includes(query)
+                )
+              }}
+              filters={filters}
+              enableRowSelection
+              onRowSelectionChange={setSelected}
+              toolbar={toolbar}
+              onRowClick={(row) => setEditing(row)}
+              emptyTitle={t('catalog.empty.filtered')}
+            />
+          )}
+        </ResourcePanel.Body>
+      </ResourcePanel>
 
-        {!isLoading && allModels.length === 0 ? (
-          <EmptyState
-            iconId="model"
-            title={t('catalog.empty.title')}
-            description={t('catalog.empty.description')}
-            action={
-              <Button onClick={() => setAddOpen(true)}>
-                <Plus className="size-4" />
-                {t('addModel')}
-              </Button>
-            }
-          />
-        ) : (
-          <DataTable
-            columns={columns}
-            data={data}
-            loading={isLoading}
-            searchable
-            searchPlaceholder={t('catalog.searchPlaceholder')}
-            globalFilterFn={(row, query) => {
-              const m = row as Model
-              return (
-                m.display_name.toLowerCase().includes(query) ||
-                m.model_name.toLowerCase().includes(query)
-              )
-            }}
-            filters={filters}
-            enableRowSelection
-            onRowSelectionChange={setSelected}
-            toolbar={toolbar}
-            onRowClick={(row) => setEditing(row)}
-            emptyTitle={t('catalog.empty.filtered')}
-          />
-        )}
-
-        <ModelAddDialog open={addOpen} onOpenChange={setAddOpen} />
-        <ModelEditDialog
-          model={editing}
-          open={!!editing}
-          onOpenChange={(open) => !open && setEditing(null)}
-        />
-        <ModelTestDialog
-          model={testing}
-          open={!!testing}
-          onOpenChange={(open) => !open && setTesting(null)}
-        />
-        <ModelTestBulkDialog models={selected} open={bulkTestOpen} onOpenChange={setBulkTestOpen} />
-      </div>
-    </div>
+      <ModelAddDialog open={addOpen} onOpenChange={setAddOpen} />
+      <ModelEditDialog
+        model={editing}
+        open={!!editing}
+        onOpenChange={(open) => !open && setEditing(null)}
+      />
+      <ModelTestDialog
+        model={testing}
+        open={!!testing}
+        onOpenChange={(open) => !open && setTesting(null)}
+      />
+      <ModelTestBulkDialog models={selected} open={bulkTestOpen} onOpenChange={setBulkTestOpen} />
+    </ResourcePage>
   )
 }
 

@@ -43,7 +43,7 @@ export function UserMenu({ user, onLogout }: Props) {
         render={
           <SidebarMenuButton
             size="lg"
-            className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+            className="border border-transparent hover:border-sidebar-border/70 hover:bg-white/70 data-open:border-[var(--moldy-border-mint)] data-open:bg-white data-open:text-sidebar-accent-foreground dark:hover:bg-white/5 dark:data-open:bg-white/8"
           />
         }
       >

@@ -187,7 +187,7 @@ export function ConversationList({
   return (
     <div className="flex h-full flex-col">
       {/* Agent card header */}
-      <div className="border-b p-4">
+      <div className="border-b border-border/60 bg-card/55 p-4">
         <div className="flex items-start gap-3">
           <AgentAvatar imageUrl={agentImageUrl ?? null} name={agentName ?? ''} size="md" />
           <div className="flex min-w-0 flex-1 items-center gap-1">
@@ -209,7 +209,7 @@ export function ConversationList({
       </div>
 
       {/* "대화" 라벨 + 새 대화 버튼 */}
-      <div className="flex items-center justify-between border-b px-4 py-2">
+      <div className="flex items-center justify-between border-b border-border/60 px-4 py-2">
         <span className="text-xs font-medium text-muted-foreground">{t('label')}</span>
         <Button
           variant="ghost"
@@ -223,7 +223,7 @@ export function ConversationList({
       </div>
 
       {/* 검색 입력 */}
-      <div className="border-b px-3 py-2">
+      <div className="border-b border-border/60 px-3 py-2">
         <SearchInput
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -251,7 +251,7 @@ export function ConversationList({
       </div>
 
       {/* 휴지통 풋터 (placeholder) */}
-      <div className="border-t p-2">
+      <div className="border-t border-border/60 p-2">
         <Button
           variant="ghost"
           className="w-full justify-start gap-2 px-3 py-2 text-sm font-normal text-muted-foreground"

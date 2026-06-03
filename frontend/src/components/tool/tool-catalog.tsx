@@ -8,6 +8,12 @@ import { DomainIcon } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
 import { ResourceGrid } from '@/components/shared/resource-layout'
 import { StatusChip } from '@/components/shared/status-chip'
+import {
+  getResourceTone,
+  resourceCardClassName,
+  resourceMetaClassName,
+  type ResourceTone,
+} from '@/lib/resource-tones'
 import { cn } from '@/lib/utils'
 import type { ToolDefinition, ToolInstance } from '@/lib/types/tool'
 
@@ -26,51 +32,6 @@ interface InstalledToolCatalogProps {
   isLoading: boolean
   onOpen: (tool: ToolInstance) => void
 }
-
-type ToolCardTone = {
-  card: string
-  icon: string
-  badge: string
-  dot: string
-}
-
-const TOOL_CARD_TONES: ToolCardTone[] = [
-  {
-    card: 'bg-violet-50/75 hover:border-violet-200 dark:bg-violet-500/10 dark:hover:border-violet-400/30',
-    icon: 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200',
-    badge:
-      'border-violet-100 bg-white/70 text-violet-800 dark:border-violet-400/20 dark:bg-violet-500/10 dark:text-violet-200',
-    dot: 'bg-violet-500',
-  },
-  {
-    card: 'bg-sky-50/75 hover:border-sky-200 dark:bg-sky-500/10 dark:hover:border-sky-400/30',
-    icon: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200',
-    badge:
-      'border-sky-100 bg-white/70 text-sky-800 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-200',
-    dot: 'bg-sky-500',
-  },
-  {
-    card: 'bg-emerald-50/75 hover:border-emerald-200 dark:bg-emerald-500/10 dark:hover:border-emerald-400/30',
-    icon: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200',
-    badge:
-      'border-emerald-100 bg-white/70 text-emerald-800 dark:border-emerald-400/20 dark:bg-emerald-500/10 dark:text-emerald-200',
-    dot: 'bg-emerald-500',
-  },
-  {
-    card: 'bg-amber-50/75 hover:border-amber-200 dark:bg-amber-500/10 dark:hover:border-amber-400/30',
-    icon: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200',
-    badge:
-      'border-amber-100 bg-white/70 text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-200',
-    dot: 'bg-amber-500',
-  },
-  {
-    card: 'bg-rose-50/75 hover:border-rose-200 dark:bg-rose-500/10 dark:hover:border-rose-400/30',
-    icon: 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-200',
-    badge:
-      'border-rose-100 bg-white/70 text-rose-800 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200',
-    dot: 'bg-rose-500',
-  },
-]
 
 export function ToolCatalog({
   category,
@@ -114,7 +75,7 @@ export function ToolCatalog({
       {isLoading ? (
         <ResourceGrid minColumnWidth={240}>
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-[152px] rounded-md" />
+            <Skeleton key={i} className="h-[152px] rounded-xl" />
           ))}
         </ResourceGrid>
       ) : filtered.length === 0 ? (
@@ -174,7 +135,7 @@ export function InstalledToolCatalog({
     return (
       <ResourceGrid minColumnWidth={240}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-[152px] rounded-md" />
+          <Skeleton key={i} className="h-[152px] rounded-xl" />
         ))}
       </ResourceGrid>
     )
@@ -217,14 +178,14 @@ function ToolDefinitionCard({
   actionLabel: string
   onPick: (definition: ToolDefinition) => void
 }) {
-  const tone = pickToolCardTone(definition)
+  const tone = getResourceTone(definition.category || 'general')
 
   return (
     <button type="button" onClick={() => onPick(definition)} className={toolCardClassName(tone)}>
       <div className="flex items-start justify-between gap-3">
         <span
           className={cn(
-            'inline-flex size-9 shrink-0 items-center justify-center rounded-lg',
+            'inline-flex size-9 shrink-0 items-center justify-center rounded-xl ring-1',
             tone.icon,
           )}
         >
@@ -290,7 +251,7 @@ function InstalledToolCard({
   onOpen: (tool: ToolInstance) => void
 }) {
   const category = definition?.category || 'general'
-  const tone = pickToolCardTone(`${category}:${tool.definition_key}:${tool.name}`)
+  const tone = getResourceTone(category)
   const description = tool.description || definition?.description || ''
 
   return (
@@ -298,7 +259,7 @@ function InstalledToolCard({
       <div className="flex items-start justify-between gap-3">
         <span
           className={cn(
-            'inline-flex size-9 shrink-0 items-center justify-center rounded-lg',
+            'inline-flex size-9 shrink-0 items-center justify-center rounded-xl ring-1',
             tone.icon,
           )}
         >
@@ -333,7 +294,7 @@ function InstalledToolCard({
             className="max-w-[128px] bg-white/55 text-[10.5px] shadow-sm ring-white/80 dark:bg-white/10 dark:ring-white/10"
           />
         ) : definition?.requires_credential ? (
-          <span className="inline-flex max-w-[128px] items-center rounded border border-white/80 bg-white/55 px-1.5 py-0.5 text-[10.5px] font-semibold text-foreground shadow-sm dark:border-white/10 dark:bg-white/10">
+          <span className={resourceMetaClassName}>
             <span className="truncate leading-none">{requiresCredentialLabel}</span>
           </span>
         ) : null}
@@ -355,22 +316,6 @@ function InstalledToolCard({
   )
 }
 
-function toolCardClassName(tone: ToolCardTone): string {
-  return cn(
-    'group relative flex min-h-[152px] flex-col rounded-md border border-transparent p-4 text-left',
-    'shadow-[0_10px_24px_-22px_rgba(15,23,42,0.45)] transition-all duration-150',
-    'hover:-translate-y-px hover:shadow-[0_18px_32px_-24px_rgba(15,23,42,0.55)]',
-    'focus-visible:-translate-y-px focus-visible:border-emerald-300 focus-visible:shadow-md',
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/40',
-    tone.card,
-  )
-}
-
-function pickToolCardTone(seed: string | ToolDefinition): ToolCardTone {
-  if (typeof seed !== 'string') {
-    seed = `${seed.category}:${seed.key}:${seed.display_name}`
-  }
-  let hash = 0
-  for (let i = 0; i < seed.length; i += 1) hash += seed.charCodeAt(i)
-  return TOOL_CARD_TONES[hash % TOOL_CARD_TONES.length]
+function toolCardClassName(tone: ResourceTone): string {
+  return resourceCardClassName(tone, 'min-h-[152px]')
 }

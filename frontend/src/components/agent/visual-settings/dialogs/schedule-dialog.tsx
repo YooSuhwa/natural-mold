@@ -58,7 +58,7 @@ interface ScheduleFormProps {
 }
 
 function parseTriggerToForm(trigger: AgentTrigger) {
-  const config = trigger.schedule_config
+  const config = trigger.schedule_config ?? {}
 
   if (trigger.trigger_type === 'one_time') {
     return {

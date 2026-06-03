@@ -48,8 +48,8 @@ export function LoginForm({
 
   return (
     <form onSubmit={handleSubmit} aria-busy={isLoading} noValidate>
-      <header style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: '-0.025em', margin: '0 0 6px' }}>
+      <header className="mb-5">
+        <h1 className="mb-1.5 text-[22px] font-bold leading-tight text-foreground">
           {t('auth.login.formTitle')}
         </h1>
         {/* <p style={{ fontSize: 13.5, color: 'oklch(0.556 0 0)', margin: 0 }}>
@@ -58,25 +58,24 @@ export function LoginForm({
       </header>
 
       {showCallbackNotice ? (
-        <div style={{ marginBottom: 14 }}>
+        <div className="mb-3.5">
           <AuthAlert variant="info">{t('auth.login.expiredNotice')}</AuthAlert>
         </div>
       ) : null}
 
       {mapped && mapped.field === null ? (
-        <div style={{ marginBottom: 14 }}>
+        <div className="mb-3.5">
           <AuthAlert>{t(mapped.messageKey)}</AuthAlert>
         </div>
       ) : null}
 
       <fieldset disabled={isLoading} className="contents">
-        <div style={{ display: 'grid', gap: 13 }}>
+        <div className="grid gap-3.5">
           {/* Email */}
           <div>
             <label
               htmlFor="login-email"
-              className="text-sm font-medium"
-              style={{ display: 'block', marginBottom: 6 }}
+              className="mb-1.5 block text-sm font-medium"
             >
               {t('auth.login.email')}
             </label>
@@ -94,11 +93,11 @@ export function LoginForm({
               aria-invalid={emailError || mapped?.field === 'email' || undefined}
             />
             {emailError ? (
-              <p style={{ fontSize: 12, color: 'oklch(0.577 0.245 27.325)', marginTop: 6 }}>
+              <p className="mt-1.5 text-xs text-destructive">
                 {t('auth.errors.invalidEmail')}
               </p>
             ) : mapped?.field === 'email' ? (
-              <p style={{ fontSize: 12, color: 'oklch(0.577 0.245 27.325)', marginTop: 6 }}>
+              <p className="mt-1.5 text-xs text-destructive">
                 {t(mapped.messageKey)}
               </p>
             ) : null}
@@ -107,12 +106,7 @@ export function LoginForm({
           {/* Password */}
           <div>
             <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'baseline',
-                marginBottom: 6,
-              }}
+              className="mb-1.5 flex items-baseline justify-between"
             >
               <label htmlFor="login-password" className="text-sm font-medium">
                 {t('auth.login.password')}
@@ -121,13 +115,7 @@ export function LoginForm({
                 type="button"
                 aria-disabled
                 tabIndex={-1}
-                className="text-xs hover:underline opacity-60 cursor-not-allowed"
-                style={{
-                  color: 'oklch(0.596 0.145 163.225)',
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                }}
+                className="cursor-not-allowed border-0 bg-transparent p-0 text-xs text-primary-strong opacity-60 hover:underline"
                 onClick={(e) => e.preventDefault()}
               >
                 {t('auth.login.forgotPassword')}
@@ -159,7 +147,7 @@ export function LoginForm({
               </button>
             </div>
             {passwordError ? (
-              <p style={{ fontSize: 12, color: 'oklch(0.577 0.245 27.325)', marginTop: 6 }}>
+              <p className="mt-1.5 text-xs text-destructive">
                 {t('auth.errors.passwordRequired')}
               </p>
             ) : null}
@@ -181,9 +169,8 @@ export function LoginForm({
           {/* Submit */}
           <Button
             type="submit"
-            className="w-full gap-2"
+            className="mt-0.5 w-full gap-2"
             disabled={isLoading}
-            style={{ marginTop: 2 }}
           >
             {isLoading ? (
               <>

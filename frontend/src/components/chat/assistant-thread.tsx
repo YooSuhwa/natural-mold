@@ -521,7 +521,7 @@ export function AssistantThread({
         return (
           <div className="group relative flex justify-end gap-3 [contain-intrinsic-size:0_96px] [content-visibility:auto]">
             <div className="flex w-full max-w-[80%] flex-col items-end">
-              <div className="rounded-2xl bg-emerald-100 px-4 py-2.5 text-sm leading-relaxed text-emerald-950 dark:bg-emerald-900 dark:text-emerald-100">
+              <div className="rounded-2xl bg-primary px-4 py-2.5 text-sm leading-relaxed text-primary-foreground ring-1 ring-primary-strong/15">
                 <MessagePrimitive.Content />
               </div>
               {metaRow}
@@ -685,10 +685,10 @@ function ThreadComposer({
   const hasTokens = showTokenBar && (tokenUsage.inputTokens > 0 || tokenUsage.outputTokens > 0)
 
   return (
-    <ComposerPrimitive.Root className="overflow-hidden rounded-2xl border border-input bg-background shadow-sm">
+    <ComposerPrimitive.Root className="overflow-hidden rounded-2xl border border-border/70 bg-background/95 shadow-[var(--moldy-shadow-card)]">
       {/* Model & Token bar */}
       {(modelName || hasTokens) && (
-        <div className="flex items-center gap-3 border-b border-input/50 px-3.5 py-1.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-3 border-b border-border/60 bg-primary/35 px-3.5 py-1.5 text-xs text-muted-foreground">
           {modelName && <span className="font-medium text-foreground/70">{modelName}</span>}
           {hasTokens && (
             <TokenBar tokenUsage={tokenUsage} showDivider={false} className="ml-auto" />

@@ -305,8 +305,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex items-start gap-3 border-b px-6 py-3">
+    <div className="flex flex-1 flex-col overflow-hidden bg-gradient-to-b from-emerald-50/35 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background">
+      <header className="flex items-start gap-3 border-b border-border/70 bg-[var(--moldy-surface-raised)] px-6 py-3 shadow-[var(--moldy-shadow-card)]">
         <Button variant="ghost" size="icon-sm" onClick={handleBack} aria-label={t('back')}>
           <ArrowLeftIcon className="size-4" />
         </Button>
@@ -360,14 +360,14 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         </div>
       </header>
 
-      <main className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
-        <section className="flex min-h-0 flex-col overflow-hidden border-b lg:border-b-0 lg:border-r">
+      <main className="grid flex-1 grid-cols-1 gap-3 overflow-hidden p-3 lg:grid-cols-2">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)]">
           <Tabs
             value={leftTab}
             onValueChange={(v) => setLeftTab(v as LeftTab)}
             className="flex min-h-0 flex-1 flex-col"
           >
-            <div className="sticky top-0 z-10 flex justify-center overflow-hidden bg-background">
+            <div className="sticky top-0 z-10 flex justify-center overflow-hidden border-b border-border/60 bg-card/55">
               <TabsList variant="line" className="h-auto">
                 <TabsTrigger
                   value="form"
@@ -472,7 +472,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
           </Tabs>
         </section>
 
-        <section className="flex min-h-0 flex-col overflow-hidden">
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)]">
           <RightPanel
             tab={rightTab}
             onTabChange={setRightTab}

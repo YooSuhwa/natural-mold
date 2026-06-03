@@ -12,7 +12,7 @@ import { SESSION_QUERY_KEY } from '@/lib/auth/session'
 import { API_BASE } from '@/lib/api/client'
 import type { User } from '@/lib/types/user'
 
-const AVATAR_COLORS = ['oklch(0.596 0.145 163.225)', 'oklch(0.78 0.15 75)', 'oklch(0.7 0.15 240)']
+const AVATAR_COLORS = ['var(--primary-strong)', 'var(--status-warn)', 'var(--status-info)']
 
 type Sparkle = {
   top: string
@@ -115,7 +115,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         .auth-tab-indicator {
           position: absolute; top: 3px; bottom: 3px; left: 3px;
           width: calc(50% - 3px);
-          background: #fff;
+          background: var(--moldy-surface-raised);
           border-radius: 7px;
           box-shadow: 0 1px 2px oklch(0 0 0 / 0.06), 0 1px 1px oklch(0 0 0 / 0.04);
           transition: transform .25s cubic-bezier(.2,.7,.2,1);
@@ -146,7 +146,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         style={{
           minHeight: '100vh',
           background:
-            'linear-gradient(135deg, oklch(0.985 0.008 100) 0%, oklch(0.965 0.045 163) 60%, oklch(0.975 0.025 200) 100%)',
+            'linear-gradient(135deg, var(--moldy-surface) 0%, var(--background) 58%, var(--moldy-sky) 100%)',
           position: 'relative',
           overflow: 'hidden',
           display: 'flex',
@@ -249,31 +249,20 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-            <div
-              style={{
-                width: 30,
-                height: 30,
-                borderRadius: 9,
-                background: 'oklch(0.596 0.145 163.225)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 12px -3px oklch(0.596 0.145 163.225 / 0.5)',
-                flexShrink: 0,
-              }}
-            >
-              <span
-                style={{ color: '#fff', fontWeight: 800, fontSize: 13, letterSpacing: '-0.02em' }}
-              >
-                M
-              </span>
-            </div>
+            <Image
+              src="/logo.webp"
+              alt="Moldy"
+              width={30}
+              height={30}
+              className="size-[30px] shrink-0 object-contain drop-shadow-sm"
+              priority
+            />
             <span
               className="auth-heading"
               style={{
                 fontWeight: 600,
                 fontSize: 16,
-                letterSpacing: '-0.02em',
+                letterSpacing: 0,
                 color: 'oklch(0.145 0 0)',
               }}
             >
@@ -316,9 +305,9 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                 width: 'fit-content',
                 fontSize: 12,
                 fontWeight: 600,
-                color: 'oklch(0.596 0.145 163.225)',
-                background: 'oklch(0.96 0.06 163)',
-                border: '1px solid oklch(0.9 0.07 163)',
+                color: 'var(--primary-foreground)',
+                background: 'var(--primary)',
+                border: '1px solid var(--moldy-border-mint)',
                 padding: '5px 11px',
                 borderRadius: 999,
                 marginBottom: 18,
@@ -329,7 +318,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                   width: 6,
                   height: 6,
                   borderRadius: '50%',
-                  background: 'oklch(0.596 0.145 163.225)',
+                  background: 'var(--primary-strong)',
                   flexShrink: 0,
                 }}
               />
@@ -341,7 +330,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
               style={{
                 fontSize: 42,
                 fontWeight: 700,
-                letterSpacing: '-0.03em',
+                letterSpacing: 0,
                 lineHeight: 1.1,
                 margin: '0 0 16px',
                 color: 'oklch(0.145 0 0)',
@@ -392,7 +381,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                 >
                   <CheckCircle2Icon
                     size={16}
-                    style={{ color: 'oklch(0.596 0.145 163.225)', flexShrink: 0 }}
+                    style={{ color: 'var(--primary-strong)', flexShrink: 0 }}
                   />
                   {text}
                 </div>
@@ -474,8 +463,8 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                     position: 'absolute',
                     inset: '14% 5% -2% 5%',
                     borderRadius: '50%',
-                    background:
-                      'radial-gradient(circle, oklch(0.85 0.13 163 / 0.5), transparent 65%)',
+                  background:
+                    'radial-gradient(circle, oklch(0.85 0.13 163 / 0.5), transparent 65%)',
                     filter: 'blur(18px)',
                   }}
                 />
@@ -500,9 +489,8 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                   background: '#fff',
                   borderRadius: 22,
                   padding: '30px 34px 28px',
-                  border: '1px solid oklch(0.93 0.01 163)',
-                  boxShadow:
-                    '0 24px 60px -24px oklch(0.4 0.1 163 / 0.22), 0 2px 0 oklch(1 0 0 / 0.6) inset',
+                  border: '1px solid var(--border)',
+                  boxShadow: 'var(--moldy-shadow-card), 0 2px 0 oklch(1 0 0 / 0.6) inset',
                   position: 'relative',
                 }}
               >
@@ -515,8 +503,8 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                     display: 'flex',
                     gap: 2,
                     padding: 3,
-                    background: 'oklch(0.96 0.012 163)',
-                    border: '1px solid oklch(0.92 0.015 163)',
+                    background: 'var(--moldy-surface)',
+                    border: '1px solid var(--border)',
                     borderRadius: 10,
                     marginBottom: 22,
                   }}
@@ -535,7 +523,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                       textDecoration: 'none',
                       fontSize: 13,
                       fontWeight: 500,
-                      letterSpacing: '-0.01em',
+                      letterSpacing: 0,
                       color: isLogin ? 'oklch(0.145 0 0)' : 'oklch(0.556 0 0)',
                       borderRadius: 7,
                       position: 'relative',
@@ -558,7 +546,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                       textDecoration: 'none',
                       fontSize: 13,
                       fontWeight: 500,
-                      letterSpacing: '-0.01em',
+                      letterSpacing: 0,
                       color: !isLogin ? 'oklch(0.145 0 0)' : 'oklch(0.556 0 0)',
                       borderRadius: 7,
                       position: 'relative',

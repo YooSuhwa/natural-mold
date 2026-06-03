@@ -144,9 +144,9 @@ export default function ChatPage({
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
 
   return (
-    <div className="flex min-h-0 flex-1 gap-3 overflow-hidden bg-gradient-to-b from-emerald-50/40 via-background to-background p-3 dark:from-emerald-950/15 dark:via-background dark:to-background">
+    <div className="flex min-h-0 flex-1 gap-3 overflow-hidden bg-gradient-to-b from-emerald-50/35 via-background to-background p-3 dark:from-emerald-950/15 dark:via-background dark:to-background">
       {/* 좌측 사이드바 카드 (데스크톱) */}
-      <aside className="hidden w-72 shrink-0 overflow-hidden rounded-xl border border-border bg-card shadow-sm md:block">
+      <aside className="hidden w-72 shrink-0 overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)] md:block">
         <ConversationList
           agentId={agentId}
           agentName={agent?.name}
@@ -156,8 +156,8 @@ export default function ChatPage({
       </aside>
 
       {/* 메인 채팅 카드 */}
-      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex items-center justify-between border-b px-4 py-2.5">
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)]">
+        <div className="flex items-center justify-between border-b border-border/60 bg-card/55 px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Sheet>
               <SheetTrigger
@@ -256,7 +256,7 @@ export default function ChatPage({
       {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
       <ChatRightRail
         conversationId={conversationId}
-        className="overflow-hidden rounded-xl border border-border bg-card shadow-sm"
+        className="overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)]"
       />
     </div>
   )
@@ -286,7 +286,7 @@ function ChatEmptyState({ agent, fallback }: ChatEmptyStateProps) {
       {agent?.description && (
         <p className="mb-4 max-w-md text-sm text-muted-foreground">{agent.description}</p>
       )}
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+      <div className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground ring-1 ring-primary-strong/15">
         <SparklesIcon className="size-3.5" />
         <span>{fallback}</span>
       </div>
@@ -297,7 +297,7 @@ function ChatEmptyState({ agent, fallback }: ChatEmptyStateProps) {
               key={q}
               type="button"
               onClick={() => composer?.setText(q)}
-              className="rounded-full border px-3 py-1.5 text-xs transition-colors hover:bg-accent"
+              className="rounded-full border border-primary-strong/20 bg-background/80 px-3 py-1.5 text-xs transition-colors hover:bg-primary hover:text-primary-foreground"
             >
               {q}
             </button>

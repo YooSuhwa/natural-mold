@@ -26,12 +26,13 @@ function ResourcePage({
     <div
       className={cn(
         'flex min-h-0 flex-1 flex-col overflow-hidden bg-gradient-to-b from-emerald-50/35 via-background to-background dark:from-emerald-950/15 dark:via-background dark:to-background',
+        'relative',
         className,
       )}
     >
       <div
         className={cn(
-          'mx-auto flex min-h-0 w-full max-w-[1220px] flex-1 flex-col gap-4 px-5 py-6 md:px-8',
+          'mx-auto flex min-h-0 w-full max-w-[1220px] flex-1 flex-col gap-5 px-5 py-6 md:px-8',
           contentClassName,
         )}
       >
@@ -51,7 +52,7 @@ function ResourcePanelRoot({ children, className }: ResourcePanelRootProps) {
   return (
     <section
       className={cn(
-        'flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/70 bg-card/90 shadow-[0_16px_45px_-38px_rgba(15,23,42,0.45)] backdrop-blur',
+        'flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/70 bg-[var(--moldy-surface-raised)] shadow-[var(--moldy-shadow-card)] backdrop-blur',
         className,
       )}
     >
@@ -69,7 +70,10 @@ function ResourcePanelToolbar({
 }) {
   return (
     <div
-      className={cn('flex shrink-0 flex-col gap-3 border-b border-border/60 p-4 md:p-5', className)}
+      className={cn(
+        'flex shrink-0 flex-col gap-3 border-b border-border/60 bg-card/55 p-4 md:p-5',
+        className,
+      )}
     >
       {children}
     </div>
@@ -78,7 +82,9 @@ function ResourcePanelToolbar({
 
 function ResourcePanelBody({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn('min-h-0 flex-1 overflow-y-auto p-4 md:p-5', className)}>{children}</div>
+    <div className={cn('min-h-0 flex-1 overflow-y-auto bg-background/25 p-4 md:p-5', className)}>
+      {children}
+    </div>
   )
 }
 
@@ -139,7 +145,7 @@ function CountedLineTabs({
             >
               <span>{tab.label}</span>
               {isActive && tab.countLabel ? (
-                <span className="rounded-md bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold leading-none text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
+                <span className="rounded-md bg-primary px-1.5 py-0.5 text-[11px] font-semibold leading-none text-primary-foreground ring-1 ring-primary-strong/15">
                   {tab.countLabel}
                 </span>
               ) : null}
