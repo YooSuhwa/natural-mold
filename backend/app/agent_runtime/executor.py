@@ -23,7 +23,7 @@ from deepagents.backends import FilesystemBackend
 from deepagents.middleware.filesystem import FilesystemPermission
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage
 from langchain_core.tools import BaseTool, StructuredTool
 
 from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
@@ -841,39 +841,10 @@ def _selected_skill_slugs(agent_skills: list[dict[str, Any]] | None) -> list[str
     return slugs
 
 
-def _content_with_temporal_context(content: Any) -> Any:
+def _system_prompt_with_temporal_context(system_prompt: str) -> str:
     block = build_temporal_context_prompt().strip()
-    if isinstance(content, str):
-        return f"{block}\n\n{content}" if content else block
-    if isinstance(content, list):
-        return [{"type": "text", "text": block}, *content]
-    return f"{block}\n\n{content}"
-
-
-def _copy_message_with_content(message: BaseMessage, content: Any) -> BaseMessage:
-    if hasattr(message, "model_copy"):
-        return message.model_copy(update={"content": content})
-    copied = message.copy()  # type: ignore[attr-defined]
-    copied.content = content
-    return copied
-
-
-def _inject_temporal_context(messages: list[BaseMessage]) -> list[BaseMessage]:
-    """Attach relative-date grounding to the latest human message for this turn."""
-
-    if not messages:
-        return messages
-    updated = list(messages)
-    for idx in range(len(updated) - 1, -1, -1):
-        message = updated[idx]
-        if getattr(message, "type", None) != "human":
-            continue
-        updated[idx] = _copy_message_with_content(
-            message,
-            _content_with_temporal_context(getattr(message, "content", "")),
-        )
-        return updated
-    return updated
+    prompt = system_prompt.strip()
+    return f"{prompt}\n\n{block}" if prompt else block
 
 
 async def _prepare_agent(
@@ -898,7 +869,7 @@ async def _prepare_agent(
         timings[name] = int((now - last_mark) * 1000)
         last_mark = now
 
-    system_prompt = cfg.system_prompt
+    system_prompt = _system_prompt_with_temporal_context(cfg.system_prompt)
     model_candidates = _build_model_candidates(cfg)
     model = model_candidates[0]
     mark_timing("model_ms")
@@ -1048,7 +1019,7 @@ async def _prepare_agent(
     timings["build_agent_ms"] = int((time.perf_counter() - build_started) * 1000)
     last_mark = time.perf_counter()
 
-    lc_messages = _inject_temporal_context(convert_to_langchain_messages(messages_history))
+    lc_messages = convert_to_langchain_messages(messages_history)
     mark_timing("messages_ms")
     config: dict[str, Any] = {"configurable": {"thread_id": cfg.thread_id}}
     recursion_limit = _configured_recursion_limit(cfg)

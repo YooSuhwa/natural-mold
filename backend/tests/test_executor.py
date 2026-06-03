@@ -250,7 +250,7 @@ def test_resolve_middleware_model_uses_user_key_without_env_fallback(
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
 @patch("app.agent_runtime.executor.create_chat_model")
-async def test_execute_stream_no_tools(
+async def test_execute_stream_keeps_temporal_context_out_of_user_message(
     mock_model_factory: MagicMock,
     mock_convert: MagicMock,
     mock_build: MagicMock,
@@ -284,14 +284,13 @@ async def test_execute_stream_no_tools(
     assert "ask_user" in tool_names
 
     system_prompt = mock_build.call_args[0][2]
-    assert system_prompt == "Hello"
-    assert "현재 기준 날짜" not in system_prompt
+    assert system_prompt.startswith("Hello")
+    assert "현재 기준 날짜" in system_prompt
 
     messages = captured_stream_messages["messages"]
     assert len(messages) == 1
     assert isinstance(messages[0], HumanMessage)
-    assert "현재 기준 날짜" in messages[0].content
-    assert "오늘 일정 알려줘" in messages[0].content
+    assert messages[0].content == "오늘 일정 알려줘"
 
 
 @pytest.mark.asyncio
