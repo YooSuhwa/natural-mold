@@ -468,6 +468,8 @@ async def test_regenerate_does_not_duplicate_user_message(client: AsyncClient):
     cfg, history = captured[0]
     # Forked from ck0 (state holds only the user message — no assistant).
     assert cfg.checkpoint_id == "ck0"
+    assert "재생성 요청" in cfg.system_prompt
+    assert "응답1" in cfg.system_prompt
     # langgraph 1.2 DeltaChannel — regenerate 도 fork-edit 와 동일하게
     # ``Overwrite(value=[pre_msgs])`` 로 messages 채널을 명시 리셋해야
     # ancestor pending_writes 가 누적되지 않는다. pre_msgs 는 rewound
@@ -480,6 +482,7 @@ async def test_regenerate_does_not_duplicate_user_message(client: AsyncClient):
     # ck0 state = [user "정말 슬펐어"]; Overwrite 리셋 후 agent 가 새 AI 생성.
     assert len(ow.value) == 1
     assert ow.value[0].content == "정말 슬펐어"
+    assert all(msg.type != "system" for msg in ow.value)
 
 
 @pytest.mark.asyncio
