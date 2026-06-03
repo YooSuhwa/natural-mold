@@ -21,6 +21,11 @@ import { ToolFallbackPanel } from './tool-ui/generic-tool-ui'
 import { parsePhaseNarration, type PhaseSegment } from './builder-phase-parser'
 import { SystemEventChip } from './system-event-chip'
 import { ImeSafeComposerInput } from './ime-safe-composer-input'
+import {
+  MessageEditComposerInput,
+  MessageEditComposerRoot,
+  useMessageEditComposerControls,
+} from './message-edit-composer'
 
 /**
  * Builder-variant 메시지/컴포저 오버라이드.
@@ -59,30 +64,38 @@ export function BuilderUserMessage({ metaRow }: { metaRow: React.ReactNode }) {
 
 export function BuilderUserEditComposer() {
   const t = useTranslations('chat.message')
+  const { canCancel, canSend, cancel } = useMessageEditComposerControls()
   return (
     <div className="flex justify-end">
       <div className="flex w-full max-w-[72%] flex-col items-end">
-        <ComposerPrimitive.Root
+        <MessageEditComposerRoot
           className="flex flex-col gap-2 rounded-[18px] p-2"
           style={{ background: T.bubble, border: `1px solid ${T.border}` }}
         >
-          <ImeSafeComposerInput
+          <MessageEditComposerInput
             className="min-h-[40px] w-full resize-none bg-transparent px-2 py-1 text-[14.5px] leading-relaxed outline-none"
             style={{ color: T.ink }}
             autoFocus
           />
           <div className="flex items-center justify-end gap-1">
-            <ComposerPrimitive.Cancel className="rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent">
+            <button
+              type="button"
+              disabled={!canCancel}
+              onClick={cancel}
+              className="rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
+            >
               {t('editCancel')}
-            </ComposerPrimitive.Cancel>
-            <ComposerPrimitive.Send
+            </button>
+            <button
+              type="submit"
+              disabled={!canSend}
               className="rounded-md px-2 py-1 text-[12px] font-semibold text-white"
               style={{ background: T.primary }}
             >
               {t('editSave')}
-            </ComposerPrimitive.Send>
+            </button>
           </div>
-        </ComposerPrimitive.Root>
+        </MessageEditComposerRoot>
       </div>
     </div>
   )
