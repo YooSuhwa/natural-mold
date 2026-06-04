@@ -2,17 +2,20 @@
 
 import Link from 'next/link'
 import { memo } from 'react'
+import { ChevronRightIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { DomainIcon, getDomainIconIdForResource } from '@/components/shared/icon'
 import { CredentialBadge } from '@/components/marketplace/badges/credential-badge'
 import { InstallationBadge } from '@/components/marketplace/badges/installation-badge'
-import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
-import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { SupportBadge } from '@/components/marketplace/badges/support-badge'
-import { getResourceTone, resourceCardClassName } from '@/lib/resource-tones'
+import {
+  ResourceBadge,
+  ResourceCardMeta,
+  ResourceListCard,
+} from '@/components/shared/resource-layout'
+import { getResourceTone } from '@/lib/resource-tones'
 import type { MarketplaceItem } from '@/lib/types/marketplace'
 import { formatMediumDate } from '@/lib/utils/format-relative-time'
 import { cn } from '@/lib/utils'
@@ -86,6 +89,17 @@ interface MarketplaceCardProps {
   className?: string
 }
 
+function getPrimaryCtaHref(item: MarketplaceItem, cta: PrimaryCta): string | null {
+  if (cta.disabled) return null
+  if (cta.kind === 'open' && item.installation.installed_resource_id) {
+    return `/skills?detailId=${item.installation.installed_resource_id}`
+  }
+  if (cta.kind === 'view_details' || cta.kind === 'manage') {
+    return `/marketplace/${item.id}`
+  }
+  return null
+}
+
 function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProps) {
   const t = useTranslations('marketplace.card')
   const cta = derivePrimaryCta(item)
@@ -95,16 +109,24 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
   const versionLabel = item.latest_version?.version_label
   const versionDate = item.latest_version?.created_at
   const tone = getResourceTone(item.resource_type)
+  const detailsHref = `/marketplace/${item.id}`
+  const primaryHref = getPrimaryCtaHref(item, cta)
+  const showDetailsLink = primaryHref !== detailsHref
+  const showCredentialBadge =
+    item.credential_summary && item.credential_summary.status !== 'none'
+  const showSupportBadge =
+    item.execution_profile?.support_level &&
+    item.execution_profile.support_level !== 'ready_python'
+  const hasStatusSignals = Boolean(
+    item.installation?.installed || showCredentialBadge || showSupportBadge,
+  )
+  const versionMeta = versionLabel
+    ? `v${versionLabel}${versionDate ? ` · ${formatMediumDate(versionDate)}` : ''}`
+    : null
 
   return (
-    <Card
-      size="sm"
-      className={cn(
-        resourceCardClassName(tone, 'h-full min-h-[184px] cursor-default py-4'),
-        className,
-      )}
-    >
-      <CardHeader className="flex flex-row items-start justify-between gap-3 rounded-t-md px-0 pb-0 pt-0">
+    <ResourceListCard as="article" tone={tone} density="rich" className={cn('h-full', className)}>
+      <ResourceListCard.Header>
         <div
           className={cn(
             'moldy-resource-icon',
@@ -116,7 +138,48 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
             className="size-5 text-current"
           />
         </div>
-        <div className="shrink-0">
+        <ResourceBadge tone={tone}>{resourceLabel}</ResourceBadge>
+      </ResourceListCard.Header>
+
+      <ResourceListCard.Title>{item.name}</ResourceListCard.Title>
+      <ResourceListCard.Subhead>{ownerLabel}</ResourceListCard.Subhead>
+      <ResourceListCard.Description>{item.description ?? resourceLabel}</ResourceListCard.Description>
+
+      {hasStatusSignals ? (
+        <ResourceListCard.StatusRow>
+          <InstallationBadge summary={item.installation} />
+          {showCredentialBadge ? (
+            <CredentialBadge summary={item.credential_summary} />
+          ) : showSupportBadge ? (
+            <SupportBadge profile={item.execution_profile} />
+          ) : null}
+        </ResourceListCard.StatusRow>
+      ) : null}
+
+      <ResourceListCard.MetaRow>
+        {versionMeta ? <ResourceCardMeta>{versionMeta}</ResourceCardMeta> : null}
+      </ResourceListCard.MetaRow>
+
+      <ResourceListCard.Footer className="justify-between">
+        {showDetailsLink ? (
+          <Link
+            href={detailsHref}
+            className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}
+          >
+            {t('cta.view_details')}
+          </Link>
+        ) : (
+          <span />
+        )}
+        {primaryHref ? (
+          <Link
+            href={primaryHref}
+            className={cn(buttonVariants({ variant: cta.variant, size: 'sm' }))}
+          >
+            {ctaLabel}
+            <ChevronRightIcon aria-hidden className="size-3.5" />
+          </Link>
+        ) : (
           <Button
             variant={cta.variant}
             size="sm"
@@ -126,44 +189,9 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
           >
             {ctaLabel}
           </Button>
-        </div>
-      </CardHeader>
-
-      <CardContent className="flex flex-1 flex-col px-0 pb-0 pt-0">
-        <Link
-          href={`/marketplace/${item.id}`}
-          className="mt-3 line-clamp-1 moldy-ui-card-title font-bold leading-tight text-foreground hover:text-primary-strong"
-        >
-          {item.name}
-        </Link>
-        <p className="mt-1 truncate text-xs text-muted-foreground">
-          {ownerLabel} · {resourceLabel}
-        </p>
-
-        {item.description ? (
-          <p className="mt-2 line-clamp-2 min-h-[2.65em] text-xs leading-[1.45] text-muted-foreground">
-            {item.description}
-          </p>
-        ) : null}
-
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <OriginBadge summary={item.origin_summary} />
-          <PublicationBadge summary={item.publication_summary} />
-          <CredentialBadge summary={item.credential_summary} />
-          <SupportBadge profile={item.execution_profile} />
-        </div>
-
-        <div className="mt-auto flex items-center justify-between pt-3 moldy-ui-caption text-muted-foreground">
-          <InstallationBadge summary={item.installation} />
-          {versionLabel ? (
-            <span>
-              v{versionLabel}
-              {versionDate ? ` · ${formatMediumDate(versionDate)}` : null}
-            </span>
-          ) : null}
-        </div>
-      </CardContent>
-    </Card>
+        )}
+      </ResourceListCard.Footer>
+    </ResourceListCard>
   )
 }
 

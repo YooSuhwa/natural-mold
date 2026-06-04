@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type KeyboardEvent } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { KeyRound, Plus } from 'lucide-react'
 
@@ -17,7 +17,7 @@ import {
   ResourceCardSubtext,
   ResourceCardTitle,
   ResourceGrid,
-  ResourceMetaStack,
+  ResourceListCard,
   ResourcePage,
   ResourcePanel,
   ResourceToolbar,
@@ -28,9 +28,7 @@ import { CredentialDetailDialog } from '@/components/credential/credential-detai
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import {
   getResourceTone,
-  resourceCardClassName,
   resourceStatusChipClassName,
-  type ResourceTone,
 } from '@/lib/resource-tones'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
 import { cn } from '@/lib/utils'
@@ -230,7 +228,7 @@ export default function CredentialsPage() {
               {isLoading ? (
                 <ResourceGrid minColumnWidth={252}>
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="moldy-skeleton-card h-[178px]" />
+                    <Skeleton key={index} className="moldy-skeleton-card h-[176px]" />
                   ))}
                 </ResourceGrid>
               ) : isFilteredEmpty ? (
@@ -298,23 +296,19 @@ function CredentialCard({
   onOpen: (id: string) => void
 }) {
   const tone = getResourceTone(definition?.category ?? credential.definition_key)
-
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    onOpen(credential.id)
-  }
+  const secondaryMetaLabel = credential.is_shared
+    ? sharedLabel
+    : lastTestedLabel || lastUsedLabel
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <ResourceListCard
+      as="button"
+      tone={tone}
+      density="standard"
       aria-label={`${credential.name} ${providerLabel}`}
       onClick={() => onOpen(credential.id)}
-      onKeyDown={handleKeyDown}
-      className={cn(credentialCardClassName(tone))}
     >
-      <div className="flex items-start justify-between gap-3">
+      <ResourceListCard.Header>
         <span
           className={cn(
             'moldy-resource-icon',
@@ -327,36 +321,28 @@ function CredentialCard({
           />
         </span>
         <ResourceBadge tone={tone}>{providerLabel}</ResourceBadge>
-      </div>
+      </ResourceListCard.Header>
 
       <ResourceCardTitle>{credential.name}</ResourceCardTitle>
       {categoryLabel ? (
         <ResourceCardSubtext>{categoryLabel}</ResourceCardSubtext>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <ResourceListCard.StatusRow>
         <StatusChip
           variant={credential.status}
           className={resourceStatusChipClassName}
         />
+      </ResourceListCard.StatusRow>
+
+      <ResourceListCard.MetaRow>
         <ResourceCardMeta>{fieldCountLabel}</ResourceCardMeta>
-        {credential.is_shared ? (
-          <ResourceCardMeta>{sharedLabel}</ResourceCardMeta>
-        ) : null}
-      </div>
+        {secondaryMetaLabel ? <ResourceCardMeta>{secondaryMetaLabel}</ResourceCardMeta> : null}
+      </ResourceListCard.MetaRow>
 
-      <ResourceMetaStack>
-        {lastUsedLabel ? <p>{lastUsedLabel}</p> : null}
-        {lastTestedLabel ? <p>{lastTestedLabel}</p> : null}
-      </ResourceMetaStack>
-
-      <div className="mt-auto flex items-center justify-end pt-3">
+      <ResourceListCard.Footer>
         <ResourceCardAction>{manageLabel}</ResourceCardAction>
-      </div>
-    </div>
+      </ResourceListCard.Footer>
+    </ResourceListCard>
   )
-}
-
-function credentialCardClassName(tone: ResourceTone): string {
-  return resourceCardClassName(tone, 'min-h-[178px]')
 }

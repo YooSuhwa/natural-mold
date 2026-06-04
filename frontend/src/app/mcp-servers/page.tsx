@@ -1,8 +1,8 @@
 'use client'
 
-import { useMemo, useState, type KeyboardEvent } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { Activity, Download, Plus, Server, Upload } from 'lucide-react'
+import { Activity, ChevronRight, Download, Plus, Server, Upload } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { announceHealthResult } from '@/lib/health-check-toast'
@@ -14,13 +14,12 @@ import { SearchInput } from '@/components/shared/search-input'
 import {
   CountedLineTabs,
   ResourceBadge,
-  ResourceCardAction,
   ResourceCardDescription,
   ResourceCardMeta,
   ResourceCardSubtext,
   ResourceCardTitle,
   ResourceGrid,
-  ResourceMetaStack,
+  ResourceListCard,
   ResourcePage,
   ResourcePanel,
   ResourceToolbar,
@@ -33,9 +32,7 @@ import { useExportMcpServers, useMcpServers } from '@/lib/hooks/use-mcp-servers'
 import { useMcpHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 import {
   getResourceTone,
-  resourceCardClassName,
   resourceStatusChipClassName,
-  type ResourceTone,
 } from '@/lib/resource-tones'
 import type { McpServer } from '@/lib/types/mcp'
 import type { HealthCheckEntry } from '@/lib/types/health'
@@ -223,15 +220,15 @@ export default function McpServersPage() {
 
             <ResourcePanel.Body className="bg-background/30">
               {isLoading ? (
-                <ResourceGrid minColumnWidth={252}>
+                <ResourceGrid minColumnWidth={300}>
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="moldy-skeleton-card h-[188px]" />
+                    <Skeleton key={index} className="moldy-skeleton-card h-[196px]" />
                   ))}
                 </ResourceGrid>
               ) : isFilteredEmpty ? (
                 <EmptyState title={t('empty.filtered')} className="bg-card/50" />
               ) : (
-                <ResourceGrid minColumnWidth={252}>
+                <ResourceGrid minColumnWidth={300}>
                   {filteredServers.map((server) => (
                     <McpServerCard
                       key={server.id}
@@ -301,23 +298,16 @@ function McpServerCard({
   checking: boolean
 }) {
   const tone = getResourceTone(server.transport)
-
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    onOpen(server.id)
-  }
+  const recencyLabel = checkedAtLabel || lastResponseLabel
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <ResourceListCard
+      as="article"
+      tone={tone}
+      density="rich"
       aria-label={`${server.name} ${toolCountLabel}`}
-      onClick={() => onOpen(server.id)}
-      onKeyDown={handleKeyDown}
-      className={cn(mcpCardClassName(tone))}
     >
-      <div className="flex items-start justify-between gap-3">
+      <ResourceListCard.Header>
         <span
           className={cn(
             'moldy-resource-icon',
@@ -327,27 +317,25 @@ function McpServerCard({
           <Server className="size-4.5" />
         </span>
         <ResourceBadge tone={tone}>{server.transport}</ResourceBadge>
-      </div>
+      </ResourceListCard.Header>
 
       <ResourceCardTitle>{server.name}</ResourceCardTitle>
       <ResourceCardDescription>{server.description ?? endpointLabel}</ResourceCardDescription>
+      <ResourceCardSubtext tone="mono">{endpointLabel}</ResourceCardSubtext>
 
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <ResourceListCard.StatusRow>
         <StatusChip
           variant={healthEntry?.status ?? server.status}
           className={resourceStatusChipClassName}
         />
-        <ResourceCardMeta>{toolCountLabel}</ResourceCardMeta>
-        {lastResponseLabel ? <ResourceCardMeta>{lastResponseLabel}</ResourceCardMeta> : null}
-      </div>
-      <ResourceCardSubtext tone="mono">{endpointLabel}</ResourceCardSubtext>
-      {checkedAtLabel ? (
-        <ResourceMetaStack className="mt-1">
-          <p>{checkedAtLabel}</p>
-        </ResourceMetaStack>
-      ) : null}
+      </ResourceListCard.StatusRow>
 
-      <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+      <ResourceListCard.MetaRow>
+        <ResourceCardMeta>{toolCountLabel}</ResourceCardMeta>
+        {recencyLabel ? <ResourceCardMeta>{recencyLabel}</ResourceCardMeta> : null}
+      </ResourceListCard.MetaRow>
+
+      <ResourceListCard.Footer className="justify-between">
         <Button
           type="button"
           variant="ghost"
@@ -355,18 +343,18 @@ function McpServerCard({
           aria-label={checkNowAriaLabel}
           data-testid={`check-now-${server.id}`}
           className="h-7 px-2 text-xs"
-          onClick={(event) => {
-            event.stopPropagation()
-            onCheckNow(server.id)
-          }}
+          onClick={() => onCheckNow(server.id)}
           disabled={checking}
         >
           <Activity className="size-3.5" />
           {checkNowLabel}
         </Button>
-        <ResourceCardAction>{manageLabel}</ResourceCardAction>
-      </div>
-    </div>
+        <Button type="button" variant="outline" size="sm" onClick={() => onOpen(server.id)}>
+          {manageLabel}
+          <ChevronRight className="size-3.5" />
+        </Button>
+      </ResourceListCard.Footer>
+    </ResourceListCard>
   )
 }
 
@@ -383,8 +371,4 @@ function formatRelativeTime(iso: string, t: ReturnType<typeof useTranslations>):
 function formatEndpoint(server: McpServer): string {
   if (server.transport === 'stdio') return server.command ?? 'stdio'
   return server.url ?? server.transport
-}
-
-function mcpCardClassName(tone: ResourceTone): string {
-  return resourceCardClassName(tone, 'min-h-[198px]')
 }

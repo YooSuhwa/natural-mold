@@ -118,3 +118,18 @@ pnpm lint:design-system
 현재 허용된 inline style 예외는 tree depth indentation, syntax highlighter theme,
 usage bar width, resource grid columns, Agent Prism trace/timeline layout, phase
 progress ratio뿐이다. 예외를 늘릴 때는 먼저 공용 class/토큰으로 표현 가능한지 확인한다.
+
+## Resource Card 문법
+
+도구/스킬/MCP/자격증명/마켓플레이스/템플릿 같은 리소스 목록 카드는
+`components/shared/resource-layout.tsx`의 `ResourceListCard`를 사용한다.
+
+- 순서: `Header(icon + type badge)` → `Title` → `Subhead` → `Description` →
+  `StatusRow` → `MetaRow` → `Footer`
+- density: `compact`(선택 후보), `standard`(일반 관리 리소스), `rich`(상태/메타가 많은 운영 리소스)
+- category/tone 색은 카드 전체 배경으로 쓰지 않는다. neutral surface 위에 icon, dot,
+  left rail, hover/focus border로만 표현한다.
+- 단일 액션 카드는 전체 `<button>`/`<Link>`가 가능하다.
+- 보조 액션이 하나라도 있으면 root는 non-interactive `<article>`이고 footer에 명시적
+  `<Button>`/`<Link>`를 둔다. `div role="button"`과 inline `window.location.href`
+  navigation은 새 resource card에서 금지한다.
