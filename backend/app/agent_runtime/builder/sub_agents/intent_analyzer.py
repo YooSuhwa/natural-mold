@@ -29,9 +29,9 @@ def _build_task_description(user_request: str) -> str:
         "2. 에이전트 설명 (상세한 기능 설명)\n"
         "3. 주요 작업 유형 (primary_task_type)\n"
         "4. 에이전트의 주요 기능들\n"
-        "5. 사용자가 원하는 기능의 특징\n"
-        "6. credential 사용 방식(identity_mode): 사용자마다 credential을 쓰는 per_user가 "
-        "기본이고, 스케줄/자동 실행이 명확하면 fixed\n\n"
+        "5. 사용자가 원하는 기능의 특징\n\n"
+        "credential 사용 방식(identity_mode)은 항상 기본값 per_user로 둡니다. "
+        "이 값은 생성 후 설정 화면에서 사용자가 직접 변경합니다.\n\n"
         "사용자의 요청을 정리하고 AgentCreationIntent 형식으로 반환해주세요."
     )
 
