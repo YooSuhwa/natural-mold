@@ -12,13 +12,12 @@ import {
   ResourceCardMeta,
   ResourceCardTitle,
   ResourceGrid,
+  ResourceListCard,
 } from '@/components/shared/resource-layout'
 import { StatusChip } from '@/components/shared/status-chip'
 import {
   getResourceTone,
-  resourceCardClassName,
   resourceStatusChipClassName,
-  type ResourceTone,
 } from '@/lib/resource-tones'
 import { cn } from '@/lib/utils'
 import type { ToolDefinition, ToolInstance } from '@/lib/types/tool'
@@ -79,7 +78,7 @@ export function ToolCatalog({
   return (
     <div className="min-h-0">
       {isLoading ? (
-        <ResourceGrid minColumnWidth={240}>
+        <ResourceGrid minColumnWidth={252}>
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="moldy-skeleton-card h-[152px]" />
           ))}
@@ -91,7 +90,7 @@ export function ToolCatalog({
           className="bg-card/50"
         />
       ) : (
-        <ResourceGrid minColumnWidth={240}>
+        <ResourceGrid minColumnWidth={252}>
           {filtered.map((definition) => (
             <ToolDefinitionCard
               key={definition.key}
@@ -139,16 +138,16 @@ export function InstalledToolCatalog({
 
   if (isLoading) {
     return (
-      <ResourceGrid minColumnWidth={240}>
+      <ResourceGrid minColumnWidth={252}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="moldy-skeleton-card h-[152px]" />
+          <Skeleton key={i} className="moldy-skeleton-card h-[176px]" />
         ))}
       </ResourceGrid>
     )
   }
 
   return (
-    <ResourceGrid minColumnWidth={240}>
+    <ResourceGrid minColumnWidth={252}>
       {tools.map((tool) => {
         const definition = definitionMap.get(tool.definition_key)
         const category = definition?.category || 'general'
@@ -187,8 +186,8 @@ function ToolDefinitionCard({
   const tone = getResourceTone(definition.category || 'general')
 
   return (
-    <button type="button" onClick={() => onPick(definition)} className={toolCardClassName(tone)}>
-      <div className="flex items-start justify-between gap-3">
+    <ResourceListCard as="button" tone={tone} density="compact" onClick={() => onPick(definition)}>
+      <ResourceListCard.Header>
         <span
           className={cn(
             'moldy-resource-icon',
@@ -198,23 +197,23 @@ function ToolDefinitionCard({
           <DomainIcon iconId={definition.icon_id ?? definition.key} className="size-4.5" />
         </span>
         <ResourceBadge tone={tone}>{categoryLabel}</ResourceBadge>
-      </div>
+      </ResourceListCard.Header>
 
       <ResourceCardTitle>{definition.display_name}</ResourceCardTitle>
       <ResourceCardDescription>{definition.description}</ResourceCardDescription>
 
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <ResourceListCard.MetaRow>
         {definition.requires_credential ? (
           <ResourceCardMeta>
             <span className="truncate leading-none">{requiresCredentialLabel}</span>
           </ResourceCardMeta>
         ) : null}
-      </div>
+      </ResourceListCard.MetaRow>
 
-      <div className="mt-auto flex items-center justify-end pt-3">
+      <ResourceListCard.Footer>
         <ResourceCardAction>{actionLabel}</ResourceCardAction>
-      </div>
-    </button>
+      </ResourceListCard.Footer>
+    </ResourceListCard>
   )
 }
 
@@ -240,8 +239,8 @@ function InstalledToolCard({
   const description = tool.description || definition?.description || ''
 
   return (
-    <button type="button" onClick={() => onOpen(tool)} className={toolCardClassName(tone)}>
-      <div className="flex items-start justify-between gap-3">
+    <ResourceListCard as="button" tone={tone} density="standard" onClick={() => onOpen(tool)}>
+      <ResourceListCard.Header>
         <span
           className={cn(
             'moldy-resource-icon',
@@ -251,12 +250,12 @@ function InstalledToolCard({
           <DomainIcon iconId={definition?.icon_id ?? tool.definition_key} className="size-4.5" />
         </span>
         <ResourceBadge tone={tone}>{categoryLabel}</ResourceBadge>
-      </div>
+      </ResourceListCard.Header>
 
       <ResourceCardTitle>{tool.name}</ResourceCardTitle>
       <ResourceCardDescription>{description}</ResourceCardDescription>
 
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      <ResourceListCard.StatusRow>
         <StatusChip
           variant={tool.enabled ? 'active' : 'disabled'}
           className={resourceStatusChipClassName}
@@ -271,15 +270,11 @@ function InstalledToolCard({
             <span className="truncate leading-none">{requiresCredentialLabel}</span>
           </ResourceCardMeta>
         ) : null}
-      </div>
+      </ResourceListCard.StatusRow>
 
-      <div className="mt-auto flex items-center justify-end pt-3">
+      <ResourceListCard.Footer>
         <ResourceCardAction>{actionLabel}</ResourceCardAction>
-      </div>
-    </button>
+      </ResourceListCard.Footer>
+    </ResourceListCard>
   )
-}
-
-function toolCardClassName(tone: ResourceTone): string {
-  return resourceCardClassName(tone, 'min-h-[152px]')
 }

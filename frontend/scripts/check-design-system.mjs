@@ -39,6 +39,11 @@ const ZERO_TOLERANCE_RULES = [
     message: 'map raw hex color utilities into Moldy semantic tokens',
   },
   {
+    id: 'resource-tone-background',
+    pattern: /\bbg-\[var\(--moldy-(?:mint|sky|violet|amber|rose)\)\]/g,
+    message: 'use neutral resource cards; keep tone colors to icons, dots, status signals, and interaction states',
+  },
+  {
     id: 'arbitrary-text-class',
     pattern: /\btext-\[[^\]]+\]/g,
     message: 'use Moldy typography classes or Tailwind text scale tokens',
