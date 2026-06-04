@@ -153,6 +153,9 @@ class Settings(BaseSettings):
     # If empty in dev, ``app.auth.jwt`` generates an ephemeral key at import
     # time + emits a warning — tokens won't survive a process restart.
     jwt_secret: str = ""
+    # HMAC signing secret for external Agent API key hashes. Production should
+    # set this independently; dev falls back to JWT_SECRET for local ergonomics.
+    api_key_hash_secret: str | None = None
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     refresh_token_expire_days: int = 30

@@ -271,7 +271,12 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins_list,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
+        allow_headers=[
+            "Content-Type",
+            "Authorization",
+            "X-Api-Key",
+            "X-CSRF-Token",
+        ],
         # W3-out — cross-origin (3000 → 8001) 에서 frontend 가 SSE stream 의
         # ``X-Run-Id`` (resume 식별자) / ``X-Resume-Mode`` (관찰성) 를 읽으려면
         # CORS expose_headers 에 명시해야 한다. 누락 시 browser fetch.headers.get
@@ -280,6 +285,8 @@ def create_app() -> FastAPI:
     )
 
     from app.routers import (
+        agent_api,
+        agent_runtime_api,
         agents,
         assistant,
         auth,
@@ -302,6 +309,8 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(auth.router)
+    app.include_router(agent_api.router)
+    app.include_router(agent_runtime_api.router)
     app.include_router(agents.router)
     app.include_router(agents.middleware_router)
     app.include_router(builder.router)

@@ -54,6 +54,12 @@ def collect_production_warnings(settings: Settings) -> list[str]:
             "invalidated on every restart."
         )
 
+    if not settings.api_key_hash_secret or len(settings.api_key_hash_secret) < 32:
+        issues.append(
+            "API_KEY_HASH_SECRET is empty or shorter than 32 chars. Generate "
+            "a random secret for HMAC hashing external Agent API keys."
+        )
+
     if not settings.cookie_secure:
         issues.append(
             "COOKIE_SECURE=false. Set true so browsers refuse to send "

@@ -171,6 +171,24 @@ POST /api/conversations/{id}/messages
 └─ 7. save_message(assistant) + save_token_usage  [chat_service → DB]
 ```
 
+## 핵심 데이터 흐름: Agent API
+
+```
+POST /v1/runs/wait | /v1/runs/stream
+│
+├─ 1. get_api_key_principal                      [agent_api.dependencies]
+├─ 2. resolve_deployment_for_agent_id            [agent_api.runtime_service]
+├─ 3. Conversation(source="api") 생성             [agent_api.runtime_service]
+├─ 4. build_agent_config_for_loaded_agent         [agent_invocation_service]
+├─ 5. execute_agent_invoke / execute_agent_stream [agent_runtime.executor]
+├─ 6. AgentApiRun 상태/출력 기록                  [agent_api.runtime_service]
+└─ 7. blocking JSON 또는 외부 SSE 이벤트 반환
+```
+
+Control plane은 브라우저 JWT + CSRF를 유지하고
+`/api/agent-api/deployments`, `/api/agent-api/keys`로 배포와 키를 관리한다.
+Runtime API는 CSRF를 사용하지 않고 `moldy_sk_...` API key로 인증한다.
+
 ---
 
 ## M1 변경 영역 (Deep Agent 엔진 교체)
