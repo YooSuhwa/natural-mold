@@ -1,9 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { ChevronsUpDownIcon, KeyRoundIcon, LogOutIcon, UserIcon } from 'lucide-react'
+import { ChevronsUpDownIcon, LogOutIcon, SettingsIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
 
 import {
   DropdownMenu,
@@ -73,20 +72,11 @@ export function UserMenu({ user, onLogout }: Props) {
         <DropdownMenuItem
           onClick={(e) => {
             e.preventDefault()
-            toast.info(t('profileComingSoon'))
+            router.push('/settings')
           }}
         >
-          <UserIcon />
-          {t('profile')}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(e) => {
-            e.preventDefault()
-            router.push('/credentials')
-          }}
-        >
-          <KeyRoundIcon />
-          {t('credentials')}
+          <SettingsIcon />
+          {t('settings')}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

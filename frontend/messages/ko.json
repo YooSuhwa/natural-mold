@@ -107,6 +107,7 @@
       "superUserToastDesc": "시스템 credential을 관리할 수 있습니다."
     },
     "userMenu": {
+      "settings": "설정",
       "profile": "프로필 설정",
       "credentials": "API 키 관리",
       "logout": "로그아웃",
@@ -2816,23 +2817,65 @@
   },
   "appSettings": {
     "title": "설정",
+    "description": "계정과 Moldy 사용 환경을 관리합니다.",
+    "navLabel": "설정 메뉴",
+    "nav": {
+      "account": "계정",
+      "api": "API",
+      "profile": "프로필",
+      "security": "보안",
+      "appearance": "화면 및 언어",
+      "agentApi": "Agent API"
+    },
     "profile": {
       "title": "프로필",
+      "description": "현재 로그인한 계정 정보를 확인합니다.",
+      "accountInfo": "계정 정보",
+      "accountInfoDescription": "이 정보는 Moldy 로그인 세션에서 가져옵니다.",
       "name": "이름",
       "email": "이메일",
-      "mockName": "수화",
-      "mockEmail": "suhwa@moldy.ai"
+      "joinedAt": "가입일",
+      "lastLoginAt": "마지막 로그인",
+      "never": "기록 없음",
+      "loading": "프로필을 불러오는 중입니다.",
+      "adminBadge": "관리자"
     },
-    "theme": {
-      "title": "테마",
-      "light": "라이트",
-      "dark": "다크",
-      "system": "시스템"
+    "security": {
+      "title": "보안",
+      "description": "계정 보안 설정을 관리합니다.",
+      "placeholder": {
+        "title": "보안 설정 준비 중",
+        "description": "비밀번호 변경과 세션 관리는 준비 중입니다.",
+        "detail": "현재는 로그인 세션 기반 인증을 사용하며, 세부 보안 설정은 후속 단계에서 추가됩니다."
+      }
     },
-    "language": {
-      "title": "언어",
-      "ko": "한국어",
-      "en": "English"
+    "appearance": {
+      "title": "화면 및 언어",
+      "description": "테마와 표시 언어를 조정합니다.",
+      "theme": {
+        "title": "테마",
+        "description": "앱 화면의 밝기 모드를 선택합니다.",
+        "light": "라이트",
+        "dark": "다크",
+        "system": "시스템"
+      },
+      "language": {
+        "title": "언어",
+        "description": "Moldy에서 사용할 표시 언어를 선택합니다.",
+        "ko": "한국어",
+        "en": "English"
+      }
+    },
+    "agentApi": {
+      "title": "Agent API",
+      "description": "외부 앱에서 Moldy 에이전트를 호출하는 API 배포를 준비합니다.",
+      "status": "준비 중",
+      "futureEndpoint": "기획 중인 호출 URL",
+      "placeholder": {
+        "title": "Agent API 준비 중",
+        "description": "외부 앱에서 Moldy 에이전트를 호출하기 위한 API 배포와 키 관리는 준비 중입니다.",
+        "detail": "이번 단계에서는 메뉴와 빈 페이지까지만 제공하고, 배포 URL 생성과 API Key 발급은 이후 별도 기능으로 구현합니다."
+      }
     }
   },
   "nav": {
@@ -2842,6 +2885,9 @@
     "schedules": "스케줄",
     "usage": "사용량",
     "settings": "설정",
+    "security": "보안",
+    "appearance": "화면 및 언어",
+    "agentApi": "Agent API",
     "skills": "스킬",
     "create": "새로 만들기",
     "createAgent": "에이전트 만들기",

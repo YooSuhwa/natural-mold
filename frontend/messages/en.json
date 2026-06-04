@@ -107,6 +107,7 @@
       "superUserToastDesc": "You can manage system credentials."
     },
     "userMenu": {
+      "settings": "Settings",
       "profile": "Profile settings",
       "credentials": "Manage API keys",
       "logout": "Log out",
@@ -2837,23 +2838,65 @@
   },
   "appSettings": {
     "title": "App Settings",
+    "description": "Manage your account and Moldy preferences.",
+    "navLabel": "Settings menu",
+    "nav": {
+      "account": "Account",
+      "api": "API",
+      "profile": "Profile",
+      "security": "Security",
+      "appearance": "Appearance & Language",
+      "agentApi": "Agent API"
+    },
     "profile": {
       "title": "Profile",
+      "description": "Review the account currently signed in.",
+      "accountInfo": "Account information",
+      "accountInfoDescription": "This information comes from your Moldy login session.",
       "name": "Name",
       "email": "Email",
-      "mockName": "Mock Name",
-      "mockEmail": "suhwa@moldy.ai"
+      "joinedAt": "Joined",
+      "lastLoginAt": "Last login",
+      "never": "No record",
+      "loading": "Loading profile.",
+      "adminBadge": "Admin"
     },
-    "theme": {
-      "title": "Theme",
-      "light": "Light",
-      "dark": "Dark",
-      "system": "System"
+    "security": {
+      "title": "Security",
+      "description": "Manage account security settings.",
+      "placeholder": {
+        "title": "Security settings coming soon",
+        "description": "Password changes and session management are coming soon.",
+        "detail": "Moldy currently uses session-based authentication. Detailed security controls will be added in a later step."
+      }
     },
-    "language": {
-      "title": "Language",
-      "ko": "Korean",
-      "en": "English"
+    "appearance": {
+      "title": "Appearance & Language",
+      "description": "Adjust theme and display language.",
+      "theme": {
+        "title": "Theme",
+        "description": "Choose the brightness mode for the app.",
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      },
+      "language": {
+        "title": "Language",
+        "description": "Choose the display language for Moldy.",
+        "ko": "Korean",
+        "en": "English"
+      }
+    },
+    "agentApi": {
+      "title": "Agent API",
+      "description": "Prepare API deployments for calling Moldy agents from external apps.",
+      "status": "Coming soon",
+      "futureEndpoint": "Planned endpoint",
+      "placeholder": {
+        "title": "Agent API coming soon",
+        "description": "API deployments and keys for calling Moldy agents from external apps are coming soon.",
+        "detail": "This step only adds the menu and placeholder page. Deployment URLs and API key issuance will be implemented as a separate feature."
+      }
     }
   },
   "nav": {
@@ -2863,6 +2906,9 @@
     "schedules": "Schedules",
     "usage": "Usage",
     "settings": "Settings",
+    "security": "Security",
+    "appearance": "Appearance & Language",
+    "agentApi": "Agent API",
     "skills": "Skills",
     "create": "Create",
     "createAgent": "Create Agent",

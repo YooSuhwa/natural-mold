@@ -1,137 +1,101 @@
 'use client'
 
-import { SunIcon, MoonIcon, MonitorIcon, UserIcon, PaletteIcon, GlobeIcon } from 'lucide-react'
-import { useTheme } from 'next-themes'
-import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { PageHeader } from '@/components/shared/page-header'
-import { cn } from '@/lib/utils'
+import type { ReactNode } from 'react'
+import { useFormatter, useTranslations } from 'next-intl'
+import { CalendarDaysIcon, ClockIcon, MailIcon, ShieldIcon, UserIcon } from 'lucide-react'
+
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useSession } from '@/lib/auth/session'
+import { SettingsShell } from './_components/settings-shell'
 
 export default function SettingsPage() {
-  const t = useTranslations('appSettings')
-
-  return (
-    <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
-      <PageHeader title={t('title')} />
-
-      <div className="mx-auto w-full max-w-2xl space-y-6">
-        {/* Profile Card */}
-        <ProfileCard />
-
-        {/* Theme + Language (2-column) */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <ThemeCard />
-          <LanguageCard />
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ProfileCard() {
   const t = useTranslations('appSettings.profile')
+  const format = useFormatter()
+  const { data: user, isPending } = useSession()
+
+  function formatDate(value?: string | null) {
+    if (!value) return t('never')
+    return format.dateTime(new Date(value), {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <UserIcon className="size-4" />
-          {t('title')}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-center justify-between py-1">
-          <span className="text-sm text-muted-foreground">{t('name')}</span>
-          <span className="text-sm font-medium">{t('mockName')}</span>
-        </div>
-        <div className="border-t border-foreground/5" />
-        <div className="flex items-center justify-between py-1">
-          <span className="text-sm text-muted-foreground">{t('email')}</span>
-          <span className="text-sm font-medium">{t('mockEmail')}</span>
-        </div>
-      </CardContent>
-    </Card>
+    <SettingsShell>
+      <div className="space-y-4">
+        <section className="space-y-1">
+          <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
+          <p className="text-sm leading-6 text-muted-foreground">{t('description')}</p>
+        </section>
+
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-1">
+                <CardTitle className="flex items-center gap-2">
+                  <UserIcon className="size-4" aria-hidden />
+                  {t('accountInfo')}
+                </CardTitle>
+                <CardDescription>{t('accountInfoDescription')}</CardDescription>
+              </div>
+              {user?.is_super_user ? (
+                <Badge variant="secondary" className="bg-status-accent/15 text-status-accent">
+                  <ShieldIcon className="size-3" aria-hidden />
+                  {t('adminBadge')}
+                </Badge>
+              ) : null}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isPending || !user ? (
+              <p className="text-sm text-muted-foreground">{t('loading')}</p>
+            ) : (
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <ProfileField icon={<UserIcon className="size-4" />} label={t('name')}>
+                  {user.name}
+                </ProfileField>
+                <ProfileField icon={<MailIcon className="size-4" />} label={t('email')}>
+                  {user.email}
+                </ProfileField>
+                <ProfileField
+                  icon={<CalendarDaysIcon className="size-4" />}
+                  label={t('joinedAt')}
+                >
+                  {formatDate(user.created_at)}
+                </ProfileField>
+                <ProfileField icon={<ClockIcon className="size-4" />} label={t('lastLoginAt')}>
+                  {formatDate(user.last_login_at)}
+                </ProfileField>
+              </dl>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </SettingsShell>
   )
 }
 
-function ThemeCard() {
-  const { theme, setTheme } = useTheme()
-  const t = useTranslations('appSettings.theme')
-
-  const themes = [
-    { value: 'light', label: t('light'), icon: SunIcon },
-    { value: 'dark', label: t('dark'), icon: MoonIcon },
-    { value: 'system', label: t('system'), icon: MonitorIcon },
-  ] as const
-
+function ProfileField({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode
+  label: string
+  children: ReactNode
+}) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <PaletteIcon className="size-4" />
-          {t('title')}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {themes.map(({ value, label, icon: Icon }) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setTheme(value)}
-            className={cn(
-              'flex w-full items-center gap-3 rounded-lg border p-3',
-              'cursor-pointer hover:bg-accent transition-colors duration-200',
-              theme === value && 'border-primary bg-primary/5',
-            )}
-          >
-            <Icon className="size-4" />
-            <span className="text-sm font-medium">{label}</span>
-          </button>
-        ))}
-      </CardContent>
-    </Card>
-  )
-}
-
-function LanguageCard() {
-  const t = useTranslations('appSettings.language')
-  const tc = useTranslations('common')
-
-  const languages = [
-    { value: 'ko', label: t('ko') },
-    { value: 'en', label: t('en') },
-  ]
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <GlobeIcon className="size-4" />
-          {t('title')}
-          <span className="text-xs font-normal text-muted-foreground">
-            ({tc('comingSoon.default')})
-          </span>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {languages.map(({ value, label }) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => toast.info(tc('comingSoon.default'))}
-            className={cn(
-              'flex w-full items-center gap-3 rounded-lg border p-3',
-              'transition-colors duration-200',
-              value === 'ko'
-                ? 'border-primary bg-primary/5'
-                : 'opacity-50 cursor-pointer hover:opacity-70',
-            )}
-          >
-            <span className="text-sm font-medium">{label}</span>
-          </button>
-        ))}
-      </CardContent>
-    </Card>
+    <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+      <dt className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <span className="text-primary-strong" aria-hidden>
+          {icon}
+        </span>
+        {label}
+      </dt>
+      <dd className="mt-2 break-words text-sm font-medium text-foreground">{children}</dd>
+    </div>
   )
 }
