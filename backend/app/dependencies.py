@@ -39,6 +39,11 @@ class CurrentUser:
     id: uuid.UUID
     email: str
     name: str
+    display_name: str | None = None
+    avatar_mode: str = "auto"
+    avatar_initials: str | None = None
+    avatar_color: str = "mint"
+    avatar_image_url: str | None = None
     is_super_user: bool = False
 
 
@@ -90,6 +95,11 @@ async def _resolve_user(token: str, db: AsyncSession) -> CurrentUser | None:
         id=user.id,
         email=user.email,
         name=user.name,
+        display_name=user.display_name,
+        avatar_mode=user.avatar_mode,
+        avatar_initials=user.avatar_initials,
+        avatar_color=user.avatar_color,
+        avatar_image_url=user.avatar_image_url,
         is_super_user=user.is_super_user,
     )
 

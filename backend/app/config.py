@@ -122,6 +122,7 @@ class Settings(BaseSettings):
     image_gen_base_url: str = "https://openrouter.ai/api/v1"
     image_gen_model: str = "google/gemini-3.1-flash-image-preview"
     agent_image_dir: str = "./data/agents"
+    user_avatar_dir: str = "./data/users"
 
     # Rate limiting (slowapi). Public endpoints (/api/shares/{token}*) are
     # auth-free + walk LangGraph state, so cap per-IP throughput. Disable in

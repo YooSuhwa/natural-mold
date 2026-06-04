@@ -70,11 +70,13 @@ async def create_user(
     email: str,
     password_hash: str | None,
     name: str,
+    display_name: str | None = None,
     is_super_user: bool = False,
 ) -> User:
     user = User(
         email=email.strip().lower(),
         name=name.strip(),
+        display_name=display_name.strip() if display_name else None,
         hashed_password=password_hash,
         is_super_user=is_super_user,
         is_active=True,

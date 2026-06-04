@@ -82,7 +82,8 @@ async def register(
         db,
         email=payload.email,
         password_hash=hash_password(payload.password),
-        name=payload.name,
+        name=payload.profile_display_name,
+        display_name=payload.profile_display_name,
         is_super_user=promote,
     )
     if promote:

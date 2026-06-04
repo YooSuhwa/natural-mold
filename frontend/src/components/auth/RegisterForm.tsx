@@ -13,35 +13,35 @@ import { AuthAlert } from './AuthAlert'
 import { PasswordStrengthMeter } from './PasswordStrengthMeter'
 
 interface Props {
-  onSubmit: (data: { email: string; password: string; name: string }) => Promise<void>
+  onSubmit: (data: { email: string; password: string; display_name: string }) => Promise<void>
   isLoading: boolean
   error: unknown
 }
 
 export function RegisterForm({ onSubmit, isLoading, error }: Props) {
   const t = useTranslations()
-  const [name, setName] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [agreed, setAgreed] = useState(false)
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
-  const nameError = touched.name && name.trim().length === 0
+  const nameError = touched.display_name && displayName.trim().length === 0
   const emailError = touched.email && !email.includes('@')
   const passwordTooShort = touched.password && password.length > 0 && password.length < 8
   const agreedError = touched.agreed && !agreed
 
   const formInvalid =
-    name.trim().length === 0 || !email.includes('@') || password.length < 8 || !agreed
+    displayName.trim().length === 0 || !email.includes('@') || password.length < 8 || !agreed
 
   const mapped = error ? mapAuthError(error, 'register') : null
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    setTouched({ name: true, email: true, password: true, agreed: true })
+    setTouched({ display_name: true, email: true, password: true, agreed: true })
     if (formInvalid) return
-    void onSubmit({ name: name.trim(), email, password }).catch(() => {
+    void onSubmit({ display_name: displayName.trim(), email, password }).catch(() => {
       // Mutation state renders the mapped auth error; avoid a dev overlay.
     })
   }
@@ -62,26 +62,34 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
 
       <fieldset disabled={isLoading} className="contents">
         <div className="grid gap-3.5">
-          {/* Name */}
+          {/* Display name */}
           <div>
             <label
-              htmlFor="reg-name"
+              htmlFor="reg-display-name"
               className="mb-1.5 block text-sm font-medium"
             >
               {t('auth.register.name')}
             </label>
             <Input
-              id="reg-name"
+              id="reg-display-name"
               type="text"
-              autoComplete="name"
+              autoComplete="nickname"
               required
               maxLength={80}
               placeholder={t('auth.register.namePlaceholder')}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={() => setTouched((p) => ({ ...p, name: true }))}
-              aria-invalid={nameError || mapped?.field === 'name' || undefined}
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              onBlur={() => setTouched((p) => ({ ...p, display_name: true }))}
+              aria-invalid={
+                nameError ||
+                mapped?.field === 'display_name' ||
+                mapped?.field === 'name' ||
+                undefined
+              }
             />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {t('auth.register.nameHelp')}
+            </p>
             {nameError ? (
               <p className="mt-1.5 text-xs text-destructive">
                 {t('auth.errors.nameRequired')}

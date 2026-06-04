@@ -60,6 +60,10 @@ vi.mock('@/components/ui/sidebar', () => ({
 const user: User = {
   id: 'user-1',
   name: 'Test User',
+  display_name: '체스터',
+  avatar_mode: 'initials',
+  avatar_initials: '체',
+  avatar_color: 'violet',
   email: 'test@example.com',
   is_super_user: false,
   created_at: '2026-05-01T00:00:00Z',
@@ -75,6 +79,8 @@ describe('UserMenu', () => {
   it('keeps only settings and logout actions', () => {
     render(<UserMenu user={user} onLogout={logout} />)
 
+    expect(screen.getByText('체스터')).toBeInTheDocument()
+    expect(screen.getByLabelText('체스터 프로필 아이콘')).toHaveTextContent('체')
     expect(screen.getByRole('button', { name: /설정/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /로그아웃/ })).toBeInTheDocument()
     expect(screen.queryByText('API 키 관리')).not.toBeInTheDocument()
