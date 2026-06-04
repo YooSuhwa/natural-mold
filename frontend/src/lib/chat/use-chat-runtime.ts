@@ -165,6 +165,61 @@ function messagesCheapKey(messages: readonly Message[]): string {
   return [messages.length, first?.id ?? '', last?.id ?? '', lastAssistantId].join('\u001f')
 }
 
+interface MergeMessagesForRenderOptions {
+  messages: readonly Message[]
+  streamingMessages: readonly Message[]
+  previousMessages: readonly Message[]
+  isRunning: boolean
+}
+
+function pushUniqueMessage(target: Message[], seen: Set<string>, message: Message): void {
+  if (seen.has(message.id)) return
+  seen.add(message.id)
+  target.push(message)
+}
+
+function newlyPersistedUserContents(
+  previousMessages: readonly Message[],
+  messages: readonly Message[],
+): Set<string> {
+  const previousIds = new Set(previousMessages.map((m) => m.id))
+  const contents = new Set<string>()
+  for (const message of messages) {
+    if (message.role === 'user' && !previousIds.has(message.id)) {
+      contents.add(message.content)
+    }
+  }
+  return contents
+}
+
+export function mergeMessagesForRender({
+  messages,
+  streamingMessages,
+  previousMessages,
+  isRunning,
+}: MergeMessagesForRenderOptions): Message[] {
+  const seen = new Set<string>()
+  const merged: Message[] = []
+  for (const message of messages) {
+    pushUniqueMessage(merged, seen, message)
+  }
+
+  if (streamingMessages.length === 0) return merged
+
+  if (!isRunning && hasNewAssistantMessage(previousMessages, messages)) {
+    return merged
+  }
+
+  const persistedUserContents = !isRunning
+    ? newlyPersistedUserContents(previousMessages, messages)
+    : null
+  for (const message of streamingMessages) {
+    if (message.role === 'user' && persistedUserContents?.has(message.content)) continue
+    pushUniqueMessage(merged, seen, message)
+  }
+  return merged
+}
+
 function addUsageTotals(totals: TokenUsage, usage: TokenUsageBreakdown | null | undefined): void {
   if (!usage) return
   totals.inputTokens += usage.prompt_tokens
@@ -206,8 +261,7 @@ function createOptimisticMessage(
   }
 }
 
-const BACKEND_MESSAGE_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const BACKEND_MESSAGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function isBackendMessageId(id: string | null | undefined): id is string {
   return typeof id === 'string' && BACKEND_MESSAGE_ID_PATTERN.test(id)
@@ -304,6 +358,7 @@ export function useChatRuntime({
   // chunk가 새 stream에 끼어드는 것을 막고, 같은 id 중복 chunk를 dedup한다.
   // ``createStreamGuard``는 순수 함수라 useState 초기값으로 안전.
   const streamGuardRef = useRef(createStreamGuard())
+  const prevMessagesRef = useRef(messages)
   const lastTokenUsageRef = useRef<TokenUsage | null>(null)
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
   const setReconnectState = useSetAtom(reconnectStateAtom)
@@ -353,21 +408,18 @@ export function useChatRuntime({
   // 가 false) 동일 id가 양쪽에 남는다 → "same id already exists" 크래시. 먼저
   // 등장한 항목(=messages의 확정본)을 우선해 중복 id를 제거한다. 일반 대화는
   // optimistic(opt-*)과 backend uuid가 달라 중복이 없어 영향받지 않는다.
-  const allMessages = useMemo(() => {
-    const seen = new Set<string>()
-    const merged: typeof messages = []
-    for (const m of messages) {
-      if (seen.has(m.id)) continue
-      seen.add(m.id)
-      merged.push(m)
-    }
-    for (const m of streamingMessages) {
-      if (seen.has(m.id)) continue
-      seen.add(m.id)
-      merged.push(m)
-    }
-    return compactDeepResearchMessages(merged)
-  }, [messages, streamingMessages])
+  const allMessages = useMemo(
+    () =>
+      compactDeepResearchMessages(
+        mergeMessagesForRender({
+          messages,
+          streamingMessages,
+          previousMessages: prevMessagesRef.current,
+          isRunning,
+        }),
+      ),
+    [isRunning, messages, streamingMessages],
+  )
 
   const streamingUsageTotals = useMemo(
     () => sumMessageUsage(streamingMessages),
@@ -708,7 +760,6 @@ export function useChatRuntime({
   // 새 assistant 메시지가 refetch 결과에 도착했는지로 "정말 persist 됐는지" 판정.
   // run_id ↔ messages.id 직접 비교는 형식이 달라 (uuid4 vs uuid5(raw_id)) 매칭
   // 불가 — id 매칭 대신 ``hasNewAssistantMessage`` set-diff 휴리스틱 사용.
-  const prevMessagesRef = useRef(messages)
   const messagesKey = useMemo(() => messagesCheapKey(messages), [messages])
   useEffect(() => {
     const prevMessages = prevMessagesRef.current

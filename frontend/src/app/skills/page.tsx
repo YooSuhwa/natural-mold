@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, type KeyboardEvent } from 'react'
+import { useMemo, useState } from 'react'
 import { BookOpen, ChevronRightIcon, FileText, Package, Plus } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -9,7 +9,10 @@ import { EmptyState } from '@/components/shared/empty-state'
 import { SearchInput } from '@/components/shared/search-input'
 import {
   CountedLineTabs,
+  ResourceBadge,
+  ResourceCardMeta,
   ResourceGrid,
+  ResourceListCard,
   ResourcePage,
   ResourcePanel,
   ResourceToolbar,
@@ -23,9 +26,6 @@ import { PublishWizard } from '@/components/marketplace/publish-wizard'
 import { useSkills } from '@/lib/hooks/use-skills'
 import {
   getResourceTone,
-  resourceCardClassName,
-  resourceMetaClassName,
-  type ResourceTone,
 } from '@/lib/resource-tones'
 import type { Skill, SkillKind } from '@/lib/types/skill'
 import { cn } from '@/lib/utils'
@@ -148,15 +148,15 @@ export default function SkillsPage() {
 
             <ResourcePanel.Body className="bg-background/30">
               {isLoading ? (
-                <ResourceGrid minColumnWidth={240}>
+                <ResourceGrid minColumnWidth={300}>
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="moldy-skeleton-card h-[176px]" />
+                    <Skeleton key={index} className="moldy-skeleton-card h-[196px]" />
                   ))}
                 </ResourceGrid>
               ) : isFilteredEmpty ? (
                 <EmptyState title={t('empty.filtered')} className="bg-card/50" />
               ) : (
-                <ResourceGrid minColumnWidth={240}>
+                <ResourceGrid minColumnWidth={300}>
                   {filteredSkills.map((skill) => (
                     <SkillCard
                       key={skill.id}
@@ -231,22 +231,16 @@ function SkillCard({
   const Icon = skill.kind === 'package' ? Package : FileText
   const canPublish =
     !skill.publication_summary?.state || skill.publication_summary.state === 'not_published'
-
-  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    onOpen(skill.id)
-  }
+  const metaLabels = [
+    skill.version ? `v${skill.version}` : null,
+    agentsLabel,
+    skill.version ? null : updatedLabel,
+  ].filter((label): label is string => Boolean(label)).slice(0, 2)
+  const hasMarketplaceSignals = Boolean(skill.origin_summary || skill.publication_summary)
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(skill.id)}
-      onKeyDown={handleKeyDown}
-      className={cn(skillCardClassName(tone))}
-    >
-      <div className="flex items-start justify-between gap-3">
+    <ResourceListCard as="article" tone={tone} density="rich">
+      <ResourceListCard.Header>
         <span
           className={cn(
             'moldy-resource-icon',
@@ -255,70 +249,45 @@ function SkillCard({
         >
           <Icon className="size-4.5" />
         </span>
-        <span
-          className={cn(
-            'inline-flex min-w-0 max-w-[120px] items-center gap-1 rounded-md border px-2 py-1 moldy-ui-caption font-semibold leading-none',
-            tone.badge,
-          )}
-        >
-          <span className={cn('size-1.5 shrink-0 rounded-full', tone.dot)} />
-          <span className="truncate">{kindLabel}</span>
-        </span>
-      </div>
+        <ResourceBadge tone={tone}>{kindLabel}</ResourceBadge>
+      </ResourceListCard.Header>
 
-      <span className="mt-3 line-clamp-1 moldy-ui-card-title font-bold leading-tight text-foreground">
-        {skill.name}
-      </span>
-      <p className="mt-2 line-clamp-2 min-h-[2.65em] text-xs leading-[1.45] text-muted-foreground">
-        {skill.description ?? skill.slug}
-      </p>
+      <ResourceListCard.Title>{skill.name}</ResourceListCard.Title>
+      <ResourceListCard.Subhead tone="mono">{skill.slug}</ResourceListCard.Subhead>
+      <ResourceListCard.Description>{skill.description ?? skill.slug}</ResourceListCard.Description>
 
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        {skill.version ? <span className={skillMetaClassName}>v{skill.version}</span> : null}
-        <span className={skillMetaClassName}>{agentsLabel}</span>
-        {updatedLabel ? <span className={skillMetaClassName}>{updatedLabel}</span> : null}
-      </div>
-      <p className="mt-2 truncate font-mono moldy-ui-caption text-muted-foreground/80">{skill.slug}</p>
+      {hasMarketplaceSignals ? (
+        <ResourceListCard.StatusRow>
+          <OriginBadge summary={skill.origin_summary} />
+          <PublicationBadge summary={skill.publication_summary} />
+        </ResourceListCard.StatusRow>
+      ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        <OriginBadge summary={skill.origin_summary} />
-        <PublicationBadge summary={skill.publication_summary} />
-      </div>
+      <ResourceListCard.MetaRow>
+        {metaLabels.map((label) => (
+          <ResourceCardMeta key={label}>{label}</ResourceCardMeta>
+        ))}
+      </ResourceListCard.MetaRow>
 
-      <div className="mt-auto flex items-center justify-between gap-2 pt-3">
+      <ResourceListCard.Footer className="justify-between">
         {canPublish ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
             className="h-7 px-2 text-xs"
-            onClick={(event) => {
-              event.stopPropagation()
-              onPublish(skill)
-            }}
+            onClick={() => onPublish(skill)}
           >
             {publishLabel}
           </Button>
         ) : (
           <span />
         )}
-        <span
-          className={cn(
-            'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-[color,transform] duration-150',
-            'group-hover:translate-x-0.5 group-hover:text-primary-strong',
-            'group-focus-visible:translate-x-0.5 group-focus-visible:text-primary-strong',
-          )}
-        >
+        <Button type="button" variant="outline" size="sm" onClick={() => onOpen(skill.id)}>
           {actionLabel}
           <ChevronRightIcon aria-hidden className="size-3" />
-        </span>
-      </div>
-    </div>
+        </Button>
+      </ResourceListCard.Footer>
+    </ResourceListCard>
   )
-}
-
-const skillMetaClassName = resourceMetaClassName
-
-function skillCardClassName(tone: ResourceTone): string {
-  return resourceCardClassName(tone, 'min-h-[188px]')
 }

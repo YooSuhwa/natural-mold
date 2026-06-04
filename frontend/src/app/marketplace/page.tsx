@@ -82,13 +82,7 @@ export default function MarketplaceCatalogPage() {
     }
     if (cta.kind === 'update' || cta.kind === 'review_update') {
       setUpdateTarget(item)
-      return
     }
-    if (cta.kind === 'open' && item.installation.installed_resource_id) {
-      window.location.href = `/skills?detailId=${item.installation.installed_resource_id}`
-      return
-    }
-    window.location.href = `/marketplace/${item.id}`
   }
 
   return (
@@ -158,7 +152,7 @@ function CardGridSkeleton() {
   return (
     <ResourceGrid minColumnWidth={300}>
       {Array.from({ length: 6 }).map((_, i) => (
-        <Skeleton key={i} className="moldy-skeleton-card h-44 w-full" />
+        <Skeleton key={i} className="moldy-skeleton-card h-[196px] w-full" />
       ))}
     </ResourceGrid>
   )

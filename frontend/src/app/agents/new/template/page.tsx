@@ -20,7 +20,10 @@ import { useModels } from '@/lib/hooks/use-models'
 import { EmptyState } from '@/components/shared/empty-state'
 import {
   CountedLineTabs,
+  ResourceBadge,
+  ResourceCardMeta,
   ResourceGrid,
+  ResourceListCard,
   ResourcePage,
   ResourcePanel,
   ResourceToolbar,
@@ -28,9 +31,6 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   getResourceTone,
-  resourceCardClassName,
-  resourceMetaClassName,
-  type ResourceTone,
 } from '@/lib/resource-tones'
 import { cn } from '@/lib/utils'
 import type { Template } from '@/lib/types'
@@ -142,7 +142,7 @@ export default function TemplateSelectionPage() {
               className="bg-card/50"
             />
           ) : (
-            <ResourceGrid>
+            <ResourceGrid minColumnWidth={252}>
               {filtered.map((tpl) => (
                 <TemplateCard
                   key={tpl.id}
@@ -295,18 +295,19 @@ function TemplateCard({
   const disabled = creatingLocked && !isCreating
 
   return (
-    <button
-      type="button"
+    <ResourceListCard
+      as="button"
+      tone={tone}
+      density="compact"
       onClick={() => onSelect(template)}
       disabled={isCreating || disabled}
       aria-label={`${template.name} — ${ariaLabel}`}
       className={cn(
-        templateCardClassName(tone),
         isCreating && 'pointer-events-none opacity-70',
         disabled && 'pointer-events-none opacity-50',
       )}
     >
-      <div className="flex items-start justify-between gap-3">
+      <ResourceListCard.Header>
         <span
           className={cn(
             'moldy-resource-icon',
@@ -315,63 +316,37 @@ function TemplateCard({
         >
           <BotIcon aria-hidden className="size-4.5" />
         </span>
-        <span
-          className={cn(
-            'inline-flex min-w-0 max-w-[120px] items-center gap-1 rounded-md border px-2 py-1 moldy-ui-caption font-semibold leading-none',
-            tone.badge,
-          )}
-        >
-          <span className={cn('size-1.5 shrink-0 rounded-full', tone.dot)} />
-          <span className="truncate">{template.category}</span>
-        </span>
-      </div>
+        <ResourceBadge tone={tone}>{template.category}</ResourceBadge>
+      </ResourceListCard.Header>
 
-      <span className="mt-3 line-clamp-1 moldy-ui-card-title font-bold leading-tight text-foreground">
-        {template.name}
-      </span>
-
-      {template.description && (
-        <p className="mt-2 line-clamp-2 min-h-[2.65em] text-xs leading-[1.45] text-muted-foreground">
-          {template.description}
-        </p>
-      )}
+      <ResourceListCard.Title>{template.name}</ResourceListCard.Title>
+      <ResourceListCard.Description>{template.description ?? template.category}</ResourceListCard.Description>
 
       {tools.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <ResourceListCard.MetaRow>
           {visibleTools.map((tool) => (
-            <span
-              key={tool}
-              className={cn(resourceMetaClassName, 'max-w-[96px] gap-1')}
-            >
+            <ResourceCardMeta key={tool} className="max-w-[96px] gap-1">
               <WrenchIcon aria-hidden className="size-2.5 text-muted-foreground" />
               <span className="truncate leading-none">{tool}</span>
-            </span>
+            </ResourceCardMeta>
           ))}
           {extraToolsCount > 0 && (
-            <span className="moldy-ui-meta font-medium leading-none text-muted-foreground">
-              {toolsMoreFormatter(extraToolsCount)}
-            </span>
+            <ResourceCardMeta>{toolsMoreFormatter(extraToolsCount)}</ResourceCardMeta>
           )}
-        </div>
+        </ResourceListCard.MetaRow>
       )}
 
-      <div className="mt-auto flex items-center justify-end pt-3">
+      <ResourceListCard.Footer>
         {isCreating ? (
           <Loader2Icon className="size-3.5 animate-spin text-muted-foreground" />
         ) : (
-          <span
-            className={cn(
-              'inline-flex items-center gap-0.5 text-xs font-semibold text-muted-foreground transition-[color,transform] duration-150',
-              'group-hover:translate-x-0.5 group-hover:text-primary-strong',
-              'group-focus-visible:translate-x-0.5 group-focus-visible:text-primary-strong',
-            )}
-          >
+          <span className="moldy-resource-action">
             {startLabel}
             <ChevronRightIcon aria-hidden className="size-3" />
           </span>
         )}
-      </div>
-    </button>
+      </ResourceListCard.Footer>
+    </ResourceListCard>
   )
 }
 
@@ -391,7 +366,7 @@ function NoSearchResults({ title, subtitle }: { title: string; subtitle: string 
 
 function TemplateGridSkeleton() {
   return (
-    <ResourceGrid>
+    <ResourceGrid minColumnWidth={252}>
       {Array.from({ length: 6 }).map((_, i) => (
         <div
           key={i}
@@ -448,8 +423,4 @@ function BottomCta({
       </span>
     </Link>
   )
-}
-
-function templateCardClassName(tone: ResourceTone): string {
-  return resourceCardClassName(tone, 'min-h-[152px]')
 }

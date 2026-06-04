@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 
 export type ResourceToneName = 'mint' | 'sky' | 'violet' | 'amber' | 'rose' | 'slate'
+export type ResourceCardDensity = 'compact' | 'standard' | 'rich'
 
 export type ResourceTone = {
   name: ResourceToneName
@@ -13,42 +14,42 @@ export type ResourceTone = {
 const RESOURCE_TONES: Record<ResourceToneName, ResourceTone> = {
   mint: {
     name: 'mint',
-    card: 'bg-[var(--moldy-mint)] hover:border-[var(--moldy-border-mint)]',
+    card: 'moldy-tone-card-mint',
     icon: 'moldy-tone-icon-mint',
     badge: 'moldy-tone-badge-mint',
     dot: 'bg-status-success',
   },
   sky: {
     name: 'sky',
-    card: 'bg-[var(--moldy-sky)] hover:border-[var(--moldy-border-sky)]',
+    card: 'moldy-tone-card-sky',
     icon: 'moldy-tone-icon-sky',
     badge: 'moldy-tone-badge-sky',
     dot: 'bg-status-info',
   },
   violet: {
     name: 'violet',
-    card: 'bg-[var(--moldy-violet)] hover:border-[var(--moldy-border-violet)]',
+    card: 'moldy-tone-card-violet',
     icon: 'moldy-tone-icon-violet',
     badge: 'moldy-tone-badge-violet',
     dot: 'bg-status-accent',
   },
   amber: {
     name: 'amber',
-    card: 'bg-[var(--moldy-amber)] hover:border-[var(--moldy-border-amber)]',
+    card: 'moldy-tone-card-amber',
     icon: 'moldy-tone-icon-amber',
     badge: 'moldy-tone-badge-amber',
     dot: 'bg-status-warn',
   },
   rose: {
     name: 'rose',
-    card: 'bg-[var(--moldy-rose)] hover:border-[var(--moldy-border-rose)]',
+    card: 'moldy-tone-card-rose',
     icon: 'moldy-tone-icon-rose',
     badge: 'moldy-tone-badge-rose',
     dot: 'bg-status-danger',
   },
   slate: {
     name: 'slate',
-    card: 'bg-[var(--moldy-slate)] hover:border-[var(--moldy-border-slate)]',
+    card: 'moldy-tone-card-slate',
     icon: 'moldy-tone-icon-slate',
     badge: 'moldy-tone-badge-slate',
     dot: 'bg-muted-foreground',
@@ -107,9 +108,16 @@ export function getStatusResourceTone(status: string | null | undefined): Resour
   return RESOURCE_TONES[STATUS_TONES[key] ?? 'slate']
 }
 
-export function resourceCardClassName(tone: ResourceTone, className?: string): string {
+export function resourceCardClassName(
+  tone: ResourceTone,
+  className?: string,
+  options: { density?: ResourceCardDensity; interactive?: boolean } = {},
+): string {
+  const interactive = options.interactive ?? true
   return cn(
     'moldy-resource-card group',
+    interactive && 'moldy-resource-card-interactive',
+    options.density && `moldy-resource-card-${options.density}`,
     tone.card,
     className,
   )
