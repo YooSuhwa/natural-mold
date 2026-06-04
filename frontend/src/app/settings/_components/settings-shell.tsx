@@ -5,13 +5,17 @@ import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import {
   Code2Icon,
+  KeyRoundIcon,
   MonitorCogIcon,
   ShieldCheckIcon,
+  SlidersHorizontalIcon,
+  StoreIcon,
   UserIcon,
 } from 'lucide-react'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
 
 import { PageHeader } from '@/components/shared/page-header'
+import { useSession } from '@/lib/auth/session'
 import { cn } from '@/lib/utils'
 
 interface SettingsShellProps {
@@ -37,6 +41,7 @@ function isActive(pathname: string, href: string) {
 export function SettingsShell({ children }: SettingsShellProps) {
   const pathname = usePathname()
   const t = useTranslations('appSettings')
+  const { data: user } = useSession()
 
   const sections: SettingsNavSection[] = [
     {
@@ -53,6 +58,30 @@ export function SettingsShell({ children }: SettingsShellProps) {
         { href: '/settings/agent-api', label: t('nav.agentApi'), icon: Code2Icon },
       ],
     },
+    ...(user?.is_super_user
+      ? [
+          {
+            label: t('nav.admin'),
+            items: [
+              {
+                href: '/settings/marketplace-admin',
+                label: t('nav.marketplaceAdmin'),
+                icon: StoreIcon,
+              },
+              {
+                href: '/settings/system-credentials',
+                label: t('nav.systemCredentials'),
+                icon: KeyRoundIcon,
+              },
+              {
+                href: '/settings/system-llm',
+                label: t('nav.systemLlm'),
+                icon: SlidersHorizontalIcon,
+              },
+            ],
+          },
+        ]
+      : []),
   ]
 
   return (
