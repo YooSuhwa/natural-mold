@@ -1092,19 +1092,6 @@
     overflow: hidden;
   }
 
-  .moldy-sidebar-nav-item::before {
-    position: absolute;
-    inset-block: 0.5rem;
-    inset-inline-start: 0.1875rem;
-    width: 0.125rem;
-    border-radius: var(--moldy-radius-pill);
-    background: var(--primary-strong);
-    content: "";
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s ease;
-  }
-
   .moldy-sidebar-nav-item:hover {
     border-color: color-mix(in oklch, var(--sidebar-border) 62%, transparent);
     background: color-mix(in oklch, var(--sidebar-accent) 42%, var(--background) 58%);
@@ -1119,17 +1106,9 @@
     box-shadow: var(--moldy-sidebar-active-shadow);
   }
 
-  .moldy-sidebar-nav-item[data-active]::before {
-    opacity: 0.72;
-  }
-
   .moldy-sidebar-nav-item[aria-expanded][data-active] {
     border-color: color-mix(in oklch, var(--sidebar-border) 58%, transparent);
     background: color-mix(in oklch, var(--sidebar-accent) 30%, var(--background) 70%);
-  }
-
-  .moldy-sidebar-nav-item[aria-expanded][data-active]::before {
-    opacity: 0;
   }
 
   .moldy-sidebar-new-agent {
@@ -1610,6 +1589,12 @@
     border-color: color-mix(in oklch, var(--moldy-tone-color, var(--primary-strong)) 28%, var(--border));
     transform: translateY(-1px);
     box-shadow: var(--moldy-shadow-card);
+  }
+
+  .moldy-resource-card-compact.moldy-resource-card-interactive:hover,
+  .moldy-resource-card-compact:focus-within,
+  .moldy-resource-card-compact:focus-visible {
+    transform: none;
   }
 
   .moldy-resource-card:focus-visible {
