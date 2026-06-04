@@ -18,7 +18,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest'
 import type { Message, SSEEvent } from '@/lib/types'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
-import { sameMessageSnapshot, useChatRuntime } from '../use-chat-runtime'
+import { mergeMessagesForRender, sameMessageSnapshot, useChatRuntime } from '../use-chat-runtime'
 
 vi.mock('next-intl', () => ({
   useTranslations: () => (key: string) => key,
@@ -150,7 +150,60 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
+function message(id: string, role: Message['role'], content: string): Message {
+  return {
+    id,
+    conversation_id: 'conversation-1',
+    role,
+    content,
+    tool_calls: null,
+    tool_call_id: null,
+    created_at: '2026-06-04T00:00:00.000Z',
+    feedback: null,
+    attachments: null,
+    usage: null,
+    parent_id: null,
+    branch_checkpoint_id: null,
+    siblings: null,
+    sibling_checkpoint_ids: null,
+    branch_index: null,
+    branch_total: null,
+  }
+}
+
 describe('useChatRuntime — onMessagesCommit dedup', () => {
+  it('refetch가 persisted assistant를 가져온 render에서 streaming turn을 즉시 숨긴다', () => {
+    const previousMessages: Message[] = []
+    const persistedUser = message('user-db', 'user', 'probe')
+    const persistedAssistant = message('assistant-db', 'assistant', 'done')
+    const optimisticUser = message('opt-user', 'user', 'probe')
+    const streamingAssistant = message('stream-assistant', 'assistant', 'done')
+
+    const merged = mergeMessagesForRender({
+      messages: [persistedUser, persistedAssistant],
+      previousMessages,
+      streamingMessages: [optimisticUser, streamingAssistant],
+      isRunning: false,
+    })
+
+    expect(merged.map((m) => m.id)).toEqual(['user-db', 'assistant-db'])
+  })
+
+  it('assistant row가 아직 persist되지 않은 refetch에서는 partial assistant를 보존한다', () => {
+    const persistedUser = message('user-db', 'user', 'probe')
+    const optimisticUser = message('opt-user', 'user', 'probe')
+    const partialAssistant = message('stream-assistant', 'assistant', 'partial')
+
+    const merged = mergeMessagesForRender({
+      messages: [persistedUser],
+      previousMessages: [],
+      streamingMessages: [optimisticUser, partialAssistant],
+      isRunning: false,
+    })
+
+    expect(merged.map((m) => m.id)).toEqual(['user-db', 'stream-assistant'])
+  })
+
   it('부모가 빈 messages 배열을 새 참조로 넘겨도 render loop가 나지 않는다', () => {
     const { result } = renderHook(() => useUnstableEmptyMessagesHarness(), {
       wrapper: createWrapper(),
