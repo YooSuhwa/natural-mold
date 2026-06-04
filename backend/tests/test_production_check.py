@@ -20,6 +20,7 @@ _LONG_ENOUGH_SECRET = "a" * 48  # >= 32 chars, opaque enough for the validator
 _PROD_OVERRIDES = {
     "app_env": "production",
     "jwt_secret": _LONG_ENOUGH_SECRET,
+    "api_key_hash_secret": _LONG_ENOUGH_SECRET,
     "cookie_secure": True,
     "allow_first_user_as_admin": False,
     "cors_allowed_origins": "https://app.example.com",
@@ -49,6 +50,7 @@ def test_clean_production_settings_pass() -> None:
     [
         ({"jwt_secret": ""}, "JWT_SECRET"),
         ({"jwt_secret": "short"}, "JWT_SECRET"),
+        ({"api_key_hash_secret": ""}, "API_KEY_HASH_SECRET"),
         ({"cookie_secure": False}, "COOKIE_SECURE"),
         ({"allow_first_user_as_admin": True}, "ALLOW_FIRST_USER_AS_ADMIN"),
         ({"cors_allowed_origins": "http://localhost:3000"}, "CORS_ALLOWED_ORIGINS"),

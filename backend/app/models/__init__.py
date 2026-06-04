@@ -2,6 +2,13 @@
 # modules picking them up via ``Base.metadata`` see the new schema.
 # Existing domain models.
 from app.models.agent import Agent
+from app.models.agent_api import (
+    AgentApiKey,
+    AgentApiKeyDeployment,
+    AgentApiRun,
+    AgentApiThread,
+    AgentDeployment,
+)
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
@@ -39,6 +46,11 @@ from app.models.user import User
 
 __all__ = [
     "Agent",
+    "AgentApiKey",
+    "AgentApiKeyDeployment",
+    "AgentApiRun",
+    "AgentApiThread",
+    "AgentDeployment",
     "AgentMcpToolLink",
     "AgentSkillLink",
     "AgentSubAgentLink",

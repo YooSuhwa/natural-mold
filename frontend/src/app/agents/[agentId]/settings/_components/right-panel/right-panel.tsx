@@ -7,6 +7,7 @@ import {
   HelpCircleIcon,
   ClockIcon,
   SettingsIcon,
+  KeyRoundIcon,
 } from 'lucide-react'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
@@ -16,8 +17,9 @@ import { TriggersTab } from '../triggers-tab'
 import { TestChatPanel } from './test-chat-panel'
 import { OpenerEditor } from './opener-editor'
 import { SettingsPanel } from './settings-panel'
+import { ApiPanel } from './api-panel'
 
-export type RightTab = 'fix' | 'test' | 'opener' | 'schedule' | 'settings'
+export type RightTab = 'fix' | 'test' | 'opener' | 'schedule' | 'settings' | 'api'
 
 interface RightPanelProps {
   tab: RightTab
@@ -82,6 +84,10 @@ export function RightPanel({
           <LineTabsTrigger value="settings">
             <SettingsIcon className="size-3.5" />
             {t('tabs.settings')}
+          </LineTabsTrigger>
+          <LineTabsTrigger value="api">
+            <KeyRoundIcon className="size-3.5" />
+            API
           </LineTabsTrigger>
         </LineTabsList>
       </div>
@@ -150,6 +156,18 @@ export function RightPanel({
           />
         ) : (
           <CreateModePlaceholder label={t('createModeLocked')} />
+        )}
+      </TabsContent>
+
+      <TabsContent
+        value="api"
+        keepMounted
+        className="flex-1 overflow-auto p-4 data-[state=inactive]:hidden"
+      >
+        {!agentId ? (
+          <CreateModePlaceholder label={t('createModeLocked')} />
+        ) : (
+          <ApiPanel agentId={agentId} agentName={agentName} />
         )}
       </TabsContent>
     </Tabs>

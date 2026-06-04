@@ -74,7 +74,7 @@ __all__ = [
 async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conversation]:
     result = await db.execute(
         select(Conversation)
-        .where(Conversation.agent_id == agent_id)
+        .where(Conversation.agent_id == agent_id, Conversation.source == "ui")
         .order_by(Conversation.is_pinned.desc(), Conversation.updated_at.desc())
     )
     return list(result.scalars().all())
@@ -120,7 +120,10 @@ async def list_conversations_page(
     cursor: str | None = None,
     q: str | None = None,
 ) -> tuple[list[Conversation], str | None, bool]:
-    query = select(Conversation).where(Conversation.agent_id == agent_id)
+    query = select(Conversation).where(
+        Conversation.agent_id == agent_id,
+        Conversation.source == "ui",
+    )
 
     search = (q or "").strip()
     if search:

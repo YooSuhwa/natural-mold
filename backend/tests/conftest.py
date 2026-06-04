@@ -79,6 +79,10 @@ def _stub_llm_credential_resolution(monkeypatch):
         "app.agent_runtime.trigger_executor.resolve_llm_api_key_for_agent",
         _fake_resolve,
     )
+    monkeypatch.setattr(
+        "app.services.agent_invocation_service.resolve_llm_api_key_for_agent",
+        _fake_resolve,
+    )
 
 
 @pytest.fixture(autouse=True)
