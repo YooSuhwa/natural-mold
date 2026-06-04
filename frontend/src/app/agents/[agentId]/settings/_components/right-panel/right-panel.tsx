@@ -11,6 +11,7 @@ import {
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { LineTabsList, LineTabsTrigger } from '@/components/ui/line-tabs'
 import { AssistantPanel } from '@/components/agent/assistant-panel'
+import type { AgentIdentityMode } from '@/lib/types'
 import { TriggersTab } from '../triggers-tab'
 import { TestChatPanel } from './test-chat-panel'
 import { OpenerEditor } from './opener-editor'
@@ -24,6 +25,8 @@ interface RightPanelProps {
   agentId: string
   agentName: string
   agentImageUrl: string | null
+  identityMode?: AgentIdentityMode
+  onIdentityModeChange?: (mode: AgentIdentityMode) => void
   openerQuestions: string[]
   onOpenerQuestionsChange: (q: string[]) => void
   onRequestDeleteTrigger: (target: { id: string; description: string }) => void
@@ -41,6 +44,8 @@ export function RightPanel({
   agentId,
   agentName,
   agentImageUrl,
+  identityMode,
+  onIdentityModeChange,
   openerQuestions,
   onOpenerQuestionsChange,
   onRequestDeleteTrigger,
@@ -135,8 +140,16 @@ export function RightPanel({
       >
         {!agentId ? (
           <CreateModePlaceholder label={t('createModeLocked')} />
+        ) : identityMode && onIdentityModeChange ? (
+          <SettingsPanel
+            agentId={agentId}
+            imageUrl={agentImageUrl}
+            name={agentName}
+            identityMode={identityMode}
+            onIdentityModeChange={onIdentityModeChange}
+          />
         ) : (
-          <SettingsPanel agentId={agentId} imageUrl={agentImageUrl} name={agentName} />
+          <CreateModePlaceholder label={t('createModeLocked')} />
         )}
       </TabsContent>
     </Tabs>

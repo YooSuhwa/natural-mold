@@ -502,8 +502,6 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
               <FormMode
                 systemPrompt={systemPrompt}
                 onSystemPromptChange={setSystemPrompt}
-                identityMode={identityMode}
-                onIdentityModeChange={setIdentityMode}
                 selectedSubAgentIds={selectedSubAgentIds}
                 onToggleSubAgent={handleToggleSubAgent}
                 currentAgentId={agentId}
@@ -557,6 +555,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             agentId={agentId}
             agentName={agent?.name ?? ''}
             agentImageUrl={agent?.image_url ?? null}
+            identityMode={identityMode}
+            onIdentityModeChange={setIdentityMode}
             openerQuestions={openerQuestions}
             onOpenerQuestionsChange={setOpenerQuestions}
             onRequestDeleteTrigger={setDeletingTriggerTarget}

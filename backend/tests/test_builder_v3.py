@@ -305,8 +305,8 @@ async def test_phase2_question_flow_payload_and_structured_resume(monkeypatch):
     )
     assert interrupt_payload["type"] == "ask_user"
     assert interrupt_payload["mode"] == "question_flow"
-    assert len(interrupt_payload["questions"]) >= 4
-    assert any(q["id"] == "identity_mode" for q in interrupt_payload["questions"])
+    assert len(interrupt_payload["questions"]) == 3
+    assert not any(q["id"] == "identity_mode" for q in interrupt_payload["questions"])
 
     response = {
         "mode": "question_flow",
@@ -314,13 +314,11 @@ async def test_phase2_question_flow_payload_and_structured_resume(monkeypatch):
             "agent_name": ["리서치봇"],
             "response_tone": ["professional"],
             "output_style": ["detailed"],
-            "identity_mode": ["fixed"],
         },
         "labels": {
             "agent_name": "리서치봇",
             "response_tone": "전문적으로",
             "output_style": "자세한 설명",
-            "identity_mode": "에이전트 고정 credential",
         },
     }
     await compiled.ainvoke(Command(resume=json.dumps(response, ensure_ascii=False)), config=config)
@@ -330,7 +328,7 @@ async def test_phase2_question_flow_payload_and_structured_resume(monkeypatch):
     assert state.values["intent"]["agent_name_ko"] == "리서치봇"
     assert state.values["intent"]["response_tone"] == "전문적으로"
     assert state.values["intent"]["output_style"] == "자세한 설명"
-    assert state.values["intent"]["identity_mode"] == "fixed"
+    assert state.values["intent"]["identity_mode"] == "per_user"
 
 
 def test_phase7_draft_copies_identity_mode():

@@ -6,15 +6,15 @@ import type { AgentIdentityMode } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
-interface SectionIdentityProps {
+interface IdentitySettingsSectionProps {
   identityMode: AgentIdentityMode
   onIdentityModeChange: (mode: AgentIdentityMode) => void
 }
 
-export function SectionIdentity({
+export function IdentitySettingsSection({
   identityMode,
   onIdentityModeChange,
-}: SectionIdentityProps) {
+}: IdentitySettingsSectionProps) {
   const t = useTranslations('agent.settings.identity')
   const options: {
     value: AgentIdentityMode
@@ -37,7 +37,7 @@ export function SectionIdentity({
   ]
 
   return (
-    <div className="rounded-lg border px-4 py-3">
+    <section className="rounded-lg border px-4 py-3">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-medium">{t('title')}</div>
@@ -47,7 +47,7 @@ export function SectionIdentity({
           {identityMode}
         </span>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2">
         {options.map((option) => {
           const Icon = option.icon
           const active = identityMode === option.value
@@ -74,6 +74,6 @@ export function SectionIdentity({
           )
         })}
       </div>
-    </div>
+    </section>
   )
 }

@@ -36,7 +36,7 @@ from app.agent_runtime.builder_v3.nodes._helpers import (
     parse_question_flow_response,
 )
 from app.agent_runtime.builder_v3.state import BuilderState
-from app.agent_runtime.identity import AGENT_IDENTITY_FIXED, AGENT_IDENTITY_PER_USER
+from app.agent_runtime.identity import AGENT_IDENTITY_PER_USER
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +55,6 @@ _OUTPUT_STYLE_OPTIONS = [
     {"id": "summary", "label": "간단한 요약과 주요 포인트"},
     {"id": "detailed", "label": "자세한 설명"},
     {"id": "checklist", "label": "체크리스트 중심"},
-]
-_IDENTITY_MODE_OPTIONS = [
-    {"id": AGENT_IDENTITY_PER_USER, "label": "사용자별 credential"},
-    {"id": AGENT_IDENTITY_FIXED, "label": "에이전트 고정 credential"},
 ]
 
 
@@ -89,13 +85,6 @@ def _build_phase2_ask_user_payload(name_options: list[str]) -> dict[str, Any]:
                 "label": "결과 스타일",
                 "type": "single_select",
                 "options": _OUTPUT_STYLE_OPTIONS,
-                "required": True,
-            },
-            {
-                "id": "identity_mode",
-                "label": "Credential 사용 방식",
-                "type": "single_select",
-                "options": _IDENTITY_MODE_OPTIONS,
                 "required": True,
             },
         ],
@@ -133,13 +122,11 @@ def _phase2_selection_summary(
     name: str,
     response_tone: str,
     output_style: str,
-    identity_mode: str,
 ) -> str:
     parts = [
         f"에이전트 이름: {name}" if name else "",
         f"답변 톤: {response_tone}" if response_tone else "",
         f"결과 스타일: {output_style}" if output_style else "",
-        f"credential: {identity_mode}" if identity_mode else "",
     ]
     return " | ".join(part for part in parts if part)
 
@@ -329,21 +316,10 @@ async def phase2_intent_wait(state: BuilderState) -> dict:
         structured_labels,
         options=_OUTPUT_STYLE_OPTIONS,
     )
-    selected_identity_values = [
-        value for value in structured_answers.get("identity_mode", []) if value.strip()
-    ]
-    selected_identity_mode = selected_identity_values[0] if selected_identity_values else ""
-    selected_identity_label = _selected_label(
-        "identity_mode",
-        structured_answers,
-        structured_labels,
-        options=_IDENTITY_MODE_OPTIONS,
-    )
     receipt_text = _phase2_selection_summary(
         name=selected_name,
         response_tone=selected_tone,
         output_style=selected_style,
-        identity_mode=selected_identity_label,
     )
 
     if not selected_name:
@@ -358,10 +334,7 @@ async def phase2_intent_wait(state: BuilderState) -> dict:
         intent_dict["response_tone"] = selected_tone
     if selected_style:
         intent_dict["output_style"] = selected_style
-    if selected_identity_mode:
-        intent_dict["identity_mode"] = selected_identity_mode
-    else:
-        intent_dict.setdefault("identity_mode", AGENT_IDENTITY_PER_USER)
+    intent_dict["identity_mode"] = AGENT_IDENTITY_PER_USER
 
     close_msgs = close_pending_tool_card(pending_tc_id, "ask_user", receipt_text)
     return {

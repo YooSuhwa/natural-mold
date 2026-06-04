@@ -284,8 +284,6 @@ export default function ManualCreationPage() {
             <FormMode
               systemPrompt={systemPrompt}
               onSystemPromptChange={setSystemPrompt}
-              identityMode={identityMode}
-              onIdentityModeChange={setIdentityMode}
               selectedSubAgentIds={selectedSubAgentIds}
               onToggleSubAgent={(id) =>
                 setSelectedSubAgentIds((prev) => toggleSetItem(prev, id))

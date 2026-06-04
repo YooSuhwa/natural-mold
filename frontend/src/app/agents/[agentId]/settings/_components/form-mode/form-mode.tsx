@@ -1,17 +1,13 @@
 'use client'
 
 import { SectionInstructions } from './section-instructions'
-import { SectionIdentity } from './section-identity'
 import { SectionSubAgents } from './section-sub-agents'
 import { SectionModel } from './section-model'
 import { ToolsMiddlewaresGrid } from './tools-middlewares-grid'
-import type { AgentIdentityMode } from '@/lib/types'
 
 interface FormModeProps {
   systemPrompt: string
   onSystemPromptChange: (v: string) => void
-  identityMode: AgentIdentityMode
-  onIdentityModeChange: (v: AgentIdentityMode) => void
 
   selectedSubAgentIds: Set<string>
   onToggleSubAgent: (id: string) => void
@@ -43,8 +39,6 @@ interface FormModeProps {
 export function FormMode({
   systemPrompt,
   onSystemPromptChange,
-  identityMode,
-  onIdentityModeChange,
   selectedSubAgentIds,
   onToggleSubAgent,
   currentAgentId,
@@ -73,10 +67,6 @@ export function FormMode({
       <SectionInstructions
         systemPrompt={systemPrompt}
         onSystemPromptChange={onSystemPromptChange}
-      />
-      <SectionIdentity
-        identityMode={identityMode}
-        onIdentityModeChange={onIdentityModeChange}
       />
       <SectionSubAgents
         selectedSubAgentIds={selectedSubAgentIds}
