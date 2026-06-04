@@ -41,7 +41,7 @@ const ZERO_TOLERANCE_RULES = [
   {
     id: 'resource-tone-background',
     pattern: /\bbg-\[var\(--moldy-(?:mint|sky|violet|amber|rose)\)\]/g,
-    message: 'use neutral resource cards; keep tone colors to icons, dots, rails, and status signals',
+    message: 'use neutral resource cards; keep tone colors to icons, dots, status signals, and interaction states',
   },
   {
     id: 'arbitrary-text-class',

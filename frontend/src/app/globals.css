@@ -1588,21 +1588,6 @@
       transform 0.15s ease;
   }
 
-  .moldy-resource-card::before {
-    position: absolute;
-    inset-block: 0;
-    inset-inline-start: 0;
-    width: 2px;
-    background: color-mix(in oklch, var(--moldy-tone-color, var(--border)) 62%, transparent);
-    content: "";
-    opacity: 0.68;
-  }
-
-  .moldy-resource-card > * {
-    position: relative;
-    z-index: 1;
-  }
-
   .moldy-resource-card-interactive {
     cursor: pointer;
   }
