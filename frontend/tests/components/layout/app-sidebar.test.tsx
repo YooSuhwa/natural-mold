@@ -20,6 +20,7 @@ vi.mock('next/link', () => ({
 
 const mockUseAgentSummaries = vi.fn()
 const mockUseTriggerSummary = vi.fn()
+const mockUseSession = vi.fn()
 
 vi.mock('@/lib/hooks/use-agents', () => ({
   useAgentSummaries: () => mockUseAgentSummaries(),
@@ -30,14 +31,7 @@ vi.mock('@/lib/hooks/use-triggers', () => ({
 }))
 
 vi.mock('@/lib/auth/session', () => ({
-  useSession: () => ({
-    data: {
-      id: 'user-1',
-      name: 'Test User',
-      email: 'test@example.com',
-      is_super_user: false,
-    },
-  }),
+  useSession: () => mockUseSession(),
 }))
 
 vi.mock('jotai', async (importOriginal) => {
@@ -138,6 +132,14 @@ describe('AppSidebar', () => {
   beforeEach(() => {
     mockUseAgentSummaries.mockReturnValue({ data: undefined, isLoading: false })
     mockUseTriggerSummary.mockReturnValue({ data: { total_unread: 0, active_count: 0 } })
+    mockUseSession.mockReturnValue({
+      data: {
+        id: 'user-1',
+        name: 'Test User',
+        email: 'test@example.com',
+        is_super_user: false,
+      },
+    })
   })
 
   it('renders sidebar with brand', () => {
@@ -163,6 +165,41 @@ describe('AppSidebar', () => {
   it('renders new agent button', () => {
     render(<AppSidebar />)
     expect(screen.getByText('새 에이전트')).toBeInTheDocument()
+  })
+
+  it('renders marketplace as a single sidebar link for regular users', () => {
+    render(<AppSidebar />)
+
+    expect(screen.getByRole('link', { name: '마켓플레이스' })).toHaveAttribute(
+      'href',
+      '/marketplace',
+    )
+    expect(screen.queryByText('둘러보기')).not.toBeInTheDocument()
+    expect(screen.queryByText('운영자 관리')).not.toBeInTheDocument()
+    expect(screen.queryByText('시스템 자격증명')).not.toBeInTheDocument()
+    expect(screen.queryByText('시스템 LLM 설정')).not.toBeInTheDocument()
+  })
+
+  it('keeps admin-only links out of the main sidebar for super users', () => {
+    mockUseSession.mockReturnValue({
+      data: {
+        id: 'admin-1',
+        name: 'Admin User',
+        email: 'admin@example.com',
+        is_super_user: true,
+      },
+    })
+
+    render(<AppSidebar />)
+
+    expect(screen.getByRole('link', { name: '마켓플레이스' })).toHaveAttribute(
+      'href',
+      '/marketplace',
+    )
+    expect(screen.queryByText('둘러보기')).not.toBeInTheDocument()
+    expect(screen.queryByText('운영자 관리')).not.toBeInTheDocument()
+    expect(screen.queryByText('시스템 자격증명')).not.toBeInTheDocument()
+    expect(screen.queryByText('시스템 LLM 설정')).not.toBeInTheDocument()
   })
 
   it('shows recent agents when loaded', () => {

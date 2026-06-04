@@ -18,6 +18,7 @@ import {
   useDeleteSystemCredential,
   useSystemCredentials,
 } from '@/lib/hooks/use-credentials'
+import { SettingsShell } from '../_components/settings-shell'
 
 /**
  * System Credentials — operator-managed keys for Fix Agent / builder /
@@ -42,13 +43,17 @@ export default function SystemCredentialsPage() {
 
   if (isPending || denied) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
+      <SettingsShell>
         <p className="text-sm text-muted-foreground">{t('loading')}</p>
-      </div>
+      </SettingsShell>
     )
   }
 
-  return <SystemCredentialsPageInner />
+  return (
+    <SettingsShell>
+      <SystemCredentialsPageInner />
+    </SettingsShell>
+  )
 }
 
 function SystemCredentialsPageInner() {
@@ -75,7 +80,7 @@ function SystemCredentialsPageInner() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
+    <div className="flex flex-col gap-6">
       <PageHeader
         title={t('title')}
         description={t('description')}

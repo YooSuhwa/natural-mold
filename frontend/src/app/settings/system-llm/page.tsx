@@ -35,6 +35,7 @@ import {
   SYSTEM_LLM_CREDENTIAL_KEYS,
   type SystemLlmSettingOut,
 } from '@/lib/types/system-llm-setting'
+import { SettingsShell } from '../_components/settings-shell'
 
 const NONE_VALUE = '__none__'
 
@@ -61,13 +62,17 @@ export default function SystemLlmSettingsPage() {
 
   if (isPending || denied) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
+      <SettingsShell>
         <p className="text-sm text-muted-foreground">{t('loading')}</p>
-      </div>
+      </SettingsShell>
     )
   }
 
-  return <SystemLlmSettingsPageInner />
+  return (
+    <SettingsShell>
+      <SystemLlmSettingsPageInner />
+    </SettingsShell>
+  )
 }
 
 function SystemLlmSettingsPageInner() {
@@ -84,7 +89,7 @@ function SystemLlmSettingsPageInner() {
   )
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 overflow-auto p-6">
+    <div className="flex flex-col gap-6">
       <PageHeader
         title={t('title')}
         description={t('description')}
