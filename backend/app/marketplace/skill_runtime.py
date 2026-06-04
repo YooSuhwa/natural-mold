@@ -283,7 +283,7 @@ async def resolve_runtime_credentials(
     is empty (DB-free unit tests, trigger mode).
     """
 
-    if not cfg.agent_skills or not cfg.user_id:
+    if not cfg.agent_skills or not (cfg.credential_subject_user_id or cfg.user_id):
         return
 
     # Lazy imports — keep ``skill_runtime`` cheap on cold start.
@@ -294,7 +294,7 @@ async def resolve_runtime_credentials(
     from app.models.skill import Skill as _Skill
 
     try:
-        user_uuid = uuid.UUID(str(cfg.user_id))
+        user_uuid = uuid.UUID(str(cfg.credential_subject_user_id or cfg.user_id))
     except (TypeError, ValueError):
         return
 

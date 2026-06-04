@@ -9,6 +9,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.credentials import service as credential_service
+from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.user import User
 from app.services import mcp_registry
@@ -192,6 +194,34 @@ async def test_create_from_registry_with_credential(client: AsyncClient, db: Asy
     )
     assert response.status_code == 201, response.text
     assert response.json()["credential_id"] == cred_id
+
+
+@pytest.mark.asyncio
+async def test_create_from_registry_rejects_system_credential(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    blob, key_id, field_keys = credential_service.encrypt_data({"token": "system"})
+    credential = Credential(
+        user_id=None,
+        definition_key="http_bearer",
+        name="system-token",
+        data_encrypted=blob,
+        key_id=key_id,
+        field_keys=field_keys,
+        is_system=True,
+    )
+    db.add(credential)
+    await db.commit()
+
+    response = await client.post(
+        "/api/mcp-servers/from-registry",
+        json={
+            "registry_key": "github",
+            "name": "My GitHub",
+            "credential_id": str(credential.id),
+        },
+    )
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

@@ -32,9 +32,37 @@ async def _create_agent(client: AsyncClient, model_id: str) -> str:
             "name": "Test Agent",
             "system_prompt": "You are helpful.",
             "model_id": model_id,
+            "identity_mode": "fixed",
         },
     )
     return resp.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_create_trigger_rejects_per_user_agent(client: AsyncClient):
+    model_id = await _create_model(client)
+    resp = await client.post(
+        "/api/agents",
+        json={
+            "name": "Per User Agent",
+            "system_prompt": "You are helpful.",
+            "model_id": model_id,
+            "identity_mode": "per_user",
+        },
+    )
+    agent_id = resp.json()["id"]
+
+    trigger_resp = await client.post(
+        f"/api/agents/{agent_id}/triggers",
+        json={
+            "trigger_type": "interval",
+            "schedule_config": {"interval_minutes": 10},
+            "input_message": "run",
+        },
+    )
+
+    assert trigger_resp.status_code == 422
+    assert "fixed" in trigger_resp.text
 
 
 @pytest.mark.asyncio

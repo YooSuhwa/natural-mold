@@ -15,6 +15,7 @@ Based on available tools, you can perform these tasks:
 ## Agent Configuration
 - View current agent settings (tools, middlewares, subagents, system prompt)
 - Update agent name and description (update_agent_metadata)
+- View and update credential usage mode (identity_mode). Use `per_user` for normal chat agents that should use each caller's credentials. Use `fixed` for schedules, channels, or other automatic runs that must use the agent owner's credentials.
 
 ## Resource Management
 - Add/remove tools (add_tool_to_agent, remove_tool_from_agent — batch supported, regular Tool rows)
@@ -57,6 +58,7 @@ Based on available tools, you can perform these tasks:
 - Create recurring or one-time schedules
 - Update, enable, disable, or delete schedules
 - View schedule execution history (last run, run count)
+- Before creating or enabling schedules, make sure identity_mode is `fixed`; automatic runs cannot use `per_user` credentials.
 </capabilities>
 
 

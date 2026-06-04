@@ -182,6 +182,7 @@ async def test_confirm_build_success(db: AsyncSession):
         "tools": ["Web Search"],
         "middlewares": [],
         "model_name": "GPT-4o",
+        "identity_mode": "per_user",
     }
     await db.commit()
 
@@ -190,11 +191,37 @@ async def test_confirm_build_success(db: AsyncSession):
     assert agent.name == "날씨 봇"
     assert agent.system_prompt == "You are a weather bot."
     assert agent.model_id == model.id
+    assert agent.identity_mode == "per_user"
 
     reloaded = await get_session(db, session.id, TEST_USER_ID)
     assert reloaded is not None
     assert reloaded.status == BuilderStatus.COMPLETED
     assert reloaded.agent_id == agent.id
+
+
+@pytest.mark.asyncio
+async def test_confirm_build_uses_fixed_identity_from_draft(db: AsyncSession):
+    await _seed_user(db)
+    await _seed_model(db)
+    await db.commit()
+
+    session = await create_session(db, TEST_USER_ID, "스케줄 봇")
+    session.status = BuilderStatus.CONFIRMING
+    session.draft_config = {
+        "name": "Scheduler",
+        "name_ko": "스케줄 봇",
+        "description": "정해진 시간에 실행되는 봇",
+        "system_prompt": "Run on schedule.",
+        "tools": [],
+        "middlewares": [],
+        "model_name": "GPT-4o",
+        "identity_mode": "fixed",
+    }
+    await db.commit()
+
+    agent = await confirm_build(db, session)
+    assert agent is not None
+    assert agent.identity_mode == "fixed"
 
 
 @pytest.mark.asyncio

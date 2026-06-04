@@ -7,6 +7,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.agent_runtime.identity import make_agent_runtime_name, validate_identity_mode
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.mcp_server import McpServer
@@ -310,8 +311,12 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
     if fallback_ids:
         await _validate_model_fallback_ids(db, fallback_ids)
 
+    agent_id = uuid.uuid4()
     agent = Agent(
+        id=agent_id,
         user_id=user_id,
+        runtime_name=make_agent_runtime_name(agent_id),
+        identity_mode=validate_identity_mode(data.identity_mode),
         name=data.name,
         description=data.description,
         system_prompt=data.system_prompt,
@@ -374,6 +379,14 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
 
 
 async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Agent:
+    if data.identity_mode is not None and data.identity_mode != agent.identity_mode:
+        next_mode = validate_identity_mode(data.identity_mode)
+        if next_mode == "per_user" and await _count_active_triggers(db, agent.id) > 0:
+            raise HTTPException(
+                status_code=422,
+                detail="per_user identity cannot be enabled while active triggers exist",
+            )
+        agent.identity_mode = next_mode
     if data.name is not None:
         agent.name = data.name
     if data.description is not None:
@@ -433,6 +446,17 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
         ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
     )
     return agent
+
+
+async def _count_active_triggers(db: AsyncSession, agent_id: uuid.UUID) -> int:
+    from app.models.agent_trigger import AgentTrigger
+
+    result = await db.execute(
+        select(func.count())
+        .select_from(AgentTrigger)
+        .where(AgentTrigger.agent_id == agent_id, AgentTrigger.status == "active")
+    )
+    return int(result.scalar_one() or 0)
 
 
 async def delete_agent(db: AsyncSession, agent: Agent) -> None:

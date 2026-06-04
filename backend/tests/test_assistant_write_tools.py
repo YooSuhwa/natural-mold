@@ -185,6 +185,52 @@ async def test_edit_system_prompt_not_found(db: AsyncSession, patch_write_sessio
 
 
 # ---------------------------------------------------------------------------
+# update_agent_identity_mode
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_agent_identity_mode(db: AsyncSession, patch_write_session):
+    agent_id, _ = await _seed_full(db)
+    tools = _build_write_tools(db, agent_id)
+    tool = _find_tool(tools, "update_agent_identity_mode")
+
+    result = await tool.ainvoke({"identity_mode": "per_user"})
+    assert "credential 사용 모드 변경 완료" in result
+
+    read_tools = _build_read_tools(db, agent_id)
+    config_tool = _find_tool(read_tools, "get_agent_config")
+    config_result = await config_tool.ainvoke({})
+    data = json.loads(config_result)
+    assert data["identity_mode"] == "per_user"
+
+
+@pytest.mark.asyncio
+async def test_update_agent_identity_mode_rejects_per_user_with_active_schedule(
+    db: AsyncSession, patch_write_session
+):
+    agent_id, _ = await _seed_full(db)
+    db.add(
+        AgentTrigger(
+            agent_id=agent_id,
+            user_id=TEST_USER_ID,
+            name="Hourly",
+            trigger_type="cron",
+            schedule_config={"cron_expression": "0 * * * *"},
+            input_message="run",
+            status="active",
+        )
+    )
+    await db.commit()
+
+    tools = _build_write_tools(db, agent_id)
+    tool = _find_tool(tools, "update_agent_identity_mode")
+
+    result = await tool.ainvoke({"identity_mode": "per_user"})
+    assert "활성 스케줄" in result
+
+
+# ---------------------------------------------------------------------------
 # update_system_prompt
 # ---------------------------------------------------------------------------
 
@@ -900,6 +946,34 @@ async def test_enable_cron_schedule_not_found(db: AsyncSession, patch_write_sess
 
     result = await tool.ainvoke({"schedule_id": str(uuid.uuid4())})
     assert "찾을 수 없습니다" in result
+
+
+@pytest.mark.asyncio
+async def test_enable_cron_schedule_returns_fixed_identity_error(
+    db: AsyncSession, patch_write_session
+):
+    agent_id, _ = await _seed_full(db)
+    agent = await db.get(Agent, agent_id)
+    assert agent is not None
+    agent.identity_mode = "per_user"
+    trigger = AgentTrigger(
+        agent_id=agent_id,
+        user_id=TEST_USER_ID,
+        name="Paused",
+        trigger_type="cron",
+        schedule_config={"cron_expression": "0 * * * *"},
+        input_message="run",
+        status="paused",
+    )
+    db.add(trigger)
+    await db.commit()
+
+    tools = _build_write_tools(db, agent_id)
+    tool = _find_tool(tools, "enable_cron_schedule")
+
+    result = await tool.ainvoke({"schedule_id": str(trigger.id)})
+    assert "스케줄 설정이 올바르지 않습니다" in result
+    assert "identity_mode must be fixed" in result
 
 
 # ---------------------------------------------------------------------------

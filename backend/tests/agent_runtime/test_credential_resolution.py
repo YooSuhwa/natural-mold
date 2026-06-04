@@ -8,6 +8,8 @@ endpoint credential (without explicit agent binding) don't hit a 422 wall.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,11 +18,20 @@ from app.agent_runtime.credential_resolution import (
     LLMCredentialRequiredError,
     resolve_llm_api_key_for_agent,
 )
+from app.agent_runtime.identity import (
+    AGENT_IDENTITY_FIXED,
+    AGENT_IDENTITY_PER_USER,
+    AgentRunSource,
+    make_agent_runtime_name,
+    resolve_agent_run_identity,
+)
 from app.credentials import service as credential_service
 from app.models.agent import Agent
 from app.models.model import Model
 from app.models.user import User
 from tests.conftest import TEST_USER_ID
+
+OTHER_USER_ID = "00000000-0000-0000-0000-000000000002"
 
 
 @pytest.fixture(autouse=True)
@@ -97,6 +108,100 @@ async def test_auto_match_missing_credential_raises(db: AsyncSession) -> None:
 
     with pytest.raises(LLMCredentialRequiredError):
         await resolve_llm_api_key_for_agent(db, agent)
+
+
+@pytest.mark.asyncio
+async def test_per_user_identity_resolves_provider_match_for_caller_subject(
+    db: AsyncSession,
+) -> None:
+    other_user_uuid = __import__("uuid").UUID(OTHER_USER_ID)
+    db.add(User(id=other_user_uuid, email="other@test.com", name="Other User"))
+    await credential_service.create(
+        db,
+        user_id=other_user_uuid,
+        definition_key="openai_compatible",
+        name="caller-key",
+        data={"base_url": "https://caller/v1", "api_key": "sk-caller"},
+    )
+    await db.commit()
+
+    agent = await _make_agent_with_model(db, provider="openai_compatible")
+    identity = resolve_agent_run_identity(
+        agent_id=agent.id,
+        agent_owner_user_id=agent.user_id,
+        runtime_name=make_agent_runtime_name(agent.id),
+        identity_mode=AGENT_IDENTITY_PER_USER,
+        source=AgentRunSource.CHAT,
+        caller_user_id=other_user_uuid,
+    )
+
+    key = await resolve_llm_api_key_for_agent(db, agent, identity=identity)
+
+    assert key == "sk-caller"
+
+
+@pytest.mark.asyncio
+async def test_explicit_agent_llm_credential_must_belong_to_identity_subject(
+    db: AsyncSession,
+) -> None:
+    owner_cred = await credential_service.create(
+        db,
+        user_id=TEST_USER_ID,
+        definition_key="openai_compatible",
+        name="owner-key",
+        data={"base_url": "https://owner/v1", "api_key": "sk-owner"},
+    )
+    other_user_uuid = __import__("uuid").UUID(OTHER_USER_ID)
+    db.add(User(id=other_user_uuid, email="other@test.com", name="Other User"))
+    await db.commit()
+
+    agent = await _make_agent_with_model(db, provider="openai_compatible")
+    agent.llm_credential_id = owner_cred.id
+    await db.commit()
+    await db.refresh(agent, attribute_names=["model", "llm_credential"])
+
+    identity = resolve_agent_run_identity(
+        agent_id=agent.id,
+        agent_owner_user_id=agent.user_id,
+        runtime_name=make_agent_runtime_name(agent.id),
+        identity_mode=AGENT_IDENTITY_PER_USER,
+        source=AgentRunSource.CHAT,
+        caller_user_id=other_user_uuid,
+    )
+
+    with pytest.raises(LLMCredentialRequiredError):
+        await resolve_llm_api_key_for_agent(db, agent, identity=identity)
+
+
+@pytest.mark.asyncio
+async def test_fixed_identity_keeps_owner_subject_for_explicit_credential(
+    db: AsyncSession,
+) -> None:
+    owner_cred = await credential_service.create(
+        db,
+        user_id=TEST_USER_ID,
+        definition_key="openai_compatible",
+        name="owner-key",
+        data={"base_url": "https://owner/v1", "api_key": "sk-owner"},
+    )
+    await db.commit()
+
+    agent = await _make_agent_with_model(db, provider="openai_compatible")
+    agent.llm_credential_id = owner_cred.id
+    await db.commit()
+    await db.refresh(agent, attribute_names=["model", "llm_credential"])
+    identity = resolve_agent_run_identity(
+        agent_id=agent.id,
+        agent_owner_user_id=agent.user_id,
+        runtime_name=make_agent_runtime_name(agent.id),
+        identity_mode=AGENT_IDENTITY_FIXED,
+        source=AgentRunSource.CHAT,
+        caller_user_id=uuid.UUID(OTHER_USER_ID),
+    )
+
+    key = await resolve_llm_api_key_for_agent(db, agent, identity=identity)
+
+    assert key == "sk-owner"
 
 
 @pytest.mark.asyncio

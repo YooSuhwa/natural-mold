@@ -89,7 +89,13 @@ def _apply(client: AsyncClient, sess: _Session) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _make_agent(client: AsyncClient, sess: _Session, model_id: str) -> str:
+async def _make_agent(
+    client: AsyncClient,
+    sess: _Session,
+    model_id: str,
+    *,
+    identity_mode: str = "per_user",
+) -> str:
     _apply(client, sess)
     resp = await client.post(
         "/api/agents",
@@ -97,6 +103,7 @@ async def _make_agent(client: AsyncClient, sess: _Session, model_id: str) -> str
             "name": "Owned Agent",
             "system_prompt": "hi",
             "model_id": model_id,
+            "identity_mode": identity_mode,
         },
         headers=sess.headers(),
     )
@@ -160,7 +167,7 @@ async def test_user_b_cannot_modify_user_a_trigger(raw_client: AsyncClient):
     model_id = await _seed_default_model()
     a = await _register(raw_client, email="a@test.com")
     b = await _register(raw_client, email="b@test.com")
-    agent_id = await _make_agent(raw_client, a, model_id)
+    agent_id = await _make_agent(raw_client, a, model_id, identity_mode="fixed")
 
     # User A creates an interval trigger via the agent-scoped path.
     _apply(raw_client, a)

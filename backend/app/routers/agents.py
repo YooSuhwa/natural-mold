@@ -52,6 +52,8 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
                 continue
     return AgentResponse(
         id=agent.id,
+        runtime_name=agent.runtime_name,
+        identity_mode=agent.identity_mode,
         name=agent.name,
         description=agent.description,
         system_prompt=agent.system_prompt,

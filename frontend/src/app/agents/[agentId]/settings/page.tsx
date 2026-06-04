@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
-import type { Agent } from '@/lib/types'
+import type { Agent, AgentIdentityMode } from '@/lib/types'
 import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents'
 import { arraysEqual, setsEqual, toggleSetItem } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -83,6 +83,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const [description, setDescription] = useState('')
   const [systemPrompt, setSystemPrompt] = useState('')
   const [modelId, setModelId] = useState('')
+  const [identityMode, setIdentityMode] = useState<AgentIdentityMode>('per_user')
   const [fallbackIds, setFallbackIds] = useState<string[]>([])
   const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
   const [selectedMcpToolIds, setSelectedMcpToolIds] = useState<Set<string>>(new Set())
@@ -134,6 +135,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       description,
       systemPrompt,
       modelId,
+      identityMode,
       temperature,
       topP,
       maxTokens,
@@ -148,6 +150,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       description,
       systemPrompt,
       modelId,
+      identityMode,
       temperature,
       topP,
       maxTokens,
@@ -165,6 +168,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       onDescriptionChange: setDescription,
       onSystemPromptChange: setSystemPrompt,
       onModelIdChange: setModelId,
+      onIdentityModeChange: setIdentityMode,
       onTemperatureChange: setTemperature,
       onTopPChange: setTopP,
       onMaxTokensChange: setMaxTokens,
@@ -214,6 +218,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       setDescription(agent.description ?? '')
       setSystemPrompt(agent.system_prompt)
       setModelId(agent.model?.id ?? '')
+      setIdentityMode(agent.identity_mode)
       setFallbackIds(agent.model_fallback_ids ?? [])
       setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
       setSelectedMcpToolIds(new Set(agent.mcp_tools?.map((mt) => mt.id) ?? []))
@@ -231,6 +236,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       if (description === (prev.description ?? '')) setDescription(agent.description ?? '')
       if (systemPrompt === prev.system_prompt) setSystemPrompt(agent.system_prompt)
       if (modelId === (prev.model?.id ?? '')) setModelId(agent.model?.id ?? '')
+      if (identityMode === prev.identity_mode) setIdentityMode(agent.identity_mode)
       if (arraysEqual(fallbackIds, prev.model_fallback_ids ?? [])) {
         setFallbackIds(agent.model_fallback_ids ?? [])
       }
@@ -296,6 +302,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     () => agent?.model_fallback_ids ?? [],
     [agent?.model_fallback_ids],
   )
+  const initialIdentityMode = agent?.identity_mode ?? 'per_user'
 
   const isDirty = useMemo(() => {
     if (!agent) return false
@@ -304,6 +311,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       description !== (agent.description ?? '') ||
       systemPrompt !== agent.system_prompt ||
       modelId !== (agent.model?.id ?? '') ||
+      identityMode !== initialIdentityMode ||
       temperature !== (agent.model_params?.temperature ?? 0.7) ||
       topP !== (agent.model_params?.top_p ?? 1.0) ||
       maxTokens !== (agent.model_params?.max_tokens ?? 4096) ||
@@ -320,6 +328,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     description,
     systemPrompt,
     modelId,
+    identityMode,
     temperature,
     topP,
     maxTokens,
@@ -335,6 +344,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     initialMwTypes,
     initialOpenerQuestions,
     initialFallbackIds,
+    initialIdentityMode,
   ])
 
   useEffect(() => {
@@ -353,6 +363,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         description: description || undefined,
         system_prompt: systemPrompt,
         model_id: modelId,
+        identity_mode: identityMode,
         tool_ids: Array.from(selectedToolIds),
         mcp_tool_ids: Array.from(selectedMcpToolIds),
         skill_ids: Array.from(selectedSkillIds),
@@ -491,6 +502,8 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
               <FormMode
                 systemPrompt={systemPrompt}
                 onSystemPromptChange={setSystemPrompt}
+                identityMode={identityMode}
+                onIdentityModeChange={setIdentityMode}
                 selectedSubAgentIds={selectedSubAgentIds}
                 onToggleSubAgent={handleToggleSubAgent}
                 currentAgentId={agentId}

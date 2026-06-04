@@ -79,6 +79,9 @@ class TriggerRunResponse(BaseModel):
     thread_id: str | None
     checkpoint_id: str | None
     trace_id: str | None
+    identity_mode: str | None = None
+    agent_runtime_name: str | None = None
+    credential_subject_user_id: uuid.UUID | None = None
     started_at: datetime
     finished_at: datetime | None
     created_at: datetime

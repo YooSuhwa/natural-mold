@@ -20,6 +20,7 @@ from app.credentials import service as credential_service
 from app.mcp import client as mcp_client
 from app.mcp import discovery as mcp_discovery
 from app.mcp.client import build_env_vars, build_headers
+from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 from app.models.user import User
@@ -80,6 +81,69 @@ async def test_create_mcp_server_invalid_transport_combo(
         json={"name": "no url", "transport": "streamable_http"},
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_mcp_server_rejects_cross_user_credential(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    other_user_id = uuid.uuid4()
+    db.add(User(id=other_user_id, email="other-mcp@test.com", name="Other"))
+    blob, key_id, field_keys = credential_service.encrypt_data({"token": "secret"})
+    credential = Credential(
+        user_id=other_user_id,
+        definition_key="http_bearer",
+        name="other-token",
+        data_encrypted=blob,
+        key_id=key_id,
+        field_keys=field_keys,
+    )
+    db.add(credential)
+    await db.commit()
+
+    response = await client.post(
+        "/api/mcp-servers",
+        json={
+            "name": "bad credential",
+            "transport": "streamable_http",
+            "url": "https://mcp.example.com",
+            "credential_id": str(credential.id),
+        },
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_mcp_server_rejects_system_credential(
+    client: AsyncClient, db: AsyncSession
+) -> None:
+    create = await client.post(
+        "/api/mcp-servers",
+        json={
+            "name": "owned",
+            "transport": "streamable_http",
+            "url": "https://mcp.example.com",
+        },
+    )
+    assert create.status_code == 201
+    blob, key_id, field_keys = credential_service.encrypt_data({"token": "system"})
+    credential = Credential(
+        user_id=None,
+        definition_key="http_bearer",
+        name="system-token",
+        data_encrypted=blob,
+        key_id=key_id,
+        field_keys=field_keys,
+        is_system=True,
+    )
+    db.add(credential)
+    await db.commit()
+
+    response = await client.patch(
+        f"/api/mcp-servers/{create.json()['id']}",
+        json={"credential_id": str(credential.id)},
+    )
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

@@ -6,8 +6,10 @@ from io import BytesIO
 import pytest
 from httpx import AsyncClient
 from PIL import Image
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
+from app.models.agent_trigger import AgentTrigger
 from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
@@ -47,6 +49,8 @@ async def test_agent_crud(client: AsyncClient):
     agent = resp.json()
     assert agent["name"] == "Test Agent"
     assert agent["model"]["display_name"] == "GPT-4o"
+    assert agent["identity_mode"] == "per_user"
+    assert agent["runtime_name"].startswith("agent_")
     agent_id = agent["id"]
 
     # List
@@ -73,6 +77,67 @@ async def test_agent_crud(client: AsyncClient):
 
     resp = await client.get("/api/agents")
     assert len(resp.json()) == 0
+
+
+@pytest.mark.asyncio
+async def test_create_agent_accepts_fixed_identity(client: AsyncClient) -> None:
+    model_id = await _create_model(client)
+
+    resp = await client.post(
+        "/api/agents",
+        json={
+            "name": "Automation Agent",
+            "description": "runs on schedule",
+            "system_prompt": "prompt",
+            "model_id": model_id,
+            "identity_mode": "fixed",
+        },
+    )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["identity_mode"] == "fixed"
+    assert body["runtime_name"].startswith("agent_")
+
+
+@pytest.mark.asyncio
+async def test_update_agent_rejects_per_user_when_active_trigger_exists(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    model_id = await _create_model(client)
+    resp = await client.post(
+        "/api/agents",
+        json={
+            "name": "Scheduled Agent",
+            "description": "test",
+            "system_prompt": "prompt",
+            "model_id": model_id,
+            "identity_mode": "fixed",
+        },
+    )
+    assert resp.status_code == 201
+    agent_id = resp.json()["id"]
+    db.add(
+        AgentTrigger(
+            agent_id=uuid.UUID(agent_id),
+            user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+            name="active schedule",
+            trigger_type="interval",
+            schedule_config={"interval_minutes": 10},
+            input_message="run",
+            status="active",
+        )
+    )
+    await db.commit()
+
+    update = await client.put(
+        f"/api/agents/{agent_id}",
+        json={"identity_mode": "per_user"},
+    )
+
+    assert update.status_code == 422
+    assert "active triggers" in update.text
 
 
 @pytest.mark.asyncio

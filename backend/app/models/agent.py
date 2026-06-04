@@ -4,9 +4,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, ForeignKey, String, Text
+from sqlalchemy import JSON, ForeignKey, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.agent_runtime.identity import AGENT_IDENTITY_FIXED, make_agent_runtime_name
 from app.database import Base
 from app.models.mcp_tool import AgentMcpToolLink
 from app.models.skill import AgentSkillLink
@@ -26,6 +27,13 @@ class Agent(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     system_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    runtime_name: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
+    identity_mode: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default=AGENT_IDENTITY_FIXED,
+        server_default=AGENT_IDENTITY_FIXED,
+    )
     model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id"), nullable=False)
     # Optional FK to the Credential supplying the LLM API key. SET NULL on
     # credential delete so the agent stays editable but inactive until rebound.
@@ -92,3 +100,13 @@ class Agent(Base):
     def tools(self) -> list[Tool]:  # type: ignore[name-defined]
         """Convenience property: list of Tool objects (backward compat)."""
         return [link.tool for link in self.tool_links]
+
+
+@event.listens_for(Agent, "before_insert")
+def _ensure_agent_identity_defaults(_mapper: object, _connection: object, target: Agent) -> None:
+    if target.id is None:
+        target.id = uuid.uuid4()
+    if not target.runtime_name:
+        target.runtime_name = make_agent_runtime_name(target.id)
+    if not target.identity_mode:
+        target.identity_mode = AGENT_IDENTITY_FIXED

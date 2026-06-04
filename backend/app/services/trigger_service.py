@@ -20,6 +20,7 @@ DEFAULT_CONVERSATION_POLICY = "schedule_thread"
 VALID_TRIGGER_TYPES = {"interval", "cron", "one_time"}
 VALID_STATUSES = {"active", "paused", "completed", "error"}
 VALID_CONVERSATION_POLICIES = {"schedule_thread", "new_per_run", "selected_conversation"}
+REQUIRES_FIXED_IDENTITY_MESSAGE = "agent identity_mode must be fixed for trigger execution"
 
 
 def _now() -> datetime:
@@ -150,6 +151,19 @@ async def get_owned_agent(
     return result.scalar_one_or_none()
 
 
+async def _ensure_agent_fixed_for_trigger(
+    db: AsyncSession,
+    agent_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> Agent:
+    agent = await get_owned_agent(db, agent_id, user_id)
+    if agent is None:
+        raise ValueError("agent not found")
+    if agent.identity_mode != "fixed":
+        raise ValueError(REQUIRES_FIXED_IDENTITY_MESSAGE)
+    return agent
+
+
 async def get_trigger(
     db: AsyncSession, trigger_id: uuid.UUID, user_id: uuid.UUID
 ) -> AgentTrigger | None:
@@ -225,6 +239,7 @@ async def create_trigger(
     user_id: uuid.UUID,
     data: TriggerCreate,
 ) -> AgentTrigger:
+    await _ensure_agent_fixed_for_trigger(db, agent_id, user_id)
     schedule_config, timezone = normalize_schedule_config(
         data.trigger_type,
         data.schedule_config,
@@ -265,6 +280,9 @@ async def create_trigger(
 async def update_trigger(
     db: AsyncSession, trigger: AgentTrigger, data: TriggerUpdate
 ) -> AgentTrigger:
+    target_status = data.status if data.status is not None else trigger.status
+    if target_status == "active":
+        await _ensure_agent_fixed_for_trigger(db, trigger.agent_id, trigger.user_id)
     trigger_type = data.trigger_type or trigger.trigger_type
     timezone = data.timezone or trigger.timezone
 

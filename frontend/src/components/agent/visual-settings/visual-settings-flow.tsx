@@ -16,6 +16,7 @@ import type {
   Tool,
   Skill,
   AgentTrigger,
+  AgentIdentityMode,
   MiddlewareRegistryItem,
   TriggerCreateRequest,
   TriggerUpdateRequest,
@@ -34,6 +35,7 @@ interface ControlledVisualState {
   description: string
   systemPrompt: string
   modelId: string
+  identityMode: AgentIdentityMode
   temperature: number
   topP: number
   maxTokens: number
@@ -49,6 +51,7 @@ interface ControlledVisualHandlers {
   onDescriptionChange: (v: string) => void
   onSystemPromptChange: (v: string) => void
   onModelIdChange: (v: string) => void
+  onIdentityModeChange: (v: AgentIdentityMode) => void
   onTemperatureChange: (v: number) => void
   onTopPChange: (v: number) => void
   onMaxTokensChange: (v: number) => void
@@ -149,6 +152,9 @@ export function VisualSettingsFlow({
   const [internalDescription, setInternalDescription] = useState(agent?.description ?? '')
   const [internalSystemPrompt, setInternalSystemPrompt] = useState(agent?.system_prompt ?? '')
   const [internalModelId, setInternalModelId] = useState(agent?.model?.id ?? models[0]?.id ?? '')
+  const [internalIdentityMode, setInternalIdentityMode] = useState<AgentIdentityMode>(
+    agent?.identity_mode ?? 'per_user',
+  )
   const [internalTemperature, setInternalTemperature] = useState(
     agent?.model_params?.temperature ?? 0.7,
   )
@@ -178,6 +184,7 @@ export function VisualSettingsFlow({
   const description = isControlled ? controlledState!.description : internalDescription
   const systemPrompt = isControlled ? controlledState!.systemPrompt : internalSystemPrompt
   const modelId = isControlled ? controlledState!.modelId : internalModelId
+  const identityMode = isControlled ? controlledState!.identityMode : internalIdentityMode
   const temperature = isControlled ? controlledState!.temperature : internalTemperature
   const topP = isControlled ? controlledState!.topP : internalTopP
   const maxTokens = isControlled ? controlledState!.maxTokens : internalMaxTokens
@@ -217,6 +224,7 @@ export function VisualSettingsFlow({
     setInternalDescription(agent.description ?? '')
     setInternalSystemPrompt(agent.system_prompt)
     setInternalModelId(agent.model?.id ?? '')
+    setInternalIdentityMode(agent.identity_mode)
     setInternalTemperature(agent.model_params?.temperature ?? 0.7)
     setInternalTopP(agent.model_params?.top_p ?? 1.0)
     setInternalMaxTokens(agent.model_params?.max_tokens ?? 4096)
@@ -326,6 +334,7 @@ export function VisualSettingsFlow({
       description: description || undefined,
       system_prompt: systemPrompt,
       model_id: modelId,
+      identity_mode: identityMode,
       tool_ids: Array.from(selectedToolIds),
       mcp_tool_ids: Array.from(selectedMcpToolIds),
       skill_ids: Array.from(selectedSkillIds),

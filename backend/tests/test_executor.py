@@ -100,7 +100,26 @@ def test_build_agent_calls_deep_agent(mock_create: MagicMock):
         memory=None,
         permissions=None,
         name=None,
+        subagents=None,
     )
+
+
+@patch("app.agent_runtime.executor.create_deep_agent")
+def test_build_agent_forwards_subagents_to_deep_agents(mock_create: MagicMock):
+    from app.agent_runtime.executor import build_agent
+
+    subagents = [{"name": "agent_abcd1234", "description": "helper"}]
+
+    build_agent(
+        MagicMock(),
+        [],
+        "You are helpful.",
+        name="agent_parent12",
+        subagents=subagents,
+    )  # type: ignore[arg-type]
+
+    assert mock_create.call_args.kwargs["name"] == "agent_parent12"
+    assert mock_create.call_args.kwargs["subagents"] == subagents
 
 
 @patch("app.agent_runtime.executor.create_deep_agent")

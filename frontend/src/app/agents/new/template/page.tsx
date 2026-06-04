@@ -87,6 +87,7 @@ export default function TemplateSelectionPage() {
         description: template.description ?? undefined,
         system_prompt: template.system_prompt,
         model_id: template.recommended_model_id ?? defaultModelId,
+        identity_mode: 'per_user',
         template_id: template.id,
       })
       router.push(`/agents/${agent.id}`)

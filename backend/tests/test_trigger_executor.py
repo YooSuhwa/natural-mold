@@ -107,6 +107,10 @@ async def test_execute_trigger_success():
         )
         run = result.scalar_one()
         assert run.source == "scheduled"
+        assert run.identity_mode == "fixed"
+        assert run.agent_runtime_name is not None
+        assert run.agent_runtime_name.startswith("agent_")
+        assert run.credential_subject_user_id == TEST_USER_ID
         assert run.duration_ms is not None
         assert run.duration_ms >= 0
         assert run.thread_id == str(run.conversation_id)

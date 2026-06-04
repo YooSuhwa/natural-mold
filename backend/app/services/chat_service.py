@@ -25,7 +25,9 @@ from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager, selectinload
 
+from app.agent_runtime.identity import AgentRunIdentity
 from app.credentials import service as credential_service
+from app.exceptions import ValidationError
 from app.mcp.client import build_headers
 from app.models.agent import Agent
 from app.models.conversation import Conversation
@@ -612,6 +614,7 @@ async def build_tools_config(
     *,
     db: AsyncSession | None = None,
     conversation_id: str | None = None,
+    identity: AgentRunIdentity | None = None,
 ) -> list[dict[str, Any]]:
     """Build the runtime tools_config list for an agent.
 
@@ -633,8 +636,25 @@ async def build_tools_config(
 
     configs: list[dict[str, Any]] = []
     credential_cache: dict[uuid.UUID, dict[str, Any] | None] = {}
+    credential_subject_user_id = (
+        identity.credential_subject_user_id if identity is not None else agent.user_id
+    )
+    runtime_actor_user_id = (
+        identity.caller_user_id
+        or identity.agent_owner_user_id
+        if identity is not None
+        else agent.user_id
+    )
 
     async def decrypt_cached(credential: Any) -> dict[str, Any] | None:
+        if (
+            credential.user_id != credential_subject_user_id
+            or bool(getattr(credential, "is_system", False)) is True
+        ):
+            raise ValidationError(
+                "CREDENTIAL_SUBJECT_MISMATCH",
+                "credential is not available for this agent run identity",
+            )
         cached = credential_cache.get(credential.id)
         if credential.id in credential_cache:
             return cached
@@ -671,8 +691,9 @@ async def build_tools_config(
                 "credentials": credentials,
                 "credential_id": (str(tool.credential_id) if tool.credential_id else None),
                 # Hook-framework correlation — wire down to ``tool_factory``.
-                "user_id": str(agent.user_id),
+                "user_id": str(runtime_actor_user_id),
                 "agent_id": str(agent.id),
+                "credential_subject_user_id": str(credential_subject_user_id),
             }
         )
 
@@ -707,8 +728,9 @@ async def build_tools_config(
                     mcp_credentials,
                 ),
                 "credentials": mcp_credentials,
-                "user_id": str(agent.user_id),
+                "user_id": str(runtime_actor_user_id),
                 "agent_id": str(agent.id),
+                "credential_subject_user_id": str(credential_subject_user_id),
             }
         )
 
