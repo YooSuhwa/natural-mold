@@ -245,8 +245,8 @@
   --moldy-card-pad: 1rem;
   --moldy-control-h: 2rem;
   --moldy-toolbar-pad: 1rem;
-  --moldy-sidebar-active-shadow: 0 10px 24px -24px oklch(0.25 0.08 164 / 0.32);
-  --moldy-sidebar-rail-shadow: 16px 0 44px -42px oklch(0.24 0.06 164 / 0.28);
+  --moldy-sidebar-active-shadow: 0 8px 20px -22px oklch(0.25 0.08 164 / 0.22);
+  --moldy-sidebar-rail-shadow: 14px 0 38px -40px oklch(0.24 0.06 164 / 0.18);
   --moldy-agent-create-glow: radial-gradient(
     circle,
     oklch(0.85 0.13 163 / 0.4),
@@ -307,13 +307,13 @@
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.992 0.008 166);
-  --sidebar-foreground: oklch(0.24 0.032 172);
-  --sidebar-primary: oklch(0.976 0.026 163);
+  --sidebar: oklch(0.996 0.003 166);
+  --sidebar-foreground: oklch(0.24 0.02 172);
+  --sidebar-primary: oklch(0.984 0.014 163);
   --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
-  --sidebar-accent: oklch(0.966 0.025 163);
-  --sidebar-accent-foreground: oklch(0.24 0.038 172);
-  --sidebar-border: oklch(0.884 0.032 163 / 0.58);
+  --sidebar-accent: oklch(0.978 0.014 163);
+  --sidebar-accent-foreground: oklch(0.24 0.024 172);
+  --sidebar-border: oklch(0.9 0.018 163 / 0.58);
   --sidebar-ring: oklch(0.596 0.145 163.225 / 0.34);
 }
 
@@ -1053,11 +1053,11 @@
   }
 
   .moldy-page-kicker {
-    width: 0.625rem;
-    height: 0.625rem;
-    border-radius: 999px;
-    background: var(--primary-strong);
-    box-shadow: 0 0 0 4px var(--primary);
+    width: 0.1875rem;
+    height: 1.25rem;
+    border-radius: var(--moldy-radius-pill);
+    background: color-mix(in oklch, var(--primary-strong) 72%, var(--border));
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--primary) 38%, transparent);
   }
 
   .moldy-sidebar-control {
@@ -1086,37 +1086,65 @@
   }
 
   .moldy-sidebar-nav-item {
+    position: relative;
     border: 1px solid transparent;
     color: color-mix(in oklch, var(--sidebar-foreground) 80%, transparent);
+    overflow: hidden;
+  }
+
+  .moldy-sidebar-nav-item::before {
+    position: absolute;
+    inset-block: 0.5rem;
+    inset-inline-start: 0.1875rem;
+    width: 0.125rem;
+    border-radius: var(--moldy-radius-pill);
+    background: var(--primary-strong);
+    content: "";
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
   }
 
   .moldy-sidebar-nav-item:hover {
-    border-color: color-mix(in oklch, var(--sidebar-border) 70%, transparent);
-    background: color-mix(in oklch, var(--sidebar-accent) 64%, var(--background) 36%);
+    border-color: color-mix(in oklch, var(--sidebar-border) 62%, transparent);
+    background: color-mix(in oklch, var(--sidebar-accent) 42%, var(--background) 58%);
     color: var(--sidebar-accent-foreground);
   }
 
-  .moldy-sidebar-nav-item[data-active="true"] {
-    border-color: color-mix(in oklch, var(--moldy-border-mint) 55%, var(--sidebar-border));
-    background: color-mix(in oklch, var(--sidebar-accent) 78%, var(--background) 22%);
-    color: var(--primary-strong);
+  .moldy-sidebar-nav-item[data-active] {
+    border-color: color-mix(in oklch, var(--moldy-border-mint) 32%, var(--sidebar-border));
+    background: color-mix(in oklch, var(--sidebar-accent) 48%, var(--background) 52%);
+    color: color-mix(in oklch, var(--foreground) 86%, var(--primary-strong));
     font-weight: 600;
     box-shadow: var(--moldy-sidebar-active-shadow);
+  }
+
+  .moldy-sidebar-nav-item[data-active]::before {
+    opacity: 0.72;
+  }
+
+  .moldy-sidebar-nav-item[aria-expanded][data-active] {
+    border-color: color-mix(in oklch, var(--sidebar-border) 58%, transparent);
+    background: color-mix(in oklch, var(--sidebar-accent) 30%, var(--background) 70%);
+  }
+
+  .moldy-sidebar-nav-item[aria-expanded][data-active]::before {
+    opacity: 0;
   }
 
   .moldy-sidebar-new-agent {
     height: 2.75rem;
-    border: 1px solid color-mix(in oklch, var(--primary-strong) 25%, transparent);
+    border: 1px solid color-mix(in oklch, var(--primary-strong) 18%, var(--sidebar-border));
     border-radius: var(--radius-2xl);
-    background: color-mix(in oklch, var(--sidebar-accent) 72%, var(--background) 28%);
+    background: color-mix(in oklch, var(--card) 76%, var(--sidebar-accent) 24%);
     color: var(--sidebar-accent-foreground);
     font-weight: 600;
-    box-shadow: var(--moldy-sidebar-active-shadow);
+    box-shadow: var(--moldy-shadow-soft);
   }
 
   .moldy-sidebar-new-agent:hover {
-    border-color: color-mix(in oklch, var(--primary-strong) 35%, transparent);
-    background: color-mix(in oklch, var(--primary) 42%, var(--background) 58%);
+    border-color: color-mix(in oklch, var(--primary-strong) 28%, var(--sidebar-border));
+    background: color-mix(in oklch, var(--primary) 24%, var(--background) 76%);
     color: var(--primary-strong);
   }
 
@@ -1547,12 +1575,12 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    border: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+    border: 1px solid color-mix(in oklch, var(--border) 76%, transparent);
     border-radius: var(--moldy-radius-card);
     background: color-mix(in oklch, var(--card) 94%, var(--background));
     padding: var(--moldy-card-pad);
     text-align: left;
-    box-shadow: var(--moldy-shadow-card);
+    box-shadow: var(--moldy-shadow-soft);
     transition:
       background-color 0.15s ease,
       border-color 0.15s ease,
@@ -1564,10 +1592,10 @@
     position: absolute;
     inset-block: 0;
     inset-inline-start: 0;
-    width: 3px;
-    background: color-mix(in oklch, var(--moldy-tone-color, var(--border)) 68%, transparent);
+    width: 2px;
+    background: color-mix(in oklch, var(--moldy-tone-color, var(--border)) 62%, transparent);
     content: "";
-    opacity: 0.74;
+    opacity: 0.68;
   }
 
   .moldy-resource-card > * {
@@ -1596,7 +1624,7 @@
   .moldy-resource-card:focus-visible {
     border-color: color-mix(in oklch, var(--moldy-tone-color, var(--primary-strong)) 28%, var(--border));
     transform: translateY(-1px);
-    box-shadow: var(--moldy-shadow-hover);
+    box-shadow: var(--moldy-shadow-card);
   }
 
   .moldy-resource-card:focus-visible {
@@ -1641,22 +1669,26 @@
     justify-content: flex-end;
     gap: 0.5rem;
     margin-top: auto;
-    padding-top: 0.75rem;
+    border-top: 1px solid color-mix(in oklch, var(--border) 52%, transparent);
+    padding-top: 0.875rem;
   }
 
   .moldy-resource-meta {
     display: inline-flex;
-    max-width: 140px;
+    max-width: 152px;
+    min-width: 0;
     align-items: center;
-    border: 1px solid color-mix(in oklch, white 80%, transparent);
+    border: 1px solid color-mix(in oklch, var(--border) 56%, transparent);
     border-radius: var(--moldy-radius-control);
-    background: color-mix(in oklch, white 60%, transparent);
+    background: color-mix(in oklch, var(--card) 46%, transparent);
     padding: 2px 6px;
-    color: var(--foreground);
+    color: color-mix(in oklch, var(--foreground) 70%, var(--muted-foreground));
     font-size: 0.65625rem;
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1;
-    box-shadow: var(--moldy-shadow-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .moldy-resource-icon {
@@ -1911,6 +1943,7 @@
     color: var(--muted-foreground);
     font-size: 0.75rem;
     line-height: 1.45;
+    text-wrap: pretty;
   }
 
   .moldy-resource-subtext {
@@ -1956,15 +1989,15 @@
   .moldy-resource-status-chip {
     max-width: 128px;
     overflow: hidden;
-    background: color-mix(in oklch, white 55%, transparent);
+    background: color-mix(in oklch, var(--card) 62%, transparent);
     font-size: 0.65625rem;
     box-shadow: var(--moldy-shadow-soft);
-    --tw-ring-color: color-mix(in oklch, white 80%, transparent);
+    --tw-ring-color: color-mix(in oklch, var(--border) 72%, transparent);
   }
 
   .dark .moldy-resource-status-chip {
-    background: color-mix(in oklch, white 10%, transparent);
-    --tw-ring-color: color-mix(in oklch, white 10%, transparent);
+    background: color-mix(in oklch, var(--card) 64%, transparent);
+    --tw-ring-color: color-mix(in oklch, var(--border) 72%, transparent);
   }
 
   .moldy-resource-summary-strip {
