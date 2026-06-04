@@ -68,6 +68,7 @@ import {
   ChatConversationContext,
   useChatConversationId,
 } from '@/components/chat/conversation-context'
+import { copyTextToClipboard, getMessageCopyText } from '@/components/chat/message-copy'
 
 export { GenericToolFallback }
 
@@ -217,16 +218,34 @@ const MESSAGE_ACTION_CLASS =
 
 function CopyButton() {
   const [copied, setCopied] = useState(false)
+  const [isCopying, setIsCopying] = useState(false)
   const t = useTranslations('chat.message')
   const label = copied ? t('copied') : t('copy')
+  const copyText = useAssistantState((s) => getMessageCopyText(s.message?.content))
+  const isAssistantRunning = useAssistantState(
+    (s) => s.message?.role === 'assistant' && s.message.status?.type === 'running',
+  )
+  const disabled = !copyText || isCopying || isAssistantRunning
+
+  const handleCopy = useCallback(async () => {
+    if (disabled) return
+    try {
+      setIsCopying(true)
+      await copyTextToClipboard(copyText)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.warn('[CopyButton] failed to copy message text', err)
+    } finally {
+      setIsCopying(false)
+    }
+  }, [copyText, disabled])
 
   return (
-    <ActionBarPrimitive.Copy
-      copiedDuration={2000}
-      onClick={() => {
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      }}
+    <button
+      type="button"
+      onClick={() => void handleCopy()}
+      disabled={disabled}
       className={MESSAGE_ACTION_CLASS}
       aria-label={t('copyLabel')}
       title={label}
@@ -242,7 +261,7 @@ function CopyButton() {
           <span className="sr-only">{t('copy')}</span>
         </>
       )}
-    </ActionBarPrimitive.Copy>
+    </button>
   )
 }
 
