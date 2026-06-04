@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState, type UIEvent } from 'react'
 import {
   ThreadPrimitive,
   MessagePrimitive,
@@ -68,6 +68,7 @@ import {
   ChatConversationContext,
   useChatConversationId,
 } from '@/components/chat/conversation-context'
+import { isThreadViewportAtBottom } from '@/components/chat/scroll-bottom'
 import { copyTextToClipboard, getMessageCopyText } from '@/components/chat/message-copy'
 
 export { GenericToolFallback }
@@ -524,6 +525,11 @@ export function AssistantThread({
   const tChat = useTranslations('chat')
   const tPage = useTranslations('chat.page')
   const isBuilder = variant === 'builder'
+  const [isViewportAtBottom, setIsViewportAtBottom] = useState(true)
+  const handleViewportScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const nextIsAtBottom = isThreadViewportAtBottom(event.currentTarget)
+    setIsViewportAtBottom((current) => (current === nextIsAtBottom ? current : nextIsAtBottom))
+  }, [])
 
   const messageComponents = useMemo(
     () => ({
@@ -624,7 +630,10 @@ export function AssistantThread({
   return (
     <ChatConversationContext.Provider value={conversationId ?? null}>
       <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
-        <ThreadPrimitive.Viewport className="min-h-0 flex-1 overflow-y-auto">
+        <ThreadPrimitive.Viewport
+          className="min-h-0 flex-1 overflow-y-auto"
+          onScroll={handleViewportScroll}
+        >
           <ThreadPrimitive.Empty>
             {emptyContent ?? (
               <div className="flex h-full items-center justify-center py-8 text-center text-muted-foreground">
@@ -642,8 +651,8 @@ export function AssistantThread({
             <ThreadPrimitive.Messages components={messageComponents} />
           </div>
 
-          <ThreadPrimitive.ViewportFooter>
-            <ScrollToBottomButton />
+          <ThreadPrimitive.ViewportFooter className="pointer-events-none sticky bottom-0 z-10 flex justify-center pb-2">
+            <ScrollToBottomButton isAtBottom={isViewportAtBottom} />
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
 
@@ -673,21 +682,24 @@ export function AssistantThread({
   )
 }
 
-function ScrollToBottomButton() {
-  const isAtBottom = useThreadViewport((v) => v.isAtBottom)
-
-  if (isAtBottom) return null
+function ScrollToBottomButton({ isAtBottom }: { isAtBottom: boolean }) {
+  const scrollToBottom = useThreadViewport((v) => v.scrollToBottom)
 
   return (
-    <ThreadPrimitive.ScrollToBottom asChild>
-      <button
-        type="button"
-        aria-label="Scroll to bottom"
-        className="moldy-floating-icon-button mx-auto mb-2 flex size-8 items-center justify-center"
-      >
-        <ArrowDownIcon className="size-4" />
-      </button>
-    </ThreadPrimitive.ScrollToBottom>
+    <button
+      type="button"
+      aria-label="Scroll to bottom"
+      aria-hidden={isAtBottom}
+      disabled={isAtBottom}
+      tabIndex={isAtBottom ? -1 : 0}
+      className={cn(
+        'moldy-floating-icon-button flex size-8 items-center justify-center text-muted-foreground',
+        isAtBottom ? 'pointer-events-none opacity-0' : 'pointer-events-auto opacity-100',
+      )}
+      onClick={() => scrollToBottom()}
+    >
+      <ArrowDownIcon className="size-4" />
+    </button>
   )
 }
 
