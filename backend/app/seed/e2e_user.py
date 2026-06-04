@@ -36,6 +36,7 @@ async def seed_e2e_user(db: AsyncSession) -> User | None:
             email=email,
             password_hash=hash_password(password),
             name=name,
+            display_name=name,
             is_super_user=True,
         )
         logger.info("seed_e2e_user: created %s", email)
@@ -44,6 +45,9 @@ async def seed_e2e_user(db: AsyncSession) -> User | None:
     changed = False
     if existing.name != name:
         existing.name = name
+        changed = True
+    if existing.display_name is None:
+        existing.display_name = name
         changed = True
     if not existing.is_active:
         existing.is_active = True

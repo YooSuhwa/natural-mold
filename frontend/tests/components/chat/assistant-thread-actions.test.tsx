@@ -6,6 +6,12 @@ vi.mock('@/components/agent/agent-avatar', () => ({
   AgentAvatar: () => <div data-testid="agent-avatar" />,
 }))
 
+vi.mock('@/components/auth/UserAvatar', () => ({
+  UserAvatar: ({ user }: { user?: { display_name?: string | null } | null }) => (
+    <div data-testid="user-avatar">{user?.display_name}</div>
+  ),
+}))
+
 vi.mock('@assistant-ui/react', () => {
   const passthrough = ({ children, className }: { children?: ReactNode; className?: string }) => (
     <div className={className}>{children}</div>
@@ -106,6 +112,41 @@ vi.mock('@assistant-ui/react', () => {
 import { AssistantThread } from '@/components/chat/assistant-thread'
 
 describe('AssistantThread message actions', () => {
+  it('renders the session user avatar for default user messages', () => {
+    render(
+      <AssistantThread
+        user={{
+          id: 'user-1',
+          name: 'Real Name',
+          display_name: '체스터',
+          email: 'chester@example.com',
+          is_super_user: false,
+          created_at: '2026-05-01T00:00:00Z',
+        }}
+      />,
+    )
+
+    expect(screen.getAllByTestId('user-avatar')[0]).toHaveTextContent('체스터')
+  })
+
+  it('keeps builder user messages avatar-free', () => {
+    render(
+      <AssistantThread
+        variant="builder"
+        user={{
+          id: 'user-1',
+          name: 'Real Name',
+          display_name: '체스터',
+          email: 'chester@example.com',
+          is_super_user: false,
+          created_at: '2026-05-01T00:00:00Z',
+        }}
+      />,
+    )
+
+    expect(screen.queryByTestId('user-avatar')).not.toBeInTheDocument()
+  })
+
   it('renders message actions as fixed-width icon-first controls with accessible names', () => {
     render(<AssistantThread />)
 

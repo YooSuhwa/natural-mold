@@ -15,6 +15,18 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    avatar_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'auto'"), default="auto"
+    )
+    avatar_initials: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    avatar_color: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'mint'"), default="mint"
+    )
+    avatar_image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    avatar_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
         nullable=False,
@@ -53,6 +65,13 @@ class User(Base):
     password_reset_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    @property
+    def avatar_image_url(self) -> str | None:
+        if not self.avatar_image_path:
+            return None
+        stamp = int(self.avatar_updated_at.timestamp()) if self.avatar_updated_at else 0
+        return f"/api/auth/me/avatar-image?t={stamp}"
 
     agents: Mapped[list[Agent]] = relationship(  # type: ignore[name-defined]
         back_populates="user", cascade="all, delete-orphan"

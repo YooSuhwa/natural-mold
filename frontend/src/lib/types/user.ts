@@ -7,6 +7,11 @@ export interface User {
   id: string
   email: string
   name: string
+  display_name?: string | null
+  avatar_mode?: 'auto' | 'initials' | 'image'
+  avatar_initials?: string | null
+  avatar_color?: 'mint' | 'sky' | 'violet' | 'amber' | 'rose' | 'slate'
+  avatar_image_url?: string | null
   is_super_user: boolean
   is_active?: boolean
   created_at: string

@@ -13,7 +13,7 @@ from app.config import settings
 
 
 def _payload(email: str = "u@test.com") -> dict[str, str]:
-    return {"email": email, "password": "correct horse", "name": "Tester"}
+    return {"email": email, "password": "correct horse", "display_name": "Tester"}
 
 
 @pytest.mark.asyncio
@@ -30,6 +30,10 @@ async def test_first_user_auto_promoted_to_super_user(raw_client: AsyncClient):
     assert resp.status_code == 201, resp.text
     body = resp.json()
     assert body["user"]["is_super_user"] is True
+    assert body["user"]["display_name"] == "Tester"
+    assert body["user"]["avatar_mode"] == "auto"
+    assert body["user"]["avatar_color"] == "mint"
+    assert body["user"]["avatar_image_url"] is None
     assert body["csrf_token"]
     cookies = resp.cookies
     assert settings.cookie_name_access in cookies
@@ -88,6 +92,19 @@ async def test_missing_name_returns_422(raw_client: AsyncClient):
     bad = {"email": "noname@test.com", "password": "correct horse"}
     resp = await raw_client.post("/api/auth/register", json=bad)
     assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_legacy_name_payload_initializes_display_name(raw_client: AsyncClient):
+    resp = await raw_client.post(
+        "/api/auth/register",
+        json={"email": "legacy@test.com", "password": "correct horse", "name": "Legacy Name"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["user"]["name"] == "Legacy Name"
+    assert body["user"]["display_name"] == "Legacy Name"
 
 
 @pytest.mark.asyncio

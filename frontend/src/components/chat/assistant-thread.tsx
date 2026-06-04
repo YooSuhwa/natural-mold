@@ -22,7 +22,6 @@ import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-plugin
 import 'katex/dist/katex.min.css'
 import './markdown-styles.css'
 import {
-  UserIcon,
   SendIcon,
   CopyIcon,
   CheckIcon,
@@ -45,6 +44,8 @@ import { useAtomValue } from 'jotai'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { UserAvatar } from '@/components/auth/UserAvatar'
+import type { User } from '@/lib/types/user'
 import { sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
 import { WittyLoadingMessage } from '@/components/chat/witty-loading'
@@ -477,6 +478,7 @@ export interface AssistantThreadProps {
   /** true이면 agentImageUrl을 frontend public 자산으로 처리 (API_BASE prepend X) */
   agentImagePublicAsset?: boolean
   agentName?: string
+  user?: User | null
   /** 토큰 바 표시에 사용할 모델명 */
   modelName?: string
   /** true이면 Composer 토큰 바 표시 */
@@ -510,6 +512,7 @@ export function AssistantThread({
   agentImageUrl,
   agentImagePublicAsset = false,
   agentName,
+  user,
   modelName,
   showTokenBar = false,
   compact = false,
@@ -553,9 +556,7 @@ export function AssistantThread({
               </div>
               {metaRow}
             </div>
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-              <UserIcon className="size-4" />
-            </div>
+            <UserAvatar user={user} size="sm" />
           </div>
         )
       },
@@ -568,9 +569,7 @@ export function AssistantThread({
             <div className="flex w-full max-w-[80%] flex-col items-end">
               <UserMessageEditor />
             </div>
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-              <UserIcon className="size-4" />
-            </div>
+            <UserAvatar user={user} size="sm" />
           </div>
         )
       },
@@ -624,6 +623,7 @@ export function AssistantThread({
       isBuilder,
       showMessageTimestamp,
       tChat,
+      user,
     ],
   )
 

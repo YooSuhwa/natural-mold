@@ -15,6 +15,7 @@ import { useTranslations } from 'next-intl'
 import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
 import type { Agent, Conversation, Message } from '@/lib/types'
 import { useAgent } from '@/lib/hooks/use-agents'
+import { useSession } from '@/lib/auth/session'
 import {
   useMessagesEnvelope,
   useCreateConversation,
@@ -55,6 +56,7 @@ export default function ChatPage({
   const router = useRouter()
   const queryClient = useQueryClient()
   const { data: agent } = useAgent(agentId)
+  const { data: user } = useSession()
   // W7-4 — envelope에서 conversation 누적 비용을 가져와 토큰 바에 흘림. 같은
   // query observer 하나에서 messages와 cost를 함께 파생해 채팅 트리 리렌더를 줄인다.
   const { data: envelope, isLoading: messagesLoading } = useMessagesEnvelope(conversationId)
@@ -240,6 +242,7 @@ export default function ChatPage({
               <AssistantThread
                 agentImageUrl={agent?.image_url}
                 agentName={agent?.name}
+                user={user}
                 modelName={agent?.model?.display_name}
                 showTokenBar
                 showMessageTimestamp

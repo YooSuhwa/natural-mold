@@ -1375,6 +1375,37 @@
     box-shadow: var(--moldy-shadow-soft);
   }
 
+  .moldy-user-avatar {
+    --moldy-user-avatar-color: var(--primary-strong);
+    border: 1px solid color-mix(in oklch, var(--moldy-user-avatar-color) 28%, var(--background));
+    background: color-mix(in oklch, var(--moldy-user-avatar-color) 16%, var(--card));
+    color: color-mix(in oklch, var(--moldy-user-avatar-color) 78%, var(--foreground));
+  }
+
+  .moldy-user-avatar-mint {
+    --moldy-user-avatar-color: var(--status-success);
+  }
+
+  .moldy-user-avatar-sky {
+    --moldy-user-avatar-color: var(--status-info);
+  }
+
+  .moldy-user-avatar-violet {
+    --moldy-user-avatar-color: var(--status-accent);
+  }
+
+  .moldy-user-avatar-amber {
+    --moldy-user-avatar-color: var(--status-warn);
+  }
+
+  .moldy-user-avatar-rose {
+    --moldy-user-avatar-color: var(--status-danger);
+  }
+
+  .moldy-user-avatar-slate {
+    --moldy-user-avatar-color: var(--muted-foreground);
+  }
+
   .moldy-agentprism-tab-trigger[data-state="active"] {
     box-shadow: var(--moldy-shadow-soft);
   }

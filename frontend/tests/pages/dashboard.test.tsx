@@ -81,6 +81,21 @@ describe('DashboardPage', () => {
     expect(screen.getByText(new RegExp(`현재 ${mockAgentSummaryList.length}개의 에이전트가 있어요`))).toBeInTheDocument()
   })
 
+  it('prefers display name in the hero greeting', () => {
+    mockUseAgentSummaries.mockReturnValue({ data: [], isLoading: false })
+    mockUseSession.mockReturnValue({
+      data: {
+        id: 'u1',
+        name: '가입이름',
+        display_name: '표시이름',
+        email: 'a@b.c',
+      },
+    })
+    render(<DashboardPage />)
+    expect(screen.getByText(/표시이름님/)).toBeInTheDocument()
+    expect(screen.queryByText(/가입이름님/)).not.toBeInTheDocument()
+  })
+
   it('falls back to "사용자" when session is null', () => {
     mockUseSession.mockReturnValue({ data: null })
     mockUseAgentSummaries.mockReturnValue({ data: [], isLoading: false })

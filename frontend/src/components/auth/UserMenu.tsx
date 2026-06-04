@@ -1,9 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { ChevronsUpDownIcon, KeyRoundIcon, LogOutIcon, UserIcon } from 'lucide-react'
+import { ChevronsUpDownIcon, LogOutIcon, SettingsIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { toast } from 'sonner'
 
 import {
   DropdownMenu,
@@ -13,33 +12,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { SidebarMenuButton } from '@/components/ui/sidebar'
-import { cn } from '@/lib/utils'
 import type { User } from '@/lib/types/user'
+import { displayUserName, UserAvatar } from '@/components/auth/UserAvatar'
 
 interface Props {
   user: User
   onLogout: () => void
 }
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/)
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase()
-  }
-  // ASCII → first 2 chars; Hangul → naturally 1 visual char
-  return parts[0].slice(0, 2).toUpperCase()
-}
-
 export function UserMenu({ user, onLogout }: Props) {
   const router = useRouter()
   const t = useTranslations('auth.userMenu')
+  const label = displayUserName(user)
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         className="w-full rounded-md ring-sidebar-ring outline-hidden focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0"
-        aria-label={user.name}
-        title={user.name}
+        aria-label={label}
+        title={label}
         render={
           <SidebarMenuButton
             size="lg"
@@ -47,18 +38,10 @@ export function UserMenu({ user, onLogout }: Props) {
           />
         }
       >
-        <div
-          className={cn(
-            'flex size-8 items-center justify-center rounded-lg',
-            'bg-primary/15 text-primary-strong text-xs font-semibold',
-          )}
-          aria-hidden
-        >
-          {initials(user.name)}
-        </div>
+        <UserAvatar user={user} size="sm" />
         <div className="grid flex-1 min-w-0 text-left leading-tight group-data-[collapsible=icon]:hidden">
           <span className="flex items-center gap-1.5 truncate text-sm font-medium">
-            <span className="truncate">{user.name}</span>
+            <span className="truncate">{label}</span>
             {user.is_super_user ? (
               <span className="inline-flex h-4 items-center rounded-full bg-status-accent/15 px-1.5 moldy-ui-micro font-medium uppercase tracking-wider text-status-accent">
                 {t('adminBadge')}
@@ -73,20 +56,11 @@ export function UserMenu({ user, onLogout }: Props) {
         <DropdownMenuItem
           onClick={(e) => {
             e.preventDefault()
-            toast.info(t('profileComingSoon'))
+            router.push('/settings')
           }}
         >
-          <UserIcon />
-          {t('profile')}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={(e) => {
-            e.preventDefault()
-            router.push('/credentials')
-          }}
-        >
-          <KeyRoundIcon />
-          {t('credentials')}
+          <SettingsIcon />
+          {t('settings')}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

@@ -15,6 +15,7 @@ import {
 import { useTranslations } from 'next-intl'
 import { useAgentSummaries } from '@/lib/hooks/use-agents'
 import { useSession } from '@/lib/auth/session'
+import { displayUserName } from '@/components/auth/UserAvatar'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -58,7 +59,7 @@ export default function DashboardPage() {
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
 
   const greetingKey = pickGreetingKey()
-  const userName = user?.name ?? t('userFallback')
+  const userName = displayUserName(user) || t('userFallback')
   const agentCount = agents?.length ?? 0
 
   const SORT_LABELS: Record<SortKey, string> = {

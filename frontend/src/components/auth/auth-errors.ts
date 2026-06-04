@@ -3,7 +3,7 @@ import { ApiError } from '@/lib/api/client'
 export type AuthErrorScope = 'login' | 'register'
 
 export interface FieldError {
-  field: 'email' | 'password' | 'name' | 'passwordConfirm' | null
+  field: 'email' | 'password' | 'display_name' | 'name' | 'passwordConfirm' | null
   /** i18n key under `auth.errors.*` or `auth.register.*`. */
   messageKey: string
 }
@@ -29,7 +29,7 @@ export function mapAuthError(err: unknown, scope: AuthErrorScope): FieldError {
       return { field: 'email', messageKey: 'auth.errors.invalidEmail' }
     }
     if (msg.includes('name')) {
-      return { field: 'name', messageKey: 'auth.errors.nameRequired' }
+      return { field: 'display_name', messageKey: 'auth.errors.nameRequired' }
     }
   }
 

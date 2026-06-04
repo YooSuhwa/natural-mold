@@ -33,8 +33,9 @@
       "title": "회원가입",
       "formTitle": "새 계정 만들기",
       "subtitle": "Moldy 계정을 만들어보세요",
-      "name": "이름",
-      "namePlaceholder": "홍길동",
+      "name": "표시 이름",
+      "namePlaceholder": "체스터",
+      "nameHelp": "실명을 입력하지 않아도 됩니다.",
     "email": "이메일",
     "emailPlaceholder": "you@example.com",
       "password": "비밀번호",
@@ -88,7 +89,7 @@
       "sessionExpiredDesc": "다시 로그인해 주세요.",
       "invalidEmail": "올바른 이메일 주소를 입력해 주세요",
       "passwordRequired": "비밀번호를 입력해 주세요",
-      "nameRequired": "이름을 입력해 주세요"
+      "nameRequired": "표시 이름을 입력해 주세요"
     },
     "onboarding": {
       "title": "Moldy에 오신 것을 환영합니다",
@@ -107,6 +108,7 @@
       "superUserToastDesc": "시스템 credential을 관리할 수 있습니다."
     },
     "userMenu": {
+      "settings": "설정",
       "profile": "프로필 설정",
       "credentials": "API 키 관리",
       "logout": "로그아웃",
@@ -2816,23 +2818,94 @@
   },
   "appSettings": {
     "title": "설정",
+    "description": "계정과 Moldy 사용 환경을 관리합니다.",
+    "navLabel": "설정 메뉴",
+    "nav": {
+      "account": "계정",
+      "api": "API",
+      "profile": "프로필",
+      "security": "보안",
+      "appearance": "화면 및 언어",
+      "agentApi": "Agent API"
+    },
     "profile": {
       "title": "프로필",
+      "description": "Moldy와 에이전트가 나를 어떻게 표시하고 부를지 정합니다.",
+      "profileSettings": "프로필 설정",
+      "profileSettingsDescription": "표시 이름과 프로필 아이콘은 언제든 바꿀 수 있습니다.",
+      "accountInfo": "계정 정보",
+      "accountInfoDescription": "이 정보는 Moldy 로그인 세션에서 가져옵니다.",
       "name": "이름",
+      "displayName": "표시 이름",
+      "displayNamePlaceholder": "예: 체스터",
+      "displayNameHelp": "실명을 입력하지 않아도 됩니다. 에이전트가 자연스럽게 부를 이름으로 사용합니다.",
+      "avatarTitle": "프로필 아이콘",
+      "avatarDescription": "채팅과 좌측 하단 사용자 메뉴에 표시됩니다.",
+      "avatarInitials": "아이콘 문자",
+      "avatarInitialsPlaceholder": "예: 체",
+      "avatarAuto": "자동",
+      "avatarInitialsMode": "문자 사용",
+      "avatarColor": "아이콘 색상",
+      "avatarModeLabel": "아이콘 방식",
+      "avatarImageMode": "이미지",
+      "avatarLetterMode": "문자",
+      "uploadImage": "이미지 업로드",
+      "deleteImage": "이미지 삭제",
+      "save": "저장",
+      "saved": "프로필을 저장했습니다.",
+      "imageUploaded": "프로필 이미지를 저장했습니다.",
+      "imageDeleted": "프로필 이미지를 삭제했습니다.",
+      "colors": {
+        "mint": "민트",
+        "sky": "스카이",
+        "violet": "바이올렛",
+        "amber": "앰버",
+        "rose": "로즈",
+        "slate": "슬레이트"
+      },
       "email": "이메일",
-      "mockName": "수화",
-      "mockEmail": "suhwa@moldy.ai"
+      "joinedAt": "가입일",
+      "lastLoginAt": "마지막 로그인",
+      "never": "기록 없음",
+      "loading": "프로필을 불러오는 중입니다.",
+      "adminBadge": "관리자"
     },
-    "theme": {
-      "title": "테마",
-      "light": "라이트",
-      "dark": "다크",
-      "system": "시스템"
+    "security": {
+      "title": "보안",
+      "description": "계정 보안 설정을 관리합니다.",
+      "placeholder": {
+        "title": "보안 설정 준비 중",
+        "description": "비밀번호 변경과 세션 관리는 준비 중입니다.",
+        "detail": "현재는 로그인 세션 기반 인증을 사용하며, 세부 보안 설정은 후속 단계에서 추가됩니다."
+      }
     },
-    "language": {
-      "title": "언어",
-      "ko": "한국어",
-      "en": "English"
+    "appearance": {
+      "title": "화면 및 언어",
+      "description": "테마와 표시 언어를 조정합니다.",
+      "theme": {
+        "title": "테마",
+        "description": "앱 화면의 밝기 모드를 선택합니다.",
+        "light": "라이트",
+        "dark": "다크",
+        "system": "시스템"
+      },
+      "language": {
+        "title": "언어",
+        "description": "Moldy에서 사용할 표시 언어를 선택합니다.",
+        "ko": "한국어",
+        "en": "English"
+      }
+    },
+    "agentApi": {
+      "title": "Agent API",
+      "description": "외부 앱에서 Moldy 에이전트를 호출하는 API 배포를 준비합니다.",
+      "status": "준비 중",
+      "futureEndpoint": "기획 중인 호출 URL",
+      "placeholder": {
+        "title": "Agent API 준비 중",
+        "description": "외부 앱에서 Moldy 에이전트를 호출하기 위한 API 배포와 키 관리는 준비 중입니다.",
+        "detail": "이번 단계에서는 메뉴와 빈 페이지까지만 제공하고, 배포 URL 생성과 API Key 발급은 이후 별도 기능으로 구현합니다."
+      }
     }
   },
   "nav": {
@@ -2842,6 +2915,9 @@
     "schedules": "스케줄",
     "usage": "사용량",
     "settings": "설정",
+    "security": "보안",
+    "appearance": "화면 및 언어",
+    "agentApi": "Agent API",
     "skills": "스킬",
     "create": "새로 만들기",
     "createAgent": "에이전트 만들기",

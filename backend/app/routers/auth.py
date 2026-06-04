@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.cookies import clear_auth_cookies, set_auth_cookies
@@ -21,11 +22,12 @@ from app.schemas.auth import (
     AuthResponse,
     LoginRequest,
     LogoutResponse,
+    ProfileUpdateRequest,
     RefreshResponse,
     RegisterRequest,
     UserResponse,
 )
-from app.services import auth_service, user_service
+from app.services import auth_service, user_profile_service, user_service
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +159,73 @@ async def me_endpoint(
             code="not_authenticated", message="인증이 필요합니다", status=401
         )
     return UserResponse.model_validate(db_user)
+
+
+async def _load_profile_user(db: AsyncSession, user: CurrentUser):
+    db_user = await user_service.get_by_id(db, user.id)
+    if db_user is None:
+        raise AppError(
+            code="not_authenticated", message="인증이 필요합니다", status=401
+        )
+    return db_user
+
+
+@router.patch("/me/profile", response_model=UserResponse)
+async def update_profile_endpoint(
+    payload: ProfileUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> UserResponse:
+    db_user = await _load_profile_user(db, user)
+    user_profile_service.apply_profile_update(db_user, payload)
+    await db.commit()
+    await db.refresh(db_user)
+    return UserResponse.model_validate(db_user)
+
+
+@router.post("/me/avatar-image", response_model=UserResponse)
+async def upload_avatar_image_endpoint(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> UserResponse:
+    db_user = await _load_profile_user(db, user)
+    await user_profile_service.save_avatar_image(db_user, file)
+    await db.commit()
+    await db.refresh(db_user)
+    return UserResponse.model_validate(db_user)
+
+
+@router.delete("/me/avatar-image", response_model=UserResponse)
+async def delete_avatar_image_endpoint(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+) -> UserResponse:
+    db_user = await _load_profile_user(db, user)
+    await user_profile_service.delete_avatar_image(db_user)
+    await db.commit()
+    await db.refresh(db_user)
+    return UserResponse.model_validate(db_user)
+
+
+@router.get("/me/avatar-image")
+async def get_avatar_image_endpoint(
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    db_user = await _load_profile_user(db, user)
+    path = await user_profile_service.avatar_image_file(db_user)
+    if path is None:
+        await db.commit()
+        return Response(status_code=204)
+    return FileResponse(
+        path,
+        media_type="image/webp",
+        headers={"Cache-Control": "private, max-age=300"},
+    )
 
 
 __all__ = ["router"]
