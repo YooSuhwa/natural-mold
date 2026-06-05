@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { useGenerateAgentImage } from '@/lib/hooks/use-agents'
 import type { AgentIdentityMode } from '@/lib/types'
+import { AgentMemorySettingsSection } from './agent-memory-settings-section'
 import { IdentitySettingsSection } from './identity-settings-section'
 
 interface SettingsPanelProps {
@@ -87,6 +88,7 @@ export function SettingsPanel({
         identityMode={identityMode}
         onIdentityModeChange={onIdentityModeChange}
       />
+      <AgentMemorySettingsSection agentId={agentId} />
     </div>
   )
 }

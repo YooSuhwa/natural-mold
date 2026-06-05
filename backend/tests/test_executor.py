@@ -207,6 +207,54 @@ async def test_prepare_agent_logs_timing_spans(
     assert "build_agent_ms" in timing
 
 
+@pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+async def test_prepare_agent_skips_memory_tools_when_trigger_writes_are_off(
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_checkpointer: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.agent_runtime import executor
+
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = [HumanMessage(content="hello")]
+    mock_build.return_value = MagicMock()
+    mock_checkpointer.return_value = MagicMock()
+    mock_memory_tool = MagicMock()
+    mock_memory_tool.name = "save_user_memory"
+    mock_build_memory_tools = MagicMock(return_value=[mock_memory_tool])
+
+    monkeypatch.setattr(executor, "build_memory_tools", mock_build_memory_tools)
+    monkeypatch.setattr(executor, "_load_memory_prompt", AsyncMock(return_value=""))
+    monkeypatch.setattr(
+        executor,
+        "_memory_write_policy_for_run",
+        AsyncMock(return_value="off"),
+        raising=False,
+    )
+
+    await executor._prepare_agent(
+        _cfg(
+            agent_id="00000000-0000-0000-0000-0000000000aa",
+            user_id="00000000-0000-0000-0000-000000000001",
+            thread_id="00000000-0000-0000-0000-000000000099",
+        ),
+        messages_history=[{"role": "user", "content": "hello"}],
+        is_trigger_mode=True,
+    )
+
+    mock_build_memory_tools.assert_not_called()
+    build_args = mock_build.call_args.args
+    tool_names = {getattr(tool, "name", "") for tool in build_args[1]}
+    assert "save_user_memory" not in tool_names
+    assert "Long-term Memory Tool Rules" not in build_args[2]
+
+
 # ---------------------------------------------------------------------------
 # middleware model credential boundary
 # ---------------------------------------------------------------------------
@@ -979,6 +1027,66 @@ async def test_execute_stream_passes_skills_and_memory(
 
     # Verify agent directory was created
     assert (mock_data_dir / "agents" / "agent-123").exists()
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.executor.FilesystemBackend")
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
+async def test_execute_stream_injects_product_memory_tools_and_prompt(
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+    mock_fs_backend_cls: MagicMock,
+) -> None:
+    from app.agent_runtime.executor import execute_agent_stream
+
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = []
+    mock_build.return_value = MagicMock()
+
+    async def fake_stream(*args, **kwargs):
+        yield "done"
+
+    mock_stream.return_value = fake_stream()
+
+    with (
+        patch(
+            "app.agent_runtime.executor._load_memory_prompt",
+            new_callable=AsyncMock,
+            create=True,
+        ) as mock_memory_prompt,
+        patch(
+            "app.agent_runtime.executor._memory_write_policy_for_run",
+            new_callable=AsyncMock,
+            create=True,
+        ) as mock_memory_write_policy,
+    ):
+        mock_memory_prompt.return_value = "## Long-term Memory\n- The user prefers Korean."
+        mock_memory_write_policy.return_value = "ask"
+        async for _ in execute_agent_stream(
+            _cfg(
+                agent_id="00000000-0000-0000-0000-0000000000aa",
+                user_id="00000000-0000-0000-0000-000000000001",
+                thread_id="00000000-0000-0000-0000-000000000099",
+            ),
+            [],
+        ):
+            pass
+
+    build_args = mock_build.call_args.args
+    tool_names = {getattr(tool, "name", "") for tool in build_args[1]}
+    assert {"propose_memory", "save_user_memory", "save_agent_memory"} <= tool_names
+    assert "## Long-term Memory" in build_args[2]
+    assert "explicitly asks you to remember" in build_args[2]
+    assert "propose_memory" in build_args[2]
+    mock_memory_prompt.assert_awaited_once()
+    mock_memory_write_policy.assert_awaited_once()
 
 
 @pytest.mark.asyncio

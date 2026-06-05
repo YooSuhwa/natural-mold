@@ -24,6 +24,12 @@ from app.models.marketplace import (
 )
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
+from app.models.memory import (
+    AgentMemorySettings,
+    MemoryProposal,
+    MemoryRecord,
+    UserMemorySettings,
+)
 from app.models.message_attachment import MessageAttachment
 from app.models.message_event import MessageEvent, MessageEventChunk
 from app.models.message_feedback import MessageFeedback
@@ -59,6 +65,9 @@ __all__ = [
     "MarketplaceItemACL",
     "MarketplacePublicationLink",
     "MarketplaceVersion",
+    "AgentMemorySettings",
+    "MemoryProposal",
+    "MemoryRecord",
     "McpServer",
     "McpTool",
     "MessageAttachment",
@@ -74,5 +83,6 @@ __all__ = [
     "Template",
     "TokenUsage",
     "Tool",
+    "UserMemorySettings",
     "User",
 ]

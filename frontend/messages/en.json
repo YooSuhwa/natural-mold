@@ -536,6 +536,35 @@
           "description": "Scheduled runs use the owner's credentials."
         }
       },
+      "memory": {
+        "title": "Memory policy",
+        "description": "Choose a stricter memory policy for this agent.",
+        "loading": "Loading memory policy.",
+        "writePolicy": "Conversation writes",
+        "scopePolicy": "Allowed scopes",
+        "triggerPolicy": "Trigger writes",
+        "save": "Save",
+        "writePolicyOptions": {
+          "inherit": "Inherit global policy",
+          "off": "Do not save",
+          "ask": "Ask before saving",
+          "auto": "Save automatically"
+        },
+        "scopeOptions": {
+          "inherit": "Inherit global scopes",
+          "agent_only": "This agent only",
+          "user_and_agent": "User + agent"
+        },
+        "triggerOptions": {
+          "inherit": "Inherit global policy",
+          "off": "Do not save from triggers",
+          "auto": "Auto-save from triggers"
+        },
+        "toast": {
+          "saved": "Agent memory policy saved.",
+          "saveFailed": "Could not save agent memory policy."
+        }
+      },
       "subAgents": {
         "title": "Subagents",
         "description": "Add other agents as collaborators.",
@@ -991,6 +1020,32 @@
   },
   "chat": {
     "defaultAgentName": "Default Agent Name",
+    "memory": {
+      "title": "Memory",
+      "proposed": "Save proposed",
+      "saved": "Saved",
+      "rejected": "Not saved",
+      "running": "Checking memory...",
+      "approve": "Save",
+      "reject": "Reject",
+      "edit": "Edit",
+      "cancelEdit": "Cancel edit",
+      "editAndApprove": "Edit and save",
+      "reason": "Reason",
+      "rejectedReason": "Rejection reason",
+      "proposalDescription": "The agent proposed remembering this.",
+      "savedDescription": "Saved to memory.",
+      "rejectedDescription": "This was not saved to memory.",
+      "missingProposal": "Memory proposal details are unavailable.",
+      "contentLabel": "Memory content",
+      "approveToast": "Memory saved.",
+      "rejectToast": "Memory rejected.",
+      "actionFailed": "Memory action failed.",
+      "proposedToast": "A memory proposal arrived.",
+      "savedToast": "Memory saved.",
+      "rejectedToast": "Memory was rejected.",
+      "deletedToast": "Memory deleted."
+    },
     "approval": {
       "approved": "Approved",
       "rejected": "Rejected",
@@ -2845,6 +2900,7 @@
       "account": "Account",
       "api": "API",
       "profile": "Profile",
+      "memory": "Memory",
       "security": "Security",
       "appearance": "Appearance & Language",
       "agentApi": "Agent API"
@@ -2890,6 +2946,94 @@
       "never": "No record",
       "loading": "Loading profile.",
       "adminBadge": "Admin"
+    },
+    "memory": {
+      "title": "Memory",
+      "description": "Manage the long-term memory your agents can read from and write to during conversations.",
+      "loading": "Loading memory settings.",
+      "scope": {
+        "user": "User",
+        "agent": "Agent"
+      },
+      "scopeFilter": {
+        "all": "All",
+        "user": "User",
+        "agent": "Agent"
+      },
+      "writePolicy": {
+        "off": "Do not save",
+        "ask": "Ask before saving",
+        "auto": "Save automatically"
+      },
+      "allowedScopes": {
+        "user": "User",
+        "agent": "Agent",
+        "both": "User + agent"
+      },
+      "triggerPolicy": {
+        "off": "Do not save from triggers",
+        "auto": "Auto-save from triggers"
+      },
+      "policy": {
+        "title": "Global memory policy",
+        "description": "Choose the default read and write behavior for every agent.",
+        "enabledBadge": "Enabled",
+        "disabledBadge": "Disabled",
+        "memoryEnabled": "Enable memory",
+        "memoryEnabledHelp": "When off, agents cannot read memory or save new records.",
+        "memoryReadEnabled": "Use memory in responses",
+        "memoryReadEnabledHelp": "When on, active memory is included in the runtime prompt.",
+        "writePolicy": "Conversation writes",
+        "writePolicyHelp": "Decide what happens when an agent discovers something worth remembering.",
+        "allowedScopes": "Allowed scopes",
+        "allowedScopesHelp": "Choose whether user-wide and agent-specific memory can be stored.",
+        "triggerPolicy": "Trigger writes",
+        "triggerPolicyHelp": "Allow or block memory writes during scheduled trigger runs.",
+        "save": "Save policy"
+      },
+      "create": {
+        "title": "Add memory",
+        "description": "Save important preferences or agent knowledge without waiting for a conversation.",
+        "scope": "Scope",
+        "agent": "Agent",
+        "agentDisabled": "User memory",
+        "agentHelp": "This memory is used only when chatting with the selected agent.",
+        "userHelp": "This memory is used as a user preference across all agents.",
+        "content": "New memory content",
+        "contentPlaceholder": "e.g. I prefer meetings after 3 PM.",
+        "reason": "Reason",
+        "reasonPlaceholder": "Optional",
+        "submit": "Add memory"
+      },
+      "list": {
+        "title": "Recorded memories",
+        "description": "Search, edit, or delete saved memory records.",
+        "scopeFilter": "Memory scope filter",
+        "searchLabel": "Search memory",
+        "searchPlaceholder": "Search content or reason",
+        "loading": "Loading memories.",
+        "emptyTitle": "No memories saved",
+        "emptyDescription": "Approved chat memories or manually added records appear here.",
+        "updatedAt": "Updated {date}",
+        "reasonPlaceholder": "Reason",
+        "editContent": "Edit memory content",
+        "editReason": "Edit reason",
+        "edit": "Edit memory",
+        "save": "Save memory",
+        "cancel": "Cancel edit",
+        "delete": "Delete memory",
+        "memoryEntity": "memory"
+      },
+      "toast": {
+        "settingsSaved": "Memory policy saved.",
+        "settingsFailed": "Could not save memory policy.",
+        "created": "Memory added.",
+        "createFailed": "Could not add memory.",
+        "updated": "Memory saved.",
+        "updateFailed": "Could not update memory.",
+        "deleted": "Memory deleted.",
+        "deleteFailed": "Could not delete memory."
+      }
     },
     "security": {
       "title": "Security",

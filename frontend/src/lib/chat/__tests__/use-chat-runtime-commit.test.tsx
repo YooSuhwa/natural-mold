@@ -15,6 +15,7 @@
 import { renderHook, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest'
 import type { Message, SSEEvent } from '@/lib/types'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
@@ -51,7 +52,7 @@ vi.mock('jotai', async () => {
 })
 
 vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }))
 
 function createWrapper() {
@@ -480,5 +481,47 @@ describe('useChatRuntime — onMessagesCommit dedup', () => {
         ],
       ),
     ).toBe(false)
+  })
+
+  it('memory_saved 이벤트가 오면 memory query를 invalidate하고 toast를 표시한다', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    const streamFn = makeStreamFn([
+      {
+        event: 'memory_saved',
+        data: {
+          scope: 'user',
+          content: '회의는 오후 3시 이후를 선호합니다.',
+          id: 'memory-1',
+        },
+      },
+    ])
+    const { result } = renderHook(
+      () =>
+        useChatRuntime({
+          messages: [],
+          streamFn: streamFn as unknown as (
+            content: string,
+            signal: AbortSignal,
+          ) => AsyncGenerator<SSEEvent>,
+          onMessagesCommit: vi.fn(),
+        }),
+      { wrapper: Wrapper },
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('hi')
+    })
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['memory'] })
+    expect(toast.success).toHaveBeenCalledWith('savedToast')
   })
 })

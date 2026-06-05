@@ -25,6 +25,7 @@ import { streamResumeAttach } from '@/lib/sse/stream-resume-attach'
 import { withAutoResume } from '@/lib/sse/with-auto-resume'
 import { StreamApiError } from '@/lib/sse/parse-sse'
 import { createStreamGuard } from '@/lib/sse/stream-guard'
+import { memoryKeys } from '@/lib/hooks/use-memory'
 import type { FeedbackAdapter, AttachmentAdapter } from '@assistant-ui/react'
 import {
   createHiTLDecisionCoordinator,
@@ -365,6 +366,7 @@ export function useChatRuntime({
   const queryClient = useQueryClient()
   const tReconnect = useTranslations('chat.reconnect')
   const tPage = useTranslations('chat.page')
+  const tMemory = useTranslations('chat.memory')
 
   /** B1 fix — when the user edits/regenerates we already know the new turn
    * will replace messages from ``truncateAtIndex`` onward. Optimistically
@@ -635,6 +637,26 @@ export function useChatRuntime({
               }
               break
             }
+            case 'memory_proposed': {
+              queryClient.invalidateQueries({ queryKey: memoryKeys.all })
+              toast.info(tMemory('proposedToast'))
+              break
+            }
+            case 'memory_saved': {
+              queryClient.invalidateQueries({ queryKey: memoryKeys.all })
+              toast.success(tMemory('savedToast'))
+              break
+            }
+            case 'memory_rejected': {
+              queryClient.invalidateQueries({ queryKey: memoryKeys.all })
+              toast.warning(tMemory('rejectedToast'))
+              break
+            }
+            case 'memory_deleted': {
+              queryClient.invalidateQueries({ queryKey: memoryKeys.all })
+              toast.success(tMemory('deletedToast'))
+              break
+            }
             case 'interrupt': {
               setIsRunning(false)
               const data = event.data as StandardInterruptPayload
@@ -748,7 +770,16 @@ export function useChatRuntime({
         onStreamEnd?.(didMutate)
       }
     },
-    [onStreamEnd, onStandardInterrupt, onMessagesCommit, setReconnectState, tReconnect, tPage],
+    [
+      onStreamEnd,
+      onStandardInterrupt,
+      onMessagesCommit,
+      setReconnectState,
+      tReconnect,
+      tPage,
+      tMemory,
+      queryClient,
+    ],
   )
 
   // messages가 새로 fetch되면(refetch 완료) streaming messages를 clear.
