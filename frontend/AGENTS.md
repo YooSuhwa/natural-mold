@@ -119,6 +119,20 @@ pnpm lint:design-system
 usage bar width, resource grid columns, Agent Prism trace/timeline layout, phase
 progress ratio뿐이다. 예외를 늘릴 때는 먼저 공용 class/토큰으로 표현 가능한지 확인한다.
 
+## i18n 정적 텍스트 규칙
+
+사용자에게 보이는 모든 정적 텍스트는 `next-intl` 메시지로 관리한다. TS/TSX에 한국어,
+영어, placeholder, aria-label, title, toast 문구를 직접 하드코딩하지 않는다.
+
+- 한국어가 source of truth다. 새 copy는 먼저 `messages/ko.json`에 자연스러운 한국어로
+  추가하고, 같은 key path를 `messages/en.json`에 적절한 영어로 함께 추가한다.
+- key path는 양쪽 파일에서 항상 정합되어야 한다. 한쪽만 추가하거나 이름이 어긋나면 안 된다.
+- 컴포넌트에서는 `useTranslations()` 또는 서버 컴포넌트의 `getTranslations()`를 사용한다.
+- UI copy를 추가/수정한 뒤에는 `pnpm lint:i18n`을 실행한다.
+- `pnpm lint:i18n:strict`는 영어/ASCII 정적 텍스트까지 찾는 더 넓은 점검용이다. 현재
+  일부 legacy Agent Prism 문구와 코드 조각 오탐이 남아 있으므로, 새 코드에서 걸리면
+  i18n으로 옮기고 기존 오탐은 가드를 좁게 조정한다.
+
 ## Resource Card 문법
 
 도구/스킬/MCP/자격증명/마켓플레이스/템플릿 같은 리소스 목록 카드는

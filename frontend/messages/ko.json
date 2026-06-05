@@ -113,6 +113,8 @@
       "credentials": "API 키 관리",
       "logout": "로그아웃",
       "adminBadge": "관리자",
+      "avatarLabel": "{name} 프로필 아이콘",
+      "avatarFallback": "사용자",
       "profileComingSoon": "프로필 설정은 곧 지원됩니다"
     }
   },
@@ -513,6 +515,35 @@
         "fixed": {
           "title": "에이전트 고정",
           "description": "스케줄 실행은 소유자 credential을 사용합니다."
+        }
+      },
+      "memory": {
+        "title": "메모리 정책",
+        "description": "이 에이전트에만 적용할 메모리 저장 상한을 정합니다.",
+        "loading": "메모리 정책을 불러오는 중입니다.",
+        "writePolicy": "대화 중 저장",
+        "scopePolicy": "저장 범위",
+        "triggerPolicy": "자동 실행 저장",
+        "save": "저장",
+        "writePolicyOptions": {
+          "inherit": "전역 정책 상속",
+          "off": "저장 안 함",
+          "ask": "저장 전 확인",
+          "auto": "자동 저장"
+        },
+        "scopeOptions": {
+          "inherit": "전역 범위 상속",
+          "agent_only": "이 에이전트만",
+          "user_and_agent": "사용자 + 에이전트"
+        },
+        "triggerOptions": {
+          "inherit": "전역 정책 상속",
+          "off": "트리거 저장 안 함",
+          "auto": "트리거 자동 저장"
+        },
+        "toast": {
+          "saved": "에이전트 메모리 정책을 저장했습니다.",
+          "saveFailed": "에이전트 메모리 정책 저장에 실패했습니다."
         }
       },
       "subAgents": {
@@ -970,6 +1001,57 @@
   },
   "chat": {
     "defaultAgentName": "에이전트",
+    "memory": {
+      "title": "메모리",
+      "proposed": "저장 제안",
+      "saved": "저장됨",
+      "rejected": "저장 안 함",
+      "running": "메모리 확인 중…",
+      "approve": "저장",
+      "reject": "거절",
+      "edit": "수정",
+      "cancelEdit": "수정 취소",
+      "editAndApprove": "수정 후 저장",
+      "reason": "저장 이유",
+      "rejectedReason": "거부 이유",
+      "proposalDescription": "에이전트가 이 내용을 기억하자고 제안했습니다.",
+      "savedDescription": "메모리에 저장되었습니다.",
+      "rejectedDescription": "메모리에 저장하지 않았습니다.",
+      "missingProposal": "저장 제안 정보를 찾을 수 없습니다.",
+      "contentLabel": "메모리 내용",
+      "approveToast": "메모리를 저장했습니다.",
+      "rejectToast": "메모리 저장을 거절했습니다.",
+      "actionFailed": "메모리 작업에 실패했습니다.",
+      "proposedToast": "메모리 저장 제안이 도착했습니다.",
+      "savedToast": "메모리를 저장했습니다.",
+      "rejectedToast": "메모리 저장이 거절되었습니다.",
+      "deletedToast": "메모리를 삭제했습니다."
+    },
+    "traceDebugger": {
+      "title": "Trace 상세",
+      "openLogs": "로그보기",
+      "backToList": "목록",
+      "refresh": "새로고침",
+      "emptyRows": "Trace 기록이 없습니다.",
+      "conversationTraces": "대화 Trace",
+      "spanDetails": "Span 상세",
+      "spanSummary": "{traceCount} traces · {spanCount} spans",
+      "selectSpanPlaceholder": "Span을 선택하면 상세 정보를 볼 수 있습니다.",
+      "runInfo": "수행정보",
+      "statusFailed": "실패 포함",
+      "statusSuccess": "성공",
+      "traceCount": "Trace 수",
+      "startedAt": "시작일시",
+      "completedAt": "종료일시",
+      "totalDuration": "누적 수행시간",
+      "totalTokens": "사용토큰수",
+      "filters": "필터링",
+      "tools": "도구",
+      "errors": "오류",
+      "privacy": "개인정보",
+      "secrets": "기밀정보",
+      "emptyFilterItems": "검출된 필터 항목이 없습니다."
+    },
     "approval": {
       "approved": "승인됨",
       "rejected": "거부됨",
@@ -2824,6 +2906,7 @@
       "account": "계정",
       "api": "API",
       "profile": "프로필",
+      "memory": "메모리",
       "security": "보안",
       "appearance": "화면 및 언어",
       "agentApi": "Agent API",
@@ -2875,6 +2958,94 @@
       "never": "기록 없음",
       "loading": "프로필을 불러오는 중입니다.",
       "adminBadge": "관리자"
+    },
+    "memory": {
+      "title": "메모리",
+      "description": "에이전트가 대화에서 읽고 저장할 수 있는 장기 메모리를 관리합니다.",
+      "loading": "메모리 설정을 불러오는 중입니다.",
+      "scope": {
+        "user": "사용자",
+        "agent": "에이전트"
+      },
+      "scopeFilter": {
+        "all": "전체",
+        "user": "사용자",
+        "agent": "에이전트"
+      },
+      "writePolicy": {
+        "off": "저장 안 함",
+        "ask": "저장 전 확인",
+        "auto": "자동 저장"
+      },
+      "allowedScopes": {
+        "user": "사용자",
+        "agent": "에이전트",
+        "both": "사용자 + 에이전트"
+      },
+      "triggerPolicy": {
+        "off": "트리거 저장 안 함",
+        "auto": "트리거 자동 저장"
+      },
+      "policy": {
+        "title": "전역 메모리 정책",
+        "description": "모든 에이전트의 기본 메모리 읽기와 저장 방식을 정합니다.",
+        "enabledBadge": "활성",
+        "disabledBadge": "비활성",
+        "memoryEnabled": "메모리 활성화",
+        "memoryEnabledHelp": "끄면 에이전트가 메모리를 읽거나 새로 저장하지 않습니다.",
+        "memoryReadEnabled": "응답에 메모리 사용",
+        "memoryReadEnabledHelp": "켜면 활성 메모리를 런타임 프롬프트에 포함합니다.",
+        "writePolicy": "대화 중 저장",
+        "writePolicyHelp": "에이전트가 새 기억을 발견했을 때 저장할지 정합니다.",
+        "allowedScopes": "저장 범위",
+        "allowedScopesHelp": "사용자 공통 기억과 에이전트 전용 기억 중 허용할 범위입니다.",
+        "triggerPolicy": "자동 실행 저장",
+        "triggerPolicyHelp": "스케줄 트리거 실행 중 메모리 쓰기를 허용할지 정합니다.",
+        "save": "정책 저장"
+      },
+      "create": {
+        "title": "메모리 추가",
+        "description": "대화 없이도 중요한 선호나 에이전트 지식을 직접 저장할 수 있습니다.",
+        "scope": "범위",
+        "agent": "에이전트",
+        "agentDisabled": "사용자 메모리",
+        "agentHelp": "이 메모리는 선택한 에이전트와 대화할 때만 사용됩니다.",
+        "userHelp": "이 메모리는 모든 에이전트에서 사용자 선호로 사용됩니다.",
+        "content": "새 메모리 내용",
+        "contentPlaceholder": "예: 회의는 오후 3시 이후를 선호합니다.",
+        "reason": "저장 이유",
+        "reasonPlaceholder": "선택 사항",
+        "submit": "메모리 추가"
+      },
+      "list": {
+        "title": "기록된 메모리",
+        "description": "저장된 메모리를 검색하고 수정하거나 삭제합니다.",
+        "scopeFilter": "메모리 범위 필터",
+        "searchLabel": "메모리 검색",
+        "searchPlaceholder": "내용이나 저장 이유로 검색",
+        "loading": "메모리를 불러오는 중입니다.",
+        "emptyTitle": "저장된 메모리가 없습니다",
+        "emptyDescription": "채팅에서 승인하거나 이 화면에서 직접 추가하면 여기에 표시됩니다.",
+        "updatedAt": "수정 {date}",
+        "reasonPlaceholder": "저장 이유",
+        "editContent": "메모리 내용 수정",
+        "editReason": "저장 이유 수정",
+        "edit": "메모리 수정",
+        "save": "메모리 저장",
+        "cancel": "수정 취소",
+        "delete": "메모리 삭제",
+        "memoryEntity": "메모리"
+      },
+      "toast": {
+        "settingsSaved": "메모리 정책을 저장했습니다.",
+        "settingsFailed": "메모리 정책 저장에 실패했습니다.",
+        "created": "메모리를 추가했습니다.",
+        "createFailed": "메모리 추가에 실패했습니다.",
+        "updated": "메모리를 저장했습니다.",
+        "updateFailed": "메모리 수정에 실패했습니다.",
+        "deleted": "메모리를 삭제했습니다.",
+        "deleteFailed": "메모리 삭제에 실패했습니다."
+      }
     },
     "security": {
       "title": "보안",

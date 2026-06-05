@@ -3,10 +3,15 @@ import SettingsPage from '@/app/settings/page'
 import SecuritySettingsPage from '@/app/settings/security/page'
 import AppearanceSettingsPage from '@/app/settings/appearance/page'
 import AgentApiSettingsPage from '@/app/settings/agent-api/page'
+import MemorySettingsPage from '@/app/settings/memory/page'
 
 const updateProfile = vi.fn()
 const uploadAvatarImage = vi.fn()
 const deleteAvatarImage = vi.fn()
+const updateUserMemorySettings = vi.fn()
+const createMemory = vi.fn()
+const updateMemory = vi.fn()
+const deleteMemory = vi.fn()
 const mockUseSession = vi.fn()
 
 vi.mock('@/lib/api/auth', () => ({
@@ -37,6 +42,69 @@ vi.mock('@/lib/hooks/use-agent-api', () => ({
   useRevokeAgentApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
+vi.mock('@/lib/hooks/use-agents', () => ({
+  useAgents: () => ({
+    data: [
+      {
+        id: 'agent-1',
+        name: '리서치 에이전트',
+        description: '뉴스를 요약합니다.',
+        status: 'active',
+        is_favorite: false,
+        image_url: null,
+        model_display_name: 'GPT-5',
+        tool_count: 0,
+        fallback_count: 0,
+        created_at: '2026-05-01T00:00:00Z',
+        updated_at: '2026-05-01T00:00:00Z',
+        unread_count: 0,
+      },
+    ],
+    isLoading: false,
+  }),
+}))
+
+vi.mock('@/lib/hooks/use-memory', () => ({
+  useUserMemorySettings: () => ({
+    data: {
+      memory_enabled: true,
+      memory_read_enabled: true,
+      memory_write_policy: 'ask',
+      allowed_scopes: 'both',
+      trigger_memory_write_policy: 'off',
+    },
+    isLoading: false,
+  }),
+  useUpdateUserMemorySettings: () => ({
+    mutateAsync: updateUserMemorySettings,
+    isPending: false,
+  }),
+  useMemories: () => ({
+    data: [
+      {
+        id: 'memory-1',
+        user_id: 'user-1',
+        agent_id: null,
+        scope: 'user',
+        content: '회의는 오후 3시 이후를 선호합니다.',
+        reason: '일정 선호',
+        store_path: '/memories/users/user-1/memory-1.md',
+        source_conversation_id: null,
+        source_message_id: null,
+        source_run_id: null,
+        status: 'active',
+        created_at: '2026-06-03T00:00:00Z',
+        updated_at: '2026-06-03T00:00:00Z',
+        deleted_at: null,
+      },
+    ],
+    isLoading: false,
+  }),
+  useCreateMemory: () => ({ mutateAsync: createMemory, isPending: false }),
+  useUpdateMemory: () => ({ mutateAsync: updateMemory, isPending: false }),
+  useDeleteMemory: () => ({ mutateAsync: deleteMemory, isPending: false }),
+}))
+
 describe('settings pages', () => {
   beforeEach(() => {
     updateProfile.mockClear()
@@ -55,6 +123,10 @@ describe('settings pages', () => {
     })
     uploadAvatarImage.mockClear()
     deleteAvatarImage.mockClear()
+    updateUserMemorySettings.mockClear()
+    createMemory.mockClear()
+    updateMemory.mockClear()
+    deleteMemory.mockClear()
     mockUseSession.mockReturnValue({
       data: {
         id: 'user-1',
@@ -181,5 +253,55 @@ describe('settings pages', () => {
     expect(screen.queryByRole('link', { name: '시스템 자격증명' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '시스템 LLM 설정' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '전체 활동 기록' })).not.toBeInTheDocument()
+  })
+
+  it('renders memory policy controls and recorded memories', () => {
+    render(<MemorySettingsPage />)
+
+    expect(screen.getByRole('heading', { name: '메모리' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '메모리' })).toHaveAttribute(
+      'href',
+      '/settings/memory',
+    )
+    expect(screen.getByLabelText('메모리 활성화')).toBeChecked()
+    expect(screen.getByLabelText('응답에 메모리 사용')).toBeChecked()
+    expect(screen.getByText('저장 전 확인')).toBeInTheDocument()
+    expect(screen.getByText('사용자 + 에이전트')).toBeInTheDocument()
+    expect(screen.getByText('회의는 오후 3시 이후를 선호합니다.')).toBeInTheDocument()
+  })
+
+  it('creates a memory from the settings page', async () => {
+    createMemory.mockResolvedValue({
+      id: 'memory-2',
+      user_id: 'user-1',
+      agent_id: null,
+      scope: 'user',
+      content: '문서 초안은 한국어로 먼저 작성합니다.',
+      reason: null,
+      store_path: '/memories/users/user-1/memory-2.md',
+      source_conversation_id: null,
+      source_message_id: null,
+      source_run_id: null,
+      status: 'active',
+      created_at: '2026-06-04T00:00:00Z',
+      updated_at: '2026-06-04T00:00:00Z',
+      deleted_at: null,
+    })
+    render(<MemorySettingsPage />)
+
+    await userEvent.type(
+      screen.getByLabelText('새 메모리 내용'),
+      '문서 초안은 한국어로 먼저 작성합니다.',
+    )
+    await userEvent.click(screen.getByRole('button', { name: '메모리 추가' }))
+
+    await waitFor(() => {
+      expect(createMemory).toHaveBeenCalledWith({
+        scope: 'user',
+        content: '문서 초안은 한국어로 먼저 작성합니다.',
+        reason: null,
+        agent_id: null,
+      })
+    })
   })
 })

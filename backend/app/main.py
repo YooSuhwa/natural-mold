@@ -307,6 +307,7 @@ def create_app() -> FastAPI:
         health,
         marketplace,
         mcp,
+        memory,
         models,
         shares,
         skills,
@@ -330,6 +331,7 @@ def create_app() -> FastAPI:
     app.include_router(credentials.router)
     app.include_router(health.router)
     app.include_router(marketplace.router)
+    app.include_router(memory.router)
     app.include_router(mcp.router)
     app.include_router(mcp.catalog_router)  # /api/mcp-server-types
     app.include_router(models.router)

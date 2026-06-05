@@ -1,5 +1,6 @@
 import { render, screen, userEvent } from '../test-utils'
 import AgentSettingsPage from '@/app/agents/[agentId]/settings/page'
+import { SettingsPanel } from '@/app/agents/[agentId]/settings/_components/right-panel/settings-panel'
 import { mockAgent, mockToolList } from '../mocks/fixtures'
 
 vi.mock('next/link', () => ({
@@ -38,6 +39,7 @@ const mockUseAgent = vi.fn()
 
 const mockUpdateAgent = vi.fn().mockResolvedValue({})
 const mockDeleteAgent = vi.fn().mockResolvedValue({})
+const mockUpdateAgentMemorySettings = vi.fn().mockResolvedValue({})
 
 vi.mock('@/lib/hooks/use-agents', () => ({
   useAgents: () => ({ data: [], isLoading: false }),
@@ -61,6 +63,25 @@ vi.mock('@/lib/hooks/use-skills', () => ({
 
 vi.mock('@/lib/hooks/use-middlewares', () => ({
   useMiddlewares: () => ({ data: [] }),
+}))
+
+vi.mock('@/lib/hooks/use-mcp-servers', () => ({
+  useAllMcpTools: () => ({ data: [] }),
+}))
+
+vi.mock('@/lib/hooks/use-memory', () => ({
+  useAgentMemorySettings: () => ({
+    data: {
+      memory_policy_override: 'inherit',
+      memory_scopes_override: 'inherit',
+      trigger_memory_policy_override: 'inherit',
+    },
+    isLoading: false,
+  }),
+  useUpdateAgentMemorySettings: () => ({
+    mutateAsync: mockUpdateAgentMemorySettings,
+    isPending: false,
+  }),
 }))
 
 const mockCreateTrigger = vi.fn().mockResolvedValue({})
@@ -231,6 +252,21 @@ describe('AgentSettingsPage', () => {
       />,
     )
     expect(screen.getByTestId('assistant-panel')).toBeInTheDocument()
+  })
+
+  it('settings panel exposes memory override settings', () => {
+    render(
+      <SettingsPanel
+        agentId="agent-1"
+        imageUrl={null}
+        name="Test Agent"
+        identityMode="per_user"
+        onIdentityModeChange={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('메모리 정책')).toBeInTheDocument()
+    expect(screen.getAllByText('전역 정책 상속')).toHaveLength(2)
   })
 
   it('calls updateAgent when save is clicked after editing name', async () => {

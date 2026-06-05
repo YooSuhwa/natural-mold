@@ -8,6 +8,7 @@ export * from './skill'
 export * from './model'
 export * from './health'
 export * from './usage'
+export * from './memory'
 export * from './agent-api'
 export * from './audit'
 
@@ -345,6 +346,10 @@ export type SSEEventType =
   | 'content_delta'
   | 'tool_call_start'
   | 'tool_call_result'
+  | 'memory_proposed'
+  | 'memory_saved'
+  | 'memory_rejected'
+  | 'memory_deleted'
   | 'message_end'
   | 'error'
   | 'interrupt'
@@ -409,6 +414,10 @@ export type SSEEvent = { id?: string } & (
       data: { tool_call_id?: string; tool_name: string; parameters: Record<string, unknown> }
     }
   | { event: 'tool_call_result'; data: { tool_call_id?: string; tool_name: string; result: string } }
+  | { event: 'memory_proposed'; data: import('./memory').MemoryEventPayload }
+  | { event: 'memory_saved'; data: import('./memory').MemoryEventPayload }
+  | { event: 'memory_rejected'; data: import('./memory').MemoryEventPayload }
+  | { event: 'memory_deleted'; data: import('./memory').MemoryEventPayload }
   | {
       event: 'message_end'
       data: {

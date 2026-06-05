@@ -39,6 +39,7 @@ from app.agent_runtime.streaming import StreamErrorRecord, stream_agent_response
 from app.agent_runtime.temporal import build_temporal_context_prompt
 from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_for_runtime
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
+from app.agent_runtime.tools.memory import build_memory_tools
 from app.exceptions import AppError
 from app.hooks import HookContext, HookResult, hooks
 from app.marketplace.skill_runtime import (
@@ -520,6 +521,7 @@ async def _build_mcp_tools(mcp_configs: list[dict]) -> list[BaseTool]:
 
     for key, config in servers.items():
         try:
+
             async def _load_server_tools(
                 *,
                 cache_key: str = key,
@@ -855,6 +857,85 @@ def _system_prompt_with_temporal_context(system_prompt: str) -> str:
     return f"{prompt}\n\n{block}" if prompt else block
 
 
+def _parse_uuid(value: str | None) -> _uuid.UUID | None:
+    if not value:
+        return None
+    try:
+        return _uuid.UUID(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+async def _load_memory_prompt(cfg: AgentConfig) -> str:
+    user_uuid = _parse_uuid(cfg.user_id)
+    if user_uuid is None:
+        return ""
+    agent_uuid = _parse_uuid(cfg.agent_id)
+    try:
+        from app.database import async_session as _async_session_factory
+        from app.services import memory_service
+
+        async with _async_session_factory() as db:
+            policy = await memory_service.resolve_effective_policy(
+                db,
+                user_id=user_uuid,
+                agent_id=agent_uuid,
+            )
+            if not policy.read_enabled:
+                return ""
+            records = await memory_service.list_runtime_memory_records(
+                db,
+                user_id=user_uuid,
+                agent_id=agent_uuid,
+                allowed_scopes=policy.allowed_scopes,
+            )
+            return memory_service.render_memory_prompt(records)
+    except Exception:  # noqa: BLE001 — memory is helpful context, not a hard runtime dependency
+        logger.warning("memory prompt load failed", exc_info=True)
+        return ""
+
+
+async def _memory_write_policy_for_run(cfg: AgentConfig, *, is_trigger_mode: bool) -> str:
+    user_uuid = _parse_uuid(cfg.user_id)
+    if user_uuid is None:
+        return "off"
+    agent_uuid = _parse_uuid(cfg.agent_id)
+    try:
+        from app.database import async_session as _async_session_factory
+        from app.services import memory_service
+
+        async with _async_session_factory() as db:
+            policy = await memory_service.resolve_effective_policy(
+                db,
+                user_id=user_uuid,
+                agent_id=agent_uuid,
+            )
+            return policy.trigger_write_policy if is_trigger_mode else policy.write_policy
+    except Exception:  # noqa: BLE001 — memory writes are optional runtime affordances
+        logger.warning("memory write policy load failed", exc_info=True)
+        return "off"
+
+
+def _memory_tool_instruction_prompt() -> str:
+    return (
+        "## Long-term Memory Tool Rules\n"
+        "- If the user explicitly asks you to remember, save, or persist a durable "
+        "preference or fact, call `propose_memory`, `save_user_memory`, or "
+        "`save_agent_memory` instead of only describing what you would do.\n"
+        "- Use `propose_memory` when you are unsure whether the memory should be "
+        "user-wide or agent-specific; use `save_user_memory` for user-wide "
+        "preferences and `save_agent_memory` for this agent's operating notes.\n"
+        "- The server enforces the user's memory policy. In ask mode, save tools "
+        "create an approval proposal rather than directly storing the memory.\n"
+        "- Do not claim a memory was saved unless a memory tool result says "
+        "`memory_saved`. If the tool reports `memory_proposed`, tell the user it "
+        "is waiting for approval.\n"
+        "- Never store API keys, passwords, tokens, credentials, or government ID "
+        "numbers. Ordinary test labels or preference IDs are not secrets by "
+        "themselves."
+    )
+
+
 async def _prepare_agent(
     cfg: AgentConfig,
     *,
@@ -912,13 +993,25 @@ async def _prepare_agent(
     mcp_tools = await _build_mcp_tools(mcp_configs)
     langchain_tools.extend(mcp_tools)
     _append_temporal_tools(langchain_tools)
+    memory_write_policy = await _memory_write_policy_for_run(
+        cfg,
+        is_trigger_mode=is_trigger_mode,
+    )
+    memory_tools_enabled = memory_write_policy != "off"
+    if cfg.user_id and memory_tools_enabled:
+        langchain_tools.extend(
+            build_memory_tools(
+                user_id=cfg.user_id,
+                agent_id=cfg.agent_id,
+                conversation_id=cfg.thread_id,
+                is_trigger_mode=is_trigger_mode,
+            )
+        )
     mark_timing("tools_ms")
 
     # 3. 미들웨어 — deepagents 빌트인 타입 제외 후, model 문자열을 BaseChatModel로 사전 해석
     configured_mw_types = {
-        str(c.get("type"))
-        for c in (cfg.middleware_configs or [])
-        if c.get("type")
+        str(c.get("type")) for c in (cfg.middleware_configs or []) if c.get("type")
     }
     filtered_mw = [
         c for c in (cfg.middleware_configs or []) if c.get("type") not in DEEPAGENT_BUILTIN_TYPES
@@ -982,6 +1075,12 @@ async def _prepare_agent(
     if cfg.agent_id:
         (_DATA_DIR / "agents" / cfg.agent_id).mkdir(parents=True, exist_ok=True)
         memory_sources = [f"/agents/{cfg.agent_id}/AGENTS.md"]
+
+    memory_prompt = await _load_memory_prompt(cfg)
+    if cfg.user_id and memory_tools_enabled:
+        system_prompt += "\n\n" + _memory_tool_instruction_prompt()
+    if memory_prompt:
+        system_prompt += "\n\n" + memory_prompt
 
     permissions = build_filesystem_permissions(
         thread_id=cfg.thread_id,

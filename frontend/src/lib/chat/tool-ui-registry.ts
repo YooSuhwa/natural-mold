@@ -29,6 +29,11 @@ import {
   DraftApprovalToolUI,
 } from '@/components/chat/tool-ui/draft-config-ui'
 import { SubAgentToolUI } from '@/components/chat/tool-ui/sub-agent-ui'
+import {
+  ProposeMemoryToolUI,
+  SaveAgentMemoryToolUI,
+  SaveUserMemoryToolUI,
+} from '@/components/chat/tool-ui/memory-tool-ui'
 
 /** 모든 도구 UI — HiTL 포함 */
 export const ALL_TOOL_UI = [
@@ -38,6 +43,9 @@ export const ALL_TOOL_UI = [
   ClarifyingQuestionUI,
   PlanToolUI,
   SubAgentToolUI,
+  ProposeMemoryToolUI,
+  SaveUserMemoryToolUI,
+  SaveAgentMemoryToolUI,
   DeepResearchSummaryToolUI,
   TavilySearchToolUI,
   WebSearchToolUI,

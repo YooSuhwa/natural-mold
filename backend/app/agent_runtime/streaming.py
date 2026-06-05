@@ -103,6 +103,30 @@ def _debug_input_for_message_start(actual_input: Any) -> Any:
 
 # Middleware-internal schema names (LLMToolSelectorMiddleware 등) — UI 노출 X.
 _INTERNAL_TOOL_NAMES: frozenset[str] = frozenset({"ToolSelectionResponse"})
+_MEMORY_TOOL_NAMES: frozenset[str] = frozenset(
+    {"propose_memory", "save_user_memory", "save_agent_memory"}
+)
+_MEMORY_EVENT_NAMES: frozenset[str] = frozenset(
+    {
+        event_names.MEMORY_PROPOSED,
+        event_names.MEMORY_SAVED,
+        event_names.MEMORY_REJECTED,
+        event_names.MEMORY_DELETED,
+    }
+)
+_REDACTED_MEMORY_FIELD = "<redacted>"
+
+
+def sanitize_tool_call_parameters(tool_name: str, args: Any) -> Any:
+    parameters = redact_keys(args)
+    if tool_name not in _MEMORY_TOOL_NAMES or not isinstance(parameters, dict):
+        return parameters
+    safe = dict(parameters)
+    if "content" in safe:
+        safe["content"] = _REDACTED_MEMORY_FIELD
+    if safe.get("reason") is not None:
+        safe["reason"] = _REDACTED_MEMORY_FIELD
+    return safe
 
 
 def _is_tool_selector_json(text: str) -> bool:
@@ -123,6 +147,25 @@ def _is_tool_selector_json(text: str) -> bool:
         )
     except (json.JSONDecodeError, ValueError):
         return False
+
+
+def _memory_event_from_tool_result(
+    tool_name: str,
+    result: str,
+) -> tuple[str, dict[str, Any]] | None:
+    if tool_name not in _MEMORY_TOOL_NAMES:
+        return None
+    try:
+        parsed = json.loads(result)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    event = parsed.get("memory_event")
+    if not isinstance(event, str) or event not in _MEMORY_EVENT_NAMES:
+        return None
+    payload = {key: value for key, value in parsed.items() if key != "memory_event"}
+    return event, payload
 
 
 def _interrupt_to_standard_chunk(
@@ -405,7 +448,10 @@ async def stream_agent_response(
                             # auth-style argument. Skill tool already
                             # redacts its own results at the executor
                             # layer; this protects MCP/regular tools.
-                            "parameters": redact_keys(tc.get("args", {})),
+                            "parameters": sanitize_tool_call_parameters(
+                                tc_name,
+                                tc.get("args", {}),
+                            ),
                         }
                         if tc_id:
                             start_payload["tool_call_id"] = tc_id
@@ -421,6 +467,13 @@ async def stream_agent_response(
                         if isinstance(tool_call_id, str) and tool_call_id:
                             result_payload["tool_call_id"] = tool_call_id
                         yield emit(event_names.TOOL_CALL_RESULT, result_payload)
+                        memory_event = _memory_event_from_tool_result(
+                            tool_name,
+                            result,
+                        )
+                        if memory_event is not None:
+                            event, payload = memory_event
+                            yield emit(event, payload)
 
                 # LangChain ``usage_metadata``는 input/output 외에
                 # ``input_token_details``로 cache_creation/cache_read를 분리해 전달
@@ -460,9 +513,7 @@ async def stream_agent_response(
                     if task.interrupts:
                         for intr in task.interrupts:
                             intr_id = str(getattr(intr, "ns", ""))
-                            intr_value = (
-                                intr.value if isinstance(intr.value, dict) else None
-                            )
+                            intr_value = intr.value if isinstance(intr.value, dict) else None
                             chunk = _interrupt_to_standard_chunk(intr_id, intr_value)
                             if chunk is not None:
                                 yield emit(event_names.INTERRUPT, chunk)

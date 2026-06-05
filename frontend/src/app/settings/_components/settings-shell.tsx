@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import {
+  BrainIcon,
   Code2Icon,
   HistoryIcon,
   KeyRoundIcon,
@@ -50,6 +51,7 @@ export function SettingsShell({ children }: SettingsShellProps) {
       label: t('nav.account'),
       items: [
         { href: '/settings', label: t('nav.profile'), icon: UserIcon },
+        { href: '/settings/memory', label: t('nav.memory'), icon: BrainIcon },
         { href: '/settings/security', label: t('nav.security'), icon: ShieldCheckIcon },
         { href: '/settings/appearance', label: t('nav.appearance'), icon: MonitorCogIcon },
         { href: '/settings/audit', label: t('nav.audit'), icon: HistoryIcon },

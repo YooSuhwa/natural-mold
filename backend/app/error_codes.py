@@ -91,6 +91,17 @@ def share_not_found() -> NotFoundError:
     return NotFoundError("SHARE_NOT_FOUND", "공유 링크를 찾을 수 없습니다")
 
 
+def memory_not_found() -> NotFoundError:
+    return NotFoundError("MEMORY_NOT_FOUND", "메모리를 찾을 수 없습니다")
+
+
+def memory_proposal_not_found() -> NotFoundError:
+    return NotFoundError(
+        "MEMORY_PROPOSAL_NOT_FOUND",
+        "메모리 제안을 찾을 수 없습니다",
+    )
+
+
 def resume_not_found() -> NotFoundError:
     return NotFoundError(
         "RESUME_NOT_FOUND", "재개할 스트림을 찾을 수 없습니다"

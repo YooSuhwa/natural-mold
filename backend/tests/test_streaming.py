@@ -212,6 +212,33 @@ async def test_stream_tool_call_result():
 
 
 @pytest.mark.asyncio
+async def test_stream_memory_tool_result_emits_memory_event():
+    result = json.dumps(
+        {
+            "memory_event": "memory_proposed",
+            "id": "proposal-1",
+            "scope": "user",
+            "content": "The user prefers Korean.",
+            "reason": "User preference",
+            "policy": "ask",
+            "agent_id": "agent-1",
+            "conversation_id": "conversation-1",
+        }
+    )
+    result_chunk = _make_tool_result_chunk("save_user_memory", result)
+    agent = MockAgent([(result_chunk, {})])
+
+    events = [e async for e in stream_agent_response(agent, [], {})]
+
+    memory_events = [e for e in events if "event: memory_proposed" in e]
+    assert len(memory_events) == 1
+    data = json.loads(memory_events[0].split("data: ")[1].strip())
+    assert data["id"] == "proposal-1"
+    assert data["scope"] == "user"
+    assert data["content"] == "The user prefers Korean."
+
+
+@pytest.mark.asyncio
 async def test_stream_preserves_repeated_tool_call_ids():
     chunks = [
         (_make_tool_call_chunk("tavily_search", {"query": "A"}, "call-a"), {}),

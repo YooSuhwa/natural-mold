@@ -55,9 +55,7 @@ class TestRedactCredentialValues:
         credential surfaced in the log."""
 
         text = "User logged in with srt_id=supersecret-id-12345 OK"
-        out = redact_credential_values(
-            text, {"KSKILL_SRT_ID": "supersecret-id-12345"}
-        )
+        out = redact_credential_values(text, {"KSKILL_SRT_ID": "supersecret-id-12345"})
         assert "supersecret-id-12345" not in out
         assert "<redacted:KSKILL_SRT_ID>" in out
         # Surrounding text preserved.
@@ -172,9 +170,7 @@ class TestRedactKeys:
             "is_active": True,
         }
         out = redact_keys(payload)
-        assert out == payload, (
-            "redact_keys mutated non-sensitive keys — false positive in regex"
-        )
+        assert out == payload, "redact_keys mutated non-sensitive keys — false positive in regex"
 
     def test_redact_keys_handles_nested_lists(self) -> None:
         """Deeply nested lists of dicts walked end-to-end."""
@@ -228,15 +224,11 @@ class TestIsSensitiveKey:
             "refresh_token",
             "private_key",
         ):
-            assert is_sensitive_key(name), (
-                f"is_sensitive_key({name!r}) → False; expected True"
-            )
+            assert is_sensitive_key(name), f"is_sensitive_key({name!r}) → False; expected True"
 
     def test_does_not_match_common_non_sensitive_names(self) -> None:
         for name in ("name", "email", "id", "count", "message", "is_active"):
-            assert not is_sensitive_key(name), (
-                f"is_sensitive_key({name!r}) → True; expected False"
-            )
+            assert not is_sensitive_key(name), f"is_sensitive_key({name!r}) → True; expected False"
 
 
 # ---------------------------------------------------------------------------
@@ -277,16 +269,13 @@ class TestSubprocessRedaction:
         write a SKILL.md script that prints the env var value.
         """
 
-        monkeypatch.setattr(
-            "app.agent_runtime.executor._DATA_DIR", tmp_path
-        )
+        monkeypatch.setattr("app.agent_runtime.executor._DATA_DIR", tmp_path)
 
         slug = "leaker"
         src = _seed_skill(tmp_path, slug)
         (src / "scripts").mkdir(exist_ok=True)
         (src / "scripts" / "echo.py").write_text(
-            "import os\n"
-            "print('debug:', os.environ.get('KSKILL_SRT_PASSWORD'))\n"
+            "import os\nprint('debug:', os.environ.get('KSKILL_SRT_PASSWORD'))\n"
         )
 
         cfg = _make_cfg(
@@ -323,9 +312,7 @@ class TestSubprocessRedaction:
             command="python scripts/echo.py",
         )
 
-        assert secret_value not in result, (
-            f"raw credential leaked into tool result: {result!r}"
-        )
+        assert secret_value not in result, f"raw credential leaked into tool result: {result!r}"
         assert "<redacted:KSKILL_SRT_PASSWORD>" in result, (
             f"redaction marker missing from tool result: {result!r}"
         )
@@ -338,9 +325,7 @@ class TestSubprocessRedaction:
         credential value in its traceback / error message must surface
         only the redaction marker."""
 
-        monkeypatch.setattr(
-            "app.agent_runtime.executor._DATA_DIR", tmp_path
-        )
+        monkeypatch.setattr("app.agent_runtime.executor._DATA_DIR", tmp_path)
 
         slug = "raiser"
         src = _seed_skill(tmp_path, slug)
@@ -428,6 +413,25 @@ class TestStreamingToolResultRedacted:
         assert redacted["url"] == tc_args["url"]
         assert redacted["method"] == "GET"
 
+    def test_memory_tool_parameters_redact_content_and_reason_values(self) -> None:
+        from app.agent_runtime.streaming import sanitize_tool_call_parameters
+
+        secret = "sk-1234567890abcdef123456"
+
+        redacted = sanitize_tool_call_parameters(
+            "save_user_memory",
+            {
+                "content": f"api_key={secret}",
+                "reason": f"User asked to remember token={secret}",
+                "scope": "user",
+            },
+        )
+
+        assert secret not in str(redacted)
+        assert redacted["content"] == "<redacted>"
+        assert redacted["reason"] == "<redacted>"
+        assert redacted["scope"] == "user"
+
     def test_streaming_module_uses_redact_keys_for_tool_call_start(
         self,
     ) -> None:
@@ -463,13 +467,9 @@ class TestExceptionDetailRedaction:
 
         secret = "leakable-token-1234567890"
         try:
-            raise RuntimeError(
-                f"failed to call API with token={secret}: 401 unauthorized"
-            )
+            raise RuntimeError(f"failed to call API with token={secret}: 401 unauthorized")
         except RuntimeError as exc:
-            redacted = redact_credential_values(
-                str(exc), {"SOME_TOKEN": secret}
-            )
+            redacted = redact_credential_values(str(exc), {"SOME_TOKEN": secret})
         assert secret not in redacted
         assert "<redacted:SOME_TOKEN>" in redacted
         assert "401 unauthorized" in redacted  # surrounding context preserved
