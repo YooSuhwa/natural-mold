@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useQueries } from '@tanstack/react-query'
 import { filterSpansRecursively, flattenSpans } from '@evilmartians/agent-prism-data'
 import type { TraceSpan } from '@evilmartians/agent-prism-types'
+import { useTranslations } from 'next-intl'
 import {
   ArrowLeftIcon,
   CheckCircle2Icon,
@@ -33,6 +34,7 @@ interface TraceDebuggerViewProps {
 }
 
 export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerViewProps) {
+  const t = useTranslations('chat.traceDebugger')
   const tracesQuery = useConversationDebugTraces(conversationId, true)
   const [selectedSpanId, setSelectedSpanId] = useState<string | undefined>()
   const [searchValue, setSearchValue] = useState('')
@@ -63,8 +65,8 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
     [viewerData],
   )
   const rootSpans = useMemo(
-    () => buildConversationTraceTree(conversationId, viewerData),
-    [conversationId, viewerData],
+    () => buildConversationTraceTree(conversationId, viewerData, t('conversationTraces')),
+    [conversationId, viewerData, t],
   )
   const allSpans = useMemo(
     () => flattenSpans(rootSpans),
@@ -94,7 +96,7 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h1 className="flex min-w-0 items-center gap-2 font-heading text-lg font-semibold">
-                <span className="truncate">Trace 상세</span>
+                <span className="truncate">{t('title')}</span>
                 <span className="moldy-resource-meta max-w-none font-mono">
                   {conversationId}
                 </span>
@@ -108,13 +110,13 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
                   render={<a href={firstLangfuseUrl} target="_blank" rel="noreferrer" />}
                 >
                   <ExternalLinkIcon className="size-3.5" />
-                  로그보기
+                  {t('openLogs')}
                 </Button>
               ) : null}
               {backHref ? (
                 <Button variant="outline" size="sm" render={<a href={backHref} />}>
                   <ArrowLeftIcon className="size-3.5" />
-                  목록
+                  {t('backToList')}
                 </Button>
               ) : null}
               <Button
@@ -126,7 +128,7 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
                 }}
               >
                 <RefreshCwIcon className="size-3.5" />
-                새로고침
+                {t('refresh')}
               </Button>
             </div>
           </div>
@@ -141,7 +143,7 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
             </>
           ) : viewerData.length === 0 ? (
             <div className="moldy-trace-panel col-span-3 flex h-full items-center justify-center text-sm text-muted-foreground">
-              No trace rows
+              {t('emptyRows')}
             </div>
           ) : (
             <TraceRunLayout
@@ -194,14 +196,16 @@ function TraceRunLayout({
   handleExpandAll,
   handleCollapseAll,
 }: TraceRunLayoutProps) {
+  const t = useTranslations('chat.traceDebugger')
+
   return (
     <>
       <RunInfoPanel traces={traces} spans={metricSpans} />
       <main className="moldy-trace-panel flex min-h-0 flex-col px-5 py-4">
         <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
-          <h2 className="font-heading text-lg font-semibold">Span 상세</h2>
+          <h2 className="font-heading text-lg font-semibold">{t('spanDetails')}</h2>
           <span className="text-xs text-muted-foreground">
-            {traceCount} traces · {metricSpans.length} spans
+            {t('spanSummary', { traceCount, spanCount: metricSpans.length })}
           </span>
         </div>
         <div className="moldy-trace-tree min-h-0 flex-1 overflow-hidden p-3">
@@ -224,7 +228,7 @@ function TraceRunLayout({
         {selectedSpan ? (
           <DetailsView data={selectedSpan} className="moldy-card bg-background" />
         ) : (
-          <TraceViewerPlaceholder title="Select a span to see the details" />
+          <TraceViewerPlaceholder title={t('selectSpanPlaceholder')} />
         )}
       </aside>
     </>
@@ -234,6 +238,7 @@ function TraceRunLayout({
 function buildConversationTraceTree(
   conversationId: string,
   traces: TraceViewerData[],
+  title: string,
 ): TraceSpan[] {
   if (traces.length === 0) return []
   const childSpans = traces.flatMap((traceData) => traceData.spans)
@@ -244,7 +249,7 @@ function buildConversationTraceTree(
   return [
     {
       id: `conversation:${conversationId}:traces`,
-      title: 'Conversation traces',
+      title,
       startTime: new Date(start),
       endTime: new Date(end),
       duration: Math.max(0, end - start),
@@ -280,6 +285,7 @@ function RunInfoPanel({
   traces: DebugTraceSummary[]
   spans: TraceSpan[]
 }) {
+  const t = useTranslations('chat.traceDebugger')
   const errorCount = spans.filter((span) => span.status === 'error').length
   const toolCount = spans.filter((span) => span.type === 'tool_execution').length
   const llmCount = spans.filter((span) => span.type === 'llm_call').length
@@ -293,22 +299,22 @@ function RunInfoPanel({
     <aside className="moldy-trace-rail flex min-h-0 flex-col overflow-y-auto px-5 py-4">
       <section className="moldy-card p-4">
         <div className="mb-4 flex items-center justify-between gap-2">
-          <h2 className="font-heading text-base font-semibold">수행정보</h2>
+          <h2 className="font-heading text-base font-semibold">{t('runInfo')}</h2>
           <Badge variant={failed ? 'destructive' : 'outline'}>
-            {failed ? '실패 포함' : '성공'}
+            {failed ? t('statusFailed') : t('statusSuccess')}
           </Badge>
         </div>
         <div className="space-y-4 text-sm">
-          <InfoRow label="Trace 수" value={formatNumber(traces.length)} />
-          <InfoRow label="시작일시" value={formatDateTime(startedAt)} />
-          <InfoRow label="종료일시" value={formatDateTime(completedAt)} />
-          <InfoRow label="누적 수행시간" value={formatDuration(totalDuration || null)} />
-          <InfoRow label="사용토큰수" value={formatNumber(totalTokens || null)} />
+          <InfoRow label={t('traceCount')} value={formatNumber(traces.length)} />
+          <InfoRow label={t('startedAt')} value={formatDateTime(startedAt)} />
+          <InfoRow label={t('completedAt')} value={formatDateTime(completedAt)} />
+          <InfoRow label={t('totalDuration')} value={formatDuration(totalDuration || null)} />
+          <InfoRow label={t('totalTokens')} value={formatNumber(totalTokens || null)} />
         </div>
       </section>
 
       <section className="mt-5 space-y-3">
-        <h2 className="font-heading text-base font-semibold">필터링</h2>
+        <h2 className="font-heading text-base font-semibold">{t('filters')}</h2>
         <div className="moldy-card p-4">
           <div className="mb-4 flex items-center gap-2 text-sm">
             <FilterIcon className="size-4 text-muted-foreground" />
@@ -317,13 +323,13 @@ function RunInfoPanel({
           </div>
           <div className="grid grid-cols-3 gap-3 text-center">
             <Metric label="LLM" value={llmCount} />
-            <Metric label="도구" value={toolCount} />
-            <Metric label="오류" value={errorCount} />
+            <Metric label={t('tools')} value={toolCount} />
+            <Metric label={t('errors')} value={errorCount} />
           </div>
         </div>
 
-        <FilterEmptyState title="개인정보" />
-        <FilterEmptyState title="기밀정보" />
+        <FilterEmptyState title={t('privacy')} />
+        <FilterEmptyState title={t('secrets')} />
       </section>
     </aside>
   )
@@ -348,6 +354,8 @@ function Metric({ label, value }: { label: string; value: number }) {
 }
 
 function FilterEmptyState({ title }: { title: string }) {
+  const t = useTranslations('chat.traceDebugger')
+
   return (
     <div className="moldy-card p-4">
       <div className="mb-3 flex items-center gap-2 text-sm font-medium">
@@ -355,7 +363,7 @@ function FilterEmptyState({ title }: { title: string }) {
         {title}
       </div>
       <div className="rounded-md border border-dashed px-3 py-5 text-center text-xs text-muted-foreground">
-        검출된 필터 항목이 없습니다.
+        {t('emptyFilterItems')}
       </div>
     </div>
   )

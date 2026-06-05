@@ -113,6 +113,8 @@
       "credentials": "Manage API keys",
       "logout": "Log out",
       "adminBadge": "Admin",
+      "avatarLabel": "{name} profile icon",
+      "avatarFallback": "User",
       "profileComingSoon": "Profile settings are coming soon."
     }
   },
@@ -1045,6 +1047,31 @@
       "savedToast": "Memory saved.",
       "rejectedToast": "Memory was rejected.",
       "deletedToast": "Memory deleted."
+    },
+    "traceDebugger": {
+      "title": "Trace details",
+      "openLogs": "Open logs",
+      "backToList": "Back to list",
+      "refresh": "Refresh",
+      "emptyRows": "No trace rows.",
+      "conversationTraces": "Conversation traces",
+      "spanDetails": "Span details",
+      "spanSummary": "{traceCount} traces · {spanCount} spans",
+      "selectSpanPlaceholder": "Select a span to see the details.",
+      "runInfo": "Run info",
+      "statusFailed": "Includes failures",
+      "statusSuccess": "Success",
+      "traceCount": "Trace count",
+      "startedAt": "Started at",
+      "completedAt": "Completed at",
+      "totalDuration": "Total duration",
+      "totalTokens": "Tokens used",
+      "filters": "Filters",
+      "tools": "Tools",
+      "errors": "Errors",
+      "privacy": "Privacy",
+      "secrets": "Secrets",
+      "emptyFilterItems": "No detected filter items."
     },
     "approval": {
       "approved": "Approved",

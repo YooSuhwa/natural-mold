@@ -1,6 +1,7 @@
 'use client'
 
 import Image from 'next/image'
+import { useTranslations } from 'next-intl'
 
 import { API_BASE } from '@/lib/api/client'
 import { cn } from '@/lib/utils'
@@ -45,8 +46,11 @@ interface UserAvatarProps {
 }
 
 export function UserAvatar({ user, size = 'sm', className }: UserAvatarProps) {
+  const t = useTranslations('auth.userMenu')
   const { container, px, text } = sizeMap[size]
-  const label = `${displayUserName(user) || user?.email || 'User'} 프로필 아이콘`
+  const label = t('avatarLabel', {
+    name: displayUserName(user) || user?.email || t('avatarFallback'),
+  })
   const imageSrc = avatarImageSrc(user)
 
   if (imageSrc) {

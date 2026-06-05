@@ -113,6 +113,8 @@
       "credentials": "API 키 관리",
       "logout": "로그아웃",
       "adminBadge": "관리자",
+      "avatarLabel": "{name} 프로필 아이콘",
+      "avatarFallback": "사용자",
       "profileComingSoon": "프로필 설정은 곧 지원됩니다"
     }
   },
@@ -1024,6 +1026,31 @@
       "savedToast": "메모리를 저장했습니다.",
       "rejectedToast": "메모리 저장이 거절되었습니다.",
       "deletedToast": "메모리를 삭제했습니다."
+    },
+    "traceDebugger": {
+      "title": "Trace 상세",
+      "openLogs": "로그보기",
+      "backToList": "목록",
+      "refresh": "새로고침",
+      "emptyRows": "Trace 기록이 없습니다.",
+      "conversationTraces": "대화 Trace",
+      "spanDetails": "Span 상세",
+      "spanSummary": "{traceCount} traces · {spanCount} spans",
+      "selectSpanPlaceholder": "Span을 선택하면 상세 정보를 볼 수 있습니다.",
+      "runInfo": "수행정보",
+      "statusFailed": "실패 포함",
+      "statusSuccess": "성공",
+      "traceCount": "Trace 수",
+      "startedAt": "시작일시",
+      "completedAt": "종료일시",
+      "totalDuration": "누적 수행시간",
+      "totalTokens": "사용토큰수",
+      "filters": "필터링",
+      "tools": "도구",
+      "errors": "오류",
+      "privacy": "개인정보",
+      "secrets": "기밀정보",
+      "emptyFilterItems": "검출된 필터 항목이 없습니다."
     },
     "approval": {
       "approved": "승인됨",
