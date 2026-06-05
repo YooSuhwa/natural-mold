@@ -75,6 +75,9 @@ backend/data.bak*/
 workspace/
 .codex/
 .playwright-mcp/
+
+# Local E2E screenshots/videos/traces/raw captures.
+# Use output/e2e-captures/<YYYYMMDD>-<feature>/.
 output/
 
 # Redis dump (M-MCP2)

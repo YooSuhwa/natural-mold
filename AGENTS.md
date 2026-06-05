@@ -141,6 +141,30 @@ dev 환경에서 backend가 시작되면 `seed_e2e_user`가 위 계정을 DB에 
 우선 사용하고, 호환을 위해 기존 `E2E_EMAIL` / `E2E_PASSWORD`도 fallback으로
 읽는다.
 
+#### E2E 캡처 / 이미지 산출물 규칙
+
+Codex 내장 브라우저로 E2E를 요청받으면 실제 UI 조작과 검증은 내장 브라우저로
+수행한다. 다만 내장 브라우저의 screenshot API가 `Page.captureScreenshot`
+timeout, 빈 이미지, 깨진 이미지로 실패할 수 있다. 이 경우 검증 자체는 내장
+브라우저에서 계속하고, 최종 공유용 이미지 파일만 같은 local dev server와 같은
+E2E 계정으로 Playwright/Chrome 캡처 fallback을 사용한다. fallback을 사용했다면
+최종 보고에 명시한다.
+
+E2E 중 생성한 screenshot, video, trace, raw capture는 repo root에 흩뿌리지 말고
+항상 아래 경로에 모은다:
+
+```text
+output/e2e-captures/<YYYYMMDD>-<feature>/
+```
+
+`output/`은 `.gitignore`에 포함되어 있으므로 이 산출물은 커밋하지 않는다. 과거처럼
+`memory-e2e-*.png`, `*.raw` 같은 임시 파일을 repo root에 남기지 않는다. 사용자에게
+이미지를 전달하기 전에는 `file output/e2e-captures/.../*.png`로 실제 PNG 여부와
+해상도를 확인하고, `view_image`로 직접 열어 텍스트/카드가 잘리지 않거나 깨지지
+않았는지 확인한다. 보안/secret 검증 화면을 캡처할 때는 실제 secret을 쓰지 않고
+명확한 더미 값을 사용하며, 불필요한 더미 secret 문자열이 최종 이미지에 보이면
+다시 캡처한다.
+
 Tavily/Deep Research 구현 작업을 이어갈 때도 같은 원칙을 따른다.
 `TAVILY_API_KEY`는 per-user credential이 아니라 backend hosted key로 main
 `backend/.env`에 둔다. 상세 계획은
