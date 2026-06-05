@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +32,7 @@ from app.schemas.tool import (
 )
 from app.tools.registry import registry as tool_registry
 from app.tools.runner import run_tool
+from app.services import audit_service
 
 router = APIRouter(tags=["tools"])
 
@@ -111,6 +112,7 @@ async def list_tools(
 @crud_router.post("", response_model=ToolInstanceResponse, status_code=201)
 async def create_tool(
     payload: ToolCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -133,6 +135,27 @@ async def create_tool(
     db.add(tool)
     await db.commit()
     await db.refresh(tool)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="tool.create",
+        target_type="tool",
+        target_id=tool.id,
+        target_name_snapshot=tool.name,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={
+            "definition_key": tool.definition_key,
+            "parameter_keys": sorted((tool.parameters or {}).keys()),
+            "credential_id": str(tool.credential_id) if tool.credential_id else None,
+        },
+    )
+    await db.commit()
     return _to_response(tool)
 
 
@@ -149,6 +172,7 @@ async def get_tool(
 async def update_tool(
     tool_id: uuid.UUID,
     payload: ToolPatch,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -167,17 +191,55 @@ async def update_tool(
         tool.enabled = payload.enabled
     await db.commit()
     await db.refresh(tool)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="tool.update",
+        target_type="tool",
+        target_id=tool.id,
+        target_name_snapshot=tool.name,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={
+            "definition_key": tool.definition_key,
+            "changed_fields": sorted(payload.model_fields_set),
+            "credential_changed": "credential_id" in payload.model_fields_set,
+        },
+    )
+    await db.commit()
     return _to_response(tool)
 
 
 @crud_router.delete("/{tool_id}", status_code=204)
 async def delete_tool(
     tool_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> None:
     tool = await _load_owned(db, tool_id, user.id)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="tool.delete",
+        target_type="tool",
+        target_id=tool.id,
+        target_name_snapshot=tool.name,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={"definition_key": tool.definition_key},
+    )
     await db.delete(tool)
     await db.commit()
 
@@ -188,6 +250,7 @@ async def delete_tool(
 @crud_router.post("/{tool_id}/run", response_model=ToolRunResponse)
 async def run_tool_endpoint(
     tool_id: uuid.UUID,
+    request: Request,
     payload: ToolRunRequest | None = None,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
@@ -206,7 +269,30 @@ async def run_tool_endpoint(
         from datetime import datetime as _dt
 
         tool.last_used_at = _dt.now(UTC).replace(tzinfo=None)
-        await db.commit()
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="tool.run",
+        target_type="tool",
+        target_id=tool.id,
+        target_name_snapshot=tool.name,
+        target_owner_user_id=user.id,
+        outcome="success" if result.success else "failure",
+        reason_code=None if result.success else "tool_run_failed",
+        reason_message=result.error,
+        request=request,
+        metadata={
+            "definition_key": tool.definition_key,
+            "runtime_arg_keys": sorted((runtime_args or {}).keys()),
+            "duration_ms": result.duration_ms,
+            "http_status": result.http_status,
+        },
+    )
+    await db.commit()
     return ToolRunResponse(**result.to_dict())
 
 

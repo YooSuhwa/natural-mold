@@ -4,15 +4,21 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import {
-  Code2Icon,
   BrainIcon,
+  Code2Icon,
+  HistoryIcon,
+  KeyRoundIcon,
   MonitorCogIcon,
   ShieldCheckIcon,
+  SlidersHorizontalIcon,
+  StoreIcon,
+  UsersRoundIcon,
   UserIcon,
 } from 'lucide-react'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
 
 import { PageHeader } from '@/components/shared/page-header'
+import { useSession } from '@/lib/auth/session'
 import { cn } from '@/lib/utils'
 
 interface SettingsShellProps {
@@ -38,6 +44,7 @@ function isActive(pathname: string, href: string) {
 export function SettingsShell({ children }: SettingsShellProps) {
   const pathname = usePathname()
   const t = useTranslations('appSettings')
+  const { data: user } = useSession()
 
   const sections: SettingsNavSection[] = [
     {
@@ -47,6 +54,7 @@ export function SettingsShell({ children }: SettingsShellProps) {
         { href: '/settings/memory', label: t('nav.memory'), icon: BrainIcon },
         { href: '/settings/security', label: t('nav.security'), icon: ShieldCheckIcon },
         { href: '/settings/appearance', label: t('nav.appearance'), icon: MonitorCogIcon },
+        { href: '/settings/audit', label: t('nav.audit'), icon: HistoryIcon },
       ],
     },
     {
@@ -55,6 +63,35 @@ export function SettingsShell({ children }: SettingsShellProps) {
         { href: '/settings/agent-api', label: t('nav.agentApi'), icon: Code2Icon },
       ],
     },
+    ...(user?.is_super_user
+      ? [
+          {
+            label: t('nav.admin'),
+            items: [
+              {
+                href: '/settings/marketplace-admin',
+                label: t('nav.marketplaceAdmin'),
+                icon: StoreIcon,
+              },
+              {
+                href: '/settings/system-credentials',
+                label: t('nav.systemCredentials'),
+                icon: KeyRoundIcon,
+              },
+              {
+                href: '/settings/system-llm',
+                label: t('nav.systemLlm'),
+                icon: SlidersHorizontalIcon,
+              },
+              {
+                href: '/settings/admin/audit',
+                label: t('nav.adminAudit'),
+                icon: UsersRoundIcon,
+              },
+            ],
+          },
+        ]
+      : []),
   ]
 
   return (

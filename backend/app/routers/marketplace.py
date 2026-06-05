@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,11 +53,90 @@ from app.marketplace.schemas import (
     PublishSkillIn,
     UpdateMarketplaceInstallationIn,
 )
-from app.models.marketplace import MarketplaceItem
+from app.models.marketplace import MarketplaceInstallation, MarketplaceItem
+from app.services import audit_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
+
+
+def _item_metadata(item: MarketplaceItem) -> dict[str, object]:
+    return {
+        "resource_type": item.resource_type,
+        "visibility": item.visibility,
+        "status": item.status,
+        "is_listed": item.is_listed,
+        "is_system": item.is_system,
+        "source_kind": item.source_kind,
+        "latest_version_id": str(item.latest_version_id) if item.latest_version_id else None,
+        "tag_count": len(item.tags or []),
+        "category_count": len(item.categories or []),
+    }
+
+
+async def _record_marketplace_item_audit(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    request: Request,
+    action: str,
+    item: MarketplaceItem,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=item.owner_user_id,
+        action=action,
+        target_type="marketplace_item",
+        target_id=item.id,
+        target_name_snapshot=item.name,
+        target_owner_user_id=item.owner_user_id,
+        outcome="success",
+        request=request,
+        metadata={**_item_metadata(item), **(metadata or {})},
+    )
+
+
+async def _record_marketplace_installation_audit(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    request: Request,
+    action: str,
+    installation: MarketplaceInstallation,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action=action,
+        target_type="marketplace_installation",
+        target_id=installation.id,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={
+            "item_id": str(installation.item_id),
+            "version_id": str(installation.version_id),
+            "resource_type": installation.resource_type,
+            "install_status": installation.install_status,
+            "installed_skill_id": (
+                str(installation.installed_skill_id)
+                if installation.installed_skill_id
+                else None
+            ),
+            "is_dirty": installation.is_dirty,
+            **(metadata or {}),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -202,6 +281,7 @@ async def get_version(
 async def install_item(
     item_id: uuid.UUID,
     body: InstallMarketplaceItemIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -218,6 +298,18 @@ async def install_item(
     )
     await db.commit()
     await db.refresh(installation)
+    await _record_marketplace_installation_audit(
+        db,
+        user=user,
+        request=request,
+        action="marketplace.install",
+        installation=installation,
+        metadata={
+            "install_mode": body.install_mode,
+            "credential_binding_count": len(body.credential_bindings or {}),
+        },
+    )
+    await db.commit()
     return MarketplaceInstallationOut.model_validate(installation)
 
 
@@ -228,6 +320,7 @@ async def install_item(
 async def update_installation(
     installation_id: uuid.UUID,
     body: UpdateMarketplaceInstallationIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -237,6 +330,15 @@ async def update_installation(
     )
     await db.commit()
     await db.refresh(installation)
+    await _record_marketplace_installation_audit(
+        db,
+        user=user,
+        request=request,
+        action="marketplace.installation_update",
+        installation=installation,
+        metadata={"strategy": body.strategy},
+    )
+    await db.commit()
     return MarketplaceInstallationOut.model_validate(installation)
 
 
@@ -246,17 +348,35 @@ async def update_installation(
 )
 async def delete_installation(
     installation_id: uuid.UUID,
+    request: Request,
     delete_resource: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> Response:
+    installation = (
+        await db.execute(
+            select(MarketplaceInstallation).where(
+                MarketplaceInstallation.id == installation_id,
+                MarketplaceInstallation.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
     await install_service.delete_installation(
         db,
         installation_id=installation_id,
         user=user,
         delete_resource=delete_resource,
     )
+    if installation is not None:
+        await _record_marketplace_installation_audit(
+            db,
+            user=user,
+            request=request,
+            action="marketplace.installation_delete",
+            installation=installation,
+            metadata={"delete_resource": delete_resource},
+        )
     await db.commit()
     return Response(status_code=204)
 
@@ -274,6 +394,7 @@ async def delete_installation(
 async def publish_item_from_skill(
     skill_id: uuid.UUID,
     body: PublishSkillIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -288,6 +409,21 @@ async def publish_item_from_skill(
     body_copy = body.model_copy(update={"item_id": None})
     item = await publish_service.publish_skill(
         db, skill_id=skill_id, user=user, body=body_copy
+    )
+    await db.commit()
+    await db.refresh(item)
+    await _record_marketplace_item_audit(
+        db,
+        user=user,
+        request=request,
+        action="marketplace.publish",
+        item=item,
+        metadata={
+            "skill_id": str(skill_id),
+            "release_notes_present": bool(body.release_notes),
+            "credential_requirement_count": len(body.credential_requirements or []),
+            "acl_user_count": len(body.acl_user_ids or []),
+        },
     )
     await db.commit()
     # Re-fetch via the catalog service so the projection has
@@ -307,6 +443,7 @@ async def publish_new_version(
     item_id: uuid.UUID,
     skill_id: uuid.UUID,
     body: MarketplaceVersionFromSkillIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -342,6 +479,18 @@ async def publish_new_version(
     )
     await db.commit()
     await db.refresh(updated)
+    await _record_marketplace_item_audit(
+        db,
+        user=user,
+        request=request,
+        action="marketplace.version_publish",
+        item=updated,
+        metadata={
+            "skill_id": str(skill_id),
+            "release_notes_present": bool(body.release_notes),
+        },
+    )
+    await db.commit()
     return await catalog_service.project_item(db, item=updated, user=user)
 
 
@@ -349,12 +498,23 @@ async def publish_new_version(
 async def patch_item(
     item_id: uuid.UUID,
     body: MarketplaceItemPatchIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> MarketplaceItemOut:
     item = await publish_service.patch_item(
         db, item_id=item_id, user=user, body=body
+    )
+    await db.commit()
+    await db.refresh(item)
+    await _record_marketplace_item_audit(
+        db,
+        user=user,
+        request=request,
+        action="marketplace.item_update",
+        item=item,
+        metadata={"changed_fields": sorted(body.model_fields_set)},
     )
     await db.commit()
     # Re-fetch via the catalog service so the projection has
@@ -372,12 +532,23 @@ async def patch_item(
 async def replace_item_acl(
     item_id: uuid.UUID,
     body: MarketplaceItemACLIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> MarketplaceItemOut:
     item = await publish_service.replace_acl(
         db, item_id=item_id, user=user, body=body
+    )
+    await db.commit()
+    await db.refresh(item)
+    await _record_marketplace_item_audit(
+        db,
+        user=user,
+        request=request,
+        action="marketplace.item_acl_replace",
+        item=item,
+        metadata={"acl_user_count": len(body.user_ids), "permission": body.permission},
     )
     await db.commit()
     # Re-fetch via the catalog service so the projection has
@@ -395,16 +566,27 @@ async def replace_item_acl(
 async def delete_item_acl_entry(
     item_id: uuid.UUID,
     user_id_to_remove: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> Response:
+    item = await db.get(MarketplaceItem, item_id)
     await publish_service.remove_acl_entry(
         db,
         item_id=item_id,
         user_id_to_remove=user_id_to_remove,
         user=user,
     )
+    if item is not None:
+        await _record_marketplace_item_audit(
+            db,
+            user=user,
+            request=request,
+            action="marketplace.item_acl_delete",
+            item=item,
+            metadata={"user_id_removed": str(user_id_to_remove)},
+        )
     await db.commit()
     return Response(status_code=204)
 
@@ -414,12 +596,22 @@ async def delete_item_acl_entry(
 )
 async def disable_item(
     item_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> MarketplaceItemOut:
     item = await publish_service.disable_item(
         db, item_id=item_id, user=user
+    )
+    await db.commit()
+    await db.refresh(item)
+    await _record_marketplace_item_audit(
+        db,
+        user=user,
+        request=request,
+        action="marketplace.item_disable",
+        item=item,
     )
     await db.commit()
     # Re-fetch via the catalog service so the projection has
@@ -436,6 +628,7 @@ async def disable_item(
 )
 async def enable_item(
     item_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -446,6 +639,15 @@ async def enable_item(
     """
 
     item = await publish_service.enable_item(db, item_id=item_id, user=user)
+    await db.commit()
+    await db.refresh(item)
+    await _record_marketplace_item_audit(
+        db,
+        user=user,
+        request=request,
+        action="marketplace.item_enable",
+        item=item,
+    )
     await db.commit()
     loaded = await catalog_service.get_item(db, user=user, item_id=item.id)
     if loaded is None:
@@ -465,6 +667,7 @@ async def enable_item(
 async def admin_set_item_listed(
     item_id: uuid.UUID,
     body: MarketplaceItemAdminListedIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(require_super_user),
     _csrf: None = Depends(verify_csrf),
@@ -484,6 +687,15 @@ async def admin_set_item_listed(
     item.is_listed = body.is_listed
     await db.flush()
     await db.refresh(item)
+    await _record_marketplace_item_audit(
+        db,
+        user=user,
+        request=request,
+        action="marketplace.admin_set_listed",
+        item=item,
+        metadata={"is_listed": body.is_listed},
+    )
+    await db.commit()
 
     loaded = await catalog_service.get_item(db, item_id=item_id, user=user)
     if loaded is None:

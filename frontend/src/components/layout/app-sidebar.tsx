@@ -17,8 +17,6 @@ import {
   Plug2Icon,
   PlusIcon,
   ServerIcon,
-  ShieldIcon,
-  SlidersHorizontalIcon,
   StoreIcon,
   SunIcon,
   ToggleLeftIcon,
@@ -64,7 +62,7 @@ import { useSession } from '@/lib/auth/session'
 import { useAgentSummaries } from '@/lib/hooks/use-agents'
 import { useLogout } from '@/lib/hooks/useAuth'
 import { useTriggerSummary } from '@/lib/hooks/use-triggers'
-import { connectorsExpandedAtom, marketplaceExpandedAtom } from '@/lib/stores/sidebar-store'
+import { connectorsExpandedAtom } from '@/lib/stores/sidebar-store'
 import { persistLocaleCookie } from '../../i18n/client-locale'
 import { SUPPORTED_LOCALES, isSupportedLocale } from '../../i18n/locales'
 
@@ -139,7 +137,6 @@ export function AppSidebar() {
   const logout = useLogout()
 
   const [connectorsExpanded, setConnectorsExpanded] = useAtom(connectorsExpandedAtom)
-  const [marketplaceExpanded, setMarketplaceExpanded] = useAtom(marketplaceExpandedAtom)
   const [languageOpen, setLanguageOpen] = useState(false)
 
   const buildItems = [
@@ -161,42 +158,8 @@ export function AppSidebar() {
 
   const isMarketplaceActive = pathname.startsWith('/marketplace')
 
-  const marketplaceChildren: NavChild[] = [
-    {
-      label: t('nav.marketplaceExplore'),
-      href: '/marketplace',
-      icon: StoreIcon,
-      // Explore is active on /marketplace and its sub-pages, except the admin area.
-      isActive:
-        pathname === '/marketplace' ||
-        (pathname.startsWith('/marketplace/') && !pathname.startsWith('/marketplace/admin')),
-    },
-    {
-      label: t('nav.moderation'),
-      href: '/marketplace/admin/moderation',
-      icon: ShieldIcon,
-      isActive: pathname.startsWith('/marketplace/admin/moderation'),
-    },
-  ]
-
   const resourceItems: ResourceItem[] = [
     { label: t('nav.credentials'), href: '/credentials', icon: KeyRoundIcon },
-    // System Credentials are operator-managed; only super_user sees the menu.
-    // Backend enforces 403 via ``require_super_user`` — this hides the chrome.
-    ...(user?.is_super_user
-      ? [
-          {
-            label: t('nav.systemCredentials'),
-            href: '/settings/system-credentials',
-            icon: ShieldIcon,
-          },
-          {
-            label: t('nav.systemLlm'),
-            href: '/settings/system-llm',
-            icon: SlidersHorizontalIcon,
-          },
-        ]
-      : []),
     { label: t('nav.models'), href: '/models', icon: BrainIcon },
     {
       label: t('nav.schedules'),
@@ -359,30 +322,17 @@ export function AppSidebar() {
                   <span>{skillsItem.label}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {user?.is_super_user ? (
-                <CollapsibleNavItem
-                  icon={StoreIcon}
-                  label={t('nav.marketplace')}
-                  tooltip={t('tooltip.marketplace')}
+              <SidebarMenuItem>
+                <SidebarMenuButton
                   isActive={isMarketplaceActive}
-                  expanded={marketplaceExpanded}
-                  onToggle={() => setMarketplaceExpanded(!marketplaceExpanded)}
-                  items={marketplaceChildren}
-                  menuClass={activeMenuClass}
-                />
-              ) : (
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    isActive={isMarketplaceActive}
-                    tooltip={t('nav.marketplace')}
-                    render={<Link href="/marketplace" />}
-                    className={activeMenuClass}
-                  >
-                    <StoreIcon className="size-4" />
-                    <span>{t('nav.marketplace')}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
+                  tooltip={t('tooltip.marketplace')}
+                  render={<Link href="/marketplace" />}
+                  className={activeMenuClass}
+                >
+                  <StoreIcon className="size-4" />
+                  <span>{t('nav.marketplace')}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -32,7 +32,7 @@ from app.schemas.share import (
     SharedConversationView,
     ShareLinkResponse,
 )
-from app.services import chat_service, share_cache, share_service, trace_storage
+from app.services import audit_service, chat_service, share_cache, share_service, trace_storage
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,7 @@ async def get_active_share(
 )
 async def create_share(
     conversation_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -84,6 +85,26 @@ async def create_share(
     """Make the conversation public. Returns the existing token if already shared."""
     conv = await _require_owned_conversation(db, conversation_id, user)
     link = await share_service.create_or_get_active_share(db, conv, user.id)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="conversation.share_create",
+        target_type="conversation",
+        target_id=conversation_id,
+        target_name_snapshot=conv.title,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={
+            "share_id": str(link.id),
+            "token_prefix": link.share_token[:8],
+        },
+    )
+    await db.commit()
     return ShareLinkResponse.model_validate(link)
 
 
@@ -93,13 +114,31 @@ async def create_share(
 )
 async def revoke_share(
     conversation_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> None:
     """Revoke any active share link for the conversation. Idempotent."""
-    await _require_owned_conversation(db, conversation_id, user)
+    conv = await _require_owned_conversation(db, conversation_id, user)
     revoked_tokens = await share_service.revoke_share(db, conversation_id)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="conversation.share_revoke",
+        target_type="conversation",
+        target_id=conversation_id,
+        target_name_snapshot=conv.title,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={"revoked_count": len(revoked_tokens)},
+    )
+    await db.commit()
     # Drop cached snapshots so a stale (token, checkpoint) within TTL can't
     # outlive the revoke. Cheap: at most one active token per conversation.
     for token in revoked_tokens:

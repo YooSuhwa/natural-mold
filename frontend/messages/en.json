@@ -2930,7 +2930,13 @@
       "memory": "Memory",
       "security": "Security",
       "appearance": "Appearance & Language",
-      "agentApi": "Agent API"
+      "agentApi": "Agent API",
+      "audit": "Activity Log",
+      "admin": "Admin",
+      "marketplaceAdmin": "Marketplace Admin",
+      "systemCredentials": "System Credentials",
+      "systemLlm": "System LLM Settings",
+      "adminAudit": "All Activity"
     },
     "profile": {
       "title": "Profile",
@@ -3098,6 +3104,58 @@
         "description": "API deployments and keys for calling Moldy agents from external apps are coming soon.",
         "detail": "This step only adds the menu and placeholder page. Deployment URLs and API key issuance will be implemented as a separate feature."
       }
+    },
+    "audit": {
+      "title": "My Activity Log",
+      "description": "Review changes, executions, failures, and denials tied to your account.",
+      "adminTitle": "All Activity",
+      "adminDescription": "Review audit events across every user in chronological order.",
+      "loading": "Loading activity.",
+      "refresh": "Refresh",
+      "events": "Events",
+      "empty": "No records match these filters.",
+      "loadMore": "Load more",
+      "loadingMore": "Loading...",
+      "metrics": {
+        "loaded": "Loaded",
+        "success": "Succeeded",
+        "failure": "Failed",
+        "denied": "Denied"
+      },
+      "filters": {
+        "title": "Filters",
+        "action": "Action",
+        "target": "Target",
+        "outcome": "Outcome",
+        "requestId": "Request ID",
+        "runId": "Run ID",
+        "actionPlaceholder": "e.g. agent.create, tool.run",
+        "requestPlaceholder": "Trace by request ID",
+        "runPlaceholder": "Trace by run ID",
+        "allTargets": "All targets",
+        "allOutcomes": "All outcomes",
+        "apply": "Apply filters",
+        "reset": "Reset"
+      },
+      "outcomes": {
+        "success": "Success",
+        "failure": "Failure",
+        "denied": "Denied",
+        "skipped": "Skipped"
+      },
+      "detail": {
+        "empty": "Select a record to inspect details.",
+        "outcome": "Outcome",
+        "actor": "Actor",
+        "target": "Target",
+        "requestId": "Request",
+        "runId": "Run",
+        "traceId": "Trace",
+        "reason": "Reason",
+        "ip": "IP",
+        "metadata": "Metadata",
+        "none": "None"
+      }
     }
   },
   "nav": {
@@ -3110,6 +3168,9 @@
     "security": "Security",
     "appearance": "Appearance & Language",
     "agentApi": "Agent API",
+    "marketplaceAdmin": "Marketplace Admin",
+    "systemCredentials": "System Credentials",
+    "systemLlm": "System LLM Settings",
     "skills": "Skills",
     "create": "Create",
     "createAgent": "Create Agent",

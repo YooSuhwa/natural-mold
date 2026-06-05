@@ -2909,7 +2909,13 @@
       "memory": "메모리",
       "security": "보안",
       "appearance": "화면 및 언어",
-      "agentApi": "Agent API"
+      "agentApi": "Agent API",
+      "audit": "활동 기록",
+      "admin": "관리자",
+      "marketplaceAdmin": "운영자 관리",
+      "systemCredentials": "시스템 자격증명",
+      "systemLlm": "시스템 LLM 설정",
+      "adminAudit": "전체 활동 기록"
     },
     "profile": {
       "title": "프로필",
@@ -3077,6 +3083,58 @@
         "description": "외부 앱에서 Moldy 에이전트를 호출하기 위한 API 배포와 키 관리는 준비 중입니다.",
         "detail": "이번 단계에서는 메뉴와 빈 페이지까지만 제공하고, 배포 URL 생성과 API Key 발급은 이후 별도 기능으로 구현합니다."
       }
+    },
+    "audit": {
+      "title": "내 활동 기록",
+      "description": "내 계정으로 실행한 변경, 실행, 실패, 차단 기록을 확인합니다.",
+      "adminTitle": "전체 활동 기록",
+      "adminDescription": "모든 사용자의 audit event를 시간순으로 확인하고 운영 이슈를 추적합니다.",
+      "loading": "활동 기록을 불러오는 중입니다.",
+      "refresh": "새로고침",
+      "events": "이벤트",
+      "empty": "조건에 맞는 기록이 없습니다.",
+      "loadMore": "더 보기",
+      "loadingMore": "불러오는 중...",
+      "metrics": {
+        "loaded": "불러온 기록",
+        "success": "성공",
+        "failure": "실패",
+        "denied": "차단"
+      },
+      "filters": {
+        "title": "필터",
+        "action": "기능",
+        "target": "대상",
+        "outcome": "결과",
+        "requestId": "Request ID",
+        "runId": "Run ID",
+        "actionPlaceholder": "예: agent.create, tool.run",
+        "requestPlaceholder": "Request ID로 추적",
+        "runPlaceholder": "Run ID로 추적",
+        "allTargets": "모든 대상",
+        "allOutcomes": "모든 결과",
+        "apply": "필터 적용",
+        "reset": "초기화"
+      },
+      "outcomes": {
+        "success": "성공",
+        "failure": "실패",
+        "denied": "차단",
+        "skipped": "건너뜀"
+      },
+      "detail": {
+        "empty": "기록을 선택하면 상세 정보가 표시됩니다.",
+        "outcome": "결과",
+        "actor": "실행자",
+        "target": "대상",
+        "requestId": "Request",
+        "runId": "Run",
+        "traceId": "Trace",
+        "reason": "사유",
+        "ip": "IP",
+        "metadata": "Metadata",
+        "none": "없음"
+      }
     }
   },
   "nav": {
@@ -3089,6 +3147,9 @@
     "security": "보안",
     "appearance": "화면 및 언어",
     "agentApi": "Agent API",
+    "marketplaceAdmin": "운영자 관리",
+    "systemCredentials": "시스템 자격증명",
+    "systemLlm": "시스템 LLM 설정",
     "skills": "스킬",
     "create": "새로 만들기",
     "createAgent": "에이전트 만들기",

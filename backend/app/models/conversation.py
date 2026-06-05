@@ -15,6 +15,7 @@ class Conversation(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     agent_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("agents.id"), nullable=False)
     title: Mapped[str | None] = mapped_column(String(200))
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="ui")
     is_pinned: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC).replace(tzinfo=None),

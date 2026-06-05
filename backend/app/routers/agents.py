@@ -6,7 +6,7 @@ from typing import Any, Literal, cast
 
 import anyio
 import httpx
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,7 @@ from app.schemas.agent import (
     ToolBrief,
 )
 from app.schemas.skill import SkillBrief
-from app.services import agent_service, image_service
+from app.services import agent_service, audit_service, image_service
 from app.services.image_preview import get_or_create_image_preview_async
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -131,11 +131,36 @@ async def list_agent_summaries(
 @router.post("", response_model=AgentResponse, status_code=201)
 async def create_agent(
     data: AgentCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ):
     agent = await agent_service.create_agent(db, data, user.id)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="agent.create",
+        target_type="agent",
+        target_id=agent.id,
+        target_name_snapshot=agent.name,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={
+            "model_id": str(data.model_id),
+            "tool_count": len(data.tool_ids),
+            "mcp_tool_count": len(data.mcp_tool_ids),
+            "skill_count": len(data.skill_ids),
+            "sub_agent_count": len(data.sub_agent_ids),
+            "system_prompt_changed": True,
+        },
+    )
+    await db.commit()
     return _agent_to_response(agent)
 
 
@@ -155,6 +180,7 @@ async def get_agent(
 async def update_agent(
     agent_id: uuid.UUID,
     data: AgentUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -163,12 +189,34 @@ async def update_agent(
     if not agent:
         raise agent_not_found()
     updated = await agent_service.update_agent(db, agent, data)
+    changed_fields = sorted(data.model_fields_set - {"system_prompt"})
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="agent.update",
+        target_type="agent",
+        target_id=updated.id,
+        target_name_snapshot=updated.name,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={
+            "changed_fields": changed_fields,
+            "system_prompt_changed": "system_prompt" in data.model_fields_set,
+        },
+    )
+    await db.commit()
     return _agent_to_response(updated)
 
 
 @router.patch("/{agent_id}/favorite", response_model=AgentResponse)
 async def toggle_favorite(
     agent_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -177,12 +225,30 @@ async def toggle_favorite(
     if not agent:
         raise agent_not_found()
     updated = await agent_service.toggle_favorite(db, agent)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="agent.favorite",
+        target_type="agent",
+        target_id=updated.id,
+        target_name_snapshot=updated.name,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={"is_favorite": updated.is_favorite},
+    )
+    await db.commit()
     return _agent_to_response(updated)
 
 
 @router.delete("/{agent_id}", status_code=204)
 async def delete_agent(
     agent_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -190,6 +256,21 @@ async def delete_agent(
     agent = await agent_service.get_agent(db, agent_id, user.id)
     if not agent:
         raise agent_not_found()
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="agent.delete",
+        target_type="agent",
+        target_id=agent.id,
+        target_name_snapshot=agent.name,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+    )
     await agent_service.delete_agent(db, agent)
 
 

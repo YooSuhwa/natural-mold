@@ -12,7 +12,7 @@ from __future__ import annotations
 import mimetypes
 import uuid
 
-from fastapi import APIRouter, Depends, Form, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, Form, Query, Request, Response, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,10 +43,44 @@ from app.schemas.skill import (
     SkillResponse,
     SkillTextContentResponse,
 )
+from app.services import audit_service
 from app.skills import service as skill_service
 from app.skills.packager import PackageError
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
+
+
+async def _record_skill_audit(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    request: Request,
+    action: str,
+    skill: Skill,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action=action,
+        target_type="skill",
+        target_id=skill.id,
+        target_name_snapshot=skill.name,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={
+            "kind": skill.kind,
+            "slug": skill.slug,
+            "version": skill.version,
+            "size_bytes": skill.size_bytes,
+            **(metadata or {}),
+        },
+    )
 
 
 async def _serialize_skill(db: AsyncSession, skill: Skill, user: CurrentUser) -> SkillResponse:
@@ -124,6 +158,7 @@ async def list_skills(
 @router.post("", response_model=SkillResponse, status_code=201)
 async def create_text_skill(
     data: SkillCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -139,12 +174,22 @@ async def create_text_skill(
     )
     await db.commit()
     await db.refresh(skill)
+    await _record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill.create",
+        skill=skill,
+        metadata={"content_length": len(data.content)},
+    )
+    await db.commit()
     return await _serialize_skill(db, skill, user)
 
 
 @router.post("/upload", response_model=SkillResponse, status_code=201)
 async def upload_package_skill(
     file: UploadFile,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -193,6 +238,19 @@ async def upload_package_skill(
 
     await db.commit()
     await db.refresh(skill)
+    await _record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill.create",
+        skill=skill,
+        metadata={
+            "upload": True,
+            "filename": file.filename,
+            "package_file_count": len((skill.package_metadata or {}).get("files") or []),
+        },
+    )
+    await db.commit()
     return await _serialize_skill(db, skill, user)
 
 
@@ -212,6 +270,7 @@ async def get_skill(
 async def patch_skill_metadata(
     skill_id: uuid.UUID,
     data: SkillMetadataUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -228,6 +287,15 @@ async def patch_skill_metadata(
     )
     await db.commit()
     await db.refresh(updated)
+    await _record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill.update",
+        skill=updated,
+        metadata={"changed_fields": sorted(data.model_fields_set)},
+    )
+    await db.commit()
     return await _serialize_skill(db, updated, user)
 
 
@@ -235,6 +303,7 @@ async def patch_skill_metadata(
 async def put_text_content(
     skill_id: uuid.UUID,
     data: SkillContentUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -247,6 +316,15 @@ async def put_text_content(
     updated = await skill_service.update_text_content(db, skill=skill, content=data.content)
     await db.commit()
     await db.refresh(updated)
+    await _record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill.content_update",
+        skill=updated,
+        metadata={"content_length": len(data.content)},
+    )
+    await db.commit()
     return await _serialize_skill(db, updated, user)
 
 
@@ -268,6 +346,7 @@ async def get_text_content(
 @router.delete("/{skill_id}", status_code=204)
 async def delete_skill(
     skill_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -275,6 +354,13 @@ async def delete_skill(
     skill = await skill_service.get_skill(db, skill_id, user.id)
     if not skill:
         raise skill_not_found()
+    await _record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill.delete",
+        skill=skill,
+    )
     await skill_service.delete_skill(db, skill)
     await db.commit()
 
@@ -322,6 +408,7 @@ async def put_skill_file(
     skill_id: uuid.UUID,
     file_path: str,
     data: SkillFileUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -344,6 +431,15 @@ async def put_skill_file(
         raise invalid_file_path() from exc
     await db.commit()
     await db.refresh(updated)
+    await _record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill.file_update",
+        skill=updated,
+        metadata={"file_path": file_path, "content_length": len(data.content)},
+    )
+    await db.commit()
     return await _serialize_skill(db, updated, user)
 
 
@@ -351,6 +447,7 @@ async def put_skill_file(
 async def delete_skill_file(
     skill_id: uuid.UUID,
     file_path: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -368,6 +465,15 @@ async def delete_skill_file(
         raise invalid_file_path() from exc
     await db.commit()
     await db.refresh(updated)
+    await _record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill.file_delete",
+        skill=updated,
+        metadata={"file_path": file_path},
+    )
+    await db.commit()
     return await _serialize_skill(db, updated, user)
 
 
@@ -375,6 +481,7 @@ async def delete_skill_file(
 async def upload_skill_file(
     skill_id: uuid.UUID,
     file: UploadFile,
+    request: Request,
     rel_path: str = Form(..., description="Relative path inside the skill, eg 'scripts/run.py'"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
@@ -396,6 +503,19 @@ async def upload_skill_file(
         raise invalid_file_path() from exc
     await db.commit()
     await db.refresh(updated)
+    await _record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill.file_upload",
+        skill=updated,
+        metadata={
+            "file_path": rel_path,
+            "filename": file.filename,
+            "content_length": len(body),
+        },
+    )
+    await db.commit()
     return await _serialize_skill(db, updated, user)
 
 
@@ -461,6 +581,7 @@ async def put_skill_credential_binding(
     skill_id: uuid.UUID,
     requirement_key: str,
     body: SkillCredentialBindingIn,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -484,6 +605,18 @@ async def put_skill_credential_binding(
     )
     await db.commit()
     await db.refresh(row)
+    await _record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill.credential_binding_upsert",
+        skill=skill,
+        metadata={
+            "requirement_key": requirement_key,
+            "credential_id": str(body.credential_id),
+        },
+    )
+    await db.commit()
     return SkillCredentialBindingOut.model_validate(row)
 
 
@@ -494,6 +627,7 @@ async def put_skill_credential_binding(
 async def delete_skill_credential_binding(
     skill_id: uuid.UUID,
     requirement_key: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -512,5 +646,13 @@ async def delete_skill_credential_binding(
         # Returning 204 even for a no-op keeps client retry semantics
         # clean (rules/security.md — no extra enumeration channel).
         return Response(status_code=204)
+    await _record_skill_audit(
+        db,
+        user=user,
+        request=request,
+        action="skill.credential_binding_delete",
+        skill=skill,
+        metadata={"requirement_key": requirement_key},
+    )
     await db.commit()
     return Response(status_code=204)

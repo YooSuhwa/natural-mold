@@ -12,6 +12,7 @@ const updateUserMemorySettings = vi.fn()
 const createMemory = vi.fn()
 const updateMemory = vi.fn()
 const deleteMemory = vi.fn()
+const mockUseSession = vi.fn()
 
 vi.mock('@/lib/api/auth', () => ({
   authApi: {
@@ -29,22 +30,16 @@ vi.mock('next-themes', () => ({
 }))
 
 vi.mock('@/lib/auth/session', () => ({
-  useSession: () => ({
-    data: {
-      id: 'user-1',
-      name: 'Test User',
-      display_name: '체스터',
-      avatar_mode: 'initials',
-      avatar_initials: '체',
-      avatar_color: 'sky',
-      avatar_image_url: null,
-      email: 'test@example.com',
-      is_super_user: true,
-      created_at: '2026-05-01T00:00:00Z',
-      last_login_at: '2026-05-02T00:00:00Z',
-    },
-    isPending: false,
-  }),
+  useSession: () => mockUseSession(),
+}))
+
+vi.mock('@/lib/hooks/use-agent-api', () => ({
+  useAgentDeploymentCandidates: () => ({ data: [], isLoading: false }),
+  useAgentDeployments: () => ({ data: [], isLoading: false }),
+  useAgentApiKeys: () => ({ data: [], isLoading: false }),
+  useCreateAgentDeployment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateAgentApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRevokeAgentApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 vi.mock('@/lib/hooks/use-agents', () => ({
@@ -132,6 +127,22 @@ describe('settings pages', () => {
     createMemory.mockClear()
     updateMemory.mockClear()
     deleteMemory.mockClear()
+    mockUseSession.mockReturnValue({
+      data: {
+        id: 'user-1',
+        name: 'Test User',
+        display_name: '체스터',
+        avatar_mode: 'initials',
+        avatar_initials: '체',
+        avatar_color: 'sky',
+        avatar_image_url: null,
+        email: 'test@example.com',
+        is_super_user: true,
+        created_at: '2026-05-01T00:00:00Z',
+        last_login_at: '2026-05-02T00:00:00Z',
+      },
+      isPending: false,
+    })
   })
 
   it('renders editable profile settings from the active session', () => {
@@ -143,7 +154,7 @@ describe('settings pages', () => {
     expect(screen.getByLabelText('체스터 프로필 아이콘')).toHaveTextContent('체')
     expect(screen.getByDisplayValue('체')).toBeInTheDocument()
     expect(screen.getByText('test@example.com')).toBeInTheDocument()
-    expect(screen.getByText('관리자')).toBeInTheDocument()
+    expect(screen.getAllByText('관리자').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByText('수화')).not.toBeInTheDocument()
   })
 
@@ -183,13 +194,65 @@ describe('settings pages', () => {
     expect(screen.getByRole('button', { name: /한국어/ })).toBeInTheDocument()
   })
 
-  it('renders the Agent API placeholder page', () => {
+  it('renders the Agent API management page', () => {
     render(<AgentApiSettingsPage />)
 
     expect(screen.getByRole('heading', { name: 'Agent API' })).toBeInTheDocument()
     expect(
-      screen.getByText('외부 앱에서 Moldy 에이전트를 호출하기 위한 API 배포와 키 관리는 준비 중입니다.'),
+      screen.getByText('Deploy agents, issue server-side API keys, and call Moldy from external systems.'),
     ).toBeInTheDocument()
+    expect(screen.getByText('Deployment candidates')).toBeInTheDocument()
+    expect(screen.getAllByText('API keys').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Call examples')).toBeInTheDocument()
+  })
+
+  it('shows the admin settings section for super users', () => {
+    render(<SettingsPage />)
+
+    expect(screen.getAllByText('관리자').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByRole('link', { name: '운영자 관리' })).toHaveAttribute(
+      'href',
+      '/settings/marketplace-admin',
+    )
+    expect(screen.getByRole('link', { name: '시스템 자격증명' })).toHaveAttribute(
+      'href',
+      '/settings/system-credentials',
+    )
+    expect(screen.getByRole('link', { name: '시스템 LLM 설정' })).toHaveAttribute(
+      'href',
+      '/settings/system-llm',
+    )
+    expect(screen.getByRole('link', { name: '전체 활동 기록' })).toHaveAttribute(
+      'href',
+      '/settings/admin/audit',
+    )
+  })
+
+  it('hides the admin settings section for regular users', () => {
+    mockUseSession.mockReturnValue({
+      data: {
+        id: 'user-2',
+        name: 'Regular User',
+        display_name: '일반 사용자',
+        avatar_mode: 'initials',
+        avatar_initials: '일',
+        avatar_color: 'mint',
+        avatar_image_url: null,
+        email: 'regular@example.com',
+        is_super_user: false,
+        created_at: '2026-05-01T00:00:00Z',
+        last_login_at: '2026-05-02T00:00:00Z',
+      },
+      isPending: false,
+    })
+
+    render(<SettingsPage />)
+
+    expect(screen.queryByText('관리자')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '운영자 관리' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '시스템 자격증명' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '시스템 LLM 설정' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '전체 활동 기록' })).not.toBeInTheDocument()
   })
 
   it('renders memory policy controls and recorded memories', () => {
