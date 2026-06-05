@@ -12,6 +12,7 @@ from app.models.agent_api import (
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
+from app.models.audit_event import AuditEvent
 from app.models.builder_session import BuilderSession
 from app.models.conversation import Conversation
 from app.models.credential import Credential
@@ -57,6 +58,7 @@ __all__ = [
     "AgentToolLink",
     "AgentTrigger",
     "AgentTriggerRun",
+    "AuditEvent",
     "BuilderSession",
     "Conversation",
     "Credential",

@@ -40,12 +40,52 @@ from app.schemas.model import (
     ModelTestResponse,
     ModelUpdate,
 )
-from app.services import model_service
+from app.services import audit_service, model_service
 from app.services.credential_resolver import resolve_credential_for_model
 from app.services.model_service import serialize_model
 from app.services.model_test import run_model_test
 
 router = APIRouter(prefix="/api/models", tags=["models"])
+
+
+def _model_metadata(model: Model) -> dict[str, object]:
+    return {
+        "provider": model.provider,
+        "model_name": model.model_name,
+        "display_name": model.display_name,
+        "source": model.source,
+        "is_default": model.is_default,
+        "is_visible": model.is_visible,
+        "has_base_url": bool(model.base_url),
+        "default_credential_bound": model.default_credential_id is not None,
+    }
+
+
+async def _record_model_audit(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    request: Request,
+    action: str,
+    model: Model,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action=action,
+        target_type="model",
+        target_id=model.id,
+        target_name_snapshot=model.display_name or model.model_name,
+        target_owner_user_id=None,
+        outcome="success",
+        request=request,
+        metadata={**_model_metadata(model), **(metadata or {})},
+    )
 
 
 # Single source of truth for the model wire shape lives in
@@ -86,6 +126,7 @@ async def get_model(
 @router.post("", status_code=201)
 async def create_model(
     payload: ModelCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(require_super_user),
     _csrf: None = Depends(verify_csrf),
@@ -137,6 +178,14 @@ async def create_model(
     # SELECT before INSERT would race; we let the DB win and translate above.
     await db.commit()
     await db.refresh(model)
+    await _record_model_audit(
+        db,
+        user=user,
+        request=request,
+        action="model.create",
+        model=model,
+    )
+    await db.commit()
     return serialize_model(model)
 
 
@@ -144,6 +193,7 @@ async def create_model(
 async def update_model(
     model_id: uuid.UUID,
     payload: ModelUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(require_super_user),
     _csrf: None = Depends(verify_csrf),
@@ -175,12 +225,22 @@ async def update_model(
 
     await db.commit()
     await db.refresh(model)
+    await _record_model_audit(
+        db,
+        user=user,
+        request=request,
+        action="model.update",
+        model=model,
+        metadata={"changed_fields": sorted(updated.keys())},
+    )
+    await db.commit()
     return serialize_model(model)
 
 
 @router.delete("/{model_id}", status_code=204)
 async def delete_model(
     model_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(require_super_user),
     _csrf: None = Depends(verify_csrf),
@@ -199,6 +259,13 @@ async def delete_model(
             detail=f"model is used by {count} agent(s); rebind them before deleting",
         )
 
+    await _record_model_audit(
+        db,
+        user=user,
+        request=request,
+        action="model.delete",
+        model=model,
+    )
     await db.delete(model)
     await db.commit()
     return None

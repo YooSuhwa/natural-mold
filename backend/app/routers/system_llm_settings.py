@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +27,7 @@ from app.schemas.system_llm_setting import (
     SystemLlmSettingOut,
     SystemLlmSettingUpdate,
 )
+from app.services import audit_service
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +115,9 @@ async def list_system_llm_settings(
 async def update_system_llm_setting(
     role: str,
     payload: SystemLlmSettingUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    _user: CurrentUser = Depends(require_super_user),
+    user: CurrentUser = Depends(require_super_user),
     _csrf: None = Depends(verify_csrf),
 ) -> SystemLlmSettingOut:
     """Select (or clear) the credential/model for a role. Super_user only."""
@@ -150,7 +152,31 @@ async def update_system_llm_setting(
     setting.model_name = payload.model_name
     await db.commit()
     await db.refresh(setting)
-    return await _build_out(db, setting)
+    out = await _build_out(db, setting)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="system_llm_setting.update",
+        target_type="system_llm_setting",
+        target_id=role,
+        target_name_snapshot=role,
+        target_owner_user_id=None,
+        outcome="success",
+        request=request,
+        metadata={
+            "role": role,
+            "configured": out.configured,
+            "credential_bound": out.credential_id is not None,
+            "provider": out.provider,
+            "model_name": out.model_name,
+        },
+    )
+    await db.commit()
+    return out
 
 
 __all__ = ["router"]

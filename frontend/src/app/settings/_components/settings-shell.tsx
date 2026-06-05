@@ -5,13 +5,16 @@ import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import {
   Code2Icon,
+  HistoryIcon,
   MonitorCogIcon,
   ShieldCheckIcon,
+  UsersRoundIcon,
   UserIcon,
 } from 'lucide-react'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
 
 import { PageHeader } from '@/components/shared/page-header'
+import { useSession } from '@/lib/auth/session'
 import { cn } from '@/lib/utils'
 
 interface SettingsShellProps {
@@ -37,6 +40,7 @@ function isActive(pathname: string, href: string) {
 export function SettingsShell({ children }: SettingsShellProps) {
   const pathname = usePathname()
   const t = useTranslations('appSettings')
+  const { data: user } = useSession()
 
   const sections: SettingsNavSection[] = [
     {
@@ -45,6 +49,7 @@ export function SettingsShell({ children }: SettingsShellProps) {
         { href: '/settings', label: t('nav.profile'), icon: UserIcon },
         { href: '/settings/security', label: t('nav.security'), icon: ShieldCheckIcon },
         { href: '/settings/appearance', label: t('nav.appearance'), icon: MonitorCogIcon },
+        { href: '/settings/audit', label: t('nav.audit'), icon: HistoryIcon },
       ],
     },
     {
@@ -54,6 +59,19 @@ export function SettingsShell({ children }: SettingsShellProps) {
       ],
     },
   ]
+
+  if (user?.is_super_user) {
+    sections.push({
+      label: t('nav.admin'),
+      items: [
+        {
+          href: '/settings/admin/audit',
+          label: t('nav.adminAudit'),
+          icon: UsersRoundIcon,
+        },
+      ],
+    })
+  }
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">

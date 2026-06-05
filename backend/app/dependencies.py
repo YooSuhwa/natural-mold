@@ -116,6 +116,7 @@ async def get_current_user(
     user = await _resolve_user(token, db)
     if user is None:
         raise AppError(code="not_authenticated", message="인증이 필요합니다", status=401)
+    request.state.current_user = user
     return user
 
 
@@ -128,7 +129,10 @@ async def get_current_user_optional(
     token = _extract_access_token(request)
     if not token:
         return None
-    return await _resolve_user(token, db)
+    user = await _resolve_user(token, db)
+    if user is not None:
+        request.state.current_user = user
+    return user
 
 
 async def require_super_user(

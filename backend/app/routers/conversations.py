@@ -9,7 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,7 +52,13 @@ from app.schemas.conversation import (
     SwitchBranchRequest,
     TurnTraceResponse,
 )
-from app.services import chat_service, thread_branch_service, trace_debug_service, trace_storage
+from app.services import (
+    audit_service,
+    chat_service,
+    thread_branch_service,
+    trace_debug_service,
+    trace_storage,
+)
 from app.services.image_preview import get_or_create_image_preview_async
 
 logger = logging.getLogger(__name__)
@@ -66,6 +72,38 @@ _SSE_HEADERS = {
 }
 
 _REGENERATE_PREVIOUS_ANSWER_LIMIT = 1200
+
+
+async def _record_conversation_audit(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    request: Request,
+    action: str,
+    conversation_id: uuid.UUID,
+    agent_id: uuid.UUID | None = None,
+    title: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action=action,
+        target_type="conversation",
+        target_id=conversation_id,
+        target_name_snapshot=title,
+        target_owner_user_id=user.id,
+        outcome="success",
+        request=request,
+        metadata={
+            "agent_id": str(agent_id) if agent_id else None,
+            **(metadata or {}),
+        },
+    )
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -549,6 +587,7 @@ async def list_conversations(
 async def create_conversation(
     agent_id: uuid.UUID,
     data: ConversationCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -556,7 +595,18 @@ async def create_conversation(
     agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
     if not agent:
         raise agent_not_found()
-    return await chat_service.create_conversation(db, agent_id, data.title)
+    conv = await chat_service.create_conversation(db, agent_id, data.title)
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.create",
+        conversation_id=conv.id,
+        agent_id=agent_id,
+        title=conv.title,
+    )
+    await db.commit()
+    return conv
 
 
 @router.patch(
@@ -566,6 +616,7 @@ async def create_conversation(
 async def update_conversation(
     conversation_id: uuid.UUID,
     data: ConversationUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -573,7 +624,19 @@ async def update_conversation(
     conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
-    return await chat_service.update_conversation(db, conv, data)
+    updated = await chat_service.update_conversation(db, conv, data)
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.update",
+        conversation_id=updated.id,
+        agent_id=updated.agent_id,
+        title=updated.title,
+        metadata={"changed_fields": sorted(data.model_fields_set)},
+    )
+    await db.commit()
+    return updated
 
 
 @router.post(
@@ -582,6 +645,7 @@ async def update_conversation(
 )
 async def mark_conversation_read(
     conversation_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -589,12 +653,24 @@ async def mark_conversation_read(
     conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
-    return await chat_service.mark_conversation_read(db, conv)
+    updated = await chat_service.mark_conversation_read(db, conv)
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.mark_read",
+        conversation_id=updated.id,
+        agent_id=updated.agent_id,
+        title=updated.title,
+    )
+    await db.commit()
+    return updated
 
 
 @router.delete("/api/conversations/{conversation_id}", status_code=204)
 async def delete_conversation(
     conversation_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -602,6 +678,15 @@ async def delete_conversation(
     conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.delete",
+        conversation_id=conv.id,
+        agent_id=conv.agent_id,
+        title=conv.title,
+    )
     await chat_service.delete_conversation(db, conv)
 
 
@@ -988,6 +1073,7 @@ async def stream_resume(
 async def send_message(
     conversation_id: uuid.UUID,
     data: MessageCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -1009,6 +1095,19 @@ async def send_message(
             user_id=user.id,
             attachment_ids=[a.id for a in data.attachments],
         )
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.message_send",
+        conversation_id=conversation_id,
+        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        metadata={
+            "content_length": len(data.content),
+            "attachment_count": len(data.attachments or []),
+        },
+    )
+    await db.commit()
 
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
@@ -1030,6 +1129,7 @@ async def send_message(
 async def resume_message(
     conversation_id: uuid.UUID,
     data: ResumeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -1044,6 +1144,16 @@ async def resume_message(
         d.model_dump(exclude_none=True) for d in data.decisions
     ]
     resume_payload: dict[str, Any] = {"decisions": decisions_payload}
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.message_resume",
+        conversation_id=conversation_id,
+        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        metadata={"decision_count": len(decisions_payload)},
+    )
+    await db.commit()
 
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
@@ -1146,6 +1256,7 @@ def _active_checkpoint_from_override(checkpoints: list, checkpoint_id: str | Non
 async def edit_message(
     conversation_id: uuid.UUID,
     data: EditMessageRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -1175,6 +1286,19 @@ async def edit_message(
         checkpoint_id,
         append=[HumanMessage(content=data.new_content)],
     )
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.message_edit",
+        conversation_id=conversation_id,
+        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        metadata={
+            "message_id": str(data.message_id),
+            "new_content_length": len(data.new_content),
+        },
+    )
+    await db.commit()
 
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
@@ -1196,6 +1320,7 @@ async def edit_message(
 async def regenerate_message(
     conversation_id: uuid.UUID,
     data: RegenerateMessageRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -1271,6 +1396,18 @@ async def regenerate_message(
     overwrite_input = await build_fork_overwrite_input(
         checkpointer, str(conversation_id), checkpoint_id
     )
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.message_regenerate",
+        conversation_id=conversation_id,
+        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        metadata={
+            "message_id": str(data.message_id) if data.message_id else None,
+        },
+    )
+    await db.commit()
 
     ctx = _prepare_stream_context(conversation_id)
     return _sse_handler(
@@ -1292,6 +1429,7 @@ async def regenerate_message(
 async def switch_branch(
     conversation_id: uuid.UUID,
     data: SwitchBranchRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -1322,6 +1460,16 @@ async def switch_branch(
         _update(_Conv)
         .where(_Conv.id == conversation_id)
         .values(active_branch_checkpoint_id=data.checkpoint_id)
+    )
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.switch_branch",
+        conversation_id=conversation_id,
+        agent_id=conv.agent_id,
+        title=conv.title,
+        metadata={"checkpoint_id": data.checkpoint_id},
     )
     await db.commit()
 

@@ -239,6 +239,7 @@ async def test_run_wait_invokes_deployed_agent_and_creates_api_conversation(
 ):
     from sqlalchemy import select
 
+    from app.models.audit_event import AuditEvent
     from app.models.conversation import Conversation
 
     agent, deployment, _key, cleartext = await _seed_deployed_agent_with_key(db)
@@ -282,6 +283,21 @@ async def test_run_wait_invokes_deployed_agent_and_creates_api_conversation(
     assert len(conversations) == 1
     assert conversations[0].source == "api"
 
+    audit = (
+        await db.execute(
+            select(AuditEvent).where(
+                AuditEvent.action == "agent_api.run_wait",
+                AuditEvent.target_id == body["id"],
+            )
+        )
+    ).scalar_one()
+    assert audit.actor_type == "api_key"
+    assert audit.actor_api_key_id is not None
+    assert audit.owner_user_id == TEST_USER_ID
+    assert audit.target_type == "agent_api_run"
+    assert audit.outcome == "success"
+    assert "Hi" not in str(audit.event_metadata)
+
 
 async def test_run_wait_marks_run_failed_when_app_error_is_raised(client, db, monkeypatch):
     from sqlalchemy import select
@@ -320,6 +336,7 @@ async def test_run_wait_marks_run_failed_when_app_error_is_raised(client, db, mo
 async def test_thread_run_wait_reuses_thread_conversation(client, db, monkeypatch):
     from sqlalchemy import select
 
+    from app.models.audit_event import AuditEvent
     from app.models.conversation import Conversation
 
     _agent, deployment, _key, cleartext = await _seed_deployed_agent_with_key(db)
@@ -360,6 +377,19 @@ async def test_thread_run_wait_reuses_thread_conversation(client, db, monkeypatc
     conversations = list(result.scalars().all())
     assert len(conversations) == 1
     assert str(conversations[0].id) == thread["conversation_id"]
+
+    audit_actions = (
+        await db.execute(
+            select(AuditEvent.action).where(
+                AuditEvent.target_owner_user_id == TEST_USER_ID,
+                AuditEvent.actor_type == "api_key",
+            )
+        )
+    ).scalars().all()
+    assert set(audit_actions) >= {
+        "agent_api.thread_create",
+        "agent_api.thread_run_wait",
+    }
 
 
 async def test_thread_run_wait_marks_run_failed_when_executor_fails(client, db, monkeypatch):
@@ -404,6 +434,10 @@ async def test_thread_run_wait_marks_run_failed_when_executor_fails(client, db, 
 
 
 async def test_run_stream_emits_external_sse_events(client, db, monkeypatch):
+    from sqlalchemy import select
+
+    from app.models.audit_event import AuditEvent
+
     _agent, deployment, _key, cleartext = await _seed_deployed_agent_with_key(db)
 
     async def fake_stream(_cfg, _messages_history, **_kwargs):
@@ -431,6 +465,16 @@ async def test_run_stream_emits_external_sse_events(client, db, monkeypatch):
     assert "event: message" in text
     assert '"delta":"Hi"' in text
     assert "event: run_end" in text
+
+    audit = (
+        await db.execute(
+            select(AuditEvent).where(AuditEvent.action == "agent_api.run_stream")
+        )
+    ).scalar_one()
+    assert audit.actor_type == "api_key"
+    assert audit.target_type == "agent_api_run"
+    assert audit.outcome == "success"
+    assert "Hi" not in str(audit.event_metadata)
 
 
 async def test_run_stream_marks_run_failed_when_config_build_fails(client, db, monkeypatch):
