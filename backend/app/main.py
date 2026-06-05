@@ -6,6 +6,7 @@ load_dotenv()  # .env → OS 환경 변수 (LangSmith 등 외부 SDK용)
 
 import os
 import ssl
+import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -281,14 +282,23 @@ def create_app() -> FastAPI:
         # ``X-Run-Id`` (resume 식별자) / ``X-Resume-Mode`` (관찰성) 를 읽으려면
         # CORS expose_headers 에 명시해야 한다. 누락 시 browser fetch.headers.get
         # 은 항상 null 을 반환해 auto-resume 가 silent no-op.
-        expose_headers=["X-Run-Id", "X-Resume-Mode"],
+        expose_headers=["X-Run-Id", "X-Resume-Mode", "X-Request-Id"],
     )
+
+    @app.middleware("http")
+    async def request_context_middleware(request: Request, call_next):
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = request_id
+        return response
 
     from app.routers import (
         agent_api,
         agent_runtime_api,
         agents,
         assistant,
+        audit,
         auth,
         builder,
         conversations,
@@ -308,6 +318,7 @@ def create_app() -> FastAPI:
         usage,
     )
 
+    app.include_router(audit.router)
     app.include_router(auth.router)
     app.include_router(agent_api.router)
     app.include_router(agent_runtime_api.router)
@@ -336,6 +347,29 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+        if exc.code in {"forbidden", "csrf_mismatch", "not_authenticated"}:
+            from app.services import audit_service
+
+            current_user = getattr(request.state, "current_user", None)
+            await audit_service.record_event_best_effort(
+                actor_type="user" if current_user else "public",
+                actor_user_id=getattr(current_user, "id", None),
+                actor_email_snapshot=getattr(current_user, "email", None),
+                owner_user_id=getattr(current_user, "id", None),
+                owner_email_snapshot=getattr(current_user, "email", None),
+                action=(
+                    "auth.csrf_denied"
+                    if exc.code == "csrf_mismatch"
+                    else "auth.access_denied"
+                ),
+                target_type="http_request",
+                target_id=request.url.path,
+                outcome="denied",
+                reason_code=exc.code,
+                reason_message=exc.message,
+                request=request,
+                metadata={"method": request.method, "path": request.url.path},
+            )
         return JSONResponse(
             status_code=exc.status,
             content={"error": {"code": exc.code, "message": exc.message}},

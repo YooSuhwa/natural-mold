@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.credentials.external_secrets import resolve_external_refs
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
+from app.services import audit_service
 from app.security import cipher
 from app.security.key_provider import get_active_key, get_keys
 
@@ -247,6 +248,21 @@ async def write_audit_log(
         log_metadata=metadata,
     )
     db.add(log)
+    await audit_service.record_event(
+        db,
+        actor_type="user" if actor_user_id is not None else source,
+        actor_user_id=actor_user_id,
+        owner_user_id=actor_user_id,
+        action=f"credential.{action}",
+        target_type="credential",
+        target_id=credential_id,
+        outcome="failure" if error else "success",
+        reason_code=action if error else None,
+        reason_message=error,
+        ip_address=ip,
+        user_agent_value=user_agent,
+        metadata={"source": source, **(metadata or {})},
+    )
     return log
 
 

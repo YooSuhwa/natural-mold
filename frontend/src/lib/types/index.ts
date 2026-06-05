@@ -9,6 +9,7 @@ export * from './model'
 export * from './health'
 export * from './usage'
 export * from './agent-api'
+export * from './audit'
 
 // ---------- Agent ---------------------------------------------------------
 

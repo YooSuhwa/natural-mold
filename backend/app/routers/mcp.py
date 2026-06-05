@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,6 +37,7 @@ from app.schemas.mcp import (
     McpToolResponse,
     McpToolWithServerResponse,
 )
+from app.services import audit_service
 from app.services import mcp_registry as mcp_registry_service
 
 router = APIRouter(prefix="/api/mcp-servers", tags=["mcp"])
@@ -137,6 +138,55 @@ async def _invalidate_runtime_mcp_cache() -> None:
     await clear_mcp_tool_cache()
 
 
+def _keys(value: dict[str, Any] | None) -> list[str]:
+    return sorted(str(key) for key in (value or {}))
+
+
+def _mcp_server_metadata(server: McpServer) -> dict[str, Any]:
+    return {
+        "transport": server.transport,
+        "has_url": bool(server.url),
+        "command_present": bool(server.command),
+        "arg_count": len(server.args or []),
+        "env_var_keys": _keys(server.env_vars),
+        "header_keys": _keys(server.headers),
+        "credential_bound": server.credential_id is not None,
+        "status": server.status,
+    }
+
+
+async def _record_mcp_audit(
+    db: AsyncSession,
+    *,
+    user: CurrentUser,
+    request: Request,
+    action: str,
+    server: McpServer,
+    outcome: str = "success",
+    reason_code: str | None = None,
+    reason_message: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action=action,
+        target_type="mcp_server",
+        target_id=server.id,
+        target_name_snapshot=server.name,
+        target_owner_user_id=user.id,
+        outcome=outcome,
+        reason_code=reason_code,
+        reason_message=reason_message,
+        request=request,
+        metadata={**_mcp_server_metadata(server), **(metadata or {})},
+    )
+
+
 # -- CRUD --------------------------------------------------------------------
 
 
@@ -158,6 +208,7 @@ async def list_servers(
 @router.post("", response_model=McpServerResponse, status_code=201)
 async def create_server(
     payload: McpServerCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -183,6 +234,14 @@ async def create_server(
     db.add(server)
     await db.commit()
     await db.refresh(server)
+    await _record_mcp_audit(
+        db,
+        user=user,
+        request=request,
+        action="mcp_server.create",
+        server=server,
+    )
+    await db.commit()
     await _invalidate_runtime_mcp_cache()
     return _server_to_response(server)
 
@@ -192,6 +251,7 @@ async def create_server(
 )
 async def create_server_from_registry(
     payload: McpServerCreateFromRegistry,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -236,6 +296,15 @@ async def create_server_from_registry(
     db.add(server)
     await db.commit()
     await db.refresh(server)
+    await _record_mcp_audit(
+        db,
+        user=user,
+        request=request,
+        action="mcp_server.create",
+        server=server,
+        metadata={"registry_key": payload.registry_key},
+    )
+    await db.commit()
     await _invalidate_runtime_mcp_cache()
     return _server_to_response(server)
 
@@ -243,6 +312,7 @@ async def create_server_from_registry(
 @router.post("/probe", response_model=McpProbeResponse)
 async def probe_mcp_server(
     payload: McpProbeRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -302,6 +372,32 @@ async def probe_mcp_server(
         user_id=user.id,
         credential_id=payload.credential_id,
     )
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="mcp_server.probe",
+        target_type="mcp_server_probe",
+        target_name_snapshot=payload.registry_key,
+        target_owner_user_id=user.id,
+        outcome="success" if result.get("success") else "failure",
+        reason_code=None if result.get("success") else "mcp_probe_failed",
+        reason_message=result.get("error"),
+        request=request,
+        metadata={
+            "registry_key": payload.registry_key,
+            "transport": transport,
+            "has_url": bool(url),
+            "command_present": bool(payload.command),
+            "header_keys": _keys(headers),
+            "credential_bound": payload.credential_id is not None,
+            "tool_count": len(result.get("tools") or []),
+        },
+    )
+    await db.commit()
 
     return McpProbeResponse(
         success=bool(result.get("success")),
@@ -356,6 +452,7 @@ async def list_all_user_mcp_tools(
 @router.post("/import", response_model=McpImportResult)
 async def import_servers(
     payload: McpImportRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -481,6 +578,34 @@ async def import_servers(
             result.errors.append(McpImportError(name=name, reason=str(exc)))
 
     await db.commit()
+    import_outcome = (
+        "failure"
+        if result.errors and result.created == 0 and result.updated == 0
+        else "success"
+    )
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="mcp_server.import",
+        target_type="mcp_server",
+        target_owner_user_id=user.id,
+        outcome=import_outcome,
+        reason_code="mcp_import_errors" if result.errors else None,
+        request=request,
+        metadata={
+            "created": result.created,
+            "updated": result.updated,
+            "skipped": result.skipped,
+            "error_count": len(result.errors),
+            "entry_count": len(payload.mcpServers),
+            "overwrite": payload.overwrite,
+        },
+    )
+    await db.commit()
     await _invalidate_runtime_mcp_cache()
     return result
 
@@ -538,6 +663,7 @@ async def get_server(
 async def update_server(
     server_id: uuid.UUID,
     payload: McpServerUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
@@ -573,6 +699,20 @@ async def update_server(
     _validate_payload_consistency(server.transport, server.url, server.command)
     await db.commit()
     await db.refresh(server)
+    await _record_mcp_audit(
+        db,
+        user=user,
+        request=request,
+        action="mcp_server.update",
+        server=server,
+        metadata={
+            "changed_fields": sorted(fields_set - {"headers", "env_vars"}),
+            "headers_changed": "headers" in fields_set,
+            "env_vars_changed": "env_vars" in fields_set,
+            "credential_changed": "credential_id" in fields_set,
+        },
+    )
+    await db.commit()
     await _invalidate_runtime_mcp_cache()
     return _server_to_response(server)
 
@@ -580,11 +720,19 @@ async def update_server(
 @router.delete("/{server_id}", status_code=204)
 async def delete_server(
     server_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> None:
     server = await _load_owned(db, server_id, user.id)
+    await _record_mcp_audit(
+        db,
+        user=user,
+        request=request,
+        action="mcp_server.delete",
+        server=server,
+    )
     # Manual cascade for SQLite tests where ondelete=CASCADE isn't enforced.
     for row in await _load_tools_for(db, server_id):
         await db.delete(row)
@@ -599,12 +747,24 @@ async def delete_server(
 @router.post("/{server_id}/test", response_model=McpTestResponse)
 async def test_server(
     server_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> McpTestResponse:
     server = await _load_owned(db, server_id, user.id)
     probe: dict[str, Any] = await discovery.test_server(db, server)
+    await _record_mcp_audit(
+        db,
+        user=user,
+        request=request,
+        action="mcp_server.test",
+        server=server,
+        outcome="success" if probe["success"] else "failure",
+        reason_code=None if probe["success"] else "mcp_test_failed",
+        reason_message=probe.get("error"),
+        metadata={"tool_count": len(probe.get("tools") or [])},
+    )
     await db.commit()
     await _invalidate_runtime_mcp_cache()
     return McpTestResponse(
@@ -619,12 +779,24 @@ async def test_server(
 @router.post("/{server_id}/discover", response_model=McpDiscoverResponse)
 async def discover_server_tools(
     server_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> McpDiscoverResponse:
     server = await _load_owned(db, server_id, user.id)
     probe, tools = await discovery.discover_tools(db, server)
+    await _record_mcp_audit(
+        db,
+        user=user,
+        request=request,
+        action="mcp_server.discover",
+        server=server,
+        outcome="success" if probe["success"] else "failure",
+        reason_code=None if probe["success"] else "mcp_discover_failed",
+        reason_message=probe.get("error"),
+        metadata={"tool_count": len(tools)},
+    )
     await db.commit()
     await _invalidate_runtime_mcp_cache()
     return McpDiscoverResponse(

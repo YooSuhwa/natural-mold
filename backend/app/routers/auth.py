@@ -27,7 +27,7 @@ from app.schemas.auth import (
     RegisterRequest,
     UserResponse,
 )
-from app.services import auth_service, user_profile_service, user_service
+from app.services import audit_service, auth_service, user_profile_service, user_service
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,39 @@ async def register_endpoint(
     user = await auth_service.register(db, payload, request)
     access, refresh, csrf = await auth_service.issue_tokens(db, user, request)
     await user_service.record_login_success(db, user, ip=auth_service.client_ip(request))
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="auth.register",
+        target_type="user",
+        target_id=user.id,
+        target_name_snapshot=user.email,
+        outcome="success",
+        request=request,
+        metadata={
+            "auto_login": True,
+            "promoted_to_super_user": bool(user.is_super_user),
+        },
+    )
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="auth.login",
+        target_type="user",
+        target_id=user.id,
+        target_name_snapshot=user.email,
+        outcome="success",
+        request=request,
+        metadata={"source": "register"},
+    )
     await db.commit()
     set_auth_cookies(
         response,
@@ -77,11 +110,41 @@ async def login_endpoint(
 ) -> AuthResponse:
     """Verify credentials, mint cookies, return user + CSRF body."""
 
-    user = await auth_service.authenticate(
-        db, email=payload.email, password=payload.password
-    )
+    try:
+        user = await auth_service.authenticate(
+            db, email=payload.email, password=payload.password
+        )
+    except AppError as exc:
+        await audit_service.record_event(
+            db,
+            actor_type="user",
+            actor_email_snapshot=payload.email,
+            action="auth.login",
+            target_type="user",
+            outcome="failure",
+            reason_code=exc.code,
+            reason_message=exc.message,
+            request=request,
+            metadata={"email": payload.email},
+        )
+        await db.commit()
+        raise
     access, refresh, csrf = await auth_service.issue_tokens(db, user, request)
     await user_service.record_login_success(db, user, ip=auth_service.client_ip(request))
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="auth.login",
+        target_type="user",
+        target_id=user.id,
+        target_name_snapshot=user.email,
+        outcome="success",
+        request=request,
+    )
     await db.commit()
     set_auth_cookies(
         response,
@@ -109,7 +172,21 @@ async def logout_endpoint(
     refresh = request.cookies.get(settings.cookie_name_refresh)
     if refresh:
         await auth_service.revoke_refresh(db, refresh)
-        await db.commit()
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=_user.id,
+        actor_email_snapshot=_user.email,
+        owner_user_id=_user.id,
+        owner_email_snapshot=_user.email,
+        action="auth.logout",
+        target_type="user",
+        target_id=_user.id,
+        target_name_snapshot=_user.email,
+        outcome="success",
+        request=request,
+    )
+    await db.commit()
     clear_auth_cookies(response)
     return LogoutResponse(ok=True)
 
@@ -128,8 +205,22 @@ async def refresh_endpoint(
         raise AppError(
             code="invalid_refresh", message="세션이 만료되었습니다", status=401
         )
-    access, new_refresh, csrf, _user = await auth_service.rotate_refresh(
+    access, new_refresh, csrf, user = await auth_service.rotate_refresh(
         db, refresh, request
+    )
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="auth.refresh",
+        target_type="user",
+        target_id=user.id,
+        target_name_snapshot=user.email,
+        outcome="success",
+        request=request,
     )
     await db.commit()
     set_auth_cookies(
@@ -172,13 +263,30 @@ async def _load_profile_user(db: AsyncSession, user: CurrentUser):
 
 @router.patch("/me/profile", response_model=UserResponse)
 async def update_profile_endpoint(
+    request: Request,
     payload: ProfileUpdateRequest,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> UserResponse:
     db_user = await _load_profile_user(db, user)
+    changed_fields = sorted(payload.model_fields_set)
     user_profile_service.apply_profile_update(db_user, payload)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="auth.profile_update",
+        target_type="user",
+        target_id=user.id,
+        target_name_snapshot=user.email,
+        outcome="success",
+        request=request,
+        metadata={"changed_fields": changed_fields},
+    )
     await db.commit()
     await db.refresh(db_user)
     return UserResponse.model_validate(db_user)
@@ -186,6 +294,7 @@ async def update_profile_endpoint(
 
 @router.post("/me/avatar-image", response_model=UserResponse)
 async def upload_avatar_image_endpoint(
+    request: Request,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
@@ -193,6 +302,21 @@ async def upload_avatar_image_endpoint(
 ) -> UserResponse:
     db_user = await _load_profile_user(db, user)
     await user_profile_service.save_avatar_image(db_user, file)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="auth.avatar_upload",
+        target_type="user",
+        target_id=user.id,
+        target_name_snapshot=user.email,
+        outcome="success",
+        request=request,
+        metadata={"filename": file.filename, "content_type": file.content_type},
+    )
     await db.commit()
     await db.refresh(db_user)
     return UserResponse.model_validate(db_user)
@@ -200,12 +324,27 @@ async def upload_avatar_image_endpoint(
 
 @router.delete("/me/avatar-image", response_model=UserResponse)
 async def delete_avatar_image_endpoint(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ) -> UserResponse:
     db_user = await _load_profile_user(db, user)
     await user_profile_service.delete_avatar_image(db_user)
+    await audit_service.record_event(
+        db,
+        actor_type="user",
+        actor_user_id=user.id,
+        actor_email_snapshot=user.email,
+        owner_user_id=user.id,
+        owner_email_snapshot=user.email,
+        action="auth.avatar_delete",
+        target_type="user",
+        target_id=user.id,
+        target_name_snapshot=user.email,
+        outcome="success",
+        request=request,
+    )
     await db.commit()
     await db.refresh(db_user)
     return UserResponse.model_validate(db_user)

@@ -27,6 +27,7 @@ from app.schemas.agent_api import (
     AgentThreadCreateRequest,
     AgentThreadResponse,
 )
+from app.services import audit_service
 
 router = APIRouter(prefix="/v1", tags=["agent-runtime-api"])
 
@@ -35,6 +36,87 @@ _SSE_HEADERS = {
     "Connection": "keep-alive",
     "X-Accel-Buffering": "no",
 }
+
+
+def _request_metadata_keys(request: AgentRunRequest) -> list[str]:
+    return sorted(str(key) for key in (request.metadata or {}))
+
+
+async def _record_agent_api_run_audit(
+    db: AsyncSession,
+    *,
+    principal: ApiKeyPrincipal,
+    deployment: AgentDeployment,
+    request: AgentRunRequest,
+    run,
+    action: str,
+    outcome: str,
+    reason_code: str | None = None,
+    reason_message: str | None = None,
+    metadata: dict[str, object] | None = None,
+) -> None:
+    await audit_service.record_event(
+        db,
+        actor_type="api_key",
+        actor_user_id=principal.user_id,
+        actor_api_key_id=principal.key.id,
+        actor_label=principal.key.name,
+        owner_user_id=principal.user_id,
+        action=action,
+        target_type="agent_api_run",
+        target_id=run.public_id,
+        target_name_snapshot=deployment.public_id,
+        target_owner_user_id=principal.user_id,
+        outcome=outcome,
+        reason_code=reason_code,
+        reason_message=reason_message,
+        run_id=run.public_id,
+        metadata={
+            "deployment_id": str(deployment.id),
+            "agent_id": str(deployment.agent_id),
+            "public_id": deployment.public_id,
+            "mode": run.mode,
+            "conversation_id": str(run.conversation_id),
+            "thread_id": str(run.thread_id) if run.thread_id else None,
+            "message_count": len(request.input.messages),
+            "external_user_present": bool(request.user),
+            "request_metadata_keys": _request_metadata_keys(request),
+            **(metadata or {}),
+        },
+    )
+
+
+async def _record_agent_api_thread_audit(
+    db: AsyncSession,
+    *,
+    principal: ApiKeyPrincipal,
+    deployment: AgentDeployment,
+    thread,
+    request: AgentThreadCreateRequest,
+    action: str,
+) -> None:
+    await audit_service.record_event(
+        db,
+        actor_type="api_key",
+        actor_user_id=principal.user_id,
+        actor_api_key_id=principal.key.id,
+        actor_label=principal.key.name,
+        owner_user_id=principal.user_id,
+        action=action,
+        target_type="agent_api_thread",
+        target_id=thread.public_id,
+        target_name_snapshot=deployment.public_id,
+        target_owner_user_id=principal.user_id,
+        outcome="success",
+        metadata={
+            "deployment_id": str(deployment.id),
+            "agent_id": str(deployment.agent_id),
+            "public_id": deployment.public_id,
+            "conversation_id": str(thread.conversation_id),
+            "external_user_present": bool(request.user),
+            "request_metadata_keys": sorted(str(key) for key in (request.metadata or {})),
+        },
+    )
 
 
 async def _mark_wait_run_failed_and_raise(
@@ -166,6 +248,15 @@ async def create_thread(
         deployment=deployment,
         request=request,
     )
+    await _record_agent_api_thread_audit(
+        db,
+        principal=principal,
+        deployment=deployment,
+        thread=thread,
+        request=request,
+        action="agent_api.thread_create",
+    )
+    await db.commit()
     return runtime_service.thread_to_response(thread)
 
 
@@ -231,7 +322,31 @@ async def run_wait(
             run,
             output={"answer": answer},
         )
+        await _record_agent_api_run_audit(
+            db,
+            principal=principal,
+            deployment=deployment,
+            request=request,
+            run=run,
+            action="agent_api.run_wait",
+            outcome="success",
+        )
+        await db.commit()
     except Exception as exc:
+        await _record_agent_api_run_audit(
+            db,
+            principal=principal,
+            deployment=deployment,
+            request=request,
+            run=run,
+            action="agent_api.run_wait",
+            outcome="failure",
+            reason_code=(
+                exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"
+            ),
+            reason_message=getattr(exc, "message", str(exc)),
+        )
+        await db.commit()
         await _mark_wait_run_failed_and_raise(db, run, exc)
     return AgentRunResponse(
         id=run.public_id,
@@ -304,7 +419,41 @@ async def _run_stream_response(
             external_user=external_user,
         )
     except Exception as exc:
+        await _record_agent_api_run_audit(
+            db,
+            principal=principal,
+            deployment=deployment,
+            request=request,
+            run=run,
+            action=(
+                "agent_api.thread_run_stream"
+                if thread_id is not None
+                else "agent_api.run_stream"
+            ),
+            outcome="failure",
+            reason_code=(
+                exc.code if isinstance(exc, AppError) else "AGENT_API_STREAM_FAILED"
+            ),
+            reason_message=getattr(exc, "message", str(exc)),
+        )
+        await db.commit()
         await _mark_stream_run_failed_and_raise(db, run, exc)
+
+    await _record_agent_api_run_audit(
+        db,
+        principal=principal,
+        deployment=deployment,
+        request=request,
+        run=run,
+        action=(
+            "agent_api.thread_run_stream"
+            if thread_id is not None
+            else "agent_api.run_stream"
+        ),
+        outcome="success",
+        metadata={"accepted": True},
+    )
+    await db.commit()
 
     async def generator() -> AsyncGenerator[str, None]:
         try:
@@ -477,7 +626,31 @@ async def thread_run_wait(
             moldy_source="api",
         )
         run = await runtime_service.mark_run_succeeded(db, run, output={"answer": answer})
+        await _record_agent_api_run_audit(
+            db,
+            principal=principal,
+            deployment=deployment,
+            request=request,
+            run=run,
+            action="agent_api.thread_run_wait",
+            outcome="success",
+        )
+        await db.commit()
     except Exception as exc:
+        await _record_agent_api_run_audit(
+            db,
+            principal=principal,
+            deployment=deployment,
+            request=request,
+            run=run,
+            action="agent_api.thread_run_wait",
+            outcome="failure",
+            reason_code=(
+                exc.code if isinstance(exc, AppError) else "AGENT_API_RUN_FAILED"
+            ),
+            reason_message=getattr(exc, "message", str(exc)),
+        )
+        await db.commit()
         await _mark_wait_run_failed_and_raise(db, run, exc)
     return AgentRunResponse(
         id=run.public_id,

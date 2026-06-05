@@ -28,6 +28,15 @@ vi.mock('@/lib/auth/session', () => ({
   useSession: () => mockUseSession(),
 }))
 
+vi.mock('@/lib/hooks/use-agent-api', () => ({
+  useAgentDeploymentCandidates: () => ({ data: [], isLoading: false }),
+  useAgentDeployments: () => ({ data: [], isLoading: false }),
+  useAgentApiKeys: () => ({ data: [], isLoading: false }),
+  useCreateAgentDeployment: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateAgentApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useRevokeAgentApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+
 describe('settings pages', () => {
   beforeEach(() => {
     updateProfile.mockClear()
@@ -113,13 +122,16 @@ describe('settings pages', () => {
     expect(screen.getByRole('button', { name: /한국어/ })).toBeInTheDocument()
   })
 
-  it('renders the Agent API placeholder page', () => {
+  it('renders the Agent API management page', () => {
     render(<AgentApiSettingsPage />)
 
     expect(screen.getByRole('heading', { name: 'Agent API' })).toBeInTheDocument()
     expect(
-      screen.getByText('외부 앱에서 Moldy 에이전트를 호출하기 위한 API 배포와 키 관리는 준비 중입니다.'),
+      screen.getByText('Deploy agents, issue server-side API keys, and call Moldy from external systems.'),
     ).toBeInTheDocument()
+    expect(screen.getByText('Deployment candidates')).toBeInTheDocument()
+    expect(screen.getAllByText('API keys').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Call examples')).toBeInTheDocument()
   })
 
   it('shows the admin settings section for super users', () => {
@@ -137,6 +149,10 @@ describe('settings pages', () => {
     expect(screen.getByRole('link', { name: '시스템 LLM 설정' })).toHaveAttribute(
       'href',
       '/settings/system-llm',
+    )
+    expect(screen.getByRole('link', { name: '전체 활동 기록' })).toHaveAttribute(
+      'href',
+      '/settings/admin/audit',
     )
   })
 
@@ -164,5 +180,6 @@ describe('settings pages', () => {
     expect(screen.queryByRole('link', { name: '운영자 관리' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '시스템 자격증명' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '시스템 LLM 설정' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '전체 활동 기록' })).not.toBeInTheDocument()
   })
 })

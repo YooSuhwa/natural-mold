@@ -5,11 +5,13 @@ import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import {
   Code2Icon,
+  HistoryIcon,
   KeyRoundIcon,
   MonitorCogIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
   StoreIcon,
+  UsersRoundIcon,
   UserIcon,
 } from 'lucide-react'
 import type { ComponentType, ReactNode, SVGProps } from 'react'
@@ -50,6 +52,7 @@ export function SettingsShell({ children }: SettingsShellProps) {
         { href: '/settings', label: t('nav.profile'), icon: UserIcon },
         { href: '/settings/security', label: t('nav.security'), icon: ShieldCheckIcon },
         { href: '/settings/appearance', label: t('nav.appearance'), icon: MonitorCogIcon },
+        { href: '/settings/audit', label: t('nav.audit'), icon: HistoryIcon },
       ],
     },
     {
@@ -77,6 +80,11 @@ export function SettingsShell({ children }: SettingsShellProps) {
                 href: '/settings/system-llm',
                 label: t('nav.systemLlm'),
                 icon: SlidersHorizontalIcon,
+              },
+              {
+                href: '/settings/admin/audit',
+                label: t('nav.adminAudit'),
+                icon: UsersRoundIcon,
               },
             ],
           },
