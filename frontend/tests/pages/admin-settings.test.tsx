@@ -1,4 +1,5 @@
 import { render, screen } from '../test-utils'
+import MarketplaceAdminPage from '@/app/settings/marketplace-admin/page'
 import SystemCredentialsPage from '@/app/settings/system-credentials/page'
 import SystemLlmSettingsPage from '@/app/settings/system-llm/page'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
@@ -65,6 +66,15 @@ vi.mock('@/lib/hooks/use-system-llm-settings', () => ({
   useUpdateSystemLlmSetting: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
+vi.mock('@/lib/hooks/use-marketplace', () => ({
+  useAdminSetListed: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useDisableItem: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useKSkillSyncStatus: () => ({
+    data: { count: 0, last_updated_at: null },
+  }),
+  useModerationQueue: () => ({ data: [], isLoading: false }),
+}))
+
 vi.mock('@/lib/hooks/use-models', () => ({
   useDiscoverModels: () => ({
     mutate: vi.fn(),
@@ -77,7 +87,7 @@ describe('admin settings pages', () => {
   it('renders system credentials with Korean operator copy', () => {
     render(<SystemCredentialsPage />)
 
-    expect(screen.getByText('시스템 자격증명')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '시스템 자격증명' })).toBeInTheDocument()
     expect(screen.getByText('운영자 전용')).toBeInTheDocument()
     expect(screen.getByText(/운영자 계정으로 비용이 청구/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /시스템 자격증명 추가/ })).toBeInTheDocument()
@@ -94,5 +104,18 @@ describe('admin settings pages', () => {
     expect(screen.getByText('제공자')).toBeInTheDocument()
     expect(screen.getByText('openrouter')).toBeInTheDocument()
     expect(screen.queryByText('cred-openrouter-uuid')).not.toBeInTheDocument()
+  })
+
+  it('renders marketplace moderation inside the settings admin area', () => {
+    render(<MarketplaceAdminPage />)
+
+    expect(screen.getByRole('heading', { name: '마켓플레이스 운영' })).toBeInTheDocument()
+    expect(screen.getByText('관리자')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '운영자 관리' })).toHaveAttribute(
+      'href',
+      '/settings/marketplace-admin',
+    )
+    expect(screen.getByText('처리 대기 항목이 없어요')).toBeInTheDocument()
+    expect(screen.getByText('k-skill 동기화 상태')).toBeInTheDocument()
   })
 })

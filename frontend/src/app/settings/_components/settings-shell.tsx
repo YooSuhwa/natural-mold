@@ -6,8 +6,11 @@ import { useTranslations } from 'next-intl'
 import {
   Code2Icon,
   HistoryIcon,
+  KeyRoundIcon,
   MonitorCogIcon,
   ShieldCheckIcon,
+  SlidersHorizontalIcon,
+  StoreIcon,
   UsersRoundIcon,
   UserIcon,
 } from 'lucide-react'
@@ -58,20 +61,36 @@ export function SettingsShell({ children }: SettingsShellProps) {
         { href: '/settings/agent-api', label: t('nav.agentApi'), icon: Code2Icon },
       ],
     },
+    ...(user?.is_super_user
+      ? [
+          {
+            label: t('nav.admin'),
+            items: [
+              {
+                href: '/settings/marketplace-admin',
+                label: t('nav.marketplaceAdmin'),
+                icon: StoreIcon,
+              },
+              {
+                href: '/settings/system-credentials',
+                label: t('nav.systemCredentials'),
+                icon: KeyRoundIcon,
+              },
+              {
+                href: '/settings/system-llm',
+                label: t('nav.systemLlm'),
+                icon: SlidersHorizontalIcon,
+              },
+              {
+                href: '/settings/admin/audit',
+                label: t('nav.adminAudit'),
+                icon: UsersRoundIcon,
+              },
+            ],
+          },
+        ]
+      : []),
   ]
-
-  if (user?.is_super_user) {
-    sections.push({
-      label: t('nav.admin'),
-      items: [
-        {
-          href: '/settings/admin/audit',
-          label: t('nav.adminAudit'),
-          icon: UsersRoundIcon,
-        },
-      ],
-    })
-  }
 
   return (
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">

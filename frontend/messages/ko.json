@@ -2829,6 +2829,9 @@
       "agentApi": "Agent API",
       "audit": "활동 기록",
       "admin": "관리자",
+      "marketplaceAdmin": "운영자 관리",
+      "systemCredentials": "시스템 자격증명",
+      "systemLlm": "시스템 LLM 설정",
       "adminAudit": "전체 활동 기록"
     },
     "profile": {
@@ -2973,6 +2976,9 @@
     "security": "보안",
     "appearance": "화면 및 언어",
     "agentApi": "Agent API",
+    "marketplaceAdmin": "운영자 관리",
+    "systemCredentials": "시스템 자격증명",
+    "systemLlm": "시스템 LLM 설정",
     "skills": "스킬",
     "create": "새로 만들기",
     "createAgent": "에이전트 만들기",

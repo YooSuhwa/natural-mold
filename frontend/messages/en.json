@@ -2850,6 +2850,9 @@
       "agentApi": "Agent API",
       "audit": "Activity Log",
       "admin": "Admin",
+      "marketplaceAdmin": "Marketplace Admin",
+      "systemCredentials": "System Credentials",
+      "systemLlm": "System LLM Settings",
       "adminAudit": "All Activity"
     },
     "profile": {
@@ -2994,6 +2997,9 @@
     "security": "Security",
     "appearance": "Appearance & Language",
     "agentApi": "Agent API",
+    "marketplaceAdmin": "Marketplace Admin",
+    "systemCredentials": "System Credentials",
+    "systemLlm": "System LLM Settings",
     "skills": "Skills",
     "create": "Create",
     "createAgent": "Create Agent",
