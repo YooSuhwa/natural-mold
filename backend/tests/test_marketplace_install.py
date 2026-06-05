@@ -74,7 +74,7 @@ def _seed_snapshot(storage_path: Path) -> None:
 
     storage_path.mkdir(parents=True, exist_ok=True)
     (storage_path / "SKILL.md").write_text(
-        "---\nname: srt-booker\nversion: '0.1.0'\n---\n\nbody\n",
+        ("---\nname: srt-booker\ndescription: SRT auto-book\nversion: '0.1.0'\n---\n\nbody\n"),
         encoding="utf-8",
     )
 
@@ -258,9 +258,7 @@ async def test_install_reuse_returns_existing_installation(
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         version_dir = tmp_path / "v1"
-        item, _ = await _make_published_skill_item(
-            db, storage_path=version_dir, requirements=None
-        )
+        item, _ = await _make_published_skill_item(db, storage_path=version_dir, requirements=None)
         await db.commit()
 
         r1 = await client.post(
@@ -286,9 +284,7 @@ async def test_delete_installation_soft_then_hard(
 
     with patch.object(skill_service.settings, "data_root", str(tmp_path)):
         version_dir = tmp_path / "v1"
-        item, _ = await _make_published_skill_item(
-            db, storage_path=version_dir, requirements=None
-        )
+        item, _ = await _make_published_skill_item(db, storage_path=version_dir, requirements=None)
         await db.commit()
 
         r1 = await client.post(
@@ -299,9 +295,7 @@ async def test_delete_installation_soft_then_hard(
         skill_id = uuid.UUID(r1.json()["installed_skill_id"])
 
         # Soft delete — installation marked uninstalled, skill row stays.
-        r2 = await client.delete(
-            f"/api/marketplace/installations/{installation_id}"
-        )
+        r2 = await client.delete(f"/api/marketplace/installations/{installation_id}")
         assert r2.status_code == 204
 
     inst = await db.get(MarketplaceInstallation, uuid.UUID(installation_id))

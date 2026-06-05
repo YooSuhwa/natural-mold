@@ -30,6 +30,7 @@ from app.credentials import service as credential_service
 from app.exceptions import ValidationError
 from app.mcp.client import build_headers
 from app.models.agent import Agent
+from app.models.agent_subagent import AgentSubAgentLink
 from app.models.conversation import Conversation
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import AgentMcpToolLink, McpTool
@@ -62,6 +63,7 @@ __all__ = [
     "maybe_set_auto_title",
     "save_token_usage",
     "touch_conversation",
+    "trigger_blocked_tools_for_agent_tree",
     "update_conversation",
 ]
 
@@ -80,9 +82,7 @@ async def list_conversations(db: AsyncSession, agent_id: uuid.UUID) -> list[Conv
     return list(result.scalars().all())
 
 
-async def is_agent_owned_by_user(
-    db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID
-) -> bool:
+async def is_agent_owned_by_user(db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     result = await db.execute(
         select(Agent.id).where(Agent.id == agent_id, Agent.user_id == user_id).limit(1)
     )
@@ -128,9 +128,7 @@ async def list_conversations_page(
     search = (q or "").strip()
     if search:
         query = query.where(
-            func.lower(func.coalesce(Conversation.title, "")).like(
-                f"%{search.lower()}%"
-            )
+            func.lower(func.coalesce(Conversation.title, "")).like(f"%{search.lower()}%")
         )
 
     if cursor:
@@ -282,11 +280,7 @@ async def list_messages_from_checkpointer(
         msg_uuid = parse_msg_id(getattr(msg, "id", None), conversation.id, idx)
         key = str(msg_uuid)
         iso = stored_timestamps.get(key)
-        ts = (
-            datetime.fromisoformat(iso)
-            if iso
-            else fallback_base + timedelta(milliseconds=idx)
-        )
+        ts = datetime.fromisoformat(iso) if iso else fallback_base + timedelta(milliseconds=idx)
         timestamps.append(ts)
 
     # W7-4 — conversation의 agent에 연결된 model 단가를 한 번 조회해 넘긴다.
@@ -519,6 +513,36 @@ async def clear_active_branch_override(db: AsyncSession, conversation_id: uuid.U
 # ---------------------------------------------------------------------------
 
 
+def _agent_runtime_load_options() -> list[Any]:
+    child_agent = AgentSubAgentLink.sub_agent
+    return [
+        selectinload(Agent.model),
+        selectinload(Agent.llm_credential),
+        selectinload(Agent.tool_links)
+        .selectinload(AgentToolLink.tool)
+        .selectinload(Tool.credential),
+        selectinload(Agent.mcp_tool_links)
+        .selectinload(AgentMcpToolLink.mcp_tool)
+        .selectinload(McpTool.server)
+        .selectinload(McpServer.credential),
+        selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
+        selectinload(Agent.sub_agent_links)
+        .joinedload(child_agent)
+        .options(
+            selectinload(Agent.model),
+            selectinload(Agent.llm_credential),
+            selectinload(Agent.tool_links)
+            .selectinload(AgentToolLink.tool)
+            .selectinload(Tool.credential),
+            selectinload(Agent.mcp_tool_links)
+            .selectinload(AgentMcpToolLink.mcp_tool)
+            .selectinload(McpTool.server)
+            .selectinload(McpServer.credential),
+            selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
+        ),
+    ]
+
+
 async def get_owned_conversation_with_agent(
     db: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID
 ) -> Conversation | None:
@@ -547,16 +571,7 @@ async def get_owned_conversation_with_agent(
         .where(Conversation.id == conversation_id, Agent.user_id == user_id)
         .options(
             contains_eager(Conversation.agent).options(
-                selectinload(Agent.model),
-                selectinload(Agent.llm_credential),
-                selectinload(Agent.tool_links)
-                .selectinload(AgentToolLink.tool)
-                .selectinload(Tool.credential),
-                selectinload(Agent.mcp_tool_links)
-                .selectinload(AgentMcpToolLink.mcp_tool)
-                .selectinload(McpTool.server)
-                .selectinload(McpServer.credential),
-                selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
+                *_agent_runtime_load_options(),
             )
         )
     )
@@ -582,20 +597,7 @@ async def get_agent_with_tools(
     result = await db.execute(
         select(Agent)
         .where(Agent.id == agent_id, Agent.user_id == user_id)
-        .options(
-            selectinload(Agent.model),
-            selectinload(Agent.llm_credential),
-            selectinload(Agent.tool_links)
-            .selectinload(AgentToolLink.tool)
-            .selectinload(Tool.credential),
-            # MCP tool link → mcp_tool → server (server carries transport,
-            # url, headers, and credential needed to actually invoke).
-            selectinload(Agent.mcp_tool_links)
-            .selectinload(AgentMcpToolLink.mcp_tool)
-            .selectinload(McpTool.server)
-            .selectinload(McpServer.credential),
-            selectinload(Agent.skill_links).selectinload(AgentSkillLink.skill),
-        )
+        .options(*_agent_runtime_load_options())
     )
     return result.scalar_one_or_none()
 
@@ -643,8 +645,7 @@ async def build_tools_config(
         identity.credential_subject_user_id if identity is not None else agent.user_id
     )
     runtime_actor_user_id = (
-        identity.caller_user_id
-        or identity.agent_owner_user_id
+        identity.caller_user_id or identity.agent_owner_user_id
         if identity is not None
         else agent.user_id
     )
@@ -662,9 +663,7 @@ async def build_tools_config(
         if credential.id in credential_cache:
             return cached
         try:
-            cached = await credential_service.decrypt_with_external(
-                credential.data_encrypted
-            )
+            cached = await credential_service.decrypt_with_external(credential.data_encrypted)
         except Exception:  # noqa: BLE001 — surface as missing creds, never crash chat
             logger.exception(
                 "credential decryption failed for credential %s",
@@ -738,3 +737,34 @@ async def build_tools_config(
         )
 
     return configs
+
+
+async def trigger_blocked_tools_for_agent_tree(
+    agent: Agent,
+    *,
+    db: AsyncSession,
+) -> list[Any]:
+    """Return trigger-unsafe capabilities for parent plus one-hop children."""
+
+    from app.tools.risk import trigger_blocked_tools
+
+    blocked = trigger_blocked_tools(
+        await build_tools_config(agent, db=db, conversation_id=None),
+        has_agent_skills=bool(build_agent_skills(agent)),
+    )
+    for link in agent.sub_agent_links:
+        child = link.sub_agent
+        if child is None:
+            continue
+        child_tools_config = await build_tools_config(
+            child,
+            db=db,
+            conversation_id=None,
+        )
+        blocked.extend(
+            trigger_blocked_tools(
+                child_tools_config,
+                has_agent_skills=bool(build_agent_skills(child)),
+            )
+        )
+    return blocked

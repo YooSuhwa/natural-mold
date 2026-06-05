@@ -49,7 +49,7 @@ from app.models.marketplace import (
     MarketplacePublicationLink,
     MarketplaceVersion,
 )
-from app.skills.inspector import parse_skill_md
+from app.skills.inspector import SkillMetadataError, parse_skill_md
 from app.storage.paths import ensure_relative
 
 if TYPE_CHECKING:
@@ -140,7 +140,9 @@ def validate_skill(skill_dir: Path) -> tuple[bool, dict[str, Any] | None, str | 
     if not md.exists():
         return False, None, "SKILL.md not found"
     try:
-        parsed = parse_skill_md(md.read_bytes())
+        parsed = parse_skill_md(md.read_bytes(), require_metadata=True)
+    except SkillMetadataError as exc:
+        return False, None, str(exc)
     except Exception as exc:  # noqa: BLE001 — frontmatter library throws broadly
         return False, None, f"frontmatter parse failed: {exc}"
     metadata = parsed.get("metadata") or {}
@@ -148,9 +150,7 @@ def validate_skill(skill_dir: Path) -> tuple[bool, dict[str, Any] | None, str | 
     if not name:
         return False, None, "SKILL.md frontmatter missing 'name'"
     if name != skill_dir.name:
-        return False, None, (
-            f"name '{name}' does not match directory '{skill_dir.name}'"
-        )
+        return False, None, (f"name '{name}' does not match directory '{skill_dir.name}'")
     return True, metadata, None
 
 
@@ -373,9 +373,7 @@ def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
-async def _find_item(
-    db: AsyncSession, *, upstream_name: str
-) -> MarketplaceItem | None:
+async def _find_item(db: AsyncSession, *, upstream_name: str) -> MarketplaceItem | None:
     stmt = (
         select(MarketplaceItem)
         .where(MarketplaceItem.source_external_id == upstream_name)
@@ -385,12 +383,11 @@ async def _find_item(
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def _next_version_number(
-    db: AsyncSession, *, item_id: uuid.UUID
-) -> int:
+async def _next_version_number(db: AsyncSession, *, item_id: uuid.UUID) -> int:
     result = await db.execute(
-        select(func.coalesce(func.max(MarketplaceVersion.version_number), 0))
-        .where(MarketplaceVersion.item_id == item_id)
+        select(func.coalesce(func.max(MarketplaceVersion.version_number), 0)).where(
+            MarketplaceVersion.item_id == item_id
+        )
     )
     return int(result.scalar_one() or 0) + 1
 
@@ -462,9 +459,7 @@ async def import_skill(
     findings = scan_package(skill_dir)
     if findings:
         summary = ", ".join(f"{f.path} ({f.kind})" for f in findings[:5])
-        logger.warning(
-            "k-skill secret_scan rejected %s: %s", upstream_name, summary
-        )
+        logger.warning("k-skill secret_scan rejected %s: %s", upstream_name, summary)
         return ImportResult(
             name=upstream_name,
             action=ImportAction.FAILED_SECRET_SCAN,
@@ -666,12 +661,14 @@ async def run_sync(
     # partial sync doesn't deprecate the rest of the world.
     if not only:
         existing = (
-            await db.execute(
-                select(MarketplaceItem).where(
-                    MarketplaceItem.source_kind == "k-skill"
+            (
+                await db.execute(
+                    select(MarketplaceItem).where(MarketplaceItem.source_kind == "k-skill")
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for item in existing:
             upstream_name = item.source_external_id
             if not upstream_name or upstream_name in seen_names:

@@ -93,6 +93,15 @@ def test_validate_skill_rejects_name_mismatch(tmp_path: Path) -> None:
     assert reason is not None and "name" in reason
 
 
+def test_validate_skill_rejects_missing_description(tmp_path: Path) -> None:
+    bad = tmp_path / "missing-description"
+    bad.mkdir(parents=True)
+    (bad / "SKILL.md").write_text("---\nname: missing-description\nversion: 0.1.0\n---\n\nbody\n")
+    ok, _, reason = validate_skill(bad)
+    assert ok is False
+    assert reason is not None and "description" in reason
+
+
 def test_validate_skill_accepts_match(tmp_path: Path) -> None:
     good = _write_skill(tmp_path, "korean-spell-check")
     ok, fm, reason = validate_skill(good)
@@ -111,7 +120,7 @@ def test_content_hash_changes_when_body_changes(tmp_path: Path) -> None:
     skill = _write_skill(tmp_path, "k2")
     before = compute_content_hash(skill)
     (skill / "SKILL.md").write_text(
-        "---\nname: k2\nversion: 0.2.0\n---\n\nupdated body\n"
+        "---\nname: k2\ndescription: synthetic\nversion: 0.2.0\n---\n\nupdated body\n"
     )
     after = compute_content_hash(skill)
     assert before != after
@@ -145,9 +154,7 @@ def test_execution_profile_falls_back_to_ready_python(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_sync_creates_then_idempotent(
-    db: AsyncSession, tmp_path: Path
-) -> None:
+async def test_run_sync_creates_then_idempotent(db: AsyncSession, tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     storage = tmp_path / "storage"
     _write_skill(repo, "korean-spell-check")
@@ -182,10 +189,10 @@ async def test_run_sync_creates_then_idempotent(
 
     # Two MarketplaceItems exist tagged as k-skill.
     rows = (
-        await db.execute(
-            select(MarketplaceItem).where(MarketplaceItem.source_kind == "k-skill")
-        )
-    ).scalars().all()
+        (await db.execute(select(MarketplaceItem).where(MarketplaceItem.source_kind == "k-skill")))
+        .scalars()
+        .all()
+    )
     assert {r.source_external_id for r in rows} == {
         "korean-spell-check",
         "srt-booking",
@@ -193,19 +200,19 @@ async def test_run_sync_creates_then_idempotent(
     # Each item has exactly 1 version.
     for item in rows:
         versions = (
-            await db.execute(
-                select(MarketplaceVersion).where(
-                    MarketplaceVersion.item_id == item.id
+            (
+                await db.execute(
+                    select(MarketplaceVersion).where(MarketplaceVersion.item_id == item.id)
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(versions) == 1
 
 
 @pytest.mark.asyncio
-async def test_run_sync_new_version_when_content_changes(
-    db: AsyncSession, tmp_path: Path
-) -> None:
+async def test_run_sync_new_version_when_content_changes(db: AsyncSession, tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     storage = tmp_path / "storage"
     skill = _write_skill(repo, "korean-spell-check")
@@ -223,7 +230,7 @@ async def test_run_sync_new_version_when_content_changes(
 
     # Mutate the skill content — should produce a new version.
     (skill / "SKILL.md").write_text(
-        "---\nname: korean-spell-check\nversion: 0.2.0\n---\n\nupdated\n"
+        "---\nname: korean-spell-check\ndescription: synthetic\nversion: 0.2.0\n---\n\nupdated\n"
     )
     r2 = await run_sync(
         repo_dir=repo,
@@ -244,19 +251,17 @@ async def test_run_sync_new_version_when_content_changes(
         )
     ).scalar_one()
     versions = (
-        await db.execute(
-            select(MarketplaceVersion).where(MarketplaceVersion.item_id == item.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(MarketplaceVersion).where(MarketplaceVersion.item_id == item.id)))
+        .scalars()
+        .all()
+    )
     assert len(versions) == 2
     # version_number is monotonic per item.
     assert sorted(v.version_number for v in versions) == [1, 2]
 
 
 @pytest.mark.asyncio
-async def test_secret_scan_failure_isolates_to_one_skill(
-    db: AsyncSession, tmp_path: Path
-) -> None:
+async def test_secret_scan_failure_isolates_to_one_skill(db: AsyncSession, tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     storage = tmp_path / "storage"
     _write_skill(repo, "korean-spell-check")
@@ -279,18 +284,16 @@ async def test_secret_scan_failure_isolates_to_one_skill(
     assert by_action["srt-booking"] == ImportAction.FAILED_SECRET_SCAN
 
     rows = (
-        await db.execute(
-            select(MarketplaceItem).where(MarketplaceItem.source_kind == "k-skill")
-        )
-    ).scalars().all()
+        (await db.execute(select(MarketplaceItem).where(MarketplaceItem.source_kind == "k-skill")))
+        .scalars()
+        .all()
+    )
     # Only the clean skill produced a row.
     assert {r.source_external_id for r in rows} == {"korean-spell-check"}
 
 
 @pytest.mark.asyncio
-async def test_dry_run_does_not_write(
-    db: AsyncSession, tmp_path: Path
-) -> None:
+async def test_dry_run_does_not_write(db: AsyncSession, tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     storage = tmp_path / "storage"
     _write_skill(repo, "korean-spell-check")
@@ -311,17 +314,15 @@ async def test_dry_run_does_not_write(
 
     # No row landed in the DB.
     rows = (
-        await db.execute(
-            select(MarketplaceItem).where(MarketplaceItem.source_kind == "k-skill")
-        )
-    ).scalars().all()
+        (await db.execute(select(MarketplaceItem).where(MarketplaceItem.source_kind == "k-skill")))
+        .scalars()
+        .all()
+    )
     assert rows == []
 
 
 @pytest.mark.asyncio
-async def test_only_filter_restricts_run(
-    db: AsyncSession, tmp_path: Path
-) -> None:
+async def test_only_filter_restricts_run(db: AsyncSession, tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     storage = tmp_path / "storage"
     _write_skill(repo, "korean-spell-check")

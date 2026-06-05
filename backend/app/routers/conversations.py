@@ -24,6 +24,7 @@ from app.agent_runtime.identity import (
     resolve_agent_run_identity,
 )
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
+from app.agent_runtime.subagents import build_subagents_config
 from app.config import settings
 from app.database import async_session
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
@@ -104,6 +105,7 @@ async def _record_conversation_audit(
             **(metadata or {}),
         },
     )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -214,7 +216,7 @@ async def _resolve_agent_context(
         user,
     )
 
-    return AgentConfig(
+    cfg = AgentConfig(
         provider=agent.model.provider,
         model_name=agent.model.model_name,
         api_key=api_key,
@@ -247,6 +249,13 @@ async def _resolve_agent_context(
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
     )
+    cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
+        agent,
+        db=db,
+        parent_cfg=cfg,
+        is_trigger_mode=False,
+    )
+    return cfg
 
 
 async def _resolve_fallback_chain(

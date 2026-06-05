@@ -132,7 +132,12 @@ class SkillToolContext:
 # ---------------------------------------------------------------------------
 
 
-def _per_thread_runtime_root(data_dir: Path, thread_id: str) -> Path:
+def _per_thread_runtime_root(
+    data_dir: Path,
+    thread_id: str,
+    *,
+    agent_runtime_name: str | None = None,
+) -> Path:
     """Slice E stage 2 — per-thread mount root.
 
     Layout::
@@ -152,12 +157,14 @@ def _per_thread_runtime_root(data_dir: Path, thread_id: str) -> Path:
     runtime roots with active checkpoints (Spec §9 / progress.txt gotcha).
     """
 
+    if agent_runtime_name:
+        return (
+            data_dir / "runtime" / thread_id / "agents" / agent_runtime_name / "skills"
+        ).resolve()
     return (data_dir / "runtime" / thread_id / "skills").resolve()
 
 
-def _materialize_skill(
-    descriptor: SkillRuntimeDescriptor, runtime_root: Path
-) -> None:
+def _materialize_skill(descriptor: SkillRuntimeDescriptor, runtime_root: Path) -> None:
     """Copy a single skill's bytes into ``runtime_root/<slug>``.
 
     Sync helper (caller wraps with ``asyncio.to_thread`` if needed).
@@ -222,9 +229,7 @@ def _build_descriptor_from_skill_dict(
         # Stage 2 overwrites with ``runtime_root / slug``.
         runtime_storage_path=original,
         execution_profile=(
-            raw.get("execution_profile")
-            if isinstance(raw.get("execution_profile"), dict)
-            else None
+            raw.get("execution_profile") if isinstance(raw.get("execution_profile"), dict) else None
         ),
     )
 
@@ -246,7 +251,11 @@ def build_skill_runtime_context(
     """
 
     output_dir = (data_dir / "conversations" / cfg.thread_id).resolve()
-    runtime_root = _per_thread_runtime_root(data_dir, cfg.thread_id)
+    runtime_root = _per_thread_runtime_root(
+        data_dir,
+        cfg.thread_id,
+        agent_runtime_name=getattr(cfg, "agent_runtime_name", None),
+    )
 
     descriptors: dict[str, SkillRuntimeDescriptor] = {}
     if cfg.agent_skills:
@@ -316,9 +325,7 @@ async def resolve_runtime_credentials(
         if skill is None:
             continue
 
-        agent_config_override = (
-            raw.get("config") if isinstance(raw.get("config"), dict) else None
-        )
+        agent_config_override = raw.get("config") if isinstance(raw.get("config"), dict) else None
 
         resolved, missing = await resolve_credential_bindings(
             db,
@@ -342,8 +349,7 @@ async def resolve_runtime_credentials(
 
     if aggregated_missing:
         raise marketplace_credential_required(
-            "missing required credential bindings: "
-            + ", ".join(aggregated_missing)
+            "missing required credential bindings: " + ", ".join(aggregated_missing)
         )
 
 
@@ -352,9 +358,7 @@ async def resolve_runtime_credentials(
 # ---------------------------------------------------------------------------
 
 
-def cleanup_stale_runtime_roots(
-    data_dir: Path, *, retention_seconds: int = 3600
-) -> int:
+def cleanup_stale_runtime_roots(data_dir: Path, *, retention_seconds: int = 3600) -> int:
     """Remove ``data/runtime/<thread_id>/`` dirs older than the threshold.
 
     Returns the count of removed dirs (for logging).
@@ -384,9 +388,7 @@ def cleanup_stale_runtime_roots(
             shutil.rmtree(entry, ignore_errors=True)
             removed += 1
         except OSError:
-            logger.exception(
-                "cleanup_stale_runtime_roots failed for entry=%s", entry
-            )
+            logger.exception("cleanup_stale_runtime_roots failed for entry=%s", entry)
     if removed:
         logger.info(
             "cleanup_stale_runtime_roots removed %d stale dir(s) under %s",

@@ -82,12 +82,8 @@ async def list_skills(
     return list(result.scalars().all())
 
 
-async def get_skill(
-    db: AsyncSession, skill_id: uuid.UUID, user_id: uuid.UUID
-) -> Skill | None:
-    result = await db.execute(
-        select(Skill).where(Skill.id == skill_id, Skill.user_id == user_id)
-    )
+async def get_skill(db: AsyncSession, skill_id: uuid.UUID, user_id: uuid.UUID) -> Skill | None:
+    result = await db.execute(select(Skill).where(Skill.id == skill_id, Skill.user_id == user_id))
     return result.scalar_one_or_none()
 
 
@@ -106,6 +102,7 @@ async def create_text_skill(
 ) -> Skill:
     """Create a text skill, persisting ``content`` as ``SKILL.md`` on disk."""
 
+    parse_skill_md(content, require_metadata=True)
     final_slug = slugify(slug or name)
     skill_id = uuid.uuid4()
     root = _skill_root(skill_id)
@@ -208,17 +205,14 @@ async def update_metadata(
     return skill
 
 
-async def update_text_content(
-    db: AsyncSession, *, skill: Skill, content: str
-) -> Skill:
+async def update_text_content(db: AsyncSession, *, skill: Skill, content: str) -> Skill:
     if skill.kind != "text":
         raise ValueError("update_text_content only valid for text skills")
     if not skill.storage_path:
         raise ValueError("text skill missing storage_path")
+    parse_skill_md(content, require_metadata=True)
     body_bytes = content.encode("utf-8")
-    await asyncio.to_thread(
-        resolve_data_path(skill.storage_path).write_bytes, body_bytes
-    )
+    await asyncio.to_thread(resolve_data_path(skill.storage_path).write_bytes, body_bytes)
     skill.content_hash = hashlib.sha256(body_bytes).hexdigest()
     skill.size_bytes = len(body_bytes)
     skill.last_modified_at = _now()
@@ -253,6 +247,8 @@ async def set_skill_file(
 
     root = _package_root(skill)
     target = _resolve_safely(root, rel_path)
+    if rel_path.lstrip("./").lower() in {"skill.md", "skill.markdown"}:
+        parse_skill_md(content, require_metadata=True)
     await asyncio.to_thread(target.parent.mkdir, parents=True, exist_ok=True)
     await asyncio.to_thread(target.write_bytes, content)
     _refresh_package_metadata(skill)

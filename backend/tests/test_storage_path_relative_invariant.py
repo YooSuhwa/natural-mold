@@ -25,10 +25,21 @@ from app.skills import service as skill_service
 from tests.conftest import TEST_USER_ID
 
 
-def _zip_with_skill_md(body: str = "# SKILL\n") -> bytes:
+def _skill_md(name: str = "storage-path") -> str:
+    return (
+        "---\n"
+        f"name: {name}\n"
+        'description: "storage path guard"\n'
+        'version: "1.0.0"\n'
+        "---\n\n"
+        "# Storage path guard\n"
+    )
+
+
+def _zip_with_skill_md(body: str | None = None) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("SKILL.md", body)
+        zf.writestr("SKILL.md", body or _skill_md())
     return buf.getvalue()
 
 
@@ -43,7 +54,7 @@ async def test_text_skill_storage_path_is_relative(
         name="abs guard text",
         slug=None,
         description=None,
-        content="hi",
+        content=_skill_md("abs-guard-text"),
     )
     await db.commit()
     await db.refresh(skill)

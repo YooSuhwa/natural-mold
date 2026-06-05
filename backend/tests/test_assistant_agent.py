@@ -57,12 +57,62 @@ def test_load_system_prompt_fallback(tmp_path):
 @pytest.mark.asyncio
 async def test_build_assistant_agent():
     """build_assistant_agent wires model/tools/prompt/checkpointer into build_agent."""
+    import app.agent_runtime.assistant.assistant_agent as mod
+
+    mod._load_system_prompt.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_build_assistant_agent_requires_approval_for_write_tools_only():
+    """Assistant DB-mutating tools must go through Deep Agents HITL approval."""
     import uuid
     from unittest.mock import AsyncMock
 
     import app.agent_runtime.assistant.assistant_agent as mod
 
-    mod._load_system_prompt.cache_clear()
+    read_tool = MagicMock()
+    read_tool.name = "get_agent_config"
+    write_tool = MagicMock()
+    write_tool.name = "add_subagent_to_agent"
+    clarify_tool = MagicMock()
+    clarify_tool.name = "ask_clarifying_question"
+    captured: dict = {}
+
+    from app.services.system_credential_resolver import ResolvedSystemModel
+
+    resolved = ResolvedSystemModel(
+        provider="openai",
+        model_name="gpt-4o",
+        api_key="sk-test",
+        base_url=None,
+    )
+
+    def fake_build_agent(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    with (
+        patch.object(mod, "_load_system_prompt", return_value="Test prompt"),
+        patch.object(mod, "resolve_system_model", AsyncMock(return_value=resolved)),
+        patch.object(mod, "create_chat_model", return_value=MagicMock()),
+        patch.object(mod, "build_read_tools", return_value=[read_tool]),
+        patch.object(mod, "build_write_tools", return_value=[write_tool]),
+        patch.object(mod, "build_clarify_tools", return_value=[clarify_tool]),
+        patch.object(mod, "get_checkpointer", return_value=MagicMock()),
+        patch.object(mod, "build_agent", fake_build_agent),
+    ):
+        await mod.build_assistant_agent(
+            AsyncMock(),
+            uuid.uuid4(),
+            uuid.uuid4(),
+            "thread-1",
+        )
+
+    assert captured["interrupt_on"] == {
+        "add_subagent_to_agent": {"allowed_decisions": ["approve", "edit", "reject"]}
+    }
+    assert "get_agent_config" not in captured["interrupt_on"]
+    assert "ask_clarifying_question" not in captured["interrupt_on"]
 
     mock_model = MagicMock()
     mock_read_tools = [MagicMock()]
@@ -81,9 +131,7 @@ async def test_build_assistant_agent():
     )
     with (
         patch.object(mod, "_load_system_prompt", return_value="Test prompt"),
-        patch.object(
-            mod, "resolve_system_model", AsyncMock(return_value=resolved)
-        ),
+        patch.object(mod, "resolve_system_model", AsyncMock(return_value=resolved)),
         patch.object(mod, "create_chat_model", return_value=mock_model),
         patch.object(mod, "build_read_tools", return_value=mock_read_tools),
         patch.object(mod, "build_write_tools", return_value=mock_write_tools),

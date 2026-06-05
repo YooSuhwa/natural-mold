@@ -46,6 +46,7 @@ def _make_cfg(
     skills: list[dict] | None = None,
     user_id: str | None = None,
     agent_id: str | None = None,
+    agent_runtime_name: str | None = None,
 ) -> AgentConfig:
     """Construct a minimal ``AgentConfig`` for runtime tests.
 
@@ -63,12 +64,11 @@ def _make_cfg(
         agent_skills=skills,
         user_id=user_id,
         agent_id=agent_id,
+        agent_runtime_name=agent_runtime_name,
     )
 
 
-def _seed_skill_on_disk(
-    root: Path, *, slug: str, body: str = "# canonical\n"
-) -> Path:
+def _seed_skill_on_disk(root: Path, *, slug: str, body: str = "# canonical\n") -> Path:
     """Create an on-disk package skill source. Returns its directory."""
 
     src = root / "_canonical_skills" / slug
@@ -76,9 +76,7 @@ def _seed_skill_on_disk(
     (src / "SKILL.md").write_text(body)
     (src / "scripts").mkdir(exist_ok=True)
     (src / "scripts" / "run.py").write_text(
-        "import os, sys\n"
-        "print('skill=' + os.path.basename(os.getcwd()))\n"
-        "sys.exit(0)\n"
+        "import os, sys\nprint('skill=' + os.path.basename(os.getcwd()))\nsys.exit(0)\n"
     )
     return src
 
@@ -101,9 +99,7 @@ def _skill_descriptor_dict(skill_id: uuid.UUID, slug: str, src: Path) -> dict:
 
 class TestPerThreadRuntimeRoot:
     @pytest.mark.asyncio
-    async def test_per_thread_runtime_root_isolated(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_per_thread_runtime_root_isolated(self, tmp_path: Path) -> None:
         """Two distinct ``thread_id`` values materialize to two distinct
         runtime root directories. Content written into thread A's root
         is invisible from thread B's root.
@@ -137,8 +133,7 @@ class TestPerThreadRuntimeRoot:
         # symlinks=False ⇒ writes through one path do NOT mutate the other.
         skill_a.write_text("# THREAD A ONLY\n")
         assert skill_b.read_text() == "# canonical\n", (
-            "copytree(symlinks=False) failed — thread-a write leaked into "
-            "thread-b's runtime root"
+            "copytree(symlinks=False) failed — thread-a write leaked into thread-b's runtime root"
         )
         # And neither leaked back to the canonical source.
         assert (src / "SKILL.md").read_text() == "# canonical\n", (
@@ -171,9 +166,7 @@ class TestPerThreadRuntimeRoot:
             skill_directory="/runtime/thread-only-s1/skills/s2/",
             command="python scripts/run.py",
         )
-        assert "not attached" in result, (
-            f"Expected unselected-slug rejection, got: {result!r}"
-        )
+        assert "not attached" in result, f"Expected unselected-slug rejection, got: {result!r}"
         assert "s2" in result
 
     @pytest.mark.asyncio
@@ -189,9 +182,7 @@ class TestPerThreadRuntimeRoot:
         cfg_a = _make_cfg(
             thread_id="thread-user-a",
             user_id=str(uuid.uuid4()),
-            skills=[
-                _skill_descriptor_dict(uuid.uuid4(), "user-a-skill", src_a)
-            ],
+            skills=[_skill_descriptor_dict(uuid.uuid4(), "user-a-skill", src_a)],
         )
         cfg_b = _make_cfg(
             thread_id="thread-user-b",
@@ -214,6 +205,33 @@ class TestPerThreadRuntimeRoot:
         # And User B's runtime root is a separate dir from User A's.
         # The thread_id scope is the per-user partition.
         assert "thread-user-a" not in str(ctx_b.runtime_root)
+
+    def test_runtime_root_can_be_scoped_by_agent_runtime_name(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        src = _seed_skill_on_disk(tmp_path, slug="calendar")
+        cfg = _make_cfg(
+            thread_id="thread-1",
+            agent_id=str(uuid.uuid4()),
+            user_id=str(uuid.uuid4()),
+            agent_runtime_name="agent_1234abcd",
+            skills=[
+                _skill_descriptor_dict(
+                    uuid.uuid4(),
+                    "calendar",
+                    src,
+                )
+            ],
+        )
+
+        ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
+
+        assert (
+            ctx.runtime_root
+            == tmp_path / "runtime" / "thread-1" / "agents" / "agent_1234abcd" / "skills"
+        )
+        assert ctx.descriptors["calendar"].runtime_storage_path == ctx.runtime_root / "calendar"
 
 
 # ===========================================================================
@@ -294,9 +312,7 @@ class TestExecuteInSkillPathValidation:
         assert "SECRET_PASTE=host-leak-value" not in result
 
     @pytest.mark.asyncio
-    async def test_execute_in_skill_allows_curl_with_base_assignment(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_execute_in_skill_allows_curl_with_base_assignment(self, tmp_path: Path) -> None:
         """k-skill docs often show a BASE=... + curl snippet. The runtime
         should execute that shape without opening arbitrary shell execution."""
 
@@ -307,25 +323,18 @@ class TestExecuteInSkillPathValidation:
             skills=[_skill_descriptor_dict(uuid.uuid4(), "curl", src)],
         )
         ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
-        payload_url = (
-            ctx.descriptors["curl"].runtime_storage_path / "payload.txt"
-        ).as_uri()
+        payload_url = (ctx.descriptors["curl"].runtime_storage_path / "payload.txt").as_uri()
         tool = _create_skill_execute_tool(ctx)
 
         result = await tool.coroutine(
             skill_directory="/runtime/thread-curl/skills/curl/",
-            command=(
-                f'BASE="${{KSKILL_PROXY_BASE_URL:-{payload_url}}}"\n'
-                'curl -fsS "${BASE}"'
-            ),
+            command=(f'BASE="${{KSKILL_PROXY_BASE_URL:-{payload_url}}}"\ncurl -fsS "${{BASE}}"'),
         )
 
         assert "curl-ok" in result
 
     @pytest.mark.asyncio
-    async def test_execute_in_skill_rejects_outside_runtime_root(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_execute_in_skill_rejects_outside_runtime_root(self, tmp_path: Path) -> None:
         """Absolute paths (``/etc/passwd``) and traversal (``../`` runs)
         must NOT escape the runtime root.
 
@@ -359,8 +368,7 @@ class TestExecuteInSkillPathValidation:
                 command="python scripts/run.py",
             )
             assert "Error:" in result, (
-                f"Traversal payload {attempt!r} did not return an error: "
-                f"{result!r}"
+                f"Traversal payload {attempt!r} did not return an error: {result!r}"
             )
             assert not result.startswith("skill="), (
                 f"Script ran for traversal payload {attempt!r}: {result!r}"
@@ -394,29 +402,25 @@ class TestExecuteInSkillPathValidation:
         build_skill_runtime_context(cfg_b, data_dir=tmp_path)
         # Mark thread B's copy so we can detect leak.
         (
-            (tmp_path / "runtime" / "thread-b" / "skills" / "s1" / "SKILL.md")
-            .write_text("# THREAD B PRIVATE MARKER\n")
+            (tmp_path / "runtime" / "thread-b" / "skills" / "s1" / "SKILL.md").write_text(
+                "# THREAD B PRIVATE MARKER\n"
+            )
         )
 
         tool_a = _create_skill_execute_tool(ctx_a)
         result = await tool_a.coroutine(
             # Spoofed prefix points at thread B but slug is still s1.
             skill_directory="/runtime/thread-b/skills/s1/",
-            command="python -c 'import pathlib; "
-            'print(pathlib.Path("SKILL.md").read_text())\'',
+            command="python -c 'import pathlib; print(pathlib.Path(\"SKILL.md\").read_text())'",
         )
         assert "THREAD B PRIVATE MARKER" not in result, (
             "Prefix spoof reached thread B's runtime root — isolation broken"
         )
         # Thread A's canonical body is what came back.
-        assert "canonical" in result, (
-            f"Expected thread A's SKILL.md content in result: {result!r}"
-        )
+        assert "canonical" in result, f"Expected thread A's SKILL.md content in result: {result!r}"
 
     @pytest.mark.asyncio
-    async def test_execute_in_skill_rejects_unselected_slug(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_execute_in_skill_rejects_unselected_slug(self, tmp_path: Path) -> None:
         """Slug not in ``ctx.descriptors`` → "skill not attached" error.
 
         Same as the unreachable-skill test but exercised through the
@@ -426,9 +430,7 @@ class TestExecuteInSkillPathValidation:
         src = _seed_skill_on_disk(tmp_path, slug="attached")
         cfg = _make_cfg(
             thread_id="thread-x",
-            skills=[
-                _skill_descriptor_dict(uuid.uuid4(), "attached", src)
-            ],
+            skills=[_skill_descriptor_dict(uuid.uuid4(), "attached", src)],
         )
         ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
         tool = _create_skill_execute_tool(ctx)
@@ -437,9 +439,9 @@ class TestExecuteInSkillPathValidation:
             skill_directory="/runtime/thread-x/skills/some-other-slug/",
             command="python scripts/run.py",
         )
-        assert result == (
-            "Error: skill not attached to this agent: some-other-slug"
-        ), f"unexpected error message: {result!r}"
+        assert result == ("Error: skill not attached to this agent: some-other-slug"), (
+            f"unexpected error message: {result!r}"
+        )
 
 
 # ===========================================================================
@@ -449,9 +451,7 @@ class TestExecuteInSkillPathValidation:
 
 class TestRuntimeRootCleanup:
     @pytest.mark.asyncio
-    async def test_runtime_root_cleanup_on_stale(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_runtime_root_cleanup_on_stale(self, tmp_path: Path) -> None:
         """``cleanup_stale_runtime_roots(retention_seconds=...)`` deletes
         directories whose mtime is older than the threshold. Fresh
         directories survive.
@@ -482,17 +482,13 @@ class TestRuntimeRootCleanup:
         two_hours_ago = time.time() - 2 * 3600
         os.utime(stale_dir, (two_hours_ago, two_hours_ago))
 
-        removed = cleanup_stale_runtime_roots(
-            tmp_path, retention_seconds=3600
-        )
+        removed = cleanup_stale_runtime_roots(tmp_path, retention_seconds=3600)
 
         assert removed == 1, f"expected 1 removal, got {removed}"
         assert not stale_dir.exists(), "stale runtime root not cleaned"
         assert fresh_dir.exists(), "fresh runtime root incorrectly swept"
 
-    def test_runtime_root_cleanup_no_runtime_dir_is_noop(
-        self, tmp_path: Path
-    ) -> None:
+    def test_runtime_root_cleanup_no_runtime_dir_is_noop(self, tmp_path: Path) -> None:
         """Empty ``data/`` (no ``runtime/`` subdir) must not raise — the
         sweep is best-effort and idempotent on startup before any
         conversation exists."""

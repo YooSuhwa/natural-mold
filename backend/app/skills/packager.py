@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import settings
-from app.skills.inspector import parse_skill_md
+from app.skills.inspector import SkillMetadataError, parse_skill_md
 
 
 @dataclass
@@ -88,8 +88,7 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
 
     if len(zip_bytes) > settings.skill_max_package_bytes:
         raise PackageError(
-            f"package too large: {len(zip_bytes)} bytes "
-            f"(max {settings.skill_max_package_bytes})"
+            f"package too large: {len(zip_bytes)} bytes (max {settings.skill_max_package_bytes})"
         )
 
     try:
@@ -106,7 +105,10 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
             raise PackageError("SKILL.md not found in archive (root or 1-level subdir)")
 
         raw = zf.read(skill_md)
-        parsed = parse_skill_md(raw)
+        try:
+            parsed = parse_skill_md(raw, require_metadata=True)
+        except SkillMetadataError as exc:
+            raise PackageError(str(exc)) from exc
         metadata = parsed["metadata"]
         body = parsed["body"]
 
@@ -128,7 +130,7 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
                 if not rel.startswith(prefix):
                     # File outside the skill subdir — skip silently (siblings).
                     continue
-                rel = rel[len(prefix):].lstrip("/\\")
+                rel = rel[len(prefix) :].lstrip("/\\")
             if not rel:
                 continue
 
@@ -148,9 +150,7 @@ def extract_package(zip_bytes: bytes, target_dir: Path) -> PackageInfo:
                 has_scripts = True
 
     name = (
-        metadata.get("name")
-        or (Path(skill_md).parent.name if prefix else "untitled")
-        or "untitled"
+        metadata.get("name") or (Path(skill_md).parent.name if prefix else "untitled") or "untitled"
     )
     description = str(metadata.get("description") or "")
     version = metadata.get("version")

@@ -129,6 +129,26 @@ def sanitize_tool_call_parameters(tool_name: str, args: Any) -> Any:
     return safe
 
 
+def enrich_subagent_tool_call_parameters(
+    tool_name: str,
+    parameters: Any,
+    subagent_display_names: dict[str, str] | None,
+) -> Any:
+    if tool_name != "task" or not isinstance(parameters, dict):
+        return parameters
+    runtime_name = parameters.get("subagent_type")
+    if not isinstance(runtime_name, str) or not subagent_display_names:
+        return parameters
+    display_name = subagent_display_names.get(runtime_name)
+    if not display_name:
+        return parameters
+    return {
+        **parameters,
+        "agent_runtime_name": runtime_name,
+        "agent_name": display_name,
+    }
+
+
 def _is_tool_selector_json(text: str) -> bool:
     """Check if text is LLMToolSelectorMiddleware output like {"tools":[...]}.
 
@@ -228,6 +248,7 @@ async def stream_agent_response(
     broker: EventBroker | None = None,
     persist_callback: PersistCallback | None = None,
     run_id: str | None = None,
+    subagent_display_names: dict[str, str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream agent SSE events.
 
@@ -438,6 +459,15 @@ async def stream_agent_response(
                             if key in emitted_tool_call_keys:
                                 continue
                             emitted_tool_call_keys.add(key)
+                        parameters = sanitize_tool_call_parameters(
+                            tc_name,
+                            tc.get("args", {}),
+                        )
+                        parameters = enrich_subagent_tool_call_parameters(
+                            tc_name,
+                            parameters,
+                            subagent_display_names,
+                        )
                         start_payload = {
                             "tool_name": tc_name,
                             # ADR-017 §13.2 — heuristic key-pattern
@@ -448,10 +478,7 @@ async def stream_agent_response(
                             # auth-style argument. Skill tool already
                             # redacts its own results at the executor
                             # layer; this protects MCP/regular tools.
-                            "parameters": sanitize_tool_call_parameters(
-                                tc_name,
-                                tc.get("args", {}),
-                            ),
+                            "parameters": parameters,
                         }
                         if tc_id:
                             start_payload["tool_call_id"] = tc_id

@@ -44,6 +44,14 @@ def _load_system_prompt() -> str:
         )
 
 
+def _assistant_write_interrupt_on(write_tools: list[Any]) -> dict[str, Any]:
+    return {
+        tool.name: {"allowed_decisions": ["approve", "edit", "reject"]}
+        for tool in write_tools
+        if isinstance(getattr(tool, "name", None), str) and tool.name
+    }
+
+
 async def build_assistant_agent(
     db: AsyncSession,
     agent_id: uuid.UUID,
@@ -73,11 +81,10 @@ async def build_assistant_agent(
     )
 
     # 도구 35개 = 16 read + 18 write + 1 clarify
-    tools = (
-        build_read_tools(db, agent_id, user_id)
-        + build_write_tools(db, agent_id, user_id)
-        + build_clarify_tools()
-    )
+    read_tools = build_read_tools(db, agent_id, user_id)
+    write_tools = build_write_tools(db, agent_id, user_id)
+    clarify_tools = build_clarify_tools()
+    tools = read_tools + write_tools + clarify_tools
 
     system_prompt = _load_system_prompt()
 
@@ -86,6 +93,7 @@ async def build_assistant_agent(
         tools=tools,  # type: ignore[arg-type]  # StructuredTool은 BaseTool 호환 (langchain runtime 동작 OK)
         system_prompt=system_prompt,
         middleware=[],
+        interrupt_on=_assistant_write_interrupt_on(write_tools),
         checkpointer=get_checkpointer(),
         name=f"assistant_{str(agent_id)[:8]}",
     )

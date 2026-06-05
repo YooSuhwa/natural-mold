@@ -77,6 +77,10 @@ def _zip_minimal_skill(name: str = "demo") -> bytes:
     return buf.getvalue()
 
 
+def _skill_md(name: str, description: str = "demo") -> str:
+    return f'---\nname: {name}\ndescription: "{description}"\nversion: "1.0.0"\n---\n\nBody\n'
+
+
 # ===========================================================================
 # m41 — column defaults + backfill semantics
 # ===========================================================================
@@ -206,7 +210,7 @@ class TestLegacyRoutersStillWork:
             json={
                 "name": "Legacy Skill",
                 "description": "no marketplace metadata",
-                "content": "hello",
+                "content": _skill_md("legacy-skill", "no marketplace metadata"),
             },
         )
         assert resp.status_code == 201, resp.text
@@ -313,7 +317,7 @@ class TestResponseEmbedsAfterSliceA:
     ) -> None:
         resp = await client.post(
             "/api/skills",
-            json={"name": "Embed Probe", "content": "x"},
+            json={"name": "Embed Probe", "content": _skill_md("embed-probe")},
         )
         assert resp.status_code == 201, resp.text
         body = resp.json()
@@ -422,7 +426,7 @@ class TestUploadOriginKindForNewUploads:
     ) -> None:
         resp = await client.post(
             "/api/skills",
-            json={"name": "T-Origin", "content": "body"},
+            json={"name": "T-Origin", "content": _skill_md("t-origin")},
         )
         assert resp.status_code == 201, resp.text
         skill_id = uuid.UUID(resp.json()["id"])

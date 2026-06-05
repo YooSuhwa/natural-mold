@@ -15,6 +15,10 @@ from typing import Any
 import frontmatter
 
 
+class SkillMetadataError(ValueError):
+    """Raised when a SKILL.md document lacks required skill metadata."""
+
+
 @dataclass(frozen=True)
 class FileInfo:
     path: str  # POSIX-style relative path
@@ -22,7 +26,22 @@ class FileInfo:
     is_dir: bool
 
 
-def parse_skill_md(raw: str | bytes) -> dict[str, Any]:
+def validate_skill_metadata(metadata: dict[str, Any]) -> None:
+    """Validate Deep Agents' required SKILL.md frontmatter fields."""
+
+    for field_name in ("name", "description"):
+        value = metadata.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            raise SkillMetadataError(
+                f"SKILL.md frontmatter field {field_name!r} must be a non-empty string"
+            )
+
+
+def parse_skill_md(
+    raw: str | bytes,
+    *,
+    require_metadata: bool = False,
+) -> dict[str, Any]:
     """Parse a SKILL.md document into ``{"metadata": {...}, "body": "..."}``.
 
     ``frontmatter`` accepts both bytes and str; we normalize the return shape
@@ -32,7 +51,10 @@ def parse_skill_md(raw: str | bytes) -> dict[str, Any]:
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
     post = frontmatter.loads(raw)
-    return {"metadata": dict(post.metadata or {}), "body": post.content or ""}
+    metadata = dict(post.metadata or {})
+    if require_metadata:
+        validate_skill_metadata(metadata)
+    return {"metadata": metadata, "body": post.content or ""}
 
 
 def _resolve_safely(root: Path, rel: str) -> Path:
@@ -73,9 +95,7 @@ def list_files(root: Path | str, max_depth: int = 6) -> list[FileInfo]:
             size = entry.stat().st_size if entry.is_file() else 0
         except OSError:
             size = 0
-        items.append(
-            FileInfo(path=rel.as_posix(), size=size, is_dir=entry.is_dir())
-        )
+        items.append(FileInfo(path=rel.as_posix(), size=size, is_dir=entry.is_dir()))
     return items
 
 
@@ -96,4 +116,11 @@ def read_file_safe(root: Path | str, rel: str, *, max_bytes: int = 5_242_880) ->
     return target.read_bytes()
 
 
-__all__ = ["FileInfo", "list_files", "parse_skill_md", "read_file_safe"]
+__all__ = [
+    "FileInfo",
+    "SkillMetadataError",
+    "list_files",
+    "parse_skill_md",
+    "read_file_safe",
+    "validate_skill_metadata",
+]
