@@ -97,19 +97,15 @@ async def _seed_user(db: AsyncSession, uid: uuid.UUID, *, is_super: bool = False
         await db.commit()
 
 
+def _skill_md(name: str) -> str:
+    return f'---\nname: {name}\ndescription: "demo"\nversion: "1.0.0"\n---\n\nBody\n'
+
+
 def _zip_skill(name: str, *, with_secret: bool = False) -> bytes:
     """Build a minimal .skill package. ``with_secret=True`` embeds an
     ``.env`` so the secret_scan integration tests can use it too."""
 
-    files: dict[str, str] = {
-        "SKILL.md": (
-            "---\n"
-            f"name: {name}\n"
-            'description: "demo"\n'
-            'version: "1.0.0"\n'
-            "---\n\nBody\n"
-        )
-    }
+    files: dict[str, str] = {"SKILL.md": _skill_md(name)}
     if with_secret:
         files[".env"] = "OPENAI_API_KEY=sk-realisticlooking1234567890\n"
     buf = io.BytesIO()
@@ -125,7 +121,7 @@ def _seed_snapshot_dir(root: Path, slug: str = "snap") -> Path:
     storage = root / "marketplace-versions" / slug
     storage.mkdir(parents=True, exist_ok=True)
     (storage / "SKILL.md").write_text(
-        f"---\nname: {slug}\nversion: '0.1.0'\n---\n\nbody\n",
+        f"---\nname: {slug}\ndescription: demo\nversion: '0.1.0'\n---\n\nbody\n",
         encoding="utf-8",
     )
     return storage
@@ -215,14 +211,10 @@ class TestScenario_10_1_BuiltInSkillInstall:
             name="korean-spell-check",
         )
 
-        with patch.object(
-            skill_service.settings, "data_root", str(tmp_path)
-        ):
+        with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             async with await _client_for(_user(user_id)) as client:
                 # Catalog returns the system item.
-                catalog = await client.get(
-                    "/api/marketplace/items?visibility=system"
-                )
+                catalog = await client.get("/api/marketplace/items?visibility=system")
                 assert catalog.status_code == 200
                 catalog_slugs = {r["slug"] for r in catalog.json()}
                 assert item.slug in catalog_slugs
@@ -240,9 +232,7 @@ class TestScenario_10_1_BuiltInSkillInstall:
 
         # Installed Skill row exists, owned by the installer (not the
         # system item), with marketplace lineage populated.
-        skill = await db_session.get(
-            Skill, uuid.UUID(body["installed_skill_id"])
-        )
+        skill = await db_session.get(Skill, uuid.UUID(body["installed_skill_id"]))
         assert skill is not None
         assert skill.user_id == user_id, (
             "installed skill must belong to the installer, not the system"
@@ -296,9 +286,7 @@ class TestScenario_10_2_CredentialRequiredFlow:
         ]
         await db_session.commit()
 
-        with patch.object(
-            skill_service.settings, "data_root", str(tmp_path)
-        ):
+        with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             async with await _client_for(_user(user_id)) as client:
                 resp = await client.post(
                     f"/api/marketplace/items/{item.id}/install",
@@ -331,9 +319,7 @@ class TestScenario_10_3_PublishThenInstallByPeer:
         await _seed_user(db_session, user_a)
         await _seed_user(db_session, user_b)
 
-        with patch.object(
-            skill_service.settings, "data_root", str(tmp_path)
-        ):
+        with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             # User A creates a text skill + publishes it.
             skill = await skill_service.create_text_skill(
                 db_session,
@@ -341,7 +327,7 @@ class TestScenario_10_3_PublishThenInstallByPeer:
                 name="Shared Skill",
                 slug=None,
                 description="from user A",
-                content="# body\n",
+                content=_skill_md("shared-skill"),
             )
             await db_session.commit()
 
@@ -361,9 +347,7 @@ class TestScenario_10_3_PublishThenInstallByPeer:
 
             # User B can fetch via direct ID (unlisted public, link-only).
             async with await _client_for(_user(user_b)) as client_b:
-                detail = await client_b.get(
-                    f"/api/marketplace/items/{item_id}"
-                )
+                detail = await client_b.get(f"/api/marketplace/items/{item_id}")
                 assert detail.status_code == 200, detail.text
                 # User B installs.
                 inst = await client_b.post(
@@ -375,9 +359,7 @@ class TestScenario_10_3_PublishThenInstallByPeer:
         body = inst.json()
         assert body["install_status"] == "active"
         # User B's installed skill is user-owned, lineage links to item.
-        new_skill = await db_session.get(
-            Skill, uuid.UUID(body["installed_skill_id"])
-        )
+        new_skill = await db_session.get(Skill, uuid.UUID(body["installed_skill_id"]))
         assert new_skill is not None
         assert new_skill.user_id == user_b
         assert new_skill.source_marketplace_item_id == uuid.UUID(item_id)
@@ -427,36 +409,25 @@ class TestScenario_10_4_RestrictedACL:
         # Insert ACL entry for user B.
         from app.models.marketplace import MarketplaceItemACL
 
-        db_session.add(
-            MarketplaceItemACL(
-                item_id=item.id, user_id=user_b, permission="install"
-            )
-        )
+        db_session.add(MarketplaceItemACL(item_id=item.id, user_id=user_b, permission="install"))
         await db_session.commit()
 
-        with patch.object(
-            skill_service.settings, "data_root", str(tmp_path)
-        ):
+        with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             # User C — must 404 on both detail and install (oracle uniform).
             async with await _client_for(_user(user_c)) as client_c:
-                r_detail_c = await client_c.get(
-                    f"/api/marketplace/items/{item.id}"
-                )
+                r_detail_c = await client_c.get(f"/api/marketplace/items/{item.id}")
                 r_install_c = await client_c.post(
                     f"/api/marketplace/items/{item.id}/install",
                     json={"install_mode": "reuse_or_update"},
                 )
             assert r_detail_c.status_code == 404
             assert r_install_c.status_code == 404, (
-                "non-ACL install must collapse to 404, not 403 — "
-                "enumeration oracle leak"
+                "non-ACL install must collapse to 404, not 403 — enumeration oracle leak"
             )
 
             # User B — full flow.
             async with await _client_for(_user(user_b)) as client_b:
-                r_detail_b = await client_b.get(
-                    f"/api/marketplace/items/{item.id}"
-                )
+                r_detail_b = await client_b.get(f"/api/marketplace/items/{item.id}")
                 assert r_detail_b.status_code == 200
                 r_install_b = await client_b.post(
                     f"/api/marketplace/items/{item.id}/install",
@@ -487,9 +458,7 @@ class TestScenario_10_5_UpdateStrategies:
             db_session, owner_id=None, storage_path=snap_v1, is_system=True
         )
 
-        with patch.object(
-            skill_service.settings, "data_root", str(tmp_path)
-        ):
+        with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             async with await _client_for(_user(user_id)) as client:
                 inst = await client.post(
                     f"/api/marketplace/items/{item.id}/install",
@@ -550,16 +519,14 @@ class TestScenario_10_6_PublicationStatusBadge:
         user_id = uuid.uuid4()
         await _seed_user(db_session, user_id)
 
-        with patch.object(
-            skill_service.settings, "data_root", str(tmp_path)
-        ):
+        with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             skill = await skill_service.create_text_skill(
                 db_session,
                 user_id=user_id,
                 name="Pub Probe",
                 slug=None,
                 description="probe",
-                content="# body\n",
+                content=_skill_md("pub-probe"),
             )
             await db_session.commit()
 
@@ -567,10 +534,7 @@ class TestScenario_10_6_PublicationStatusBadge:
                 # Before publish — not_published.
                 r0 = await client.get(f"/api/skills/{skill.id}")
                 assert r0.status_code == 200
-                assert (
-                    r0.json()["publication_summary"]["state"]
-                    == "not_published"
-                )
+                assert r0.json()["publication_summary"]["state"] == "not_published"
 
                 # Publish as private — published_private.
                 pub = await client.post(
@@ -582,9 +546,7 @@ class TestScenario_10_6_PublicationStatusBadge:
                 r1 = await client.get(f"/api/skills/{skill.id}")
                 assert r1.status_code == 200
                 state = r1.json()["publication_summary"]["state"]
-                assert state == "published_private", (
-                    f"expected published_private, got {state!r}"
-                )
+                assert state == "published_private", f"expected published_private, got {state!r}"
 
 
 # ===========================================================================
@@ -617,9 +579,7 @@ class TestScenario_10_7_SuperUserListsItem:
 
         async with await _client_for(_user(user_id)) as client:
             # Default catalog excludes unlisted-public.
-            r0 = await client.get(
-                "/api/marketplace/items?visibility=public&is_listed=true"
-            )
+            r0 = await client.get("/api/marketplace/items?visibility=public&is_listed=true")
             assert item.slug not in {row["slug"] for row in r0.json()}
 
         # Super_user flips the flag (admin endpoint may not exist yet —
@@ -631,10 +591,7 @@ class TestScenario_10_7_SuperUserListsItem:
         await db_session.commit()
 
         async with await _client_for(_user(user_id)) as client:
-            r1 = await client.get(
-                "/api/marketplace/items?visibility=public&is_listed=true"
-            )
+            r1 = await client.get("/api/marketplace/items?visibility=public&is_listed=true")
             assert item.slug in {row["slug"] for row in r1.json()}, (
-                "after super_user listing, item must appear in default "
-                "catalog view"
+                "after super_user listing, item must appear in default catalog view"
             )

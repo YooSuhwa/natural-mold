@@ -20,9 +20,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.credentials.external_secrets import resolve_external_refs
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
-from app.services import audit_service
 from app.security import cipher
 from app.security.key_provider import get_active_key, get_keys
+from app.services import audit_service
 
 logger = logging.getLogger(__name__)
 

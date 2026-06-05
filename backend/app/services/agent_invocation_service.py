@@ -16,6 +16,7 @@ from app.agent_runtime.identity import (
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
+from app.agent_runtime.subagents import build_subagents_config
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
 from app.exceptions import ValidationError
@@ -57,9 +58,7 @@ class AgentInvocationPrincipal:
         )
 
 
-def _with_user_display_name_context(
-    system_prompt: str, user: CurrentUser | None
-) -> str:
+def _with_user_display_name_context(system_prompt: str, user: CurrentUser | None) -> str:
     if user is None:
         return system_prompt
     display_name = (user.display_name or "").strip()
@@ -177,7 +176,7 @@ async def build_agent_config_for_loaded_agent(
         current_user,
     )
 
-    return AgentConfig(
+    cfg = AgentConfig(
         provider=agent.model.provider,
         model_name=agent.model.model_name,
         api_key=api_key,
@@ -195,9 +194,7 @@ async def build_agent_config_for_loaded_agent(
             float(agent.model.cost_per_input_token) if agent.model.cost_per_input_token else None
         ),
         cost_per_output_token=(
-            float(agent.model.cost_per_output_token)
-            if agent.model.cost_per_output_token
-            else None
+            float(agent.model.cost_per_output_token) if agent.model.cost_per_output_token else None
         ),
         user_id=str(agent.user_id),
         model_id=str(agent.model.id),
@@ -212,3 +209,10 @@ async def build_agent_config_for_loaded_agent(
         identity_mode=identity.identity_mode,
         agent_runtime_name=identity.runtime_name,
     )
+    cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
+        agent,
+        db=db,
+        parent_cfg=cfg,
+        is_trigger_mode=source == "trigger",
+    )
+    return cfg

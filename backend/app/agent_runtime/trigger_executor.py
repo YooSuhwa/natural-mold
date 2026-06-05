@@ -23,12 +23,13 @@ from app.agent_runtime.identity import (
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
+from app.agent_runtime.subagents import build_subagents_config
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
 from app.models.model import Model
 from app.services import chat_service, trigger_service
-from app.tools.risk import format_trigger_block_reason, trigger_blocked_tools
+from app.tools.risk import format_trigger_block_reason
 
 logger = logging.getLogger(__name__)
 
@@ -196,9 +197,9 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             identity=identity,
         )
         agent_skills = chat_service.build_agent_skills(agent)
-        blocked_tools = trigger_blocked_tools(
-            tools_config,
-            has_agent_skills=bool(agent_skills),
+        blocked_tools = await chat_service.trigger_blocked_tools_for_agent_tree(
+            agent,
+            db=db,
         )
         if blocked_tools:
             reason = format_trigger_block_reason(blocked_tools)
@@ -255,6 +256,26 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
             identity_mode=identity.identity_mode,
             agent_runtime_name=identity.runtime_name,
         )
+        try:
+            cfg.subagents_config, cfg.subagent_display_names = await build_subagents_config(
+                agent,
+                db=db,
+                parent_cfg=cfg,
+                is_trigger_mode=True,
+            )
+        except AgentIdentityError as exc:
+            logger.warning("Trigger %s blocked by subagent identity policy: %s", trigger_id, exc)
+            await trigger_service.finish_trigger_run(
+                db,
+                trigger=trigger,
+                run=run,
+                conversation=conversation,
+                status="failed",
+                error_message=str(exc),
+                thread_id=str(conversation.id),
+            )
+            await db.refresh(run)
+            return run
         try:
             output = await execute_agent_invoke(
                 cfg,

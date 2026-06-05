@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.skill import Skill
 from app.skills import service as skill_service
+from app.skills.inspector import SkillMetadataError, parse_skill_md
 from app.skills.packager import PackageError, extract_package
 from app.storage.paths import resolve_data_path
 from tests.conftest import TEST_USER_ID
@@ -41,11 +42,28 @@ def _skill_md(name: str = "demo", description: str = "demo skill") -> str:
         "---\n"
         f"name: {name}\n"
         f'description: "{description}"\n'
-        "version: \"1.0.0\"\n"
+        'version: "1.0.0"\n'
         "---\n\n"
         "# Demo body\n"
         "Use scripts/run.py.\n"
     )
+
+
+# ===========================================================================
+# Inspector — SKILL.md frontmatter
+# ===========================================================================
+
+
+class TestInspector:
+    def test_parse_skill_md_requires_name_and_description(self) -> None:
+        valid = parse_skill_md(_skill_md("frontmatter"), require_metadata=True)
+        assert valid["metadata"]["name"] == "frontmatter"
+
+        with pytest.raises(SkillMetadataError, match="description"):
+            parse_skill_md(
+                "---\nname: missing-description\n---\n\n# Body\n",
+                require_metadata=True,
+            )
 
 
 # ===========================================================================
@@ -55,9 +73,8 @@ def _skill_md(name: str = "demo", description: str = "demo skill") -> str:
 
 class TestTextSkill:
     @pytest.mark.asyncio
-    async def test_create_persists_to_disk(
-        self, db: AsyncSession, tmp_path: Path
-    ) -> None:
+    async def test_create_persists_to_disk(self, db: AsyncSession, tmp_path: Path) -> None:
+        content = _skill_md("my-skill", "desc")
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             skill = await skill_service.create_text_skill(
                 db,
@@ -65,22 +82,22 @@ class TestTextSkill:
                 name="My Skill",
                 slug=None,
                 description="desc",
-                content="hello world",
+                content=content,
             )
             await db.commit()
             await db.refresh(skill)
 
             assert skill.kind == "text"
             assert skill.slug == "my-skill"
-            assert skill.size_bytes == len(b"hello world")
+            assert skill.size_bytes == len(content.encode("utf-8"))
             assert skill.content_hash and len(skill.content_hash) == 64
             assert skill.storage_path
-            assert resolve_data_path(skill.storage_path).read_text() == "hello world"  # noqa: ASYNC240
+            assert resolve_data_path(skill.storage_path).read_text() == content  # noqa: ASYNC240
 
     @pytest.mark.asyncio
-    async def test_update_text_content_rehashes(
-        self, db: AsyncSession, tmp_path: Path
-    ) -> None:
+    async def test_update_text_content_rehashes(self, db: AsyncSession, tmp_path: Path) -> None:
+        v1 = _skill_md("a", "first version")
+        v2 = _skill_md("a", "updated version")
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             skill = await skill_service.create_text_skill(
                 db,
@@ -88,23 +105,21 @@ class TestTextSkill:
                 name="A",
                 slug="a",
                 description=None,
-                content="v1",
+                content=v1,
             )
             await db.commit()
             old_hash = skill.content_hash
-            await skill_service.update_text_content(db, skill=skill, content="v2 longer")
+            await skill_service.update_text_content(db, skill=skill, content=v2)
             await db.commit()
             await db.refresh(skill)
 
             assert skill.content_hash != old_hash
-            assert skill.size_bytes == len(b"v2 longer")
+            assert skill.size_bytes == len(v2.encode("utf-8"))
             assert skill.storage_path is not None
-            assert resolve_data_path(skill.storage_path).read_text() == "v2 longer"  # noqa: ASYNC240
+            assert resolve_data_path(skill.storage_path).read_text() == v2  # noqa: ASYNC240
 
     @pytest.mark.asyncio
-    async def test_delete_removes_disk(
-        self, db: AsyncSession, tmp_path: Path
-    ) -> None:
+    async def test_delete_removes_disk(self, db: AsyncSession, tmp_path: Path) -> None:
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             skill = await skill_service.create_text_skill(
                 db,
@@ -112,7 +127,7 @@ class TestTextSkill:
                 name="ToDelete",
                 slug="to-delete",
                 description=None,
-                content="bye",
+                content=_skill_md("to-delete"),
             )
             await db.commit()
             assert skill.storage_path is not None
@@ -131,7 +146,7 @@ class TestTextSkill:
                 name="Alpha",
                 slug="alpha",
                 description=None,
-                content="a",
+                content=_skill_md("alpha"),
             )
             await skill_service.create_text_skill(
                 db,
@@ -139,7 +154,7 @@ class TestTextSkill:
                 name="Bravo",
                 slug="bravo",
                 description=None,
-                content="b",
+                content=_skill_md("bravo"),
             )
             await db.commit()
 
@@ -149,6 +164,23 @@ class TestTextSkill:
         only_alpha = await skill_service.list_skills(db, TEST_USER_ID, query="alph")
         assert len(only_alpha) == 1
         assert only_alpha[0].name == "Alpha"
+
+    @pytest.mark.asyncio
+    async def test_create_text_skill_rejects_missing_frontmatter(
+        self, db: AsyncSession, tmp_path: Path
+    ) -> None:
+        with (
+            patch.object(skill_service.settings, "data_root", str(tmp_path)),
+            pytest.raises(SkillMetadataError, match="description"),
+        ):
+            await skill_service.create_text_skill(
+                db,
+                user_id=TEST_USER_ID,
+                name="Invalid",
+                slug=None,
+                description=None,
+                content="---\nname: invalid\n---\n\n# Missing description\n",
+            )
 
 
 # ===========================================================================
@@ -208,6 +240,11 @@ class TestPackager:
         with pytest.raises(PackageError, match="SKILL.md"):
             extract_package(zb, tmp_path)
 
+    def test_missing_required_frontmatter_rejected(self, tmp_path: Path) -> None:
+        zb = _zip_with({"SKILL.md": "---\nname: no-description\n---\n\n# Body\n"})
+        with pytest.raises(PackageError, match="description"):
+            extract_package(zb, tmp_path)
+
     def test_invalid_zip(self, tmp_path: Path) -> None:
         with pytest.raises(PackageError, match="invalid ZIP"):
             extract_package(b"not a zip", tmp_path)
@@ -228,9 +265,7 @@ class TestPackageSkill:
             }
         )
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            skill = await skill_service.create_package_skill(
-                db, user_id=TEST_USER_ID, zip_bytes=zb
-            )
+            skill = await skill_service.create_package_skill(db, user_id=TEST_USER_ID, zip_bytes=zb)
             await db.commit()
             await db.refresh(skill)
 
@@ -248,9 +283,7 @@ class TestPackageSkill:
     ) -> None:
         zb = _zip_with({"SKILL.md": _skill_md("trav")})
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            skill = await skill_service.create_package_skill(
-                db, user_id=TEST_USER_ID, zip_bytes=zb
-            )
+            skill = await skill_service.create_package_skill(db, user_id=TEST_USER_ID, zip_bytes=zb)
             await db.commit()
             await db.refresh(skill)
 
@@ -265,13 +298,14 @@ class TestPackageSkill:
 
 class TestRouter:
     @pytest.mark.asyncio
-    async def test_create_and_get_text(
-        self, client: AsyncClient, tmp_path: Path
-    ) -> None:
+    async def test_create_and_get_text(self, client: AsyncClient, tmp_path: Path) -> None:
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             resp = await client.post(
                 "/api/skills",
-                json={"name": "Router Skill", "content": "hi"},
+                json={
+                    "name": "Router Skill",
+                    "content": _skill_md("router-skill"),
+                },
             )
             assert resp.status_code == 201
             data = resp.json()
@@ -284,13 +318,9 @@ class TestRouter:
             assert resp.json()["name"] == "Router Skill"
 
     @pytest.mark.asyncio
-    async def test_list_filter_kind(
-        self, client: AsyncClient, tmp_path: Path
-    ) -> None:
+    async def test_list_filter_kind(self, client: AsyncClient, tmp_path: Path) -> None:
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            await client.post(
-                "/api/skills", json={"name": "T1", "content": "x"}
-            )
+            await client.post("/api/skills", json={"name": "T1", "content": _skill_md("t1")})
             zb = _zip_with({"SKILL.md": _skill_md("p1")})
             await client.post(
                 "/api/skills/upload",
@@ -304,12 +334,10 @@ class TestRouter:
             assert data[0]["kind"] == "package"
 
     @pytest.mark.asyncio
-    async def test_patch_metadata(
-        self, client: AsyncClient, tmp_path: Path
-    ) -> None:
+    async def test_patch_metadata(self, client: AsyncClient, tmp_path: Path) -> None:
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             resp = await client.post(
-                "/api/skills", json={"name": "Old", "content": "x"}
+                "/api/skills", json={"name": "Old", "content": _skill_md("old")}
             )
             sid = resp.json()["id"]
 
@@ -323,33 +351,41 @@ class TestRouter:
             assert data["description"] == "updated"
 
     @pytest.mark.asyncio
-    async def test_put_text_content(
-        self, client: AsyncClient, tmp_path: Path
-    ) -> None:
+    async def test_put_text_content(self, client: AsyncClient, tmp_path: Path) -> None:
+        v1 = _skill_md("content-skill", "first")
+        v2 = _skill_md("content-skill", "second")
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
-            resp = await client.post(
-                "/api/skills", json={"name": "C", "content": "v1"}
-            )
+            resp = await client.post("/api/skills", json={"name": "C", "content": v1})
             sid = resp.json()["id"]
             old_hash = resp.json()["content_hash"]
 
-            resp = await client.put(
-                f"/api/skills/{sid}/content", json={"content": "v2 changed"}
-            )
+            resp = await client.put(f"/api/skills/{sid}/content", json={"content": v2})
             assert resp.status_code == 200
             assert resp.json()["content_hash"] != old_hash
 
             resp = await client.get(f"/api/skills/{sid}/content")
             assert resp.status_code == 200
-            assert resp.json()["content"] == "v2 changed"
+            assert resp.json()["content"] == v2
 
     @pytest.mark.asyncio
-    async def test_upload_package_router(
+    async def test_create_invalid_text_returns_422(
         self, client: AsyncClient, tmp_path: Path
     ) -> None:
-        zb = _zip_with(
-            {"SKILL.md": _skill_md("router-pkg"), "scripts/run.py": "pass"}
-        )
+        with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+            resp = await client.post(
+                "/api/skills",
+                json={
+                    "name": "Invalid",
+                    "content": "---\nname: invalid\n---\n\n# Missing description\n",
+                },
+            )
+            assert resp.status_code == 422
+            assert resp.json()["error"]["code"] == "INVALID_SKILL_PACKAGE"
+            assert "description" in resp.json()["error"]["message"]
+
+    @pytest.mark.asyncio
+    async def test_upload_package_router(self, client: AsyncClient, tmp_path: Path) -> None:
+        zb = _zip_with({"SKILL.md": _skill_md("router-pkg"), "scripts/run.py": "pass"})
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             resp = await client.post(
                 "/api/skills/upload",
@@ -371,9 +407,7 @@ class TestRouter:
             assert resp.text == "pass"
 
     @pytest.mark.asyncio
-    async def test_file_traversal_rejected(
-        self, client: AsyncClient, tmp_path: Path
-    ) -> None:
+    async def test_file_traversal_rejected(self, client: AsyncClient, tmp_path: Path) -> None:
         zb = _zip_with({"SKILL.md": _skill_md()})
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             resp = await client.post(
@@ -382,18 +416,15 @@ class TestRouter:
             )
             sid = resp.json()["id"]
 
-            resp = await client.get(
-                f"/api/skills/{sid}/files/../../../etc/passwd"
-            )
+            resp = await client.get(f"/api/skills/{sid}/files/../../../etc/passwd")
             assert resp.status_code in (400, 404)
 
     @pytest.mark.asyncio
-    async def test_delete_router(
-        self, client: AsyncClient, tmp_path: Path
-    ) -> None:
+    async def test_delete_router(self, client: AsyncClient, tmp_path: Path) -> None:
         with patch.object(skill_service.settings, "data_root", str(tmp_path)):
             resp = await client.post(
-                "/api/skills", json={"name": "Bye", "content": "x"}
+                "/api/skills",
+                json={"name": "Bye", "content": _skill_md("bye")},
             )
             sid = resp.json()["id"]
 
@@ -404,14 +435,32 @@ class TestRouter:
             assert resp.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_invalid_package_returns_422(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_invalid_package_returns_422(self, client: AsyncClient) -> None:
         resp = await client.post(
             "/api/skills/upload",
             files={"file": ("bad", b"not a zip", "application/zip")},
         )
         assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_overwriting_package_skill_md_requires_frontmatter(
+        self, client: AsyncClient, tmp_path: Path
+    ) -> None:
+        zb = _zip_with({"SKILL.md": _skill_md("router-edit")})
+        with patch.object(skill_service.settings, "data_root", str(tmp_path)):
+            resp = await client.post(
+                "/api/skills/upload",
+                files={"file": ("p.skill", zb, "application/zip")},
+            )
+            assert resp.status_code == 201
+            sid = resp.json()["id"]
+
+            resp = await client.put(
+                f"/api/skills/{sid}/files/SKILL.md",
+                json={"content": "---\nname: router-edit\n---\n\n# Missing description\n"},
+            )
+            assert resp.status_code == 422
+            assert resp.json()["error"]["code"] == "INVALID_SKILL_PACKAGE"
 
 
 # ===========================================================================
@@ -421,9 +470,7 @@ class TestRouter:
 
 class TestIsolation:
     @pytest.mark.asyncio
-    async def test_list_other_user_excluded(
-        self, db: AsyncSession, tmp_path: Path
-    ) -> None:
+    async def test_list_other_user_excluded(self, db: AsyncSession, tmp_path: Path) -> None:
         # Seed a skill for OTHER_USER_ID directly (no FK enforcement on aiosqlite).
         other = Skill(
             id=uuid.uuid4(),

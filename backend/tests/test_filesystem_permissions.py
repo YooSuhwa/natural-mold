@@ -100,15 +100,39 @@ def test_scoped_filesystem_permissions_only_allow_current_runtime_surfaces() -> 
     assert _check_fs_permission(permissions, "write", "/agents/agent-a/AGENTS.md") == "allow"
     assert _check_fs_permission(permissions, "read", "/agents/agent-b/AGENTS.md") == "deny"
     assert (
-        _check_fs_permission(permissions, "read", "/conversations/thread-a/output.txt")
+        _check_fs_permission(permissions, "read", "/conversations/thread-a/output.txt") == "allow"
+    )
+    assert _check_fs_permission(permissions, "write", "/conversations/thread-a/new.txt") == "allow"
+    assert _check_fs_permission(permissions, "read", "/conversations/thread-b/output.txt") == "deny"
+
+
+def test_filesystem_permissions_can_scope_skills_by_agent_runtime_name() -> None:
+    from deepagents.middleware.filesystem import _check_fs_permission
+
+    from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
+
+    permissions = build_filesystem_permissions(
+        thread_id="thread-a",
+        agent_id="agent-a",
+        user_id="user-a",
+        selected_skill_slugs=["selected"],
+        agent_runtime_name="agent_1234abcd",
+    )
+
+    assert (
+        _check_fs_permission(
+            permissions,
+            "read",
+            "/runtime/thread-a/agents/agent_1234abcd/skills/selected/SKILL.md",
+        )
         == "allow"
     )
     assert (
-        _check_fs_permission(permissions, "write", "/conversations/thread-a/new.txt")
-        == "allow"
-    )
-    assert (
-        _check_fs_permission(permissions, "read", "/conversations/thread-b/output.txt")
+        _check_fs_permission(
+            permissions,
+            "read",
+            "/runtime/thread-a/skills/selected/SKILL.md",
+        )
         == "deny"
     )
 

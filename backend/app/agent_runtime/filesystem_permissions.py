@@ -24,6 +24,7 @@ def build_filesystem_permissions(
     agent_id: str | None,
     user_id: str | None,
     selected_skill_slugs: list[str],
+    agent_runtime_name: str | None = None,
 ) -> list[FilesystemPermission]:
     """Build ordered DeepAgents filesystem rules for one runtime invocation.
 
@@ -37,12 +38,17 @@ def build_filesystem_permissions(
         raise ValueError("user_id is required when building agent-scoped filesystem permissions")
 
     permissions: list[FilesystemPermission] = []
+    skill_base = (
+        f"/runtime/{thread_id}/agents/{agent_runtime_name}/skills"
+        if agent_runtime_name
+        else f"/runtime/{thread_id}/skills"
+    )
 
     for slug in selected_skill_slugs:
         permissions.append(
             FilesystemPermission(
                 operations=["read"],
-                paths=_path_and_descendants(f"/runtime/{thread_id}/skills/{slug}"),
+                paths=_path_and_descendants(f"{skill_base}/{slug}"),
                 mode="allow",
             )
         )

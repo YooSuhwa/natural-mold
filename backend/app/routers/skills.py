@@ -45,6 +45,7 @@ from app.schemas.skill import (
 )
 from app.services import audit_service
 from app.skills import service as skill_service
+from app.skills.inspector import SkillMetadataError
 from app.skills.packager import PackageError
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
@@ -123,18 +124,12 @@ async def _serialize_skill(db: AsyncSession, skill: Skill, user: CurrentUser) ->
 async def _serialize_skills(
     db: AsyncSession, skills: list[Skill], user: CurrentUser
 ) -> list[SkillResponse]:
-    publications = await origin_service.bulk_derive_publication_summaries_for_skills(
-        db, skills
-    )
-    installations = await origin_service.bulk_derive_skill_installation_summaries(
-        db, skills
-    )
+    publications = await origin_service.bulk_derive_publication_summaries_for_skills(db, skills)
+    installations = await origin_service.bulk_derive_skill_installation_summaries(db, skills)
     responses: list[SkillResponse] = []
     for skill in skills:
         response = SkillResponse.model_validate(skill)
-        response.origin_summary = origin_service.derive_origin_summary_for_skill(
-            skill, user
-        )
+        response.origin_summary = origin_service.derive_origin_summary_for_skill(skill, user)
         response.publication_summary = publications.get(
             skill.id,
             ResourcePublicationSummaryOut(state="not_published"),
@@ -163,15 +158,18 @@ async def create_text_skill(
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
 ):
-    skill = await skill_service.create_text_skill(
-        db,
-        user_id=user.id,
-        name=data.name,
-        slug=data.slug,
-        description=data.description,
-        content=data.content,
-        version=data.version,
-    )
+    try:
+        skill = await skill_service.create_text_skill(
+            db,
+            user_id=user.id,
+            name=data.name,
+            slug=data.slug,
+            description=data.description,
+            content=data.content,
+            version=data.version,
+        )
+    except SkillMetadataError as exc:
+        raise invalid_skill_package(str(exc)) from None
     await db.commit()
     await db.refresh(skill)
     await _record_skill_audit(
@@ -313,7 +311,10 @@ async def put_text_content(
         raise skill_not_found()
     if skill.kind != "text":
         raise invalid_skill_package("only text skills support content updates")
-    updated = await skill_service.update_text_content(db, skill=skill, content=data.content)
+    try:
+        updated = await skill_service.update_text_content(db, skill=skill, content=data.content)
+    except SkillMetadataError as exc:
+        raise invalid_skill_package(str(exc)) from None
     await db.commit()
     await db.refresh(updated)
     await _record_skill_audit(
@@ -427,6 +428,8 @@ async def put_skill_file(
             rel_path=file_path,
             content=data.content.encode("utf-8"),
         )
+    except SkillMetadataError as exc:
+        raise invalid_skill_package(str(exc)) from None
     except ValueError as exc:
         raise invalid_file_path() from exc
     await db.commit()
@@ -499,6 +502,8 @@ async def upload_skill_file(
         updated = await skill_service.set_skill_file(
             db, skill=skill, rel_path=rel_path, content=body
         )
+    except SkillMetadataError as exc:
+        raise invalid_skill_package(str(exc)) from None
     except ValueError as exc:
         raise invalid_file_path() from exc
     await db.commit()

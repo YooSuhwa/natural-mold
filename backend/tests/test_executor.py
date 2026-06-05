@@ -1090,6 +1090,46 @@ async def test_execute_stream_injects_product_memory_tools_and_prompt(
 
 
 @pytest.mark.asyncio
+async def test_prepare_runtime_components_adds_memory_rules_without_memory_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Child subagents get memory tool guidance without unsupported memory args."""
+    from app.agent_runtime import executor
+
+    model = MagicMock()
+    memory_tool = MagicMock()
+    memory_tool.name = "save_user_memory"
+    load_memory_prompt = AsyncMock(return_value="SHOULD NOT LOAD")
+
+    monkeypatch.setattr(executor, "_build_model_candidates", lambda _cfg: [model])
+    monkeypatch.setattr(executor, "_build_mcp_tools", AsyncMock(return_value=[]))
+    monkeypatch.setattr(executor, "create_tool_for_runtime", lambda _config: None)
+    monkeypatch.setattr(executor, "build_memory_tools", lambda **_kwargs: [memory_tool])
+    monkeypatch.setattr(
+        executor,
+        "_memory_write_policy_for_run",
+        AsyncMock(return_value="ask"),
+    )
+    monkeypatch.setattr(executor, "_load_memory_prompt", load_memory_prompt)
+
+    components = await executor._prepare_runtime_components(
+        _cfg(
+            agent_id="00000000-0000-0000-0000-0000000000aa",
+            user_id="00000000-0000-0000-0000-000000000001",
+            thread_id="00000000-0000-0000-0000-000000000099",
+        ),
+        is_trigger_mode=False,
+        include_ask_user=False,
+        include_agent_memory_file=False,
+    )
+
+    assert memory_tool in components.tools
+    assert components.memory_sources is None
+    assert "Long-term Memory Tool Rules" in components.system_prompt
+    load_memory_prompt.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @patch("app.agent_runtime.executor.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
 @patch("app.agent_runtime.executor.stream_agent_response")

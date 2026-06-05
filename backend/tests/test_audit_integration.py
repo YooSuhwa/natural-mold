@@ -21,6 +21,10 @@ async def _ensure_test_user(db: AsyncSession) -> None:
         await db.commit()
 
 
+def _skill_md(name: str, description: str, body: str) -> str:
+    return f'---\nname: {name}\ndescription: "{description}"\nversion: "1.0.0"\n---\n\n{body}\n'
+
+
 @pytest.mark.asyncio
 async def test_login_success_writes_audit(raw_client, db: AsyncSession) -> None:
     await raw_client.post(
@@ -33,8 +37,10 @@ async def test_login_success_writes_audit(raw_client, db: AsyncSession) -> None:
     )
 
     rows = (
-        await db.execute(select(AuditEvent).where(AuditEvent.action == "auth.login"))
-    ).scalars().all()
+        (await db.execute(select(AuditEvent).where(AuditEvent.action == "auth.login")))
+        .scalars()
+        .all()
+    )
     assert rows
     assert rows[-1].outcome == "success"
     assert rows[-1].actor_email_snapshot == "audit-login@test.com"
@@ -103,13 +109,17 @@ async def test_credential_delete_preserves_global_audit(client, db: AsyncSession
     assert cred is None
 
     rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "credential",
-                AuditEvent.target_id == cred_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "credential",
+                    AuditEvent.target_id == cred_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in rows} >= {"credential.create", "credential.delete"}
 
 
@@ -155,13 +165,17 @@ async def test_agent_mutations_write_audit_without_prompt(
     assert delete.status_code == 204
 
     rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "agent",
-                AuditEvent.target_id == agent_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "agent",
+                    AuditEvent.target_id == agent_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in rows} >= {
         "agent.create",
         "agent.update",
@@ -194,13 +208,17 @@ async def test_tool_mutations_write_audit(client, db: AsyncSession) -> None:
     assert delete.status_code == 204
 
     rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "tool",
-                AuditEvent.target_id == tool_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "tool",
+                    AuditEvent.target_id == tool_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in rows} >= {"tool.create", "tool.update", "tool.delete"}
 
 
@@ -234,13 +252,17 @@ async def test_mcp_server_mutations_write_audit_without_headers(
     assert delete.status_code == 204
 
     rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "mcp_server",
-                AuditEvent.target_id == server_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "mcp_server",
+                    AuditEvent.target_id == server_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in rows} >= {
         "mcp_server.create",
         "mcp_server.update",
@@ -262,7 +284,7 @@ async def test_skill_mutations_write_audit_without_content(
             "name": "Audit Skill",
             "slug": "audit-skill",
             "description": "audit test",
-            "content": "secret skill body",
+            "content": _skill_md("audit-skill", "audit test", "secret skill body"),
         },
     )
     assert create.status_code == 201, create.text
@@ -276,7 +298,13 @@ async def test_skill_mutations_write_audit_without_content(
 
     content = await client.put(
         f"/api/skills/{skill_id}/content",
-        json={"content": "new secret skill body"},
+        json={
+            "content": _skill_md(
+                "audit-skill",
+                "audit test updated",
+                "new secret skill body",
+            )
+        },
     )
     assert content.status_code == 200, content.text
 
@@ -284,13 +312,17 @@ async def test_skill_mutations_write_audit_without_content(
     assert delete.status_code == 204
 
     rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "skill",
-                AuditEvent.target_id == skill_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "skill",
+                    AuditEvent.target_id == skill_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in rows} >= {
         "skill.create",
         "skill.update",
@@ -342,13 +374,17 @@ async def test_trigger_mutations_write_audit_without_input_message(
     assert delete.status_code == 204
 
     rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "trigger",
-                AuditEvent.target_id == trigger_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "trigger",
+                    AuditEvent.target_id == trigger_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in rows} >= {
         "trigger.create",
         "trigger.update",
@@ -400,13 +436,17 @@ async def test_conversation_and_share_mutations_write_audit(
     assert delete.status_code == 204
 
     rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "conversation",
-                AuditEvent.target_id == conversation_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "conversation",
+                    AuditEvent.target_id == conversation_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in rows} >= {
         "conversation.create",
         "conversation.update",
@@ -465,26 +505,34 @@ async def test_agent_api_control_plane_writes_audit_without_api_key(
     assert revoke.status_code == 200, revoke.text
 
     deployment_rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "agent_deployment",
-                AuditEvent.target_id == deployment_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "agent_deployment",
+                    AuditEvent.target_id == deployment_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in deployment_rows} >= {
         "agent_api.deployment_create",
         "agent_api.deployment_update",
     }
 
     key_rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "agent_api_key",
-                AuditEvent.target_id == api_key_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "agent_api_key",
+                    AuditEvent.target_id == api_key_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in key_rows} >= {
         "agent_api.key_create",
         "agent_api.key_revoke",
@@ -516,13 +564,17 @@ async def test_model_catalog_mutations_write_audit(client, db: AsyncSession) -> 
     assert delete.status_code == 204
 
     rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "model",
-                AuditEvent.target_id == model_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "model",
+                    AuditEvent.target_id == model_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in rows} >= {
         "model.create",
         "model.update",
@@ -561,7 +613,11 @@ async def test_marketplace_management_writes_audit_without_release_notes(
             "name": "Audit Marketplace Skill",
             "slug": f"audit-marketplace-{uuid.uuid4().hex[:8]}",
             "description": "audit marketplace",
-            "content": "marketplace skill body",
+            "content": _skill_md(
+                "audit-marketplace-skill",
+                "audit marketplace",
+                "marketplace skill body",
+            ),
         },
     )
     assert skill.status_code == 201, skill.text
@@ -598,13 +654,17 @@ async def test_marketplace_management_writes_audit_without_release_notes(
     assert listed.status_code == 200, listed.text
 
     rows = (
-        await db.execute(
-            select(AuditEvent).where(
-                AuditEvent.target_type == "marketplace_item",
-                AuditEvent.target_id == item_id,
+        (
+            await db.execute(
+                select(AuditEvent).where(
+                    AuditEvent.target_type == "marketplace_item",
+                    AuditEvent.target_id == item_id,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert {row.action for row in rows} >= {
         "marketplace.publish",
         "marketplace.item_update",

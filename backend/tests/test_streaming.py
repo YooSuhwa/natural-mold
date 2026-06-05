@@ -138,9 +138,7 @@ async def test_stream_message_start_includes_debug_input():
     ]
 
     start_payload = json.loads(events[0].split("data: ")[1].strip())
-    assert start_payload["input"] == {
-        "messages": [{"role": "user", "content": "debug this trace"}]
-    }
+    assert start_payload["input"] == {"messages": [{"role": "user", "content": "debug this trace"}]}
 
 
 @pytest.mark.asyncio
@@ -198,6 +196,31 @@ async def test_stream_tool_call_start():
 
 
 @pytest.mark.asyncio
+async def test_stream_task_tool_call_enriches_subagent_display_name():
+    tc_chunk = _make_tool_call_chunk(
+        "task",
+        {"subagent_type": "agent_1234abcd", "description": "Research this"},
+        "tc-1",
+    )
+    agent = MockAgent([(tc_chunk, {})])
+
+    events = [
+        e
+        async for e in stream_agent_response(
+            agent,
+            [],
+            {},
+            subagent_display_names={"agent_1234abcd": "Researcher"},
+        )
+    ]
+
+    tc_events = [e for e in events if "tool_call_start" in e]
+    data = json.loads(tc_events[0].split("data: ")[1].strip())
+    assert data["parameters"]["agent_name"] == "Researcher"
+    assert data["parameters"]["agent_runtime_name"] == "agent_1234abcd"
+
+
+@pytest.mark.asyncio
 async def test_stream_tool_call_result():
     result_chunk = _make_tool_result_chunk("web_search", "search results here")
     agent = MockAgent([(result_chunk, {})])
@@ -251,14 +274,10 @@ async def test_stream_preserves_repeated_tool_call_ids():
     events = [e async for e in stream_agent_response(agent, [], {})]
 
     start_payloads = [
-        json.loads(e.split("data: ")[1].strip())
-        for e in events
-        if "tool_call_start" in e
+        json.loads(e.split("data: ")[1].strip()) for e in events if "tool_call_start" in e
     ]
     result_payloads = [
-        json.loads(e.split("data: ")[1].strip())
-        for e in events
-        if "tool_call_result" in e
+        json.loads(e.split("data: ")[1].strip()) for e in events if "tool_call_result" in e
     ]
 
     assert [payload["tool_call_id"] for payload in start_payloads] == ["call-a", "call-b"]
@@ -551,9 +570,7 @@ async def test_stream_run_id_injection_uses_external_id():
     agent = MockAgent([(_make_ai_chunk("hi"), {})])
     forced_run_id = "deadbeef-1234"
 
-    events = [
-        e async for e in stream_agent_response(agent, [], {}, run_id=forced_run_id)
-    ]
+    events = [e async for e in stream_agent_response(agent, [], {}, run_id=forced_run_id)]
 
     start_event = [e for e in events if "message_start" in e][0]
     start_data = json.loads(start_event.split("data: ")[1].strip())
@@ -647,12 +664,7 @@ async def test_stream_broker_close_called_even_on_exception():
 
     # streaming.py 는 예외를 emit("error") 로 변환하므로 generator 가 깔끔하게
     # 종료된다. 우리는 finally 의 broker.close 만 검증.
-    _ = [
-        e
-        async for e in stream_agent_response(
-            agent, [], {}, broker=broker, run_id="run-fail"
-        )
-    ]
+    _ = [e async for e in stream_agent_response(agent, [], {}, broker=broker, run_id="run-fail")]
     assert broker.is_closed is True
 
 

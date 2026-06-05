@@ -30,9 +30,9 @@ from app.schemas.tool import (
     ToolRunRequest,
     ToolRunResponse,
 )
+from app.services import audit_service
 from app.tools.registry import registry as tool_registry
 from app.tools.runner import run_tool
-from app.services import audit_service
 
 router = APIRouter(tags=["tools"])
 
