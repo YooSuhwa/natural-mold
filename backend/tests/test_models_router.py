@@ -212,7 +212,7 @@ async def test_delete_in_use_model_409(client: AsyncClient, db: AsyncSession) ->
 
     response = await client.delete(f"/api/models/{model.id}")
     assert response.status_code == 409
-    assert "agent" in response.json()["detail"]
+    assert "agent" in response.json()["error"]["message"]
 
 
 @pytest.mark.asyncio

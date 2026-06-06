@@ -52,6 +52,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.exceptions import AppError
 
@@ -392,6 +393,36 @@ def create_app() -> FastAPI:
                     "details": jsonable_encoder(exc.errors()),
                 }
             },
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_exception_handler(
+        request: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
+        code = f"HTTP_{exc.status_code}"
+        message = "HTTP 오류가 발생했습니다"
+        details = None
+
+        if isinstance(exc.detail, str):
+            message = exc.detail
+        elif isinstance(exc.detail, dict):
+            detail_code = exc.detail.get("code")
+            detail_message = exc.detail.get("message") or exc.detail.get("detail")
+            if isinstance(detail_code, str):
+                code = detail_code
+            message = detail_message if isinstance(detail_message, str) else str(exc.detail)
+            details = jsonable_encoder(exc.detail)
+        elif exc.detail is not None:
+            message = str(exc.detail)
+            details = jsonable_encoder(exc.detail)
+
+        error: dict[str, object] = {"code": code, "message": message}
+        if details is not None:
+            error["details"] = details
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": error},
+            headers=exc.headers,
         )
 
     @app.exception_handler(Exception)

@@ -139,7 +139,7 @@ async def test_put_nonexistent_credential_404(client: AsyncClient) -> None:
         json={"credential_id": str(uuid.uuid4()), "model_name": "x"},
     )
     assert resp.status_code == 404
-    assert "system LLM credential" in resp.json()["detail"]
+    assert "system LLM credential" in resp.json()["error"]["message"]
 
 
 async def test_put_non_llm_credential_422(
@@ -156,7 +156,7 @@ async def test_put_non_llm_credential_422(
     )
     assert resp.status_code == 422
     # Same detail message as the 404 path — reason logged server-side only.
-    assert "system LLM credential" in resp.json()["detail"]
+    assert "system LLM credential" in resp.json()["error"]["message"]
 
 
 async def test_put_user_credential_rejected(
@@ -370,7 +370,7 @@ async def test_invalid_credential_detail_is_byte_identical(
     )
     assert missing.status_code == 404
     assert wrong_type.status_code == 422
-    assert missing.json()["detail"] == wrong_type.json()["detail"]
+    assert missing.json()["error"]["message"] == wrong_type.json()["error"]["message"]
 
 
 async def test_role_unique_constraint(db: AsyncSession) -> None:
