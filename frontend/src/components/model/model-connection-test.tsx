@@ -134,10 +134,7 @@ export function ModelConnectionTest(props: Props) {
 
   return (
     <div
-      className={
-        className ??
-        'moldy-card space-y-3 p-4 text-sm'
-      }
+      className={className ?? 'moldy-card space-y-3 p-4 text-sm'}
       data-testid="model-connection-test"
     >
       {showCostBanner && (
@@ -148,14 +145,8 @@ export function ModelConnectionTest(props: Props) {
 
       {status === 'idle' && (
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground">
-            {t('idle')}
-          </span>
-          <Button
-            size="sm"
-            onClick={runTest}
-            disabled={!credentialId || test.isPending}
-          >
+          <span className="text-muted-foreground">{t('idle')}</span>
+          <Button size="sm" onClick={runTest} disabled={!credentialId || test.isPending}>
             {t('testNow')}
           </Button>
         </div>
@@ -166,21 +157,15 @@ export function ModelConnectionTest(props: Props) {
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
             {t('testingPrefix')}{' '}
-            <span className="font-medium text-foreground">
-              {modelLabel ?? t('thisModel')}
-            </span>
+            <span className="font-medium text-foreground">{modelLabel ?? t('thisModel')}</span>
             {t('testingSuffix')}
           </p>
         </div>
       )}
 
-      {status === 'success' && result && (
-        <SuccessCard result={result} modelLabel={modelLabel} />
-      )}
+      {status === 'success' && result && <SuccessCard result={result} modelLabel={modelLabel} />}
 
-      {status === 'error' && result && (
-        <ErrorCard result={result} onRetry={runTest} />
-      )}
+      {status === 'error' && result && <ErrorCard result={result} onRetry={runTest} />}
 
       {result && (result.curl_command || result.raw_request || result.raw_response) && (
         <>
@@ -212,13 +197,7 @@ export function ModelConnectionTest(props: Props) {
 
 // -- Subcomponents ----------------------------------------------------------
 
-function SuccessCard({
-  result,
-  modelLabel,
-}: {
-  result: ModelTestResponse
-  modelLabel?: string
-}) {
+function SuccessCard({ result, modelLabel }: { result: ModelTestResponse; modelLabel?: string }) {
   const t = useTranslations('model.connectionTest')
   const cost = formatUsd(result.estimated_cost_usd)
   const tokens =
@@ -239,10 +218,7 @@ function SuccessCard({
           </p>
 
           {result.response && (
-            <p
-              className="moldy-status-muted-text line-clamp-3 text-xs"
-              title={result.response}
-            >
+            <p className="moldy-status-muted-text line-clamp-3 text-xs" title={result.response}>
               {t('response', { response: result.response })}
             </p>
           )}
@@ -269,13 +245,7 @@ function SuccessCard({
   )
 }
 
-function ErrorCard({
-  result,
-  onRetry,
-}: {
-  result: ModelTestResponse
-  onRetry: () => void
-}) {
+function ErrorCard({ result, onRetry }: { result: ModelTestResponse; onRetry: () => void }) {
   const t = useTranslations('model.connectionTest')
   const kindLabel = result.error
     ? t(`errorKind.${result.error.kind as ModelTestErrorKind}`)
@@ -294,12 +264,7 @@ function ErrorCard({
           <p className="line-clamp-2 text-xs text-destructive/90" title={message}>
             {message}
           </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onRetry}
-            className="text-destructive"
-          >
+          <Button variant="outline" size="sm" onClick={onRetry} className="text-destructive">
             <RotateCw className="size-3.5" />
             {t('retry')}
           </Button>
@@ -332,9 +297,7 @@ function DetailsPanel({ result }: { result: ModelTestResponse }) {
       <TabsContent value="response" className="pt-2">
         <CodeBlock
           code={
-            result.raw_response
-              ? JSON.stringify(result.raw_response, null, 2)
-              : t('empty.response')
+            result.raw_response ? JSON.stringify(result.raw_response, null, 2) : t('empty.response')
           }
         />
       </TabsContent>
@@ -385,7 +348,12 @@ function formatUsd(value: number | null | undefined): string | null {
  * re-mask on the way to the screen in case a misconfigured backend response
  * leaks a bearer token. We never want to render an API key cleartext.
  */
-function maskSensitive(req: { headers: Record<string, string>; body: unknown; url: string; method: string }) {
+function maskSensitive(req: {
+  headers: Record<string, string>
+  body: unknown
+  url: string
+  method: string
+}) {
   const headers: Record<string, string> = {}
   for (const [k, v] of Object.entries(req.headers ?? {})) {
     headers[k] = isSensitiveHeader(k) ? maskValue(v) : v

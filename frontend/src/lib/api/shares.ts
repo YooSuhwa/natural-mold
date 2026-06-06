@@ -19,6 +19,5 @@ export const sharesApi = {
     }),
 
   /** Public: read-only conversation snapshot for visitors. */
-  getPublic: (shareToken: string) =>
-    apiFetch<SharedConversationView>(`/api/shares/${shareToken}`),
+  getPublic: (shareToken: string) => apiFetch<SharedConversationView>(`/api/shares/${shareToken}`),
 }

@@ -28,11 +28,7 @@ interface ModelTestDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-export function ModelTestDialog({
-  model,
-  open,
-  onOpenChange,
-}: ModelTestDialogProps) {
+export function ModelTestDialog({ model, open, onOpenChange }: ModelTestDialogProps) {
   const t = useTranslations('model.testDialog')
   const { data: credentials } = useCredentials()
   const { data: definitions } = useCredentialTypes()
@@ -40,9 +36,7 @@ export function ModelTestDialog({
 
   const llmCredentials = useMemo(() => {
     if (!credentials || !definitions) return []
-    const llmKeys = new Set(
-      definitions.filter((d) => d.category === 'llm').map((d) => d.key),
-    )
+    const llmKeys = new Set(definitions.filter((d) => d.category === 'llm').map((d) => d.key))
     return credentials.filter((c) => llmKeys.has(c.definition_key))
   }, [credentials, definitions])
 
@@ -92,16 +86,12 @@ export function ModelTestDialog({
                   name directly. */}
               <SelectValue
                 placeholder={
-                  llmCredentials.length === 0
-                    ? t('noCredential')
-                    : t('selectCredential')
+                  llmCredentials.length === 0 ? t('noCredential') : t('selectCredential')
                 }
               >
                 {(selected) =>
                   llmCredentials.find((c) => c.id === selected)?.name ??
-                  (llmCredentials.length === 0
-                    ? t('noCredential')
-                    : t('selectCredential'))
+                  (llmCredentials.length === 0 ? t('noCredential') : t('selectCredential'))
                 }
               </SelectValue>
             </SelectTrigger>

@@ -11,10 +11,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { FormFooter } from '@/components/shared/form-footer'
 import { useImportMcpServers } from '@/lib/hooks/use-mcp-servers'
-import type {
-  McpImportRequest,
-  McpImportResult,
-} from '@/lib/types/mcp'
+import type { McpImportRequest, McpImportResult } from '@/lib/types/mcp'
 
 interface Props {
   open: boolean
@@ -129,12 +126,14 @@ function McpImportBody({
       if (res.errors.length === 0) {
         toast.success(summary)
       } else {
-        toast.warning(t('summaryWithErrors', {
-          created: res.created,
-          updated: res.updated,
-          skipped: res.skipped,
-          errors: res.errors.length,
-        }))
+        toast.warning(
+          t('summaryWithErrors', {
+            created: res.created,
+            updated: res.updated,
+            skipped: res.skipped,
+            errors: res.errors.length,
+          }),
+        )
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('importFailed'))

@@ -74,7 +74,11 @@ export function ArtifactPanelContent({ payload }: Props) {
 
   const handleDownloadAll = () => {
     for (const artifact of items) {
-      window.open(resolveImageUrl(artifact.download_url) ?? artifact.download_url, '_blank', 'noopener')
+      window.open(
+        resolveImageUrl(artifact.download_url) ?? artifact.download_url,
+        '_blank',
+        'noopener',
+      )
     }
   }
 

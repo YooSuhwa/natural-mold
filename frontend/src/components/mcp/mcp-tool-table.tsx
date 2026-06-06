@@ -109,8 +109,7 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
             const disabled = persisted && tool.enabled === false
             const stale = persisted && isStale(tool.last_seen_at)
             const showSchema = expanded.has(rowKey)
-            const hasSchema =
-              !!tool.input_schema && Object.keys(tool.input_schema).length > 0
+            const hasSchema = !!tool.input_schema && Object.keys(tool.input_schema).length > 0
             return (
               <Fragment key={rowKey}>
                 <TableRow className={cn(disabled && 'opacity-60')}>
@@ -135,7 +134,9 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                           className="rounded-full bg-status-warn/15 px-1.5 py-0.5 moldy-ui-micro font-medium text-status-warn"
                           title={
                             tool.last_seen_at
-                              ? t('lastSeen', { date: new Date(tool.last_seen_at).toLocaleString() })
+                              ? t('lastSeen', {
+                                  date: new Date(tool.last_seen_at).toLocaleString(),
+                                })
                               : t('neverSeen')
                           }
                         >
@@ -169,10 +170,7 @@ export function McpToolTable({ tools, selected, onToggle }: McpToolTableProps) {
                 </TableRow>
                 {showSchema && hasSchema ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={onToggle ? 4 : 3}
-                      className="bg-muted/30 p-0"
-                    >
+                    <TableCell colSpan={onToggle ? 4 : 3} className="bg-muted/30 p-0">
                       <pre className="max-h-64 overflow-auto p-3 font-mono moldy-ui-caption leading-relaxed text-foreground/80">
                         {JSON.stringify(tool.input_schema, null, 2)}
                       </pre>

@@ -36,9 +36,7 @@ function IntentSummaryHeader({
       <span className="moldy-ui-compact font-semibold moldy-builder-color-primary-ink">
         {t('title')}
       </span>
-      <BuilderMuted className="moldy-ui-caption-plus">
-        · {phaseLabel}
-      </BuilderMuted>
+      <BuilderMuted className="moldy-ui-caption-plus">· {phaseLabel}</BuilderMuted>
       <div className="flex-1" />
       <span className="moldy-ui-meta font-semibold uppercase tabular-nums moldy-builder-color-muted">
         {t(`confidence.${confidence}`)}
@@ -49,9 +47,7 @@ function IntentSummaryHeader({
 
 function IntentLabel({ text }: { text: string }) {
   return (
-    <div className="mb-1 moldy-ui-caption-plus font-semibold moldy-builder-color-muted">
-      {text}
-    </div>
+    <div className="mb-1 moldy-ui-caption-plus font-semibold moldy-builder-color-muted">{text}</div>
   )
 }
 
@@ -86,9 +82,7 @@ export function IntentSummaryCard({
         {tags && tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
             {tags.map((tag) => (
-              <BuilderPill key={tag}>
-                {tag}
-              </BuilderPill>
+              <BuilderPill key={tag}>{tag}</BuilderPill>
             ))}
           </div>
         )}

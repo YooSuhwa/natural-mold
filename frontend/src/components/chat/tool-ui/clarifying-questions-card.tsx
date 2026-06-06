@@ -15,10 +15,7 @@ export interface ClarifyingQuestionsCardProps {
  * 봇 메시지 안 child block 으로 자리잡는 presentational 컴포넌트.
  * 백엔드가 별도 tool로 emit하기 시작하면 그 tool UI에서 이 컴포넌트를 wrap해 사용.
  */
-export function ClarifyingQuestionsCard({
-  label,
-  items,
-}: ClarifyingQuestionsCardProps) {
+export function ClarifyingQuestionsCard({ label, items }: ClarifyingQuestionsCardProps) {
   const t = useTranslations('chat.intentSummary')
   const resolvedLabel = label ?? t('clarifyingTitle')
   return (

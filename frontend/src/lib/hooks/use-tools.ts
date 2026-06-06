@@ -51,8 +51,7 @@ export function useCreateTool() {
 export function useUpdateTool() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: ToolPatchRequest }) =>
-      toolsApi.update(id, data),
+    mutationFn: ({ id, data }: { id: string; data: ToolPatchRequest }) => toolsApi.update(id, data),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: KEY_LIST })
       qc.invalidateQueries({ queryKey: ['tools', id] })

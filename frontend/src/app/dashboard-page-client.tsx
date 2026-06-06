@@ -128,14 +128,9 @@ export default function DashboardPage() {
       {/* Quick actions — 1.4fr + 1fr asymmetric grid */}
       <div className="grid shrink-0 grid-cols-1 gap-4 md:grid-cols-[1.4fr_1fr]">
         {/* Primary: 대화로 만들기 */}
-        <Link
-          href="/agents/new"
-          className="moldy-card-link group"
-        >
+        <Link href="/agents/new" className="moldy-card-link group">
           <Card
-            className={cn(
-              'moldy-dashboard-action-primary h-full min-h-[152px] gap-3 p-1.5 ring-0',
-            )}
+            className={cn('moldy-dashboard-action-primary h-full min-h-[152px] gap-3 p-1.5 ring-0')}
           >
             <CardContent className="flex h-full flex-col gap-3 p-5">
               <div className="flex items-center gap-3">
@@ -216,8 +211,7 @@ export default function DashboardPage() {
                   aria-pressed={showFavoritesOnly}
                   className={cn(
                     'h-9',
-                    showFavoritesOnly &&
-                      'moldy-status-surface moldy-status-warn hover:opacity-90',
+                    showFavoritesOnly && 'moldy-status-surface moldy-status-warn hover:opacity-90',
                   )}
                 >
                   <StarIcon className={cn('size-4', showFavoritesOnly && 'fill-current')} />
@@ -296,15 +290,8 @@ interface SecondaryActionCardProps {
 function SecondaryActionCard({ href, icon, label, description, tone }: SecondaryActionCardProps) {
   const { iconBg } = SECONDARY_TONE[tone]
   return (
-    <Link
-      href={href}
-      className="moldy-card-link group"
-    >
-      <Card
-        className={cn(
-          'moldy-dashboard-action h-full gap-0 py-0',
-        )}
-      >
+    <Link href={href} className="moldy-card-link group">
+      <Card className={cn('moldy-dashboard-action h-full gap-0 py-0')}>
         <CardContent className="flex h-full items-center gap-3 p-4">
           <div
             className={cn(

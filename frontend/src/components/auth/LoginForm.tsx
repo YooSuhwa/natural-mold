@@ -49,9 +49,7 @@ export function LoginForm({
   return (
     <form onSubmit={handleSubmit} aria-busy={isLoading} noValidate>
       <header className="mb-5">
-        <h1 className="mb-1.5 moldy-auth-title">
-          {t('auth.login.formTitle')}
-        </h1>
+        <h1 className="mb-1.5 moldy-auth-title">{t('auth.login.formTitle')}</h1>
       </header>
 
       {showCallbackNotice ? (
@@ -70,10 +68,7 @@ export function LoginForm({
         <div className="grid gap-3.5">
           {/* Email */}
           <div>
-            <label
-              htmlFor="login-email"
-              className="mb-1.5 block text-sm font-medium"
-            >
+            <label htmlFor="login-email" className="mb-1.5 block text-sm font-medium">
               {t('auth.login.email')}
             </label>
             <Input
@@ -90,21 +85,15 @@ export function LoginForm({
               aria-invalid={emailError || mapped?.field === 'email' || undefined}
             />
             {emailError ? (
-              <p className="mt-1.5 text-xs text-destructive">
-                {t('auth.errors.invalidEmail')}
-              </p>
+              <p className="mt-1.5 text-xs text-destructive">{t('auth.errors.invalidEmail')}</p>
             ) : mapped?.field === 'email' ? (
-              <p className="mt-1.5 text-xs text-destructive">
-                {t(mapped.messageKey)}
-              </p>
+              <p className="mt-1.5 text-xs text-destructive">{t(mapped.messageKey)}</p>
             ) : null}
           </div>
 
           {/* Password */}
           <div>
-            <div
-              className="mb-1.5 flex items-baseline justify-between"
-            >
+            <div className="mb-1.5 flex items-baseline justify-between">
               <label htmlFor="login-password" className="text-sm font-medium">
                 {t('auth.login.password')}
               </label>
@@ -134,9 +123,7 @@ export function LoginForm({
                 type="button"
                 aria-pressed={showPassword}
                 tabIndex={-1}
-                aria-label={
-                  showPassword ? t('auth.password.hide') : t('auth.password.show')
-                }
+                aria-label={showPassword ? t('auth.password.hide') : t('auth.password.show')}
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
@@ -144,9 +131,7 @@ export function LoginForm({
               </button>
             </div>
             {passwordError ? (
-              <p className="mt-1.5 text-xs text-destructive">
-                {t('auth.errors.passwordRequired')}
-              </p>
+              <p className="mt-1.5 text-xs text-destructive">{t('auth.errors.passwordRequired')}</p>
             ) : null}
           </div>
 
@@ -164,11 +149,7 @@ export function LoginForm({
           </Tooltip>
 
           {/* Submit */}
-          <Button
-            type="submit"
-            className="mt-0.5 w-full gap-2"
-            disabled={isLoading}
-          >
+          <Button type="submit" className="mt-0.5 w-full gap-2" disabled={isLoading}>
             {isLoading ? (
               <>
                 <Loader2Icon className="size-4 animate-spin" aria-hidden />

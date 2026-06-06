@@ -129,9 +129,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
     } catch (e) {
       const err = e as { status?: number; message?: string }
       if (err.status === 409) {
-        toast.error(
-          te('toast.deleteInUse'),
-        )
+        toast.error(te('toast.deleteInUse'))
       } else {
         toast.error(err.message ?? te('toast.deleteFailed'))
       }
@@ -165,17 +163,11 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
           <TabsContent value="info" className="flex-1 space-y-4 overflow-y-auto pt-3">
             <RankingsSection
               rankings={model.rankings}
-              emptyHint={
-                model.source === 'manual'
-                  ? te('customIdBenchmarkHint')
-                  : undefined
-              }
+              emptyHint={model.source === 'manual' ? te('customIdBenchmarkHint') : undefined}
             />
 
             <div className="flex items-center justify-between gap-2 rounded-md border bg-muted/30 p-2">
-              <span className="text-xs text-muted-foreground">
-                {te('testHint')}
-              </span>
+              <span className="text-xs text-muted-foreground">{te('testHint')}</span>
               {!testOpen ? (
                 <Button
                   variant="outline"
@@ -199,7 +191,8 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder={te('selectCredential')}>
                       {(selected) =>
-                        llmCredentials.find((c) => c.id === selected)?.name ?? te('selectCredential')
+                        llmCredentials.find((c) => c.id === selected)?.name ??
+                        te('selectCredential')
                       }
                     </SelectValue>
                   </SelectTrigger>
@@ -328,9 +321,7 @@ export function ModelEditDialog({ model, open, onOpenChange }: ModelEditDialogPr
               <Separator />
 
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>
-                  {te('usage', { count: model.agent_count })}
-                </span>
+                <span>{te('usage', { count: model.agent_count })}</span>
                 {!confirmDelete ? (
                   <Button
                     variant="outline"

@@ -95,7 +95,10 @@ describe('setConversationArtifactsAtom', () => {
     })
     store.set(setConversationArtifactsAtom, {
       conversationId: 'conversation-1',
-      items: [{ ...report, preview_count: 1 }, { ...code, preview_count: 1 }],
+      items: [
+        { ...report, preview_count: 1 },
+        { ...code, preview_count: 1 },
+      ],
     })
 
     expect(store.get(chatArtifactsAtom)['conversation-1']?.selectedArtifactId).toBe('code')

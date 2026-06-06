@@ -28,8 +28,7 @@ function buildMemorySearch(params?: {
 }
 
 export const memoryApi = {
-  getUserSettings: () =>
-    apiFetch<UserMemorySettings>('/api/me/memory-settings'),
+  getUserSettings: () => apiFetch<UserMemorySettings>('/api/me/memory-settings'),
   updateUserSettings: (data: UserMemorySettingsUpdate) =>
     apiFetch<UserMemorySettings>('/api/me/memory-settings', {
       method: 'PATCH',
@@ -54,8 +53,7 @@ export const memoryApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  delete: (memoryId: string) =>
-    apiFetch<void>(`/api/memories/${memoryId}`, { method: 'DELETE' }),
+  delete: (memoryId: string) => apiFetch<void>(`/api/memories/${memoryId}`, { method: 'DELETE' }),
   createProposal: (data: MemoryProposalCreate) =>
     apiFetch<MemoryProposal>('/api/memory-proposals', {
       method: 'POST',
@@ -72,11 +70,8 @@ export const memoryApi = {
       method: 'POST',
     }),
   editAndApproveProposal: (proposalId: string, data: MemoryProposalEditApprove) =>
-    apiFetch<MemoryProposalApproval>(
-      `/api/memory-proposals/${proposalId}/edit-and-approve`,
-      {
-        method: 'POST',
-        body: JSON.stringify(data),
-      },
-    ),
+    apiFetch<MemoryProposalApproval>(`/api/memory-proposals/${proposalId}/edit-and-approve`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 }

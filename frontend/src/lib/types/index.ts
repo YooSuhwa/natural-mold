@@ -418,7 +418,10 @@ export type SSEEvent = { id?: string } & (
       event: 'tool_call_start'
       data: { tool_call_id?: string; tool_name: string; parameters: Record<string, unknown> }
     }
-  | { event: 'tool_call_result'; data: { tool_call_id?: string; tool_name: string; result: string } }
+  | {
+      event: 'tool_call_result'
+      data: { tool_call_id?: string; tool_name: string; result: string }
+    }
   | { event: 'file_event'; data: import('./artifact').FileEventPayload }
   | { event: 'memory_proposed'; data: import('./memory').MemoryEventPayload }
   | { event: 'memory_saved'; data: import('./memory').MemoryEventPayload }

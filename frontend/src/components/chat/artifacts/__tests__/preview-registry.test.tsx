@@ -59,7 +59,11 @@ describe('getArtifactPreviewProvider', () => {
     ).toBe('table-data')
     expect(
       getArtifactPreviewProvider(
-        artifact({ artifact_kind: 'data', mime_type: 'text/tab-separated-values', extension: 'tsv' }),
+        artifact({
+          artifact_kind: 'data',
+          mime_type: 'text/tab-separated-values',
+          extension: 'tsv',
+        }),
       ).id,
     ).toBe('table-data')
   })

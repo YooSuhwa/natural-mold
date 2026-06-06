@@ -22,12 +22,7 @@ export function EmptyState({
   className,
 }: EmptyStateProps) {
   return (
-    <div
-      className={cn(
-        'moldy-empty-state',
-        className,
-      )}
-    >
+    <div className={cn('moldy-empty-state', className)}>
       {icon ? (
         <div className="moldy-empty-state-icon">{icon}</div>
       ) : iconId ? (

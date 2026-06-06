@@ -181,9 +181,7 @@ function CompletedBadge({ result }: { result: unknown }) {
     <div className="moldy-status-surface moldy-status-success moldy-status-card flex items-center gap-2 text-xs">
       <CheckCircle2Icon className="moldy-status-icon size-3.5 shrink-0" />
       <span className="moldy-status-text font-medium">{t('completed')}</span>
-      {display && (
-        <span className="moldy-status-muted-text truncate">{display}</span>
-      )}
+      {display && <span className="moldy-status-muted-text truncate">{display}</span>}
     </div>
   )
 }

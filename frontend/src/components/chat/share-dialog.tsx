@@ -8,11 +8,7 @@ import { toast } from 'sonner'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  useActiveShare,
-  useCreateShare,
-  useRevokeShare,
-} from '@/lib/hooks/use-share'
+import { useActiveShare, useCreateShare, useRevokeShare } from '@/lib/hooks/use-share'
 
 interface ShareDialogProps {
   open: boolean

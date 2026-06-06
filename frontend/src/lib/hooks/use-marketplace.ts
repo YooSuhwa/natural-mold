@@ -86,8 +86,7 @@ function invalidateAllItems(qc: ReturnType<typeof useQueryClient>) {
 export function useInstallItem(itemId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: InstallMarketplaceItemBody) =>
-      marketplaceApi.install(itemId, body),
+    mutationFn: (body: InstallMarketplaceItemBody) => marketplaceApi.install(itemId, body),
     onSuccess: () => invalidateAllItems(qc),
   })
 }
@@ -118,13 +117,8 @@ export function useDeleteInstallation() {
 export function usePublishSkill() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({
-      skillId,
-      body,
-    }: {
-      skillId: string
-      body: PublishSkillBody
-    }) => marketplaceApi.publishFromSkill(skillId, body),
+    mutationFn: ({ skillId, body }: { skillId: string; body: PublishSkillBody }) =>
+      marketplaceApi.publishFromSkill(skillId, body),
     onSuccess: () => invalidateAllItems(qc),
   })
 }
@@ -148,8 +142,7 @@ export function usePublishNewVersion() {
 export function usePatchMarketplaceItem(itemId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: MarketplaceItemPatchBody) =>
-      marketplaceApi.patchItem(itemId, body),
+    mutationFn: (body: MarketplaceItemPatchBody) => marketplaceApi.patchItem(itemId, body),
     onSuccess: () => invalidateAllItems(qc),
   })
 }
@@ -157,8 +150,7 @@ export function usePatchMarketplaceItem(itemId: string) {
 export function useReplaceItemACL(itemId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: MarketplaceItemACLBody) =>
-      marketplaceApi.replaceACL(itemId, body),
+    mutationFn: (body: MarketplaceItemACLBody) => marketplaceApi.replaceACL(itemId, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['marketplace', 'items', itemId] })
       qc.invalidateQueries({ queryKey: ITEMS_KEY })
@@ -169,8 +161,7 @@ export function useReplaceItemACL(itemId: string) {
 export function useRemoveItemACLEntry(itemId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (userId: string) =>
-      marketplaceApi.removeACLEntry(itemId, userId),
+    mutationFn: (userId: string) => marketplaceApi.removeACLEntry(itemId, userId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['marketplace', 'items', itemId] })
       qc.invalidateQueries({ queryKey: ITEMS_KEY })
@@ -222,9 +213,7 @@ export function useAdminSetListed() {
 
 // ---------- Skill credential bindings ----------
 
-export function useSkillCredentialRequirements(
-  skillId: string | null | undefined,
-) {
+export function useSkillCredentialRequirements(skillId: string | null | undefined) {
   return useQuery({
     queryKey: ['skills', skillId, 'credential-requirements'],
     queryFn: () => skillCredentialApi.listRequirements(skillId!),
@@ -232,9 +221,7 @@ export function useSkillCredentialRequirements(
   })
 }
 
-export function useSkillCredentialBindings(
-  skillId: string | null | undefined,
-) {
+export function useSkillCredentialBindings(skillId: string | null | undefined) {
   return useQuery({
     queryKey: ['skills', skillId, 'credential-bindings'],
     queryFn: () => skillCredentialApi.listBindings(skillId!),
@@ -251,8 +238,7 @@ export function useSetSkillCredentialBinding(skillId: string) {
     }: {
       requirementKey: string
       credentialId: string
-    }) =>
-      skillCredentialApi.setBinding(skillId, requirementKey, credentialId),
+    }) => skillCredentialApi.setBinding(skillId, requirementKey, credentialId),
     onSuccess: () => {
       qc.invalidateQueries({
         queryKey: ['skills', skillId, 'credential-bindings'],

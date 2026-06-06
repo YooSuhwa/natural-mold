@@ -44,7 +44,12 @@ function formatDuration(durationMs: number | undefined): string | null {
 }
 
 function domainInitial(domain: string): string {
-  return domain.replace(/^www\./, '').charAt(0).toUpperCase() || '?'
+  return (
+    domain
+      .replace(/^www\./, '')
+      .charAt(0)
+      .toUpperCase() || '?'
+  )
 }
 
 function SourceBadges({ domains }: { domains: string[] }) {
@@ -76,15 +81,12 @@ function DeepResearchSummaryCard({
   const t = useTranslations('chat.toolCall.deepResearch')
   const [expanded, setExpanded] = useState(false)
   const summary = useMemo(() => parseSummary(result) ?? args, [args, result])
-  const complete =
-    statusType === 'complete' || summary.completed_count >= summary.total_count
+  const complete = statusType === 'complete' || summary.completed_count >= summary.total_count
   const duration = formatDuration(summary.duration_ms)
   const meta = complete
-    ? [
-        t('completed'),
-        t('sourceCount', { count: summary.source_count }),
-        duration,
-      ].filter(Boolean).join(' · ')
+    ? [t('completed'), t('sourceCount', { count: summary.source_count }), duration]
+        .filter(Boolean)
+        .join(' · ')
     : t('running', { count: summary.total_count })
   const domains = summary.domains ?? []
 
@@ -145,9 +147,7 @@ function DeepResearchSummaryCard({
                           rel="noopener noreferrer"
                           className="flex min-w-0 items-center gap-1.5 moldy-ui-caption text-muted-foreground hover:text-primary-strong hover:underline"
                         >
-                          <span className="truncate">
-                            {source.title || source.domain}
-                          </span>
+                          <span className="truncate">{source.title || source.domain}</span>
                           <span className="shrink-0">· {source.domain}</span>
                           <ExternalLinkIcon className="size-3 shrink-0" />
                         </a>

@@ -47,10 +47,7 @@ export default function SharedConversationPage({ params }: PageProps) {
 }
 
 function SharedArticle({ data }: { data: SharedConversationView }) {
-  const visibleMessages = useMemo(
-    () => data.messages.filter(isVisibleInPublic),
-    [data.messages],
-  )
+  const visibleMessages = useMemo(() => data.messages.filter(isVisibleInPublic), [data.messages])
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -63,16 +60,15 @@ function SharedArticle({ data }: { data: SharedConversationView }) {
           {visibleMessages.length === 0 ? (
             <EmptyConversation />
           ) : (
-            <ConversationBody
-              messages={visibleMessages}
-              agent={data.agent}
-              traces={data.traces}
-            />
+            <ConversationBody messages={visibleMessages} agent={data.agent} traces={data.traces} />
           )}
         </article>
       </main>
 
-      <SharedFooter messageCount={visibleMessages.length} createdAt={data.conversation_created_at} />
+      <SharedFooter
+        messageCount={visibleMessages.length}
+        createdAt={data.conversation_created_at}
+      />
     </div>
   )
 }
@@ -87,14 +83,13 @@ function SharedHeader() {
           className="flex items-center gap-2 text-sm font-semibold tracking-tight text-foreground hover:text-primary-strong"
         >
           <span className="flex size-7 items-center justify-center rounded-lg bg-primary-strong/15 text-primary-strong">
-            <span aria-hidden className="text-base">M</span>
+            <span aria-hidden className="text-base">
+              M
+            </span>
           </span>
           {t('brand')}
         </Link>
-        <Link
-          href="/"
-          className="text-xs font-medium text-muted-foreground hover:text-foreground"
-        >
+        <Link href="/" className="text-xs font-medium text-muted-foreground hover:text-foreground">
           {t('headerCta')}
         </Link>
       </div>
@@ -102,13 +97,7 @@ function SharedHeader() {
   )
 }
 
-function Hero({
-  data,
-  messageCount,
-}: {
-  data: SharedConversationView
-  messageCount: number
-}) {
+function Hero({ data, messageCount }: { data: SharedConversationView; messageCount: number }) {
   const t = useTranslations('sharedConversation')
   const readingMinutes = useReadingMinutes(data.messages)
   const dateLabel = useMemo(
@@ -126,18 +115,10 @@ function Hero({
       </h1>
 
       <div className="mt-10 flex items-center justify-center gap-3">
-        <AgentAvatar
-          imageUrl={data.agent.image_url}
-          name={data.agent.name}
-          size="md"
-        />
+        <AgentAvatar imageUrl={data.agent.image_url} name={data.agent.name} size="md" />
         <div className="text-left">
-          <p className="text-sm font-semibold text-foreground">
-            {data.agent.name}
-          </p>
-          <p className="moldy-ui-caption tracking-wide text-muted-foreground">
-            {dateLabel}
-          </p>
+          <p className="text-sm font-semibold text-foreground">{data.agent.name}</p>
+          <p className="moldy-ui-caption tracking-wide text-muted-foreground">{dateLabel}</p>
         </div>
       </div>
 
@@ -178,10 +159,7 @@ function ConversationBody({
   // 라이브 채팅 UX와 동일하게: 연속된 assistant 메시지는 한 그룹으로 묶고
   // 그룹의 첫 메시지에 chips를 붙인다 ("도우미"가 같은 turn에서 여러 번
   // 말하더라도 헤더는 한 번만, 도구 칩도 그 위에 한 번만).
-  const turnGroups = useMemo(
-    () => groupMessagesIntoTurns(messages, traces),
-    [messages, traces],
-  )
+  const turnGroups = useMemo(() => groupMessagesIntoTurns(messages, traces), [messages, traces])
 
   return (
     <section className="py-10 sm:py-14">
@@ -218,10 +196,7 @@ type TurnGroup =
  *
  * branch가 있는 대화는 active 외 trace가 매핑되지 않을 수 있다 (graceful).
  */
-function groupMessagesIntoTurns(
-  messages: Message[],
-  traces: TurnTrace[],
-): TurnGroup[] {
+function groupMessagesIntoTurns(messages: Message[], traces: TurnTrace[]): TurnGroup[] {
   const groups: TurnGroup[] = []
   // 직접 매칭용 인덱스 — assistant_msg_id가 아니라 linked_message_ids 펼침.
   const traceByMsgId = new Map<string, TurnTrace>()
@@ -284,9 +259,7 @@ function UserMessageItem({ message }: { message: Message }) {
   return (
     <li className="flex justify-end">
       <div className="moldy-chat-card max-w-[85%] px-4 py-3 text-sm text-foreground">
-        <p className="whitespace-pre-wrap break-words leading-relaxed">
-          {message.content}
-        </p>
+        <p className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
       </div>
     </li>
   )
@@ -305,9 +278,7 @@ function AssistantTurnItem({
     <li className="space-y-3">
       <div className="flex items-center gap-2">
         <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="xs" />
-        <span className="text-sm font-semibold text-foreground">
-          {agent.name}
-        </span>
+        <span className="text-sm font-semibold text-foreground">{agent.name}</span>
       </div>
       <div className="pl-8 space-y-3">
         {chips.length > 0 && (
@@ -338,20 +309,12 @@ function EmptyConversation() {
       <div className="moldy-empty-icon mx-auto mb-4 size-12">
         <MessageSquareIcon className="size-5 text-primary-foreground" />
       </div>
-      <p className="text-sm text-muted-foreground">
-        {t('empty')}
-      </p>
+      <p className="text-sm text-muted-foreground">{t('empty')}</p>
     </div>
   )
 }
 
-function SharedFooter({
-  messageCount,
-  createdAt,
-}: {
-  messageCount: number
-  createdAt: string
-}) {
+function SharedFooter({ messageCount, createdAt }: { messageCount: number; createdAt: string }) {
   const t = useTranslations('sharedConversation')
   const dateLabel = useMemo(() => formatMediumDate(createdAt), [createdAt])
 
@@ -362,9 +325,7 @@ function SharedFooter({
           <p className="text-base font-semibold tracking-tight text-foreground">
             {t('footer.title')}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {t('footer.description')}
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('footer.description')}</p>
         </div>
         <Link
           href="/"
@@ -424,17 +385,9 @@ function SharedError() {
       <div className="moldy-error-icon mb-4 size-14">
         <AlertCircleIcon className="size-6" />
       </div>
-      <h1 className="text-lg font-semibold tracking-tight text-foreground">
-        {t('error.title')}
-      </h1>
-      <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-        {t('error.description')}
-      </p>
-      <Link
-        href="/"
-        data-variant="solid"
-        className="moldy-action-pill moldy-status-success mt-6"
-      >
+      <h1 className="text-lg font-semibold tracking-tight text-foreground">{t('error.title')}</h1>
+      <p className="mt-2 max-w-sm text-sm text-muted-foreground">{t('error.description')}</p>
+      <Link href="/" data-variant="solid" className="moldy-action-pill moldy-status-success mt-6">
         <ArrowLeftIcon className="size-4" />
         {t('error.home')}
       </Link>

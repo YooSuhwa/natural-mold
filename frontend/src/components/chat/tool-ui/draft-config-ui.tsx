@@ -63,11 +63,7 @@ function DraftHeader({ title, variant }: { title: string; variant: 'plain' | 'gr
 }
 
 function MintPill({ label, kind }: { label: string; kind: 'tool' | 'middleware' }) {
-  return (
-    <BuilderPill tone={kind === 'middleware' ? 'primary' : 'default'}>
-      {label}
-    </BuilderPill>
-  )
+  return <BuilderPill tone={kind === 'middleware' ? 'primary' : 'default'}>{label}</BuilderPill>
 }
 
 function DraftConfigSummary({
@@ -100,15 +96,9 @@ function DraftConfigSummary({
             {draft.name_ko || draft.name}
           </div>
           {draft.name && draft.name_ko !== draft.name && (
-            <div className="moldy-ui-caption-plus moldy-builder-color-muted-soft">
-              {draft.name}
-            </div>
+            <div className="moldy-ui-caption-plus moldy-builder-color-muted-soft">{draft.name}</div>
           )}
-          {draft.description && (
-            <p className="moldy-builder-copy mt-1">
-              {draft.description}
-            </p>
-          )}
+          {draft.description && <p className="moldy-builder-copy mt-1">{draft.description}</p>}
         </div>
       </div>
       {tools.length > 0 && (

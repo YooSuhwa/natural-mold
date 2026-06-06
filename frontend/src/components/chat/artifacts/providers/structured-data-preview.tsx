@@ -37,6 +37,12 @@ export const StructuredDataPreviewProvider: ArtifactPreviewProvider = {
   priority: 78,
   requiresText: true,
   extensions: ['yaml', 'yml', 'toml'],
-  mimeTypes: ['application/yaml', 'application/x-yaml', 'text/yaml', 'application/toml', 'text/toml'],
+  mimeTypes: [
+    'application/yaml',
+    'application/x-yaml',
+    'text/yaml',
+    'application/toml',
+    'text/toml',
+  ],
   render: (props) => <StructuredDataPreview {...props} />,
 }

@@ -39,18 +39,10 @@ function formatMetric(value: number, metric: UsageMetric): string {
   return formatRequests(value)
 }
 
-export function SpendBarChart({
-  data,
-  metric,
-  limit = 10,
-  className,
-  label,
-}: SpendBarChartProps) {
+export function SpendBarChart({ data, metric, limit = 10, className, label }: SpendBarChartProps) {
   const t = useTranslations('usage.charts')
   const ranked = useMemo(() => {
-    return [...data]
-      .sort((a, b) => metricValue(b, metric) - metricValue(a, metric))
-      .slice(0, limit)
+    return [...data].sort((a, b) => metricValue(b, metric) - metricValue(a, metric)).slice(0, limit)
   }, [data, metric, limit])
 
   if (ranked.length === 0) {
@@ -79,8 +71,7 @@ export function SpendBarChart({
         {ranked.map((entry, i) => {
           const v = metricValue(entry, metric)
           const widthPct = Math.max(2, (v / max) * 100)
-          const labelText =
-            entry.target_label ?? entry.target_id ?? `unknown-${i}`
+          const labelText = entry.target_label ?? entry.target_id ?? `unknown-${i}`
           return (
             <div
               key={`${entry.target_id ?? 'none'}-${i}`}

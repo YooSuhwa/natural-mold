@@ -38,10 +38,8 @@ export function ToolboxNode({ data }: { data: ToolboxNodeData }) {
     onToggleSkill = () => {},
   } = data
   const toolIds = selectedToolIds instanceof Set ? selectedToolIds : new Set<string>()
-  const mcpIds =
-    selectedMcpToolIds instanceof Set ? selectedMcpToolIds : new Set<string>()
-  const skillIds =
-    selectedSkillIds instanceof Set ? selectedSkillIds : new Set<string>()
+  const mcpIds = selectedMcpToolIds instanceof Set ? selectedMcpToolIds : new Set<string>()
+  const skillIds = selectedSkillIds instanceof Set ? selectedSkillIds : new Set<string>()
 
   const selectedTools = allTools.filter((tool) => toolIds.has(tool.id))
   const { data: allMcpTools } = useAllMcpTools()
@@ -92,7 +90,9 @@ export function ToolboxNode({ data }: { data: ToolboxNodeData }) {
                 >
                   <span className="truncate text-xs">
                     {tool.name}
-                    <span className="ml-1 moldy-ui-nano text-muted-foreground/70">{t('toolbox.mcp')}</span>
+                    <span className="ml-1 moldy-ui-nano text-muted-foreground/70">
+                      {t('toolbox.mcp')}
+                    </span>
                   </span>
                   <button
                     onClick={() => onToggleMcpTool(tool.id)}

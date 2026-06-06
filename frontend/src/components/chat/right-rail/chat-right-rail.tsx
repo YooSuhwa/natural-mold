@@ -167,9 +167,7 @@ function RailFrame({ state, className, onClose }: RailFrameProps) {
           >
             <XIcon className="size-4" />
           </Button>
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-            {title}
-          </h2>
+          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">{title}</h2>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -232,12 +230,7 @@ interface ArtifactViewerHeaderProps {
   onClose: () => void
 }
 
-function ArtifactViewerHeader({
-  artifact,
-  payload,
-  title,
-  onClose,
-}: ArtifactViewerHeaderProps) {
+function ArtifactViewerHeader({ artifact, payload, title, onClose }: ArtifactViewerHeaderProps) {
   const t = useTranslations('chat.rightRail')
   const tArtifacts = useTranslations('chat.rightRail.artifacts')
   const setRightRail = useSetAtom(chatRightRailAtom)

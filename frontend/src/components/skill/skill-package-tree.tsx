@@ -89,9 +89,7 @@ function TreeItem({
         {node.isDir ? <Folder className="size-3" /> : null}
         <span>{node.name}</span>
         {!node.isDir && (
-          <span className="ml-auto moldy-ui-micro text-muted-foreground">
-            {node.size}b
-          </span>
+          <span className="ml-auto moldy-ui-micro text-muted-foreground">{node.size}b</span>
         )}
       </button>
       {node.isDir && node.children.length > 0 && (

@@ -52,10 +52,7 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
 
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="lg" height="fixed">
-      <DialogShell.Header
-        title={t('title')}
-        description={t('description')}
-      />
+      <DialogShell.Header title={t('title')} description={t('description')} />
       <DialogShell.Body className="flex flex-col">
         <Tabs
           value={tab}
@@ -67,17 +64,11 @@ export function ModelAddDialog({ open, onOpenChange }: ModelAddDialogProps) {
             <TabsTrigger value="custom">{t('tabs.custom')}</TabsTrigger>
           </TabsList>
 
-          <TabsContent
-            value="discover"
-            className="min-w-0 flex-1 overflow-y-auto pt-4"
-          >
+          <TabsContent value="discover" className="min-w-0 flex-1 overflow-y-auto pt-4">
             <ModelDiscoverPanel onComplete={() => onOpenChange(false)} />
           </TabsContent>
 
-          <TabsContent
-            value="custom"
-            className="min-w-0 flex-1 overflow-y-auto pt-4"
-          >
+          <TabsContent value="custom" className="min-w-0 flex-1 overflow-y-auto pt-4">
             <CustomIdForm onSaved={() => onOpenChange(false)} />
           </TabsContent>
         </Tabs>
@@ -106,9 +97,7 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
   // Filter to LLM credentials so the test panel only offers API keys.
   const llmCredentials = useMemo(() => {
     if (!credentials || !definitions) return []
-    const llmKeys = new Set(
-      definitions.filter((d) => d.category === 'llm').map((d) => d.key),
-    )
+    const llmKeys = new Set(definitions.filter((d) => d.category === 'llm').map((d) => d.key))
     return credentials.filter((c) => llmKeys.has(c.definition_key))
   }, [credentials, definitions])
 
@@ -252,18 +241,11 @@ function CustomIdForm({ onSaved }: { onSaved: () => void }) {
             <label className="text-xs font-medium" htmlFor="custom-test-cred">
               {t('fields.testCredential')}
             </label>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setTestOpen(false)}
-            >
+            <Button variant="ghost" size="sm" onClick={() => setTestOpen(false)}>
               {t('actions.hideTest')}
             </Button>
           </div>
-          <Select
-            value={effectiveCredId}
-            onValueChange={(v) => v && setTestCredId(v)}
-          >
+          <Select value={effectiveCredId} onValueChange={(v) => v && setTestCredId(v)}>
             <SelectTrigger id="custom-test-cred" className="w-full">
               <SelectValue placeholder={t('placeholders.selectCredential')} />
             </SelectTrigger>

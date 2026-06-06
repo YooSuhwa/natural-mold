@@ -73,15 +73,11 @@ function ResourcePanelToolbar({
   children: ReactNode
   className?: string
 }) {
-  return (
-    <div className={cn('moldy-resource-panel-toolbar md:p-5', className)}>{children}</div>
-  )
+  return <div className={cn('moldy-resource-panel-toolbar md:p-5', className)}>{children}</div>
 }
 
 function ResourcePanelBody({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={cn('moldy-resource-panel-body md:p-5', className)}>{children}</div>
-  )
+  return <div className={cn('moldy-resource-panel-body md:p-5', className)}>{children}</div>
 }
 
 const ResourcePanel = Object.assign(ResourcePanelRoot, {
@@ -161,8 +157,16 @@ function ResourceToolbar({ children, className }: { children: ReactNode; classNa
   )
 }
 
-function ResourceSummaryStrip({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('moldy-resource-summary-strip sm:grid-cols-3', className)}>{children}</div>
+function ResourceSummaryStrip({
+  children,
+  className,
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn('moldy-resource-summary-strip sm:grid-cols-3', className)}>{children}</div>
+  )
 }
 
 type ResourceGridProps = {

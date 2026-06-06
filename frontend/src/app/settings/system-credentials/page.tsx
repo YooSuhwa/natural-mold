@@ -97,9 +97,7 @@ function SystemCredentialsPageInner() {
           <Shield className="size-3.5" />
           {t('operatorOnly.title')}
         </p>
-        <p className="moldy-status-muted-text mt-1">
-          {t('operatorOnly.description')}
-        </p>
+        <p className="moldy-status-muted-text mt-1">{t('operatorOnly.description')}</p>
       </div>
 
       {isLoading ? (
@@ -119,10 +117,7 @@ function SystemCredentialsPageInner() {
       ) : (
         <ul className="space-y-2">
           {credentials.map((c) => (
-            <li
-              key={c.id}
-              className="flex items-center gap-3 rounded-lg border bg-card p-3"
-            >
+            <li key={c.id} className="flex items-center gap-3 rounded-lg border bg-card p-3">
               <DomainIcon iconId={c.definition_key} className="size-5" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{c.name}</p>
@@ -147,11 +142,7 @@ function SystemCredentialsPageInner() {
         </ul>
       )}
 
-      <CredentialCreateModal
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        mode="system"
-      />
+      <CredentialCreateModal open={createOpen} onOpenChange={setCreateOpen} mode="system" />
     </div>
   )
 }

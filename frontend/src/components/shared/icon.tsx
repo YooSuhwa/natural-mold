@@ -165,11 +165,10 @@ export const DOMAIN_ICON_OPTIONS: Array<{ id: DomainIconId; label: string }> = [
   { id: 'storage', label: 'Storage' },
 ]
 
-export function getDomainIcon(
-  iconId?: string | null,
-  fallback: DomainIconId = 'box',
-): LucideIcon {
-  return (iconId ? DOMAIN_ICONS[iconId as DomainIconId] : undefined) ?? DOMAIN_ICONS[fallback] ?? Box
+export function getDomainIcon(iconId?: string | null, fallback: DomainIconId = 'box'): LucideIcon {
+  return (
+    (iconId ? DOMAIN_ICONS[iconId as DomainIconId] : undefined) ?? DOMAIN_ICONS[fallback] ?? Box
+  )
 }
 
 export function getDomainIconIdForResource(resourceType?: string | null): DomainIconId {
@@ -199,12 +198,7 @@ interface DomainIconProps {
   size?: number
 }
 
-export function DomainIcon({
-  iconId,
-  fallback = 'box',
-  className,
-  size,
-}: DomainIconProps) {
+export function DomainIcon({ iconId, fallback = 'box', className, size }: DomainIconProps) {
   const Icon = getDomainIcon(iconId, fallback)
   return createElement(Icon, {
     className: cn('size-4 text-foreground/80', className),
@@ -288,10 +282,7 @@ export function DomainIconPicker({
   className,
 }: DomainIconPickerProps) {
   return (
-    <div
-      role="radiogroup"
-      className={cn('grid grid-cols-6 gap-1.5 sm:grid-cols-9', className)}
-    >
+    <div role="radiogroup" className={cn('grid grid-cols-6 gap-1.5 sm:grid-cols-9', className)}>
       {options.map((option) => {
         const selected = value === option.id
         return (

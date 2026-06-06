@@ -26,8 +26,7 @@ export const credentialsApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  delete: (id: string) =>
-    apiFetch<void>(`/api/credentials/${id}`, { method: 'DELETE' }),
+  delete: (id: string) => apiFetch<void>(`/api/credentials/${id}`, { method: 'DELETE' }),
 
   test: (id: string) =>
     apiFetch<CredentialTestResult>(`/api/credentials/${id}/test`, { method: 'POST' }),
@@ -38,9 +37,7 @@ export const credentialsApi = {
     }),
 
   listAuditLogs: (id: string, limit = 50) =>
-    apiFetch<CredentialAuditLog[]>(
-      `/api/credentials/${id}/audit-logs?limit=${limit}`,
-    ),
+    apiFetch<CredentialAuditLog[]>(`/api/credentials/${id}/audit-logs?limit=${limit}`),
 
   startOAuth2: (id: string) =>
     apiFetch<OAuth2AuthStartResponse>(`/api/oauth2-credential/auth/${id}`, {
@@ -66,6 +63,5 @@ export const systemCredentialsApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  delete: (id: string) =>
-    apiFetch<void>(`/api/system-credentials/${id}`, { method: 'DELETE' }),
+  delete: (id: string) => apiFetch<void>(`/api/system-credentials/${id}`, { method: 'DELETE' }),
 }

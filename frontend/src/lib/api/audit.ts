@@ -1,7 +1,11 @@
 import { apiFetch } from './client'
 import type { AuditEventListParams, AuditEventPage } from '@/lib/types/audit'
 
-function appendParam(params: URLSearchParams, key: string, value: string | number | null | undefined) {
+function appendParam(
+  params: URLSearchParams,
+  key: string,
+  value: string | number | null | undefined,
+) {
   if (value === null || value === undefined || value === '') return
   params.set(key, String(value))
 }

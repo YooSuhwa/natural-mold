@@ -1,20 +1,11 @@
 'use client'
 
 import type { LucideIcon } from 'lucide-react'
-import {
-  CircleDashedIcon,
-  CloudIcon,
-  KeyIcon,
-  LogInIcon,
-  PlusIcon,
-} from 'lucide-react'
+import { CircleDashedIcon, CloudIcon, KeyIcon, LogInIcon, PlusIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
-import type {
-  CredentialSummary,
-  CredentialSummaryStatus,
-} from '@/lib/types/marketplace'
+import type { CredentialSummary, CredentialSummaryStatus } from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
 
 interface Spec {
@@ -64,12 +55,7 @@ export function CredentialBadge({ summary, className }: CredentialBadgeProps) {
   const missing = summary.missing_required_count > 0
   return (
     <Badge
-      className={cn(
-        'gap-1',
-        spec.className,
-        missing && 'ring-1 ring-destructive/40',
-        className,
-      )}
+      className={cn('gap-1', spec.className, missing && 'ring-1 ring-destructive/40', className)}
     >
       <Icon className="size-3" aria-hidden />
       <span>{t(spec.labelKey)}</span>

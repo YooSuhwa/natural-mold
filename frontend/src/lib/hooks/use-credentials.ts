@@ -2,10 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { credentialsApi, systemCredentialsApi } from '@/lib/api/credentials'
-import type {
-  CredentialCreateRequest,
-  CredentialUpdateRequest,
-} from '@/lib/types/credential'
+import type { CredentialCreateRequest, CredentialUpdateRequest } from '@/lib/types/credential'
 
 const KEY_LIST = ['credentials'] as const
 const KEY_TYPES = ['credential-types'] as const
@@ -96,8 +93,7 @@ export function useSystemCredentials() {
 export function useCreateSystemCredential() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: CredentialCreateRequest) =>
-      systemCredentialsApi.create(data),
+    mutationFn: (data: CredentialCreateRequest) => systemCredentialsApi.create(data),
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY_SYSTEM_LIST }),
   })
 }

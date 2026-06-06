@@ -171,11 +171,9 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
 
   async function handleEnable() {
     if (!item) return
-    await runMutation(
-      () => enableItem.mutateAsync(item.id),
-      t('toast.enabled'),
-      { fallback: t('toast.enableFailed') },
-    )
+    await runMutation(() => enableItem.mutateAsync(item.id), t('toast.enabled'), {
+      fallback: t('toast.enableFailed'),
+    })
   }
 
   async function handleUnpublish() {
@@ -309,7 +307,10 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
               {item.execution_profile ? (
                 <dl className="grid gap-2">
                   {Object.entries(item.execution_profile).map(([key, value]) => (
-                    <div key={key} className="grid gap-1 rounded-md bg-muted/40 px-3 py-2 sm:grid-cols-[120px_1fr]">
+                    <div
+                      key={key}
+                      className="grid gap-1 rounded-md bg-muted/40 px-3 py-2 sm:grid-cols-[120px_1fr]"
+                    >
                       <dt className="font-medium text-foreground">
                         {t(`executionProfile.labels.${key}`) || key}
                       </dt>
@@ -389,9 +390,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                 <div className="space-y-2 border-t border-border/60 pt-3">
                   <p className="text-sm font-medium">{t('acl.title')}</p>
                   {item.acl_user_ids.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      {t('acl.empty')}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{t('acl.empty')}</p>
                   ) : (
                     <ul className="space-y-1">
                       {item.acl_user_ids.map((uid) => (
@@ -412,9 +411,7 @@ export default function MarketplaceItemDetailPage({ params }: PageProps) {
                       ))}
                     </ul>
                   )}
-                  <p className="text-xs text-muted-foreground">
-                    {t('acl.lastTargetHint')}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{t('acl.lastTargetHint')}</p>
                 </div>
               ) : null}
             </CardContent>

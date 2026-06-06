@@ -213,10 +213,7 @@ export function BuilderAssistantMessage({
 /** 좌측 툴바 IconBtn — 파일첨부 / 템플릿 (시각 stub, 클릭 시 title 표시만). */
 function IconBtn({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <BuilderIconButton
-      aria-label={label}
-      title={label}
-    >
+    <BuilderIconButton aria-label={label} title={label}>
       {children}
     </BuilderIconButton>
   )
@@ -272,9 +269,7 @@ export function BuilderComposer({ modelLabel }: { modelLabel?: string }) {
   return (
     <div className="moldy-builder-composer-shell">
       <div className="moldy-builder-composer-inner mx-auto">
-        <ComposerPrimitive.Root
-          className="moldy-builder-composer-root group"
-        >
+        <ComposerPrimitive.Root className="moldy-builder-composer-root group">
           <ImeSafeComposerInput
             autoFocus
             placeholder={t('placeholder')}
@@ -291,9 +286,7 @@ export function BuilderComposer({ modelLabel }: { modelLabel?: string }) {
                 <LayoutGridIcon className="size-4" />
               </IconBtn>
               <span aria-hidden className="moldy-builder-composer-divider" />
-              {modelLabel && (
-                <span className="moldy-builder-model-label">{modelLabel}</span>
-              )}
+              {modelLabel && <span className="moldy-builder-model-label">{modelLabel}</span>}
             </div>
             <ThreadPrimitive.If running={false}>
               <BuilderSendButton />

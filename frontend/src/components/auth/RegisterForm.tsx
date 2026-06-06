@@ -49,9 +49,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
   return (
     <form onSubmit={handleSubmit} aria-busy={isLoading} noValidate>
       <header className="mb-5">
-        <h1 className="mb-1.5 moldy-auth-title">
-          {t('auth.register.formTitle')}
-        </h1>
+        <h1 className="mb-1.5 moldy-auth-title">{t('auth.register.formTitle')}</h1>
       </header>
 
       {mapped && mapped.field === null ? (
@@ -64,10 +62,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
         <div className="grid gap-3.5">
           {/* Display name */}
           <div>
-            <label
-              htmlFor="reg-display-name"
-              className="mb-1.5 block text-sm font-medium"
-            >
+            <label htmlFor="reg-display-name" className="mb-1.5 block text-sm font-medium">
               {t('auth.register.name')}
             </label>
             <Input
@@ -87,22 +82,15 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
                 undefined
               }
             />
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {t('auth.register.nameHelp')}
-            </p>
+            <p className="mt-1.5 text-xs text-muted-foreground">{t('auth.register.nameHelp')}</p>
             {nameError ? (
-              <p className="mt-1.5 text-xs text-destructive">
-                {t('auth.errors.nameRequired')}
-              </p>
+              <p className="mt-1.5 text-xs text-destructive">{t('auth.errors.nameRequired')}</p>
             ) : null}
           </div>
 
           {/* Email */}
           <div>
-            <label
-              htmlFor="reg-email"
-              className="mb-1.5 block text-sm font-medium"
-            >
+            <label htmlFor="reg-email" className="mb-1.5 block text-sm font-medium">
               {t('auth.register.email')}
             </label>
             <Input
@@ -119,14 +107,9 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
               aria-describedby={mapped?.field === 'email' ? 'reg-email-error' : undefined}
             />
             {emailError ? (
-              <p className="mt-1.5 text-xs text-destructive">
-                {t('auth.errors.invalidEmail')}
-              </p>
+              <p className="mt-1.5 text-xs text-destructive">{t('auth.errors.invalidEmail')}</p>
             ) : mapped?.field === 'email' ? (
-              <p
-                id="reg-email-error"
-                className="mt-1.5 text-xs text-destructive"
-              >
+              <p id="reg-email-error" className="mt-1.5 text-xs text-destructive">
                 {t(mapped.messageKey)}
               </p>
             ) : null}
@@ -134,10 +117,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
 
           {/* Password */}
           <div>
-            <label
-              htmlFor="reg-password"
-              className="mb-1.5 block text-sm font-medium"
-            >
+            <label htmlFor="reg-password" className="mb-1.5 block text-sm font-medium">
               {t('auth.register.password')}
             </label>
             <div className="relative">
@@ -155,9 +135,7 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
               <button
                 type="button"
                 aria-pressed={showPassword}
-                aria-label={
-                  showPassword ? t('auth.password.hide') : t('auth.password.show')
-                }
+                aria-label={showPassword ? t('auth.password.hide') : t('auth.password.show')}
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring rounded"
               >
@@ -186,20 +164,14 @@ export function RegisterForm({ onSubmit, isLoading, error }: Props) {
               </span>
             </label>
             {agreedError ? (
-              <p
-                className="mt-1.5 pl-[26px] text-xs text-destructive"
-              >
+              <p className="mt-1.5 pl-[26px] text-xs text-destructive">
                 {t('auth.register.termsRequired')}
               </p>
             ) : null}
           </div>
 
           {/* Submit */}
-          <Button
-            type="submit"
-            className="mt-0.5 w-full gap-2"
-            disabled={isLoading || formInvalid}
-          >
+          <Button type="submit" className="mt-0.5 w-full gap-2" disabled={isLoading || formInvalid}>
             {isLoading ? (
               <>
                 <Loader2Icon className="size-4 animate-spin" aria-hidden />

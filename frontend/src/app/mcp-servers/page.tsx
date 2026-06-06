@@ -30,10 +30,7 @@ import { McpServerDetailDialog } from '@/components/mcp/mcp-server-detail-dialog
 import { McpImportDialog } from '@/components/mcp/mcp-import-dialog'
 import { useExportMcpServers, useMcpServers } from '@/lib/hooks/use-mcp-servers'
 import { useMcpHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
-import {
-  getResourceTone,
-  resourceStatusChipClassName,
-} from '@/lib/resource-tones'
+import { getResourceTone, resourceStatusChipClassName } from '@/lib/resource-tones'
 import type { McpServer } from '@/lib/types/mcp'
 import type { HealthCheckEntry } from '@/lib/types/health'
 import { cn } from '@/lib/utils'
@@ -308,12 +305,7 @@ function McpServerCard({
       aria-label={`${server.name} ${toolCountLabel}`}
     >
       <ResourceListCard.Header>
-        <span
-          className={cn(
-            'moldy-resource-icon',
-            tone.icon,
-          )}
-        >
+        <span className={cn('moldy-resource-icon', tone.icon)}>
           <Server className="size-4.5" />
         </span>
         <ResourceBadge tone={tone}>{server.transport}</ResourceBadge>

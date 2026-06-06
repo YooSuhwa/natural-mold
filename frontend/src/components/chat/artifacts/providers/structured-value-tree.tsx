@@ -63,7 +63,9 @@ function StructuredValueNode({ name, value }: StructuredValueNodeProps) {
       ) : (
         <span className="w-24 shrink-0" />
       )}
-      <span className={`break-words font-mono ${valueTone(value)}`}>{formatScalarValue(value)}</span>
+      <span className={`break-words font-mono ${valueTone(value)}`}>
+        {formatScalarValue(value)}
+      </span>
     </div>
   )
 }

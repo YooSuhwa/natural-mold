@@ -127,7 +127,9 @@ describe('ArtifactLibraryContent', () => {
       data: {
         pages: [
           {
-            items: params.q ? [] : [artifact({ id: 'library-artifact', display_name: 'library.md' })],
+            items: params.q
+              ? []
+              : [artifact({ id: 'library-artifact', display_name: 'library.md' })],
             next_cursor: null,
             has_more: false,
           },

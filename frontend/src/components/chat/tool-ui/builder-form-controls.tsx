@@ -2,11 +2,7 @@
 
 import { useRef, type ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
-import {
-  BuilderButton,
-  BuilderFeedbackWrap,
-  BuilderTextarea,
-} from './builder-primitives'
+import { BuilderButton, BuilderFeedbackWrap, BuilderTextarea } from './builder-primitives'
 
 interface BuilderFeedbackTextareaProps {
   value: string

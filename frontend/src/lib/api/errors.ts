@@ -93,10 +93,7 @@ export async function readApiErrorBody(
 
 /** Shortcut: parse + throw an ``ApiError``. Used by JSON callers; SSE
  *  callers want the raw fields to feed a ``StreamApiError`` subclass. */
-export async function throwApiError(
-  response: Response,
-  fallbackCode: string,
-): Promise<never> {
+export async function throwApiError(response: Response, fallbackCode: string): Promise<never> {
   const { code, message } = await readApiErrorBody(response, { fallbackCode })
   throw new ApiError(response.status, code, message)
 }

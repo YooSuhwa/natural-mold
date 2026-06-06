@@ -21,7 +21,10 @@ function TableDataPreview({ artifact, textContent, isLoadingText }: ArtifactPrev
   const t = useTranslations('chat.rightRail.artifacts')
   const tData = useTranslations('chat.rightRail.artifacts.data')
   const text = textContent?.text ?? ''
-  const parsed = useMemo(() => parseTablePreview(text, artifact.extension), [artifact.extension, text])
+  const parsed = useMemo(
+    () => parseTablePreview(text, artifact.extension),
+    [artifact.extension, text],
+  )
 
   if (isLoadingText) return <div className="text-sm text-muted-foreground">{t('loading')}</div>
   if (parsed.error || !parsed.data) return <ParseFallback text={text} />
@@ -38,7 +41,9 @@ function TableDataPreview({ artifact, textContent, isLoadingText }: ArtifactPrev
   return (
     <div className="overflow-hidden border border-border bg-card">
       <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2 text-xs text-muted-foreground">
-        <span className="font-medium text-foreground">{artifact.extension?.toUpperCase() ?? 'CSV'}</span>
+        <span className="font-medium text-foreground">
+          {artifact.extension?.toUpperCase() ?? 'CSV'}
+        </span>
         <span>
           {tData('tableSummary', {
             rows: parsed.data.totalRows,

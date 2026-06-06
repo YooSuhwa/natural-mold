@@ -12,10 +12,7 @@ import {
 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
-import type {
-  InstallationStatus,
-  InstallationSummary,
-} from '@/lib/types/marketplace'
+import type { InstallationStatus, InstallationSummary } from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
 
 interface Spec {

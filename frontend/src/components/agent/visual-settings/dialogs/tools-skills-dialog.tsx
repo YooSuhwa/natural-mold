@@ -191,10 +191,7 @@ export function ToolsSkillsDialog({
                 </TabsContent>
 
                 <TabsContent value="mcp" className="min-w-0 flex-1 overflow-y-auto pt-3">
-                  <McpPanel
-                    selectedIds={selectedMcpToolIds}
-                    onToggle={onToggleMcpTool}
-                  />
+                  <McpPanel selectedIds={selectedMcpToolIds} onToggle={onToggleMcpTool} />
                 </TabsContent>
 
                 {mode === 'all' && (
@@ -458,11 +455,7 @@ function ToolsPanel({
           onAdd={() => onToggle(t.id)}
         />
       ))}
-      emptyText={
-        allTools.length === 0
-          ? t('toolsEmpty')
-          : t('noResults')
-      }
+      emptyText={allTools.length === 0 ? t('toolsEmpty') : t('noResults')}
     />
   )
 }
@@ -510,11 +503,7 @@ function McpPanel({
           onAdd={() => onToggle(t.id)}
         />
       ))}
-      emptyText={
-        list.length === 0
-          ? t('mcpEmpty')
-          : t('noResults')
-      }
+      emptyText={list.length === 0 ? t('mcpEmpty') : t('noResults')}
     />
   )
 }
@@ -537,8 +526,7 @@ function SkillsPanel({
       .filter((s) =>
         !q
           ? true
-          : s.name.toLowerCase().includes(q) ||
-            (s.description ?? '').toLowerCase().includes(q),
+          : s.name.toLowerCase().includes(q) || (s.description ?? '').toLowerCase().includes(q),
       )
   }, [allSkills, selectedSkillIds, query])
 
@@ -556,11 +544,7 @@ function SkillsPanel({
           onAdd={() => onToggle(s.id)}
         />
       ))}
-      emptyText={
-        allSkills.length === 0
-          ? t('skillsEmpty')
-          : t('noResults')
-      }
+      emptyText={allSkills.length === 0 ? t('skillsEmpty') : t('noResults')}
     />
   )
 }

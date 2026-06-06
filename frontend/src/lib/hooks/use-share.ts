@@ -22,8 +22,7 @@ export function useCreateShare(conversationId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () => sharesApi.create(conversationId),
-    onSuccess: (link) =>
-      qc.setQueryData(shareKeys.active(conversationId), link),
+    onSuccess: (link) => qc.setQueryData(shareKeys.active(conversationId), link),
   })
 }
 

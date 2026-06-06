@@ -119,13 +119,14 @@ function CredentialDetailDialogInner({ credentialId, open, onOpenChange }: Props
             <div className="space-y-2 text-xs">
               <Row label={t('rows.id')} value={credential.id} mono />
               <Row label={t('rows.keyId')} value={credential.key_id} mono />
-              <Row label={t('rows.created')} value={new Date(credential.created_at).toLocaleString()} />
+              <Row
+                label={t('rows.created')}
+                value={new Date(credential.created_at).toLocaleString()}
+              />
               <Row
                 label={t('rows.lastUsed')}
                 value={
-                  credential.last_used_at
-                    ? new Date(credential.last_used_at).toLocaleString()
-                    : '—'
+                  credential.last_used_at ? new Date(credential.last_used_at).toLocaleString() : '—'
                 }
               />
               <Row

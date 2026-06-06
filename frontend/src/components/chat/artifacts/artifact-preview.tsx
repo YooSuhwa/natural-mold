@@ -17,7 +17,7 @@ export function ArtifactPreview({ artifact, previewMode = 'preview' }: ArtifactP
   const provider = artifact ? getArtifactPreviewProvider(artifact) : null
   const shouldLoadText = Boolean(
     artifact &&
-      (provider?.requiresText || (previewMode === 'code' && canShowArtifactSource(artifact))),
+    (provider?.requiresText || (previewMode === 'code' && canShowArtifactSource(artifact))),
   )
   const textQuery = useQuery({
     queryKey: ['artifacts', 'content', artifact?.id ?? 'none', artifact?.version_id ?? 'none'],

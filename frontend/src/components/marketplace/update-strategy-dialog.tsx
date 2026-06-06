@@ -44,11 +44,7 @@ const STRATEGIES: StrategyOption[] = [
   },
 ]
 
-export function UpdateStrategyDialog({
-  item,
-  open,
-  onOpenChange,
-}: UpdateStrategyDialogProps) {
+export function UpdateStrategyDialog({ item, open, onOpenChange }: UpdateStrategyDialogProps) {
   // remount-on-target swap pattern (AGENTS.md): key 로 state 자동 reset.
   return (
     <UpdateStrategyDialogInner
@@ -60,19 +56,13 @@ export function UpdateStrategyDialog({
   )
 }
 
-function UpdateStrategyDialogInner({
-  item,
-  open,
-  onOpenChange,
-}: UpdateStrategyDialogProps) {
+function UpdateStrategyDialogInner({ item, open, onOpenChange }: UpdateStrategyDialogProps) {
   const t = useTranslations('marketplace.updateStrategy')
   // dirty 상태이면 destructive strategy를 1차 선택지로 띄우지 않는다 — 안전한
   // install_new_copy 를 default 로. 사용자가 의식적으로 overwrite 를 선택해야
   // 한다.
   const dirty = !!item?.installation.dirty
-  const [strategy, setStrategy] = useState<UpdateStrategy>(
-    dirty ? 'install_new_copy' : 'overwrite',
-  )
+  const [strategy, setStrategy] = useState<UpdateStrategy>(dirty ? 'install_new_copy' : 'overwrite')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const installationId = item?.installation.installation_id ?? ''
   const update = useUpdateInstallation(installationId)
@@ -113,11 +103,7 @@ function UpdateStrategyDialogInner({
     <DialogShell open={open} onOpenChange={onOpenChange} size="md" height="auto">
       <DialogShell.Header
         title={t('title', { name: item.name })}
-        description={
-          dirty
-            ? t('description.dirty')
-            : t('description.default')
-        }
+        description={dirty ? t('description.dirty') : t('description.default')}
       />
 
       <DialogShell.Body>
@@ -153,9 +139,7 @@ function UpdateStrategyDialogInner({
                   <p className="font-medium text-foreground">{t(opt.labelKey)}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{t(opt.descriptionKey)}</p>
                   {warning ? (
-                    <p className="mt-1 text-xs text-status-warn">
-                      {t('dirtyWarning')}
-                    </p>
+                    <p className="mt-1 text-xs text-status-warn">{t('dirtyWarning')}</p>
                   ) : null}
                 </div>
               </label>

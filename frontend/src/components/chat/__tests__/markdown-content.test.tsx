@@ -23,9 +23,7 @@ describe('ChatImage', () => {
 
   it('uses lightweight previews for conversation image files', () => {
     expect(
-      getChatImagePreviewSrc(
-        'http://localhost:8001/api/conversations/c1/files/generated.png',
-      ),
+      getChatImagePreviewSrc('http://localhost:8001/api/conversations/c1/files/generated.png'),
     ).toBe('http://localhost:8001/api/conversations/c1/files/generated.png?variant=preview')
     expect(
       getChatImagePreviewSrc(
@@ -34,8 +32,6 @@ describe('ChatImage', () => {
     ).toBe(
       'http://localhost:8001/api/conversations/c1/files/generated.png?download=1&variant=preview',
     )
-    expect(getChatImagePreviewSrc('data:image/png;base64,abc')).toBe(
-      'data:image/png;base64,abc',
-    )
+    expect(getChatImagePreviewSrc('data:image/png;base64,abc')).toBe('data:image/png;base64,abc')
   })
 })

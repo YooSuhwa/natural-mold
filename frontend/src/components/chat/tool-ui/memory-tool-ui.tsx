@@ -2,14 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import {
-  BrainIcon,
-  CheckIcon,
-  Loader2Icon,
-  PencilIcon,
-  SaveIcon,
-  XIcon,
-} from 'lucide-react'
+import { BrainIcon, CheckIcon, Loader2Icon, PencilIcon, SaveIcon, XIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -21,17 +14,8 @@ import {
   useMemoryProposal,
   useRejectMemoryProposal,
 } from '@/lib/hooks/use-memory'
-import type {
-  MemoryEventPayload,
-  MemoryEventType,
-  MemoryProposal,
-  MemoryScope,
-} from '@/lib/types'
-import {
-  CollapsiblePill,
-  pillStatusFromAssistantUi,
-  type PillStatus,
-} from './collapsible-pill'
+import type { MemoryEventPayload, MemoryEventType, MemoryProposal, MemoryScope } from '@/lib/types'
+import { CollapsiblePill, pillStatusFromAssistantUi, type PillStatus } from './collapsible-pill'
 
 interface MemoryToolArgs {
   scope?: MemoryScope
@@ -140,8 +124,7 @@ function MemoryToolCard({
   const reject = useRejectMemoryProposal()
   const editAndApprove = useEditAndApproveMemoryProposal()
   const parsed = useMemo(() => parseMemoryResult(result), [result])
-  const proposalId =
-    parsed?.memory_event === 'memory_proposed' && parsed.id ? parsed.id : undefined
+  const proposalId = parsed?.memory_event === 'memory_proposed' && parsed.id ? parsed.id : undefined
   const proposal = useMemoryProposal(proposalId)
   const initial = parsed ?? memoryResultFromArgs(args)
   const serverResolved = useMemo(
@@ -155,8 +138,7 @@ function MemoryToolCard({
     content: initial.content,
   })
   const view = resolved ?? serverResolved ?? initial
-  const content =
-    editing || draft.sourceContent === view.content ? draft.content : view.content
+  const content = editing || draft.sourceContent === view.content ? draft.content : view.content
   const event = view.memory_event
   const pending = approve.isPending || reject.isPending || editAndApprove.isPending
   const isRunning = statusType === 'running' && !parsed
@@ -233,9 +215,7 @@ function MemoryToolCard({
     isRunning || !view.content ? (
       description
     ) : (
-      <span className="inline-block max-w-[min(34rem,54vw)] truncate">
-        {view.content}
-      </span>
+      <span className="inline-block max-w-[min(34rem,54vw)] truncate">{view.content}</span>
     )
   const cardKey = `${event ?? statusType}-${view.id ?? view.content}`
 
@@ -364,12 +344,7 @@ function MemoryToolCard({
 export const ProposeMemoryToolUI = makeAssistantToolUI<MemoryToolArgs, unknown>({
   toolName: 'propose_memory',
   render: ({ args, result, status, addResult }) => (
-    <MemoryToolCard
-      args={args}
-      result={result}
-      statusType={status.type}
-      addResult={addResult}
-    />
+    <MemoryToolCard args={args} result={result} statusType={status.type} addResult={addResult} />
   ),
 })
 

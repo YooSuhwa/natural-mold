@@ -144,9 +144,7 @@ export default function ConversationalCreationPage({
           </Button>
         </Link>
 
-        <nav
-          className="flex items-center gap-1.5 moldy-ui-body-sm moldy-builder-color-muted"
-        >
+        <nav className="flex items-center gap-1.5 moldy-ui-body-sm moldy-builder-color-muted">
           <HomeIcon className="size-3.5 opacity-55" />
           <span>{t('breadcrumb.create')}</span>
           <ChevronRightIcon className="size-3 opacity-45" />

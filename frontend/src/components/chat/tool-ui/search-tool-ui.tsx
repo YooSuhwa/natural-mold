@@ -86,7 +86,11 @@ function SearchRender({
   const isRunning = status.type === 'running'
   const items = parseSearchResults(result)
   const title = args?.query ? `"${args.query}"` : t('defaultTitle')
-  const meta = isRunning ? t('running') : items.length > 0 ? t('count', { count: items.length }) : undefined
+  const meta = isRunning
+    ? t('running')
+    : items.length > 0
+      ? t('count', { count: items.length })
+      : undefined
 
   const body =
     !isRunning && items.length > 0 ? (

@@ -100,11 +100,7 @@ describe('extractChips', () => {
         data: {
           tool_name: 'write_todos',
           parameters: {
-            todos: [
-              { status: 'completed' },
-              { status: 'completed' },
-              { status: 'pending' },
-            ],
+            todos: [{ status: 'completed' }, { status: 'completed' }, { status: 'pending' }],
           },
         },
       },

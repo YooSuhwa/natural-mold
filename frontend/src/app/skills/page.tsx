@@ -24,9 +24,7 @@ import { OriginBadge } from '@/components/marketplace/badges/origin-badge'
 import { PublicationBadge } from '@/components/marketplace/badges/publication-badge'
 import { PublishWizard } from '@/components/marketplace/publish-wizard'
 import { useSkills } from '@/lib/hooks/use-skills'
-import {
-  getResourceTone,
-} from '@/lib/resource-tones'
+import { getResourceTone } from '@/lib/resource-tones'
 import type { Skill, SkillKind } from '@/lib/types/skill'
 import { cn } from '@/lib/utils'
 
@@ -235,18 +233,15 @@ function SkillCard({
     skill.version ? `v${skill.version}` : null,
     agentsLabel,
     skill.version ? null : updatedLabel,
-  ].filter((label): label is string => Boolean(label)).slice(0, 2)
+  ]
+    .filter((label): label is string => Boolean(label))
+    .slice(0, 2)
   const hasMarketplaceSignals = Boolean(skill.origin_summary || skill.publication_summary)
 
   return (
     <ResourceListCard as="article" tone={tone} density="rich">
       <ResourceListCard.Header>
-        <span
-          className={cn(
-            'moldy-resource-icon',
-            tone.icon,
-          )}
-        >
+        <span className={cn('moldy-resource-icon', tone.icon)}>
           <Icon className="size-4.5" />
         </span>
         <ResourceBadge tone={tone}>{kindLabel}</ResourceBadge>
