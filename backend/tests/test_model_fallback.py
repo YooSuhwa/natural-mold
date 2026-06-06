@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 import httpx
@@ -220,7 +220,7 @@ def test_executor_builds_primary_and_runtime_fallback_candidates() -> None:
     with patch("app.agent_runtime.executor.create_chat_model", side_effect=fake):
         candidates = _build_model_candidates(cfg)
 
-    assert [candidate.marker for candidate in candidates] == [
+    assert [cast(Any, candidate).marker for candidate in candidates] == [
         "openai/gpt-4o",
         "anthropic/claude-sonnet",
         "google/gemini-pro",

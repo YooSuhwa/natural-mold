@@ -42,7 +42,7 @@ async def gc_expired_refresh_tokens(
         delete(RefreshToken).where(RefreshToken.expires_at < cutoff)
     )
     await db.commit()
-    deleted = result.rowcount or 0
+    deleted = int(getattr(result, "rowcount", 0) or 0)
     if deleted:
         logger.info(
             "Refresh-token GC: deleted %d rows older than %s",

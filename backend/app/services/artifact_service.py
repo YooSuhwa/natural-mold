@@ -5,10 +5,11 @@ import hashlib
 import os
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -19,9 +20,11 @@ from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
 from app.models.message_event import MessageEvent
 from app.schemas.artifact import (
+    ArtifactKind,
     ArtifactKindStat,
     ArtifactLibraryPage,
     ArtifactLibraryStats,
+    ArtifactStatus,
     ArtifactSummary,
     ArtifactTextContent,
     FileEventPayload,
@@ -171,10 +174,7 @@ async def snapshot_output_dir(
         if stat.st_size > settings.artifact_max_bytes:
             continue
         previous_state = previous.files.get(normalized.logical_path) if previous else None
-        metadata_unchanged = (
-            previous_state is not None and _state_matches_stat(previous_state, stat)
-        )
-        if metadata_unchanged:
+        if previous_state is not None and _state_matches_stat(previous_state, stat):
             sha256 = previous_state.sha256
         elif hash_files:
             sha256 = await _sha256_file(path)
@@ -797,7 +797,7 @@ async def _storage_local_path(storage: ArtifactStorageBackend, *, object_key: st
 
 async def _summaries_from_artifacts(
     db: AsyncSession,
-    artifacts: list[ConversationArtifact],
+    artifacts: Sequence[ConversationArtifact],
     *,
     include_names: bool = False,
 ) -> list[ArtifactSummary]:
@@ -838,7 +838,7 @@ async def _summaries_from_artifacts(
 
 async def _current_versions_for_artifacts(
     db: AsyncSession,
-    artifacts: list[ConversationArtifact],
+    artifacts: Sequence[ConversationArtifact],
 ) -> dict[uuid.UUID, ArtifactVersion]:
     versions_by_artifact_id: dict[uuid.UUID, ArtifactVersion] = {}
     current_version_ids = [
@@ -921,10 +921,10 @@ def _summary_from_artifact_with_version(
         display_name=artifact.display_name,
         mime_type=artifact.mime_type,
         extension=artifact.extension,
-        artifact_kind=artifact.artifact_kind,
+        artifact_kind=cast(ArtifactKind, artifact.artifact_kind),
         size_bytes=artifact.size_bytes,
         sha256=artifact.sha256,
-        status=artifact.status,
+        status=cast(ArtifactStatus, artifact.status),
         is_favorite=artifact.is_favorite,
         last_opened_at=artifact.last_opened_at,
         preview_count=artifact.preview_count,

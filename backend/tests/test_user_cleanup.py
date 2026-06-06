@@ -138,6 +138,7 @@ async def test_cleanup_revokes_active_refresh_tokens(db: AsyncSession):
     already_revoked.revoked_at = datetime.now(UTC) - timedelta(days=1)
     await db.flush()
     revoked_at_before = already_revoked.revoked_at
+    assert revoked_at_before is not None
 
     with patch(
         "app.agent_runtime.checkpointer.delete_thread", AsyncMock()
@@ -150,9 +151,10 @@ async def test_cleanup_revokes_active_refresh_tokens(db: AsyncSession):
     # Pre-revoked tokens keep their original ``revoked_at`` (the WHERE clause
     # filtered them out), preserving forensic timestamps. SQLite drops the
     # tzinfo on round-trip so compare naive timestamps.
-    assert already_revoked.revoked_at is not None
+    already_revoked_at = already_revoked.revoked_at
+    assert already_revoked_at is not None
     assert (
-        already_revoked.revoked_at.replace(tzinfo=None)
+        already_revoked_at.replace(tzinfo=None)
         == revoked_at_before.replace(tzinfo=None)
     )
 

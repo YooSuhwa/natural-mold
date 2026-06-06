@@ -142,7 +142,7 @@ async def _delete_source(db: AsyncSession, source: uuid.UUID) -> int:
     result = await db.execute(
         text("DELETE FROM users WHERE id = :id").bindparams(id=source)
     )
-    return int(result.rowcount or 0)
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 async def _run(args: argparse.Namespace) -> None:

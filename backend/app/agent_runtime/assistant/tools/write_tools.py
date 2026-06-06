@@ -756,17 +756,19 @@ def build_write_tools(
                     session,
                     agent_id,
                     user_id,
-                    TriggerCreate(
-                        name=name,
-                        trigger_type=trigger_type,
-                        schedule_config=schedule_config,
-                        input_message=message,
-                        timezone=timezone or "Asia/Seoul",
-                        conversation_policy=conversation_policy or "schedule_thread",
-                        target_conversation_id=target_conversation_id,
-                        max_runs=max_runs,
-                        end_at=end_at,
-                        auto_pause_after_failures=auto_pause_after_failures,
+                    TriggerCreate.model_validate(
+                        {
+                            "name": name,
+                            "trigger_type": trigger_type,
+                            "schedule_config": schedule_config,
+                            "input_message": message,
+                            "timezone": timezone or "Asia/Seoul",
+                            "conversation_policy": conversation_policy or "schedule_thread",
+                            "target_conversation_id": target_conversation_id,
+                            "max_runs": max_runs,
+                            "end_at": end_at,
+                            "auto_pause_after_failures": auto_pause_after_failures,
+                        }
                     ),
                 )
             except ValueError as exc:
@@ -871,35 +873,36 @@ def build_write_tools(
             if error or not trigger:
                 return error or "스케줄을 찾을 수 없습니다."
 
-            update = TriggerUpdate()
+            update_payload: dict[str, Any] = {}
             if cron_expression:
-                update.trigger_type = "cron"
-                update.schedule_config = {"cron_expression": cron_expression}
+                update_payload["trigger_type"] = "cron"
+                update_payload["schedule_config"] = {"cron_expression": cron_expression}
             if interval_minutes is not None:
-                update.trigger_type = "interval"
-                update.schedule_config = {"interval_minutes": interval_minutes}
+                update_payload["trigger_type"] = "interval"
+                update_payload["schedule_config"] = {"interval_minutes": interval_minutes}
             if scheduled_at:
-                update.trigger_type = "one_time"
-                update.schedule_config = {"scheduled_at": scheduled_at}
+                update_payload["trigger_type"] = "one_time"
+                update_payload["schedule_config"] = {"scheduled_at": scheduled_at}
             if message:
-                update.input_message = message
+                update_payload["input_message"] = message
             if name is not None:
-                update.name = name
+                update_payload["name"] = name
             if timezone is not None:
-                update.timezone = timezone
+                update_payload["timezone"] = timezone
             if conversation_policy is not None:
-                update.conversation_policy = conversation_policy
+                update_payload["conversation_policy"] = conversation_policy
             if target_conversation_id is not None:
-                update.target_conversation_id = target_conversation_id
+                update_payload["target_conversation_id"] = target_conversation_id
             if status is not None:
-                update.status = status
+                update_payload["status"] = status
             if max_runs is not None:
-                update.max_runs = max_runs
+                update_payload["max_runs"] = max_runs
             if end_at is not None:
-                update.end_at = end_at
+                update_payload["end_at"] = end_at
             if auto_pause_after_failures is not None:
-                update.auto_pause_after_failures = auto_pause_after_failures
+                update_payload["auto_pause_after_failures"] = auto_pause_after_failures
             try:
+                update = TriggerUpdate.model_validate(update_payload)
                 await trigger_service.update_trigger(session, trigger, update)
             except ValueError as exc:
                 return f"스케줄 설정이 올바르지 않습니다: {exc}"

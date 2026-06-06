@@ -122,12 +122,14 @@ def test_langfuse_context_builds_metadata_and_trace_record(monkeypatch) -> None:
     assert ctx.trace is not None
     assert ctx.trace.provider == "langfuse"
     assert ctx.trace.trace_id == "run12300000000000000000000000000"
+    assert ctx.metadata is not None
     assert ctx.metadata["langfuse_user_id"] == "user-123"
     assert ctx.metadata["langfuse_session_id"] == "conv-123"
     assert ctx.metadata["moldy_agent_id"] == "agent-123"
     assert ctx.metadata["moldy_agent_name"] == "Support Assistant"
     assert ctx.metadata["moldy_run_id"] == "run-123"
     assert ctx.metadata["moldy_source"] == "regenerate"
+    assert ctx.tags is not None
     assert "agent:agent-123" in ctx.tags
 
     config = ctx.configure_config({"configurable": {"thread_id": "conv-123"}})

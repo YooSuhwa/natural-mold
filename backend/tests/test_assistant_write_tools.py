@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
+from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
@@ -806,6 +807,47 @@ async def test_update_cron_schedule(db: AsyncSession, patch_write_session):
     assert trigger is not None
     assert trigger.schedule_config == {"cron_expression": "30 * * * *"}
     assert trigger.input_message == "30분마다 검색"
+
+
+@pytest.mark.asyncio
+async def test_update_cron_schedule_validates_uuid_and_datetime_strings(
+    db: AsyncSession, patch_write_session
+):
+    agent_id, _ = await _seed_full(db)
+    tools = _build_write_tools(db, agent_id)
+
+    conversation = Conversation(agent_id=agent_id, title="선택 대화")
+    db.add(conversation)
+    await db.commit()
+    await db.refresh(conversation)
+
+    create_tool = _find_tool(tools, "create_cron_schedule")
+    create_result = await create_tool.ainvoke(
+        {
+            "schedule_type": "recurring",
+            "message": "매 시간 검색",
+            "cron_expression": "0 * * * *",
+        }
+    )
+    schedule_id = _extract_schedule_id(create_result)
+
+    update_tool = _find_tool(tools, "update_cron_schedule")
+    result = await update_tool.ainvoke(
+        {
+            "schedule_id": schedule_id,
+            "conversation_policy": "selected_conversation",
+            "target_conversation_id": str(conversation.id),
+            "end_at": "2035-01-01T00:00:00+09:00",
+        }
+    )
+    assert "수정 완료" in result
+
+    trigger = await db.get(AgentTrigger, uuid.UUID(schedule_id))
+    assert trigger is not None
+    assert trigger.conversation_policy == "selected_conversation"
+    assert trigger.target_conversation_id == conversation.id
+    assert trigger.end_at is not None
+    assert trigger.end_at.isoformat() == "2034-12-31T15:00:00"
 
 
 @pytest.mark.asyncio

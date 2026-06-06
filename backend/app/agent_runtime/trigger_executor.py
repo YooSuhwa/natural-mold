@@ -228,7 +228,9 @@ async def execute_trigger(trigger_id: str, *, force: bool = False) -> AgentTrigg
         base_url = agent.model.base_url
 
         fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
-        provider_api_keys = {agent.model.provider: api_key} if api_key else None
+        provider_api_keys: dict[str, str | None] | None = (
+            {agent.model.provider: api_key} if api_key else None
+        )
 
         cfg = AgentConfig(
             provider=agent.model.provider,

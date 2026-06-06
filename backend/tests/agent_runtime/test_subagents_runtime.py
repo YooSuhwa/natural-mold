@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,6 +12,7 @@ from app.agent_runtime.executor import AgentConfig
 from app.agent_runtime.identity import (
     AGENT_IDENTITY_FIXED,
     AGENT_IDENTITY_PER_USER,
+    AgentRunIdentity,
     AgentRunSource,
     make_agent_runtime_name,
     resolve_agent_run_identity,
@@ -144,7 +146,7 @@ async def test_build_subagents_config_uses_child_identity_tools_skills_and_inter
         **kwargs: object,
     ) -> list[dict[str, object]]:
         assert agent is child
-        identity = kwargs["identity"]
+        identity = cast(AgentRunIdentity, kwargs["identity"])
         assert identity.credential_subject_user_id == caller_id
         return [{"name": "child_only_tool"}]
 

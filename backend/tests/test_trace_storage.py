@@ -280,6 +280,7 @@ async def test_finalize_turn_persists_external_trace_correlation() -> None:
         assert record is not None
         assert record.external_trace_provider == "langfuse"
         assert record.external_trace_id == "lf-trace-123"
+        assert record.external_trace_url is not None
         assert record.external_trace_url.endswith("/lf-trace-123")
 
 
@@ -301,6 +302,7 @@ async def test_record_turn_persists_external_trace_correlation() -> None:
         assert record is not None
         assert record.external_trace_provider == "langfuse"
         assert record.external_trace_id == "lf-trace-one-shot"
+        assert record.external_trace_url is not None
         assert record.external_trace_url.endswith("/lf-trace-one-shot")
 
 

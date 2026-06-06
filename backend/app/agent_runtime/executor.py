@@ -15,7 +15,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from deepagents import create_deep_agent
@@ -406,7 +406,7 @@ def build_agent(
         memory=memory,
         permissions=permissions,
         name=name,
-        subagents=subagents,
+        subagents=cast(Any, subagents),
     )
 
 
@@ -1019,11 +1019,13 @@ async def _prepare_runtime_components(
         cfg,
         is_trigger_mode=is_trigger_mode,
     )
-    memory_tools_enabled = bool(cfg.user_id and memory_write_policy != "off")
+    memory_tools_enabled = cfg.user_id is not None and memory_write_policy != "off"
     if memory_tools_enabled:
+        memory_user_id = cfg.user_id
+        assert memory_user_id is not None
         langchain_tools.extend(
             build_memory_tools(
-                user_id=cfg.user_id,
+                user_id=memory_user_id,
                 agent_id=cfg.agent_id,
                 conversation_id=cfg.thread_id,
                 is_trigger_mode=is_trigger_mode,
@@ -1337,7 +1339,7 @@ async def _run_agent_stream(
     stream_errors = error_sink if error_sink is not None else []
 
     activate = getattr(langfuse_ctx, "activate", None)
-    activation = (
+    activation: Any = (
         activate(input_payload=actual_input, output_payload=None)
         if callable(activate)
         else nullcontext()
@@ -1514,7 +1516,7 @@ async def execute_agent_invoke(
     started = time.monotonic()
 
     activate = getattr(langfuse_ctx, "activate", None)
-    activation = (
+    activation: Any = (
         activate(input_payload={"messages": lc_messages}, output_payload=None)
         if callable(activate)
         else nullcontext()

@@ -733,7 +733,8 @@ async def dify_workflow_run(
     db: AsyncSession = Depends(get_db),
     principal: ApiKeyPrincipal = Depends(get_api_key_principal),
 ) -> dict[str, Any] | StreamingResponse:
-    inputs = payload.get("inputs") if isinstance(payload.get("inputs"), dict) else {}
+    raw_inputs = payload.get("inputs")
+    inputs: dict[str, Any] = raw_inputs if isinstance(raw_inputs, dict) else {}
     agent_id = str(inputs.get("agent_id") or payload.get("agent_id") or "")
     query = str(inputs.get("query") or payload.get("query") or "Run workflow")
     request = AgentRunRequest(
@@ -763,7 +764,12 @@ async def openai_chat_completions(
     principal: ApiKeyPrincipal = Depends(get_api_key_principal),
 ) -> dict[str, Any] | StreamingResponse:
     model = str(payload.get("model") or "")
-    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    raw_messages = payload.get("messages")
+    messages: list[dict[str, Any]] = (
+        [message for message in raw_messages if isinstance(message, dict)]
+        if isinstance(raw_messages, list)
+        else []
+    )
     request = AgentRunRequest(
         agent_id=model,
         input=AgentRunInput(messages=messages),

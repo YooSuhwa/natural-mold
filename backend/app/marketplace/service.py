@@ -305,21 +305,23 @@ async def _project_item(
 
     publication_visible = owner_view and has_publication_link
 
-    publication = ResourcePublicationSummaryOut(
-        state=_publication_state_for_owner(item) if publication_visible else "not_published",
-        item_id=item.id if publication_visible else None,
-        visibility=item.visibility if publication_visible else None,
-        status=item.status if publication_visible else None,
-        is_listed=item.is_listed if publication_visible else False,
-        latest_version_id=item.latest_version_id if publication_visible else None,
-        version_number=(
-            item.latest_version.version_number
-            if publication_visible and item.latest_version is not None
-            else None
-        ),
-        shared_user_count=(
-            len(item.acl_entries) if publication_visible else 0
-        ),
+    publication = ResourcePublicationSummaryOut.model_validate(
+        {
+            "state": (
+                _publication_state_for_owner(item) if publication_visible else "not_published"
+            ),
+            "item_id": item.id if publication_visible else None,
+            "visibility": item.visibility if publication_visible else None,
+            "status": item.status if publication_visible else None,
+            "is_listed": item.is_listed if publication_visible else False,
+            "latest_version_id": item.latest_version_id if publication_visible else None,
+            "version_number": (
+                item.latest_version.version_number
+                if publication_visible and item.latest_version is not None
+                else None
+            ),
+            "shared_user_count": len(item.acl_entries) if publication_visible else 0,
+        }
     )
 
     return MarketplaceItemOut(

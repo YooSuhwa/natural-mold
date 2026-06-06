@@ -214,7 +214,9 @@ async def _resolve_agent_context(
     )
 
     fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
-    provider_api_keys = {agent.model.provider: api_key} if api_key else None
+    provider_api_keys: dict[str, str | None] | None = (
+        {agent.model.provider: api_key} if api_key else None
+    )
 
     effective_prompt = _with_user_display_name_context(
         chat_service.build_effective_prompt(agent),
@@ -601,7 +603,7 @@ async def list_conversations_page(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid cursor") from exc
     return ConversationListEnvelope(
-        items=items,
+        items=[ConversationResponse.model_validate(item) for item in items],
         next_cursor=next_cursor,
         has_more=has_more,
     )
@@ -1401,8 +1403,6 @@ async def regenerate_message(
     checkpointer = get_checkpointer()
     checkpoints = await _collect_checkpoints(checkpointer, str(conversation_id))
     if not checkpoints:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=422, detail="conversation has no history yet.")
 
     # Pick the selected branch tip (or the named assistant message) and find

@@ -219,6 +219,11 @@ async def upload_package_skill(
     from app.marketplace.secret_scan import scan_package
     from app.storage.paths import resolve_data_path
 
+    if skill.storage_path is None:
+        await skill_service.delete_skill(db, skill)
+        await db.rollback()
+        raise invalid_skill_package("missing skill storage path")
+
     skill_path = resolve_data_path(skill.storage_path)
     skills_root = (_Path(settings.data_root) / "skills").resolve()
     if not skill_path.is_relative_to(skills_root):

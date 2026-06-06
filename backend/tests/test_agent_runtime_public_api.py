@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 
+from app.schemas.agent_api import AgentApiScope
 from tests.conftest import TEST_USER_ID
 
 pytestmark = pytest.mark.anyio
@@ -12,7 +13,7 @@ pytestmark = pytest.mark.anyio
 async def _seed_deployed_agent_with_key(
     db,
     *,
-    scopes: list[str] | None = None,
+    scopes: list[AgentApiScope] | None = None,
     allow_all_deployments: bool = False,
 ):
     from app.agent_api import service
@@ -53,12 +54,13 @@ async def _seed_deployed_agent_with_key(
     deployment = await service.create_deployment(
         db, TEST_USER_ID, AgentDeploymentCreate(agent_id=agent.id)
     )
+    effective_scopes: list[AgentApiScope] = scopes or ["invoke", "stream", "read"]
     key, cleartext = await service.create_api_key(
         db,
         TEST_USER_ID,
         AgentApiKeyCreate(
             name="Runtime key",
-            scopes=scopes or ["invoke", "stream", "read"],
+            scopes=effective_scopes,
             allow_all_deployments=allow_all_deployments,
             deployment_ids=[] if allow_all_deployments else [deployment.id],
         ),

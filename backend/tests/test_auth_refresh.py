@@ -12,7 +12,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, Response
 from sqlalchemy import select
 
 from app.auth.jwt import hash_refresh_token
@@ -41,6 +41,16 @@ async def _register_and_login(
     return refresh
 
 
+async def _post_refresh(
+    client: AsyncClient,
+    refresh_token: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> Response:
+    client.cookies.set(settings.cookie_name_refresh, refresh_token)
+    return await client.post("/api/auth/refresh", headers=headers)
+
+
 async def _register_and_first_rotate(
     client: AsyncClient, user_agent: str
 ) -> tuple[str, str, dict[str, str]]:
@@ -53,11 +63,7 @@ async def _register_and_first_rotate(
 
     headers = {"user-agent": user_agent}
     rt = await _register_and_login(client, user_agent=user_agent)
-    first = await client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
-        headers=headers,
-    )
+    first = await _post_refresh(client, rt, headers=headers)
     assert first.status_code == 200, first.text
     rt_a = first.cookies[settings.cookie_name_refresh]
     return rt, rt_a, headers
@@ -67,10 +73,7 @@ async def _register_and_first_rotate(
 async def test_refresh_rotates_and_revokes_previous(raw_client: AsyncClient):
     rt = await _register_and_login(raw_client)
 
-    resp = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
-    )
+    resp = await _post_refresh(raw_client, rt)
     assert resp.status_code == 200, resp.text
     new_rt = resp.cookies[settings.cookie_name_refresh]
     assert new_rt
@@ -112,17 +115,17 @@ async def test_refresh_replay_logs_warning_and_returns_401(raw_client: AsyncClie
     rt = await _register_and_login(raw_client)
 
     # First rotation succeeds (legit browser).
-    first = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
+    first = await _post_refresh(
+        raw_client,
+        rt,
         headers={"user-agent": "LegitBrowser/1.0"},
     )
     assert first.status_code == 200
 
     # Replay the original from a different UA — must 401.
-    replay = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
+    replay = await _post_refresh(
+        raw_client,
+        rt,
         headers={"user-agent": "AttackerBrowser/9.9"},
     )
     assert replay.status_code == 401
@@ -132,15 +135,15 @@ async def test_refresh_replay_logs_warning_and_returns_401(raw_client: AsyncClie
 @pytest.mark.asyncio
 async def test_refresh_replay_revokes_all_active(raw_client: AsyncClient):
     rt = await _register_and_login(raw_client)
-    first = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
+    first = await _post_refresh(
+        raw_client,
+        rt,
         headers={"user-agent": "LegitBrowser/1.0"},
     )
     new_rt = first.cookies[settings.cookie_name_refresh]
-    await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
+    await _post_refresh(
+        raw_client,
+        rt,
         headers={"user-agent": "AttackerBrowser/9.9"},
     )
 
@@ -149,9 +152,9 @@ async def test_refresh_replay_revokes_all_active(raw_client: AsyncClient):
         assert rows
         assert all(r.revoked_at is not None for r in rows)
 
-    follow_up = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: new_rt},
+    follow_up = await _post_refresh(
+        raw_client,
+        new_rt,
         headers={"user-agent": "LegitBrowser/1.0"},
     )
     assert follow_up.status_code == 401
@@ -173,9 +176,7 @@ async def test_refresh_expired_returns_401(raw_client: AsyncClient):
         row.expires_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1)
         await db.commit()
 
-    resp = await raw_client.post(
-        "/api/auth/refresh", cookies={settings.cookie_name_refresh: rt}
-    )
+    resp = await _post_refresh(raw_client, rt)
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "invalid_refresh"
 
@@ -205,11 +206,7 @@ async def test_refresh_race_within_grace_window_chains_instead_of_replay(
     )
 
     # Tab B loses — same original cookie, same UA, well inside grace.
-    second = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
-        headers=headers,
-    )
+    second = await _post_refresh(raw_client, rt, headers=headers)
     assert second.status_code == 200, second.text
     rt_b = second.cookies[settings.cookie_name_refresh]
     assert rt_b not in {rt, rt_a}
@@ -235,17 +232,17 @@ async def test_refresh_race_with_user_agent_mismatch_is_replay(
 
     rt = await _register_and_login(raw_client)
 
-    first = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
+    first = await _post_refresh(
+        raw_client,
+        rt,
         headers={"user-agent": "BrowserA/1.0"},
     )
     assert first.status_code == 200
 
     # Same stale cookie from a different UA — treat as theft.
-    replay = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
+    replay = await _post_refresh(
+        raw_client,
+        rt,
         headers={"user-agent": "BrowserB/2.0"},
     )
     assert replay.status_code == 401
@@ -280,11 +277,7 @@ async def test_refresh_race_outside_grace_window_is_replay(raw_client: AsyncClie
         ).replace(tzinfo=None)
         await db.commit()
 
-    replay = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
-        headers=headers,
-    )
+    replay = await _post_refresh(raw_client, rt, headers=headers)
     assert replay.status_code == 401
 
     async with TestSession() as db:
@@ -314,11 +307,7 @@ async def test_refresh_replay_after_replacement_revoked_is_replay(
         head.revoked_at = datetime.now(UTC).replace(tzinfo=None)
         await db.commit()
 
-    replay = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
-        headers=headers,
-    )
+    replay = await _post_refresh(raw_client, rt, headers=headers)
     assert replay.status_code == 401
 
 
@@ -358,11 +347,7 @@ async def test_refresh_chain_walk_aborts_at_depth_limit(
         auth_service, "_find_race_chain_head", _always_return_original
     )
 
-    response = await raw_client.post(
-        "/api/auth/refresh",
-        cookies={settings.cookie_name_refresh: rt},
-        headers=headers,
-    )
+    response = await _post_refresh(raw_client, rt, headers=headers)
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "invalid_refresh"
 
@@ -378,7 +363,5 @@ async def test_refresh_unknown_token_returns_401(raw_client: AsyncClient):
     from app.auth.jwt import create_refresh_token
 
     bogus, _, _ = create_refresh_token(uuid.uuid4())
-    resp = await raw_client.post(
-        "/api/auth/refresh", cookies={settings.cookie_name_refresh: bogus}
-    )
+    resp = await _post_refresh(raw_client, bogus)
     assert resp.status_code == 401

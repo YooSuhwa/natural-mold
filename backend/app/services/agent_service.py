@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any, cast
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
@@ -179,7 +180,8 @@ async def get_agent(db: AsyncSession, agent_id: uuid.UUID, user_id: uuid.UUID) -
             Conversation.agent_id == agent_id
         )
     )
-    agent._unread_count = int(unread_result.scalar_one() or 0)
+    agent_with_unread = cast(Any, agent)
+    agent_with_unread._unread_count = int(unread_result.scalar_one() or 0)
     return agent
 
 
