@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Moldy — AI Agent Builder Backend"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     # Web framework
     "fastapi>=0.115",
@@ -89,6 +89,9 @@ markers = [
     "integration: tests requiring live Postgres (skipped by default via addopts)",
 ]
 addopts = "-m 'not integration'"
+filterwarnings = [
+    "ignore:'crypt' is deprecated and slated for removal in Python 3.13:DeprecationWarning:passlib\\.utils",
+]
 
 [tool.ruff]
 target-version = "py312"
