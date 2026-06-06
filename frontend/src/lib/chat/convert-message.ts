@@ -105,7 +105,9 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
 
   const isStreamingMessage = message.id.startsWith('stream-')
 
-  if (message.feedback || assistantBranchMeta || message.usage || isStreamingMessage) {
+  const artifacts = message.artifacts?.length ? message.artifacts : null
+
+  if (message.feedback || assistantBranchMeta || message.usage || isStreamingMessage || artifacts) {
     // assistant-ui treats `metadata.submittedFeedback.type` as the active
     // rating — the FeedbackPositive/Negative buttons render highlighted when
     // it matches their type. We co-locate branch info + usage in `metadata.custom`.
@@ -115,6 +117,9 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
     }
     if (message.usage) {
       customMeta.usage = message.usage
+    }
+    if (artifacts) {
+      customMeta.artifacts = artifacts
     }
     const meta: Record<string, unknown> = { custom: customMeta }
     if (message.feedback) {

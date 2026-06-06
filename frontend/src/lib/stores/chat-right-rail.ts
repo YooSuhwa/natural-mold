@@ -1,6 +1,6 @@
 import { atom } from 'jotai'
 
-export type RightRailMode = 'none' | 'subagent' | 'tool-result' | 'outline'
+export type RightRailMode = 'none' | 'subagent' | 'tool-result' | 'outline' | 'artifacts'
 
 export interface SubagentPayload {
   conversationId?: string | null
@@ -24,10 +24,18 @@ export interface OutlinePayload {
   content: string
 }
 
+export interface ArtifactsPayload {
+  conversationId: string
+  selectedArtifactId?: string | null
+  view?: 'list' | 'preview'
+  previewMode?: 'preview' | 'code'
+}
+
 export type RightRailState =
   | { mode: 'none' }
   | { mode: 'subagent'; subagent: SubagentPayload }
   | { mode: 'tool-result'; toolResult: ToolResultPayload }
   | { mode: 'outline'; outline: OutlinePayload }
+  | { mode: 'artifacts'; artifacts: ArtifactsPayload }
 
 export const chatRightRailAtom = atom<RightRailState>({ mode: 'none' })

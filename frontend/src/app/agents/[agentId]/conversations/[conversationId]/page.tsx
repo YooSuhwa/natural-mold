@@ -10,6 +10,7 @@ import {
   MenuIcon,
   MoreHorizontalIcon,
   ActivityIcon,
+  FilesIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
@@ -25,6 +26,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { streamChat, type StreamChatOptions } from '@/lib/sse/stream-chat'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
+import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
@@ -66,6 +68,7 @@ export default function ChatPage({
   const { mutate: markRead, isPending: isMarkingRead } = markConversationRead
   const t = useTranslations('chat.page')
   const setSessionTokenUsage = useSetAtom(sessionTokenUsageAtom)
+  const setRightRail = useSetAtom(chatRightRailAtom)
 
   // 캐시에서 현재 대화 제목만 추출 (전체 목록 구독 방지)
   const currentConversation = queryClient
@@ -158,7 +161,7 @@ export default function ChatPage({
       </aside>
 
       {/* 메인 채팅 카드 */}
-      <section className="moldy-panel flex min-h-0 flex-1 flex-col overflow-hidden">
+      <section className="moldy-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="moldy-panel-header flex items-center justify-between px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <Sheet>
@@ -191,7 +194,20 @@ export default function ChatPage({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Trace debugger"
+              aria-label={t('artifacts')}
+              onClick={() =>
+                setRightRail({
+                  mode: 'artifacts',
+                  artifacts: { conversationId, view: 'list' },
+                })
+              }
+            >
+              <FilesIcon className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t('traceDebugger')}
               onClick={() =>
                 router.push(`/agents/${agentId}/conversations/${conversationId}/traces`)
               }

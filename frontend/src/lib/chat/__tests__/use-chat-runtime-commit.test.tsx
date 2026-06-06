@@ -464,6 +464,48 @@ describe('useChatRuntime — onMessagesCommit dedup', () => {
         ],
       ),
     ).toBe(false)
+    expect(
+      sameMessageSnapshot(
+        [base],
+        [
+          {
+            ...base,
+            artifacts: [
+              {
+                id: 'artifact-1',
+                agent_id: 'agent-1',
+                conversation_id: 'c1',
+                assistant_msg_id: 'run-1',
+                run_id: 'run-1',
+                tool_call_id: null,
+                source_tool_name: 'execute_in_skill',
+                path: 'report.md',
+                display_name: 'report.md',
+                mime_type: 'text/markdown',
+                extension: 'md',
+                artifact_kind: 'markdown',
+                size_bytes: 10,
+                sha256: 'a'.repeat(64),
+                status: 'ready',
+                is_favorite: false,
+                last_opened_at: null,
+                preview_count: 0,
+                download_count: 0,
+                version_id: 'version-1',
+                version_number: 1,
+                created_at: '2026-06-05T00:00:00',
+                updated_at: '2026-06-05T00:00:00',
+                agent_name: null,
+                conversation_title: null,
+                url: '/api/conversations/c1/artifacts/artifact-1',
+                preview_url: '/api/conversations/c1/artifacts/artifact-1/content',
+                download_url: '/api/conversations/c1/artifacts/artifact-1/download',
+              },
+            ],
+          },
+        ],
+      ),
+    ).toBe(false)
     expect(sameMessageSnapshot([base], [{ ...base, feedback: { rating: 'down' } }])).toBe(false)
     expect(
       sameMessageSnapshot(

@@ -105,6 +105,19 @@ class Settings(BaseSettings):
     upload_dir: str = "./data/uploads"
     upload_max_bytes: int = 20 * 1024 * 1024
 
+    # Agent/runtime generated artifacts. The first integrated release uses
+    # local disk; S3/MinIO can be added behind the storage backend without
+    # changing API URLs.
+    artifact_storage_backend: Literal["local", "s3"] = "local"
+    artifact_storage_dir: str = "./data/artifacts"
+    artifact_max_bytes: int = 100 * 1024 * 1024
+    artifact_max_files_per_run: int = 100
+    artifact_preview_max_text_bytes: int = 1 * 1024 * 1024
+    artifact_s3_endpoint_url: str = ""
+    artifact_s3_bucket: str = ""
+    artifact_s3_access_key_id: str = ""
+    artifact_s3_secret_access_key: str = ""
+
     # Builder / Assistant sub-agent model defaults (서비스 내부용)
     builder_model_provider: str = "anthropic"
     builder_model_name: str = "claude-sonnet-4-6"

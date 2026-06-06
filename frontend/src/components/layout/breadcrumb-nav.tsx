@@ -11,6 +11,7 @@ import { useMarketplaceItem } from '@/lib/hooks/use-marketplace'
 
 const ROUTE_LABELS: Record<string, string> = {
   tools: 'nav.tools',
+  artifacts: 'sidebar.nav.artifacts',
   models: 'nav.models',
   schedules: 'nav.schedules',
   usage: 'nav.usage',

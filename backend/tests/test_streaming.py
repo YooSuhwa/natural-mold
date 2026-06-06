@@ -107,6 +107,31 @@ class MockAgent:
             yield chunk
 
 
+class FakeArtifactRecorder:
+    def __init__(self) -> None:
+        self.prepared = False
+        self.calls: list[tuple[str, str | None]] = []
+
+    async def prepare(self) -> None:
+        self.prepared = True
+
+    async def collect_after_tool_result(
+        self,
+        *,
+        tool_name: str,
+        tool_call_id: str | None,
+    ) -> list[dict[str, object]]:
+        self.calls.append((tool_name, tool_call_id))
+        return [
+            {
+                "op": "created",
+                "id": "artifact-1",
+                "path": "report.md",
+                "artifact_kind": "markdown",
+            }
+        ]
+
+
 # ---------------------------------------------------------------------------
 # stream_agent_response
 # ---------------------------------------------------------------------------
@@ -232,6 +257,41 @@ async def test_stream_tool_call_result():
     data = json.loads(result_events[0].split("data: ")[1].strip())
     assert data["tool_name"] == "web_search"
     assert data["result"] == "search results here"
+
+
+@pytest.mark.asyncio
+async def test_stream_execute_in_skill_result_emits_file_event():
+    result_chunk = _make_tool_result_chunk(
+        "execute_in_skill",
+        "done\n\nOUTPUT_FILES: report.md",
+        tool_call_id="call-1",
+    )
+    agent = MockAgent([(result_chunk, {})])
+    recorder = FakeArtifactRecorder()
+
+    events = [
+        e
+        async for e in stream_agent_response(
+            agent,
+            [],
+            {},
+            artifact_recorder=recorder,
+        )
+    ]
+
+    assert recorder.prepared is True
+    assert recorder.calls == [("execute_in_skill", "call-1")]
+    event_types = [event.split("\n", 1)[0].removeprefix("event: ") for event in events]
+    assert event_types == [
+        "message_start",
+        "tool_call_result",
+        "file_event",
+        "message_end",
+    ]
+    file_event = [event for event in events if event.startswith("event: file_event")][0]
+    data = json.loads(file_event.split("data: ")[1].strip())
+    assert data["op"] == "created"
+    assert data["path"] == "report.md"
 
 
 @pytest.mark.asyncio
