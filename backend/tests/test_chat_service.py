@@ -11,6 +11,8 @@ from app.models.agent import Agent
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
+from app.schemas.conversation import MessageResponse
+from app.services import chat_service, trace_storage
 from app.services.chat_service import (
     create_conversation,
     get_agent_with_tools,
@@ -191,6 +193,105 @@ async def test_save_token_usage(db: AsyncSession):
     assert usage.completion_tokens == 50
     assert usage.total_tokens == 150
     assert usage.id is not None
+
+
+# ---------------------------------------------------------------------------
+# Pending HITL file-write approval hydration
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hydrates_pending_write_file_interrupt_from_trace_chunks(db: AsyncSession):
+    """A paused DeepAgents write_file turn should render as approval, not a spinner."""
+    agent_id = await _seed(db)
+    conv = await create_conversation(db, agent_id, title="HITL file")
+    msg_id = uuid.uuid4()
+    raw_msg_id = str(msg_id)
+    run_id = str(uuid.uuid4())
+    interrupt_id = "agent:file-write"
+    file_args = {
+        "file_path": "/runtime/today_diary.md",
+        "content": "# 오늘 하루\n\n좋은 하루였다.",
+    }
+    response = MessageResponse(
+        id=msg_id,
+        conversation_id=conv.id,
+        role="assistant",
+        content="파일을 만들게요.",
+        tool_calls=[{"id": "toolu-1", "name": "write_file", "args": file_args}],
+        tool_call_id=None,
+        created_at=conv.created_at,
+    )
+
+    await trace_storage.append_events(
+        db,
+        conversation_id=conv.id,
+        assistant_msg_id=run_id,
+        events_chunk=[
+            {"id": f"{run_id}-1", "event": "message_start", "data": {"id": run_id}},
+            {
+                "id": f"{run_id}-2",
+                "event": "tool_call_start",
+                "data": {
+                    "tool_call_id": "toolu-1",
+                    "tool_name": "write_file",
+                    "parameters": {},
+                },
+            },
+            {
+                "id": f"{run_id}-3",
+                "event": "interrupt",
+                "data": {
+                    "interrupt_id": interrupt_id,
+                    "action_requests": [
+                        {
+                            "name": "write_file",
+                            "args": file_args,
+                            "description": "Tool execution requires approval",
+                        }
+                    ],
+                    "review_configs": [
+                        {"action_name": "write_file", "allowed_decisions": ["approve", "reject"]}
+                    ],
+                },
+            },
+            {
+                "id": f"{run_id}-4",
+                "event": "message_end",
+                "data": {"content": "파일을 만들게요.", "status": "completed"},
+            },
+        ],
+    )
+    await trace_storage.finalize_turn(
+        db,
+        assistant_msg_id=run_id,
+        raw_msg_ids=[raw_msg_id],
+        conversation_id=conv.id,
+    )
+    await db.commit()
+
+    await chat_service._hydrate_pending_interrupt_tool_calls(  # noqa: SLF001
+        db,
+        conversation_id=conv.id,
+        responses=[response],
+    )
+
+    assert response.tool_calls == [
+        {
+            "id": "toolu-1",
+            "name": "request_approval",
+            "args": {
+                "tool_name": "write_file",
+                "tool_args": file_args,
+                "description": "Tool execution requires approval",
+                "approval_id": "toolu-1",
+                "allowed_decisions": ["approve", "reject"],
+                "hitl_interrupt_id": interrupt_id,
+                "hitl_action_index": 0,
+                "hitl_total_actions": 1,
+            },
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------

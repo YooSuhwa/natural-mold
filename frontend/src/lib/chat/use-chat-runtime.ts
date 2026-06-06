@@ -33,6 +33,7 @@ import { memoryKeys } from '@/lib/hooks/use-memory'
 import type { FeedbackAdapter, AttachmentAdapter } from '@assistant-ui/react'
 import {
   createHiTLDecisionCoordinator,
+  mergeInterruptToolCalls,
   standardInterruptToToolCalls,
   type HiTLDecisionCoordinator,
 } from './standard-interrupt'
@@ -63,50 +64,6 @@ const MUTATION_PREFIXES = [
 function isMutationToolName(name: string | undefined): boolean {
   if (!name) return false
   return MUTATION_PREFIXES.some((p) => name.startsWith(p))
-}
-
-const HITL_METADATA_KEYS = new Set([
-  'approval_id',
-  'allowed_decisions',
-  'hitl_interrupt_id',
-  'hitl_action_index',
-  'hitl_total_actions',
-])
-
-function stripHitLMetadata(args: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(args).filter(([key]) => !HITL_METADATA_KEYS.has(key)))
-}
-
-function equivalentToolArgs(
-  left: Record<string, unknown>,
-  right: Record<string, unknown>,
-): boolean {
-  return JSON.stringify(stripHitLMetadata(left)) === JSON.stringify(stripHitLMetadata(right))
-}
-
-function appendInterruptToolCalls(
-  toolCalls: ToolCallInfo[],
-  syntheticToolCalls: ToolCallInfo[],
-): void {
-  for (const synthetic of syntheticToolCalls) {
-    let merged = false
-    if (synthetic.name === 'ask_user') {
-      for (let index = toolCalls.length - 1; index >= 0; index -= 1) {
-        const existing = toolCalls[index]
-        if (existing.name === synthetic.name && equivalentToolArgs(existing.args, synthetic.args)) {
-          toolCalls[index] = {
-            ...existing,
-            args: { ...existing.args, ...synthetic.args },
-          }
-          merged = true
-          break
-        }
-      }
-    }
-    if (!merged) {
-      toolCalls.push(synthetic)
-    }
-  }
 }
 
 /**
@@ -706,7 +663,7 @@ export function useChatRuntime({
               })
               const syntheticToolCalls = standardInterruptToToolCalls(data)
               if (syntheticToolCalls.length > 0) {
-                appendInterruptToolCalls(toolCalls, syntheticToolCalls)
+                toolCalls.splice(0, toolCalls.length, ...mergeInterruptToolCalls(toolCalls, data))
                 toolCallsDirty = true
                 setStreamingMessages(buildStreamState())
               }

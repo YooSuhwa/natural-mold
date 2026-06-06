@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Decision, StandardInterruptPayload } from '@/lib/types'
-import { createHiTLDecisionCoordinator, standardInterruptToToolCalls } from '../standard-interrupt'
+import {
+  createHiTLDecisionCoordinator,
+  mergeInterruptToolCalls,
+  standardInterruptToToolCalls,
+} from '../standard-interrupt'
 
 describe('standardInterruptToToolCalls', () => {
   it('maps ask_user respond-only action into the ask_user tool UI args', () => {
@@ -115,6 +119,67 @@ describe('standardInterruptToToolCalls', () => {
     expect(calls.map((call) => call.id)).toEqual(['intr-multi:0', 'intr-multi:1'])
     expect(calls.map((call) => call.name)).toEqual(['ask_user', 'request_approval'])
     expect(calls.map((call) => call.args.hitl_action_index)).toEqual([0, 1])
+  })
+
+  it('replaces a pending write_file call with its approval card', () => {
+    const payload: StandardInterruptPayload = {
+      interrupt_id: 'intr-file',
+      action_requests: [
+        {
+          name: 'write_file',
+          args: { file_path: '/runtime/today_diary.md', content: '# Today' },
+          description: 'Tool execution requires approval',
+        },
+      ],
+      review_configs: [{ action_name: 'write_file', allowed_decisions: ['approve', 'reject'] }],
+    }
+
+    const calls = mergeInterruptToolCalls(
+      [{ id: 'toolu-1', name: 'write_file', args: { file_path: '/runtime/today_diary.md' } }],
+      payload,
+    )
+
+    expect(calls).toEqual([
+      {
+        id: 'toolu-1',
+        name: 'request_approval',
+        args: {
+          tool_name: 'write_file',
+          tool_args: { file_path: '/runtime/today_diary.md', content: '# Today' },
+          description: 'Tool execution requires approval',
+          approval_id: 'toolu-1',
+          allowed_decisions: ['approve', 'reject'],
+          hitl_interrupt_id: 'intr-file',
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+        },
+      },
+    ])
+  })
+
+  it('replaces an empty streamed write_file call when interrupt carries the real args', () => {
+    const payload: StandardInterruptPayload = {
+      interrupt_id: 'intr-file-empty',
+      action_requests: [
+        {
+          name: 'write_file',
+          args: { file_path: '/runtime/today_diary.md', content: '# Today' },
+        },
+      ],
+      review_configs: [{ action_name: 'write_file', allowed_decisions: ['approve', 'reject'] }],
+    }
+
+    const calls = mergeInterruptToolCalls(
+      [{ id: 'toolu-1', name: 'write_file', args: {} }],
+      payload,
+    )
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.name).toBe('request_approval')
+    expect(calls[0]?.args.tool_args).toEqual({
+      file_path: '/runtime/today_diary.md',
+      content: '# Today',
+    })
   })
 })
 

@@ -20,6 +20,14 @@ type ResumeDecisions = (
   interruptId?: string | null,
 ) => Promise<void>
 
+const HITL_METADATA_KEYS = new Set([
+  'approval_id',
+  'allowed_decisions',
+  'hitl_interrupt_id',
+  'hitl_action_index',
+  'hitl_total_actions',
+])
+
 function reviewForAction(
   action: ActionRequest,
   reviewConfigs: ReviewConfig[],
@@ -57,9 +65,63 @@ function isAskUserRespondOnly(action: ActionRequest, reviewConfig: ReviewConfig)
   )
 }
 
-export function standardInterruptToToolCalls(
-  payload: StandardInterruptPayload,
-): ToolCallInfo[] {
+function stripHitLMetadata(args: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(args).filter(([key]) => !HITL_METADATA_KEYS.has(key)))
+}
+
+function equivalentToolArgs(
+  left: Record<string, unknown>,
+  right: Record<string, unknown>,
+): boolean {
+  return JSON.stringify(stripHitLMetadata(left)) === JSON.stringify(stripHitLMetadata(right))
+}
+
+function containsToolArgs(
+  superset: Record<string, unknown>,
+  subset: Record<string, unknown>,
+): boolean {
+  const cleanedSuperset = stripHitLMetadata(superset)
+  const cleanedSubset = stripHitLMetadata(subset)
+  return Object.entries(cleanedSubset).every(
+    ([key, value]) => JSON.stringify(cleanedSuperset[key] ?? null) === JSON.stringify(value),
+  )
+}
+
+function isEmptyObject(value: Record<string, unknown>): boolean {
+  return Object.keys(value).length === 0
+}
+
+function approvalTarget(synthetic: ToolCallInfo): {
+  name: string
+  args: Record<string, unknown>
+} | null {
+  if (synthetic.name !== 'request_approval') return null
+  const toolName = synthetic.args.tool_name
+  const toolArgs = synthetic.args.tool_args
+  if (typeof toolName !== 'string') return null
+  return {
+    name: toolName,
+    args:
+      toolArgs && typeof toolArgs === 'object' && !Array.isArray(toolArgs)
+        ? (toolArgs as Record<string, unknown>)
+        : {},
+  }
+}
+
+function withReplacementId(synthetic: ToolCallInfo, existing: ToolCallInfo): ToolCallInfo {
+  const fallbackId = existing.id ?? synthetic.id
+  if (!fallbackId) return synthetic
+  return {
+    ...synthetic,
+    id: fallbackId,
+    args: {
+      ...synthetic.args,
+      approval_id: fallbackId,
+    },
+  }
+}
+
+export function standardInterruptToToolCalls(payload: StandardInterruptPayload): ToolCallInfo[] {
   return payload.action_requests.map((action, index) => {
     const reviewConfig = reviewForAction(action, payload.review_configs, index)
     const metadata = metadataForAction(payload, reviewConfig, index)
@@ -87,12 +149,62 @@ export function standardInterruptToToolCalls(
   })
 }
 
+export function mergeInterruptToolCalls(
+  toolCalls: ToolCallInfo[],
+  payload: StandardInterruptPayload,
+): ToolCallInfo[] {
+  const next = [...toolCalls]
+  const syntheticToolCalls = standardInterruptToToolCalls(payload)
+  const replacedIndices = new Set<number>()
+
+  for (const synthetic of syntheticToolCalls) {
+    let merged = false
+
+    if (synthetic.name === 'ask_user') {
+      for (let index = next.length - 1; index >= 0; index -= 1) {
+        const existing = next[index]
+        if (existing.name === synthetic.name && equivalentToolArgs(existing.args, synthetic.args)) {
+          next[index] = {
+            ...existing,
+            args: { ...existing.args, ...synthetic.args },
+          }
+          merged = true
+          break
+        }
+      }
+    }
+
+    const target = approvalTarget(synthetic)
+    if (!merged && target) {
+      for (let index = next.length - 1; index >= 0; index -= 1) {
+        if (replacedIndices.has(index)) continue
+        const existing = next[index]
+        if (existing.name !== target.name) continue
+        if (
+          equivalentToolArgs(existing.args, target.args) ||
+          containsToolArgs(target.args, existing.args) ||
+          containsToolArgs(existing.args, target.args) ||
+          isEmptyObject(existing.args) ||
+          isEmptyObject(target.args)
+        ) {
+          next[index] = withReplacementId(synthetic, existing)
+          replacedIndices.add(index)
+          merged = true
+          break
+        }
+      }
+    }
+
+    if (!merged) {
+      next.push(synthetic)
+    }
+  }
+
+  return next
+}
+
 export interface HiTLDecisionCoordinator {
-  registerDecision: (
-    actionIndex: number,
-    decision: Decision,
-    displayText?: string,
-  ) => Promise<void>
+  registerDecision: (actionIndex: number, decision: Decision, displayText?: string) => Promise<void>
 }
 
 export function createHiTLDecisionCoordinator({
