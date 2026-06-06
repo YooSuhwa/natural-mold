@@ -113,7 +113,7 @@ export function SettingsSidebar() {
     {
       label: tSettings('nav.resources'),
       items: [
-        { href: '/artifacts', label: tSettings('nav.artifacts'), icon: FilesIcon },
+        { href: '/settings/artifacts', label: tSettings('nav.artifacts'), icon: FilesIcon },
         { href: '/settings/credentials', label: tSettings('nav.credentials'), icon: KeyRoundIcon },
         { href: '/settings/models', label: tSettings('nav.models'), icon: BrainIcon },
         {
