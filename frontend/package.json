@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "next dev",
-    "build": "next build --webpack && node scripts/prune-standalone-sharp.mjs",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "lint:design-system": "node scripts/check-design-system.mjs",
@@ -58,6 +58,7 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "shadcn": "^4.1.2",
+    "sharp": "^0.34.5",
     "smol-toml": "^1.6.1",
     "sonner": "^2.0.7",
     "streamdown": "^2.5.0",
@@ -88,13 +89,9 @@
     "vitest": "^4.1.2"
   },
   "pnpm": {
-    "ignoredOptionalDependencies": [
-      "sharp",
-      "@img/sharp-*",
-      "@img/sharp-libvips-*"
-    ],
     "onlyBuiltDependencies": [
-      "msw"
+      "msw",
+      "sharp"
     ]
   }
 }

@@ -196,7 +196,6 @@ export function BuilderAssistantMessage({
         alt={t('builderAgentName')}
         width={38}
         height={38}
-        unoptimized
         className="shrink-0"
       />
       <div className="min-w-0 flex-1">
