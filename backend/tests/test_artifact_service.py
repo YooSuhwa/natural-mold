@@ -16,6 +16,46 @@ from tests.conftest import TEST_USER_ID, TestSession, engine
 
 
 @pytest.mark.asyncio
+async def test_recorder_ingests_deepagents_write_file_outputs(tmp_path: Path) -> None:
+    conv_id, agent_id = await seed_artifact_conversation()
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    storage = LocalArtifactStorageBackend(tmp_path / "artifacts")
+    recorder = ArtifactDeltaRecorder(
+        session_factory=TestSession,
+        context=ArtifactRuntimeContext(
+            conversation_id=conv_id,
+            user_id=TEST_USER_ID,
+            agent_id=agent_id,
+            assistant_msg_id="run-write-file",
+            output_dir=output_dir,
+        ),
+        storage=storage,
+    )
+
+    await recorder.prepare()
+    (output_dir / "today_diary.md").write_text("# 오늘 하루 일기\n", encoding="utf-8")
+
+    events = await recorder.collect_after_tool_result(
+        tool_name="write_file",
+        tool_call_id="call-write-file",
+    )
+
+    assert [event["op"] for event in events] == ["created"]
+    assert events[0]["path"] == "today_diary.md"
+    async with TestSession() as db:
+        artifact = (
+            await db.execute(
+                select(ConversationArtifact).where(
+                    ConversationArtifact.assistant_msg_id == "run-write-file"
+                )
+            )
+        ).scalar_one()
+    assert artifact.source_tool_name == "write_file"
+    assert artifact.tool_call_id == "call-write-file"
+
+
+@pytest.mark.asyncio
 async def test_recorder_ingests_same_content_rewrite_for_new_run(tmp_path: Path) -> None:
     conv_id, agent_id = await seed_artifact_conversation()
     output_dir = tmp_path / "outputs"

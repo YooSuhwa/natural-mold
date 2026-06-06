@@ -76,6 +76,7 @@ def build_filesystem_permissions(
             _protected_tree("/agents"),
             _protected_tree("/runtime"),
             _protected_tree("/conversations"),
+            FilesystemPermission(operations=["write"], paths=["/**"], mode="deny"),
         ]
     )
     return permissions

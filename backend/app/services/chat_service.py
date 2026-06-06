@@ -320,6 +320,70 @@ def _latest_interrupt_payload(events: list[dict[str, Any]]) -> dict[str, Any] | 
     return None
 
 
+def _completed_tool_call_ids(responses: list[MessageResponse]) -> set[str]:
+    return {
+        response.tool_call_id
+        for response in responses
+        if response.role == "tool" and response.tool_call_id
+    }
+
+
+def _interrupt_action_matches_tool_call(
+    action: dict[str, Any],
+    tool_call: dict[str, Any],
+) -> bool:
+    action_args = action.get("args")
+    target_args = action_args if isinstance(action_args, dict) else {}
+    existing_args = _tool_call_args(tool_call)
+    if _tool_call_name(tool_call) != action.get("name"):
+        return False
+    return (
+        _equivalent_tool_args(existing_args, target_args)
+        or _contains_tool_args(target_args, existing_args)
+        or _contains_tool_args(existing_args, target_args)
+        or not existing_args
+        or not target_args
+    )
+
+
+def _all_interrupt_actions_completed(
+    payload: dict[str, Any],
+    tool_calls: list[dict[str, Any]],
+    completed_tool_call_ids: set[str],
+) -> bool:
+    action_requests = payload.get("action_requests")
+    if not isinstance(action_requests, list) or not action_requests:
+        return False
+    if not completed_tool_call_ids:
+        return False
+
+    for action in action_requests:
+        if not isinstance(action, dict):
+            return False
+        action_completed = any(
+            str(tool_call.get("id") or "") in completed_tool_call_ids
+            and _interrupt_action_matches_tool_call(action, tool_call)
+            for tool_call in tool_calls
+        )
+        if not action_completed:
+            return False
+    return True
+
+
+def _interrupt_payload_targets_tool_calls(
+    payload: dict[str, Any],
+    tool_calls: list[dict[str, Any]],
+) -> bool:
+    action_requests = payload.get("action_requests")
+    if not isinstance(action_requests, list) or not action_requests:
+        return False
+    return any(
+        isinstance(action, dict)
+        and any(_interrupt_action_matches_tool_call(action, tool_call) for tool_call in tool_calls)
+        for action in action_requests
+    )
+
+
 async def _hydrate_pending_interrupt_tool_calls(
     db: AsyncSession,
     *,
@@ -339,6 +403,7 @@ async def _hydrate_pending_interrupt_tool_calls(
     from app.models.message_event import MessageEvent
     from app.services import trace_storage
 
+    completed_tool_call_ids = _completed_tool_call_ids(responses)
     result = await db.execute(
         select(MessageEvent)
         .where(MessageEvent.conversation_id == conversation_id)
@@ -354,6 +419,14 @@ async def _hydrate_pending_interrupt_tool_calls(
         if payload is None:
             continue
         for response in target_responses:
+            if not _interrupt_payload_targets_tool_calls(payload, response.tool_calls or []):
+                continue
+            if _all_interrupt_actions_completed(
+                payload,
+                response.tool_calls or [],
+                completed_tool_call_ids,
+            ):
+                continue
             response.tool_calls = _merge_interrupt_tool_calls(response.tool_calls or [], payload)
 
 

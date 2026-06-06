@@ -104,6 +104,7 @@ def test_scoped_filesystem_permissions_only_allow_current_runtime_surfaces() -> 
     )
     assert _check_fs_permission(permissions, "write", "/conversations/thread-a/new.txt") == "allow"
     assert _check_fs_permission(permissions, "read", "/conversations/thread-b/output.txt") == "deny"
+    assert _check_fs_permission(permissions, "write", "/tmp/invisible.txt") == "deny"
 
 
 def test_filesystem_permissions_can_scope_skills_by_agent_runtime_name() -> None:
@@ -223,6 +224,15 @@ async def test_deepagents_filesystem_tools_enforce_scoped_permissions(
     )
     assert write_denied.status == "error"
     assert "permission denied" in write_denied.content
+
+    untracked_write_denied = await write_file.coroutine(
+        file_path="/tmp/invisible.txt",
+        content="not an artifact\n",
+        runtime=runtime,
+    )
+    assert untracked_write_denied.status == "error"
+    assert "permission denied" in untracked_write_denied.content
+    assert not (tmp_path / "tmp" / "invisible.txt").exists()
 
     edit_denied = await edit_file.coroutine(
         file_path="/agents/agent-b/AGENTS.md",
