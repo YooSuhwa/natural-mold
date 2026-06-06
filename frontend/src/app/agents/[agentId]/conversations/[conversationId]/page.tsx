@@ -26,7 +26,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query'
 import { streamChat, type StreamChatOptions } from '@/lib/sse/stream-chat'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
-import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import { chatRightRailAtom, toggleArtifactListRailState } from '@/lib/stores/chat-right-rail'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
@@ -196,10 +196,7 @@ export default function ChatPage({
               size="icon-sm"
               aria-label={t('artifacts')}
               onClick={() =>
-                setRightRail({
-                  mode: 'artifacts',
-                  artifacts: { conversationId, view: 'list' },
-                })
+                setRightRail((current) => toggleArtifactListRailState(current, conversationId))
               }
             >
               <FilesIcon className="size-4" />
@@ -273,10 +270,7 @@ export default function ChatPage({
       </section>
 
       {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
-      <ChatRightRail
-        conversationId={conversationId}
-        className="moldy-panel overflow-hidden"
-      />
+      <ChatRightRail conversationId={conversationId} className="moldy-panel overflow-hidden" />
     </div>
   )
 }
