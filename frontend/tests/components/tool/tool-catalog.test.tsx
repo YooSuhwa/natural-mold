@@ -44,10 +44,10 @@ describe('ToolCatalog', () => {
 
     const card = screen.getByRole('button', { name: /네이버 뉴스 검색/ })
 
-    expect(card).toHaveClass('border-transparent')
-    expect(card.className).toMatch(/\bbg-(violet|sky|emerald|amber|rose)-50\/75\b/)
+    expect(card).toHaveClass('moldy-resource-card')
+    expect(card.className).toMatch(/\bmoldy-tone-card-sky\b/)
     expect(card.querySelector('svg')?.parentElement?.className).toMatch(
-      /\bbg-(violet|sky|emerald|amber|rose)-100\b/,
+      /\bmoldy-tone-icon-sky\b/,
     )
   })
 

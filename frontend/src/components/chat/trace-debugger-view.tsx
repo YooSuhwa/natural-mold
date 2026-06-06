@@ -16,10 +16,7 @@ import {
 import { conversationsApi } from '@/lib/api/conversations'
 import { toAgentPrismTraceViewerData } from '@/lib/agent-prism/trace-adapter'
 import type { DebugTraceDetailResponse, DebugTraceSummary } from '@/lib/types'
-import {
-  conversationKeys,
-  useConversationDebugTraces,
-} from '@/lib/hooks/use-conversations'
+import { conversationKeys, useConversationDebugTraces } from '@/lib/hooks/use-conversations'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -68,10 +65,7 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
     () => buildConversationTraceTree(conversationId, viewerData, t('conversationTraces')),
     [conversationId, viewerData, t],
   )
-  const allSpans = useMemo(
-    () => flattenSpans(rootSpans),
-    [rootSpans],
-  )
+  const allSpans = useMemo(() => flattenSpans(rootSpans), [rootSpans])
   const selectedSpan = useMemo(
     () => allSpans.find((span) => span.id === selectedSpanId) ?? allSpans[0],
     [allSpans, selectedSpanId],
@@ -97,9 +91,7 @@ export function TraceDebuggerView({ conversationId, backHref }: TraceDebuggerVie
             <div className="min-w-0">
               <h1 className="flex min-w-0 items-center gap-2 font-heading text-lg font-semibold">
                 <span className="truncate">{t('title')}</span>
-                <span className="moldy-resource-meta max-w-none font-mono">
-                  {conversationId}
-                </span>
+                <span className="moldy-resource-meta max-w-none font-mono">{conversationId}</span>
               </h1>
             </div>
             <div className="flex items-center gap-2">
@@ -278,13 +270,7 @@ function maxTime(values: number[]): number | null {
   return valid.length ? Math.max(...valid) : null
 }
 
-function RunInfoPanel({
-  traces,
-  spans,
-}: {
-  traces: DebugTraceSummary[]
-  spans: TraceSpan[]
-}) {
+function RunInfoPanel({ traces, spans }: { traces: DebugTraceSummary[]; spans: TraceSpan[] }) {
   const t = useTranslations('chat.traceDebugger')
   const errorCount = spans.filter((span) => span.status === 'error').length
   const toolCount = spans.filter((span) => span.type === 'tool_execution').length
@@ -318,11 +304,11 @@ function RunInfoPanel({
         <div className="moldy-card p-4">
           <div className="mb-4 flex items-center gap-2 text-sm">
             <FilterIcon className="size-4 text-muted-foreground" />
-            <span>Total</span>
+            <span>{t('total')}</span>
             <Badge variant="secondary">{spans.length}</Badge>
           </div>
           <div className="grid grid-cols-3 gap-3 text-center">
-            <Metric label="LLM" value={llmCount} />
+            <Metric label={t('llm')} value={llmCount} />
             <Metric label={t('tools')} value={toolCount} />
             <Metric label={t('errors')} value={errorCount} />
           </div>

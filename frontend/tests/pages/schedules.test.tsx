@@ -1,5 +1,5 @@
 import { render, screen, userEvent, waitFor } from '../test-utils'
-import SchedulesPage from '@/app/schedules/page'
+import SchedulesPage from '@/app/settings/schedules/page'
 import { mockTriggerList } from '../mocks/fixtures'
 
 const mockRunNow = vi.fn()

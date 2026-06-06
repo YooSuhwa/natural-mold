@@ -16,7 +16,10 @@ describe('AgentAvatar', () => {
     render(<AgentAvatar imageUrl="/moldy.png" name="Moldy" publicAsset />)
 
     const image = screen.getByRole('img', { name: 'Moldy' })
-    expect(image.getAttribute('src')).toContain('/moldy.png')
+    const src = image.getAttribute('src') ?? ''
+    const imageUrl = new URL(src, 'http://localhost:3000')
+    expect(imageUrl.pathname).toBe('/_next/image')
+    expect(imageUrl.searchParams.get('url')).toBe('/moldy.png')
     expect(image.getAttribute('src')).not.toContain('variant=preview')
     expect(image.getAttribute('src')).not.toContain('localhost:8001')
   })

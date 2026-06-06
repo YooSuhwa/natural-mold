@@ -1,5 +1,5 @@
 import { render, screen, userEvent } from '../test-utils'
-import CredentialsPage from '@/app/credentials/page'
+import CredentialsPage from '@/app/settings/credentials/page'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
 
 const mockUseCredentials = vi.fn()
@@ -66,9 +66,9 @@ describe('CredentialsPage', () => {
   it('renders credentials as quiet management cards by default', () => {
     render(<CredentialsPage />)
 
-    const card = screen.getByText('운영용 OpenAI').closest('[role="button"]')
-    expect(card).toHaveClass('border-transparent')
-    expect(card?.className).toMatch(/\bbg-(violet|sky|emerald|amber|rose)-50\/75\b/)
+    const card = screen.getByText('운영용 OpenAI').closest('button')
+    expect(card).toHaveClass('moldy-resource-card')
+    expect(card?.className).toMatch(/\bmoldy-tone-card-mint\b/)
     expect(screen.getByText('OpenAI')).toBeInTheDocument()
   })
 

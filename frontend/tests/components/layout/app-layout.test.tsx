@@ -18,6 +18,7 @@ vi.mock('next/link', () => ({
 }))
 
 vi.mock('@/lib/hooks/use-agents', () => ({
+  useAgentSummaries: () => ({ data: [], isLoading: false }),
   useAgents: () => ({ data: [], isLoading: false }),
 }))
 

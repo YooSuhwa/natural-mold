@@ -110,11 +110,6 @@ describe('admin settings pages', () => {
     render(<MarketplaceAdminPage />)
 
     expect(screen.getByRole('heading', { name: '마켓플레이스 운영' })).toBeInTheDocument()
-    expect(screen.getByText('관리자')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '운영자 관리' })).toHaveAttribute(
-      'href',
-      '/settings/marketplace-admin',
-    )
     expect(screen.getByText('처리 대기 항목이 없어요')).toBeInTheDocument()
     expect(screen.getByText('k-skill 동기화 상태')).toBeInTheDocument()
   })

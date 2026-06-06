@@ -1,5 +1,5 @@
 import { render, screen } from '../test-utils'
-import DashboardPage from '@/app/page'
+import DashboardPage from '@/app/dashboard-page-client'
 import { mockAgentSummaryList } from '../mocks/fixtures'
 
 vi.mock('next/link', () => ({

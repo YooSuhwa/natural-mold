@@ -754,12 +754,13 @@ export function AssistantThread({
 }
 
 function ScrollToBottomButton({ isAtBottom }: { isAtBottom: boolean }) {
+  const t = useTranslations('chat.input')
   const scrollToBottom = useThreadViewport((v) => v.scrollToBottom)
 
   return (
     <button
       type="button"
-      aria-label="Scroll to bottom"
+      aria-label={t('scrollToBottom')}
       aria-hidden={isAtBottom}
       disabled={isAtBottom}
       tabIndex={isAtBottom ? -1 : 0}

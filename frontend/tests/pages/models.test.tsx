@@ -1,5 +1,5 @@
 import { render, screen } from '../test-utils'
-import ModelsPage from '@/app/models/page'
+import ModelsPage from '@/app/settings/models/page'
 import { mockModelList } from '../mocks/fixtures'
 
 vi.mock('next/link', () => ({
