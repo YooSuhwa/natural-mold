@@ -366,6 +366,40 @@ async def test_execute_stream_keeps_temporal_context_out_of_user_message(
 @patch("app.agent_runtime.executor.build_agent")
 @patch("app.agent_runtime.executor.convert_to_langchain_messages")
 @patch("app.agent_runtime.executor.create_chat_model")
+async def test_execute_stream_forwards_artifact_recorder(
+    mock_model_factory: MagicMock,
+    mock_convert: MagicMock,
+    mock_build: MagicMock,
+    mock_stream: MagicMock,
+    mock_checkpointer: MagicMock,
+):
+    from app.agent_runtime.executor import execute_agent_stream
+
+    recorder = object()
+    captured_kwargs: dict[str, object] = {}
+    mock_model_factory.return_value = MagicMock()
+    mock_convert.return_value = []
+    mock_build.return_value = MagicMock()
+    mock_checkpointer.return_value = MagicMock()
+
+    async def fake_stream(_agent, _input, _config, **kwargs):
+        captured_kwargs.update(kwargs)
+        yield "event: message_end\ndata: {}\n\n"
+
+    mock_stream.side_effect = fake_stream
+
+    async for _ in execute_agent_stream(_cfg(), [], artifact_recorder=recorder):
+        pass
+
+    assert captured_kwargs["artifact_recorder"] is recorder
+
+
+@pytest.mark.asyncio
+@patch("app.agent_runtime.checkpointer.get_checkpointer")
+@patch("app.agent_runtime.executor.stream_agent_response")
+@patch("app.agent_runtime.executor.build_agent")
+@patch("app.agent_runtime.executor.convert_to_langchain_messages")
+@patch("app.agent_runtime.executor.create_chat_model")
 @patch("app.agent_runtime.executor.create_tool_for_runtime")
 async def test_execute_stream_runtime_tool_called_per_entry(
     mock_factory: MagicMock,

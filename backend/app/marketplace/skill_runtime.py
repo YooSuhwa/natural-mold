@@ -238,6 +238,7 @@ def build_skill_runtime_context(
     cfg: AgentConfig,
     *,
     data_dir: Path,
+    output_root: Path | None = None,
 ) -> SkillToolContext:
     """Synchronous part of the context build — per-thread mount only.
 
@@ -250,7 +251,10 @@ def build_skill_runtime_context(
     ``execute_in_skill`` rejects unknown slugs (selected-skill mount).
     """
 
-    output_dir = (data_dir / "conversations" / cfg.thread_id).resolve()
+    conversation_output_root = (
+        output_root if output_root is not None else data_dir / "conversations"
+    )
+    output_dir = (conversation_output_root / cfg.thread_id).resolve()
     runtime_root = _per_thread_runtime_root(
         data_dir,
         cfg.thread_id,

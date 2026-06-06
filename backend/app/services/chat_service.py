@@ -326,12 +326,13 @@ async def list_messages_from_checkpointer(
         resp.branch_index = node.branch_index
         resp.branch_total = node.branch_total
 
-    # Hydrate per-message feedback (current user) + attachments. Wrapped in
+    # Hydrate per-message feedback (current user) + attachments/artifacts. Wrapped in
     # broad try/except so a missing migration (m27/m28 not yet applied) or
     # any other query glitch degrades gracefully — the message list still
-    # renders, just without the feedback/attachment metadata.
+    # renders, just without the side-channel metadata.
     feedback_by_msg: dict[str, str] = {}
     attachments_by_msg: dict[str, list[MessageAttachmentBrief]] = {}
+    artifacts_by_msg: dict[str, list[Any]] = {}
 
     if user_id is not None:
         try:
@@ -370,6 +371,22 @@ async def list_messages_from_checkpointer(
             exc_info=True,
         )
 
+    if user_id is not None:
+        try:
+            from app.services.artifact_service import list_conversation_artifacts_by_message_id
+
+            artifacts_by_msg = await list_conversation_artifacts_by_message_id(
+                db,
+                user_id=user_id,
+                conversation_id=conversation.id,
+            )
+        except Exception:  # noqa: BLE001 — non-critical hydration
+            logger.warning(
+                "artifact hydrate failed for conversation %s — skipping",
+                conversation.id,
+                exc_info=True,
+            )
+
     for resp in responses:
         mid = str(resp.id)
         rating = feedback_by_msg.get(mid)
@@ -378,6 +395,9 @@ async def list_messages_from_checkpointer(
         atts = attachments_by_msg.get(mid)
         if atts:
             resp.attachments = atts
+        artifacts = artifacts_by_msg.get(mid)
+        if artifacts:
+            resp.artifacts = artifacts
 
     return responses
 

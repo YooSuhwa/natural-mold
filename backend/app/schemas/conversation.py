@@ -6,6 +6,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, PlainSerializer, model_validator
 
+from app.schemas.artifact import ArtifactSummary
+
 
 def _utc_iso(dt: datetime) -> str:
     """timezone-naive datetime을 UTC ISO 문자열(Z suffix)로 직렬화.
@@ -152,6 +154,7 @@ class MessageResponse(BaseModel):
     created_at: UtcDatetime
     feedback: MessageFeedbackBrief | None = None
     attachments: list[MessageAttachmentBrief] | None = None
+    artifacts: list[ArtifactSummary] | None = None
     # W7 — assistant 메시지에서만 채워진다. user/tool 메시지나 LangChain이
     # ``usage_metadata``를 emit하지 않은 chunk는 ``None``.
     usage: TokenUsageBreakdown | None = None

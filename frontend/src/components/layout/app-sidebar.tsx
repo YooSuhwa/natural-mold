@@ -8,6 +8,7 @@ import {
   CalendarClockIcon,
   CheckIcon,
   ChevronRightIcon,
+  FilesIcon,
   Globe2Icon,
   HomeIcon,
   KeyRoundIcon,
@@ -159,6 +160,7 @@ export function AppSidebar() {
   const isMarketplaceActive = pathname.startsWith('/marketplace')
 
   const resourceItems: ResourceItem[] = [
+    { label: t('nav.artifacts'), href: '/artifacts', icon: FilesIcon },
     { label: t('nav.credentials'), href: '/credentials', icon: KeyRoundIcon },
     { label: t('nav.models'), href: '/models', icon: BrainIcon },
     {

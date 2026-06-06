@@ -40,7 +40,7 @@ import {
   ChevronRightIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useAtomValue } from 'jotai'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
@@ -71,6 +71,11 @@ import {
 } from '@/components/chat/conversation-context'
 import { isThreadViewportAtBottom } from '@/components/chat/scroll-bottom'
 import { copyTextToClipboard, getMessageCopyText } from '@/components/chat/message-copy'
+import { selectMessageArtifactsFromMetadata } from '@/components/chat/message-artifact-metadata'
+import { useRecordArtifactOpened } from '@/lib/hooks/use-artifact-library'
+import { selectChatArtifactAtom } from '@/lib/stores/chat-artifacts'
+import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import type { ArtifactSummary } from '@/lib/types'
 
 export { GenericToolFallback }
 
@@ -202,6 +207,67 @@ function useIsStreamingMessage(): boolean {
       (s.message?.metadata as { custom?: { isStreamingMessage?: boolean } } | undefined)?.custom
         ?.isStreamingMessage,
     ),
+  )
+}
+
+function useMessageArtifacts(): ArtifactSummary[] {
+  return useAssistantState((s) => selectMessageArtifactsFromMetadata(s.message?.metadata))
+}
+
+function AssistantArtifactCards() {
+  const artifacts = useMessageArtifacts()
+  const conversationId = useChatConversationId()
+  const selectArtifact = useSetAtom(selectChatArtifactAtom)
+  const setRightRail = useSetAtom(chatRightRailAtom)
+  const openedMutation = useRecordArtifactOpened()
+  const tArtifacts = useTranslations('chat.rightRail.artifacts')
+  const tMessageArtifacts = useTranslations('chat.message.artifacts')
+
+  if (artifacts.length === 0) return null
+
+  const openArtifact = (artifact: ArtifactSummary) => {
+    const targetConversationId = conversationId ?? artifact.conversation_id
+    selectArtifact({ conversationId: targetConversationId, artifactId: artifact.id })
+    openedMutation.mutate(artifact.id)
+    setRightRail({
+      mode: 'artifacts',
+      artifacts: {
+        conversationId: targetConversationId,
+        selectedArtifactId: artifact.id,
+        view: 'preview',
+      },
+    })
+  }
+
+  return (
+    <div className="mt-2 flex max-w-xl flex-col gap-2">
+      {artifacts.map((artifact) => {
+        const isImage = artifact.artifact_kind === 'image'
+        const extension = artifact.extension?.toUpperCase()
+        return (
+          <button
+            key={artifact.id}
+            type="button"
+            className="moldy-chat-card moldy-card-hover flex w-full items-center gap-3 px-3 py-3 text-left"
+            aria-label={tMessageArtifacts('openLabel', { name: artifact.display_name })}
+            onClick={() => openArtifact(artifact)}
+          >
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-foreground">
+              {isImage ? <ImageIcon className="size-5" /> : <FileIcon className="size-5" />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-foreground">
+                {artifact.display_name}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {tArtifacts(`kinds.${artifact.artifact_kind}`)}
+                {extension ? ` · ${extension}` : ''}
+              </span>
+            </span>
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -609,6 +675,7 @@ export function AssistantThread({
             />
             <div className="min-w-0 flex-1">
               <AssistantMessageParts />
+              <AssistantArtifactCards />
               {metaRow}
             </div>
           </div>
