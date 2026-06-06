@@ -59,7 +59,7 @@ function OnboardingDialogInner({ user }: { user: User }) {
 
   function handleRegister() {
     dismiss()
-    router.push('/credentials')
+    router.push('/settings/credentials')
   }
 
   return (

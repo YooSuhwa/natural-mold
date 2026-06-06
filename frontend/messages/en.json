@@ -222,6 +222,7 @@
       "resources": "Resources"
     },
     "tooltip": {
+      "capabilities": "Tools, MCP servers, and skills",
       "connectors": "Connect external systems",
       "skills": "Knowledge and execution packages",
       "marketplace": "Share agents, tools, and skills"
@@ -2932,6 +2933,11 @@
       "appearance": "Appearance & Language",
       "agentApi": "Agent API",
       "audit": "Activity Log",
+      "resources": "Resources",
+      "credentials": "Credentials",
+      "models": "Models",
+      "schedules": "Schedules",
+      "usage": "Usage",
       "admin": "Admin",
       "marketplaceAdmin": "Marketplace Admin",
       "systemCredentials": "System Credentials",

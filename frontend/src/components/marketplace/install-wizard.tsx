@@ -424,7 +424,7 @@ function RequirementRow({
             })}
           </p>
           <Link
-            href="/credentials"
+            href="/settings/credentials"
             className="mt-1 inline-block text-primary-strong hover:underline"
           >
             {t('createCredential')}

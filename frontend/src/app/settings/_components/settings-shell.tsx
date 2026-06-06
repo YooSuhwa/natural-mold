@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import {
+  BarChart3Icon,
   BrainIcon,
+  CalendarClockIcon,
   Code2Icon,
   HistoryIcon,
   KeyRoundIcon,
@@ -19,16 +21,19 @@ import type { ComponentType, ReactNode, SVGProps } from 'react'
 
 import { PageHeader } from '@/components/shared/page-header'
 import { useSession } from '@/lib/auth/session'
+import { useTriggerSummary } from '@/lib/hooks/use-triggers'
 import { cn } from '@/lib/utils'
 
 interface SettingsShellProps {
   children: ReactNode
+  wide?: boolean
 }
 
 type SettingsNavItem = {
   href: string
   label: string
   icon: ComponentType<SVGProps<SVGSVGElement>>
+  badge?: number
 }
 
 type SettingsNavSection = {
@@ -41,10 +46,11 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-export function SettingsShell({ children }: SettingsShellProps) {
+export function SettingsShell({ children, wide = false }: SettingsShellProps) {
   const pathname = usePathname()
   const t = useTranslations('appSettings')
   const { data: user } = useSession()
+  const { data: triggerSummary } = useTriggerSummary()
 
   const sections: SettingsNavSection[] = [
     {
@@ -61,6 +67,20 @@ export function SettingsShell({ children }: SettingsShellProps) {
       label: t('nav.api'),
       items: [
         { href: '/settings/agent-api', label: t('nav.agentApi'), icon: Code2Icon },
+      ],
+    },
+    {
+      label: t('nav.resources'),
+      items: [
+        { href: '/settings/credentials', label: t('nav.credentials'), icon: KeyRoundIcon },
+        { href: '/settings/models', label: t('nav.models'), icon: BrainIcon },
+        {
+          href: '/settings/schedules',
+          label: t('nav.schedules'),
+          icon: CalendarClockIcon,
+          badge: triggerSummary?.total_unread ?? 0,
+        },
+        { href: '/settings/usage', label: t('nav.usage'), icon: BarChart3Icon },
       ],
     },
     ...(user?.is_super_user
@@ -98,7 +118,12 @@ export function SettingsShell({ children }: SettingsShellProps) {
     <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
       <PageHeader title={t('title')} description={t('description')} />
 
-      <div className="mx-auto grid w-full max-w-5xl gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <div
+        className={cn(
+          'mx-auto grid w-full gap-6 lg:grid-cols-[220px_minmax(0,1fr)]',
+          wide ? 'max-w-7xl' : 'max-w-5xl',
+        )}
+      >
         <aside className="moldy-panel h-fit p-2">
           <nav className="space-y-4" aria-label={t('navLabel')}>
             {sections.map((section) => (
@@ -124,6 +149,11 @@ export function SettingsShell({ children }: SettingsShellProps) {
                       >
                         <Icon className="size-4" aria-hidden />
                         <span>{item.label}</span>
+                        {item.badge ? (
+                          <span className="ml-auto rounded-md bg-primary px-1.5 py-0.5 moldy-ui-caption font-semibold leading-none text-primary-foreground ring-1 ring-primary-strong/15">
+                            {item.badge > 99 ? '99+' : item.badge}
+                          </span>
+                        ) : null}
                       </Link>
                     )
                   })}

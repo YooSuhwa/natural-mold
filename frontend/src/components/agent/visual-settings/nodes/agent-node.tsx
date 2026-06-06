@@ -216,7 +216,7 @@ export function AgentNode({ data }: NodeProps & { data: AgentNodeData }) {
                 {/* Manage models link */}
                 <div className="border-t border-border px-3 py-2">
                   <Link
-                    href="/models"
+                    href="/settings/models"
                     className="flex w-full items-center justify-center gap-1.5 rounded-md border px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 transition-colors"
                   >
                     {ts('manageModels')}

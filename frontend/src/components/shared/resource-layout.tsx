@@ -19,6 +19,7 @@ type ResourcePageProps = {
   children: ReactNode
   className?: string
   contentClassName?: string
+  variant?: 'default' | 'embedded'
 }
 
 function ResourcePage({
@@ -28,18 +29,24 @@ function ResourcePage({
   children,
   className,
   contentClassName,
+  variant = 'default',
 }: ResourcePageProps) {
+  const isEmbedded = variant === 'embedded'
+
   return (
     <div
       className={cn(
-        'moldy-app-surface flex min-h-0 flex-1 flex-col overflow-hidden',
-        'relative',
+        isEmbedded
+          ? 'min-w-0'
+          : 'moldy-app-surface relative flex min-h-0 flex-1 flex-col overflow-hidden',
         className,
       )}
     >
       <div
         className={cn(
-          'mx-auto flex min-h-0 w-full max-w-[1220px] flex-1 flex-col gap-5 px-5 py-6 md:px-8',
+          isEmbedded
+            ? 'flex min-w-0 flex-col gap-5'
+            : 'mx-auto flex min-h-0 w-full max-w-[1220px] flex-1 flex-col gap-5 px-5 py-6 md:px-8',
           contentClassName,
         )}
       >

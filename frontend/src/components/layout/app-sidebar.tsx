@@ -2,15 +2,10 @@
 
 import { useAtom } from 'jotai'
 import {
-  BarChart3Icon,
   BookOpenIcon,
-  BrainIcon,
-  CalendarClockIcon,
   CheckIcon,
   ChevronRightIcon,
   Globe2Icon,
-  HomeIcon,
-  KeyRoundIcon,
   LayoutTemplateIcon,
   type LucideIcon,
   MoonIcon,
@@ -61,13 +56,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useSession } from '@/lib/auth/session'
 import { useAgentSummaries } from '@/lib/hooks/use-agents'
 import { useLogout } from '@/lib/hooks/useAuth'
-import { useTriggerSummary } from '@/lib/hooks/use-triggers'
-import { connectorsExpandedAtom } from '@/lib/stores/sidebar-store'
+import { featuresExpandedAtom } from '@/lib/stores/sidebar-store'
 import { persistLocaleCookie } from '../../i18n/client-locale'
 import { SUPPORTED_LOCALES, isSupportedLocale } from '../../i18n/locales'
 
 type NavChild = { label: string; href: string; icon: LucideIcon; isActive: boolean }
-type ResourceItem = { label: string; href: string; icon: LucideIcon; badge?: number }
 
 /** Collapsible top-level menu item with a toggle chevron and a list of sub-links. */
 function CollapsibleNavItem({
@@ -128,7 +121,6 @@ export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { data: agents, isLoading } = useAgentSummaries()
-  const { data: triggerSummary } = useTriggerSummary()
   const { resolvedTheme, setTheme } = useTheme()
   const locale = useLocale()
   const { toggleSidebar } = useSidebar()
@@ -136,41 +128,21 @@ export function AppSidebar() {
   const { data: user } = useSession()
   const logout = useLogout()
 
-  const [connectorsExpanded, setConnectorsExpanded] = useAtom(connectorsExpandedAtom)
+  const [featuresExpanded, setFeaturesExpanded] = useAtom(featuresExpandedAtom)
   const [languageOpen, setLanguageOpen] = useState(false)
 
   const buildItems = [
-    { label: t('nav.home'), href: '/', icon: HomeIcon },
     { label: t('nav.templates'), href: '/agents/new/template', icon: LayoutTemplateIcon },
+    { label: t('nav.marketplace'), href: '/marketplace', icon: StoreIcon },
   ]
 
-  const connectorChildren: NavChild[] = [
+  const featureChildren: NavChild[] = [
     { label: t('nav.tools'), href: '/tools', icon: WrenchIcon },
     { label: t('nav.mcpServers'), href: '/mcp-servers', icon: ServerIcon },
+    { label: t('nav.skills'), href: '/skills', icon: BookOpenIcon },
   ].map((c) => ({ ...c, isActive: pathname.startsWith(c.href) }))
 
-  const skillsItem = {
-    label: t('nav.skills'),
-    href: '/skills',
-    icon: BookOpenIcon,
-    tooltip: t('tooltip.skills'),
-  }
-
-  const isMarketplaceActive = pathname.startsWith('/marketplace')
-
-  const resourceItems: ResourceItem[] = [
-    { label: t('nav.credentials'), href: '/credentials', icon: KeyRoundIcon },
-    { label: t('nav.models'), href: '/models', icon: BrainIcon },
-    {
-      label: t('nav.schedules'),
-      href: '/schedules',
-      icon: CalendarClockIcon,
-      badge: triggerSummary?.total_unread ?? 0,
-    },
-    { label: t('nav.usage'), href: '/usage', icon: BarChart3Icon },
-  ]
-
-  const isConnectorActive = connectorChildren.some((child) => child.isActive)
+  const isFeatureActive = featureChildren.some((child) => child.isActive)
 
   const recentAgents = useMemo(
     () =>
@@ -269,7 +241,7 @@ export function AppSidebar() {
 
         <SidebarSeparator />
 
-        {/* Build group — Home, Templates */}
+        {/* Build group — Templates, Marketplace */}
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
@@ -296,75 +268,20 @@ export function AppSidebar() {
 
         <SidebarSeparator />
 
-        {/* Capabilities group — Connectors (collapsible), Skills */}
+        {/* Features group — Tools, MCP servers, Skills */}
         <SidebarGroup>
-          <SidebarGroupLabel>{t('section.capabilities')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
               <CollapsibleNavItem
                 icon={Plug2Icon}
-                label={t('nav.connectors')}
-                tooltip={t('tooltip.connectors')}
-                isActive={isConnectorActive}
-                expanded={connectorsExpanded}
-                onToggle={() => setConnectorsExpanded(!connectorsExpanded)}
-                items={connectorChildren}
+                label={t('section.capabilities')}
+                tooltip={t('tooltip.capabilities')}
+                isActive={isFeatureActive}
+                expanded={featuresExpanded}
+                onToggle={() => setFeaturesExpanded(!featuresExpanded)}
+                items={featureChildren}
                 menuClass={activeMenuClass}
               />
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={pathname.startsWith(skillsItem.href)}
-                  tooltip={skillsItem.tooltip}
-                  render={<Link href={skillsItem.href} />}
-                  className={activeMenuClass}
-                >
-                  <skillsItem.icon className="size-4" />
-                  <span>{skillsItem.label}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={isMarketplaceActive}
-                  tooltip={t('tooltip.marketplace')}
-                  render={<Link href="/marketplace" />}
-                  className={activeMenuClass}
-                >
-                  <StoreIcon className="size-4" />
-                  <span>{t('nav.marketplace')}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarSeparator />
-
-        {/* Resources group — Credentials, Models, Usage */}
-        <SidebarGroup>
-          <SidebarGroupLabel>{t('section.resources')}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-1">
-              {resourceItems.map((item) => {
-                const isActive = pathname.startsWith(item.href)
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      tooltip={item.label}
-                      render={<Link href={item.href} />}
-                      className={activeMenuClass}
-                    >
-                      <item.icon className="size-4" />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                    {item.badge ? (
-                      <SidebarMenuBadge>
-                        {item.badge > 99 ? '99+' : item.badge}
-                      </SidebarMenuBadge>
-                    ) : null}
-                  </SidebarMenuItem>
-                )
-              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
