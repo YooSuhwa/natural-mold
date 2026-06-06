@@ -223,6 +223,7 @@
       "resources": "리소스"
     },
     "tooltip": {
+      "capabilities": "도구, MCP 서버, 스킬",
       "connectors": "외부 시스템 연결",
       "skills": "지식·실행 절차 패키지",
       "marketplace": "에이전트·도구·스킬 공유"
@@ -1420,7 +1421,7 @@
       "reconnecting": "연결 재시도 중...",
       "failed": "연결을 다시 맺지 못했어요. 메시지를 다시 전송하거나 새로고침해주세요.",
       "stale": "응답이 끊어져 일부가 누락되었을 수 있어요. 메시지를 다시 시도해주세요.",
-      "credentialRequiredAction": "{message}\n\n[키 등록하러 가기](/credentials)"
+      "credentialRequiredAction": "{message}\n\n[키 등록하러 가기](/settings/credentials)"
     },
     "loading": {
       "witty": {
@@ -2995,12 +2996,19 @@
     "nav": {
       "account": "계정",
       "api": "API",
+      "backToApp": "앱으로 돌아가기",
       "profile": "프로필",
       "memory": "메모리",
       "security": "보안",
       "appearance": "화면 및 언어",
       "agentApi": "Agent API",
       "audit": "활동 기록",
+      "resources": "리소스",
+      "artifacts": "파일",
+      "credentials": "자격증명",
+      "models": "모델",
+      "schedules": "스케줄",
+      "usage": "사용량",
       "admin": "관리자",
       "marketplaceAdmin": "운영자 관리",
       "systemCredentials": "시스템 자격증명",
@@ -3238,6 +3246,7 @@
     "appearance": "화면 및 언어",
     "agentApi": "Agent API",
     "marketplaceAdmin": "운영자 관리",
+    "adminAudit": "전체 활동 기록",
     "systemCredentials": "시스템 자격증명",
     "systemLlm": "시스템 LLM 설정",
     "skills": "스킬",

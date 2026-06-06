@@ -223,6 +223,7 @@
       "resources": "Resources"
     },
     "tooltip": {
+      "capabilities": "Tools, MCP servers, and skills",
       "connectors": "Connect external systems",
       "skills": "Knowledge and execution packages",
       "marketplace": "Share agents, tools, and skills"
@@ -3016,12 +3017,19 @@
     "nav": {
       "account": "Account",
       "api": "API",
+      "backToApp": "Back to App",
       "profile": "Profile",
       "memory": "Memory",
       "security": "Security",
       "appearance": "Appearance & Language",
       "agentApi": "Agent API",
       "audit": "Activity Log",
+      "resources": "Resources",
+      "artifacts": "Files",
+      "credentials": "Credentials",
+      "models": "Models",
+      "schedules": "Schedules",
+      "usage": "Usage",
       "admin": "Admin",
       "marketplaceAdmin": "Marketplace Admin",
       "systemCredentials": "System Credentials",
@@ -3259,6 +3267,7 @@
     "appearance": "Appearance & Language",
     "agentApi": "Agent API",
     "marketplaceAdmin": "Marketplace Admin",
+    "adminAudit": "All Activity",
     "systemCredentials": "System Credentials",
     "systemLlm": "System LLM Settings",
     "skills": "Skills",
