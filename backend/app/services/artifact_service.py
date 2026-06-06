@@ -5,7 +5,7 @@ import hashlib
 import os
 import uuid
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -35,6 +35,7 @@ from app.services.artifact_storage import ArtifactStorageBackend, get_artifact_s
 
 FileEventOperation = Literal["created", "updated", "deleted", "failed"]
 LIBRARY_CURSOR_SEPARATOR = "|"
+ARTIFACT_SOURCE_TOOL_NAMES = frozenset({"execute_in_skill", "write_file", "edit_file"})
 
 
 @dataclass(frozen=True)
@@ -125,7 +126,10 @@ class ArtifactDeltaRecorder:
         tool_name: str,
         tool_call_id: str | None,
     ) -> list[dict[str, object]]:
-        if tool_name != self.context.source_tool_name:
+        if (
+            tool_name not in ARTIFACT_SOURCE_TOOL_NAMES
+            and tool_name != self.context.source_tool_name
+        ):
             return []
 
         after = await snapshot_output_dir(self.context.output_dir, previous=self._snapshot)
@@ -137,7 +141,7 @@ class ArtifactDeltaRecorder:
         async with self.session_factory() as db:
             events = await ingest_changed_files(
                 db,
-                context=self.context,
+                context=replace(self.context, source_tool_name=tool_name),
                 deltas=deltas,
                 storage=self.storage,
                 tool_call_id=tool_call_id,

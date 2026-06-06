@@ -294,6 +294,173 @@ async def test_hydrates_pending_write_file_interrupt_from_trace_chunks(db: Async
     ]
 
 
+@pytest.mark.asyncio
+async def test_does_not_hydrate_completed_write_file_interrupt(db: AsyncSession):
+    """Once write_file has a tool result, reload should not show a pending approval."""
+    agent_id = await _seed(db)
+    conv = await create_conversation(db, agent_id, title="Completed HITL file")
+    assistant_msg_id = uuid.uuid4()
+    raw_assistant_msg_id = str(assistant_msg_id)
+    tool_result_msg_id = uuid.uuid4()
+    run_id = str(uuid.uuid4())
+    interrupt_id = "agent:file-write"
+    file_args = {
+        "file_path": "/conversations/thread-a/today_diary.md",
+        "content": "# 오늘 하루\n\n좋은 하루였다.",
+    }
+    assistant_response = MessageResponse(
+        id=assistant_msg_id,
+        conversation_id=conv.id,
+        role="assistant",
+        content="",
+        tool_calls=[{"id": "toolu-1", "name": "write_file", "args": file_args}],
+        tool_call_id=None,
+        created_at=conv.created_at,
+    )
+    tool_response = MessageResponse(
+        id=tool_result_msg_id,
+        conversation_id=conv.id,
+        role="tool",
+        content="Updated file /conversations/thread-a/today_diary.md",
+        tool_calls=None,
+        tool_call_id="toolu-1",
+        created_at=conv.created_at,
+    )
+
+    await trace_storage.append_events(
+        db,
+        conversation_id=conv.id,
+        assistant_msg_id=run_id,
+        events_chunk=[
+            {"id": f"{run_id}-1", "event": "message_start", "data": {"id": run_id}},
+            {
+                "id": f"{run_id}-2",
+                "event": "interrupt",
+                "data": {
+                    "interrupt_id": interrupt_id,
+                    "action_requests": [
+                        {
+                            "name": "write_file",
+                            "args": file_args,
+                            "description": "Tool execution requires approval",
+                        }
+                    ],
+                    "review_configs": [
+                        {"action_name": "write_file", "allowed_decisions": ["approve", "reject"]}
+                    ],
+                },
+            },
+        ],
+    )
+    await trace_storage.finalize_turn(
+        db,
+        assistant_msg_id=run_id,
+        raw_msg_ids=[raw_assistant_msg_id],
+        conversation_id=conv.id,
+    )
+    await db.commit()
+
+    await chat_service._hydrate_pending_interrupt_tool_calls(  # noqa: SLF001
+        db,
+        conversation_id=conv.id,
+        responses=[assistant_response, tool_response],
+    )
+
+    assert assistant_response.tool_calls == [
+        {"id": "toolu-1", "name": "write_file", "args": file_args}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_hydrates_interrupt_only_on_matching_tool_call_response(db: AsyncSession):
+    """A write_file interrupt should not be appended to unrelated tool-call messages."""
+    agent_id = await _seed(db)
+    conv = await create_conversation(db, agent_id, title="Scoped HITL file")
+    datetime_msg_id = uuid.uuid4()
+    write_msg_id = uuid.uuid4()
+    run_id = str(uuid.uuid4())
+    file_args = {
+        "file_path": "/conversations/thread-a/today_diary.md",
+        "content": "# 오늘 하루\n\n좋은 하루였다.",
+    }
+    datetime_response = MessageResponse(
+        id=datetime_msg_id,
+        conversation_id=conv.id,
+        role="assistant",
+        content="오늘 날짜를 확인할게요.",
+        tool_calls=[{"id": "toolu-date", "name": "current_datetime", "args": {}}],
+        tool_call_id=None,
+        created_at=conv.created_at,
+    )
+    write_response = MessageResponse(
+        id=write_msg_id,
+        conversation_id=conv.id,
+        role="assistant",
+        content="",
+        tool_calls=[{"id": "toolu-write", "name": "write_file", "args": file_args}],
+        tool_call_id=None,
+        created_at=conv.created_at,
+    )
+
+    await trace_storage.append_events(
+        db,
+        conversation_id=conv.id,
+        assistant_msg_id=run_id,
+        events_chunk=[
+            {
+                "id": f"{run_id}-1",
+                "event": "interrupt",
+                "data": {
+                    "interrupt_id": "agent:file-write",
+                    "action_requests": [
+                        {
+                            "name": "write_file",
+                            "args": file_args,
+                            "description": "Tool execution requires approval",
+                        }
+                    ],
+                    "review_configs": [
+                        {"action_name": "write_file", "allowed_decisions": ["approve", "reject"]}
+                    ],
+                },
+            },
+        ],
+    )
+    await trace_storage.finalize_turn(
+        db,
+        assistant_msg_id=run_id,
+        raw_msg_ids=[str(datetime_msg_id), str(write_msg_id)],
+        conversation_id=conv.id,
+    )
+    await db.commit()
+
+    await chat_service._hydrate_pending_interrupt_tool_calls(  # noqa: SLF001
+        db,
+        conversation_id=conv.id,
+        responses=[datetime_response, write_response],
+    )
+
+    assert datetime_response.tool_calls == [
+        {"id": "toolu-date", "name": "current_datetime", "args": {}}
+    ]
+    assert write_response.tool_calls == [
+        {
+            "id": "toolu-write",
+            "name": "request_approval",
+            "args": {
+                "tool_name": "write_file",
+                "tool_args": file_args,
+                "description": "Tool execution requires approval",
+                "approval_id": "toolu-write",
+                "allowed_decisions": ["approve", "reject"],
+                "hitl_interrupt_id": "agent:file-write",
+                "hitl_action_index": 0,
+                "hitl_total_actions": 1,
+            },
+        }
+    ]
+
+
 # ---------------------------------------------------------------------------
 # get_agent_with_tools
 # ---------------------------------------------------------------------------

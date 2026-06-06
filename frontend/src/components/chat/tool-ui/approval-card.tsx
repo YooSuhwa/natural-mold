@@ -47,6 +47,18 @@ interface ApprovalResult {
   reason?: string
 }
 
+function addApprovalResultIfSupported(
+  addResult: (result: unknown) => void,
+  result: ApprovalResult,
+): boolean {
+  try {
+    addResult(result)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function toDecision(
   d: Decision,
   response: ApprovalResult,
@@ -204,9 +216,10 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
           }
         }
 
-        addResult(response)
+        // addResult/result는 Tool UI 내부 표시용이다. 일부 runtime은 tool result
+        // 주입을 지원하지 않으므로 실패해도 backend resume wire는 계속 보낸다.
+        addApprovalResultIfSupported(addResult, response)
 
-        // addResult/result는 Tool UI 내부 표시용 — backend wire는 Decision으로 변환.
         const standardDecision = toDecision(d, response, args?.tool_name)
         if (!standardDecision) {
           // edit인데 tool_name 미상 — backend가 무효 edited_action으로 거절할 것이므로 abort.

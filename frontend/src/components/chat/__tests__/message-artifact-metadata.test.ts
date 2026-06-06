@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { bindExternalStoreMessage } from '@assistant-ui/react'
 import type { ArtifactSummary } from '@/lib/types'
-import { selectMessageArtifactsFromMetadata } from '../message-artifact-metadata'
+import {
+  selectMessageArtifactsFromMessage,
+  selectMessageArtifactsFromMetadata,
+} from '../message-artifact-metadata'
 
 function artifact(): ArtifactSummary {
   return {
@@ -50,5 +54,13 @@ describe('selectMessageArtifactsFromMetadata', () => {
     const artifacts = [artifact()]
 
     expect(selectMessageArtifactsFromMetadata({ custom: { artifacts } })).toBe(artifacts)
+  })
+
+  it('falls back to artifacts on the bound external store message', () => {
+    const artifacts = [artifact()]
+    const message = { metadata: { custom: {} } }
+    bindExternalStoreMessage(message, { artifacts })
+
+    expect(selectMessageArtifactsFromMessage(message)).toBe(artifacts)
   })
 })

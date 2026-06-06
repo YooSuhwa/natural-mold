@@ -952,6 +952,20 @@ def _memory_tool_instruction_prompt() -> str:
     )
 
 
+def _artifact_file_instruction_prompt(thread_id: str) -> str:
+    return (
+        "## Generated File Rules\n"
+        f"- When the user asks you to create, save, or output a file, call `write_file` "
+        f"with an absolute path under `/conversations/{thread_id}/`.\n"
+        f"- Example: `/conversations/{thread_id}/report.md` or "
+        f"`/conversations/{thread_id}/charts/summary.csv`.\n"
+        "- Do not use `/tmp`, `/runtime`, `/skills`, or `/agents` for user-visible "
+        "generated files; those paths are not shown as chat artifacts and may be rejected.\n"
+        "- After a file tool succeeds, briefly tell the user the file is ready. "
+        "Do not claim the file was saved if the tool result reports an error."
+    )
+
+
 async def _prepare_runtime_components(
     cfg: AgentConfig,
     *,
@@ -973,6 +987,7 @@ async def _prepare_runtime_components(
         last_mark = now
 
     system_prompt = _system_prompt_with_temporal_context(cfg.system_prompt)
+    system_prompt += "\n\n" + _artifact_file_instruction_prompt(cfg.thread_id)
     model_candidates = _build_model_candidates(cfg)
     model = model_candidates[0]
     mark_timing("model_ms")

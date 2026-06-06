@@ -71,7 +71,7 @@ import {
 } from '@/components/chat/conversation-context'
 import { isThreadViewportAtBottom } from '@/components/chat/scroll-bottom'
 import { copyTextToClipboard, getMessageCopyText } from '@/components/chat/message-copy'
-import { selectMessageArtifactsFromMetadata } from '@/components/chat/message-artifact-metadata'
+import { selectMessageArtifactsFromMessage } from '@/components/chat/message-artifact-metadata'
 import { useRecordArtifactOpened } from '@/lib/hooks/use-artifact-library'
 import { selectChatArtifactAtom } from '@/lib/stores/chat-artifacts'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
@@ -211,7 +211,7 @@ function useIsStreamingMessage(): boolean {
 }
 
 function useMessageArtifacts(): ArtifactSummary[] {
-  return useAssistantState((s) => selectMessageArtifactsFromMetadata(s.message?.metadata))
+  return useAssistantState((s) => selectMessageArtifactsFromMessage(s.message))
 }
 
 function AssistantArtifactCards() {
