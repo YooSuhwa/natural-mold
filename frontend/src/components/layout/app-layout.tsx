@@ -6,6 +6,7 @@ import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { QueryProvider } from '@/lib/providers/query-provider'
 import { AppSidebar } from '@/components/layout/app-sidebar'
+import { SettingsSidebar } from '@/components/layout/settings-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 import { OnboardingDialog } from '@/components/auth/OnboardingDialog'
 
@@ -19,6 +20,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const isBare =
     (pathname ? BARE_ROUTES.has(pathname) : false) ||
     BARE_ROUTE_PREFIXES.some((prefix) => pathname?.startsWith(prefix))
+  const isSettingsRoute = pathname === '/settings' || pathname?.startsWith('/settings/')
 
   // QueryProvider and TooltipProvider live outside the bare/full conditional so
   // the QueryClient instance survives route transitions (e.g. /login → /).
@@ -31,7 +33,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
           children
         ) : (
           <SidebarProvider>
-            <AppSidebar />
+            {isSettingsRoute ? <SettingsSidebar /> : <AppSidebar />}
             <SidebarInset>
               <AppHeader />
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>

@@ -2906,6 +2906,7 @@
     "nav": {
       "account": "계정",
       "api": "API",
+      "backToApp": "앱으로 돌아가기",
       "profile": "프로필",
       "memory": "메모리",
       "security": "보안",
