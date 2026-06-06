@@ -3267,6 +3267,7 @@
     "appearance": "Appearance & Language",
     "agentApi": "Agent API",
     "marketplaceAdmin": "Marketplace Admin",
+    "adminAudit": "All Activity",
     "systemCredentials": "System Credentials",
     "systemLlm": "System LLM Settings",
     "skills": "Skills",

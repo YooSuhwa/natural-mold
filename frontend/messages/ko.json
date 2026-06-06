@@ -3246,6 +3246,7 @@
     "appearance": "화면 및 언어",
     "agentApi": "Agent API",
     "marketplaceAdmin": "운영자 관리",
+    "adminAudit": "전체 활동 기록",
     "systemCredentials": "시스템 자격증명",
     "systemLlm": "시스템 LLM 설정",
     "skills": "스킬",

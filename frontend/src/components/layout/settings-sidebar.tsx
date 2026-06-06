@@ -146,7 +146,7 @@ export function SettingsSidebar() {
                 icon: SlidersHorizontalIcon,
               },
               {
-                href: '/settings/admin/audit',
+                href: '/settings/admin-audit',
                 label: tSettings('nav.adminAudit'),
                 icon: UsersRoundIcon,
               },
