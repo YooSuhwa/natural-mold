@@ -206,6 +206,7 @@
       "tools": "도구",
       "mcpServers": "MCP 서버",
       "models": "모델",
+      "artifacts": "파일",
       "credentials": "자격증명",
       "systemCredentials": "시스템 자격증명",
       "systemLlm": "시스템 LLM 설정",
@@ -246,6 +247,40 @@
     "logout": "로그아웃",
     "logoutMessage": "로그아웃 되었습니다 (Mock)",
     "toggleSidebar": "사이드바 열기/닫기"
+  },
+  "artifacts": {
+    "title": "파일",
+    "description": "에이전트가 생성한 파일을 검색하고 다시 열어볼 수 있습니다.",
+    "listTitle": "생성된 파일",
+    "previewTitle": "미리보기",
+    "recentTitle": "최근 파일",
+    "loading": "파일을 불러오는 중...",
+    "loadMore": "더 보기",
+    "loadingMore": "더 불러오는 중...",
+    "empty": "조건에 맞는 파일이 없습니다.",
+    "count": "{count}개",
+    "download": "다운로드",
+    "favorite": "즐겨찾기",
+    "unfavorite": "즐겨찾기 해제",
+    "filters": {
+      "search": "파일 검색",
+      "searchPlaceholder": "파일명 또는 경로 검색",
+      "conversation": "대화 ID",
+      "conversationPlaceholder": "대화 ID",
+      "agent": "에이전트",
+      "allAgents": "모든 에이전트",
+      "kind": "파일 종류",
+      "allKinds": "모든 종류",
+      "favorite": "즐겨찾기",
+      "allFiles": "모든 파일",
+      "favoritesOnly": "즐겨찾기만"
+    },
+    "stats": {
+      "total": "전체",
+      "size": "용량",
+      "favorite": "즐겨찾기",
+      "recent": "최근 7일"
+    }
   },
   "dashboard": {
     "greeting": "안녕하세요! 👋",
@@ -1115,6 +1150,8 @@
       "error": "에이전트 실행 중 오류가 발생했습니다",
       "interruptStateLost": "응답이 일시정지되었지만 상세 정보를 불러올 수 없습니다. 새로고침해 주세요.",
       "conversationList": "대화 목록",
+      "artifacts": "파일 패널",
+      "traceDebugger": "Trace 디버거",
       "menu": "더보기 메뉴"
     },
     "input": {
@@ -1150,7 +1187,10 @@
       "attachmentRejected": "이 파일 형식은 지원되지 않습니다",
       "attachmentUploading": "업로드 중...",
       "attachmentRemove": "첨부 파일 제거",
-      "stop": "중단"
+      "stop": "중단",
+      "artifacts": {
+        "openLabel": "{name} 아티팩트 열기"
+      }
     },
     "share": {
       "title": "대화 공유",
@@ -1321,6 +1361,56 @@
         "running": "Running",
         "complete": "Complete",
         "incomplete": "Incomplete"
+      },
+      "artifacts": {
+        "title": "아티팩트",
+        "loading": "파일을 불러오는 중...",
+        "emptyPanel": "이 대화에서 생성된 파일이 아직 없습니다.",
+        "emptySelection": "미리 볼 파일을 선택해 주세요.",
+        "listTitle": "아티팩트",
+        "listDescription": "{count}개의 생성 파일이 있습니다.",
+        "backToList": "파일 목록",
+        "runLabel": "실행 {run}",
+        "download": "다운로드",
+        "downloadAll": "모두 다운로드",
+        "downloadOriginal": "원본 다운로드",
+        "favorite": "즐겨찾기",
+        "unfavorite": "즐겨찾기 해제",
+        "previewMode": "미리보기",
+        "codeMode": "코드",
+        "copyContents": "복사",
+        "copied": "복사됨",
+        "openMenu": "아티팩트 메뉴 열기",
+        "refreshPreview": "미리보기 새로고침",
+        "sourceUnavailable": "이 파일은 코드 보기로 열 수 없습니다.",
+        "imagePreview": "이미지 미리보기",
+        "pdfPreviewTitle": "{name} PDF 미리보기",
+        "htmlPreviewTitle": "{name} HTML 미리보기",
+        "fallbackTitle": "미리보기를 지원하지 않는 파일입니다",
+        "fallbackBody": "파일을 다운로드해서 확인해 주세요.",
+        "truncated": "파일이 커서 일부만 표시했습니다.",
+        "empty": "내용이 없습니다.",
+        "code": "code",
+        "data": {
+          "tableSummary": "{rows}행 · {columns}열",
+          "tableTruncated": "처음 {rows}행만 표시했습니다.",
+          "columnFallback": "열 {number}",
+          "emptyTable": "표시할 행이 없습니다.",
+          "parseError": "파일 구조를 해석하지 못했습니다."
+        },
+        "kinds": {
+          "image": "이미지",
+          "video": "비디오",
+          "audio": "오디오",
+          "pdf": "PDF",
+          "markdown": "Markdown",
+          "html": "HTML",
+          "code": "코드",
+          "document": "문서",
+          "data": "데이터",
+          "cad": "CAD",
+          "other": "기타"
+        }
       }
     },
     "streaming": {

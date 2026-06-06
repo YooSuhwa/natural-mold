@@ -60,6 +60,11 @@ from app.services import (
     trace_debug_service,
     trace_storage,
 )
+from app.services.artifact_service import (
+    ArtifactDeltaRecorder,
+    ArtifactRuntimeContext,
+    link_artifacts_to_messages,
+)
 from app.services.image_preview import get_or_create_image_preview_async
 
 logger = logging.getLogger(__name__)
@@ -461,6 +466,28 @@ def _prepare_stream_context(conversation_id: uuid.UUID) -> _StreamCtx:
     )
 
 
+def _build_artifact_recorder(
+    *,
+    conversation_id: uuid.UUID,
+    cfg: AgentConfig,
+    user: CurrentUser,
+    run_id: str,
+) -> ArtifactDeltaRecorder | None:
+    if not cfg.agent_id:
+        return None
+    return ArtifactDeltaRecorder(
+        session_factory=async_session,
+        context=ArtifactRuntimeContext(
+            conversation_id=conversation_id,
+            user_id=user.id,
+            agent_id=uuid.UUID(cfg.agent_id),
+            assistant_msg_id=run_id,
+            output_dir=(Path(settings.conversation_output_dir) / str(conversation_id)).resolve(),
+            branch_checkpoint_id=cfg.checkpoint_id,
+        ),
+    )
+
+
 def _build_persist_callback(
     conversation_id: uuid.UUID, run_id: str
 ) -> Callable[[list[dict[str, Any]]], Awaitable[None]]:
@@ -524,7 +551,7 @@ async def _finalize_trace(
         if finalized is None and trace_sink:
             # No partial flush happened (e.g. immediate failure). Persist via
             # legacy shim so traces aren't lost.
-            await trace_storage.record_turn(
+            finalized = await trace_storage.record_turn(
                 session,
                 conversation_id=conversation_id,
                 events=trace_sink,
@@ -533,6 +560,13 @@ async def _finalize_trace(
                 external_trace_provider=trace_record.provider if trace_record else None,
                 external_trace_id=trace_record.trace_id if trace_record else None,
                 external_trace_url=trace_record.trace_url if trace_record else None,
+            )
+        if finalized is not None and finalized.linked_message_ids:
+            await link_artifacts_to_messages(
+                session,
+                conversation_id=conversation_id,
+                assistant_msg_id=run_id,
+                linked_message_ids=[str(message_id) for message_id in finalized.linked_message_ids],
             )
         await session.commit()
 
@@ -806,7 +840,7 @@ async def list_messages(
     linear chain — only ``messages[].siblings`` carries the new info.
     """
 
-    conv = await chat_service.get_conversation(db, conversation_id)
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
 
@@ -1119,12 +1153,19 @@ async def send_message(
     await db.commit()
 
     ctx = _prepare_stream_context(conversation_id)
+    stream_kwargs = ctx.as_stream_kwargs()
+    stream_kwargs["artifact_recorder"] = _build_artifact_recorder(
+        conversation_id=conversation_id,
+        cfg=cfg,
+        user=user,
+        run_id=ctx.run_id,
+    )
     return _sse_handler(
         lambda: execute_agent_stream(
             cfg,
             [{"role": "user", "content": data.content}],
             moldy_source="chat",
-            **ctx.as_stream_kwargs(),
+            **stream_kwargs,
         ),
         log_msg=f"Agent stream failed for conversation {conversation_id}",
         user_msg="에이전트 실행 중 오류가 발생했습니다.",
@@ -1165,9 +1206,16 @@ async def resume_message(
     await db.commit()
 
     ctx = _prepare_stream_context(conversation_id)
+    stream_kwargs = ctx.as_stream_kwargs()
+    stream_kwargs["artifact_recorder"] = _build_artifact_recorder(
+        conversation_id=conversation_id,
+        cfg=cfg,
+        user=user,
+        run_id=ctx.run_id,
+    )
     return _sse_handler(
         lambda: resume_agent_stream(
-            cfg, resume_payload, moldy_source="resume", **ctx.as_stream_kwargs()
+            cfg, resume_payload, moldy_source="resume", **stream_kwargs
         ),
         log_msg=f"Agent resume failed for conversation {conversation_id}",
         user_msg="에이전트 재개 중 오류가 발생했습니다.",
@@ -1310,12 +1358,19 @@ async def edit_message(
     await db.commit()
 
     ctx = _prepare_stream_context(conversation_id)
+    stream_kwargs = ctx.as_stream_kwargs()
+    stream_kwargs["artifact_recorder"] = _build_artifact_recorder(
+        conversation_id=conversation_id,
+        cfg=cfg,
+        user=user,
+        run_id=ctx.run_id,
+    )
     return _sse_handler(
         lambda: execute_agent_stream(
             cfg,
             overwrite_input,
             moldy_source="edit",
-            **ctx.as_stream_kwargs(),
+            **stream_kwargs,
         ),
         log_msg=f"Agent edit failed for conversation {conversation_id}",
         user_msg="메시지 편집 중 오류가 발생했습니다.",
@@ -1339,7 +1394,7 @@ async def regenerate_message(
     from app.agent_runtime.checkpointer import get_checkpointer
     from app.services.thread_branch_service import _collect_checkpoints  # noqa: PLC2701
 
-    conv = await chat_service.get_conversation(db, conversation_id)
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
 
@@ -1419,9 +1474,16 @@ async def regenerate_message(
     await db.commit()
 
     ctx = _prepare_stream_context(conversation_id)
+    stream_kwargs = ctx.as_stream_kwargs()
+    stream_kwargs["artifact_recorder"] = _build_artifact_recorder(
+        conversation_id=conversation_id,
+        cfg=cfg,
+        user=user,
+        run_id=ctx.run_id,
+    )
     return _sse_handler(
         lambda: execute_agent_stream(
-            cfg, overwrite_input, moldy_source="regenerate", **ctx.as_stream_kwargs()
+            cfg, overwrite_input, moldy_source="regenerate", **stream_kwargs
         ),
         log_msg=f"Agent regenerate failed for conversation {conversation_id}",
         user_msg="메시지 재생성 중 오류가 발생했습니다.",
@@ -1496,7 +1558,7 @@ async def get_conversation_file(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    conv = await chat_service.get_conversation(db, conversation_id)
+    conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
 

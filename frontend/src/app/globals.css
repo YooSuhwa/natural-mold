@@ -867,6 +867,19 @@
     backdrop-filter: blur(16px);
   }
 
+  .moldy-right-rail {
+    width: 24rem;
+  }
+
+  .moldy-right-rail-mobile {
+    width: calc(100vw - 1.5rem);
+    max-width: 28rem;
+  }
+
+  .moldy-artifact-mobile-layer {
+    background: var(--card);
+  }
+
   .moldy-panel-header {
     border-bottom: 1px solid color-mix(in oklch, var(--border) 65%, transparent);
     background: color-mix(in oklch, var(--card) 68%, transparent);

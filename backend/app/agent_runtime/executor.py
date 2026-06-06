@@ -40,6 +40,7 @@ from app.agent_runtime.temporal import build_temporal_context_prompt
 from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_for_runtime
 from app.agent_runtime.tools.ask_user import ask_user as ask_user_tool
 from app.agent_runtime.tools.memory import build_memory_tools
+from app.config import settings
 from app.exceptions import AppError
 from app.hooks import HookContext, HookResult, hooks
 from app.marketplace.skill_runtime import (
@@ -1034,7 +1035,11 @@ async def _prepare_runtime_components(
 
     skills_sources: list[str] | None = None
     if cfg.agent_skills:
-        skill_ctx = build_skill_runtime_context(cfg, data_dir=_DATA_DIR)
+        skill_ctx = build_skill_runtime_context(
+            cfg,
+            data_dir=_DATA_DIR,
+            output_root=Path(settings.conversation_output_dir),
+        )
         if cfg.user_id:
             from app.database import async_session as _async_session_factory
 
@@ -1270,6 +1275,7 @@ async def _run_agent_stream(
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
+    artifact_recorder: Any | None = None,
     moldy_source: str = "chat",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -1337,6 +1343,7 @@ async def _run_agent_stream(
                 persist_callback=persist_callback,
                 run_id=run_id,
                 subagent_display_names=cfg.subagent_display_names,
+                artifact_recorder=artifact_recorder,
             ):
                 yield chunk
     except Exception as exc:
@@ -1372,6 +1379,7 @@ async def execute_agent_stream(
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
+    artifact_recorder: Any | None = None,
     moldy_source: str = "chat",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -1404,6 +1412,7 @@ async def execute_agent_stream(
             broker=broker,
             persist_callback=persist_callback,
             run_id=run_id,
+            artifact_recorder=artifact_recorder,
             moldy_source=moldy_source,
             langfuse_sink=langfuse_sink,
         ):
@@ -1420,6 +1429,7 @@ async def execute_agent_stream(
         broker=broker,
         persist_callback=persist_callback,
         run_id=run_id,
+        artifact_recorder=artifact_recorder,
         moldy_source=moldy_source,
         langfuse_sink=langfuse_sink,
     ):
@@ -1436,6 +1446,7 @@ async def resume_agent_stream(
     broker: Any | None = None,
     persist_callback: Any | None = None,
     run_id: str | None = None,
+    artifact_recorder: Any | None = None,
     moldy_source: str = "resume",
     langfuse_sink: list[LangfuseTraceRecord] | None = None,
 ) -> AsyncGenerator[str, None]:
@@ -1453,6 +1464,7 @@ async def resume_agent_stream(
         broker=broker,
         persist_callback=persist_callback,
         run_id=run_id,
+        artifact_recorder=artifact_recorder,
         moldy_source=moldy_source,
         langfuse_sink=langfuse_sink,
     ):

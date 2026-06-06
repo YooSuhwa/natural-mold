@@ -14,8 +14,12 @@ import type {
   StandardInterruptPayload,
   ToolCallInfo,
   TokenUsageBreakdown,
+  ArtifactSummary,
+  FileEventPayload,
 } from '@/lib/types'
 import { sessionTokenUsageAtom, reconnectStateAtom, type TokenUsage } from '@/lib/stores/chat-store'
+import { upsertArtifactList, upsertChatArtifactAtom } from '@/lib/stores/chat-artifacts'
+import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 import { convertMessage } from './convert-message'
 import { extractText } from './utils'
 import { streamResumeDecisions } from '@/lib/sse/stream-resume'
@@ -33,6 +37,7 @@ import {
   type HiTLDecisionCoordinator,
 } from './standard-interrupt'
 import { compactDeepResearchMessages } from './deep-research-summary'
+import { artifactKeys } from '@/lib/api/artifacts'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
 
@@ -139,6 +144,7 @@ function messageSnapshot(message: Message): string {
     snapshotPart(message.sibling_checkpoint_ids),
     message.branch_index ?? null,
     message.branch_total ?? null,
+    snapshotPart(message.artifacts),
     snapshotPart(message.usage),
   ].join('\u001f')
 }
@@ -363,6 +369,8 @@ export function useChatRuntime({
   const lastTokenUsageRef = useRef<TokenUsage | null>(null)
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
   const setReconnectState = useSetAtom(reconnectStateAtom)
+  const upsertArtifact = useSetAtom(upsertChatArtifactAtom)
+  const setRightRail = useSetAtom(chatRightRailAtom)
   const queryClient = useQueryClient()
   const tReconnect = useTranslations('chat.reconnect')
   const tPage = useTranslations('chat.page')
@@ -475,6 +483,7 @@ export function useChatRuntime({
       const toolResults: Message[] = []
       const assistantId = `stream-${crypto.randomUUID()}`
       const assistantCreatedAt = new Date().toISOString()
+      let streamArtifacts: ArtifactSummary[] = []
       // W7 — message_end 시점에 채워지는 4종 토큰 사용량. assistant 메시지에
       // 박혀 푸터 hover 팝오버가 직접 참조한다.
       let messageUsage: TokenUsageBreakdown | null = null
@@ -499,6 +508,7 @@ export function useChatRuntime({
           tool_call_id: null,
           created_at: assistantCreatedAt,
           usage: messageUsage,
+          artifacts: streamArtifacts.length > 0 ? streamArtifacts : null,
         }
         const msgs: Message[] = []
         if (optimisticUserMsg) msgs.push(optimisticUserMsg)
@@ -634,6 +644,24 @@ export function useChatRuntime({
               )
               if (matchingTc) {
                 upsertToolResult(matchingTc)
+              }
+              break
+            }
+            case 'file_event': {
+              const fileEvent = event.data as FileEventPayload
+              upsertArtifact(fileEvent)
+              streamArtifacts = upsertArtifactList(streamArtifacts, fileEvent)
+              setStreamingMessages(buildStreamState())
+              queryClient.invalidateQueries({ queryKey: artifactKeys.all })
+              if (fileEvent.op !== 'deleted') {
+                setRightRail({
+                  mode: 'artifacts',
+                  artifacts: {
+                    conversationId: fileEvent.conversation_id,
+                    selectedArtifactId: fileEvent.id,
+                    view: 'preview',
+                  },
+                })
               }
               break
             }
@@ -775,6 +803,8 @@ export function useChatRuntime({
       onStandardInterrupt,
       onMessagesCommit,
       setReconnectState,
+      upsertArtifact,
+      setRightRail,
       tReconnect,
       tPage,
       tMemory,

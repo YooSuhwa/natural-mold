@@ -297,6 +297,7 @@ def create_app() -> FastAPI:
         agent_api,
         agent_runtime_api,
         agents,
+        artifacts,
         assistant,
         audit,
         auth,
@@ -325,6 +326,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_runtime_api.router)
     app.include_router(agents.router)
     app.include_router(agents.middleware_router)
+    app.include_router(artifacts.router)
     app.include_router(builder.router)
     app.include_router(assistant.router)
     app.include_router(conversations.router)

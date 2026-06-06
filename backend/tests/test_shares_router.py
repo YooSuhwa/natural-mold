@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,6 +13,7 @@ from app.models.agent import Agent
 from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.user import User
+from app.schemas.conversation import MessageResponse
 from tests.conftest import TEST_USER_ID, TestSession
 
 
@@ -48,6 +50,16 @@ async def _seed_conversation(*, owner_id: uuid.UUID = TEST_USER_ID) -> uuid.UUID
         db.add(conv)
         await db.commit()
         return conv.id
+
+
+def _shared_assistant_message(conversation_id: uuid.UUID, message_id: uuid.UUID) -> MessageResponse:
+    return MessageResponse(
+        id=message_id,
+        conversation_id=conversation_id,
+        role="assistant",
+        content="Shared response",
+        created_at=datetime.now(UTC).replace(tzinfo=None),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +164,8 @@ async def test_public_share_view_includes_persisted_traces(client: AsyncClient):
     create = await client.post(f"/api/conversations/{conv_id}/share")
     token = create.json()["share_token"]
 
-    msg_id = "shared-turn-1"
+    visible_message_id = uuid.uuid4()
+    msg_id = str(visible_message_id)
     events = [
         {"id": f"{msg_id}-1", "event": "message_start", "data": {"id": msg_id}},
         {
@@ -177,7 +190,7 @@ async def test_public_share_view_includes_persisted_traces(client: AsyncClient):
 
     with patch(
         "app.routers.shares.chat_service.list_messages_from_checkpointer",
-        new=AsyncMock(return_value=[]),
+        new=AsyncMock(return_value=[_shared_assistant_message(conv_id, visible_message_id)]),
     ):
         resp = await client.get(f"/api/shares/{token}")
     body = resp.json()
@@ -192,6 +205,61 @@ async def test_public_share_view_includes_persisted_traces(client: AsyncClient):
         "message_end",
     ]
     assert trace["events"][1]["data"]["tool_name"] == "web_search"
+
+
+@pytest.mark.asyncio
+async def test_public_share_view_hides_traces_outside_shared_snapshot(client: AsyncClient):
+    from app.services import trace_storage
+
+    conv_id = await _seed_conversation()
+    token = (await client.post(f"/api/conversations/{conv_id}/share")).json()["share_token"]
+
+    visible_message_id = uuid.uuid4()
+    hidden_message_id = uuid.uuid4()
+    visible_events = [
+        {
+            "id": f"{visible_message_id}-1",
+            "event": "message_start",
+            "data": {"id": str(visible_message_id)},
+        },
+        {
+            "id": f"{visible_message_id}-2",
+            "event": "message_end",
+            "data": {"content": "visible"},
+        },
+    ]
+    hidden_events = [
+        {
+            "id": f"{hidden_message_id}-1",
+            "event": "message_start",
+            "data": {"id": str(hidden_message_id)},
+        },
+        {
+            "id": f"{hidden_message_id}-2",
+            "event": "tool_call_result",
+            "data": {"result": "hidden branch secret"},
+        },
+        {
+            "id": f"{hidden_message_id}-3",
+            "event": "message_end",
+            "data": {"content": "hidden"},
+        },
+    ]
+    async with TestSession() as db:
+        await trace_storage.record_turn(db, conversation_id=conv_id, events=visible_events)
+        await trace_storage.record_turn(db, conversation_id=conv_id, events=hidden_events)
+        await db.commit()
+
+    with patch(
+        "app.routers.shares.chat_service.list_messages_from_checkpointer",
+        new=AsyncMock(return_value=[_shared_assistant_message(conv_id, visible_message_id)]),
+    ):
+        resp = await client.get(f"/api/shares/{token}")
+
+    assert resp.status_code == 200
+    traces = resp.json()["traces"]
+    assert [trace["assistant_msg_id"] for trace in traces] == [str(visible_message_id)]
+    assert "hidden branch secret" not in resp.text
 
 
 @pytest.mark.asyncio

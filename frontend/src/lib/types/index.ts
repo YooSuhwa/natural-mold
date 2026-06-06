@@ -1,3 +1,5 @@
+import type { ArtifactSummary } from './artifact'
+
 // Re-exports for greenfield domain types. Legacy types (Connection, Provider,
 // CredentialFieldDef, etc.) were removed alongside the routers they mirrored.
 
@@ -11,6 +13,7 @@ export * from './usage'
 export * from './memory'
 export * from './agent-api'
 export * from './audit'
+export * from './artifact'
 
 // ---------- Agent ---------------------------------------------------------
 
@@ -223,6 +226,7 @@ export interface Message {
   created_at: string
   feedback?: MessageFeedbackBrief | null
   attachments?: MessageAttachmentBrief[] | null
+  artifacts?: ArtifactSummary[] | null
   /**
    * M-CHAT1b — parent message id in the LangGraph branch tree.
    * `null` for the very first message. Used to build assistant-ui's
@@ -346,6 +350,7 @@ export type SSEEventType =
   | 'content_delta'
   | 'tool_call_start'
   | 'tool_call_result'
+  | 'file_event'
   | 'memory_proposed'
   | 'memory_saved'
   | 'memory_rejected'
@@ -414,6 +419,7 @@ export type SSEEvent = { id?: string } & (
       data: { tool_call_id?: string; tool_name: string; parameters: Record<string, unknown> }
     }
   | { event: 'tool_call_result'; data: { tool_call_id?: string; tool_name: string; result: string } }
+  | { event: 'file_event'; data: import('./artifact').FileEventPayload }
   | { event: 'memory_proposed'; data: import('./memory').MemoryEventPayload }
   | { event: 'memory_saved'; data: import('./memory').MemoryEventPayload }
   | { event: 'memory_rejected'; data: import('./memory').MemoryEventPayload }

@@ -7,7 +7,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import orjson
 from langgraph.errors import GraphInterrupt
@@ -39,6 +39,19 @@ _MAX_RETRY_BUFFER_EVENTS = 5000
 
 
 PersistCallback = Callable[[list[dict[str, Any]]], Awaitable[None]]
+
+
+class ArtifactEventRecorder(Protocol):
+    async def prepare(self) -> None:
+        ...
+
+    async def collect_after_tool_result(
+        self,
+        *,
+        tool_name: str,
+        tool_call_id: str | None,
+    ) -> list[dict[str, Any]]:
+        ...
 
 
 @dataclass(frozen=True)
@@ -249,6 +262,7 @@ async def stream_agent_response(
     persist_callback: PersistCallback | None = None,
     run_id: str | None = None,
     subagent_display_names: dict[str, str] | None = None,
+    artifact_recorder: ArtifactEventRecorder | None = None,
 ) -> AsyncGenerator[str, None]:
     """Stream agent SSE events.
 
@@ -382,6 +396,13 @@ async def stream_agent_response(
     # streaming 동안 같은 메시지가 chunk 여러 개로 쪼개져 들어오므로 dedup.
     _seen_ai_msg_ids: set[str] = set()
 
+    if artifact_recorder is not None:
+        try:
+            await artifact_recorder.prepare()
+        except Exception:
+            logger.exception("artifact recorder prepare failed (run_id=%s)", msg_id)
+            artifact_recorder = None
+
     # W3-out M2 — broker close + final flush + background flush join이 무조건
     # 실행되도록 message_start emit 직후부터 message_end 도달까지 outer
     # try/finally 로 감싼다. 클라이언트 disconnect 시(generator aclose)에도
@@ -494,6 +515,24 @@ async def stream_agent_response(
                         if isinstance(tool_call_id, str) and tool_call_id:
                             result_payload["tool_call_id"] = tool_call_id
                         yield emit(event_names.TOOL_CALL_RESULT, result_payload)
+                        if artifact_recorder is not None:
+                            try:
+                                normalized_tool_call_id = (
+                                    tool_call_id if isinstance(tool_call_id, str) else None
+                                )
+                                artifact_events = await artifact_recorder.collect_after_tool_result(
+                                    tool_name=tool_name,
+                                    tool_call_id=normalized_tool_call_id,
+                                )
+                            except Exception:
+                                logger.exception(
+                                    "artifact recorder collect failed (run_id=%s, tool=%s)",
+                                    msg_id,
+                                    tool_name,
+                                )
+                                artifact_events = []
+                            for payload in artifact_events:
+                                yield emit(event_names.FILE_EVENT, payload)
                         memory_event = _memory_event_from_tool_result(
                             tool_name,
                             result,

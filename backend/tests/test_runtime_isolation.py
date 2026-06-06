@@ -98,6 +98,22 @@ def _skill_descriptor_dict(skill_id: uuid.UUID, slug: str, src: Path) -> dict:
 
 
 class TestPerThreadRuntimeRoot:
+    def test_runtime_context_uses_configured_output_root(self, tmp_path: Path) -> None:
+        """Skill subprocess outputs follow the configured conversation output root.
+
+        Artifact recording scans ``settings.conversation_output_dir``. The skill
+        runtime must write generated files under that same root or file events
+        and artifact manifests can miss successful outputs when the setting is
+        customized.
+        """
+
+        cfg = _make_cfg(thread_id="thread-custom-output", skills=[])
+        output_root = tmp_path / "custom-conversations"
+
+        ctx = build_skill_runtime_context(cfg, data_dir=tmp_path, output_root=output_root)
+
+        assert ctx.output_dir == (output_root / "thread-custom-output").resolve()
+
     @pytest.mark.asyncio
     async def test_per_thread_runtime_root_isolated(self, tmp_path: Path) -> None:
         """Two distinct ``thread_id`` values materialize to two distinct

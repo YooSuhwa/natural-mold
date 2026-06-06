@@ -25,6 +25,7 @@ INTERRUPT: Final = "interrupt"
 # 잘못 둬 dead constant 였다 — 트랙 종료 시점 cross-file audit 에서 발견.
 TOOL_CALL_START: Final = "tool_call_start"
 TOOL_CALL_RESULT: Final = "tool_call_result"
+FILE_EVENT: Final = "file_event"
 MEMORY_PROPOSED: Final = "memory_proposed"
 MEMORY_SAVED: Final = "memory_saved"
 MEMORY_REJECTED: Final = "memory_rejected"
