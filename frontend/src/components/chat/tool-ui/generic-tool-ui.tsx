@@ -6,7 +6,7 @@ import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
 import { makeAssistantToolUI } from '@assistant-ui/react'
 import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
-import { ChatImage } from '@/components/chat/markdown-content'
+import { ChatImage } from '@/components/chat/chat-image'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 

@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { useTranslations } from 'next-intl'
 import { Loader2Icon, CheckCircle2Icon, AlertCircleIcon, WrenchIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ChatImage } from '@/components/chat/markdown-content'
+import { ChatImage } from '@/components/chat/chat-image'
 import type { ToolResultPayload } from '@/lib/stores/chat-right-rail'
 
 interface Props {

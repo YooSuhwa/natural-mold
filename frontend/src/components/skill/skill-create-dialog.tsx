@@ -3,7 +3,6 @@
 import { useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import JSZip from 'jszip'
 import { FileText, Loader2, Sparkles, Upload } from 'lucide-react'
 
 import { Input } from '@/components/ui/input'
@@ -274,6 +273,7 @@ function ScratchTab({
     try {
       const slug = slugify(name)
       const skillMd = buildSkillMd(name.trim(), description.trim(), slug)
+      const { default: JSZip } = await import('jszip')
       const zip = new JSZip()
       const folder = zip.folder(slug)
       if (!folder) throw new Error(t('zipFailed'))

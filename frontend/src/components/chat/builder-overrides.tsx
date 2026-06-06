@@ -14,8 +14,8 @@ import {
 } from '@assistant-ui/react'
 import { LayoutGridIcon, PaperclipIcon, SendIcon } from 'lucide-react'
 
-import { buildMarkdownComponents } from './markdown-content'
-import { CHAT_FINAL_REMARK_PLUGINS } from './markdown-plugins'
+import { buildMarkdownComponents } from './markdown-components'
+import { CHAT_FINAL_REMARK_PLUGINS } from './markdown-final-plugins'
 import { ToolFallbackPanel } from './tool-ui/generic-tool-ui'
 import { parsePhaseNarration, type PhaseSegment } from './builder-phase-parser'
 import { SystemEventChip } from './system-event-chip'

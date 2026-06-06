@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { parseTablePreview } from '../data-preview-utils'
+import type { ParseResult, TablePreviewData } from '../data-preview-utils'
 import type { ArtifactPreviewProvider, ArtifactPreviewProps } from '../preview-registry'
 
 function ParseFallback({ text }: { text: string }) {
@@ -17,16 +18,42 @@ function ParseFallback({ text }: { text: string }) {
   )
 }
 
-function TableDataPreview({ artifact, textContent, isLoadingText }: ArtifactPreviewProps) {
+export function TableDataPreview({ artifact, textContent, isLoadingText }: ArtifactPreviewProps) {
   const t = useTranslations('chat.rightRail.artifacts')
   const tData = useTranslations('chat.rightRail.artifacts.data')
   const text = textContent?.text ?? ''
-  const parsed = useMemo(
-    () => parseTablePreview(text, artifact.extension),
-    [artifact.extension, text],
-  )
+  const [parsed, setParsed] = useState<ParseResult<TablePreviewData>>({
+    data: null,
+    error: null,
+  })
+  const [isParsing, setIsParsing] = useState(false)
 
-  if (isLoadingText) return <div className="text-sm text-muted-foreground">{t('loading')}</div>
+  useEffect(() => {
+    if (isLoadingText) return
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      setIsParsing(true)
+      try {
+        const result = await parseTablePreview(text, artifact.extension)
+        if (!cancelled) setParsed(result)
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setParsed({ data: null, error: error instanceof Error ? error.message : String(error) })
+        }
+      } finally {
+        if (!cancelled) setIsParsing(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [artifact.extension, isLoadingText, text])
+
+  if (isLoadingText || isParsing) {
+    return <div className="text-sm text-muted-foreground">{t('loading')}</div>
+  }
   if (parsed.error || !parsed.data) return <ParseFallback text={text} />
   if (!parsed.data.totalColumns) {
     return (

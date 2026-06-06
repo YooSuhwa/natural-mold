@@ -2,11 +2,11 @@
 
 import { use, useMemo } from 'react'
 import Link from 'next/link'
+import dynamic from 'next/dynamic'
 import { AlertCircleIcon, ArrowLeftIcon, MessageSquareIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { AgentAvatar } from '@/components/agent/agent-avatar'
-import { MarkdownContent } from '@/components/chat/markdown-content'
 import { CollapsiblePill } from '@/components/chat/tool-ui/collapsible-pill'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -15,6 +15,14 @@ import { extractChips, type ChipInfo } from '@/lib/share/extract-chips'
 import { formatLongDate, formatMediumDate } from '@/lib/utils/format-relative-time'
 import type { Message } from '@/lib/types'
 import type { SharedConversationView, TurnTrace } from '@/lib/types/share'
+
+const SharedMarkdownContent = dynamic(
+  () => import('@/components/chat/markdown-content').then((m) => m.MarkdownContent),
+  {
+    ssr: false,
+    loading: () => <div className="h-16 animate-pulse rounded-md bg-muted" aria-hidden />,
+  },
+)
 
 /** 공개 페이지에서 노출할 메시지 판정.
  *
@@ -295,7 +303,7 @@ function AssistantTurnItem({
           </div>
         )}
         {messages.map((m) => (
-          <MarkdownContent key={m.id} content={m.content} />
+          <SharedMarkdownContent key={m.id} content={m.content} />
         ))}
       </div>
     </li>

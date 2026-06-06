@@ -1,14 +1,9 @@
-import type { ReactNode } from 'react'
+import { lazy, Suspense, type ReactNode } from 'react'
 import type { ArtifactKind, ArtifactSummary, ArtifactTextContent } from '@/lib/types'
 import { ImagePreviewProvider } from './providers/image-preview'
 import { MediaPreviewProvider } from './providers/media-preview'
 import { PdfPreviewProvider } from './providers/pdf-preview'
 import { HtmlPreviewProvider } from './providers/html-preview'
-import { MermaidPreviewProvider } from './providers/mermaid-preview'
-import { MarkdownPreviewProvider } from './providers/markdown-preview'
-import { JsonDataPreviewProvider } from './providers/json-data-preview'
-import { StructuredDataPreviewProvider } from './providers/structured-data-preview'
-import { TableDataPreviewProvider } from './providers/table-data-preview'
 import { CodePreviewProvider } from './providers/code-preview'
 import { TextPreviewProvider } from './providers/text-preview'
 import { FallbackPreviewProvider } from './providers/fallback-preview'
@@ -28,6 +23,28 @@ export interface ArtifactPreviewProvider {
   mimeTypes?: string[]
   match?: (artifact: ArtifactSummary) => boolean
   render: (props: ArtifactPreviewProps) => ReactNode
+}
+
+const MermaidPreview = lazy(() =>
+  import('./providers/mermaid-preview').then((m) => ({ default: m.MermaidPreview })),
+)
+const MarkdownPreview = lazy(() =>
+  import('./providers/markdown-preview').then((m) => ({ default: m.MarkdownPreview })),
+)
+const JsonDataPreview = lazy(() =>
+  import('./providers/json-data-preview').then((m) => ({ default: m.JsonDataPreview })),
+)
+const StructuredDataPreview = lazy(() =>
+  import('./providers/structured-data-preview').then((m) => ({
+    default: m.StructuredDataPreview,
+  })),
+)
+const TableDataPreview = lazy(() =>
+  import('./providers/table-data-preview').then((m) => ({ default: m.TableDataPreview })),
+)
+
+function PreviewLoadingFallback() {
+  return <div className="h-24 animate-pulse rounded-md bg-muted" aria-hidden />
 }
 
 const providerById = new Map<string, ArtifactPreviewProvider>()
@@ -80,11 +97,74 @@ registerArtifactPreviewProviders([
   MediaPreviewProvider,
   PdfPreviewProvider,
   HtmlPreviewProvider,
-  MermaidPreviewProvider,
-  MarkdownPreviewProvider,
-  TableDataPreviewProvider,
-  JsonDataPreviewProvider,
-  StructuredDataPreviewProvider,
+  {
+    id: 'mermaid',
+    priority: 82,
+    requiresText: true,
+    extensions: ['mmd', 'mermaid'],
+    match: (artifact) => ['mmd', 'mermaid'].includes(artifact.extension ?? ''),
+    render: (props) => (
+      <Suspense fallback={<PreviewLoadingFallback />}>
+        <MermaidPreview {...props} />
+      </Suspense>
+    ),
+  },
+  {
+    id: 'markdown',
+    priority: 80,
+    requiresText: true,
+    kinds: ['markdown'],
+    extensions: ['md', 'markdown'],
+    mimeTypes: ['text/markdown'],
+    match: (artifact) => artifact.artifact_kind === 'markdown',
+    render: (props) => (
+      <Suspense fallback={<PreviewLoadingFallback />}>
+        <MarkdownPreview {...props} />
+      </Suspense>
+    ),
+  },
+  {
+    id: 'table-data',
+    priority: 78,
+    requiresText: true,
+    extensions: ['csv', 'tsv'],
+    mimeTypes: ['text/csv', 'text/tab-separated-values'],
+    render: (props) => (
+      <Suspense fallback={<PreviewLoadingFallback />}>
+        <TableDataPreview {...props} />
+      </Suspense>
+    ),
+  },
+  {
+    id: 'json-data',
+    priority: 79,
+    requiresText: true,
+    extensions: ['json'],
+    mimeTypes: ['application/json'],
+    render: (props) => (
+      <Suspense fallback={<PreviewLoadingFallback />}>
+        <JsonDataPreview {...props} />
+      </Suspense>
+    ),
+  },
+  {
+    id: 'structured-data',
+    priority: 78,
+    requiresText: true,
+    extensions: ['yaml', 'yml', 'toml'],
+    mimeTypes: [
+      'application/yaml',
+      'application/x-yaml',
+      'text/yaml',
+      'application/toml',
+      'text/toml',
+    ],
+    render: (props) => (
+      <Suspense fallback={<PreviewLoadingFallback />}>
+        <StructuredDataPreview {...props} />
+      </Suspense>
+    ),
+  },
   CodePreviewProvider,
   TextPreviewProvider,
   FallbackPreviewProvider,

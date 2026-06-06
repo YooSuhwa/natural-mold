@@ -1,7 +1,3 @@
-import { parse as parseCsv } from 'csv-parse/browser/esm/sync'
-import { parse as parseToml } from 'smol-toml'
-import { parse as parseYaml } from 'yaml'
-
 export const MAX_TABLE_PREVIEW_ROWS = 100
 
 export type StructuredPreviewValue =
@@ -39,12 +35,13 @@ function cellToString(value: unknown): string {
   return JSON.stringify(value)
 }
 
-export function parseTablePreview(
+export async function parseTablePreview(
   text: string,
   extension: string | null | undefined,
-): ParseResult<TablePreviewData> {
+): Promise<ParseResult<TablePreviewData>> {
   const delimiter = extension?.toLowerCase() === 'tsv' ? '\t' : ','
   try {
+    const { parse: parseCsv } = await import('csv-parse/browser/esm/sync')
     const records = parseCsv(text, {
       bom: true,
       delimiter,
@@ -105,13 +102,15 @@ export function parseJsonPreview(text: string): ParseResult<StructuredPreviewVal
   }
 }
 
-export function parseStructuredDataPreview(
+export async function parseStructuredDataPreview(
   text: string,
   extension: string | null | undefined,
-): ParseResult<StructuredPreviewValue> {
+): Promise<ParseResult<StructuredPreviewValue>> {
   try {
     const parsed =
-      extension?.toLowerCase() === 'toml' ? parseToml(text) : (parseYaml(text) as unknown)
+      extension?.toLowerCase() === 'toml'
+        ? (await import('smol-toml')).parse(text)
+        : ((await import('yaml')).parse(text) as unknown)
     return { data: normalizeStructuredValue(parsed), error: null }
   } catch (error) {
     return { data: null, error: errorMessage(error) }

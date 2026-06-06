@@ -1,7 +1,7 @@
 import { fireEvent } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { render } from '../../../../tests/test-utils'
-import { ChatImage, getChatImagePreviewSrc } from '../markdown-content'
+import { ChatImage, getChatImagePreviewSrc } from '../chat-image'
 
 describe('ChatImage', () => {
   it('does not show the loading skeleton again for an image src that already loaded', () => {

@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { parseStructuredDataPreview } from '../data-preview-utils'
+import type { ParseResult, StructuredPreviewValue } from '../data-preview-utils'
 import type { ArtifactPreviewProvider, ArtifactPreviewProps } from '../preview-registry'
 import { StructuredValueTree } from './structured-value-tree'
 
@@ -18,15 +19,45 @@ function ParseFallback({ text }: { text: string }) {
   )
 }
 
-function StructuredDataPreview({ artifact, textContent, isLoadingText }: ArtifactPreviewProps) {
+export function StructuredDataPreview({
+  artifact,
+  textContent,
+  isLoadingText,
+}: ArtifactPreviewProps) {
   const t = useTranslations('chat.rightRail.artifacts')
   const text = textContent?.text ?? ''
-  const parsed = useMemo(
-    () => parseStructuredDataPreview(text, artifact.extension),
-    [artifact.extension, text],
-  )
+  const [parsed, setParsed] = useState<ParseResult<StructuredPreviewValue>>({
+    data: null,
+    error: null,
+  })
+  const [isParsing, setIsParsing] = useState(false)
 
-  if (isLoadingText) return <div className="text-sm text-muted-foreground">{t('loading')}</div>
+  useEffect(() => {
+    if (isLoadingText) return
+    let cancelled = false
+    void (async () => {
+      await Promise.resolve()
+      if (cancelled) return
+      setIsParsing(true)
+      try {
+        const result = await parseStructuredDataPreview(text, artifact.extension)
+        if (!cancelled) setParsed(result)
+      } catch (error: unknown) {
+        if (!cancelled) {
+          setParsed({ data: null, error: error instanceof Error ? error.message : String(error) })
+        }
+      } finally {
+        if (!cancelled) setIsParsing(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [artifact.extension, isLoadingText, text])
+
+  if (isLoadingText || isParsing) {
+    return <div className="text-sm text-muted-foreground">{t('loading')}</div>
+  }
   if (parsed.error) return <ParseFallback text={text} />
   if (parsed.data === null) return <StructuredValueTree value={null} />
   return <StructuredValueTree value={parsed.data} />

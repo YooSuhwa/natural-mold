@@ -18,7 +18,7 @@ function ParseFallback({ text }: { text: string }) {
   )
 }
 
-function JsonDataPreview({ textContent, isLoadingText }: ArtifactPreviewProps) {
+export function JsonDataPreview({ textContent, isLoadingText }: ArtifactPreviewProps) {
   const t = useTranslations('chat.rightRail.artifacts')
   const text = textContent?.text ?? ''
   const parsed = useMemo(() => parseJsonPreview(text), [text])
