@@ -20,6 +20,7 @@ const ROUTE_LABELS: Record<string, string> = {
   appearance: 'nav.appearance',
   'agent-api': 'nav.agentApi',
   'marketplace-admin': 'nav.marketplaceAdmin',
+  'admin-audit': 'nav.adminAudit',
   'system-credentials': 'nav.systemCredentials',
   'system-llm': 'nav.systemLlm',
   skills: 'nav.skills',
