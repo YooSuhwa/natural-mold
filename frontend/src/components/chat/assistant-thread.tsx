@@ -74,7 +74,11 @@ import { copyTextToClipboard, getMessageCopyText } from '@/components/chat/messa
 import { selectMessageArtifactsFromMessage } from '@/components/chat/message-artifact-metadata'
 import { useRecordArtifactOpened } from '@/lib/hooks/use-artifact-library'
 import { selectChatArtifactAtom } from '@/lib/stores/chat-artifacts'
-import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import {
+  chatRightRailAtom,
+  isArtifactPreviewOpen,
+  toggleArtifactPreviewRailState,
+} from '@/lib/stores/chat-right-rail'
 import type { ArtifactSummary } from '@/lib/types'
 
 export { GenericToolFallback }
@@ -219,6 +223,7 @@ function AssistantArtifactCards() {
   const conversationId = useChatConversationId()
   const selectArtifact = useSetAtom(selectChatArtifactAtom)
   const setRightRail = useSetAtom(chatRightRailAtom)
+  const rightRail = useAtomValue(chatRightRailAtom)
   const openedMutation = useRecordArtifactOpened()
   const tArtifacts = useTranslations('chat.rightRail.artifacts')
   const tMessageArtifacts = useTranslations('chat.message.artifacts')
@@ -227,16 +232,15 @@ function AssistantArtifactCards() {
 
   const openArtifact = (artifact: ArtifactSummary) => {
     const targetConversationId = conversationId ?? artifact.conversation_id
-    selectArtifact({ conversationId: targetConversationId, artifactId: artifact.id })
-    openedMutation.mutate(artifact.id)
-    setRightRail({
-      mode: 'artifacts',
-      artifacts: {
-        conversationId: targetConversationId,
-        selectedArtifactId: artifact.id,
-        view: 'preview',
-      },
+    const nextState = toggleArtifactPreviewRailState(rightRail, {
+      conversationId: targetConversationId,
+      artifactId: artifact.id,
     })
+    if (!isArtifactPreviewOpen(rightRail, targetConversationId, artifact.id)) {
+      selectArtifact({ conversationId: targetConversationId, artifactId: artifact.id })
+      openedMutation.mutate(artifact.id)
+    }
+    setRightRail(nextState)
   }
 
   return (

@@ -38,4 +38,62 @@ export type RightRailState =
   | { mode: 'outline'; outline: OutlinePayload }
   | { mode: 'artifacts'; artifacts: ArtifactsPayload }
 
+function artifactView(payload: ArtifactsPayload): 'list' | 'preview' {
+  return payload.view ?? (payload.selectedArtifactId ? 'preview' : 'list')
+}
+
+export function isArtifactPreviewOpen(
+  state: RightRailState,
+  conversationId: string,
+  artifactId: string,
+): boolean {
+  return (
+    state.mode === 'artifacts' &&
+    state.artifacts.conversationId === conversationId &&
+    artifactView(state.artifacts) === 'preview' &&
+    state.artifacts.selectedArtifactId === artifactId
+  )
+}
+
+export function isArtifactListOpen(state: RightRailState, conversationId: string): boolean {
+  return (
+    state.mode === 'artifacts' &&
+    state.artifacts.conversationId === conversationId &&
+    artifactView(state.artifacts) === 'list'
+  )
+}
+
+export function toggleArtifactPreviewRailState(
+  state: RightRailState,
+  payload: {
+    conversationId: string
+    artifactId: string
+  },
+): RightRailState {
+  if (isArtifactPreviewOpen(state, payload.conversationId, payload.artifactId)) {
+    return { mode: 'none' }
+  }
+
+  return {
+    mode: 'artifacts',
+    artifacts: {
+      conversationId: payload.conversationId,
+      selectedArtifactId: payload.artifactId,
+      view: 'preview',
+    },
+  }
+}
+
+export function toggleArtifactListRailState(
+  state: RightRailState,
+  conversationId: string,
+): RightRailState {
+  if (isArtifactListOpen(state, conversationId)) return { mode: 'none' }
+
+  return {
+    mode: 'artifacts',
+    artifacts: { conversationId, view: 'list' },
+  }
+}
+
 export const chatRightRailAtom = atom<RightRailState>({ mode: 'none' })
