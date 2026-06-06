@@ -18,11 +18,13 @@ vi.mock('next/link', () => ({
 }))
 
 const mockPush = vi.fn()
+const mockCreateConversationMutateAsync = vi.fn()
+let mockConversationId = 'conv-1'
 
 // Override: needs named ``mockPush`` spy for push-assertion tests.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, replace: vi.fn() }),
-  useParams: () => ({ conversationId: 'conv-1' }),
+  useParams: () => ({ conversationId: mockConversationId }),
   usePathname: () => '/agents/agent-1/conversations/conv-1',
 }))
 
@@ -60,7 +62,7 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
   useConversations: (...args: unknown[]) => mockUseConversations(...args),
   useConversationPages: (...args: unknown[]) => mockUseConversationPages(...args),
   useCreateConversation: () => ({
-    mutateAsync: vi.fn().mockResolvedValue({ id: 'conv-new' }),
+    mutateAsync: mockCreateConversationMutateAsync,
     isPending: false,
   }),
   useUpdateConversation: () => ({
@@ -79,6 +81,9 @@ vi.mock('@/components/shared/delete-confirm-dialog', () => ({
 
 describe('ConversationList', () => {
   beforeEach(() => {
+    mockPush.mockClear()
+    mockCreateConversationMutateAsync.mockClear()
+    mockConversationId = 'conv-1'
     mockUseConversations.mockReturnValue({ data: [], isLoading: false })
     mockUseConversationPages.mockReturnValue({
       data: { pages: [{ items: mockConversations, next_cursor: null, has_more: false }] },
@@ -151,7 +156,7 @@ describe('ConversationList', () => {
     expect(skeletons.length).toBeGreaterThan(0)
   })
 
-  it('creates new conversation when button clicked', async () => {
+  it('opens local draft when new conversation button is clicked', async () => {
     const user = userEvent.setup()
     render(<ConversationList agentId="agent-1" />)
 
@@ -162,9 +167,22 @@ describe('ConversationList', () => {
     const newButton = screen.getByRole('button', { name: '새 대화' })
     await user.click(newButton)
 
+    expect(mockCreateConversationMutateAsync).not.toHaveBeenCalled()
+    expect(mockPush).toHaveBeenCalledWith('/agents/agent-1/conversations/new')
+  })
+
+  it('shows a local draft row on the new conversation route', async () => {
+    mockConversationId = 'new'
+    render(<ConversationList agentId="agent-1" />)
+
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith('/agents/agent-1/conversations/conv-new')
+      expect(screen.getByText('Test Conversation')).toBeInTheDocument()
     })
+
+    expect(screen.getByRole('link', { name: /새 대화/ })).toHaveAttribute(
+      'href',
+      '/agents/agent-1/conversations/new',
+    )
   })
 
   it('loads another server page when more conversations are available', async () => {

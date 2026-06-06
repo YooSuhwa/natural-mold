@@ -22,9 +22,7 @@ export default function AgentPage({ params }: { params: Promise<{ agentId: strin
           const latest = page.items[0]
           router.replace(`/agents/${agentId}/conversations/${latest.id}`)
         } else {
-          const conv = await conversationsApi.create(agentId)
-          if (cancelled) return
-          router.replace(`/agents/${agentId}/conversations/${conv.id}`)
+          router.replace(`/agents/${agentId}/conversations/new`)
         }
       } catch {
         if (!cancelled) {

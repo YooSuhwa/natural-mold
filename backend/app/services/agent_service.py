@@ -300,7 +300,7 @@ async def _validate_skill_ids_owned(
 
 async def toggle_favorite(db: AsyncSession, agent: Agent) -> Agent:
     agent.is_favorite = not agent.is_favorite
-    await db.commit()
+    await db.flush()
     await db.refresh(
         agent,
         ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
@@ -372,7 +372,7 @@ async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) 
         ]
 
     db.add(agent)
-    await db.commit()
+    await db.flush()
     await db.refresh(
         agent,
         ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
@@ -442,7 +442,7 @@ async def update_agent(db: AsyncSession, agent: Agent, data: AgentUpdate) -> Age
             AgentSubAgentLink(sub_agent_id=sid, position=idx)
             for idx, sid in enumerate(data.sub_agent_ids)
         ]
-    await db.commit()
+    await db.flush()
     await db.refresh(
         agent,
         ["model", "tool_links", "mcp_tool_links", "skill_links", "sub_agent_links"],
@@ -463,4 +463,4 @@ async def _count_active_triggers(db: AsyncSession, agent_id: uuid.UUID) -> int:
 
 async def delete_agent(db: AsyncSession, agent: Agent) -> None:
     await db.delete(agent)
-    await db.commit()
+    await db.flush()

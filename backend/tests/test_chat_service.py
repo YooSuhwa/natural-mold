@@ -5,9 +5,11 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent import Agent
+from app.models.conversation import Conversation
 from app.models.model import Model
 from app.models.tool import AgentToolLink, Tool
 from app.models.user import User
@@ -21,7 +23,7 @@ from app.services.chat_service import (
     maybe_set_auto_title,
     save_token_usage,
 )
-from tests.conftest import TEST_USER_ID
+from tests.conftest import TEST_USER_ID, TestSession
 
 
 async def _seed(db: AsyncSession) -> uuid.UUID:
@@ -94,6 +96,23 @@ async def test_create_conversation_custom_title(db: AsyncSession):
 
     conv = await create_conversation(db, agent_id, title="Custom Title")
     assert conv.title == "Custom Title"
+
+
+@pytest.mark.asyncio
+async def test_create_conversation_flushes_without_committing(db: AsyncSession):
+    """Service mutation stays rollbackable by the router/request transaction."""
+    agent_id = await _seed(db)
+    await db.commit()
+
+    conv = await create_conversation(db, agent_id)
+    conv_id = conv.id
+    await db.rollback()
+
+    async with TestSession() as check_db:
+        persisted = (
+            await check_db.execute(select(Conversation).where(Conversation.id == conv_id))
+        ).scalar_one_or_none()
+    assert persisted is None
 
 
 # ---------------------------------------------------------------------------

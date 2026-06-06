@@ -283,7 +283,7 @@ def create_app() -> FastAPI:
         # ``X-Run-Id`` (resume 식별자) / ``X-Resume-Mode`` (관찰성) 를 읽으려면
         # CORS expose_headers 에 명시해야 한다. 누락 시 browser fetch.headers.get
         # 은 항상 null 을 반환해 auto-resume 가 silent no-op.
-        expose_headers=["X-Run-Id", "X-Resume-Mode", "X-Request-Id"],
+        expose_headers=["X-Run-Id", "X-Resume-Mode", "X-Request-Id", "X-Conversation-Id"],
     )
 
     @app.middleware("http")

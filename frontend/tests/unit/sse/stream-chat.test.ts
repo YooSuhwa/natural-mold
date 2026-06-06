@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { streamChat } from '@/lib/sse/stream-chat'
+import { streamChat, streamStartConversation } from '@/lib/sse/stream-chat'
 import type { SSEEvent } from '@/lib/types'
 
 const API_BASE = 'http://localhost:8001'
@@ -277,6 +277,37 @@ describe('streamChat', () => {
 
     const events = await collectEvents('conv-1', 'test')
     expect(events).toEqual([])
+  })
+
+  it('starts a draft conversation stream and exposes the created conversation id', async () => {
+    let capturedUrl = ''
+    let capturedInit: RequestInit | undefined
+    const onConversationId = vi.fn()
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      capturedUrl = input as string
+      capturedInit = init
+      return new Response(createSSEStream(['event: message_end', 'data: {"content":"done"}', '']), {
+        status: 200,
+        headers: { 'X-Conversation-Id': 'conv-started', 'X-Run-Id': 'run-1' },
+      })
+    })
+
+    const events: SSEEvent[] = []
+    for await (const event of streamStartConversation('agent-1', 'first message', undefined, {
+      attachmentIds: ['upload-1'],
+      onConversationId,
+    })) {
+      events.push(event)
+    }
+
+    expect(capturedUrl).toBe(`${API_BASE}/api/agents/agent-1/conversations/start`)
+    expect(JSON.parse(capturedInit?.body as string)).toEqual({
+      content: 'first message',
+      attachments: [{ id: 'upload-1' }],
+    })
+    expect(onConversationId).toHaveBeenCalledWith('conv-started')
+    expect(events[0].event).toBe('message_end')
   })
 
   it('ignores non-event/data lines', async () => {

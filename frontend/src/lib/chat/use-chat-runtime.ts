@@ -238,6 +238,8 @@ interface StreamFnOptions {
    *  conversation 라우터의 streamChat/Edit/Regenerate/ResumeDecisions 만 지원.
    *  그 외 streamFn 은 무시 → resume 시도 자체가 비활성. */
   onRunId?: (runId: string) => void
+  /** Draft conversation start endpoint returns the created conversation id. */
+  onConversationId?: (conversationId: string) => void
 }
 
 type StreamFn = (
@@ -317,6 +319,7 @@ export function useChatRuntime({
   // GET ``/stream?run_id=&last_event_id=`` 재연결에 사용. stream 이 끝나거나
   // 새 stream 이 시작되면 ``prepareStream`` 에서 reset.
   const runIdRef = useRef<string | null>(null)
+  const conversationIdRef = useRef<string | undefined>(conversationId)
   const lastEventIdRef = useRef<string | null>(null)
   // SSE stream race 차단 — Edit/Regenerate fork 도중 이전 generator의 stale
   // chunk가 새 stream에 끼어드는 것을 막고, 같은 id 중복 chunk를 dedup한다.
@@ -392,6 +395,10 @@ export function useChatRuntime({
     () => sumMessageUsage(streamingMessages),
     [streamingMessages],
   )
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId
+  }, [conversationId])
 
   // W7-2 — Composer 토큰 바는 persisted messages usage + streaming assistant의
   // message_end usage로 derive한다. content_delta flush마다 긴 messages 전체를
@@ -814,6 +821,7 @@ export function useChatRuntime({
       streamFactory: (
         signal: AbortSignal,
         onRunId: (id: string) => void,
+        onConversationId: (id: string) => void,
       ) => AsyncGenerator<SSEEvent>,
       optimisticMsg: Message | null,
       truncateAtIdx?: number,
@@ -825,16 +833,20 @@ export function useChatRuntime({
       const onRunId = (id: string) => {
         runIdRef.current = id
       }
-      const primary = () => streamFactory(signal, onRunId)
+      const onConversationId = (id: string) => {
+        conversationIdRef.current = id
+      }
+      const primary = () => streamFactory(signal, onRunId, onConversationId)
       // GET ``/stream`` resume 은 conversations 라우터만 지원. builder/assistant
       // 같은 다른 streamFn 은 conversationId 가 없거나 runId 가 비어 있어
       // resumeFactory 가 ``null`` → withAutoResume 가 재시도하지 않고 throw.
       const resumeFactory = (lastEventId: string | undefined) => {
-        if (!conversationId) return null
+        const activeConversationId = conversationIdRef.current
+        if (!activeConversationId) return null
         const runId = runIdRef.current
         if (!runId) return null
         return streamResumeAttach(
-          conversationId,
+          activeConversationId,
           runId,
           lastEventId,
           signal,
@@ -891,7 +903,6 @@ export function useChatRuntime({
     [
       consumeStream,
       truncateMessagesCache,
-      conversationId,
       setReconnectState,
       tReconnect,
       prepareStream,
@@ -910,7 +921,8 @@ export function useChatRuntime({
       const userMsg = createOptimisticMessage('user', content)
       const attachmentIds = appendMessage.attachments?.map((a) => a.id)
       await _runStream(
-        (signal, onRunId) => streamFn(content, signal, { attachmentIds, onRunId }),
+        (signal, onRunId, onConversationId) =>
+          streamFn(content, signal, { attachmentIds, onRunId, onConversationId }),
         userMsg,
       )
     },
@@ -985,12 +997,12 @@ export function useChatRuntime({
       const hasBackendId = isBackendMessageId(message.sourceId)
       const useFork = conversationId && hasBackendId
       await _runStream(
-        (signal, onRunId) =>
+        (signal, onRunId, onConversationId) =>
           useFork
             ? streamEdit(conversationId as string, message.sourceId as string, content, signal, {
                 onRunId,
               })
-            : streamFn(content, signal, { onRunId }),
+            : streamFn(content, signal, { onRunId, onConversationId }),
         userMsg,
         useFork ? editIdx : undefined,
       )
@@ -1032,7 +1044,11 @@ export function useChatRuntime({
       const merged = [...messages, ...streamingMessages]
       const lastUser = [...merged].reverse().find((m) => m.role === 'user')
       if (!lastUser?.content) return
-      await _runStream((signal, onRunId) => streamFn(lastUser.content, signal, { onRunId }), null)
+      await _runStream(
+        (signal, onRunId, onConversationId) =>
+          streamFn(lastUser.content, signal, { onRunId, onConversationId }),
+        null,
+      )
     },
     [messages, streamingMessages, streamFn, _runStream, conversationId],
   )
@@ -1061,7 +1077,8 @@ export function useChatRuntime({
       const trimmed = content.trim()
       if (!trimmed) return
       await _runStream(
-        (signal, onRunId) => streamFn(trimmed, signal, { onRunId }),
+        (signal, onRunId, onConversationId) =>
+          streamFn(trimmed, signal, { onRunId, onConversationId }),
         createOptimisticMessage('user', trimmed),
       )
     },

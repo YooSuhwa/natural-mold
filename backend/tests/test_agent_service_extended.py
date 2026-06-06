@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent import Agent
 from app.models.model import Model
 from app.models.skill import Skill
 from app.models.template import Template
 from app.models.tool import Tool
 from app.models.user import User
 from app.services.agent_service import create_agent, update_agent
-from tests.conftest import TEST_USER_ID
+from tests.conftest import TEST_USER_ID, TestSession
 
 
 async def _seed_all(db: AsyncSession) -> tuple[Model, Tool, Skill, Template]:
@@ -79,6 +81,33 @@ async def test_create_agent_with_template_tools(db: AsyncSession):
     assert agent is not None
     assert len(agent.tool_links) == 1
     assert agent.tool_links[0].tool_id == tool.id
+
+
+@pytest.mark.asyncio
+async def test_create_agent_flushes_without_committing(db: AsyncSession):
+    """Service mutation stays rollbackable so router audit can share one transaction."""
+    from app.schemas.agent import AgentCreate
+
+    model, _, _, _ = await _seed_all(db)
+    await db.commit()
+
+    agent = await create_agent(
+        db,
+        AgentCreate(
+            name="Rollback Agent",
+            system_prompt="test",
+            model_id=model.id,
+        ),
+        TEST_USER_ID,
+    )
+    agent_id = agent.id
+    await db.rollback()
+
+    async with TestSession() as check_db:
+        persisted = (
+            await check_db.execute(select(Agent).where(Agent.id == agent_id))
+        ).scalar_one_or_none()
+    assert persisted is None
 
 
 # ---------------------------------------------------------------------------
