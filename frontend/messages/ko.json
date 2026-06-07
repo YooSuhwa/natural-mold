@@ -1430,6 +1430,19 @@
           "emptyTable": "표시할 행이 없습니다.",
           "parseError": "파일 구조를 해석하지 못했습니다."
         },
+        "documentPreview": {
+          "loading": "문서를 불러오는 중입니다",
+          "errorTitle": "미리보기를 열 수 없습니다",
+          "downloadInstead": "다운로드",
+          "page": "{current} / {total}",
+          "zoomIn": "확대",
+          "zoomOut": "축소",
+          "previousPage": "이전 페이지",
+          "nextPage": "다음 페이지",
+          "sheet": "시트",
+          "slide": "슬라이드",
+          "truncatedGrid": "큰 시트라 처음 {rows}행과 {columns}열만 표시합니다"
+        },
         "kinds": {
           "image": "이미지",
           "video": "비디오",

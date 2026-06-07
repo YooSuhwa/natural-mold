@@ -1,0 +1,12 @@
+{
+  "name": "@moldy/skill-node-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "docx": "9.7.1",
+    "pptxgenjs": "4.0.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}

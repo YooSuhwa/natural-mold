@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.identity import AgentRunIdentity
+from app.config import settings
 from app.credentials import service as credential_service
 from app.credentials.service import PROVIDER_TO_DEFINITION_KEY
 from app.exceptions import AppError
@@ -72,9 +73,15 @@ async def resolve_llm_api_key_for_agent(
     backend stdout 로 진단 가능 (silent fail 회귀 방지).
     """
 
-    subject_user_id = (
-        identity.credential_subject_user_id if identity is not None else agent.user_id
-    )
+    subject_user_id = identity.credential_subject_user_id if identity is not None else agent.user_id
+    model = getattr(agent, "model", None)
+    if _allows_keyless_dev_model(model):
+        logger.info(
+            "agent %s: keyless dev model provider=%s",
+            agent.id,
+            model.provider,
+        )
+        return None
 
     cred = getattr(agent, "llm_credential", None)
     if cred is not None:
@@ -101,7 +108,6 @@ async def resolve_llm_api_key_for_agent(
             agent.id,
         )
 
-    model = getattr(agent, "model", None)
     if model is not None and model.default_credential_id is not None:
         fallback_cred = await credential_service.get_for_user(
             db, model.default_credential_id, subject_user_id
@@ -175,6 +181,15 @@ async def resolve_llm_api_key_for_agent(
         subject_user_id,
     )
     raise LLMCredentialRequiredError()
+
+
+def _allows_keyless_dev_model(model: object | None) -> bool:
+    return (
+        model is not None
+        and getattr(model, "provider", None) == "e2e_scripted"
+        and settings.e2e_scripted_model_enabled
+        and settings.app_env.lower() != "production"
+    )
 
 
 def _credential_owned_by_subject(cred: Credential, subject_user_id: uuid.UUID) -> bool:

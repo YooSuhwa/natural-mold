@@ -4,11 +4,13 @@ import asyncio
 import os
 import re
 import shlex
+import shutil
 import sys
 from pathlib import Path
 
 from langchain_core.tools import BaseTool, StructuredTool
 
+from app.config import settings
 from app.marketplace.skill_runtime import SkillRuntimeDescriptor, SkillToolContext
 from app.tools.risk import attach_tool_risk, execute_in_skill_risk
 
@@ -63,7 +65,7 @@ def _prepare_skill_subprocess_args(
 
     args = [_expand_shell_vars(arg, env=env, local_vars=local_vars) for arg in raw_args[index:]]
     if not args:
-        return None, "Error: command must start with python or curl."
+        return None, "Error: command must start with python, node, or curl."
 
     executable = Path(args[0]).name
     if executable == "python":
@@ -75,11 +77,41 @@ def _prepare_skill_subprocess_args(
         args[0] = sys.executable
         return args, None
 
+    if executable == "node":
+        if len(args) < 2 or args[1].startswith("-"):
+            return None, "Error: node command must be `node scripts/<file>.cjs ...`."
+        script_path = (resolved / args[1]).resolve()
+        if not script_path.is_relative_to(resolved):
+            return None, "Error: node script must be within the skill directory."
+        if script_path.suffix.lower() not in {".js", ".cjs", ".mjs"}:
+            return None, "Error: node script must use .js, .cjs, or .mjs."
+        node_binary = _resolve_node_binary()
+        if node_binary is None:
+            return None, "Error: node executable is not available for skill execution."
+        args[0] = node_binary
+        return args, None
+
     if executable == "curl":
         args[0] = "curl"
         return args, None
 
-    return None, "Error: only python or curl commands are allowed."
+    return None, "Error: only python, node, or curl commands are allowed."
+
+
+def _resolve_node_binary() -> str | None:
+    configured = settings.skill_node_binary.strip() or "node"
+    if Path(configured).is_absolute():
+        path = Path(configured)
+        return str(path) if path.exists() and os.access(path, os.X_OK) else None
+    return shutil.which(configured, path=os.environ.get("PATH"))
+
+
+def _resolve_skill_node_modules() -> Path | None:
+    raw = settings.skill_node_modules_dir.strip()
+    if not raw:
+        return None
+    path = Path(raw).expanduser().resolve()
+    return path if path.is_dir() else None
 
 
 def _skill_timeout_seconds(descriptor: SkillRuntimeDescriptor) -> float:
@@ -94,6 +126,7 @@ def _skill_timeout_seconds(descriptor: SkillRuntimeDescriptor) -> float:
     if seconds <= 0:
         return _DEFAULT_SKILL_TIMEOUT_SECONDS
     return min(seconds, _MAX_SKILL_TIMEOUT_SECONDS)
+
 
 def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
     """스킬 디렉토리에서 Python 스크립트를 실행하는 도구를 생성.
@@ -141,12 +174,15 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
         await asyncio.to_thread(output_dir.mkdir, parents=True, exist_ok=True)
         out = str(output_dir)
         env = {
-            "PATH": "/usr/bin:/usr/local/bin",
+            "PATH": os.environ.get("PATH", "/usr/bin:/usr/local/bin"),
             "PYTHONPATH": str(resolved),
             "HOME": str(resolved),
             "SKILL_OUTPUT_DIR": out,
             "OUTPUTS_DIR": out,
         }
+        node_modules = _resolve_skill_node_modules()
+        if node_modules is not None:
+            env["NODE_PATH"] = str(node_modules)
         for key in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"):
             value = os.environ.get(key)
             if value:
@@ -219,7 +255,7 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
         coroutine=execute_in_skill,
         name="execute_in_skill",
         description=(
-            "Execute a Python script inside a skill directory. "
+            "Execute an allowed Python or Node script inside a skill directory. "
             "Use this when SKILL.md instructs you to run a script. "
             "Output files (images etc.) will be in OUTPUT_FILES."
         ),

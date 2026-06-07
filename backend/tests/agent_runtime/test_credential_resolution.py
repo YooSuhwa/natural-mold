@@ -111,6 +111,37 @@ async def test_auto_match_missing_credential_raises(db: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_e2e_scripted_provider_allows_keyless_when_enabled(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.agent_runtime import credential_resolution
+
+    monkeypatch.setattr(credential_resolution.settings, "app_env", "dev")
+    monkeypatch.setattr(credential_resolution.settings, "e2e_scripted_model_enabled", True)
+    agent = await _make_agent_with_model(db, provider="e2e_scripted")
+
+    key = await resolve_llm_api_key_for_agent(db, agent)
+
+    assert key is None
+
+
+@pytest.mark.asyncio
+async def test_e2e_scripted_provider_requires_flag_for_keyless(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.agent_runtime import credential_resolution
+
+    monkeypatch.setattr(credential_resolution.settings, "app_env", "dev")
+    monkeypatch.setattr(credential_resolution.settings, "e2e_scripted_model_enabled", False)
+    agent = await _make_agent_with_model(db, provider="e2e_scripted")
+
+    with pytest.raises(LLMCredentialRequiredError):
+        await resolve_llm_api_key_for_agent(db, agent)
+
+
+@pytest.mark.asyncio
 async def test_per_user_identity_resolves_provider_match_for_caller_subject(
     db: AsyncSession,
 ) -> None:
