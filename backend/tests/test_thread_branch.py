@@ -390,7 +390,7 @@ async def test_edit_message_streams_with_checkpoint_fork(client: AsyncClient):
             "app.agent_runtime.checkpointer.get_checkpointer",
             return_value=fake_cp,
         ),
-        patch("app.routers.conversations.execute_agent_stream", side_effect=mock_stream),
+        patch("app.routers.conversation_branches.execute_agent_stream", side_effect=mock_stream),
     ):
         resp = await client.post(
             f"/api/conversations/{conv_id}/messages/edit",
@@ -439,7 +439,7 @@ async def test_edit_message_rejects_unknown_message_id(client: AsyncClient):
             "app.agent_runtime.checkpointer.get_checkpointer",
             return_value=fake_cp,
         ),
-        patch("app.routers.conversations.execute_agent_stream", side_effect=mock_stream),
+        patch("app.routers.conversation_branches.execute_agent_stream", side_effect=mock_stream),
     ):
         resp = await client.post(
             f"/api/conversations/{conv_id}/messages/edit",
@@ -487,7 +487,7 @@ async def test_regenerate_does_not_duplicate_user_message(client: AsyncClient):
             return_value=fake_cp,
         ),
         patch(
-            "app.routers.conversations.execute_agent_stream",
+            "app.routers.conversation_branches.execute_agent_stream",
             side_effect=mock_stream,
         ),
     ):
@@ -569,7 +569,7 @@ async def test_regenerate_rejects_targeted_user_message_id(client: AsyncClient):
             return_value=fake_cp,
         ),
         patch(
-            "app.routers.conversations.execute_agent_stream",
+            "app.routers.conversation_branches.execute_agent_stream",
             side_effect=mock_stream,
         ),
     ):
@@ -639,7 +639,7 @@ async def test_regenerate_targeted_assistant_uses_correct_checkpoint(
             return_value=fake_cp,
         ),
         patch(
-            "app.routers.conversations.execute_agent_stream",
+            "app.routers.conversation_branches.execute_agent_stream",
             side_effect=mock_stream,
         ),
     ):
@@ -722,7 +722,7 @@ async def test_regenerate_without_message_id_uses_active_branch_checkpoint(
             return_value=fake_cp,
         ),
         patch(
-            "app.routers.conversations.execute_agent_stream",
+            "app.routers.conversation_branches.execute_agent_stream",
             side_effect=mock_stream,
         ),
     ):
@@ -782,7 +782,7 @@ async def test_regenerate_targeted_assistant_can_find_non_newest_branch(
             return_value=fake_cp,
         ),
         patch(
-            "app.routers.conversations.execute_agent_stream",
+            "app.routers.conversation_branches.execute_agent_stream",
             side_effect=mock_stream,
         ),
     ):

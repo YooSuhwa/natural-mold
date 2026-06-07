@@ -142,7 +142,7 @@ class TestResumeRouterPayload:
         captured, fake = _capture_resume_payload()
 
         with patch(
-            "app.routers.conversations.resume_agent_stream", side_effect=fake
+            "app.routers.conversation_messages.resume_agent_stream", side_effect=fake
         ):
             resp = await client.post(
                 f"/api/conversations/{conv_id}/messages/resume",
@@ -181,7 +181,7 @@ class TestResumeRouterPayload:
         captured, fake = _capture_resume_payload()
 
         with patch(
-            "app.routers.conversations.resume_agent_stream", side_effect=fake
+            "app.routers.conversation_messages.resume_agent_stream", side_effect=fake
         ):
             resp = await client.post(
                 f"/api/conversations/{conv_id}/messages/resume",

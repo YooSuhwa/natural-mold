@@ -54,7 +54,7 @@ async def test_send_message_exposes_x_run_id_header(client: AsyncClient) -> None
         )
 
     with patch(
-        "app.routers.conversations.execute_agent_stream", side_effect=mock_stream
+        "app.routers.conversation_messages.execute_agent_stream", side_effect=mock_stream
     ):
         resp = await client.post(
             f"/api/conversations/{conv_id}/messages",
@@ -95,7 +95,7 @@ async def test_send_message_registers_broker_for_run_id(
         )
 
     with patch(
-        "app.routers.conversations.execute_agent_stream", side_effect=mock_stream
+        "app.routers.conversation_messages.execute_agent_stream", side_effect=mock_stream
     ):
         resp = await client.post(
             f"/api/conversations/{conv_id}/messages",

@@ -386,7 +386,7 @@ async def test_resume_replay_skips_corrupt_event_without_name(
     """M-2: ``event`` 필드가 비어있는 corrupt row 항목은 silent emit 금지."""
     import logging
 
-    caplog.set_level(logging.WARNING, logger="app.routers.conversations")
+    caplog.set_level(logging.WARNING, logger="app.routers.conversation_messages")
     conv_id = await _seed_conv()
     run_id = str(uuid.uuid4())
     events_payload = [
@@ -680,7 +680,7 @@ async def test_resume_unknown_conversation_logs_unowned_reason(
     ``conv_unowned_or_missing`` 단일 라벨 — round-trip 절감 + oracle 강화."""
     import logging
 
-    caplog.set_level(logging.INFO, logger="app.routers.conversations")
+    caplog.set_level(logging.INFO, logger="app.routers.conversation_messages")
     resp = await client.get(
         f"/api/conversations/{uuid.uuid4()}/stream",
         params={"run_id": str(uuid.uuid4())},
@@ -701,7 +701,7 @@ async def test_resume_logs_reject_reason(
     """가드 분기는 외부 응답 통일하되 서버 로그로 reason 구분 가능해야 함."""
     import logging
 
-    caplog.set_level(logging.INFO, logger="app.routers.conversations")
+    caplog.set_level(logging.INFO, logger="app.routers.conversation_messages")
     conv_id = await _seed_conv()
     resp = await client.get(
         f"/api/conversations/{conv_id}/stream",
@@ -821,7 +821,7 @@ def patch_async_session(monkeypatch: pytest.MonkeyPatch):
     drop → GET resume 가 row 를 못 찾아 RESUME_NOT_FOUND 로 빠진다.
     """
     monkeypatch.setattr(
-        "app.routers.conversations.async_session", TestSession
+        "app.services.conversation_stream_service.async_session", TestSession
     )
 
 
@@ -834,7 +834,7 @@ async def _drive_post_to_completion(
 ) -> None:
     """B/C/D 공용 — patch + POST + aread 한 번에. 4번 반복되던 시퀀스 통합."""
     with patch(
-        "app.routers.conversations.execute_agent_stream", side_effect=mock_stream
+        "app.routers.conversation_messages.execute_agent_stream", side_effect=mock_stream
     ):
         async with client.stream(
             "POST",
@@ -877,7 +877,7 @@ async def test_e2e_post_inflight_get_attaches_live_and_receives_tail(
 
     get_task: asyncio.Task[bytes] | None = None
     with patch(
-        "app.routers.conversations.execute_agent_stream", side_effect=mock_stream
+        "app.routers.conversation_messages.execute_agent_stream", side_effect=mock_stream
     ):
         post_task = asyncio.create_task(consume_post())
         try:
@@ -1024,7 +1024,7 @@ async def test_e2e_post_killed_before_finalize_get_emits_stale(
         return None
 
     monkeypatch.setattr(
-        "app.routers.conversations._finalize_trace", _no_finalize
+        "app.services.conversation_stream_service.finalize_trace", _no_finalize
     )
 
     def events_no_end(run_id: str) -> list[dict[str, Any]]:

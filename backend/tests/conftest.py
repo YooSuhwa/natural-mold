@@ -72,7 +72,7 @@ def _stub_llm_credential_resolution(monkeypatch):
         return "test-api-key"
 
     monkeypatch.setattr(
-        "app.routers.conversations.resolve_llm_api_key_for_agent",
+        "app.services.conversation_stream_service.resolve_llm_api_key_for_agent",
         _fake_resolve,
     )
     monkeypatch.setattr(
