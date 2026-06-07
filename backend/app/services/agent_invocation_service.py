@@ -9,13 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
-from app.agent_runtime.executor import AgentConfig
 from app.agent_runtime.identity import (
     AGENT_IDENTITY_FIXED,
     AgentRunSource,
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
+from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.subagents import build_subagents_config
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found

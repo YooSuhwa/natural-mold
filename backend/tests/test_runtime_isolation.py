@@ -25,11 +25,9 @@ from pathlib import Path
 
 import pytest
 
-from app.agent_runtime import executor as executor_runtime
-from app.agent_runtime.executor import (
-    AgentConfig,
-    _create_skill_execute_tool,
-)
+from app.agent_runtime import skill_executor
+from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.marketplace.skill_runtime import (
     build_skill_runtime_context,
     cleanup_stale_runtime_roots,
@@ -263,14 +261,14 @@ class TestExecuteInSkillPathValidation:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         observed_timeouts: list[float | None] = []
-        real_wait_for = executor_runtime.asyncio.wait_for
+        real_wait_for = skill_executor.asyncio.wait_for
 
         async def _recording_wait_for(awaitable, **kwargs):
             timeout = kwargs.get("timeout")
             observed_timeouts.append(timeout)
             return await real_wait_for(awaitable, timeout=timeout)
 
-        monkeypatch.setattr(executor_runtime.asyncio, "wait_for", _recording_wait_for)
+        monkeypatch.setattr(skill_executor.asyncio, "wait_for", _recording_wait_for)
 
         src = _seed_skill_on_disk(tmp_path, slug="slow-image")
         (src / "scripts" / "probe.py").write_text("print('ok')\n")

@@ -15,14 +15,15 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
+from app.agent_runtime.agent_stream_runner import execute_agent_invoke
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
-from app.agent_runtime.executor import AgentConfig, execute_agent_invoke
 from app.agent_runtime.identity import (
     AgentIdentityError,
     AgentRunSource,
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
+from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.subagents import build_subagents_config
 from app.database import async_session
 from app.models.agent_trigger import AgentTrigger

@@ -18,7 +18,7 @@ def _tool(name: str):
 @pytest.mark.asyncio
 async def test_build_mcp_tools_reuses_cached_server_tools(monkeypatch) -> None:
     from app.agent_runtime import mcp_cache
-    from app.agent_runtime.executor import _build_mcp_tools
+    from app.agent_runtime.mcp_tool_loader import _build_mcp_tools
 
     await mcp_cache.clear_mcp_tool_cache()
     calls: list[dict[str, Any]] = []

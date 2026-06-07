@@ -226,7 +226,7 @@ class TestGate3RuntimeIsolation:
         per-thread directory layout still matches what the cleanup job
         expects (``data/runtime/<thread_id>/skills/``)."""
 
-        from app.agent_runtime.executor import AgentConfig
+        from app.agent_runtime.runtime_config import AgentConfig
 
         cfg = AgentConfig(
             provider="anthropic",

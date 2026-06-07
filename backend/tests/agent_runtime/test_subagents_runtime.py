@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runtime.executor import AgentConfig
 from app.agent_runtime.identity import (
     AGENT_IDENTITY_FIXED,
     AGENT_IDENTITY_PER_USER,
@@ -17,6 +16,7 @@ from app.agent_runtime.identity import (
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
+from app.agent_runtime.runtime_config import AgentConfig
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.model import Model

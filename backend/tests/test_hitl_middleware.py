@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 
-from app.agent_runtime.executor import AgentConfig
+from app.agent_runtime.runtime_config import AgentConfig
 from app.tools.risk import ToolRiskLevel, default_deepagents_interrupt_policy, risk_metadata_dict
 
 
@@ -53,11 +53,11 @@ def _expected_policy(*, extra: dict | None = None) -> dict:
 
 @pytest.mark.asyncio
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
-@patch("app.agent_runtime.executor.stream_agent_response")
-@patch("app.agent_runtime.executor.build_agent")
-@patch("app.agent_runtime.executor.convert_to_langchain_messages")
-@patch("app.agent_runtime.executor.create_chat_model")
-@patch("app.agent_runtime.executor.create_tool_for_runtime")
+@patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
+@patch("app.agent_runtime.runtime_component_builder.build_agent")
+@patch("app.agent_runtime.runtime_component_builder.convert_to_langchain_messages")
+@patch("app.agent_runtime.runtime_component_builder.create_chat_model")
+@patch("app.agent_runtime.runtime_component_builder.create_tool_for_runtime")
 async def test_hitl_policy_passed_through_top_level_when_interrupt_on_provided(
     mock_factory: MagicMock,
     mock_model_factory: MagicMock,
@@ -67,7 +67,7 @@ async def test_hitl_policy_passed_through_top_level_when_interrupt_on_provided(
     mock_checkpointer: MagicMock,
 ):
     """interrupt_on dict 명시 → build_agent top-level interrupt_on으로 전달."""
-    from app.agent_runtime.executor import execute_agent_stream
+    from app.agent_runtime.agent_stream_runner import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
     mock_convert.return_value = []
@@ -108,12 +108,12 @@ async def test_hitl_policy_passed_through_top_level_when_interrupt_on_provided(
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.executor.FilesystemBackend")
+@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
-@patch("app.agent_runtime.executor.build_agent")
-@patch("app.agent_runtime.executor.convert_to_langchain_messages")
-@patch("app.agent_runtime.executor.create_chat_model")
-@patch("app.agent_runtime.executor.create_tool_for_runtime")
+@patch("app.agent_runtime.runtime_component_builder.build_agent")
+@patch("app.agent_runtime.runtime_component_builder.convert_to_langchain_messages")
+@patch("app.agent_runtime.runtime_component_builder.create_chat_model")
+@patch("app.agent_runtime.runtime_component_builder.create_tool_for_runtime")
 async def test_hitl_middleware_not_injected_in_trigger_mode(
     mock_factory: MagicMock,
     mock_model_factory: MagicMock,
@@ -123,7 +123,7 @@ async def test_hitl_middleware_not_injected_in_trigger_mode(
     mock_fs_backend_cls: MagicMock,
 ):
     """execute_agent_invoke (is_trigger_mode=True) → HiTL 강제 차단."""
-    from app.agent_runtime.executor import execute_agent_invoke
+    from app.agent_runtime.agent_stream_runner import execute_agent_invoke
 
     mock_model_factory.return_value = MagicMock()
     mock_convert.return_value = []
@@ -168,11 +168,11 @@ async def test_hitl_middleware_not_injected_in_trigger_mode(
 
 @pytest.mark.asyncio
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
-@patch("app.agent_runtime.executor.stream_agent_response")
-@patch("app.agent_runtime.executor.build_agent")
-@patch("app.agent_runtime.executor.convert_to_langchain_messages")
-@patch("app.agent_runtime.executor.create_chat_model")
-@patch("app.agent_runtime.executor.create_tool_for_runtime")
+@patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
+@patch("app.agent_runtime.runtime_component_builder.build_agent")
+@patch("app.agent_runtime.runtime_component_builder.convert_to_langchain_messages")
+@patch("app.agent_runtime.runtime_component_builder.create_chat_model")
+@patch("app.agent_runtime.runtime_component_builder.create_tool_for_runtime")
 async def test_hitl_middleware_per_tool_policy_applied(
     mock_factory: MagicMock,
     mock_model_factory: MagicMock,
@@ -182,7 +182,7 @@ async def test_hitl_middleware_per_tool_policy_applied(
     mock_checkpointer: MagicMock,
 ):
     """interrupt_on dict 가 build_agent top-level 인자로 그대로 보존돼야 함."""
-    from app.agent_runtime.executor import execute_agent_stream
+    from app.agent_runtime.agent_stream_runner import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
     mock_convert.return_value = []
@@ -225,11 +225,11 @@ async def test_hitl_middleware_per_tool_policy_applied(
 
 @pytest.mark.asyncio
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
-@patch("app.agent_runtime.executor.stream_agent_response")
-@patch("app.agent_runtime.executor.build_agent")
-@patch("app.agent_runtime.executor.convert_to_langchain_messages")
-@patch("app.agent_runtime.executor.create_chat_model")
-@patch("app.agent_runtime.executor.create_tool_for_runtime")
+@patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
+@patch("app.agent_runtime.runtime_component_builder.build_agent")
+@patch("app.agent_runtime.runtime_component_builder.convert_to_langchain_messages")
+@patch("app.agent_runtime.runtime_component_builder.create_chat_model")
+@patch("app.agent_runtime.runtime_component_builder.create_tool_for_runtime")
 async def test_hitl_middleware_auto_extraction_from_risk_metadata(
     mock_factory: MagicMock,
     mock_model_factory: MagicMock,
@@ -239,7 +239,7 @@ async def test_hitl_middleware_auto_extraction_from_risk_metadata(
     mock_checkpointer: MagicMock,
 ):
     """params 에 interrupt_on 이 없으면 risk metadata가 있는 도구만 자동 추출."""
-    from app.agent_runtime.executor import execute_agent_stream
+    from app.agent_runtime.agent_stream_runner import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
     mock_convert.return_value = []
@@ -299,11 +299,11 @@ async def test_hitl_middleware_auto_extraction_from_risk_metadata(
 
 @pytest.mark.asyncio
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
-@patch("app.agent_runtime.executor.stream_agent_response")
-@patch("app.agent_runtime.executor.build_agent")
-@patch("app.agent_runtime.executor.convert_to_langchain_messages")
-@patch("app.agent_runtime.executor.create_chat_model")
-@patch("app.agent_runtime.executor.create_tool_for_runtime")
+@patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
+@patch("app.agent_runtime.runtime_component_builder.build_agent")
+@patch("app.agent_runtime.runtime_component_builder.convert_to_langchain_messages")
+@patch("app.agent_runtime.runtime_component_builder.create_chat_model")
+@patch("app.agent_runtime.runtime_component_builder.create_tool_for_runtime")
 async def test_ask_user_interrupt_policy_added_without_hitl_middleware_config(
     mock_factory: MagicMock,
     mock_model_factory: MagicMock,
@@ -313,7 +313,7 @@ async def test_ask_user_interrupt_policy_added_without_hitl_middleware_config(
     mock_checkpointer: MagicMock,
 ):
     """대화형 모드에서는 explicit HiTL 설정이 없어도 ask_user respond 정책 포함."""
-    from app.agent_runtime.executor import execute_agent_stream
+    from app.agent_runtime.agent_stream_runner import execute_agent_stream
 
     mock_model_factory.return_value = MagicMock()
     mock_convert.return_value = []

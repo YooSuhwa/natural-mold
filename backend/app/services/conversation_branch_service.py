@@ -4,7 +4,7 @@ import uuid
 from dataclasses import replace
 from typing import Any, NamedTuple
 
-from app.agent_runtime.executor import AgentConfig
+from app.agent_runtime.runtime_config import AgentConfig
 
 REGENERATE_PREVIOUS_ANSWER_LIMIT = 1200
 

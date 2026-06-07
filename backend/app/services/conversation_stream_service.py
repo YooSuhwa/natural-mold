@@ -11,15 +11,16 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime import event_names
+from app.agent_runtime.agent_stream_runner import execute_agent_stream, resume_agent_stream
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
 from app.agent_runtime.event_broker import EventBroker
 from app.agent_runtime.event_broker import registry as broker_registry
-from app.agent_runtime.executor import AgentConfig, execute_agent_stream, resume_agent_stream
 from app.agent_runtime.identity import (
     AgentRunSource,
     make_agent_runtime_name,
     resolve_agent_run_identity,
 )
+from app.agent_runtime.runtime_config import AgentConfig
 from app.agent_runtime.streaming import StreamErrorRecord, format_sse
 from app.agent_runtime.subagents import build_subagents_config
 from app.config import settings

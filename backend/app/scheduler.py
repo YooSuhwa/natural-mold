@@ -567,7 +567,7 @@ def cleanup_skill_runtime_roots() -> None:
     ``except`` so a single failure doesn't disable the cron.
     """
 
-    from app.agent_runtime.executor import _DATA_DIR
+    from app.agent_runtime.runtime_config import _DATA_DIR
     from app.marketplace.skill_runtime import cleanup_stale_runtime_roots
 
     try:

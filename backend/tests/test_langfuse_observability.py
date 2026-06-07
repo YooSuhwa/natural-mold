@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from app.agent_runtime.executor import AgentConfig
+from app.agent_runtime.runtime_config import AgentConfig
 
 
 def _cfg(**overrides: Any) -> AgentConfig:
