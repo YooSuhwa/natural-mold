@@ -534,6 +534,24 @@ class TestImportSurfaceUnchanged:
         assert hasattr(executor, "_create_skill_execute_tool")
         assert callable(executor.build_agent)
 
+    def test_executor_facade_exports_runtime_entrypoints(self) -> None:
+        from app.agent_runtime import executor
+
+        for name in (
+            "AgentConfig",
+            "RuntimeComponents",
+            "_DATA_DIR",
+            "build_agent",
+            "_create_skill_execute_tool",
+            "_build_mcp_tools",
+            "_prepare_runtime_components",
+            "_prepare_agent",
+            "execute_agent_stream",
+            "resume_agent_stream",
+            "execute_agent_invoke",
+        ):
+            assert hasattr(executor, name), f"executor facade missing {name!r}"
+
     def test_skill_runtime_module_public_surface(self) -> None:
         """Stage 2 added 4 symbols to ``app.marketplace.skill_runtime``.
         Tests reach into the dataclasses + builder + cleanup directly —
