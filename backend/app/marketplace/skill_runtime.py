@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from app.agent_runtime.executor import AgentConfig
+    from app.agent_runtime.runtime_config import AgentConfig
 
 
 # ---------------------------------------------------------------------------

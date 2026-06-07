@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from app.agent_runtime.executor import _create_mcp_error_stub, _create_skill_execute_tool
+from app.agent_runtime.mcp_tool_loader import _create_mcp_error_stub
+from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.agent_runtime.skill_tool_dependencies import build_skill_dependency_tool_configs
 from app.agent_runtime.tool_factory import create_builtin_tool, create_tool_for_runtime
 from app.marketplace.skill_runtime import SkillToolContext

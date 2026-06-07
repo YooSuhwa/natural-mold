@@ -10,11 +10,12 @@ import httpx
 import pytest
 
 from app.agent_runtime import model_factory
-from app.agent_runtime.executor import AgentConfig, _build_model_with_fallback
 from app.agent_runtime.model_factory import (
     _is_fallback_recoverable,
     create_chat_model_with_fallback,
 )
+from app.agent_runtime.runtime_component_builder import _build_model_with_fallback
+from app.agent_runtime.runtime_config import AgentConfig
 from app.credentials.service import encrypt_data
 from app.models.agent import Agent
 from app.models.credential import Credential
@@ -123,7 +124,7 @@ def test_executor_chain_uses_fallback_when_primary_fails() -> None:
             {"provider": "anthropic", "model_name": "claude-sonnet", "base_url": None}
         ],
     )
-    with patch("app.agent_runtime.executor.create_chat_model", side_effect=fake):
+    with patch("app.agent_runtime.runtime_component_builder.create_chat_model", side_effect=fake):
         result = _build_model_with_fallback(cfg)
     assert isinstance(result, _FakeChatModel)
     assert result.marker == "anthropic/claude-sonnet"
@@ -146,7 +147,7 @@ def test_executor_chain_re_raises_when_all_fail() -> None:
         ],
     )
     with (
-        patch("app.agent_runtime.executor.create_chat_model", side_effect=fake),
+        patch("app.agent_runtime.runtime_component_builder.create_chat_model", side_effect=fake),
         pytest.raises(httpx.HTTPStatusError),
     ):
         _build_model_with_fallback(cfg)
@@ -172,7 +173,7 @@ def test_executor_chain_skips_fallback_for_unrecoverable_errors() -> None:
         ],
     )
     with (
-        patch("app.agent_runtime.executor.create_chat_model", side_effect=fake),
+        patch("app.agent_runtime.runtime_component_builder.create_chat_model", side_effect=fake),
         pytest.raises(TypeError),
     ):
         _build_model_with_fallback(cfg)
@@ -192,7 +193,7 @@ def test_executor_chain_no_fallback_keeps_legacy_behaviour() -> None:
         thread_id="t",
         model_fallback_chain=None,
     )
-    with patch("app.agent_runtime.executor.create_chat_model", side_effect=fake):
+    with patch("app.agent_runtime.runtime_component_builder.create_chat_model", side_effect=fake):
         result = _build_model_with_fallback(cfg)
     assert isinstance(result, _FakeChatModel)
     assert result.marker == "openai/gpt-4o"
@@ -200,7 +201,7 @@ def test_executor_chain_no_fallback_keeps_legacy_behaviour() -> None:
 
 
 def test_executor_builds_primary_and_runtime_fallback_candidates() -> None:
-    from app.agent_runtime.executor import _build_model_candidates
+    from app.agent_runtime.runtime_component_builder import _build_model_candidates
 
     calls, fake = _wire_create_model_failures(fail_count=0)
     cfg = AgentConfig(
@@ -217,7 +218,7 @@ def test_executor_builds_primary_and_runtime_fallback_candidates() -> None:
         ],
     )
 
-    with patch("app.agent_runtime.executor.create_chat_model", side_effect=fake):
+    with patch("app.agent_runtime.runtime_component_builder.create_chat_model", side_effect=fake):
         candidates = _build_model_candidates(cfg)
 
     assert [cast(Any, candidate).marker for candidate in candidates] == [
@@ -236,7 +237,7 @@ def test_default_reliability_middleware_adds_runtime_fallback_and_retry() -> Non
     from langchain.agents.middleware import ModelFallbackMiddleware, ModelRetryMiddleware
     from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-    from app.agent_runtime.executor import _build_default_reliability_middleware
+    from app.agent_runtime.runtime_component_builder import _build_default_reliability_middleware
 
     primary = FakeListChatModel(responses=["primary"])
     fallback = FakeListChatModel(responses=["fallback"])

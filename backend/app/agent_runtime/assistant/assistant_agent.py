@@ -19,8 +19,8 @@ from app.agent_runtime.assistant.tools.clarify_tools import build_clarify_tools
 from app.agent_runtime.assistant.tools.read_tools import build_read_tools
 from app.agent_runtime.assistant.tools.write_tools import build_write_tools
 from app.agent_runtime.checkpointer import get_checkpointer
-from app.agent_runtime.executor import build_agent
 from app.agent_runtime.model_factory import create_chat_model
+from app.agent_runtime.runtime_component_builder import build_agent
 from app.services.system_credential_resolver import resolve_system_model
 
 logger = logging.getLogger(__name__)

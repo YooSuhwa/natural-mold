@@ -6,13 +6,14 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.credential_resolution import resolve_llm_api_key_for_agent
-from app.agent_runtime.executor import AgentConfig, _prepare_runtime_components
 from app.agent_runtime.identity import (
     AgentRunIdentity,
     AgentRunSource,
     derive_child_agent_run_identity,
     make_agent_runtime_name,
 )
+from app.agent_runtime.runtime_component_builder import _prepare_runtime_components
+from app.agent_runtime.runtime_config import AgentConfig
 from app.models.agent import Agent
 from app.services import chat_service
 

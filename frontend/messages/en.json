@@ -1882,7 +1882,6 @@
         "required": "Required",
         "probeFailed": "Operation failed.",
         "importFailedAfterSave": "Operation failed.",
-        "savedToggleLater": "Server saved. Enable {count} tools later from the detail view.",
         "added": "Added",
         "addFailed": "Operation failed."
       },
@@ -1950,7 +1949,7 @@
         "probeFailed": "Probe Failed",
         "retry": "Retry",
         "empty": "No items yet.",
-        "enabled": "{enabled}/{total} enabled",
+        "discovered": "{total} tools discovered",
         "reprobe": "Reprobe",
         "params": "{count} params"
       }

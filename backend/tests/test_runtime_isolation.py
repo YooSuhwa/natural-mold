@@ -25,11 +25,9 @@ from pathlib import Path
 
 import pytest
 
-from app.agent_runtime import executor as executor_runtime
-from app.agent_runtime.executor import (
-    AgentConfig,
-    _create_skill_execute_tool,
-)
+from app.agent_runtime import skill_executor
+from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.marketplace.skill_runtime import (
     build_skill_runtime_context,
     cleanup_stale_runtime_roots,
@@ -263,14 +261,14 @@ class TestExecuteInSkillPathValidation:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         observed_timeouts: list[float | None] = []
-        real_wait_for = executor_runtime.asyncio.wait_for
+        real_wait_for = skill_executor.asyncio.wait_for
 
         async def _recording_wait_for(awaitable, **kwargs):
             timeout = kwargs.get("timeout")
             observed_timeouts.append(timeout)
             return await real_wait_for(awaitable, timeout=timeout)
 
-        monkeypatch.setattr(executor_runtime.asyncio, "wait_for", _recording_wait_for)
+        monkeypatch.setattr(skill_executor.asyncio, "wait_for", _recording_wait_for)
 
         src = _seed_skill_on_disk(tmp_path, slug="slow-image")
         (src / "scripts" / "probe.py").write_text("print('ok')\n")
@@ -533,6 +531,24 @@ class TestImportSurfaceUnchanged:
         assert hasattr(executor, "_DATA_DIR")
         assert hasattr(executor, "_create_skill_execute_tool")
         assert callable(executor.build_agent)
+
+    def test_executor_facade_exports_runtime_entrypoints(self) -> None:
+        from app.agent_runtime import executor
+
+        for name in (
+            "AgentConfig",
+            "RuntimeComponents",
+            "_DATA_DIR",
+            "build_agent",
+            "_create_skill_execute_tool",
+            "_build_mcp_tools",
+            "_prepare_runtime_components",
+            "_prepare_agent",
+            "execute_agent_stream",
+            "resume_agent_stream",
+            "execute_agent_invoke",
+        ):
+            assert hasattr(executor, name), f"executor facade missing {name!r}"
 
     def test_skill_runtime_module_public_surface(self) -> None:
         """Stage 2 added 4 symbols to ``app.marketplace.skill_runtime``.

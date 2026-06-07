@@ -29,10 +29,8 @@ from typing import Any
 
 import pytest
 
-from app.agent_runtime.executor import (
-    AgentConfig,
-    _create_skill_execute_tool,
-)
+from app.agent_runtime.runtime_config import AgentConfig
+from app.agent_runtime.skill_executor import _create_skill_execute_tool
 from app.marketplace.redaction import (
     is_sensitive_key,
     redact_credential_values,
@@ -270,7 +268,7 @@ class TestSubprocessRedaction:
         write a SKILL.md script that prints the env var value.
         """
 
-        monkeypatch.setattr("app.agent_runtime.executor._DATA_DIR", tmp_path)
+        monkeypatch.setattr("app.agent_runtime.runtime_config._DATA_DIR", tmp_path)
 
         slug = "leaker"
         src = _seed_skill(tmp_path, slug)
@@ -326,7 +324,7 @@ class TestSubprocessRedaction:
         credential value in its traceback / error message must surface
         only the redaction marker."""
 
-        monkeypatch.setattr("app.agent_runtime.executor._DATA_DIR", tmp_path)
+        monkeypatch.setattr("app.agent_runtime.runtime_config._DATA_DIR", tmp_path)
 
         slug = "raiser"
         src = _seed_skill(tmp_path, slug)

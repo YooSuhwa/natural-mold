@@ -9,7 +9,7 @@ import pytest
 from deepagents.backends import FilesystemBackend
 from deepagents.middleware.filesystem import FilesystemMiddleware
 
-from app.agent_runtime.executor import AgentConfig
+from app.agent_runtime.runtime_config import AgentConfig
 from tests.tool_helpers import tool_coroutine
 
 
@@ -251,12 +251,12 @@ async def test_deepagents_filesystem_tools_enforce_scoped_permissions(
 
 
 @pytest.mark.asyncio
-@patch("app.agent_runtime.executor.FilesystemBackend")
+@patch("app.agent_runtime.runtime_component_builder.FilesystemBackend")
 @patch("app.agent_runtime.checkpointer.get_checkpointer")
-@patch("app.agent_runtime.executor.stream_agent_response")
-@patch("app.agent_runtime.executor.build_agent")
-@patch("app.agent_runtime.executor.convert_to_langchain_messages")
-@patch("app.agent_runtime.executor.create_chat_model")
+@patch("app.agent_runtime.agent_stream_runner.stream_agent_response")
+@patch("app.agent_runtime.runtime_component_builder.build_agent")
+@patch("app.agent_runtime.runtime_component_builder.convert_to_langchain_messages")
+@patch("app.agent_runtime.runtime_component_builder.create_chat_model")
 async def test_prepare_agent_passes_scoped_permissions_to_deepagents(
     mock_model_factory: MagicMock,
     mock_convert: MagicMock,
@@ -266,7 +266,7 @@ async def test_prepare_agent_passes_scoped_permissions_to_deepagents(
     mock_fs_backend_cls: MagicMock,
     tmp_path: Path,
 ) -> None:
-    from app.agent_runtime.executor import execute_agent_stream
+    from app.agent_runtime.agent_stream_runner import execute_agent_stream
     from app.agent_runtime.filesystem_permissions import build_filesystem_permissions
 
     mock_model_factory.return_value = MagicMock()
@@ -295,9 +295,9 @@ async def test_prepare_agent_passes_scoped_permissions_to_deepagents(
     ]
 
     with (
-        patch("app.agent_runtime.executor._DATA_DIR", mock_data_dir),
+        patch("app.agent_runtime.runtime_component_builder._DATA_DIR", mock_data_dir),
         patch(
-            "app.agent_runtime.executor.resolve_runtime_credentials",
+            "app.agent_runtime.runtime_component_builder.resolve_runtime_credentials",
             new_callable=AsyncMock,
         ),
     ):

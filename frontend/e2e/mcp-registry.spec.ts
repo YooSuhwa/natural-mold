@@ -168,7 +168,8 @@ test.describe('MCP server wizard — From Registry', () => {
     await page.getByRole('button', { name: '도구로 계속 →' }).click()
 
     // Step 3: Discover + save
-    await expect(page.getByText('1/1개 도구 활성화')).toBeVisible()
+    await expect(page.getByText('1개 도구 발견됨')).toBeVisible()
+    await expect(page.getByRole('checkbox')).toHaveCount(0)
     await page.getByRole('button', { name: '서버 저장' }).click()
 
     // After close, the table should show the new server (mocked list).

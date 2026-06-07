@@ -1,6 +1,6 @@
 'use client'
 
-import { use, useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { use, useState, useEffect, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import {
@@ -12,9 +12,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
-import type { Agent, AgentIdentityMode } from '@/lib/types'
 import { useAgent, useUpdateAgent, useDeleteAgent } from '@/lib/hooks/use-agents'
-import { arraysEqual, setsEqual, toggleSetItem } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
@@ -39,6 +37,7 @@ import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
 import { FormMode } from './_components/form-mode/form-mode'
 import { RightPanel, type RightTab } from './_components/right-panel/right-panel'
+import { useAgentSettingsDraft } from './_hooks/use-agent-settings-draft'
 
 type LeftTab = 'form' | 'visual'
 
@@ -78,22 +77,13 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   const updateAgent = useUpdateAgent(agentId)
   const deleteAgent = useDeleteAgent()
   const deleteTrigger = useDeleteTrigger(agentId)
+  const {
+    draft,
+    actions: draftActions,
+    isDirty,
+    updateRequest,
+  } = useAgentSettingsDraft(agent)
 
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [systemPrompt, setSystemPrompt] = useState('')
-  const [modelId, setModelId] = useState('')
-  const [identityMode, setIdentityMode] = useState<AgentIdentityMode>('per_user')
-  const [fallbackIds, setFallbackIds] = useState<string[]>([])
-  const [selectedToolIds, setSelectedToolIds] = useState<Set<string>>(new Set())
-  const [selectedMcpToolIds, setSelectedMcpToolIds] = useState<Set<string>>(new Set())
-  const [selectedSkillIds, setSelectedSkillIds] = useState<Set<string>>(new Set())
-  const [selectedSubAgentIds, setSelectedSubAgentIds] = useState<Set<string>>(new Set())
-  const [temperature, setTemperature] = useState(0.7)
-  const [topP, setTopP] = useState(1.0)
-  const [maxTokens, setMaxTokens] = useState(4096)
-  const [selectedMiddlewareTypes, setSelectedMiddlewareTypes] = useState<Set<string>>(new Set())
-  const [openerQuestions, setOpenerQuestions] = useState<string[]>([])
   const [leftTab, setLeftTab] = useState<LeftTab>('form')
   const [rightTab, setRightTab] = useState<RightTab>('fix')
   const [initialFixMessage, setInitialFixMessage] = useState<string | undefined>()
@@ -103,88 +93,42 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     description: string
   } | null>(null)
 
-  const handleToggleTool = useCallback(
-    (id: string) => setSelectedToolIds((prev) => toggleSetItem(prev, id)),
-    [],
-  )
-  const handleToggleMcpTool = useCallback(
-    (id: string) => setSelectedMcpToolIds((prev) => toggleSetItem(prev, id)),
-    [],
-  )
-  const handleToggleSkill = useCallback(
-    (id: string) => setSelectedSkillIds((prev) => toggleSetItem(prev, id)),
-    [],
-  )
-  const handleToggleSubAgent = useCallback(
-    (id: string) => setSelectedSubAgentIds((prev) => toggleSetItem(prev, id)),
-    [],
-  )
-  const handleToggleMiddleware = useCallback(
-    (type: string) => setSelectedMiddlewareTypes((prev) => toggleSetItem(prev, type)),
-    [],
-  )
-  const handleResetModelParams = useCallback(() => {
-    setTemperature(0.7)
-    setTopP(1.0)
-    setMaxTokens(4096)
-  }, [])
-
   const visualControlledState = useMemo(
     () => ({
-      name,
-      description,
-      systemPrompt,
-      modelId,
-      identityMode,
-      temperature,
-      topP,
-      maxTokens,
-      selectedToolIds,
-      selectedMcpToolIds,
-      selectedSkillIds,
-      selectedSubAgentIds,
-      selectedMiddlewareTypes,
+      name: draft.name,
+      description: draft.description,
+      systemPrompt: draft.systemPrompt,
+      modelId: draft.modelId,
+      identityMode: draft.identityMode,
+      temperature: draft.temperature,
+      topP: draft.topP,
+      maxTokens: draft.maxTokens,
+      selectedToolIds: draft.selectedToolIds,
+      selectedMcpToolIds: draft.selectedMcpToolIds,
+      selectedSkillIds: draft.selectedSkillIds,
+      selectedSubAgentIds: draft.selectedSubAgentIds,
+      selectedMiddlewareTypes: draft.selectedMiddlewareTypes,
     }),
-    [
-      name,
-      description,
-      systemPrompt,
-      modelId,
-      identityMode,
-      temperature,
-      topP,
-      maxTokens,
-      selectedToolIds,
-      selectedMcpToolIds,
-      selectedSkillIds,
-      selectedSubAgentIds,
-      selectedMiddlewareTypes,
-    ],
+    [draft],
   )
 
   const visualControlledHandlers = useMemo(
     () => ({
-      onNameChange: setName,
-      onDescriptionChange: setDescription,
-      onSystemPromptChange: setSystemPrompt,
-      onModelIdChange: setModelId,
-      onIdentityModeChange: setIdentityMode,
-      onTemperatureChange: setTemperature,
-      onTopPChange: setTopP,
-      onMaxTokensChange: setMaxTokens,
-      onToggleTool: handleToggleTool,
-      onToggleMcpTool: handleToggleMcpTool,
-      onToggleSkill: handleToggleSkill,
-      onToggleSubAgent: handleToggleSubAgent,
-      onToggleMiddleware: handleToggleMiddleware,
+      onNameChange: draftActions.setName,
+      onDescriptionChange: draftActions.setDescription,
+      onSystemPromptChange: draftActions.setSystemPrompt,
+      onModelIdChange: draftActions.setModelId,
+      onIdentityModeChange: draftActions.setIdentityMode,
+      onTemperatureChange: draftActions.setTemperature,
+      onTopPChange: draftActions.setTopP,
+      onMaxTokensChange: draftActions.setMaxTokens,
+      onToggleTool: draftActions.toggleTool,
+      onToggleMcpTool: draftActions.toggleMcpTool,
+      onToggleSkill: draftActions.toggleSkill,
+      onToggleSubAgent: draftActions.toggleSubAgent,
+      onToggleMiddleware: draftActions.toggleMiddleware,
     }),
-    [
-      handleToggleTool,
-      handleToggleMcpTool,
-      handleToggleSkill,
-      handleToggleSubAgent,
-      handleToggleMiddleware,
-    ],
+    [draftActions],
   )
 
   // 만들기 페이지에서 carry된 첫 메시지 검사 → Fix 탭 활성 + 자동 전송 + create-hero 유지
@@ -200,153 +144,6 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
   }, [])
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // Dirty-aware sync: 사용자가 손대지 않은 필드는 server 값으로 갱신, 손댄 필드는 보존.
-  // 채팅 도구(Fix)가 트리거한 invalidate로 폼이 stale 되어 다음 Save가 채팅 변경을
-  // silent revert하던 회귀를 막는다. lastSyncedAgentRef = "사용자 baseline server snapshot".
-  const lastSyncedAgentRef = useRef<Agent | null>(null)
-  // form state는 비교(dirty 판정)용이며, 사용자 입력마다 useEffect가 발화하면
-  // dirty 인식이 깨지고 무한 루프 위험. 의존성은 [agent]로만 둔다.
-  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-  useEffect(() => {
-    if (!agent) return
-    const prev = lastSyncedAgentRef.current
-    const isFirstSync = !prev || prev.id !== agent.id
-
-    if (isFirstSync) {
-      // 첫 도착 또는 다른 agent로 navigate → 모두 reset
-      setName(agent.name)
-      setDescription(agent.description ?? '')
-      setSystemPrompt(agent.system_prompt)
-      setModelId(agent.model?.id ?? '')
-      setIdentityMode(agent.identity_mode)
-      setFallbackIds(agent.model_fallback_ids ?? [])
-      setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
-      setSelectedMcpToolIds(new Set(agent.mcp_tools?.map((mt) => mt.id) ?? []))
-      setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
-      setSelectedSubAgentIds(new Set(agent.sub_agents?.map((sa) => sa.id) ?? []))
-      setSelectedMiddlewareTypes(new Set(agent.middleware_configs?.map((mc) => mc.type) ?? []))
-      setTemperature(agent.model_params?.temperature ?? 0.7)
-      setTopP(agent.model_params?.top_p ?? 1.0)
-      setMaxTokens(agent.model_params?.max_tokens ?? 4096)
-      setOpenerQuestions(agent.opener_questions ?? [])
-    } else if (prev) {
-      // 같은 agent의 refetch — 사용자가 손대지 않은 필드만 sync.
-      // 비교는 "현재 form state === 직전 server snapshot"이면 dirty 아님 → 새 server 값 반영.
-      if (name === prev.name) setName(agent.name)
-      if (description === (prev.description ?? '')) setDescription(agent.description ?? '')
-      if (systemPrompt === prev.system_prompt) setSystemPrompt(agent.system_prompt)
-      if (modelId === (prev.model?.id ?? '')) setModelId(agent.model?.id ?? '')
-      if (identityMode === prev.identity_mode) setIdentityMode(agent.identity_mode)
-      if (arraysEqual(fallbackIds, prev.model_fallback_ids ?? [])) {
-        setFallbackIds(agent.model_fallback_ids ?? [])
-      }
-
-      const prevToolIds = new Set(prev.tools.map((tl) => tl.id))
-      if (setsEqual(selectedToolIds, prevToolIds)) {
-        setSelectedToolIds(new Set(agent.tools.map((tl) => tl.id)))
-      }
-      const prevMcpToolIds = new Set(prev.mcp_tools?.map((mt) => mt.id) ?? [])
-      if (setsEqual(selectedMcpToolIds, prevMcpToolIds)) {
-        setSelectedMcpToolIds(new Set(agent.mcp_tools?.map((mt) => mt.id) ?? []))
-      }
-      const prevSkillIds = new Set(prev.skills?.map((s) => s.id) ?? [])
-      if (setsEqual(selectedSkillIds, prevSkillIds)) {
-        setSelectedSkillIds(new Set(agent.skills?.map((s) => s.id) ?? []))
-      }
-      const prevSubAgentIds = new Set(prev.sub_agents?.map((sa) => sa.id) ?? [])
-      if (setsEqual(selectedSubAgentIds, prevSubAgentIds)) {
-        setSelectedSubAgentIds(new Set(agent.sub_agents?.map((sa) => sa.id) ?? []))
-      }
-      const prevMwTypes = new Set(prev.middleware_configs?.map((mc) => mc.type) ?? [])
-      if (setsEqual(selectedMiddlewareTypes, prevMwTypes)) {
-        setSelectedMiddlewareTypes(new Set(agent.middleware_configs?.map((mc) => mc.type) ?? []))
-      }
-      if (arraysEqual(openerQuestions, prev.opener_questions ?? [])) {
-        setOpenerQuestions(agent.opener_questions ?? [])
-      }
-      if (temperature === (prev.model_params?.temperature ?? 0.7)) {
-        setTemperature(agent.model_params?.temperature ?? 0.7)
-      }
-      if (topP === (prev.model_params?.top_p ?? 1.0)) {
-        setTopP(agent.model_params?.top_p ?? 1.0)
-      }
-      if (maxTokens === (prev.model_params?.max_tokens ?? 4096)) {
-        setMaxTokens(agent.model_params?.max_tokens ?? 4096)
-      }
-    }
-    lastSyncedAgentRef.current = agent
-  }, [agent])
-  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-
-  const initialToolIds = useMemo(
-    () => new Set(agent?.tools.map((tl) => tl.id) ?? []),
-    [agent?.tools],
-  )
-  const initialSkillIds = useMemo(
-    () => new Set(agent?.skills?.map((s) => s.id) ?? []),
-    [agent?.skills],
-  )
-  const initialSubAgentIds = useMemo(
-    () => new Set(agent?.sub_agents?.map((sa) => sa.id) ?? []),
-    [agent?.sub_agents],
-  )
-  const initialMwTypes = useMemo(
-    () => new Set(agent?.middleware_configs?.map((mc) => mc.type) ?? []),
-    [agent?.middleware_configs],
-  )
-  const initialOpenerQuestions = useMemo(
-    () => agent?.opener_questions ?? [],
-    [agent?.opener_questions],
-  )
-  const initialFallbackIds = useMemo(
-    () => agent?.model_fallback_ids ?? [],
-    [agent?.model_fallback_ids],
-  )
-  const initialIdentityMode = agent?.identity_mode ?? 'per_user'
-
-  const isDirty = useMemo(() => {
-    if (!agent) return false
-    return (
-      name !== agent.name ||
-      description !== (agent.description ?? '') ||
-      systemPrompt !== agent.system_prompt ||
-      modelId !== (agent.model?.id ?? '') ||
-      identityMode !== initialIdentityMode ||
-      temperature !== (agent.model_params?.temperature ?? 0.7) ||
-      topP !== (agent.model_params?.top_p ?? 1.0) ||
-      maxTokens !== (agent.model_params?.max_tokens ?? 4096) ||
-      !setsEqual(selectedToolIds, initialToolIds) ||
-      !setsEqual(selectedSkillIds, initialSkillIds) ||
-      !setsEqual(selectedSubAgentIds, initialSubAgentIds) ||
-      !setsEqual(selectedMiddlewareTypes, initialMwTypes) ||
-      !arraysEqual(openerQuestions, initialOpenerQuestions) ||
-      !arraysEqual(fallbackIds, initialFallbackIds)
-    )
-  }, [
-    agent,
-    name,
-    description,
-    systemPrompt,
-    modelId,
-    identityMode,
-    temperature,
-    topP,
-    maxTokens,
-    selectedToolIds,
-    selectedSkillIds,
-    selectedSubAgentIds,
-    selectedMiddlewareTypes,
-    openerQuestions,
-    fallbackIds,
-    initialToolIds,
-    initialSkillIds,
-    initialSubAgentIds,
-    initialMwTypes,
-    initialOpenerQuestions,
-    initialFallbackIds,
-    initialIdentityMode,
-  ])
-
   useEffect(() => {
     if (!isDirty) return
     const handler = (e: BeforeUnloadEvent) => {
@@ -358,24 +155,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
 
   async function handleSave() {
     try {
-      await updateAgent.mutateAsync({
-        name,
-        description: description || undefined,
-        system_prompt: systemPrompt,
-        model_id: modelId,
-        identity_mode: identityMode,
-        tool_ids: Array.from(selectedToolIds),
-        mcp_tool_ids: Array.from(selectedMcpToolIds),
-        skill_ids: Array.from(selectedSkillIds),
-        sub_agent_ids: Array.from(selectedSubAgentIds),
-        middleware_configs: Array.from(selectedMiddlewareTypes).map((type) => ({
-          type,
-          params: {},
-        })),
-        model_params: { temperature, top_p: topP, max_tokens: maxTokens },
-        opener_questions: openerQuestions,
-        model_fallback_ids: fallbackIds.length > 0 ? fallbackIds : null,
-      })
+      await updateAgent.mutateAsync(updateRequest)
       toast.success(t('toast.saved'))
     } catch {
       toast.error(t('toast.saveFailed'))
@@ -423,17 +203,17 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
         <Button variant="ghost" size="icon-sm" onClick={handleBack} aria-label={t('back')}>
           <ArrowLeftIcon className="size-4" />
         </Button>
-        <AgentAvatar imageUrl={agent?.image_url ?? null} name={name} size="sm" />
+        <AgentAvatar imageUrl={agent?.image_url ?? null} name={draft.name} size="sm" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={draft.name}
+            onChange={(e) => draftActions.setName(e.target.value)}
             className="h-8 rounded-md border-0 bg-transparent px-2 text-lg font-semibold shadow-none transition-colors hover:bg-muted/30 focus-visible:bg-muted/40 focus-visible:ring-0"
             placeholder={t('namePlaceholder')}
           />
           <Input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            value={draft.description}
+            onChange={(e) => draftActions.setDescription(e.target.value)}
             className="h-7 rounded-md border-0 bg-transparent px-2 text-xs text-muted-foreground shadow-none transition-colors hover:bg-muted/30 focus-visible:bg-muted/40 focus-visible:ring-0"
             placeholder={t('descriptionPlaceholder')}
           />
@@ -500,30 +280,30 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             </div>
             <TabsContent value="form" className="flex flex-1 min-h-0 flex-col overflow-hidden">
               <FormMode
-                systemPrompt={systemPrompt}
-                onSystemPromptChange={setSystemPrompt}
-                selectedSubAgentIds={selectedSubAgentIds}
-                onToggleSubAgent={handleToggleSubAgent}
+                systemPrompt={draft.systemPrompt}
+                onSystemPromptChange={draftActions.setSystemPrompt}
+                selectedSubAgentIds={draft.selectedSubAgentIds}
+                onToggleSubAgent={draftActions.toggleSubAgent}
                 currentAgentId={agentId}
-                modelId={modelId}
-                onModelIdChange={setModelId}
-                temperature={temperature}
-                onTemperatureChange={setTemperature}
-                topP={topP}
-                onTopPChange={setTopP}
-                maxTokens={maxTokens}
-                onMaxTokensChange={setMaxTokens}
-                onResetModelParams={handleResetModelParams}
-                fallbackIds={fallbackIds}
-                onFallbackIdsChange={setFallbackIds}
-                selectedToolIds={selectedToolIds}
-                onToggleTool={handleToggleTool}
-                selectedMcpToolIds={selectedMcpToolIds}
-                onToggleMcpTool={handleToggleMcpTool}
-                selectedSkillIds={selectedSkillIds}
-                onToggleSkill={handleToggleSkill}
-                selectedMiddlewareTypes={selectedMiddlewareTypes}
-                onToggleMiddleware={handleToggleMiddleware}
+                modelId={draft.modelId}
+                onModelIdChange={draftActions.setModelId}
+                temperature={draft.temperature}
+                onTemperatureChange={draftActions.setTemperature}
+                topP={draft.topP}
+                onTopPChange={draftActions.setTopP}
+                maxTokens={draft.maxTokens}
+                onMaxTokensChange={draftActions.setMaxTokens}
+                onResetModelParams={draftActions.resetModelParams}
+                fallbackIds={draft.fallbackIds}
+                onFallbackIdsChange={draftActions.setFallbackIds}
+                selectedToolIds={draft.selectedToolIds}
+                onToggleTool={draftActions.toggleTool}
+                selectedMcpToolIds={draft.selectedMcpToolIds}
+                onToggleMcpTool={draftActions.toggleMcpTool}
+                selectedSkillIds={draft.selectedSkillIds}
+                onToggleSkill={draftActions.toggleSkill}
+                selectedMiddlewareTypes={draft.selectedMiddlewareTypes}
+                onToggleMiddleware={draftActions.toggleMiddleware}
               />
             </TabsContent>
             <TabsContent
@@ -555,10 +335,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
             agentId={agentId}
             agentName={agent?.name ?? ''}
             agentImageUrl={agent?.image_url ?? null}
-            identityMode={identityMode}
-            onIdentityModeChange={setIdentityMode}
-            openerQuestions={openerQuestions}
-            onOpenerQuestionsChange={setOpenerQuestions}
+            identityMode={draft.identityMode}
+            onIdentityModeChange={draftActions.setIdentityMode}
+            openerQuestions={draft.openerQuestions}
+            onOpenerQuestionsChange={draftActions.setOpenerQuestions}
             onRequestDeleteTrigger={setDeletingTriggerTarget}
             initialFixMessage={initialFixMessage}
             createMode={justCreated}

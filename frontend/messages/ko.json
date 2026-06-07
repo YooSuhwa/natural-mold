@@ -1861,7 +1861,6 @@
         "required": "필수 항목을 먼저 입력하세요",
         "probeFailed": "프로브에 실패했습니다",
         "importFailedAfterSave": "서버는 추가됐지만 도구 가져오기에 실패했습니다. 상세 페이지에서 다시 시도하세요.",
-        "savedToggleLater": "서버가 저장되었습니다. 필요한 경우 상세 페이지에서 {count}개 도구를 끄세요.",
         "added": "MCP 서버가 추가되었습니다",
         "addFailed": "서버 추가에 실패했습니다"
       },
@@ -1929,7 +1928,7 @@
         "probeFailed": "프로브 실패",
         "retry": "다시 시도",
         "empty": "이 서버가 아직 노출한 도구가 없습니다.",
-        "enabled": "{enabled}/{total}개 도구 활성화",
+        "discovered": "{total}개 도구 발견됨",
         "reprobe": "다시 프로브",
         "params": "{count}개 파라미터"
       }

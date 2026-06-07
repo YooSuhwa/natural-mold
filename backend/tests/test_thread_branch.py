@@ -390,7 +390,7 @@ async def test_edit_message_streams_with_checkpoint_fork(client: AsyncClient):
             "app.agent_runtime.checkpointer.get_checkpointer",
             return_value=fake_cp,
         ),
-        patch("app.routers.conversations.execute_agent_stream", side_effect=mock_stream),
+        patch("app.routers.conversation_branches.execute_agent_stream", side_effect=mock_stream),
     ):
         resp = await client.post(
             f"/api/conversations/{conv_id}/messages/edit",
@@ -415,6 +415,39 @@ async def test_edit_message_streams_with_checkpoint_fork(client: AsyncClient):
     assert len(ow.value) == 1
     assert isinstance(ow.value[0], HumanMessage)
     assert ow.value[0].content == "edited"
+
+
+@pytest.mark.asyncio
+async def test_edit_message_rejects_unknown_message_id(client: AsyncClient):
+    _agent_id, conv_id = await _seed_agent_and_conv()
+
+    captured: list = []
+
+    async def mock_stream(cfg, messages_history, **_kw):
+        captured.append((cfg, messages_history))
+        yield 'event: message_end\ndata: {"content": "should not stream", "usage": {}}\n\n'
+
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck1",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u-original", "original")],
+    )
+    fake_cp = _FakeCheckpointer([leaf])
+
+    with (
+        patch(
+            "app.agent_runtime.checkpointer.get_checkpointer",
+            return_value=fake_cp,
+        ),
+        patch("app.routers.conversation_branches.execute_agent_stream", side_effect=mock_stream),
+    ):
+        resp = await client.post(
+            f"/api/conversations/{conv_id}/messages/edit",
+            json={"message_id": str(uuid.uuid4()), "new_content": "edited"},
+        )
+
+    assert resp.status_code == 422
+    assert captured == []
 
 
 @pytest.mark.asyncio
@@ -454,7 +487,7 @@ async def test_regenerate_does_not_duplicate_user_message(client: AsyncClient):
             return_value=fake_cp,
         ),
         patch(
-            "app.routers.conversations.execute_agent_stream",
+            "app.routers.conversation_branches.execute_agent_stream",
             side_effect=mock_stream,
         ),
     ):
@@ -483,6 +516,70 @@ async def test_regenerate_does_not_duplicate_user_message(client: AsyncClient):
     assert len(ow.value) == 1
     assert ow.value[0].content == "정말 슬펐어"
     assert all(msg.type != "system" for msg in ow.value)
+
+
+@pytest.mark.asyncio
+async def test_regenerate_rejects_targeted_user_message_id(client: AsyncClient):
+    _agent_id, conv_id = await _seed_agent_and_conv()
+
+    captured: list = []
+
+    async def mock_stream(cfg, messages_history, **_kw):
+        captured.append((cfg, messages_history))
+        yield 'event: message_end\ndata: {"content": "should not stream", "usage": {}}\n\n'
+
+    ck0 = _CheckpointSlim(
+        checkpoint_id="ck0",
+        parent_checkpoint_id=None,
+        messages=[_msg("user", "u1", "첫 질문")],
+    )
+    ck1 = _CheckpointSlim(
+        checkpoint_id="ck1",
+        parent_checkpoint_id="ck0",
+        messages=[_msg("user", "u1", "첫 질문"), _msg("ai", "a1", "첫 답변")],
+    )
+    ck2 = _CheckpointSlim(
+        checkpoint_id="ck2",
+        parent_checkpoint_id="ck1",
+        messages=[
+            _msg("user", "u1", "첫 질문"),
+            _msg("ai", "a1", "첫 답변"),
+            _msg("user", "u2", "두 번째 질문"),
+        ],
+    )
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck3",
+        parent_checkpoint_id="ck2",
+        messages=[
+            _msg("user", "u1", "첫 질문"),
+            _msg("ai", "a1", "첫 답변"),
+            _msg("user", "u2", "두 번째 질문"),
+            _msg("ai", "a2", "두 번째 답변"),
+        ],
+    )
+    fake_cp = _FakeCheckpointer([leaf, ck2, ck1, ck0])
+
+    from app.agent_runtime.message_utils import parse_msg_id
+
+    user_exposed = parse_msg_id("u2", conv_id, 2)
+
+    with (
+        patch(
+            "app.agent_runtime.checkpointer.get_checkpointer",
+            return_value=fake_cp,
+        ),
+        patch(
+            "app.routers.conversation_branches.execute_agent_stream",
+            side_effect=mock_stream,
+        ),
+    ):
+        resp = await client.post(
+            f"/api/conversations/{conv_id}/messages/regenerate",
+            json={"message_id": str(user_exposed)},
+        )
+
+    assert resp.status_code == 422
+    assert captured == []
 
 
 @pytest.mark.asyncio
@@ -542,7 +639,7 @@ async def test_regenerate_targeted_assistant_uses_correct_checkpoint(
             return_value=fake_cp,
         ),
         patch(
-            "app.routers.conversations.execute_agent_stream",
+            "app.routers.conversation_branches.execute_agent_stream",
             side_effect=mock_stream,
         ),
     ):
@@ -625,7 +722,7 @@ async def test_regenerate_without_message_id_uses_active_branch_checkpoint(
             return_value=fake_cp,
         ),
         patch(
-            "app.routers.conversations.execute_agent_stream",
+            "app.routers.conversation_branches.execute_agent_stream",
             side_effect=mock_stream,
         ),
     ):
@@ -685,7 +782,7 @@ async def test_regenerate_targeted_assistant_can_find_non_newest_branch(
             return_value=fake_cp,
         ),
         patch(
-            "app.routers.conversations.execute_agent_stream",
+            "app.routers.conversation_branches.execute_agent_stream",
             side_effect=mock_stream,
         ),
     ):

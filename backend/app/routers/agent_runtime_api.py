@@ -16,7 +16,7 @@ from app.agent_api.sse_adapter import (
     adapt_internal_stream_to_openai,
     format_openai_data_sse,
 )
-from app.agent_runtime.executor import execute_agent_invoke, execute_agent_stream
+from app.agent_runtime.agent_stream_runner import execute_agent_invoke, execute_agent_stream
 from app.dependencies import get_db
 from app.exceptions import AppError
 from app.models.agent_api import AgentDeployment
