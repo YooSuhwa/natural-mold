@@ -18,7 +18,7 @@
 
 [Overview](#-overview) · [Quick Answers](#-quick-answers) · [Quick Start](#-quick-start) · [Trust](#-quality-security-and-documentation-signals) · [Features](#-features) · [Architecture](#-architecture)
 
-**Last updated:** June 2, 2026 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
+**Last updated:** June 7, 2026 · **Repository:** [YooSuhwa/natural-mold](https://github.com/YooSuhwa/natural-mold) · **License:** [MIT](LICENSE)
 
 </div>
 
@@ -52,7 +52,7 @@ triggers, and usage tracking.
 | Backend | FastAPI 0.115+, SQLAlchemy 2.0 async, Alembic, Python 3.12 |
 | Frontend | Next.js 16, React 19, TailwindCSS v4, shadcn/ui |
 | AI runtime | LangGraph 1.x + `deepagents` via `create_deep_agent` |
-| Database | PostgreSQL 16, current migration head documented as `m52` |
+| Database | PostgreSQL 16, current migration head `m59_conversation_artifacts` |
 | Authentication | JWT HS256, HttpOnly cookies, CSRF double-submit, refresh-token rotation, `super_user` |
 | License | MIT |
 
@@ -135,7 +135,7 @@ docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 cd backend
 cp .env.example .env                  # set ENCRYPTION_KEYS / JWT_SECRET (LLM keys via UI)
 uv sync                               # install dependencies
-uv run alembic upgrade head           # run migrations (head: m52)
+uv run alembic upgrade head           # run migrations (head: m59)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
@@ -451,12 +451,12 @@ process separately before probing those presets.
 │                                                                 │
 │  agent_runtime/                                                 │
 │    ├ builder_v3/ (conversational meta builder — latest)         │
-│    ├ executor (create_deep_agent + astream)                     │
-│    ├ streaming (LangGraph events → SSE chunks via orjson)       │
-│    ├ event_broker (event broadcast)                             │
-│    ├ tool_factory (prebuilt + MCP + custom)                     │
-│    ├ model_factory (per-provider LLM)                           │
-│    └ trigger_executor (schedule → message)                      │
+│    ├ executor.py (compat facade)                                │
+│    ├ runtime_component_builder.py (models/tools/skills/memory)  │
+│    ├ agent_stream_runner.py (stream/invoke execution)           │
+│    ├ streaming.py (LangGraph events → SSE + traces + artifacts) │
+│    ├ mcp_tool_loader.py / skill_executor.py                     │
+│    └ trigger_executor.py (schedule → invoke)                    │
 │                                                                 │
 │  scheduler.py — APScheduler singleton                           │
 └─────────────────────────────────────────────────────────────────┘
@@ -469,7 +469,7 @@ process separately before probing those presets.
 
 - **Router** (`app/routers/`) — HTTP endpoints, request / response shaping
 - **Service** (`app/services/`) — Business logic, DB queries, transactions
-- **Model** (`app/models/`) — SQLAlchemy ORM, 36 tables as of m52
+- **Model** (`app/models/`) — SQLAlchemy ORM, 49 tables as of m59
 
 ### Frontend pattern
 
@@ -497,7 +497,7 @@ natural-mold/
 │   │   ├── credentials/         # Cipher V2 + domain
 │   │   ├── agent_runtime/       # AI execution engine
 │   │   └── seed/                # seed data
-│   ├── alembic/versions/        # migrations (up to m52)
+│   ├── alembic/versions/        # migrations (up to m59)
 │   └── tests/                   # pytest (aiosqlite in-memory)
 ├── frontend/
 │   └── src/
@@ -581,8 +581,8 @@ official profiles or documentation URLs exist.
       "operatingSystem": "Web",
       "isAccessibleForFree": true,
       "license": "https://github.com/YooSuhwa/natural-mold/blob/main/LICENSE",
-      "softwareVersion": "development snapshot, migration head m52",
-      "dateModified": "2026-06-02",
+      "softwareVersion": "development snapshot, migration head m59",
+      "dateModified": "2026-06-07",
       "author": {
         "@id": "https://github.com/YooSuhwa/natural-mold#organization"
       },

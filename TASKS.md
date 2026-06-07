@@ -1,5 +1,50 @@
 # Moldy — TASKS
 
+> Last updated: 2026-06-07
+> Source-aligned snapshot: Alembic head `m59_conversation_artifacts`, merge
+> `078250c`. The original Phase 0~14 list below is preserved as historical
+> build-up context; the current source has moved beyond it.
+
+## Current Source Snapshot (2026-06-07)
+
+- [x] Multi-user auth and operator split (ADR-016): JWT, HttpOnly cookies, CSRF,
+  refresh-token rotation, `super_user`, system/user resource separation.
+- [x] Marketplace Phase 1: schema M40~M44, skill lineage, `agent_skills.config`,
+  catalog/detail/version, install/update/uninstall, publish/version/ACL/admin,
+  secret scan, k-skill importer, credential requirements and bindings.
+- [x] System LLM settings (ADR-019): role-based model slots for builder,
+  assistant, and image generation.
+- [x] Schedule productization M47~M50: guardrails, conversation policy, run
+  metadata/history.
+- [x] Agent API M56: deployments, scoped API keys, threads, runs, `/v1`
+  blocking/streaming/compatibility endpoints.
+- [x] Long-term memory controls: user/agent settings, memory records/proposals,
+  runtime memory tools, frontend settings.
+- [x] Audit system M57: audit event model/router/service and auth/marketplace
+  event recording.
+- [x] Generated artifacts M59: conversation artifact/version models, artifact
+  service/storage/router, chat right rail previews, `/artifacts` library.
+- [x] Subagent runtime alignment: agent-to-agent delegation, runtime identity,
+  filesystem permission updates.
+- [x] Runtime cleanup: executor split into facade + runtime config/component
+  builder/stream runner/MCP loader/skill executor.
+- [x] Conversation router cleanup: split CRUD/messages/branches/files/traces and
+  move stream responsibilities into services.
+- [x] Frontend performance and state cleanup: lazy chat preview modules, scoped
+  i18n payloads, agent settings draft hook/lib.
+
+## Active Follow-ups
+
+- [ ] Extend marketplace publishing/install UX beyond Skill Phase 1 for MCP and
+  Agent resources.
+- [ ] Add/expand E2E coverage for artifacts, shares, marketplace install,
+  memory approvals, and Agent API settings.
+- [ ] Harden multi-worktree scheduler behavior when several backends share one DB.
+- [ ] Keep `docs/ARCHITECTURE.md`, `docs/PRD.md`, `AGENTS.md`, and README files
+  synchronized after migrations or runtime module splits.
+
+---
+
 ## Phase 0: 프로젝트 부트스트랩
 
 - [x] git init + .gitignore
@@ -12,7 +57,7 @@
 
 - [x] SQLAlchemy 모델 11개 테이블
 - [x] Alembic 초기 마이그레이션
-- [x] Mock user dependency + Pydantic 스키마
+- [x] 초기 Mock user dependency + Pydantic 스키마 (현재는 ADR-016 auth dependency로 대체)
 - [x] 시드 데이터 (기본 모델, 템플릿 4개)
 - [x] Agent CRUD API (5 endpoints) + 테스트
 - [x] Template API (2 endpoints) + 테스트
@@ -23,7 +68,7 @@
 
 - [x] agent_runtime/model_factory.py
 - [x] agent_runtime/tool_factory.py
-- [x] agent_runtime/executor.py (create_agent + astream)
+- [x] agent_runtime/executor.py (현재는 `create_deep_agent` facade + split runtime modules)
 - [x] agent_runtime/streaming.py (LangGraph → SSE)
 - [x] agent_runtime/token_tracker.py
 - [x] Conversation API (4 endpoints) + LangGraph PostgresSaver
@@ -211,10 +256,10 @@
 - [x] 스킬 관리 페이지 (CRUD)
 - [x] 에이전트 설정에서 스킬 연결/해제
 
-## Phase 14: 미들웨어 시스템 (create_agent + 미들웨어 전환)
+## Phase 14: 미들웨어 시스템 (historical create_agent 전환 → 현재 create_deep_agent runtime)
 
 ### Backend — 런타임 전환 + 데이터 레이어 (Phase A+B) ✅
-- [x] executor.py: create_react_agent → create_agent + middleware (fallback 포함)
+- [x] executor.py: create_react_agent → create_agent + middleware (이후 `create_deep_agent`로 전환 완료)
 - [x] middleware_registry.py: 22종 미들웨어 레지스트리 + 인스턴스 빌더
 - [x] Agent 모델: middleware_configs JSON 컬럼 + Alembic 마이그레이션
 - [x] API 스키마: MiddlewareConfigEntry, AgentCreate/Update/Response 확장
