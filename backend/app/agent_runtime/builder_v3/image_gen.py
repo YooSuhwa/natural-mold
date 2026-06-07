@@ -15,8 +15,8 @@ from pathlib import Path
 
 import httpx
 
-from app.config import settings
 from app.database import async_session
+from app.services.agent_image_paths import agent_image_dir
 from app.services.image_service import (
     IMAGE_GEN_SYSTEM_PROMPT,
     _extract_image_data,
@@ -36,7 +36,7 @@ class ImageGenerationError(RuntimeError):
 
 
 def _builder_image_dir(session_id: str) -> Path:
-    base = Path(settings.agent_image_dir) / "_builder" / session_id
+    base = agent_image_dir() / "_builder" / session_id
     base.mkdir(parents=True, exist_ok=True)
     return base
 

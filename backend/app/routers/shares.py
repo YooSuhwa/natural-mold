@@ -44,6 +44,7 @@ from app.services import (
     share_service,
     trace_storage,
 )
+from app.services.agent_image_paths import build_agent_image_url
 from app.services.artifact_service import (
     ArtifactNotFoundError,
     is_text_preview_artifact,
@@ -321,10 +322,10 @@ async def get_public_share(
         agent=SharedAgentBrief(
             name=agent.name,
             description=agent.description,
-            image_url=(
-                f"/api/agents/{agent.id}/image?t={int(agent.updated_at.timestamp())}"
-                if agent.image_path
-                else None
+            image_url=build_agent_image_url(
+                agent.id,
+                updated_at=agent.updated_at,
+                image_path=agent.image_path,
             ),
         ),
         messages=messages,

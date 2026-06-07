@@ -346,7 +346,7 @@ def _transfer_builder_image_sync(
     from pathlib import Path
 
     from app.agent_runtime.builder_v3.image_gen import resolve_local_path
-    from app.config import settings
+    from app.services.agent_image_paths import agent_image_dir
 
     filename = Path(public_url).name
     src = resolve_local_path(str(session_id), filename)
@@ -354,7 +354,7 @@ def _transfer_builder_image_sync(
         logger.warning("Builder image source not found: %s", public_url)
         return None
 
-    dest_dir = Path(settings.agent_image_dir) / str(agent_id)
+    dest_dir = agent_image_dir() / str(agent_id)
     dest = dest_dir / f"avatar{src.suffix}"
     try:
         dest_dir.mkdir(parents=True, exist_ok=True)

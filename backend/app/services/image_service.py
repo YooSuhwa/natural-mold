@@ -10,8 +10,8 @@ from pathlib import Path
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.models.agent import Agent
+from app.services.agent_image_paths import agent_image_dir
 from app.services.system_credential_resolver import (
     ResolvedSystemModel,
     resolve_system_model,
@@ -195,7 +195,7 @@ async def generate_agent_image(
         ext = "webp"
     else:
         ext = "png"
-    save_dir = Path(settings.agent_image_dir) / str(agent.id)
+    save_dir = agent_image_dir() / str(agent.id)
     save_path = save_dir / f"avatar.{ext}"
     await asyncio.to_thread(_save_agent_image, save_path, image_bytes)
 

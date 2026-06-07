@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import uuid
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
 from app.models.conversation import Conversation
@@ -267,6 +269,79 @@ async def test_agent_image_preview_serves_cached_webp(client: AsyncClient, tmp_p
     assert original_resp.status_code == 200
     assert original_resp.headers["content-type"] == "image/png"
     assert original_resp.content == source.read_bytes()
+
+
+@pytest.mark.asyncio
+async def test_agent_image_route_keeps_missing_path_reference(client: AsyncClient):
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+    stored_path = f"data/agents/{agent_id}/avatar.png"
+
+    async with TestSession() as db:
+        agent = await db.get(Agent, uuid.UUID(agent_id))
+        assert agent is not None
+        agent.image_path = stored_path
+        await db.commit()
+
+    resp = await client.get(f"/api/agents/{agent_id}/image")
+
+    assert resp.status_code == 204
+    async with TestSession() as db:
+        agent = await db.get(Agent, uuid.UUID(agent_id))
+        assert agent is not None
+        assert agent.image_path == stored_path
+
+
+@pytest.mark.asyncio
+async def test_agent_image_route_serves_legacy_data_path_from_data_root(
+    client: AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    data_root = tmp_path / "data"
+    monkeypatch.setattr(settings, "data_root", str(data_root))
+    monkeypatch.setattr(settings, "agent_image_dir", str(data_root / "agents"))
+
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+    source = data_root / "agents" / agent_id / "avatar.png"
+    source.parent.mkdir(parents=True)
+    image = Image.new("RGB", (64, 64), color=(28, 148, 108))
+    image.save(source)
+
+    async with TestSession() as db:
+        agent = await db.get(Agent, uuid.UUID(agent_id))
+        assert agent is not None
+        agent.image_path = f"data/agents/{agent_id}/avatar.png"
+        await db.commit()
+
+    resp = await client.get(f"/api/agents/{agent_id}/image")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "image/png"
+    assert resp.content == source.read_bytes()
+
+
+@pytest.mark.asyncio
+async def test_agent_summary_recovers_avatar_file_when_db_path_is_null(
+    client: AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(settings, "agent_image_dir", str(tmp_path / "agents"))
+
+    model_id = await _create_model(client)
+    agent_id = await _create_agent(client, model_id)
+    source = tmp_path / "agents" / agent_id / "avatar.png"
+    source.parent.mkdir(parents=True)
+    image = Image.new("RGB", (64, 64), color=(28, 148, 108))
+    image.save(source)
+
+    resp = await client.get("/api/agents/summary")
+
+    assert resp.status_code == 200
+    [summary] = resp.json()
+    assert summary["image_url"].startswith(f"/api/agents/{agent_id}/image?t=")
 
 
 def test_builder_sessions_agent_id_fk_set_null():
