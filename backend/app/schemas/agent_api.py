@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 AgentApiScope = Literal["invoke", "stream", "background", "read"]
+AgentDeploymentIneligibleReasonCode = Literal["fixed_identity_required"]
 
 
 class AgentDeploymentCreate(BaseModel):
@@ -47,6 +48,7 @@ class AgentDeploymentCandidateResponse(BaseModel):
     existing_public_id: str | None
     eligible: bool
     ineligible_reason: str | None = None
+    ineligible_reason_code: AgentDeploymentIneligibleReasonCode | None = None
 
 
 class AgentApiKeyDeploymentRef(BaseModel):

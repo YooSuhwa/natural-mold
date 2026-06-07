@@ -21,6 +21,8 @@ from app.schemas.agent_api import (
     AgentDeploymentUpdate,
 )
 
+FIXED_IDENTITY_REASON_CODE = "fixed_identity_required"
+
 
 def utc_now_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
@@ -108,11 +110,8 @@ async def list_deployment_candidates(
                 existing_deployment_id=deployment.id if deployment else None,
                 existing_public_id=deployment.public_id if deployment else None,
                 eligible=eligible,
-                ineligible_reason=(
-                    None
-                    if eligible
-                    else "API deployment requires fixed identity."
-                ),
+                ineligible_reason=None,
+                ineligible_reason_code=None if eligible else FIXED_IDENTITY_REASON_CODE,
             )
         )
     return candidates
