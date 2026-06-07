@@ -3,6 +3,12 @@
 작성일: 2026-05-30
 대상: `natural-mold` 현재 소스 코드, 설치된 `deepagents==0.6.1`, 첨부 문서 4개
 
+> 2026-06-07 문서 동기화 메모: 이 감사 문서는 당시 runtime/doc gap을 기록한
+> historical audit이다. P2-4의 `AGENTS.md`, `docs/PRD.md`,
+> `docs/ARCHITECTURE.md`, `docs/marketplace-resources-prd.md` 불일치 지적은
+> 2026-06-07 문서 갱신으로 해소되었다. 최신 기준은 `docs/ARCHITECTURE.md`와
+> `docs/PRD.md`를 우선한다.
+
 검토한 첨부 문서:
 
 - `/Users/chester/Downloads/deepagents-runtime-audit.md`
@@ -92,11 +98,12 @@ Moldy가 DeepAgents를 선택한 방향 자체는 맞다. 제품은 no-code agen
 - MCP는 discovery와 runtime의 credential/transport 처리 차이가 남아 있다.
 - LangSmith Fleet 수준의 run/trace/eval/replay는 아직 부분 구현이다.
 
-문서 자체도 갱신 필요:
+문서 자체도 갱신 필요했으며, 2026-06-07 문서 동기화에서 해소됨:
 
-- `AGENTS.md`는 "M39 최신"이라고 설명하지만 현재 소스에는 `m50_schedule_run_metadata`까지 있다.
-- `docs/PRD.md`는 아직 PoC/mock auth 서술이 많이 남아 있어 ADR-016 이후 코드 상태와 맞지 않는다.
-- `docs/marketplace-resources-prd.md`와 spec에는 broad `/skills/` mount 과거 상태가 남아 있으나 현재는 per-thread runtime root로 바뀌었다.
+- `AGENTS.md`/`CLAUDE.md`는 M59, executor split, marketplace/memory/artifact 상태로 갱신됨.
+- `docs/PRD.md`는 PoC/mock auth 서술을 제거하고 ADR-016 이후 제품 상태로 재작성됨.
+- `docs/ARCHITECTURE.md`는 M1/M2 계획 문서에서 현재 runtime/source map으로 교체됨.
+- `docs/marketplace-resources-prd.md`는 v0.3 current implementation status를 추가했고, spec은 historical baseline으로 표시됨.
 
 ### 2.3 `hitl-ask-user-standardization-plan.md` 검증
 
@@ -527,7 +534,7 @@ Moldy가 DeepAgents를 선택한 방향 자체는 맞다. 제품은 no-code agen
 
 ### P0-1. existing trace endpoint access control이 없다
 
-현재 상태:
+현재 상태(2026-05-30 감사 당시):
 
 - `/api/conversations/{conversation_id}/traces` endpoint는 `get_current_user` dependency가 없다.
   - `backend/app/routers/conversations.py:486-502`
@@ -1148,9 +1155,15 @@ assistant fixer의 목적은 DB 설정을 읽고 제한된 write tools로 수정
 
 현재 상태:
 
-- `AGENTS.md`: 최신 migration을 M39라고 설명하지만 코드에는 M50까지 있다.
-- `docs/PRD.md`: PoC/mock auth 서술이 남아 있다.
-- `docs/marketplace-resources-prd.md`와 spec: broad `/skills/` mount가 현재 문제라고 쓰여 있으나 runtime은 per-thread mount로 바뀌었다.
+- `AGENTS.md`: 최신 migration을 M39라고 설명했지만 코드에는 M50까지 있었다.
+- `docs/PRD.md`: PoC/mock auth 서술이 남아 있었다.
+- `docs/marketplace-resources-prd.md`와 spec: broad `/skills/` mount가 현재 문제라고 쓰여 있었으나 runtime은 per-thread mount로 바뀌어 있었다.
+
+해결 상태(2026-06-07):
+
+- `AGENTS.md`, `CLAUDE.md`, `README.md`, `README_KO.md`, `docs/ARCHITECTURE.md`,
+  `docs/PRD.md`, `TASKS.md`, `docs/design-docs/index.md`,
+  `docs/marketplace-resources-prd.md`를 현재 소스 기준으로 갱신했다.
 
 개선안:
 

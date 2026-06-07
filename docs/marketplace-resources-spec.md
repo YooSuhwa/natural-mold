@@ -1,13 +1,17 @@
 # natural-mold Marketplace Resources Technical Spec
 
 > 작성일: 2026-05-18
-> 버전: v0.1 (natural-mold 적용본)
-> 관련 문서: `docs/marketplace-resources-prd.md` v0.2, ADR-007/009/013/016
+> 버전: v0.1 (historical implementation spec)
+> 관련 문서: `docs/marketplace-resources-prd.md` v0.3, ADR-007/009/013/016/017/018
 > 구현 범위: Phase 1 — Skill marketplace foundation + 신규 credential definitions + selected-skill runtime mount + credential env injection + k-skill built-in importer
+> 상태: 2026-06-07 현재 Phase 1의 핵심 backend/runtime/frontend 구현은 완료되어 있다.
+> 이 문서의 line number와 "현재 코드 상태" 표현은 2026-05-18 baseline 기준이다.
+> 최신 상태는 `docs/marketplace-resources-prd.md`의 "2026-06-07 Current Implementation Status"와
+> `docs/ARCHITECTURE.md`를 우선한다.
 
 ## 0. Design Posture
 
-이 spec은 PRD v0.2의 결정과 코드 심층 분석을 기반으로 구현 단위를 명확히 한다. 핵심 순서:
+이 spec은 PRD v0.2의 결정과 2026-05-18 코드 심층 분석을 기반으로 구현 단위를 명확히 한 historical execution spec이다. 핵심 순서:
 
 ```
 데이터 모델 (m40-m43)
@@ -42,7 +46,7 @@
 | symlink 기반 mount | 쓰기가 원본으로 흐를 위험 |
 | 단일 큰 m40 마이그레이션 | rollback/review 부담. 슬라이스별 마이그레이션이 안전 |
 
-## 1. 현재 코드 상태 (검증된 사실)
+## 1. 2026-05-18 baseline 코드 상태 (당시 검증된 사실)
 
 ### 1.1 Installed Resource Tables
 
