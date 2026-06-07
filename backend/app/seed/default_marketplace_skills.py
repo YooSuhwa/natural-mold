@@ -19,6 +19,10 @@ from app.storage.paths import ensure_relative
 _PACKAGE_ROOT = Path(__file__).parent / "system_skill_packages"
 _IMAGE_SKILL_DIR = _PACKAGE_ROOT / "image-generation"
 _DEEP_RESEARCH_SKILL_DIR = _PACKAGE_ROOT / "deep-research"
+_DOCX_SKILL_DIR = _PACKAGE_ROOT / "docx-document"
+_XLSX_SKILL_DIR = _PACKAGE_ROOT / "xlsx-spreadsheet"
+_PPTX_SKILL_DIR = _PACKAGE_ROOT / "pptx-presentation"
+_PATENT_HWPX_SKILL_DIR = _PACKAGE_ROOT / "patent-hwpx-generator"
 
 IMAGE_SKILL_REQUIREMENTS: list[dict[str, Any]] = [
     {
@@ -55,6 +59,73 @@ DEEP_RESEARCH_EXECUTION_PROFILE: dict[str, Any] = {
         "no user credential binding is required."
     ),
 }
+
+JS_DOCUMENT_EXECUTION_PROFILE: dict[str, Any] = {
+    "support_level": "node_package",
+    "runners": ["node"],
+    "requires_node": True,
+    "timeout_seconds": 120,
+}
+
+PATENT_HWPX_EXECUTION_PROFILE: dict[str, Any] = {
+    "support_level": "ready_python",
+    "runners": ["python"],
+    "requires_python": True,
+    "timeout_seconds": 120,
+}
+
+DOCUMENT_SKILL_SPECS: list[dict[str, Any]] = [
+    {
+        "slug": "docx-document",
+        "name": "DOCX Document",
+        "description": "Generate DOCX report artifacts from structured content.",
+        "skill_dir": _DOCX_SKILL_DIR,
+        "categories": ["document"],
+        "tags": ["docx", "office", "document"],
+        "runtime": "node",
+        "artifact_extensions": ["docx"],
+        "execution_profile": JS_DOCUMENT_EXECUTION_PROFILE,
+        "release_notes": "Initial built-in DOCX document generation skill.",
+    },
+    {
+        "slug": "xlsx-spreadsheet",
+        "name": "XLSX Spreadsheet",
+        "description": "Generate XLSX workbook artifacts from structured sheet data.",
+        "skill_dir": _XLSX_SKILL_DIR,
+        "categories": ["document", "data"],
+        "tags": ["xlsx", "office", "spreadsheet"],
+        "runtime": "node",
+        "artifact_extensions": ["xlsx"],
+        "execution_profile": JS_DOCUMENT_EXECUTION_PROFILE,
+        "release_notes": "Initial built-in XLSX spreadsheet generation skill.",
+    },
+    {
+        "slug": "pptx-presentation",
+        "name": "PPTX Presentation",
+        "description": "Generate PPTX presentation artifacts from structured deck content.",
+        "skill_dir": _PPTX_SKILL_DIR,
+        "categories": ["document"],
+        "tags": ["pptx", "office", "presentation"],
+        "runtime": "node",
+        "artifact_extensions": ["pptx"],
+        "execution_profile": JS_DOCUMENT_EXECUTION_PROFILE,
+        "release_notes": "Initial built-in PPTX presentation generation skill.",
+    },
+    {
+        "slug": "patent-hwpx-generator",
+        "name": "Korean Patent HWPX Generator",
+        "description": (
+            "Generate Korean patent-style HWPX artifacts from structured invention data."
+        ),
+        "skill_dir": _PATENT_HWPX_SKILL_DIR,
+        "categories": ["document", "patent"],
+        "tags": ["hwpx", "patent", "korean"],
+        "runtime": "python",
+        "artifact_extensions": ["hwpx"],
+        "execution_profile": PATENT_HWPX_EXECUTION_PROFILE,
+        "release_notes": "Initial built-in Korean patent HWPX generation skill.",
+    },
+]
 
 
 def _now() -> datetime:
@@ -127,6 +198,14 @@ async def seed_default_marketplace_skills(db: AsyncSession) -> list[MarketplaceI
             storage_root=_system_storage_root(),
         )
     )
+    for spec in DOCUMENT_SKILL_SPECS:
+        seeded.append(
+            await _seed_document_skill(
+                db,
+                spec=spec,
+                storage_root=_system_storage_root(),
+            )
+        )
     return seeded
 
 
@@ -350,9 +429,119 @@ async def _seed_deep_research_skill(
     return item
 
 
+async def _seed_document_skill(
+    db: AsyncSession, *, spec: dict[str, Any], storage_root: Path
+) -> MarketplaceItem:
+    slug = str(spec["slug"])
+    skill_dir = Path(spec["skill_dir"])
+    findings = await asyncio.to_thread(scan_package, skill_dir)
+    if findings:
+        summary = ", ".join(f"{f.path} ({f.kind})" for f in findings[:5])
+        raise RuntimeError(f"default document skill {slug} contains potential secrets: {summary}")
+
+    content_hash = await asyncio.to_thread(_content_hash, skill_dir)
+    item = (
+        await db.execute(
+            select(MarketplaceItem)
+            .where(MarketplaceItem.resource_type == "skill")
+            .where(MarketplaceItem.is_system.is_(True))
+            .where(or_(MarketplaceItem.source_external_id == slug, MarketplaceItem.slug == slug))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if item is None:
+        item = MarketplaceItem(
+            id=uuid.uuid4(),
+            resource_type="skill",
+            owner_user_id=None,
+            is_system=True,
+            is_listed=True,
+            name=str(spec["name"]),
+            slug=slug,
+            description=str(spec["description"]),
+            visibility="system",
+            status="published",
+            moderation_status="approved",
+            source_kind="system_seed",
+            source_external_id=slug,
+            categories=list(spec["categories"]),
+            tags=list(spec["tags"]),
+            locale="ko",
+        )
+        db.add(item)
+        await db.flush()
+    else:
+        item.name = str(spec["name"])
+        item.description = str(spec["description"])
+        item.is_listed = True
+        item.source_kind = "system_seed"
+        item.source_external_id = slug
+        item.visibility = "system"
+        item.status = "published"
+        item.categories = list(spec["categories"])
+        item.tags = list(spec["tags"])
+        item.updated_at = _now()
+
+    existing_version = (
+        await db.execute(
+            select(MarketplaceVersion)
+            .where(MarketplaceVersion.item_id == item.id)
+            .where(MarketplaceVersion.content_hash == content_hash)
+            .order_by(MarketplaceVersion.version_number.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing_version is not None:
+        item.latest_version_id = existing_version.id
+        item.published_at = item.published_at or _now()
+        await db.flush()
+        return item
+
+    version_id = uuid.uuid4()
+    version_dest = storage_root / str(version_id)
+    total_bytes = await asyncio.to_thread(_copytree, skill_dir, version_dest)
+    version_number = await _next_version_number(db, item.id)
+
+    version = MarketplaceVersion(
+        id=version_id,
+        item_id=item.id,
+        version_label="0.1.0",
+        version_number=version_number,
+        resource_type="skill",
+        payload_kind="skill_package",
+        payload={
+            "kind": "package",
+            "name": slug,
+            "version": "0.1.0",
+            "runtime": spec["runtime"],
+            "artifact_extensions": list(spec["artifact_extensions"]),
+        },
+        storage_path=ensure_relative(f"marketplace/system-skills/{version_id}"),
+        content_hash=content_hash,
+        size_bytes=total_bytes,
+        credential_requirements=[],
+        execution_profile=dict(spec["execution_profile"]),
+        release_notes=str(spec["release_notes"]),
+        source_path=slug,
+        created_by=None,
+    )
+    db.add(version)
+    await db.flush()
+
+    item.latest_version_id = version.id
+    item.published_at = item.published_at or _now()
+    item.updated_at = _now()
+    await db.flush()
+    return item
+
+
 __all__ = [
     "DEEP_RESEARCH_EXECUTION_PROFILE",
+    "DOCUMENT_SKILL_SPECS",
     "IMAGE_SKILL_EXECUTION_PROFILE",
     "IMAGE_SKILL_REQUIREMENTS",
+    "JS_DOCUMENT_EXECUTION_PROFILE",
+    "PATENT_HWPX_EXECUTION_PROFILE",
     "seed_default_marketplace_skills",
 ]

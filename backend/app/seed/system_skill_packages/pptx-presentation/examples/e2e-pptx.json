@@ -1,0 +1,21 @@
+{
+  "title": "Moldy PPTX Viewer 검증",
+  "subtitle": "실제 skill 실행으로 생성된 presentation artifact",
+  "slides": [
+    {
+      "title": "목표",
+      "body": "PPTX built-in skill이 파일을 생성하고 artifact viewer가 canvas로 렌더링하는지 검증합니다.",
+      "bullets": ["execute_in_skill 승인", "PPTX 파일 생성", "pptxviewjs 미리보기"]
+    },
+    {
+      "title": "검증 흐름",
+      "body": "Playwright는 실제 backend/frontend dev server를 사용합니다.",
+      "bullets": ["Marketplace skill 설치", "채팅으로 skill 실행", "Artifact rail에서 preview 열기"]
+    },
+    {
+      "title": "완료 기준",
+      "body": "이 슬라이드가 보이면 PPTX viewer smoke test가 통과한 것입니다.",
+      "bullets": ["캡처 저장", "PNG 파일 검증", "시각 확인"]
+    }
+  ]
+}

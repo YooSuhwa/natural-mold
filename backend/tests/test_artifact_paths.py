@@ -76,6 +76,8 @@ def test_safe_storage_filename_removes_path_separators_and_control_chars() -> No
         ("application/octet-stream", "yml", "data"),
         ("application/octet-stream", "toml", "data"),
         ("application/octet-stream", "docx", "document"),
+        ("application/octet-stream", "hwp", "document"),
+        ("application/octet-stream", "hwpx", "document"),
         ("application/octet-stream", "dxf", "cad"),
         ("application/octet-stream", "bin", "other"),
     ],
@@ -86,3 +88,35 @@ def test_artifact_kind_for_known_types(
     expected: str,
 ) -> None:
     assert artifact_kind_for(mime_type, extension) == expected
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_mime"),
+    [
+        ("sample.hwp", "application/x-hwp"),
+        ("sample.hwpx", "application/x-hwpx"),
+        (
+            "sample.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+        (
+            "sample.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+        (
+            "sample.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ),
+    ],
+)
+def test_normalize_output_path_uses_custom_document_mime_types(
+    tmp_path: Path, filename: str, expected_mime: str
+) -> None:
+    base = tmp_path / "outputs"
+    target = base / filename
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"artifact")
+
+    normalized = normalize_output_path(base, target)
+
+    assert normalized.mime_type == expected_mime

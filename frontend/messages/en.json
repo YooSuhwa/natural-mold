@@ -1451,6 +1451,19 @@
           "emptyTable": "No rows to display.",
           "parseError": "Could not parse this file structure."
         },
+        "documentPreview": {
+          "loading": "Loading document",
+          "errorTitle": "Preview unavailable",
+          "downloadInstead": "Download",
+          "page": "{current} / {total}",
+          "zoomIn": "Zoom in",
+          "zoomOut": "Zoom out",
+          "previousPage": "Previous page",
+          "nextPage": "Next page",
+          "sheet": "Sheet",
+          "slide": "Slide",
+          "truncatedGrid": "Large sheet preview shows the first {rows} rows and {columns} columns"
+        },
         "kinds": {
           "image": "Image",
           "video": "Video",

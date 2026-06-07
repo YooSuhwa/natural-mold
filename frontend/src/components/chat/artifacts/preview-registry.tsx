@@ -42,6 +42,18 @@ const StructuredDataPreview = lazy(() =>
 const TableDataPreview = lazy(() =>
   import('./providers/table-data-preview').then((m) => ({ default: m.TableDataPreview })),
 )
+const HwpPreview = lazy(() =>
+  import('./providers/hwp-preview').then((m) => ({ default: m.HwpPreview })),
+)
+const DocxPreview = lazy(() =>
+  import('./providers/docx-preview').then((m) => ({ default: m.DocxPreview })),
+)
+const XlsxPreview = lazy(() =>
+  import('./providers/xlsx-preview').then((m) => ({ default: m.XlsxPreview })),
+)
+const PptxPreview = lazy(() =>
+  import('./providers/pptx-preview').then((m) => ({ default: m.PptxPreview })),
+)
 
 function PreviewLoadingFallback() {
   return <div className="h-24 animate-pulse rounded-md bg-muted" aria-hidden />
@@ -96,6 +108,57 @@ registerArtifactPreviewProviders([
   ImagePreviewProvider,
   MediaPreviewProvider,
   PdfPreviewProvider,
+  {
+    id: 'hwp-hwpx',
+    priority: 89,
+    requiresText: false,
+    extensions: ['hwp', 'hwpx'],
+    mimeTypes: ['application/x-hwp', 'application/x-hwpx', 'application/hwp+zip'],
+    render: (props) => (
+      <Suspense fallback={<PreviewLoadingFallback />}>
+        <HwpPreview {...props} />
+      </Suspense>
+    ),
+  },
+  {
+    id: 'docx',
+    priority: 88,
+    requiresText: false,
+    extensions: ['docx'],
+    mimeTypes: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+    render: (props) => (
+      <Suspense fallback={<PreviewLoadingFallback />}>
+        <DocxPreview {...props} />
+      </Suspense>
+    ),
+  },
+  {
+    id: 'xlsx',
+    priority: 87,
+    requiresText: false,
+    extensions: ['xlsx', 'xls'],
+    mimeTypes: [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+    ],
+    render: (props) => (
+      <Suspense fallback={<PreviewLoadingFallback />}>
+        <XlsxPreview {...props} />
+      </Suspense>
+    ),
+  },
+  {
+    id: 'pptx',
+    priority: 86,
+    requiresText: false,
+    extensions: ['pptx'],
+    mimeTypes: ['application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+    render: (props) => (
+      <Suspense fallback={<PreviewLoadingFallback />}>
+        <PptxPreview {...props} />
+      </Suspense>
+    ),
+  },
   HtmlPreviewProvider,
   {
     id: 'mermaid',

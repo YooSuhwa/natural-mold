@@ -7,7 +7,7 @@ describe('Next config', () => {
   it('uses webpack for production builds until Turbopack build is stable here', () => {
     const packageJson = JSON.parse(readFileSync(resolve(__dirname, '../../../package.json'), 'utf8'))
 
-    expect(packageJson.scripts.build).toBe('next build --webpack')
+    expect(packageJson.scripts.build).toBe('pnpm prepare:assets && next build --webpack')
   })
 
   it('keeps the Turbopack root inside this repository workspace', () => {
