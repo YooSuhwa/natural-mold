@@ -5,9 +5,14 @@ import { AssistantPanel } from '@/components/agent/assistant-panel'
 
 vi.mock('@/components/chat/markdown-content', () => ({
   MarkdownContent: ({ content }: { content: string }) => <span>{content}</span>,
-  // assistant-thread가 buildMarkdownComponents를 import하므로 mock도 노출
-  // (테스트 자체는 markdown 렌더 검증 안 함 — 빈 객체 stub).
+}))
+
+vi.mock('@/components/chat/markdown-components', () => ({
+  // 테스트 자체는 markdown 렌더 검증 안 함 — 빈 객체 stub.
   buildMarkdownComponents: () => ({}),
+}))
+
+vi.mock('@/components/chat/chat-image', () => ({
   ChatImage: () => null,
 }))
 

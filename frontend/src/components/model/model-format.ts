@@ -17,9 +17,7 @@ export function formatTokenPrice(perToken: number | null | undefined): string {
   return `$${rounded} / 1M`
 }
 
-export function tokenPriceToPerMillion(
-  perToken: number | null | undefined,
-): number | '' {
+export function tokenPriceToPerMillion(perToken: number | null | undefined): number | '' {
   if (perToken === null || perToken === undefined) return ''
   const perMillion = Number(perToken) * PER_MILLION
   if (!Number.isFinite(perMillion)) return ''

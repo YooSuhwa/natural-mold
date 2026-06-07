@@ -94,10 +94,7 @@ export function AssistantPanel({
     }
   }, [initialMessage, sendMessage, agentId])
 
-  const suggestions = useMemo(
-    () => [ts('addTavily'), ts('addTodo'), ts('compactPrompt')],
-    [ts],
-  )
+  const suggestions = useMemo(() => [ts('addTavily'), ts('addTodo'), ts('compactPrompt')], [ts])
 
   const heroImage = createMode ? CREATE_HERO_IMAGE : FIX_AGENT_IMAGE
   const heroTitle =

@@ -254,9 +254,7 @@ function AltMethodCard({
   return (
     <Link
       href={href}
-      className={[
-        'moldy-create-alt-card group flex items-center gap-3 p-3',
-      ].join(' ')}
+      className={['moldy-create-alt-card group flex items-center gap-3 p-3'].join(' ')}
     >
       <span
         className={[

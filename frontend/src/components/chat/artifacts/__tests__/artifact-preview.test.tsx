@@ -92,9 +92,7 @@ describe('ArtifactPreview data viewers', () => {
   })
 
   it('renders yaml and toml content as structured tree previews', async () => {
-    mockedGetArtifactTextContent.mockResolvedValueOnce(
-      content('project:\n  name: Moldy\ncount: 2'),
-    )
+    mockedGetArtifactTextContent.mockResolvedValueOnce(content('project:\n  name: Moldy\ncount: 2'))
     const { unmount } = render(
       <ArtifactPreview
         artifact={artifact({

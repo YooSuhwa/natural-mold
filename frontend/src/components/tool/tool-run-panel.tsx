@@ -56,11 +56,7 @@ export function ToolRunPanel({ toolId }: ToolRunPanelProps) {
         />
       </div>
       <Button size="sm" onClick={handleRun} disabled={run.isPending}>
-        {run.isPending ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <Play className="size-4" />
-        )}
+        {run.isPending ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-4" />}
         {t('run')}
       </Button>
       {result && (

@@ -54,13 +54,9 @@ export function AgentAvatar({
         alt={name}
         width={px}
         height={px}
-        unoptimized
+        unoptimized={!publicAsset}
         onError={() => setHasError(true)}
-        className={cn(
-          'shrink-0 rounded-full bg-primary object-cover',
-          container,
-          className,
-        )}
+        className={cn('shrink-0 rounded-full bg-primary object-cover', container, className)}
       />
     )
   }

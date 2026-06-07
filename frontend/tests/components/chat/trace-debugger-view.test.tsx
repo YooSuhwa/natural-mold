@@ -82,7 +82,7 @@ describe('TraceDebuggerView', () => {
     expect(await screen.findByText('수행정보')).toBeInTheDocument()
     expect(await screen.findByText('Span 상세')).toBeInTheDocument()
     expect(await screen.findByText('로그보기')).toBeInTheDocument()
-    expect((await screen.findAllByText('Conversation traces')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('대화 Trace')).length).toBeGreaterThan(0)
     expect((await screen.findAllByText('Moldy assistant turn')).length).toBeGreaterThan(0)
     expect(screen.queryByText('agent.chat')).not.toBeInTheDocument()
     expect(screen.getByText('web_search')).toBeInTheDocument()

@@ -174,7 +174,11 @@ function compactTurn({
   let summaryInserted = false
 
   for (const message of turn) {
-    if (message.role === 'tool' && message.tool_call_id && suppressedToolCallIds.has(message.tool_call_id)) {
+    if (
+      message.role === 'tool' &&
+      message.tool_call_id &&
+      suppressedToolCallIds.has(message.tool_call_id)
+    ) {
       continue
     }
 

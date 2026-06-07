@@ -33,6 +33,7 @@ const SKIP_PATH_PARTS = new Set([
 const SKIP_FILE_PATTERNS = [
   /\.test\.[cm]?[tj]sx?$/,
   /\.spec\.[cm]?[tj]sx?$/,
+  /(^|\/)src\/components\/agent-prism\//,
   /(^|\/)src\/lib\/types\//,
   /(^|\/)src\/lib\/api\//,
   /(^|\/)src\/lib\/constants\//,
@@ -71,10 +72,10 @@ function lineNumberAt(source, index) {
 function looksLikeCodeFragment(kind, text) {
   if (kind !== 'jsx-text') return false
   return (
-    /(?:^|\s)(?:const|let|return|void|Promise|AsyncGenerator|Set|Record|React|use[A-Z]\w*)\b/.test(
+    /(?:^|\s)(?:const|let|type|return|void|Promise|AsyncGenerator|Set|Record|React|Parameters|use[A-Z]\w*)\b/.test(
       text,
     ) ||
-    /(?:^|\s)&\s*VariantProps\b/.test(text) ||
+    /(?:^|\s)&\s*(?:Omit|VariantProps)\b/.test(text) ||
     /[()[\]{}]|=>|===|!==|&&|\?\?|:\s|;\s|,\s*\]/.test(text)
   )
 }
@@ -113,7 +114,7 @@ export function findStaticTextIssuesInSource(source, filePath = '<inline>', opti
   }
 
   const jsxTextRe = new RegExp(
-    '>\\s*([^<>{}`]*(?:' + userTextRe.source + ')[^<>{}`]*)\\s*<',
+    '(?<!=)>\\s*([^<>{}`]*(?:' + userTextRe.source + ')[^<>{}`]*)\\s*<',
     'gu',
   )
   for (const match of scanSource.matchAll(jsxTextRe)) {
@@ -128,7 +129,8 @@ export function findStaticTextIssuesInSource(source, filePath = '<inline>', opti
     pushIssue(issues, scanSource, match.index ?? 0, 'toast', match[2], filePath, options)
   }
 
-  const literalRe = /(?<![\w$])(["'`])((?:\\.|(?!\1)[^\n\r])*?[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}](?:\\.|(?!\1)[^\n\r])*?)\1/gu
+  const literalRe =
+    /(?<![\w$])(["'`])((?:\\.|(?!\1)[^\n\r])*?[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}](?:\\.|(?!\1)[^\n\r])*?)\1/gu
   for (const match of scanSource.matchAll(literalRe)) {
     if (!CJK_TEXT_RE.test(match[2])) continue
     pushIssue(issues, scanSource, match.index ?? 0, 'string-literal', match[2], filePath, options)
@@ -146,12 +148,11 @@ export function findStaticTextIssuesInSource(source, filePath = '<inline>', opti
     )
   })
 
-  return compacted
-    .map((issue) => {
-      const { index, ...publicIssue } = issue
-      void index
-      return publicIssue
-    })
+  return compacted.map((issue) => {
+    const { index, ...publicIssue } = issue
+    void index
+    return publicIssue
+  })
 }
 
 async function collectFiles(rootDir) {
@@ -171,12 +172,17 @@ async function collectFiles(rootDir) {
   return out
 }
 
-export async function findStaticTextIssues(rootDir = path.join(process.cwd(), 'src'), options = {}) {
+export async function findStaticTextIssues(
+  rootDir = path.join(process.cwd(), 'src'),
+  options = {},
+) {
   const files = await collectFiles(rootDir)
   const issues = []
   for (const file of files) {
     const source = await readFile(file, 'utf8')
-    issues.push(...findStaticTextIssuesInSource(source, path.relative(process.cwd(), file), options))
+    issues.push(
+      ...findStaticTextIssuesInSource(source, path.relative(process.cwd(), file), options),
+    )
   }
   return issues
 }

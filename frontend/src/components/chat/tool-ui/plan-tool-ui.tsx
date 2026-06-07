@@ -54,13 +54,7 @@ export const PlanToolUI = makeAssistantToolUI<WriteTodosArgs, string>({
   render: ({ args, status }) => <PlanToolView args={args} statusType={status.type} />,
 })
 
-function PlanToolView({
-  args,
-  statusType,
-}: {
-  args: WriteTodosArgs
-  statusType: string
-}) {
+function PlanToolView({ args, statusType }: { args: WriteTodosArgs; statusType: string }) {
   const t = useTranslations('chat.toolCall.plan')
   const items = args?.todos ?? args?.items ?? []
   const isRunning = statusType === 'running'

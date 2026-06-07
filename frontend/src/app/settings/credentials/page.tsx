@@ -26,10 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { CredentialCreateModal } from '@/components/credential/credential-create-modal'
 import { CredentialDetailDialog } from '@/components/credential/credential-detail-dialog'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
-import {
-  getResourceTone,
-  resourceStatusChipClassName,
-} from '@/lib/resource-tones'
+import { getResourceTone, resourceStatusChipClassName } from '@/lib/resource-tones'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
 import { cn } from '@/lib/utils'
 import { SettingsShell } from '../_components/settings-shell'
@@ -192,85 +189,87 @@ export default function CredentialsPage() {
           </Button>
         }
       >
-      <ResourcePanel>
-        {isInitialEmpty ? (
-          <ResourcePanel.Body>
-            <EmptyState
-              icon={<KeyRound className="size-6" />}
-              title={t('empty.title')}
-              description={t('empty.description')}
-              className="bg-card/50"
-              action={
-                <Button onClick={() => setCreateOpen(true)}>
-                  <Plus className="size-4" />
-                  {t('empty.action')}
-                </Button>
-              }
-            />
-          </ResourcePanel.Body>
-        ) : (
-          <>
-            <ResourcePanel.Toolbar>
-              <CountedLineTabs
-                ariaLabel={t('tabs.label')}
-                value={activeTab}
-                tabs={tabs}
-                onValueChange={(value) => setActiveTab(value as CredentialStatusTab)}
+        <ResourcePanel>
+          {isInitialEmpty ? (
+            <ResourcePanel.Body>
+              <EmptyState
+                icon={<KeyRound className="size-6" />}
+                title={t('empty.title')}
+                description={t('empty.description')}
+                className="bg-card/50"
+                action={
+                  <Button onClick={() => setCreateOpen(true)}>
+                    <Plus className="size-4" />
+                    {t('empty.action')}
+                  </Button>
+                }
               />
-              <ResourceToolbar>
-                <SearchInput
-                  containerClassName="flex-1 sm:max-w-[360px]"
-                  placeholder={t('searchPlaceholder')}
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </ResourceToolbar>
-            </ResourcePanel.Toolbar>
-
-            <ResourcePanel.Body className="bg-background/30">
-              {isLoading ? (
-                <ResourceGrid minColumnWidth={252}>
-                  {Array.from({ length: 6 }).map((_, index) => (
-                    <Skeleton key={index} className="moldy-skeleton-card h-[176px]" />
-                  ))}
-                </ResourceGrid>
-              ) : isFilteredEmpty ? (
-                <EmptyState title={t('empty.filtered')} className="bg-card/50" />
-              ) : (
-                <ResourceGrid minColumnWidth={252}>
-                  {filteredCredentials.map((credential) => (
-                    <CredentialCard
-                      key={credential.id}
-                      credential={credential}
-                      definition={definitionMap.get(credential.definition_key)}
-                      providerLabel={getProviderLabel(
-                        credential.definition_key,
-                        definitionMap.get(credential.definition_key),
-                      )}
-                      categoryLabel={getCategoryLabel(definitionMap.get(credential.definition_key))}
-                      fieldCountLabel={t('fieldCount', {
-                        count: credential.field_keys.length,
-                      })}
-                      lastUsedLabel={formatDate(credential.last_used_at)}
-                      lastTestedLabel={formatDate(credential.last_tested_at)}
-                      sharedLabel={t('shared')}
-                      manageLabel={t('actions.manage')}
-                      onOpen={setDetailId}
-                    />
-                  ))}
-                </ResourceGrid>
-              )}
             </ResourcePanel.Body>
-          </>
-        )}
-      </ResourcePanel>
+          ) : (
+            <>
+              <ResourcePanel.Toolbar>
+                <CountedLineTabs
+                  ariaLabel={t('tabs.label')}
+                  value={activeTab}
+                  tabs={tabs}
+                  onValueChange={(value) => setActiveTab(value as CredentialStatusTab)}
+                />
+                <ResourceToolbar>
+                  <SearchInput
+                    containerClassName="flex-1 sm:max-w-[360px]"
+                    placeholder={t('searchPlaceholder')}
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                  />
+                </ResourceToolbar>
+              </ResourcePanel.Toolbar>
 
-      <CredentialCreateModal open={createOpen} onOpenChange={setCreateOpen} />
-      <CredentialDetailDialog
-        credentialId={detailId}
-        open={!!detailId}
-        onOpenChange={(open) => !open && setDetailId(null)}
-      />
+              <ResourcePanel.Body className="bg-background/30">
+                {isLoading ? (
+                  <ResourceGrid minColumnWidth={252}>
+                    {Array.from({ length: 6 }).map((_, index) => (
+                      <Skeleton key={index} className="moldy-skeleton-card h-[176px]" />
+                    ))}
+                  </ResourceGrid>
+                ) : isFilteredEmpty ? (
+                  <EmptyState title={t('empty.filtered')} className="bg-card/50" />
+                ) : (
+                  <ResourceGrid minColumnWidth={252}>
+                    {filteredCredentials.map((credential) => (
+                      <CredentialCard
+                        key={credential.id}
+                        credential={credential}
+                        definition={definitionMap.get(credential.definition_key)}
+                        providerLabel={getProviderLabel(
+                          credential.definition_key,
+                          definitionMap.get(credential.definition_key),
+                        )}
+                        categoryLabel={getCategoryLabel(
+                          definitionMap.get(credential.definition_key),
+                        )}
+                        fieldCountLabel={t('fieldCount', {
+                          count: credential.field_keys.length,
+                        })}
+                        lastUsedLabel={formatDate(credential.last_used_at)}
+                        lastTestedLabel={formatDate(credential.last_tested_at)}
+                        sharedLabel={t('shared')}
+                        manageLabel={t('actions.manage')}
+                        onOpen={setDetailId}
+                      />
+                    ))}
+                  </ResourceGrid>
+                )}
+              </ResourcePanel.Body>
+            </>
+          )}
+        </ResourcePanel>
+
+        <CredentialCreateModal open={createOpen} onOpenChange={setCreateOpen} />
+        <CredentialDetailDialog
+          credentialId={detailId}
+          open={!!detailId}
+          onOpenChange={(open) => !open && setDetailId(null)}
+        />
       </ResourcePage>
     </SettingsShell>
   )
@@ -300,9 +299,7 @@ function CredentialCard({
   onOpen: (id: string) => void
 }) {
   const tone = getResourceTone(definition?.category ?? credential.definition_key)
-  const secondaryMetaLabel = credential.is_shared
-    ? sharedLabel
-    : lastTestedLabel || lastUsedLabel
+  const secondaryMetaLabel = credential.is_shared ? sharedLabel : lastTestedLabel || lastUsedLabel
 
   return (
     <ResourceListCard
@@ -313,12 +310,7 @@ function CredentialCard({
       onClick={() => onOpen(credential.id)}
     >
       <ResourceListCard.Header>
-        <span
-          className={cn(
-            'moldy-resource-icon',
-            tone.icon,
-          )}
-        >
+        <span className={cn('moldy-resource-icon', tone.icon)}>
           <DomainIcon
             iconId={definition?.icon_id ?? credential.definition_key}
             className="size-4.5"
@@ -328,15 +320,10 @@ function CredentialCard({
       </ResourceListCard.Header>
 
       <ResourceCardTitle>{credential.name}</ResourceCardTitle>
-      {categoryLabel ? (
-        <ResourceCardSubtext>{categoryLabel}</ResourceCardSubtext>
-      ) : null}
+      {categoryLabel ? <ResourceCardSubtext>{categoryLabel}</ResourceCardSubtext> : null}
 
       <ResourceListCard.StatusRow>
-        <StatusChip
-          variant={credential.status}
-          className={resourceStatusChipClassName}
-        />
+        <StatusChip variant={credential.status} className={resourceStatusChipClassName} />
       </ResourceListCard.StatusRow>
 
       <ResourceListCard.MetaRow>

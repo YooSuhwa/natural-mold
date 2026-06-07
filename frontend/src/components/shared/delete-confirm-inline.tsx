@@ -22,12 +22,7 @@ export function DeleteConfirmInline({ entity, onCancel, onConfirm, pending }: Pr
         <Button size="sm" variant="outline" onClick={onCancel} disabled={pending}>
           {tc('cancel')}
         </Button>
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={onConfirm}
-          disabled={pending}
-        >
+        <Button size="sm" variant="destructive" onClick={onConfirm} disabled={pending}>
           {pending ? <Loader2Icon className="mr-1 size-3 animate-spin" /> : null}
           {t('confirm')}
         </Button>

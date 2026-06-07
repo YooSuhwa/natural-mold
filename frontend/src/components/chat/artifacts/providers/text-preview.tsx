@@ -18,7 +18,6 @@ export const TextPreviewProvider: ArtifactPreviewProvider = {
   extensions: ['txt', 'log'],
   mimeTypes: ['text/*'],
   match: (artifact) =>
-    artifact.mime_type.startsWith('text/') ||
-    ['txt', 'log'].includes(artifact.extension ?? ''),
+    artifact.mime_type.startsWith('text/') || ['txt', 'log'].includes(artifact.extension ?? ''),
   render: (props) => <TextPreview {...props} />,
 }

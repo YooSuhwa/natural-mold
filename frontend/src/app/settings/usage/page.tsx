@@ -185,90 +185,90 @@ export default function UsagePage() {
         <ResourcePanel className="flex-none overflow-visible">
           <ResourcePanel.Toolbar className="border-b-0">
             <div className="flex flex-wrap items-end gap-3" data-testid="usage-filter-bar">
-          <div className="flex flex-col gap-1.5">
-            <span className="moldy-ui-caption font-medium text-muted-foreground">
-              {t('filters.range')}
-            </span>
-            <Select value={preset} onValueChange={(v) => v && setPreset(v as RangePreset)}>
-              <SelectTrigger className="w-[160px]" data-testid="range-preset-select">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="7d">{t('period.7d')}</SelectItem>
-                <SelectItem value="30d">{t('period.30d')}</SelectItem>
-                <SelectItem value="90d">{t('period.90d')}</SelectItem>
-                <SelectItem value="custom">{t('period.custom')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {preset === 'custom' && (
-            <>
               <div className="flex flex-col gap-1.5">
                 <span className="moldy-ui-caption font-medium text-muted-foreground">
-                  {t('filters.from')}
+                  {t('filters.range')}
                 </span>
-                <Input
-                  type="date"
-                  value={customFrom}
-                  onChange={(e) => setCustomFrom(e.target.value)}
-                  className="w-[160px]"
-                  data-testid="custom-from"
-                />
+                <Select value={preset} onValueChange={(v) => v && setPreset(v as RangePreset)}>
+                  <SelectTrigger className="w-[160px]" data-testid="range-preset-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7d">{t('period.7d')}</SelectItem>
+                    <SelectItem value="30d">{t('period.30d')}</SelectItem>
+                    <SelectItem value="90d">{t('period.90d')}</SelectItem>
+                    <SelectItem value="custom">{t('period.custom')}</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+
+              {preset === 'custom' && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="moldy-ui-caption font-medium text-muted-foreground">
+                      {t('filters.from')}
+                    </span>
+                    <Input
+                      type="date"
+                      value={customFrom}
+                      onChange={(e) => setCustomFrom(e.target.value)}
+                      className="w-[160px]"
+                      data-testid="custom-from"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="moldy-ui-caption font-medium text-muted-foreground">
+                      {t('filters.to')}
+                    </span>
+                    <Input
+                      type="date"
+                      value={customTo}
+                      onChange={(e) => setCustomTo(e.target.value)}
+                      className="w-[160px]"
+                      data-testid="custom-to"
+                    />
+                  </div>
+                </>
+              )}
+
               <div className="flex flex-col gap-1.5">
                 <span className="moldy-ui-caption font-medium text-muted-foreground">
-                  {t('filters.to')}
+                  {t('filters.kind')}
                 </span>
-                <Input
-                  type="date"
-                  value={customTo}
-                  onChange={(e) => setCustomTo(e.target.value)}
-                  className="w-[160px]"
-                  data-testid="custom-to"
+                <PillTabs
+                  testId="target-kind-tabs"
+                  ariaLabel={t('filters.kind')}
+                  tabs={kindTabs}
+                  value={targetKind}
+                  onChange={setTargetKind}
                 />
               </div>
-            </>
-          )}
 
-          <div className="flex flex-col gap-1.5">
-            <span className="moldy-ui-caption font-medium text-muted-foreground">
-              {t('filters.kind')}
-            </span>
-            <PillTabs
-              testId="target-kind-tabs"
-              ariaLabel={t('filters.kind')}
-              tabs={kindTabs}
-              value={targetKind}
-              onChange={setTargetKind}
-            />
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="moldy-ui-caption font-medium text-muted-foreground">
+                  {t('filters.groupBy')}
+                </span>
+                <PillTabs
+                  testId="group-by-tabs"
+                  ariaLabel={t('filters.groupBy')}
+                  tabs={groupTabs}
+                  value={groupBy}
+                  onChange={setGroupBy}
+                />
+              </div>
 
-          <div className="flex flex-col gap-1.5">
-            <span className="moldy-ui-caption font-medium text-muted-foreground">
-              {t('filters.groupBy')}
-            </span>
-            <PillTabs
-              testId="group-by-tabs"
-              ariaLabel={t('filters.groupBy')}
-              tabs={groupTabs}
-              value={groupBy}
-              onChange={setGroupBy}
-            />
-          </div>
-
-          <div className="ml-auto flex flex-col gap-1.5">
-            <span className="moldy-ui-caption font-medium text-muted-foreground">
-              {t('filters.metric')}
-            </span>
-            <PillTabs
-              testId="metric-tabs"
-              ariaLabel={t('filters.metric')}
-              tabs={metricTabs}
-              value={metric}
-              onChange={setMetric}
-            />
-          </div>
+              <div className="ml-auto flex flex-col gap-1.5">
+                <span className="moldy-ui-caption font-medium text-muted-foreground">
+                  {t('filters.metric')}
+                </span>
+                <PillTabs
+                  testId="metric-tabs"
+                  ariaLabel={t('filters.metric')}
+                  tabs={metricTabs}
+                  value={metric}
+                  onChange={setMetric}
+                />
+              </div>
             </div>
           </ResourcePanel.Toolbar>
         </ResourcePanel>
@@ -276,19 +276,19 @@ export default function UsagePage() {
         {/* Chart area */}
         <ResourcePanel className="flex-none">
           <ResourcePanel.Body className="space-y-3 bg-background/25">
-          {dailyLoading ? (
-            <Skeleton className="moldy-skeleton-card h-64 w-full" />
-          ) : entries.length === 0 ? (
-            <EmptyState
-              icon={<BarChart3Icon className="size-6" />}
-              title={t('empty.title')}
-              description={t('empty.description')}
-            />
-          ) : groupBy === 'date' ? (
-            <SpendLineChart data={entries} metric={metric} />
-          ) : (
-            <SpendBarChart data={entries} metric={metric} />
-          )}
+            {dailyLoading ? (
+              <Skeleton className="moldy-skeleton-card h-64 w-full" />
+            ) : entries.length === 0 ? (
+              <EmptyState
+                icon={<BarChart3Icon className="size-6" />}
+                title={t('empty.title')}
+                description={t('empty.description')}
+              />
+            ) : groupBy === 'date' ? (
+              <SpendLineChart data={entries} metric={metric} />
+            ) : (
+              <SpendBarChart data={entries} metric={metric} />
+            )}
           </ResourcePanel.Body>
         </ResourcePanel>
 
@@ -388,9 +388,7 @@ function PillTabs<T extends string>({
             role="tab"
             aria-selected={isActive}
             onClick={() => onChange(t.value)}
-            className={cn(
-              'moldy-segmented-tab',
-            )}
+            className={cn('moldy-segmented-tab')}
             data-active={isActive ? 'true' : undefined}
           >
             {t.label}

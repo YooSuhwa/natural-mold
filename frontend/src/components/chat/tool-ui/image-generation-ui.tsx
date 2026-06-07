@@ -244,9 +244,7 @@ function ImageApprovalBody({
           className="moldy-card mx-auto size-48 object-contain"
         />
       ) : (
-        <p className="moldy-ui-body-sm moldy-builder-color-muted-soft">
-          {t('noImage')}
-        </p>
+        <p className="moldy-ui-body-sm moldy-builder-color-muted-soft">{t('noImage')}</p>
       )}
       <PromptEditor
         label={t('regeneratePrompt')}

@@ -4,16 +4,10 @@ import { useRouter } from 'next/navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { authApi, type LoginPayload, type RegisterPayload } from '@/lib/api/auth'
-import {
-  resetRefreshBackoff,
-  resetSessionExpiredFlag,
-} from '@/lib/api/client'
+import { resetRefreshBackoff, resetSessionExpiredFlag } from '@/lib/api/client'
 import { csrfStore } from '@/lib/auth/csrf'
 import { SESSION_QUERY_KEY } from '@/lib/auth/session'
-import {
-  ONBOARDING_DISMISSED_FLAG,
-  SUPER_USER_WELCOMED_FLAG,
-} from '@/lib/auth/session-flags'
+import { ONBOARDING_DISMISSED_FLAG, SUPER_USER_WELCOMED_FLAG } from '@/lib/auth/session-flags'
 import type { AuthResponse } from '@/lib/types/user'
 
 function isSafeCallback(url: string | null | undefined): url is string {

@@ -33,10 +33,7 @@ const AUTH_PREAUTH_ENDPOINTS = [
   '/api/auth/refresh',
 ] as const
 const CSRF_SKIP_ENDPOINTS = AUTH_PREAUTH_ENDPOINTS
-const REFRESH_SKIP_ENDPOINTS = [
-  ...AUTH_PREAUTH_ENDPOINTS,
-  '/api/auth/logout',
-] as const
+const REFRESH_SKIP_ENDPOINTS = [...AUTH_PREAUTH_ENDPOINTS, '/api/auth/logout'] as const
 
 /** HTTP methods considered state-changing for CSRF purposes. */
 const MUTATION_METHODS = new Set(['POST', 'PATCH', 'PUT', 'DELETE'])
@@ -139,10 +136,7 @@ function buildHeaders(method: string, path: string, init?: HeadersInit): Headers
  *  never touched the resource, so re-sending after a refresh cannot
  *  double-apply the mutation. (Without that invariant we would have to
  *  serialise non-idempotent mutations through a different path.) */
-async function withAuthRetry(
-  path: string,
-  send: () => Promise<Response>,
-): Promise<Response> {
+async function withAuthRetry(path: string, send: () => Promise<Response>): Promise<Response> {
   const response = await send()
   if (response.status !== 401 || matchesEndpoint(path, REFRESH_SKIP_ENDPOINTS)) {
     return response

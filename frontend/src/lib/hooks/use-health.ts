@@ -2,11 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { healthApi } from '@/lib/api/health'
-import type {
-  HealthCheckEntry,
-  HealthTargetKind,
-  RunHealthCheckInput,
-} from '@/lib/types/health'
+import type { HealthCheckEntry, HealthTargetKind, RunHealthCheckInput } from '@/lib/types/health'
 
 const KEY_MODELS = ['health', 'models'] as const
 const KEY_MCP = ['health', 'mcp-servers'] as const

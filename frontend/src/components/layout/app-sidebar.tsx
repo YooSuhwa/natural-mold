@@ -344,10 +344,7 @@ export function AppSidebar() {
           >
             {isDarkTheme ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
           </button>
-          <DropdownMenu
-            open={languageOpen}
-            onOpenChange={setLanguageOpen}
-          >
+          <DropdownMenu open={languageOpen} onOpenChange={setLanguageOpen}>
             <DropdownMenuTrigger
               render={<button type="button" />}
               className="moldy-sidebar-control inline-flex h-7 items-center gap-1 rounded-lg px-1.5 text-xs font-semibold data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"

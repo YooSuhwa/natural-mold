@@ -22,12 +22,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { useAgents } from '@/lib/hooks/use-agents'
 import {
@@ -115,9 +110,7 @@ function MemorySettingsInner({ settings }: { settings: UserMemorySettings }) {
           <div className="grid gap-2 md:grid-cols-[150px_minmax(0,1fr)]">
             <Select
               value={scopeFilter}
-              onValueChange={(value) =>
-                value && setScopeFilter(value as MemoryScopeFilter)
-              }
+              onValueChange={(value) => value && setScopeFilter(value as MemoryScopeFilter)}
             >
               <SelectTrigger className="w-full" aria-label={t('list.scopeFilter')}>
                 <span>{t(`scopeFilter.${scopeFilter}`)}</span>
@@ -217,9 +210,7 @@ function PolicyCard({ settings }: { settings: UserMemorySettings }) {
             description={t('policy.memoryReadEnabledHelp')}
             checked={draft.memory_read_enabled}
             disabled={!draft.memory_enabled}
-            onChange={(checked) =>
-              setDraft((prev) => ({ ...prev, memory_read_enabled: checked }))
-            }
+            onChange={(checked) => setDraft((prev) => ({ ...prev, memory_read_enabled: checked }))}
           />
         </div>
 
@@ -367,7 +358,7 @@ function CreateMemoryCard({
                   <span className="truncate">
                     {scope !== 'agent'
                       ? t('create.agentDisabled')
-                      : agents.find((agent) => agent.id === agentId)?.name ?? t('create.agent')}
+                      : (agents.find((agent) => agent.id === agentId)?.name ?? t('create.agent'))}
                   </span>
                 </SelectTrigger>
                 <SelectContent>
@@ -603,10 +594,7 @@ function ToggleField({
   onChange: (checked: boolean) => void
 }) {
   return (
-    <label
-      htmlFor={id}
-      className="flex gap-3 rounded-lg border border-border/70 bg-background p-3"
-    >
+    <label htmlFor={id} className="flex gap-3 rounded-lg border border-border/70 bg-background p-3">
       <Checkbox
         id={id}
         aria-label={label}

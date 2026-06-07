@@ -11,10 +11,7 @@ async function* fromArray(events: TestEvent[]): AsyncGenerator<TestEvent> {
   for (const ev of events) yield ev
 }
 
-async function* throwAfter(
-  events: TestEvent[],
-  err: unknown,
-): AsyncGenerator<TestEvent> {
+async function* throwAfter(events: TestEvent[], err: unknown): AsyncGenerator<TestEvent> {
   for (const ev of events) yield ev
   throw err
 }
@@ -30,7 +27,11 @@ describe('withAutoResume', () => {
     const resume = vi.fn(() => null)
     const result = await collect(
       withAutoResume(
-        () => fromArray([{ id: 'a-1', payload: 1 }, { id: 'a-2', payload: 2 }]),
+        () =>
+          fromArray([
+            { id: 'a-1', payload: 1 },
+            { id: 'a-2', payload: 2 },
+          ]),
         resume,
       ),
     )
@@ -42,13 +43,19 @@ describe('withAutoResume', () => {
     const resume = vi.fn((lastEventId, attempt) => {
       expect(lastEventId).toBe('a-2')
       expect(attempt).toBe(1)
-      return fromArray([{ id: 'a-3', payload: 3 }, { id: 'a-4', payload: 4 }])
+      return fromArray([
+        { id: 'a-3', payload: 3 },
+        { id: 'a-4', payload: 4 },
+      ])
     })
     const result = await collect(
       withAutoResume<TestEvent>(
         () =>
           throwAfter(
-            [{ id: 'a-1', payload: 1 }, { id: 'a-2', payload: 2 }],
+            [
+              { id: 'a-1', payload: 1 },
+              { id: 'a-2', payload: 2 },
+            ],
             new TypeError('network'),
           ),
         resume,
@@ -63,8 +70,7 @@ describe('withAutoResume', () => {
     const calls: string[] = []
     await collect(
       withAutoResume<TestEvent>(
-        () =>
-          throwAfter([{ id: 'a-1', payload: 1 }], new TypeError('boom')),
+        () => throwAfter([{ id: 'a-1', payload: 1 }], new TypeError('boom')),
         () => fromArray([{ id: 'a-2', payload: 2 }]),
         {
           backoffMs: [0],
@@ -118,8 +124,7 @@ describe('withAutoResume', () => {
     await expect(
       collect(
         withAutoResume<TestEvent>(
-          () =>
-            throwAfter([], new DOMException('Aborted', 'AbortError')),
+          () => throwAfter([], new DOMException('Aborted', 'AbortError')),
           resume,
           { backoffMs: [0] },
         ),
@@ -134,11 +139,10 @@ describe('withAutoResume', () => {
     const resume = vi.fn(() => fromArray([{ id: 'a-2', payload: 2 }]))
     await expect(
       collect(
-        withAutoResume<TestEvent>(
-          () => throwAfter([], new TypeError('boom')),
-          resume,
-          { backoffMs: [0], signal: controller.signal },
-        ),
+        withAutoResume<TestEvent>(() => throwAfter([], new TypeError('boom')), resume, {
+          backoffMs: [0],
+          signal: controller.signal,
+        }),
       ),
     ).rejects.toThrow()
     expect(resume).not.toHaveBeenCalled()
@@ -149,8 +153,7 @@ describe('withAutoResume', () => {
     await expect(
       collect(
         withAutoResume<TestEvent>(
-          () =>
-            throwAfter([{ id: 'a-1', payload: 1 }], new TypeError('boom')),
+          () => throwAfter([{ id: 'a-1', payload: 1 }], new TypeError('boom')),
           () => null,
           { backoffMs: [0], onFailed },
         ),
@@ -192,11 +195,11 @@ describe('withAutoResume', () => {
     const onFailed = vi.fn()
     const resume = vi.fn(() => fromArray([{ id: 'a-2', payload: 2 }]))
     const promise = collect(
-      withAutoResume<TestEvent>(
-        () => throwAfter([], new TypeError('boom')),
-        resume,
-        { backoffMs: [10000], signal: controller.signal, onFailed },
-      ),
+      withAutoResume<TestEvent>(() => throwAfter([], new TypeError('boom')), resume, {
+        backoffMs: [10000],
+        signal: controller.signal,
+        onFailed,
+      }),
     )
     // backoff 시작 시점을 보장 — 한 microtask 양보 후 abort.
     await Promise.resolve()
@@ -228,11 +231,9 @@ describe('withAutoResume', () => {
       return fromArray([{ id: 'a-1', payload: 1 }])
     })
     const result = await collect(
-      withAutoResume<TestEvent>(
-        () => throwAfter([], new TypeError('boom')),
-        resume,
-        { backoffMs: [0] },
-      ),
+      withAutoResume<TestEvent>(() => throwAfter([], new TypeError('boom')), resume, {
+        backoffMs: [0],
+      }),
     )
     expect(result.map((e) => e.payload)).toEqual([1])
     expect(resume).toHaveBeenCalledOnce()
@@ -245,11 +246,7 @@ describe('withAutoResume', () => {
     })
     await collect(
       withAutoResume<TestEvent>(
-        () =>
-          throwAfter(
-            [{ id: 'a-1', payload: 1 }, { payload: 99 }],
-            new TypeError('boom'),
-          ),
+        () => throwAfter([{ id: 'a-1', payload: 1 }, { payload: 99 }], new TypeError('boom')),
         resume,
         { backoffMs: [0] },
       ),

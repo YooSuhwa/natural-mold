@@ -148,8 +148,7 @@ describe('settings pages', () => {
   it('renders editable profile settings from the active session', () => {
     render(<SettingsPage />)
 
-    expect(screen.getByRole('heading', { name: '설정' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '프로필' })).toHaveAttribute('href', '/settings')
+    expect(screen.getByRole('heading', { name: '프로필' })).toBeInTheDocument()
     expect(screen.getByDisplayValue('체스터')).toBeInTheDocument()
     expect(screen.getByLabelText('체스터 프로필 아이콘')).toHaveTextContent('체')
     expect(screen.getByDisplayValue('체')).toBeInTheDocument()
@@ -199,33 +198,19 @@ describe('settings pages', () => {
 
     expect(screen.getByRole('heading', { name: 'Agent API' })).toBeInTheDocument()
     expect(
-      screen.getByText('Deploy agents, issue server-side API keys, and call Moldy from external systems.'),
+      screen.getByText(
+        '에이전트를 외부 시스템에서 호출할 수 있도록 배포하고 서버용 API 키를 발급합니다.',
+      ),
     ).toBeInTheDocument()
-    expect(screen.getByText('Deployment candidates')).toBeInTheDocument()
-    expect(screen.getAllByText('API keys').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByText('Call examples')).toBeInTheDocument()
+    expect(screen.getByText('배포 후보')).toBeInTheDocument()
+    expect(screen.getAllByText('API 키').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('호출 예시')).toBeInTheDocument()
   })
 
   it('shows the admin settings section for super users', () => {
     render(<SettingsPage />)
 
     expect(screen.getAllByText('관리자').length).toBeGreaterThanOrEqual(1)
-    expect(screen.getByRole('link', { name: '운영자 관리' })).toHaveAttribute(
-      'href',
-      '/settings/marketplace-admin',
-    )
-    expect(screen.getByRole('link', { name: '시스템 자격증명' })).toHaveAttribute(
-      'href',
-      '/settings/system-credentials',
-    )
-    expect(screen.getByRole('link', { name: '시스템 LLM 설정' })).toHaveAttribute(
-      'href',
-      '/settings/system-llm',
-    )
-    expect(screen.getByRole('link', { name: '전체 활동 기록' })).toHaveAttribute(
-      'href',
-      '/settings/admin/audit',
-    )
   })
 
   it('hides the admin settings section for regular users', () => {
@@ -259,10 +244,6 @@ describe('settings pages', () => {
     render(<MemorySettingsPage />)
 
     expect(screen.getByRole('heading', { name: '메모리' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '메모리' })).toHaveAttribute(
-      'href',
-      '/settings/memory',
-    )
     expect(screen.getByLabelText('메모리 활성화')).toBeChecked()
     expect(screen.getByLabelText('응답에 메모리 사용')).toBeChecked()
     expect(screen.getByText('저장 전 확인')).toBeInTheDocument()

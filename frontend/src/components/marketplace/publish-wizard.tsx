@@ -127,10 +127,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
 
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="xl" height="tall">
-      <DialogShell.Header
-        title={t('title', { name: skill.name })}
-        description={t('description')}
-      />
+      <DialogShell.Header title={t('title', { name: skill.name })} description={t('description')} />
 
       <DialogShell.Split>
         <DialogShell.Sidebar>
@@ -243,9 +240,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
                     onChange={(e) => setAclInput(e.target.value)}
                     placeholder="00000000-0000-…, …"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    {t('aclHint')}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{t('aclHint')}</p>
                 </div>
               ) : null}
               {visibility === 'public' ? (
@@ -263,7 +258,8 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
                 <li>{t('confirmCreateItem')}</li>
                 <li>{t('confirmCreateVersion')}</li>
                 <li>
-                  {t('visibilityLabel')} <span className="font-medium text-foreground">{visibility}</span>
+                  {t('visibilityLabel')}{' '}
+                  <span className="font-medium text-foreground">{visibility}</span>
                 </li>
                 {visibility === 'restricted' ? (
                   <li>{t('aclSummary', { count: aclInput.split(',').filter(Boolean).length })}</li>
@@ -275,9 +271,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
           {step === 'done' ? (
             <div className="space-y-3 text-center">
               <p className="text-base font-medium">{t('done.title')}</p>
-              <p className="text-sm text-muted-foreground">
-                {t('done.description')}
-              </p>
+              <p className="text-sm text-muted-foreground">{t('done.description')}</p>
             </div>
           ) : null}
         </DialogShell.Body>

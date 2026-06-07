@@ -354,9 +354,7 @@ function PackageSkillEditor({ skillId, onClose }: { skillId: string; onClose: ()
   function selectFile(path: string) {
     if (path === selectedPath) return
     if (currentDirty) {
-      const ok = window.confirm(
-        t('discardConfirm', { path: selectedPath ?? '' }),
-      )
+      const ok = window.confirm(t('discardConfirm', { path: selectedPath ?? '' }))
       if (!ok) return
       // Drop the draft for the previously-selected path.
       setDrafts((prev) => {
@@ -822,9 +820,7 @@ function FileContentArea({
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-md border border-border/60 bg-muted/20 p-6 text-center">
         <p className="text-sm font-medium">{t('binaryFile')}</p>
-        <p className="text-xs text-muted-foreground">
-          {t('binaryUnavailable')}
-        </p>
+        <p className="text-xs text-muted-foreground">{t('binaryUnavailable')}</p>
         <a
           href={skillsApi.fileUrl(skillId, path)}
           target="_blank"

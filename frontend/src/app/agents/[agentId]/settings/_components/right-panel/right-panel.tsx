@@ -87,7 +87,7 @@ export function RightPanel({
           </LineTabsTrigger>
           <LineTabsTrigger value="api">
             <KeyRoundIcon className="size-3.5" />
-            API
+            {t('tabs.api')}
           </LineTabsTrigger>
         </LineTabsList>
       </div>

@@ -29,9 +29,7 @@ import {
   ResourceToolbar,
 } from '@/components/shared/resource-layout'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  getResourceTone,
-} from '@/lib/resource-tones'
+import { getResourceTone } from '@/lib/resource-tones'
 import { cn } from '@/lib/utils'
 import type { Template } from '@/lib/types'
 
@@ -173,12 +171,7 @@ export default function TemplateSelectionPage() {
 
 function CreateConversationLink({ label }: { label: string }) {
   return (
-    <Link
-      href="/agents/new"
-      className={cn(
-        'moldy-primary-action',
-      )}
-    >
+    <Link href="/agents/new" className={cn('moldy-primary-action')}>
       <PlusIcon aria-hidden className="size-4" />
       {label}
     </Link>
@@ -308,19 +301,16 @@ function TemplateCard({
       )}
     >
       <ResourceListCard.Header>
-        <span
-          className={cn(
-            'moldy-resource-icon',
-            tone.icon,
-          )}
-        >
+        <span className={cn('moldy-resource-icon', tone.icon)}>
           <BotIcon aria-hidden className="size-4.5" />
         </span>
         <ResourceBadge tone={tone}>{template.category}</ResourceBadge>
       </ResourceListCard.Header>
 
       <ResourceListCard.Title>{template.name}</ResourceListCard.Title>
-      <ResourceListCard.Description>{template.description ?? template.category}</ResourceListCard.Description>
+      <ResourceListCard.Description>
+        {template.description ?? template.category}
+      </ResourceListCard.Description>
 
       {tools.length > 0 && (
         <ResourceListCard.MetaRow>
@@ -368,10 +358,7 @@ function TemplateGridSkeleton() {
   return (
     <ResourceGrid minColumnWidth={252}>
       {Array.from({ length: 6 }).map((_, i) => (
-        <div
-          key={i}
-          className="moldy-card flex min-h-[152px] flex-col p-4"
-        >
+        <div key={i} className="moldy-card flex min-h-[152px] flex-col p-4">
           <div className="flex items-center justify-between">
             <Skeleton className="size-9 rounded-lg" />
             <Skeleton className="h-5 w-20 rounded-md" />

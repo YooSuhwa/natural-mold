@@ -1,12 +1,7 @@
 import { cookies } from 'next/headers'
 import { getRequestConfig } from 'next-intl/server'
 
-import {
-  DEFAULT_LOCALE,
-  LOCALE_COOKIE_NAME,
-  type AppLocale,
-  isSupportedLocale,
-} from './locales'
+import { DEFAULT_LOCALE, LOCALE_COOKIE_NAME, type AppLocale, isSupportedLocale } from './locales'
 
 type Messages = Record<string, unknown>
 

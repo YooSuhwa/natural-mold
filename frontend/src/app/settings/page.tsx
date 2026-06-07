@@ -276,7 +276,8 @@ function ProfileForm({
                     className={cn(
                       'moldy-user-avatar flex size-8 items-center justify-center rounded-full border text-xs font-semibold',
                       `moldy-user-avatar-${color}`,
-                      avatarColor === color && 'ring-2 ring-ring ring-offset-2 ring-offset-background',
+                      avatarColor === color &&
+                        'ring-2 ring-ring ring-offset-2 ring-offset-background',
                     )}
                   >
                     {avatarColor === color ? <CheckIcon className="size-3.5" aria-hidden /> : null}

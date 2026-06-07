@@ -60,9 +60,7 @@ export function ModelSelect({
   const [customModelName, setCustomModelName] = useState('')
   const [customTestCredId, setCustomTestCredId] = useState<string>('')
   const [showTest, setShowTest] = useState(false)
-  const [lastTestResult, setLastTestResult] = useState<ModelTestResponse | null>(
-    null,
-  )
+  const [lastTestResult, setLastTestResult] = useState<ModelTestResponse | null>(null)
 
   const sortedModels = useMemo(() => {
     if (!models) return []
@@ -74,14 +72,11 @@ export function ModelSelect({
 
   const llmCredentials = useMemo(() => {
     if (!credentials || !definitions) return []
-    const llmKeys = new Set(
-      definitions.filter((d) => d.category === 'llm').map((d) => d.key),
-    )
+    const llmKeys = new Set(definitions.filter((d) => d.category === 'llm').map((d) => d.key))
     return credentials.filter((c) => llmKeys.has(c.definition_key))
   }, [credentials, definitions])
 
-  const effectiveCustomCredId =
-    customTestCredId || llmCredentials[0]?.id || ''
+  const effectiveCustomCredId = customTestCredId || llmCredentials[0]?.id || ''
 
   function emitList(id: string) {
     onValueChange?.(id)
@@ -99,15 +94,11 @@ export function ModelSelect({
 
   if (mode === 'custom') {
     const canTest =
-      customProvider.trim() !== '' &&
-      customModelName.trim() !== '' &&
-      effectiveCustomCredId !== ''
+      customProvider.trim() !== '' && customModelName.trim() !== '' && effectiveCustomCredId !== ''
 
     return (
       <div className={className}>
-        <p className="mb-2 moldy-ui-caption text-muted-foreground">
-          {t('customHint')}
-        </p>
+        <p className="mb-2 moldy-ui-caption text-muted-foreground">{t('customHint')}</p>
         <div className="flex gap-2">
           <Input
             value={customProvider}
@@ -135,12 +126,7 @@ export function ModelSelect({
           >
             <Zap className="size-3.5" /> {t('test')}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setMode('list')}
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={() => setMode('list')}>
             {t('fromList')}
           </Button>
         </div>
@@ -179,9 +165,7 @@ export function ModelSelect({
               }}
             />
             {lastTestResult && !lastTestResult.success && (
-              <p className="moldy-ui-caption text-destructive">
-                {t('testFailed')}
-              </p>
+              <p className="moldy-ui-caption text-destructive">{t('testFailed')}</p>
             )}
           </div>
         )}
@@ -196,11 +180,7 @@ export function ModelSelect({
   return (
     <div className={className}>
       <div className="flex items-center gap-2">
-        <Select
-          value={value}
-          onValueChange={(v) => v && emitList(v)}
-          disabled={isLoading}
-        >
+        <Select value={value} onValueChange={(v) => v && emitList(v)} disabled={isLoading}>
           <SelectTrigger className="flex-1">
             <SelectValue placeholder={placeholder}>
               {selectedModel ? (
@@ -218,9 +198,7 @@ export function ModelSelect({
               <SelectItem key={m.id} value={m.id}>
                 <span className="flex items-center gap-2">
                   <span>{m.display_name}</span>
-                  <span className="moldy-ui-micro text-muted-foreground">
-                    {m.provider}
-                  </span>
+                  <span className="moldy-ui-micro text-muted-foreground">{m.provider}</span>
                 </span>
               </SelectItem>
             ))}

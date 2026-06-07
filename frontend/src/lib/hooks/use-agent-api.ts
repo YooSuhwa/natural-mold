@@ -40,8 +40,13 @@ export function useCreateAgentDeployment() {
 export function useUpdateAgentDeployment() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof agentApi.updateDeployment>[1] }) =>
-      agentApi.updateDeployment(id, data),
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: string
+      data: Parameters<typeof agentApi.updateDeployment>[1]
+    }) => agentApi.updateDeployment(id, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: keys.candidates })
       qc.invalidateQueries({ queryKey: keys.deployments })

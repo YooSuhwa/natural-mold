@@ -52,10 +52,7 @@ export function MiddlewaresDialog({
 }: MiddlewaresDialogProps) {
   const t = useTranslations('agent.visualSettings.addMiddlewaresDialog')
   const { data: fetched } = useMiddlewares()
-  const allMiddlewares = useMemo(
-    () => providedAll ?? fetched ?? [],
-    [providedAll, fetched],
-  )
+  const allMiddlewares = useMemo(() => providedAll ?? fetched ?? [], [providedAll, fetched])
   const isLoading = !providedAll && !fetched
 
   const [query, setQuery] = useState('')
@@ -190,17 +187,10 @@ function AvailableColumn({
         {isLoading ? (
           <Skeleton className="h-20 w-full" />
         ) : available.length === 0 ? (
-          <EmptyBox>
-            {query.trim().length > 0 ? tc('noResults') : tc('empty')}
-          </EmptyBox>
+          <EmptyBox>{query.trim().length > 0 ? tc('noResults') : tc('empty')}</EmptyBox>
         ) : (
           available.map((m) => (
-            <AvailableCard
-              key={m.type}
-              item={m}
-              addLabel={tc('add')}
-              onAdd={() => onAdd(m.type)}
-            />
+            <AvailableCard key={m.type} item={m} addLabel={tc('add')} onAdd={() => onAdd(m.type)} />
           ))
         )}
       </div>
@@ -208,19 +198,15 @@ function AvailableColumn({
   )
 }
 
-function SelectedCard({
-  item,
-  onRemove,
-}: {
-  item: MiddlewareRegistryItem
-  onRemove: () => void
-}) {
+function SelectedCard({ item, onRemove }: { item: MiddlewareRegistryItem; onRemove: () => void }) {
   const t = useTranslations('agent.visualSettings.addMiddlewaresDialog')
   return (
     <MiddlewareCard
       item={item}
       align="center"
-      subtitle={<p className="truncate font-mono moldy-ui-caption text-muted-foreground">{item.type}</p>}
+      subtitle={
+        <p className="truncate font-mono moldy-ui-caption text-muted-foreground">{item.type}</p>
+      }
       categoryBadgeVariant="secondary"
       action={
         <Button
@@ -252,7 +238,9 @@ function AvailableCard({
     <MiddlewareCard
       item={item}
       align="start"
-      subtitle={<p className="line-clamp-2 moldy-ui-caption text-muted-foreground">{item.description}</p>}
+      subtitle={
+        <p className="line-clamp-2 moldy-ui-caption text-muted-foreground">{item.description}</p>
+      }
       categoryBadgeVariant="outline"
       extraBadge={
         item.provider_specific ? (

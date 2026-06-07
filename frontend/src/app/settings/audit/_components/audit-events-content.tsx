@@ -14,12 +14,7 @@ import { useTranslations } from 'next-intl'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { ErrorState } from '@/components/shared/error-state'
 import { cn } from '@/lib/utils'
 import { useAuditEvents } from '@/lib/hooks/use-audit-events'
@@ -144,10 +139,7 @@ export function AuditEventsContent({ scope, admin = false }: AuditEventsContentP
     run_id: clean(filters.runId),
   })
 
-  const events = useMemo(
-    () => query.data?.pages.flatMap((page) => page.items) ?? [],
-    [query.data],
-  )
+  const events = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data])
   const selected = events.find((event) => event.id === selectedId) ?? events[0] ?? null
   const successCount = events.filter((event) => event.outcome === 'success').length
   const failureCount = events.filter((event) => event.outcome === 'failure').length
@@ -310,9 +302,7 @@ export function AuditEventsContent({ scope, admin = false }: AuditEventsContentP
                         {event.target_type} · {targetLabel(event)}
                       </p>
                       {event.reason_code ? (
-                        <p className="truncate text-xs text-status-danger">
-                          {event.reason_code}
-                        </p>
+                        <p className="truncate text-xs text-status-danger">{event.reason_code}</p>
                       ) : null}
                     </div>
                     <div className="min-w-0 space-y-1">
@@ -377,11 +367,7 @@ function Metric({
 function AuditDetail({ event }: { event: AuditEvent | null }) {
   const t = useTranslations('appSettings.audit.detail')
   if (!event) {
-    return (
-      <aside className="moldy-panel p-4 text-sm text-muted-foreground">
-        {t('empty')}
-      </aside>
-    )
+    return <aside className="moldy-panel p-4 text-sm text-muted-foreground">{t('empty')}</aside>
   }
 
   const metadata = event.metadata ? JSON.stringify(event.metadata, null, 2) : t('none')

@@ -59,9 +59,9 @@ describe('SkillsPage', () => {
   it('renders skills as catalog-style cards by default', () => {
     render(<SkillsPage />)
 
-    const card = screen.getByRole('button', { name: /Korea Weather/ })
-    expect(card).toHaveClass('border-transparent')
-    expect(card.className).toMatch(/\bbg-(violet|sky|emerald|amber|rose)-50\/75\b/)
+    const card = screen.getByText('Korea Weather').closest('article')
+    expect(card).toHaveClass('moldy-resource-card')
+    expect(card?.className).toMatch(/\bmoldy-tone-card-violet\b/)
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 

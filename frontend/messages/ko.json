@@ -20,8 +20,8 @@
       "or": "또는",
       "noAccount": "계정이 없으신가요?",
       "registerLink": "회원가입",
-    "expiredNotice": "로그인이 필요합니다",
-    "emailPlaceholder": "you@example.com",
+      "expiredNotice": "로그인이 필요합니다",
+      "emailPlaceholder": "you@example.com",
       "benefits": {
         "title": "AI 에이전트를 코드 한 줄 없이",
         "item1": "노코드 빌더",
@@ -36,8 +36,8 @@
       "name": "표시 이름",
       "namePlaceholder": "체스터",
       "nameHelp": "실명을 입력하지 않아도 됩니다.",
-    "email": "이메일",
-    "emailPlaceholder": "you@example.com",
+      "email": "이메일",
+      "emailPlaceholder": "you@example.com",
       "password": "비밀번호",
       "passwordConfirm": "비밀번호 확인",
       "terms": "서비스 이용약관 및 개인정보처리방침에 동의합니다 (필수)",
@@ -47,9 +47,9 @@
       "loginLink": "로그인",
       "mismatch": "비밀번호가 일치하지 않습니다",
       "termsRequired": "약관 동의가 필요합니다",
-    "strength": {
-      "label": "비밀번호 강도",
-      "tooShort": "비밀번호는 8자 이상이어야 합니다",
+      "strength": {
+        "label": "비밀번호 강도",
+        "tooShort": "비밀번호는 8자 이상이어야 합니다",
         "weak": "약함",
         "medium": "보통",
         "strong": "강함",
@@ -95,12 +95,12 @@
       "title": "Moldy에 오신 것을 환영합니다",
       "subtitle": "AI 에이전트를 만들 준비가 거의 끝났어요",
       "body": "AI 에이전트를 만들려면 LLM API 키를 등록해야 합니다.",
-    "providers": "다음 중 하나를 등록해 주세요",
-    "providerList": {
-      "openai": "OpenAI API Key",
-      "anthropic": "Anthropic API Key",
-      "google": "Google AI Studio API Key"
-    },
+      "providers": "다음 중 하나를 등록해 주세요",
+      "providerList": {
+        "openai": "OpenAI API Key",
+        "anthropic": "Anthropic API Key",
+        "google": "Google AI Studio API Key"
+      },
       "encryptedNote": "키는 암호화되어 저장되며 본인만 볼 수 있습니다.",
       "later": "나중에",
       "register": "지금 등록",
@@ -143,27 +143,27 @@
       "previous": "이전",
       "next": "다음"
     },
-      "relativeTime": {
-        "justNow": "방금 전",
-        "secondsAgo": "{count}초 전",
-        "minutesAgo": "{count}분 전",
-        "hoursAgo": "{count}시간 전",
-        "daysAgo": "{count}일 전"
-      },
-      "validation": {
-        "required": "{field}은(는) 필수입니다",
-        "minLength": "최소 {min}자 이상이어야 합니다",
-        "maxLength": "최대 {max}자까지 입력할 수 있습니다",
-        "invalidFormat": "형식이 올바르지 않습니다",
-        "number": "숫자를 입력해야 합니다",
-        "min": "최소값은 {min}입니다",
-        "max": "최대값은 {max}입니다",
-        "invalidJson": "JSON 형식이 올바르지 않습니다"
-      },
-      "errorState": {
-        "title": "문제가 발생했습니다",
-        "retry": "다시 시도"
-      },
+    "relativeTime": {
+      "justNow": "방금 전",
+      "secondsAgo": "{count}초 전",
+      "minutesAgo": "{count}분 전",
+      "hoursAgo": "{count}시간 전",
+      "daysAgo": "{count}일 전"
+    },
+    "validation": {
+      "required": "{field}은(는) 필수입니다",
+      "minLength": "최소 {min}자 이상이어야 합니다",
+      "maxLength": "최대 {max}자까지 입력할 수 있습니다",
+      "invalidFormat": "형식이 올바르지 않습니다",
+      "number": "숫자를 입력해야 합니다",
+      "min": "최소값은 {min}입니다",
+      "max": "최대값은 {max}입니다",
+      "invalidJson": "JSON 형식이 올바르지 않습니다"
+    },
+    "errorState": {
+      "title": "문제가 발생했습니다",
+      "retry": "다시 시도"
+    },
     "status": {
       "active": "활성",
       "connected": "연결됨",
@@ -534,7 +534,8 @@
         "test": "테스트",
         "opener": "오프너",
         "schedule": "스케줄",
-        "settings": "설정"
+        "settings": "설정",
+        "api": "API"
       },
       "namePlaceholder": "에이전트 이름",
       "instruction": "지침",
@@ -552,6 +553,30 @@
           "title": "에이전트 고정",
           "description": "스케줄 실행은 소유자 credential을 사용합니다."
         }
+      },
+      "apiPanel": {
+        "copied": "복사했습니다.",
+        "deployedToast": "에이전트를 배포했습니다.",
+        "description": "외부 Agent API 배포",
+        "status": {
+          "deployed": "배포됨",
+          "notDeployed": "미배포"
+        },
+        "publicId": "공개 ID",
+        "blockingEndpoint": "대기 실행 엔드포인트",
+        "streamingEndpoint": "스트리밍 엔드포인트",
+        "copy": "복사",
+        "limits": "제한",
+        "limitsDescription": "요청량과 토큰 한도는 준비 중입니다.",
+        "planned": "준비 중",
+        "deployDescription": "범위가 제한된 API 키를 발급하거나 외부 시스템에서 호출하려면 먼저 이 에이전트를 배포하세요.",
+        "deployAgent": "에이전트 배포",
+        "keysTitle": "이 에이전트를 호출할 수 있는 키",
+        "keyStatus": {
+          "revoked": "폐기됨",
+          "active": "활성"
+        },
+        "emptyKeys": "배포 후 설정 > Agent API에서 키를 만들어 주세요."
       },
       "memory": {
         "title": "메모리 정책",
@@ -1082,6 +1107,8 @@
       "totalDuration": "누적 수행시간",
       "totalTokens": "사용토큰수",
       "filters": "필터링",
+      "total": "합계",
+      "llm": "LLM",
       "tools": "도구",
       "errors": "오류",
       "privacy": "개인정보",
@@ -1158,6 +1185,7 @@
     "input": {
       "placeholder": "메시지 입력...",
       "sendButton": "전송",
+      "scrollToBottom": "맨 아래로 이동",
       "attachComingSoon": "파일 첨부 (준비 중)",
       "templateComingSoon": "템플릿에서 가져오기 (준비 중)"
     },
@@ -2264,12 +2292,12 @@
         "approve": "승인",
         "disable": "비활성화"
       },
-    "sync": {
-      "count": "항목 수:",
-      "lastUpdated": "마지막 업데이트:",
-      "command": "uv run python -m app.scripts.sync_k_skill --ref main",
-      "cliOnly": "동기화는 CLI에서만 실행할 수 있어요."
-    },
+      "sync": {
+        "count": "항목 수:",
+        "lastUpdated": "마지막 업데이트:",
+        "command": "uv run python -m app.scripts.sync_k_skill --ref main",
+        "cliOnly": "동기화는 CLI에서만 실행할 수 있어요."
+      },
       "toast": {
         "disabled": "비활성화 완료",
         "disableFailed": "비활성화에 실패했어요",
@@ -2405,56 +2433,56 @@
       "updateAvailable": "업데이트 가능",
       "dirty": "수정됨"
     },
-  "installWizard": {
-    "title": "{name} 설치",
-    "steps": {
-      "review": "검토",
-      "credentials": "자격증명",
-      "confirm": "확인",
-      "done": "완료"
-    },
-    "actions": {
-      "close": "닫기",
-      "cancel": "취소",
-      "back": "이전",
-      "install": "설치",
-      "installing": "설치 중…",
-      "next": "다음"
-    },
-    "toast": {
-      "installed": "{name} 설치 완료",
-      "installedNeedsSetup": "{name} 설치 완료 (설정 필요)"
-    },
-    "review": {
-      "resourceType": "리소스 종류:",
-      "latestVersion": "최신 버전:",
-      "supportLevel": "지원 수준:",
-      "hostedTools": "포함된 호스팅 도구:",
-      "customName": "사용자 지정 이름 (선택)"
-    },
-    "credentialHelp": "Skill 실행에 필요한 자격증명을 연결합니다. 필수가 아닌 항목은 건너뛸 수 있고, 필수 항목을 나중에 연결하면 설치는 <code>needs_setup</code> 상태가 됩니다.",
-    "optional": "(선택)",
-    "type": "종류:",
-    "loadingCredentials": "자격증명 불러오는 중…",
-    "selectCredential": "자격증명 선택…",
-    "skip": "나중에 설정 (needs setup)",
-    "missingType": "<type></type> 타입 자격증명이 없습니다.",
-    "createCredential": "Credentials 페이지에서 만들기 →",
-    "requiredMissing": "연결하지 않으면 설치 후 <code>needs_setup</code> 상태로 표시됩니다.",
-    "confirm": {
-      "intro": "다음 작업을 수행합니다:",
-      "createSkill": "내 소유 스킬 행 생성 (origin: imported_by_me)",
-      "copyFiles": "패키지 파일을 데이터 디렉터리로 복사",
-      "bind": "{count}개 자격증명 연결:",
-      "needsSetup": "needs_setup 상태로 표시 — 누락된 필수 자격증명: {keys}",
-      "name": "이름:",
-      "version": "버전:"
-    },
-    "done": {
-      "title": "{name} 설치 완료",
-      "description": "스킬을 열거나 에이전트에 연결해 바로 사용할 수 있습니다."
-    },
-    "errors": {
+    "installWizard": {
+      "title": "{name} 설치",
+      "steps": {
+        "review": "검토",
+        "credentials": "자격증명",
+        "confirm": "확인",
+        "done": "완료"
+      },
+      "actions": {
+        "close": "닫기",
+        "cancel": "취소",
+        "back": "이전",
+        "install": "설치",
+        "installing": "설치 중…",
+        "next": "다음"
+      },
+      "toast": {
+        "installed": "{name} 설치 완료",
+        "installedNeedsSetup": "{name} 설치 완료 (설정 필요)"
+      },
+      "review": {
+        "resourceType": "리소스 종류:",
+        "latestVersion": "최신 버전:",
+        "supportLevel": "지원 수준:",
+        "hostedTools": "포함된 호스팅 도구:",
+        "customName": "사용자 지정 이름 (선택)"
+      },
+      "credentialHelp": "Skill 실행에 필요한 자격증명을 연결합니다. 필수가 아닌 항목은 건너뛸 수 있고, 필수 항목을 나중에 연결하면 설치는 <code>needs_setup</code> 상태가 됩니다.",
+      "optional": "(선택)",
+      "type": "종류:",
+      "loadingCredentials": "자격증명 불러오는 중…",
+      "selectCredential": "자격증명 선택…",
+      "skip": "나중에 설정 (needs setup)",
+      "missingType": "<type></type> 타입 자격증명이 없습니다.",
+      "createCredential": "Credentials 페이지에서 만들기 →",
+      "requiredMissing": "연결하지 않으면 설치 후 <code>needs_setup</code> 상태로 표시됩니다.",
+      "confirm": {
+        "intro": "다음 작업을 수행합니다:",
+        "createSkill": "내 소유 스킬 행 생성 (origin: imported_by_me)",
+        "copyFiles": "패키지 파일을 데이터 디렉터리로 복사",
+        "bind": "{count}개 자격증명 연결:",
+        "needsSetup": "needs_setup 상태로 표시 — 누락된 필수 자격증명: {keys}",
+        "name": "이름:",
+        "version": "버전:"
+      },
+      "done": {
+        "title": "{name} 설치 완료",
+        "description": "스킬을 열거나 에이전트에 연결해 바로 사용할 수 있습니다."
+      },
+      "errors": {
         "notFound": "이 항목을 찾을 수 없거나 접근 권한이 없습니다.",
         "disabled": "이 항목은 비활성화되었습니다.",
         "credentialMismatch": "선택한 자격증명이 요구사항과 일치하지 않습니다. 다시 선택해주세요.",
@@ -2462,76 +2490,76 @@
         "failed": "설치에 실패했습니다.",
         "network": "네트워크 오류가 발생했습니다. 다시 시도하세요."
       }
-  },
-  "publishWizard": {
-    "title": "{name} 게시",
-    "description": "이 스킬을 마켓플레이스에서 찾을 수 있게 만듭니다.",
-    "steps": {
-      "review": "검토",
-      "metadata": "메타데이터",
-      "visibility": "공개 범위",
-      "confirm": "확인",
-      "done": "완료"
     },
-    "actions": {
-      "close": "닫기",
-      "cancel": "취소",
-      "back": "이전",
-      "publish": "게시",
-      "publishing": "게시 중…",
-      "next": "다음"
-    },
-    "toast": {
-      "published": "마켓플레이스에 게시되었습니다"
-    },
-    "reviewHint": "마켓플레이스에 게시되기 전 secret 검사가 자동 실행됩니다. 차단된 파일이 있으면 1단계로 돌아와 제거 후 다시 시도하세요.",
-    "review": {
-      "skill": "스킬"
-    },
-    "fields": {
-      "name": "이름",
-      "description": "설명",
-      "icon": "아이콘",
-      "releaseNotes": "릴리스 노트 (선택)",
-      "visibility": "공개 범위",
-      "acl": "공유 사용자 ID (쉼표로 구분)"
-    },
-    "visibility": {
-      "private": "비공개 (나만)",
-      "restricted": "제한 공유 (선택한 사용자)",
-      "public": "공개 (리스팅 대기)",
-      "unlisted": "링크 전용"
-    },
-    "aclHint": "Phase 1: user lookup picker는 다음 슬라이스에서 추가됩니다. 임시로 user UUID를 직접 입력하세요.",
+    "publishWizard": {
+      "title": "{name} 게시",
+      "description": "이 스킬을 마켓플레이스에서 찾을 수 있게 만듭니다.",
+      "steps": {
+        "review": "검토",
+        "metadata": "메타데이터",
+        "visibility": "공개 범위",
+        "confirm": "확인",
+        "done": "완료"
+      },
+      "actions": {
+        "close": "닫기",
+        "cancel": "취소",
+        "back": "이전",
+        "publish": "게시",
+        "publishing": "게시 중…",
+        "next": "다음"
+      },
+      "toast": {
+        "published": "마켓플레이스에 게시되었습니다"
+      },
+      "reviewHint": "마켓플레이스에 게시되기 전 secret 검사가 자동 실행됩니다. 차단된 파일이 있으면 1단계로 돌아와 제거 후 다시 시도하세요.",
+      "review": {
+        "skill": "스킬"
+      },
+      "fields": {
+        "name": "이름",
+        "description": "설명",
+        "icon": "아이콘",
+        "releaseNotes": "릴리스 노트 (선택)",
+        "visibility": "공개 범위",
+        "acl": "공유 사용자 ID (쉼표로 구분)"
+      },
+      "visibility": {
+        "private": "비공개 (나만)",
+        "restricted": "제한 공유 (선택한 사용자)",
+        "public": "공개 (리스팅 대기)",
+        "unlisted": "링크 전용"
+      },
+      "aclHint": "Phase 1: user lookup picker는 다음 슬라이스에서 추가됩니다. 임시로 user UUID를 직접 입력하세요.",
       "publicHint": "공개 publish 후에도 카탈로그 검색 노출은 운영자 승인이 필요합니다.",
-    "confirmIntro": "다음을 수행합니다:",
-    "confirmCreateItem": "마켓플레이스 item 생성",
-    "confirmCreateVersion": "새 version snapshot 생성",
-    "visibilityLabel": "가시성:",
-    "aclSummary": "ACL: {count}명",
-    "done": {
-      "title": "게시 완료",
-      "description": "마켓플레이스 상세 페이지로 이동하는 중…"
-    },
+      "confirmIntro": "다음을 수행합니다:",
+      "confirmCreateItem": "마켓플레이스 item 생성",
+      "confirmCreateVersion": "새 version snapshot 생성",
+      "visibilityLabel": "가시성:",
+      "aclSummary": "ACL: {count}명",
+      "done": {
+        "title": "게시 완료",
+        "description": "마켓플레이스 상세 페이지로 이동하는 중…"
+      },
       "errors": {
         "aclRequired": "restricted 게시는 최소 1명의 공유 대상이 필요합니다.",
         "network": "네트워크 오류가 발생했습니다."
       }
     },
-  "updateStrategy": {
-    "title": "{name} 업데이트",
-    "ariaLabel": "업데이트 전략",
-    "toast": {
-      "updated": "{name} 업데이트 완료",
-      "installedNewCopy": "{name}의 새 사본을 설치했습니다"
-    },
-    "latestVersion": "최신 버전:",
-    "actions": {
-      "cancel": "취소",
-      "updating": "업데이트 중…",
-      "confirm": "확인"
-    },
-    "dirtyWarning": "⚠ dirty 상태에서 이 옵션은 직접 편집 내용을 영구히 삭제합니다.",
+    "updateStrategy": {
+      "title": "{name} 업데이트",
+      "ariaLabel": "업데이트 전략",
+      "toast": {
+        "updated": "{name} 업데이트 완료",
+        "installedNewCopy": "{name}의 새 사본을 설치했습니다"
+      },
+      "latestVersion": "최신 버전:",
+      "actions": {
+        "cancel": "취소",
+        "updating": "업데이트 중…",
+        "confirm": "확인"
+      },
+      "dirtyWarning": "⚠ dirty 상태에서 이 옵션은 직접 편집 내용을 영구히 삭제합니다.",
       "strategies": {
         "overwrite": {
           "label": "Overwrite my edits",
@@ -2728,12 +2756,12 @@
       "daysAgo": "{count}일 전"
     },
     "connectionTest": {
-    "costBanner": "이 테스트는 실제 API를 호출합니다 (예상 ~$0.0001).",
-    "metrics": {
-      "latency": "지연 시간:",
-      "tokens": "토큰:",
-      "cost": "비용:"
-    },
+      "costBanner": "이 테스트는 실제 API를 호출합니다 (예상 ~$0.0001).",
+      "metrics": {
+        "latency": "지연 시간:",
+        "tokens": "토큰:",
+        "cost": "비용:"
+      },
       "idle": "준비됨 — Test 버튼을 눌러 시작하세요.",
       "testNow": "지금 테스트",
       "testingPrefix": "연결 테스트 중:",
@@ -3173,13 +3201,74 @@
     },
     "agentApi": {
       "title": "Agent API",
-      "description": "외부 앱에서 Moldy 에이전트를 호출하는 API 배포를 준비합니다.",
-      "status": "준비 중",
-      "futureEndpoint": "기획 중인 호출 URL",
-      "placeholder": {
-        "title": "Agent API 준비 중",
-        "description": "외부 앱에서 Moldy 에이전트를 호출하기 위한 API 배포와 키 관리는 준비 중입니다.",
-        "detail": "이번 단계에서는 메뉴와 빈 페이지까지만 제공하고, 배포 URL 생성과 API Key 발급은 이후 별도 기능으로 구현합니다."
+      "description": "에이전트를 외부 시스템에서 호출할 수 있도록 배포하고 서버용 API 키를 발급합니다.",
+      "actions": {
+        "createKey": "API 키",
+        "deploy": "배포",
+        "copy": "복사",
+        "copyEndpoint": "엔드포인트 복사",
+        "revokeKey": "API 키 폐기"
+      },
+      "toasts": {
+        "copied": "{label}을(를) 복사했습니다.",
+        "deployed": "에이전트를 배포했습니다.",
+        "revoked": "API 키를 폐기했습니다."
+      },
+      "metrics": {
+        "deployments": "배포",
+        "apiKeys": "API 키",
+        "baseUrl": "기본 URL",
+        "limits": "제한",
+        "planned": "준비 중",
+        "limitsHelper": "요청량과 토큰 한도는 준비 중입니다."
+      },
+      "deployments": {
+        "title": "배포 후보",
+        "description": "고정 ID를 사용하는 에이전트만 외부 API로 배포할 수 있습니다.",
+        "empty": "API 엔드포인트로 배포할 에이전트를 먼저 만들어 주세요.",
+        "status": {
+          "deployed": "배포됨",
+          "ready": "준비됨",
+          "blocked": "차단됨"
+        }
+      },
+      "keys": {
+        "title": "API 키",
+        "description": "키는 한 번만 표시되며 서버 코드에서만 사용해야 합니다.",
+        "allDeployments": "배포된 모든 에이전트",
+        "empty": "에이전트를 배포한 뒤 API 키를 만들어 주세요.",
+        "status": {
+          "revoked": "폐기됨",
+          "active": "활성"
+        }
+      },
+      "examples": {
+        "title": "호출 예시",
+        "blocking": "대기 실행",
+        "streaming": "스트리밍 실행",
+        "endpoint": "엔드포인트"
+      },
+      "createDialog": {
+        "defaultName": "운영 키",
+        "title": "API 키 만들기",
+        "description": "서버용 키를 만들고 호출할 수 있는 배포 에이전트를 제한합니다.",
+        "name": "이름",
+        "expiresInDays": "만료까지 남은 일수",
+        "noExpiry": "만료 없음",
+        "scopes": "권한 범위",
+        "agentAccess": "에이전트 접근",
+        "allDeployments": "배포된 모든 에이전트",
+        "emptyDeployments": "범위가 제한된 키를 만들기 전에 에이전트를 배포해 주세요.",
+        "cancel": "취소",
+        "create": "만들기"
+      },
+      "createdDialog": {
+        "copied": "API 키를 복사했습니다.",
+        "title": "API 키가 생성되었습니다",
+        "description": "이 키는 한 번만 표시됩니다. 서버에 안전하게 저장해 주세요.",
+        "secretKey": "비밀 키",
+        "copyAria": "API 키 복사",
+        "done": "완료"
       }
     },
     "audit": {

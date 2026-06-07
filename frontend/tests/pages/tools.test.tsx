@@ -217,8 +217,8 @@ describe('ToolsPage', () => {
     await user.click(screen.getByRole('tab', { name: /설치됨/ }))
 
     const card = screen.getByRole('button', { name: /웹 검색/ })
-    expect(card).toHaveClass('border-transparent')
-    expect(card.className).toMatch(/\bbg-(violet|sky|emerald|amber|rose)-50\/75\b/)
+    expect(card).toHaveClass('moldy-resource-card')
+    expect(card).toHaveClass('moldy-tone-card-sky')
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 

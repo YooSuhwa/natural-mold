@@ -156,9 +156,7 @@ export function OpenerEditor({ questions, onChange, max = 12 }: OpenerEditorProp
         </ul>
       )}
 
-      {isFull && (
-        <p className="text-xs text-muted-foreground">{t('openerMaxReached', { max })}</p>
-      )}
+      {isFull && <p className="text-xs text-muted-foreground">{t('openerMaxReached', { max })}</p>}
 
       <DialogShell open={addOpen} onOpenChange={setAddOpen} size="sm" height="auto">
         <DialogShell.Header title={t('openerAddDialogTitle')} />

@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 
-import { CHAT_STREAMING_REMARK_PLUGINS } from '../markdown-plugins'
+import { CHAT_STREAMING_REMARK_PLUGINS } from '../markdown-streaming-plugins'
 
 const TABLE_MARKDOWN = `| 시간대 | 장소 | 활동 |
 |--------|------|------|

@@ -62,14 +62,9 @@ export function ArtifactLibraryContent() {
     kind !== ALL ||
     favorite !== ALL
   const selectedFromItems = items.find((item) => item.id === selectedId)
-  const selectedFromRecent = !hasActiveFilters && selectedId
-    ? recent.data?.find((item) => item.id === selectedId)
-    : null
-  const selected =
-    selectedFromItems ??
-    selectedFromRecent ??
-    items[0] ??
-    null
+  const selectedFromRecent =
+    !hasActiveFilters && selectedId ? recent.data?.find((item) => item.id === selectedId) : null
+  const selected = selectedFromItems ?? selectedFromRecent ?? items[0] ?? null
   const formatter = useMemo(
     () => new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }),
     [locale],
@@ -205,7 +200,10 @@ export function ArtifactLibraryContent() {
                   size="icon-sm"
                   aria-label={t('download')}
                   render={
-                    <a href={resolveImageUrl(selected.download_url) ?? selected.download_url} download />
+                    <a
+                      href={resolveImageUrl(selected.download_url) ?? selected.download_url}
+                      download
+                    />
                   }
                 >
                   <DownloadIcon className="size-4" />
@@ -232,7 +230,9 @@ export function ArtifactLibraryContent() {
               >
                 <FileIcon className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">{artifact.display_name}</span>
+                  <span className="block truncate text-sm font-medium">
+                    {artifact.display_name}
+                  </span>
                   <span className="block truncate text-xs text-muted-foreground">
                     {tKinds(artifact.artifact_kind)}
                   </span>

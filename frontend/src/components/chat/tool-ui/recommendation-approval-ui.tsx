@@ -130,9 +130,7 @@ function ToolRow({ item, cardKind }: { item: ToolItem; cardKind: ItemKind }) {
         </div>
         {item.reason && (
           <p className="moldy-builder-copy">
-            <span className="mr-1.5 font-semibold moldy-builder-color-muted">
-              {t('reason')}
-            </span>
+            <span className="mr-1.5 font-semibold moldy-builder-color-muted">{t('reason')}</span>
             {item.reason}
           </p>
         )}
@@ -190,12 +188,7 @@ function ApproveButton({
 }) {
   const t = useTranslations('chat.recommendation')
   return (
-    <BuilderButton
-      tone="primary"
-      onClick={onClick}
-      disabled={disabled}
-      className="px-4"
-    >
+    <BuilderButton tone="primary" onClick={onClick} disabled={disabled} className="px-4">
       <CheckIcon className="size-3" strokeWidth={3} />
       {submitted ? t('approved') : t('approveAndContinue')}
     </BuilderButton>
@@ -299,9 +292,7 @@ function RecommendationApproval({
       >
         <BuilderBody>
           {items.length === 0 && (
-            <p className="px-2.5 py-3 moldy-ui-body-sm moldy-builder-color-muted">
-              {t('empty')}
-            </p>
+            <p className="px-2.5 py-3 moldy-ui-body-sm moldy-builder-color-muted">{t('empty')}</p>
           )}
           {items.map((item, idx) => (
             <ToolRow key={idx} item={item} cardKind={cardKind} />

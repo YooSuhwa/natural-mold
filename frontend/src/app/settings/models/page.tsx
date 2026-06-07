@@ -353,57 +353,57 @@ export default function ModelsPage() {
           </Button>
         }
       >
-      <ResourcePanel>
-        <ResourcePanel.Body className="bg-background/25">
-          {!isLoading && allModels.length === 0 ? (
-            <EmptyState
-              iconId="model"
-              title={t('catalog.empty.title')}
-              description={t('catalog.empty.description')}
-              action={
-                <Button onClick={() => setAddOpen(true)}>
-                  <Plus className="size-4" />
-                  {t('addModel')}
-                </Button>
-              }
-            />
-          ) : (
-            <DataTable
-              columns={columns}
-              data={data}
-              loading={isLoading}
-              searchable
-              searchPlaceholder={t('catalog.searchPlaceholder')}
-              globalFilterFn={(row, query) => {
-                const m = row as Model
-                return (
-                  m.display_name.toLowerCase().includes(query) ||
-                  m.model_name.toLowerCase().includes(query)
-                )
-              }}
-              filters={filters}
-              enableRowSelection
-              onRowSelectionChange={setSelected}
-              toolbar={toolbar}
-              onRowClick={(row) => setEditing(row)}
-              emptyTitle={t('catalog.empty.filtered')}
-            />
-          )}
-        </ResourcePanel.Body>
-      </ResourcePanel>
+        <ResourcePanel>
+          <ResourcePanel.Body className="bg-background/25">
+            {!isLoading && allModels.length === 0 ? (
+              <EmptyState
+                iconId="model"
+                title={t('catalog.empty.title')}
+                description={t('catalog.empty.description')}
+                action={
+                  <Button onClick={() => setAddOpen(true)}>
+                    <Plus className="size-4" />
+                    {t('addModel')}
+                  </Button>
+                }
+              />
+            ) : (
+              <DataTable
+                columns={columns}
+                data={data}
+                loading={isLoading}
+                searchable
+                searchPlaceholder={t('catalog.searchPlaceholder')}
+                globalFilterFn={(row, query) => {
+                  const m = row as Model
+                  return (
+                    m.display_name.toLowerCase().includes(query) ||
+                    m.model_name.toLowerCase().includes(query)
+                  )
+                }}
+                filters={filters}
+                enableRowSelection
+                onRowSelectionChange={setSelected}
+                toolbar={toolbar}
+                onRowClick={(row) => setEditing(row)}
+                emptyTitle={t('catalog.empty.filtered')}
+              />
+            )}
+          </ResourcePanel.Body>
+        </ResourcePanel>
 
-      <ModelAddDialog open={addOpen} onOpenChange={setAddOpen} />
-      <ModelEditDialog
-        model={editing}
-        open={!!editing}
-        onOpenChange={(open) => !open && setEditing(null)}
-      />
-      <ModelTestDialog
-        model={testing}
-        open={!!testing}
-        onOpenChange={(open) => !open && setTesting(null)}
-      />
-      <ModelTestBulkDialog models={selected} open={bulkTestOpen} onOpenChange={setBulkTestOpen} />
+        <ModelAddDialog open={addOpen} onOpenChange={setAddOpen} />
+        <ModelEditDialog
+          model={editing}
+          open={!!editing}
+          onOpenChange={(open) => !open && setEditing(null)}
+        />
+        <ModelTestDialog
+          model={testing}
+          open={!!testing}
+          onOpenChange={(open) => !open && setTesting(null)}
+        />
+        <ModelTestBulkDialog models={selected} open={bulkTestOpen} onOpenChange={setBulkTestOpen} />
       </ResourcePage>
     </SettingsShell>
   )
@@ -422,9 +422,7 @@ function HealthCell({
   return (
     <div className="flex flex-col items-start gap-0.5">
       <StatusChip variant={entry.status} />
-      <span className="moldy-ui-micro text-muted-foreground">
-        {format(entry.checked_at)}
-      </span>
+      <span className="moldy-ui-micro text-muted-foreground">{format(entry.checked_at)}</span>
     </div>
   )
 }

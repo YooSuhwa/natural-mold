@@ -1,5 +1,5 @@
 import { render, screen } from '../test-utils'
-import UsagePage from '@/app/usage/page'
+import UsagePage from '@/app/settings/usage/page'
 import { mockUsageSummary } from '../mocks/fixtures'
 
 vi.mock('next/link', () => ({

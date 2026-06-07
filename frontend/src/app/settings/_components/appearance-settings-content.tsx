@@ -3,14 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
 import { useTheme } from 'next-themes'
-import {
-  CheckIcon,
-  GlobeIcon,
-  MonitorIcon,
-  MoonIcon,
-  PaletteIcon,
-  SunIcon,
-} from 'lucide-react'
+import { CheckIcon, GlobeIcon, MonitorIcon, MoonIcon, PaletteIcon, SunIcon } from 'lucide-react'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { isSupportedLocale, SUPPORTED_LOCALES } from '@/i18n/locales'

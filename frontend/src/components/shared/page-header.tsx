@@ -10,7 +10,9 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, action, className }: PageHeaderProps) {
   return (
-    <div className={cn('flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between', className)}>
+    <div
+      className={cn('flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between', className)}
+    >
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-center gap-2">
           <span aria-hidden className="moldy-page-kicker" />

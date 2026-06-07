@@ -3,14 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import {
-  Activity,
-  CheckCircle2,
-  Loader2,
-  Plus,
-  X,
-  XCircle,
-} from 'lucide-react'
+import { Activity, CheckCircle2, Loader2, Plus, X, XCircle } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,11 +19,7 @@ import {
   useMcpRegistry,
   useProbeMcpServer,
 } from '@/lib/hooks/use-mcp-servers'
-import type {
-  McpProbeTool,
-  McpRegistryEntry,
-  McpTransport,
-} from '@/lib/types/mcp'
+import type { McpProbeTool, McpRegistryEntry, McpTransport } from '@/lib/types/mcp'
 
 interface McpServerWizardProps {
   open: boolean
@@ -79,9 +68,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
   const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([])
   const [credentialId, setCredentialId] = useState<string | null>(null)
   const [registryKey, setRegistryKey] = useState<string | null>(null)
-  const [credentialDefinitionFilter, setCredentialDefinitionFilter] = useState<
-    string | null
-  >(null)
+  const [credentialDefinitionFilter, setCredentialDefinitionFilter] = useState<string | null>(null)
 
   // -- preview state -------------------------------------------------------
   const [discoveredTools, setDiscoveredTools] = useState<McpProbeTool[]>([])
@@ -202,24 +189,23 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
       return
     }
     try {
-      const server =
-        registryKey
-          ? await createFromRegistry.mutateAsync({
-              registry_key: registryKey,
-              name: name.trim(),
-              credential_id: credentialId,
-            })
-          : await create.mutateAsync({
-              name: name.trim(),
-              description: description.trim() || null,
-              transport,
-              url: transport === 'stdio' ? null : url.trim(),
-              command: transport === 'stdio' ? command.trim() : null,
-              args: transport === 'stdio' ? args : [],
-              env_vars: transport === 'stdio' ? kvToObject(envVars) : {},
-              headers: transport === 'stdio' ? {} : kvToObject(headers),
-              credential_id: credentialId,
-            })
+      const server = registryKey
+        ? await createFromRegistry.mutateAsync({
+            registry_key: registryKey,
+            name: name.trim(),
+            credential_id: credentialId,
+          })
+        : await create.mutateAsync({
+            name: name.trim(),
+            description: description.trim() || null,
+            transport,
+            url: transport === 'stdio' ? null : url.trim(),
+            command: transport === 'stdio' ? command.trim() : null,
+            args: transport === 'stdio' ? args : [],
+            env_vars: transport === 'stdio' ? kvToObject(envVars) : {},
+            headers: transport === 'stdio' ? {} : kvToObject(headers),
+            credential_id: credentialId,
+          })
 
       // Import the discovered tool rows.
       let discoveredCount = 0
@@ -234,9 +220,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
       // per-tool enable PATCH isn't surfaced via a wizard mutation yet, so
       // they should fine-tune from the detail page.
       if (discoveredCount > 0 && discoveredTools.length > 0) {
-        const toDisableCount = discoveredTools.filter(
-          (t) => !enabledNames.has(t.name),
-        ).length
+        const toDisableCount = discoveredTools.filter((t) => !enabledNames.has(t.name)).length
         if (toDisableCount > 0) {
           toast.info(t('toast.savedToggleLater', { count: toDisableCount }))
         }
@@ -249,8 +233,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
     }
   }
 
-  const saving =
-    create.isPending || createFromRegistry.isPending || discover.isPending
+  const saving = create.isPending || createFromRegistry.isPending || discover.isPending
 
   return (
     <>
@@ -299,10 +282,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
               setHeaders={setHeaders}
             />
             <div className="mt-6 flex justify-end">
-              <Button
-                onClick={() => setTab('auth')}
-                disabled={!basicsValid}
-              >
+              <Button onClick={() => setTab('auth')} disabled={!basicsValid}>
                 {t('actions.continueAuth')}
               </Button>
             </div>
@@ -321,9 +301,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
               <Button variant="outline" onClick={() => setTab('basics')}>
                 {t('actions.back')}
               </Button>
-              <Button onClick={() => setTab('tools')}>
-                {t('actions.continueTools')}
-              </Button>
+              <Button onClick={() => setTab('tools')}>{t('actions.continueTools')}</Button>
             </div>
           </TabsContent>
 
@@ -345,10 +323,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
         <Button variant="outline" onClick={onClose} disabled={saving}>
           {t('actions.cancel')}
         </Button>
-        <Button
-          onClick={handleSave}
-          disabled={saving || !basicsValid}
-        >
+        <Button onClick={handleSave} disabled={saving || !basicsValid}>
           {saving ? <Loader2 className="size-4 animate-spin" /> : null}
           {t('actions.save')}
         </Button>
@@ -419,13 +394,9 @@ interface BasicsTabProps {
   setArgDraft: (v: string) => void
   onAddArg: () => void
   envVars: Array<{ key: string; value: string }>
-  setEnvVars: React.Dispatch<
-    React.SetStateAction<Array<{ key: string; value: string }>>
-  >
+  setEnvVars: React.Dispatch<React.SetStateAction<Array<{ key: string; value: string }>>>
   headers: Array<{ key: string; value: string }>
-  setHeaders: React.Dispatch<
-    React.SetStateAction<Array<{ key: string; value: string }>>
-  >
+  setHeaders: React.Dispatch<React.SetStateAction<Array<{ key: string; value: string }>>>
 }
 
 function BasicsTab(props: BasicsTabProps) {
@@ -472,10 +443,7 @@ function RegistrySection({
           {t('empty')}
         </p>
       ) : (
-        <div
-          role="list"
-          className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3"
-        >
+        <div role="list" className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {entries.map((entry) => {
             const isSelected = selected === entry.key
             return (
@@ -495,9 +463,7 @@ function RegistrySection({
                   iconClassName="size-5"
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">
-                    {entry.display_name}
-                  </p>
+                  <p className="truncate text-sm font-medium">{entry.display_name}</p>
                   {entry.description ? (
                     <p className="line-clamp-1 moldy-ui-caption text-muted-foreground">
                       {entry.description}
@@ -551,11 +517,7 @@ function ManualSection({
           <label htmlFor="mcp-name">
             {t('name')} <span className="text-destructive">*</span>
           </label>
-          <Input
-            id="mcp-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+          <Input id="mcp-name" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <label htmlFor="mcp-desc">{t('description')}</label>
@@ -618,9 +580,7 @@ function ManualSection({
                   <button
                     type="button"
                     aria-label={t('removeArg', { arg })}
-                    onClick={() =>
-                      setArgs((prev) => prev.filter((_, idx) => idx !== i))
-                    }
+                    onClick={() => setArgs((prev) => prev.filter((_, idx) => idx !== i))}
                     className="text-muted-foreground hover:text-destructive"
                   >
                     <X className="size-3" />
@@ -644,9 +604,7 @@ function ManualSection({
                 {t('add')}
               </Button>
             </div>
-            <p className="moldy-ui-caption text-muted-foreground">
-              {t('argsHint')}
-            </p>
+            <p className="moldy-ui-caption text-muted-foreground">{t('argsHint')}</p>
           </div>
 
           <KeyValueRows
@@ -694,17 +652,13 @@ function KeyValueRows({
 }: {
   label: string
   rows: Array<{ key: string; value: string }>
-  setRows: React.Dispatch<
-    React.SetStateAction<Array<{ key: string; value: string }>>
-  >
+  setRows: React.Dispatch<React.SetStateAction<Array<{ key: string; value: string }>>>
   keyPlaceholder?: string
   valuePlaceholder?: string
 }) {
   const t = useTranslations('mcp.wizard.manual')
   function update(idx: number, patch: Partial<{ key: string; value: string }>) {
-    setRows((prev) =>
-      prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)),
-    )
+    setRows((prev) => prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)))
   }
   function remove(idx: number) {
     setRows((prev) => prev.filter((_, i) => i !== idx))
@@ -776,9 +730,7 @@ function AuthTab({
         <CredentialPicker
           value={credentialId}
           onChange={setCredentialId}
-          definitionKeys={
-            credentialDefinitionFilter ? [credentialDefinitionFilter] : undefined
-          }
+          definitionKeys={credentialDefinitionFilter ? [credentialDefinitionFilter] : undefined}
         />
       </div>
 
@@ -792,9 +744,7 @@ function AuthTab({
           . {t('interpolationSuffix')}
         </p>
         {credentialDefinitionFilter ? (
-          <p className="mt-2">
-            {t('filtered', { type: credentialDefinitionFilter })}
-          </p>
+          <p className="mt-2">{t('filtered', { type: credentialDefinitionFilter })}</p>
         ) : null}
       </div>
 
@@ -880,15 +830,10 @@ function ToolsTab({
               key={tool.name}
               className="flex cursor-pointer items-start gap-2.5 rounded-md border border-border/60 p-2.5 transition-colors hover:bg-muted/40"
             >
-              <Checkbox
-                checked={checked}
-                onCheckedChange={() => onToggle(tool.name)}
-              />
+              <Checkbox checked={checked} onCheckedChange={() => onToggle(tool.name)} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="truncate font-mono text-xs font-medium">
-                    {tool.name}
-                  </span>
+                  <span className="truncate font-mono text-xs font-medium">{tool.name}</span>
                   <span className="rounded-full bg-muted px-1.5 py-0.5 moldy-ui-micro text-muted-foreground">
                     {t('params', { count: paramCount })}
                   </span>

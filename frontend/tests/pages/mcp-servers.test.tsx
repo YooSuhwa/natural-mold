@@ -87,9 +87,9 @@ describe('McpServersPage', () => {
   it('renders MCP servers as status cards by default', () => {
     render(<McpServersPage />)
 
-    const card = screen.getByText('GitHub MCP').closest('[role="button"]')
-    expect(card).toHaveClass('border-transparent')
-    expect(card?.className).toMatch(/\bbg-(violet|sky|emerald|amber|rose)-50\/75\b/)
+    const card = screen.getByText('GitHub MCP').closest('article')
+    expect(card).toHaveClass('moldy-resource-card')
+    expect(card?.className).toMatch(/\bmoldy-tone-card-sky\b/)
     expect(screen.getByTestId('check-now-mcp-1')).toBeInTheDocument()
   })
 

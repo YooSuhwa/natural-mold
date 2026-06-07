@@ -81,18 +81,14 @@ async function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
 
 export async function* withAutoResume<E extends IdentifiedEvent>(
   primary: () => AsyncGenerator<E>,
-  resumeFactory: (
-    lastEventId: string | undefined,
-    attempt: number,
-  ) => AsyncGenerator<E> | null,
+  resumeFactory: (lastEventId: string | undefined, attempt: number) => AsyncGenerator<E> | null,
   options: WithAutoResumeOptions = {},
 ): AsyncGenerator<E> {
   const max = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS
   const backoff = options.backoffMs ?? DEFAULT_BACKOFF_MS
   const signal = options.signal
 
-  const toError = (e: unknown): Error =>
-    e instanceof Error ? e : new Error(String(e))
+  const toError = (e: unknown): Error => (e instanceof Error ? e : new Error(String(e)))
 
   let lastEventId: string | undefined
   let attempt = 0

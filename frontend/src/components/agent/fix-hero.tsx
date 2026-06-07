@@ -32,10 +32,7 @@ export function FixHero({
         />
       ) : (
         <div className="moldy-status-accent moldy-status-surface flex size-32 items-center justify-center rounded-full border-2 border-dashed">
-          <WrenchIcon
-            className="moldy-status-icon size-14"
-            strokeWidth={2}
-          />
+          <WrenchIcon className="moldy-status-icon size-14" strokeWidth={2} />
         </div>
       )}
       <div className="space-y-1.5">

@@ -1,23 +1,12 @@
 'use client'
 
-import type {
-  ButtonHTMLAttributes,
-  HTMLAttributes,
-  ReactNode,
-  TextareaHTMLAttributes,
-} from 'react'
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react'
 
 import { cn } from '@/lib/utils'
 
 type BuilderButtonTone = 'primary' | 'secondary' | 'ghost'
 
-function BuilderHeaderIcon({
-  children,
-  className,
-}: {
-  children: ReactNode
-  className?: string
-}) {
+function BuilderHeaderIcon({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={cn('moldy-builder-header-icon', className)}>{children}</span>
 }
 
@@ -67,13 +56,7 @@ function BuilderMuted({ children, className }: { children: ReactNode; className?
   return <span className={cn('moldy-builder-muted', className)}>{children}</span>
 }
 
-function BuilderPhaseLabel({
-  children,
-  className,
-}: {
-  children: ReactNode
-  className?: string
-}) {
+function BuilderPhaseLabel({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={cn('moldy-builder-phase-label', className)}>{children}</span>
 }
 
@@ -136,20 +119,11 @@ function BuilderActionRow({ children, className }: { children: ReactNode; classN
   return <div className={cn('moldy-builder-action-row', className)}>{children}</div>
 }
 
-function BuilderFeedbackWrap({
-  children,
-  className,
-}: {
-  children: ReactNode
-  className?: string
-}) {
+function BuilderFeedbackWrap({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cn('moldy-builder-feedback-wrap', className)}>{children}</div>
 }
 
-function BuilderTextarea({
-  className,
-  ...props
-}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+function BuilderTextarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea className={cn('moldy-builder-textarea', className)} {...props} />
 }
 

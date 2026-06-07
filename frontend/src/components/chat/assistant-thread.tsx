@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useState, type UIEvent } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useState, type UIEvent } from 'react'
 import {
   ThreadPrimitive,
   MessagePrimitive,
@@ -17,8 +17,8 @@ import { conversationsApi } from '@/lib/api/conversations'
 import { conversationKeys } from '@/lib/hooks/use-conversations'
 import { StreamdownTextPrimitive } from '@assistant-ui/react-streamdown'
 import { math } from '@streamdown/math'
-import { buildMarkdownComponents } from '@/components/chat/markdown-content'
-import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-plugins'
+import { buildMarkdownComponents } from '@/components/chat/markdown-components'
+import { CHAT_STREAMING_REMARK_PLUGINS } from '@/components/chat/markdown-streaming-plugins'
 import 'katex/dist/katex.min.css'
 import './markdown-styles.css'
 import {
@@ -52,13 +52,6 @@ import { WittyLoadingMessage } from '@/components/chat/witty-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
-import {
-  BuilderAssistantMessage,
-  BuilderAssistantMessageParts,
-  BuilderComposer,
-  BuilderUserEditComposer,
-  BuilderUserMessage,
-} from '@/components/chat/builder-overrides'
 import { ImeSafeComposerInput } from '@/components/chat/ime-safe-composer-input'
 import {
   MessageEditComposerInput,
@@ -82,6 +75,40 @@ import {
 import type { ArtifactSummary } from '@/lib/types'
 
 export { GenericToolFallback }
+
+const BuilderAssistantMessage = lazy(() =>
+  import('@/components/chat/builder-overrides').then((m) => ({
+    default: m.BuilderAssistantMessage,
+  })),
+)
+const BuilderAssistantMessageParts = lazy(() =>
+  import('@/components/chat/builder-overrides').then((m) => ({
+    default: m.BuilderAssistantMessageParts,
+  })),
+)
+const BuilderComposer = lazy(() =>
+  import('@/components/chat/builder-overrides').then((m) => ({ default: m.BuilderComposer })),
+)
+const BuilderUserEditComposer = lazy(() =>
+  import('@/components/chat/builder-overrides').then((m) => ({
+    default: m.BuilderUserEditComposer,
+  })),
+)
+const BuilderUserMessage = lazy(() =>
+  import('@/components/chat/builder-overrides').then((m) => ({ default: m.BuilderUserMessage })),
+)
+
+function BuilderMessageFallback() {
+  return <div className="min-h-12" aria-hidden />
+}
+
+function BuilderComposerFallback() {
+  return (
+    <div className="mx-auto w-full max-w-3xl px-4 pb-4">
+      <div className="moldy-card h-20 animate-pulse" aria-hidden />
+    </div>
+  )
+}
 
 /** 메시지 메타에서 createdAt을 읽어 한국어 상대 시간을 표시 */
 function MessageTimestamp() {
@@ -616,7 +643,11 @@ export function AssistantThread({
           </MessageMetaRow>
         )
         if (isBuilder) {
-          return <BuilderUserMessage metaRow={metaRow} />
+          return (
+            <Suspense fallback={<BuilderMessageFallback />}>
+              <BuilderUserMessage metaRow={metaRow} />
+            </Suspense>
+          )
         }
         return (
           <div className="group relative flex justify-end gap-3 [contain-intrinsic-size:0_96px] [content-visibility:auto]">
@@ -632,7 +663,11 @@ export function AssistantThread({
       },
       UserEditComposer: function UserEdit() {
         if (isBuilder) {
-          return <BuilderUserEditComposer />
+          return (
+            <Suspense fallback={<BuilderMessageFallback />}>
+              <BuilderUserEditComposer />
+            </Suspense>
+          )
         }
         return (
           <div className="flex justify-end gap-3">
@@ -657,10 +692,12 @@ export function AssistantThread({
         )
         if (isBuilder) {
           return (
-            <BuilderAssistantMessage metaRow={metaRow} agentSubtitle={builderAgentSubtitle}>
-              <StreamingMessageLoadingIndicator />
-              <BuilderAssistantMessageParts />
-            </BuilderAssistantMessage>
+            <Suspense fallback={<BuilderMessageFallback />}>
+              <BuilderAssistantMessage metaRow={metaRow} agentSubtitle={builderAgentSubtitle}>
+                <StreamingMessageLoadingIndicator />
+                <BuilderAssistantMessageParts />
+              </BuilderAssistantMessage>
+            </Suspense>
           )
         }
         return (
@@ -736,7 +773,9 @@ export function AssistantThread({
 
         {/* Composer */}
         {isBuilder ? (
-          <BuilderComposer modelLabel={builderModelLabel} />
+          <Suspense fallback={<BuilderComposerFallback />}>
+            <BuilderComposer modelLabel={builderModelLabel} />
+          </Suspense>
         ) : (
           <div className="mx-auto w-full max-w-3xl px-4 pb-4">
             <ThreadComposer
@@ -754,12 +793,13 @@ export function AssistantThread({
 }
 
 function ScrollToBottomButton({ isAtBottom }: { isAtBottom: boolean }) {
+  const t = useTranslations('chat.input')
   const scrollToBottom = useThreadViewport((v) => v.scrollToBottom)
 
   return (
     <button
       type="button"
-      aria-label="Scroll to bottom"
+      aria-label={t('scrollToBottom')}
       aria-hidden={isAtBottom}
       disabled={isAtBottom}
       tabIndex={isAtBottom ? -1 : 0}

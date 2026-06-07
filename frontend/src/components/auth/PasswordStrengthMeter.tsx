@@ -19,23 +19,17 @@ interface Score {
 
 function score(password: string): Score {
   const length = password.length
-  if (length === 0)
-    return { segments: 0, labelKey: 'tooShort', tone: 'destructive' }
-  if (length < 8)
-    return { segments: 0, labelKey: 'tooShort', tone: 'destructive' }
-  if (length < 10)
-    return { segments: 1, labelKey: 'weak', tone: 'warn' }
-  if (length < 14)
-    return { segments: 2, labelKey: 'medium', tone: 'warn' }
-  if (length < 18)
-    return { segments: 3, labelKey: 'strong', tone: 'success' }
+  if (length === 0) return { segments: 0, labelKey: 'tooShort', tone: 'destructive' }
+  if (length < 8) return { segments: 0, labelKey: 'tooShort', tone: 'destructive' }
+  if (length < 10) return { segments: 1, labelKey: 'weak', tone: 'warn' }
+  if (length < 14) return { segments: 2, labelKey: 'medium', tone: 'warn' }
+  if (length < 18) return { segments: 3, labelKey: 'strong', tone: 'success' }
   // very strong: 18+ or mixed alphanum + symbol
   const hasLetter = /[a-zA-Z]/.test(password)
   const hasDigit = /\d/.test(password)
   const hasSymbol = /[^a-zA-Z0-9]/.test(password)
   const mixedBonus = hasLetter && hasDigit && hasSymbol
-  if (mixedBonus || length >= 18)
-    return { segments: 4, labelKey: 'veryStrong', tone: 'success' }
+  if (mixedBonus || length >= 18) return { segments: 4, labelKey: 'veryStrong', tone: 'success' }
   return { segments: 3, labelKey: 'strong', tone: 'success' }
 }
 

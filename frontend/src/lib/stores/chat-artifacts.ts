@@ -77,10 +77,9 @@ export const setConversationArtifactsAtom = atom(
     const items = sortArtifacts(payload.items)
     const selectedArtifactId =
       payload.selectedArtifactId ??
-      (previous?.selectedArtifactId &&
-      items.some((item) => item.id === previous.selectedArtifactId)
+      (previous?.selectedArtifactId && items.some((item) => item.id === previous.selectedArtifactId)
         ? previous.selectedArtifactId
-        : items[0]?.id ?? null)
+        : (items[0]?.id ?? null))
     set(chatArtifactsAtom, {
       ...current,
       [payload.conversationId]: {

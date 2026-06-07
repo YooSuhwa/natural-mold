@@ -28,11 +28,7 @@ interface ModelTestBulkDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-export function ModelTestBulkDialog({
-  models,
-  open,
-  onOpenChange,
-}: ModelTestBulkDialogProps) {
+export function ModelTestBulkDialog({ models, open, onOpenChange }: ModelTestBulkDialogProps) {
   const t = useTranslations('model.testDialog')
   const { data: credentials } = useCredentials()
   const { data: definitions } = useCredentialTypes()
@@ -41,9 +37,7 @@ export function ModelTestBulkDialog({
 
   const llmCredentials = useMemo(() => {
     if (!credentials || !definitions) return []
-    const llmKeys = new Set(
-      definitions.filter((d) => d.category === 'llm').map((d) => d.key),
-    )
+    const llmKeys = new Set(definitions.filter((d) => d.category === 'llm').map((d) => d.key))
     return credentials.filter((c) => llmKeys.has(c.definition_key))
   }, [credentials, definitions])
 
@@ -88,16 +82,12 @@ export function ModelTestBulkDialog({
             <SelectTrigger id="bulk-cred" className="w-full">
               <SelectValue
                 placeholder={
-                  llmCredentials.length === 0
-                    ? t('noCredential')
-                    : t('selectCredential')
+                  llmCredentials.length === 0 ? t('noCredential') : t('selectCredential')
                 }
               >
                 {(selected) =>
                   llmCredentials.find((c) => c.id === selected)?.name ??
-                  (llmCredentials.length === 0
-                    ? t('noCredential')
-                    : t('selectCredential'))
+                  (llmCredentials.length === 0 ? t('noCredential') : t('selectCredential'))
                 }
               </SelectValue>
             </SelectTrigger>
@@ -113,9 +103,7 @@ export function ModelTestBulkDialog({
 
         {credentialId && (
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>
-              {t('progress', { completed, total })}
-            </span>
+            <span>{t('progress', { completed, total })}</span>
             {allDone && (
               <span>
                 <Badge variant="secondary" className="mr-1">
@@ -132,8 +120,7 @@ export function ModelTestBulkDialog({
             {models.map((m) => (
               <div key={m.id} className="space-y-1.5">
                 <p className="text-xs font-medium">
-                  {m.display_name}{' '}
-                  <span className="text-muted-foreground">· {m.model_name}</span>
+                  {m.display_name} <span className="text-muted-foreground">· {m.model_name}</span>
                 </p>
                 <ModelConnectionTest
                   key={`${m.id}-${credentialId}`}
@@ -143,9 +130,7 @@ export function ModelTestBulkDialog({
                   modelLabel={m.display_name}
                   showCostBanner={false}
                   autoStart
-                  onComplete={(r) =>
-                    setResults((prev) => ({ ...prev, [m.id]: r }))
-                  }
+                  onComplete={(r) => setResults((prev) => ({ ...prev, [m.id]: r }))}
                 />
               </div>
             ))}

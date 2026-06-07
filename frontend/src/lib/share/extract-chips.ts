@@ -147,10 +147,7 @@ export function extractChips(turn: TurnTrace): ChipInfo[] {
  * ``TurnTrace.assistant_msg_id``(stream_agent_response의 msg_id)와 동일 문자열
  * 비교가 성립하는 경우가 가장 흔한 경로. 매칭 안 되면 null 반환 → 칩 미표시.
  */
-export function findTurnForMessage(
-  traces: TurnTrace[],
-  messageId: string,
-): TurnTrace | null {
+export function findTurnForMessage(traces: TurnTrace[], messageId: string): TurnTrace | null {
   for (const t of traces) {
     if (t.assistant_msg_id === messageId) return t
   }

@@ -137,13 +137,7 @@ export function SpendLineChart({ data, metric, className, label }: SpendLineChar
         {/* Filled area under the curve */}
         <path d={areaPath} fill={accent} fillOpacity="0.12" />
         {/* Line */}
-        <path
-          d={linePath}
-          fill="none"
-          stroke={accent}
-          strokeWidth="1.75"
-          strokeLinejoin="round"
-        />
+        <path d={linePath} fill="none" stroke={accent} strokeWidth="1.75" strokeLinejoin="round" />
         {/* Points with native tooltip */}
         {sorted.map((d, i) => {
           const x = PAD_X + xStep * i
@@ -160,9 +154,7 @@ export function SpendLineChart({ data, metric, className, label }: SpendLineChar
               strokeWidth="1"
               data-testid="spend-line-point"
             >
-              <title>
-                {`${d.date} · ${formatMetric(v, metric)}`}
-              </title>
+              <title>{`${d.date} · ${formatMetric(v, metric)}`}</title>
             </circle>
           )
         })}

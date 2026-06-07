@@ -106,9 +106,7 @@ export function SettingsSidebar() {
     },
     {
       label: tSettings('nav.api'),
-      items: [
-        { href: '/settings/agent-api', label: tSettings('nav.agentApi'), icon: Code2Icon },
-      ],
+      items: [{ href: '/settings/agent-api', label: tSettings('nav.agentApi'), icon: Code2Icon }],
     },
     {
       label: tSettings('nav.resources'),
@@ -245,10 +243,7 @@ export function SettingsSidebar() {
                           isActive={active}
                           tooltip={item.label}
                           render={
-                            <Link
-                              href={item.href}
-                              aria-current={active ? 'page' : undefined}
-                            />
+                            <Link href={item.href} aria-current={active ? 'page' : undefined} />
                           }
                           className={activeMenuClass}
                         >

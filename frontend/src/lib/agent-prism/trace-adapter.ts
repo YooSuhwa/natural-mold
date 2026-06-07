@@ -9,11 +9,7 @@ import type {
 } from '@evilmartians/agent-prism-types'
 import { langfuseSpanAdapter } from '@evilmartians/agent-prism-data'
 
-import type {
-  DebugTraceDetailResponse,
-  DebugTraceSpan,
-  DebugTraceSummary,
-} from '@/lib/types'
+import type { DebugTraceDetailResponse, DebugTraceSpan, DebugTraceSummary } from '@/lib/types'
 import type { TraceViewerData } from '@/components/agent-prism/TraceViewer/TraceViewer'
 
 const DEFAULT_PROJECT_ID = 'moldy'
@@ -65,9 +61,7 @@ function hideDuplicateTraceRootSpans(
   trace: DebugTraceSummary,
 ): DebugTraceSpan[] {
   const rootSpans = spans.filter((span) => span.parent_id == null)
-  const hasRuntimeRoot = rootSpans.some(
-    (span) => span.kind !== 'span' && span.name !== trace.name,
-  )
+  const hasRuntimeRoot = rootSpans.some((span) => span.kind !== 'span' && span.name !== trace.name)
   if (!hasRuntimeRoot) return spans
   return spans.filter((span) => {
     const isTraceShellRoot =

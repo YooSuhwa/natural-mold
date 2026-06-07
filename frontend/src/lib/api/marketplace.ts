@@ -59,31 +59,26 @@ export const marketplaceApi = {
   page: (filters?: MarketplaceListFilters) =>
     apiFetch<MarketplaceItemsPage>(`/api/marketplace/items/page${buildSearch(filters)}`),
 
-  get: (itemId: string) =>
-    apiFetch<MarketplaceItem>(`/api/marketplace/items/${itemId}`),
+  get: (itemId: string) => apiFetch<MarketplaceItem>(`/api/marketplace/items/${itemId}`),
 
   listVersions: (itemId: string) =>
-    apiFetch<MarketplaceVersionSummary[]>(
-      `/api/marketplace/items/${itemId}/versions`,
-    ),
+    apiFetch<MarketplaceVersionSummary[]>(`/api/marketplace/items/${itemId}/versions`),
 
   getVersion: (versionId: string) =>
-    apiFetch<MarketplaceVersionDetail>(
-      `/api/marketplace/versions/${versionId}`,
-    ),
+    apiFetch<MarketplaceVersionDetail>(`/api/marketplace/versions/${versionId}`),
 
   // ---- Install / update / uninstall ----
   install: (itemId: string, body: InstallMarketplaceItemBody) =>
-    apiFetch<MarketplaceInstallation>(
-      `/api/marketplace/items/${itemId}/install`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+    apiFetch<MarketplaceInstallation>(`/api/marketplace/items/${itemId}/install`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   updateInstallation: (installationId: string, body: UpdateInstallationBody) =>
-    apiFetch<MarketplaceInstallation>(
-      `/api/marketplace/installations/${installationId}/update`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+    apiFetch<MarketplaceInstallation>(`/api/marketplace/installations/${installationId}/update`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   deleteInstallation: (installationId: string, deleteResource = false) =>
     apiFetch<void>(
@@ -93,20 +88,16 @@ export const marketplaceApi = {
 
   // ---- Publish / manage ----
   publishFromSkill: (skillId: string, body: PublishSkillBody) =>
-    apiFetch<MarketplaceItem>(
-      `/api/marketplace/items/from-skill/${skillId}`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+    apiFetch<MarketplaceItem>(`/api/marketplace/items/from-skill/${skillId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
-  publishNewVersion: (
-    itemId: string,
-    skillId: string,
-    body: PublishNewVersionBody,
-  ) =>
-    apiFetch<MarketplaceItem>(
-      `/api/marketplace/items/${itemId}/versions/from-skill/${skillId}`,
-      { method: 'POST', body: JSON.stringify(body) },
-    ),
+  publishNewVersion: (itemId: string, skillId: string, body: PublishNewVersionBody) =>
+    apiFetch<MarketplaceItem>(`/api/marketplace/items/${itemId}/versions/from-skill/${skillId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   patchItem: (itemId: string, body: MarketplaceItemPatchBody) =>
     apiFetch<MarketplaceItem>(`/api/marketplace/items/${itemId}`, {
@@ -150,9 +141,7 @@ export const marketplaceApi = {
     }),
 
   moderationQueue: () =>
-    apiFetch<MarketplaceItem[]>(
-      '/api/marketplace/items?is_listed=false&visibility=public',
-    ),
+    apiFetch<MarketplaceItem[]>('/api/marketplace/items?is_listed=false&visibility=public'),
 }
 
 // ---------------------------------------------------------------------------
@@ -161,14 +150,10 @@ export const marketplaceApi = {
 
 export const skillCredentialApi = {
   listRequirements: (skillId: string) =>
-    apiFetch<CredentialRequirement[]>(
-      `/api/skills/${skillId}/credential-requirements`,
-    ),
+    apiFetch<CredentialRequirement[]>(`/api/skills/${skillId}/credential-requirements`),
 
   listBindings: (skillId: string) =>
-    apiFetch<SkillCredentialBinding[]>(
-      `/api/skills/${skillId}/credential-bindings`,
-    ),
+    apiFetch<SkillCredentialBinding[]>(`/api/skills/${skillId}/credential-bindings`),
 
   setBinding: (skillId: string, requirementKey: string, credentialId: string) =>
     apiFetch<SkillCredentialBinding>(

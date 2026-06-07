@@ -14,10 +14,7 @@ import {
 import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
-import type {
-  PublicationState,
-  ResourcePublicationSummary,
-} from '@/lib/types/marketplace'
+import type { PublicationState, ResourcePublicationSummary } from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
 
 interface Spec {

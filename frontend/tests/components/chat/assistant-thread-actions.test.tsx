@@ -105,6 +105,7 @@ vi.mock('@assistant-ui/react', () => {
         getState: () => ({ capabilities: { attachments: false, queue: false }, isRunning: false }),
       }),
     }),
+    getExternalStoreMessages: () => [],
     makeAssistantToolUI: () => () => <div data-testid="tool-ui" />,
   }
 })

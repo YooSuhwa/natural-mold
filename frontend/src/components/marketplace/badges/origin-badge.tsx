@@ -1,14 +1,7 @@
 'use client'
 
 import type { LucideIcon } from 'lucide-react'
-import {
-  CogIcon,
-  DownloadIcon,
-  GlobeIcon,
-  PencilIcon,
-  SparklesIcon,
-  UsersIcon,
-} from 'lucide-react'
+import { CogIcon, DownloadIcon, GlobeIcon, PencilIcon, SparklesIcon, UsersIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
 import { Badge } from '@/components/ui/badge'
@@ -66,7 +59,7 @@ export function OriginBadge({ summary, className }: OriginBadgeProps) {
   const label =
     summary.kind === 'shared_with_me' && summary.source_name
       ? t('origin.sharedBy', { name: summary.source_name })
-      : (summary.label || t(spec.labelKey))
+      : summary.label || t(spec.labelKey)
   const Icon = spec.icon
   return (
     <Badge className={cn('gap-1', spec.className, className)}>

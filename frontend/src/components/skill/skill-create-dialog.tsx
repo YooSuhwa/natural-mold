@@ -3,7 +3,6 @@
 import { useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import JSZip from 'jszip'
 import { FileText, Loader2, Sparkles, Upload } from 'lucide-react'
 
 import { Input } from '@/components/ui/input'
@@ -12,10 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import { DomainIconTile } from '@/components/shared/icon'
 import { FormFooter } from '@/components/shared/form-footer'
-import {
-  useCreateTextSkill,
-  useUploadPackageSkill,
-} from '@/lib/hooks/use-skills'
+import { useCreateTextSkill, useUploadPackageSkill } from '@/lib/hooks/use-skills'
 
 type TabKey = 'text' | 'package' | 'scratch'
 
@@ -146,11 +142,7 @@ function TextTab({
           <label htmlFor="skill-name">
             {t('name')} <span className="text-destructive">*</span>
           </label>
-          <Input
-            id="skill-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
+          <Input id="skill-name" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="space-y-1.5">
           <label htmlFor="skill-slug">{t('slug')}</label>
@@ -224,9 +216,7 @@ function PackageTab({
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <p className="text-sm text-muted-foreground">
-        {t('description')}
-      </p>
+      <p className="text-sm text-muted-foreground">{t('description')}</p>
       <div className="space-y-3">
         <input
           ref={inputRef}
@@ -237,8 +227,7 @@ function PackageTab({
         />
         {file ? (
           <p className="rounded-md border border-border/60 bg-muted/40 px-2 py-1.5 text-xs">
-            <span className="font-medium">{file.name}</span> ·{' '}
-            {(file.size / 1024).toFixed(1)} kb
+            <span className="font-medium">{file.name}</span> · {(file.size / 1024).toFixed(1)} kb
           </p>
         ) : null}
       </div>
@@ -284,6 +273,7 @@ function ScratchTab({
     try {
       const slug = slugify(name)
       const skillMd = buildSkillMd(name.trim(), description.trim(), slug)
+      const { default: JSZip } = await import('jszip')
       const zip = new JSZip()
       const folder = zip.folder(slug)
       if (!folder) throw new Error(t('zipFailed'))
@@ -305,9 +295,7 @@ function ScratchTab({
 
   return (
     <div className="flex h-full flex-col gap-4">
-      <p className="text-sm text-muted-foreground">
-        {t('description')}
-      </p>
+      <p className="text-sm text-muted-foreground">{t('description')}</p>
       <div className="space-y-1.5">
         <label htmlFor="scratch-name">
           {t('name')} <span className="text-destructive">*</span>
@@ -362,11 +350,7 @@ function slugify(value: string): string {
   )
 }
 
-function buildSkillMd(
-  name: string,
-  description: string,
-  slug: string,
-): string {
+function buildSkillMd(name: string, description: string, slug: string): string {
   const desc = description || `Skill: ${name}`
   // Escape any double quotes in description for YAML safety.
   const yamlDesc = desc.replace(/"/g, '\\"')

@@ -1,7 +1,6 @@
 'use client'
 
-const THREAD_COMPOSER_INPUT_SELECTOR =
-  'textarea[data-moldy-composer-input="true"]:not(:disabled)'
+const THREAD_COMPOSER_INPUT_SELECTOR = 'textarea[data-moldy-composer-input="true"]:not(:disabled)'
 
 function canAutoFocusComposer(): boolean {
   if (typeof window === 'undefined') return false
@@ -25,9 +24,7 @@ export function requestThreadComposerFocus(): void {
   if (typeof window === 'undefined') return
 
   const focus = () => {
-    const inputs = document.querySelectorAll<HTMLTextAreaElement>(
-      THREAD_COMPOSER_INPUT_SELECTOR,
-    )
+    const inputs = document.querySelectorAll<HTMLTextAreaElement>(THREAD_COMPOSER_INPUT_SELECTOR)
     focusTextareaAtEnd(inputs[inputs.length - 1] ?? null)
   }
 

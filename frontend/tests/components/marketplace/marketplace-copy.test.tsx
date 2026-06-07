@@ -125,12 +125,12 @@ describe('marketplace Korean copy', () => {
   it('uses the template-inspired pastel marketplace card treatment', () => {
     render(<MarketplaceCard item={item()} />)
 
-    const card = screen.getByText('이미지 생성').closest('[data-slot="card"]')
+    const card = screen.getByText('이미지 생성').closest('article')
     const iconShell = card?.querySelector('svg')?.parentElement
 
-    expect(card).toHaveClass('border-transparent')
-    expect(card?.className).toMatch(/\bbg-(violet|sky|emerald|amber|rose)-50\/75\b/)
-    expect(iconShell?.className).toMatch(/\bbg-(violet|sky|emerald|amber|rose)-100\b/)
+    expect(card).toHaveClass('moldy-resource-card')
+    expect(card?.className).toMatch(/\bmoldy-tone-card-violet\b/)
+    expect(iconShell?.className).toMatch(/\bmoldy-tone-icon-violet\b/)
   })
 
   it('renders Korean filter placeholders and actions', () => {

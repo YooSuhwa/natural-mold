@@ -3,12 +3,7 @@
 import type { ReactNode } from 'react'
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import {
-  DIALOG_SIZE,
-  DIALOG_HEIGHT,
-  type DialogSize,
-  type DialogHeight,
-} from '@/lib/design-tokens'
+import { DIALOG_SIZE, DIALOG_HEIGHT, type DialogSize, type DialogHeight } from '@/lib/design-tokens'
 import { cn } from '@/lib/utils'
 
 interface DialogShellProps {
@@ -92,9 +87,7 @@ function Header({ icon, title, description, actions, className, srOnly }: Header
           </DialogDescription>
         ) : null}
       </div>
-      {actions ? (
-        <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div>
-      ) : null}
+      {actions ? <div className="ml-auto flex shrink-0 items-center gap-2">{actions}</div> : null}
     </div>
   )
 }

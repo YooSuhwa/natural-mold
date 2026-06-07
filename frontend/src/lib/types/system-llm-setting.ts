@@ -5,11 +5,7 @@
 // from the credential's `definition_key` (single source of truth), base_url is
 // surfaced so LiteLLM/openai_compatible endpoints are visible at a glance.
 
-export const SYSTEM_LLM_ROLES = [
-  'text_primary',
-  'text_fallback',
-  'image',
-] as const
+export const SYSTEM_LLM_ROLES = ['text_primary', 'text_fallback', 'image'] as const
 
 export type SystemLlmRole = (typeof SYSTEM_LLM_ROLES)[number]
 

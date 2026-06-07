@@ -20,10 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  useCreateModel,
-  useDiscoverModels,
-} from '@/lib/hooks/use-models'
+import { useCreateModel, useDiscoverModels } from '@/lib/hooks/use-models'
 import { useCredentials, useCredentialTypes } from '@/lib/hooks/use-credentials'
 import type { Credential, CredentialDefinition } from '@/lib/types/credential'
 import type { DiscoveredModel } from '@/lib/types/model'
@@ -55,9 +52,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
   const llmCredentials = useMemo<Credential[]>(() => {
     if (!credentials || !definitions) return []
     const llmKeys = new Set(
-      definitions
-        .filter((d: CredentialDefinition) => d.category === 'llm')
-        .map((d) => d.key),
+      definitions.filter((d: CredentialDefinition) => d.category === 'llm').map((d) => d.key),
     )
     return credentials.filter((c) => llmKeys.has(c.definition_key))
   }, [credentials, definitions])
@@ -70,9 +65,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
     const q = search.trim().toLowerCase()
     const matched = q
       ? results.filter(
-          (r) =>
-            r.model_name.toLowerCase().includes(q) ||
-            r.display_name.toLowerCase().includes(q),
+          (r) => r.model_name.toLowerCase().includes(q) || r.display_name.toLowerCase().includes(q),
         )
       : results
     // M11 — Float models with at least one benchmark score above unranked
@@ -177,17 +170,13 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
               */}
               <SelectValue
                 placeholder={
-                  llmCredentials.length === 0
-                    ? t('noCredential')
-                    : t('selectCredential')
+                  llmCredentials.length === 0 ? t('noCredential') : t('selectCredential')
                 }
               >
                 {(value: string) => {
                   const selected = llmCredentials.find((c) => c.id === value)
                   if (!selected) {
-                    return llmCredentials.length === 0
-                      ? t('noCredential')
-                      : t('selectCredential')
+                    return llmCredentials.length === 0 ? t('noCredential') : t('selectCredential')
                   }
                   return (
                     <span className="inline-flex items-center gap-2">
@@ -216,10 +205,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
             </SelectContent>
           </Select>
         </div>
-        <Button
-          onClick={handleDiscover}
-          disabled={!credentialId || discover.isPending}
-        >
+        <Button onClick={handleDiscover} disabled={!credentialId || discover.isPending}>
           {discover.isPending ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
@@ -255,10 +241,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
             </Button>
           </div>
 
-          <div
-            role="list"
-            className="max-h-[44vh] overflow-auto rounded-md border"
-          >
+          <div role="list" className="max-h-[44vh] overflow-auto rounded-md border">
             {filteredResults.map((m) => {
               const checked = selected.has(m.model_name)
               const disabled = m.already_registered
@@ -267,9 +250,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                   key={m.model_name}
                   role="listitem"
                   className={`flex items-start gap-3 border-b px-3 py-2 last:border-b-0 ${
-                    disabled
-                      ? 'cursor-not-allowed opacity-60'
-                      : 'cursor-pointer hover:bg-muted/40'
+                    disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-muted/40'
                   }`}
                 >
                   <Checkbox
@@ -280,9 +261,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                   />
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium">
-                        {m.display_name}
-                      </span>
+                      <span className="truncate text-sm font-medium">{m.display_name}</span>
                       <ModelSourceBadge source={m.source} />
                       {disabled && (
                         <span className="moldy-ui-micro text-muted-foreground">
@@ -296,9 +275,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                         className="ml-auto"
                         onClick={(e) => {
                           e.preventDefault()
-                          setTestRow((prev) =>
-                            prev === m.model_name ? null : m.model_name,
-                          )
+                          setTestRow((prev) => (prev === m.model_name ? null : m.model_name))
                         }}
                         aria-label={t('testModel', { name: m.display_name })}
                       >
@@ -316,9 +293,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
                         {t('outputPrice', { price: formatTokenPrice(m.cost_per_output_token) })}
                       </span>
                       {m.context_window && (
-                        <span>
-                          {t('context', { count: m.context_window.toLocaleString() })}
-                        </span>
+                        <span>{t('context', { count: m.context_window.toLocaleString() })}</span>
                       )}
                     </div>
                     {m.rankings && (
@@ -352,11 +327,7 @@ export function ModelDiscoverPanel({ onComplete }: ModelDiscoverPanelProps) {
             <span>
               {t('selectedSummary', { selected: selected.size, shown: filteredResults.length })}
             </span>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={selected.size === 0 || saving}
-            >
+            <Button size="sm" onClick={handleSave} disabled={selected.size === 0 || saving}>
               {saving && <Loader2 className="size-3 animate-spin" />}
               {t('saveSelected')}
             </Button>

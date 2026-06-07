@@ -149,17 +149,18 @@ describe('AppSidebar', () => {
 
   it('renders navigation items', () => {
     render(<AppSidebar />)
-    expect(screen.getByText('홈')).toBeInTheDocument()
+    expect(screen.getByText('에이전트 템플릿')).toBeInTheDocument()
+    expect(screen.getByText('마켓플레이스')).toBeInTheDocument()
+    expect(screen.getByText('기능')).toBeInTheDocument()
     expect(screen.getByText('도구')).toBeInTheDocument()
-    expect(screen.getByText('모델')).toBeInTheDocument()
-    expect(screen.getByText('스케줄')).toBeInTheDocument()
-    expect(screen.getByText('사용량')).toBeInTheDocument()
+    expect(screen.getByText('MCP 서버')).toBeInTheDocument()
+    expect(screen.getByText('스킬')).toBeInTheDocument()
   })
 
-  it('shows schedule unread badge from trigger summary', () => {
+  it('keeps schedule unread badge out of the main sidebar', () => {
     mockUseTriggerSummary.mockReturnValue({ data: { total_unread: 3, active_count: 1 } })
     render(<AppSidebar />)
-    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.queryByText('3')).not.toBeInTheDocument()
   })
 
   it('renders new agent button', () => {

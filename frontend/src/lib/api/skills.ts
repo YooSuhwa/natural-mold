@@ -33,14 +33,11 @@ export const skillsApi = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
-  getContent: (id: string) =>
-    apiFetch<SkillTextContent>(`/api/skills/${id}/content`),
+  getContent: (id: string) => apiFetch<SkillTextContent>(`/api/skills/${id}/content`),
   delete: (id: string) => apiFetch<void>(`/api/skills/${id}`, { method: 'DELETE' }),
 
-  listFiles: (id: string) =>
-    apiFetch<SkillFileEntry[]>(`/api/skills/${id}/files`),
-  fileUrl: (id: string, path: string) =>
-    `${API_BASE}/api/skills/${id}/files/${encodeURI(path)}`,
+  listFiles: (id: string) => apiFetch<SkillFileEntry[]>(`/api/skills/${id}/files`),
+  fileUrl: (id: string, path: string) => `${API_BASE}/api/skills/${id}/files/${encodeURI(path)}`,
 
   setFile: (id: string, path: string, content: string) =>
     apiFetch<Skill>(`/api/skills/${id}/files/${encodeURI(path)}`, {

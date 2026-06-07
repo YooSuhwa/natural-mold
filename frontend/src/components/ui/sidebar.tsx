@@ -346,7 +346,7 @@ function SidebarSeparator({ className, ...props }: React.ComponentProps<typeof S
     <Separator
       data-slot="sidebar-separator"
       data-sidebar="separator"
-        className={cn('mx-4 w-auto bg-sidebar-border/65', className)}
+      className={cn('mx-4 w-auto bg-sidebar-border/65', className)}
       {...props}
     />
   )

@@ -2,11 +2,12 @@ import type { Metadata } from 'next'
 import localFont from 'next/font/local'
 import { ThemeProvider } from 'next-themes'
 import { NextIntlClientProvider } from 'next-intl'
-import { getLocale, getMessages, getTimeZone, getTranslations } from 'next-intl/server'
+import { getLocale, getTimeZone, getTranslations } from 'next-intl/server'
 import { Toaster } from 'sonner'
 import './globals.css'
 import '@/components/agent-prism/theme/theme.css'
 import { AppLayout } from '@/components/layout/app-layout'
+import { ROOT_MESSAGE_NAMESPACES, getScopedMessages } from '@/i18n/scoped-messages'
 
 const pretendard = localFont({
   src: 'fonts/PretendardVariable.woff2',
@@ -28,9 +29,11 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const locale = await getLocale()
-  const messages = await getMessages()
-  const timeZone = await getTimeZone()
+  const [locale, messages, timeZone] = await Promise.all([
+    getLocale(),
+    getScopedMessages(ROOT_MESSAGE_NAMESPACES),
+    getTimeZone(),
+  ])
 
   return (
     <html

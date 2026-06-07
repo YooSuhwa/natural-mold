@@ -112,11 +112,9 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
   const detailsHref = `/marketplace/${item.id}`
   const primaryHref = getPrimaryCtaHref(item, cta)
   const showDetailsLink = primaryHref !== detailsHref
-  const showCredentialBadge =
-    item.credential_summary && item.credential_summary.status !== 'none'
+  const showCredentialBadge = item.credential_summary && item.credential_summary.status !== 'none'
   const showSupportBadge =
-    item.execution_profile?.support_level &&
-    item.execution_profile.support_level !== 'ready_python'
+    item.execution_profile?.support_level && item.execution_profile.support_level !== 'ready_python'
   const hasStatusSignals = Boolean(
     item.installation?.installed || showCredentialBadge || showSupportBadge,
   )
@@ -127,12 +125,7 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
   return (
     <ResourceListCard as="article" tone={tone} density="rich" className={cn('h-full', className)}>
       <ResourceListCard.Header>
-        <div
-          className={cn(
-            'moldy-resource-icon',
-            tone.icon,
-          )}
-        >
+        <div className={cn('moldy-resource-icon', tone.icon)}>
           <DomainIcon
             iconId={item.icon_id ?? getDomainIconIdForResource(item.resource_type)}
             className="size-5 text-current"
@@ -143,7 +136,9 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
 
       <ResourceListCard.Title>{item.name}</ResourceListCard.Title>
       <ResourceListCard.Subhead>{ownerLabel}</ResourceListCard.Subhead>
-      <ResourceListCard.Description>{item.description ?? resourceLabel}</ResourceListCard.Description>
+      <ResourceListCard.Description>
+        {item.description ?? resourceLabel}
+      </ResourceListCard.Description>
 
       {hasStatusSignals ? (
         <ResourceListCard.StatusRow>
@@ -162,10 +157,7 @@ function MarketplaceCardInner({ item, onAction, className }: MarketplaceCardProp
 
       <ResourceListCard.Footer className="justify-between">
         {showDetailsLink ? (
-          <Link
-            href={detailsHref}
-            className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}
-          >
+          <Link href={detailsHref} className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }))}>
             {t('cta.view_details')}
           </Link>
         ) : (

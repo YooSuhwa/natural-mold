@@ -25,6 +25,7 @@ export const ImagePreviewProvider: ArtifactPreviewProvider = {
   requiresText: false,
   kinds: ['image'],
   mimeTypes: ['image/*'],
-  match: (artifact) => artifact.artifact_kind === 'image' || artifact.mime_type.startsWith('image/'),
+  match: (artifact) =>
+    artifact.artifact_kind === 'image' || artifact.mime_type.startsWith('image/'),
   render: (props) => <ImagePreview {...props} />,
 }

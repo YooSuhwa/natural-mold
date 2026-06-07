@@ -126,9 +126,7 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
                     {t('system')}
                   </span>
                 ) : null}
-                <StatusChip
-                  variant={server.health_status ?? server.status}
-                />
+                <StatusChip variant={server.health_status ?? server.status} />
               </div>
             }
           />
@@ -156,10 +154,7 @@ function McpServerDetailDialogInner({ serverId, open, onOpenChange }: Props) {
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium">{t('credential')}</label>
-              <CredentialPicker
-                value={server.credential_id}
-                onChange={handleCredentialChange}
-              />
+              <CredentialPicker value={server.credential_id} onChange={handleCredentialChange} />
             </div>
 
             <McpHealthSection serverId={server.id} />

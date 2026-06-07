@@ -159,13 +159,7 @@ export function CollapsiblePill({
   }
 
   return (
-    <div
-      className={cn(
-        'moldy-tool-pill w-full text-xs',
-        containerClass,
-        className,
-      )}
-    >
+    <div className={cn('moldy-tool-pill w-full text-xs', containerClass, className)}>
       <div className="flex w-full items-center gap-2 px-3 py-2">
         <button
           type="button"
@@ -188,10 +182,7 @@ export function CollapsiblePill({
             className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <ChevronDownIcon
-              className={cn(
-                'size-3.5 transition-transform duration-200',
-                expanded && 'rotate-180',
-              )}
+              className={cn('size-3.5 transition-transform duration-200', expanded && 'rotate-180')}
             />
           </button>
         ) : null}

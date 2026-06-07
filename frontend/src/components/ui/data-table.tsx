@@ -102,10 +102,7 @@ export function DataTable<T>({
   const [search, setSearch] = useState('')
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const deferredSearch = useDeferredValue(search)
-  const normalizedSearch = useMemo(
-    () => deferredSearch.trim().toLowerCase(),
-    [deferredSearch],
-  )
+  const normalizedSearch = useMemo(() => deferredSearch.trim().toLowerCase(), [deferredSearch])
 
   const filtered = useMemo(() => {
     if (!normalizedSearch) return data
@@ -132,9 +129,7 @@ export function DataTable<T>({
             aria-label={t('selectAll')}
             checked={table.getIsAllPageRowsSelected()}
             indeterminate={table.getIsSomePageRowsSelected()}
-            onCheckedChange={(value) =>
-              table.toggleAllPageRowsSelected(Boolean(value))
-            }
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(Boolean(value))}
             onClick={(e) => e.stopPropagation()}
           />
         ),
@@ -179,9 +174,7 @@ export function DataTable<T>({
   // so callers receive the original objects (not table-wrapper rows).
   useEffect(() => {
     if (!enableRowSelection || !onRowSelectionChange) return
-    const selectedRows = table
-      .getSelectedRowModel()
-      .rows.map((r) => r.original)
+    const selectedRows = table.getSelectedRowModel().rows.map((r) => r.original)
     onRowSelectionChange(selectedRows)
     // We depend on rowSelection (the actual key map) — table is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -203,9 +196,7 @@ export function DataTable<T>({
             <DataTableFilter
               key={filter.columnId}
               filter={filter}
-              value={
-                (table.getColumn(filter.columnId)?.getFilterValue() as string) ?? ''
-              }
+              value={(table.getColumn(filter.columnId)?.getFilterValue() as string) ?? ''}
               onValueChange={(value) =>
                 table
                   .getColumn(filter.columnId)
@@ -232,17 +223,11 @@ export function DataTable<T>({
                           onClick={header.column.getToggleSortingHandler()}
                           className="inline-flex items-center gap-1 text-left font-medium"
                         >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
+                          {flexRender(header.column.columnDef.header, header.getContext())}
                           <ArrowUpDown className="size-3 text-muted-foreground" />
                         </button>
                       ) : (
-                        flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
-                        )
+                        flexRender(header.column.columnDef.header, header.getContext())
                       )}
                     </TableHead>
                   )
@@ -338,10 +323,7 @@ function DataTableFilter({
 }) {
   const t = useTranslations('common.dataTable')
   return (
-    <Select
-      value={value || 'all'}
-      onValueChange={(v) => v !== null && onValueChange(v)}
-    >
+    <Select value={value || 'all'} onValueChange={(v) => v !== null && onValueChange(v)}>
       <SelectTrigger className="h-8 w-[160px]" aria-label={filter.label}>
         <SelectValue placeholder={filter.label} />
       </SelectTrigger>

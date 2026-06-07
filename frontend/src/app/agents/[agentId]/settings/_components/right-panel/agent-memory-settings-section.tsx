@@ -6,12 +6,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { useAgentMemorySettings, useUpdateAgentMemorySettings } from '@/lib/hooks/use-memory'
 import type {
   AgentMemoryPolicyOverride,
@@ -71,9 +66,7 @@ function AgentMemorySettingsForm({
             <BrainIcon className="size-4 text-muted-foreground" aria-hidden />
             {t('title')}
           </div>
-          <div className="mt-0.5 text-xs leading-5 text-muted-foreground">
-            {t('description')}
-          </div>
+          <div className="mt-0.5 text-xs leading-5 text-muted-foreground">{t('description')}</div>
         </div>
       </div>
 

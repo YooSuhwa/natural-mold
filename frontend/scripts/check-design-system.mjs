@@ -67,7 +67,7 @@ const STYLE_ATTRIBUTE_ALLOWLIST = [
     context: /style=\{\{\s*paddingLeft:\s*depth \* 12 \+ 4\s*\}\}/,
   },
   {
-    filePath: 'src/components/chat/markdown-content.tsx',
+    filePath: 'src/components/chat/markdown-code-highlighter.tsx',
     reason: 'react-syntax-highlighter theme object',
     context: /style=\{oneDark\}/,
   },

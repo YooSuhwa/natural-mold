@@ -15,10 +15,7 @@ import {
   ResourceListCard,
 } from '@/components/shared/resource-layout'
 import { StatusChip } from '@/components/shared/status-chip'
-import {
-  getResourceTone,
-  resourceStatusChipClassName,
-} from '@/lib/resource-tones'
+import { getResourceTone, resourceStatusChipClassName } from '@/lib/resource-tones'
 import { cn } from '@/lib/utils'
 import type { ToolDefinition, ToolInstance } from '@/lib/types/tool'
 
@@ -188,12 +185,7 @@ function ToolDefinitionCard({
   return (
     <ResourceListCard as="button" tone={tone} density="compact" onClick={() => onPick(definition)}>
       <ResourceListCard.Header>
-        <span
-          className={cn(
-            'moldy-resource-icon',
-            tone.icon,
-          )}
-        >
+        <span className={cn('moldy-resource-icon', tone.icon)}>
           <DomainIcon iconId={definition.icon_id ?? definition.key} className="size-4.5" />
         </span>
         <ResourceBadge tone={tone}>{categoryLabel}</ResourceBadge>
@@ -241,12 +233,7 @@ function InstalledToolCard({
   return (
     <ResourceListCard as="button" tone={tone} density="standard" onClick={() => onOpen(tool)}>
       <ResourceListCard.Header>
-        <span
-          className={cn(
-            'moldy-resource-icon',
-            tone.icon,
-          )}
-        >
+        <span className={cn('moldy-resource-icon', tone.icon)}>
           <DomainIcon iconId={definition?.icon_id ?? tool.definition_key} className="size-4.5" />
         </span>
         <ResourceBadge tone={tone}>{categoryLabel}</ResourceBadge>

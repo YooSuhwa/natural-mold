@@ -14,14 +14,10 @@ export async function* streamResumeAttach(
   signal?: AbortSignal,
   onMode?: (info: { mode: 'live' | 'replay' | string; runId: string | null }) => void,
 ): AsyncGenerator<SSEEvent> {
-  yield* streamSSEGetResume<SSEEventType>(
-    `/api/conversations/${conversationId}/stream`,
-    signal,
-    {
-      runId,
-      lastEventId,
-      onMode,
-      defaultEvent: 'content_delta',
-    },
-  ) as AsyncGenerator<SSEEvent>
+  yield* streamSSEGetResume<SSEEventType>(`/api/conversations/${conversationId}/stream`, signal, {
+    runId,
+    lastEventId,
+    onMode,
+    defaultEvent: 'content_delta',
+  }) as AsyncGenerator<SSEEvent>
 }

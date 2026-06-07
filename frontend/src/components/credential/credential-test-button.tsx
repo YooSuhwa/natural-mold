@@ -6,10 +6,7 @@ import { toast } from 'sonner'
 import { Loader2, Activity } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import {
-  useTestCredential,
-  usePreviewTestCredential,
-} from '@/lib/hooks/use-credential-test'
+import { useTestCredential, usePreviewTestCredential } from '@/lib/hooks/use-credential-test'
 
 interface CredentialTestButtonProps {
   /** Either a saved credential ID, or undefined for preview-test mode. */
@@ -67,11 +64,7 @@ export function CredentialTestButton({
       disabled={pending || (!credentialId && !preview)}
       onClick={handleClick}
     >
-      {pending ? (
-        <Loader2 className="size-3.5 animate-spin" />
-      ) : (
-        <Activity className="size-3.5" />
-      )}
+      {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Activity className="size-3.5" />}
       {label ?? t('label')}
     </Button>
   )

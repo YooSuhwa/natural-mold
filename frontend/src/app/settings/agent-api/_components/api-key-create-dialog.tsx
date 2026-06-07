@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { KeyRoundIcon } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {
@@ -37,7 +38,8 @@ export function ApiKeyCreateDialog({
   onCreate,
   onCreated,
 }: ApiKeyCreateDialogProps) {
-  const [name, setName] = useState('Production key')
+  const t = useTranslations('appSettings.agentApi.createDialog')
+  const [name, setName] = useState(() => t('defaultName'))
   const [expiresInDays, setExpiresInDays] = useState('')
   const [scopes, setScopes] = useState<Set<AgentApiScope>>(new Set(['invoke', 'stream']))
   const [allowAll, setAllowAll] = useState(false)
@@ -90,33 +92,31 @@ export function ApiKeyCreateDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRoundIcon className="size-4" />
-            Create API key
+            {t('title')}
           </DialogTitle>
-          <DialogDescription>
-            Generate a server-side key and limit which deployed agents it can call.
-          </DialogDescription>
+          <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Name</span>
+            <span className="text-xs font-medium text-muted-foreground">{t('name')}</span>
             <Input value={name} onChange={(event) => setName(event.target.value)} />
           </label>
 
           <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Expires in days</span>
+            <span className="text-xs font-medium text-muted-foreground">{t('expiresInDays')}</span>
             <Input
               type="number"
               min={1}
               max={365}
-              placeholder="No expiry"
+              placeholder={t('noExpiry')}
               value={expiresInDays}
               onChange={(event) => setExpiresInDays(event.target.value)}
             />
           </label>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Scopes</p>
+            <p className="text-xs font-medium text-muted-foreground">{t('scopes')}</p>
             <div className="grid gap-2 sm:grid-cols-2">
               {ALL_SCOPES.map((scope) => (
                 <label key={scope} className="moldy-muted-panel flex items-center gap-2 p-3">
@@ -131,21 +131,29 @@ export function ApiKeyCreateDialog({
           </div>
 
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">Agent access</p>
+            <p className="text-xs font-medium text-muted-foreground">{t('agentAccess')}</p>
             <label className="moldy-muted-panel flex items-center gap-2 p-3">
-              <Checkbox checked={allowAll} onCheckedChange={(value) => setAllowAll(Boolean(value))} />
-              <span className="text-sm font-medium">All deployed agents</span>
+              <Checkbox
+                checked={allowAll}
+                onCheckedChange={(value) => setAllowAll(Boolean(value))}
+              />
+              <span className="text-sm font-medium">{t('allDeployments')}</span>
             </label>
             {!allowAll && (
               <div className="max-h-48 space-y-2 overflow-auto">
                 {deployments.map((deployment) => (
-                  <label key={deployment.id} className="moldy-muted-panel flex items-center gap-2 p-3">
+                  <label
+                    key={deployment.id}
+                    className="moldy-muted-panel flex items-center gap-2 p-3"
+                  >
                     <Checkbox
                       checked={selectedDeployments.has(deployment.id)}
                       onCheckedChange={(value) => toggleDeployment(deployment.id, Boolean(value))}
                     />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">{deployment.agent_name}</span>
+                      <span className="block truncate text-sm font-medium">
+                        {deployment.agent_name}
+                      </span>
                       <span className="block truncate font-mono text-xs text-muted-foreground">
                         {deployment.public_id}
                       </span>
@@ -154,7 +162,7 @@ export function ApiKeyCreateDialog({
                 ))}
                 {deployments.length === 0 && (
                   <div className="moldy-muted-panel p-3 text-sm text-muted-foreground">
-                    Deploy an agent before creating a scoped key.
+                    {t('emptyDeployments')}
                   </div>
                 )}
               </div>
@@ -164,10 +172,10 @@ export function ApiKeyCreateDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('cancel')}
           </Button>
           <Button onClick={submit} disabled={!canSubmit || submitting}>
-            Create
+            {t('create')}
           </Button>
         </DialogFooter>
       </DialogContent>

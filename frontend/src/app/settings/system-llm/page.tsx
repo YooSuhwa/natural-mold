@@ -8,19 +8,8 @@ import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { PageHeader } from '@/components/shared/page-header'
 import { useSession } from '@/lib/auth/session'
 import { useSystemCredentials } from '@/lib/hooks/use-credentials'
@@ -81,28 +70,20 @@ function SystemLlmSettingsPageInner() {
   const { data: credentials } = useSystemCredentials()
 
   const llmCredentials = useMemo(
-    () =>
-      (credentials ?? []).filter((c) =>
-        LLM_CREDENTIAL_KEYS.includes(c.definition_key),
-      ),
+    () => (credentials ?? []).filter((c) => LLM_CREDENTIAL_KEYS.includes(c.definition_key)),
     [credentials],
   )
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title={t('title')}
-        description={t('description')}
-      />
+      <PageHeader title={t('title')} description={t('description')} />
 
       <div className="moldy-status-surface moldy-status-warn rounded-lg p-3 text-xs">
         <p className="flex items-center gap-2 font-medium">
           <SlidersHorizontal className="size-3.5" />
           {t('operatorOnly.title')}
         </p>
-        <p className="moldy-status-muted-text mt-1">
-          {t('operatorOnly.description')}
-        </p>
+        <p className="moldy-status-muted-text mt-1">{t('operatorOnly.description')}</p>
       </div>
 
       {isLoading || !settings ? (
@@ -110,11 +91,7 @@ function SystemLlmSettingsPageInner() {
       ) : (
         <div className="grid gap-4">
           {settings.map((setting) => (
-            <SlotCard
-              key={setting.role}
-              setting={setting}
-              credentials={llmCredentials}
-            />
+            <SlotCard key={setting.role} setting={setting} credentials={llmCredentials} />
           ))}
         </div>
       )}
@@ -133,9 +110,7 @@ function SlotCard({
   const update = useUpdateSystemLlmSetting()
   const discover = useDiscoverModels()
 
-  const [credentialId, setCredentialId] = useState<string | null>(
-    setting.credential_id,
-  )
+  const [credentialId, setCredentialId] = useState<string | null>(setting.credential_id)
   const [modelName, setModelName] = useState<string | null>(setting.model_name)
   const [models, setModels] = useState<DiscoveredModel[]>([])
 
@@ -145,8 +120,7 @@ function SlotCard({
   function loadModels(id: string) {
     discover.mutate(id, {
       onSuccess: (list) => setModels(list),
-      onError: (e) =>
-        toast.error(e instanceof Error ? e.message : t('toast.loadModelsFailed')),
+      onError: (e) => toast.error(e instanceof Error ? e.message : t('toast.loadModelsFailed')),
     })
   }
 
@@ -174,8 +148,7 @@ function SlotCard({
   const selectedCredentialName = selectedCredential?.name ?? setting.credential_name
   const selectedModelLabel = modelName ? (modelLabels.get(modelName) ?? modelName) : null
 
-  const dirty =
-    credentialId !== setting.credential_id || modelName !== setting.model_name
+  const dirty = credentialId !== setting.credential_id || modelName !== setting.model_name
   const canSave = dirty && (credentialId === null || !!modelName)
 
   async function handleSave() {
@@ -194,9 +167,7 @@ function SlotCard({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-base">
-            {t(`roles.${setting.role}.label`)}
-          </CardTitle>
+          <CardTitle className="text-base">{t(`roles.${setting.role}.label`)}</CardTitle>
           {setting.configured ? (
             <Badge variant="default">{t('configured')}</Badge>
           ) : (
@@ -226,14 +197,9 @@ function SlotCard({
           <label className="text-xs font-medium text-muted-foreground">
             {t('systemCredential')}
           </label>
-          <Select
-            value={credentialId ?? NONE_VALUE}
-            onValueChange={handleCredentialChange}
-          >
+          <Select value={credentialId ?? NONE_VALUE} onValueChange={handleCredentialChange}>
             <SelectTrigger className="w-full">
-              <span className="truncate">
-                {selectedCredentialName ?? t('selectCredential')}
-              </span>
+              <span className="truncate">{selectedCredentialName ?? t('selectCredential')}</span>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={NONE_VALUE}>{t('none')}</SelectItem>
@@ -245,17 +211,13 @@ function SlotCard({
             </SelectContent>
           </Select>
           {credentials.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              {t('emptyCredentials')}
-            </p>
+            <p className="text-xs text-muted-foreground">{t('emptyCredentials')}</p>
           )}
         </div>
 
         <div className="space-y-1.5">
           <div className="flex items-center justify-between gap-2">
-            <label className="text-xs font-medium text-muted-foreground">
-              {t('model')}
-            </label>
+            <label className="text-xs font-medium text-muted-foreground">{t('model')}</label>
             {credentialId && (
               <Button
                 type="button"
@@ -285,17 +247,11 @@ function SlotCard({
             </SelectContent>
           </Select>
           {!credentialId ? (
-            <p className="text-xs text-muted-foreground">
-              {t('selectCredentialFirst')}
-            </p>
+            <p className="text-xs text-muted-foreground">{t('selectCredentialFirst')}</p>
           ) : discover.isError ? (
-            <p className="text-xs text-destructive">
-              {t('modelLoadFailed')}
-            </p>
+            <p className="text-xs text-destructive">{t('modelLoadFailed')}</p>
           ) : !discover.isPending && modelOptions.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              {t('noModels')}
-            </p>
+            <p className="text-xs text-muted-foreground">{t('noModels')}</p>
           ) : null}
         </div>
 

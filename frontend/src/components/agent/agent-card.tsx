@@ -46,23 +46,14 @@ export function AgentCard({ agent }: AgentCardProps) {
   }
 
   const modelName =
-    'model_display_name' in agent
-      ? agent.model_display_name
-      : agent.model?.display_name
+    'model_display_name' in agent ? agent.model_display_name : agent.model?.display_name
   const fallbackCount =
-    'fallback_count' in agent ? agent.fallback_count : agent.model_fallback_ids?.length ?? 0
+    'fallback_count' in agent ? agent.fallback_count : (agent.model_fallback_ids?.length ?? 0)
   const toolCount = 'tool_count' in agent ? agent.tool_count : agent.tools.length
 
   return (
-    <Link
-      href={`/agents/${agent.id}`}
-      className="moldy-card-link group"
-    >
-      <Card
-        className={cn(
-          'moldy-card-hover h-full gap-3 py-5',
-        )}
-      >
+    <Link href={`/agents/${agent.id}`} className="moldy-card-link group">
+      <Card className={cn('moldy-card-hover h-full gap-3 py-5')}>
         <CardHeader className="gap-2 px-5">
           <div className="flex items-start gap-3">
             <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="md" />

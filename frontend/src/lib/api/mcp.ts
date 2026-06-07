@@ -29,10 +29,8 @@ export const mcpApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  delete: (id: string) =>
-    apiFetch<void>(`/api/mcp-servers/${id}`, { method: 'DELETE' }),
-  test: (id: string) =>
-    apiFetch<McpTestResult>(`/api/mcp-servers/${id}/test`, { method: 'POST' }),
+  delete: (id: string) => apiFetch<void>(`/api/mcp-servers/${id}`, { method: 'DELETE' }),
+  test: (id: string) => apiFetch<McpTestResult>(`/api/mcp-servers/${id}/test`, { method: 'POST' }),
   discover: (id: string) =>
     apiFetch<McpDiscoverResult>(`/api/mcp-servers/${id}/discover`, {
       method: 'POST',
@@ -45,8 +43,7 @@ export const mcpApi = {
     }),
   /** Flat list of every MCP tool the user owns across all servers — used
    *  by the unified agent Tools picker (MCP tab). */
-  listAllTools: () =>
-    apiFetch<McpToolWithServer[]>('/api/mcp-servers/all-tools'),
+  listAllTools: () => apiFetch<McpToolWithServer[]>('/api/mcp-servers/all-tools'),
 
   // -- M8: Registry -----------------------------------------------------------
   /** Catalog of one-click MCP server templates (icon + transport + env vars). */
@@ -68,6 +65,5 @@ export const mcpApi = {
   /** Dump all owned MCP servers as a Claude Desktop-compatible JSON. Secrets
    *  are NOT included — `credential_id` references survive but resolved
    *  values do not. */
-  exportServers: () =>
-    apiFetch<McpExportResponse>('/api/mcp-servers/export'),
+  exportServers: () => apiFetch<McpExportResponse>('/api/mcp-servers/export'),
 }

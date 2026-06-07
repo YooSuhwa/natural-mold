@@ -82,9 +82,7 @@ describe('streamResumeDecisions', () => {
 
     expect(captured).toHaveLength(1)
     expect(captured[0].method).toBe('POST')
-    expect(captured[0].url).toContain(
-      '/api/conversations/conv-1/messages/resume',
-    )
+    expect(captured[0].url).toContain('/api/conversations/conv-1/messages/resume')
     expect(captured[0].body).toEqual({ decisions })
     // 표준 wire는 절대로 legacy `response` 필드를 같이 보내지 않는다.
     expect(captured[0].body).not.toHaveProperty('response')

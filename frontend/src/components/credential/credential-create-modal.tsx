@@ -13,16 +13,10 @@ import { SearchInput } from '@/components/shared/search-input'
 import { DomainIconTile } from '@/components/shared/icon'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Card } from '@/components/ui/card'
-import {
-  DynamicFieldsForm,
-  validateFields,
-} from '@/components/shared/dynamic-fields-form'
+import { DynamicFieldsForm, validateFields } from '@/components/shared/dynamic-fields-form'
 import { CredentialTestButton } from './credential-test-button'
 import { useCredentialTypes } from '@/lib/hooks/use-credentials'
-import {
-  useCreateCredential,
-  useCreateSystemCredential,
-} from '@/lib/hooks/use-credentials'
+import { useCreateCredential, useCreateSystemCredential } from '@/lib/hooks/use-credentials'
 import type { CredentialDefinition, FieldDef } from '@/lib/types/credential'
 
 interface CredentialCreateModalProps {
@@ -53,9 +47,7 @@ export function CredentialCreateModal({
   const createSystem = useCreateSystemCredential()
   const create = mode === 'system' ? createSystem : createUser
 
-  const [definitionKey, setDefinitionKey] = useState<string | null>(
-    presetDefinitionKey ?? null,
-  )
+  const [definitionKey, setDefinitionKey] = useState<string | null>(presetDefinitionKey ?? null)
   const [name, setName] = useState('')
   const [data, setData] = useState<Record<string, unknown>>({})
   const [search, setSearch] = useState('')
@@ -119,11 +111,7 @@ export function CredentialCreateModal({
     <DialogShell open={open} onOpenChange={handleClose} size="lg" height="fixed">
       <DialogShell.Header
         title={definition ? t('titleWithType', { type: definition.display_name }) : t('title')}
-        description={
-          definition
-            ? t('description.form')
-            : t('description.catalog')
-        }
+        description={definition ? t('description.form') : t('description.catalog')}
       />
       <DialogShell.Body>
         {!definition ? (

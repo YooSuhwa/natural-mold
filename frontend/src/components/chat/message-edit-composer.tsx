@@ -69,7 +69,9 @@ export function useMessageEditComposerControls() {
   const canCancel = useAuiState((state) => state.message.composer.canCancel)
   const canSend = useAuiState(
     (state) =>
-      state.message.composer.isEditing && !state.message.composer.isEmpty && !state.thread.isDisabled,
+      state.message.composer.isEditing &&
+      !state.message.composer.isEmpty &&
+      !state.thread.isDisabled,
   )
 
   const cancel = useCallback(() => {

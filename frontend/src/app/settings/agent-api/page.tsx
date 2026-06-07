@@ -10,6 +10,7 @@ import {
   RocketIcon,
   Trash2Icon,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,7 @@ import { ApiKeyCreateDialog } from './_components/api-key-create-dialog'
 import { ApiKeyCreatedDialog } from './_components/api-key-created-dialog'
 
 export default function AgentApiSettingsPage() {
+  const t = useTranslations('appSettings.agentApi')
   const [createOpen, setCreateOpen] = useState(false)
   const [createdKey, setCreatedKey] = useState<AgentApiKeyCreated | null>(null)
   const candidates = useAgentDeploymentCandidates()
@@ -47,17 +49,17 @@ export default function AgentApiSettingsPage() {
 
   async function copy(value: string, label: string) {
     await navigator.clipboard.writeText(value)
-    toast.success(`${label} copied`)
+    toast.success(t('toasts.copied', { label }))
   }
 
   async function deployAgent(agentId: string) {
     await createDeployment.mutateAsync({ agent_id: agentId })
-    toast.success('Agent deployed')
+    toast.success(t('toasts.deployed'))
   }
 
   async function revoke(id: string) {
     await revokeKey.mutateAsync(id)
-    toast.success('API key revoked')
+    toast.success(t('toasts.revoked'))
   }
 
   const waitEndpoint = `${API_BASE}/v1/runs/wait`
@@ -68,33 +70,41 @@ export default function AgentApiSettingsPage() {
       <div className="space-y-5">
         <section className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-1">
-            <h2 className="text-lg font-semibold text-foreground">Agent API</h2>
-            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-              Deploy agents, issue server-side API keys, and call Moldy from external systems.
-            </p>
+            <h2 className="text-lg font-semibold text-foreground">{t('title')}</h2>
+            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{t('description')}</p>
           </div>
-          <Button onClick={() => setCreateOpen(true)} disabled={(deployments.data ?? []).length === 0}>
+          <Button
+            onClick={() => setCreateOpen(true)}
+            disabled={(deployments.data ?? []).length === 0}
+          >
             <KeyRoundIcon className="size-4" />
-            API key
+            {t('actions.createKey')}
           </Button>
         </section>
 
         <section className="grid gap-3 lg:grid-cols-4">
-          <MetricCard label="Deployments" value={String(deployments.data?.length ?? 0)} />
-          <MetricCard label="API keys" value={String(apiKeys.data?.length ?? 0)} />
-          <MetricCard label="Base URL" value={`${API_BASE}/v1`} monospace />
-          <MetricCard label="Limits" value="planned" helper="Rate and token quotas are being prepared." />
+          <MetricCard
+            label={t('metrics.deployments')}
+            value={String(deployments.data?.length ?? 0)}
+          />
+          <MetricCard label={t('metrics.apiKeys')} value={String(apiKeys.data?.length ?? 0)} />
+          <MetricCard label={t('metrics.baseUrl')} value={`${API_BASE}/v1`} monospace />
+          <MetricCard
+            label={t('metrics.limits')}
+            value={t('metrics.planned')}
+            helper={t('metrics.limitsHelper')}
+          />
         </section>
 
         <section className="moldy-panel space-y-3 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-foreground">Deployment candidates</h3>
-              <p className="text-xs text-muted-foreground">
-                Only fixed-identity agents can be deployed to external APIs.
-              </p>
+              <h3 className="text-sm font-semibold text-foreground">{t('deployments.title')}</h3>
+              <p className="text-xs text-muted-foreground">{t('deployments.description')}</p>
             </div>
-            {candidates.isLoading && <Loader2Icon className="size-4 animate-spin text-muted-foreground" />}
+            {candidates.isLoading && (
+              <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+            )}
           </div>
 
           <div className="space-y-2">
@@ -108,11 +118,11 @@ export default function AgentApiSettingsPage() {
                         {candidate.agent_name}
                       </p>
                       {deployment ? (
-                        <Badge variant="secondary">deployed</Badge>
+                        <Badge variant="secondary">{t('deployments.status.deployed')}</Badge>
                       ) : candidate.eligible ? (
-                        <Badge variant="outline">ready</Badge>
+                        <Badge variant="outline">{t('deployments.status.ready')}</Badge>
                       ) : (
-                        <Badge variant="outline">blocked</Badge>
+                        <Badge variant="outline">{t('deployments.status.blocked')}</Badge>
                       )}
                     </div>
                     <p className="truncate font-mono text-xs text-muted-foreground">
@@ -126,8 +136,8 @@ export default function AgentApiSettingsPage() {
                     <Button
                       variant="outline"
                       size="icon-sm"
-                      onClick={() => copy(`${API_BASE}/v1/runs/wait`, 'Endpoint')}
-                      aria-label="Copy endpoint"
+                      onClick={() => copy(`${API_BASE}/v1/runs/wait`, t('examples.endpoint'))}
+                      aria-label={t('actions.copyEndpoint')}
                     >
                       <CopyIcon className="size-4" />
                     </Button>
@@ -138,7 +148,7 @@ export default function AgentApiSettingsPage() {
                       onClick={() => deployAgent(candidate.agent_id)}
                     >
                       <RocketIcon className="size-4" />
-                      Deploy
+                      {t('actions.deploy')}
                     </Button>
                   )}
                 </div>
@@ -146,7 +156,7 @@ export default function AgentApiSettingsPage() {
             })}
             {!candidates.isLoading && (candidates.data ?? []).length === 0 && (
               <div className="moldy-muted-panel p-4 text-sm text-muted-foreground">
-                Create an agent before deploying an API endpoint.
+                {t('deployments.empty')}
               </div>
             )}
           </div>
@@ -155,24 +165,27 @@ export default function AgentApiSettingsPage() {
         <section className="moldy-panel space-y-3 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-foreground">API keys</h3>
-              <p className="text-xs text-muted-foreground">
-                Keys are shown once and should only be used from server-side code.
-              </p>
+              <h3 className="text-sm font-semibold text-foreground">{t('keys.title')}</h3>
+              <p className="text-xs text-muted-foreground">{t('keys.description')}</p>
             </div>
-            {apiKeys.isLoading && <Loader2Icon className="size-4 animate-spin text-muted-foreground" />}
+            {apiKeys.isLoading && (
+              <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+            )}
           </div>
 
           <div className="space-y-2">
             {(apiKeys.data ?? []).map((key) => (
-              <div key={key.id} className="moldy-card flex flex-col gap-3 p-3 md:flex-row md:items-center">
+              <div
+                key={key.id}
+                className="moldy-card flex flex-col gap-3 p-3 md:flex-row md:items-center"
+              >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="truncate text-sm font-medium text-foreground">{key.name}</p>
                     {key.revoked_at ? (
-                      <Badge variant="outline">revoked</Badge>
+                      <Badge variant="outline">{t('keys.status.revoked')}</Badge>
                     ) : (
-                      <Badge variant="secondary">active</Badge>
+                      <Badge variant="secondary">{t('keys.status.active')}</Badge>
                     )}
                   </div>
                   <p className="font-mono text-xs text-muted-foreground">
@@ -180,7 +193,7 @@ export default function AgentApiSettingsPage() {
                   </p>
                   <p className="truncate text-xs text-muted-foreground">
                     {key.allow_all_deployments
-                      ? 'All deployed agents'
+                      ? t('keys.allDeployments')
                       : key.deployments.map((deployment) => deployment.agent_name).join(', ')}
                   </p>
                 </div>
@@ -196,7 +209,7 @@ export default function AgentApiSettingsPage() {
                   size="icon-sm"
                   disabled={Boolean(key.revoked_at) || revokeKey.isPending}
                   onClick={() => revoke(key.id)}
-                  aria-label="Revoke API key"
+                  aria-label={t('actions.revokeKey')}
                 >
                   <Trash2Icon className="size-4" />
                 </Button>
@@ -204,7 +217,7 @@ export default function AgentApiSettingsPage() {
             ))}
             {!apiKeys.isLoading && (apiKeys.data ?? []).length === 0 && (
               <div className="moldy-muted-panel p-4 text-sm text-muted-foreground">
-                Deploy an agent, then create an API key.
+                {t('keys.empty')}
               </div>
             )}
           </div>
@@ -213,10 +226,22 @@ export default function AgentApiSettingsPage() {
         <section className="moldy-panel space-y-3 p-4">
           <div className="flex items-center gap-2">
             <LinkIcon className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold text-foreground">Call examples</h3>
+            <h3 className="text-sm font-semibold text-foreground">{t('examples.title')}</h3>
           </div>
-          <EndpointRow label="Blocking run" value={waitEndpoint} onCopy={copy} />
-          <EndpointRow label="Streaming run" value={streamEndpoint} onCopy={copy} />
+          <EndpointRow
+            label={t('examples.blocking')}
+            value={waitEndpoint}
+            copyLabel={t('examples.endpoint')}
+            copyAriaLabel={t('actions.copy')}
+            onCopy={copy}
+          />
+          <EndpointRow
+            label={t('examples.streaming')}
+            value={streamEndpoint}
+            copyLabel={t('examples.endpoint')}
+            copyAriaLabel={t('actions.copy')}
+            onCopy={copy}
+          />
         </section>
       </div>
 
@@ -251,7 +276,11 @@ function MetricCard({
   return (
     <div className="moldy-card space-y-1 p-4">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <p className={monospace ? 'truncate font-mono text-sm text-foreground' : 'text-xl font-semibold'}>
+      <p
+        className={
+          monospace ? 'truncate font-mono text-sm text-foreground' : 'text-xl font-semibold'
+        }
+      >
         {value}
       </p>
       {helper && <p className="text-xs text-muted-foreground">{helper}</p>}
@@ -262,10 +291,14 @@ function MetricCard({
 function EndpointRow({
   label,
   value,
+  copyLabel,
+  copyAriaLabel,
   onCopy,
 }: {
   label: string
   value: string
+  copyLabel: string
+  copyAriaLabel: string
   onCopy: (value: string, label: string) => Promise<void>
 }) {
   return (
@@ -275,7 +308,12 @@ function EndpointRow({
         <p className="text-xs font-medium text-muted-foreground">{label}</p>
         <p className="truncate font-mono text-xs text-foreground">{value}</p>
       </div>
-      <Button variant="outline" size="icon-sm" onClick={() => onCopy(value, label)} aria-label="Copy">
+      <Button
+        variant="outline"
+        size="icon-sm"
+        onClick={() => onCopy(value, copyLabel)}
+        aria-label={copyAriaLabel}
+      >
         <CopyIcon className="size-4" />
       </Button>
     </div>

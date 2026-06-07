@@ -46,10 +46,7 @@ export function SubAgentsDialog({
       .filter((a) => !selectedSubAgentIds.has(a.id))
       .filter((a) => {
         if (!q) return true
-        return (
-          a.name.toLowerCase().includes(q) ||
-          (a.description ?? '').toLowerCase().includes(q)
-        )
+        return a.name.toLowerCase().includes(q) || (a.description ?? '').toLowerCase().includes(q)
       })
   }, [candidates, selectedSubAgentIds, query])
 
@@ -62,11 +59,7 @@ export function SubAgentsDialog({
       />
       <DialogShell.Body>
         <div className="grid gap-6 md:grid-cols-2">
-          <CurrentColumn
-            isLoading={!agents}
-            selected={selected}
-            onRemove={onToggleSubAgent}
-          />
+          <CurrentColumn isLoading={!agents} selected={selected} onRemove={onToggleSubAgent} />
           <AvailableColumn
             isLoading={!agents}
             available={available}
@@ -162,9 +155,7 @@ function SelectedCard({ agent, onRemove }: { agent: Agent; onRemove: () => void 
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium">{agent.name}</span>
         {agent.description && (
-          <span className="line-clamp-1 text-xs text-muted-foreground">
-            {agent.description}
-          </span>
+          <span className="line-clamp-1 text-xs text-muted-foreground">{agent.description}</span>
         )}
       </div>
       <Button
@@ -188,9 +179,7 @@ function AvailableCard({ agent, onAdd }: { agent: Agent; onAdd: () => void }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-sm font-medium">{agent.name}</span>
         {agent.description && (
-          <span className="line-clamp-1 text-xs text-muted-foreground">
-            {agent.description}
-          </span>
+          <span className="line-clamp-1 text-xs text-muted-foreground">{agent.description}</span>
         )}
         {agent.model && (
           <span className="mt-0.5 truncate font-mono moldy-ui-caption text-muted-foreground/80">

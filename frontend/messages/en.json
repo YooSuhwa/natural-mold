@@ -555,7 +555,8 @@
         "test": "Test",
         "opener": "Opener",
         "schedule": "Schedules",
-        "settings": "Settings"
+        "settings": "Settings",
+        "api": "API"
       },
       "namePlaceholder": "Agent name",
       "instruction": "Instructions",
@@ -573,6 +574,30 @@
           "title": "Agent fixed",
           "description": "Scheduled runs use the owner's credentials."
         }
+      },
+      "apiPanel": {
+        "copied": "Copied",
+        "deployedToast": "Agent deployed",
+        "description": "External Agent API deployment",
+        "status": {
+          "deployed": "deployed",
+          "notDeployed": "not deployed"
+        },
+        "publicId": "Public id",
+        "blockingEndpoint": "Blocking endpoint",
+        "streamingEndpoint": "Streaming endpoint",
+        "copy": "Copy",
+        "limits": "Limits",
+        "limitsDescription": "Rate and token quotas are being prepared.",
+        "planned": "planned",
+        "deployDescription": "Deploy this agent before issuing scoped API keys or calling it from external systems.",
+        "deployAgent": "Deploy agent",
+        "keysTitle": "Keys that can call this agent",
+        "keyStatus": {
+          "revoked": "revoked",
+          "active": "active"
+        },
+        "emptyKeys": "Create a key from Settings > Agent API after deployment."
       },
       "memory": {
         "title": "Memory policy",
@@ -1103,6 +1128,8 @@
       "totalDuration": "Total duration",
       "totalTokens": "Tokens used",
       "filters": "Filters",
+      "total": "Total",
+      "llm": "LLM",
       "tools": "Tools",
       "errors": "Errors",
       "privacy": "Privacy",
@@ -1179,6 +1206,7 @@
     "input": {
       "placeholder": "Placeholder",
       "sendButton": "Send Button",
+      "scrollToBottom": "Scroll to bottom",
       "attachComingSoon": "Attach Coming Soon",
       "templateComingSoon": "Template Coming Soon"
     },
@@ -3194,13 +3222,74 @@
     },
     "agentApi": {
       "title": "Agent API",
-      "description": "Prepare API deployments for calling Moldy agents from external apps.",
-      "status": "Coming soon",
-      "futureEndpoint": "Planned endpoint",
-      "placeholder": {
-        "title": "Agent API coming soon",
-        "description": "API deployments and keys for calling Moldy agents from external apps are coming soon.",
-        "detail": "This step only adds the menu and placeholder page. Deployment URLs and API key issuance will be implemented as a separate feature."
+      "description": "Deploy agents, issue server-side API keys, and call Moldy from external systems.",
+      "actions": {
+        "createKey": "API key",
+        "deploy": "Deploy",
+        "copy": "Copy",
+        "copyEndpoint": "Copy endpoint",
+        "revokeKey": "Revoke API key"
+      },
+      "toasts": {
+        "copied": "{label} copied",
+        "deployed": "Agent deployed",
+        "revoked": "API key revoked"
+      },
+      "metrics": {
+        "deployments": "Deployments",
+        "apiKeys": "API keys",
+        "baseUrl": "Base URL",
+        "limits": "Limits",
+        "planned": "planned",
+        "limitsHelper": "Rate and token quotas are being prepared."
+      },
+      "deployments": {
+        "title": "Deployment candidates",
+        "description": "Only fixed-identity agents can be deployed to external APIs.",
+        "empty": "Create an agent before deploying an API endpoint.",
+        "status": {
+          "deployed": "deployed",
+          "ready": "ready",
+          "blocked": "blocked"
+        }
+      },
+      "keys": {
+        "title": "API keys",
+        "description": "Keys are shown once and should only be used from server-side code.",
+        "allDeployments": "All deployed agents",
+        "empty": "Deploy an agent, then create an API key.",
+        "status": {
+          "revoked": "revoked",
+          "active": "active"
+        }
+      },
+      "examples": {
+        "title": "Call examples",
+        "blocking": "Blocking run",
+        "streaming": "Streaming run",
+        "endpoint": "Endpoint"
+      },
+      "createDialog": {
+        "defaultName": "Production key",
+        "title": "Create API key",
+        "description": "Generate a server-side key and limit which deployed agents it can call.",
+        "name": "Name",
+        "expiresInDays": "Expires in days",
+        "noExpiry": "No expiry",
+        "scopes": "Scopes",
+        "agentAccess": "Agent access",
+        "allDeployments": "All deployed agents",
+        "emptyDeployments": "Deploy an agent before creating a scoped key.",
+        "cancel": "Cancel",
+        "create": "Create"
+      },
+      "createdDialog": {
+        "copied": "API key copied",
+        "title": "API key created",
+        "description": "This key is shown once. Store it securely on your server.",
+        "secretKey": "Secret key",
+        "copyAria": "Copy API key",
+        "done": "Done"
       }
     },
     "audit": {

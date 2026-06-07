@@ -32,8 +32,8 @@ describe('resource layout primitives', () => {
       </ResourcePanel>,
     )
 
-    expect(screen.getByText('toolbar')).toHaveClass('shrink-0')
-    expect(screen.getByText('body')).toHaveClass('overflow-y-auto')
+    expect(screen.getByText('toolbar')).toHaveClass('moldy-resource-panel-toolbar')
+    expect(screen.getByText('body')).toHaveClass('moldy-resource-panel-body')
   })
 
   it('provides a reusable grid shell without owning card markup', () => {

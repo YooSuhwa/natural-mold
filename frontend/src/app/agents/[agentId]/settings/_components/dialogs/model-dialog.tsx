@@ -288,7 +288,9 @@ function FallbackSection({
                         <SelectItem key={m.id} value={m.id}>
                           <span className="flex items-center gap-2">
                             <span>{m.display_name}</span>
-                            <span className="moldy-ui-micro text-muted-foreground">{m.provider}</span>
+                            <span className="moldy-ui-micro text-muted-foreground">
+                              {m.provider}
+                            </span>
                           </span>
                         </SelectItem>
                       ))}

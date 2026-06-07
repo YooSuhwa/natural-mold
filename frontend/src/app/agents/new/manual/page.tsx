@@ -3,12 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import {
-  ArrowLeftIcon,
-  ClipboardListIcon,
-  Loader2Icon,
-  WorkflowIcon,
-} from 'lucide-react'
+import { ArrowLeftIcon, ClipboardListIcon, Loader2Icon, WorkflowIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { useCreateAgent } from '@/lib/hooks/use-agents'
@@ -228,12 +223,7 @@ export default function ManualCreationPage() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <header className="flex items-start gap-3 border-b px-6 py-3">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => router.back()}
-          aria-label={t('back')}
-        >
+        <Button variant="ghost" size="icon-sm" onClick={() => router.back()} aria-label={t('back')}>
           <ArrowLeftIcon className="size-4" />
         </Button>
         <AgentAvatar imageUrl={null} name={name} size="sm" />
@@ -253,9 +243,7 @@ export default function ManualCreationPage() {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button onClick={handleSave} disabled={!canSave || createAgent.isPending}>
-            {createAgent.isPending ? (
-              <Loader2Icon className="mr-1 size-4 animate-spin" />
-            ) : null}
+            {createAgent.isPending ? <Loader2Icon className="mr-1 size-4 animate-spin" /> : null}
             {t('save')}
           </Button>
         </div>
@@ -263,66 +251,67 @@ export default function ManualCreationPage() {
 
       <main className="grid flex-1 grid-cols-1 overflow-hidden lg:grid-cols-2">
         <section className="flex min-h-0 flex-col overflow-hidden border-b lg:border-b-0 lg:border-r">
-        <Tabs
-          value={leftTab}
-          onValueChange={(v) => setLeftTab(v as LeftTab)}
-          className="flex min-h-0 flex-1 flex-col"
-        >
-          <div className="sticky top-0 z-10 flex justify-center overflow-hidden bg-background">
-            <LineTabsList>
-              <LineTabsTrigger value="form" className="gap-1">
-                <ClipboardListIcon className="size-3.5" />
-                {t('tabs.form')}
-              </LineTabsTrigger>
-              <LineTabsTrigger value="visual" className="gap-1">
-                <WorkflowIcon className="size-3.5" />
-                {t('tabs.visual')}
-              </LineTabsTrigger>
-            </LineTabsList>
-          </div>
-          <TabsContent value="form" className="flex flex-1 min-h-0 flex-col overflow-hidden">
-            <FormMode
-              systemPrompt={systemPrompt}
-              onSystemPromptChange={setSystemPrompt}
-              selectedSubAgentIds={selectedSubAgentIds}
-              onToggleSubAgent={(id) =>
-                setSelectedSubAgentIds((prev) => toggleSetItem(prev, id))
-              }
-              currentAgentId=""
-              modelId={modelId}
-              onModelIdChange={setModelId}
-              temperature={temperature}
-              onTemperatureChange={setTemperature}
-              topP={topP}
-              onTopPChange={setTopP}
-              maxTokens={maxTokens}
-              onMaxTokensChange={setMaxTokens}
-              onResetModelParams={handleResetModelParams}
-              selectedToolIds={selectedToolIds}
-              onToggleTool={handleToggleTool}
-              selectedMcpToolIds={selectedMcpToolIds}
-              onToggleMcpTool={handleToggleMcpTool}
-              selectedSkillIds={selectedSkillIds}
-              onToggleSkill={handleToggleSkill}
-              selectedMiddlewareTypes={selectedMiddlewareTypes}
-              onToggleMiddleware={handleToggleMiddleware}
-            />
-          </TabsContent>
-          <TabsContent value="visual" className="flex flex-1 min-h-0 flex-col overflow-hidden p-0">
-            {leftTab === 'visual' ? (
+          <Tabs
+            value={leftTab}
+            onValueChange={(v) => setLeftTab(v as LeftTab)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <div className="sticky top-0 z-10 flex justify-center overflow-hidden bg-background">
+              <LineTabsList>
+                <LineTabsTrigger value="form" className="gap-1">
+                  <ClipboardListIcon className="size-3.5" />
+                  {t('tabs.form')}
+                </LineTabsTrigger>
+                <LineTabsTrigger value="visual" className="gap-1">
+                  <WorkflowIcon className="size-3.5" />
+                  {t('tabs.visual')}
+                </LineTabsTrigger>
+              </LineTabsList>
+            </div>
+            <TabsContent value="form" className="flex flex-1 min-h-0 flex-col overflow-hidden">
+              <FormMode
+                systemPrompt={systemPrompt}
+                onSystemPromptChange={setSystemPrompt}
+                selectedSubAgentIds={selectedSubAgentIds}
+                onToggleSubAgent={(id) => setSelectedSubAgentIds((prev) => toggleSetItem(prev, id))}
+                currentAgentId=""
+                modelId={modelId}
+                onModelIdChange={setModelId}
+                temperature={temperature}
+                onTemperatureChange={setTemperature}
+                topP={topP}
+                onTopPChange={setTopP}
+                maxTokens={maxTokens}
+                onMaxTokensChange={setMaxTokens}
+                onResetModelParams={handleResetModelParams}
+                selectedToolIds={selectedToolIds}
+                onToggleTool={handleToggleTool}
+                selectedMcpToolIds={selectedMcpToolIds}
+                onToggleMcpTool={handleToggleMcpTool}
+                selectedSkillIds={selectedSkillIds}
+                onToggleSkill={handleToggleSkill}
+                selectedMiddlewareTypes={selectedMiddlewareTypes}
+                onToggleMiddleware={handleToggleMiddleware}
+              />
+            </TabsContent>
+            <TabsContent
+              value="visual"
+              className="flex flex-1 min-h-0 flex-col overflow-hidden p-0"
+            >
+              {leftTab === 'visual' ? (
                 <VisualSettingsIsland
                   models={models}
                   tools={tools ?? EMPTY_RESOURCE_LIST}
                   skills={skills ?? EMPTY_RESOURCE_LIST}
                   middlewares={middlewares ?? EMPTY_RESOURCE_LIST}
                   mode="create"
-                embedded
-                controlledState={visualControlledState}
-                controlledHandlers={visualControlledHandlers}
-              />
-            ) : null}
-          </TabsContent>
-        </Tabs>
+                  embedded
+                  controlledState={visualControlledState}
+                  controlledHandlers={visualControlledHandlers}
+                />
+              ) : null}
+            </TabsContent>
+          </Tabs>
         </section>
 
         <section className="flex min-h-0 flex-col overflow-hidden">

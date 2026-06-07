@@ -32,8 +32,7 @@ export function TestChatPanel({ agentId, agentName, agentImageUrl }: TestChatPan
   }, [])
 
   const streamFn = useCallback(
-    (content: string, signal: AbortSignal) =>
-      streamAssistant(agentId, content, signal, sessionId),
+    (content: string, signal: AbortSignal) => streamAssistant(agentId, content, signal, sessionId),
     [agentId, sessionId],
   )
 

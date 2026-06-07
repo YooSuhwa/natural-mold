@@ -64,17 +64,12 @@ export function RankingCell({ value, format, className }: RankingCellProps) {
   const formatted = formatRankingValue(value, format)
   if (formatted === null) {
     return (
-      <span
-        className={cn('text-xs text-muted-foreground', className)}
-        aria-label={t('noData')}
-      >
+      <span className={cn('text-xs text-muted-foreground', className)} aria-label={t('noData')}>
         —
       </span>
     )
   }
-  return (
-    <span className={cn('font-mono text-xs tabular-nums', className)}>{formatted}</span>
-  )
+  return <span className={cn('font-mono text-xs tabular-nums', className)}>{formatted}</span>
 }
 
 interface RankingHeaderProps {
@@ -123,11 +118,7 @@ interface RankingsSectionProps {
  * Card-grid summary used by ModelEditDialog. Shows every benchmark with its
  * tooltip, falls back to a single helper line when nothing is populated.
  */
-export function RankingsSection({
-  rankings,
-  className,
-  emptyHint,
-}: RankingsSectionProps) {
+export function RankingsSection({ rankings, className, emptyHint }: RankingsSectionProps) {
   const t = useTranslations('model.rankings')
   const items = (Object.keys(RANKING_META) as ModelRankingKey[]).map((key) => ({
     key,
@@ -156,9 +147,7 @@ export function RankingsSection({
               </span>
             )}
           />
-          <TooltipContent>
-            {t('tooltip')}
-          </TooltipContent>
+          <TooltipContent>{t('tooltip')}</TooltipContent>
         </Tooltip>
       </div>
 
@@ -185,9 +174,7 @@ export function RankingsSection({
       </div>
 
       {!hasAny && (
-        <p className="mt-2 moldy-ui-caption text-muted-foreground">
-          {emptyHint ?? t('emptyHint')}
-        </p>
+        <p className="mt-2 moldy-ui-caption text-muted-foreground">{emptyHint ?? t('emptyHint')}</p>
       )}
     </section>
   )
@@ -231,9 +218,7 @@ export function RankingBadge({ rankingKey, value, className }: RankingBadgeProps
  * with at least one non-null benchmark sort above models with none, and
  * within those LMArena → LiveBench → AA Index is the tie-break order.
  */
-export function rankingScoreFor(
-  rankings: ModelRankings | null | undefined,
-): number {
+export function rankingScoreFor(rankings: ModelRankings | null | undefined): number {
   if (!rankings) return -1
   if (typeof rankings.lmarena === 'number') return rankings.lmarena
   if (typeof rankings.livebench === 'number') return rankings.livebench + 100_000

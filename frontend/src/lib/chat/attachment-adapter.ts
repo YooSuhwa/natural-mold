@@ -1,10 +1,6 @@
 'use client'
 
-import type {
-  AttachmentAdapter,
-  PendingAttachment,
-  CompleteAttachment,
-} from '@assistant-ui/react'
+import type { AttachmentAdapter, PendingAttachment, CompleteAttachment } from '@assistant-ui/react'
 import { uploadFile } from '@/lib/api/uploads'
 
 /**
