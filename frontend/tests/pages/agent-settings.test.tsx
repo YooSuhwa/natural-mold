@@ -1,4 +1,4 @@
-import { render, screen, userEvent } from '../test-utils'
+import { render, screen, userEvent, waitFor, within } from '../test-utils'
 import AgentSettingsPage from '@/app/agents/[agentId]/settings/page'
 import { SettingsPanel } from '@/app/agents/[agentId]/settings/_components/right-panel/settings-panel'
 import { mockAgent, mockToolList } from '../mocks/fixtures'
@@ -52,6 +52,7 @@ vi.mock('@/lib/hooks/use-agents', () => ({
 }))
 
 const mockUseTools = vi.fn()
+const mockUseAllMcpTools = vi.fn()
 
 vi.mock('@/lib/hooks/use-tools', () => ({
   useTools: () => mockUseTools(),
@@ -66,7 +67,7 @@ vi.mock('@/lib/hooks/use-middlewares', () => ({
 }))
 
 vi.mock('@/lib/hooks/use-mcp-servers', () => ({
-  useAllMcpTools: () => ({ data: [] }),
+  useAllMcpTools: () => mockUseAllMcpTools(),
 }))
 
 vi.mock('@/lib/hooks/use-memory', () => ({
@@ -163,7 +164,11 @@ vi.mock('@/components/ui/slider', () => ({
 // Agent fixture with new required fields
 const fullAgent = {
   ...mockAgent,
+  runtime_name: 'test_agent',
+  identity_mode: 'per_user',
+  mcp_tools: [],
   skills: [],
+  sub_agents: [],
   is_favorite: false,
   model_params: null,
   middleware_configs: [],
@@ -185,8 +190,10 @@ const fullAgent = {
  */
 describe('AgentSettingsPage', () => {
   beforeEach(() => {
+    mockUpdateAgent.mockClear()
     mockUseAgent.mockReturnValue({ data: undefined, isLoading: false })
     mockUseTools.mockReturnValue({ data: undefined })
+    mockUseAllMcpTools.mockReturnValue({ data: [], isLoading: false })
     mockUseTriggers.mockReturnValue({ data: undefined })
   })
 
@@ -285,6 +292,57 @@ describe('AgentSettingsPage', () => {
     await user.click(screen.getByRole('button', { name: '저장' }))
     expect(mockUpdateAgent).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Updated Agent' }),
+    )
+  })
+
+  it('calls updateAgent when only MCP tool selection changes', async () => {
+    mockUseAgent.mockReturnValue({
+      data: {
+        ...fullAgent,
+        tools: [],
+        mcp_tools: [],
+      },
+      isLoading: false,
+    })
+    mockUseTools.mockReturnValue({ data: [] })
+    mockUseAllMcpTools.mockReturnValue({
+      data: [
+        {
+          id: 'mcp-tool-1',
+          name: 'Repo Search',
+          description: null,
+          enabled: true,
+          server_id: 'mcp-server-1',
+          server_name: 'GitHub MCP',
+        },
+      ],
+      isLoading: false,
+    })
+    mockUseTriggers.mockReturnValue({ data: [] })
+    const user = userEvent.setup()
+
+    render(
+      <AgentSettingsPage
+        params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>}
+      />,
+    )
+
+    const saveButton = screen.getByRole('button', { name: '저장' })
+    await waitFor(() => expect(saveButton).toBeDisabled())
+
+    const toolsSkillsBox = screen.getByText('도구·스킬').closest('.rounded-lg')
+    expect(toolsSkillsBox).not.toBeNull()
+    await user.click(within(toolsSkillsBox as HTMLElement).getByRole('button', { name: '추가' }))
+    await user.click(screen.getByRole('tab', { name: /MCP/ }))
+
+    const mcpRow = screen.getByText('Repo Search').closest('.rounded-lg')
+    expect(mcpRow).not.toBeNull()
+    await user.click(within(mcpRow as HTMLElement).getByRole('button', { name: /Repo Search/ }))
+
+    await user.click(saveButton)
+
+    expect(mockUpdateAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ mcp_tool_ids: ['mcp-tool-1'] }),
     )
   })
 

@@ -282,6 +282,10 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     () => new Set(agent?.tools.map((tl) => tl.id) ?? []),
     [agent?.tools],
   )
+  const initialMcpToolIds = useMemo(
+    () => new Set(agent?.mcp_tools?.map((mt) => mt.id) ?? []),
+    [agent?.mcp_tools],
+  )
   const initialSkillIds = useMemo(
     () => new Set(agent?.skills?.map((s) => s.id) ?? []),
     [agent?.skills],
@@ -316,6 +320,7 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
       topP !== (agent.model_params?.top_p ?? 1.0) ||
       maxTokens !== (agent.model_params?.max_tokens ?? 4096) ||
       !setsEqual(selectedToolIds, initialToolIds) ||
+      !setsEqual(selectedMcpToolIds, initialMcpToolIds) ||
       !setsEqual(selectedSkillIds, initialSkillIds) ||
       !setsEqual(selectedSubAgentIds, initialSubAgentIds) ||
       !setsEqual(selectedMiddlewareTypes, initialMwTypes) ||
@@ -333,12 +338,14 @@ export default function AgentSettingsPage({ params }: { params: Promise<{ agentI
     topP,
     maxTokens,
     selectedToolIds,
+    selectedMcpToolIds,
     selectedSkillIds,
     selectedSubAgentIds,
     selectedMiddlewareTypes,
     openerQuestions,
     fallbackIds,
     initialToolIds,
+    initialMcpToolIds,
     initialSkillIds,
     initialSubAgentIds,
     initialMwTypes,

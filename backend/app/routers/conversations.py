@@ -80,6 +80,11 @@ _SSE_HEADERS = {
 _REGENERATE_PREVIOUS_ANSWER_LIMIT = 1200
 
 
+class BranchCheckpointResolution(NamedTuple):
+    found: bool
+    checkpoint_id: str | None
+
+
 async def _record_conversation_audit(
     db: AsyncSession,
     *,
@@ -1315,7 +1320,7 @@ async def _resolve_branch_checkpoint(
     target_message_id: uuid.UUID,
     *,
     checkpoints: list | None = None,
-) -> str | None:
+) -> BranchCheckpointResolution:
     """Translate ``target_message_id`` (UUID) → LangGraph checkpoint to fork from.
 
     The frontend hands back the same UUID we exposed via ``MessageResponse.id``.
@@ -1350,8 +1355,11 @@ async def _resolve_branch_checkpoint(
         if raw_id is not None:
             break
     if raw_id is None:
-        return None
-    return await rewind_to_checkpoint_before_message(checkpointer, str(conversation_id), raw_id)
+        return BranchCheckpointResolution(found=False, checkpoint_id=None)
+    checkpoint_id = await rewind_to_checkpoint_before_message(
+        checkpointer, str(conversation_id), raw_id
+    )
+    return BranchCheckpointResolution(found=True, checkpoint_id=checkpoint_id)
 
 
 def _find_message_in_checkpoints(
@@ -1405,7 +1413,10 @@ async def edit_message(
     ``configurable.checkpoint_id`` — LangGraph forks a sibling subtree.
     """
 
-    checkpoint_id = await _resolve_branch_checkpoint(conversation_id, data.message_id)
+    resolved = await _resolve_branch_checkpoint(conversation_id, data.message_id)
+    if not resolved.found:
+        raise HTTPException(status_code=422, detail="message does not belong to this conversation.")
+    checkpoint_id = resolved.checkpoint_id
     cfg = await _resolve_agent_context(db, conversation_id, user, checkpoint_id=checkpoint_id)
     await chat_service.touch_conversation(db, conversation_id)
     # Edit creates a new leaf — drop any prior user-pinned branch so the
@@ -1509,6 +1520,11 @@ async def regenerate_message(
         )
         if found is not None:
             target_msg, target_idx = found
+            if getattr(target_msg, "type", None) != "ai":
+                raise HTTPException(
+                    status_code=422,
+                    detail="can only regenerate assistant messages.",
+                )
 
     if target_idx is None or target_idx == 0:
         raise HTTPException(status_code=422, detail="cannot regenerate — no parent user message.")

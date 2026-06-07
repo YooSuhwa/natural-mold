@@ -88,7 +88,8 @@ test.describe('MCP server wizard', () => {
     await page.getByRole('button', { name: '도구로 계속 →' }).click()
 
     // Step 3: discover + save
-    await expect(page.getByText('1/1개 도구 활성화')).toBeVisible()
+    await expect(page.getByText('1개 도구 발견됨')).toBeVisible()
+    await expect(page.getByRole('checkbox')).toHaveCount(0)
     await page.getByRole('button', { name: '서버 저장' }).click()
 
     await expect(page.getByText('Local MCP').first()).toBeVisible()

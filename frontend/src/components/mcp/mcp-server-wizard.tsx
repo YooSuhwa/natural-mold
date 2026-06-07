@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Activity, CheckCircle2, Loader2, Plus, X, XCircle } from 'lucide-react'
@@ -8,7 +8,6 @@ import { Activity, CheckCircle2, Loader2, Plus, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Checkbox } from '@/components/ui/checkbox'
 import { CredentialPicker } from '@/components/credential/credential-picker'
 import { DomainIconTile } from '@/components/shared/icon'
 import { DialogShell } from '@/components/shared/dialog-shell'
@@ -19,7 +18,7 @@ import {
   useMcpRegistry,
   useProbeMcpServer,
 } from '@/lib/hooks/use-mcp-servers'
-import type { McpProbeTool, McpRegistryEntry, McpTransport } from '@/lib/types/mcp'
+import type { McpProbeRequest, McpProbeTool, McpRegistryEntry, McpTransport } from '@/lib/types/mcp'
 
 interface McpServerWizardProps {
   open: boolean
@@ -72,9 +71,11 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
 
   // -- preview state -------------------------------------------------------
   const [discoveredTools, setDiscoveredTools] = useState<McpProbeTool[]>([])
-  const [enabledNames, setEnabledNames] = useState<Set<string>>(new Set())
   const [probeState, setProbeState] = useState<ProbeState>({ kind: 'idle' })
-  const probedRef = useRef(false)
+  const lastSuccessfulProbeKeyRef = useRef<string | null>(null)
+  const inFlightProbeKeyRef = useRef<string | null>(null)
+  const latestProbeKeyRef = useRef('')
+  const probeRequestSeqRef = useRef(0)
 
   const basicsValid = useMemo(() => {
     if (!name.trim()) return false
@@ -82,6 +83,29 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
     if (transport === 'stdio') return command.trim().length > 0
     return url.trim().length > 0
   }, [name, transport, url, command, registryKey])
+
+  const probePayload = useMemo<McpProbeRequest>(() => {
+    if (registryKey) {
+      return { registry_key: registryKey, credential_id: credentialId }
+    }
+    return {
+      transport,
+      url: transport === 'stdio' ? null : url.trim(),
+      command: transport === 'stdio' ? command.trim() : null,
+      headers: kvToObject(headers),
+      credential_id: credentialId,
+    }
+  }, [registryKey, credentialId, transport, url, command, headers])
+
+  const probeKey = useMemo(() => JSON.stringify(probePayload), [probePayload])
+
+  function resetProbePreview() {
+    probeRequestSeqRef.current += 1
+    lastSuccessfulProbeKeyRef.current = null
+    inFlightProbeKeyRef.current = null
+    setDiscoveredTools([])
+    setProbeState({ kind: 'idle' })
+  }
 
   function handlePickRegistryEntry(entry: McpRegistryEntry) {
     setRegistryKey(entry.key)
@@ -100,78 +124,88 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
     setHeaders([])
     setCredentialDefinitionFilter(entry.credential_definition_key)
     setCredentialId(null)
-    // Force re-probe on next visit to Tools tab.
-    probedRef.current = false
-    setProbeState({ kind: 'idle' })
+    resetProbePreview()
   }
 
   function clearRegistry() {
     setRegistryKey(null)
     setCredentialDefinitionFilter(null)
-    probedRef.current = false
-    setProbeState({ kind: 'idle' })
+    resetProbePreview()
   }
 
-  function buildProbePayload() {
-    if (registryKey) {
-      return { registry_key: registryKey, credential_id: credentialId }
-    }
-    return {
-      transport,
-      url: transport === 'stdio' ? null : url.trim(),
-      command: transport === 'stdio' ? command.trim() : null,
-      headers: kvToObject(headers),
-      credential_id: credentialId,
-    }
-  }
-
-  async function runProbe() {
+  const runProbe = useCallback(async () => {
     if (!basicsValid) {
       toast.error(t('toast.required'))
       return
     }
+    const currentProbeKey = probeKey
+    const requestSeq = probeRequestSeqRef.current + 1
+    probeRequestSeqRef.current = requestSeq
+    inFlightProbeKeyRef.current = currentProbeKey
     setProbeState({ kind: 'pending' })
     try {
-      const result = await probe.mutateAsync(buildProbePayload())
+      const result = await probe.mutateAsync(probePayload)
+      if (
+        requestSeq !== probeRequestSeqRef.current ||
+        currentProbeKey !== latestProbeKeyRef.current
+      ) {
+        return
+      }
       if (!result.success) {
         const msg = result.error ?? t('toast.probeFailed')
+        lastSuccessfulProbeKeyRef.current = null
+        setDiscoveredTools([])
         setProbeState({ kind: 'error', message: msg })
         toast.error(msg)
         return
       }
       setDiscoveredTools(result.tools)
-      // Default: enable everything we found.
-      setEnabledNames(new Set(result.tools.map((t) => t.name)))
+      lastSuccessfulProbeKeyRef.current = currentProbeKey
       setProbeState({ kind: 'ok', toolCount: result.tools.length })
     } catch (e) {
+      if (
+        requestSeq !== probeRequestSeqRef.current ||
+        currentProbeKey !== latestProbeKeyRef.current
+      ) {
+        return
+      }
       const msg = e instanceof Error ? e.message : t('toast.probeFailed')
+      lastSuccessfulProbeKeyRef.current = null
+      setDiscoveredTools([])
       setProbeState({ kind: 'error', message: msg })
       toast.error(msg)
+    } finally {
+      if (inFlightProbeKeyRef.current === currentProbeKey) {
+        inFlightProbeKeyRef.current = null
+      }
     }
-  }
+  }, [basicsValid, probe, probeKey, probePayload, t])
+
+  useEffect(() => {
+    latestProbeKeyRef.current = probeKey
+    const hasStaleSuccess =
+      lastSuccessfulProbeKeyRef.current !== null && lastSuccessfulProbeKeyRef.current !== probeKey
+    const hasStalePending =
+      inFlightProbeKeyRef.current !== null && inFlightProbeKeyRef.current !== probeKey
+    if (!hasStaleSuccess && !hasStalePending) return
+    probeRequestSeqRef.current += 1
+    lastSuccessfulProbeKeyRef.current = null
+    inFlightProbeKeyRef.current = null
+    setDiscoveredTools([])
+    setProbeState({ kind: 'idle' })
+  }, [probeKey])
 
   // Auto-run probe on first Tools tab visit (when basics are valid). The ref
-  // guard prevents duplicate calls under React strict-mode + tab flipping.
+  // guards prevent duplicate calls under React strict-mode + tab flipping, but
+  // still allow re-probe when the connection payload changes.
   useEffect(() => {
     if (tab !== 'tools') return
     if (!basicsValid) return
-    if (probedRef.current) return
+    if (lastSuccessfulProbeKeyRef.current === probeKey) return
+    if (inFlightProbeKeyRef.current === probeKey) return
     if (probe.isPending) return
-    probedRef.current = true
     void runProbe()
-    // We intentionally exclude `runProbe` (recreated each render) — the ref
-    // guard handles dedupe across renders within the same tab visit.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, basicsValid])
-
-  function toggleTool(name: string) {
-    setEnabledNames((prev) => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
-  }
+  }, [tab, basicsValid, probe.isPending, probeKey, runProbe])
 
   function handleAddArg() {
     const trimmed = argDraft.trim()
@@ -208,22 +242,10 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
           })
 
       // Import the discovered tool rows.
-      let discoveredCount = 0
       try {
-        const result = await discover.mutateAsync(server.id)
-        if (result.success) discoveredCount = result.tools.length
+        await discover.mutateAsync(server.id)
       } catch {
         toast.warning(t('toast.importFailedAfterSave'))
-      }
-
-      // Inform the user if they pre-selected fewer tools than discovered —
-      // per-tool enable PATCH isn't surfaced via a wizard mutation yet, so
-      // they should fine-tune from the detail page.
-      if (discoveredCount > 0 && discoveredTools.length > 0) {
-        const toDisableCount = discoveredTools.filter((t) => !enabledNames.has(t.name)).length
-        if (toDisableCount > 0) {
-          toast.info(t('toast.savedToggleLater', { count: toDisableCount }))
-        }
       }
 
       toast.success(t('toast.added'))
@@ -264,8 +286,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
               transport={transport}
               setTransport={(t) => {
                 setTransport(t)
-                probedRef.current = false
-                setProbeState({ kind: 'idle' })
+                resetProbePreview()
               }}
               url={url}
               setUrl={setUrl}
@@ -309,12 +330,7 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
             <ToolsTab
               probeState={probeState}
               tools={discoveredTools}
-              enabledNames={enabledNames}
-              onToggle={toggleTool}
-              onRetry={() => {
-                probedRef.current = false
-                void runProbe()
-              }}
+              onRetry={() => void runProbe()}
             />
           </TabsContent>
         </Tabs>
@@ -771,20 +787,16 @@ function AuthTab({
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Tools tab — preview + per-tool enable selection.
+// Tools tab — preview of tools that will be imported on save.
 // ──────────────────────────────────────────────────────────────────────────
 
 function ToolsTab({
   probeState,
   tools,
-  enabledNames,
-  onToggle,
   onRetry,
 }: {
   probeState: ProbeState
   tools: McpProbeTool[]
-  enabledNames: Set<string>
-  onToggle: (name: string) => void
   onRetry: () => void
 }) {
   const t = useTranslations('mcp.wizard.tools')
@@ -816,21 +828,19 @@ function ToolsTab({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{t('enabled', { enabled: enabledNames.size, total: tools.length })}</span>
+        <span>{t('discovered', { total: tools.length })}</span>
         <Button size="sm" variant="ghost" onClick={onRetry}>
           {t('reprobe')}
         </Button>
       </div>
       <div className="space-y-1.5">
         {tools.map((tool) => {
-          const checked = enabledNames.has(tool.name)
           const paramCount = countParameters(tool.input_schema)
           return (
-            <label
+            <div
               key={tool.name}
-              className="flex cursor-pointer items-start gap-2.5 rounded-md border border-border/60 p-2.5 transition-colors hover:bg-muted/40"
+              className="flex items-start gap-2.5 rounded-md border border-border/60 p-2.5"
             >
-              <Checkbox checked={checked} onCheckedChange={() => onToggle(tool.name)} />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-mono text-xs font-medium">{tool.name}</span>
@@ -844,7 +854,7 @@ function ToolsTab({
                   </p>
                 ) : null}
               </div>
-            </label>
+            </div>
           )
         })}
       </div>
