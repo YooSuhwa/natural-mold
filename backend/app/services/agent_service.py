@@ -18,6 +18,7 @@ from app.models.skill import AgentSkillLink
 from app.models.template import Template
 from app.models.tool import AgentToolLink, Tool
 from app.schemas.agent import AgentCreate, AgentUpdate
+from app.services.agent_image_paths import build_agent_image_url
 
 
 def _selectin_agent() -> list:
@@ -139,10 +140,10 @@ async def list_agent_summaries(db: AsyncSession, user_id: uuid.UUID) -> list[dic
     summaries: list[dict] = []
     for row in result.mappings():
         tool_count = int(row["tool_count"] or 0) + int(row["mcp_tool_count"] or 0)
-        image_url = (
-            f"/api/agents/{row['id']}/image?t={int(row['updated_at'].timestamp())}"
-            if row["image_path"]
-            else None
+        image_url = build_agent_image_url(
+            row["id"],
+            updated_at=row["updated_at"],
+            image_path=row["image_path"],
         )
         summaries.append(
             {

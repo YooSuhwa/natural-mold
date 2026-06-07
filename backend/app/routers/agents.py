@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from pathlib import Path
 from typing import Any, Literal, cast
 
-import anyio
 import httpx
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import FileResponse
@@ -27,6 +25,7 @@ from app.schemas.agent import (
 )
 from app.schemas.skill import SkillBrief
 from app.services import agent_service, audit_service, image_service
+from app.services.agent_image_paths import build_agent_image_url, resolve_agent_image_path
 from app.services.image_preview import get_or_create_image_preview_async
 
 router = APIRouter(prefix="/api/agents", tags=["agents"])
@@ -35,9 +34,7 @@ middleware_router = APIRouter(tags=["middlewares"])
 
 def _sub_agent_image_url(sub: Agent) -> str | None:
     """Compute image_url for a sub-agent (mirrors _agent_to_response logic)."""
-    if not sub.image_path:
-        return None
-    return f"/api/agents/{sub.id}/image?t={int(sub.updated_at.timestamp())}"
+    return build_agent_image_url(sub.id, updated_at=sub.updated_at, image_path=sub.image_path)
 
 
 def _agent_to_response(agent: Agent) -> AgentResponse:
@@ -95,10 +92,10 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         model_params=agent.model_params,
         opener_questions=agent.opener_questions,
         model_fallback_ids=fallback_ids,
-        image_url=(
-            f"/api/agents/{agent.id}/image?t={int(agent.updated_at.timestamp())}"
-            if agent.image_path
-            else None
+        image_url=build_agent_image_url(
+            agent.id,
+            updated_at=agent.updated_at,
+            image_path=agent.image_path,
         ),
         template_id=agent.template_id,
         created_at=agent.created_at,
@@ -305,18 +302,15 @@ async def get_agent_image(
     if not agent:
         raise image_not_found()
     if not agent.image_path:
-        # Agent has no image — silent 204 keeps the browser console clean
-        # (AgentAvatar falls back to the BotIcon).
+        target = resolve_agent_image_path(None, agent_id=agent.id)
+    else:
+        target = resolve_agent_image_path(agent.image_path, agent_id=agent.id)
+    if target is None:
+        # Agent has no readable image — silent 204 keeps the browser console
+        # clean (AgentAvatar falls back to the BotIcon). Do not mutate the DB
+        # from this read path: a transient worktree/CWD mismatch must not erase
+        # an otherwise valid avatar reference.
         return Response(status_code=204)
-    apath = anyio.Path(agent.image_path)
-    if not await apath.is_file():
-        # File got deleted out from under us. Clean up the orphan path so the
-        # next list_agents call returns ``image_url: null`` and the frontend
-        # stops requesting this URL altogether.
-        agent.image_path = None
-        await db.commit()
-        return Response(status_code=204)
-    target = Path(agent.image_path)
     if variant == "preview":
         preview = await get_or_create_image_preview_async(
             target,
