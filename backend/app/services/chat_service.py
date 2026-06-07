@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "build_agent_skills",
     "build_effective_prompt",
+    "conversation_title_from_content",
     "build_tools_config",
     "clear_active_branch_override",
     "create_conversation",
@@ -74,6 +75,15 @@ _HITL_METADATA_KEYS = {
     "hitl_action_index",
     "hitl_total_actions",
 }
+
+
+def conversation_title_from_content(content: str) -> str:
+    title = content.strip().replace("\n", " ")
+    if not title:
+        return "새 대화"
+    if len(title) > 40:
+        return title[:37] + "..."
+    return title
 
 
 def _review_config_for_action(
@@ -526,7 +536,7 @@ async def create_conversation(
 ) -> Conversation:
     conv = Conversation(agent_id=agent_id, title=title or "새 대화")
     db.add(conv)
-    await db.commit()
+    await db.flush()
     await db.refresh(conv)
     return conv
 
@@ -563,7 +573,7 @@ async def update_conversation(
         conv.title = data.title
     if data.is_pinned is not None:
         conv.is_pinned = data.is_pinned
-    await db.commit()
+    await db.flush()
     await db.refresh(conv)
     return conv
 
@@ -571,7 +581,7 @@ async def update_conversation(
 async def mark_conversation_read(db: AsyncSession, conv: Conversation) -> Conversation:
     conv.unread_count = 0
     conv.last_read_at = datetime.now(UTC).replace(tzinfo=None)
-    await db.commit()
+    await db.flush()
     await db.refresh(conv)
     return conv
 
@@ -581,7 +591,7 @@ async def delete_conversation(db: AsyncSession, conv: Conversation) -> None:
 
     await delete_thread(str(conv.id))
     await db.delete(conv)
-    await db.commit()
+    await db.flush()
 
 
 async def list_messages_from_checkpointer(
@@ -776,15 +786,13 @@ async def maybe_set_auto_title(
     conversation_id: uuid.UUID,
     content: str,
 ) -> None:
-    title = content.strip().replace("\n", " ")
-    if len(title) > 40:
-        title = title[:37] + "..."
+    title = conversation_title_from_content(content)
     await db.execute(
         update(Conversation)
         .where(Conversation.id == conversation_id, Conversation.title == "새 대화")
         .values(title=title)
     )
-    await db.commit()
+    await db.flush()
 
 
 async def _resolve_agent_model_pricing(
@@ -867,7 +875,7 @@ async def link_attachments_to_conversation(
         )
         .values(conversation_id=conversation_id)
     )
-    await db.commit()
+    await db.flush()
 
 
 async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> None:
@@ -881,7 +889,7 @@ async def touch_conversation(db: AsyncSession, conversation_id: uuid.UUID) -> No
             last_activity_source="user",
         )
     )
-    await db.commit()
+    await db.flush()
 
 
 async def clear_active_branch_override(db: AsyncSession, conversation_id: uuid.UUID) -> None:
@@ -894,7 +902,7 @@ async def clear_active_branch_override(db: AsyncSession, conversation_id: uuid.U
         .where(Conversation.id == conversation_id)
         .values(active_branch_checkpoint_id=None)
     )
-    await db.commit()
+    await db.flush()
 
 
 # ---------------------------------------------------------------------------

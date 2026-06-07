@@ -577,7 +577,7 @@ async def test_sub_agent_nonexistent_id_rejected(client: AsyncClient):
         json={"sub_agent_ids": [fake]},
     )
     assert resp.status_code == 400
-    assert "Invalid or unauthorized" in resp.json()["detail"]
+    assert "Invalid or unauthorized" in resp.json()["error"]["message"]
 
 
 @pytest.mark.asyncio
@@ -591,7 +591,7 @@ async def test_tool_ids_nonexistent_rejected(client: AsyncClient):
     fake = str(_uuid.uuid4())
     resp = await client.put(f"/api/agents/{parent_id}", json={"tool_ids": [fake]})
     assert resp.status_code == 400
-    assert "tool_ids" in resp.json()["detail"]
+    assert "tool_ids" in resp.json()["error"]["message"]
 
 
 @pytest.mark.asyncio
@@ -605,7 +605,7 @@ async def test_skill_ids_nonexistent_rejected(client: AsyncClient):
     fake = str(_uuid.uuid4())
     resp = await client.put(f"/api/agents/{parent_id}", json={"skill_ids": [fake]})
     assert resp.status_code == 400
-    assert "skill_ids" in resp.json()["detail"]
+    assert "skill_ids" in resp.json()["error"]["message"]
 
 
 @pytest.mark.asyncio
@@ -644,4 +644,4 @@ async def test_sub_agent_cross_user_owner_rejected(client: AsyncClient):
         json={"sub_agent_ids": [str(foreign_agent_id)]},
     )
     assert resp.status_code == 400
-    assert "Invalid or unauthorized" in resp.json()["detail"]
+    assert "Invalid or unauthorized" in resp.json()["error"]["message"]

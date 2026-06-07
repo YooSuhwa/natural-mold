@@ -127,7 +127,8 @@ def spans_from_message_events(record: MessageEvent) -> list[DebugTraceSpan]:
 
     for index, event in enumerate(record.events or [], start=1):
         event_name = str(event.get("event") or "event")
-        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        raw_data = event.get("data")
+        data: dict[str, Any] = raw_data if isinstance(raw_data, dict) else {}
         status = "failed" if event_name == "error" else record.status
         spans.append(
             DebugTraceSpan(
@@ -166,7 +167,10 @@ def spans_from_observations(rows: list[dict[str, Any]]) -> list[DebugTraceSpan]:
     for index, row in enumerate(rows, start=1):
         started = _parse_dt(row.get("startTime") or row.get("start_time"))
         ended = _parse_dt(row.get("endTime") or row.get("end_time"))
-        metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+        raw_metadata = row.get("metadata")
+        metadata: dict[str, Any] = (
+            raw_metadata if isinstance(raw_metadata, dict) else {}
+        )
         spans.append(
             DebugTraceSpan(
                 id=str(row.get("id") or f"observation:{index}"),

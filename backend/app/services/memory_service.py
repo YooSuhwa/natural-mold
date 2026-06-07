@@ -235,14 +235,16 @@ def _scope_allows(allowed: str, scope: str) -> bool:
     return allowed == "both" or allowed == scope
 
 
-def _scope_intersection(user_allowed: str, agent_override: str) -> AllowedScopes | None:
+def _scope_intersection(
+    user_allowed: AllowedScopes, agent_override: str
+) -> AllowedScopes | None:
     if agent_override == "inherit":
-        return user_allowed  # type: ignore[return-value]
+        return user_allowed
     if agent_override == "agent_only":
         return "agent" if _scope_allows(user_allowed, "agent") else None
     if agent_override == "user_and_agent":
         return user_allowed  # user setting remains the upper bound
-    return user_allowed  # type: ignore[return-value]
+    return user_allowed
 
 
 async def resolve_effective_policy(
@@ -449,8 +451,9 @@ async def delete_memory_record(
     if record is None:
         return False
     record.status = "deleted"
-    record.deleted_at = _now_naive()
-    record.updated_at = record.deleted_at
+    deleted_at = _now_naive()
+    record.deleted_at = deleted_at
+    record.updated_at = deleted_at
     await db.commit()
     return True
 

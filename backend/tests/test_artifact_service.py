@@ -391,6 +391,8 @@ async def test_library_filters_favorite_and_stats(tmp_path: Path) -> None:
             cursor=None,
         )
         assert len(page.items) == 1
+        artifact_id = events[0]["id"]
+        assert isinstance(artifact_id, str)
         favorited = await artifact_service.set_artifact_favorite(
             db,
             user_id=TEST_USER_ID,
@@ -436,6 +438,7 @@ async def test_download_path_missing_storage_object_raises_not_found(tmp_path: P
         tool_call_id="call-missing-object",
     )
     artifact_id = events[0]["id"]
+    assert isinstance(artifact_id, str)
     for path in (tmp_path / "artifacts").rglob("*"):
         if path.is_file():
             path.unlink()
@@ -663,10 +666,12 @@ async def test_read_artifact_text_content_reads_only_preview_window(
     monkeypatch.setattr(Path, "read_bytes", fail_full_file_read)
 
     async with TestSession() as db:
+        artifact_id = events[0]["id"]
+        assert isinstance(artifact_id, str)
         preview = await artifact_service.read_artifact_text_content(
             db,
             user_id=TEST_USER_ID,
-            artifact_id=events[0]["id"],
+            artifact_id=artifact_id,
             storage=storage,
             max_bytes=5,
         )

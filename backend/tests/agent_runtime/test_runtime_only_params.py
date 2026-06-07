@@ -9,7 +9,8 @@ model can fill them per call, while still allowing operator-pinned defaults.
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Iterator
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,10 +21,11 @@ from app.agent_runtime.tool_factory import (
     create_tool_for_runtime,
 )
 from app.tools.registry import registry as tool_registry
+from tests.tool_helpers import tool_coroutine
 
 
 @pytest.fixture(autouse=True)
-def _reset_tool_http_client() -> None:
+def _reset_tool_http_client() -> Iterator[None]:
     tool_factory.reset_tool_http_client_for_tests()
     yield
     tool_factory.reset_tool_http_client_for_tests()
@@ -69,6 +71,7 @@ def test_stored_query_becomes_schema_default_and_is_overridable() -> None:
     model_cls = _build_runtime_args_schema(definition, stored_params={"query": "pinned"})
 
     assert model_cls is not None
+    model_cls = cast(type[Any], model_cls)
     instance_default = model_cls()
     assert instance_default.query == "pinned"
     instance_overridden = model_cls(query="새 키워드")
@@ -82,6 +85,7 @@ def test_create_tool_for_runtime_attaches_args_schema() -> None:
     assert tool is not None
     schema = tool.args_schema
     assert schema is not None
+    schema = cast(type[Any], schema)
     # Pydantic v2: args_schema may be a model class — confirm via fields.
     assert "query" in schema.model_fields
 
@@ -120,7 +124,7 @@ async def test_runtime_arg_overrides_stored_query_at_invocation() -> None:
         with patch("app.agent_runtime.tool_factory.httpx.AsyncClient") as client_cls:
             client_cls.return_value.__aenter__ = AsyncMock(return_value=object())
             client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-            await tool.coroutine(query="한컴 최신 뉴스")
+            await tool_coroutine(tool)(query="한컴 최신 뉴스")
 
     assert "verify" in client_cls.call_args.kwargs
     assert captured["params"]["query"] == "한컴 최신 뉴스"
@@ -141,8 +145,8 @@ async def test_registry_tool_reuses_shared_http_client_across_invocations() -> N
         with patch("app.agent_runtime.tool_factory.httpx.AsyncClient") as client_cls:
             client_cls.return_value.__aenter__ = AsyncMock(return_value=object())
             client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
-            await tool.coroutine(query="첫 번째")
-            await tool.coroutine(query="두 번째")
+            await tool_coroutine(tool)(query="첫 번째")
+            await tool_coroutine(tool)(query="두 번째")
 
     assert client_cls.call_count == 1
     assert len(captured_clients) == 2

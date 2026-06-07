@@ -18,7 +18,6 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import {
   useConversationPages,
-  useCreateConversation,
   useUpdateConversation,
   useDeleteConversation,
 } from '@/lib/hooks/use-conversations'
@@ -67,7 +66,6 @@ export function ConversationList({
     limit: 30,
     q: searchQuery.trim() || undefined,
   })
-  const createConversation = useCreateConversation(agentId)
   const updateConversation = useUpdateConversation(agentId)
   const deleteConversation = useDeleteConversation(agentId)
   const t = useTranslations('chat.conversationList')
@@ -84,10 +82,10 @@ export function ConversationList({
   )
 
   const isSearching = searchQuery.trim().length > 0
+  const isDraftActive = params.conversationId === 'new'
 
-  async function handleNewConversation() {
-    const conv = await createConversation.mutateAsync(undefined)
-    router.push(`/agents/${agentId}/conversations/${conv.id}`)
+  function handleNewConversation() {
+    router.push(`/agents/${agentId}/conversations/new`)
   }
 
   function handlePin(conv: Conversation) {
@@ -184,6 +182,26 @@ export function ConversationList({
     )
   }
 
+  function renderDraftItem() {
+    return (
+      <div
+        key="draft-new-conversation"
+        className={cn(
+          'group flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-muted',
+          'bg-primary font-medium text-primary-foreground ring-1 ring-primary-strong/20 hover:bg-primary',
+        )}
+      >
+        <Link
+          href={`/agents/${agentId}/conversations/new`}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <MessageSquareIcon className="size-3.5 shrink-0 text-primary-foreground/80" />
+          <span className="truncate">{t('newConversation')}</span>
+        </Link>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Agent card header */}
@@ -215,7 +233,6 @@ export function ConversationList({
           variant="ghost"
           size="icon-xs"
           onClick={handleNewConversation}
-          disabled={createConversation.isPending}
           aria-label={t('newConversation')}
         >
           <PlusIcon className="size-3.5" />
@@ -241,8 +258,9 @@ export function ConversationList({
               <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
-        ) : orderedConversations.length > 0 ? (
+        ) : orderedConversations.length > 0 || (isDraftActive && !isSearching) ? (
           <div className="space-y-0.5 p-2">
+            {isDraftActive && !isSearching ? renderDraftItem() : null}
             {orderedConversations.map(renderItem)}
             {hasNextPage ? (
               <Button

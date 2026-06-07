@@ -42,6 +42,7 @@ from app.marketplace.skill_runtime import (
     ResolvedCredential,
     build_skill_runtime_context,
 )
+from tests.tool_helpers import tool_coroutine
 
 # ---------------------------------------------------------------------------
 # Pure-function: redact_credential_values
@@ -307,7 +308,7 @@ class TestSubprocessRedaction:
         }
 
         tool = _create_skill_execute_tool(ctx)
-        result = await tool.coroutine(
+        result = await tool_coroutine(tool)(
             skill_directory=f"/runtime/t-redact/skills/{slug}/",
             command="python scripts/echo.py",
         )
@@ -363,7 +364,7 @@ class TestSubprocessRedaction:
         }
 
         tool = _create_skill_execute_tool(ctx)
-        result = await tool.coroutine(
+        result = await tool_coroutine(tool)(
             skill_directory=f"/runtime/t-stderr/skills/{slug}/",
             command="python scripts/fail.py",
         )

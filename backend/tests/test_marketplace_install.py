@@ -174,6 +174,7 @@ async def test_install_creates_skill_and_installation(
 
         from app.storage.paths import resolve_data_path
 
+        assert skill.storage_path is not None
         exists, has_skill_md = await asyncio.to_thread(
             _check_skill_files, resolve_data_path(skill.storage_path)
         )

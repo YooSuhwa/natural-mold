@@ -24,3 +24,22 @@ export async function* streamChat(
     options,
   ) as AsyncGenerator<SSEEvent>
 }
+
+export async function* streamStartConversation(
+  agentId: string,
+  content: string,
+  signal?: AbortSignal,
+  options?: StreamChatOptions,
+): AsyncGenerator<SSEEvent> {
+  const body: Record<string, unknown> = { content }
+  if (options?.attachmentIds && options.attachmentIds.length > 0) {
+    body.attachments = options.attachmentIds.map((id) => ({ id }))
+  }
+  yield* streamSSEPost<SSEEventType>(
+    `/api/agents/${agentId}/conversations/start`,
+    body,
+    signal,
+    'content_delta',
+    options,
+  ) as AsyncGenerator<SSEEvent>
+}

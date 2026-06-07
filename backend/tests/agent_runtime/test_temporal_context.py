@@ -13,6 +13,7 @@ from app.agent_runtime.temporal import (
     resolve_relative_date_expression,
 )
 from app.agent_runtime.tool_factory import create_builtin_tool
+from tests.tool_helpers import tool_coroutine
 
 SEOUL = ZoneInfo("Asia/Seoul")
 
@@ -87,7 +88,7 @@ async def test_resolve_relative_date_builtin_tool_returns_json() -> None:
     tool = create_builtin_tool("builtin:resolve_relative_date")
 
     assert tool is not None
-    result = await tool.coroutine(
+    result = await tool_coroutine(tool)(
         expression="다음주 수요일",
         reference_date="2026-05-29T11:33:00+09:00",
     )

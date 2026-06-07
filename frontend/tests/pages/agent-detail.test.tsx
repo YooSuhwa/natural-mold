@@ -67,22 +67,18 @@ describe('AgentPage (redirect)', () => {
     })
   })
 
-  it('creates a new conversation and redirects when none exist', async () => {
+  it('redirects to local draft when no conversations exist', async () => {
     mockConversationsApi.page.mockResolvedValue({
       items: [],
       next_cursor: null,
       has_more: false,
     })
-    mockConversationsApi.create.mockResolvedValue({
-      id: 'conv-new',
-      agent_id: 'agent-1',
-    })
 
     render(<AgentPage params={{ agentId: 'agent-1' } as unknown as Promise<{ agentId: string }>} />)
 
     await waitFor(() => {
-      expect(mockConversationsApi.create).toHaveBeenCalledWith('agent-1')
-      expect(mockReplace).toHaveBeenCalledWith('/agents/agent-1/conversations/conv-new')
+      expect(mockConversationsApi.create).not.toHaveBeenCalled()
+      expect(mockReplace).toHaveBeenCalledWith('/agents/agent-1/conversations/new')
     })
   })
 

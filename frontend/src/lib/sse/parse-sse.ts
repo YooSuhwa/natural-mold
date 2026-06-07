@@ -108,6 +108,7 @@ export async function* parseSSEStream<TEvent extends string>(
  */
 export interface StreamSSEPostOptions {
   onRunId?: (runId: string) => void
+  onConversationId?: (conversationId: string) => void
 }
 
 export interface HeadIndexQueue<T> {
@@ -226,6 +227,10 @@ export async function* streamSSEPost<TEvent extends string>(
       if (options?.onRunId) {
         const runId = response.headers.get('X-Run-Id')
         if (runId) options.onRunId(runId)
+      }
+      if (options?.onConversationId) {
+        const conversationId = response.headers.get('X-Conversation-Id')
+        if (conversationId) options.onConversationId(conversationId)
       }
     },
     onmessage(msg: EventSourceMessage) {

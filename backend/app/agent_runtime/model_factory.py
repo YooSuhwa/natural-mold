@@ -25,7 +25,7 @@ import os
 import ssl
 import uuid
 from collections import OrderedDict
-from collections.abc import Mapping
+from collections.abc import Awaitable, Mapping
 from typing import TYPE_CHECKING, Any
 
 import certifi
@@ -149,6 +149,10 @@ def _model_cache_key(
     )
 
 
+async def _await_close_result(result: Awaitable[Any]) -> None:
+    await result
+
+
 def _close_maybe_async(value: Any) -> None:
     if value is None:
         return
@@ -165,9 +169,9 @@ def _close_maybe_async(value: Any) -> None:
             try:
                 loop = asyncio.get_running_loop()
             except RuntimeError:
-                asyncio.run(result)
+                asyncio.run(_await_close_result(result))
             else:
-                loop.create_task(result)
+                loop.create_task(_await_close_result(result))
         return
 
 
@@ -573,6 +577,12 @@ async def create_chat_model_with_fallback(
             except (TypeError, ValueError):
                 logger.warning("ignoring non-UUID fallback id: %r", raw)
 
+    model_extra: dict[str, Any] = dict(extra)
+    allow_env_fallback_raw = model_extra.pop("allow_env_fallback", True)
+    if not isinstance(allow_env_fallback_raw, bool):
+        raise TypeError("allow_env_fallback must be a bool")
+    allow_env_fallback = allow_env_fallback_raw
+
     last_error: BaseException | None = None
 
     # 1) Primary attempt.
@@ -582,7 +592,8 @@ async def create_chat_model_with_fallback(
             primary_name,
             api_key=api_key,
             base_url=primary_base,
-            **extra,
+            allow_env_fallback=allow_env_fallback,
+            **model_extra,
         )
         if fallback_ids:
             await _audit_fallback_attempt(
@@ -628,7 +639,8 @@ async def create_chat_model_with_fallback(
                 model_name,
                 api_key=api_key,
                 base_url=fb_base,
-                **extra,
+                allow_env_fallback=allow_env_fallback,
+                **model_extra,
             )
             await _audit_fallback_attempt(
                 db,

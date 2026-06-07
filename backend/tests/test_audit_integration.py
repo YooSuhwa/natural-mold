@@ -84,6 +84,7 @@ async def test_credential_create_writes_global_audit(client, db: AsyncSession) -
         )
     ).scalar_one()
     assert row.outcome == "success"
+    assert row.event_metadata is not None
     assert row.event_metadata["definition_key"] == "openai"
     assert "sk-secret" not in str(row.event_metadata)
 

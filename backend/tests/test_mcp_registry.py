@@ -233,4 +233,4 @@ async def test_create_from_registry_unknown_key_returns_400(
         json={"registry_key": "fictional-server", "name": "n"},
     )
     assert response.status_code == 400
-    assert "fictional-server" in response.json()["detail"]
+    assert "fictional-server" in response.json()["error"]["message"]

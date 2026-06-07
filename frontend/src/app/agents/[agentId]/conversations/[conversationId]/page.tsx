@@ -19,12 +19,15 @@ import { useAgent } from '@/lib/hooks/use-agents'
 import { useSession } from '@/lib/auth/session'
 import {
   useMessagesEnvelope,
-  useCreateConversation,
   useMarkConversationRead,
   conversationKeys,
 } from '@/lib/hooks/use-conversations'
 import { useQueryClient } from '@tanstack/react-query'
-import { streamChat, type StreamChatOptions } from '@/lib/sse/stream-chat'
+import {
+  streamChat,
+  streamStartConversation,
+  type StreamChatOptions,
+} from '@/lib/sse/stream-chat'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { chatRightRailAtom, toggleArtifactListRailState } from '@/lib/stores/chat-right-rail'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
@@ -57,13 +60,17 @@ export default function ChatPage({
   const { agentId, conversationId } = use(params)
   const router = useRouter()
   const queryClient = useQueryClient()
+  const isDraftConversation = conversationId === 'new'
+  const startedConversationIdRef = useRef<string | null>(null)
   const { data: agent } = useAgent(agentId)
   const { data: user } = useSession()
   // W7-4 — envelope에서 conversation 누적 비용을 가져와 토큰 바에 흘림. 같은
   // query observer 하나에서 messages와 cost를 함께 파생해 채팅 트리 리렌더를 줄인다.
-  const { data: envelope, isLoading: messagesLoading } = useMessagesEnvelope(conversationId)
+  const { data: envelope, isLoading: messagesLoading } = useMessagesEnvelope(
+    conversationId,
+    !isDraftConversation,
+  )
   const messages = envelope?.messages ?? EMPTY_MESSAGES
-  const createConversation = useCreateConversation(agentId)
   const markConversationRead = useMarkConversationRead(agentId)
   const { mutate: markRead, isPending: isMarkingRead } = markConversationRead
   const t = useTranslations('chat.page')
@@ -74,15 +81,20 @@ export default function ChatPage({
   const currentConversation = queryClient
     .getQueryData<Conversation[]>(conversationKeys.list(agentId))
     ?.find((c) => c.id === conversationId)
-  const currentTitle = currentConversation?.title
+  const currentTitle = isDraftConversation
+    ? t('newConversation')
+    : currentConversation?.title
   const markedReadKeyRef = useRef<string | null>(null)
+  const activeConversationId = isDraftConversation ? null : conversationId
 
   useEffect(() => {
     setSessionTokenUsage({ inputTokens: 0, outputTokens: 0, cost: 0 })
     markedReadKeyRef.current = null
+    startedConversationIdRef.current = null
   }, [conversationId, setSessionTokenUsage])
 
   useEffect(() => {
+    if (isDraftConversation) return
     if (messagesLoading || isMarkingRead) return
     const unreadCount = currentConversation?.unread_count ?? 0
     if (unreadCount <= 0) return
@@ -90,15 +102,49 @@ export default function ChatPage({
     if (markedReadKeyRef.current === markReadKey) return
     markedReadKeyRef.current = markReadKey
     markRead(conversationId)
-  }, [conversationId, currentConversation?.unread_count, isMarkingRead, markRead, messagesLoading])
+  }, [
+    conversationId,
+    currentConversation?.unread_count,
+    isDraftConversation,
+    isMarkingRead,
+    markRead,
+    messagesLoading,
+  ])
 
   const streamFn = useCallback(
-    (content: string, signal: AbortSignal, options?: StreamChatOptions) =>
-      streamChat(conversationId, content, signal, options),
-    [conversationId],
+    (content: string, signal: AbortSignal, options?: StreamChatOptions) => {
+      if (!isDraftConversation) {
+        return streamChat(conversationId, content, signal, options)
+      }
+      return streamStartConversation(agentId, content, signal, {
+        ...options,
+        onConversationId: (id) => {
+          startedConversationIdRef.current = id
+          options?.onConversationId?.(id)
+        },
+      })
+    },
+    [agentId, conversationId, isDraftConversation],
   )
 
   const onStreamEnd = useCallback(() => {
+    if (isDraftConversation) {
+      const createdConversationId = startedConversationIdRef.current
+      queryClient.invalidateQueries({
+        queryKey: conversationKeys.list(agentId),
+      })
+      if (createdConversationId) {
+        void queryClient.refetchQueries({
+          queryKey: conversationKeys.messages(createdConversationId),
+          type: 'active',
+        })
+        queryClient.invalidateQueries({
+          queryKey: conversationKeys.debugTraces(createdConversationId),
+        })
+        router.replace(`/agents/${agentId}/conversations/${createdConversationId}`)
+      }
+      return
+    }
     void queryClient.refetchQueries({
       queryKey: conversationKeys.messages(conversationId),
       type: 'active',
@@ -109,7 +155,7 @@ export default function ChatPage({
     queryClient.invalidateQueries({
       queryKey: conversationKeys.debugTraces(conversationId),
     })
-  }, [queryClient, conversationId, agentId])
+  }, [queryClient, conversationId, agentId, isDraftConversation, router])
 
   // P0-1c — current feedback per message id, derived from the messages query.
   // Looked up by ``feedback-adapter`` to decide between POST(upsert) vs DELETE.
@@ -131,7 +177,7 @@ export default function ChatPage({
     totalCost: envelope?.total_estimated_cost,
     streamFn,
     onStreamEnd,
-    conversationId,
+    conversationId: activeConversationId ?? undefined,
     feedbackAdapter,
     attachmentAdapter: moldyAttachmentAdapter,
   })
@@ -141,9 +187,8 @@ export default function ChatPage({
     [onResumeDecisions, registerDecision],
   )
 
-  async function handleNewConversation() {
-    const conv = await createConversation.mutateAsync(undefined)
-    router.push(`/agents/${agentId}/conversations/${conv.id}`)
+  function handleNewConversation() {
+    router.push(`/agents/${agentId}/conversations/new`)
   }
 
   const emptyContent = <ChatEmptyState agent={agent} fallback={t('emptyState')} />
@@ -220,7 +265,6 @@ export default function ChatPage({
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onClick={handleNewConversation}
-                  disabled={createConversation.isPending}
                 >
                   <SquarePenIcon />
                   {t('newConversation')}
@@ -262,7 +306,7 @@ export default function ChatPage({
                 enableAttachments
                 emptyContent={emptyContent}
                 toolUI={ALL_TOOL_UI}
-                conversationId={conversationId}
+                conversationId={activeConversationId ?? undefined}
               />
             </HiTLContext.Provider>
           </AssistantRuntimeProvider>
@@ -270,7 +314,10 @@ export default function ChatPage({
       </section>
 
       {/* 우측 RightRail — sub-agent / tool-result / outline 패널 슬롯 */}
-      <ChatRightRail conversationId={conversationId} className="moldy-panel overflow-hidden" />
+      <ChatRightRail
+        conversationId={activeConversationId}
+        className="moldy-panel overflow-hidden"
+      />
     </div>
   )
 }

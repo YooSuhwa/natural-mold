@@ -272,6 +272,7 @@ async def delete_agent(
         request=request,
     )
     await agent_service.delete_agent(db, agent)
+    await db.commit()
 
 
 @router.post("/{agent_id}/image", response_model=GenerateImageResponse)

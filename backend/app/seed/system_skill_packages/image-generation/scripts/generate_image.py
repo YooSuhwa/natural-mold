@@ -13,7 +13,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 DEFAULT_MODEL = "gpt-image-2"
 OPENROUTER_DEFAULT_MODEL = "openai/gpt-5.4-image-2"
@@ -643,7 +643,7 @@ def generate_image(
     }
 
 
-def _json_exit(code: str, message: str) -> None:
+def _json_exit(code: str, message: str) -> NoReturn:
     print(json.dumps({"success": False, "error": code, "message": message}))
     raise SystemExit(1)
 

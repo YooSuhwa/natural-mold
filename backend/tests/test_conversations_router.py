@@ -375,6 +375,48 @@ async def test_send_message_streaming(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_start_conversation_stream_creates_conversation_and_exposes_id(
+    client: AsyncClient,
+):
+    """Draft UI first message creates a conversation and streams in one request."""
+    from sqlalchemy import select
+
+    agent_id, _ = await _seed_agent()
+    captured_args: list = []
+
+    async def mock_stream(*args, **kwargs):
+        captured_args.extend(args)
+        yield 'event: message_start\ndata: {"id": "test-msg", "role": "assistant"}\n\n'
+        yield 'event: message_end\ndata: {"content": "Reply", "usage": {}}\n\n'
+
+    with patch("app.routers.conversations.execute_agent_stream", side_effect=mock_stream):
+        resp = await client.post(
+            f"/api/agents/{agent_id}/conversations/start",
+            json={"content": "첫 메시지로 제목 만들기"},
+            headers={"Origin": "http://localhost:3000"},
+        )
+
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+    conversation_id = resp.headers.get("x-conversation-id")
+    assert conversation_id is not None
+    assert resp.headers.get("x-run-id")
+    exposed_headers = resp.headers.get("access-control-expose-headers", "")
+    assert "X-Conversation-Id" in exposed_headers
+    assert "message_end" in resp.text
+
+    async with TestSession() as db:
+        conv = (
+            await db.execute(
+                select(Conversation).where(Conversation.id == uuid.UUID(conversation_id))
+            )
+        ).scalar_one()
+    assert conv.agent_id == agent_id
+    assert conv.title == "첫 메시지로 제목 만들기"
+    assert captured_args[0].agent_id == str(agent_id)
+
+
+@pytest.mark.asyncio
 async def test_send_message_sets_auto_title(client: AsyncClient):
     """send_message should set auto-title from user content."""
     agent_id, _ = await _seed_agent()

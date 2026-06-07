@@ -10,6 +10,7 @@ from deepagents.backends import FilesystemBackend
 from deepagents.middleware.filesystem import FilesystemMiddleware
 
 from app.agent_runtime.executor import AgentConfig
+from tests.tool_helpers import tool_coroutine
 
 
 def _cfg(**overrides: object) -> AgentConfig:
@@ -160,56 +161,60 @@ async def test_deepagents_filesystem_tools_enforce_scoped_permissions(
     read_file = _tool_by_name(middleware, "read_file")
     write_file = _tool_by_name(middleware, "write_file")
     edit_file = _tool_by_name(middleware, "edit_file")
+    ls_run = tool_coroutine(ls)
+    read_file_run = tool_coroutine(read_file)
+    write_file_run = tool_coroutine(write_file)
+    edit_file_run = tool_coroutine(edit_file)
 
-    root_listing = await ls.coroutine(path="/", runtime=runtime)
+    root_listing = await ls_run(path="/", runtime=runtime)
     assert "/agents/" not in root_listing.content
     assert "/runtime/" not in root_listing.content
     assert "/skills/" not in root_listing.content
     assert "/conversations/" not in root_listing.content
 
-    selected_skill = await read_file.coroutine(
+    selected_skill = await read_file_run(
         file_path="/runtime/thread-a/skills/selected/SKILL.md",
         runtime=runtime,
     )
     assert selected_skill.status == "success"
     assert "selected" in selected_skill.content
 
-    other_thread_skill = await read_file.coroutine(
+    other_thread_skill = await read_file_run(
         file_path="/runtime/thread-b/skills/selected/SKILL.md",
         runtime=runtime,
     )
     assert other_thread_skill.status == "error"
     assert "permission denied" in other_thread_skill.content
 
-    canonical_skill = await read_file.coroutine(
+    canonical_skill = await read_file_run(
         file_path="/skills/canonical/SKILL.md",
         runtime=runtime,
     )
     assert canonical_skill.status == "error"
     assert "permission denied" in canonical_skill.content
 
-    stale_unselected_skill = await read_file.coroutine(
+    stale_unselected_skill = await read_file_run(
         file_path="/runtime/thread-a/skills/stale-unselected/SKILL.md",
         runtime=runtime,
     )
     assert stale_unselected_skill.status == "error"
     assert "permission denied" in stale_unselected_skill.content
 
-    own_memory = await read_file.coroutine(
+    own_memory = await read_file_run(
         file_path="/agents/agent-a/AGENTS.md",
         runtime=runtime,
     )
     assert own_memory.status == "success"
     assert "own memory" in own_memory.content
 
-    other_memory = await read_file.coroutine(
+    other_memory = await read_file_run(
         file_path="/agents/agent-b/AGENTS.md",
         runtime=runtime,
     )
     assert other_memory.status == "error"
     assert "permission denied" in other_memory.content
 
-    write_allowed = await write_file.coroutine(
+    write_allowed = await write_file_run(
         file_path="/conversations/thread-a/new.txt",
         content="new output\n",
         runtime=runtime,
@@ -217,7 +222,7 @@ async def test_deepagents_filesystem_tools_enforce_scoped_permissions(
     assert write_allowed.status == "success"
     assert (tmp_path / "conversations" / "thread-a" / "new.txt").read_text() == "new output\n"
 
-    write_denied = await write_file.coroutine(
+    write_denied = await write_file_run(
         file_path="/conversations/thread-b/new.txt",
         content="other output\n",
         runtime=runtime,
@@ -225,7 +230,7 @@ async def test_deepagents_filesystem_tools_enforce_scoped_permissions(
     assert write_denied.status == "error"
     assert "permission denied" in write_denied.content
 
-    untracked_write_denied = await write_file.coroutine(
+    untracked_write_denied = await write_file_run(
         file_path="/tmp/invisible.txt",
         content="not an artifact\n",
         runtime=runtime,
@@ -234,7 +239,7 @@ async def test_deepagents_filesystem_tools_enforce_scoped_permissions(
     assert "permission denied" in untracked_write_denied.content
     assert not (tmp_path / "tmp" / "invisible.txt").exists()
 
-    edit_denied = await edit_file.coroutine(
+    edit_denied = await edit_file_run(
         file_path="/agents/agent-b/AGENTS.md",
         old_string="# other memory\n",
         new_string="# tampered\n",

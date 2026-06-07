@@ -34,6 +34,7 @@ from app.marketplace.skill_runtime import (
     build_skill_runtime_context,
     cleanup_stale_runtime_roots,
 )
+from tests.tool_helpers import tool_coroutine
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -175,10 +176,11 @@ class TestPerThreadRuntimeRoot:
         )
         ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
         tool = _create_skill_execute_tool(ctx)
+        execute = tool_coroutine(tool)
 
         # The descriptor map only contains s1 — s2 is filtered out at
         # build time, so the runtime tool rejects it.
-        result = await tool.coroutine(
+        result = await execute(
             skill_directory="/runtime/thread-only-s1/skills/s2/",
             command="python scripts/run.py",
         )
@@ -212,7 +214,7 @@ class TestPerThreadRuntimeRoot:
         assert ctx_b.descriptors == {}
 
         tool_b = _create_skill_execute_tool(ctx_b)
-        result = await tool_b.coroutine(
+        result = await tool_coroutine(tool_b)(
             skill_directory="/runtime/thread-user-b/skills/user-a-skill/",
             command="python scripts/run.py",
         )
@@ -280,8 +282,9 @@ class TestExecuteInSkillPathValidation:
         )
         ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
         tool = _create_skill_execute_tool(ctx)
+        execute = tool_coroutine(tool)
 
-        result = await tool.coroutine(
+        result = await execute(
             skill_directory="/runtime/thread-timeout/skills/slow-image/",
             command="python scripts/probe.py",
         )
@@ -317,8 +320,9 @@ class TestExecuteInSkillPathValidation:
         )
         ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
         tool = _create_skill_execute_tool(ctx)
+        execute = tool_coroutine(tool)
 
-        result = await tool.coroutine(
+        result = await execute(
             skill_directory="/runtime/thread-tls/skills/tls/",
             command="python scripts/env_probe.py",
         )
@@ -341,8 +345,9 @@ class TestExecuteInSkillPathValidation:
         ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
         payload_url = (ctx.descriptors["curl"].runtime_storage_path / "payload.txt").as_uri()
         tool = _create_skill_execute_tool(ctx)
+        execute = tool_coroutine(tool)
 
-        result = await tool.coroutine(
+        result = await execute(
             skill_directory="/runtime/thread-curl/skills/curl/",
             command=(f'BASE="${{KSKILL_PROXY_BASE_URL:-{payload_url}}}"\ncurl -fsS "${{BASE}}"'),
         )
@@ -367,6 +372,7 @@ class TestExecuteInSkillPathValidation:
         )
         ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
         tool = _create_skill_execute_tool(ctx)
+        execute = tool_coroutine(tool)
 
         # Each payload's final segment is NOT in the descriptor map →
         # "skill not attached" rejection without running anything.
@@ -379,7 +385,7 @@ class TestExecuteInSkillPathValidation:
             # because the empty slug is not a key.
             "/runtime/thread-traversal/skills/",
         ):
-            result = await tool.coroutine(
+            result = await execute(
                 skill_directory=attempt,
                 command="python scripts/run.py",
             )
@@ -424,7 +430,7 @@ class TestExecuteInSkillPathValidation:
         )
 
         tool_a = _create_skill_execute_tool(ctx_a)
-        result = await tool_a.coroutine(
+        result = await tool_coroutine(tool_a)(
             # Spoofed prefix points at thread B but slug is still s1.
             skill_directory="/runtime/thread-b/skills/s1/",
             command="python -c 'import pathlib; print(pathlib.Path(\"SKILL.md\").read_text())'",
@@ -450,8 +456,9 @@ class TestExecuteInSkillPathValidation:
         )
         ctx = build_skill_runtime_context(cfg, data_dir=tmp_path)
         tool = _create_skill_execute_tool(ctx)
+        execute = tool_coroutine(tool)
 
-        result = await tool.coroutine(
+        result = await execute(
             skill_directory="/runtime/thread-x/skills/some-other-slug/",
             command="python scripts/run.py",
         )

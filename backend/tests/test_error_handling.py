@@ -52,6 +52,13 @@ class TestErrorHandlers:
     async def test_tool_not_found(self, client):
         response = await client.get("/api/tools/00000000-0000-0000-0000-000000000000")
         assert response.status_code == 404
+        body = response.json()
+        assert body == {
+            "error": {
+                "code": "HTTP_404",
+                "message": "tool not found",
+            }
+        }
 
     async def test_conversation_not_found(self, client):
         response = await client.get(

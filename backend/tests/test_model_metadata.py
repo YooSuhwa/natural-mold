@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ from app.services import model_metadata
 
 
 @pytest.fixture(autouse=True)
-def _reset_model_metadata_cache() -> None:
+def _reset_model_metadata_cache() -> Iterator[None]:
     model_metadata.reset_catalog_cache()
     yield
     model_metadata.reset_catalog_cache()

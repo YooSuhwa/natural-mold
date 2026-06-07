@@ -15,7 +15,7 @@ from typing import Any
 import httpx
 
 from app.tools.parameters import FieldDef
-from app.tools.risk import ToolRiskLevel, risk_metadata_dict
+from app.tools.risk import DecisionType, ToolRiskLevel, risk_metadata_dict
 
 
 @dataclass
@@ -55,7 +55,7 @@ class ToolDefinition:
     credential_definition_keys: list[str] = field(default_factory=list)
     risk_level: ToolRiskLevel | str = ToolRiskLevel.READ_ONLY
     requires_approval: bool | None = None
-    allowed_decisions: tuple[str, ...] = ()
+    allowed_decisions: tuple[DecisionType, ...] = ()
     trigger_safe: bool | None = None
     risk_reason: str | None = None
     runner: ToolRunner | None = None

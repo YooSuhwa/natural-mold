@@ -197,7 +197,7 @@ def _build_callback_handler(*, trace_id: str) -> Any:
 def _trace_id_for_run(client: Any, run_id: str) -> str:
     creator = getattr(client, "create_trace_id", None)
     if callable(creator):
-        return creator(seed=run_id)
+        return str(creator(seed=run_id))
 
     try:
         from langfuse import Langfuse
@@ -211,7 +211,8 @@ def _trace_url_for_id(client: Any, trace_id: str) -> str | None:
     getter = getattr(client, "get_trace_url", None)
     if callable(getter):
         try:
-            return getter(trace_id=trace_id)
+            trace_url = getter(trace_id=trace_id)
+            return str(trace_url) if trace_url is not None else None
         except Exception:
             logger.debug("Langfuse get_trace_url failed", exc_info=True)
 

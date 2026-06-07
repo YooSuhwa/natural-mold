@@ -225,7 +225,7 @@ async def bulk_derive_publication_summaries_for_skills(
     if item_ids:
         rows = (
             await db.execute(
-                select(MarketplaceItemACL.item_id, func.count(MarketplaceItemACL.id))
+                select(MarketplaceItemACL.item_id, func.count(MarketplaceItemACL.user_id))
                 .where(MarketplaceItemACL.item_id.in_(item_ids))
                 .group_by(MarketplaceItemACL.item_id)
             )

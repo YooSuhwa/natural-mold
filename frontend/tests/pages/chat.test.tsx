@@ -1,9 +1,12 @@
-import { render, screen } from '../test-utils'
+import { render, screen, waitFor } from '../test-utils'
 import ChatPage from '@/app/agents/[agentId]/conversations/[conversationId]/page'
 import { mockAgent, mockMessageList } from '../mocks/fixtures'
 
 // Mock scrollIntoView for jsdom
 Element.prototype.scrollIntoView = vi.fn()
+
+const mockPush = vi.fn()
+const mockReplace = vi.fn()
 
 vi.mock('next/link', () => ({
   default: ({
@@ -23,7 +26,7 @@ vi.mock('next/link', () => ({
 
 // Override: pins useParams/usePathname to the chat route fixture.
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
   useParams: () => ({ conversationId: 'conv-1' }),
   usePathname: () => '/agents/agent-1/conversations/conv-1',
 }))
@@ -49,6 +52,10 @@ vi.mock('@/lib/hooks/use-agents', () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
 }))
 
+vi.mock('@/lib/auth/session', () => ({
+  useSession: () => ({ data: undefined }),
+}))
+
 vi.mock('@/lib/hooks/use-conversations', () => ({
   conversationKeys: {
     list: (agentId: string) => ['conversations', agentId] as const,
@@ -62,6 +69,16 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
   useMessages: (...args: unknown[]) => mockUseMessages(...args),
   useMessagesEnvelope: (...args: unknown[]) => {
     const result = mockUseMessages(...args)
+    if (args[1] === false) {
+      return {
+        data: {
+          messages: [],
+          active_checkpoint_id: null,
+          total_cost: 0,
+        },
+        isLoading: false,
+      }
+    }
     return {
       ...result,
       data:
@@ -118,9 +135,11 @@ vi.mock('@/components/shared/delete-confirm-dialog', () => ({
 }))
 
 const mockStreamChat = vi.fn()
+const mockStreamStartConversation = vi.fn()
 
 vi.mock('@/lib/sse/stream-chat', () => ({
   streamChat: (...args: unknown[]) => mockStreamChat(...args),
+  streamStartConversation: (...args: unknown[]) => mockStreamStartConversation(...args),
 }))
 
 const mockToastError = vi.fn()
@@ -139,12 +158,17 @@ vi.mock('jotai', async () => {
 
 describe('ChatPage', () => {
   beforeEach(() => {
+    mockUseAgent.mockClear()
+    mockUseMessages.mockClear()
     mockUseAgent.mockReturnValue({ data: undefined })
     mockUseMessages.mockReturnValue({
       data: undefined,
       isLoading: false,
     })
     mockStreamChat.mockClear()
+    mockStreamStartConversation.mockClear()
+    mockPush.mockClear()
+    mockReplace.mockClear()
     mockToastError.mockClear()
   })
 
@@ -295,6 +319,75 @@ describe('ChatPage', () => {
       expect.any(AbortSignal),
       expect.objectContaining({ attachmentIds: expect.any(Array) }),
     )
+  })
+
+  it('renders draft conversation without loading server messages', () => {
+    mockUseAgent.mockReturnValue({ data: mockAgent })
+    mockUseMessages.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+    })
+
+    const { container } = render(
+      <ChatPage
+        params={
+          {
+            agentId: 'agent-1',
+            conversationId: 'new',
+          } as unknown as Promise<{
+            agentId: string
+            conversationId: string
+          }>
+        }
+      />,
+    )
+
+    expect(mockUseMessages).toHaveBeenCalledWith('new', false)
+    expect(screen.getByPlaceholderText('메시지 입력...')).toBeInTheDocument()
+    expect(container.querySelectorAll("[data-slot='skeleton']")).toHaveLength(0)
+  })
+
+  it('starts a conversation from draft and replaces the URL after streaming', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    const user = userEvent.setup()
+
+    mockUseMessages.mockReturnValue({ data: [], isLoading: false })
+    mockStreamStartConversation.mockImplementation(
+      async function* (_agentId, _content, _signal, options) {
+        options.onConversationId('conv-started')
+        yield {
+          event: 'message_end',
+          data: {},
+        }
+      },
+    )
+
+    render(
+      <ChatPage
+        params={
+          {
+            agentId: 'agent-1',
+            conversationId: 'new',
+          } as unknown as Promise<{
+            agentId: string
+            conversationId: string
+          }>
+        }
+      />,
+    )
+
+    await user.type(screen.getByPlaceholderText('메시지 입력...'), 'Draft message')
+    await user.click(screen.getByRole('button', { name: /전송/ }))
+
+    expect(mockStreamStartConversation).toHaveBeenCalledWith(
+      'agent-1',
+      'Draft message',
+      expect.any(AbortSignal),
+      expect.objectContaining({ attachmentIds: expect.any(Array) }),
+    )
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/agents/agent-1/conversations/conv-started')
+    })
   })
 
   it('handles stream with tool calls', async () => {

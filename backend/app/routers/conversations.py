@@ -214,7 +214,9 @@ async def _resolve_agent_context(
     )
 
     fallback_chain = await _resolve_fallback_chain(db, agent.model_fallback_list)
-    provider_api_keys = {agent.model.provider: api_key} if api_key else None
+    provider_api_keys: dict[str, str | None] | None = (
+        {agent.model.provider: api_key} if api_key else None
+    )
 
     effective_prompt = _with_user_display_name_context(
         chat_service.build_effective_prompt(agent),
@@ -339,6 +341,7 @@ def _sse_handler(
     on_complete: Callable[[bool], Awaitable[None]] | None = None,
     failure_probe: Callable[[], bool] | None = None,
     run_id: str | None = None,
+    extra_headers: dict[str, str] | None = None,
 ) -> StreamingResponse:
     """4개 stream endpoint(send/resume/edit/regenerate)가 공유하는 SSE 래퍼.
 
@@ -380,8 +383,10 @@ def _sse_handler(
                 except Exception:
                     logger.exception("on_complete hook failed (%s)", log_msg)
 
-    extra: dict[str, str] | None = {"X-Run-Id": run_id} if run_id else None
-    return _sse_response(generate(), extra_headers=extra)
+    extra: dict[str, str] = dict(extra_headers or {})
+    if run_id:
+        extra["X-Run-Id"] = run_id
+    return _sse_response(generate(), extra_headers=extra or None)
 
 
 class _StreamCtx(NamedTuple):
@@ -601,7 +606,7 @@ async def list_conversations_page(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid cursor") from exc
     return ConversationListEnvelope(
-        items=items,
+        items=[ConversationResponse.model_validate(item) for item in items],
         next_cursor=next_cursor,
         has_more=has_more,
     )
@@ -650,6 +655,80 @@ async def create_conversation(
     )
     await db.commit()
     return conv
+
+
+@router.post("/api/agents/{agent_id}/conversations/start")
+async def start_conversation_with_message(
+    agent_id: uuid.UUID,
+    data: MessageCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf),
+):
+    agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
+    if not agent:
+        raise agent_not_found()
+
+    title = chat_service.conversation_title_from_content(data.content)
+    conv = await chat_service.create_conversation(db, agent_id, title)
+    cfg = await _resolve_agent_context(db, conv.id, user)
+    await chat_service.touch_conversation(db, conv.id)
+
+    if data.attachments:
+        await chat_service.link_attachments_to_conversation(
+            db,
+            conversation_id=conv.id,
+            user_id=user.id,
+            attachment_ids=[a.id for a in data.attachments],
+        )
+
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.create",
+        conversation_id=conv.id,
+        agent_id=agent_id,
+        title=conv.title,
+    )
+    await _record_conversation_audit(
+        db,
+        user=user,
+        request=request,
+        action="conversation.message_send",
+        conversation_id=conv.id,
+        agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
+        title=conv.title,
+        metadata={
+            "content_length": len(data.content),
+            "attachment_count": len(data.attachments or []),
+        },
+    )
+    await db.commit()
+
+    ctx = _prepare_stream_context(conv.id)
+    stream_kwargs = ctx.as_stream_kwargs()
+    stream_kwargs["artifact_recorder"] = _build_artifact_recorder(
+        conversation_id=conv.id,
+        cfg=cfg,
+        user=user,
+        run_id=ctx.run_id,
+    )
+    return _sse_handler(
+        lambda: execute_agent_stream(
+            cfg,
+            [{"role": "user", "content": data.content}],
+            moldy_source="chat",
+            **stream_kwargs,
+        ),
+        log_msg=f"Agent stream failed for conversation {conv.id}",
+        user_msg="에이전트 실행 중 오류가 발생했습니다.",
+        run_id=ctx.run_id,
+        on_complete=ctx.finalize_callback(conv.id),
+        failure_probe=ctx.has_stream_error,
+        extra_headers={"X-Conversation-Id": str(conv.id)},
+    )
 
 
 @router.patch(
@@ -731,6 +810,7 @@ async def delete_conversation(
         title=conv.title,
     )
     await chat_service.delete_conversation(db, conv)
+    await db.commit()
 
 
 @router.get(
@@ -1401,8 +1481,6 @@ async def regenerate_message(
     checkpointer = get_checkpointer()
     checkpoints = await _collect_checkpoints(checkpointer, str(conversation_id))
     if not checkpoints:
-        from fastapi import HTTPException
-
         raise HTTPException(status_code=422, detail="conversation has no history yet.")
 
     # Pick the selected branch tip (or the named assistant message) and find

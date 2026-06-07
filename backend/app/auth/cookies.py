@@ -14,13 +14,24 @@ ADR-016 §5.1 — Three cookies are issued on register/login/refresh:
 
 from __future__ import annotations
 
+from typing import Literal, NotRequired, TypedDict
+
 from fastapi import Response
 
 from app.config import settings
 
 
-def _common_kwargs(max_age: int, *, http_only: bool) -> dict[str, object]:
-    kwargs: dict[str, object] = {
+class _CookieKwargs(TypedDict):
+    path: str
+    max_age: int
+    httponly: bool
+    secure: bool
+    samesite: Literal["lax", "strict", "none"]
+    domain: NotRequired[str]
+
+
+def _common_kwargs(max_age: int, *, http_only: bool) -> _CookieKwargs:
+    kwargs: _CookieKwargs = {
         "path": "/",
         "max_age": max_age,
         "httponly": http_only,
