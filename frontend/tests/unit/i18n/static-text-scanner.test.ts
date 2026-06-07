@@ -31,7 +31,7 @@ describe('static i18n text scanner', () => {
     ])
   })
 
-  it('can audit English UI text in strict ASCII mode', () => {
+  it('flags English UI text by default', () => {
     const source = `
       import { toast } from 'sonner'
 
@@ -46,9 +46,7 @@ describe('static i18n text scanner', () => {
       }
     `
 
-    expect(
-      findStaticTextIssuesInSource(source, 'src/app/example/page.tsx', { strictAscii: true }),
-    ).toMatchObject([
+    expect(findStaticTextIssuesInSource(source, 'src/app/example/page.tsx')).toMatchObject([
       { kind: 'toast', text: 'Saved successfully' },
       { kind: 'jsx-text', text: 'Create new agent' },
       { kind: 'jsx-attribute', text: 'Search models' },

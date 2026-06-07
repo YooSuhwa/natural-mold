@@ -23,11 +23,7 @@ import {
   conversationKeys,
 } from '@/lib/hooks/use-conversations'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  streamChat,
-  streamStartConversation,
-  type StreamChatOptions,
-} from '@/lib/sse/stream-chat'
+import { streamChat, streamStartConversation, type StreamChatOptions } from '@/lib/sse/stream-chat'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { chatRightRailAtom, toggleArtifactListRailState } from '@/lib/stores/chat-right-rail'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
@@ -81,9 +77,7 @@ export default function ChatPage({
   const currentConversation = queryClient
     .getQueryData<Conversation[]>(conversationKeys.list(agentId))
     ?.find((c) => c.id === conversationId)
-  const currentTitle = isDraftConversation
-    ? t('newConversation')
-    : currentConversation?.title
+  const currentTitle = isDraftConversation ? t('newConversation') : currentConversation?.title
   const markedReadKeyRef = useRef<string | null>(null)
   const activeConversationId = isDraftConversation ? null : conversationId
 
@@ -263,9 +257,7 @@ export default function ChatPage({
                 <MoreHorizontalIcon className="size-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={handleNewConversation}
-                >
+                <DropdownMenuItem onClick={handleNewConversation}>
                   <SquarePenIcon />
                   {t('newConversation')}
                 </DropdownMenuItem>

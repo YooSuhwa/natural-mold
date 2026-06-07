@@ -110,6 +110,10 @@ export default function AgentApiSettingsPage() {
           <div className="space-y-2">
             {(candidates.data ?? []).map((candidate) => {
               const deployment = deploymentByAgent.get(candidate.agent_id)
+              const ineligibleReason =
+                candidate.ineligible_reason_code === 'fixed_identity_required'
+                  ? t('deployments.ineligibleReasons.fixedIdentityRequired')
+                  : candidate.ineligible_reason
               return (
                 <div key={candidate.agent_id} className="moldy-card flex items-center gap-3 p-3">
                   <div className="min-w-0 flex-1">
@@ -128,8 +132,8 @@ export default function AgentApiSettingsPage() {
                     <p className="truncate font-mono text-xs text-muted-foreground">
                       {deployment?.public_id ?? candidate.runtime_name ?? candidate.agent_id}
                     </p>
-                    {!candidate.eligible && (
-                      <p className="text-xs text-muted-foreground">{candidate.ineligible_reason}</p>
+                    {!candidate.eligible && ineligibleReason && (
+                      <p className="text-xs text-muted-foreground">{ineligibleReason}</p>
                     )}
                   </div>
                   {deployment ? (

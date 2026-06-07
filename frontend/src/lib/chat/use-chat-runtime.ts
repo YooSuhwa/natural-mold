@@ -900,13 +900,7 @@ export function useChatRuntime({
         console.error('[useChatRuntime] Stream error:', err)
       }
     },
-    [
-      consumeStream,
-      truncateMessagesCache,
-      setReconnectState,
-      tReconnect,
-      prepareStream,
-    ],
+    [consumeStream, truncateMessagesCache, setReconnectState, tReconnect, prepareStream],
   )
 
   const onNew = useCallback(

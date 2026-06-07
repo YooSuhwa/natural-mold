@@ -592,6 +592,9 @@
         "planned": "planned",
         "deployDescription": "Deploy this agent before issuing scoped API keys or calling it from external systems.",
         "deployAgent": "Deploy agent",
+        "ineligibleReasons": {
+          "fixedIdentityRequired": "API deployment requires agent-fixed credential usage."
+        },
         "keysTitle": "Keys that can call this agent",
         "keyStatus": {
           "revoked": "revoked",
@@ -3251,6 +3254,9 @@
           "deployed": "deployed",
           "ready": "ready",
           "blocked": "blocked"
+        },
+        "ineligibleReasons": {
+          "fixedIdentityRequired": "API deployment requires agent-fixed credential usage."
         }
       },
       "keys": {

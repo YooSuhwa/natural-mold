@@ -13,6 +13,12 @@ const createMemory = vi.fn()
 const updateMemory = vi.fn()
 const deleteMemory = vi.fn()
 const mockUseSession = vi.fn()
+const mockUseAgentDeploymentCandidates = vi.fn()
+const mockUseAgentDeployments = vi.fn()
+const mockUseAgentApiKeys = vi.fn()
+const mockCreateAgentDeployment = vi.fn()
+const mockCreateAgentApiKey = vi.fn()
+const mockRevokeAgentApiKey = vi.fn()
 
 vi.mock('@/lib/api/auth', () => ({
   authApi: {
@@ -34,12 +40,12 @@ vi.mock('@/lib/auth/session', () => ({
 }))
 
 vi.mock('@/lib/hooks/use-agent-api', () => ({
-  useAgentDeploymentCandidates: () => ({ data: [], isLoading: false }),
-  useAgentDeployments: () => ({ data: [], isLoading: false }),
-  useAgentApiKeys: () => ({ data: [], isLoading: false }),
-  useCreateAgentDeployment: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useCreateAgentApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useRevokeAgentApiKey: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useAgentDeploymentCandidates: () => mockUseAgentDeploymentCandidates(),
+  useAgentDeployments: () => mockUseAgentDeployments(),
+  useAgentApiKeys: () => mockUseAgentApiKeys(),
+  useCreateAgentDeployment: () => mockCreateAgentDeployment(),
+  useCreateAgentApiKey: () => mockCreateAgentApiKey(),
+  useRevokeAgentApiKey: () => mockRevokeAgentApiKey(),
 }))
 
 vi.mock('@/lib/hooks/use-agents', () => ({
@@ -127,6 +133,12 @@ describe('settings pages', () => {
     createMemory.mockClear()
     updateMemory.mockClear()
     deleteMemory.mockClear()
+    mockUseAgentDeploymentCandidates.mockReturnValue({ data: [], isLoading: false })
+    mockUseAgentDeployments.mockReturnValue({ data: [], isLoading: false })
+    mockUseAgentApiKeys.mockReturnValue({ data: [], isLoading: false })
+    mockCreateAgentDeployment.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    mockCreateAgentApiKey.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
+    mockRevokeAgentApiKey.mockReturnValue({ mutateAsync: vi.fn(), isPending: false })
     mockUseSession.mockReturnValue({
       data: {
         id: 'user-1',
@@ -205,6 +217,31 @@ describe('settings pages', () => {
     expect(screen.getByText('배포 후보')).toBeInTheDocument()
     expect(screen.getAllByText('API 키').length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText('호출 예시')).toBeInTheDocument()
+  })
+
+  it('translates Agent API deployment candidate reason codes', () => {
+    mockUseAgentDeploymentCandidates.mockReturnValue({
+      data: [
+        {
+          agent_id: 'agent-1',
+          agent_name: '리서치 에이전트',
+          runtime_name: 'agent_runtime_1',
+          existing_deployment_id: null,
+          existing_public_id: null,
+          eligible: false,
+          ineligible_reason: null,
+          ineligible_reason_code: 'fixed_identity_required',
+        },
+      ],
+      isLoading: false,
+    })
+
+    render(<AgentApiSettingsPage />)
+
+    expect(
+      screen.getByText('API 배포에는 에이전트 고정 credential 사용 방식이 필요합니다.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('API deployment requires fixed identity.')).not.toBeInTheDocument()
   })
 
   it('shows the admin settings section for super users', () => {

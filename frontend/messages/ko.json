@@ -571,6 +571,9 @@
         "planned": "준비 중",
         "deployDescription": "범위가 제한된 API 키를 발급하거나 외부 시스템에서 호출하려면 먼저 이 에이전트를 배포하세요.",
         "deployAgent": "에이전트 배포",
+        "ineligibleReasons": {
+          "fixedIdentityRequired": "API 배포에는 에이전트 고정 credential 사용 방식이 필요합니다."
+        },
         "keysTitle": "이 에이전트를 호출할 수 있는 키",
         "keyStatus": {
           "revoked": "폐기됨",
@@ -3230,6 +3233,9 @@
           "deployed": "배포됨",
           "ready": "준비됨",
           "blocked": "차단됨"
+        },
+        "ineligibleReasons": {
+          "fixedIdentityRequired": "API 배포에는 에이전트 고정 credential 사용 방식이 필요합니다."
         }
       },
       "keys": {

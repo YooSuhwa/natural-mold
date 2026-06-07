@@ -27,6 +27,10 @@ export function ApiPanel({ agentId, agentName }: ApiPanelProps) {
 
   const deployment = (deployments.data ?? []).find((item) => item.agent_id === agentId)
   const candidate = (candidates.data ?? []).find((item) => item.agent_id === agentId)
+  const ineligibleReason =
+    candidate?.ineligible_reason_code === 'fixed_identity_required'
+      ? t('ineligibleReasons.fixedIdentityRequired')
+      : candidate?.ineligible_reason
   const relatedKeys = (apiKeys.data ?? []).filter(
     (key) =>
       key.allow_all_deployments ||
@@ -105,8 +109,8 @@ export function ApiPanel({ agentId, agentName }: ApiPanelProps) {
               <RocketIcon className="size-4" />
               {t('deployAgent')}
             </Button>
-            {!candidate?.eligible && candidate?.ineligible_reason && (
-              <p className="text-xs text-muted-foreground">{candidate.ineligible_reason}</p>
+            {!candidate?.eligible && ineligibleReason && (
+              <p className="text-xs text-muted-foreground">{ineligibleReason}</p>
             )}
           </div>
         )}

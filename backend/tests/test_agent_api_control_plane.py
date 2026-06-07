@@ -62,6 +62,28 @@ async def test_deployment_candidates_include_owned_fixed_agents(client, db):
             "existing_public_id": None,
             "eligible": True,
             "ineligible_reason": None,
+            "ineligible_reason_code": None,
+        }
+    ]
+
+
+async def test_deployment_candidates_return_reason_code_for_per_user_agents(client, db):
+    agent = await _seed_agent(db, identity_mode="per_user")
+
+    response = await client.get("/api/agent-api/deployment-candidates")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == [
+        {
+            "agent_id": str(agent.id),
+            "agent_name": "Support Agent",
+            "runtime_name": agent.runtime_name,
+            "existing_deployment_id": None,
+            "existing_public_id": None,
+            "eligible": False,
+            "ineligible_reason": None,
+            "ineligible_reason_code": "fixed_identity_required",
         }
     ]
 

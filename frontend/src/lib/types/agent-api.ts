@@ -1,4 +1,5 @@
 export type AgentApiScope = 'invoke' | 'stream' | 'background' | 'read'
+export type AgentDeploymentIneligibleReasonCode = 'fixed_identity_required'
 
 export interface AgentDeployment {
   id: string
@@ -22,6 +23,7 @@ export interface AgentDeploymentCandidate {
   existing_public_id: string | null
   eligible: boolean
   ineligible_reason: string | null
+  ineligible_reason_code: AgentDeploymentIneligibleReasonCode | null
 }
 
 export interface AgentApiKeyDeploymentRef {

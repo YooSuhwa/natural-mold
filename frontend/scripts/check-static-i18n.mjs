@@ -81,7 +81,7 @@ function looksLikeCodeFragment(kind, text) {
 }
 
 function userTextReForOptions(options) {
-  return options.strictAscii ? STRICT_USER_TEXT_RE : CJK_TEXT_RE
+  return options.strictAscii === false ? CJK_TEXT_RE : STRICT_USER_TEXT_RE
 }
 
 function pushIssue(issues, source, index, kind, text, filePath, options) {
@@ -189,7 +189,7 @@ export async function findStaticTextIssues(
 
 async function main() {
   const strictAscii =
-    process.argv.includes('--strict-ascii') || process.env.I18N_STRICT_ASCII === '1'
+    !process.argv.includes('--cjk-only') && process.env.I18N_STRICT_ASCII !== '0'
   const issues = await findStaticTextIssues(path.join(process.cwd(), 'src'), { strictAscii })
   if (issues.length === 0) return
 
