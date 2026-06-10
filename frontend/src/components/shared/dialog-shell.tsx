@@ -27,7 +27,7 @@ function Root({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className={cn(
-          'flex max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-none',
+          'moldy-dialog-shell flex max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-none',
           DIALOG_SIZE[size],
           DIALOG_HEIGHT[height],
           className,
@@ -68,12 +68,12 @@ function Header({ icon, title, description, actions, className, srOnly }: Header
         // pr-12 leaves space for the absolute close (X) button rendered by
         // shadcn DialogContent in the top-right corner — without it, action
         // chips (StatusChip etc.) overlap the X.
-        'flex items-start gap-4 border-b border-border/60 py-5 pl-6 pr-12',
+        'moldy-dialog-header flex items-start gap-4 border-b border-border/60 py-5 pl-6 pr-12',
         className,
       )}
     >
       {icon ? (
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-strong/15 text-primary-strong">
+        <div className="moldy-dialog-icon flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-strong/15 text-primary-strong">
           {icon}
         </div>
       ) : null}
@@ -101,7 +101,7 @@ function Body({ className, children }: BodyProps) {
   return (
     <div
       className={cn(
-        'flex-1 space-y-6 overflow-y-auto px-6 py-5 [&_label]:text-xs [&_label]:font-medium [&_label]:text-muted-foreground',
+        'moldy-dialog-body flex-1 space-y-6 overflow-y-auto px-6 py-5 [&_label]:text-xs [&_label]:font-medium [&_label]:text-muted-foreground',
         className,
       )}
     >
@@ -119,7 +119,7 @@ function Footer({ className, children }: FooterProps) {
   return (
     <div
       className={cn(
-        'flex shrink-0 items-center justify-end gap-2 border-t border-border/60 bg-muted/30 px-6 py-4',
+        'moldy-dialog-footer flex shrink-0 items-center justify-end gap-2 border-t border-border/60 bg-muted/30 px-6 py-4',
         className,
       )}
     >
@@ -137,7 +137,7 @@ function Sidebar({ className, children }: SidebarProps) {
   return (
     <aside
       className={cn(
-        'w-[260px] shrink-0 overflow-y-auto border-r border-border/60 bg-muted/30 px-4 py-5',
+        'moldy-dialog-sidebar w-[260px] shrink-0 overflow-y-auto border-r border-border/60 bg-muted/30 px-4 py-5',
         className,
       )}
     >

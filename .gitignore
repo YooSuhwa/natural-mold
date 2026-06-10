@@ -74,6 +74,7 @@ backend/data.bak*/
 # DeepAgent / Codex / Playwright workspaces
 workspace/
 .codex/
+.omo/
 .playwright-mcp/
 
 # Local E2E screenshots/videos/traces/raw captures.

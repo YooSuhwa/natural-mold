@@ -2737,6 +2737,210 @@
   }
 }
 
+.moldy-dialog-shell {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--card) 92%, var(--moldy-mint)) 0%,
+      var(--popover) 42%,
+      color-mix(in oklch, var(--popover) 94%, var(--moldy-sky)) 100%
+    );
+  box-shadow:
+    0 34px 90px -56px color-mix(in oklch, var(--foreground) 42%, transparent),
+    var(--moldy-inset-highlight);
+}
+
+.moldy-dialog-shell::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--primary-strong),
+    var(--status-info),
+    var(--status-accent)
+  );
+  content: "";
+  opacity: 0.82;
+}
+
+.moldy-dialog-shell [data-slot="dialog-close"] {
+  top: 0.875rem;
+  right: 0.875rem;
+  border: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
+  background: color-mix(in oklch, var(--popover) 88%, transparent);
+  color: var(--muted-foreground);
+  box-shadow: var(--moldy-shadow-soft);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.moldy-dialog-shell [data-slot="dialog-close"]:hover,
+.moldy-dialog-shell [data-slot="dialog-close"]:focus-visible {
+  border-color: color-mix(in oklch, var(--primary-strong) 26%, var(--border));
+  background: color-mix(in oklch, var(--primary) 32%, var(--popover));
+  color: var(--foreground);
+}
+
+.moldy-dialog-header {
+  background:
+    radial-gradient(
+      circle at 12% 0%,
+      color-mix(in oklch, var(--primary) 48%, transparent),
+      transparent 34%
+    ),
+    linear-gradient(180deg, color-mix(in oklch, var(--card) 82%, transparent), transparent);
+}
+
+.moldy-dialog-icon {
+  border: 1px solid color-mix(in oklch, var(--primary-strong) 20%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--primary) 72%, var(--card)),
+      color-mix(in oklch, var(--primary) 30%, var(--card))
+    );
+  box-shadow: var(--moldy-shadow-soft);
+}
+
+.moldy-dialog-body {
+  scrollbar-gutter: stable;
+  background: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--background) 14%, transparent),
+    transparent 22%
+  );
+}
+
+.moldy-dialog-body :where([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]) {
+  border-color: color-mix(in oklch, var(--border) 82%, var(--primary));
+  background: color-mix(in oklch, var(--card) 86%, var(--moldy-surface));
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.moldy-dialog-body
+  :where(
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="select-trigger"]
+  ):not([class*="min-h-"]) {
+  min-height: 2.25rem;
+}
+
+.moldy-dialog-body
+  :where(
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="select-trigger"]
+  ):not(.shadow-none) {
+  box-shadow:
+    var(--moldy-shadow-soft),
+    0 1px 0 color-mix(in oklch, var(--background) 72%, transparent) inset;
+}
+
+.moldy-dialog-body :where([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]):hover {
+  border-color: color-mix(in oklch, var(--primary-strong) 24%, var(--border));
+  background: color-mix(in oklch, var(--card) 94%, var(--moldy-mint));
+}
+
+.moldy-dialog-body :where([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]):focus-visible {
+  background: var(--card);
+}
+
+.moldy-dialog-body
+  :where(
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="select-trigger"]
+  ):not(.focus-visible\:border-input):focus-visible {
+  border-color: color-mix(in oklch, var(--primary-strong) 46%, var(--border));
+}
+
+.moldy-dialog-body
+  :where(
+    [data-slot="input"],
+    [data-slot="textarea"],
+    [data-slot="select-trigger"]
+  ):not(.focus-visible\:ring-0):focus-visible {
+  box-shadow:
+    0 0 0 3px color-mix(in oklch, var(--primary-strong) 18%, transparent),
+    var(--moldy-shadow-soft);
+}
+
+.moldy-dialog-body :where([data-slot="textarea"]):not([class*="min-h-"]) {
+  min-height: 5rem;
+}
+
+.moldy-dialog-body :where([data-slot="textarea"]) {
+  line-height: 1.55;
+}
+
+.moldy-dialog-body :where(label) {
+  color: color-mix(in oklch, var(--foreground) 66%, var(--muted-foreground));
+}
+
+.moldy-dialog-body :where(p.text-xs.text-muted-foreground) {
+  line-height: 1.55;
+}
+
+.moldy-dialog-body :where(.rounded-md, .rounded-lg) {
+  border-color: color-mix(in oklch, var(--border) 76%, transparent);
+}
+
+.moldy-dialog-body :where([aria-invalid="true"]) {
+  border-color: color-mix(in oklch, var(--destructive) 62%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--destructive) 14%, transparent);
+}
+
+.moldy-dialog-body :where([data-slot="card"], button[role="listitem"]) {
+  border: 1px solid color-mix(in oklch, var(--border) 76%, transparent);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--card) 92%, var(--moldy-mint)),
+      color-mix(in oklch, var(--card) 88%, transparent)
+    );
+  box-shadow: var(--moldy-shadow-soft);
+}
+
+.moldy-dialog-body :where(button[role="listitem"]) {
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.moldy-dialog-body :where(button[role="listitem"]):hover,
+.moldy-dialog-body :where(button[role="listitem"]):focus-visible {
+  border-color: color-mix(in oklch, var(--primary-strong) 28%, var(--border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--primary) 22%, var(--card)),
+      color-mix(in oklch, var(--card) 92%, var(--moldy-sky))
+    );
+  box-shadow: var(--moldy-shadow-hover);
+  transform: translateY(-1px);
+}
+
+.moldy-dialog-footer,
+.moldy-dialog-sidebar {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--muted) 26%, transparent),
+      color-mix(in oklch, var(--card) 58%, transparent)
+    );
+  backdrop-filter: blur(14px);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .auth-mascot,
   .auth-star,
