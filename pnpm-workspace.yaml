@@ -1,5 +1,6 @@
 packages:
   - 'frontend'
+  - 'backend/skill-node'
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver

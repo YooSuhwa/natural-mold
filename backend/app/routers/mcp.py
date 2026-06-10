@@ -9,10 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
 from app.credentials.validation import require_user_credential
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.mcp import discovery
+from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import connect_and_list
 from app.models.credential import Credential
 from app.models.mcp_server import McpServer
@@ -89,14 +89,10 @@ def _tool_to_response(tool: McpTool) -> McpToolResponse:
     )
 
 
-async def _load_owned(
-    db: AsyncSession, server_id: uuid.UUID, user_id: uuid.UUID
-) -> McpServer:
+async def _load_owned(db: AsyncSession, server_id: uuid.UUID, user_id: uuid.UUID) -> McpServer:
     row = (
         await db.execute(
-            select(McpServer).where(
-                McpServer.id == server_id, McpServer.user_id == user_id
-            )
+            select(McpServer).where(McpServer.id == server_id, McpServer.user_id == user_id)
         )
     ).scalar_one_or_none()
     if row is None:
@@ -106,12 +102,14 @@ async def _load_owned(
 
 async def _load_tools_for(db: AsyncSession, server_id: uuid.UUID) -> list[McpTool]:
     rows = (
-        await db.execute(
-            select(McpTool)
-            .where(McpTool.server_id == server_id)
-            .order_by(McpTool.name)
+        (
+            await db.execute(
+                select(McpTool).where(McpTool.server_id == server_id).order_by(McpTool.name)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
@@ -196,12 +194,16 @@ async def list_servers(
     user: CurrentUser = Depends(get_current_user),
 ) -> list[McpServerResponse]:
     rows = (
-        await db.execute(
-            select(McpServer)
-            .where(McpServer.user_id == user.id)
-            .order_by(McpServer.created_at.desc())
+        (
+            await db.execute(
+                select(McpServer)
+                .where(McpServer.user_id == user.id)
+                .order_by(McpServer.created_at.desc())
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return [_server_to_response(r) for r in rows]
 
 
@@ -215,9 +217,7 @@ async def create_server(
 ) -> McpServerResponse:
     _validate_payload_consistency(payload.transport, payload.url, payload.command)
     if payload.credential_id is not None:
-        await require_user_credential(
-            db, credential_id=payload.credential_id, user_id=user.id
-        )
+        await require_user_credential(db, credential_id=payload.credential_id, user_id=user.id)
     server = McpServer(
         user_id=user.id,
         name=payload.name,
@@ -246,9 +246,7 @@ async def create_server(
     return _server_to_response(server)
 
 
-@router.post(
-    "/from-registry", response_model=McpServerResponse, status_code=201
-)
+@router.post("/from-registry", response_model=McpServerResponse, status_code=201)
 async def create_server_from_registry(
     payload: McpServerCreateFromRegistry,
     request: Request,
@@ -276,9 +274,7 @@ async def create_server_from_registry(
     command = entry.get("command")
     _validate_payload_consistency(transport, url, command)
     if payload.credential_id is not None:
-        await require_user_credential(
-            db, credential_id=payload.credential_id, user_id=user.id
-        )
+        await require_user_credential(db, credential_id=payload.credential_id, user_id=user.id)
 
     server = McpServer(
         user_id=user.id,
@@ -350,19 +346,25 @@ async def probe_mcp_server(
 
     credentials: dict[str, Any] | None = None
     if payload.credential_id is not None:
-        credential = (
-            await db.execute(
-                select(Credential).where(
-                    Credential.id == payload.credential_id,
-                    Credential.user_id == user.id,
-                )
-            )
-        ).scalar_one_or_none()
-        if credential is None:
-            raise HTTPException(status_code=404, detail="credential not found")
-        credentials = await credential_service.decrypt_with_external(
-            credential.data_encrypted
+        auth = await resolve_mcp_auth(
+            db,
+            credential_id=payload.credential_id,
+            user_id=user.id,
+            static_headers=headers,
         )
+        if auth.error:
+            if auth.status == "credential_not_found":
+                raise HTTPException(status_code=404, detail="credential not found")
+            return {
+                "success": False,
+                "server_info": {},
+                "tools": [],
+                "error": auth.error,
+            }
+        if auth.credentials is None:
+            raise HTTPException(status_code=404, detail="credential not found")
+        credentials = auth.credentials
+        headers = auth.headers
 
     result = await connect_and_list(
         transport=transport,
@@ -474,29 +476,29 @@ async def import_servers(
 
     # Pre-load existing servers by name so we don't re-query inside the loop.
     existing_rows = (
-        await db.execute(
-            select(McpServer).where(McpServer.user_id == user.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(McpServer).where(McpServer.user_id == user.id))).scalars().all()
+    )
     by_name: dict[str, McpServer] = {row.name: row for row in existing_rows}
 
     # Validate referenced credentials up-front (a 400 is friendlier than
     # silently committing rows with a dangling FK).
     referenced_creds: set[uuid.UUID] = {
-        e.credential_id
-        for e in payload.mcpServers.values()
-        if e.credential_id is not None
+        e.credential_id for e in payload.mcpServers.values() if e.credential_id is not None
     }
     valid_creds: set[uuid.UUID] = set()
     if referenced_creds:
         owned = (
-            await db.execute(
-                select(Credential.id).where(
-                    Credential.user_id == user.id,
-                    Credential.id.in_(referenced_creds),
+            (
+                await db.execute(
+                    select(Credential.id).where(
+                        Credential.user_id == user.id,
+                        Credential.id.in_(referenced_creds),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         valid_creds = set(owned)
 
     for name, entry in payload.mcpServers.items():
@@ -579,9 +581,7 @@ async def import_servers(
 
     await db.commit()
     import_outcome = (
-        "failure"
-        if result.errors and result.created == 0 and result.updated == 0
-        else "success"
+        "failure" if result.errors and result.created == 0 and result.updated == 0 else "success"
     )
     await audit_service.record_event(
         db,
@@ -622,12 +622,14 @@ async def export_servers(
     """
 
     rows = (
-        await db.execute(
-            select(McpServer)
-            .where(McpServer.user_id == user.id)
-            .order_by(McpServer.name)
+        (
+            await db.execute(
+                select(McpServer).where(McpServer.user_id == user.id).order_by(McpServer.name)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     out: dict[str, McpExportEntry] = {}
     for row in rows:
@@ -689,9 +691,7 @@ async def update_server(
         server.headers = dict(payload.headers)
     if "credential_id" in fields_set:
         if payload.credential_id is not None:
-            await require_user_credential(
-                db, credential_id=payload.credential_id, user_id=user.id
-            )
+            await require_user_credential(db, credential_id=payload.credential_id, user_id=user.id)
         server.credential_id = payload.credential_id
     if "status" in fields_set and payload.status is not None:
         server.status = payload.status
@@ -821,7 +821,5 @@ async def list_registry_entries() -> list[McpRegistryEntry]:
 async def get_registry_entry(key: str) -> McpRegistryEntry:
     entry = mcp_registry_service.get_registry_entry(key)
     if entry is None:
-        raise HTTPException(
-            status_code=404, detail=f"unknown registry entry '{key}'"
-        )
+        raise HTTPException(status_code=404, detail=f"unknown registry entry '{key}'")
     return McpRegistryEntry(**entry)

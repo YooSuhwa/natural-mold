@@ -19,6 +19,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.exceptions import ValidationError
 from app.mcp import client as mcp_client
 from app.models.agent import Agent
 from app.models.agent_trigger import AgentTrigger
@@ -221,6 +222,63 @@ async def test_build_tools_config_injects_mcp_secret_header(
     assert entry["mcp_transport_headers"] == {
         "X-Moldy-Credential": "SESSION=abc",
     }
+
+
+@pytest.mark.asyncio
+async def test_build_tools_config_blocks_mcp_credential_subject_mismatch(
+    db: AsyncSession,
+) -> None:
+    model = await _seed_user_and_model(db)
+    other_user = User(email="other@test", name="Other")
+    db.add(other_user)
+    await db.flush()
+    mcp_cred = await credential_service.create(
+        db,
+        user_id=other_user.id,
+        definition_key="mcp_secret",
+        name="other user secret",
+        data={"secret": "SESSION=other"},
+    )
+
+    agent = Agent(
+        user_id=TEST_USER_ID,
+        name="MCP Agent",
+        system_prompt="hi",
+        model_id=model.id,
+    )
+    db.add(agent)
+    await db.flush()
+
+    server = McpServer(
+        user_id=TEST_USER_ID,
+        name="Mismatched MCP",
+        transport="streamable_http",
+        url="http://localhost:18003/mcp",
+        credential_id=mcp_cred.id,
+        headers={},
+        env_vars={},
+    )
+    db.add(server)
+    await db.flush()
+
+    mcp_tool = McpTool(
+        server_id=server.id,
+        name="get_budget",
+        description="budget",
+        input_schema={"type": "object"},
+        enabled=True,
+    )
+    db.add(mcp_tool)
+    await db.flush()
+    db.add(AgentMcpToolLink(agent_id=agent.id, mcp_tool_id=mcp_tool.id))
+    await db.commit()
+
+    fetched = await chat_service.get_agent_with_tools(db, agent.id, TEST_USER_ID)
+    assert fetched is not None
+
+    with pytest.raises(ValidationError) as exc:
+        await chat_service.build_tools_config(fetched, db=db)
+    assert exc.value.code == "CREDENTIAL_SUBJECT_MISMATCH"
 
 
 # ---------------------------------------------------------------------------

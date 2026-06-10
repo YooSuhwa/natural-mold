@@ -1451,6 +1451,19 @@
           "emptyTable": "No rows to display.",
           "parseError": "Could not parse this file structure."
         },
+        "documentPreview": {
+          "loading": "Loading document",
+          "errorTitle": "Preview unavailable",
+          "downloadInstead": "Download",
+          "page": "{current} / {total}",
+          "zoomIn": "Zoom in",
+          "zoomOut": "Zoom out",
+          "previousPage": "Previous page",
+          "nextPage": "Next page",
+          "sheet": "Sheet",
+          "slide": "Slide",
+          "truncatedGrid": "Large sheet preview shows the first {rows} rows and {columns} columns"
+        },
         "kinds": {
           "image": "Image",
           "video": "Video",
@@ -1937,6 +1950,14 @@
       },
       "auth": {
         "credential": "Credentials",
+        "createOAuthCredential": "Create OAuth Credential",
+        "connectOAuth": "Authenticate in Browser",
+        "oauthConnected": "OAuth authentication completed.",
+        "oauthWaiting": "Waiting for browser authentication.",
+        "oauthPopupTitle": "Moldy OAuth",
+        "oauthSelectFirst": "Select an OAuth credential first.",
+        "oauthPopupBlocked": "Browser popup was blocked. Allow popups and try again.",
+        "oauthStartFailed": "Could not start OAuth authentication.",
         "interpolation": "Interpolation",
         "interpolationBody": "Interpolation Body",
         "interpolationSuffix": "Interpolation Suffix",

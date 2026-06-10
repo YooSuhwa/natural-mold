@@ -1,0 +1,24 @@
+{
+  "title": "Moldy XLSX Viewer 검증",
+  "sheets": [
+    {
+      "name": "검증요약",
+      "headers": ["항목", "상태", "비고"],
+      "rows": [
+        ["JS runner", "통과", "node scripts/create_xlsx.cjs"],
+        ["Artifact ingest", "통과", "conversation_artifacts"],
+        ["Viewer", "통과", "SheetJS table UI"]
+      ]
+    },
+    {
+      "name": "측정값",
+      "headers": ["날짜", "문서유형", "생성수", "미리보기"],
+      "rows": [
+        ["2026-06-07", "DOCX", 1, "docx-preview"],
+        ["2026-06-07", "XLSX", 1, "SheetJS"],
+        ["2026-06-07", "PPTX", 1, "pptxviewjs"],
+        ["2026-06-07", "HWPX", 1, "rhwp"]
+      ]
+    }
+  ]
+}

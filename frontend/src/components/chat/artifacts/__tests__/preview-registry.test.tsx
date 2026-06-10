@@ -89,6 +89,41 @@ describe('getArtifactPreviewProvider', () => {
     ).toBe('structured-data')
   })
 
+  it('selects document viewer providers for office and HWP artifacts', () => {
+    expect(
+      getArtifactPreviewProvider(
+        artifact({ artifact_kind: 'document', mime_type: 'application/x-hwpx', extension: 'hwpx' }),
+      ).id,
+    ).toBe('hwp-hwpx')
+    expect(
+      getArtifactPreviewProvider(
+        artifact({
+          artifact_kind: 'document',
+          mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          extension: 'docx',
+        }),
+      ).id,
+    ).toBe('docx')
+    expect(
+      getArtifactPreviewProvider(
+        artifact({
+          artifact_kind: 'data',
+          mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          extension: 'xlsx',
+        }),
+      ).id,
+    ).toBe('xlsx')
+    expect(
+      getArtifactPreviewProvider(
+        artifact({
+          artifact_kind: 'document',
+          mime_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          extension: 'pptx',
+        }),
+      ).id,
+    ).toBe('pptx')
+  })
+
   it('allows preview add-ons to register by manifest', () => {
     registerArtifactPreviewProvider({
       id: 'custom-addon',

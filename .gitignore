@@ -80,6 +80,10 @@ workspace/
 # Local E2E screenshots/videos/traces/raw captures.
 # Use output/e2e-captures/<YYYYMMDD>-<feature>/.
 output/
+frontend/e2e-demo/
+frontend/playwright.demo.config.ts
+frontend/scripts/render-demo-videos.mjs
+backend/app/seed/system_skill_packages/*/data/
 
 # Redis dump (M-MCP2)
 dump.rdb

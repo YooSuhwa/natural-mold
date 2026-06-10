@@ -2735,6 +2735,31 @@
   .moldy-builder-image-thumb {
     border: 1px solid var(--builder-border);
   }
+
+  .moldy-docx-wrapper {
+    max-width: 100%;
+  }
+
+  .moldy-docx-wrapper .moldy-docx {
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  .moldy-docx-wrapper .moldy-docx section.docx {
+    margin-right: auto;
+    margin-left: auto;
+    box-sizing: border-box;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  .moldy-docx-wrapper .moldy-docx h1,
+  .moldy-docx-wrapper .moldy-docx h2,
+  .moldy-docx-wrapper .moldy-docx h3,
+  .moldy-docx-wrapper .moldy-docx p {
+    overflow-wrap: anywhere;
+  }
 }
 
 .moldy-dialog-shell {

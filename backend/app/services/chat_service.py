@@ -28,6 +28,7 @@ from sqlalchemy.orm import contains_eager, selectinload
 from app.agent_runtime.identity import AgentRunIdentity
 from app.credentials import service as credential_service
 from app.exceptions import ValidationError
+from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import build_headers
 from app.models.agent import Agent
 from app.models.agent_subagent import AgentSubAgentLink
@@ -1108,8 +1109,30 @@ async def build_tools_config(
             continue
 
         mcp_credentials: dict[str, Any] | None = None
+        mcp_headers: dict[str, str] = dict(server.headers or {})
         if server.credential is not None:
-            mcp_credentials = await decrypt_cached(server.credential)
+            if db is not None:
+                resolved_auth = await resolve_mcp_auth(
+                    db,
+                    credential_id=server.credential_id,
+                    user_id=credential_subject_user_id,
+                    static_headers=dict(server.headers or {}),
+                )
+                if resolved_auth.error:
+                    if resolved_auth.status == "credential_not_found":
+                        raise ValidationError(
+                            "CREDENTIAL_SUBJECT_MISMATCH",
+                            "credential is not available for this agent run identity",
+                        )
+                    raise ValidationError(
+                        "MCP_CREDENTIAL_AUTH_NEEDED",
+                        resolved_auth.error,
+                    )
+                mcp_credentials = resolved_auth.credentials
+                mcp_headers = resolved_auth.headers
+            else:
+                mcp_credentials = await decrypt_cached(server.credential)
+                mcp_headers = build_headers(dict(server.headers or {}), mcp_credentials)
 
         configs.append(
             {
@@ -1122,10 +1145,7 @@ async def build_tools_config(
                 # ``mcp_server_url``).
                 "mcp_server_url": server.url,
                 "mcp_tool_name": mcp_tool.name,
-                "mcp_transport_headers": build_headers(
-                    dict(server.headers or {}),
-                    mcp_credentials,
-                ),
+                "mcp_transport_headers": mcp_headers,
                 "credentials": mcp_credentials,
                 "user_id": str(runtime_actor_user_id),
                 "agent_id": str(agent.id),

@@ -18,7 +18,7 @@ const webServer = [
     ? []
     : [
         {
-          command: `cd ../backend && CORS_ALLOWED_ORIGINS=${corsOrigins} uv run uvicorn app.main:app --port ${backendPort}`,
+          command: `cd ../backend && E2E_SCRIPTED_MODEL_ENABLED=true CORS_ALLOWED_ORIGINS=${corsOrigins} uv run uvicorn app.main:app --port ${backendPort}`,
           port: backendPort,
           reuseExistingServer: true,
         },

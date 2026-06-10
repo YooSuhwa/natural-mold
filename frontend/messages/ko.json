@@ -1430,6 +1430,19 @@
           "emptyTable": "표시할 행이 없습니다.",
           "parseError": "파일 구조를 해석하지 못했습니다."
         },
+        "documentPreview": {
+          "loading": "문서를 불러오는 중입니다",
+          "errorTitle": "미리보기를 열 수 없습니다",
+          "downloadInstead": "다운로드",
+          "page": "{current} / {total}",
+          "zoomIn": "확대",
+          "zoomOut": "축소",
+          "previousPage": "이전 페이지",
+          "nextPage": "다음 페이지",
+          "sheet": "시트",
+          "slide": "슬라이드",
+          "truncatedGrid": "큰 시트라 처음 {rows}행과 {columns}열만 표시합니다"
+        },
         "kinds": {
           "image": "이미지",
           "video": "비디오",
@@ -1916,6 +1929,14 @@
       },
       "auth": {
         "credential": "자격증명",
+        "createOAuthCredential": "OAuth 자격증명 만들기",
+        "connectOAuth": "브라우저로 인증",
+        "oauthConnected": "OAuth 인증이 완료되었습니다.",
+        "oauthWaiting": "브라우저 인증 완료를 기다리는 중입니다.",
+        "oauthPopupTitle": "Moldy OAuth",
+        "oauthSelectFirst": "먼저 OAuth 자격증명을 선택하세요.",
+        "oauthPopupBlocked": "브라우저 팝업이 차단되었습니다. 팝업을 허용한 뒤 다시 시도하세요.",
+        "oauthStartFailed": "OAuth 인증을 시작하지 못했습니다.",
         "interpolation": "자격증명 보간",
         "interpolationBody": "헤더나 환경 변수 어디에서든 연결된 자격증명 필드를 참조할 수 있습니다.",
         "interpolationSuffix": "MCP 클라이언트가 연결 시점에 해당 값을 치환합니다.",

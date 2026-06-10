@@ -87,6 +87,7 @@ from app.seed.bootstrap_from_env import bootstrap_system_credentials
 from app.seed.default_marketplace_skills import seed_default_marketplace_skills
 from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_templates import DEFAULT_TEMPLATES
+from app.seed.e2e_scripted_model import seed_e2e_scripted_model
 from app.seed.e2e_user import seed_e2e_user
 from app.services.spend_writer import spend_queue
 
@@ -130,13 +131,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.exception("seed_e2e_user failed — continuing startup.")
 
         try:
+            await seed_e2e_scripted_model(db)
+            await db.commit()
+        except Exception:  # noqa: BLE001 — local e2e model seed is non-fatal
+            await db.rollback()
+            logger.exception("seed_e2e_scripted_model failed — continuing startup.")
+
+        try:
             await seed_default_marketplace_skills(db)
             await db.commit()
         except Exception:  # noqa: BLE001 — default marketplace seed is non-fatal
             await db.rollback()
-            logger.exception(
-                "seed_default_marketplace_skills failed — continuing startup."
-            )
+            logger.exception("seed_default_marketplace_skills failed — continuing startup.")
 
         # Operator-managed system credentials seeded from env (Cipher V2). Stored
         # as ``is_system=True, user_id=NULL`` so they survive every user's
@@ -147,9 +153,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 await db.commit()
             except Exception:  # noqa: BLE001 — lifespan boundary
                 await db.rollback()
-                logger.exception(
-                    "bootstrap_system_credentials failed — continuing startup."
-                )
+                logger.exception("bootstrap_system_credentials failed — continuing startup.")
 
         # ADR-013 — sync builder/assistant `_ENV_FALLBACK` from credentials
         # so user-registered LLM keys (POST /api/credentials) are visible to
@@ -162,9 +166,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         try:
             await sync_env_fallback_from_credentials(db)
         except Exception:  # noqa: BLE001 — lifespan boundary
-            logger.exception(
-                "sync_env_fallback_from_credentials failed — continuing startup."
-            )
+            logger.exception("sync_env_fallback_from_credentials failed — continuing startup.")
 
     # Checkpointer 초기화 — psycopg v3 호환 URL 사용.
     from app.agent_runtime.checkpointer import init_checkpointer
@@ -204,9 +206,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         register_skill_runtime_cleanup_job()
 
         async with async_session() as db:
-            result = await db.execute(
-                select(AgentTrigger).where(AgentTrigger.status == "active")
-            )
+            result = await db.execute(select(AgentTrigger).where(AgentTrigger.status == "active"))
             for trigger in result.scalars():
                 trigger.next_run_at = add_trigger_job(
                     trigger.id,
@@ -363,9 +363,7 @@ def create_app() -> FastAPI:
                 owner_user_id=getattr(current_user, "id", None),
                 owner_email_snapshot=getattr(current_user, "email", None),
                 action=(
-                    "auth.csrf_denied"
-                    if exc.code == "csrf_mismatch"
-                    else "auth.access_denied"
+                    "auth.csrf_denied" if exc.code == "csrf_mismatch" else "auth.access_denied"
                 ),
                 target_type="http_request",
                 target_id=request.url.path,
@@ -396,9 +394,7 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(
-        request: Request, exc: StarletteHTTPException
-    ) -> JSONResponse:
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         code = f"HTTP_{exc.status_code}"
         message = "HTTP 오류가 발생했습니다"
         details = None

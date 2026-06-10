@@ -1,0 +1,17 @@
+{
+  "date": "2026. 06. 07.",
+  "title": "AI 에이전트 문서 생성 결과 검증 방법",
+  "abstract": "본 발명은 AI 에이전트가 생성한 문서 파일을 artifact로 수집하고 브라우저 기반 viewer에서 렌더링 여부를 자동 검증하는 방법에 관한 것이다.",
+  "background": "기존 자동화된 문서 생성 흐름은 파일 생성 여부와 실제 미리보기 가능 여부를 분리해서 확인하는 경우가 많아 사용자 경험 검증이 불완전했다.",
+  "claims": [
+    "AI 에이전트가 문서 생성 skill을 실행하여 문서 파일을 생성하는 단계",
+    "생성된 파일을 conversation artifact로 수집하는 단계",
+    "artifact viewer가 파일 형식별 client-side renderer를 사용하여 문서를 표시하는 단계",
+    "Playwright가 표시 결과를 캡처하고 정상 렌더링 여부를 검증하는 단계"
+  ],
+  "inventors": [
+    {"kor": "김 민 준", "eng": "Kim Min Jun", "dept": "기술개발팀", "role": "책임"},
+    {"kor": "이 서 연", "eng": "Lee Seo Yeon", "dept": "기술개발팀", "role": "선임"},
+    {"kor": "박 지 훈", "eng": "Park Ji Hoon", "dept": "플랫폼팀", "role": "선임"}
+  ]
+}

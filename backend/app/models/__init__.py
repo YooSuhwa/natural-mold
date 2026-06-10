@@ -19,6 +19,7 @@ from app.models.conversation_artifact import ArtifactVersion, ConversationArtifa
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.credential_default import CredentialDefault
+from app.models.credential_oauth_state import CredentialOAuthState
 from app.models.daily_spend_agent import DailySpendAgent
 from app.models.daily_spend_model import DailySpendModel
 from app.models.daily_spend_user import DailySpendUser
@@ -72,6 +73,7 @@ __all__ = [
     "Credential",
     "CredentialAuditLog",
     "CredentialDefault",
+    "CredentialOAuthState",
     "DailySpendAgent",
     "DailySpendModel",
     "DailySpendUser",

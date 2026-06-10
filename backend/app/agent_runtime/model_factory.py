@@ -53,6 +53,13 @@ PROVIDER_MAP: dict[str, type[BaseChatModel]] = {
     "openai_compatible": ChatOpenAI,
 }
 
+if settings.e2e_scripted_model_enabled:
+    if settings.app_env == "production":
+        raise RuntimeError("E2E scripted model cannot run in production")
+    from app.agent_runtime.e2e_scripted_model import E2EScriptedChatModel
+
+    PROVIDER_MAP["e2e_scripted"] = E2EScriptedChatModel
+
 
 # Internal callers (Builder/Assistant sub-agents) don't have a Credential row;
 # they fall back to env-derived settings. End-user agents get their key from
@@ -117,8 +124,7 @@ def _api_key_fingerprint(api_key: str | None) -> str | None:
 def _jsonable(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {
-            str(k): _jsonable(v)
-            for k, v in sorted(value.items(), key=lambda item: str(item[0]))
+            str(k): _jsonable(v) for k, v in sorted(value.items(), key=lambda item: str(item[0]))
         }
     if isinstance(value, (list, tuple)):
         return [_jsonable(v) for v in value]
@@ -136,9 +142,7 @@ def _model_cache_key(
     kwargs: dict[str, Any],
 ) -> tuple[Any, ...]:
     key_kwargs = {
-        k: v
-        for k, v in kwargs.items()
-        if k not in {"api_key", "http_async_client", "http_client"}
+        k: v for k, v in kwargs.items() if k not in {"api_key", "http_async_client", "http_client"}
     }
     return (
         provider,

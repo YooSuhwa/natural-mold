@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     # Skills (package)
     skill_storage_dir: str = "./data/skills"
     skill_max_package_bytes: int = 52428800
+    # Skills (JavaScript package runner). Skill scripts run without a shell;
+    # this only points the subprocess runner at a Node binary and shared
+    # dependency directory for built-in document-generation skills.
+    skill_node_binary: str = "node"
+    skill_node_modules_dir: str = "./skill-node/node_modules"
 
     # ADR-017 Slice F — k-skill upstream import (super_user CLI only).
     # ``k_skill_sync_dir`` is the local git working tree the importer
@@ -199,6 +204,7 @@ class Settings(BaseSettings):
     e2e_user_email: str = "playwright-e2e@moldy.dev"
     e2e_user_password: str = "correct horse battery staple 42"
     e2e_user_name: str = "E2E User"
+    e2e_scripted_model_enabled: bool = False
 
     # CORS allowed origins. Comma-separated origins, e.g.
     # "https://moldy.dev,https://staging.moldy.dev". Default permits the
