@@ -56,6 +56,21 @@ def test_get_registry_entry_unknown_returns_none() -> None:
     assert mcp_registry.get_registry_entry("definitely-not-a-real-server") is None
 
 
+def test_atlassian_rovo_registry_uses_mcp_oauth2() -> None:
+    entry = mcp_registry.get_registry_entry("atlassian-rovo")
+    assert entry is not None
+    assert entry["transport"] == "streamable_http"
+    assert entry["url"] == "https://mcp.atlassian.com/v1/mcp/authv2"
+    assert entry["credential_definition_key"] == "mcp_oauth2"
+
+
+def test_jira_registry_alias_uses_atlassian_rovo_oauth2() -> None:
+    entry = mcp_registry.get_registry_entry("jira")
+    assert entry is not None
+    assert entry["url"] == "https://mcp.atlassian.com/v1/mcp/authv2"
+    assert entry["credential_definition_key"] == "mcp_oauth2"
+
+
 def test_stdio_entries_carry_command_and_args() -> None:
     slack = mcp_registry.get_registry_entry("slack")
     assert slack is not None

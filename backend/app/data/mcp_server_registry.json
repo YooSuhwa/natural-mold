@@ -27,16 +27,29 @@
   },
   "jira": {
     "key": "jira",
-    "display_name": "Atlassian Jira",
-    "description": "Access Jira issues, sprints, and projects",
+    "display_name": "Atlassian Rovo",
+    "description": "Access Jira, Confluence, Compass, and Jira Service Management through Atlassian's official Rovo MCP server",
     "icon_id": "jira",
     "transport": "streamable_http",
-    "url": "https://mcp.atlassian.com/v1/sse",
+    "url": "https://mcp.atlassian.com/v1/mcp/authv2",
     "command": null,
     "args": null,
     "env_vars": {},
-    "credential_definition_key": "http_bearer",
-    "documentation_url": "https://www.atlassian.com/platform/mcp"
+    "credential_definition_key": "mcp_oauth2",
+    "documentation_url": "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/"
+  },
+  "atlassian-rovo": {
+    "key": "atlassian-rovo",
+    "display_name": "Atlassian Rovo",
+    "description": "Access Jira, Confluence, Compass, and Jira Service Management through Atlassian's official Rovo MCP server",
+    "icon_id": "jira",
+    "transport": "streamable_http",
+    "url": "https://mcp.atlassian.com/v1/mcp/authv2",
+    "command": null,
+    "args": null,
+    "env_vars": {},
+    "credential_definition_key": "mcp_oauth2",
+    "documentation_url": "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/"
   },
   "slack": {
     "key": "slack",

@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.credentials import service as credential_service
+from app.credentials.registry import registry
 from app.mcp import client as mcp_client
 from app.mcp import discovery as mcp_discovery
 from app.mcp.client import build_env_vars, build_headers
@@ -65,9 +66,7 @@ async def test_create_mcp_server(client: AsyncClient, db: AsyncSession) -> None:
     assert body["status"] == "unknown"
     assert body["transport"] == "streamable_http"
 
-    row = (
-        await db.execute(select(McpServer).where(McpServer.id == server_id))
-    ).scalar_one()
+    row = (await db.execute(select(McpServer).where(McpServer.id == server_id))).scalar_one()
     assert row.url == "https://mcp.example.com"
     assert row.headers == {"X-Trace": "1"}
 
@@ -147,9 +146,7 @@ async def test_patch_mcp_server_rejects_system_credential(
 
 
 @pytest.mark.asyncio
-async def test_get_mcp_server_with_tools(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_get_mcp_server_with_tools(client: AsyncClient, db: AsyncSession) -> None:
     server = McpServer(
         user_id=TEST_USER_ID,
         name="A",
@@ -196,9 +193,7 @@ async def test_patch_mcp_server(client: AsyncClient, db: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_mcp_server_cascades_tools(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_delete_mcp_server_cascades_tools(client: AsyncClient, db: AsyncSession) -> None:
     server = McpServer(
         user_id=TEST_USER_ID,
         name="X",
@@ -215,8 +210,8 @@ async def test_delete_mcp_server_cascades_tools(
     assert response.status_code == 204
 
     remaining_tools = (
-        await db.execute(select(McpTool).where(McpTool.server_id == sid))
-    ).scalars().all()
+        (await db.execute(select(McpTool).where(McpTool.server_id == sid))).scalars().all()
+    )
     assert remaining_tools == []
     remaining_servers = (
         await db.execute(select(McpServer).where(McpServer.id == sid))
@@ -296,9 +291,7 @@ async def test_test_endpoint_marks_auth_needed_on_401(
 
 
 @pytest.mark.asyncio
-async def test_discover_persists_tools(
-    client: AsyncClient, db: AsyncSession, monkeypatch
-) -> None:
+async def test_discover_persists_tools(client: AsyncClient, db: AsyncSession, monkeypatch) -> None:
     server = McpServer(
         user_id=TEST_USER_ID,
         name="Disc",
@@ -336,9 +329,7 @@ async def test_discover_persists_tools(
     assert body["success"] is True
     assert sorted(t["name"] for t in body["tools"]) == ["alpha", "beta"]
 
-    rows = (
-        await db.execute(select(McpTool).where(McpTool.server_id == sid))
-    ).scalars().all()
+    rows = (await db.execute(select(McpTool).where(McpTool.server_id == sid))).scalars().all()
     assert {r.name for r in rows} == {"alpha", "beta"}
 
 
@@ -376,9 +367,7 @@ async def test_discover_preserves_stale_tools_and_marks_last_seen(
 
     await client.post(f"/api/mcp-servers/{sid}/discover")
 
-    rows = (
-        await db.execute(select(McpTool).where(McpTool.server_id == sid))
-    ).scalars().all()
+    rows = (await db.execute(select(McpTool).where(McpTool.server_id == sid))).scalars().all()
     by_name = {r.name: r for r in rows}
     # Both rows are still present — the stale "old" one survives so any
     # agent_mcp_tools link to it isn't broken.
@@ -492,9 +481,7 @@ async def test_connect_and_list_stdio_invokes_sdk(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_connect_and_list_stdio_requires_command() -> None:
-    result = await mcp_client.connect_and_list(
-        transport="stdio", url=None, command=None
-    )
+    result = await mcp_client.connect_and_list(transport="stdio", url=None, command=None)
     assert result["success"] is False
     assert "command" in (result["error"] or "").lower()
 
@@ -503,9 +490,7 @@ async def test_connect_and_list_stdio_requires_command() -> None:
 
 
 @pytest.mark.asyncio
-async def test_import_mcp_servers_creates_and_skips(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_import_mcp_servers_creates_and_skips(client: AsyncClient, db: AsyncSession) -> None:
     # Pre-existing server with the same name to test skip vs overwrite.
     existing = McpServer(
         user_id=TEST_USER_ID,
@@ -549,8 +534,10 @@ async def test_import_mcp_servers_creates_and_skips(
 
     # Filesystem entry was inferred to stdio.
     rows = (
-        await db.execute(select(McpServer).where(McpServer.user_id == TEST_USER_ID))
-    ).scalars().all()
+        (await db.execute(select(McpServer).where(McpServer.user_id == TEST_USER_ID)))
+        .scalars()
+        .all()
+    )
     by_name = {r.name: r for r in rows}
     assert by_name["filesystem"].transport == "stdio"
     assert by_name["filesystem"].command == "npx"
@@ -596,9 +583,7 @@ async def test_import_mcp_servers_overwrite_updates_in_place(
 
 
 @pytest.mark.asyncio
-async def test_export_mcp_servers_omits_secrets(
-    client: AsyncClient, db: AsyncSession
-) -> None:
+async def test_export_mcp_servers_omits_secrets(client: AsyncClient, db: AsyncSession) -> None:
     cred = await credential_service.create(
         db,
         user_id=TEST_USER_ID,
@@ -647,9 +632,7 @@ async def test_register_mcp_health_job_skips_when_scheduler_idle() -> None:
 
 
 @pytest.mark.asyncio
-async def test_poll_mcp_servers_health_updates_columns(
-    db: AsyncSession, monkeypatch
-) -> None:
+async def test_poll_mcp_servers_health_updates_columns(db: AsyncSession, monkeypatch) -> None:
     """One sweep populates ``health_status`` / ``health_polled_at`` for every
     enabled server, regardless of probe success."""
 
@@ -735,9 +718,7 @@ def test_build_skills_prompt_empty_returns_blank() -> None:
 
 
 @pytest.mark.asyncio
-async def test_discovery_uses_credential_payload_for_headers(
-    db: AsyncSession, monkeypatch
-) -> None:
+async def test_discovery_uses_credential_payload_for_headers(db: AsyncSession, monkeypatch) -> None:
     cred = await credential_service.create(
         db,
         user_id=TEST_USER_ID,
@@ -771,8 +752,95 @@ async def test_discovery_uses_credential_payload_for_headers(
     monkeypatch.setattr(mcp_discovery, "connect_and_list", _stub)
 
     await mcp_discovery.test_server(db, server)
-    assert captured["headers"] == {
-        "Authorization": "=Bearer {{ $credentials.token }}"
-    }
+    assert captured["headers"] == {"Authorization": "Bearer T-123"}
     # The credential payload was decrypted and forwarded to connect_and_list.
     assert captured["credentials"] == {"token": "T-123"}
+
+
+@pytest.mark.asyncio
+async def test_test_endpoint_marks_auth_needed_when_oauth_refresh_fails(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch,
+) -> None:
+    cred = await credential_service.create(
+        db,
+        user_id=TEST_USER_ID,
+        definition_key="mcp_oauth2",
+        name="expired",
+        data={
+            "access_token": "old",
+            "refresh_token": "refresh",
+            "expires_at": 1,
+            "access_token_url": "https://issuer.example/token",
+            "client_id": "cid",
+            "authentication": "none",
+        },
+    )
+    server = McpServer(
+        user_id=TEST_USER_ID,
+        name="Expired OAuth MCP",
+        transport="streamable_http",
+        url="https://mcp.example.com",
+        credential_id=cred.id,
+    )
+    db.add(server)
+    await db.commit()
+
+    async def fail_refresh(_credentials: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("refresh token revoked")
+
+    definition = registry.require("mcp_oauth2")
+    monkeypatch.setattr(definition, "pre_authentication", fail_refresh)
+
+    response = await client.post(f"/api/mcp-servers/{server.id}/test")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["success"] is False
+    assert body["status"] == "auth_needed"
+    assert "refresh token revoked" in body["error"]
+
+
+@pytest.mark.asyncio
+async def test_probe_endpoint_returns_soft_failure_when_oauth_refresh_fails(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch,
+) -> None:
+    cred = await credential_service.create(
+        db,
+        user_id=TEST_USER_ID,
+        definition_key="mcp_oauth2",
+        name="expired",
+        data={
+            "access_token": "old",
+            "refresh_token": "refresh",
+            "expires_at": 1,
+            "access_token_url": "https://issuer.example/token",
+            "client_id": "cid",
+            "authentication": "none",
+        },
+    )
+    await db.commit()
+
+    async def fail_refresh(_credentials: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("refresh token revoked")
+
+    definition = registry.require("mcp_oauth2")
+    monkeypatch.setattr(definition, "pre_authentication", fail_refresh)
+
+    response = await client.post(
+        "/api/mcp-servers/probe",
+        json={
+            "transport": "streamable_http",
+            "url": "https://mcp.example.com",
+            "credential_id": str(cred.id),
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["success"] is False
+    assert body["tools"] == []
+    assert "refresh token revoked" in body["error"]

@@ -8,35 +8,32 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.credentials import service as credential_service
+from app.mcp.auth import resolve_mcp_auth
 from app.mcp.client import connect_and_list
-from app.models.credential import Credential
 from app.models.mcp_server import McpServer
 from app.models.mcp_tool import McpTool
 
 
-async def _decrypt_credential(
-    db: AsyncSession, credential_id: Any
-) -> dict[str, Any] | None:
-    if credential_id is None:
-        return None
-    row = (
-        await db.execute(select(Credential).where(Credential.id == credential_id))
-    ).scalar_one_or_none()
-    if row is None:
-        return None
-    return await credential_service.decrypt_with_external(row.data_encrypted)
-
-
-async def _probe(
-    db: AsyncSession, server: McpServer
-) -> dict[str, Any]:
-    credentials = await _decrypt_credential(db, server.credential_id)
+async def _probe(db: AsyncSession, server: McpServer) -> dict[str, Any]:
+    auth = await resolve_mcp_auth(
+        db,
+        credential_id=server.credential_id,
+        user_id=server.user_id,
+        static_headers=server.headers,
+    )
+    if auth.error:
+        return {
+            "success": False,
+            "server_info": {},
+            "tools": [],
+            "error": auth.error,
+            "status": auth.status,
+        }
     return await connect_and_list(
         transport=server.transport,
         url=server.url,
-        headers=server.headers,
-        credentials=credentials,
+        headers=auth.headers,
+        credentials=auth.credentials,
         command=server.command,
         args=server.args,
         env_vars=server.env_vars,
@@ -56,7 +53,9 @@ async def test_server(db: AsyncSession, server: McpServer) -> dict[str, Any]:
         # If the error mentions auth/401/403, mark auth_needed; otherwise
         # mark unreachable.
         err = (probe.get("error") or "").lower()
-        if any(token in err for token in ("401", "403", "unauthorized", "forbidden")):
+        if probe.get("status") == "auth_needed" or any(
+            token in err for token in ("401", "403", "unauthorized", "forbidden")
+        ):
             server.status = "auth_needed"
         else:
             server.status = "unreachable"
@@ -65,7 +64,8 @@ async def test_server(db: AsyncSession, server: McpServer) -> dict[str, Any]:
 
 
 async def discover_tools(
-    db: AsyncSession, server: McpServer
+    db: AsyncSession,
+    server: McpServer,
 ) -> tuple[dict[str, Any], list[McpTool]]:
     """Probe the server and upsert the returned tools into ``mcp_tools``.
 
@@ -80,10 +80,8 @@ async def discover_tools(
         return probe, []
 
     existing = (
-        await db.execute(
-            select(McpTool).where(McpTool.server_id == server.id)
-        )
-    ).scalars().all()
+        (await db.execute(select(McpTool).where(McpTool.server_id == server.id))).scalars().all()
+    )
     by_name = {t.name: t for t in existing}
 
     now = datetime.now(UTC).replace(tzinfo=None)

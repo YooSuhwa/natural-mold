@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import { Activity, CheckCircle2, Loader2, Plus, X, XCircle } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { Activity, CheckCircle2, KeyRound, Loader2, Plus, X, XCircle } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CredentialPicker } from '@/components/credential/credential-picker'
+import { CredentialCreateModal } from '@/components/credential/credential-create-modal'
 import { DomainIconTile } from '@/components/shared/icon'
 import { DialogShell } from '@/components/shared/dialog-shell'
 import {
@@ -18,6 +20,8 @@ import {
   useMcpRegistry,
   useProbeMcpServer,
 } from '@/lib/hooks/use-mcp-servers'
+import { useStartOAuth2 } from '@/lib/hooks/use-credential-test'
+import { API_BASE } from '@/lib/api/client'
 import type { McpProbeRequest, McpProbeTool, McpRegistryEntry, McpTransport } from '@/lib/types/mcp'
 
 interface McpServerWizardProps {
@@ -47,11 +51,13 @@ export function McpServerWizard({ open, onOpenChange }: McpServerWizardProps) {
 
 function McpWizardBody({ onClose }: { onClose: () => void }) {
   const t = useTranslations('mcp.wizard')
+  const queryClient = useQueryClient()
   const { data: registry } = useMcpRegistry()
   const create = useCreateMcpServer()
   const createFromRegistry = useCreateFromRegistry()
   const discover = useDiscoverMcpTools()
   const probe = useProbeMcpServer()
+  const startOAuth = useStartOAuth2()
 
   const [tab, setTab] = useState<TabKey>('basics')
 
@@ -68,6 +74,9 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
   const [credentialId, setCredentialId] = useState<string | null>(null)
   const [registryKey, setRegistryKey] = useState<string | null>(null)
   const [credentialDefinitionFilter, setCredentialDefinitionFilter] = useState<string | null>(null)
+  const [credentialCreateOpen, setCredentialCreateOpen] = useState(false)
+  const [oauthPendingCredentialId, setOauthPendingCredentialId] = useState<string | null>(null)
+  const [oauthConnectedCredentialId, setOauthConnectedCredentialId] = useState<string | null>(null)
 
   // -- preview state -------------------------------------------------------
   const [discoveredTools, setDiscoveredTools] = useState<McpProbeTool[]>([])
@@ -98,6 +107,28 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
   }, [registryKey, credentialId, transport, url, command, headers])
 
   const probeKey = useMemo(() => JSON.stringify(probePayload), [probePayload])
+
+  const selectedRegistryEntry = useMemo(() => {
+    if (!registryKey) return null
+    return (registry ?? []).find((entry) => entry.key === registryKey) ?? null
+  }, [registry, registryKey])
+
+  const usesMcpOAuth = credentialDefinitionFilter === 'mcp_oauth2'
+
+  const oauthCredentialInitialData = useMemo(
+    () => ({
+      server_url: url.trim() || selectedRegistryEntry?.url || '',
+      use_dynamic_client_registration: true,
+      grant_type: 'pkce',
+      authentication: 'none',
+    }),
+    [selectedRegistryEntry?.url, url],
+  )
+
+  const oauthCredentialInitialName = useMemo(() => {
+    const base = name.trim() || selectedRegistryEntry?.display_name || 'Atlassian Rovo'
+    return `${base} OAuth`
+  }, [name, selectedRegistryEntry?.display_name])
 
   function resetProbePreview() {
     probeRequestSeqRef.current += 1
@@ -130,7 +161,70 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
   function clearRegistry() {
     setRegistryKey(null)
     setCredentialDefinitionFilter(null)
+    setOauthPendingCredentialId(null)
+    setOauthConnectedCredentialId(null)
     resetProbePreview()
+  }
+
+  useEffect(() => {
+    function handleOAuthMessage(event: MessageEvent) {
+      if (!isOAuthCompletedMessage(event.data)) return
+
+      const allowedOrigins = new Set([window.location.origin])
+      try {
+        allowedOrigins.add(new URL(API_BASE).origin)
+      } catch {
+        // Keep the current-origin check when API_BASE is not a valid absolute URL.
+      }
+      if (!allowedOrigins.has(event.origin)) return
+
+      const completedCredentialId = event.data.credentialId ?? null
+      if (completedCredentialId && credentialId && completedCredentialId !== credentialId) return
+
+      setOauthPendingCredentialId(null)
+      setOauthConnectedCredentialId(completedCredentialId ?? credentialId)
+      resetProbePreview()
+      void queryClient.invalidateQueries({ queryKey: ['credentials'] })
+      if (completedCredentialId) {
+        void queryClient.invalidateQueries({ queryKey: ['credentials', completedCredentialId] })
+      }
+      toast.success(t('auth.oauthConnected'))
+    }
+
+    window.addEventListener('message', handleOAuthMessage)
+    return () => window.removeEventListener('message', handleOAuthMessage)
+  }, [credentialId, queryClient, t])
+
+  async function handleOAuthConnect() {
+    if (!credentialId) {
+      toast.error(t('auth.oauthSelectFirst'))
+      return
+    }
+    const popup = window.open('', 'moldy-mcp-oauth', 'popup,width=560,height=760')
+    if (!popup) {
+      toast.error(t('auth.oauthPopupBlocked'))
+      return
+    }
+    try {
+      popup.document.write('<!doctype html><title></title><body></body>')
+      popup.document.close()
+      popup.document.title = t('auth.oauthPopupTitle')
+      if (popup.document.body) {
+        popup.document.body.textContent = t('auth.oauthWaiting')
+      }
+    } catch {
+      // The popup still stays open; navigation below is the important step.
+    }
+    try {
+      const { authorization_url: authorizationUrl } = await startOAuth.mutateAsync(credentialId)
+      popup.location.href = authorizationUrl
+      setOauthPendingCredentialId(credentialId)
+      setOauthConnectedCredentialId(null)
+      popup.focus()
+    } catch (e) {
+      popup.close()
+      toast.error(e instanceof Error ? e.message : t('auth.oauthStartFailed'))
+    }
   }
 
   const runProbe = useCallback(async () => {
@@ -204,7 +298,10 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
     if (lastSuccessfulProbeKeyRef.current === probeKey) return
     if (inFlightProbeKeyRef.current === probeKey) return
     if (probe.isPending) return
-    void runProbe()
+    const timeoutId = window.setTimeout(() => {
+      void runProbe()
+    }, 0)
+    return () => window.clearTimeout(timeoutId)
   }, [tab, basicsValid, probe.isPending, probeKey, runProbe])
 
   function handleAddArg() {
@@ -314,6 +411,12 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
               credentialId={credentialId}
               setCredentialId={setCredentialId}
               credentialDefinitionFilter={credentialDefinitionFilter}
+              usesMcpOAuth={usesMcpOAuth}
+              onCreateOAuthCredential={() => setCredentialCreateOpen(true)}
+              onConnectOAuth={() => void handleOAuthConnect()}
+              oauthStarting={startOAuth.isPending}
+              oauthWaiting={oauthPendingCredentialId === credentialId}
+              oauthConnected={oauthConnectedCredentialId === credentialId}
               probeState={probeState}
               onTest={runProbe}
               testing={probe.isPending}
@@ -344,6 +447,20 @@ function McpWizardBody({ onClose }: { onClose: () => void }) {
           {t('actions.save')}
         </Button>
       </DialogShell.Footer>
+      {credentialCreateOpen ? (
+        <CredentialCreateModal
+          open={credentialCreateOpen}
+          onOpenChange={setCredentialCreateOpen}
+          presetDefinitionKey="mcp_oauth2"
+          initialName={oauthCredentialInitialName}
+          initialData={oauthCredentialInitialData}
+          onCreated={(id) => {
+            setCredentialId(id)
+            setOauthConnectedCredentialId(null)
+            setOauthPendingCredentialId(null)
+          }}
+        />
+      ) : null}
     </>
   )
 }
@@ -727,6 +844,12 @@ function AuthTab({
   credentialId,
   setCredentialId,
   credentialDefinitionFilter,
+  usesMcpOAuth,
+  onCreateOAuthCredential,
+  onConnectOAuth,
+  oauthStarting,
+  oauthWaiting,
+  oauthConnected,
   probeState,
   onTest,
   testing,
@@ -734,6 +857,12 @@ function AuthTab({
   credentialId: string | null
   setCredentialId: (v: string | null) => void
   credentialDefinitionFilter: string | null
+  usesMcpOAuth: boolean
+  onCreateOAuthCredential: () => void
+  onConnectOAuth: () => void
+  oauthStarting: boolean
+  oauthWaiting: boolean
+  oauthConnected: boolean
   probeState: ProbeState
   onTest: () => void
   testing: boolean
@@ -749,6 +878,35 @@ function AuthTab({
           definitionKeys={credentialDefinitionFilter ? [credentialDefinitionFilter] : undefined}
         />
       </div>
+
+      {usesMcpOAuth ? (
+        <div className="rounded-md border border-border/60 bg-muted/30 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" onClick={onCreateOAuthCredential}>
+              <Plus className="size-3.5" />
+              {t('createOAuthCredential')}
+            </Button>
+            <Button
+              type="button"
+              onClick={onConnectOAuth}
+              disabled={!credentialId || oauthStarting}
+            >
+              {oauthStarting ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <KeyRound className="size-3.5" />
+              )}
+              {t('connectOAuth')}
+            </Button>
+          </div>
+          {oauthConnected ? (
+            <p className="mt-2 text-xs text-status-success">{t('oauthConnected')}</p>
+          ) : null}
+          {oauthWaiting ? (
+            <p className="mt-2 text-xs text-muted-foreground">{t('oauthWaiting')}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
         <p className="font-medium text-foreground">{t('interpolation')}</p>
@@ -877,4 +1035,13 @@ function kvToObject(rows: Array<{ key: string; value: string }>): Record<string,
     out[k] = value
   }
   return out
+}
+
+function isOAuthCompletedMessage(data: unknown): data is {
+  type: 'moldy.oauth.completed'
+  credentialId?: string
+} {
+  if (!data || typeof data !== 'object') return false
+  const maybe = data as Record<string, unknown>
+  return maybe.type === 'moldy.oauth.completed'
 }
