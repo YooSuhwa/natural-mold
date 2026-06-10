@@ -26,6 +26,45 @@ from app.services import audit_service
 
 logger = logging.getLogger(__name__)
 
+OAUTH_DEFINITIONS = {"google_workspace_oauth2", "mcp_oauth2"}
+OAUTH_PRESERVED_FIELDS = {
+    "auth_url",
+    "access_token_url",
+    "registration_url",
+    "client_id",
+    "client_secret",
+    "grant_type",
+    "authentication",
+    "scope",
+    "access_token",
+    "refresh_token",
+    "expires_at",
+    "token_type",
+    "id_token",
+    "account_identifier",
+    "oauth_connected_at",
+}
+OAUTH_IDENTITY_FIELDS = {
+    "server_url",
+    "auth_url",
+    "authorization_url",
+    "access_token_url",
+    "token_url",
+    "registration_url",
+    "client_id",
+}
+
+
+def _oauth_identity_changed(existing: dict[str, Any], payload: dict[str, Any]) -> bool:
+    for key in OAUTH_IDENTITY_FIELDS:
+        if key not in payload:
+            continue
+        old = existing.get(key)
+        new = payload.get(key)
+        if old != new and (old not in (None, "") or new not in (None, "")):
+            return True
+    return False
+
 
 # -- Encrypt / decrypt -------------------------------------------------------
 
@@ -335,7 +374,14 @@ async def update(
         credential.name = name
         metadata["name_changed"] = True
     if data is not None:
-        blob, key_id, field_keys = encrypt_data(data)
+        payload = dict(data)
+        if credential.definition_key in OAUTH_DEFINITIONS:
+            existing = decrypt_data(credential.data_encrypted)
+            if not _oauth_identity_changed(existing, payload):
+                for key in OAUTH_PRESERVED_FIELDS:
+                    if key in existing and key not in payload:
+                        payload[key] = existing[key]
+        blob, key_id, field_keys = encrypt_data(payload)
         credential.data_encrypted = blob
         credential.key_id = key_id
         credential.field_keys = field_keys

@@ -24,6 +24,8 @@ interface CredentialCreateModalProps {
   onOpenChange: (open: boolean) => void
   /** Optional starting definition. Skips the catalog step. */
   presetDefinitionKey?: string
+  initialName?: string
+  initialData?: Record<string, unknown>
   onCreated?: (credentialId: string) => void
   /**
    * ``'system'`` posts to ``/api/system-credentials`` so the resulting row
@@ -36,6 +38,8 @@ export function CredentialCreateModal({
   open,
   onOpenChange,
   presetDefinitionKey,
+  initialName,
+  initialData,
   onCreated,
   mode = 'user',
 }: CredentialCreateModalProps) {
@@ -48,14 +52,14 @@ export function CredentialCreateModal({
   const create = mode === 'system' ? createSystem : createUser
 
   const [definitionKey, setDefinitionKey] = useState<string | null>(presetDefinitionKey ?? null)
-  const [name, setName] = useState('')
-  const [data, setData] = useState<Record<string, unknown>>({})
+  const [name, setName] = useState(initialName ?? '')
+  const [data, setData] = useState<Record<string, unknown>>(initialData ?? {})
   const [search, setSearch] = useState('')
 
   function reset() {
     setDefinitionKey(presetDefinitionKey ?? null)
-    setName('')
-    setData({})
+    setName(initialName ?? '')
+    setData(initialData ?? {})
     setSearch('')
   }
 

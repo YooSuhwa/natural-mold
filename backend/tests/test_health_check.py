@@ -10,6 +10,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.credentials import service as credential_service
+from app.credentials.registry import registry
 from app.models.health_check_history import HealthCheckHistory
 from app.models.mcp_server import McpServer
 from app.models.model import Model
@@ -86,9 +87,7 @@ async def _seed_mcp_server(*, transport: str = "streamable_http") -> McpServer:
         return server
 
 
-def _stub_model_test(
-    success: bool, *, kind: ErrorKind = "auth"
-) -> ModelTestResult:
+def _stub_model_test(success: bool, *, kind: ErrorKind = "auth") -> ModelTestResult:
     if success:
         return ModelTestResult(
             success=True,
@@ -118,23 +117,21 @@ async def test_check_model_success_writes_healthy_history() -> None:
 
     with patch("app.services.health_check.model_test.run_model_test", _fake_test):
         async with TestSession() as db:
-            cred = (
-                await db.execute(select(credential_service.Credential))
-            ).scalars().first()
-            history = await health_check_service.check_model(
-                db, model=model, credential=cred
-            )
+            cred = (await db.execute(select(credential_service.Credential))).scalars().first()
+            history = await health_check_service.check_model(db, model=model, credential=cred)
             await db.commit()
             assert history.status == "healthy"
             assert history.latency_ms == 120
             assert history.error_kind is None
             rows = (
-                await db.execute(
-                    select(HealthCheckHistory).where(
-                        HealthCheckHistory.target_id == model.id
+                (
+                    await db.execute(
+                        select(HealthCheckHistory).where(HealthCheckHistory.target_id == model.id)
                     )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             assert len(rows) == 1
 
 
@@ -147,12 +144,8 @@ async def test_check_model_failure_classifies_auth_error() -> None:
 
     with patch("app.services.health_check.model_test.run_model_test", _fake_test):
         async with TestSession() as db:
-            cred = (
-                await db.execute(select(credential_service.Credential))
-            ).scalars().first()
-            history = await health_check_service.check_model(
-                db, model=model, credential=cred
-            )
+            cred = (await db.execute(select(credential_service.Credential))).scalars().first()
+            history = await health_check_service.check_model(db, model=model, credential=cred)
             await db.commit()
             assert history.status == "unhealthy"
             assert history.error_kind == "auth"
@@ -211,6 +204,69 @@ async def test_check_mcp_server_auth_error_marks_degraded() -> None:
             refreshed = await db.get(McpServer, server.id)
             assert refreshed is not None
             assert refreshed.status == "auth_needed"
+
+
+@pytest.mark.asyncio
+async def test_check_mcp_server_oauth_refresh_failure_marks_auth_needed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async with TestSession() as db:
+        existing = (
+            await db.execute(select(User).where(User.id == TEST_USER_ID))
+        ).scalar_one_or_none()
+        if existing is None:
+            db.add(User(id=TEST_USER_ID, email="h@test", name="h"))
+            await db.flush()
+        cred = await credential_service.create(
+            db,
+            user_id=TEST_USER_ID,
+            definition_key="mcp_oauth2",
+            name="expired oauth",
+            data={
+                "access_token": "old",
+                "refresh_token": "refresh",
+                "expires_at": 1,
+                "access_token_url": "https://issuer.example/token",
+                "client_id": "cid",
+                "authentication": "none",
+            },
+        )
+        server = McpServer(
+            user_id=TEST_USER_ID,
+            name="oauth",
+            transport="streamable_http",
+            url="https://example.com/mcp",
+            headers={},
+            credential_id=cred.id,
+            status="connected",
+        )
+        db.add(server)
+        await db.commit()
+        server_id = server.id
+        credential_id = cred.id
+
+    async def fail_refresh(_credentials: dict[str, object]) -> dict[str, object]:
+        raise RuntimeError("refresh token revoked")
+
+    definition = registry.require("mcp_oauth2")
+    monkeypatch.setattr(definition, "pre_authentication", fail_refresh)
+
+    async with TestSession() as db:
+        fetched = await db.get(McpServer, server_id)
+        credential = await db.get(credential_service.Credential, credential_id)
+        assert fetched is not None
+        history = await health_check_service.check_mcp_server(
+            db,
+            server=fetched,
+            credential=credential,
+        )
+        await db.commit()
+
+        assert history.status == "degraded"
+        assert history.error_kind == "auth"
+        refreshed = await db.get(McpServer, server_id)
+        assert refreshed is not None
+        assert refreshed.status == "auth_needed"
 
 
 @pytest.mark.asyncio

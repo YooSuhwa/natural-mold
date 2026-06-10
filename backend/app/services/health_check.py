@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import settings
 from app.credentials import service as credential_service
 from app.mcp import client as mcp_client
+from app.mcp.auth import resolve_mcp_auth
 from app.models.credential import Credential
 from app.models.health_check_history import HealthCheckHistory
 from app.models.mcp_server import McpServer
@@ -60,9 +61,7 @@ async def check_model(
     payload: dict[str, Any] = {}
     if credential is not None:
         try:
-            payload = await credential_service.decrypt_with_external(
-                credential.data_encrypted
-            )
+            payload = await credential_service.decrypt_with_external(credential.data_encrypted)
         except Exception as exc:  # noqa: BLE001 — surface as unhealthy
             return await _record(
                 db,
@@ -122,32 +121,47 @@ async def check_mcp_server(
     SDK client used here is HTTP-only).
     """
 
-    payload: dict[str, Any] | None = None
-    if credential is not None:
-        try:
-            payload = await credential_service.decrypt_with_external(
-                credential.data_encrypted
-            )
-        except Exception as exc:  # noqa: BLE001 — surface as unhealthy
+    try:
+        auth = await resolve_mcp_auth(
+            db,
+            credential_id=credential.id if credential is not None else server.credential_id,
+            user_id=server.user_id,
+            static_headers=server.headers,
+        )
+        if auth.error:
+            status: HealthStatus = "degraded" if auth.status == "auth_needed" else "unhealthy"
             history = await _record(
                 db,
                 target_kind="mcp_server",
                 target_id=server.id,
-                status="unhealthy",
+                status=status,
                 latency_ms=None,
                 error_kind="auth",
-                error_message=f"credential decryption failed: {exc}",
-                raw={"phase": "decrypt"},
+                error_message=f"credential resolution failed: {auth.error}",
+                raw={"phase": "auth", "status": auth.status},
             )
             await _update_mcp_status(server, history)
             return history
+    except Exception as exc:  # noqa: BLE001 — surface as unhealthy
+        history = await _record(
+            db,
+            target_kind="mcp_server",
+            target_id=server.id,
+            status="unhealthy",
+            latency_ms=None,
+            error_kind="auth",
+            error_message=f"credential resolution failed: {exc}",
+            raw={"phase": "auth"},
+        )
+        await _update_mcp_status(server, history)
+        return history
 
     started_at = datetime.now(UTC).replace(tzinfo=None)
     probe = await mcp_client.connect_and_list(
         transport=server.transport,
         url=server.url,
-        headers=server.headers,
-        credentials=payload,
+        headers=auth.headers,
+        credentials=auth.credentials,
     )
     latency_ms = int((datetime.now(UTC).replace(tzinfo=None) - started_at).total_seconds() * 1000)
 
@@ -206,16 +220,12 @@ async def check_all_active(
     }
 
     model_ids = list(
-        (
-            await db.execute(select(Model.id).order_by(Model.created_at.asc()))
-        ).scalars().all()
+        (await db.execute(select(Model.id).order_by(Model.created_at.asc()))).scalars().all()
     )
     server_ids = list(
-        (
-            await db.execute(
-                select(McpServer.id).where(McpServer.status != "disabled")
-            )
-        ).scalars().all()
+        (await db.execute(select(McpServer.id).where(McpServer.status != "disabled")))
+        .scalars()
+        .all()
     )
 
     if session_factory is None:
@@ -346,9 +356,7 @@ async def _resolve_credential(
     return await db.get(Credential, credential_id)
 
 
-async def _resolve_model_credential(
-    db: AsyncSession, model: Model
-) -> Credential | None:
+async def _resolve_model_credential(db: AsyncSession, model: Model) -> Credential | None:
     """Pick the first agent-bound credential for this model, if any."""
 
     from app.models.agent import Agent
