@@ -19,61 +19,103 @@ import { DialogShell } from '@/components/shared/dialog-shell'
 import {
   DomainIconPicker,
   DomainIconTile,
+  getDomainIconIdForResource,
   getDomainIconIdForSkillKind,
   type DomainIconId,
 } from '@/components/shared/icon'
 import { ApiError } from '@/lib/api/client'
-import { usePublishSkill } from '@/lib/hooks/use-marketplace'
+import { usePublishAgent, usePublishMcpServer, usePublishSkill } from '@/lib/hooks/use-marketplace'
 import type { Skill } from '@/lib/types/skill'
-import type { PublishSkillBody } from '@/lib/types/marketplace'
+import type {
+  MarketplaceResourceType,
+  PublishAgentBody,
+  PublishMcpServerBody,
+  PublishSkillBody,
+} from '@/lib/types/marketplace'
 import { cn } from '@/lib/utils'
 
-type Step = 'review' | 'metadata' | 'visibility' | 'confirm' | 'done'
+type Step = 'review' | 'metadata' | 'visibility' | 'confirm'
 
-const STEPS: Step[] = ['review', 'metadata', 'visibility', 'confirm', 'done']
+const STEPS: Step[] = ['review', 'metadata', 'visibility', 'confirm']
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export interface PublishWizardResource {
+  id: string
+  resourceType: MarketplaceResourceType
+  name: string
+  description?: string | null
+  iconId?: DomainIconId | null
+  detailLabel?: string | null
+  detailSubhead?: string | null
+}
 
 interface PublishWizardProps {
-  skill: Skill | null
+  skill?: Skill | null
+  resource?: PublishWizardResource | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function PublishWizard({ skill, open, onOpenChange }: PublishWizardProps) {
+function resourceFromSkill(skill: Skill | null | undefined): PublishWizardResource | null {
+  if (!skill) return null
+  return {
+    id: skill.id,
+    resourceType: 'skill',
+    name: skill.name,
+    description: skill.description,
+    iconId: getDomainIconIdForSkillKind(skill.kind),
+    detailLabel: skill.name,
+    detailSubhead: skill.kind,
+  }
+}
+
+export function PublishWizard({ skill, resource, open, onOpenChange }: PublishWizardProps) {
+  const target = resource ?? resourceFromSkill(skill)
   return (
     <PublishWizardInner
-      key={skill?.id ?? 'closed'}
-      skill={skill}
+      key={target?.id ?? 'closed'}
+      resource={target}
       open={open}
       onOpenChange={onOpenChange}
     />
   )
 }
 
-function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
+function PublishWizardInner({ resource, open, onOpenChange }: PublishWizardProps) {
   const t = useTranslations('marketplace.publishWizard')
   const router = useRouter()
   const [step, setStep] = useState<Step>('review')
-  const [name, setName] = useState(skill?.name ?? '')
-  const [description, setDescription] = useState(skill?.description ?? '')
-  const [iconId, setIconId] = useState<DomainIconId>(getDomainIconIdForSkillKind(skill?.kind))
+  const [name, setName] = useState(resource?.name ?? '')
+  const [description, setDescription] = useState(resource?.description ?? '')
+  const [iconId, setIconId] = useState<DomainIconId>(
+    resource?.iconId ?? getDomainIconIdForResource(resource?.resourceType),
+  )
   const [releaseNotes, setReleaseNotes] = useState('')
   const [visibility, setVisibility] = useState<PublishSkillBody['visibility']>('private')
   const [aclInput, setAclInput] = useState('')
   const [error, setError] = useState<{ code?: string; message: string } | null>(null)
-  const publish = usePublishSkill()
+  const publishSkill = usePublishSkill()
+  const publishMcp = usePublishMcpServer()
+  const publishAgent = usePublishAgent()
 
-  if (!skill) return null
+  if (!resource) return null
 
   const stepIndex = STEPS.indexOf(step)
-  const isLast = step === 'done'
+  const isPublishing = publishSkill.isPending || publishMcp.isPending || publishAgent.isPending
 
   async function submit() {
-    if (!skill) return
+    if (!resource) return
     setError(null)
-    const aclUserIds = aclInput
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
+    // ACL input only applies to restricted visibility — stale input left
+    // behind after switching to another visibility must not block submit.
+    const aclUserIds =
+      visibility === 'restricted'
+        ? aclInput
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : []
 
     if (visibility === 'restricted' && aclUserIds.length === 0) {
       setError({
@@ -84,27 +126,39 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
       return
     }
 
-    try {
-      const created = await publish.mutateAsync({
-        skillId: skill.id,
-        body: {
-          visibility,
-          name: name || skill.name,
-          description: description || null,
-          icon_id: iconId,
-          release_notes: releaseNotes || null,
-          acl_user_ids: aclUserIds,
-        },
+    if (aclUserIds.some((id) => !UUID_RE.test(id))) {
+      setError({
+        code: 'marketplace_acl_invalid',
+        message: t('errors.aclInvalid'),
       })
-      setStep('done')
+      setStep('visibility')
+      return
+    }
+
+    try {
+      const body = {
+        visibility,
+        name: name || resource.name,
+        description: description || null,
+        icon_id: iconId,
+        release_notes: releaseNotes || null,
+        acl_user_ids: aclUserIds,
+      } satisfies PublishSkillBody & PublishMcpServerBody & PublishAgentBody
+      const created =
+        resource.resourceType === 'skill'
+          ? await publishSkill.mutateAsync({ skillId: resource.id, body })
+          : resource.resourceType === 'mcp'
+            ? await publishMcp.mutateAsync({ serverId: resource.id, body })
+            : await publishAgent.mutateAsync({ agentId: resource.id, body })
       toast.success(t('toast.published'))
       router.push(`/marketplace/${created.id}`)
     } catch (err) {
       if (err instanceof ApiError) {
         setError({ code: err.code, message: err.message })
-        if (err.code === 'marketplace_secret_detected') setStep('review')
-        else if (err.code === 'marketplace_acl_required') setStep('visibility')
-        else if (err.code === 'marketplace_invalid_visibility') setStep('visibility')
+        const code = err.code.toLowerCase()
+        if (code === 'marketplace_secret_detected') setStep('review')
+        else if (code === 'marketplace_acl_required') setStep('visibility')
+        else if (code === 'marketplace_invalid_visibility') setStep('visibility')
       } else {
         setError({ message: t('errors.network') })
       }
@@ -127,7 +181,10 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
 
   return (
     <DialogShell open={open} onOpenChange={onOpenChange} size="xl" height="tall">
-      <DialogShell.Header title={t('title', { name: skill.name })} description={t('description')} />
+      <DialogShell.Header
+        title={t('title', { name: resource.name })}
+        description={t('description')}
+      />
 
       <DialogShell.Split>
         <DialogShell.Sidebar>
@@ -163,7 +220,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
             <div className="space-y-3 text-sm">
               <p>{t('reviewHint')}</p>
               <div className="rounded-md bg-muted p-3 text-xs">
-                <p className="font-medium">{t('review.skill')}</p>
+                <p className="font-medium">{t(`review.${resource.resourceType}`)}</p>
                 <div className="mt-2 flex items-center gap-2">
                   <DomainIconTile
                     iconId={iconId}
@@ -171,8 +228,10 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
                     iconClassName="size-4 text-foreground/80"
                   />
                   <div className="min-w-0">
-                    <p className="truncate">{skill.name}</p>
-                    <p className="text-muted-foreground">{skill.kind}</p>
+                    <p className="truncate">{resource.detailLabel ?? resource.name}</p>
+                    {resource.detailSubhead ? (
+                      <p className="text-muted-foreground">{resource.detailSubhead}</p>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -183,13 +242,19 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <label htmlFor="pub-name">{t('fields.name')}</label>
-                <Input id="pub-name" value={name} onChange={(e) => setName(e.target.value)} />
+                <Input
+                  id="pub-name"
+                  value={name}
+                  maxLength={120}
+                  onChange={(e) => setName(e.target.value)}
+                />
               </div>
               <div className="space-y-1.5">
                 <label htmlFor="pub-desc">{t('fields.description')}</label>
                 <Textarea
                   id="pub-desc"
                   rows={3}
+                  maxLength={2000}
                   value={description ?? ''}
                   onChange={(e) => setDescription(e.target.value)}
                 />
@@ -203,6 +268,7 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
                 <Textarea
                   id="pub-notes"
                   rows={3}
+                  maxLength={4000}
                   value={releaseNotes}
                   onChange={(e) => setReleaseNotes(e.target.value)}
                 />
@@ -262,43 +328,35 @@ function PublishWizardInner({ skill, open, onOpenChange }: PublishWizardProps) {
                   <span className="font-medium text-foreground">{visibility}</span>
                 </li>
                 {visibility === 'restricted' ? (
-                  <li>{t('aclSummary', { count: aclInput.split(',').filter(Boolean).length })}</li>
+                  <li>
+                    {t('aclSummary', {
+                      count: aclInput.split(',').map((s) => s.trim()).filter(Boolean).length,
+                    })}
+                  </li>
                 ) : null}
               </ul>
             </div>
           ) : null}
 
-          {step === 'done' ? (
-            <div className="space-y-3 text-center">
-              <p className="text-base font-medium">{t('done.title')}</p>
-              <p className="text-sm text-muted-foreground">{t('done.description')}</p>
-            </div>
-          ) : null}
         </DialogShell.Body>
       </DialogShell.Split>
 
       <DialogShell.Footer>
-        {isLast ? (
-          <Button onClick={() => onOpenChange(false)}>{t('actions.close')}</Button>
-        ) : (
-          <>
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              {t('actions.cancel')}
-            </Button>
-            {stepIndex > 0 ? (
-              <Button variant="outline" onClick={goBack}>
-                {t('actions.back')}
-              </Button>
-            ) : null}
-            <Button onClick={goNext} disabled={publish.isPending}>
-              {step === 'confirm'
-                ? publish.isPending
-                  ? t('actions.publishing')
-                  : t('actions.publish')
-                : t('actions.next')}
-            </Button>
-          </>
-        )}
+        <Button variant="outline" onClick={() => onOpenChange(false)}>
+          {t('actions.cancel')}
+        </Button>
+        {stepIndex > 0 ? (
+          <Button variant="outline" onClick={goBack}>
+            {t('actions.back')}
+          </Button>
+        ) : null}
+        <Button onClick={goNext} disabled={isPublishing}>
+          {step === 'confirm'
+            ? isPublishing
+              ? t('actions.publishing')
+              : t('actions.publish')
+            : t('actions.next')}
+        </Button>
       </DialogShell.Footer>
     </DialogShell>
   )

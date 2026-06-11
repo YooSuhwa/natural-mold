@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { WrenchIcon, StarIcon, Settings2Icon, CpuIcon } from 'lucide-react'
+import { WrenchIcon, StarIcon, Settings2Icon, CpuIcon, Share2Icon } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useToggleFavorite } from '@/lib/hooks/use-agents'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
@@ -13,6 +13,7 @@ import type { Agent, AgentSummary } from '@/lib/types'
 
 interface AgentCardProps {
   agent: Agent | AgentSummary
+  onPublish?: (agent: Agent | AgentSummary) => void
 }
 
 const STATUS_DOT = {
@@ -21,7 +22,7 @@ const STATUS_DOT = {
   inactive: 'moldy-status-warn moldy-status-dot',
 } as const
 
-export function AgentCard({ agent }: AgentCardProps) {
+export function AgentCard({ agent, onPublish }: AgentCardProps) {
   const router = useRouter()
   const { mutate: toggleFavorite } = useToggleFavorite()
   const t = useTranslations('agent.card')
@@ -123,6 +124,19 @@ export function AgentCard({ agent }: AgentCardProps) {
               : t('neverUsed')}
           </span>
           <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+            {onPublish ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  stopProp(e)
+                  onPublish(agent)
+                }}
+                className="rounded-md p-1 transition-colors hover:bg-accent"
+                aria-label={t('publish')}
+              >
+                <Share2Icon className="size-4 text-muted-foreground transition-colors hover:text-foreground" />
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={(e) => {

@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Activity, ChevronRight, Download, Plus, Server, Upload } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -28,6 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { McpServerWizard } from '@/components/mcp/mcp-server-wizard'
 import { McpServerDetailDialog } from '@/components/mcp/mcp-server-detail-dialog'
 import { McpImportDialog } from '@/components/mcp/mcp-import-dialog'
+import { PublishWizard } from '@/components/marketplace/publish-wizard'
 import { useExportMcpServers, useMcpServers } from '@/lib/hooks/use-mcp-servers'
 import { useMcpHealth, useRunHealthCheck } from '@/lib/hooks/use-health'
 import { getResourceTone, resourceStatusChipClassName } from '@/lib/resource-tones'
@@ -67,15 +69,41 @@ function normalizeStatus(value: string | null | undefined): Exclude<McpStatusTab
 
 export default function McpServersPage() {
   const t = useTranslations('mcp.page')
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const deepLinkDetailId = searchParams.get('detailId')
   const { data: servers, isLoading } = useMcpServers()
   const { data: healthEntries } = useMcpHealth()
   const runHealthCheck = useRunHealthCheck()
   const [wizardOpen, setWizardOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
-  const [detailId, setDetailId] = useState<string | null>(null)
+  // Sentinel for the detail dialog source of truth:
+  //   undefined → user has not touched a card; the deep-link URL drives it
+  //   null      → user explicitly closed the dialog (deep link is ignored)
+  //   string    → user opened a card manually (overrides the deep link)
+  // Once the user interacts, manual state wins so opening card Y after a
+  // `?detailId=X` deep link cannot flicker back to X, and closing cannot
+  // momentarily re-fall back to the deep-link id.
+  const [manualDetailId, setManualDetailId] = useState<string | null | undefined>(undefined)
+  const detailId = manualDetailId === undefined ? deepLinkDetailId : manualDetailId
+  const [publishServer, setPublishServer] = useState<McpServer | null>(null)
   const [activeTab, setActiveTab] = useState<McpStatusTab>(ALL_TAB)
   const [search, setSearch] = useState('')
   const exportMutation = useExportMcpServers()
+
+  function openDetail(id: string) {
+    setManualDetailId(id)
+    // Keep the URL aligned so a refresh restores the card the user is actually
+    // viewing rather than the original deep-link target.
+    if (deepLinkDetailId && deepLinkDetailId !== id) {
+      router.replace(`/mcp-servers?detailId=${id}`)
+    }
+  }
+
+  function closeDetail() {
+    setManualDetailId(null)
+    if (deepLinkDetailId) router.replace('/mcp-servers')
+  }
 
   async function handleExport() {
     try {
@@ -244,7 +272,9 @@ export default function McpServersPage() {
                       checkNowLabel={t('actions.checkNow')}
                       checkNowAriaLabel={t('actions.checkNowFor', { name: server.name })}
                       manageLabel={t('actions.manage')}
-                      onOpen={setDetailId}
+                      publishLabel={t('actions.publish')}
+                      onOpen={openDetail}
+                      onPublish={setPublishServer}
                       onCheckNow={handleCheckNow}
                       checking={runHealthCheck.isPending}
                     />
@@ -261,7 +291,24 @@ export default function McpServersPage() {
       <McpServerDetailDialog
         serverId={detailId}
         open={!!detailId}
-        onOpenChange={(open) => !open && setDetailId(null)}
+        onOpenChange={(open) => !open && closeDetail()}
+      />
+      <PublishWizard
+        resource={
+          publishServer
+            ? {
+                id: publishServer.id,
+                resourceType: 'mcp',
+                name: publishServer.name,
+                description: publishServer.description,
+                iconId: 'mcp',
+                detailLabel: publishServer.name,
+                detailSubhead: publishServer.transport,
+              }
+            : null
+        }
+        open={!!publishServer}
+        onOpenChange={(open) => !open && setPublishServer(null)}
       />
     </ResourcePage>
   )
@@ -277,7 +324,9 @@ function McpServerCard({
   checkNowLabel,
   checkNowAriaLabel,
   manageLabel,
+  publishLabel,
   onOpen,
+  onPublish,
   onCheckNow,
   checking,
 }: {
@@ -290,7 +339,9 @@ function McpServerCard({
   checkNowLabel: string
   checkNowAriaLabel: string
   manageLabel: string
+  publishLabel: string
   onOpen: (id: string) => void
+  onPublish: (server: McpServer) => void
   onCheckNow: (id: string) => void
   checking: boolean
 }) {
@@ -328,19 +379,30 @@ function McpServerCard({
       </ResourceListCard.MetaRow>
 
       <ResourceListCard.Footer className="justify-between">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          aria-label={checkNowAriaLabel}
-          data-testid={`check-now-${server.id}`}
-          className="h-7 px-2 text-xs"
-          onClick={() => onCheckNow(server.id)}
-          disabled={checking}
-        >
-          <Activity className="size-3.5" />
-          {checkNowLabel}
-        </Button>
+        <div className="flex min-w-0 items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={checkNowAriaLabel}
+            data-testid={`check-now-${server.id}`}
+            className="h-7 px-2 text-xs"
+            onClick={() => onCheckNow(server.id)}
+            disabled={checking}
+          >
+            <Activity className="size-3.5" />
+            {checkNowLabel}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => onPublish(server)}
+          >
+            {publishLabel}
+          </Button>
+        </div>
         <Button type="button" variant="outline" size="sm" onClick={() => onOpen(server.id)}>
           {manageLabel}
           <ChevronRight className="size-3.5" />

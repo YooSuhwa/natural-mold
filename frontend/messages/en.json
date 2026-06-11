@@ -416,6 +416,17 @@
       "toolsMore": "+{count}",
       "startCta": "Start",
       "createFromTemplate": "Create from this template",
+      "blueprints": {
+        "title": "Installed Agent Blueprints",
+        "description": "Use agents installed from the marketplace as reusable templates.",
+        "badge": "Blueprint",
+        "create": "Create from this blueprint",
+        "createdCount": "{count} created"
+      },
+      "legacy": {
+        "title": "Default Templates",
+        "description": "Quick-start templates that were already available in Moldy."
+      },
       "emptyCategory": "No templates in this category.",
       "noSearchResults": {
         "title": "No templates match \"{query}\"",
@@ -523,6 +534,7 @@
       "favoriteAdd": "Favorite",
       "visualSettings": "Visual Settings",
       "settings": "Settings",
+      "publish": "Publish to marketplace",
       "modelLabel": "Model:",
       "createdAt": "Created {date}",
       "lastUsed": "Used {time}",
@@ -1243,7 +1255,7 @@
       "attachmentRemove": "Attachment Remove",
       "stop": "Stop",
       "artifacts": {
-        "openLabel": "Open {name} artifact"
+        "openLabel": "Open {name} file"
       }
     },
     "share": {
@@ -1417,11 +1429,11 @@
         "incomplete": "Incomplete"
       },
       "artifacts": {
-        "title": "Artifacts",
+        "title": "Files",
         "loading": "Loading files...",
         "emptyPanel": "No files have been generated in this conversation yet.",
         "emptySelection": "Select a file to preview.",
-        "listTitle": "Artifacts",
+        "listTitle": "Files",
         "listDescription": "{count} generated files.",
         "backToList": "File list",
         "runLabel": "Run {run}",
@@ -1434,7 +1446,7 @@
         "codeMode": "Code",
         "copyContents": "Copy",
         "copied": "Copied",
-        "openMenu": "Open artifact menu",
+        "openMenu": "Open file menu",
         "refreshPreview": "Refresh preview",
         "sourceUnavailable": "This file cannot be opened in code view.",
         "imagePreview": "Image preview",
@@ -1811,6 +1823,7 @@
         "import": "Import",
         "export": "Export",
         "new": "New",
+        "publish": "Publish",
         "manage": "Manage"
       },
       "empty": {
@@ -2252,7 +2265,7 @@
   "marketplace": {
     "card": {
       "resource": {
-        "skill": "Skills",
+        "skill": "Skill",
         "agent": "Agent",
         "mcp": "MCP"
       },
@@ -2275,24 +2288,24 @@
       "publication": {
         "not_published": "Not published",
         "draft": "Draft",
-        "published_private": "Published private",
-        "published_restricted": "Published restricted",
-        "published_public_listed": "Published public listed",
-        "published_public_unlisted": "Published public unlisted",
-        "published_unlisted": "Published unlisted",
+        "published_private": "Private",
+        "published_restricted": "Restricted",
+        "published_public_listed": "Public · listed",
+        "published_public_unlisted": "Public · pending listing",
+        "published_unlisted": "Link only",
         "disabled": "Disabled"
       },
       "credential": {
-        "none": "None",
-        "optional": "Optional",
-        "required": "Required",
+        "none": "No credentials",
+        "optional": "Credentials optional",
+        "required": "Credentials required",
         "hosted_proxy": "Hosted proxy",
         "manual_login": "Manual login"
       },
       "origin": {
         "created_by_me": "Created by me",
         "imported_by_me": "Imported by me",
-        "built_in_k_skill": "Built in k skill",
+        "built_in_k_skill": "Built-in · k-skill",
         "shared_with_me": "Shared with me",
         "sharedBy": "Shared by {name}",
         "community": "Community",
@@ -2302,7 +2315,7 @@
     "catalog": {
       "title": "Marketplace",
       "description": "Browse agents, tools, and skills shared through the marketplace.",
-      "categoriesLabel": "Categories Label",
+      "categoriesLabel": "Marketplace categories",
       "count": "{count} items",
       "tabs": {
         "all": "All",
@@ -2312,29 +2325,29 @@
         "installed": "Installed"
       },
       "empty": {
-        "title": "Empty",
-        "description": "No marketplace items match the current filters."
+        "title": "No items match your filters",
+        "description": "Try clearing the filters or syncing the k-skill catalog (admin)."
       },
       "comingSoon": {
-        "title": "Coming Soon",
-        "agents": "Agents",
-        "mcp": "MCP"
+        "title": "Coming soon",
+        "agents": "The agent marketplace is planned for Phase 3.",
+        "mcp": "The MCP marketplace is planned for Phase 2."
       }
     },
     "moderation": {
-      "title": "Moderation",
+      "title": "Marketplace moderation",
       "description": "Review marketplace submissions and publication status.",
-      "back": "Back",
-      "loading": "Loading",
-      "queueTitle": "Queue Title",
-      "syncTitle": "Sync Title",
+      "back": "Back to marketplace",
+      "loading": "Loading…",
+      "queueTitle": "Pending items",
+      "syncTitle": "k-skill sync status",
       "denied": {
-        "title": "Denied",
+        "title": "Operators only",
         "description": "You do not have permission to access moderation."
       },
       "queueEmpty": {
-        "title": "Queue Empty",
-        "description": "There are no items waiting for review."
+        "title": "No items waiting for review",
+        "description": "All publicly published items have been approved."
       },
       "actions": {
         "review": "Review",
@@ -2342,62 +2355,64 @@
         "disable": "Disable"
       },
       "sync": {
-        "count": "Count",
-        "lastUpdated": "Last Updated",
+        "count": "Item count:",
+        "lastUpdated": "Last updated:",
         "command": "uv run python -m app.scripts.sync_k_skill --ref main",
-        "cliOnly": "Cli Only"
+        "cliOnly": "Sync can only be run from the CLI."
       },
       "toast": {
-        "disabled": "Disabled",
-        "disableFailed": "Operation failed.",
-        "approved": "Approved",
-        "approveFailed": "Operation failed."
+        "disabled": "Item disabled",
+        "disableFailed": "Failed to disable the item.",
+        "approved": "Published to the catalog",
+        "approveFailed": "Failed to approve the item."
       }
     },
     "detail": {
-      "back": "Back",
-      "saving": "Saving",
+      "back": "Back to marketplace",
+      "saving": "Saving…",
       "error": {
-        "notFound": "Not Found",
-        "loadFailed": "Load failed",
+        "notFound": "Item not found",
+        "loadFailed": "Failed to load the item",
         "description": "The marketplace item could not be loaded."
       },
       "versions": {
         "title": "Versions",
-        "emptyTitle": "Empty Title",
-        "emptyDescription": "Empty Description",
+        "emptyTitle": "No published versions yet",
+        "emptyDescription": "You can publish the first version from the skill detail page.",
         "latest": "Latest"
       },
       "executionProfile": {
         "title": "Execution Profile",
-        "empty": "No items yet.",
+        "empty": "No execution profile registered.",
         "supportLevel": {
-          "ready_python": "Ready python",
-          "proxy_http": "Proxy http",
-          "node_package": "Node package",
-          "browser_or_local": "Browser or local",
-          "manual_only": "Manual only",
-          "disabled": "Disabled"
+          "one_click": "One-click install",
+          "ready_python": "Python ready",
+          "proxy_http": "Proxy required",
+          "node_package": "Node required",
+          "browser_or_local": "Browser/local required",
+          "manual_only": "Manual setup",
+          "disabled": "Not supported"
         },
         "labels": {
           "support_level": "Support level",
           "runners": "Runners",
           "requires_network": "Requires network",
+          "stdio_risk": "stdio risk",
           "timeout_seconds": "Timeout",
           "tool_dependencies": "Hosted tools",
           "notes": "Notes"
         },
         "boolean": {
           "required": "Required",
-          "notRequired": "Not Required"
+          "notRequired": "Not required"
         },
         "none": "None"
       },
       "management": {
-        "admin": "Admin",
-        "owner": "Owner",
-        "visibility": "Visibility",
-        "help": "Help"
+        "admin": "Operator controls",
+        "owner": "Owner controls",
+        "visibility": "Visibility:",
+        "help": "<private>Unpublish</private>: only you can see the item and new installs by other users are blocked. <disabled>Disable</disabled>: an operator block — new installs by other users are permanently blocked. In both cases, already-installed copies are not affected."
       },
       "visibility": {
         "private": "Private",
@@ -2414,53 +2429,54 @@
         "disabling": "Disabling"
       },
       "acl": {
-        "title": "Acl",
-        "empty": "No items yet.",
+        "title": "Shared with (restricted)",
+        "empty": "No users have been shared yet. Adding users currently requires calling the ACL endpoint directly (a wizard is planned for a later slice).",
         "revoke": "Revoke",
-        "lastTargetHint": "Last Target Hint"
+        "lastTargetHint": "To remove the last target, change the visibility to another value first."
       },
       "toast": {
-        "requestFailed": "Operation failed.",
-        "disabled": "Disabled",
-        "disableFailed": "Operation failed.",
-        "enabled": "Enabled",
-        "enableFailed": "Operation failed.",
-        "alreadyPrivate": "Already Private",
-        "unpublished": "Unpublished",
-        "unpublishFailed": "Operation failed.",
-        "aclRevoked": "Acl Revoked",
-        "aclRevokeFailed": "Operation failed.",
-        "lastAclRequired": "Last Acl Required",
-        "visibilityFailed": "Operation failed.",
-        "aclRequired": "Acl Required"
+        "requestFailed": "Request failed.",
+        "disabled": "Item disabled",
+        "disableFailed": "Failed to disable the item.",
+        "enabled": "Re-enabled — catalog exposure depends on the visibility and listing settings.",
+        "enableFailed": "Failed to re-enable the item.",
+        "alreadyPrivate": "The item is already private.",
+        "unpublished": "Unpublished — hidden from the catalog. Already-installed copies are not affected.",
+        "unpublishFailed": "Failed to unpublish the item.",
+        "aclRevoked": "Sharing revoked",
+        "aclRevokeFailed": "Failed to revoke sharing.",
+        "lastAclRequired": "A restricted item cannot drop its last ACL target. Change the visibility first.",
+        "visibilityFailed": "Failed to change visibility.",
+        "aclRequired": "Switching to restricted requires at least one shared user. Add a target and try again."
       },
       "visibilitySuccess": {
-        "private": "Private",
-        "public": "Public",
-        "unlisted": "Unlisted",
-        "restricted": "Restricted"
+        "private": "Switched to private. The item is no longer shown in the catalog.",
+        "public": "Switched to public. Catalog listing is pending super_user approval.",
+        "unlisted": "Switched to unlisted (link only).",
+        "restricted": "Switched to restricted. Add ACL targets."
       }
     },
     "filters": {
-      "searchPlaceholder": "Search Placeholder",
-      "sourceFilter": "Source Filter",
-      "sourcePlaceholder": "Source Placeholder",
-      "allSources": "All Sources",
-      "supportFilter": "Support Filter",
-      "supportPlaceholder": "Support Placeholder",
-      "allSupport": "All Support",
-      "installStateFilter": "Install State Filter",
-      "installStatePlaceholder": "Install State Placeholder",
-      "allInstallStates": "All Install States",
-      "pendingOnly": "Pending Only",
+      "searchPlaceholder": "Search the marketplace…",
+      "sourceFilter": "Source filter",
+      "sourcePlaceholder": "Source",
+      "allSources": "All sources",
+      "supportFilter": "Support filter",
+      "supportPlaceholder": "Support",
+      "allSupport": "All support levels",
+      "installStateFilter": "Install state filter",
+      "installStatePlaceholder": "Install state",
+      "allInstallStates": "All states",
+      "pendingOnly": "Show pending items",
       "reset": "Reset",
       "support": {
-        "readyPython": "Ready Python",
-        "proxyHttp": "Proxy Http",
-        "nodePackage": "Node Package",
-        "browserOrLocal": "Browser Or Local",
-        "manualOnly": "Manual Only",
-        "disabled": "Disabled"
+        "oneClick": "One-click install",
+        "readyPython": "Python ready",
+        "proxyHttp": "Proxy required",
+        "nodePackage": "Node required",
+        "browserOrLocal": "Browser/local required",
+        "manualOnly": "Manual setup",
+        "disabled": "Not supported"
       },
       "source": {
         "user": "User",
@@ -2470,20 +2486,20 @@
       },
       "installState": {
         "active": "Active",
-        "needsSetup": "Needs Setup",
+        "needsSetup": "Needs setup",
         "disabled": "Disabled"
       }
     },
     "installation": {
-      "active": "Active",
-      "needsSetup": "Needs Setup",
+      "active": "Installed",
+      "needsSetup": "Needs setup",
       "disabled": "Disabled",
-      "uninstalled": "Uninstalled",
-      "updateAvailable": "Update Available",
-      "dirty": "Dirty"
+      "uninstalled": "Not installed",
+      "updateAvailable": "Update available",
+      "dirty": "Modified"
     },
     "installWizard": {
-      "title": "Install Wizard",
+      "title": "Install {name}",
       "steps": {
         "review": "Review",
         "credentials": "Credentials",
@@ -2496,62 +2512,80 @@
         "back": "Previous",
         "install": "Install",
         "installing": "Installing",
-        "next": "Next"
+        "next": "Next",
+        "retry": "Retry"
       },
       "toast": {
         "installed": "Installed {name}.",
         "installedNeedsSetup": "Installed {name}. Finish setup before using it."
       },
       "review": {
-        "resourceType": "Resource Type",
-        "latestVersion": "Latest Version",
-        "supportLevel": "Support Level",
+        "resourceType": "Resource type:",
+        "latestVersion": "Latest version:",
+        "supportLevel": "Support level:",
         "hostedTools": "Includes hosted tools:",
-        "customName": "Custom Name"
+        "customName": "Custom name (optional)"
       },
-      "credentialHelp": "Credential Help",
-      "optional": "Optional",
-      "type": "Type",
-      "loadingCredentials": "Loading Credentials",
-      "selectCredential": "Select Credential",
-      "skip": "Skip",
-      "missingType": "Missing Type",
-      "createCredential": "Create Credential",
-      "requiredMissing": "Required Missing",
+      "credentialHelp": "Connect credentials required by this marketplace resource. Optional items can be skipped. Missing required credentials leave the installation in <code>needs_setup</code>.",
+      "loadingVersion": "Loading version details…",
+      "optional": "(optional)",
+      "type": "Type:",
+      "loadingCredentials": "Loading credentials…",
+      "selectCredential": "Select a credential…",
+      "skip": "Set up later (needs setup)",
+      "missingType": "No credential of type <type></type> exists yet.",
+      "createCredential": "Create one on the Credentials page →",
+      "requiredMissing": "If you skip this, the install will be marked <code>needs_setup</code>.",
       "confirm": {
-        "intro": "Intro",
-        "createSkill": "Create Skill",
-        "copyFiles": "Copy Files",
-        "bind": "Bind {count} credentials",
-        "needsSetup": "Needs setup: {keys}",
-        "name": "Name",
-        "version": "Version"
+        "intro": "This will:",
+        "create": {
+          "skill": "Create a skill owned by you (origin: imported_by_me)",
+          "agent": "Add it to your agent blueprints",
+          "mcp": "Add it to your MCP servers"
+        },
+        "copy": {
+          "skill": "Copy package files into the data directory",
+          "agent": "Copy agent configuration and dependency metadata into a blueprint",
+          "mcp": "Copy MCP server connection settings and tool snapshot"
+        },
+        "bind": "Bind {count} credential(s):",
+        "needsSetup": "Marked as needs_setup — missing required credentials: {keys}",
+        "name": "Name:",
+        "version": "Version:"
       },
       "done": {
-        "title": "Done",
-        "description": "The item is installed and ready to use."
+        "title": "{name} installed",
+        "description": {
+          "skill": "Open the skill or attach it to an agent when you are ready.",
+          "agent": "Choose this blueprint from the agent template screen to create a new agent.",
+          "mcp": "Open the MCP server list to review settings and attach it to agents."
+        },
+        "open": {
+          "skill": "Open skill",
+          "agent": "Open blueprint",
+          "mcp": "Open MCP server"
+        }
       },
       "errors": {
-        "notFound": "Not Found",
-        "disabled": "Disabled",
-        "credentialMismatch": "Credential Mismatch",
-        "credentialRequired": "Credential Required",
-        "failed": "Failed",
-        "network": "Network"
+        "notFound": "This item could not be found or you do not have access.",
+        "disabled": "This item has been disabled.",
+        "credentialMismatch": "The selected credential does not match the requirement. Choose a different one.",
+        "credentialRequired": "A required credential is missing.",
+        "loadVersion": "Could not load version details. Retry to set up its credentials.",
+        "failed": "Installation failed.",
+        "network": "A network error occurred. Please try again."
       }
     },
     "publishWizard": {
-      "title": "Publish Wizard",
+      "title": "Publish {name}",
       "description": "Publish this resource to the marketplace.",
       "steps": {
         "review": "Review",
         "metadata": "Metadata",
         "visibility": "Visibility",
-        "confirm": "Confirm",
-        "done": "Done"
+        "confirm": "Confirm"
       },
       "actions": {
-        "close": "Close",
         "cancel": "Cancel",
         "back": "Previous",
         "publish": "Publish",
@@ -2559,11 +2593,13 @@
         "next": "Next"
       },
       "toast": {
-        "published": "Published"
+        "published": "Published to the marketplace"
       },
-      "reviewHint": "Review Hint",
+      "reviewHint": "A secret scan runs automatically before publishing. If any files are blocked, come back to step 1, remove them, and try again.",
       "review": {
-        "skill": "Skills"
+        "skill": "Skill",
+        "agent": "Agent Blueprint",
+        "mcp": "MCP Server"
       },
       "fields": {
         "name": "Name",
@@ -2571,7 +2607,7 @@
         "icon": "Icon",
         "releaseNotes": "Release Notes",
         "visibility": "Visibility",
-        "acl": "Acl"
+        "acl": "Shared user IDs (comma-separated)"
       },
       "visibility": {
         "private": "Private",
@@ -2579,59 +2615,56 @@
         "public": "Public",
         "unlisted": "Unlisted"
       },
-      "aclHint": "Acl Hint",
-      "publicHint": "Public Hint",
-      "confirmIntro": "Confirm Intro",
-      "confirmCreateItem": "Confirm Create Item",
-      "confirmCreateVersion": "Confirm Create Version",
-      "visibilityLabel": "Visibility Label",
+      "aclHint": "Phase 1: a user lookup picker is coming in a later slice. For now, enter user UUIDs directly.",
+      "publicHint": "Even after publishing publicly, catalog search exposure requires operator approval.",
+      "confirmIntro": "This will:",
+      "confirmCreateItem": "Create a marketplace item",
+      "confirmCreateVersion": "Create a new version snapshot",
+      "visibilityLabel": "Visibility:",
       "aclSummary": "Visible to {count} selected users or groups.",
-      "done": {
-        "title": "Done",
-        "description": "Your marketplace item has been submitted."
-      },
       "errors": {
-        "aclRequired": "Acl Required",
-        "network": "Network"
+        "aclRequired": "Restricted publishing requires at least one shared user.",
+        "aclInvalid": "Some user IDs are not valid. Enter UUIDs in 8-4-4-4-12 format.",
+        "network": "A network error occurred."
       }
     },
     "updateStrategy": {
-      "title": "Update Strategy",
-      "ariaLabel": "Aria Label",
+      "title": "Update {name}",
+      "ariaLabel": "Update strategy",
       "toast": {
         "updated": "Updated {name}.",
         "installedNewCopy": "Installed a new copy of {name}."
       },
-      "latestVersion": "Latest Version",
+      "latestVersion": "Latest version:",
       "actions": {
         "cancel": "Cancel",
         "updating": "Updating",
         "confirm": "Confirm"
       },
-      "dirtyWarning": "Dirty Warning",
+      "dirtyWarning": "⚠ In a dirty state this option permanently deletes your direct edits.",
       "strategies": {
         "overwrite": {
           "label": "Overwrite my edits",
-          "description": "Replace the installed copy with the latest marketplace version."
+          "description": "Overwrite the installed copy with the latest version and discard your direct edits. In a dirty state this loses data."
         },
         "install_new_copy": {
           "label": "Install as a new copy",
-          "description": "Install the latest version as a separate copy."
+          "description": "Keep the current install and add the latest version as a separate new skill row. You will need to manage both copies."
         },
         "keep_current": {
           "label": "Keep current install",
-          "description": "Keep the currently installed version unchanged."
+          "description": "Do not apply the update. The install stays unchanged until the next update-available state appears."
         }
       },
       "errors": {
-        "dirty": "Dirty",
-        "disabled": "Disabled",
-        "failed": "Failed",
-        "network": "Network"
+        "dirty": "This install is dirty. Explicitly choose overwrite or install_new_copy.",
+        "disabled": "The source marketplace item has been disabled.",
+        "failed": "Update failed.",
+        "network": "A network error occurred. Please try again."
       },
       "description": {
-        "dirty": "Dirty",
-        "default": "Default"
+        "dirty": "This install has direct edits. You must explicitly choose an update strategy.",
+        "default": "Update to the latest marketplace version."
       }
     }
   },
