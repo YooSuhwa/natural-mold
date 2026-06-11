@@ -1,11 +1,17 @@
 import type { SSEEvent, SSEEventType } from '@/lib/types'
+import { streamAgUiRunAttach } from '@/lib/ag-ui/chat-run-consumer'
 import { streamSSEGetResume } from './parse-sse'
 
+type ChatStreamProtocol = 'moldy_sse' | 'ag_ui'
+
+export function getChatStreamProtocol(): ChatStreamProtocol {
+  return process.env.NEXT_PUBLIC_CHAT_STREAM_PROTOCOL === 'ag_ui' ? 'ag_ui' : 'moldy_sse'
+}
+
 /**
- * GET ``/api/conversations/{id}/stream`` 으로 끊긴 SSE stream 을 재개. ``run_id``
- * 는 primary stream 의 ``X-Run-Id`` 응답 헤더에서 받은 값. ``withAutoResume`` 의
- * ``resumeFactory`` 로 넘기는 것이 표준 사용. 서버 분기 명세는 백엔드
- * ``conversations.py:stream_resume`` 참조.
+ * GET ``/api/conversations/{id}/runs/{runId}/stream`` 으로 끊긴 SSE stream 을
+ * 재개한다. ``runId`` 는 primary stream 의 ``X-Run-Id`` 응답 헤더 또는
+ * ``Conversation.active_run`` 에서 받은 durable run id다.
  */
 export async function* streamResumeAttach(
   conversationId: string,
@@ -14,10 +20,18 @@ export async function* streamResumeAttach(
   signal?: AbortSignal,
   onMode?: (info: { mode: 'live' | 'replay' | string; runId: string | null }) => void,
 ): AsyncGenerator<SSEEvent> {
-  yield* streamSSEGetResume<SSEEventType>(`/api/conversations/${conversationId}/stream`, signal, {
-    runId,
-    lastEventId,
-    onMode,
-    defaultEvent: 'content_delta',
-  }) as AsyncGenerator<SSEEvent>
+  if (getChatStreamProtocol() === 'ag_ui') {
+    yield* streamAgUiRunAttach(conversationId, runId, lastEventId, signal, onMode)
+    return
+  }
+  yield* streamSSEGetResume<SSEEventType>(
+    `/api/conversations/${conversationId}/runs/${runId}/stream`,
+    signal,
+    {
+      runId,
+      lastEventId,
+      onMode,
+      defaultEvent: 'content_delta',
+    },
+  ) as AsyncGenerator<SSEEvent>
 }

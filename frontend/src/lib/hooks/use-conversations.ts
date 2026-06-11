@@ -2,6 +2,7 @@
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
+import { conversationPagesContainActiveRun } from '@/lib/chat-runs/status'
 import type { Conversation, ConversationPageParams, ConversationUpdateRequest } from '@/lib/types'
 
 export const conversationKeys = {
@@ -41,6 +42,8 @@ export function useConversationPages(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled: !!agentId,
+    refetchInterval: (query) =>
+      conversationPagesContainActiveRun(query.state.data?.pages) ? 1000 : false,
   })
 }
 

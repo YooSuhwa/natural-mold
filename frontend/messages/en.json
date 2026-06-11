@@ -1200,6 +1200,7 @@
       "newConversation": "New Conversation",
       "emptyState": "Empty State",
       "error": "Error",
+      "canceled": "Canceled",
       "interruptStateLost": "Interrupt State Lost",
       "conversationList": "Conversation List",
       "artifacts": "Files panel",
@@ -1534,6 +1535,10 @@
       "close": "Close",
       "pinned": "Favorite",
       "recent": "Recent",
+      "status": {
+        "running": "Generating answer",
+        "actionRequired": "User action required"
+      },
       "menu": {
         "rename": "Rename",
         "share": "Share",

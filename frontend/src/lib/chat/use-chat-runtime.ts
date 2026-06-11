@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import type {
   Decision,
+  ConversationRun,
   Message,
   MessagesEnvelope,
   SSEEvent,
@@ -17,7 +18,13 @@ import type {
   ArtifactSummary,
   FileEventPayload,
 } from '@/lib/types'
-import { sessionTokenUsageAtom, reconnectStateAtom, type TokenUsage } from '@/lib/stores/chat-store'
+import { isActiveRunStatus } from '@/lib/chat-runs/status'
+import {
+  chatCancelInFlightAtom,
+  sessionTokenUsageAtom,
+  reconnectStateAtom,
+  type TokenUsage,
+} from '@/lib/stores/chat-store'
 import { upsertArtifactList, upsertChatArtifactAtom } from '@/lib/stores/chat-artifacts'
 import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
 import { convertMessage } from './convert-message'
@@ -39,6 +46,7 @@ import {
 } from './standard-interrupt'
 import { compactDeepResearchMessages } from './deep-research-summary'
 import { artifactKeys } from '@/lib/api/artifacts'
+import { conversationRunsApi } from '@/lib/api/conversation-runs'
 
 const PHASE_TIMELINE_TOOL_NAME = 'phase_timeline'
 
@@ -280,6 +288,8 @@ interface UseChatRuntimeOptions {
   feedbackAdapter?: FeedbackAdapter
   /** Optional attachment adapter (P1-7). */
   attachmentAdapter?: AttachmentAdapter
+  /** Durable active run discovered from conversation/message hydration. */
+  activeRun?: ConversationRun | null
 }
 
 /**
@@ -300,6 +310,7 @@ export function useChatRuntime({
   resumeFn,
   feedbackAdapter,
   attachmentAdapter,
+  activeRun,
 }: UseChatRuntimeOptions) {
   const [isRunning, setIsRunning] = useState(false)
   const [streamingMessages, setStreamingMessages] = useState<Message[]>([])
@@ -309,6 +320,8 @@ export function useChatRuntime({
   // 위해서.
   const [, setStreamError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const cancelInFlightRef = useRef(false)
+  const cancelNoticePendingRef = useRef(false)
   // 가장 최근에 emit된 interrupt_id (resume 시 stale 검증용)
   const lastInterruptIdRef = useRef<string | null>(null)
   const pendingHiTLCoordinatorRef = useRef<HiTLDecisionCoordinator | null>(null)
@@ -321,6 +334,16 @@ export function useChatRuntime({
   const runIdRef = useRef<string | null>(null)
   const conversationIdRef = useRef<string | undefined>(conversationId)
   const lastEventIdRef = useRef<string | null>(null)
+  const attachedActiveRunIdRef = useRef<string | null>(null)
+  const failedActiveRunAttachIdRef = useRef<string | null>(null)
+  // 로컬 stream(POST 전송 or attach)이 현재 소비 중인지. active run attach
+  // effect 가 진행 중인 로컬 stream 을 abort 하고 빼앗는 race 를 막는 가드.
+  // isRunning state 와 달리 effect deps 에 넣지 않아도 되는 동기 ref.
+  const streamInFlightRef = useRef(false)
+  // 이 마운트에서 끝까지 소비(정상 종료 or 사용자 cancel)한 run id. stale
+  // envelope 이 그 run 을 여전히 active 로 보고해도 재attach 하지 않는다.
+  // 네트워크 실패로 중단된 run 은 여기 기록되지 않으므로 attach 복구가 허용된다.
+  const consumedRunIdRef = useRef<string | null>(null)
   // SSE stream race 차단 — Edit/Regenerate fork 도중 이전 generator의 stale
   // chunk가 새 stream에 끼어드는 것을 막고, 같은 id 중복 chunk를 dedup한다.
   // ``createStreamGuard``는 순수 함수라 useState 초기값으로 안전.
@@ -329,6 +352,7 @@ export function useChatRuntime({
   const lastTokenUsageRef = useRef<TokenUsage | null>(null)
   const setTokenUsage = useSetAtom(sessionTokenUsageAtom)
   const setReconnectState = useSetAtom(reconnectStateAtom)
+  const setChatCancelInFlight = useSetAtom(chatCancelInFlightAtom)
   const upsertArtifact = useSetAtom(upsertChatArtifactAtom)
   const setRightRail = useSetAtom(chatRightRailAtom)
   const queryClient = useQueryClient()
@@ -361,6 +385,7 @@ export function useChatRuntime({
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
+    streamInFlightRef.current = true
     setIsRunning(true)
     pendingHiTLCoordinatorRef.current = null
     runIdRef.current = null
@@ -400,6 +425,13 @@ export function useChatRuntime({
     conversationIdRef.current = conversationId
   }, [conversationId])
 
+  useEffect(
+    () => () => {
+      abortRef.current?.abort()
+    },
+    [],
+  )
+
   // W7-2 — Composer 토큰 바는 persisted messages usage + streaming assistant의
   // message_end usage로 derive한다. content_delta flush마다 긴 messages 전체를
   // 다시 순회하지 않도록 persisted messages 변화와 usage 값 변화에만 반응한다.
@@ -432,6 +464,24 @@ export function useChatRuntime({
     messages: allMessages,
     isRunning,
   })
+
+  const appendCanceledNotice = useCallback(
+    (items: Message[]): Message[] => {
+      const canceledText = tPage('canceled')
+      let updated = false
+      const next = items.map((message) => {
+        if (message.role !== 'assistant') return message
+        if (message.content.includes(canceledText)) return message
+        updated = true
+        return {
+          ...message,
+          content: message.content ? `${message.content}\n\n${canceledText}` : canceledText,
+        }
+      })
+      return updated ? next : [...items, createOptimisticMessage('assistant', canceledText)]
+    },
+    [tPage],
+  )
 
   /** SSE 스트림 소비 공통 로직 (onNew, onResumeDecisions 공유)
    *
@@ -488,6 +538,9 @@ export function useChatRuntime({
       // rAF tick(약 16ms = 60fps)에 한 번씩만 flush 해서 동일한 시각적 부드러움을
       // 유지하면서 렌더 횟수를 줄인다.
       let rafId: number | null = null
+      // 스트림이 throw/abort 없이 끝까지 소비됐는지 — finally 에서
+      // ``consumedRunIdRef`` 기록 여부를 결정한다.
+      let endedNormally = false
       const cancelPendingFlush = () => {
         if (rafId === null) return
         cancelAnimationFrame(rafId)
@@ -726,6 +779,7 @@ export function useChatRuntime({
             }
           }
         }
+        endedNormally = true
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           throw err
@@ -734,10 +788,22 @@ export function useChatRuntime({
         const isStaleStream = streamGuardRef.current.isStale(token)
         const hadPendingFlush = rafId !== null
         cancelPendingFlush()
+        // stale 이면 새 stream 이 이미 in-flight 플래그를 소유 — 건드리지 않는다.
         if (isStaleStream) return
 
+        streamInFlightRef.current = false
+        if (endedNormally) {
+          // throw/abort 없이 끝난 run 만 "소비 완료"로 기록 — 네트워크 실패로
+          // 중단된 run 은 기록하지 않아 active run attach 복구가 가능하다.
+          consumedRunIdRef.current = runIdRef.current
+        }
         setIsRunning(false)
-        const finalMsgs = buildStreamState()
+        const hadCancelNotice = cancelNoticePendingRef.current
+        let finalMsgs = buildStreamState()
+        if (hadCancelNotice) {
+          finalMsgs = appendCanceledNotice(finalMsgs)
+          cancelNoticePendingRef.current = false
+        }
         if (onMessagesCommit) {
           // commit 콜백이 messages 를 책임진다. 같은 batch 에 streaming 을
           // 비워야 다음 render 의 ``allMessages`` 에 동일 id (stream-{uuid}
@@ -746,7 +812,7 @@ export function useChatRuntime({
           // MessageRepository.link 가 "duplicate id in parent tree" 로 throw.
           setStreamingMessages([])
           onMessagesCommit(finalMsgs)
-        } else if (hadPendingFlush) {
+        } else if (hadPendingFlush || hadCancelNotice) {
           // refetch-driven 경로(일반 채팅): streamingMessages 는 비우지 않고
           // backend messages refetch 까지 유지 — 답변이 화면에서 잠깐 사라
           // 졌다 다시 나타나는 깜박임을 막는다. rAF-batched 마지막 flush 만
@@ -773,8 +839,89 @@ export function useChatRuntime({
       tPage,
       tMemory,
       queryClient,
+      appendCanceledNotice,
     ],
   )
+
+  const activeRunId = activeRun?.id ?? null
+  const activeRunStatus = activeRun?.status ?? null
+
+  useEffect(() => {
+    if (!conversationId || !activeRunId || !isActiveRunStatus(activeRunStatus)) return
+    if (failedActiveRunAttachIdRef.current === activeRunId) return
+    if (attachedActiveRunIdRef.current === activeRunId) return
+    // 진행 중인 로컬 stream(POST 전송/기존 attach)을 빼앗지 않는다 — 서버가
+    // conversation 당 active run 1개를 보장하므로 진행 중인 stream 이 곧 이
+    // run 이다 (envelope 스냅샷이 늦게 도착한 케이스).
+    if (streamInFlightRef.current) return
+    // 끝까지 소비(정상 종료/cancel)한 run 의 stale envelope 재attach 방지.
+    // 네트워크 실패로 중단된 run 은 여기 안 걸리므로 attach 로 복구된다.
+    if (consumedRunIdRef.current === activeRunId) return
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    attachedActiveRunIdRef.current = activeRunId
+    failedActiveRunAttachIdRef.current = null
+    runIdRef.current = activeRunId
+    lastEventIdRef.current = null
+    streamInFlightRef.current = true
+    setIsRunning(true)
+    setReconnectState('reconnecting')
+    const streamGuard = streamGuardRef.current
+    const token = streamGuard.begin()
+
+    const primary = () =>
+      streamResumeAttach(conversationId, activeRunId, undefined, controller.signal, ({ mode }) => {
+        if (mode === 'live' || mode === 'replay') setReconnectState('idle')
+      }) as AsyncGenerator<SSEEvent>
+    const wrapped = withAutoResume(
+      primary,
+      (lastEventId) =>
+        streamResumeAttach(
+          conversationId,
+          activeRunId,
+          lastEventId,
+          controller.signal,
+        ) as AsyncGenerator<SSEEvent>,
+      {
+        signal: controller.signal,
+        onReconnecting: () => setReconnectState('reconnecting'),
+        onReconnected: () => setReconnectState('idle'),
+        onFailed: () => {
+          if (controller.signal.aborted) return
+          setReconnectState('idle')
+        },
+      },
+    )
+
+    void consumeStream(wrapped, null, token)
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return
+        failedActiveRunAttachIdRef.current = activeRunId
+        setReconnectState('idle')
+        setIsRunning(false)
+        console.error('[useChatRuntime] Active run attach failed:', err)
+      })
+      .finally(() => {
+        if (attachedActiveRunIdRef.current === activeRunId) {
+          attachedActiveRunIdRef.current = null
+        }
+      })
+
+    return () => {
+      // unmount/deps 변경 시 이 attach 의 토큰을 먼저 무효화 — abort 이후
+      // consumeStream finally 가 unmount 된 컴포넌트에 setState/onStreamEnd 를
+      // 실행하는 것을 막는다. 새 stream 이 이미 토큰을 교체했다면 건너뛴다.
+      if (!streamGuard.isStale(token)) {
+        streamGuard.begin()
+        streamInFlightRef.current = false
+        setIsRunning(false)
+        setReconnectState('idle')
+      }
+      controller.abort()
+    }
+  }, [activeRunId, activeRunStatus, consumeStream, conversationId, setReconnectState])
 
   // messages가 새로 fetch되면(refetch 완료) streaming messages를 clear.
   // streaming 직후 messages → effective 전환에서 깜박임 방지.
@@ -832,6 +979,7 @@ export function useChatRuntime({
       const { signal, token } = prepareStream()
       const onRunId = (id: string) => {
         runIdRef.current = id
+        queryClient.invalidateQueries({ queryKey: ['agents'] })
       }
       const onConversationId = (id: string) => {
         conversationIdRef.current = id
@@ -900,7 +1048,14 @@ export function useChatRuntime({
         console.error('[useChatRuntime] Stream error:', err)
       }
     },
-    [consumeStream, truncateMessagesCache, setReconnectState, tReconnect, prepareStream],
+    [
+      consumeStream,
+      truncateMessagesCache,
+      setReconnectState,
+      tReconnect,
+      prepareStream,
+      queryClient,
+    ],
   )
 
   const onNew = useCallback(
@@ -967,8 +1122,37 @@ export function useChatRuntime({
   )
 
   const onCancel = useCallback(async () => {
-    abortRef.current?.abort()
-  }, [])
+    const controller = abortRef.current
+    const activeConversationId = conversationIdRef.current
+    const runId = runIdRef.current
+
+    if (!activeConversationId || !runId) {
+      console.warn('[useChatRuntime] Stop requested before server run id was available.')
+      controller?.abort()
+      return
+    }
+    if (cancelInFlightRef.current) return
+
+    cancelInFlightRef.current = true
+    setChatCancelInFlight(true)
+    try {
+      const run = await conversationRunsApi.cancel(activeConversationId, runId)
+      queryClient.invalidateQueries({ queryKey: ['agents'] })
+      queryClient.invalidateQueries({ queryKey: ['conversations', activeConversationId] })
+      if (run.status === 'canceling' || run.status === 'canceled') {
+        cancelNoticePendingRef.current = true
+        // 사용자가 취소한 run — canceling 상태가 envelope 에 active 로 남아
+        // 있는 동안 attach effect 가 되살리지 않도록 소비 완료로 기록.
+        consumedRunIdRef.current = runId
+        controller?.abort()
+      }
+    } catch (err) {
+      console.warn('[useChatRuntime] Server cancel request failed; keeping stream attached.', err)
+    } finally {
+      cancelInFlightRef.current = false
+      setChatCancelInFlight(false)
+    }
+  }, [queryClient, setChatCancelInFlight])
 
   /** M-CHAT1b — edit a user message in place via LangGraph thread fork. */
   const onEdit = useCallback(
