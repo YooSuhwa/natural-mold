@@ -205,6 +205,9 @@ class Settings(BaseSettings):
     e2e_user_password: str = "correct horse battery staple 42"
     e2e_user_name: str = "E2E User"
     e2e_scripted_model_enabled: bool = False
+    e2e_test_helpers_enabled: bool = False
+    chat_run_stale_after_seconds: int = 300
+    chat_run_stale_sweep_interval_seconds: int = 60
 
     # CORS allowed origins. Comma-separated origins, e.g.
     # "https://moldy.dev,https://staging.moldy.dev". Default permits the

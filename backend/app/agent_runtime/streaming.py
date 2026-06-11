@@ -42,16 +42,14 @@ PersistCallback = Callable[[list[dict[str, Any]]], Awaitable[None]]
 
 
 class ArtifactEventRecorder(Protocol):
-    async def prepare(self) -> None:
-        ...
+    async def prepare(self) -> None: ...
 
     async def collect_after_tool_result(
         self,
         *,
         tool_name: str,
         tool_call_id: str | None,
-    ) -> list[dict[str, Any]]:
-        ...
+    ) -> list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True)
@@ -424,6 +422,28 @@ async def stream_agent_response(
                 chunk_tags = (metadata or {}).get("tags") or []
                 if "builder:internal" in chunk_tags:
                     continue
+                # LangChain ``usage_metadata``는 input/output 외에
+                # ``input_token_details``로 cache_creation/cache_read를 분리해 전달
+                # (Anthropic / OpenAI prompt caching). content/tool 이벤트를
+                # yield하기 전에 sink를 갱신해야 user cancel/stream detach가
+                # 즉시 들어와도 이미 도착한 usage가 hook 경로에 남는다.
+                extracted = extract_usage_breakdown(msg)
+                if extracted is not None:
+                    usage_data = {
+                        "prompt_tokens": extracted.prompt_tokens,
+                        "completion_tokens": extracted.completion_tokens,
+                        "cache_creation_tokens": extracted.cache_creation_tokens,
+                        "cache_read_tokens": extracted.cache_read_tokens,
+                    }
+                    if usage_data and (cost_per_input_token or cost_per_output_token):
+                        prompt = usage_data.get("prompt_tokens", 0)
+                        completion = usage_data.get("completion_tokens", 0)
+                        cost = (prompt * (cost_per_input_token or 0)) + (
+                            completion * (cost_per_output_token or 0)
+                        )
+                        usage_data["estimated_cost"] = round(cost, 8)  # type: ignore[assignment]
+                    if usage_sink is not None:
+                        usage_sink.update(usage_data)
                 # W6: AI 메시지의 raw id 수집 (caller가 sink 제공 시).
                 if msg_id_sink is not None and msg.type in ("ai", "AIMessageChunk"):
                     raw_id = getattr(msg, "id", None)
@@ -541,19 +561,6 @@ async def stream_agent_response(
                             event, payload = memory_event
                             yield emit(event, payload)
 
-                # LangChain ``usage_metadata``는 input/output 외에
-                # ``input_token_details``로 cache_creation/cache_read를 분리해 전달
-                # (Anthropic / OpenAI prompt caching). fetch 경로(``message_utils``)와
-                # 동일한 평탄화 헬퍼를 재사용해 두 경로의 shape을 통일한다.
-                extracted = extract_usage_breakdown(msg)
-                if extracted is not None:
-                    usage_data = {
-                        "prompt_tokens": extracted.prompt_tokens,
-                        "completion_tokens": extracted.completion_tokens,
-                        "cache_creation_tokens": extracted.cache_creation_tokens,
-                        "cache_read_tokens": extracted.cache_read_tokens,
-                    }
-
         except GraphInterrupt:
             # interrupt()에 의한 정상적인 그래프 일시정지 — 에러가 아님
             # 아래 aget_state에서 interrupt 이벤트를 emit
@@ -597,7 +604,10 @@ async def stream_agent_response(
                     },
                 )
 
-        # Calculate estimated cost from model pricing if available
+        # Calculate estimated cost from model pricing if available. This is
+        # repeated after the stream loop for backwards compatibility with any
+        # future usage source that populates ``usage_data`` outside the chunk
+        # extraction path.
         if usage_data and (cost_per_input_token or cost_per_output_token):
             prompt = usage_data.get("prompt_tokens", 0)
             completion = usage_data.get("completion_tokens", 0)

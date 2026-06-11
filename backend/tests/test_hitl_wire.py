@@ -22,10 +22,12 @@ import pytest
 from httpx import AsyncClient
 from pydantic import ValidationError
 
+from app.agent_runtime import event_names
 from app.agent_runtime.streaming import _interrupt_to_standard_chunk, stream_agent_response
 from app.agent_runtime.tools.ask_user import ask_user
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
 from app.schemas.conversation import Decision, ResumeRequest
@@ -122,6 +124,32 @@ async def _seed_user_agent_conv() -> uuid.UUID:
         return conv.id
 
 
+async def _seed_legacy_pending_interrupt(conv_id: uuid.UUID) -> None:
+    assistant_msg_id = str(uuid.uuid4())
+    async with TestSession() as db:
+        db.add(
+            MessageEvent(
+                conversation_id=conv_id,
+                assistant_msg_id=assistant_msg_id,
+                events=[
+                    {
+                        "id": f"{assistant_msg_id}-start",
+                        "event": event_names.MESSAGE_START,
+                        "data": {"id": assistant_msg_id, "role": "assistant"},
+                    },
+                    {
+                        "id": f"{assistant_msg_id}-interrupt",
+                        "event": event_names.INTERRUPT,
+                        "data": {"actions": [{"name": "send_email"}]},
+                    },
+                ],
+                last_event_id=f"{assistant_msg_id}-interrupt",
+                status="completed",
+            )
+        )
+        await db.commit()
+
+
 def _capture_resume_payload() -> tuple[list[Any], Any]:
     captured: list[Any] = []
 
@@ -135,15 +163,12 @@ def _capture_resume_payload() -> tuple[list[Any], Any]:
 
 class TestResumeRouterPayload:
     @pytest.mark.asyncio
-    async def test_decisions_passed_through_as_command_resume_payload(
-        self, client: AsyncClient
-    ):
+    async def test_decisions_passed_through_as_command_resume_payload(self, client: AsyncClient):
         conv_id = await _seed_user_agent_conv()
+        await _seed_legacy_pending_interrupt(conv_id)
         captured, fake = _capture_resume_payload()
 
-        with patch(
-            "app.routers.conversation_messages.resume_agent_stream", side_effect=fake
-        ):
+        with patch("app.routers.conversation_messages.resume_agent_stream", side_effect=fake):
             resp = await client.post(
                 f"/api/conversations/{conv_id}/messages/resume",
                 json={
@@ -178,11 +203,10 @@ class TestResumeRouterPayload:
     @pytest.mark.asyncio
     async def test_respond_decision_serialized(self, client: AsyncClient):
         conv_id = await _seed_user_agent_conv()
+        await _seed_legacy_pending_interrupt(conv_id)
         captured, fake = _capture_resume_payload()
 
-        with patch(
-            "app.routers.conversation_messages.resume_agent_stream", side_effect=fake
-        ):
+        with patch("app.routers.conversation_messages.resume_agent_stream", side_effect=fake):
             resp = await client.post(
                 f"/api/conversations/{conv_id}/messages/resume",
                 json={"decisions": [{"type": "respond", "message": "yes"}]},
@@ -190,9 +214,7 @@ class TestResumeRouterPayload:
 
         assert resp.status_code == 200
         payload = captured[0][1]
-        assert payload == {
-            "decisions": [{"type": "respond", "message": "yes"}]
-        }
+        assert payload == {"decisions": [{"type": "respond", "message": "yes"}]}
 
     @pytest.mark.asyncio
     async def test_empty_body_returns_422(self, client: AsyncClient):

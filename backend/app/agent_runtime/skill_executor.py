@@ -219,6 +219,15 @@ def _create_skill_execute_tool(ctx: SkillToolContext) -> BaseTool:
             proc.kill()
             await proc.wait()
             return f"Error: script execution timed out ({timeout_seconds:g}s)."
+        except asyncio.CancelledError:
+            # run cancel(Stop)/worker shutdown 이 이 await 를 취소하면 timeout
+            # kill 경로도 함께 취소되어 subprocess 가 고아로 남는다 — 즉시
+            # 종료시켜 취소된 대화 디렉토리에 출력이 계속 쌓이는 것을 막고
+            # 취소를 전파한다.
+            if proc.returncode is None:
+                proc.kill()
+            await proc.wait()
+            raise
 
         result = stdout.decode("utf-8", errors="replace")
         if proc.returncode != 0:

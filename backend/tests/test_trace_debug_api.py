@@ -7,6 +7,7 @@ from httpx import AsyncClient
 
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.conversation_run import ConversationRun
 from app.models.model import Model
 from app.models.user import User
 from app.services import trace_storage
@@ -93,6 +94,29 @@ async def _seed_trace(
         await db.commit()
 
 
+async def _seed_run_status(
+    conversation_id: uuid.UUID,
+    *,
+    run_id: uuid.UUID,
+    status: str,
+) -> None:
+    async with TestSession() as db:
+        conv = await db.get(Conversation, conversation_id)
+        assert conv is not None
+        db.add(
+            ConversationRun(
+                id=run_id,
+                conversation_id=conversation_id,
+                agent_id=conv.agent_id,
+                user_id=TEST_USER_ID,
+                source="chat",
+                status=status,
+                is_active=False,
+            )
+        )
+        await db.commit()
+
+
 @pytest.mark.asyncio
 async def test_debug_traces_requires_auth(raw_client: AsyncClient) -> None:
     conv_id = await _seed_conversation()
@@ -129,6 +153,34 @@ async def test_debug_traces_returns_correlated_turn_summaries(client: AsyncClien
     assert body["traces"][0]["status"] == "completed"
     assert body["traces"][0]["total_tokens"] == 8
     assert body["traces"][0]["langfuse_url"].endswith("/lf-trace-debugger")
+
+
+@pytest.mark.asyncio
+async def test_debug_traces_use_conversation_run_product_status(client: AsyncClient) -> None:
+    conv_id = await _seed_conversation()
+    canceled_run_id = uuid.uuid4()
+    stale_run_id = uuid.uuid4()
+    await _seed_trace(
+        conv_id,
+        run_id=str(canceled_run_id),
+        trace_id="lf-trace-canceled",
+        failed=False,
+    )
+    await _seed_trace(
+        conv_id,
+        run_id=str(stale_run_id),
+        trace_id="lf-trace-stale",
+        failed=True,
+    )
+    await _seed_run_status(conv_id, run_id=canceled_run_id, status="canceled")
+    await _seed_run_status(conv_id, run_id=stale_run_id, status="stale")
+
+    response = await client.get(f"/api/conversations/{conv_id}/debug/traces")
+
+    assert response.status_code == 200
+    by_trace = {item["trace_id"]: item for item in response.json()["traces"]}
+    assert by_trace["lf-trace-canceled"]["status"] == "canceled"
+    assert by_trace["lf-trace-stale"]["status"] == "stale"
 
 
 @pytest.mark.asyncio

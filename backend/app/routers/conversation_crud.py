@@ -7,16 +7,44 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import agent_not_found, conversation_not_found
+from app.models.conversation import Conversation
 from app.schemas.conversation import (
     ConversationCreate,
     ConversationListEnvelope,
     ConversationResponse,
     ConversationUpdate,
 )
-from app.services import chat_service
+from app.schemas.conversation_run import ConversationRunResponse
+from app.services import chat_service, conversation_run_service
 from app.services.conversation_audit_service import record_conversation_audit
 
 router = APIRouter(tags=["conversations"])
+
+
+async def _conversation_responses_with_active_runs(
+    db: AsyncSession,
+    items: list[Conversation],
+) -> list[ConversationResponse]:
+    active_runs = await conversation_run_service.active_runs_for_conversations(
+        db,
+        [item.id for item in items],
+    )
+    responses: list[ConversationResponse] = []
+    for item in items:
+        active_run = active_runs.get(item.id)
+        response = ConversationResponse.model_validate(item)
+        responses.append(
+            response.model_copy(
+                update={
+                    "active_run": (
+                        ConversationRunResponse.model_validate(active_run)
+                        if active_run is not None
+                        else None
+                    )
+                }
+            )
+        )
+    return responses
 
 
 @router.get(
@@ -44,7 +72,7 @@ async def list_conversations_page(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid cursor") from exc
     return ConversationListEnvelope(
-        items=[ConversationResponse.model_validate(item) for item in items],
+        items=await _conversation_responses_with_active_runs(db, items),
         next_cursor=next_cursor,
         has_more=has_more,
     )
@@ -62,7 +90,8 @@ async def list_conversations(
     agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
     if not agent:
         raise agent_not_found()
-    return await chat_service.list_conversations(db, agent_id)
+    items = await chat_service.list_conversations(db, agent_id)
+    return await _conversation_responses_with_active_runs(db, items)
 
 
 @router.post(

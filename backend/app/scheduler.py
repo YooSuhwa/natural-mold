@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -235,9 +235,7 @@ async def rotate_credentials_to_active_key() -> int:
     while True:
         async with async_session() as db:
             result = await db.execute(
-                select(Credential)
-                .where(Credential.key_id != active_key_id)
-                .limit(_ROTATION_BATCH)
+                select(Credential).where(Credential.key_id != active_key_id).limit(_ROTATION_BATCH)
             )
             rows = list(result.scalars().all())
             if not rows:
@@ -247,9 +245,7 @@ async def rotate_credentials_to_active_key() -> int:
                     await credential_service.re_encrypt_with_active_key(db, cred)
                     rotated += 1
                 except Exception:  # noqa: BLE001 — keep rotation moving
-                    logger.exception(
-                        "credential %s rotation failed; will retry next run", cred.id
-                    )
+                    logger.exception("credential %s rotation failed; will retry next run", cred.id)
             await db.commit()
         if len(rows) < _ROTATION_BATCH:
             return rotated
@@ -280,9 +276,7 @@ def _register_cron_job(
     try:
         trigger = CronTrigger.from_crontab(cron_expr)
     except ValueError:
-        logger.exception(
-            "invalid %s=%r; %s not scheduled", cron_setting_name, cron_expr, log_label
-        )
+        logger.exception("invalid %s=%r; %s not scheduled", cron_setting_name, cron_expr, log_label)
         return
     scheduler.add_job(
         func,
@@ -458,24 +452,26 @@ async def poll_mcp_servers_health() -> dict[str, int]:
 
     async with async_session() as db:
         rows = (
-            await db.execute(
-                select(McpServer).where(
-                    or_(
-                        McpServer.is_system.is_(True),
-                        McpServer.status != "disabled",
+            (
+                await db.execute(
+                    select(McpServer).where(
+                        or_(
+                            McpServer.is_system.is_(True),
+                            McpServer.status != "disabled",
+                        )
                     )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         for server in rows:
             counters["checked"] += 1
             try:
                 probe = await mcp_discovery.test_server(db, server)
             except Exception as exc:  # noqa: BLE001 — keep the sweep alive
-                logger.exception(
-                    "mcp health poll failed for server %s", server.id
-                )
+                logger.exception("mcp health poll failed for server %s", server.id)
                 server.health_status = "error"
                 server.health_polled_at = polled_at
                 server.health_message = str(exc)
@@ -530,6 +526,33 @@ BROKER_EVICTION_JOB_ID = "broker_eviction"
 _BROKER_EVICTION_INTERVAL_SECONDS = 60
 _BROKER_EVICTION_TTL_SECONDS = 300
 
+CONVERSATION_RUN_STALE_SWEEP_JOB_ID = "conversation_run_stale_sweep"
+
+
+async def sweep_stale_conversation_runs() -> None:
+    """Mark active conversation runs stale after their heartbeat threshold."""
+    from app.services import conversation_run_service
+    from app.services.conversation_run_worker import get_run_task_registry
+
+    stale_before = datetime.now(UTC).replace(tzinfo=None) - timedelta(
+        seconds=settings.chat_run_stale_after_seconds
+    )
+    try:
+        async with async_session() as db:
+            registry = get_run_task_registry()
+            marked = await conversation_run_service.mark_stale_active_runs(
+                db,
+                stale_before=stale_before,
+                worker_instance_id=None,
+                include_workerless=True,
+                protected_run_ids=registry.active_run_ids(),
+            )
+            await db.commit()
+        if marked:
+            logger.warning("Marked %d stale conversation run(s)", marked)
+    except Exception:  # noqa: BLE001 — keep cron alive
+        logger.exception("Conversation run stale sweep failed; will retry next run")
+
 
 def evict_expired_brokers() -> None:
     """Drop closed brokers past TTL + force-close stale live brokers.
@@ -540,13 +563,32 @@ def evict_expired_brokers() -> None:
     from app.agent_runtime.event_broker import registry as broker_registry
 
     try:
-        evicted = broker_registry.evict_expired(
-            ttl_seconds=_BROKER_EVICTION_TTL_SECONDS
-        )
+        evicted = broker_registry.evict_expired(ttl_seconds=_BROKER_EVICTION_TTL_SECONDS)
         if evicted:
             logger.info("EventBroker GC evicted %d closed brokers", evicted)
     except Exception:  # noqa: BLE001 — keep cron alive
         logger.exception("EventBroker eviction failed; will retry next run")
+
+
+def register_conversation_run_stale_sweep_job() -> None:
+    """Register recurring stale conversation run sweep. Idempotent."""
+
+    scheduler = get_scheduler()
+    if not scheduler.running:
+        logger.debug(
+            "Scheduler not running; skipping conversation run stale sweep job registration"
+        )
+        return
+    seconds = max(int(settings.chat_run_stale_sweep_interval_seconds or 60), 1)
+    scheduler.add_job(
+        sweep_stale_conversation_runs,
+        IntervalTrigger(seconds=seconds),
+        id=CONVERSATION_RUN_STALE_SWEEP_JOB_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info("Scheduled conversation run stale sweep: every %ds", seconds)
 
 
 # ---------------------------------------------------------------------------
@@ -576,9 +618,7 @@ def cleanup_skill_runtime_roots() -> None:
             retention_seconds=_SKILL_RUNTIME_RETENTION_SECONDS,
         )
     except Exception:  # noqa: BLE001 — keep cron alive
-        logger.exception(
-            "skill runtime root cleanup failed; will retry next run"
-        )
+        logger.exception("skill runtime root cleanup failed; will retry next run")
 
 
 def register_skill_runtime_cleanup_job() -> None:
@@ -593,9 +633,7 @@ def register_skill_runtime_cleanup_job() -> None:
 
     scheduler = get_scheduler()
     if not scheduler.running:
-        logger.debug(
-            "Scheduler not running; skipping skill runtime cleanup registration"
-        )
+        logger.debug("Scheduler not running; skipping skill runtime cleanup registration")
         return
     scheduler.add_job(
         cleanup_skill_runtime_roots,

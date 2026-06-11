@@ -7,12 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import conversation_not_found
+from app.routers.conversation_messages import _broker_resume_generator
 from app.schemas.conversation import (
     EditMessageRequest,
     RegenerateMessageRequest,
     SwitchBranchRequest,
 )
-from app.services import chat_service
+from app.services import chat_service, conversation_run_service
 from app.services.conversation_audit_service import record_conversation_audit
 from app.services.conversation_branch_service import (
     active_checkpoint_from_override,
@@ -20,15 +21,20 @@ from app.services.conversation_branch_service import (
     resolve_branch_checkpoint,
     with_regeneration_guidance,
 )
+from app.services.conversation_run_worker import start_conversation_run
 from app.services.conversation_stream_service import (
-    build_artifact_recorder,
     execute_agent_stream,
-    prepare_stream_context,
     resolve_agent_context,
-    sse_handler,
+    sse_response,
 )
 
 router = APIRouter(tags=["conversations"])
+
+
+def _cfg_agent_uuid(cfg) -> uuid.UUID:
+    if not cfg.agent_id:
+        raise conversation_not_found()
+    return uuid.UUID(cfg.agent_id)
 
 
 @router.post("/api/conversations/{conversation_id}/messages/edit")
@@ -71,28 +77,29 @@ async def edit_message(
             "new_content_length": len(data.new_content),
         },
     )
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation_id,
+        agent_id=_cfg_agent_uuid(cfg),
+        user_id=user.id,
+        source="edit",
+        input_preview=data.new_content,
+    )
+    run_id = run.id
     await db.commit()
 
-    ctx = prepare_stream_context(conversation_id)
-    stream_kwargs = ctx.as_stream_kwargs()
-    stream_kwargs["artifact_recorder"] = build_artifact_recorder(
+    ctx = await start_conversation_run(
+        run_id=run_id,
         conversation_id=conversation_id,
         cfg=cfg,
         user=user,
-        run_id=ctx.run_id,
+        input_payload=overwrite_input,
+        moldy_source="edit",
+        executor_fn=execute_agent_stream,
     )
-    return sse_handler(
-        lambda: execute_agent_stream(
-            cfg,
-            overwrite_input,
-            moldy_source="edit",
-            **stream_kwargs,
-        ),
-        log_msg=f"Agent edit failed for conversation {conversation_id}",
-        user_msg="메시지 편집 중 오류가 발생했습니다.",
-        run_id=ctx.run_id,
-        on_complete=ctx.finalize_callback(conversation_id),
-        failure_probe=ctx.has_stream_error,
+    return sse_response(
+        _broker_resume_generator(ctx.broker, None),
+        extra_headers={"X-Run-Id": ctx.run_id},
     )
 
 
@@ -176,25 +183,29 @@ async def regenerate_message(
             "message_id": str(data.message_id) if data.message_id else None,
         },
     )
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation_id,
+        agent_id=_cfg_agent_uuid(cfg),
+        user_id=user.id,
+        source="regenerate",
+        input_preview=None,
+    )
+    run_id = run.id
     await db.commit()
 
-    ctx = prepare_stream_context(conversation_id)
-    stream_kwargs = ctx.as_stream_kwargs()
-    stream_kwargs["artifact_recorder"] = build_artifact_recorder(
+    ctx = await start_conversation_run(
+        run_id=run_id,
         conversation_id=conversation_id,
         cfg=cfg,
         user=user,
-        run_id=ctx.run_id,
+        input_payload=overwrite_input,
+        moldy_source="regenerate",
+        executor_fn=execute_agent_stream,
     )
-    return sse_handler(
-        lambda: execute_agent_stream(
-            cfg, overwrite_input, moldy_source="regenerate", **stream_kwargs
-        ),
-        log_msg=f"Agent regenerate failed for conversation {conversation_id}",
-        user_msg="메시지 재생성 중 오류가 발생했습니다.",
-        run_id=ctx.run_id,
-        on_complete=ctx.finalize_callback(conversation_id),
-        failure_probe=ctx.has_stream_error,
+    return sse_response(
+        _broker_resume_generator(ctx.broker, None),
+        extra_headers={"X-Run-Id": ctx.run_id},
     )
 
 

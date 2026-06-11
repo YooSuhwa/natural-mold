@@ -631,6 +631,54 @@ async def test_artifacts_can_be_grouped_by_message_id(tmp_path: Path) -> None:
     assert grouped["message-1"][0].display_name == "report.md"
 
 
+@pytest.mark.parametrize("run_status", ["canceled", "stale"])
+@pytest.mark.asyncio
+async def test_terminal_incomplete_run_marks_ready_artifacts_failed(
+    tmp_path: Path,
+    run_status: str,
+) -> None:
+    from app.services import artifact_service
+
+    conv_id, agent_id = await seed_artifact_conversation()
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    recorder = ArtifactDeltaRecorder(
+        session_factory=TestSession,
+        context=ArtifactRuntimeContext(
+            conversation_id=conv_id,
+            user_id=TEST_USER_ID,
+            agent_id=agent_id,
+            assistant_msg_id=f"run-{run_status}-artifact",
+            output_dir=output_dir,
+        ),
+        storage=LocalArtifactStorageBackend(tmp_path / "artifacts"),
+    )
+    await recorder.prepare()
+    (output_dir / "partial.md").write_text("partial artifact", encoding="utf-8")
+    await recorder.collect_after_tool_result(
+        tool_name="execute_in_skill",
+        tool_call_id="call-1",
+    )
+
+    async with TestSession() as db:
+        await artifact_service.finalize_artifacts_for_run(
+            db,
+            conversation_id=conv_id,
+            assistant_msg_id=f"run-{run_status}-artifact",
+            run_status=run_status,
+        )
+        await db.commit()
+        artifact = (
+            await db.execute(
+                select(ConversationArtifact).where(
+                    ConversationArtifact.assistant_msg_id == f"run-{run_status}-artifact"
+                )
+            )
+        ).scalar_one()
+
+    assert artifact.status == "failed"
+
+
 @pytest.mark.asyncio
 async def test_read_artifact_text_content_reads_only_preview_window(
     tmp_path: Path,

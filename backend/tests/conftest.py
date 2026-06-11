@@ -99,6 +99,14 @@ def _clear_event_broker_registry():
     event_broker.registry._clear()  # noqa: SLF001 — test-only reset
 
 
+@pytest.fixture(autouse=True)
+def _patch_conversation_run_worker_session(monkeypatch):
+    """Detached chat run workers must use the same in-memory DB as router tests."""
+
+    monkeypatch.setattr("app.services.conversation_run_worker.async_session", TestSession)
+    monkeypatch.setattr("app.services.conversation_stream_service.async_session", TestSession)
+
+
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
     async with TestSession() as session:
         yield session
