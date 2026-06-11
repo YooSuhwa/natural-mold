@@ -3,7 +3,9 @@
 
 import { apiFetch } from './client'
 import type {
+  AgentBlueprint,
   CredentialRequirement,
+  CreateAgentFromBlueprintBody,
   InstallMarketplaceItemBody,
   KSkillSyncStatus,
   MarketplaceInstallation,
@@ -14,11 +16,14 @@ import type {
   MarketplaceListFilters,
   MarketplaceVersionDetail,
   MarketplaceVersionSummary,
+  PublishAgentBody,
+  PublishMcpServerBody,
   PublishNewVersionBody,
   PublishSkillBody,
   SkillCredentialBinding,
   UpdateInstallationBody,
 } from '@/lib/types/marketplace'
+import type { Agent } from '@/lib/types'
 
 function buildSearch(filters?: MarketplaceListFilters): string {
   if (!filters) return ''
@@ -93,8 +98,32 @@ export const marketplaceApi = {
       body: JSON.stringify(body),
     }),
 
+  publishFromMcp: (serverId: string, body: PublishMcpServerBody) =>
+    apiFetch<MarketplaceItem>(`/api/marketplace/items/from-mcp/${serverId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  publishFromAgent: (agentId: string, body: PublishAgentBody) =>
+    apiFetch<MarketplaceItem>(`/api/marketplace/items/from-agent/${agentId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   publishNewVersion: (itemId: string, skillId: string, body: PublishNewVersionBody) =>
     apiFetch<MarketplaceItem>(`/api/marketplace/items/${itemId}/versions/from-skill/${skillId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  publishNewMcpVersion: (itemId: string, serverId: string, body: PublishNewVersionBody) =>
+    apiFetch<MarketplaceItem>(`/api/marketplace/items/${itemId}/versions/from-mcp/${serverId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  publishNewAgentVersion: (itemId: string, agentId: string, body: PublishNewVersionBody) =>
+    apiFetch<MarketplaceItem>(`/api/marketplace/items/${itemId}/versions/from-agent/${agentId}`, {
       method: 'POST',
       body: JSON.stringify(body),
     }),
@@ -142,6 +171,16 @@ export const marketplaceApi = {
 
   moderationQueue: () =>
     apiFetch<MarketplaceItem[]>('/api/marketplace/items?is_listed=false&visibility=public'),
+}
+
+export const agentBlueprintApi = {
+  list: () => apiFetch<AgentBlueprint[]>('/api/agent-blueprints'),
+  get: (blueprintId: string) => apiFetch<AgentBlueprint>(`/api/agent-blueprints/${blueprintId}`),
+  createAgent: (blueprintId: string, body: CreateAgentFromBlueprintBody) =>
+    apiFetch<Agent>(`/api/agent-blueprints/${blueprintId}/create-agent`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 }
 
 // ---------------------------------------------------------------------------

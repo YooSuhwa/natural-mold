@@ -119,7 +119,7 @@ describe('ArtifactPanelContent', () => {
   it('shows only the session file list in list mode', () => {
     renderPanel('list')
 
-    expect(screen.getByText('아티팩트')).toBeInTheDocument()
+    expect(screen.getByText('파일')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /report\.md/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /example\.py/ })).toBeInTheDocument()
     expect(screen.queryByTestId('artifact-preview')).not.toBeInTheDocument()
@@ -128,7 +128,7 @@ describe('ArtifactPanelContent', () => {
   it('shows only the selected preview in preview mode', () => {
     renderPanel('preview', 'code')
 
-    expect(screen.queryByText('아티팩트')).not.toBeInTheDocument()
+    expect(screen.queryByText('파일')).not.toBeInTheDocument()
     expect(screen.queryByText('파일 목록')).not.toBeInTheDocument()
     expect(screen.getByTestId('artifact-preview')).toHaveTextContent('preview:example.py')
     expect(screen.queryByRole('button', { name: /report\.md/ })).not.toBeInTheDocument()

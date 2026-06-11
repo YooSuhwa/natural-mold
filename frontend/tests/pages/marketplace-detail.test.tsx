@@ -1,8 +1,10 @@
 import { Suspense } from 'react'
 import { act } from '@testing-library/react'
-import { render, screen } from '../test-utils'
+import { render, screen, userEvent, waitFor } from '../test-utils'
 import MarketplaceItemDetailPage from '@/app/marketplace/[item-id]/page'
 import type { MarketplaceItem, MarketplaceVersionSummary } from '@/lib/types/marketplace'
+
+const mockPush = vi.hoisted(() => vi.fn())
 
 vi.mock('next/link', () => ({
   default: ({
@@ -18,6 +20,18 @@ vi.mock('next/link', () => ({
       {children}
     </a>
   ),
+}))
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: mockPush,
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+    back: vi.fn(),
+  }),
+  usePathname: () => '/',
+  useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 vi.mock('@/components/marketplace/install-wizard', () => ({
@@ -104,6 +118,7 @@ const item: MarketplaceItem = {
 
 describe('MarketplaceItemDetailPage', () => {
   beforeEach(() => {
+    mockPush.mockClear()
     mockUseMarketplaceItem.mockReturnValue({ data: item, isLoading: false, error: null })
     mockUseMarketplaceVersions.mockReturnValue({ data: versions })
   })
@@ -140,4 +155,44 @@ describe('MarketplaceItemDetailPage', () => {
     expect(screen.getByText('필요')).toBeInTheDocument()
     expect(screen.queryByText('support_level')).not.toBeInTheDocument()
   })
+
+  it.each([
+    {
+      resource_type: 'mcp' as const,
+      installed_resource_id: 'mcp-server-1',
+      expected_href: '/mcp-servers?detailId=mcp-server-1',
+    },
+    {
+      resource_type: 'agent' as const,
+      installed_resource_id: 'blueprint-1',
+      expected_href: '/agents/new/template?blueprintId=blueprint-1',
+    },
+  ])(
+    'routes installed $resource_type marketplace detail Open CTA to its resource screen',
+    async ({ resource_type, installed_resource_id, expected_href }) => {
+      mockUseMarketplaceItem.mockReturnValue({
+        data: {
+          ...item,
+          resource_type,
+          installation: {
+            installed: true,
+            installation_id: 'installation-1',
+            installed_resource_id,
+            status: 'active',
+            update_available: false,
+            dirty: false,
+          },
+        } satisfies MarketplaceItem,
+        isLoading: false,
+        error: null,
+      })
+
+      await renderDetailPage()
+      await userEvent.click(await screen.findByRole('button', { name: '열기' }))
+
+      await waitFor(() => {
+        expect(mockPush).toHaveBeenCalledWith(expected_href)
+      })
+    },
+  )
 })

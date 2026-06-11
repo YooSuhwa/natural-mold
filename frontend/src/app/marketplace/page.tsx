@@ -26,11 +26,11 @@ import type {
 
 type Tab = 'all' | 'skills' | 'agents' | 'mcp' | 'installed'
 
-const TABS: { value: Tab; labelKey: string; disabled?: boolean }[] = [
+const TABS: { value: Tab; labelKey: string }[] = [
   { value: 'all', labelKey: 'tabs.all' },
   { value: 'skills', labelKey: 'tabs.skills' },
-  { value: 'agents', labelKey: 'tabs.agents', disabled: true },
-  { value: 'mcp', labelKey: 'tabs.mcp', disabled: true },
+  { value: 'agents', labelKey: 'tabs.agents' },
+  { value: 'mcp', labelKey: 'tabs.mcp' },
   { value: 'installed', labelKey: 'tabs.installed' },
 ]
 
@@ -58,21 +58,18 @@ export default function MarketplaceCatalogPage() {
     return next
   }, [filters, tab])
 
-  const enabled = tab !== 'agents' && tab !== 'mcp'
-  const { data: itemsPage, isLoading } = useMarketplaceItemsPage(
-    enabled ? { ...effectiveFilters, limit: 24, offset: 0 } : undefined,
-    enabled,
-  )
+  const { data: itemsPage, isLoading } = useMarketplaceItemsPage({
+    ...effectiveFilters,
+    limit: 24,
+    offset: 0,
+  })
   const items = itemsPage?.items
   const countLabel =
-    enabled && !isLoading && items
-      ? t('count', { count: itemsPage?.total ?? items.length })
-      : undefined
+    !isLoading && items ? t('count', { count: itemsPage?.total ?? items.length }) : undefined
   const tabs = TABS.map((tabOption) => ({
     value: tabOption.value,
     label: t(tabOption.labelKey),
     countLabel,
-    disabled: tabOption.disabled,
   }))
 
   function handleAction(item: MarketplaceItem, cta: PrimaryCta) {
@@ -96,40 +93,29 @@ export default function MarketplaceCatalogPage() {
             onValueChange={(next) => setTab(next as Tab)}
           />
 
-          {enabled ? (
-            <MarketplaceFilterBar
-              filters={filters}
-              onChange={setFilters}
-              superUser={!!user?.is_super_user}
-            />
-          ) : null}
+          <MarketplaceFilterBar
+            filters={filters}
+            onChange={setFilters}
+            superUser={!!user?.is_super_user}
+          />
         </ResourcePanel.Toolbar>
 
         <ResourcePanel.Body className="bg-background/30">
-          {enabled ? (
-            isLoading ? (
-              <CardGridSkeleton />
-            ) : !items || items.length === 0 ? (
-              <EmptyState
-                icon={<SparklesIcon className="size-6" />}
-                title={t('empty.title')}
-                description={t('empty.description')}
-                className="bg-card/50"
-              />
-            ) : (
-              <ResourceGrid minColumnWidth={300}>
-                {items.map((item) => (
-                  <MarketplaceCard key={item.id} item={item} onAction={handleAction} />
-                ))}
-              </ResourceGrid>
-            )
-          ) : (
+          {isLoading ? (
+            <CardGridSkeleton />
+          ) : !items || items.length === 0 ? (
             <EmptyState
               icon={<SparklesIcon className="size-6" />}
-              title={t('comingSoon.title')}
-              description={tab === 'agents' ? t('comingSoon.agents') : t('comingSoon.mcp')}
+              title={t('empty.title')}
+              description={t('empty.description')}
               className="bg-card/50"
             />
+          ) : (
+            <ResourceGrid minColumnWidth={300}>
+              {items.map((item) => (
+                <MarketplaceCard key={item.id} item={item} onAction={handleAction} />
+              ))}
+            </ResourceGrid>
           )}
         </ResourcePanel.Body>
       </ResourcePanel>

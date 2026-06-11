@@ -11,6 +11,9 @@ interface Spec {
 }
 
 const SPECS: Record<SupportLevel, Spec> = {
+  one_click: {
+    className: 'bg-status-success/10 text-status-success',
+  },
   ready_python: {
     className: 'bg-status-success/10 text-status-success',
   },
@@ -42,6 +45,7 @@ function SupportBadgeInner({ profile, className }: SupportBadgeProps) {
   if (!level) return null
   const spec = SPECS[level] ?? SPECS.manual_only
   const labelKey = {
+    one_click: 'oneClick',
     ready_python: 'readyPython',
     proxy_http: 'proxyHttp',
     node_package: 'nodePackage',

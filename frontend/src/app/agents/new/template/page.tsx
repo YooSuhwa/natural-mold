@@ -1,7 +1,7 @@
 'use client'
 
-import { useDeferredValue, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { type ReactNode, useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowUpDownIcon,
@@ -17,6 +17,7 @@ import { useTranslations } from 'next-intl'
 import { useTemplates } from '@/lib/hooks/use-templates'
 import { useCreateAgent } from '@/lib/hooks/use-agents'
 import { useModels } from '@/lib/hooks/use-models'
+import { useAgentBlueprints, useCreateAgentFromBlueprint } from '@/lib/hooks/use-marketplace'
 import { EmptyState } from '@/components/shared/empty-state'
 import {
   CountedLineTabs,
@@ -32,6 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getResourceTone } from '@/lib/resource-tones'
 import { cn } from '@/lib/utils'
 import type { Template } from '@/lib/types'
+import type { AgentBlueprint } from '@/lib/types/marketplace'
 
 type SortKey = 'newest' | 'name'
 
@@ -44,19 +46,32 @@ const CATEGORIES: { value: string; labelKey: string }[] = [
 
 export default function TemplateSelectionPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const t = useTranslations('agent.template')
+  const deepLinkedBlueprintId = searchParams.get('blueprintId')
   const [selectedCategory, setSelectedCategory] = useState('')
   const categoryValue = selectedCategory ? t(selectedCategory) : ''
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search)
   const [sortBy, setSortBy] = useState<SortKey>('newest')
   const [creatingId, setCreatingId] = useState<string | null>(null)
+  const [creatingBlueprintId, setCreatingBlueprintId] = useState<string | null>(null)
 
   const { data: templates, isLoading } = useTemplates(categoryValue || undefined)
+  const { data: blueprints, isLoading: isLoadingBlueprints } = useAgentBlueprints()
   const { data: models } = useModels()
   const createAgent = useCreateAgent()
+  const createAgentFromBlueprint = useCreateAgentFromBlueprint()
 
   const defaultModelId = models?.find((m) => m.is_default)?.id ?? models?.[0]?.id ?? ''
+
+  useEffect(() => {
+    if (!deepLinkedBlueprintId || isLoadingBlueprints) return
+    const target = document.getElementById(`agent-blueprint-${deepLinkedBlueprintId}`)
+    if (!target) return
+    target.scrollIntoView({ block: 'center' })
+    target.focus({ preventScroll: true })
+  }, [deepLinkedBlueprintId, isLoadingBlueprints, blueprints])
 
   const filtered = useMemo(() => {
     if (!templates) return [] as Template[]
@@ -76,8 +91,33 @@ export default function TemplateSelectionPage() {
     })
   }, [templates, deferredSearch, sortBy])
 
+  const filteredBlueprints = useMemo(() => {
+    if (!blueprints) return [] as AgentBlueprint[]
+    const q = deferredSearch.trim().toLowerCase()
+    let list = blueprints
+    if (categoryValue) {
+      const category = categoryValue.toLowerCase()
+      list = list.filter((blueprint) =>
+        (blueprint.categories ?? []).some((value) => value.toLowerCase() === category),
+      )
+    }
+    if (q) {
+      list = list.filter(
+        (blueprint) =>
+          blueprint.name.toLowerCase().includes(q) ||
+          (blueprint.description ?? '').toLowerCase().includes(q) ||
+          (blueprint.tags ?? []).some((tag) => tag.toLowerCase().includes(q)) ||
+          (blueprint.categories ?? []).some((category) => category.toLowerCase().includes(q)),
+      )
+    }
+    return [...list].sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name, 'ko')
+      return b.created_at.localeCompare(a.created_at)
+    })
+  }, [blueprints, categoryValue, deferredSearch, sortBy])
+
   async function handleCreateFromTemplate(template: Template) {
-    if (creatingId) return
+    if (creatingId || creatingBlueprintId) return
     setCreatingId(template.id)
     try {
       const agent = await createAgent.mutateAsync({
@@ -94,10 +134,29 @@ export default function TemplateSelectionPage() {
     }
   }
 
+  async function handleCreateFromBlueprint(blueprint: AgentBlueprint) {
+    if (creatingId || creatingBlueprintId) return
+    setCreatingBlueprintId(blueprint.id)
+    try {
+      const agent = await createAgentFromBlueprint.mutateAsync({
+        blueprintId: blueprint.id,
+        body: {
+          name: blueprint.name,
+        },
+      })
+      router.push(`/agents/${agent.id}`)
+    } catch {
+      setCreatingBlueprintId(null)
+    }
+  }
+
   const hasSearch = search.trim().length > 0
-  const showNoSearchResults = !isLoading && hasSearch && filtered.length === 0
-  const showEmptyCategory = !isLoading && !hasSearch && filtered.length === 0
-  const galleryCountLabel = t('gallery.count', { count: filtered.length })
+  const isLoadingGallery = isLoading || isLoadingBlueprints
+  const filteredCount = filtered.length + filteredBlueprints.length
+  const showNoSearchResults = !isLoadingGallery && hasSearch && filteredCount === 0
+  const showEmptyCategory = !isLoadingGallery && !hasSearch && filteredCount === 0
+  const galleryCountLabel = t('gallery.count', { count: filteredCount })
+  const creatingLocked = creatingId !== null || creatingBlueprintId !== null
 
   return (
     <ResourcePage
@@ -126,7 +185,7 @@ export default function TemplateSelectionPage() {
         </ResourcePanel.Toolbar>
 
         <ResourcePanel.Body>
-          {isLoading ? (
+          {isLoadingGallery ? (
             <TemplateGridSkeleton />
           ) : showNoSearchResults ? (
             <NoSearchResults
@@ -140,20 +199,50 @@ export default function TemplateSelectionPage() {
               className="bg-card/50"
             />
           ) : (
-            <ResourceGrid minColumnWidth={252}>
-              {filtered.map((tpl) => (
-                <TemplateCard
-                  key={tpl.id}
-                  template={tpl}
-                  isCreating={creatingId === tpl.id}
-                  creatingLocked={creatingId !== null}
-                  onSelect={handleCreateFromTemplate}
-                  ariaLabel={t('createFromTemplate')}
-                  startLabel={t('startCta')}
-                  toolsMoreFormatter={(count) => t('toolsMore', { count })}
-                />
-              ))}
-            </ResourceGrid>
+            <div className="space-y-6">
+              {filteredBlueprints.length > 0 ? (
+                <GallerySection
+                  title={t('blueprints.title')}
+                  description={t('blueprints.description')}
+                >
+                  <ResourceGrid minColumnWidth={252}>
+                    {filteredBlueprints.map((blueprint) => (
+                      <BlueprintCard
+                        key={blueprint.id}
+                        blueprint={blueprint}
+                        isCreating={creatingBlueprintId === blueprint.id}
+                        creatingLocked={creatingLocked}
+                        isDeepLinked={blueprint.id === deepLinkedBlueprintId}
+                        onSelect={handleCreateFromBlueprint}
+                        ariaLabel={t('blueprints.create')}
+                        startLabel={t('startCta')}
+                        badgeLabel={t('blueprints.badge')}
+                        createdCountFormatter={(count) => t('blueprints.createdCount', { count })}
+                      />
+                    ))}
+                  </ResourceGrid>
+                </GallerySection>
+              ) : null}
+
+              {filtered.length > 0 ? (
+                <GallerySection title={t('legacy.title')} description={t('legacy.description')}>
+                  <ResourceGrid minColumnWidth={252}>
+                    {filtered.map((tpl) => (
+                      <TemplateCard
+                        key={tpl.id}
+                        template={tpl}
+                        isCreating={creatingId === tpl.id}
+                        creatingLocked={creatingLocked}
+                        onSelect={handleCreateFromTemplate}
+                        ariaLabel={t('createFromTemplate')}
+                        startLabel={t('startCta')}
+                        toolsMoreFormatter={(count) => t('toolsMore', { count })}
+                      />
+                    ))}
+                  </ResourceGrid>
+                </GallerySection>
+              ) : null}
+            </div>
           )}
         </ResourcePanel.Body>
       </ResourcePanel>
@@ -259,6 +348,26 @@ function FiltersBar({
   )
 }
 
+function GallerySection({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description: string
+  children: ReactNode
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      {children}
+    </section>
+  )
+}
+
 // ─────────────────────────────────────────────────────── Template card
 
 type TemplateCardProps = {
@@ -323,6 +432,89 @@ function TemplateCard({
           {extraToolsCount > 0 && (
             <ResourceCardMeta>{toolsMoreFormatter(extraToolsCount)}</ResourceCardMeta>
           )}
+        </ResourceListCard.MetaRow>
+      )}
+
+      <ResourceListCard.Footer>
+        {isCreating ? (
+          <Loader2Icon className="size-3.5 animate-spin text-muted-foreground" />
+        ) : (
+          <span className="moldy-resource-action">
+            {startLabel}
+            <ChevronRightIcon aria-hidden className="size-3" />
+          </span>
+        )}
+      </ResourceListCard.Footer>
+    </ResourceListCard>
+  )
+}
+
+type BlueprintCardProps = {
+  blueprint: AgentBlueprint
+  isCreating: boolean
+  creatingLocked: boolean
+  isDeepLinked: boolean
+  onSelect: (blueprint: AgentBlueprint) => void
+  ariaLabel: string
+  startLabel: string
+  badgeLabel: string
+  createdCountFormatter: (count: number) => string
+}
+
+function BlueprintCard({
+  blueprint,
+  isCreating,
+  creatingLocked,
+  isDeepLinked,
+  onSelect,
+  ariaLabel,
+  startLabel,
+  badgeLabel,
+  createdCountFormatter,
+}: BlueprintCardProps) {
+  const categories = blueprint.categories ?? []
+  const visibleCategories = categories.slice(0, 2)
+  const tone = getResourceTone(categories[0] ?? 'agent')
+  const disabled = creatingLocked && !isCreating
+
+  return (
+    <ResourceListCard
+      id={`agent-blueprint-${blueprint.id}`}
+      as="button"
+      tone={tone}
+      density="compact"
+      onClick={() => onSelect(blueprint)}
+      disabled={isCreating || disabled}
+      aria-label={`${blueprint.name} — ${ariaLabel}`}
+      aria-current={isDeepLinked ? 'true' : undefined}
+      className={cn(
+        isDeepLinked && 'border-primary/70',
+        isCreating && 'pointer-events-none opacity-70',
+        disabled && 'pointer-events-none opacity-50',
+      )}
+    >
+      <ResourceListCard.Header>
+        <span className={cn('moldy-resource-icon', tone.icon)}>
+          <BotIcon aria-hidden className="size-4.5" />
+        </span>
+        <ResourceBadge tone={tone}>{badgeLabel}</ResourceBadge>
+      </ResourceListCard.Header>
+
+      <ResourceListCard.Title>{blueprint.name}</ResourceListCard.Title>
+      <ResourceListCard.Description>
+        {blueprint.description ?? badgeLabel}
+      </ResourceListCard.Description>
+
+      {(visibleCategories.length > 0 || blueprint.created_agent_count > 0) && (
+        <ResourceListCard.MetaRow>
+          {visibleCategories.map((category) => (
+            <ResourceCardMeta key={category}>{category}</ResourceCardMeta>
+          ))}
+          {blueprint.created_agent_count > 0 ? (
+            <ResourceCardMeta>
+              {createdCountFormatter(blueprint.created_agent_count)}
+            </ResourceCardMeta>
+          ) : null}
         </ResourceListCard.MetaRow>
       )}
 
