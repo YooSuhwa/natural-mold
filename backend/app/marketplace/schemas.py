@@ -226,6 +226,7 @@ class MarketplaceInstallationOut(BaseModel):
     resource_type: Literal["agent", "mcp", "skill"]
     installed_skill_id: uuid.UUID | None = None
     installed_agent_id: uuid.UUID | None = None
+    installed_agent_blueprint_id: uuid.UUID | None = None
     installed_mcp_server_id: uuid.UUID | None = None
     install_status: Literal["active", "needs_setup", "disabled", "uninstalled"]
     is_dirty: bool
@@ -233,6 +234,39 @@ class MarketplaceInstallationOut(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AgentBlueprintOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None = None
+    icon_id: str | None = None
+    tags: list[str] | None = None
+    categories: list[str] | None = None
+    # ``spec`` is omitted (None) in list responses to keep the payload
+    # small; the detail endpoint always populates it.
+    spec: dict[str, Any] | None = None
+    spec_hash: str
+    source_marketplace_item_id: uuid.UUID | None = None
+    source_marketplace_version_id: uuid.UUID | None = None
+    installation_id: uuid.UUID | None = None
+    install_status: Literal["active", "needs_setup", "disabled", "uninstalled"]
+    is_dirty: bool = False
+    created_agent_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CreateAgentFromBlueprintIn(BaseModel):
+    name: str | None = None
+    model_id: uuid.UUID | None = None
+    model_fallback_ids: list[uuid.UUID] | None = None
+    credential_bindings: dict[str, uuid.UUID] = Field(default_factory=dict)
+    dependency_strategy: Literal[
+        "reuse_existing", "install_missing", "always_new"
+    ] = "install_missing"
 
 
 # ---------------------------------------------------------------------------
@@ -243,12 +277,12 @@ class MarketplaceInstallationOut(BaseModel):
 class PublishSkillIn(BaseModel):
     item_id: uuid.UUID | None = None
     visibility: Literal["private", "restricted", "public", "unlisted"]
-    name: str
-    description: str | None = None
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
     icon_id: str | None = None
     tags: list[str] = Field(default_factory=list)
     categories: list[str] = Field(default_factory=list)
-    release_notes: str | None = None
+    release_notes: str | None = Field(default=None, max_length=4000)
     credential_requirements: list[CredentialRequirementIn] = Field(default_factory=list)
     acl_user_ids: list[uuid.UUID] = Field(default_factory=list)
 
@@ -256,6 +290,43 @@ class PublishSkillIn(BaseModel):
     def _validate_acl(self) -> PublishSkillIn:
         if self.visibility == "restricted" and not self.acl_user_ids:
             # Match the error_codes ``marketplace_acl_required`` (400).
+            raise ValueError("marketplace_acl_required")
+        return self
+
+
+class PublishMcpServerIn(BaseModel):
+    item_id: uuid.UUID | None = None
+    visibility: Literal["private", "restricted", "public", "unlisted"]
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+    icon_id: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
+    release_notes: str | None = Field(default=None, max_length=4000)
+    acl_user_ids: list[uuid.UUID] = Field(default_factory=list)
+    include_tool_snapshot: bool = True
+
+    @model_validator(mode="after")
+    def _validate_acl(self) -> PublishMcpServerIn:
+        if self.visibility == "restricted" and not self.acl_user_ids:
+            raise ValueError("marketplace_acl_required")
+        return self
+
+
+class PublishAgentIn(BaseModel):
+    item_id: uuid.UUID | None = None
+    visibility: Literal["private", "restricted", "public", "unlisted"]
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=2000)
+    icon_id: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
+    release_notes: str | None = Field(default=None, max_length=4000)
+    acl_user_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_acl(self) -> PublishAgentIn:
+        if self.visibility == "restricted" and not self.acl_user_ids:
             raise ValueError("marketplace_acl_required")
         return self
 
@@ -289,6 +360,18 @@ class MarketplaceVersionFromSkillIn(BaseModel):
     release_notes: str | None = None
 
 
+class MarketplaceVersionFromMcpIn(BaseModel):
+    """Body for ``POST /items/{item_id}/versions/from-mcp/{server_id}``."""
+
+    release_notes: str | None = None
+
+
+class MarketplaceVersionFromAgentIn(BaseModel):
+    """Body for ``POST /items/{item_id}/versions/from-agent/{agent_id}``."""
+
+    release_notes: str | None = None
+
+
 class MarketplaceItemACLIn(BaseModel):
     """Body for ``POST /items/{item_id}/acl``."""
 
@@ -316,6 +399,8 @@ class MarketplaceItemListFilters(BaseModel):
 
 
 __all__ = [
+    "AgentBlueprintOut",
+    "CreateAgentFromBlueprintIn",
     "CredentialRequirementIn",
     "CredentialRequirementOut",
     "CredentialSummaryOut",
@@ -327,9 +412,13 @@ __all__ = [
     "MarketplaceItemOut",
     "MarketplaceItemsPage",
     "MarketplaceItemPatchIn",
+    "MarketplaceVersionFromAgentIn",
+    "MarketplaceVersionFromMcpIn",
     "MarketplaceVersionFromSkillIn",
     "MarketplaceVersionDetail",
     "MarketplaceVersionSummary",
+    "PublishAgentIn",
+    "PublishMcpServerIn",
     "PublishSkillIn",
     "ResourceOriginSummaryOut",
     "ResourcePublicationSummaryOut",

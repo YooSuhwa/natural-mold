@@ -32,7 +32,7 @@ import shutil
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -68,6 +68,9 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+PUBLIC_DISTRIBUTION_VISIBILITIES = {"public", "unlisted"}
+NON_PRIVATE_VISIBILITIES = {"public", "unlisted", "restricted"}
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +291,8 @@ async def publish_skill(
             raise marketplace_item_not_found()
         if not can_manage_item(item, user):
             raise marketplace_manage_forbidden()
+        if item.resource_type != "skill":
+            raise marketplace_invalid_package("marketplace item is not a Skill item")
     else:
         # ``body.item_id`` 없음 — 신규 publish 흐름이지만 ``(owner, slug)``
         # UNIQUE constraint를 침해하지 않으려면 동일 owner+slug 기존 item을
@@ -517,6 +522,106 @@ async def patch_item(
     return item
 
 
+def _payload_mapping(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _payload_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+async def _latest_payload_for_item(
+    db: AsyncSession,
+    item: MarketplaceItem,
+) -> dict[str, Any]:
+    if item.latest_version_id is None:
+        return {}
+    version = await db.get(MarketplaceVersion, item.latest_version_id)
+    if version is None:
+        return {}
+    return _payload_mapping(version.payload)
+
+
+def _agent_dependency_names(rows: list[Any]) -> str:
+    names = [
+        str(row.get("name") or "").strip()
+        for row in rows
+        if isinstance(row, dict) and str(row.get("name") or "").strip()
+    ]
+    return ", ".join(names) or "unknown dependency"
+
+
+def _assert_mcp_payload_visibility_allowed(
+    payload: dict[str, Any],
+    *,
+    next_visibility: str,
+) -> None:
+    if (
+        next_visibility in PUBLIC_DISTRIBUTION_VISIBILITIES
+        and payload.get("transport") == "stdio"
+    ):
+        raise marketplace_invalid_package(
+            "stdio MCP servers can only be shared privately or with explicit ACL"
+        )
+
+
+def _assert_agent_payload_visibility_allowed(
+    payload: dict[str, Any],
+    *,
+    next_visibility: str,
+) -> None:
+    if next_visibility not in NON_PRIVATE_VISIBILITIES:
+        return
+
+    capabilities = _payload_mapping(payload.get("capabilities"))
+    skills = _payload_list(capabilities.get("skills"))
+    if skills:
+        raise marketplace_invalid_package(
+            "Agent Blueprints with skill dependencies cannot be shared "
+            f"outside private visibility yet: {_agent_dependency_names(skills)}"
+        )
+
+    subagents = _payload_list(capabilities.get("subagents"))
+    if subagents:
+        raise marketplace_invalid_package(
+            "Agent Blueprints with subagent dependencies cannot be shared "
+            f"outside private visibility yet: {_agent_dependency_names(subagents)}"
+        )
+
+    if next_visibility not in PUBLIC_DISTRIBUTION_VISIBILITIES:
+        return
+
+    stdio_mcp_names = []
+    for row in _payload_list(capabilities.get("mcp_tools")):
+        if not isinstance(row, dict):
+            continue
+        server = _payload_mapping(row.get("server"))
+        if server.get("transport") == "stdio":
+            stdio_mcp_names.append(str(server.get("name") or row.get("name") or "MCP"))
+    if stdio_mcp_names:
+        raise marketplace_invalid_package(
+            "Agent Blueprints with stdio MCP dependencies can only be shared "
+            f"privately or with explicit ACL: {', '.join(stdio_mcp_names)}"
+        )
+
+
+async def _assert_resource_visibility_allowed(
+    db: AsyncSession,
+    *,
+    item: MarketplaceItem,
+    next_visibility: str,
+) -> None:
+    if item.resource_type not in {"agent", "mcp"}:
+        return
+
+    payload = await _latest_payload_for_item(db, item)
+    if item.resource_type == "mcp":
+        _assert_mcp_payload_visibility_allowed(payload, next_visibility=next_visibility)
+        return
+
+    _assert_agent_payload_visibility_allowed(payload, next_visibility=next_visibility)
+
+
 async def _apply_visibility_change(
     db: AsyncSession,
     *,
@@ -536,6 +641,12 @@ async def _apply_visibility_change(
         )
         if existing.scalars().first() is None:
             raise marketplace_acl_required()
+
+    await _assert_resource_visibility_allowed(
+        db,
+        item=item,
+        next_visibility=next_visibility,
+    )
 
     if item.visibility == "public" and next_visibility != "public":
         item.is_listed = False

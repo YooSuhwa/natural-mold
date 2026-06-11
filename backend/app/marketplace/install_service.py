@@ -34,7 +34,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -48,16 +48,22 @@ from app.error_codes import (
 )
 from app.marketplace import credential_requirements
 from app.marketplace.access import can_install_item, is_owner
+from app.marketplace.payloads import canonical_json_hash
 from app.marketplace.schemas import (
     InstallMarketplaceItemIn,
     UpdateMarketplaceInstallationIn,
 )
+from app.models.agent import Agent
+from app.models.agent_blueprint import AgentBlueprint
+from app.models.credential import Credential
 from app.models.marketplace import (
     MarketplaceInstallation,
     MarketplaceItem,
     MarketplaceVersion,
     SkillCredentialBinding,
 )
+from app.models.mcp_server import McpServer
+from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.skill import Skill
 from app.storage.paths import ensure_relative, resolve_data_path
 
@@ -330,6 +336,493 @@ async def _persist_bindings(
     return rows
 
 
+def _mcp_required_keys(version: MarketplaceVersion) -> list[str]:
+    requirements = version.credential_requirements or []
+    keys: list[str] = []
+    for requirement in requirements:
+        if isinstance(requirement, dict) and requirement.get("required"):
+            key = requirement.get("key")
+            if isinstance(key, str) and key:
+                keys.append(key)
+    return keys
+
+
+def _credential_requirements_by_key(
+    version: MarketplaceVersion,
+) -> dict[str, dict[str, Any]]:
+    return {
+        str(req.get("key")): req
+        for req in (version.credential_requirements or [])
+        if isinstance(req, dict) and req.get("key")
+    }
+
+
+def _required_credential_keys(version: MarketplaceVersion) -> list[str]:
+    return [
+        key
+        for key, requirement in _credential_requirements_by_key(version).items()
+        if requirement.get("required")
+    ]
+
+
+def _agent_blueprint_payload_with_requirements(
+    version: MarketplaceVersion,
+) -> dict[str, Any]:
+    payload = dict(version.payload or {})
+    if version.credential_requirements:
+        setup = payload.get("setup") if isinstance(payload.get("setup"), dict) else {}
+        payload["setup"] = {
+            **setup,
+            "required_credentials": list(version.credential_requirements or []),
+        }
+    return payload
+
+
+async def _validate_version_credential_bindings(
+    db: AsyncSession,
+    *,
+    version: MarketplaceVersion,
+    user: CurrentUser,
+    bindings: dict[str, uuid.UUID],
+) -> dict[str, str]:
+    requirement_by_key = _credential_requirements_by_key(version)
+    normalized: dict[str, str] = {}
+    for key, credential_id in bindings.items():
+        requirement = requirement_by_key.get(key)
+        if requirement is None:
+            raise marketplace_credential_required(f"unknown credential binding: {key}")
+
+        credential = await db.get(Credential, credential_id)
+        if credential is None or credential.user_id != user.id:
+            raise marketplace_credential_required(f"invalid credential binding: {key}")
+
+        expected_definition = requirement.get("definition_key")
+        if expected_definition and credential.definition_key != expected_definition:
+            raise marketplace_credential_required(
+                f"credential definition mismatch: {key}"
+            )
+        normalized[key] = str(credential.id)
+    return normalized
+
+
+async def _validate_mcp_bindings(
+    db: AsyncSession,
+    *,
+    version: MarketplaceVersion,
+    user: CurrentUser,
+    bindings: dict[str, uuid.UUID],
+) -> uuid.UUID | None:
+    requirements = version.credential_requirements or []
+    requirement_by_key = {
+        str(req.get("key")): req
+        for req in requirements
+        if isinstance(req, dict) and req.get("key")
+    }
+    credential_id = bindings.get("mcp_auth")
+    if credential_id is None:
+        return None
+
+    requirement = requirement_by_key.get("mcp_auth")
+    credential = await db.get(Credential, credential_id)
+    if credential is None or credential.user_id != user.id:
+        raise marketplace_credential_required("MCP credential binding is invalid")
+    expected_definition = (
+        requirement.get("definition_key") if isinstance(requirement, dict) else None
+    )
+    if expected_definition and credential.definition_key != expected_definition:
+        raise marketplace_credential_required("MCP credential definition mismatch")
+    return credential.id
+
+
+def _apply_mcp_payload_to_server(
+    *,
+    server: McpServer,
+    payload: dict[str, Any],
+    name: str,
+    credential_id: uuid.UUID | None,
+) -> None:
+    server.name = name
+    server.description = payload.get("description")
+    server.transport = str(payload.get("transport") or "streamable_http")
+    server.url = payload.get("url")
+    server.command = payload.get("command")
+    server.args = list(payload.get("args") or [])
+    server.env_vars = dict(payload.get("env_vars") or {})
+    server.headers = dict(payload.get("headers") or {})
+    server.credential_id = credential_id
+    server.status = "unknown"
+    server.last_error = None
+
+
+async def _materialize_mcp_tool_snapshot(
+    db: AsyncSession,
+    *,
+    server: McpServer,
+    payload: dict[str, Any],
+    preserve_enabled: bool = False,
+) -> None:
+    """Materialize publisher-provided ``tool_snapshot`` rows as ``McpTool``.
+
+    ``install_defaults.enabled_tool_names`` (written by the publish flow in
+    ``mcp_server.build_mcp_server_payload``) selects which snapshot tools
+    start enabled; tools outside the list are created/updated disabled.
+    When the list is absent the legacy behavior (everything enabled) holds.
+
+    ``preserve_enabled=True`` keeps the existing ``enabled`` flag on tools the
+    user may have toggled manually — used by credential-only refreshes
+    (``reuse_or_update``) where re-applying publish defaults would be
+    surprising. New tools and snapshot pruning still follow the defaults.
+
+    Known limitation (design §6.1): snapshot tools trust the publisher's
+    ``name``/``description``/``input_schema`` verbatim — until a real MCP
+    discovery run validates the server, phantom tools (entries the server
+    never actually exposes) are possible. We intentionally do NOT run a
+    network discovery here so installs stay deterministic and offline-safe;
+    the scheduler/health-poll discovery path reconciles the truth later.
+    """
+
+    snapshot_present = isinstance(payload.get("tool_snapshot"), list)
+    snapshot = payload.get("tool_snapshot") if snapshot_present else []
+    install_defaults = (
+        payload.get("install_defaults")
+        if isinstance(payload.get("install_defaults"), dict)
+        else {}
+    )
+    raw_enabled_names = install_defaults.get("enabled_tool_names")
+    enabled_names: set[str] | None = (
+        {str(name) for name in raw_enabled_names}
+        if isinstance(raw_enabled_names, list)
+        else None
+    )
+    valid_names: set[str] = set()
+    for row in snapshot:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name") or "").strip()
+        if not name:
+            continue
+        valid_names.add(name)
+        enabled = name in enabled_names if enabled_names is not None else True
+        input_schema = (
+            row.get("input_schema") if isinstance(row.get("input_schema"), dict) else {}
+        )
+        tool = (
+            await db.execute(
+                select(McpTool)
+                .where(McpTool.server_id == server.id, McpTool.name == name)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if tool is None:
+            tool = McpTool(
+                id=uuid.uuid4(),
+                server_id=server.id,
+                name=name,
+                description=row.get("description"),
+                input_schema=input_schema,
+                enabled=enabled,
+                last_seen_at=_now(),
+            )
+            db.add(tool)
+        else:
+            tool.description = row.get("description")
+            tool.input_schema = input_schema
+            if not preserve_enabled:
+                tool.enabled = enabled
+            tool.last_seen_at = _now()
+
+    if snapshot_present:
+        existing_tools = (
+            await db.execute(select(McpTool).where(McpTool.server_id == server.id))
+        ).scalars().all()
+        # The snapshot is the authoritative tool list for this version, so a
+        # tool that vanished was genuinely removed (e.g. renamed). Delete the
+        # stale row instead of leaving a permanently-disabled dangling tool,
+        # and drop any agent links that pointed at it (Postgres cascades on
+        # the FK; the explicit delete keeps SQLite tests correct too).
+        for tool in existing_tools:
+            if tool.name not in valid_names:
+                await db.execute(
+                    delete(AgentMcpToolLink).where(
+                        AgentMcpToolLink.mcp_tool_id == tool.id
+                    )
+                )
+                await db.delete(tool)
+        server.last_tool_count = len(valid_names)
+
+
+async def _install_mcp_item(
+    db: AsyncSession,
+    *,
+    item: MarketplaceItem,
+    version: MarketplaceVersion,
+    user: CurrentUser,
+    body: InstallMarketplaceItemIn,
+) -> MarketplaceInstallation:
+    if version.payload_kind != "mcp_template":
+        raise marketplace_invalid_package("version is not an MCP template")
+
+    existing = await _existing_installation(db, item=item, user=user)
+    if existing is not None and body.install_mode == "reuse_or_update":
+        if not body.credential_bindings:
+            return existing
+        installed_version = await db.get(MarketplaceVersion, existing.version_id)
+        binding_version = installed_version or version
+        credential_id = await _validate_mcp_bindings(
+            db,
+            version=binding_version,
+            user=user,
+            bindings=body.credential_bindings,
+        )
+        missing = [
+            key
+            for key in _mcp_required_keys(binding_version)
+            if key not in body.credential_bindings
+        ]
+        if missing and body.install_missing_credentials == "reject":
+            raise marketplace_credential_required(
+                f"missing required credential bindings: {', '.join(missing)}"
+            )
+        server_id = existing.installed_mcp_server_id
+        if server_id is None:
+            raise marketplace_invalid_package("installed MCP server is missing")
+        server = await db.get(McpServer, server_id)
+        # Re-validate ownership before mutating (mirror
+        # ``_overwrite_mcp_installation``) — collapse to 404 per the
+        # enumeration-safety convention.
+        if server is None or server.user_id != user.id:
+            raise marketplace_item_not_found()
+        if credential_id is not None:
+            server.credential_id = credential_id
+        await _materialize_mcp_tool_snapshot(
+            db,
+            server=server,
+            payload=binding_version.payload or {},
+            preserve_enabled=True,
+        )
+        install_status = "needs_setup" if missing else "active"
+        existing.install_status = install_status
+        existing.is_dirty = False
+        existing.updated_at = _now()
+        await db.flush()
+        return existing
+
+    credential_id = await _validate_mcp_bindings(
+        db,
+        version=version,
+        user=user,
+        bindings=body.credential_bindings,
+    )
+    missing = [
+        key for key in _mcp_required_keys(version) if key not in body.credential_bindings
+    ]
+    if missing and body.install_missing_credentials == "reject":
+        raise marketplace_credential_required(
+            f"missing required credential bindings: {', '.join(missing)}"
+        )
+    install_status = "needs_setup" if missing else "active"
+
+    payload = version.payload or {}
+    name = body.name_override or payload.get("name") or item.name
+
+    if (
+        existing is not None
+        and body.install_mode == "overwrite_existing"
+        and existing.installed_mcp_server_id is not None
+    ):
+        server = await db.get(McpServer, existing.installed_mcp_server_id)
+        # Re-validate ownership before mutating (mirror
+        # ``_overwrite_mcp_installation``) — collapse to 404 per the
+        # enumeration-safety convention.
+        if server is None or server.user_id != user.id:
+            raise marketplace_item_not_found()
+        _apply_mcp_payload_to_server(
+            server=server,
+            payload=payload,
+            name=str(name),
+            credential_id=credential_id,
+        )
+        await _materialize_mcp_tool_snapshot(db, server=server, payload=payload)
+        existing.version_id = version.id
+        existing.install_status = install_status
+        existing.is_dirty = False
+        existing.updated_at = _now()
+        await db.flush()
+        return existing
+
+    server = McpServer(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        name=str(name),
+        description=payload.get("description"),
+        transport=str(payload.get("transport") or "streamable_http"),
+        url=payload.get("url"),
+        command=payload.get("command"),
+        args=list(payload.get("args") or []),
+        env_vars=dict(payload.get("env_vars") or {}),
+        headers=dict(payload.get("headers") or {}),
+        credential_id=credential_id,
+        status="unknown",
+        is_system=False,
+    )
+    db.add(server)
+    await db.flush()
+    await _materialize_mcp_tool_snapshot(db, server=server, payload=payload)
+
+    installation = MarketplaceInstallation(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        item_id=item.id,
+        version_id=version.id,
+        resource_type="mcp",
+        installed_mcp_server_id=server.id,
+        install_status=install_status,
+        is_dirty=False,
+        installed_at=_now(),
+    )
+    db.add(installation)
+    await db.flush()
+    return installation
+
+
+async def _install_agent_blueprint_item(
+    db: AsyncSession,
+    *,
+    item: MarketplaceItem,
+    version: MarketplaceVersion,
+    user: CurrentUser,
+    body: InstallMarketplaceItemIn,
+) -> MarketplaceInstallation:
+    if version.payload_kind != "agent_spec":
+        raise marketplace_invalid_package("version is not an Agent spec")
+
+    existing = await _existing_installation(db, item=item, user=user)
+    if existing is not None and body.install_mode == "reuse_or_update":
+        if not body.credential_bindings:
+            return existing
+        blueprint_id = existing.installed_agent_blueprint_id
+        if blueprint_id is None:
+            raise marketplace_invalid_package("installed Agent Blueprint is missing")
+        blueprint = await db.get(AgentBlueprint, blueprint_id)
+        # Re-validate ownership before mutating (mirror
+        # ``_overwrite_agent_blueprint_installation``) — collapse to 404
+        # per the enumeration-safety convention.
+        if blueprint is None or blueprint.user_id != user.id:
+            raise marketplace_item_not_found()
+        installed_version = await db.get(MarketplaceVersion, existing.version_id)
+        binding_version = installed_version or version
+        credential_bindings = await _validate_version_credential_bindings(
+            db,
+            version=binding_version,
+            user=user,
+            bindings=body.credential_bindings,
+        )
+        merged_bindings = {
+            **(blueprint.credential_bindings or {}),
+            **credential_bindings,
+        }
+        required = _required_credential_keys(binding_version)
+        missing = [key for key in required if key not in merged_bindings]
+        if missing and body.install_missing_credentials == "reject":
+            raise marketplace_credential_required(
+                f"missing required credential bindings: {', '.join(missing)}"
+            )
+        install_status = "needs_setup" if missing else "active"
+        blueprint.credential_bindings = merged_bindings
+        blueprint.install_status = install_status
+        blueprint.is_dirty = False
+        blueprint.updated_at = _now()
+        existing.install_status = install_status
+        existing.is_dirty = False
+        existing.updated_at = _now()
+        await db.flush()
+        return existing
+
+    credential_bindings = await _validate_version_credential_bindings(
+        db,
+        version=version,
+        user=user,
+        bindings=body.credential_bindings,
+    )
+    required = _required_credential_keys(version)
+    missing = [key for key in required if key not in credential_bindings]
+    if missing and body.install_missing_credentials == "reject":
+        raise marketplace_credential_required(
+            f"missing required credential bindings: {', '.join(missing)}"
+        )
+    install_status = "needs_setup" if missing else "active"
+
+    payload = _agent_blueprint_payload_with_requirements(version)
+    agent_spec = payload.get("agent") if isinstance(payload.get("agent"), dict) else {}
+    name = body.name_override or agent_spec.get("name") or payload.get("name") or item.name
+
+    if (
+        existing is not None
+        and body.install_mode == "overwrite_existing"
+        and existing.installed_agent_blueprint_id is not None
+    ):
+        blueprint = await db.get(AgentBlueprint, existing.installed_agent_blueprint_id)
+        # Re-validate ownership before mutating (mirror
+        # ``_overwrite_agent_blueprint_installation``) — collapse to 404
+        # per the enumeration-safety convention.
+        if blueprint is None or blueprint.user_id != user.id:
+            raise marketplace_item_not_found()
+        blueprint.name = str(name)
+        blueprint.description = item.description
+        blueprint.spec = payload
+        blueprint.spec_hash = version.content_hash or canonical_json_hash(payload)
+        blueprint.credential_bindings = credential_bindings
+        blueprint.source_marketplace_item_id = item.id
+        blueprint.source_marketplace_version_id = version.id
+        blueprint.origin_user_id = item.owner_user_id
+        blueprint.install_status = install_status
+        blueprint.is_dirty = False
+        blueprint.updated_at = _now()
+        existing.version_id = version.id
+        existing.install_status = install_status
+        existing.is_dirty = False
+        existing.updated_at = _now()
+        await db.flush()
+        return existing
+
+    blueprint = AgentBlueprint(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        name=str(name),
+        description=item.description,
+        icon_id=item.icon_id,
+        tags=list(item.tags or []),
+        categories=list(item.categories or []),
+        spec=payload,
+        spec_hash=version.content_hash or canonical_json_hash(payload),
+        credential_bindings=credential_bindings,
+        source_marketplace_item_id=item.id,
+        source_marketplace_version_id=version.id,
+        origin_user_id=item.owner_user_id,
+        origin_kind=_derive_origin(item, user)[0],
+        install_status=install_status,
+        is_dirty=False,
+        created_agent_count=0,
+    )
+    db.add(blueprint)
+    await db.flush()
+
+    installation = MarketplaceInstallation(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        item_id=item.id,
+        version_id=version.id,
+        resource_type="agent",
+        installed_agent_blueprint_id=blueprint.id,
+        install_status=install_status,
+        is_dirty=False,
+        installed_at=_now(),
+    )
+    db.add(installation)
+    await db.flush()
+    return installation
+
+
 async def install_item(
     db: AsyncSession,
     *,
@@ -373,16 +866,32 @@ async def install_item(
         )
         raise marketplace_item_not_found()
 
-    # Resource_type guard: Slice B implements ``skill`` only. ``agent`` /
-    # ``mcp`` install will land in a later slice — surface as "not
-    # found" so we don't 500.
+    version = await _resolve_version(db, item=item, version_id=body.version_id)
+
+    if item.resource_type == "mcp":
+        return await _install_mcp_item(
+            db,
+            item=item,
+            version=version,
+            user=user,
+            body=body,
+        )
+
+    if item.resource_type == "agent":
+        return await _install_agent_blueprint_item(
+            db,
+            item=item,
+            version=version,
+            user=user,
+            body=body,
+        )
+
+    # Resource_type guard: known marketplace resource types are handled above.
     if item.resource_type != "skill":
         logger.info(
             "marketplace_install_unsupported_resource_type %s", item.resource_type
         )
         raise marketplace_item_not_found()
-
-    version = await _resolve_version(db, item=item, version_id=body.version_id)
 
     # install_mode dispatch (Spec §10.8 / desc 단계 3)
     existing = await _existing_installation(db, item=item, user=user)
@@ -498,6 +1007,170 @@ async def install_item(
 # ---------------------------------------------------------------------------
 
 
+async def _mcp_install_status_for_server(
+    db: AsyncSession,
+    *,
+    version: MarketplaceVersion,
+    user: CurrentUser,
+    server: McpServer,
+) -> str:
+    missing: list[str] = []
+    requirement_by_key = _credential_requirements_by_key(version)
+    for key in _required_credential_keys(version):
+        requirement = requirement_by_key.get(key) or {}
+        if key != "mcp_auth" or server.credential_id is None:
+            missing.append(key)
+            continue
+
+        credential = await db.get(Credential, server.credential_id)
+        expected_definition = requirement.get("definition_key")
+        if (
+            credential is None
+            or credential.user_id != user.id
+            or (expected_definition and credential.definition_key != expected_definition)
+        ):
+            missing.append(key)
+    return "needs_setup" if missing else "active"
+
+
+async def _overwrite_mcp_installation(
+    db: AsyncSession,
+    *,
+    installation: MarketplaceInstallation,
+    item: MarketplaceItem,
+    latest: MarketplaceVersion,
+    user: CurrentUser,
+) -> MarketplaceInstallation:
+    if latest.payload_kind != "mcp_template":
+        raise marketplace_invalid_package("latest version is not an MCP template")
+    if installation.installed_mcp_server_id is None:
+        raise marketplace_item_not_found()
+
+    server = await db.get(McpServer, installation.installed_mcp_server_id)
+    if server is None or server.user_id != user.id:
+        raise marketplace_item_not_found()
+
+    payload = latest.payload or {}
+    name = payload.get("name") or item.name
+    install_status = await _mcp_install_status_for_server(
+        db,
+        version=latest,
+        user=user,
+        server=server,
+    )
+    _apply_mcp_payload_to_server(
+        server=server,
+        payload=payload,
+        name=str(name),
+        credential_id=server.credential_id,
+    )
+    await _materialize_mcp_tool_snapshot(db, server=server, payload=payload)
+    installation.version_id = latest.id
+    installation.install_status = install_status
+    installation.is_dirty = False
+    installation.updated_at = _now()
+    return installation
+
+
+async def _agent_blueprint_status_from_bindings(
+    db: AsyncSession,
+    *,
+    version: MarketplaceVersion,
+    user: CurrentUser,
+    stored_bindings: dict[str, Any] | None,
+) -> tuple[str, dict[str, str]]:
+    requirement_by_key = _credential_requirements_by_key(version)
+    normalized: dict[str, str] = {}
+    for key, raw_id in (stored_bindings or {}).items():
+        requirement = requirement_by_key.get(str(key))
+        if requirement is None:
+            continue
+        try:
+            credential_id = uuid.UUID(str(raw_id))
+        except (TypeError, ValueError):
+            continue
+        credential = await db.get(Credential, credential_id)
+        expected_definition = requirement.get("definition_key")
+        if (
+            credential is None
+            or credential.user_id != user.id
+            or (expected_definition and credential.definition_key != expected_definition)
+        ):
+            continue
+        normalized[str(key)] = str(credential.id)
+
+    missing = [key for key in _required_credential_keys(version) if key not in normalized]
+    return ("needs_setup" if missing else "active", normalized)
+
+
+def _apply_agent_payload_to_blueprint(
+    *,
+    blueprint: AgentBlueprint,
+    item: MarketplaceItem,
+    version: MarketplaceVersion,
+    name: str,
+    payload: dict[str, Any],
+    credential_bindings: dict[str, str],
+    install_status: str,
+) -> None:
+    blueprint.name = name
+    blueprint.description = item.description
+    blueprint.icon_id = item.icon_id
+    blueprint.tags = list(item.tags or [])
+    blueprint.categories = list(item.categories or [])
+    blueprint.spec = payload
+    blueprint.spec_hash = version.content_hash or canonical_json_hash(payload)
+    blueprint.credential_bindings = credential_bindings
+    blueprint.source_marketplace_item_id = item.id
+    blueprint.source_marketplace_version_id = version.id
+    blueprint.origin_user_id = item.owner_user_id
+    blueprint.install_status = install_status
+    blueprint.is_dirty = False
+    blueprint.updated_at = _now()
+
+
+async def _overwrite_agent_blueprint_installation(
+    db: AsyncSession,
+    *,
+    installation: MarketplaceInstallation,
+    item: MarketplaceItem,
+    latest: MarketplaceVersion,
+    user: CurrentUser,
+) -> MarketplaceInstallation:
+    if latest.payload_kind != "agent_spec":
+        raise marketplace_invalid_package("latest version is not an Agent spec")
+    if installation.installed_agent_blueprint_id is None:
+        raise marketplace_item_not_found()
+
+    blueprint = await db.get(AgentBlueprint, installation.installed_agent_blueprint_id)
+    if blueprint is None or blueprint.user_id != user.id:
+        raise marketplace_item_not_found()
+
+    payload = _agent_blueprint_payload_with_requirements(latest)
+    agent_spec = payload.get("agent") if isinstance(payload.get("agent"), dict) else {}
+    name = agent_spec.get("name") or payload.get("name") or item.name
+    install_status, credential_bindings = await _agent_blueprint_status_from_bindings(
+        db,
+        version=latest,
+        user=user,
+        stored_bindings=blueprint.credential_bindings,
+    )
+    _apply_agent_payload_to_blueprint(
+        blueprint=blueprint,
+        item=item,
+        version=latest,
+        name=str(name),
+        payload=payload,
+        credential_bindings=credential_bindings,
+        install_status=install_status,
+    )
+    installation.version_id = latest.id
+    installation.install_status = install_status
+    installation.is_dirty = False
+    installation.updated_at = _now()
+    return installation
+
+
 async def update_installation(
     db: AsyncSession,
     *,
@@ -536,7 +1209,16 @@ async def update_installation(
         if installation.installed_skill_id is not None
         else None
     )
-    dirty = bool(installation.is_dirty or (skill and skill.is_dirty))
+    blueprint = (
+        await db.get(AgentBlueprint, installation.installed_agent_blueprint_id)
+        if installation.installed_agent_blueprint_id is not None
+        else None
+    )
+    dirty = bool(
+        installation.is_dirty
+        or (skill and skill.is_dirty)
+        or (blueprint and blueprint.is_dirty)
+    )
     if dirty and body.strategy == "overwrite":
         # ``overwrite`` is allowed but the operator must confirm by sending
         # the strategy — we keep this branch reachable. No-op block here.
@@ -564,8 +1246,28 @@ async def update_installation(
         )
         return new_install
 
+    if installation.resource_type == "mcp":
+        return await _overwrite_mcp_installation(
+            db,
+            installation=installation,
+            item=item,
+            latest=latest,
+            user=user,
+        )
+
+    if installation.resource_type == "agent":
+        return await _overwrite_agent_blueprint_installation(
+            db,
+            installation=installation,
+            item=item,
+            latest=latest,
+            user=user,
+        )
+
     # ``overwrite`` — replace files in place so agent_skills rows and
     # user-specific skill references keep the same skill_id.
+    if installation.resource_type != "skill":
+        raise marketplace_item_not_found()
     if skill is None:
         raise marketplace_item_not_found()
     await _replace_skill_snapshot(latest, skill)
@@ -608,6 +1310,17 @@ async def delete_installation(
 
     installation.install_status = "uninstalled"
     installation.updated_at = _now()
+    # Keep the blueprint row (mirror skill soft-delete — accepted orphan
+    # trade-off) but sync its status so the list/detail endpoints don't
+    # surface it as a stale ``active`` ghost after re-install.
+    if installation.installed_agent_blueprint_id is not None:
+        blueprint = await db.get(
+            AgentBlueprint,
+            installation.installed_agent_blueprint_id,
+        )
+        if blueprint is not None:
+            blueprint.install_status = "uninstalled"
+            blueprint.updated_at = _now()
 
 
 # ---------------------------------------------------------------------------
@@ -640,6 +1353,28 @@ async def _remove_install_artifacts(
                     _rmtree_skill_storage, resolve_data_path(skill.storage_path)
                 )
             await db.delete(skill)
+    if installation.installed_mcp_server_id is not None:
+        server = await db.get(McpServer, installation.installed_mcp_server_id)
+        if server is not None:
+            tools = (
+                await db.execute(
+                    select(McpTool).where(McpTool.server_id == server.id)
+                )
+            ).scalars().all()
+            for tool in tools:
+                await db.delete(tool)
+            await db.delete(server)
+    if installation.installed_agent_blueprint_id is not None:
+        blueprint = await db.get(
+            AgentBlueprint,
+            installation.installed_agent_blueprint_id,
+        )
+        if blueprint is not None:
+            await db.delete(blueprint)
+    if installation.installed_agent_id is not None:
+        agent = await db.get(Agent, installation.installed_agent_id)
+        if agent is not None:
+            await db.delete(agent)
     if not keep_installation:
         await db.delete(installation)
 

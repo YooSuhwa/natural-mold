@@ -9,6 +9,7 @@ from app.models.agent_api import (
     AgentApiThread,
     AgentDeployment,
 )
+from app.models.agent_blueprint import AgentBlueprint
 from app.models.agent_subagent import AgentSubAgentLink
 from app.models.agent_trigger import AgentTrigger
 from app.models.agent_trigger_run import AgentTriggerRun
@@ -60,6 +61,7 @@ __all__ = [
     "AgentApiKeyDeployment",
     "AgentApiRun",
     "AgentApiThread",
+    "AgentBlueprint",
     "AgentDeployment",
     "AgentMcpToolLink",
     "AgentSkillLink",

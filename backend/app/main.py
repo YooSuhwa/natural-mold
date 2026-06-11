@@ -304,6 +304,7 @@ def create_app() -> FastAPI:
 
     from app.routers import (
         agent_api,
+        agent_blueprints,
         agent_runtime_api,
         agents,
         artifacts,
@@ -331,6 +332,7 @@ def create_app() -> FastAPI:
 
     app.include_router(audit.router)
     app.include_router(auth.router)
+    app.include_router(agent_blueprints.router)
     app.include_router(agent_api.router)
     app.include_router(agent_runtime_api.router)
     app.include_router(agents.router)

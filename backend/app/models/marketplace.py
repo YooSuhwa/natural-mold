@@ -40,6 +40,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.agent import Agent
+    from app.models.agent_blueprint import AgentBlueprint
     from app.models.credential import Credential
     from app.models.mcp_server import McpServer
     from app.models.skill import Skill
@@ -309,12 +310,18 @@ class MarketplaceInstallation(Base):
     __tablename__ = "marketplace_installations"
     __table_args__ = (
         CheckConstraint(
-            "(resource_type = 'agent' AND installed_agent_id IS NOT NULL "
+            "(resource_type = 'agent' "
+            " AND ((installed_agent_blueprint_id IS NOT NULL "
+            "       AND installed_agent_id IS NULL) "
+            "      OR (installed_agent_id IS NOT NULL "
+            "          AND installed_agent_blueprint_id IS NULL)) "
             " AND installed_mcp_server_id IS NULL AND installed_skill_id IS NULL) "
             "OR (resource_type = 'mcp' AND installed_mcp_server_id IS NOT NULL "
-            " AND installed_agent_id IS NULL AND installed_skill_id IS NULL) "
+            " AND installed_agent_id IS NULL AND installed_agent_blueprint_id IS NULL "
+            " AND installed_skill_id IS NULL) "
             "OR (resource_type = 'skill' AND installed_skill_id IS NOT NULL "
-            " AND installed_agent_id IS NULL AND installed_mcp_server_id IS NULL)",
+            " AND installed_agent_id IS NULL AND installed_agent_blueprint_id IS NULL "
+            " AND installed_mcp_server_id IS NULL)",
             name="ck_marketplace_install_resource_target",
         ),
         CheckConstraint(
@@ -341,6 +348,9 @@ class MarketplaceInstallation(Base):
     resource_type: Mapped[str] = mapped_column(String(20), nullable=False)
     installed_agent_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("agents.id", ondelete="CASCADE"), nullable=True
+    )
+    installed_agent_blueprint_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_blueprints.id", ondelete="CASCADE"), nullable=True
     )
     installed_mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("mcp_servers.id", ondelete="CASCADE"), nullable=True
@@ -374,6 +384,9 @@ class MarketplaceInstallation(Base):
     )
     installed_agent: Mapped[Agent | None] = relationship(
         "Agent", foreign_keys=[installed_agent_id]
+    )
+    installed_agent_blueprint: Mapped[AgentBlueprint | None] = relationship(
+        "AgentBlueprint", foreign_keys=[installed_agent_blueprint_id]
     )
     installed_mcp_server: Mapped[McpServer | None] = relationship(
         "McpServer", foreign_keys=[installed_mcp_server_id]

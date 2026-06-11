@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
@@ -41,6 +42,9 @@ from app.models.marketplace import (
 
 if TYPE_CHECKING:
     from app.dependencies import CurrentUser
+    from app.models.agent_blueprint import AgentBlueprint
+    from app.models.credential import Credential
+    from app.models.mcp_server import McpServer
     from app.models.skill import Skill
 
 
@@ -282,7 +286,10 @@ async def derive_installation_summary(
     if installation.resource_type == "skill":
         installed_resource_id = installation.installed_skill_id
     elif installation.resource_type == "agent":
-        installed_resource_id = installation.installed_agent_id
+        installed_resource_id = (
+            installation.installed_agent_blueprint_id
+            or installation.installed_agent_id
+        )
     elif installation.resource_type == "mcp":
         installed_resource_id = installation.installed_mcp_server_id
 
@@ -318,6 +325,14 @@ async def derive_installation_summary(
             if missing:
                 status = "needs_setup"
 
+    status, dirty = await _recompute_installation_projection_state(
+        db,
+        installation=installation,
+        user_id=user_id,
+        status=status,
+        dirty=dirty,
+    )
+
     return MarketplaceInstallationSummary(
         installed=installation.install_status != "uninstalled",
         installation_id=installation.id,
@@ -332,10 +347,241 @@ def _installation_resource_id(installation: MarketplaceInstallation) -> uuid.UUI
     if installation.resource_type == "skill":
         return installation.installed_skill_id
     if installation.resource_type == "agent":
-        return installation.installed_agent_id
+        return installation.installed_agent_blueprint_id or installation.installed_agent_id
     if installation.resource_type == "mcp":
         return installation.installed_mcp_server_id
     return None
+
+
+@dataclass
+class _InstallationPrefetch:
+    """Bulk-loaded rows for ``bulk_derive_installation_summaries``.
+
+    Avoids per-installation ``db.get`` round trips (anti-N+1) — the bulk
+    caller loads versions/servers/blueprints/credentials with IN queries
+    once and the projection helpers read from these maps instead.
+    """
+
+    versions: dict[uuid.UUID, MarketplaceVersion] = field(default_factory=dict)
+    servers: dict[uuid.UUID, McpServer] = field(default_factory=dict)
+    blueprints: dict[uuid.UUID, AgentBlueprint] = field(default_factory=dict)
+    credentials: dict[uuid.UUID, Credential] = field(default_factory=dict)
+
+
+def _required_credential_requirements(
+    version: MarketplaceVersion | None,
+) -> list[dict[str, Any]]:
+    if version is None:
+        return []
+    return [
+        requirement
+        for requirement in (version.credential_requirements or [])
+        if isinstance(requirement, dict)
+        and requirement.get("required")
+        and requirement.get("key")
+    ]
+
+
+async def _credential_binding_missing(
+    db: AsyncSession,
+    *,
+    credential_id: uuid.UUID | str | None,
+    user_id: uuid.UUID,
+    requirement: dict[str, Any],
+    prefetch: _InstallationPrefetch | None = None,
+) -> bool:
+    if credential_id is None:
+        return True
+    try:
+        normalized_id = uuid.UUID(str(credential_id))
+    except (TypeError, ValueError):
+        return True
+
+    if prefetch is not None:
+        credential = prefetch.credentials.get(normalized_id)
+    else:
+        from app.models.credential import Credential
+
+        credential = await db.get(Credential, normalized_id)
+    if credential is None or credential.user_id != user_id:
+        return True
+    expected_definition = requirement.get("definition_key")
+    return bool(expected_definition and credential.definition_key != expected_definition)
+
+
+async def _mcp_installation_missing_required_credentials(
+    db: AsyncSession,
+    *,
+    installation: MarketplaceInstallation,
+    user_id: uuid.UUID,
+    prefetch: _InstallationPrefetch | None = None,
+) -> bool:
+    if installation.installed_mcp_server_id is None:
+        return False
+
+    if prefetch is not None:
+        version = prefetch.versions.get(installation.version_id)
+    else:
+        version = await db.get(MarketplaceVersion, installation.version_id)
+    requirements = _required_credential_requirements(version)
+    if not requirements:
+        return False
+
+    if prefetch is not None:
+        server = prefetch.servers.get(installation.installed_mcp_server_id)
+    else:
+        from app.models.mcp_server import McpServer
+
+        server = await db.get(McpServer, installation.installed_mcp_server_id)
+    if server is None:
+        return True
+
+    for requirement in requirements:
+        key = str(requirement.get("key"))
+        credential_id = server.credential_id if key == "mcp_auth" else None
+        if await _credential_binding_missing(
+            db,
+            credential_id=credential_id,
+            user_id=user_id,
+            requirement=requirement,
+            prefetch=prefetch,
+        ):
+            return True
+    return False
+
+
+async def _agent_blueprint_installation_state(
+    db: AsyncSession,
+    *,
+    installation: MarketplaceInstallation,
+    user_id: uuid.UUID,
+    prefetch: _InstallationPrefetch | None = None,
+) -> tuple[bool, bool]:
+    if installation.installed_agent_blueprint_id is None:
+        return False, False
+
+    if prefetch is not None:
+        blueprint = prefetch.blueprints.get(installation.installed_agent_blueprint_id)
+    else:
+        from app.models.agent_blueprint import AgentBlueprint
+
+        blueprint = await db.get(
+            AgentBlueprint, installation.installed_agent_blueprint_id
+        )
+    if blueprint is None:
+        return True, False
+
+    if prefetch is not None:
+        version = prefetch.versions.get(installation.version_id)
+    else:
+        version = await db.get(MarketplaceVersion, installation.version_id)
+    bindings = blueprint.credential_bindings or {}
+    for requirement in _required_credential_requirements(version):
+        credential_id = bindings.get(str(requirement.get("key")))
+        if await _credential_binding_missing(
+            db,
+            credential_id=credential_id,
+            user_id=user_id,
+            requirement=requirement,
+            prefetch=prefetch,
+        ):
+            return True, bool(blueprint.is_dirty)
+    return False, bool(blueprint.is_dirty)
+
+
+async def _recompute_installation_projection_state(
+    db: AsyncSession,
+    *,
+    installation: MarketplaceInstallation,
+    user_id: uuid.UUID,
+    status: str,
+    dirty: bool,
+    prefetch: _InstallationPrefetch | None = None,
+) -> tuple[str, bool]:
+    if status != "active":
+        return status, dirty
+
+    if installation.installed_mcp_server_id is not None:
+        missing = await _mcp_installation_missing_required_credentials(
+            db,
+            installation=installation,
+            user_id=user_id,
+            prefetch=prefetch,
+        )
+        return ("needs_setup" if missing else status), dirty
+
+    if installation.installed_agent_blueprint_id is not None:
+        missing, blueprint_dirty = await _agent_blueprint_installation_state(
+            db,
+            installation=installation,
+            user_id=user_id,
+            prefetch=prefetch,
+        )
+        dirty = bool(dirty or blueprint_dirty)
+        return ("needs_setup" if missing else status), dirty
+
+    return status, dirty
+
+
+async def _load_installation_prefetch(
+    db: AsyncSession,
+    installations: Iterable[MarketplaceInstallation],
+) -> _InstallationPrefetch:
+    """Load version/server/blueprint/credential rows for the recompute
+    helpers with one IN query per table (anti-N+1)."""
+
+    from app.models.agent_blueprint import AgentBlueprint
+    from app.models.credential import Credential
+    from app.models.mcp_server import McpServer
+
+    version_ids: set[uuid.UUID] = set()
+    server_ids: set[uuid.UUID] = set()
+    blueprint_ids: set[uuid.UUID] = set()
+    for installation in installations:
+        if installation.installed_mcp_server_id is not None:
+            server_ids.add(installation.installed_mcp_server_id)
+            version_ids.add(installation.version_id)
+        if installation.installed_agent_blueprint_id is not None:
+            blueprint_ids.add(installation.installed_agent_blueprint_id)
+            version_ids.add(installation.version_id)
+
+    prefetch = _InstallationPrefetch()
+    if version_ids:
+        rows = (
+            await db.execute(
+                select(MarketplaceVersion).where(MarketplaceVersion.id.in_(version_ids))
+            )
+        ).scalars().all()
+        prefetch.versions = {row.id: row for row in rows}
+    if server_ids:
+        rows = (
+            await db.execute(select(McpServer).where(McpServer.id.in_(server_ids)))
+        ).scalars().all()
+        prefetch.servers = {row.id: row for row in rows}
+    if blueprint_ids:
+        rows = (
+            await db.execute(
+                select(AgentBlueprint).where(AgentBlueprint.id.in_(blueprint_ids))
+            )
+        ).scalars().all()
+        prefetch.blueprints = {row.id: row for row in rows}
+
+    credential_ids: set[uuid.UUID] = set()
+    for server in prefetch.servers.values():
+        if server.credential_id is not None:
+            credential_ids.add(server.credential_id)
+    for blueprint in prefetch.blueprints.values():
+        for raw_id in (blueprint.credential_bindings or {}).values():
+            try:
+                credential_ids.add(uuid.UUID(str(raw_id)))
+            except (TypeError, ValueError):
+                continue
+    if credential_ids:
+        rows = (
+            await db.execute(select(Credential).where(Credential.id.in_(credential_ids)))
+        ).scalars().all()
+        prefetch.credentials = {row.id: row for row in rows}
+    return prefetch
 
 
 async def bulk_derive_installation_summaries(
@@ -372,6 +618,8 @@ async def bulk_derive_installation_summaries(
         ).scalars().all()
         skills_by_id = {skill.id: skill for skill in skills}
 
+    prefetch = await _load_installation_prefetch(db, installations)
+
     summaries = {
         item_id: MarketplaceInstallationSummary(installed=False)
         for item_id in items_by_id
@@ -398,6 +646,15 @@ async def bulk_derive_installation_summaries(
                 )
                 if missing:
                     status = "needs_setup"
+
+        status, dirty = await _recompute_installation_projection_state(
+            db,
+            installation=installation,
+            user_id=user_id,
+            status=status,
+            dirty=dirty,
+            prefetch=prefetch,
+        )
 
         summaries[item.id] = MarketplaceInstallationSummary(
             installed=installation.install_status != "uninstalled",
