@@ -258,13 +258,24 @@ export async function* streamSSEPost<TEvent extends string>(
       wakeUp()
       throw err
     },
-  }).catch((err) => {
-    if (!terminalError && !(err instanceof DOMException && err.name === 'AbortError')) {
-      terminalError = err instanceof Error ? err : new Error(String(err))
-    }
-    closed = true
-    wakeUp()
   })
+    .catch((err) => {
+      if (!terminalError && !(err instanceof DOMException && err.name === 'AbortError')) {
+        terminalError = err instanceof Error ? err : new Error(String(err))
+      }
+    })
+    .finally(() => {
+      // fetch-event-source 는 input signal 이 abort 되면 promise 를 reject 가
+      // 아니라 **resolve** 하고 onclose/onerror 도 호출하지 않는다. catch 만으로는
+      // closed 가 영원히 false 라 아래 소비 루프가 resolver 를 기다리는 deadlock
+      // 이 된다 (Stop 후 isRunning 미해제 — durable run cancel 회귀의 근본 원인).
+      // abort 를 AbortError 로 변환해 기존 소비자 계약(AbortError swallow)을 유지.
+      if (!terminalError && signal?.aborted) {
+        terminalError = new DOMException('Aborted', 'AbortError')
+      }
+      closed = true
+      wakeUp()
+    })
 
   while (true) {
     if (buffer.length() > 0) {
