@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid as _uuid
 from collections.abc import AsyncGenerator
@@ -164,6 +165,16 @@ async def _run_agent_stream(
                 artifact_recorder=artifact_recorder,
             ):
                 yield chunk
+    except asyncio.CancelledError:
+        if ctx is not None and usage_sink:
+            await hooks.run_post(
+                ctx,
+                _hook_result_from_usage(
+                    int((time.monotonic() - started) * 1000),
+                    usage_sink,
+                ),
+            )
+        raise
     except Exception as exc:
         if ctx is not None:
             await hooks.run_failure(ctx, exc)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -955,6 +956,54 @@ async def test_execute_stream_records_stream_error_as_hook_failure(monkeypatch):
     assert isinstance(failure_error, RuntimeError)
     assert str(failure_error) == "provider stream failed"
     mock_hooks.run_post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_execute_stream_reports_usage_when_canceled_after_usage(monkeypatch):
+    from app.agent_runtime.agent_stream_runner import execute_agent_stream
+
+    async def fake_prepare_agent(*args, **kwargs):
+        return MagicMock(), [], {"configurable": {"thread_id": "t-1"}}
+
+    async def fake_stream_agent_response(*args, **kwargs):
+        kwargs["usage_sink"].update(
+            {"prompt_tokens": 11, "completion_tokens": 7, "estimated_cost": 0.0042}
+        )
+        yield 'event: content_delta\ndata: {"delta":"partial"}\n\n'
+        raise asyncio.CancelledError()
+
+    mock_hooks = MagicMock()
+    mock_hooks.run_pre = AsyncMock()
+    mock_hooks.run_post = AsyncMock()
+    mock_hooks.run_failure = AsyncMock()
+
+    monkeypatch.setattr(
+        "app.agent_runtime.agent_stream_runner._prepare_agent",
+        fake_prepare_agent,
+    )
+    monkeypatch.setattr(
+        "app.agent_runtime.agent_stream_runner.stream_agent_response",
+        fake_stream_agent_response,
+    )
+    monkeypatch.setattr("app.agent_runtime.agent_stream_runner.hooks", mock_hooks)
+
+    stream = execute_agent_stream(
+        _cfg(
+            user_id="00000000-0000-0000-0000-000000000001",
+            agent_id="00000000-0000-0000-0000-0000000000aa",
+        ),
+        [{"role": "user", "content": "hi"}],
+    )
+    assert await anext(stream)
+    with pytest.raises(asyncio.CancelledError):
+        await anext(stream)
+
+    mock_hooks.run_post.assert_awaited_once()
+    result = mock_hooks.run_post.await_args.args[1]
+    assert result.tokens_in == 11
+    assert result.tokens_out == 7
+    assert result.cost_usd == 0.0042
+    mock_hooks.run_failure.assert_not_awaited()
 
 
 @pytest.mark.asyncio

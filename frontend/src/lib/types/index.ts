@@ -168,6 +168,37 @@ export interface Template {
 
 // ---------- Conversation / Messages ---------------------------------------
 
+export type ConversationRunStatus =
+  | 'queued'
+  | 'running'
+  | 'interrupted'
+  | 'canceling'
+  | 'canceled'
+  | 'completed'
+  | 'failed'
+  | 'stale'
+
+export interface ConversationRun {
+  id: string
+  conversation_id: string
+  agent_id: string
+  parent_run_id: string | null
+  status: ConversationRunStatus
+  source: string
+  worker_instance_id: string | null
+  interrupt_id: string | null
+  last_event_id: string | null
+  input_preview: string | null
+  error_code: string | null
+  error_message: string | null
+  cancel_requested_at: string | null
+  started_at: string | null
+  heartbeat_at: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface Conversation {
   id: string
   agent_id: string
@@ -179,6 +210,7 @@ export interface Conversation {
   last_activity_source: string
   created_at: string
   updated_at: string
+  active_run?: ConversationRun | null
 }
 
 export interface ConversationListEnvelope {
@@ -272,6 +304,7 @@ export interface TokenUsageBreakdown {
  */
 export interface MessagesEnvelope {
   messages: Message[]
+  active_run?: ConversationRun | null
   active_tip_message_id?: string | null
   active_checkpoint_id?: string | null
   /** W7-4 — conversation 누적 비용 (USD). ``token_usages`` 테이블 합산. 메시지
@@ -405,7 +438,11 @@ export interface ResumeDecisionsRequest {
 // = ``broker_lost`` (events 에 last_event_id 있음) 또는 ``broker_lost_no_id``
 // (events 자체가 빈 채로 status='streaming' row 만 있음 — NPE 회피용 구분).
 export interface StalePayload {
-  reason: 'broker_lost' | 'broker_lost_no_id'
+  // broker_lost(_no_id) — in-flight turn 중 broker 가 사라져 DB replay 로 degrade.
+  // run_worker_lost — active run 인데 로컬 worker 가 없고 heartbeat 도 stale.
+  // broker_gap — 재연결 시 last_event_id 가 ring buffer 에서 evict 되어
+  //   누락 구간이 있을 수 있다는 신호 (buffer 잔여분은 이어서 replay 됨).
+  reason: 'broker_lost' | 'broker_lost_no_id' | 'run_worker_lost' | 'broker_gap'
   last_event_id: string | null
 }
 
@@ -434,9 +471,10 @@ export type SSEEvent = { id?: string } & (
         // W7 — usage 4종(input/output/cache_creation/cache_read) + 선택적 비용.
         // 비어 있을 수 있어 모든 필드 optional로 둔다.
         usage: Partial<TokenUsageBreakdown> & Record<string, number>
+        status?: 'completed' | 'failed' | 'canceled'
       }
     }
-  | { event: 'error'; data: { message: string } }
+  | { event: 'error'; data: { message: string; code?: string } }
   | { event: 'interrupt'; data: InterruptPayload }
   | { event: 'stale'; data: StalePayload }
 )

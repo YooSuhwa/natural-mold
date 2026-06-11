@@ -2,25 +2,43 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent import Agent
+from app.models.conversation import Conversation
+from app.models.conversation_run import ConversationRun
+from app.models.conversation_run import utc_now_naive as run_utc_now_naive
+from app.models.model import Model
+from app.models.user import User
 from app.scheduler import (
     BROKER_EVICTION_JOB_ID,
     CATALOG_BOOTSTRAP_JOB_ID,
     CATALOG_UPDATE_JOB_ID,
+    CONVERSATION_RUN_STALE_SWEEP_JOB_ID,
     add_trigger_job,
     evict_expired_brokers,
     pause_trigger_job,
     register_broker_eviction_job,
     register_catalog_update_job,
+    register_conversation_run_stale_sweep_job,
     remove_trigger_job,
     resume_trigger_job,
+    sweep_stale_conversation_runs,
 )
+from app.services import conversation_run_service
+from app.services.conversation_run_worker import (
+    RunTaskRegistry,
+    reset_run_task_registry_for_tests,
+)
+from tests.conftest import TEST_USER_ID, TestSession
 
 
 @pytest.fixture
@@ -236,6 +254,112 @@ def test_evict_expired_brokers_swallows_exceptions() -> None:
 
     with patch("app.agent_runtime.event_broker.registry", Boom()):
         evict_expired_brokers()  # must not raise
+
+
+@pytest.mark.asyncio
+async def test_register_conversation_run_stale_sweep_job_adds_interval(
+    running_scheduler: AsyncIOScheduler,
+) -> None:
+    register_conversation_run_stale_sweep_job()
+    job = running_scheduler.get_job(CONVERSATION_RUN_STALE_SWEEP_JOB_ID)
+    assert job is not None
+    assert job.trigger.interval.total_seconds() == 60
+
+
+@pytest.mark.asyncio
+async def test_register_conversation_run_stale_sweep_job_replaces_existing(
+    running_scheduler: AsyncIOScheduler,
+) -> None:
+    register_conversation_run_stale_sweep_job()
+    register_conversation_run_stale_sweep_job()
+    jobs = [
+        job for job in running_scheduler.get_jobs() if job.id == CONVERSATION_RUN_STALE_SWEEP_JOB_ID
+    ]
+    assert len(jobs) == 1
+
+
+async def _seed_run_for_stale_sweep(
+    db: AsyncSession,
+    *,
+    worker_instance_id: str,
+) -> ConversationRun:
+    user = User(id=TEST_USER_ID, email=f"{uuid.uuid4()}@scheduler.test", name="Scheduler")
+    db.add(user)
+    model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
+    db.add(model)
+    await db.flush()
+    agent = Agent(
+        user_id=user.id,
+        name="Scheduler Agent",
+        system_prompt="You are helpful.",
+        model_id=model.id,
+    )
+    db.add(agent)
+    await db.flush()
+    conversation = Conversation(agent_id=agent.id, title="stale sweep")
+    db.add(conversation)
+    await db.flush()
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=user.id,
+        source="chat",
+        input_preview="slow",
+    )
+    await conversation_run_service.transition_run(
+        db,
+        run,
+        "running",
+        worker_instance_id=worker_instance_id,
+    )
+    run.heartbeat_at = run_utc_now_naive() - timedelta(minutes=20)
+    return run
+
+
+@pytest.mark.asyncio
+async def test_stale_sweep_preserves_live_registry_tasks(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = RunTaskRegistry(worker_instance_id="current-worker")
+    reset_run_task_registry_for_tests(registry)
+    monkeypatch.setattr("app.scheduler.async_session", TestSession)
+    run = await _seed_run_for_stale_sweep(db, worker_instance_id=registry.worker_instance_id)
+    await db.commit()
+    blocker = asyncio.Event()
+    task = asyncio.create_task(blocker.wait())
+    registry.start(run.id, task)
+
+    try:
+        await sweep_stale_conversation_runs()
+        await db.refresh(run)
+        assert run.status == "running"
+        assert run.is_active is True
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        reset_run_task_registry_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_stale_sweep_marks_prior_worker_runs_stale(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = RunTaskRegistry(worker_instance_id="current-worker")
+    reset_run_task_registry_for_tests(registry)
+    monkeypatch.setattr("app.scheduler.async_session", TestSession)
+    run = await _seed_run_for_stale_sweep(db, worker_instance_id="dead-worker")
+    await db.commit()
+
+    try:
+        await sweep_stale_conversation_runs()
+        await db.refresh(run)
+        assert run.status == "stale"
+        assert run.is_active is False
+    finally:
+        reset_run_task_registry_for_tests()
 
 
 # ---------------------------------------------------------------------------

@@ -107,6 +107,16 @@ class MockAgent:
             yield chunk
 
 
+class BlockingAfterFirstChunkAgent:
+    def __init__(self, chunk: tuple[MagicMock, dict]) -> None:
+        self._chunk = chunk
+        self.release = asyncio.Event()
+
+    async def astream(self, input: Any, config: Any = None, **kwargs: Any):
+        yield self._chunk
+        await self.release.wait()
+
+
 class FakeArtifactRecorder:
     def __init__(self) -> None:
         self.prepared = False
@@ -359,6 +369,23 @@ async def test_stream_usage_metadata():
     # cache_creation/cache_read는 details가 없으면 0으로 채워진다.
     assert end_data["usage"]["cache_creation_tokens"] == 0
     assert end_data["usage"]["cache_read_tokens"] == 0
+
+
+@pytest.mark.asyncio
+async def test_stream_updates_usage_sink_before_generator_cancellation():
+    usage_sink: dict[str, Any] = {}
+    usage = {"input_tokens": 17, "output_tokens": 9}
+    ai_chunk = _make_ai_chunk("partial", usage_metadata=usage)
+    agent = BlockingAfterFirstChunkAgent((ai_chunk, {}))
+
+    stream = stream_agent_response(agent, [], {}, usage_sink=usage_sink)
+    await anext(stream)  # message_start
+    await anext(stream)  # content_delta from first AI chunk
+
+    assert usage_sink["prompt_tokens"] == 17
+    assert usage_sink["completion_tokens"] == 9
+
+    await stream.aclose()
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,7 @@ from app.models.audit_event import AuditEvent
 from app.models.builder_session import BuilderSession
 from app.models.conversation import Conversation
 from app.models.conversation_artifact import ArtifactVersion, ConversationArtifact
+from app.models.conversation_run import ConversationRun
 from app.models.credential import Credential
 from app.models.credential_audit_log import CredentialAuditLog
 from app.models.credential_default import CredentialDefault
@@ -70,6 +71,7 @@ __all__ = [
     "BuilderSession",
     "Conversation",
     "ConversationArtifact",
+    "ConversationRun",
     "Credential",
     "CredentialAuditLog",
     "CredentialDefault",

@@ -71,6 +71,7 @@ def slice_events_after[E: Mapping[str, Any]](
             continue
         yield evt
 
+
 # Memory-protection caps. APScheduler GC is the primary defense (60s interval,
 # ttl=300s); in-band cap is the burst safeguard between GC ticks.
 _DEFAULT_MAX_BROKERS = 256
@@ -124,6 +125,12 @@ class EventBroker:
     def error(self) -> Exception | None:
         return self._error
 
+    def has_event_id(self, event_id: str | None) -> bool:
+        """Return whether ``event_id`` is still present in the in-memory buffer."""
+        if not event_id:
+            return False
+        return any(evt.get("id") == event_id for evt in self._buffer)
+
     def publish_nowait(self, evt: BrokeredEvent) -> None:
         """Synchronous publish — buffer.append + fan-out to listener queues.
 
@@ -176,9 +183,7 @@ class EventBroker:
         """
         self.publish_nowait(evt)
 
-    async def subscribe(
-        self, after_id: str | None = None
-    ) -> AsyncGenerator[BrokeredEvent, None]:
+    async def subscribe(self, after_id: str | None = None) -> AsyncGenerator[BrokeredEvent, None]:
         """Subscribe to events, optionally replaying buffered events past ``after_id``.
 
         Behavior:
@@ -394,8 +399,7 @@ class BrokerRegistry:
                 if broker.created_at <= live_cutoff_dt:
                     age_seconds = int((now_dt - broker.created_at).total_seconds())
                     logger.warning(
-                        "Force-closing stale live broker run_id=%s "
-                        "(age %ds > max %ds)",
+                        "Force-closing stale live broker run_id=%s (age %ds > max %ds)",
                         run_id,
                         age_seconds,
                         self._max_live_age_seconds,
@@ -428,9 +432,10 @@ class BrokerRegistry:
                 closed_run_ids.append(broker.run_id)
         if closed_run_ids:
             logger.info(
-                "BrokerRegistry close_for_conversation conv=%s closed=%d "
-                "run_ids=%s",
-                conversation_id, len(closed_run_ids), closed_run_ids,
+                "BrokerRegistry close_for_conversation conv=%s closed=%d run_ids=%s",
+                conversation_id,
+                len(closed_run_ids),
+                closed_run_ids,
             )
         return len(closed_run_ids)
 

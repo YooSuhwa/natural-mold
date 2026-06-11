@@ -55,11 +55,9 @@ function msg(id: string, role: Message['role'], content = ''): Message {
     usage: null,
     parent_id: null,
     branch_checkpoint_id: null,
-    siblings: null,
-    sibling_checkpoint_ids: null,
     branch_index: null,
     branch_total: null,
-  } as Message
+  }
 }
 
 async function* emptyRegenerateStream(): AsyncGenerator<SSEEvent> {

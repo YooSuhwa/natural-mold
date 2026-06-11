@@ -13,6 +13,8 @@ import {
   PinIcon,
   PinOffIcon,
   Trash2Icon,
+  Loader2Icon,
+  CircleAlertIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
@@ -39,6 +41,7 @@ import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 import { cn } from '@/lib/utils'
 import type { Conversation } from '@/lib/types'
+import { isActiveRunStatus, isInterruptedRunStatus } from '@/lib/chat-runs/status'
 
 interface ConversationListProps {
   agentId: string
@@ -121,6 +124,9 @@ export function ConversationList({
   function renderItem(conv: Conversation) {
     const isActive = params.conversationId === conv.id
     const unreadCount = conv.unread_count ?? 0
+    const runStatus = conv.active_run?.status
+    const showRunSpinner = isActiveRunStatus(runStatus)
+    const showInterrupted = isInterruptedRunStatus(runStatus)
     return (
       <div
         key={conv.id}
@@ -141,6 +147,20 @@ export function ConversationList({
             <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
           )}
           <span className="truncate">{conv.title ?? t('fallbackTitle')}</span>
+          {showRunSpinner ? (
+            <Loader2Icon
+              className="size-3 shrink-0 animate-spin text-muted-foreground"
+              aria-label={t('status.running')}
+              data-moldy-run-spinner={conv.id}
+            />
+          ) : null}
+          {showInterrupted ? (
+            <CircleAlertIcon
+              className="size-3 shrink-0 text-status-warn"
+              aria-label={t('status.actionRequired')}
+              data-moldy-run-attention={conv.id}
+            />
+          ) : null}
         </Link>
         {unreadCount > 0 ? (
           <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-status-warn px-1.5 moldy-ui-caption font-semibold text-white">

@@ -86,11 +86,7 @@ def _normalize_cursor_datetime(value: datetime) -> datetime:
 
 
 def _encode_library_cursor(artifact: ConversationArtifact) -> str:
-    return (
-        f"{artifact.created_at.isoformat()}"
-        f"{LIBRARY_CURSOR_SEPARATOR}"
-        f"{artifact.id}"
-    )
+    return f"{artifact.created_at.isoformat()}{LIBRARY_CURSOR_SEPARATOR}{artifact.id}"
 
 
 def _decode_library_cursor(cursor: str) -> tuple[datetime, uuid.UUID | None] | None:
@@ -219,13 +215,10 @@ def diff_snapshots(before: ArtifactSnapshot, after: ArtifactSnapshot) -> list[Ar
         if before_state is None:
             deltas.append(ArtifactDelta(op="created", state=after_state))
             continue
-        if (
-            not _states_have_same_metadata(before_state, after_state)
-            or (
-                before_state.sha256 is not None
-                and after_state.sha256 is not None
-                and before_state.sha256 != after_state.sha256
-            )
+        if not _states_have_same_metadata(before_state, after_state) or (
+            before_state.sha256 is not None
+            and after_state.sha256 is not None
+            and before_state.sha256 != after_state.sha256
         ):
             deltas.append(ArtifactDelta(op="updated", state=after_state))
     for logical_path, before_state in before.files.items():
@@ -248,18 +241,22 @@ async def ingest_changed_files(
         normalized = state.normalized
         if delta.op == "deleted":
             deleted_artifacts = (
-                await db.execute(
-                    select(ConversationArtifact)
-                    .where(
-                        ConversationArtifact.conversation_id == context.conversation_id,
-                        ConversationArtifact.user_id == context.user_id,
-                        ConversationArtifact.assistant_msg_id == context.assistant_msg_id,
-                        ConversationArtifact.logical_path == normalized.logical_path,
-                        ConversationArtifact.status != "deleted",
+                (
+                    await db.execute(
+                        select(ConversationArtifact)
+                        .where(
+                            ConversationArtifact.conversation_id == context.conversation_id,
+                            ConversationArtifact.user_id == context.user_id,
+                            ConversationArtifact.assistant_msg_id == context.assistant_msg_id,
+                            ConversationArtifact.logical_path == normalized.logical_path,
+                            ConversationArtifact.status != "deleted",
+                        )
+                        .order_by(ConversationArtifact.updated_at.desc())
                     )
-                    .order_by(ConversationArtifact.updated_at.desc())
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             for artifact in deleted_artifacts:
                 artifact.tool_call_id = tool_call_id
                 artifact.source_tool_name = context.source_tool_name
@@ -372,19 +369,23 @@ async def list_conversation_artifacts(
     conversation_id: uuid.UUID,
 ) -> list[ArtifactSummary]:
     artifacts = (
-        await db.execute(
-            select(ConversationArtifact)
-            .where(
-                ConversationArtifact.user_id == user_id,
-                ConversationArtifact.conversation_id == conversation_id,
-                ConversationArtifact.status != "deleted",
-            )
-            .order_by(
-                ConversationArtifact.created_at.desc(),
-                ConversationArtifact.display_name.asc(),
+        (
+            await db.execute(
+                select(ConversationArtifact)
+                .where(
+                    ConversationArtifact.user_id == user_id,
+                    ConversationArtifact.conversation_id == conversation_id,
+                    ConversationArtifact.status != "deleted",
+                )
+                .order_by(
+                    ConversationArtifact.created_at.desc(),
+                    ConversationArtifact.display_name.asc(),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return await _summaries_from_artifacts(db, artifacts)
 
 
@@ -409,6 +410,36 @@ async def link_artifacts_to_messages(
     )
 
 
+async def finalize_artifacts_for_run(
+    db: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+    assistant_msg_id: str,
+    run_status: str,
+) -> int:
+    """Close artifact state for a terminal run.
+
+    Artifacts are discovered after individual tool results and are therefore
+    optimistically marked ``ready`` while the assistant turn is still running.
+    If the run later ends as canceled/stale/failed, those optimistic ready
+    rows should not render as healthy completed outputs.
+    """
+
+    if run_status not in {"canceled", "stale", "failed"}:
+        return 0
+
+    result = await db.execute(
+        update(ConversationArtifact)
+        .where(
+            ConversationArtifact.conversation_id == conversation_id,
+            ConversationArtifact.assistant_msg_id == assistant_msg_id,
+            ConversationArtifact.status.in_(("writing", "ready")),
+        )
+        .values(status="failed")
+    )
+    return int(result.rowcount or 0)
+
+
 async def list_conversation_artifacts_by_message_id(
     db: AsyncSession,
     *,
@@ -416,19 +447,23 @@ async def list_conversation_artifacts_by_message_id(
     conversation_id: uuid.UUID,
 ) -> dict[str, list[ArtifactSummary]]:
     artifacts = (
-        await db.execute(
-            select(ConversationArtifact)
-            .where(
-                ConversationArtifact.user_id == user_id,
-                ConversationArtifact.conversation_id == conversation_id,
-                ConversationArtifact.status != "deleted",
-            )
-            .order_by(
-                ConversationArtifact.created_at.asc(),
-                ConversationArtifact.display_name.asc(),
+        (
+            await db.execute(
+                select(ConversationArtifact)
+                .where(
+                    ConversationArtifact.user_id == user_id,
+                    ConversationArtifact.conversation_id == conversation_id,
+                    ConversationArtifact.status != "deleted",
+                )
+                .order_by(
+                    ConversationArtifact.created_at.asc(),
+                    ConversationArtifact.display_name.asc(),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not artifacts:
         return {}
 
@@ -518,13 +553,17 @@ async def list_library_artifacts(
                 filters.append(ConversationArtifact.created_at < cursor_dt)
 
     rows = (
-        await db.execute(
-            select(ConversationArtifact)
-            .where(*filters)
-            .order_by(ConversationArtifact.created_at.desc(), ConversationArtifact.id.desc())
-            .limit(limit + 1)
+        (
+            await db.execute(
+                select(ConversationArtifact)
+                .where(*filters)
+                .order_by(ConversationArtifact.created_at.desc(), ConversationArtifact.id.desc())
+                .limit(limit + 1)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     has_more = len(rows) > limit
     artifacts = rows[:limit]
     items = await _summaries_from_artifacts(db, artifacts, include_names=True)
@@ -539,19 +578,23 @@ async def list_recent_artifacts(
     limit: int,
 ) -> list[ArtifactSummary]:
     rows = (
-        await db.execute(
-            select(ConversationArtifact)
-            .where(
-                ConversationArtifact.user_id == user_id,
-                ConversationArtifact.status != "deleted",
+        (
+            await db.execute(
+                select(ConversationArtifact)
+                .where(
+                    ConversationArtifact.user_id == user_id,
+                    ConversationArtifact.status != "deleted",
+                )
+                .order_by(
+                    ConversationArtifact.last_opened_at.desc().nullslast(),
+                    ConversationArtifact.created_at.desc(),
+                )
+                .limit(max(1, min(limit, 50)))
             )
-            .order_by(
-                ConversationArtifact.last_opened_at.desc().nullslast(),
-                ConversationArtifact.created_at.desc(),
-            )
-            .limit(max(1, min(limit, 50)))
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     return await _summaries_from_artifacts(db, rows, include_names=True)
 
 
@@ -848,10 +891,14 @@ async def _current_versions_for_artifacts(
     ]
     if current_version_ids:
         current_versions = (
-            await db.execute(
-                select(ArtifactVersion).where(ArtifactVersion.id.in_(current_version_ids))
+            (
+                await db.execute(
+                    select(ArtifactVersion).where(ArtifactVersion.id.in_(current_version_ids))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for version in current_versions:
             versions_by_artifact_id[version.artifact_id] = version
 
@@ -860,12 +907,16 @@ async def _current_versions_for_artifacts(
     ]
     if missing_artifact_ids:
         fallback_versions = (
-            await db.execute(
-                select(ArtifactVersion)
-                .where(ArtifactVersion.artifact_id.in_(missing_artifact_ids))
-                .order_by(ArtifactVersion.version_number.desc())
+            (
+                await db.execute(
+                    select(ArtifactVersion)
+                    .where(ArtifactVersion.artifact_id.in_(missing_artifact_ids))
+                    .order_by(ArtifactVersion.version_number.desc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for version in fallback_versions:
             versions_by_artifact_id.setdefault(version.artifact_id, version)
 

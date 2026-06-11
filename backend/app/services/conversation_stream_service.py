@@ -27,12 +27,14 @@ from app.config import settings
 from app.database import async_session
 from app.dependencies import CurrentUser
 from app.error_codes import agent_not_found, conversation_not_found
+from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.model import Model
 from app.observability.langfuse import LangfuseTraceRecord
 from app.services import chat_service, trace_storage
 from app.services.artifact_service import (
     ArtifactDeltaRecorder,
     ArtifactRuntimeContext,
+    finalize_artifacts_for_run,
     link_artifacts_to_messages,
 )
 
@@ -294,13 +296,17 @@ class StreamCtx(NamedTuple):
         return _cb
 
 
-def prepare_stream_context(conversation_id: uuid.UUID) -> StreamCtx:
+def prepare_stream_context(
+    conversation_id: uuid.UUID,
+    *,
+    run_id: str | None = None,
+) -> StreamCtx:
     broker_registry.close_for_conversation(str(conversation_id))
-    run_id = str(uuid.uuid4())
-    broker = broker_registry.get_or_create(run_id, conversation_id=str(conversation_id))
-    persist_cb = build_persist_callback(conversation_id, run_id)
+    resolved_run_id = run_id or str(uuid.uuid4())
+    broker = broker_registry.get_or_create(resolved_run_id, conversation_id=str(conversation_id))
+    persist_cb = build_persist_callback(conversation_id, resolved_run_id)
     return StreamCtx(
-        run_id=run_id,
+        run_id=resolved_run_id,
         broker=broker,
         persist_cb=persist_cb,
         trace_sink=[],
@@ -346,6 +352,18 @@ def build_persist_callback(
                 events_chunk=events_chunk,
                 status="streaming",
             )
+            last_id = events_chunk[-1].get("id")
+            if isinstance(last_id, str) and last_id:
+                try:
+                    run_uuid = uuid.UUID(run_id)
+                except ValueError:
+                    run_uuid = None
+                if run_uuid is not None:
+                    run = await session.get(ConversationRun, run_uuid)
+                    if run is not None:
+                        run.last_event_id = last_id
+                        if run.is_active:
+                            run.heartbeat_at = utc_now_naive()
             await session.commit()
 
     return _callback
@@ -359,8 +377,10 @@ async def finalize_trace(
     langfuse_sink: list[LangfuseTraceRecord],
     *,
     success: bool,
+    status: trace_storage.TraceStatus | None = None,
+    run_status: str | None = None,
 ) -> None:
-    final_status: trace_storage.TraceStatus = "completed" if success else "failed"
+    final_status: trace_storage.TraceStatus = status or ("completed" if success else "failed")
     trace_record = langfuse_sink[0] if langfuse_sink else None
     async with async_session() as session:
         finalized = await trace_storage.finalize_turn(
@@ -390,5 +410,12 @@ async def finalize_trace(
                 conversation_id=conversation_id,
                 assistant_msg_id=run_id,
                 linked_message_ids=[str(message_id) for message_id in finalized.linked_message_ids],
+            )
+        if run_status is not None:
+            await finalize_artifacts_for_run(
+                session,
+                conversation_id=conversation_id,
+                assistant_msg_id=run_id,
+                run_status=run_status,
             )
         await session.commit()

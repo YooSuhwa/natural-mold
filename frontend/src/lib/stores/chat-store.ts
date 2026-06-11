@@ -17,3 +17,6 @@ export const sessionTokenUsageAtom = atom<TokenUsage>({
 export type ReconnectState = 'idle' | 'reconnecting'
 
 export const reconnectStateAtom = atom<ReconnectState>('idle')
+
+/** 서버 cancel 요청이 진행 중인 동안 Stop 버튼 연타를 막기 위한 UI 상태. */
+export const chatCancelInFlightAtom = atom(false)
