@@ -307,3 +307,43 @@ assert build_kwargs["skills"] == [f"/runtime/{cfg.thread_id}/skills/"]
 **교훈**: 같은 ORM 모델의 relationship을 access predicate에서 사용하는 경우, **service-layer query는 catalog_service.get_item처럼 selectinload(MarketplaceItem.acl_entries) 사용 필수**. ``db.get`` 단축 경로는 access 예외 처리에서 위험.
 
 **Status**: M9에서 strict xfail로 pin됨 (test_marketplace_e2e.py::TestScenario_10_4_RestrictedACL::test_restricted_acl_grants_and_denies). 젠슨 fix 대기.
+
+### Pattern: chat-run-lifecycle 리뷰에서 도출 (2026-06-11)
+
+**1. 상태 머신 전이는 잠금/CAS 하에서.** 여러 세션·태스크가 같은 row의 status를
+read-modify-write 하면 stale read가 잘못된 전이(ValueError)나 lost update로 나타난다.
+상태를 바꾸는 호출자는 `with_for_update`로 로드하거나 `UPDATE ... WHERE status IN (...)`
+조건부 업데이트를 사용하고, 전이 함수 docstring에 동시성 계약을 명시한다.
+(예: cancel이 `queued→canceling` 커밋 직후 worker가 `queued` 스냅샷으로 `running` 전이 시도 → canceled가 failed로 오분류)
+
+**2. 장수명 스트림 훅에서 attach/send가 AbortController를 공유하면 소유권 가드 필수.**
+effect가 진입 시 무조건 `abort()` 하면 진행 중인 스트림을 빼앗는다. in-flight ref 가드 +
+"끝까지 소비한 run" 기록(consumedRunIdRef)으로 구분하고, cleanup에서는 guard 토큰을
+무효화해 unmount 후 setState/콜백 실행을 차단한다. cleanup의 토큰 무효화는 반드시
+`isStale(token)` 체크 뒤에 — 아니면 새 스트림의 토큰을 죽인다.
+
+**3. 프로토콜 어댑터의 상관 ID(messageId/toolCallId)는 단일 소스에서 생성.**
+이벤트 종류별로 다른 필드(data.id vs run_id)에서 ID를 뽑으면 START/CONTENT/END 매칭이
+깨진다. 테스트는 "두 소스가 다른 값"인 케이스를 반드시 포함할 것.
+
+**4. 회귀 테스트는 "수정 전 코드에서 실패하는가"로 검증.** 버그 수정 시 가드를 일시
+무력화해 테스트가 정확히 실패하는지 확인 후 복원한다. 테스트가 mock 콜백(예:
+onMessagesCommit)으로 갭을 가리면 실제 페이지 구성(콜백 없는)을 재현하는 케이스를 추가.
+
+**5. ring buffer 기반 resume은 "after_id 미존재"를 silent gap으로 두지 말 것.**
+`slice_events_after`는 after_id가 없으면 아무것도 yield하지 않는다 — 호출자가 이 의미를
+해석해 stale 마커 + 전체 buffer replay로 degrade해야 한다 (클라이언트 dedup이 중복 처리).
+
+**6. 콜백 기반 라이브러리를 async generator 로 bridge 할 때는 모든 settle 경로에서 종료 신호를 세울 것.**
+`fetch-event-source` 는 signal abort 시 promise 를 reject 가 아니라 resolve 하고
+onclose/onerror 도 호출하지 않는다. `.catch` 에서만 `closed=true` 를 세우면 abort 시
+소비 루프가 영원히 대기하는 deadlock (Stop 후 isRunning 미해제의 근본 원인이었음).
+종료 처리는 `.finally` 에 두고, abort 는 명시적으로 AbortError 로 변환해 소비자
+계약을 유지한다. 라이브러리의 abort 의미론(reject? resolve? 콜백 호출?)을 가정하지
+말고 소스로 확인할 것.
+
+**7. E2E 의 webServer `reuseExistingServer` 는 포트 점유자가 "맞는 서버"인지 보장하지 않는다.**
+docker-compose 컨테이너가 3000 을 점유하고 있으면 Playwright 가 그것을 프론트로
+재사용해 전부 404 가 난다. 워크트리에서 E2E 는 `E2E_FRONTEND_PORT`/`E2E_BACKEND_PORT`
+로 빈 포트를 지정해 자기 코드를 띄울 것. 또한 background 실행 시 출력을 tail 로
+자르지 말 것 — 실패 진단에 서버 로그 전체가 필요하다.
