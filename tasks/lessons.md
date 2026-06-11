@@ -308,6 +308,100 @@ assert build_kwargs["skills"] == [f"/runtime/{cfg.thread_id}/skills/"]
 
 **Status**: M9에서 strict xfail로 pin됨 (test_marketplace_e2e.py::TestScenario_10_4_RestrictedACL::test_restricted_acl_grants_and_denies). 젠슨 fix 대기.
 
+## Session 2026-06-11 — codex/marketplace 코드 리뷰에서 발견한 패턴
+
+### Soft-delete 리소스를 join 할 때는 항상 status 필터를 포함한다
+**상황**: `marketplace_installations`는 uninstall 시 row를 지우지 않고
+`install_status='uninstalled'`로만 둔다. `agent_blueprints` 목록 쿼리가 이 테이블을
+outerjoin 하면서 status 필터를 빼먹어, 재설치 시 목록 중복 + stale 상태 표시 버그 발생.
+
+**패턴**: soft-delete 테이블을 join/outerjoin 하는 모든 쿼리는 join 조건에
+`install_status != 'uninstalled'`(또는 해당 status 필터)를 포함한다.
+기준 패턴: `install_service._existing_installation`.
+
+### 단일 요청 내 다중 commit 금지 — 본 작업과 audit은 한 트랜잭션
+**상황**: publish 라우터 4곳이 `본 작업 commit → audit 기록 → audit commit` 이중 커밋.
+첫 commit 후 audit 단계에서 예외가 나면 publish만 영속화되고 감사 로그가 누락된다.
+
+**패턴**: 본 작업 + audit 기록을 같은 세션에서 수행하고 commit은 마지막에 한 번만.
+
+### Secret scan은 denylist만으로 불충분 — 비밀일 수 있는 필드는 allowlist 정책
+**상황**: 키 이름 정규식(`password` 등) 기반 스캐너가 `DATABASE_PASS` 평문 값과
+URL userinfo(`https://user:pass@host`)를 탐지하지 못함 (실증됨).
+
+**패턴**: `env_vars`/`headers`처럼 값 자체가 비밀일 수 있는 필드는
+"credential placeholder가 아닌 비어있지 않은 값은 차단"하는 allowlist 정책을 쓴다.
+
+### en.json placeholder 번역 금지 — t.rich 청크 태그는 ko와 동일 구조 유지
+**상황**: en.json 다수 값이 키 이름을 titlecase한 더미("Not Found", "Required Missing").
+특히 `t.rich` 메시지는 영어 값에 `<code>`/`<type>` 청크 태그가 없으면 콜백이 동작하지 않음.
+
+**패턴**: ko가 source of truth지만 en에는 실제 의미를 담은 번역 + 동일 청크 태그 구조 필수.
+
+### Marketplace payload는 게시자 제어 입력으로 취급한다
+**패턴**: install/materialize 시 `definition_key`, `middleware_configs`, tool `parameters`는
+registry/허용 목록 대조 후 사용. MCP tool snapshot은 discovery 검증 전에 runtime-linkable
+상태(enabled McpTool)로 물질화하지 않는다 (설계 §6.1 "no phantom tools").
+
+### 패턴 수정은 스코프 외 동일 패턴까지 grep으로 확인한다
+**상황**: publish 6곳의 이중 commit을 고쳤지만, 같은 파일의 patch/acl/disable/enable/admin
+5곳에 동일 안티패턴이 남아있었다 (재리뷰에서 발견).
+
+**패턴**: 안티패턴을 수정할 때는 지적된 지점만 고치지 말고, 같은 파일/모듈 전체를
+grep해서 동일 패턴 잔존 여부를 확인하고 함께 처리하거나 명시적으로 보고한다.
+
+### Snapshot re-materialize는 사용자 수동 상태를 보존해야 한다
+**상황**: reuse_or_update(credential만 갱신)가 `_materialize_mcp_tool_snapshot`을 재호출해
+사용자가 수동으로 켜고 끈 McpTool.enabled를 publish 시점 기본값으로 덮어씀.
+
+**패턴**: 설치 후 사용자가 변경 가능한 필드(enabled 등)는 재설치/갱신 경로에서
+"버전 교체(overwrite)"가 아닌 한 보존한다. 보존/리셋 정책을 테스트로 고정할 것.
+
+### Radix Select 옵션은 findByRole로 대기한다 (vitest/jsdom)
+**상황**: 새 테스트에서 Select 트리거 클릭 직후 `getByRole('option', ...)`을 쓰자
+포털에 옵션이 비동기 마운트되어 ~40% 비결정적 실패 (8회 반복 실행으로 실증).
+
+**패턴**: Radix Select/Popover 등 포털 기반 콘텐츠는 클릭 후 항상
+`await screen.findByRole(...)`으로 조회한다. 트리거 클릭 자체는 `getByRole` 무방.
+새 테스트는 머지 전 반복 실행(예: 8회)으로 flakiness를 확인한다.
+
+### Alembic revision ID는 32자 이하여야 한다 (VARCHAR(32) 하드 제약)
+**상황**: `m62_agent_blueprint_credential_bindings`(39자) revision ID가
+`alembic_version.version_num VARCHAR(32)`를 초과 → `upgrade head`가
+StringDataRightTruncationError로 모든 환경에서 실패. m58(정확히 32자)이 한계선이었음.
+
+**패턴**: revision ID는 항상 ≤32자. 새 마이그레이션 작성 시 `len(revision)` 확인.
+헤드 마이그레이션이면 revision만 바꿔도 안전(아무도 down_revision으로 참조 안 함).
+
+### Soft-delete + 파생 status fallback의 함정
+**상황**: agent_blueprint uninstall이 installation.install_status만 'uninstalled'로
+바꾸고 blueprint 행/상태는 그대로 둠. 목록 쿼리가 uninstalled installation을 join에서
+제외하자 installation=None → blueprint.install_status('active'로 stale)로 fallback해
+유령이 'active'로 노출. 중복 행을 고치려다 유령-active를 노출시킨 케이스.
+
+**패턴**: soft-delete 시 연관된 모든 엔티티의 status를 함께 동기화하거나, 파생
+projection의 fallback 값이 stale일 수 있음을 검증한다. join 필터 수정은 fallback 분기와
+함께 본다.
+
+### Secret 탐지는 길이가 아니라 구조+entropy로 판정한다
+**상황**: env_vars/headers allowlist가 "길이 ≥20 단일 토큰"만으로 secret을 판정해
+`claude-3-5-sonnet-20241022`(모델명), UUID, region, `Idempotency-Key` 헤더를 전부
+거부하는 false positive 발생. 사용자가 첫 publish에서 바로 부딪힘.
+
+**패턴**: 구분자(`-_./:@`+공백) ≥2개면 식별자로 보고 통과. 연속 영숫자 런이면서
+길이 ≥20 + Shannon entropy ≥3.0 인 값만 secret 의심. 헤더 이름 매칭은 광범위한
+`key`/`token`/`auth` 세그먼트 대신 진짜 자격증명 헤더 enum allowlist로. best-effort
+방어는 FP 최소화가 우선 — 정상 설정을 막느니 드문 opaque secret을 놓치는 게 낫다.
+
+### 적대적 리뷰어의 "Critical 회귀" 주장은 git history로 교차검증한다
+**상황**: 리뷰어가 "ghost 수정이 reinstall 시 고아 누적을 새로 만들었다(Critical)"고
+주장했으나, `_existing_installation`의 `install_status != 'uninstalled'` 필터는
+main에 이미 존재(skill의 기존 soft-delete 동작). blueprint가 동일 패턴을 따르는 것일
+뿐 신규 회귀가 아니었음.
+
+**패턴**: "이 수정이 X를 깨뜨렸다"는 주장은 `git show main:<file>`로 X가 수정 전에도
+존재했는지 확인. 기존 동작과 신규 회귀를 구분해 심각도를 재조정한다.
+
 ### Pattern: chat-run-lifecycle 리뷰에서 도출 (2026-06-11)
 
 **1. 상태 머신 전이는 잠금/CAS 하에서.** 여러 세션·태스크가 같은 row의 status를
