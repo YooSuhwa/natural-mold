@@ -61,7 +61,8 @@ cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
 | Agent settings — system prompt edit | `/agents/[id]/settings` | `agents` | `agent-settings` | ✅ |
 | Attach sub-agent | `/agents/[id]/settings` | `agent_subagents` | `agent-settings` | ✅ |
 | Attach skill | `/agents/[id]/settings` | `agent_skills` | `agent-settings` | ✅ |
-| Attach tool / MCP | `/agents/[id]/settings` | `agent_tools`, `agent_mcp_tools` | — | ❌ (next) |
+| Attach tool | `/agents/[id]/settings` | `agent_tools` | `agent-settings` | ✅ |
+| Attach MCP tool | `/agents/[id]/settings` | `agent_mcp_tools` | — | ❌ (needs an MCP server) |
 | **Subagent delegation run** | chat | `agents`, agent-runtime | — | ❌ |
 | Chat run lifecycle | `/agents/[id]/conversations/[cid]` | `conversation_runs` | `chat-run-lifecycle` | ✅ |
 | Chat navigator + sort/view | sidebar | `conversations` | `chat-navigator`, `chat-navigator-live`, `smoke` | ✅ |
@@ -77,8 +78,9 @@ cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
 | MCP Atlassian OAuth | `/mcp-servers` | `mcp` | `manual-atlassian-oauth` | 🔒 |
 | Spend dashboard | `/usage` | `usage` | `spend-dashboard` | 🟨 |
 | Schedules / triggers | `/agents/[id]/settings` (schedule tab) | `triggers` | `agent-triggers` | ✅ (create + render) |
-| **Public share link** | `/shared/[id]` | `shares` | — | ❌ |
-| **Marketplace publish/install/moderation** | `/marketplace*` | `marketplace` | — | ❌ |
+| Public share link | `/shared/[id]` | `shares` | `share-link` | ✅ |
+| Marketplace browse + install | `/marketplace` | `marketplace` | `marketplace` | ✅ (install via API) |
+| Marketplace publish/moderation | `/marketplace/admin` | `marketplace` | — | ❌ |
 | **Memory controls** | `/settings/memory` | `memory` | — | ❌ |
 | **Agent API deployment** | `/settings/agent-api` | `agent_api` | — | ❌ |
 | **Audit trail** | `/settings/audit` | `audit` | — | ❌ |
@@ -103,6 +105,17 @@ cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
 **Quality pass**
 - Keep mocks only where determinism requires (token usage, 3rd-party errors).
   Everything else should drive the live throwaway backend via the scripted model.
+
+## Gotchas
+
+- **CSRF in test-body POSTs.** `beforeAll`'s `request` is worker-scoped; a
+  `test`'s `request` is test-scoped with a different `moldy_csrf` cookie. Doing a
+  mutating call (POST/DELETE) in a test body needs a fresh `login(request)` in
+  that test so the `X-CSRF-Token` header matches the context's cookie. GETs are
+  fine (no CSRF). This is why most specs do their writes in `beforeAll`.
+- **Triggers need `identity_mode: 'fixed'`** on the agent (credential then comes
+  from the model default).
+- **Text skills** need SKILL.md frontmatter (`name:`) in `content` to create.
 
 ## Constraints
 
@@ -132,6 +145,13 @@ cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
 - Extended `agent-settings` with skill attach (3 tests total). The tools/skills
   dialog attaches existing items via a per-row "{name} 추가" button; text skills
   need SKILL.md frontmatter (`name:`) in their content to create via the API.
+- Added `share-link` spec: send a message, publish, open `/shared/{token}` in a
+  logged-out context (read-only), then revoke -> public GET 404s.
+- Added `marketplace` spec: catalog renders seeded skills; installing one creates
+  an independent copy (`installed_skill_id`); the "설치됨" tab reflects it.
+- Extended `agent-settings` with tool attach (4 tests): `tavily_search` needs no
+  per-tool credential, so it's the easiest attachable tool; My Tools tab uses the
+  same per-row "{name} 추가" button as Skills.
 - Added `agent-triggers` spec: create an interval trigger via the API, verify it
   renders in the settings → 스케줄 tab ("매 N분"). Gotcha: triggers require the
   agent to be `identity_mode: 'fixed'` (AGENT_IDENTITY_REQUIRES_FIXED); the

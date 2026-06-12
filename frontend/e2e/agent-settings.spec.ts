@@ -31,6 +31,8 @@ test.describe('Agent settings — edit & attach', () => {
   let childName: string
   let skillId: string
   let skillName: string
+  let toolId: string
+  let toolName: string
 
   test.beforeAll(async ({ request }) => {
     csrf = await login(request)
@@ -66,6 +68,16 @@ test.describe('Agent settings — edit & attach', () => {
       })
     ).json()) as { id: string }
     skillId = skill.id
+
+    toolName = `E2E Attach Tool ${Date.now()}`
+    const tool = (await (
+      await request.post(`${API}/api/tools`, {
+        headers: csrf,
+        // tavily_search needs no per-tool credential (hosted key).
+        data: { definition_key: 'tavily_search', name: toolName },
+      })
+    ).json()) as { id: string }
+    toolId = tool.id
   })
 
   test.afterAll(async ({ request }) => {
@@ -73,6 +85,7 @@ test.describe('Agent settings — edit & attach', () => {
       if (id) await request.delete(`${API}/api/agents/${id}`, { headers: csrf })
     }
     if (skillId) await request.delete(`${API}/api/skills/${skillId}`, { headers: csrf })
+    if (toolId) await request.delete(`${API}/api/tools/${toolId}`, { headers: csrf })
   })
 
   test('editing the system prompt and saving persists it', async ({ page, request }) => {
@@ -136,5 +149,29 @@ test.describe('Agent settings — edit & attach', () => {
         { timeout: 15_000 },
       )
       .toContain(skillId)
+  })
+
+  test('attaching a tool and saving persists it', async ({ page, request }) => {
+    await page.goto(`/agents/${agentId}/settings`)
+    await page.getByRole('button', { name: '추가', exact: true }).first().click()
+
+    const dialog = page.getByRole('dialog')
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('tab', { name: 'My Tools' }).click()
+    await dialog.getByRole('button', { name: `${toolName} 추가` }).click()
+    await dialog.getByRole('button', { name: '닫기' }).click()
+
+    await page.getByRole('button', { name: '저장', exact: true }).click()
+
+    await expect
+      .poll(
+        async () => {
+          const agent = await getAgent(request, agentId)
+          const tools = (agent.tools ?? []) as Array<{ id?: string } | string>
+          return tools.map((t) => (typeof t === 'string' ? t : t.id)).filter(Boolean)
+        },
+        { timeout: 15_000 },
+      )
+      .toContain(toolId)
   })
 })
