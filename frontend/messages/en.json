@@ -261,7 +261,11 @@
       },
       "session": {
         "fallbackTitle": "New conversation",
-        "menu": "Conversation menu"
+        "menu": "Conversation menu",
+        "status": {
+          "running": "Generating answer",
+          "actionRequired": "User action required"
+        }
       },
       "conversationActions": {
         "menu": {
@@ -1625,10 +1629,6 @@
       "close": "Close",
       "pinned": "Favorite",
       "recent": "Recent",
-      "status": {
-        "running": "Generating answer",
-        "actionRequired": "User action required"
-      },
       "menu": {
         "rename": "Rename",
         "share": "Share",

@@ -261,7 +261,11 @@
       },
       "session": {
         "fallbackTitle": "새 대화",
-        "menu": "대화 메뉴"
+        "menu": "대화 메뉴",
+        "status": {
+          "running": "답변 생성 중",
+          "actionRequired": "사용자 확인 필요"
+        }
       },
       "conversationActions": {
         "menu": {
@@ -1604,10 +1608,6 @@
       "close": "대화 목록 닫기",
       "pinned": "즐겨찾기",
       "recent": "최근 항목",
-      "status": {
-        "running": "답변 생성 중",
-        "actionRequired": "사용자 확인 필요"
-      },
       "menu": {
         "rename": "이름 변경",
         "share": "공유",

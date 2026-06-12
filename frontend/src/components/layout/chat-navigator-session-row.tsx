@@ -53,7 +53,7 @@ export function ChatNavigatorSessionRow({
   const t = useTranslations('sidebar.agents')
   const tActions = useTranslations('sidebar.agents.conversationActions')
   const tCommon = useTranslations('common')
-  const tRunStatus = useTranslations('chat.conversationList.status')
+  const tRunStatus = useTranslations('sidebar.agents.session.status')
   const runtimeStatuses = useAtomValue(conversationRuntimeStatusAtom)
   const shortcutPreviewActive = useAtomValue(shortcutPreviewActiveAtom)
   // 서버 진실(active_run, 1초 폴링) + 같은 탭 스트리밍의 즉시 오버레이(atom)
