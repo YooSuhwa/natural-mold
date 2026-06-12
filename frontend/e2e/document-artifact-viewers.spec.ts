@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import type { APIRequestContext, Locator, Page } from '@playwright/test'
+import { request as playwrightRequest, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 import { test, expect } from './fixtures'
 
 const BACKEND_PORT = process.env.E2E_BACKEND_PORT ?? '8001'
@@ -48,6 +48,12 @@ interface ArtifactRow {
   id: string
   display_name: string
   extension?: string | null
+  status: string
+}
+
+interface RunRow {
+  id: string
+  status: string
 }
 
 interface E2ESetup {
@@ -217,6 +223,50 @@ async function waitForArtifactByName(
   return artifact
 }
 
+async function waitForActiveRun(
+  request: APIRequestContext,
+  conversationId: string,
+): Promise<RunRow> {
+  let latest: RunRow | null = null
+  await expect
+    .poll(
+      async () => {
+        latest = await getJson<RunRow | null>(
+          request,
+          `${API_BASE}/api/conversations/${conversationId}/runs/active`,
+        )
+        return latest?.status ?? null
+      },
+      { timeout: 20_000, intervals: [300, 500, 1000] },
+    )
+    .toMatch(/queued|running|canceling/)
+  if (!latest) throw new Error('No active run found')
+  return latest
+}
+
+async function waitForRunStatus(
+  request: APIRequestContext,
+  conversationId: string,
+  runId: string,
+  status: string,
+): Promise<RunRow> {
+  let latest: RunRow | null = null
+  await expect
+    .poll(
+      async () => {
+        latest = await getJson<RunRow>(
+          request,
+          `${API_BASE}/api/conversations/${conversationId}/runs/${runId}`,
+        )
+        return latest.status
+      },
+      { timeout: 20_000, intervals: [300, 500, 1000] },
+    )
+    .toBe(status)
+  if (!latest) throw new Error(`Run ${runId} polling never returned a row`)
+  return latest
+}
+
 async function openArtifactViewer(page: Page, filename: string): Promise<void> {
   await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
   const artifactButton = page.getByRole('button', { name: new RegExp(filename) }).last()
@@ -265,9 +315,14 @@ test.describe('Document artifact viewers', () => {
 
   let setup: E2ESetup
   let captureDir: string
+  let api: APIRequestContext
 
-  test.beforeAll(async ({ request }) => {
-    setup = await setupDocumentAgent(request)
+  test.beforeAll(async () => {
+    api = await playwrightRequest.newContext({
+      baseURL: API_BASE,
+      storageState: { cookies: [], origins: [] },
+    })
+    setup = await setupDocumentAgent(api)
     captureDir = path.resolve(
       process.cwd(),
       '..',
@@ -278,16 +333,15 @@ test.describe('Document artifact viewers', () => {
     await fs.mkdir(captureDir, { recursive: true })
   })
 
-  test.afterAll(async ({ request }) => {
+  test.afterAll(async () => {
     if (setup?.agentId) {
-      const csrfHeaders = await loginApi(request)
-      await deleteOk(request, `${API_BASE}/api/agents/${setup.agentId}`, csrfHeaders)
+      await deleteOk(api, `${API_BASE}/api/agents/${setup.agentId}`, setup.csrfHeaders)
     }
+    await api?.dispose()
   })
 
   test('generates and previews DOCX, XLSX, PPTX, and HWPX artifacts', async ({
     page,
-    request,
     errors,
   }) => {
     const cases: ViewerCase[] = [
@@ -369,12 +423,61 @@ test.describe('Document artifact viewers', () => {
     for (const item of cases) {
       await sendMessage(page, `${item.marker} 문서를 생성해서 artifact viewer로 확인해줘.`)
       await approveExecuteInSkill(page)
-      const artifact = await waitForArtifactByName(request, setup.conversationId, item.filename)
+      const artifact = await waitForArtifactByName(api, setup.conversationId, item.filename)
       expect(artifact.extension).toBe(item.extension)
       await openArtifactViewer(page, item.filename)
       await item.verify(page)
       await screenshot(page, captureDir, `${item.extension}-viewer.png`)
     }
+
+    expect(errors.console).toEqual([])
+    expect(errors.network).toEqual([])
+  })
+
+  test('marks generated artifacts failed when the run is canceled before final answer', async ({
+    page,
+    errors,
+  }) => {
+    const conversation = await postJson<ConversationRow>(
+      api,
+      `${API_BASE}/api/agents/${setup.agentId}/conversations`,
+      setup.csrfHeaders,
+      { title: 'Canceled Artifact E2E' },
+    )
+
+    await page.goto(`/agents/${setup.agentId}/conversations/${conversation.id}`)
+    await page.waitForLoadState('domcontentloaded')
+    await sendMessage(
+      page,
+      'E2E_DOCX E2E_ARTIFACT_SLOW_FINAL 문서를 생성한 뒤 최종 답변 중 취소할게.',
+    )
+    await approveExecuteInSkill(page)
+
+    const artifact = await waitForArtifactByName(
+      api,
+      conversation.id,
+      'moldy-docx-demo.docx',
+    )
+    expect(artifact.status).toBe('ready')
+
+    const activeRun = await waitForActiveRun(api, conversation.id)
+    const cancelResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url().includes(`/api/conversations/${conversation.id}/runs/${activeRun.id}/cancel`),
+    )
+    await page.locator('[data-moldy-stop-button="true"]').click()
+    const cancelResult = await cancelResponse
+    expect(cancelResult.ok()).toBeTruthy()
+    await waitForRunStatus(api, conversation.id, activeRun.id, 'canceled')
+
+    const finalizedArtifact = await waitForArtifactByName(
+      api,
+      conversation.id,
+      'moldy-docx-demo.docx',
+    )
+    expect(finalizedArtifact.status).toBe('failed')
+    await screenshot(page, captureDir, 'canceled-artifact-failed.png')
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useAtomValue } from 'jotai'
 import {
+  CircleAlertIcon,
   LoaderCircleIcon,
   MessageSquareIcon,
   MoreVerticalIcon,
@@ -15,6 +16,7 @@ import {
 import { useTranslations } from 'next-intl'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import type { ConversationRowActions } from '@/components/chat/use-conversation-row-actions'
+import { isActiveRunStatus, isInterruptedRunStatus } from '@/lib/chat-runs/status'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -51,10 +53,14 @@ export function ChatNavigatorSessionRow({
   const t = useTranslations('sidebar.agents')
   const tActions = useTranslations('sidebar.agents.conversationActions')
   const tCommon = useTranslations('common')
+  const tRunStatus = useTranslations('chat.conversationList.status')
   const runtimeStatuses = useAtomValue(conversationRuntimeStatusAtom)
   const shortcutPreviewActive = useAtomValue(shortcutPreviewActiveAtom)
-  const runtimeStatus = runtimeStatuses[conversation.id] ?? conversation.runtime_status
-  const isRunning = runtimeStatus === 'running'
+  // 서버 진실(active_run, 1초 폴링) + 같은 탭 스트리밍의 즉시 오버레이(atom)
+  const runStatus = conversation.active_run?.status
+  const isRunning =
+    isActiveRunStatus(runStatus) || runtimeStatuses[conversation.id] === 'running'
+  const needsAttention = !isRunning && isInterruptedRunStatus(runStatus)
   const href = `/agents/${conversation.agent_id}/conversations/${conversation.id}`
   const unreadCount = conversation.unread_count ?? 0
 
@@ -99,7 +105,17 @@ export function ChatNavigatorSessionRow({
       ) : null}
       <div className="flex h-7 w-14 shrink-0 items-center justify-end gap-1">
         {isRunning ? (
-          <LoaderCircleIcon className="size-3.5 animate-spin text-primary-strong" />
+          <LoaderCircleIcon
+            className="size-3.5 shrink-0 animate-spin text-primary-strong"
+            aria-label={tRunStatus('running')}
+            data-moldy-run-spinner={conversation.id}
+          />
+        ) : needsAttention ? (
+          <CircleAlertIcon
+            className="size-3.5 shrink-0 text-status-warn"
+            aria-label={tRunStatus('actionRequired')}
+            data-moldy-run-attention={conversation.id}
+          />
         ) : shortcutPreviewActive && shortcutIndex && shortcutIndex <= 9 ? (
           <span className="rounded-md border border-border px-1 py-0.5 moldy-ui-caption font-semibold">
             {formatShortcutLabel(shortcutIndex)}

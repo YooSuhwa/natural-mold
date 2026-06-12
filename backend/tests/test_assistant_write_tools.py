@@ -510,9 +510,7 @@ async def test_add_skill_to_agent(db: AsyncSession, patch_write_session):
 
     from app.models.skill import AgentSkillLink
 
-    res = await db.execute(
-        select(AgentSkillLink).where(AgentSkillLink.agent_id == agent_id)
-    )
+    res = await db.execute(select(AgentSkillLink).where(AgentSkillLink.agent_id == agent_id))
     assert len(res.scalars().all()) == 1
 
 

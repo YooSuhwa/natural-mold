@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field, PlainSerializer, model_validator
 
 from app.schemas.artifact import ArtifactSummary
+from app.schemas.conversation_run import ConversationRunResponse
 
 
 def _utc_iso(dt: datetime) -> str:
@@ -25,7 +26,6 @@ UtcDatetime = Annotated[datetime, PlainSerializer(_utc_iso, return_type=str, whe
 
 
 ConversationSort = Literal["updated", "created"]
-ConversationRuntimeStatus = Literal["idle", "running"]
 
 
 class ConversationCreate(BaseModel):
@@ -46,9 +46,9 @@ class ConversationResponse(BaseModel):
     last_read_at: UtcDatetime | None = None
     last_unread_at: UtcDatetime | None = None
     last_activity_source: str = "user"
+    active_run: ConversationRunResponse | None = None
     created_at: UtcDatetime
     updated_at: UtcDatetime
-    runtime_status: ConversationRuntimeStatus = "idle"
 
     model_config = {"from_attributes": True}
 
@@ -213,6 +213,7 @@ class MessagesEnvelope(BaseModel):
     """
 
     messages: list[MessageResponse]
+    active_run: ConversationRunResponse | None = None
     active_tip_message_id: uuid.UUID | None = None
     active_checkpoint_id: str | None = None
     # W7-4 — conversation 단위 누적 비용 (USD). 메시지 단위는 model_id를 추적

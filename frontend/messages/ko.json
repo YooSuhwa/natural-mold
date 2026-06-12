@@ -494,6 +494,17 @@
       "toolsMore": "+{count}",
       "startCta": "시작",
       "createFromTemplate": "이 템플릿으로 생성",
+      "blueprints": {
+        "title": "설치한 에이전트 블루프린트",
+        "description": "마켓플레이스에서 설치한 에이전트를 템플릿처럼 사용합니다.",
+        "badge": "블루프린트",
+        "create": "이 블루프린트로 생성",
+        "createdCount": "생성 {count}회"
+      },
+      "legacy": {
+        "title": "기본 템플릿",
+        "description": "기존에 제공되던 빠른 시작 템플릿입니다."
+      },
       "emptyCategory": "이 카테고리에 템플릿이 없습니다.",
       "noSearchResults": {
         "title": "\"{query}\"에 맞는 템플릿이 없어요",
@@ -580,6 +591,7 @@
       "favoriteAdd": "즐겨찾기",
       "visualSettings": "비주얼 설정",
       "settings": "설정",
+      "publish": "마켓플레이스에 게시",
       "modelLabel": "모델:",
       "createdAt": "{date} 생성",
       "lastUsed": "{time} 사용",
@@ -1257,6 +1269,7 @@
       "newConversation": "새 대화",
       "emptyState": "대화를 시작해보세요.",
       "error": "에이전트 실행 중 오류가 발생했습니다",
+      "canceled": "중단됨",
       "interruptStateLost": "응답이 일시정지되었지만 상세 정보를 불러올 수 없습니다. 새로고침해 주세요.",
       "conversationList": "대화 목록",
       "artifacts": "파일 패널",
@@ -1299,7 +1312,7 @@
       "attachmentRemove": "첨부 파일 제거",
       "stop": "중단",
       "artifacts": {
-        "openLabel": "{name} 아티팩트 열기"
+        "openLabel": "{name} 파일 열기"
       }
     },
     "share": {
@@ -1473,11 +1486,11 @@
         "incomplete": "Incomplete"
       },
       "artifacts": {
-        "title": "아티팩트",
+        "title": "파일",
         "loading": "파일을 불러오는 중...",
         "emptyPanel": "이 대화에서 생성된 파일이 아직 없습니다.",
         "emptySelection": "미리 볼 파일을 선택해 주세요.",
-        "listTitle": "아티팩트",
+        "listTitle": "파일",
         "listDescription": "{count}개의 생성 파일이 있습니다.",
         "backToList": "파일 목록",
         "runLabel": "실행 {run}",
@@ -1490,7 +1503,7 @@
         "codeMode": "코드",
         "copyContents": "복사",
         "copied": "복사됨",
-        "openMenu": "아티팩트 메뉴 열기",
+        "openMenu": "파일 메뉴 열기",
         "refreshPreview": "미리보기 새로고침",
         "sourceUnavailable": "이 파일은 코드 보기로 열 수 없습니다.",
         "imagePreview": "이미지 미리보기",
@@ -1591,6 +1604,10 @@
       "close": "대화 목록 닫기",
       "pinned": "즐겨찾기",
       "recent": "최근 항목",
+      "status": {
+        "running": "답변 생성 중",
+        "actionRequired": "사용자 확인 필요"
+      },
       "menu": {
         "rename": "이름 변경",
         "share": "공유",
@@ -1863,6 +1880,7 @@
         "import": "불러오기",
         "export": "내보내기",
         "new": "새 MCP 서버",
+        "publish": "게시",
         "manage": "관리"
       },
       "empty": {
@@ -2424,6 +2442,7 @@
         "title": "실행 프로필",
         "empty": "등록된 실행 프로필이 없어요.",
         "supportLevel": {
+          "one_click": "원클릭 설치",
           "ready_python": "Python 실행 가능",
           "proxy_http": "프록시 필요",
           "node_package": "Node 필요",
@@ -2435,6 +2454,7 @@
           "support_level": "지원 방식",
           "runners": "실행기",
           "requires_network": "네트워크",
+          "stdio_risk": "stdio 위험",
           "timeout_seconds": "타임아웃",
           "tool_dependencies": "호스팅 도구",
           "notes": "메모"
@@ -2507,6 +2527,7 @@
       "pendingOnly": "대기 항목 보기",
       "reset": "초기화",
       "support": {
+        "oneClick": "원클릭 설치",
         "readyPython": "Python 실행 가능",
         "proxyHttp": "프록시 필요",
         "nodePackage": "Node 필요",
@@ -2548,7 +2569,8 @@
         "back": "이전",
         "install": "설치",
         "installing": "설치 중…",
-        "next": "다음"
+        "next": "다음",
+        "retry": "다시 시도"
       },
       "toast": {
         "installed": "{name} 설치 완료",
@@ -2561,7 +2583,8 @@
         "hostedTools": "포함된 호스팅 도구:",
         "customName": "사용자 지정 이름 (선택)"
       },
-      "credentialHelp": "Skill 실행에 필요한 자격증명을 연결합니다. 필수가 아닌 항목은 건너뛸 수 있고, 필수 항목을 나중에 연결하면 설치는 <code>needs_setup</code> 상태가 됩니다.",
+      "credentialHelp": "리소스 실행에 필요한 자격증명을 연결합니다. 필수가 아닌 항목은 건너뛸 수 있고, 필수 항목을 나중에 연결하면 설치는 <code>needs_setup</code> 상태가 됩니다.",
+      "loadingVersion": "버전 정보를 불러오는 중…",
       "optional": "(선택)",
       "type": "종류:",
       "loadingCredentials": "자격증명 불러오는 중…",
@@ -2572,8 +2595,16 @@
       "requiredMissing": "연결하지 않으면 설치 후 <code>needs_setup</code> 상태로 표시됩니다.",
       "confirm": {
         "intro": "다음 작업을 수행합니다:",
-        "createSkill": "내 소유 스킬 행 생성 (origin: imported_by_me)",
-        "copyFiles": "패키지 파일을 데이터 디렉터리로 복사",
+        "create": {
+          "skill": "내 소유 스킬 행 생성 (origin: imported_by_me)",
+          "agent": "내 에이전트 블루프린트에 추가",
+          "mcp": "내 MCP 서버 목록에 추가"
+        },
+        "copy": {
+          "skill": "패키지 파일을 데이터 디렉터리로 복사",
+          "agent": "에이전트 설정과 의존성 정보를 블루프린트로 복사",
+          "mcp": "MCP 서버 연결 설정과 도구 스냅샷을 복사"
+        },
         "bind": "{count}개 자격증명 연결:",
         "needsSetup": "needs_setup 상태로 표시 — 누락된 필수 자격증명: {keys}",
         "name": "이름:",
@@ -2581,29 +2612,37 @@
       },
       "done": {
         "title": "{name} 설치 완료",
-        "description": "스킬을 열거나 에이전트에 연결해 바로 사용할 수 있습니다."
+        "description": {
+          "skill": "스킬을 열거나 에이전트에 연결해 바로 사용할 수 있습니다.",
+          "agent": "에이전트 템플릿 화면에서 블루프린트를 선택해 새 에이전트를 만들 수 있습니다.",
+          "mcp": "MCP 서버 목록에서 설정을 확인하고 에이전트에 연결할 수 있습니다."
+        },
+        "open": {
+          "skill": "스킬 열기",
+          "agent": "블루프린트 열기",
+          "mcp": "MCP 서버 열기"
+        }
       },
       "errors": {
         "notFound": "이 항목을 찾을 수 없거나 접근 권한이 없습니다.",
         "disabled": "이 항목은 비활성화되었습니다.",
         "credentialMismatch": "선택한 자격증명이 요구사항과 일치하지 않습니다. 다시 선택해주세요.",
         "credentialRequired": "필수 자격증명이 누락되었습니다.",
+        "loadVersion": "버전 정보를 불러오지 못했습니다. 자격증명 설정 단계를 위해 다시 시도하세요.",
         "failed": "설치에 실패했습니다.",
         "network": "네트워크 오류가 발생했습니다. 다시 시도하세요."
       }
     },
     "publishWizard": {
       "title": "{name} 게시",
-      "description": "이 스킬을 마켓플레이스에서 찾을 수 있게 만듭니다.",
+      "description": "이 리소스를 마켓플레이스에서 찾을 수 있게 만듭니다.",
       "steps": {
         "review": "검토",
         "metadata": "메타데이터",
         "visibility": "공개 범위",
-        "confirm": "확인",
-        "done": "완료"
+        "confirm": "확인"
       },
       "actions": {
-        "close": "닫기",
         "cancel": "취소",
         "back": "이전",
         "publish": "게시",
@@ -2615,7 +2654,9 @@
       },
       "reviewHint": "마켓플레이스에 게시되기 전 secret 검사가 자동 실행됩니다. 차단된 파일이 있으면 1단계로 돌아와 제거 후 다시 시도하세요.",
       "review": {
-        "skill": "스킬"
+        "skill": "스킬",
+        "agent": "에이전트 블루프린트",
+        "mcp": "MCP 서버"
       },
       "fields": {
         "name": "이름",
@@ -2638,12 +2679,9 @@
       "confirmCreateVersion": "새 version snapshot 생성",
       "visibilityLabel": "가시성:",
       "aclSummary": "ACL: {count}명",
-      "done": {
-        "title": "게시 완료",
-        "description": "마켓플레이스 상세 페이지로 이동하는 중…"
-      },
       "errors": {
         "aclRequired": "restricted 게시는 최소 1명의 공유 대상이 필요합니다.",
+        "aclInvalid": "유효하지 않은 사용자 ID가 있습니다. UUID 형식(8-4-4-4-12)으로 입력하세요.",
         "network": "네트워크 오류가 발생했습니다."
       }
     },

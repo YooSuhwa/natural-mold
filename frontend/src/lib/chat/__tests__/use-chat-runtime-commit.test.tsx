@@ -12,13 +12,14 @@
  * 에서 그대로 append 하는 실제 패턴을 재현해, 회귀가 발생하면 hook 자체가
  * render 중 throw 하도록 한다.
  */
-import { renderHook, act } from '@testing-library/react'
+import { renderHook, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest'
-import type { Message, SSEEvent } from '@/lib/types'
-import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
+import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
+import { conversationRunsApi } from '@/lib/api/conversation-runs'
+import { chatCancelInFlightAtom, sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { mergeMessagesForRender, sameMessageSnapshot, useChatRuntime } from '../use-chat-runtime'
 
 vi.mock('next-intl', () => ({
@@ -53,6 +54,10 @@ vi.mock('jotai', async () => {
 
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn(), info: vi.fn() },
+}))
+
+vi.mock('@/lib/api/conversation-runs', () => ({
+  conversationRunsApi: { cancel: vi.fn() },
 }))
 
 function createWrapper() {
@@ -93,6 +98,29 @@ function deferred() {
     resolve = res
   })
   return { promise, resolve }
+}
+
+function conversationRun(status: ConversationRun['status']): ConversationRun {
+  return {
+    id: 'run-1',
+    conversation_id: 'conversation-1',
+    agent_id: 'agent-1',
+    status,
+    source: 'chat',
+    parent_run_id: null,
+    worker_instance_id: null,
+    interrupt_id: null,
+    last_event_id: null,
+    input_preview: null,
+    error_code: null,
+    error_message: null,
+    cancel_requested_at: null,
+    started_at: null,
+    heartbeat_at: null,
+    completed_at: null,
+    created_at: '2026-06-11T00:00:00.000Z',
+    updated_at: '2026-06-11T00:00:00.000Z',
+  }
 }
 
 /** 빌더 / AssistantPanel / TestChatPanel 의 실제 패턴을 재현한 하네스. */
@@ -165,8 +193,6 @@ function message(id: string, role: Message['role'], content: string): Message {
     usage: null,
     parent_id: null,
     branch_checkpoint_id: null,
-    siblings: null,
-    sibling_checkpoint_ids: null,
     branch_index: null,
     branch_total: null,
   }
@@ -248,6 +274,131 @@ describe('useChatRuntime — onMessagesCommit dedup', () => {
       .filter((m) => m.role === 'assistant')
       .map((m) => m.id)
     expect(assistantIds).toHaveLength(1)
+  })
+
+  it('Stop은 서버 cancel 성공 후 local stream을 detach한다', async () => {
+    const started = deferred()
+    const release = deferred()
+    let resolveCancel!: () => void
+    const cancelPromise = new Promise<ReturnType<typeof conversationRun>>((resolve) => {
+      resolveCancel = () => resolve(conversationRun('canceling'))
+    })
+    const cancelMock = vi.mocked(conversationRunsApi.cancel)
+    cancelMock.mockReturnValue(cancelPromise)
+    const abortSeen = vi.fn()
+    const cancelInFlightSetter = jotaiMock.getSetter(chatCancelInFlightAtom)
+
+    async function* streamFn(
+      _content: string,
+      signal: AbortSignal,
+      options?: { onRunId?: (runId: string) => void },
+    ): AsyncGenerator<SSEEvent> {
+      options?.onRunId?.('run-1')
+      signal.addEventListener('abort', abortSeen)
+      yield {
+        event: 'message_start',
+        id: 'run-1-1',
+        data: { id: 'run-1', role: 'assistant' },
+      }
+      started.resolve()
+      await release.promise
+      yield {
+        event: 'message_end',
+        id: 'run-1-2',
+        data: { content: '', usage: {} },
+      }
+    }
+
+    const { result } = renderHook(
+      () =>
+        useChatRuntime({
+          messages: [],
+          streamFn,
+          conversationId: 'conversation-1',
+        }),
+      { wrapper: createWrapper() },
+    )
+
+    let sendPromise!: Promise<void>
+    act(() => {
+      sendPromise = result.current.sendMessage('cancel me')
+    })
+    await started.promise
+
+    act(() => {
+      result.current.runtime.thread.cancelRun()
+    })
+
+    await waitFor(() => expect(cancelMock).toHaveBeenCalledWith('conversation-1', 'run-1'))
+    expect(cancelInFlightSetter).toHaveBeenCalledWith(true)
+    expect(abortSeen).not.toHaveBeenCalled()
+
+    resolveCancel()
+    await waitFor(() => expect(abortSeen).toHaveBeenCalledTimes(1))
+    expect(cancelInFlightSetter).toHaveBeenCalledWith(false)
+
+    release.resolve()
+    await sendPromise
+  })
+
+  it('Stop이 이미 완료된 run 응답을 받으면 local stream을 abort하지 않는다', async () => {
+    const started = deferred()
+    const release = deferred()
+    const cancelMock = vi.mocked(conversationRunsApi.cancel)
+    cancelMock.mockResolvedValue(conversationRun('completed'))
+    const abortSeen = vi.fn()
+
+    async function* streamFn(
+      _content: string,
+      signal: AbortSignal,
+      options?: { onRunId?: (runId: string) => void },
+    ): AsyncGenerator<SSEEvent> {
+      options?.onRunId?.('run-1')
+      signal.addEventListener('abort', abortSeen)
+      yield {
+        event: 'message_start',
+        id: 'run-1-1',
+        data: { id: 'run-1', role: 'assistant' },
+      }
+      started.resolve()
+      await release.promise
+      yield {
+        event: 'content_delta',
+        id: 'run-1-2',
+        data: { content: 'finished normally' },
+      }
+      yield {
+        event: 'message_end',
+        id: 'run-1-3',
+        data: { content: '', usage: {}, status: 'completed' },
+      }
+    }
+
+    const { result } = renderHook(
+      () =>
+        useChatRuntime({
+          messages: [],
+          streamFn,
+          conversationId: 'conversation-1',
+        }),
+      { wrapper: createWrapper() },
+    )
+
+    let sendPromise!: Promise<void>
+    act(() => {
+      sendPromise = result.current.sendMessage('race cancel')
+    })
+    await started.promise
+
+    act(() => {
+      result.current.runtime.thread.cancelRun()
+    })
+
+    await waitFor(() => expect(cancelMock).toHaveBeenCalledWith('conversation-1', 'run-1'))
+    await waitFor(() => expect(abortSeen).not.toHaveBeenCalled())
+
+    release.resolve()
+    await sendPromise
   })
 
   it('tool_call 이 포함된 turn 도 중복 없이 commit 된다', async () => {

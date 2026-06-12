@@ -37,6 +37,7 @@ export type CredentialSummaryStatus =
   | 'manual_login'
 
 export type SupportLevel =
+  | 'one_click'
   | 'ready_python'
   | 'proxy_http'
   | 'node_package'
@@ -208,11 +209,41 @@ export interface MarketplaceInstallation {
   resource_type: MarketplaceResourceType
   installed_skill_id?: string | null
   installed_agent_id?: string | null
+  installed_agent_blueprint_id?: string | null
   installed_mcp_server_id?: string | null
   install_status: InstallationStatus
   is_dirty: boolean
   installed_at: string
   updated_at: string
+}
+
+export interface AgentBlueprint {
+  id: string
+  name: string
+  description?: string | null
+  icon_id?: string | null
+  tags?: string[] | null
+  categories?: string[] | null
+  /** 목록 응답에서는 생략된다 — 단건 조회(GET /agent-blueprints/{id})에서만 채워짐. */
+  spec?: Record<string, unknown> | null
+  spec_hash: string
+  source_marketplace_item_id?: string | null
+  source_marketplace_version_id?: string | null
+  installation_id?: string | null
+  install_status: InstallationStatus
+  is_dirty: boolean
+  created_agent_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateAgentFromBlueprintBody {
+  name?: string | null
+  model_id?: string | null
+  model_fallback_ids?: string[] | null
+  credential_bindings?: Record<string, string>
+  dependency_strategy?: 'reuse_existing' | 'install_missing' | 'always_new'
+  dependency_bindings?: Record<string, Record<string, string>>
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +260,31 @@ export interface PublishSkillBody {
   categories?: string[]
   release_notes?: string | null
   credential_requirements?: CredentialRequirementInput[]
+  acl_user_ids?: string[]
+}
+
+export interface PublishMcpServerBody {
+  item_id?: string | null
+  visibility: 'private' | 'restricted' | 'public' | 'unlisted'
+  name: string
+  description?: string | null
+  icon_id?: string | null
+  tags?: string[]
+  categories?: string[]
+  release_notes?: string | null
+  acl_user_ids?: string[]
+  include_tool_snapshot?: boolean
+}
+
+export interface PublishAgentBody {
+  item_id?: string | null
+  visibility: 'private' | 'restricted' | 'public' | 'unlisted'
+  name: string
+  description?: string | null
+  icon_id?: string | null
+  tags?: string[]
+  categories?: string[]
+  release_notes?: string | null
   acl_user_ids?: string[]
 }
 

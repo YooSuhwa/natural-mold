@@ -13,6 +13,7 @@ import {
   useMessagePartText,
 } from '@assistant-ui/react'
 import { LayoutGridIcon, PaperclipIcon, SendIcon } from 'lucide-react'
+import { useAtomValue } from 'jotai'
 
 import { buildMarkdownComponents } from './markdown-components'
 import { CHAT_FINAL_REMARK_PLUGINS } from './markdown-final-plugins'
@@ -32,6 +33,7 @@ import {
   MessageEditComposerRoot,
   useMessageEditComposerControls,
 } from './message-edit-composer'
+import { chatCancelInFlightAtom } from '@/lib/stores/chat-store'
 
 /**
  * Builder-variant 메시지/컴포저 오버라이드.
@@ -223,7 +225,9 @@ function IconBtn({ label, children }: { label: string; children: React.ReactNode
 function BuilderStopButton() {
   const tMsg = useTranslations('chat.message')
   const aui = useAui()
+  const isCanceling = useAtomValue(chatCancelInFlightAtom)
   const handleStop = () => {
+    if (isCanceling) return
     try {
       aui.thread().cancelRun()
     } catch (err) {
@@ -234,7 +238,9 @@ function BuilderStopButton() {
     <button
       type="button"
       onClick={handleStop}
+      disabled={isCanceling}
       aria-label={tMsg('stop')}
+      data-moldy-stop-button="true"
       className="moldy-builder-stop"
     >
       <span aria-hidden className="moldy-builder-stop-mark" />

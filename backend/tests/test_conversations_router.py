@@ -243,7 +243,7 @@ async def test_list_conversations_page_searches_and_limits_on_server(client: Asy
 
 
 @pytest.mark.asyncio
-async def test_list_conversations_page_sort_created_and_runtime_status(client: AsyncClient):
+async def test_list_conversations_page_sort_created_and_active_run(client: AsyncClient):
     agent_id, _ = await _seed_agent()
     base = datetime.now(UTC).replace(tzinfo=None)
     pinned_id = await _seed_conversation_with_title(
@@ -278,7 +278,7 @@ async def test_list_conversations_page_sort_created_and_runtime_status(client: A
         str(newest_created_id),
         str(older_created_id),
     ]
-    assert {item["runtime_status"] for item in items} == {"idle"}
+    assert all(item["active_run"] is None for item in items)
 
 
 @pytest.mark.asyncio
@@ -474,7 +474,7 @@ async def test_global_conversations_page_filters_ui_ownership_and_embeds_agent(
         "name": "Secondary Agent",
         "image_url": None,
     }
-    assert {item["runtime_status"] for item in updated_items} == {"idle"}
+    assert all(item["active_run"] is None for item in updated_items)
 
     assert created_resp.status_code == 200
     created_items = created_resp.json()["items"]
@@ -501,7 +501,7 @@ async def test_get_conversation_detail_filters_ui_ownership_and_embeds_agent(cli
     assert ok_resp.status_code == 200
     body = ok_resp.json()
     assert body["id"] == str(owned_id)
-    assert body["runtime_status"] == "idle"
+    assert body["active_run"] is None
     assert body["agent"] == {
         "id": str(agent_id),
         "name": "Detail Agent",

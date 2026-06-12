@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { AgentCard } from '@/components/agent/agent-card'
 import { AgentCardSkeleton } from '@/components/agent/agent-card-skeleton'
+import { PublishWizard } from '@/components/marketplace/publish-wizard'
 import { EmptyState } from '@/components/shared/empty-state'
 import { cn } from '@/lib/utils'
 import type { AgentSummary } from '@/lib/types'
@@ -57,6 +58,7 @@ export default function DashboardPage() {
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState<SortKey>('latest')
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false)
+  const [publishAgent, setPublishAgent] = useState<AgentSummary | null>(null)
 
   const greetingKey = pickGreetingKey()
   const userName = displayUserName(user) || t('userFallback')
@@ -245,7 +247,11 @@ export default function DashboardPage() {
             {filteredAgents.length > 0 ? (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredAgents.map((agent) => (
-                  <AgentCard key={agent.id} agent={agent} />
+                  <AgentCard
+                    key={agent.id}
+                    agent={agent}
+                    onPublish={(selected) => setPublishAgent(selected as AgentSummary)}
+                  />
                 ))}
               </div>
             ) : (
@@ -264,6 +270,23 @@ export default function DashboardPage() {
           />
         )}
       </div>
+      <PublishWizard
+        resource={
+          publishAgent
+            ? {
+                id: publishAgent.id,
+                resourceType: 'agent',
+                name: publishAgent.name,
+                description: publishAgent.description,
+                iconId: 'agent',
+                detailLabel: publishAgent.name,
+                detailSubhead: publishAgent.model_display_name,
+              }
+            : null
+        }
+        open={!!publishAgent}
+        onOpenChange={(open) => !open && setPublishAgent(null)}
+      />
     </div>
   )
 }

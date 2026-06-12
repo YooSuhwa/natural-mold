@@ -27,6 +27,7 @@ from app.marketplace.secret_scan import (
     SECRET_CONTENT_PATTERNS,
     SECRET_FILE_PATTERNS,
     SecretFinding,
+    is_suspicious_secret_value,
     scan_package,
 )
 
@@ -70,9 +71,12 @@ class TestPatternRegistry:
         )
 
     def test_content_pattern_count_pinned(self) -> None:
-        # 6 documented patterns: sk-, PEM, AWS, GOOGLE_APPLICATION_CREDENTIALS,
-        # ghp_, sk_live_. Same rationale.
-        assert len(SECRET_CONTENT_PATTERNS) == 6
+        # 13 documented patterns: sk-, PEM, AWS, GOOGLE_APPLICATION_CREDENTIALS,
+        # ghp_, sk_live_, URL userinfo (scheme://user:password@host), Slack
+        # (xox[baprs]-), Telegram bot, Google OAuth (ya29.), GitHub
+        # ghs_/gho_/ghu_, GitLab glpat-, token-bearing query string.
+        # Same rationale.
+        assert len(SECRET_CONTENT_PATTERNS) == 13
 
 
 # ===========================================================================
@@ -285,6 +289,50 @@ class TestContentPatterns:
         )
         findings = _findings_for(tmp_path)
         assert any(r"\bsk_live_" in f.pattern for f in findings)
+
+    @pytest.mark.parametrize(
+        ("payload", "needle"),
+        [
+            # Token literals are split (``b"xoxb-" + b"…"``) so GitHub
+            # push-protection doesn't flag these synthetic fixtures; the
+            # scanner still receives the reassembled value at runtime.
+            (b"SLACK_TOKEN=xoxb-" + b"1234567890-ABCDEFGHIJKLMNOP\n", r"xox"),
+            (b"SLACK_TOKEN=xoxp-" + b"9999999999-secretsecretsecret\n", r"xox"),
+            (b"BOT=123456789:AAEhBOweik6ad6PsVFktmf7g3HxyzABCDEF\n", r"\d{6,}:"),
+            (b"token=ya29.A0ARrdaM-abcdefghijklmnop\n", r"ya29\."),
+            (b"GH=ghs_" + b"A" * 36 + b"\n", r"gh[sou]_"),
+            (b"GH=gho_" + b"B" * 36 + b"\n", r"gh[sou]_"),
+            (b"GH=ghu_" + b"C" * 36 + b"\n", r"gh[sou]_"),
+            (b"GL=glpat-" + b"abcdefABCDEF12345678\n", r"glpat-"),
+            (b"url=https://api.example.com/v1?access_token=abc123secret\n", r"access_token"),
+            (b"url=https://api.example.com/v1?api_key=zzz999\n", r"access_token"),
+        ],
+    )
+    def test_new_provider_token_patterns_block(
+        self, tmp_path: Path, payload: bytes, needle: str
+    ) -> None:
+        _layout(tmp_path, {"config/env.sh": payload})
+        findings = _findings_for(tmp_path)
+        assert any(
+            f.kind == "content" and needle in f.pattern for f in findings
+        ), f"new pattern {needle!r} did not flag {payload!r}"
+
+    def test_new_patterns_allow_placeholders(self, tmp_path: Path) -> None:
+        """Interpolation placeholders must still pass the new query-string
+        and token patterns (best-effort false-positive guard)."""
+
+        _layout(
+            tmp_path,
+            {
+                "config/ok.sh": (
+                    "url=https://api.example.com/v1?token={{$credentials.api}}\n"
+                    "SLACK=normal-value\n"
+                    "VERSION=1.2.3\n"
+                ),
+            },
+        )
+        findings = _findings_for(tmp_path)
+        assert findings == [], f"placeholder/benign config flagged: {findings}"
 
 
 # ===========================================================================
@@ -526,3 +574,84 @@ class TestSecretScanModuleSurface:
         assert findings
         # Relative input shouldn't leak the cwd into the result paths.
         assert all(not os.path.isabs(f.path) for f in findings)
+
+
+# ===========================================================================
+# is_suspicious_secret_value — structure + entropy allowlist regression guard
+# ===========================================================================
+
+
+class TestSuspiciousValueStructureGuard:
+    """Adversarial-review regression table for the env_vars/headers/args
+    allowlist. The policy is structure + entropy based:
+
+    * a value with >= 2 separators (``-_./:@`` or space) reads as a
+      structured identifier → allowed (model names, regions, UUIDs,
+      reverse-DNS namespaces, npm specs, enum constants);
+    * a continuous run (<= 1 separator) of length >= 20 with Shannon
+      entropy >= 3.0 bits/char, or a pure-hex digest >= 32 chars, reads as
+      opaque secret material → blocked;
+    * URLs are re-scanned (query/fragment) and MIME subtypes are
+      length-capped so disguised secrets don't auto-pass;
+    * known token shapes (``sk-`` etc.) block regardless of structure.
+    """
+
+    # FALSE-POSITIVE GUARD — benign structured/short config must pass.
+    @pytest.mark.parametrize(
+        ("value", "header"),
+        [
+            ("claude-3-5-sonnet-20241022", None),
+            ("prod-cluster-us-east-1a-replica", None),
+            ("550e8400-e29b-41d4-a716-446655440000", None),
+            ("FEATURE_FLAG_ENABLED_FOR_ALL", None),
+            ("com.example.production.service.handler", None),
+            ("us-west-2", None),
+            ("application/json", None),
+            ("application/x-www-form-urlencoded", None),
+            ("production", None),
+            ("30", None),
+            ("https://api.example.com", None),
+            ("@modelcontextprotocol/server-filesystem", None),
+            ("req-12345", "Idempotency-Key"),
+            ("home-v2", "X-Cache-Key"),
+            ("abc-1", "X-Request-Key"),
+            ("part-7", "X-Partition-Key"),
+            ("user-42", "X-Routing-Key"),
+            ("={{ $credentials.x }}", None),
+            ("", None),
+        ],
+    )
+    def test_benign_values_allowed(self, value: str, header: str | None) -> None:
+        assert not is_suspicious_secret_value(value, header_name=header), (
+            value,
+            header,
+        )
+
+    # SECURITY GUARD — opaque/disguised/known secrets must be blocked.
+    @pytest.mark.parametrize(
+        ("value", "header"),
+        [
+            ("aB3kLm9Qp5Rs7Tv1Wx4Yz6Cd0Ef2Gh", None),  # 30-char entropy run
+            ("deadbeefdeadbeefdeadbeefdeadbeef", None),  # 32 hex digest
+            ("Bearer aB3kLm9Qp5Rs7Tv1Wx", "Authorization"),
+            ("aB3kLm9Qp5Rs7Tv1Wx4Yz6Cd", "X-Api-Key"),
+            ("session=aB3kLm9Qp5Rs7Tv1Wx4", "Cookie"),
+            ("https://h/x?sig=aB3kLm9Qp5Rs7Tv1Wx4Yz", None),  # signed URL
+            ("https://u:aB3kLm9Qp5Rs7@h", None),  # URL userinfo
+            ("application/x-realsecrettoken12345", None),  # opaque MIME subtype
+            ("sk-abc1234567890ABCDEFghij", None),  # content token
+            ("xoxb-" + "1234567890-ABCDEFGHIJKLMNOP", None),  # Slack token (split)
+            ("ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", None),  # GitHub PAT
+            ("aB3kLm9Qp5Rs7Tv1Wx4Yz6", None),  # opaque arg value
+        ],
+    )
+    def test_secret_values_flagged(self, value: str, header: str | None) -> None:
+        assert is_suspicious_secret_value(value, header_name=header), (value, header)
+
+    def test_degenerate_low_entropy_run_allowed(self) -> None:
+        """A ``B*40`` run has entropy 0 — it is *not* real secret material,
+        so the entropy-based policy intentionally lets it through. This
+        pins the documented residual so a future tweak doesn't silently
+        resurrect the length-only false-positive behaviour."""
+
+        assert not is_suspicious_secret_value("B" * 40)

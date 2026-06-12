@@ -59,6 +59,7 @@ def summary_from_record(
     record: MessageEvent,
     *,
     fallback_reason: str | None = None,
+    run_status: str | None = None,
 ) -> DebugTraceSummary:
     trace_id = record.external_trace_id or record.assistant_msg_id
     provider = record.external_trace_provider or "message_events"
@@ -66,7 +67,7 @@ def summary_from_record(
         trace_id=trace_id,
         provider=provider,
         name=f"agent.{_source_from_events(record)}",
-        status=record.status,
+        status=run_status or record.status,
         source=_source_from_events(record),
         started_at=record.created_at,
         completed_at=record.completed_at,
@@ -168,9 +169,7 @@ def spans_from_observations(rows: list[dict[str, Any]]) -> list[DebugTraceSpan]:
         started = _parse_dt(row.get("startTime") or row.get("start_time"))
         ended = _parse_dt(row.get("endTime") or row.get("end_time"))
         raw_metadata = row.get("metadata")
-        metadata: dict[str, Any] = (
-            raw_metadata if isinstance(raw_metadata, dict) else {}
-        )
+        metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
         spans.append(
             DebugTraceSpan(
                 id=str(row.get("id") or f"observation:{index}"),
@@ -203,6 +202,8 @@ def spans_from_observations(rows: list[dict[str, Any]]) -> list[DebugTraceSpan]:
 
 async def build_debug_detail(
     record: MessageEvent,
+    *,
+    run_status: str | None = None,
 ) -> tuple[DebugTraceSummary, list[DebugTraceSpan], list[dict[str, Any]] | None, str | None]:
     should_fetch_langfuse = bool(
         is_langfuse_enabled()
@@ -213,15 +214,18 @@ async def build_debug_detail(
     if should_fetch_langfuse and record.external_trace_id:
         rows, error = await fetch_langfuse_observations(record.external_trace_id)
         if rows:
-            return summary_from_record(record), spans_from_observations(rows), rows, None
+            return (
+                summary_from_record(record, run_status=run_status),
+                spans_from_observations(rows),
+                rows,
+                None,
+            )
 
     fallback_reason = error or (
-        None
-        if is_langfuse_enabled() and record.external_trace_id
-        else "Langfuse trace unavailable"
+        None if is_langfuse_enabled() and record.external_trace_id else "Langfuse trace unavailable"
     )
     return (
-        summary_from_record(record, fallback_reason=fallback_reason),
+        summary_from_record(record, fallback_reason=fallback_reason, run_status=run_status),
         spans_from_message_events(record),
         None,
         fallback_reason,

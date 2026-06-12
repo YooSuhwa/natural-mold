@@ -8,6 +8,7 @@ import {
   type QueryClient,
 } from '@tanstack/react-query'
 import { conversationsApi } from '@/lib/api/conversations'
+import { conversationPagesContainActiveRun } from '@/lib/chat-runs/status'
 import type { Conversation, ConversationPageParams, ConversationUpdateRequest } from '@/lib/types'
 
 interface ConversationPagesOptions {
@@ -80,6 +81,8 @@ export function useConversationPages(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled: (options.enabled ?? true) && !!agentId,
+    refetchInterval: (query) =>
+      conversationPagesContainActiveRun(query.state.data?.pages) ? 1000 : false,
   })
 }
 
@@ -98,6 +101,9 @@ export function useGlobalConversationPages(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.next_cursor ?? undefined,
     enabled: options.enabled ?? true,
+    // 백그라운드 run이 보이는 동안 navigator도 1초 폴링으로 상태를 따라간다
+    refetchInterval: (query) =>
+      conversationPagesContainActiveRun(query.state.data?.pages) ? 1000 : false,
   })
 }
 

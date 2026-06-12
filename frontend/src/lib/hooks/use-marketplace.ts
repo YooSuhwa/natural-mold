@@ -2,12 +2,15 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { marketplaceApi, skillCredentialApi } from '@/lib/api/marketplace'
+import { agentBlueprintApi, marketplaceApi, skillCredentialApi } from '@/lib/api/marketplace'
 import type {
+  CreateAgentFromBlueprintBody,
   InstallMarketplaceItemBody,
   MarketplaceItemACLBody,
   MarketplaceItemPatchBody,
   MarketplaceListFilters,
+  PublishAgentBody,
+  PublishMcpServerBody,
   PublishNewVersionBody,
   PublishSkillBody,
   UpdateInstallationBody,
@@ -16,6 +19,8 @@ import type {
 const ITEMS_KEY = ['marketplace', 'items'] as const
 const KSKILL_KEY = ['marketplace', 'admin', 'k-skill'] as const
 const MODERATION_KEY = ['marketplace', 'admin', 'moderation'] as const
+const AGENT_BLUEPRINTS_KEY = ['agent-blueprints'] as const
+const MCP_SERVERS_KEY = ['mcp-servers'] as const
 
 export function useMarketplaceItems(filters?: MarketplaceListFilters) {
   return useQuery({
@@ -76,11 +81,47 @@ export function useKSkillSyncStatus(enabled = true) {
   })
 }
 
+export function useAgentBlueprints(enabled = true) {
+  return useQuery({
+    queryKey: AGENT_BLUEPRINTS_KEY,
+    queryFn: () => agentBlueprintApi.list(),
+    enabled,
+    staleTime: 30_000,
+  })
+}
+
+export function useAgentBlueprint(blueprintId: string | null | undefined) {
+  return useQuery({
+    queryKey: ['agent-blueprints', blueprintId],
+    queryFn: () => agentBlueprintApi.get(blueprintId!),
+    enabled: !!blueprintId,
+  })
+}
+
+export function useCreateAgentFromBlueprint() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      blueprintId,
+      body,
+    }: {
+      blueprintId: string
+      body: CreateAgentFromBlueprintBody
+    }) => agentBlueprintApi.createAgent(blueprintId, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: AGENT_BLUEPRINTS_KEY })
+      qc.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
+}
+
 // ---------- Mutations ----------
 
 function invalidateAllItems(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: ITEMS_KEY })
   qc.invalidateQueries({ queryKey: ['skills'] })
+  qc.invalidateQueries({ queryKey: AGENT_BLUEPRINTS_KEY })
+  qc.invalidateQueries({ queryKey: MCP_SERVERS_KEY })
 }
 
 export function useInstallItem(itemId: string) {
@@ -123,6 +164,24 @@ export function usePublishSkill() {
   })
 }
 
+export function usePublishMcpServer() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ serverId, body }: { serverId: string; body: PublishMcpServerBody }) =>
+      marketplaceApi.publishFromMcp(serverId, body),
+    onSuccess: () => invalidateAllItems(qc),
+  })
+}
+
+export function usePublishAgent() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ agentId, body }: { agentId: string; body: PublishAgentBody }) =>
+      marketplaceApi.publishFromAgent(agentId, body),
+    onSuccess: () => invalidateAllItems(qc),
+  })
+}
+
 export function usePublishNewVersion() {
   const qc = useQueryClient()
   return useMutation({
@@ -135,6 +194,38 @@ export function usePublishNewVersion() {
       skillId: string
       body: PublishNewVersionBody
     }) => marketplaceApi.publishNewVersion(itemId, skillId, body),
+    onSuccess: () => invalidateAllItems(qc),
+  })
+}
+
+export function usePublishNewMcpVersion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      itemId,
+      serverId,
+      body,
+    }: {
+      itemId: string
+      serverId: string
+      body: PublishNewVersionBody
+    }) => marketplaceApi.publishNewMcpVersion(itemId, serverId, body),
+    onSuccess: () => invalidateAllItems(qc),
+  })
+}
+
+export function usePublishNewAgentVersion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      itemId,
+      agentId,
+      body,
+    }: {
+      itemId: string
+      agentId: string
+      body: PublishNewVersionBody
+    }) => marketplaceApi.publishNewAgentVersion(itemId, agentId, body),
     onSuccess: () => invalidateAllItems(qc),
   })
 }

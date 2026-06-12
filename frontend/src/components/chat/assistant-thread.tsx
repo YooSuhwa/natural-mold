@@ -46,7 +46,11 @@ import { Button } from '@/components/ui/button'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
 import { UserAvatar } from '@/components/auth/UserAvatar'
 import type { User } from '@/lib/types/user'
-import { sessionTokenUsageAtom, type TokenUsage } from '@/lib/stores/chat-store'
+import {
+  chatCancelInFlightAtom,
+  sessionTokenUsageAtom,
+  type TokenUsage,
+} from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
 import { WittyLoadingMessage } from '@/components/chat/witty-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
@@ -911,7 +915,9 @@ function ThreadComposer({
 function StopButton() {
   const aui = useAui()
   const tMsg = useTranslations('chat.message')
+  const isCanceling = useAtomValue(chatCancelInFlightAtom)
   const handleStop = () => {
+    if (isCanceling) return
     try {
       aui.thread().cancelRun()
     } catch (err) {
@@ -922,8 +928,10 @@ function StopButton() {
     <button
       type="button"
       onClick={handleStop}
+      disabled={isCanceling}
       aria-label={tMsg('stop')}
-      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-input bg-background px-3 moldy-ui-compact font-medium text-foreground/80 transition-colors hover:bg-accent"
+      data-moldy-stop-button="true"
+      className="inline-flex h-8 items-center gap-1.5 rounded-[9px] border border-input bg-background px-3 moldy-ui-compact font-medium text-foreground/80 transition-colors hover:bg-accent disabled:pointer-events-none disabled:opacity-50"
     >
       <span aria-hidden className="block size-[9px] rounded-sm bg-foreground/80" />
       {tMsg('stop')}

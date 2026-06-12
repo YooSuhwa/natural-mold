@@ -89,10 +89,18 @@ interface MarketplaceCardProps {
   className?: string
 }
 
-function getPrimaryCtaHref(item: MarketplaceItem, cta: PrimaryCta): string | null {
+export function getPrimaryCtaHref(item: MarketplaceItem, cta: PrimaryCta): string | null {
   if (cta.disabled) return null
   if (cta.kind === 'open' && item.installation.installed_resource_id) {
-    return `/skills?detailId=${item.installation.installed_resource_id}`
+    if (item.resource_type === 'skill') {
+      return `/skills?detailId=${item.installation.installed_resource_id}`
+    }
+    if (item.resource_type === 'mcp') {
+      return `/mcp-servers?detailId=${item.installation.installed_resource_id}`
+    }
+    if (item.resource_type === 'agent') {
+      return `/agents/new/template?blueprintId=${item.installation.installed_resource_id}`
+    }
   }
   if (cta.kind === 'view_details' || cta.kind === 'manage') {
     return `/marketplace/${item.id}`

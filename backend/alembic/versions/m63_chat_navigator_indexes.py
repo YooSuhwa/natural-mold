@@ -1,4 +1,4 @@
-"""M61: chat navigator keyset pagination indexes.
+"""M63: chat navigator keyset pagination indexes.
 
 source 컬럼을 포함한 복합 인덱스를 추가하고, M53 conversations 인덱스 2개를
 제거한다. 제거 대상을 쓰던 쿼리는 전부 source equality 조건을 포함하거나
@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from alembic import op
 
-revision = "m61_chat_navigator_indexes"
-down_revision = "m60_credential_oauth_states"
+revision = "m63_chat_navigator_indexes"
+down_revision = "m62_blueprint_cred_bindings"
 branch_labels = None
 depends_on = None
 

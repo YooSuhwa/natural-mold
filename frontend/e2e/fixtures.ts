@@ -45,8 +45,16 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
     page.on('pageerror', (err) => errors.page.push(err.message))
     page.on('requestfailed', (req) => {
       const url = req.url()
-      if (!url.includes('favicon')) {
-        errors.network.push(`${req.method()} ${url}`)
+      const errorText = req.failure()?.errorText ?? 'unknown'
+      const expectedStreamDetach =
+        errorText.includes('net::ERR_ABORTED') &&
+        /\/api\/conversations\/[^/]+\/(messages|messages\/resume|runs\/[^/]+\/stream)$/.test(url)
+      const expectedRouteTransitionAbort =
+        errorText.includes('net::ERR_ABORTED') &&
+        req.method() === 'GET' &&
+        /\/api\/agents\/[^/]+(?:$|\/conversations(?:\/page)?$)/.test(url)
+      if (!url.includes('favicon') && !expectedStreamDetach && !expectedRouteTransitionAbort) {
+        errors.network.push(`${req.method()} ${url} ${errorText}`)
       }
     })
 

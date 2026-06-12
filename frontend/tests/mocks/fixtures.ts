@@ -265,7 +265,7 @@ export const mockConversation: Conversation = {
   last_activity_source: 'user',
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
-  runtime_status: 'idle',
+  active_run: null,
 }
 
 export const mockConversationList: Conversation[] = [

@@ -69,7 +69,7 @@ const conversations = [
     last_activity_source: 'user',
     created_at: '2026-06-08T10:00:00Z',
     updated_at: now,
-    runtime_status: 'idle',
+    active_run: null,
   },
   {
     id: 'conv-2',
@@ -82,7 +82,7 @@ const conversations = [
     last_activity_source: 'user',
     created_at: '2026-06-07T10:00:00Z',
     updated_at: '2026-06-09T10:00:00Z',
-    runtime_status: 'idle',
+    active_run: null,
   },
   {
     id: 'conv-3',
@@ -95,7 +95,7 @@ const conversations = [
     last_activity_source: 'schedule',
     created_at: '2026-06-06T10:00:00Z',
     updated_at: '2026-06-09T12:00:00Z',
-    runtime_status: 'idle',
+    active_run: null,
   },
 ]
 

@@ -18,16 +18,21 @@ from app.schemas.conversation import (
     ConversationWithAgentListEnvelope,
     ConversationWithAgentResponse,
 )
-from app.services import chat_service
+from app.schemas.conversation_run import ConversationRunResponse
+from app.services import chat_service, conversation_run_service
 from app.services.agent_image_paths import build_agent_image_url
 from app.services.conversation_audit_service import record_conversation_audit
 
 router = APIRouter(tags=["conversations"])
 
 
-def _conversation_with_agent_response(conversation: Conversation) -> ConversationWithAgentResponse:
+def _conversation_with_agent_response(
+    conversation: Conversation,
+    active_run: ConversationRunResponse | None = None,
+) -> ConversationWithAgentResponse:
     agent = conversation.agent
     base = ConversationResponse.model_validate(conversation).model_dump()
+    base["active_run"] = active_run
     return ConversationWithAgentResponse(
         **base,
         agent=ConversationAgentBrief(
@@ -40,6 +45,33 @@ def _conversation_with_agent_response(conversation: Conversation) -> Conversatio
             ),
         ),
     )
+
+
+async def _active_runs_by_conversation(
+    db: AsyncSession,
+    items: list[Conversation],
+) -> dict[uuid.UUID, ConversationRunResponse]:
+    active_runs = await conversation_run_service.active_runs_for_conversations(
+        db,
+        [item.id for item in items],
+    )
+    return {
+        conversation_id: ConversationRunResponse.model_validate(run)
+        for conversation_id, run in active_runs.items()
+    }
+
+
+async def _conversation_responses_with_active_runs(
+    db: AsyncSession,
+    items: list[Conversation],
+) -> list[ConversationResponse]:
+    active_runs = await _active_runs_by_conversation(db, items)
+    return [
+        ConversationResponse.model_validate(item).model_copy(
+            update={"active_run": active_runs.get(item.id)}
+        )
+        for item in items
+    ]
 
 
 @router.get(
@@ -65,8 +97,12 @@ async def list_global_conversations_page(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid cursor") from exc
+    active_runs = await _active_runs_by_conversation(db, items)
     return ConversationWithAgentListEnvelope(
-        items=[_conversation_with_agent_response(item) for item in items],
+        items=[
+            _conversation_with_agent_response(item, active_run=active_runs.get(item.id))
+            for item in items
+        ],
         next_cursor=next_cursor,
         has_more=has_more,
     )
@@ -84,7 +120,8 @@ async def get_conversation_detail(
     conv = await chat_service.get_owned_ui_conversation_with_agent(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
-    return _conversation_with_agent_response(conv)
+    active_runs = await _active_runs_by_conversation(db, [conv])
+    return _conversation_with_agent_response(conv, active_run=active_runs.get(conv.id))
 
 
 @router.get(
@@ -114,7 +151,7 @@ async def list_conversations_page(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid cursor") from exc
     return ConversationListEnvelope(
-        items=[ConversationResponse.model_validate(item) for item in items],
+        items=await _conversation_responses_with_active_runs(db, items),
         next_cursor=next_cursor,
         has_more=has_more,
     )
@@ -132,7 +169,8 @@ async def list_conversations(
     agent = await chat_service.get_agent_with_tools(db, agent_id, user.id)
     if not agent:
         raise agent_not_found()
-    return await chat_service.list_conversations(db, agent_id)
+    items = await chat_service.list_conversations(db, agent_id)
+    return await _conversation_responses_with_active_runs(db, items)
 
 
 @router.post(

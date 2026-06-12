@@ -26,6 +26,7 @@ const ALL = '__all__'
 export function MarketplaceFilterBar({ filters, onChange, superUser }: MarketplaceFilterBarProps) {
   const t = useTranslations('marketplace.filters')
   const supportOptions = [
+    { value: 'one_click', label: t('support.oneClick') },
     { value: 'ready_python', label: t('support.readyPython') },
     { value: 'proxy_http', label: t('support.proxyHttp') },
     { value: 'node_package', label: t('support.nodePackage') },

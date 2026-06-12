@@ -74,12 +74,14 @@ from app.scheduler import (
     get_scheduler,
     register_broker_eviction_job,
     register_catalog_update_job,
+    register_conversation_run_stale_sweep_job,
     register_credential_rotation_job,
     register_health_check_job,
     register_mcp_health_job,
     register_refresh_token_gc_job,
     register_skill_runtime_cleanup_job,
     release_scheduler_leader,
+    sweep_stale_conversation_runs,
     try_acquire_scheduler_leader,
 )
 from app.security.production_check import enforce_production_safety
@@ -176,6 +178,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Hook framework — register built-in hooks before any runtime call.
     register_default_hooks()
 
+    await sweep_stale_conversation_runs()
+
     # Spend writer — drain queue in the background so spend rows accumulate
     # without blocking agent runs. Must start before any hook is invoked.
     await spend_queue.start()
@@ -197,6 +201,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         register_mcp_health_job()
         # W3-out M4 — EventBroker GC (60s interval, TTL 300s).
         register_broker_eviction_job()
+        register_conversation_run_stale_sweep_job()
         # ADR-016 §4.2 — refresh-token whitelist GC (nightly).
         register_refresh_token_gc_job()
         # ADR-017 Slice E — per-thread skill runtime root cleanup
@@ -224,6 +229,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     import asyncio
 
     from app.agent_runtime.event_broker import registry as broker_registry
+    from app.services.conversation_run_worker import get_run_task_registry
+
+    await get_run_task_registry().shutdown(timeout_seconds=10.0)
 
     # 1. SSE listener 들에 sentinel 먼저. 이 순서가 뒤집히면 scheduler GC가
     # 먼저 죽은 채로 listener 가 ``queue.get()`` 에 영원히 블록될 수 있다.
@@ -296,6 +304,7 @@ def create_app() -> FastAPI:
 
     from app.routers import (
         agent_api,
+        agent_blueprints,
         agent_runtime_api,
         agents,
         artifacts,
@@ -323,6 +332,7 @@ def create_app() -> FastAPI:
 
     app.include_router(audit.router)
     app.include_router(auth.router)
+    app.include_router(agent_blueprints.router)
     app.include_router(agent_api.router)
     app.include_router(agent_runtime_api.router)
     app.include_router(agents.router)
@@ -347,6 +357,10 @@ def create_app() -> FastAPI:
     app.include_router(uploads.router)
     app.include_router(feedback.router)
     app.include_router(usage.router)
+    if settings.e2e_test_helpers_enabled:
+        from app.routers import e2e_chat_run_helpers
+
+        app.include_router(e2e_chat_run_helpers.router)
 
     # ---- Exception handlers ----
 

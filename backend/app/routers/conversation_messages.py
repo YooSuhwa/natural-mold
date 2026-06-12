@@ -5,7 +5,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,21 +22,31 @@ from app.error_codes import (
 )
 from app.models.message_event import MessageEvent
 from app.schemas.conversation import MessageCreate, MessagesEnvelope, ResumeRequest
-from app.services import chat_service, thread_branch_service, trace_storage
+from app.schemas.conversation_run import ConversationRunResponse
+from app.services import (
+    chat_service,
+    conversation_run_service,
+    thread_branch_service,
+    trace_storage,
+)
 from app.services.conversation_audit_service import record_conversation_audit
+from app.services.conversation_run_worker import start_conversation_run
 from app.services.conversation_stream_service import (
-    build_artifact_recorder,
     execute_agent_stream,
-    prepare_stream_context,
     resolve_agent_context,
     resume_agent_stream,
-    sse_handler,
     sse_response,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["conversations"])
+
+
+def _cfg_agent_uuid(cfg: Any):
+    if not cfg.agent_id:
+        raise agent_not_found()
+    return uuid.UUID(cfg.agent_id)
 
 
 @router.post("/api/agents/{agent_id}/conversations/start")
@@ -87,29 +97,32 @@ async def start_conversation_with_message(
             "attachment_count": len(data.attachments or []),
         },
     )
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conv.id,
+        agent_id=agent_id,
+        user_id=user.id,
+        source="start",
+        input_preview=data.content,
+    )
+    run_id = run.id
     await db.commit()
 
-    ctx = prepare_stream_context(conv.id)
-    stream_kwargs = ctx.as_stream_kwargs()
-    stream_kwargs["artifact_recorder"] = build_artifact_recorder(
+    ctx = await start_conversation_run(
+        run_id=run_id,
         conversation_id=conv.id,
         cfg=cfg,
         user=user,
-        run_id=ctx.run_id,
+        input_payload=[{"role": "user", "content": data.content}],
+        moldy_source="chat",
+        executor_fn=execute_agent_stream,
     )
-    return sse_handler(
-        lambda: execute_agent_stream(
-            cfg,
-            [{"role": "user", "content": data.content}],
-            moldy_source="chat",
-            **stream_kwargs,
-        ),
-        log_msg=f"Agent stream failed for conversation {conv.id}",
-        user_msg="에이전트 실행 중 오류가 발생했습니다.",
-        run_id=ctx.run_id,
-        on_complete=ctx.finalize_callback(conv.id),
-        failure_probe=ctx.has_stream_error,
-        extra_headers={"X-Conversation-Id": str(conv.id)},
+    return sse_response(
+        _broker_resume_generator(ctx.broker, None),
+        extra_headers={
+            "X-Run-Id": ctx.run_id,
+            "X-Conversation-Id": str(conv.id),
+        },
     )
 
 
@@ -125,6 +138,13 @@ async def list_messages(
     conv = await chat_service.get_owned_conversation(db, conversation_id, user.id)
     if not conv:
         raise conversation_not_found()
+    active_run = await conversation_run_service.current_run_for_conversation(
+        db,
+        conversation_id=conversation_id,
+    )
+    active_run_response = (
+        ConversationRunResponse.model_validate(active_run) if active_run is not None else None
+    )
 
     from app.agent_runtime.checkpointer import get_checkpointer
 
@@ -139,9 +159,11 @@ async def list_messages(
     except RuntimeError:
         tree = None
 
-    messages = await chat_service.list_messages_from_checkpointer(
-        db, conv, user_id=user.id, tree=tree
-    )
+    messages = []
+    if tree is not None:
+        messages = await chat_service.list_messages_from_checkpointer(
+            db, conv, user_id=user.id, tree=tree
+        )
 
     total_cost = sum(
         (m.usage.estimated_cost or 0.0)
@@ -150,7 +172,11 @@ async def list_messages(
     )
 
     if tree is None:
-        return MessagesEnvelope(messages=messages, total_estimated_cost=total_cost)
+        return MessagesEnvelope(
+            messages=messages,
+            active_run=active_run_response,
+            total_estimated_cost=total_cost,
+        )
 
     active_tip: uuid.UUID | None = None
     if tree.active_tip_message_id:
@@ -159,6 +185,7 @@ async def list_messages(
         active_tip = parse_msg_id(tree.active_tip_message_id, conversation_id, 0)
     return MessagesEnvelope(
         messages=messages,
+        active_run=active_run_response,
         active_tip_message_id=active_tip,
         active_checkpoint_id=conv.active_branch_checkpoint_id or tree.active_checkpoint_id,
         total_estimated_cost=total_cost,
@@ -172,6 +199,21 @@ def _is_pending_interrupt(events: list[dict[str, Any]] | None) -> bool:
     if has_message_end:
         return False
     return events[-1].get("event") == event_names.INTERRUPT
+
+
+async def _latest_pending_interrupt_trace(
+    db: AsyncSession,
+    conversation_id: uuid.UUID,
+) -> MessageEvent | None:
+    records = await trace_storage.get_traces_for_conversation(db, conversation_id)
+    for record in reversed(records):
+        if _is_pending_interrupt(record.events):
+            return record
+    return None
+
+
+def _legacy_interrupt_id(record: MessageEvent) -> str:
+    return f"legacy:{record.assistant_msg_id}"
 
 
 def _normalize_event_id(raw: object) -> str | None:
@@ -347,28 +389,29 @@ async def send_message(
             "attachment_count": len(data.attachments or []),
         },
     )
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation_id,
+        agent_id=_cfg_agent_uuid(cfg),
+        user_id=user.id,
+        source="chat",
+        input_preview=data.content,
+    )
+    run_id = run.id
     await db.commit()
 
-    ctx = prepare_stream_context(conversation_id)
-    stream_kwargs = ctx.as_stream_kwargs()
-    stream_kwargs["artifact_recorder"] = build_artifact_recorder(
+    ctx = await start_conversation_run(
+        run_id=run_id,
         conversation_id=conversation_id,
         cfg=cfg,
         user=user,
-        run_id=ctx.run_id,
+        input_payload=[{"role": "user", "content": data.content}],
+        moldy_source="chat",
+        executor_fn=execute_agent_stream,
     )
-    return sse_handler(
-        lambda: execute_agent_stream(
-            cfg,
-            [{"role": "user", "content": data.content}],
-            moldy_source="chat",
-            **stream_kwargs,
-        ),
-        log_msg=f"Agent stream failed for conversation {conversation_id}",
-        user_msg="에이전트 실행 중 오류가 발생했습니다.",
-        run_id=ctx.run_id,
-        on_complete=ctx.finalize_callback(conversation_id),
-        failure_probe=ctx.has_stream_error,
+    return sse_response(
+        _broker_resume_generator(ctx.broker, None),
+        extra_headers={"X-Run-Id": ctx.run_id},
     )
 
 
@@ -397,23 +440,51 @@ async def resume_message(
         agent_id=uuid.UUID(cfg.agent_id) if cfg.agent_id else None,
         metadata={"decision_count": len(decisions_payload)},
     )
+    parent_run = await conversation_run_service.get_latest_interrupted_run(
+        db,
+        conversation_id=conversation_id,
+        user_id=user.id,
+    )
+    legacy_interrupt_trace: MessageEvent | None = None
+    if parent_run is None:
+        legacy_interrupt_trace = await _latest_pending_interrupt_trace(db, conversation_id)
+        if legacy_interrupt_trace is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Resume run requires an interrupted parent run",
+            )
+
+    interrupt_id = (
+        parent_run.interrupt_id if parent_run else _legacy_interrupt_id(legacy_interrupt_trace)
+    )
+    metadata = None
+    if legacy_interrupt_trace is not None:
+        metadata = {"legacy_interrupt_assistant_msg_id": legacy_interrupt_trace.assistant_msg_id}
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation_id,
+        agent_id=_cfg_agent_uuid(cfg),
+        user_id=user.id,
+        source="resume",
+        input_preview=None,
+        parent_run_id=parent_run.id if parent_run else None,
+        interrupt_id=interrupt_id,
+        metadata=metadata,
+        allow_legacy_resume=legacy_interrupt_trace is not None,
+    )
+    run_id = run.id
     await db.commit()
 
-    ctx = prepare_stream_context(conversation_id)
-    stream_kwargs = ctx.as_stream_kwargs()
-    stream_kwargs["artifact_recorder"] = build_artifact_recorder(
+    ctx = await start_conversation_run(
+        run_id=run_id,
         conversation_id=conversation_id,
         cfg=cfg,
         user=user,
-        run_id=ctx.run_id,
+        input_payload=resume_payload,
+        moldy_source="resume",
+        executor_fn=resume_agent_stream,
     )
-    return sse_handler(
-        lambda: resume_agent_stream(
-            cfg, resume_payload, moldy_source="resume", **stream_kwargs
-        ),
-        log_msg=f"Agent resume failed for conversation {conversation_id}",
-        user_msg="에이전트 재개 중 오류가 발생했습니다.",
-        run_id=ctx.run_id,
-        on_complete=ctx.finalize_callback(conversation_id),
-        failure_probe=ctx.has_stream_error,
+    return sse_response(
+        _broker_resume_generator(ctx.broker, None),
+        extra_headers={"X-Run-Id": ctx.run_id},
     )

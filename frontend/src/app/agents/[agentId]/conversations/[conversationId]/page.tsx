@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { AssistantRuntimeProvider, useComposerRuntime } from '@assistant-ui/react'
-import type { Agent, Conversation, ConversationRuntimeStatus, Message } from '@/lib/types'
+import type { Agent, Conversation, Message } from '@/lib/types'
 import { useAgent } from '@/lib/hooks/use-agents'
 import { useSession } from '@/lib/auth/session'
 import {
@@ -27,7 +27,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { streamChat, streamStartConversation, type StreamChatOptions } from '@/lib/sse/stream-chat'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { chatRightRailAtom, toggleArtifactListRailState } from '@/lib/stores/chat-right-rail'
-import { conversationRuntimeStatusAtom } from '@/lib/stores/chat-navigator-store'
+import {
+  conversationRuntimeStatusAtom,
+  type ConversationRuntimeStatus,
+} from '@/lib/stores/chat-navigator-store'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
@@ -193,6 +196,7 @@ export default function ChatPage({
     conversationId: activeConversationId ?? undefined,
     feedbackAdapter,
     attachmentAdapter: moldyAttachmentAdapter,
+    activeRun: envelope?.active_run ?? null,
   })
 
   const hitlValue = useMemo(

@@ -207,6 +207,11 @@ export const handlers = [
     return HttpResponse.json({ ...mockTemplate, id: params.id })
   }),
 
+  // ── Agent Blueprints ──────────────────────────────────────────
+  http.get(`${API_BASE}/api/agent-blueprints`, () => {
+    return HttpResponse.json([])
+  }),
+
   // ── Conversations ──────────────────────────────────────────────
   http.get(`${API_BASE}/api/agents/:agentId/conversations`, () => {
     return HttpResponse.json(mockConversationList)
