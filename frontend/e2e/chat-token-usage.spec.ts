@@ -124,6 +124,9 @@ test.describe('Chat token usage hover', () => {
         json: { items: [FAKE_CONVERSATION], next_cursor: null, has_more: false },
       }),
     )
+    await page.route(`**/api/conversations/${CONVERSATION_ID}`, (route) =>
+      route.fulfill({ json: FAKE_CONVERSATION }),
+    )
     await page.route(`**/api/conversations/${CONVERSATION_ID}/messages`, (route) =>
       route.fulfill({ json: FAKE_MESSAGES }),
     )
