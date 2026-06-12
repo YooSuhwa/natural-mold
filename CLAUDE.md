@@ -18,7 +18,7 @@
 | DB | PostgreSQL 16 (docker-compose) | |
 | 스케줄러 | APScheduler 3.x | |
 | 패키지 매니저 | uv (backend), pnpm (frontend) | |
-| 런타임 버전 | Python 3.12, Node 22 (mise로 관리) | |
+| 런타임 버전 | Python 3.12 (uv 자동 설치), Node 22 (`.node-version`) | |
 
 ---
 
@@ -99,7 +99,7 @@ natural-mold/
 │
 ├── docker-compose.yml           # PostgreSQL + Backend + Frontend
 ├── TASKS.md                     # 태스크 목록
-└── .mise.toml                   # Python 3.12, Node 22
+└── .node-version                # Node 22 핀 (nvm/fnm/asdf 호환; Python은 uv가 관리)
 ```
 
 ---
@@ -108,7 +108,8 @@ natural-mold/
 
 ### 사전 요구사항
 
-- [mise](https://mise.jdx.dev/) 설치 (Python, Node 버전 관리)
+- [uv](https://docs.astral.sh/uv/) 설치 (Python 3.12 자동 프로비저닝 + backend 의존성)
+- Node.js 22 + [pnpm](https://pnpm.io/) (프론트엔드; `.node-version`에 `22` 핀)
 - Docker Desktop (PostgreSQL용)
 
 ### git worktree 에서 작업 시
@@ -127,11 +128,10 @@ bash scripts/worktree-setup.sh
 `data/` 디렉토리 변경을 자동 reload 트리거하지 않도록 `--reload-dir app` 추가
 권장 안내도 출력한다.
 
-### 1. 런타임 설치
+### 1. 런타임 준비
 
-```bash
-mise install          # Python 3.12 + Node 22
-```
+- Python 3.12 — `uv sync`(3단계) 시 자동 다운로드되므로 별도 설치 불필요
+- Node 22 — 시스템 패키지·nvm·fnm 등으로 설치 (`.node-version`에 `22` 핀)
 
 ### 2. DB 실행
 
@@ -144,7 +144,7 @@ docker-compose up -d postgres
 
 ```bash
 cd backend
-cp .env.example .env  # API 키 + ENCRYPTION_KEY 설정
+cp .env.example .env  # API 키 + ENCRYPTION_KEYS / JWT_SECRET 설정
 uv sync               # 의존성 설치 (.venv 자동 생성)
 uv run alembic upgrade head   # DB 마이그레이션 (M59까지)
 uv run uvicorn app.main:app --reload --port 8001
@@ -209,6 +209,12 @@ pnpm exec playwright test e2e/<spec>.spec.ts
   4 커넥션**이다. 슬로우 스트리밍 런 4개 이상이 동시에 돌면 백엔드 전체가
   직렬화되어 무관한 요청까지 timeout 난다. `--repeat-each` 스트레스 실패는
   이 인프라 한계가 원인일 수 있으니 origin/main 대조 실행으로 분리 판단할 것.
+  (UI 단언 타임아웃 영향은 `frontend/AGENTS.md` 참고.)
+- 백엔드를 직접 띄우고 `reuseExistingServer`로 재사용할 때는 playwright의
+  webServer 커맨드가 자동 주입하던 플래그가 빠진다. **`E2E_SCRIPTED_MODEL_ENABLED=true`**
+  (키리스 scripted 모델)와 **`E2E_SEED_USER_ENABLED=true`**(seeded super_user —
+  operator 전용 화면(system LLM/credentials, audit 등) 테스트에 필수; global-setup의
+  register fallback은 일반 유저만 만든다)를 직접 켜야 한다.
 
 ---
 
@@ -249,7 +255,9 @@ trigger_executor           → 스케줄 트리거 (invoke 모드, ask_user/HiTL
 - 도구 타입: `builtin:*` (web_search, web_scraper, current_datetime), `registry`(Tool 모델의 definition_key 기반), `mcp`(AgentMcpToolLink)
 - Skill 시스템: 선택된 skill만 `/runtime/<thread_id>/.../skills/` 가상 경로에 노출한다. LLM은 `read_file`로 `SKILL.md`를 먼저 읽고 지시를 따른다.
 - Skill subprocess 실행: **`execute_in_skill` 도구**는 `skill_executor.py`에 있으며 Python 스크립트 allowlist, timeout, output dir, credential env injection, redaction 계약을 사용한다.
+- HiTL 기본 인터럽트: `execute_in_skill`처럼 위험 메타데이터가 있는 도구는 별도 미들웨어 설정 없이 **기본 `interrupt_on` 정책**이 붙는다 (`runtime_component_builder._default_interrupt_on_from_tools`). 즉 skill을 붙인 에이전트는 도구 실행 전 승인 카드에서 멈춘다 — HiTL을 켜려고 `middleware_configs`를 직접 짤 필요 없다 (명시 `human_in_the_loop` 설정은 정책 override일 뿐). 트리거 모드에서만 HiTL이 꺼진다.
 - Generated file 규칙: user-visible 파일은 `/conversations/<thread_id>/...` 아래에 쓰게 유도하고 M59 `conversation_artifacts`로 인덱싱한다.
+- 첨부 연결: 채팅 첨부(`POST /api/uploads`)는 전송 시 `chat_service.link_attachments_to_conversation`로 **대화에만** 연결되고 `message_attachments.message_id`는 null로 남는다. messages API는 message_id가 있는 첨부만 hydrate하므로 **첨부는 메시지 응답에 echo되지 않는다** — 검증/렌더는 업로드 행 자체(또는 conversation 단위)로 다뤄야 한다.
 
 ### Frontend: API Client → TanStack Query → Component
 
@@ -317,7 +325,8 @@ lib/types/      → Backend 스키마와 1:1 대응하는 TS 타입
 | 변수 | 필수 | 설명 |
 |------|------|------|
 | `DATABASE_URL` | O | PostgreSQL async URL |
-| `ENCRYPTION_KEY` | O | Cipher V2 마스터 키 (HKDF info=`moldy-encryption-v1`). 복수 키 회전 지원 |
+| `DATABASE_URL_SYNC` | O | PostgreSQL sync URL — LangGraph checkpointer 전용. `DATABASE_URL`에서 파생되지 않으니 DB 변경 시 둘 다 설정 |
+| `ENCRYPTION_KEYS` | O | Cipher V2 마스터 키 (HKDF info=`moldy-encryption-v1`). 콤마 구분 64-char hex, 첫 번째가 활성 키. 복수 키 회전 지원 |
 | `JWT_SECRET` | O | JWT HS256 서명 키 (ADR-016) |
 | LLM 키 (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` 등) | X (선택) | UI Credentials에서 등록 권장 (ADR-013). ENV에 있으면 dev에서 system credential로 bootstrap, production은 skip |
 | 나머지 (Naver, Google 등) | X | 해당 도구 사용 시에만 필요 |

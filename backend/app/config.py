@@ -206,6 +206,13 @@ class Settings(BaseSettings):
     e2e_user_name: str = "E2E User"
     e2e_scripted_model_enabled: bool = False
     e2e_test_helpers_enabled: bool = False
+    # E2E real-LLM provisioning (OpenAI-compatible, e.g. LiteLLM). When all three
+    # are set, ``seed.e2e_llm`` creates a system credential + Model + System LLM
+    # ``text_primary``/``text_fallback`` so the Builder/Assistant/subagent/chat
+    # flows run against a real endpoint. Empty = keyless (scripted model only).
+    e2e_llm_base_url: str = ""
+    e2e_llm_api_key: str = ""
+    e2e_llm_model: str = ""
     chat_run_stale_after_seconds: int = 300
     chat_run_stale_sweep_interval_seconds: int = 60
 

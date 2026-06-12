@@ -18,7 +18,7 @@
 | DB | PostgreSQL 16 (docker-compose) | |
 | 스케줄러 | APScheduler 3.x | |
 | 패키지 매니저 | uv (backend), pnpm (frontend) | |
-| 런타임 버전 | Python 3.12, Node 22 (mise로 관리) | |
+| 런타임 버전 | Python 3.12 (uv 자동 설치), Node 22 (`.node-version`) | |
 
 ---
 
@@ -99,7 +99,7 @@ natural-mold/
 │
 ├── docker-compose.yml           # PostgreSQL + Backend + Frontend
 ├── TASKS.md                     # 태스크 목록
-└── .mise.toml                   # Python 3.12, Node 22
+└── .node-version                # Node 22 핀 (nvm/fnm/asdf 호환; Python은 uv가 관리)
 ```
 
 ---
@@ -108,7 +108,8 @@ natural-mold/
 
 ### 사전 요구사항
 
-- [mise](https://mise.jdx.dev/) 설치 (Python, Node 버전 관리)
+- [uv](https://docs.astral.sh/uv/) 설치 (Python 3.12 자동 프로비저닝 + backend 의존성)
+- Node.js 22 + [pnpm](https://pnpm.io/) (프론트엔드; `.node-version`에 `22` 핀)
 - Docker Desktop (PostgreSQL용)
 
 ### git worktree 에서 작업 시
@@ -254,11 +255,10 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:8010 pnpm dev -- --port 3010
 - Next.js가 포트 충돌로 자동 선택한 임의 포트를 그대로 쓰지 말고 `pnpm dev -- --port <port>`로 고정
 - 여러 backend를 같은 DB에 동시에 붙이면 APScheduler/trigger 작업이 중복 실행될 수 있으므로 장시간 동시 실행은 피하거나 scheduler 비활성화 옵션을 별도로 둔다
 
-### 1. 런타임 설치
+### 1. 런타임 준비
 
-```bash
-mise install          # Python 3.12 + Node 22
-```
+- Python 3.12 — `uv sync`(3단계) 시 자동 다운로드되므로 별도 설치 불필요
+- Node 22 — 시스템 패키지·nvm·fnm 등으로 설치 (`.node-version`에 `22` 핀)
 
 ### 2. DB 실행
 

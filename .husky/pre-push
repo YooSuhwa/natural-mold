@@ -20,7 +20,9 @@ uv run pytest tests/ -q --tb=line
 echo ""
 echo "▶ frontend vitest"
 cd "$ROOT/frontend"
-pnpm test --run --reporter=dot
+# pnpm 9.15+ treats `--run` as a pnpm option unless it follows `--`; without the
+# separator the gate dies with "Unknown option: 'run'" before vitest even starts.
+pnpm test -- --run --reporter=dot
 
 echo ""
 echo "✓ pre-push gate passed"

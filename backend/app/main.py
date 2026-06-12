@@ -89,6 +89,7 @@ from app.seed.bootstrap_from_env import bootstrap_system_credentials
 from app.seed.default_marketplace_skills import seed_default_marketplace_skills
 from app.seed.default_models import DEFAULT_MODELS
 from app.seed.default_templates import DEFAULT_TEMPLATES
+from app.seed.e2e_llm import seed_e2e_llm
 from app.seed.e2e_scripted_model import seed_e2e_scripted_model
 from app.seed.e2e_user import seed_e2e_user
 from app.services.spend_writer import spend_queue
@@ -138,6 +139,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception:  # noqa: BLE001 — local e2e model seed is non-fatal
             await db.rollback()
             logger.exception("seed_e2e_scripted_model failed — continuing startup.")
+
+        try:
+            await seed_e2e_llm(db)
+            await db.commit()
+        except Exception:  # noqa: BLE001 — local e2e LLM seed is non-fatal
+            await db.rollback()
+            logger.exception("seed_e2e_llm failed — continuing startup.")
 
         try:
             await seed_default_marketplace_skills(db)

@@ -64,15 +64,25 @@ test.describe('Draft conversation lifecycle', () => {
 
     const modelsRes = await request.get(`${API_BASE}/api/models`)
     expect(modelsRes.ok()).toBeTruthy()
-    const models = (await modelsRes.json()) as { id: string }[]
-    expect(models.length).toBeGreaterThan(0)
+    const models = (await modelsRes.json()) as {
+      id: string
+      provider: string
+      model_name: string
+    }[]
+    // Use the keyless scripted model so the first-message flow drives a real
+    // start->stream->create turn deterministically without an LLM API key.
+    const scriptedModel = models.find(
+      (model) =>
+        model.provider === 'e2e_scripted' && model.model_name === 'document-artifact-scripted',
+    )
+    expect(scriptedModel, 'E2E scripted model should be seeded').toBeTruthy()
 
     const agentRes = await request.post(`${API_BASE}/api/agents`, {
       headers: csrfHeaders,
       data: {
         name: 'E2E Draft Conversation Agent',
         system_prompt: 'You are a draft conversation E2E test agent.',
-        model_id: models[0].id,
+        model_id: scriptedModel!.id,
       },
     })
     expect(agentRes.ok()).toBeTruthy()
@@ -125,7 +135,7 @@ test.describe('Draft conversation lifecycle', () => {
       page.getByRole('main').getByRole('heading', { name: 'E2E Draft Conversation Agent' }).first(),
     ).toBeVisible()
 
-    await page.getByRole('button', { name: '새 대화' }).first().click()
+    await page.getByRole('button', { name: '새 채팅', exact: true }).first().click()
     await page.waitForURL(`**/agents/${agentId}/conversations/new`, { timeout: 10_000 })
     await expect(page.getByRole('link', { name: '새 대화' }).first()).toHaveAttribute(
       'href',
@@ -151,7 +161,7 @@ test.describe('Draft conversation lifecycle', () => {
 
     await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
     await page.waitForLoadState('domcontentloaded')
-    await page.getByRole('button', { name: '새 대화' }).first().click()
+    await page.getByRole('button', { name: '새 채팅', exact: true }).first().click()
     await page.waitForURL(`**/agents/${agentId}/conversations/new`, { timeout: 10_000 })
 
     await page.goto(`/agents/${agentId}/settings`)
@@ -194,7 +204,7 @@ test.describe('Draft conversation lifecycle', () => {
 
     await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
     await page.waitForLoadState('domcontentloaded')
-    await page.getByRole('button', { name: '새 대화' }).first().click()
+    await page.getByRole('button', { name: '새 채팅', exact: true }).first().click()
     await page.waitForURL(`**/agents/${agentId}/conversations/new`, { timeout: 10_000 })
 
     const firstMessage = 'Draft E2E first message'

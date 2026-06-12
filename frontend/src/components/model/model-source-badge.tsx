@@ -26,7 +26,11 @@ interface ModelSourceBadgeProps {
 const CATALOG_CLASSES = 'moldy-status-surface moldy-status-info'
 const MANUAL_CLASSES = 'bg-muted text-muted-foreground ring-border'
 
-const SOURCE_LABEL_KEY: Record<ModelSource, string> = {
+// Keyed by the raw source string (not `ModelSource`) so an unexpected backend
+// value — e.g. seeded models report `source: 'seed'`, which is outside the
+// `ModelSource` union — resolves to `undefined` here instead of being assumed
+// present. Guarded at the call site so `t()` never receives an undefined key.
+const SOURCE_LABEL_KEY: Record<string, string> = {
   openrouter: 'source.openrouter',
   litellm: 'source.litellm',
   manual: 'source.manual',
@@ -48,10 +52,11 @@ export function ModelSourceBadge({ source, className }: ModelSourceBadgeProps) {
   }
 
   const isManual = source === 'manual'
+  const sourceKey = SOURCE_LABEL_KEY[source]
   const label = isManual ? t('manual') : t('catalog')
   const tooltip = isManual
     ? t('manualTooltip')
-    : t('catalogTooltip', { source: t(SOURCE_LABEL_KEY[source]) })
+    : t('catalogTooltip', { source: sourceKey ? t(sourceKey) : source })
 
   return (
     <span
