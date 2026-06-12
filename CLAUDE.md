@@ -18,7 +18,7 @@
 | DB | PostgreSQL 16 (docker-compose) | |
 | 스케줄러 | APScheduler 3.x | |
 | 패키지 매니저 | uv (backend), pnpm (frontend) | |
-| 런타임 버전 | Python 3.12, Node 22 (mise로 관리) | |
+| 런타임 버전 | Python 3.12 (uv 자동 설치), Node 22 (`.node-version`) | |
 
 ---
 
@@ -99,7 +99,7 @@ natural-mold/
 │
 ├── docker-compose.yml           # PostgreSQL + Backend + Frontend
 ├── TASKS.md                     # 태스크 목록
-└── .mise.toml                   # Python 3.12, Node 22
+└── .node-version                # Node 22 핀 (nvm/fnm/asdf 호환; Python은 uv가 관리)
 ```
 
 ---
@@ -108,7 +108,8 @@ natural-mold/
 
 ### 사전 요구사항
 
-- [mise](https://mise.jdx.dev/) 설치 (Python, Node 버전 관리)
+- [uv](https://docs.astral.sh/uv/) 설치 (Python 3.12 자동 프로비저닝 + backend 의존성)
+- Node.js 22 + [pnpm](https://pnpm.io/) (프론트엔드; `.node-version`에 `22` 핀)
 - Docker Desktop (PostgreSQL용)
 
 ### git worktree 에서 작업 시
@@ -127,11 +128,10 @@ bash scripts/worktree-setup.sh
 `data/` 디렉토리 변경을 자동 reload 트리거하지 않도록 `--reload-dir app` 추가
 권장 안내도 출력한다.
 
-### 1. 런타임 설치
+### 1. 런타임 준비
 
-```bash
-mise install          # Python 3.12 + Node 22
-```
+- Python 3.12 — `uv sync`(3단계) 시 자동 다운로드되므로 별도 설치 불필요
+- Node 22 — 시스템 패키지·nvm·fnm 등으로 설치 (`.node-version`에 `22` 핀)
 
 ### 2. DB 실행
 
@@ -144,7 +144,7 @@ docker-compose up -d postgres
 
 ```bash
 cd backend
-cp .env.example .env  # API 키 + ENCRYPTION_KEY 설정
+cp .env.example .env  # API 키 + ENCRYPTION_KEYS / JWT_SECRET 설정
 uv sync               # 의존성 설치 (.venv 자동 생성)
 uv run alembic upgrade head   # DB 마이그레이션 (M59까지)
 uv run uvicorn app.main:app --reload --port 8001
@@ -317,7 +317,8 @@ lib/types/      → Backend 스키마와 1:1 대응하는 TS 타입
 | 변수 | 필수 | 설명 |
 |------|------|------|
 | `DATABASE_URL` | O | PostgreSQL async URL |
-| `ENCRYPTION_KEY` | O | Cipher V2 마스터 키 (HKDF info=`moldy-encryption-v1`). 복수 키 회전 지원 |
+| `DATABASE_URL_SYNC` | O | PostgreSQL sync URL — LangGraph checkpointer 전용. `DATABASE_URL`에서 파생되지 않으니 DB 변경 시 둘 다 설정 |
+| `ENCRYPTION_KEYS` | O | Cipher V2 마스터 키 (HKDF info=`moldy-encryption-v1`). 콤마 구분 64-char hex, 첫 번째가 활성 키. 복수 키 회전 지원 |
 | `JWT_SECRET` | O | JWT HS256 서명 키 (ADR-016) |
 | LLM 키 (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY` 등) | X (선택) | UI Credentials에서 등록 권장 (ADR-013). ENV에 있으면 dev에서 system credential로 bootstrap, production은 skip |
 | 나머지 (Naver, Google 등) | X | 해당 도구 사용 시에만 필요 |

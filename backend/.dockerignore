@@ -1,0 +1,25 @@
+# The root .dockerignore does NOT apply here — the backend build context is
+# ./backend. The Dockerfile only COPYs pyproject/uv.lock/app/alembic, but the
+# whole context is still sent to the daemon, so keep heavy/secret paths out.
+
+# Virtualenv & caches — recreated by `uv sync` in the image
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Secrets & local env
+.env
+.env.*
+
+# Runtime data — must never enter the build context/image
+data
+
+# Tests, scripts, docs — not part of the runtime image
+tests
+scripts
+README.md
+*.log
+.DS_Store

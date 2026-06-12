@@ -1,0 +1,24 @@
+# The root .dockerignore does NOT apply here — the frontend build context is
+# ./frontend, so this file is what guards it.
+
+# Dependencies & build output — reinstalled/rebuilt inside the image. Critically,
+# excluding node_modules stops `COPY . .` from clobbering the container's
+# installed deps with host (macOS) native binaries.
+node_modules
+.next
+out
+
+# Secrets & local env — NEXT_PUBLIC_* is baked at build time, so keep
+# .env.local out of the image.
+.env
+.env.*
+
+# VCS, tests, tooling — not needed to build the app
+.git
+.gitignore
+e2e
+tests
+playwright-report
+test-results
+*.log
+.DS_Store

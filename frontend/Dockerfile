@@ -8,6 +8,13 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY . .
+
+# NEXT_PUBLIC_* must be present at build time — Next inlines it into the client
+# bundle, so a runtime env var alone won't reach the browser. Compose passes
+# this via build args; the default suits local compose on localhost.
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8001
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
 RUN pnpm build
 
 FROM node:22-alpine AS runner

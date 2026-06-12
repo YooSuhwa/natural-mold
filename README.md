@@ -117,29 +117,26 @@ and the pre-push hook.
 
 ### Prerequisites
 
-- [mise](https://mise.jdx.dev/) — auto-manages Python 3.12 + Node 22
+- [uv](https://docs.astral.sh/uv/) — Python package manager; also provisions Python 3.12 for the backend
+- [Node.js 22](https://nodejs.org/) + [pnpm](https://pnpm.io/) — frontend runtime + package manager
 - [Docker](https://www.docker.com/) — for the PostgreSQL 16 container
-- [pnpm](https://pnpm.io/) — Node package manager
 - An LLM API key — one of OpenAI / Anthropic / OpenRouter / OpenAI-compatible (e.g. LiteLLM). No need to put it in ENV; **register it in the UI after boot** (ADR-013)
 
 ### Local development
 
 ```bash
-# 1. Install runtimes
-mise install                          # Python 3.12 + Node 22
-
-# 2. Start PostgreSQL
+# 1. Start PostgreSQL
 docker compose up postgres -d         # localhost:5432, moldy:moldy/moldy
 
-# 3. Backend
+# 2. Backend (uv downloads Python 3.12 automatically)
 cd backend
 cp .env.example .env                  # set ENCRYPTION_KEYS / JWT_SECRET (LLM keys via UI)
-uv sync                               # install dependencies
+uv sync                               # install dependencies (+ Python 3.12 if missing)
 uv run alembic upgrade head           # run migrations (head: m59)
 uv run uvicorn app.main:app --reload --reload-dir app --port 8001
 # → http://localhost:8001/docs (Swagger UI)
 
-# 4. Frontend (new terminal)
+# 3. Frontend (new terminal, Node 22)
 cd frontend
 cp .env.example .env.local            # NEXT_PUBLIC_API_BASE_URL / E2E account defaults
 pnpm install
@@ -213,9 +210,23 @@ concurrent sessions.
 
 ### Run everything with Docker Compose
 
+Compose reads secrets from `backend/.env`, runs `alembic upgrade head` inside the
+backend container before it serves, and persists `data/` in a named volume.
+
 ```bash
-docker compose up -d                  # postgres + backend + frontend
+cp backend/.env.example backend/.env  # set ENCRYPTION_KEYS / JWT_SECRET
+docker compose up -d                  # postgres + backend (migrate → serve) + frontend
 # Then follow "Post-boot setup" above for operator onboarding.
+```
+
+Deploying to a remote host (not localhost)? `NEXT_PUBLIC_API_BASE_URL` is inlined
+into the frontend bundle at build time, so set it before the build and allow the
+new origin in CORS:
+
+```bash
+NEXT_PUBLIC_API_BASE_URL=https://api.example.com \
+CORS_ALLOWED_ORIGINS=https://app.example.com \
+  docker compose up -d --build
 ```
 
 ### Verification commands
@@ -527,9 +538,11 @@ See `backend/.env.example` for the full list. Minimum keys to boot:
 | Variable | Required | Description |
 |------|------|------|
 | `DATABASE_URL` | yes | PostgreSQL async URL (`postgresql+asyncpg://...`) |
-| `ENCRYPTION_KEY` | yes | Cipher V2 master key (HKDF-SHA256 + AES-256-GCM) |
+| `DATABASE_URL_SYNC` | yes | PostgreSQL sync URL (`postgresql://...`) — used by the LangGraph checkpointer; **not derived** from `DATABASE_URL`, so set both when changing the DB host |
+| `ENCRYPTION_KEYS` | yes | Cipher V2 master key(s) — comma-separated 64-char hex, first is active (HKDF-SHA256 + AES-256-GCM). Generate: `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `JWT_SECRET` | yes | JWT HS256 signing key (ADR-016 multi-user auth) |
 | LLM keys (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`, …) | optional | Register via UI Credentials (ADR-013). ENV is an optional dev bootstrap |
+| `OPENROUTER_API_KEY` | optional | Agent image generation (OpenRouter + Gemini Flash Image) |
 | `LANGSMITH_API_KEY` | optional | LangSmith tracing |
 | `TAVILY_API_KEY` | optional | Hosted key for Tavily search / Deep Research skill |
 | `NAVER_CLIENT_ID` / `NAVER_CLIENT_SECRET` | optional | Naver search tools |
