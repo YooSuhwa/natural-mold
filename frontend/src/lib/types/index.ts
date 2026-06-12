@@ -305,6 +305,10 @@ export interface TokenUsageBreakdown {
 export interface MessagesEnvelope {
   messages: Message[]
   active_run?: ConversationRun | null
+  /** 최신 run (상태 무관). active_run 은 terminal run 을 보고하지 않으므로
+   * 마지막 turn 의 canceled/canceling 여부는 이 필드로만 알 수 있다.
+   * "중단됨" notice 의 durable 렌더 근거. */
+  latest_run?: ConversationRun | null
   active_tip_message_id?: string | null
   active_checkpoint_id?: string | null
   /** W7-4 — conversation 누적 비용 (USD). ``token_usages`` 테이블 합산. 메시지

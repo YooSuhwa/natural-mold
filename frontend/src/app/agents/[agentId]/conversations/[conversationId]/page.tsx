@@ -175,6 +175,7 @@ export default function ChatPage({
     feedbackAdapter,
     attachmentAdapter: moldyAttachmentAdapter,
     activeRun: envelope?.active_run ?? null,
+    latestRun: envelope?.latest_run ?? null,
   })
 
   const hitlValue = useMemo(

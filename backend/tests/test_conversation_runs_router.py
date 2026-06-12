@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import timedelta
 
 import pytest
 from httpx import AsyncClient
@@ -170,6 +171,77 @@ async def test_messages_envelope_includes_active_run(
     body = resp.json()
     assert body["messages"] == []
     assert body["active_run"]["id"] == str(run.id)
+    assert body["latest_run"]["id"] == str(run.id)
+
+
+@pytest.mark.asyncio
+async def test_messages_envelope_reports_canceled_latest_run(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """취소된 run 은 active_run 에서 사라지지만 latest_run 으로는 보여야 한다.
+
+    프론트가 refetch/새로고침 후에도 "중단됨" notice 를 durable 하게 렌더하는
+    근거 데이터 — active_run 만 있으면 terminal 상태가 유실된다.
+    """
+    agent, conversation = await _seed_agent_conversation(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="will be canceled",
+    )
+    await conversation_run_service.transition_run(db, run, "canceling")
+    await conversation_run_service.transition_run(db, run, "canceled")
+    await db.commit()
+
+    resp = await client.get(f"/api/conversations/{conversation.id}/messages")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["active_run"] is None
+    assert body["latest_run"]["id"] == str(run.id)
+    assert body["latest_run"]["status"] == "canceled"
+
+
+@pytest.mark.asyncio
+async def test_messages_envelope_latest_run_prefers_newest(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    """취소 이후 새 turn 이 완료되면 latest_run 은 최신 run 을 가리킨다."""
+    agent, conversation = await _seed_agent_conversation(db)
+    canceled = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="first turn",
+    )
+    await conversation_run_service.transition_run(db, canceled, "canceling")
+    await conversation_run_service.transition_run(db, canceled, "canceled")
+    completed = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="second turn",
+    )
+    completed.created_at = canceled.created_at + timedelta(seconds=1)
+    await conversation_run_service.transition_run(db, completed, "running")
+    await conversation_run_service.transition_run(db, completed, "completed")
+    await db.commit()
+
+    resp = await client.get(f"/api/conversations/{conversation.id}/messages")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["latest_run"]["id"] == str(completed.id)
+    assert body["latest_run"]["status"] == "completed"
 
 
 @pytest.mark.asyncio
