@@ -86,25 +86,34 @@ cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
 | **Audit trail** | `/settings/audit` | `audit` | — | ❌ |
 | **System credentials / System LLM** | `/settings/system-*` | `credentials`, `system_llm_settings` | — | ❌ |
 
-## Build plan (priority order)
+## Status & next up
 
-**P1 — core journeys + recent untested features**
-1. Auth UI: signup → logout → login (entry point, low cost)
-2. Conversational builder → agent created (scripted model)
-3. Agent settings: edit system prompt + attach/detach skill, MCP, tool, subagent
-4. Subagent delegation run (scripted)
-5. Marketplace: publish → install (PR #248, zero coverage)
+**Done (real E2E, green):** auth (login/signup/logout) · conversational builder
+(LiteLLM) · agent-settings (system prompt + attach tool/skill/sub-agent) ·
+agent-triggers (interval) · share-link (publish + logged-out read-only + revoke)
+· marketplace (catalog + install) · the 4 stale fixes.
 
-**P2 — remaining feature areas**
-6. Schedule create → run → history
-7. Public share link (read-only)
-8. Chat branching (edit/regenerate) + HITL approval
-9. Agent API deployment + key
-10. Memory controls · audit trail · system-credentials · system-LLM settings
+**Next up (remaining ❌, rough priority):**
+1. Chat branching (edit user msg / regenerate → BranchPicker `<N/M>`) — scripted model
+2. HITL approval (tool-call approval interrupt) — scripted model
+3. Agent API deployment + key (`/settings/agent-api`)
+4. Memory controls (`/settings/memory`) · audit trail (`/settings/audit`)
+5. System-LLM + system-credentials operator screens (super_user; the seed already
+   configures System LLM, so a render check is quick)
+6. MCP tool attach — needs a running MCP server (first-party `localhost:18001-4`);
+   most setup-heavy, defer unless an MCP server is available
+7. Sub-agent *delegation run* (parent calls child at runtime) — real-LLM and
+   inherently flaky; needs a strong delegation prompt + tolerant assertion
 
-**Quality pass**
-- Keep mocks only where determinism requires (token usage, 3rd-party errors).
-  Everything else should drive the live throwaway backend via the scripted model.
+**How to continue (fresh session):** read this file top-to-bottom, then bring up
+the stack with the recipe above (throwaway PG :5433, backend :8101, frontend
+:3100). `backend/.env` (symlinked to main) already has `E2E_LLM_*`, so the
+LiteLLM System LLM + the scripted model are auto-provisioned on boot — no manual
+DB/UI setup. Pick the next item, add a spec under `frontend/e2e/`, run it with
+the recipe, iterate against the live app (Playwright `error-context.md` dumps the
+DOM on failure), then update this matrix + changelog. Keep mocks only where
+determinism requires (token usage, third-party errors); everything else drives
+the live backend (scripted model for keyless chat, LiteLLM for builder).
 
 ## Gotchas
 
