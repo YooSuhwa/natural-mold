@@ -89,6 +89,18 @@ E2E auth failure를 고칠 때 먼저 확인할 것:
 - mock-only 테스트가 `PW_SKIP_BACKEND=1`에서 `/api/auth/me`를 mock하고 있는지
 - CSRF가 필요한 API 직접 호출에 `X-CSRF-Token`이 포함되어 있는지
 
+### 병렬 실행 시 UI 단언 타임아웃
+
+라이브 백엔드를 구동하는 UI 단언(`toBeVisible`/`toBeEnabled`)에 **기본 5초** 타임아웃을
+그대로 쓰면 `--workers=4` + 스트리밍 spec 동시 실행에서 flaky하다. 원인은 checkpointer의
+고정 4-커넥션 풀(루트 `CLAUDE.md` 참고)이 백엔드를 직렬화시켜 무관한 목록 조회까지
+느려지는 것이다.
+
+- 백엔드 응답에 의존하는 단언은 **`{ timeout: 15_000 }`~`20_000`**으로 넉넉히 준다.
+- API 검증은 `await expect.poll(async () => ..., { timeout: 15_000 })` 패턴을 따른다.
+- flaky 판별: 격리 실행(`--workers=1`)에서 통과하면 인프라 부하 flake(허용),
+  단독에서도 실패하면 실제 버그. origin/main 대조로 회귀 여부를 가른다.
+
 ## 디자인 토큰 + DialogShell
 
 다이얼로그를 신설/마이그레이션할 때:

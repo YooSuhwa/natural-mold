@@ -209,6 +209,12 @@ pnpm exec playwright test e2e/<spec>.spec.ts
   4 커넥션**이다. 슬로우 스트리밍 런 4개 이상이 동시에 돌면 백엔드 전체가
   직렬화되어 무관한 요청까지 timeout 난다. `--repeat-each` 스트레스 실패는
   이 인프라 한계가 원인일 수 있으니 origin/main 대조 실행으로 분리 판단할 것.
+  (UI 단언 타임아웃 영향은 `frontend/AGENTS.md` 참고.)
+- 백엔드를 직접 띄우고 `reuseExistingServer`로 재사용할 때는 playwright의
+  webServer 커맨드가 자동 주입하던 플래그가 빠진다. **`E2E_SCRIPTED_MODEL_ENABLED=true`**
+  (키리스 scripted 모델)와 **`E2E_SEED_USER_ENABLED=true`**(seeded super_user —
+  operator 전용 화면(system LLM/credentials, audit 등) 테스트에 필수; global-setup의
+  register fallback은 일반 유저만 만든다)를 직접 켜야 한다.
 
 ---
 
@@ -249,7 +255,9 @@ trigger_executor           → 스케줄 트리거 (invoke 모드, ask_user/HiTL
 - 도구 타입: `builtin:*` (web_search, web_scraper, current_datetime), `registry`(Tool 모델의 definition_key 기반), `mcp`(AgentMcpToolLink)
 - Skill 시스템: 선택된 skill만 `/runtime/<thread_id>/.../skills/` 가상 경로에 노출한다. LLM은 `read_file`로 `SKILL.md`를 먼저 읽고 지시를 따른다.
 - Skill subprocess 실행: **`execute_in_skill` 도구**는 `skill_executor.py`에 있으며 Python 스크립트 allowlist, timeout, output dir, credential env injection, redaction 계약을 사용한다.
+- HiTL 기본 인터럽트: `execute_in_skill`처럼 위험 메타데이터가 있는 도구는 별도 미들웨어 설정 없이 **기본 `interrupt_on` 정책**이 붙는다 (`runtime_component_builder._default_interrupt_on_from_tools`). 즉 skill을 붙인 에이전트는 도구 실행 전 승인 카드에서 멈춘다 — HiTL을 켜려고 `middleware_configs`를 직접 짤 필요 없다 (명시 `human_in_the_loop` 설정은 정책 override일 뿐). 트리거 모드에서만 HiTL이 꺼진다.
 - Generated file 규칙: user-visible 파일은 `/conversations/<thread_id>/...` 아래에 쓰게 유도하고 M59 `conversation_artifacts`로 인덱싱한다.
+- 첨부 연결: 채팅 첨부(`POST /api/uploads`)는 전송 시 `chat_service.link_attachments_to_conversation`로 **대화에만** 연결되고 `message_attachments.message_id`는 null로 남는다. messages API는 message_id가 있는 첨부만 hydrate하므로 **첨부는 메시지 응답에 echo되지 않는다** — 검증/렌더는 업로드 행 자체(또는 conversation 단위)로 다뤄야 한다.
 
 ### Frontend: API Client → TanStack Query → Component
 
