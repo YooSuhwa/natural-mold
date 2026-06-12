@@ -177,6 +177,39 @@ pnpm build                  # 타입 체크 + 빌드
 pnpm lint                   # ESLint
 ```
 
+#### E2E 포트/DB 격리 (throwaway 스택)
+
+기본 포트(3000/8001/5432)를 다른 프로젝트가 점유 중이면 throwaway 스택으로 격리해 실행한다:
+
+```bash
+# 1) throwaway Postgres (예: 호스트 5433)
+docker run -d --name moldy-e2e-pg -p 5433:5432 \
+  -e POSTGRES_DB=moldy -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy postgres:16-alpine
+
+# 2) 마이그레이션 — throwaway DB에만 직접 실행 (공유/main DB 금지)
+cd backend && DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy' \
+  uv run alembic upgrade head
+
+# 3) E2E 실행 (playwright webServer가 backend+frontend 자체 기동)
+cd frontend && \
+E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
+DATABASE_URL='postgresql+asyncpg://moldy:moldy@localhost:5433/moldy' \
+DATABASE_URL_SYNC='postgresql://moldy:moldy@localhost:5433/moldy' \
+RATE_LIMIT_ENABLED=false E2E_TEST_HELPERS_ENABLED=true \
+pnpm exec playwright test e2e/<spec>.spec.ts
+```
+
+주의:
+
+- `DATABASE_URL_SYNC`는 `DATABASE_URL`에서 파생되지 않는 **별도 설정**이다
+  (`backend/app/config.py`). LangGraph checkpointer가 이 값을 쓰므로 **둘 다**
+  오버라이드해야 한다. 하나만 바꾸면 checkpointer가 기존 DB를 바라보다
+  PoolTimeout으로 백엔드 기동에 실패한다.
+- checkpointer의 psycopg `AsyncConnectionPool`은 min/max 미지정으로 **고정
+  4 커넥션**이다. 슬로우 스트리밍 런 4개 이상이 동시에 돌면 백엔드 전체가
+  직렬화되어 무관한 요청까지 timeout 난다. `--repeat-each` 스트레스 실패는
+  이 인프라 한계가 원인일 수 있으니 origin/main 대조 실행으로 분리 판단할 것.
+
 ---
 
 ## 아키텍처 패턴
