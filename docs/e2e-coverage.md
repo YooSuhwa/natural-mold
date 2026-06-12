@@ -69,7 +69,8 @@ cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
 | Draft conversation | `/conversations/new` | `conversations` | `draft-conversation` | ✅ |
 | Token usage hover | chat | `conversation_messages` | `chat-token-usage` | 🟨 |
 | Document artifacts | chat | `artifacts` | `document-artifact-viewers` | ✅ |
-| **Branching / HITL / msg actions / attachments** | chat | `conversation_branches`, `feedback`, `uploads` | — | ❌ |
+| Branching (regenerate/edit) + feedback + multi-turn | chat | `conversation_branches`, `feedback` | `chat-interactions` | ✅ |
+| HITL approval / attachments | chat | `uploads` | — | ❌ |
 | Credentials (user) | `/credentials` | `credentials` | `credentials` | ✅ (create only) |
 | Skills | `/skills` | `skills` | `skills-management` | ✅ (create only) |
 | Tools | `/tools` | `tools` | `tools-catalog` | ✅ (create only) |
@@ -94,9 +95,8 @@ agent-triggers (interval) · share-link (publish + logged-out read-only + revoke
 · marketplace (catalog + install) · the 4 stale fixes.
 
 **Next up (remaining ❌, rough priority):**
-1. Chat branching (edit user msg / regenerate → BranchPicker `<N/M>`) — scripted model
-2. HITL approval (tool-call approval interrupt) — scripted model
-3. Agent API deployment + key (`/settings/agent-api`)
+1. HITL approval (tool-call approval interrupt) + message attachments
+2. Agent API deployment + key (`/settings/agent-api`)
 4. Memory controls (`/settings/memory`) · audit trail (`/settings/audit`)
 5. System-LLM + system-credentials operator screens (super_user; the seed already
    configures System LLM, so a render check is quick)
@@ -158,6 +158,13 @@ the live backend (scripted model for keyless chat, LiteLLM for builder).
   logged-out context (read-only), then revoke -> public GET 404s.
 - Added `marketplace` spec: catalog renders seeded skills; installing one creates
   an independent copy (`installed_skill_id`); the "설치됨" tab reflects it.
+- Added `chat-interactions` spec (4): regenerate forks a sibling branch +
+  BranchPicker `<n/2>` navigation; editing a user message forks a branch; thumbs
+  feedback POSTs; multi-turn keeps both exchanges. Gotchas: regenerate/edit need
+  the prior run idle (`GET /runs/active` == null); the messages API returns only
+  the **active** branch (siblings = `branch_total` metadata, not extra messages),
+  so assert on the picker; the inline edit composer is the `textarea` with no
+  placeholder; action-bar buttons are opacity-0-on-hover but still clickable.
 - Extended `agent-settings` with tool attach (4 tests): `tavily_search` needs no
   per-tool credential, so it's the easiest attachable tool; My Tools tab uses the
   same per-row "{name} 추가" button as Skills.
