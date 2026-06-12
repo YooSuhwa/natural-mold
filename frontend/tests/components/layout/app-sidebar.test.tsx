@@ -105,7 +105,13 @@ vi.mock('@/components/ui/sidebar', () => ({
     return <button {...(props as React.ButtonHTMLAttributes<HTMLButtonElement>)}>{children}</button>
   },
   SidebarSeparator: () => <hr />,
-  useSidebar: () => ({ toggleSidebar: vi.fn(), isMobile: false, state: 'expanded', openMobile: false, setOpenMobile: vi.fn() }),
+  useSidebar: () => ({
+    toggleSidebar: vi.fn(),
+    isMobile: false,
+    state: 'expanded',
+    openMobile: false,
+    setOpenMobile: vi.fn(),
+  }),
 }))
 
 vi.mock('@/components/ui/skeleton', () => ({
@@ -126,6 +132,10 @@ vi.mock('@/components/ui/dropdown-menu', () => ({
   DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DropdownMenuSeparator: () => <hr />,
+}))
+
+vi.mock('@/components/layout/chat-navigator', () => ({
+  ChatNavigator: () => <div data-testid="chat-navigator">에이전트</div>,
 }))
 
 describe('AppSidebar', () => {
@@ -203,22 +213,31 @@ describe('AppSidebar', () => {
     expect(screen.queryByText('시스템 LLM 설정')).not.toBeInTheDocument()
   })
 
-  it('shows recent agents when loaded', () => {
+  it('renders the consolidated agent navigator', () => {
     mockUseAgentSummaries.mockReturnValue({
       data: mockAgentSummaryList,
       isLoading: false,
     })
     render(<AppSidebar />)
-    expect(screen.getByText('최근 에이전트')).toBeInTheDocument()
-    expect(screen.getByText('Test Agent')).toBeInTheDocument()
-    expect(screen.getByText('Second Agent')).toBeInTheDocument()
+    expect(screen.getByText('에이전트')).toBeInTheDocument()
   })
 
-  it('shows loading skeletons for recent agents', () => {
+  it('places the agent navigator above secondary resource links', () => {
+    render(<AppSidebar />)
+
+    const navigator = screen.getByTestId('chat-navigator')
+    const templates = screen.getByRole('link', { name: '에이전트 템플릿' })
+
+    expect(navigator.compareDocumentPosition(templates) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
+  it('does not render legacy recent-agent skeletons in the shell', () => {
     mockUseAgentSummaries.mockReturnValue({ data: undefined, isLoading: true })
     const { container } = render(<AppSidebar />)
     const skeletons = container.querySelectorAll("[data-slot='skeleton']")
-    expect(skeletons.length).toBeGreaterThan(0)
+    expect(skeletons.length).toBe(0)
   })
 
   it('renders footer section', () => {
@@ -226,9 +245,9 @@ describe('AppSidebar', () => {
     expect(screen.getByTestId('sidebar-footer')).toBeInTheDocument()
   })
 
-  it('does not show recent agents section when empty', () => {
+  it('keeps the agent navigator mounted when empty', () => {
     mockUseAgentSummaries.mockReturnValue({ data: [], isLoading: false })
     render(<AppSidebar />)
-    expect(screen.queryByText('최근 에이전트')).not.toBeInTheDocument()
+    expect(screen.getByText('에이전트')).toBeInTheDocument()
   })
 })

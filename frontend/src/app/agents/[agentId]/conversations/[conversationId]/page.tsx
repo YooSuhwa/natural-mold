@@ -7,7 +7,6 @@ import {
   Settings2Icon,
   SquarePenIcon,
   SparklesIcon,
-  MenuIcon,
   MoreHorizontalIcon,
   ActivityIcon,
   FilesIcon,
@@ -21,24 +20,29 @@ import {
   useMessagesEnvelope,
   useMarkConversationRead,
   conversationKeys,
+  invalidateConversationNavigators,
 } from '@/lib/hooks/use-conversations'
+import { useConversationTitle } from '@/lib/hooks/use-conversation-title'
 import { useQueryClient } from '@tanstack/react-query'
 import { streamChat, streamStartConversation, type StreamChatOptions } from '@/lib/sse/stream-chat'
 import { sessionTokenUsageAtom } from '@/lib/stores/chat-store'
 import { chatRightRailAtom, toggleArtifactListRailState } from '@/lib/stores/chat-right-rail'
+import {
+  conversationRuntimeStatusAtom,
+  type ConversationRuntimeStatus,
+} from '@/lib/stores/chat-navigator-store'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useChatFeedbackAdapter } from '@/lib/chat/feedback-adapter'
 import { moldyAttachmentAdapter } from '@/lib/chat/attachment-adapter'
 import { HiTLContext } from '@/lib/chat/hitl-context'
 import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
 import { Button } from '@/components/ui/button'
-import { ConversationList } from '@/components/chat/conversation-list'
 import { AssistantThread } from '@/components/chat/assistant-thread'
 import { AgentSkillsRow } from '@/components/chat/agent-skills-row'
 import { ChatRightRail } from '@/components/chat/right-rail/chat-right-rail'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { AgentContextPopover } from '@/components/agent/agent-context-popover'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -72,12 +76,14 @@ export default function ChatPage({
   const t = useTranslations('chat.page')
   const setSessionTokenUsage = useSetAtom(sessionTokenUsageAtom)
   const setRightRail = useSetAtom(chatRightRailAtom)
+  const setConversationRuntimeStatus = useSetAtom(conversationRuntimeStatusAtom)
 
   // 캐시에서 현재 대화 제목만 추출 (전체 목록 구독 방지)
   const currentConversation = queryClient
     .getQueryData<Conversation[]>(conversationKeys.list(agentId))
     ?.find((c) => c.id === conversationId)
-  const currentTitle = isDraftConversation ? t('newConversation') : currentConversation?.title
+  const resolvedConversationTitle = useConversationTitle(agentId, conversationId, agent?.name)
+  const currentTitle = isDraftConversation ? t('newConversation') : resolvedConversationTitle
   const markedReadKeyRef = useRef<string | null>(null)
   const activeConversationId = isDraftConversation ? null : conversationId
 
@@ -105,50 +111,66 @@ export default function ChatPage({
     messagesLoading,
   ])
 
-  const streamFn = useCallback(
-    (content: string, signal: AbortSignal, options?: StreamChatOptions) => {
-      if (!isDraftConversation) {
-        return streamChat(conversationId, content, signal, options)
-      }
-      return streamStartConversation(agentId, content, signal, {
-        ...options,
-        onConversationId: (id) => {
-          startedConversationIdRef.current = id
-          options?.onConversationId?.(id)
-        },
-      })
+  const setRuntimeStatus = useCallback(
+    (id: string, status: ConversationRuntimeStatus) => {
+      setConversationRuntimeStatus((current) => ({ ...current, [id]: status }))
     },
-    [agentId, conversationId, isDraftConversation],
+    [setConversationRuntimeStatus],
+  )
+
+  const streamFn = useCallback(
+    async function* (content: string, signal: AbortSignal, options?: StreamChatOptions) {
+      let runtimeConversationId = isDraftConversation ? null : conversationId
+      if (runtimeConversationId) setRuntimeStatus(runtimeConversationId, 'running')
+      try {
+        const stream = !isDraftConversation
+          ? streamChat(conversationId, content, signal, options)
+          : streamStartConversation(agentId, content, signal, {
+              ...options,
+              onConversationId: (id) => {
+                runtimeConversationId = id
+                startedConversationIdRef.current = id
+                setRuntimeStatus(id, 'running')
+                options?.onConversationId?.(id)
+              },
+            })
+        for await (const event of stream) {
+          yield event
+        }
+      } finally {
+        if (runtimeConversationId) setRuntimeStatus(runtimeConversationId, 'idle')
+      }
+    },
+    [agentId, conversationId, isDraftConversation, setRuntimeStatus],
   )
 
   const onStreamEnd = useCallback(() => {
-    if (isDraftConversation) {
-      const createdConversationId = startedConversationIdRef.current
-      queryClient.invalidateQueries({
-        queryKey: conversationKeys.list(agentId),
+    // draft에서 시작된 스트림은 ref에 기록된 실제 대화 id로 detail까지 무효화한다
+    const settledConversationId = isDraftConversation
+      ? startedConversationIdRef.current
+      : conversationId
+    invalidateConversationNavigators(queryClient, agentId, settledConversationId)
+    if (!isDraftConversation) {
+      void queryClient.refetchQueries({
+        queryKey: conversationKeys.messages(conversationId),
+        type: 'active',
       })
-      if (createdConversationId) {
-        void queryClient.refetchQueries({
-          queryKey: conversationKeys.messages(createdConversationId),
-          type: 'active',
-        })
-        queryClient.invalidateQueries({
-          queryKey: conversationKeys.debugTraces(createdConversationId),
-        })
-        router.replace(`/agents/${agentId}/conversations/${createdConversationId}`)
-      }
+      queryClient.invalidateQueries({
+        queryKey: conversationKeys.debugTraces(conversationId),
+      })
       return
     }
-    void queryClient.refetchQueries({
-      queryKey: conversationKeys.messages(conversationId),
-      type: 'active',
-    })
-    queryClient.invalidateQueries({
-      queryKey: conversationKeys.list(agentId),
-    })
-    queryClient.invalidateQueries({
-      queryKey: conversationKeys.debugTraces(conversationId),
-    })
+    const createdConversationId = startedConversationIdRef.current
+    if (createdConversationId) {
+      void queryClient.refetchQueries({
+        queryKey: conversationKeys.messages(createdConversationId),
+        type: 'active',
+      })
+      queryClient.invalidateQueries({
+        queryKey: conversationKeys.debugTraces(createdConversationId),
+      })
+      router.replace(`/agents/${agentId}/conversations/${createdConversationId}`)
+    }
   }, [queryClient, conversationId, agentId, isDraftConversation, router])
 
   // P0-1c — current feedback per message id, derived from the messages query.
@@ -190,45 +212,14 @@ export default function ChatPage({
 
   return (
     <div className="moldy-app-surface flex min-h-0 flex-1 gap-3 overflow-hidden p-3">
-      {/* 좌측 사이드바 카드 (데스크톱) */}
-      <aside className="moldy-panel hidden w-72 shrink-0 overflow-hidden md:block">
-        <ConversationList
-          agentId={agentId}
-          agentName={agent?.name}
-          agentImageUrl={agent?.image_url ?? null}
-          agentDescription={agent?.description ?? null}
-        />
-      </aside>
-
       {/* 메인 채팅 카드 */}
       <section className="moldy-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="moldy-panel-header flex items-center justify-between px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
-            <Sheet>
-              <SheetTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="md:hidden"
-                    aria-label={t('conversationList')}
-                  >
-                    <MenuIcon className="size-4" />
-                  </Button>
-                }
-              />
-              <SheetContent side="left" className="w-72 p-0">
-                <ConversationList
-                  agentId={agentId}
-                  agentName={agent?.name}
-                  agentImageUrl={agent?.image_url ?? null}
-                  agentDescription={agent?.description ?? null}
-                />
-              </SheetContent>
-            </Sheet>
             <h1 className="truncate text-sm font-semibold">
               {currentTitle ?? agent?.name ?? <Skeleton className="inline-block h-4 w-24" />}
             </h1>
+            <AgentContextPopover agent={agent} agentId={agentId} />
           </div>
           <div className="flex items-center gap-1">
             <Button

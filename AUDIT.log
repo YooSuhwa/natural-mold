@@ -142,3 +142,18 @@
 [2026-05-26T19:40] bezos VERIFICATION_PASS S5-4 HIGH#2 FK SET NULL CLOSED — test_credential_delete_sets_slot_null PASS(국소 engine+PRAGMA, conftest 전역 무수정). false-pass 반증: PRAGMA 제거 시 credential_id가 NULL 안 됨(IS NULL=False) 직접 입증 → PRAGMA load-bearing 회귀가드 확인. 전체 1219 passed/0 회귀, ruff clean.
 [2026-05-26T19:41] bezos MILESTONE_DONE S5 통합검증(M6) DONE — 전 게이트 GREEN, HIGH#1/#2 CLOSED, 핵심시나리오 verified. ADR-019 FULL GO.
 [2026-05-28T09:50] claude DATA_CLEANUP models — duplicate display_name "Claude Sonnet 4.6" resolved by renaming openai_compatible row(12a58811) to "Claude Sonnet 4.6 (Compatible)"; model_name "claude-sonnet-4-6" duplicate left intact (provider differs) and handled by code hardening in resolve_model.
+[2026-06-11T22:18:45] system SUBAGENT_START unnamed
+[2026-06-11T22:19:03] system SUBAGENT_START unnamed
+[2026-06-11T22:19:32] system SUBAGENT_START unnamed
+[2026-06-11T22:19:52] system SUBAGENT_START unnamed
+[2026-06-11T22:38:16] system SUBAGENT_START unnamed
+[2026-06-11T22:38:34] system SUBAGENT_START unnamed
+[2026-06-11T22:38:55] system SUBAGENT_START unnamed
+[2026-06-11T22:39:18] system SUBAGENT_START unnamed
+[2026-06-11T22:39:41] system SUBAGENT_START unnamed
+[2026-06-11T23:53:07] system SUBAGENT_START unnamed
+[2026-06-11T23:53:24] system SUBAGENT_START unnamed
+[2026-06-11T23:53:41] system SUBAGENT_START unnamed
+[2026-06-12T00:45:06] system SUBAGENT_START unnamed
+[2026-06-12T00:45:23] system SUBAGENT_START unnamed
+[2026-06-12T01:01:13] system SUBAGENT_START unnamed

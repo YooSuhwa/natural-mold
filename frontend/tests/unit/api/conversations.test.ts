@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { conversationsApi } from '@/lib/api/conversations'
-import { mockConversationList, mockConversationPage, mockMessageList } from '../../mocks/fixtures'
+import {
+  mockConversationList,
+  mockConversationPage,
+  mockGlobalConversationPage,
+  mockMessageList,
+} from '../../mocks/fixtures'
 
 describe('conversationsApi', () => {
   it('list() returns conversations for an agent', async () => {
@@ -14,10 +19,28 @@ describe('conversationsApi', () => {
       limit: 30,
       q: 'research',
       cursor: 'cursor-1',
+      sort: 'created',
     })
     expect(page).toEqual(mockConversationPage)
     expect(page.items).toHaveLength(2)
     expect(page.next_cursor).toBe('cursor-next')
+  })
+
+  it('globalPage() returns conversations with agent metadata', async () => {
+    const page = await conversationsApi.globalPage({
+      limit: 30,
+      q: 'conversation',
+      sort: 'updated',
+    })
+    expect(page).toEqual(mockGlobalConversationPage)
+    expect(page.items[0].agent.name).toBe('Test Agent')
+    expect(page.next_cursor).toBe('global-cursor-next')
+  })
+
+  it('get() returns a conversation with agent metadata', async () => {
+    const conversation = await conversationsApi.get('conv-1')
+    expect(conversation.id).toBe('conv-1')
+    expect(conversation.agent.name).toBe('Test Agent')
   })
 
   it('create() sends POST with title and returns new conversation', async () => {

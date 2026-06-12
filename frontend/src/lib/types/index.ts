@@ -168,6 +168,10 @@ export interface Template {
 
 // ---------- Conversation / Messages ---------------------------------------
 
+export type ConversationSort = 'updated' | 'created'
+export type AgentSort = 'recent' | 'created'
+export type NavigatorMode = 'agent_grouped' | 'recent_agents' | 'recent_sessions'
+
 export type ConversationRunStatus =
   | 'queued'
   | 'running'
@@ -219,10 +223,27 @@ export interface ConversationListEnvelope {
   has_more: boolean
 }
 
+export interface ConversationAgentBrief {
+  id: string
+  name: string
+  image_url: string | null
+}
+
+export interface ConversationWithAgent extends Conversation {
+  agent: ConversationAgentBrief
+}
+
+export interface ConversationWithAgentListEnvelope {
+  items: ConversationWithAgent[]
+  next_cursor: string | null
+  has_more: boolean
+}
+
 export interface ConversationPageParams {
   limit?: number
   cursor?: string | null
   q?: string | null
+  sort?: ConversationSort
 }
 
 export interface ConversationUpdateRequest {

@@ -160,10 +160,12 @@ test.describe('Smoke Test - Dynamic Pages', () => {
     // Agent name appears in multiple headings (sidebar h2, chat header h1, empty state h2).
     // smoke 검증은 적어도 하나가 보이면 OK.
     await expect(main.getByRole('heading', { name: 'E2E Smoke Agent' }).first()).toBeVisible()
-    // "새 대화" button (appears in conversation sidebar and chat header, use first)
-    await expect(main.getByRole('button', { name: '새 대화' }).first()).toBeVisible()
-    // Settings icon link
-    await expect(main.getByRole('link', { name: '설정' })).toBeVisible()
+    // 사이드바 통합 이후 '새 대화'/'설정'은 채팅 헤더의 더보기 메뉴 항목으로 이동했다.
+    // 메뉴는 portal로 렌더되므로 menuitem은 page 레벨에서 찾는다.
+    await main.getByRole('button', { name: '더보기 메뉴' }).click()
+    await expect(page.getByRole('menuitem', { name: '새 대화' })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: '설정' })).toBeVisible()
+    await page.keyboard.press('Escape')
     // Empty conversation prompt
     await expect(main.getByText('대화를 시작해보세요.')).toBeVisible()
 
@@ -200,6 +202,107 @@ test.describe('Smoke Test - Dynamic Pages', () => {
     await expect(
       page.getByRole('main').getByRole('heading', { name: 'E2E Smoke Agent' }).first(),
     ).toBeVisible()
+
+    expect(errors.console).toEqual([])
+    expect(errors.network).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Smoke Test - Chat Navigator (통합 사이드바)
+// ---------------------------------------------------------------------------
+
+test.describe('Smoke Test - Chat Navigator', () => {
+  test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
+
+  let agentId: string
+  let conversationId: string
+  let csrfHeaders: Record<string, string>
+
+  test.beforeAll(async ({ request }) => {
+    csrfHeaders = await loginApi(request)
+
+    const modelsRes = await request.get(`${API_BASE}/api/models`)
+    const models = await modelsRes.json()
+    const agentRes = await request.post(`${API_BASE}/api/agents`, {
+      headers: csrfHeaders,
+      data: {
+        name: 'E2E Navigator Smoke Agent',
+        system_prompt: 'Test agent for chat navigator smoke tests.',
+        model_id: models[0].id,
+      },
+    })
+    const agent = await agentRes.json()
+    agentId = agent.id
+
+    const convRes = await request.post(`${API_BASE}/api/agents/${agentId}/conversations`, {
+      headers: csrfHeaders,
+      data: { title: 'Navigator smoke session' },
+    })
+    const conversation = await convRes.json()
+    conversationId = conversation.id
+  })
+
+  test.afterAll(async ({ request }) => {
+    if (agentId) {
+      await request.delete(`${API_BASE}/api/agents/${agentId}`, {
+        headers: csrfHeaders ?? (await loginApi(request)),
+      })
+    }
+  })
+
+  test('sidebar renders the agent group with a session row and row menu', async ({
+    page,
+    errors,
+  }) => {
+    await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
+    await page.waitForLoadState('domcontentloaded')
+
+    // 통합 내비게이터: 에이전트 그룹과 세션 행이 사이드바에 렌더된다
+    await expect(page.getByText('E2E Navigator Smoke Agent').first()).toBeVisible()
+    const sessionRow = page.locator(
+      `[data-chat-session-href="/agents/${agentId}/conversations/${conversationId}"]`,
+    )
+    await expect(sessionRow).toBeVisible()
+    await expect(sessionRow.getByText('Navigator smoke session')).toBeVisible()
+
+    // 행 메뉴는 hover 시 노출되고, 메뉴 항목은 portal로 렌더된다
+    await sessionRow.hover()
+    await sessionRow.getByRole('button', { name: '대화 메뉴' }).click()
+    await expect(page.getByRole('menuitem', { name: /이름 변경/ })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: /공유/ })).toBeVisible()
+    await page.keyboard.press('Escape')
+
+    expect(errors.console).toEqual([])
+    expect(errors.network).toEqual([])
+  })
+
+  test('quick switcher opens with Cmd/Ctrl+K and closes with Escape', async ({ page, errors }) => {
+    await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
+    await page.waitForLoadState('domcontentloaded')
+    await expect(page.getByText('E2E Navigator Smoke Agent').first()).toBeVisible()
+
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control'
+    await page.keyboard.press(`${modifier}+K`)
+    await expect(page.getByRole('heading', { name: '빠른 이동' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('heading', { name: '빠른 이동' })).not.toBeVisible()
+
+    expect(errors.console).toEqual([])
+    expect(errors.network).toEqual([])
+  })
+
+  test('agent search finds the seeded conversation', async ({ page, errors }) => {
+    await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
+    await page.waitForLoadState('domcontentloaded')
+
+    await page.getByRole('button', { name: '에이전트 검색' }).click()
+    await page
+      .getByRole('textbox', { name: '에이전트 또는 대화 검색' })
+      .fill('Navigator smoke session')
+    await expect(page.getByText('검색 결과')).toBeVisible()
+    await expect(page.getByText('Navigator smoke session').first()).toBeVisible()
+    await expect(page.getByText('검색 결과가 없습니다')).toHaveCount(0)
 
     expect(errors.console).toEqual([])
     expect(errors.network).toEqual([])

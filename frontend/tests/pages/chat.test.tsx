@@ -47,6 +47,8 @@ vi.mock('react', async () => {
 
 const mockUseAgent = vi.fn()
 const mockUseMessages = vi.fn()
+const mockUseConversationTitle = vi.fn()
+const mockInvalidateConversationNavigators = vi.fn()
 
 vi.mock('@/lib/hooks/use-agents', () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
@@ -66,6 +68,8 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
     debugTraceDetail: (conversationId: string, traceId: string) =>
       ['debug-traces', conversationId, traceId] as const,
   },
+  invalidateConversationNavigators: (...args: unknown[]) =>
+    mockInvalidateConversationNavigators(...args),
   useMessages: (...args: unknown[]) => mockUseMessages(...args),
   useMessagesEnvelope: (...args: unknown[]) => {
     const result = mockUseMessages(...args)
@@ -130,6 +134,10 @@ vi.mock('@/lib/hooks/use-conversations', () => ({
   }),
 }))
 
+vi.mock('@/lib/hooks/use-conversation-title', () => ({
+  useConversationTitle: (...args: unknown[]) => mockUseConversationTitle(...args),
+}))
+
 vi.mock('@/components/shared/delete-confirm-dialog', () => ({
   DeleteConfirmDialog: () => null,
 }))
@@ -160,7 +168,10 @@ describe('ChatPage', () => {
   beforeEach(() => {
     mockUseAgent.mockClear()
     mockUseMessages.mockClear()
+    mockUseConversationTitle.mockClear()
+    mockInvalidateConversationNavigators.mockClear()
     mockUseAgent.mockReturnValue({ data: undefined })
+    mockUseConversationTitle.mockReturnValue('Test Conversation')
     mockUseMessages.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -232,7 +243,7 @@ describe('ChatPage', () => {
     expect(screen.getByText('Hello, how are you?')).toBeInTheDocument()
   })
 
-  it('shows agent name in header when loaded', () => {
+  it('shows resolved conversation title in header when loaded', () => {
     mockUseAgent.mockReturnValue({ data: mockAgent })
     render(
       <ChatPage
@@ -247,8 +258,7 @@ describe('ChatPage', () => {
         }
       />,
     )
-    // Agent name appears in both conversation list header and chat header
-    expect(screen.getAllByText('Test Agent').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText('Test Conversation')).toBeInTheDocument()
   })
 
   it('shows empty conversation prompt when no messages', () => {
@@ -442,7 +452,7 @@ describe('ChatPage', () => {
   // streamChat 에러 처리는 useChatRuntime 내부로 이동 (M? assistant-ui 통합).
   // 페이지 외부에서 mock한 streamChat 결과가 toast.error로 직접 변환되지 않으므로
   // 단위 테스트로 검증 불가. e2e/smoke 또는 manual QA로 대체.
-  it('shows settings link and new conversation button in conversation list', () => {
+  it('removes the chat-local conversation list and keeps compact agent context', () => {
     mockUseAgent.mockReturnValue({ data: mockAgent })
     render(
       <ChatPage
@@ -457,13 +467,7 @@ describe('ChatPage', () => {
         }
       />,
     )
-    // ConversationList has settings link and new conversation button
-    const settingsLinks = screen.getAllByRole('link')
-    const settingsLink = settingsLinks.find(
-      (link) => link.getAttribute('href') === '/agents/agent-1/settings',
-    )
-    expect(settingsLink).toBeDefined()
-    // "새 대화" button should be present in conversation list
-    expect(screen.getByRole('button', { name: '새 대화' })).toBeInTheDocument()
+    expect(screen.queryByText('대화')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '에이전트 정보' })).toBeInTheDocument()
   })
 })

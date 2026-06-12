@@ -6,6 +6,8 @@ import type {
   Template,
   Conversation,
   ConversationListEnvelope,
+  ConversationWithAgent,
+  ConversationWithAgentListEnvelope,
   Message,
   AgentTrigger,
   TriggerRun,
@@ -263,6 +265,7 @@ export const mockConversation: Conversation = {
   last_activity_source: 'user',
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
+  active_run: null,
 }
 
 export const mockConversationList: Conversation[] = [
@@ -277,6 +280,34 @@ export const mockConversationList: Conversation[] = [
 export const mockConversationPage: ConversationListEnvelope = {
   items: mockConversationList,
   next_cursor: 'cursor-next',
+  has_more: true,
+}
+
+export const mockConversationWithAgent: ConversationWithAgent = {
+  ...mockConversation,
+  agent: {
+    id: 'agent-1',
+    name: 'Test Agent',
+    image_url: null,
+  },
+}
+
+export const mockGlobalConversationPage: ConversationWithAgentListEnvelope = {
+  items: [
+    mockConversationWithAgent,
+    {
+      ...mockConversationWithAgent,
+      id: 'conv-2',
+      agent_id: 'agent-2',
+      title: 'Second Conversation',
+      agent: {
+        id: 'agent-2',
+        name: 'Second Agent',
+        image_url: null,
+      },
+    },
+  ],
+  next_cursor: 'global-cursor-next',
   has_more: true,
 }
 

@@ -18,12 +18,13 @@ import base64
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal, assert_never
 
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import contains_eager, selectinload
+from sqlalchemy.orm import InstrumentedAttribute, contains_eager, selectinload
 
 from app.agent_runtime.identity import AgentRunIdentity
 from app.credentials import service as credential_service
@@ -38,7 +39,7 @@ from app.models.mcp_tool import AgentMcpToolLink, McpTool
 from app.models.skill import AgentSkillLink
 from app.models.token_usage import TokenUsage
 from app.models.tool import AgentToolLink, Tool
-from app.schemas.conversation import ConversationUpdate, MessageResponse
+from app.schemas.conversation import ConversationSort, ConversationUpdate, MessageResponse
 from app.skills.runtime import build_skills_for_agent
 
 logger = logging.getLogger(__name__)
@@ -56,10 +57,12 @@ __all__ = [
     "get_conversation",
     "get_owned_conversation",
     "get_owned_conversation_with_agent",
+    "get_owned_ui_conversation_with_agent",
     "is_agent_owned_by_user",
     "link_attachments_to_conversation",
     "list_conversations",
     "list_conversations_page",
+    "list_global_conversations_page",
     "list_messages_from_checkpointer",
     "mark_conversation_read",
     "maybe_set_auto_title",
@@ -462,24 +465,85 @@ async def is_agent_owned_by_user(db: AsyncSession, agent_id: uuid.UUID, user_id:
     return result.scalar_one_or_none() is not None
 
 
-def _encode_conversation_cursor(conversation: Conversation) -> str:
+ConversationCursorScope = Literal["agent", "global"]
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationPageCursor:
+    scope: ConversationCursorScope
+    sort: ConversationSort
+    timestamp: datetime
+    id: uuid.UUID
+    is_pinned: bool | None = None
+
+
+def _escape_like(term: str) -> str:
+    """LIKE 메타문자(``\\``, ``%``, ``_``)를 리터럴로 이스케이프한다 (escape="\\\\"와 짝)."""
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _conversation_sort_column(sort: ConversationSort) -> InstrumentedAttribute[datetime]:
+    match sort:
+        case "updated":
+            return Conversation.updated_at
+        case "created":
+            return Conversation.created_at
+        case unreachable:
+            assert_never(unreachable)
+
+
+def _conversation_sort_value(conversation: Conversation, sort: ConversationSort) -> datetime:
+    match sort:
+        case "updated":
+            return conversation.updated_at
+        case "created":
+            return conversation.created_at
+        case unreachable:
+            assert_never(unreachable)
+
+
+def _encode_conversation_cursor(
+    conversation: Conversation,
+    *,
+    scope: ConversationCursorScope,
+    sort: ConversationSort,
+) -> str:
     payload = {
-        "is_pinned": bool(conversation.is_pinned),
-        "updated_at": conversation.updated_at.isoformat(),
+        "scope": scope,
+        "sort": sort,
+        "timestamp": _conversation_sort_value(conversation, sort).isoformat(),
         "id": str(conversation.id),
     }
+    if scope == "agent":
+        payload["is_pinned"] = bool(conversation.is_pinned)
     raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 
-def _decode_conversation_cursor(cursor: str) -> tuple[bool, datetime, uuid.UUID]:
+def _decode_conversation_cursor(
+    cursor: str,
+    *,
+    expected_scope: ConversationCursorScope,
+    expected_sort: ConversationSort,
+) -> ConversationPageCursor:
     padded = cursor + "=" * (-len(cursor) % 4)
     try:
         payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
-        return (
-            bool(payload["is_pinned"]),
-            datetime.fromisoformat(str(payload["updated_at"])),
-            uuid.UUID(str(payload["id"])),
+        scope = payload["scope"]
+        sort = payload["sort"]
+        if scope != expected_scope or sort != expected_sort:
+            raise ValueError("conversation cursor scope or sort mismatch")
+        is_pinned = bool(payload["is_pinned"]) if scope == "agent" else None
+        timestamp = datetime.fromisoformat(str(payload["timestamp"]))
+        if timestamp.tzinfo is not None:
+            # DB 컬럼은 naive UTC — aware 커서는 UTC로 환산 후 naive로 정규화
+            timestamp = timestamp.astimezone(UTC).replace(tzinfo=None)
+        return ConversationPageCursor(
+            scope=expected_scope,
+            sort=expected_sort,
+            timestamp=timestamp,
+            id=uuid.UUID(str(payload["id"])),
+            is_pinned=is_pinned,
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise ValueError("invalid conversation cursor") from exc
@@ -492,7 +556,9 @@ async def list_conversations_page(
     limit: int,
     cursor: str | None = None,
     q: str | None = None,
+    sort: ConversationSort = "updated",
 ) -> tuple[list[Conversation], str | None, bool]:
+    timestamp_column = _conversation_sort_column(sort)
     query = select(Conversation).where(
         Conversation.agent_id == agent_id,
         Conversation.source == "ui",
@@ -501,19 +567,27 @@ async def list_conversations_page(
     search = (q or "").strip()
     if search:
         query = query.where(
-            func.lower(func.coalesce(Conversation.title, "")).like(f"%{search.lower()}%")
+            func.lower(func.coalesce(Conversation.title, "")).like(
+                f"%{_escape_like(search.lower())}%", escape="\\"
+            )
         )
 
     if cursor:
-        is_pinned, updated_at, cursor_id = _decode_conversation_cursor(cursor)
+        page_cursor = _decode_conversation_cursor(
+            cursor,
+            expected_scope="agent",
+            expected_sort=sort,
+        )
+        if page_cursor.is_pinned is None:
+            raise ValueError("agent conversation cursor missing pin state")
         same_bucket_after = and_(
-            Conversation.is_pinned == is_pinned,
+            Conversation.is_pinned == page_cursor.is_pinned,
             or_(
-                Conversation.updated_at < updated_at,
-                and_(Conversation.updated_at == updated_at, Conversation.id < cursor_id),
+                timestamp_column < page_cursor.timestamp,
+                and_(timestamp_column == page_cursor.timestamp, Conversation.id < page_cursor.id),
             ),
         )
-        if is_pinned:
+        if page_cursor.is_pinned:
             query = query.where(or_(Conversation.is_pinned.is_(False), same_bucket_after))
         else:
             query = query.where(same_bucket_after)
@@ -521,14 +595,70 @@ async def list_conversations_page(
     result = await db.execute(
         query.order_by(
             Conversation.is_pinned.desc(),
-            Conversation.updated_at.desc(),
+            timestamp_column.desc(),
             Conversation.id.desc(),
         ).limit(limit + 1)
     )
     rows = list(result.scalars().all())
     has_more = len(rows) > limit
     items = rows[:limit]
-    next_cursor = _encode_conversation_cursor(items[-1]) if has_more and items else None
+    next_cursor = (
+        _encode_conversation_cursor(items[-1], scope="agent", sort=sort)
+        if has_more and items
+        else None
+    )
+    return items, next_cursor, has_more
+
+
+async def list_global_conversations_page(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    limit: int,
+    cursor: str | None = None,
+    q: str | None = None,
+    sort: ConversationSort = "updated",
+) -> tuple[list[Conversation], str | None, bool]:
+    timestamp_column = _conversation_sort_column(sort)
+    query = (
+        select(Conversation)
+        .join(Agent, Conversation.agent_id == Agent.id)
+        .where(Agent.user_id == user_id, Conversation.source == "ui")
+        .options(contains_eager(Conversation.agent))
+    )
+
+    search = (q or "").strip()
+    if search:
+        query = query.where(
+            func.lower(func.coalesce(Conversation.title, "")).like(
+                f"%{_escape_like(search.lower())}%", escape="\\"
+            )
+        )
+
+    if cursor:
+        page_cursor = _decode_conversation_cursor(
+            cursor,
+            expected_scope="global",
+            expected_sort=sort,
+        )
+        query = query.where(
+            or_(
+                timestamp_column < page_cursor.timestamp,
+                and_(timestamp_column == page_cursor.timestamp, Conversation.id < page_cursor.id),
+            )
+        )
+
+    result = await db.execute(
+        query.order_by(timestamp_column.desc(), Conversation.id.desc()).limit(limit + 1)
+    )
+    rows = list(result.unique().scalars().all())
+    has_more = len(rows) > limit
+    items = rows[:limit]
+    next_cursor = (
+        _encode_conversation_cursor(items[-1], scope="global", sort=sort)
+        if has_more and items
+        else None
+    )
     return items, next_cursor, has_more
 
 
@@ -565,6 +695,22 @@ async def get_owned_conversation(
         .where(Agent.user_id == user_id)
     )
     return result.scalar_one_or_none()
+
+
+async def get_owned_ui_conversation_with_agent(
+    db: AsyncSession, conversation_id: uuid.UUID, user_id: uuid.UUID
+) -> Conversation | None:
+    result = await db.execute(
+        select(Conversation)
+        .join(Agent, Conversation.agent_id == Agent.id)
+        .where(
+            Conversation.id == conversation_id,
+            Conversation.source == "ui",
+            Agent.user_id == user_id,
+        )
+        .options(contains_eager(Conversation.agent))
+    )
+    return result.unique().scalar_one_or_none()
 
 
 async def update_conversation(
