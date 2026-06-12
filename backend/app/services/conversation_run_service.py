@@ -182,6 +182,28 @@ async def current_run_for_conversation(
     return (await active_runs_for_conversations(db, [conversation_id])).get(conversation_id)
 
 
+async def latest_run_for_conversation(
+    db: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+) -> ConversationRun | None:
+    """최신 run을 상태와 무관하게 1건 반환.
+
+    ``active_run`` 은 active/미해결 interrupted 만 보고하므로 canceled 처럼
+    terminal 로 끝난 마지막 turn 의 상태를 알 수 없다. 메시지는 checkpointer
+    파생이라 run_id(uuid4) ↔ message id(uuid5) 매칭이 불가능해, "마지막 turn
+    이 취소되었다" 는 사실은 conversation 단위 최신 run 으로만 durable 하게
+    전달할 수 있다 (``ix_conversation_runs_conversation_created`` 인덱스 사용).
+    """
+    result = await db.execute(
+        select(ConversationRun)
+        .where(ConversationRun.conversation_id == conversation_id)
+        .order_by(ConversationRun.created_at.desc())
+        .limit(1)
+    )
+    return result.scalars().first()
+
+
 async def get_run_for_user(
     db: AsyncSession,
     *,
@@ -463,6 +485,7 @@ __all__ = [
     "get_latest_interrupted_run",
     "get_run_for_user",
     "heartbeat_run",
+    "latest_run_for_conversation",
     "mark_stale_active_runs",
     "request_cancel_run",
     "transition_run",

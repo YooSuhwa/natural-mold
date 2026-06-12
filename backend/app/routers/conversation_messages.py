@@ -145,6 +145,13 @@ async def list_messages(
     active_run_response = (
         ConversationRunResponse.model_validate(active_run) if active_run is not None else None
     )
+    latest_run = await conversation_run_service.latest_run_for_conversation(
+        db,
+        conversation_id=conversation_id,
+    )
+    latest_run_response = (
+        ConversationRunResponse.model_validate(latest_run) if latest_run is not None else None
+    )
 
     from app.agent_runtime.checkpointer import get_checkpointer
 
@@ -175,6 +182,7 @@ async def list_messages(
         return MessagesEnvelope(
             messages=messages,
             active_run=active_run_response,
+            latest_run=latest_run_response,
             total_estimated_cost=total_cost,
         )
 
@@ -186,6 +194,7 @@ async def list_messages(
     return MessagesEnvelope(
         messages=messages,
         active_run=active_run_response,
+        latest_run=latest_run_response,
         active_tip_message_id=active_tip,
         active_checkpoint_id=conv.active_branch_checkpoint_id or tree.active_checkpoint_id,
         total_estimated_cost=total_cost,

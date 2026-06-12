@@ -214,6 +214,11 @@ class MessagesEnvelope(BaseModel):
 
     messages: list[MessageResponse]
     active_run: ConversationRunResponse | None = None
+    # 최신 run (상태 무관). ``active_run`` 은 terminal run 을 보고하지 않아
+    # 마지막 turn 이 취소되었는지(canceled/canceling)를 새로고침·refetch 후에
+    # 알 수 없다. 메시지가 checkpointer 파생이라 run ↔ message id 매칭이
+    # 불가능하므로, 프론트는 이 필드로 "중단됨" notice 를 durable 하게 렌더.
+    latest_run: ConversationRunResponse | None = None
     active_tip_message_id: uuid.UUID | None = None
     active_checkpoint_id: str | None = None
     # W7-4 — conversation 단위 누적 비용 (USD). 메시지 단위는 model_id를 추적

@@ -192,6 +192,49 @@ export function mergeMessagesForRender({
   return merged
 }
 
+/**
+ * 마지막 turn 이 취소된 사실(``envelope.latest_run``)을 fetch 데이터 기반으로
+ * 렌더 목록에 반영한다.
+ *
+ * streaming 경로의 optimistic notice 는 refetch 가 streamingMessages 를 비우는
+ * 순간 함께 사라질 수 있고(cancel 표시 레이스), 새로고침 후에는 아예 없다.
+ * 서버 truth 에서 파생하면 두 경우 모두 안정적으로 표시된다.
+ *
+ * - 마지막 메시지가 assistant 면 그 메시지 끝에 notice 텍스트를 덧붙인다
+ *   (optimistic ``appendCanceledNotice`` 와 동일한 모양 — 이미 붙어 있으면 무변경).
+ * - 출력 전에 취소돼 assistant 메시지가 없으면 run id 로 키된 합성 notice
+ *   메시지를 덧붙인다 (id 고정 — 리렌더마다 새 메시지로 보이지 않게).
+ */
+export function appendDurableCanceledNotice(
+  messages: readonly Message[],
+  canceledText: string,
+  run: ConversationRun,
+): Message[] {
+  const last = messages[messages.length - 1]
+  if (last && last.role === 'assistant') {
+    if (last.content.includes(canceledText)) return [...messages]
+    return [
+      ...messages.slice(0, -1),
+      {
+        ...last,
+        content: last.content ? `${last.content}\n\n${canceledText}` : canceledText,
+      },
+    ]
+  }
+  return [
+    ...messages,
+    {
+      id: `canceled-${run.id}`,
+      conversation_id: run.conversation_id,
+      role: 'assistant',
+      content: canceledText,
+      tool_calls: null,
+      tool_call_id: null,
+      created_at: run.completed_at ?? run.cancel_requested_at ?? run.updated_at,
+    },
+  ]
+}
+
 function addUsageTotals(totals: TokenUsage, usage: TokenUsageBreakdown | null | undefined): void {
   if (!usage) return
   totals.inputTokens += usage.prompt_tokens
@@ -290,6 +333,10 @@ interface UseChatRuntimeOptions {
   attachmentAdapter?: AttachmentAdapter
   /** Durable active run discovered from conversation/message hydration. */
   activeRun?: ConversationRun | null
+  /** envelope.latest_run — 최신 run (terminal 포함). 마지막 turn 의
+   *  canceled/canceling 여부를 fetch 데이터에서 파생해 "중단됨" notice 를
+   *  durable 하게 렌더하는 근거. activeRun 은 terminal run 을 보고하지 않는다. */
+  latestRun?: ConversationRun | null
 }
 
 /**
@@ -311,6 +358,7 @@ export function useChatRuntime({
   feedbackAdapter,
   attachmentAdapter,
   activeRun,
+  latestRun,
 }: UseChatRuntimeOptions) {
   const [isRunning, setIsRunning] = useState(false)
   const [streamingMessages, setStreamingMessages] = useState<Message[]>([])
@@ -403,18 +451,27 @@ export function useChatRuntime({
   // 가 false) 동일 id가 양쪽에 남는다 → "same id already exists" 크래시. 먼저
   // 등장한 항목(=messages의 확정본)을 우선해 중복 id를 제거한다. 일반 대화는
   // optimistic(opt-*)과 backend uuid가 달라 중복이 없어 영향받지 않는다.
-  const allMessages = useMemo(
-    () =>
-      compactDeepResearchMessages(
-        mergeMessagesForRender({
-          messages,
-          streamingMessages,
-          previousMessages: prevMessagesRef.current,
-          isRunning,
-        }),
-      ),
-    [isRunning, messages, streamingMessages],
-  )
+  // 마지막 turn 취소 여부 — 서버 truth(envelope.latest_run) 파생. isRunning
+  // 동안은 새 turn/attach replay 가 진행 중이므로 표시하지 않는다. canceling
+  // 은 cancel 요청 직후 worker 가 canceled 전이를 끝내기 전 refetch 가 도착한
+  // 케이스 — 사용자는 이미 멈춤을 요청했으므로 동일하게 notice 를 보여준다.
+  const durableCanceledRun =
+    !isRunning && (latestRun?.status === 'canceled' || latestRun?.status === 'canceling')
+      ? latestRun
+      : null
+
+  const allMessages = useMemo(() => {
+    const merged = compactDeepResearchMessages(
+      mergeMessagesForRender({
+        messages,
+        streamingMessages,
+        previousMessages: prevMessagesRef.current,
+        isRunning,
+      }),
+    )
+    if (!durableCanceledRun) return merged
+    return appendDurableCanceledNotice(merged, tPage('canceled'), durableCanceledRun)
+  }, [isRunning, messages, streamingMessages, durableCanceledRun, tPage])
 
   const streamingUsageTotals = useMemo(
     () => sumMessageUsage(streamingMessages),
