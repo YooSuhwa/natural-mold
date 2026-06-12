@@ -308,6 +308,44 @@ assert build_kwargs["skills"] == [f"/runtime/{cfg.thread_id}/skills/"]
 
 **Status**: M9에서 strict xfail로 pin됨 (test_marketplace_e2e.py::TestScenario_10_4_RestrictedACL::test_restricted_acl_grants_and_denies). 젠슨 fix 대기.
 
+## Session 10 (2026-06-12) — Chat Navigator E2E + Base UI 메뉴 버그
+
+### UI 라이브러리 모듈 전체 vi.mock의 두 가지 비용
+**상황**: `vi.mock('@/components/ui/dropdown-menu', () => ({...}))` 전체 mock이 4개
+테스트 파일에 중복. 프로덕션에서 `DropdownMenuLabel`이 Base UI 계약(GroupLabel은
+`Menu.Group` 안에서만)을 위반해 **메뉴가 아예 열리지 않는 크래시**가 있었는데, 유닛
+테스트는 전부 그린이었고 E2E가 처음 잡아냄.
+
+**비용**:
+1. mock은 라이브러리의 런타임 계약(컨텍스트 요구, 이벤트 동작)을 검증하지 못한다 —
+   "라벨이 존재한다" 수준만 통과시킨다.
+2. 컴포넌트에 import를 하나 추가하면(예: `DropdownMenuGroup`) mock 팩토리를 쓰는
+   **모든** 테스트 파일에서 undefined 렌더로 깨진다. 이번에 2개 파일에서 각각 발생.
+
+**규칙**:
+- 메뉴/다이얼로그처럼 컨텍스트 계약이 있는 UI는 유닛 mock만 믿지 말고, 실제로 여는
+  E2E(또는 mock 없는 통합 렌더) 한 개 + 콘솔 에러 0 단언을 둔다.
+- 전체 mock이 꼭 필요하면 `importOriginal` 부분 mock 또는 공유 mock 헬퍼로 중복을
+  한 곳에 모은다.
+
+### Base UI(@base-ui/react) 메뉴는 Radix와 동작이 다르다
+이 프로젝트의 dropdown/tooltip은 Radix가 아니라 Base UI. E2E/구현 시 주의:
+1. `Menu.GroupLabel`은 `Menu.Group` 밖이면 `MenuGroupRootContext is missing` throw.
+2. RadioItem/CheckboxItem은 `closeOnClick=false` 기본 — 선택해도 메뉴가 유지된다.
+   → E2E는 메뉴를 한 번 열어 연속 조작하는 흐름이 견고하다 (재오픈 토글 추측 제거).
+3. Escape는 한 레벨씩만 닫는다 (서브메뉴 → 루트). Radix처럼 전체가 닫히지 않음.
+4. `TooltipTrigger` 기본 요소는 `<button>` — `<Link>` 안에서는 `render={<span />}`로
+   인터랙티브 중첩을 피한다. `Tooltip.Provider`는 필수가 아니라 delay 공유용
+   (app-layout에 전역 `delay={0}` Provider 존재).
+
+### 텍스트를 툴팁으로 옮길 때는 sr-only로 이름을 DOM에 남긴다
+**상황**: 세션 행의 에이전트 칩에서 이름 텍스트를 제거하고 아바타+hover 툴팁으로 변경.
+
+**규칙**: 툴팁은 hover 전용이라 스크린리더/키보드 사용자가 정보를 잃는다. 제거한
+텍스트는 `<span className="sr-only">{name}</span>`으로 트리거 안에 유지한다.
+터치 디바이스에는 hover 자체가 없으므로, 이름 확인이 필수가 되면 그때 별도 수단
+(탭 시 표시 등)을 검토한다.
+
 ## Session 2026-06-11 — codex/marketplace 코드 리뷰에서 발견한 패턴
 
 ### Soft-delete 리소스를 join 할 때는 항상 status 필터를 포함한다

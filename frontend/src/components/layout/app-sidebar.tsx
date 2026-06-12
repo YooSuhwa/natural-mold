@@ -3,140 +3,53 @@
 import { useAtom } from 'jotai'
 import {
   BookOpenIcon,
-  CheckIcon,
-  ChevronRightIcon,
-  Globe2Icon,
   LayoutTemplateIcon,
-  type LucideIcon,
-  MoonIcon,
   Plug2Icon,
   PlusIcon,
   ServerIcon,
   StoreIcon,
-  SunIcon,
   ToggleLeftIcon,
   ToggleRightIcon,
   WrenchIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { useLocale } from 'next-intl'
-import { useTheme } from 'next-themes'
 import Image from 'next/image'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { usePathname } from 'next/navigation'
 
-import { AgentAvatar } from '@/components/agent/agent-avatar'
-import { UserMenu } from '@/components/auth/UserMenu'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+  AppSidebarCollapsibleNavItem,
+  type AppSidebarNavChild,
+} from '@/components/layout/app-sidebar-collapsible-nav-item'
+import { AppSidebarFooter } from '@/components/layout/app-sidebar-footer'
+import { ChatNavigator } from '@/components/layout/chat-navigator'
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarSeparator,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { Skeleton } from '@/components/ui/skeleton'
-import { useSession } from '@/lib/auth/session'
-import { useAgentSummaries } from '@/lib/hooks/use-agents'
-import { useLogout } from '@/lib/hooks/useAuth'
 import { featuresExpandedAtom } from '@/lib/stores/sidebar-store'
-import { persistLocaleCookie } from '../../i18n/client-locale'
-import { SUPPORTED_LOCALES, isSupportedLocale } from '../../i18n/locales'
-
-type NavChild = { label: string; href: string; icon: LucideIcon; isActive: boolean }
-
-/** Collapsible top-level menu item with a toggle chevron and a list of sub-links. */
-function CollapsibleNavItem({
-  icon: Icon,
-  label,
-  tooltip,
-  isActive,
-  expanded,
-  onToggle,
-  items,
-  menuClass,
-}: {
-  icon: LucideIcon
-  label: string
-  tooltip: string
-  isActive: boolean
-  expanded: boolean
-  onToggle: () => void
-  items: NavChild[]
-  menuClass: string
-}) {
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        isActive={isActive}
-        tooltip={tooltip}
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className={menuClass}
-      >
-        <Icon className="size-4" />
-        <span>{label}</span>
-        <ChevronRightIcon
-          className={`ml-auto size-4 transition-transform ${expanded ? 'rotate-90' : ''}`}
-        />
-      </SidebarMenuButton>
-      {expanded && (
-        <SidebarMenuSub>
-          {items.map((child) => (
-            <SidebarMenuSubItem key={child.href}>
-              <SidebarMenuSubButton
-                isActive={child.isActive}
-                render={<Link href={child.href} />}
-                className={menuClass}
-              >
-                <child.icon className="size-4" />
-                <span>{child.label}</span>
-              </SidebarMenuSubButton>
-            </SidebarMenuSubItem>
-          ))}
-        </SidebarMenuSub>
-      )}
-    </SidebarMenuItem>
-  )
-}
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
-  const { data: agents, isLoading } = useAgentSummaries()
-  const { resolvedTheme, setTheme } = useTheme()
-  const locale = useLocale()
   const { toggleSidebar } = useSidebar()
   const t = useTranslations('sidebar')
-  const { data: user } = useSession()
-  const logout = useLogout()
 
   const [featuresExpanded, setFeaturesExpanded] = useAtom(featuresExpandedAtom)
-  const [languageOpen, setLanguageOpen] = useState(false)
 
   const buildItems = [
     { label: t('nav.templates'), href: '/agents/new/template', icon: LayoutTemplateIcon },
     { label: t('nav.marketplace'), href: '/marketplace', icon: StoreIcon },
   ]
 
-  const featureChildren: NavChild[] = [
+  const featureChildren: AppSidebarNavChild[] = [
     { label: t('nav.tools'), href: '/tools', icon: WrenchIcon },
     { label: t('nav.mcpServers'), href: '/mcp-servers', icon: ServerIcon },
     { label: t('nav.skills'), href: '/skills', icon: BookOpenIcon },
@@ -144,37 +57,9 @@ export function AppSidebar() {
 
   const isFeatureActive = featureChildren.some((child) => child.isActive)
 
-  const recentAgents = useMemo(
-    () =>
-      agents
-        ?.slice()
-        .sort((a, b) => {
-          // Prefer last_used_at (max conversation.updated_at) so chatting with
-          // an agent floats it to the top. Fall back to updated_at for agents
-          // that have never been used.
-          const aTime = new Date(a.last_used_at ?? a.updated_at).getTime()
-          const bTime = new Date(b.last_used_at ?? b.updated_at).getTime()
-          return bTime - aTime
-        })
-        .slice(0, 5),
-    [agents],
-  )
-
   const activeMenuClass = 'moldy-sidebar-nav-item'
 
   const newAgentButtonClass = 'moldy-sidebar-new-agent'
-
-  const isDarkTheme = resolvedTheme === 'dark'
-  const themeToggleLabel = isDarkTheme ? t('theme.light') : t('theme.dark')
-  const currentLocale = isSupportedLocale(locale) ? locale : SUPPORTED_LOCALES[0]
-  const languageLabel = t('language.label')
-
-  function changeLocale(nextLocale: string) {
-    setLanguageOpen(false)
-    if (!isSupportedLocale(nextLocale) || nextLocale === currentLocale) return
-    persistLocaleCookie(nextLocale)
-    router.refresh()
-  }
 
   return (
     <Sidebar collapsible="icon" className="moldy-sidebar-rail">
@@ -240,6 +125,9 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarSeparator />
+        <ChatNavigator />
+
+        <SidebarSeparator />
 
         {/* Build group — Templates, Marketplace */}
         <SidebarGroup>
@@ -272,7 +160,7 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
-              <CollapsibleNavItem
+              <AppSidebarCollapsibleNavItem
                 icon={Plug2Icon}
                 label={t('section.capabilities')}
                 tooltip={t('tooltip.capabilities')}
@@ -285,111 +173,9 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
-        {/* Recent Agents */}
-        {(isLoading || (recentAgents && recentAgents.length > 0)) && (
-          <>
-            <SidebarSeparator />
-            <SidebarGroup>
-              <SidebarGroupLabel>{t('recentAgents')}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-1">
-                  {isLoading
-                    ? Array.from({ length: 3 }).map((_, i) => (
-                        <li key={i} className="flex h-8 items-center gap-2 rounded-md px-2">
-                          <Skeleton className="size-4 rounded-md" />
-                          <Skeleton className="h-4 flex-1" />
-                        </li>
-                      ))
-                    : recentAgents?.map((agent) => {
-                        const isActive =
-                          pathname === `/agents/${agent.id}` ||
-                          pathname.startsWith(`/agents/${agent.id}/`)
-                        return (
-                          <SidebarMenuItem key={agent.id}>
-                            <SidebarMenuButton
-                              isActive={isActive}
-                              tooltip={agent.name}
-                              render={<Link href={`/agents/${agent.id}`} />}
-                              className={activeMenuClass}
-                            >
-                              <AgentAvatar imageUrl={agent.image_url} name={agent.name} size="xs" />
-                              <span>{agent.name}</span>
-                            </SidebarMenuButton>
-                            {agent.unread_count > 0 ? (
-                              <SidebarMenuBadge>
-                                {agent.unread_count > 99 ? '99+' : agent.unread_count}
-                              </SidebarMenuBadge>
-                            ) : null}
-                          </SidebarMenuItem>
-                        )
-                      })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </>
-        )}
       </SidebarContent>
 
-      <SidebarFooter className="shrink-0 bg-transparent px-3 pb-3">
-        <SidebarSeparator />
-        <div className="flex items-center justify-center gap-1 px-2 py-1 group-data-[collapsible=icon]:hidden">
-          <button
-            type="button"
-            onClick={() => setTheme(isDarkTheme ? 'light' : 'dark')}
-            suppressHydrationWarning
-            className="moldy-sidebar-control inline-flex h-7 items-center justify-center rounded-lg px-1.5"
-            aria-label={themeToggleLabel}
-            title={themeToggleLabel}
-          >
-            {isDarkTheme ? <SunIcon className="size-4" /> : <MoonIcon className="size-4" />}
-          </button>
-          <DropdownMenu open={languageOpen} onOpenChange={setLanguageOpen}>
-            <DropdownMenuTrigger
-              render={<button type="button" />}
-              className="moldy-sidebar-control inline-flex h-7 items-center gap-1 rounded-lg px-1.5 text-xs font-semibold data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
-              aria-label={languageLabel}
-              title={languageLabel}
-            >
-              <Globe2Icon className="size-4" />
-              <span>{currentLocale.toUpperCase()}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="top" align="center" className="w-36">
-              {SUPPORTED_LOCALES.map((option) => (
-                <DropdownMenuItem
-                  key={option}
-                  onClick={() => changeLocale(option)}
-                  className="justify-between"
-                >
-                  <span>{t(`language.${option}`)}</span>
-                  {option === currentLocale ? (
-                    <CheckIcon className="size-4 text-primary-strong" />
-                  ) : (
-                    <span className="size-4" />
-                  )}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
-        {/* User Profile */}
-        <SidebarMenu>
-          <SidebarMenuItem>
-            {user ? (
-              <UserMenu user={user} onLogout={() => logout.mutate()} />
-            ) : (
-              <div className="flex items-center gap-3 px-2 py-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:px-0">
-                <Skeleton className="size-8 rounded-lg" />
-                <div className="flex-1 space-y-1 group-data-[collapsible=icon]:hidden">
-                  <Skeleton className="h-3 w-24" />
-                  <Skeleton className="h-3 w-32" />
-                </div>
-              </div>
-            )}
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
+      <AppSidebarFooter />
     </Sidebar>
   )
 }

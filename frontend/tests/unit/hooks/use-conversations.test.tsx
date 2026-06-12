@@ -3,13 +3,21 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import {
   conversationKeys,
+  invalidateConversationNavigators,
   useConversations,
+  useConversationDetail,
   useConversationPages,
+  useGlobalConversationPages,
   useMessages,
   useCreateConversation,
   useMarkConversationRead,
 } from '@/lib/hooks/use-conversations'
-import { mockConversationList, mockConversationPage, mockMessageList } from '../../mocks/fixtures'
+import {
+  mockConversationList,
+  mockConversationPage,
+  mockGlobalConversationPage,
+  mockMessageList,
+} from '../../mocks/fixtures'
 
 function createWrapperWithClient() {
   const queryClient = new QueryClient({
@@ -59,6 +67,48 @@ describe('useConversationPages', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.pages[0]).toEqual(mockConversationPage)
+  })
+
+  it('stays idle when page loading is disabled', () => {
+    const { result } = renderHook(
+      () => useConversationPages('agent-1', { limit: 30 }, { enabled: false }),
+      { wrapper: createWrapper() },
+    )
+
+    expect(result.current.fetchStatus).toBe('idle')
+  })
+})
+
+describe('useGlobalConversationPages', () => {
+  it('fetches global conversations with embedded agents', async () => {
+    const { result } = renderHook(
+      () => useGlobalConversationPages({ limit: 30, q: 'conversation', sort: 'updated' }),
+      { wrapper: createWrapper() },
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.pages[0]).toEqual(mockGlobalConversationPage)
+    expect(result.current.hasNextPage).toBe(true)
+  })
+
+  it('stays idle when global page loading is disabled', () => {
+    const { result } = renderHook(
+      () => useGlobalConversationPages({ limit: 30 }, { enabled: false }),
+      { wrapper: createWrapper() },
+    )
+
+    expect(result.current.fetchStatus).toBe('idle')
+  })
+})
+
+describe('useConversationDetail', () => {
+  it('fetches a single conversation with agent metadata', async () => {
+    const { result } = renderHook(() => useConversationDetail('conv-1'), {
+      wrapper: createWrapper(),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.agent.name).toBe('Test Agent')
   })
 })
 
@@ -130,5 +180,60 @@ describe('useMarkConversationRead', () => {
       unread_count: 0,
       last_read_at: '2026-01-01T01:00:00Z',
     })
+  })
+})
+
+describe('invalidateConversationNavigators', () => {
+  it('invalidates agent pages, global pages, and agent summaries', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const pageKey = conversationKeys.pages('agent-1', {
+      limit: 30,
+      q: undefined,
+      sort: 'updated',
+    })
+    const globalKey = conversationKeys.globalPages({
+      limit: 30,
+      q: undefined,
+      sort: 'updated',
+    })
+    queryClient.setQueryData(conversationKeys.list('agent-1'), mockConversationList)
+    queryClient.setQueryData(pageKey, mockConversationPage)
+    queryClient.setQueryData(globalKey, mockGlobalConversationPage)
+    queryClient.setQueryData(['agents', 'summary'], [])
+
+    invalidateConversationNavigators(queryClient, 'agent-1')
+
+    expect(queryClient.getQueryState(conversationKeys.list('agent-1'))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(pageKey)?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(globalKey)?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(['agents', 'summary'])?.isInvalidated).toBe(true)
+  })
+
+  it('invalidates the conversation detail when a conversation id is provided', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    queryClient.setQueryData(conversationKeys.detail('conv-1'), mockConversationList[0])
+    queryClient.setQueryData(conversationKeys.detail('conv-2'), mockConversationList[1])
+
+    invalidateConversationNavigators(queryClient, 'agent-1', 'conv-1')
+
+    expect(queryClient.getQueryState(conversationKeys.detail('conv-1'))?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(conversationKeys.detail('conv-2'))?.isInvalidated).toBe(false)
+  })
+
+  it('does not invalidate unrelated agent queries beyond summaries', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    queryClient.setQueryData(['agents'], [])
+    queryClient.setQueryData(['agents', 'agent-1'], { id: 'agent-1' })
+
+    invalidateConversationNavigators(queryClient, 'agent-1')
+
+    expect(queryClient.getQueryState(['agents'])?.isInvalidated).toBe(false)
+    expect(queryClient.getQueryState(['agents', 'agent-1'])?.isInvalidated).toBe(false)
   })
 })

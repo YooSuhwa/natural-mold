@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -699,14 +699,13 @@ async def test_create_cron_schedule_one_time(db: AsyncSession, patch_write_sessi
     tools = _build_write_tools(db, agent_id)
     tool = _find_tool(tools, "create_cron_schedule")
 
-    # 하드코딩 날짜는 시간이 지나면 "scheduled_at must be in the future" 검증에
-    # 걸려 테스트가 부패한다 — 항상 미래인 시각을 동적으로 생성.
-    scheduled_at = (datetime.now() + timedelta(days=1)).replace(microsecond=0).isoformat()
+    # 고정 날짜는 시간이 지나면 과거가 되어 깨진다 — 항상 미래인 상대 시각 사용
+    future = (datetime.now(UTC) + timedelta(days=1)).replace(microsecond=0, tzinfo=None)
     result = await tool.ainvoke(
         {
             "schedule_type": "one_time",
             "message": "내일 리포트",
-            "scheduled_at": scheduled_at,
+            "scheduled_at": future.isoformat(),
         }
     )
     assert "생성 완료" in result
