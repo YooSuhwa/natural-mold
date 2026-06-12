@@ -357,3 +357,8 @@
 - smoke.spec.ts 는 정기 스위트다. UI 구조 변경(사이드바 통합 등) 시 smoke 실패는
   "회귀 vs 낡은 단언"을 소스에서 판별한 뒤 테스트를 갱신한다. dropdown menuitem 은
   portal 렌더라 main 스코프가 아닌 page 레벨에서 찾는다.
+- 사이드바/루트 레이아웃 컴포넌트는 ROOT_MESSAGE_NAMESPACES(appSettings, auth,
+  common, metadata, nav, sidebar)만 클라이언트에서 쓸 수 있다
+  (src/i18n/scoped-messages.tsx). chat.* 같은 페이지 스코프 네임스페이스를 참조하면
+  런타임 IntlError — vitest 는 ko.json 전체를 주입하므로 못 잡고, E2E 의
+  console-error 단언만 잡는다. 사이드바에 새 copy 추가 시 sidebar.* 아래에 둘 것.
