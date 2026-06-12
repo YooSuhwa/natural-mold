@@ -312,3 +312,5 @@
   - eslint rule `react-hooks/set-state-in-effect`: prop 기반 state init은 useEffect 금지, 반드시 useState lazy init + key remount 패턴.
   - `cn()` + 반응형 prefix grouping 함정 — base가 `sm:max-w-sm` 갖고 있으면 override는 `sm:max-w-none` 명시 필요 (frontend/AGENTS.md).
   - Catalog page는 'use client' — Next.js 16 App Router에서 TanStack Query 쓰는 컴포넌트는 client only.
+  - `database_url_sync`는 `database_url`에서 파생되지 않는 별도 설정 (config.py). checkpointer가 이걸 쓰므로 E2E throwaway DB 사용 시 `DATABASE_URL`과 `DATABASE_URL_SYNC` 둘 다 오버라이드해야 한다 — 하나만 바꾸면 백엔드가 PoolTimeout으로 기동 실패.
+  - checkpointer의 psycopg AsyncConnectionPool은 min/max 미지정 → 고정 4 커넥션. 동시 슬로우 런 4개 이상이면 envelope 조회/agent DELETE까지 줄 서서 백엔드 전체가 직렬화됨 (page.goto 58s+ hang). repeat-each E2E 스트레스 실패는 origin/main 대조 실험으로 pre-existing 인프라 한계 확정 — 제품 버그 아님.
