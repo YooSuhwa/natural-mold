@@ -24,6 +24,10 @@ def _utc_iso(dt: datetime) -> str:
 UtcDatetime = Annotated[datetime, PlainSerializer(_utc_iso, return_type=str, when_used="json")]
 
 
+ConversationSort = Literal["updated", "created"]
+ConversationRuntimeStatus = Literal["idle", "running"]
+
+
 class ConversationCreate(BaseModel):
     title: str | None = None
 
@@ -44,12 +48,29 @@ class ConversationResponse(BaseModel):
     last_activity_source: str = "user"
     created_at: UtcDatetime
     updated_at: UtcDatetime
+    runtime_status: ConversationRuntimeStatus = "idle"
 
     model_config = {"from_attributes": True}
 
 
 class ConversationListEnvelope(BaseModel):
     items: list[ConversationResponse]
+    next_cursor: str | None = None
+    has_more: bool = False
+
+
+class ConversationAgentBrief(BaseModel):
+    id: uuid.UUID
+    name: str
+    image_url: str | None = None
+
+
+class ConversationWithAgentResponse(ConversationResponse):
+    agent: ConversationAgentBrief
+
+
+class ConversationWithAgentListEnvelope(BaseModel):
+    items: list[ConversationWithAgentResponse]
     next_cursor: str | None = None
     has_more: bool = False
 

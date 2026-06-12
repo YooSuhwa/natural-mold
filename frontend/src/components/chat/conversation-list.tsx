@@ -16,13 +16,8 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
-import {
-  useConversationPages,
-  useUpdateConversation,
-  useDeleteConversation,
-} from '@/lib/hooks/use-conversations'
+import { useConversationPages } from '@/lib/hooks/use-conversations'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   DropdownMenu,
@@ -31,11 +26,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import { DeleteConfirmDialog } from '@/components/shared/delete-confirm-dialog'
-import { DialogShell } from '@/components/shared/dialog-shell'
-import { ShareDialog } from '@/components/chat/share-dialog'
 import { SearchInput } from '@/components/shared/search-input'
 import { AgentAvatar } from '@/components/agent/agent-avatar'
+import { useConversationRowActions } from '@/components/chat/use-conversation-row-actions'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
 import { cn } from '@/lib/utils'
 import type { Conversation } from '@/lib/types'
@@ -66,15 +59,11 @@ export function ConversationList({
     limit: 30,
     q: searchQuery.trim() || undefined,
   })
-  const updateConversation = useUpdateConversation(agentId)
-  const deleteConversation = useDeleteConversation(agentId)
   const t = useTranslations('chat.conversationList')
   const tCommon = useTranslations('common')
-
-  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
-  const [renameTarget, setRenameTarget] = useState<string | null>(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [shareTarget, setShareTarget] = useState<string | null>(null)
+  const rowActions = useConversationRowActions({
+    activeConversationId: params.conversationId,
+  })
 
   const orderedConversations = useMemo(
     () => conversationPages?.pages.flatMap((page) => page.items) ?? [],
@@ -86,36 +75,6 @@ export function ConversationList({
 
   function handleNewConversation() {
     router.push(`/agents/${agentId}/conversations/new`)
-  }
-
-  function handlePin(conv: Conversation) {
-    updateConversation.mutate({ id: conv.id, data: { is_pinned: !conv.is_pinned } })
-  }
-
-  function handleDeleteConfirm() {
-    if (!deleteTarget) return
-    const deletingCurrent = params.conversationId === deleteTarget
-    deleteConversation.mutate(deleteTarget, {
-      onSuccess: () => {
-        setDeleteTarget(null)
-        if (deletingCurrent) {
-          router.push(`/agents/${agentId}`)
-        }
-      },
-    })
-  }
-
-  function openRenameDialog(conv: Conversation) {
-    setRenameTarget(conv.id)
-    setRenameValue(conv.title ?? '')
-  }
-
-  function handleRenameConfirm() {
-    if (!renameTarget || !renameValue.trim()) return
-    updateConversation.mutate(
-      { id: renameTarget, data: { title: renameValue.trim() } },
-      { onSuccess: () => setRenameTarget(null) },
-    )
   }
 
   function renderItem(conv: Conversation) {
@@ -159,20 +118,20 @@ export function ConversationList({
             <MoreVerticalIcon className="size-3" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="bottom" sideOffset={4}>
-            <DropdownMenuItem onClick={() => openRenameDialog(conv)}>
+            <DropdownMenuItem onClick={() => rowActions.openRenameDialog(conv)}>
               <PencilIcon />
               {t('menu.rename')}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShareTarget(conv.id)}>
+            <DropdownMenuItem onClick={() => rowActions.openShareDialog(conv.id)}>
               <Share2Icon />
               {t('menu.share')}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handlePin(conv)}>
+            <DropdownMenuItem onClick={() => rowActions.togglePin(conv)}>
               {conv.is_pinned ? <PinOffIcon /> : <PinIcon />}
               {conv.is_pinned ? t('menu.unpin') : t('menu.pin')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => setDeleteTarget(conv.id)}>
+            <DropdownMenuItem variant="destructive" onClick={() => rowActions.requestDelete(conv)}>
               <Trash2Icon />
               {t('menu.delete')}
             </DropdownMenuItem>
@@ -293,49 +252,7 @@ export function ConversationList({
         </Button>
       </div>
 
-      <DeleteConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={t('deleteDialog.title')}
-        description={t('deleteDialog.description')}
-        cancelLabel={tCommon('cancel')}
-        confirmLabel={tCommon('delete')}
-        isPending={deleteConversation.isPending}
-        onConfirm={handleDeleteConfirm}
-      />
-
-      <DialogShell
-        open={!!renameTarget}
-        onOpenChange={(open) => !open && setRenameTarget(null)}
-        size="md"
-        height="auto"
-      >
-        <DialogShell.Header title={t('renameDialog.title')} />
-        <DialogShell.Body>
-          <Input
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            placeholder={t('renameDialog.placeholder')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleRenameConfirm()
-            }}
-            autoFocus
-          />
-        </DialogShell.Body>
-        <DialogShell.Footer>
-          <Button onClick={handleRenameConfirm} disabled={!renameValue.trim()}>
-            {t('renameDialog.save')}
-          </Button>
-        </DialogShell.Footer>
-      </DialogShell>
-
-      {shareTarget ? (
-        <ShareDialog
-          open={!!shareTarget}
-          onOpenChange={(open) => !open && setShareTarget(null)}
-          conversationId={shareTarget}
-        />
-      ) : null}
+      {rowActions.dialogs}
     </div>
   )
 }

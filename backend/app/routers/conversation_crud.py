@@ -7,16 +7,84 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
 from app.error_codes import agent_not_found, conversation_not_found
+from app.models.conversation import Conversation
 from app.schemas.conversation import (
+    ConversationAgentBrief,
     ConversationCreate,
     ConversationListEnvelope,
     ConversationResponse,
+    ConversationSort,
     ConversationUpdate,
+    ConversationWithAgentListEnvelope,
+    ConversationWithAgentResponse,
 )
 from app.services import chat_service
+from app.services.agent_image_paths import build_agent_image_url
 from app.services.conversation_audit_service import record_conversation_audit
 
 router = APIRouter(tags=["conversations"])
+
+
+def _conversation_with_agent_response(conversation: Conversation) -> ConversationWithAgentResponse:
+    agent = conversation.agent
+    base = ConversationResponse.model_validate(conversation).model_dump()
+    return ConversationWithAgentResponse(
+        **base,
+        agent=ConversationAgentBrief(
+            id=agent.id,
+            name=agent.name,
+            image_url=build_agent_image_url(
+                agent.id,
+                updated_at=agent.updated_at,
+                image_path=agent.image_path,
+            ),
+        ),
+    )
+
+
+@router.get(
+    "/api/conversations/page",
+    response_model=ConversationWithAgentListEnvelope,
+)
+async def list_global_conversations_page(
+    limit: int = Query(30, ge=1, le=100),
+    cursor: str | None = Query(None),
+    q: str | None = Query(None, max_length=100),
+    sort: ConversationSort = Query("updated"),
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    try:
+        items, next_cursor, has_more = await chat_service.list_global_conversations_page(
+            db,
+            user.id,
+            limit=limit,
+            cursor=cursor,
+            q=q,
+            sort=sort,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid cursor") from exc
+    return ConversationWithAgentListEnvelope(
+        items=[_conversation_with_agent_response(item) for item in items],
+        next_cursor=next_cursor,
+        has_more=has_more,
+    )
+
+
+@router.get(
+    "/api/conversations/{conversation_id}",
+    response_model=ConversationWithAgentResponse,
+)
+async def get_conversation_detail(
+    conversation_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    conv = await chat_service.get_owned_ui_conversation_with_agent(db, conversation_id, user.id)
+    if not conv:
+        raise conversation_not_found()
+    return _conversation_with_agent_response(conv)
 
 
 @router.get(
@@ -27,7 +95,8 @@ async def list_conversations_page(
     agent_id: uuid.UUID,
     limit: int = Query(30, ge=1, le=100),
     cursor: str | None = Query(None),
-    q: str | None = Query(None),
+    q: str | None = Query(None, max_length=100),
+    sort: ConversationSort = Query("updated"),
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
@@ -40,6 +109,7 @@ async def list_conversations_page(
             limit=limit,
             cursor=cursor,
             q=q,
+            sort=sort,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid cursor") from exc

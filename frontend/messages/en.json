@@ -230,6 +230,73 @@
     },
     "newAgent": "New Agent",
     "recentAgents": "Recent Agents",
+    "agents": {
+      "title": "Agents",
+      "newChat": "New chat",
+      "newConversation": "New conversation",
+      "newChatForAgent": "New chat with {name}",
+      "searchToggle": "Search agents",
+      "expandAgent": "Expand agent",
+      "collapseAgent": "Collapse agent",
+      "searchPlaceholder": "Search agents or conversations",
+      "searchResults": "Search results",
+      "loadMore": "Load more",
+      "collapse": "Collapse",
+      "menu": {
+        "label": "Navigator options",
+        "organization": "Organization",
+        "agentSort": "Agent sort",
+        "sessionSort": "Conversation sort",
+        "singleExpandedAgent": "Expand one agent at a time"
+      },
+      "mode": {
+        "agentGrouped": "By agent",
+        "recentAgents": "Recent agents",
+        "recentSessions": "Recent conversations"
+      },
+      "sort": {
+        "recent": "Recently used",
+        "created": "Created",
+        "updated": "Updated"
+      },
+      "session": {
+        "fallbackTitle": "New conversation",
+        "menu": "Conversation menu"
+      },
+      "conversationActions": {
+        "menu": {
+          "rename": "Rename",
+          "share": "Share",
+          "pin": "Pin",
+          "unpin": "Unpin",
+          "delete": "Delete"
+        },
+        "renameDialog": {
+          "title": "Rename conversation",
+          "placeholder": "Conversation title",
+          "save": "Save"
+        },
+        "deleteDialog": {
+          "title": "Delete this conversation?",
+          "description": "This action cannot be undone. All messages in the conversation will be deleted."
+        }
+      },
+      "empty": {
+        "agents": "No agents yet",
+        "sessions": "No conversations yet",
+        "search": "No results"
+      },
+      "quickSwitcher": {
+        "title": "Quick switch",
+        "description": "Search agents and conversations to jump directly.",
+        "placeholder": "Search",
+        "agents": "Agents",
+        "sessions": "Conversations",
+        "emptyAgents": "No matching agents",
+        "emptySessions": "No matching conversations",
+        "fallbackTitle": "New conversation"
+      }
+    },
     "user": {
       "name": "Suhwa",
       "email": "suhwa@moldy.ai"
@@ -332,6 +399,17 @@
     "tip": "Tip: Templates help you get started faster."
   },
   "agent": {
+    "context": {
+      "trigger": "Agent information",
+      "loading": "Agent",
+      "noDescription": "No description.",
+      "model": "Model",
+      "tools": "Tools",
+      "skills": "Skills",
+      "unknown": "Unset",
+      "newChat": "New chat",
+      "settings": "Settings"
+    },
     "new": {
       "pageTitle": "Create New Agent",
       "backToHome": "Back to Home",

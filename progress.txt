@@ -312,3 +312,48 @@
   - eslint rule `react-hooks/set-state-in-effect`: prop 기반 state init은 useEffect 금지, 반드시 useState lazy init + key remount 패턴.
   - `cn()` + 반응형 prefix grouping 함정 — base가 `sm:max-w-sm` 갖고 있으면 override는 `sm:max-w-none` 명시 필요 (frontend/AGENTS.md).
   - Catalog page는 'use client' — Next.js 16 App Router에서 TanStack Query 쓰는 컴포넌트는 client only.
+
+## ⚠️ 반복 실패 감지 [2026-06-11T22:39:04]
+- 도구: unknown
+- 에러: no error info
+- 조치: 다른 접근 방식 시도 필요
+
+## ⚠️ 반복 실패 감지 [2026-06-11T22:45:37]
+- 도구: unknown
+- 에러: no error info
+- 조치: 다른 접근 방식 시도 필요
+
+## 리뷰 패턴 기록 [2026-06-12 chat-navigator 3차 리뷰]
+- 경계값 수정에는 경계값 테스트: `shortcutIndex <= 9` 같은 상한을 추가하면 회귀 테스트에 반드시 경계 밖 케이스(10)를 포함할 것 — 뮤테이션 검증에서 상한 삭제가 테스트를 통과해버림.
+- jsdom 한계 2종: `isContentEditable`은 항상 undefined, `checkVisibility`는 미구현(typeof 가드로 fallback) — 이 분기들은 단위 테스트로 검증 불가, E2E에서 커버해야 함.
+- 인덱스 drop 정당화 주석에는 영향받는 실제 쿼리 함수명을 명시하면 다음 리뷰어가 grep으로 재검증 가능 (m61 사례).
+
+## 리뷰 패턴 기록 [2026-06-12 chat-navigator 4차 리뷰]
+- 주석/문서/docstring에 함수명·심볼을 적을 때는 반드시 grep으로 실존을 확인한다.
+  요약·기억에 의존해 적은 이름은 오기 위험이 있고(예: list_agents_with_last_used →
+  실제는 list_agents), grep 불가능한 이름은 "추적 가능성"이라는 기록 목적 자체를 훼손한다.
+
+## ⚠️ 반복 실패 감지 [2026-06-12T01:17:06]
+- 도구: unknown
+- 에러: no error info
+- 조치: 다른 접근 방식 시도 필요
+
+## E2E 격리 DB + colima 포트 포워딩 gotcha (2026-06-12)
+- 이 머신의 docker는 Docker Desktop이 아니라 **colima**다. 새로 publish한 컨테이너
+  포트가 macOS 호스트로 포워딩되지 않을 수 있다 (VM 내부는 정상인데 호스트 nc만 실패).
+  - 진단: `colima ssh -- bash -c 'echo > /dev/tcp/127.0.0.1/<PORT>'` 가 성공하는데
+    호스트 `nc -z localhost <PORT>` 가 실패하면 colima 포워더 누락이다.
+  - 복구: `colima ssh-config > /tmp/cfg && ssh -F /tmp/cfg -f -N -L <PORT>:127.0.0.1:<PORT> colima`
+  - 정리: 포워딩은 colima의 SSH ControlMaster(mux)에 등록되므로 클라이언트 프로세스를
+    죽여도 리스너가 남는다. `ssh -O cancel -L <PORT>:127.0.0.1:<PORT> -S ~/.colima/_lima/colima/ssh.sock lima-colima`
+- live E2E용 격리 DB 레시피 (공유 DB에 alembic 금지 제약의 안전한 우회):
+  1. `docker run -d --name moldy-e2e-pg -e POSTGRES_USER=moldy -e POSTGRES_PASSWORD=moldy -e POSTGRES_DB=moldy -p 5433:5432 postgres:16`
+  2. worktree `backend/.env` 에 throwaway secrets 작성 (DATABASE_URL 5433,
+     ENCRYPTION_KEY/JWT_SECRET 은 `openssl rand -hex 32`)
+  3. `cd backend && uv run alembic upgrade head` (downgrade 왕복으로 신규 마이그레이션 대칭성도 검증 가능)
+  4. `cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 pnpm playwright test e2e/smoke.spec.ts`
+     (3000/8001/5432 는 다른 체크아웃·프로젝트가 점유 — reuseExistingServer 함정 방지용 대체 포트)
+  5. 정리: `docker rm -f moldy-e2e-pg` + worktree `backend/.env` 삭제 + ssh 포워딩 cancel
+- smoke.spec.ts 는 정기 스위트다. UI 구조 변경(사이드바 통합 등) 시 smoke 실패는
+  "회귀 vs 낡은 단언"을 소스에서 판별한 뒤 테스트를 갱신한다. dropdown menuitem 은
+  portal 렌더라 main 스코프가 아닌 page 레벨에서 찾는다.

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
@@ -29,6 +31,8 @@ def test_conversation_routes_registered_from_facade():
     from app.main import create_app
 
     expected = {
+        ("GET", "/api/conversations/page"),
+        ("GET", "/api/conversations/{conversation_id}"),
         ("GET", "/api/agents/{agent_id}/conversations/page"),
         ("GET", "/api/agents/{agent_id}/conversations"),
         ("POST", "/api/agents/{agent_id}/conversations"),
@@ -93,18 +97,26 @@ def test_user_display_name_context_skips_legacy_name_fallback():
     assert with_user_display_name_context("Base prompt", user) == "Base prompt"
 
 
-async def _seed_agent(*, with_tools: bool = False) -> tuple[uuid.UUID, uuid.UUID | None]:
+async def _seed_agent(
+    *,
+    with_tools: bool = False,
+    user_id: uuid.UUID = TEST_USER_ID,
+    user_email: str = "test@test.com",
+    agent_name: str = "Conv Agent",
+) -> tuple[uuid.UUID, uuid.UUID | None]:
     """Create User + Model + Agent (+ optionally a tool link). Return (agent_id, tool_id)."""
     async with TestSession() as db:
-        user = User(id=TEST_USER_ID, email="test@test.com", name="Test")
-        db.add(user)
+        user = await db.get(User, user_id)
+        if user is None:
+            user = User(id=user_id, email=user_email, name="Test")
+            db.add(user)
         model = Model(provider="openai", model_name="gpt-4o", display_name="GPT-4o")
         db.add(model)
         await db.flush()
 
         agent = Agent(
             user_id=user.id,
-            name="Conv Agent",
+            name=agent_name,
             system_prompt="You are helpful.",
             model_id=model.id,
         )
@@ -141,10 +153,19 @@ async def _seed_conversation_with_title(
     title: str,
     *,
     is_pinned: bool = False,
+    source: str = "ui",
+    created_at: datetime | None = None,
     updated_at: datetime | None = None,
 ) -> uuid.UUID:
     async with TestSession() as db:
-        conv = Conversation(agent_id=agent_id, title=title, is_pinned=is_pinned)
+        conv = Conversation(
+            agent_id=agent_id,
+            title=title,
+            is_pinned=is_pinned,
+            source=source,
+        )
+        if created_at is not None:
+            conv.created_at = created_at
         if updated_at is not None:
             conv.updated_at = updated_at
         db.add(conv)
@@ -219,6 +240,275 @@ async def test_list_conversations_page_searches_and_limits_on_server(client: Asy
     assert second_page["has_more"] is False
     assert second_page["next_cursor"] is None
     assert [item["id"] for item in second_page["items"]] == [str(recent_id)]
+
+
+@pytest.mark.asyncio
+async def test_list_conversations_page_sort_created_and_runtime_status(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    base = datetime.now(UTC).replace(tzinfo=None)
+    pinned_id = await _seed_conversation_with_title(
+        agent_id,
+        "Pinned old draft",
+        is_pinned=True,
+        created_at=base + timedelta(minutes=1),
+        updated_at=base + timedelta(minutes=1),
+    )
+    newest_created_id = await _seed_conversation_with_title(
+        agent_id,
+        "Newest created",
+        created_at=base + timedelta(minutes=3),
+        updated_at=base,
+    )
+    older_created_id = await _seed_conversation_with_title(
+        agent_id,
+        "Older created but updated later",
+        created_at=base + timedelta(minutes=2),
+        updated_at=base + timedelta(minutes=10),
+    )
+
+    resp = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"sort": "created"},
+    )
+
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert [item["id"] for item in items] == [
+        str(pinned_id),
+        str(newest_created_id),
+        str(older_created_id),
+    ]
+    assert {item["runtime_status"] for item in items} == {"idle"}
+
+
+@pytest.mark.asyncio
+async def test_list_conversations_page_cursor_rejects_mismatched_sort(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    base = datetime.now(UTC).replace(tzinfo=None)
+    await _seed_conversation_with_title(agent_id, "First", updated_at=base + timedelta(minutes=2))
+    await _seed_conversation_with_title(agent_id, "Second", updated_at=base + timedelta(minutes=1))
+
+    first_page = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"limit": 1, "sort": "updated"},
+    )
+    assert first_page.status_code == 200
+    cursor = first_page.json()["next_cursor"]
+    assert cursor
+
+    resp = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"limit": 1, "sort": "created", "cursor": cursor},
+    )
+
+    assert resp.status_code == 400
+    assert resp.json()["error"]["message"] == "Invalid cursor"
+
+
+@pytest.mark.asyncio
+async def test_global_conversations_page_rejects_garbage_cursor(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    await _seed_conversation_with_title(agent_id, "Only conversation")
+
+    resp = await client.get(
+        "/api/conversations/page",
+        params={"limit": 1, "cursor": "@@not-a-cursor@@"},
+    )
+
+    assert resp.status_code == 400
+    assert resp.json()["error"]["message"] == "Invalid cursor"
+
+
+@pytest.mark.asyncio
+async def test_global_conversations_page_rejects_agent_scoped_cursor(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    base = datetime.now(UTC).replace(tzinfo=None)
+    await _seed_conversation_with_title(agent_id, "First", updated_at=base + timedelta(minutes=2))
+    await _seed_conversation_with_title(agent_id, "Second", updated_at=base + timedelta(minutes=1))
+
+    first_page = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"limit": 1, "sort": "updated"},
+    )
+    assert first_page.status_code == 200
+    cursor = first_page.json()["next_cursor"]
+    assert cursor
+
+    resp = await client.get(
+        "/api/conversations/page",
+        params={"limit": 1, "sort": "updated", "cursor": cursor},
+    )
+
+    assert resp.status_code == 400
+    assert resp.json()["error"]["message"] == "Invalid cursor"
+
+
+@pytest.mark.asyncio
+async def test_list_conversations_page_accepts_timezone_aware_cursor(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    base = datetime.now(UTC).replace(tzinfo=None)
+    await _seed_conversation_with_title(agent_id, "First", updated_at=base + timedelta(minutes=2))
+    second_id = await _seed_conversation_with_title(
+        agent_id, "Second", updated_at=base + timedelta(minutes=1)
+    )
+
+    first_page = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"limit": 1, "sort": "updated"},
+    )
+    assert first_page.status_code == 200
+    cursor = first_page.json()["next_cursor"]
+    assert cursor
+
+    # Re-encode the cursor with a timezone-aware timestamp ("+00:00" suffix) as
+    # an older/foreign client might send — must normalize, not crash with 500.
+    padded = cursor + "=" * (-len(cursor) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+    payload["timestamp"] = f"{payload['timestamp']}+00:00"
+    raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    aware_cursor = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+    resp = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"limit": 1, "sort": "updated", "cursor": aware_cursor},
+    )
+
+    assert resp.status_code == 200
+    assert [item["id"] for item in resp.json()["items"]] == [str(second_id)]
+
+
+@pytest.mark.asyncio
+async def test_list_conversations_page_escapes_like_wildcards(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+    underscore_id = await _seed_conversation_with_title(agent_id, "a_b notes")
+    await _seed_conversation_with_title(agent_id, "axb other")
+    percent_id = await _seed_conversation_with_title(agent_id, "Report 100% done")
+    await _seed_conversation_with_title(agent_id, "Report 100 of them")
+
+    underscore_resp = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"q": "a_b"},
+    )
+    assert underscore_resp.status_code == 200
+    assert [item["id"] for item in underscore_resp.json()["items"]] == [str(underscore_id)]
+
+    percent_resp = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"q": "100%"},
+    )
+    assert percent_resp.status_code == 200
+    assert [item["id"] for item in percent_resp.json()["items"]] == [str(percent_id)]
+
+
+@pytest.mark.asyncio
+async def test_conversations_page_rejects_overlong_search_query(client: AsyncClient):
+    agent_id, _ = await _seed_agent()
+
+    agent_resp = await client.get(
+        f"/api/agents/{agent_id}/conversations/page",
+        params={"q": "x" * 101},
+    )
+    assert agent_resp.status_code == 422
+
+    global_resp = await client.get(
+        "/api/conversations/page",
+        params={"q": "x" * 101},
+    )
+    assert global_resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_global_conversations_page_filters_ui_ownership_and_embeds_agent(
+    client: AsyncClient,
+):
+    primary_agent_id, _ = await _seed_agent(agent_name="Primary Agent")
+    secondary_agent_id, _ = await _seed_agent(agent_name="Secondary Agent")
+    foreign_user_id = uuid.UUID("00000000-0000-0000-0000-0000000000ff")
+    foreign_agent_id, _ = await _seed_agent(
+        user_id=foreign_user_id,
+        user_email="other@test.com",
+        agent_name="Foreign Agent",
+    )
+    base = datetime.now(UTC).replace(tzinfo=None)
+    pinned_older_id = await _seed_conversation_with_title(
+        primary_agent_id,
+        "Owned pinned older",
+        is_pinned=True,
+        created_at=base + timedelta(minutes=5),
+        updated_at=base + timedelta(minutes=1),
+    )
+    latest_updated_id = await _seed_conversation_with_title(
+        secondary_agent_id,
+        "Owned latest updated",
+        created_at=base + timedelta(minutes=3),
+        updated_at=base + timedelta(minutes=4),
+    )
+    await _seed_conversation_with_title(
+        primary_agent_id,
+        "API should stay hidden",
+        source="api",
+        created_at=base + timedelta(minutes=6),
+        updated_at=base + timedelta(minutes=6),
+    )
+    await _seed_conversation_with_title(
+        foreign_agent_id,
+        "Foreign should stay hidden",
+        created_at=base + timedelta(minutes=7),
+        updated_at=base + timedelta(minutes=7),
+    )
+
+    updated_resp = await client.get(
+        "/api/conversations/page",
+        params={"sort": "updated", "limit": 10},
+    )
+    created_resp = await client.get(
+        "/api/conversations/page",
+        params={"sort": "created", "limit": 10},
+    )
+
+    assert updated_resp.status_code == 200
+    updated_items = updated_resp.json()["items"]
+    assert [item["id"] for item in updated_items] == [str(latest_updated_id), str(pinned_older_id)]
+    assert updated_items[0]["agent"] == {
+        "id": str(secondary_agent_id),
+        "name": "Secondary Agent",
+        "image_url": None,
+    }
+    assert {item["runtime_status"] for item in updated_items} == {"idle"}
+
+    assert created_resp.status_code == 200
+    created_items = created_resp.json()["items"]
+    assert [item["id"] for item in created_items] == [str(pinned_older_id), str(latest_updated_id)]
+
+
+@pytest.mark.asyncio
+async def test_get_conversation_detail_filters_ui_ownership_and_embeds_agent(client: AsyncClient):
+    agent_id, _ = await _seed_agent(agent_name="Detail Agent")
+    foreign_user_id = uuid.UUID("00000000-0000-0000-0000-0000000000ee")
+    foreign_agent_id, _ = await _seed_agent(
+        user_id=foreign_user_id,
+        user_email="foreign-detail@test.com",
+        agent_name="Foreign Detail Agent",
+    )
+    owned_id = await _seed_conversation_with_title(agent_id, "Owned detail")
+    api_id = await _seed_conversation_with_title(agent_id, "API detail", source="api")
+    foreign_id = await _seed_conversation_with_title(foreign_agent_id, "Foreign detail")
+
+    ok_resp = await client.get(f"/api/conversations/{owned_id}")
+    api_resp = await client.get(f"/api/conversations/{api_id}")
+    foreign_resp = await client.get(f"/api/conversations/{foreign_id}")
+
+    assert ok_resp.status_code == 200
+    body = ok_resp.json()
+    assert body["id"] == str(owned_id)
+    assert body["runtime_status"] == "idle"
+    assert body["agent"] == {
+        "id": str(agent_id),
+        "name": "Detail Agent",
+        "image_url": None,
+    }
+    assert api_resp.status_code == 404
+    assert foreign_resp.status_code == 404
 
 
 @pytest.mark.asyncio

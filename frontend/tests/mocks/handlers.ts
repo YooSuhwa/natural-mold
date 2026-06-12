@@ -11,6 +11,7 @@ import {
   mockTemplate,
   mockConversationList,
   mockConversationPage,
+  mockGlobalConversationPage,
   mockConversation,
   mockMessageList,
   mockTriggerList,
@@ -155,8 +156,7 @@ export const handlers = [
 
   http.patch(`${API_BASE}/api/connections/:id`, async ({ params, request }) => {
     const body = (await request.json()) as Record<string, unknown>
-    const base =
-      mockConnectionList.find((c) => c.id === params.id) ?? mockCustomConnection
+    const base = mockConnectionList.find((c) => c.id === params.id) ?? mockCustomConnection
     return HttpResponse.json({ ...base, ...body, id: params.id })
   }),
 
@@ -214,6 +214,17 @@ export const handlers = [
 
   http.get(`${API_BASE}/api/agents/:agentId/conversations/page`, () => {
     return HttpResponse.json(mockConversationPage)
+  }),
+
+  http.get(`${API_BASE}/api/conversations/page`, () => {
+    return HttpResponse.json(mockGlobalConversationPage)
+  }),
+
+  http.get(`${API_BASE}/api/conversations/:id`, ({ params }) => {
+    const found = mockGlobalConversationPage.items.find((item) => item.id === params.id)
+    return found
+      ? HttpResponse.json(found)
+      : HttpResponse.json({ detail: 'Conversation not found' }, { status: 404 })
   }),
 
   http.post(`${API_BASE}/api/agents/:agentId/conversations`, async ({ params, request }) => {

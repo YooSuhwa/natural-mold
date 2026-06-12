@@ -230,6 +230,73 @@
     },
     "newAgent": "새 에이전트",
     "recentAgents": "최근 에이전트",
+    "agents": {
+      "title": "에이전트",
+      "newChat": "새 채팅",
+      "newConversation": "새 대화",
+      "newChatForAgent": "{name} 새 채팅",
+      "searchToggle": "에이전트 검색",
+      "expandAgent": "에이전트 펼치기",
+      "collapseAgent": "에이전트 접기",
+      "searchPlaceholder": "에이전트 또는 대화 검색",
+      "searchResults": "검색 결과",
+      "loadMore": "더 보기",
+      "collapse": "접기",
+      "menu": {
+        "label": "탐색 옵션",
+        "organization": "보기 방식",
+        "agentSort": "에이전트 정렬",
+        "sessionSort": "대화 정렬",
+        "singleExpandedAgent": "한 번에 하나만 펼치기"
+      },
+      "mode": {
+        "agentGrouped": "에이전트별",
+        "recentAgents": "최근 에이전트",
+        "recentSessions": "최근 대화"
+      },
+      "sort": {
+        "recent": "최근 사용",
+        "created": "생성순",
+        "updated": "업데이트순"
+      },
+      "session": {
+        "fallbackTitle": "새 대화",
+        "menu": "대화 메뉴"
+      },
+      "conversationActions": {
+        "menu": {
+          "rename": "이름 변경",
+          "share": "공유",
+          "pin": "고정",
+          "unpin": "고정 해제",
+          "delete": "삭제"
+        },
+        "renameDialog": {
+          "title": "대화 이름 변경",
+          "placeholder": "대화 제목 입력",
+          "save": "저장"
+        },
+        "deleteDialog": {
+          "title": "대화를 삭제하시겠습니까?",
+          "description": "이 작업은 되돌릴 수 없습니다. 대화의 모든 메시지가 삭제됩니다."
+        }
+      },
+      "empty": {
+        "agents": "에이전트가 없습니다",
+        "sessions": "대화가 없습니다",
+        "search": "검색 결과가 없습니다"
+      },
+      "quickSwitcher": {
+        "title": "빠른 이동",
+        "description": "에이전트와 대화를 검색해 바로 이동합니다.",
+        "placeholder": "검색어 입력",
+        "agents": "에이전트",
+        "sessions": "대화",
+        "emptyAgents": "일치하는 에이전트가 없습니다",
+        "emptySessions": "일치하는 대화가 없습니다",
+        "fallbackTitle": "새 대화"
+      }
+    },
     "user": {
       "name": "수화",
       "email": "suhwa@moldy.ai"
@@ -332,6 +399,17 @@
     "tip": "💡 팁: 템플릿을 활용하면 더 빠르게 시작할 수 있어요!"
   },
   "agent": {
+    "context": {
+      "trigger": "에이전트 정보",
+      "loading": "에이전트",
+      "noDescription": "설명이 없습니다.",
+      "model": "모델",
+      "tools": "도구",
+      "skills": "스킬",
+      "unknown": "미설정",
+      "newChat": "새 채팅",
+      "settings": "설정"
+    },
     "new": {
       "pageTitle": "새 에이전트 만들기",
       "backToHome": "홈으로",
