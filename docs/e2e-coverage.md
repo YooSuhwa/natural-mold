@@ -70,7 +70,8 @@ cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
 | Token usage hover | chat | `conversation_messages` | `chat-token-usage` | 🟨 |
 | Document artifacts | chat | `artifacts` | `document-artifact-viewers` | ✅ |
 | Branching (regenerate/edit) + feedback + multi-turn | chat | `conversation_branches`, `feedback` | `chat-interactions` | ✅ |
-| HITL approval / attachments | chat | `uploads` | — | ❌ |
+| Message attachments (upload on send) | chat | `uploads` | `message-attachments` | ✅ |
+| HITL tool approval (approve / reject) | chat | `conversation_messages` | `document-artifact-viewers` (approve), `hitl-approval` (reject) | ✅ |
 | Credentials (user) | `/credentials` | `credentials` | `credentials` | ✅ (create only) |
 | Skills | `/skills` | `skills` | `skills-management` | ✅ (create only) |
 | Tools | `/tools` | `tools` | `tools-catalog` | ✅ (create only) |
@@ -82,28 +83,39 @@ cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
 | Public share link | `/shared/[id]` | `shares` | `share-link` | ✅ |
 | Marketplace browse + install | `/marketplace` | `marketplace` | `marketplace` | ✅ (install via API) |
 | Marketplace publish/moderation | `/marketplace/admin` | `marketplace` | — | ❌ |
-| **Memory controls** | `/settings/memory` | `memory` | — | ❌ |
-| **Agent API deployment** | `/settings/agent-api` | `agent_api` | — | ❌ |
-| **Audit trail** | `/settings/audit` | `audit` | — | ❌ |
-| **System credentials / System LLM** | `/settings/system-*` | `credentials`, `system_llm_settings` | — | ❌ |
+| Memory controls | `/settings/memory` | `memory` | `memory-controls` | ✅ |
+| Agent API deployment | `/settings/agent-api` | `agent_api` | `agent-api` | ✅ |
+| Audit trail | `/settings/audit` | `audit` | `audit-trail` | ✅ |
+| System credentials / System LLM | `/settings/system-*` | `credentials`, `system_llm_settings` | `operator-screens` | ✅ |
 
 ## Status & next up
 
 **Done (real E2E, green):** auth (login/signup/logout) · conversational builder
 (LiteLLM) · agent-settings (system prompt + attach tool/skill/sub-agent) ·
 agent-triggers (interval) · share-link (publish + logged-out read-only + revoke)
-· marketplace (catalog + install) · the 4 stale fixes.
+· marketplace (catalog + install) · **agent-api (deploy + issue key + revoke)** ·
+**memory-controls (record CRUD + write-policy)** · **audit-trail (agent.create
+surfaces)** · **operator-screens (System LLM render + system-credential
+create/delete, super_user)** · **message-attachments (composer attach → upload
+on send)** · **hitl-approval (reject an execute_in_skill interrupt)** · the 4
+stale fixes.
 
 **Next up (remaining ❌, rough priority):**
-1. HITL approval (tool-call approval interrupt) + message attachments
-2. Agent API deployment + key (`/settings/agent-api`)
-4. Memory controls (`/settings/memory`) · audit trail (`/settings/audit`)
-5. System-LLM + system-credentials operator screens (super_user; the seed already
-   configures System LLM, so a render check is quick)
-6. MCP tool attach — needs a running MCP server (first-party `localhost:18001-4`);
+1. MCP tool attach — needs a running MCP server (first-party `localhost:18001-4`);
    most setup-heavy, defer unless an MCP server is available
-7. Sub-agent *delegation run* (parent calls child at runtime) — real-LLM and
+2. Sub-agent *delegation run* (parent calls child at runtime) — real-LLM and
    inherently flaky; needs a strong delegation prompt + tolerant assertion
+3. Marketplace publish/moderation (`/marketplace/admin`) — super_user moderation
+   queue (publish → approve listing)
+
+**Notes for the remaining HITL/attachment nuances:**
+- HITL *approve* is exercised by `document-artifact-viewers` (`approveExecuteInSkill`);
+  `execute_in_skill` carries a **default** interrupt policy (tool risk metadata),
+  so no per-agent middleware config is needed — attaching a skill is enough.
+- Message attachments link to the **conversation**, not the message
+  (`chat_service.link_attachments_to_conversation` leaves `message_id` null), so
+  the messages API never echoes them; verify the upload write + retrievability
+  instead of a message-linked attachment.
 
 **How to continue (fresh session):** read this file top-to-bottom, then bring up
 the stack with the recipe above (throwaway PG :5433, backend :8101, frontend
@@ -140,6 +152,33 @@ the live backend (scripted model for keyless chat, LiteLLM for builder).
 
 ## Changelog
 
+- Added `agent-api` spec: deploy a fixed-identity agent (only fixed identity is
+  eligible — `AGENT_API_FIXED_IDENTITY_REQUIRED`), issue a server key through the
+  create dialog (one-time secret revealed), then revoke it — each step verified
+  via `/api/agent-api/*`. 1 test, full UI journey.
+- Added `memory-controls` spec (2): create → edit → delete a user memory through
+  the form (pinned to the record by `data-testid="memory-item-<id>"` so content
+  edits don't move the locator), each verified via `/api/memories`; plus a
+  write-policy change persisted via `/api/me/memory-settings`. Memory is enabled
+  by default, so the policy select is interactable without a precondition.
+- Added `audit-trail` spec: creating an agent emits `agent.create`; the personal
+  audit log (action filter is **exact match**) surfaces the row by its unique
+  target-name snapshot. 1 test.
+- Added `operator-screens` spec (2, super_user): System LLM renders the
+  seed-configured LiteLLM slots (operator banner + `텍스트 기본 모델` +
+  `설정됨` + `[e2e] LiteLLM`, cross-checked via `/api/system-llm-settings`); and
+  a real system-credential create (OpenAI via the shared catalog modal, posts to
+  `/api/system-credentials`) + delete (native `confirm()` → `dialog.accept()`).
+- Added `message-attachments` spec: the composer paperclip opens a native file
+  chooser (`waitForEvent('filechooser')`); on send the file is uploaded
+  (`POST /api/uploads` → 201) and is retrievable via `GET /api/uploads/{id}`.
+  Gotcha: attachments link to the conversation, not the message (`message_id`
+  stays null), so the messages API never echoes them — assert the upload write.
+- Added `hitl-approval` spec: `execute_in_skill` interrupts by default; rejecting
+  the approval card (`거부` → `거부 확인` → `거부됨`) skips the tool, so no
+  document artifact is produced. Complements the approve path in
+  `document-artifact-viewers`. Setup mirrors the document spec (install the
+  seeded `docx-document` skill, attach it, drive the scripted model via E2E_DOCX).
 - Added `auth` spec: login (success + wrong-credentials error), signup
   (new user auto-login), logout from the user menu. 4 tests, real backend.
 - Added real-LLM provisioning via `seed.e2e_llm` (E2E_LLM_* env → openai_compatible
