@@ -9,7 +9,7 @@ import {
   ComposerPrimitive,
   ThreadPrimitive,
   useAui,
-  useAssistantState,
+  useAuiState,
   useMessagePartText,
 } from '@assistant-ui/react'
 import { LayoutGridIcon, PaperclipIcon, SendIcon } from 'lucide-react'
@@ -98,7 +98,7 @@ const MARKDOWN_COMPONENTS_FINAL = buildMarkdownComponents({ isStreaming: false }
 function BuilderAssistantTextPart() {
   const tPhase = useTranslations('chat.phaseTimeline')
   const part = useMessagePartText()
-  const isRunning = useAssistantState(
+  const isRunning = useAuiState(
     (s) => (s.message?.status as { type?: string } | undefined)?.type === 'running',
   )
   const text = part?.text ?? ''

@@ -8,7 +8,7 @@ import {
   AttachmentPrimitive,
   ActionBarPrimitive,
   useThreadViewport,
-  useAssistantState,
+  useAuiState,
   useAui,
   type AssistantToolUI,
 } from '@assistant-ui/react'
@@ -117,7 +117,7 @@ function BuilderComposerFallback() {
 /** 메시지 메타에서 createdAt을 읽어 한국어 상대 시간을 표시 */
 function MessageTimestamp() {
   const tCommon = useTranslations('common')
-  const createdAt = useAssistantState(
+  const createdAt = useAuiState(
     (s) => (s.message as { createdAt?: Date } | undefined)?.createdAt,
   )
   if (!createdAt) return null
@@ -147,7 +147,7 @@ const MARKDOWN_COMPONENTS_FINAL = buildMarkdownComponents({ isStreaming: false }
  * 무거운 fenced 블록을 raw로 두고, message 종료 후에야 다이어그램 렌더 시도.
  */
 function AssistantTextPart() {
-  const isRunning = useAssistantState(
+  const isRunning = useAuiState(
     (s) => (s.message?.status as { type?: string } | undefined)?.type === 'running',
   )
   const components = isRunning ? MARKDOWN_COMPONENTS_STREAMING : MARKDOWN_COMPONENTS_FINAL
@@ -237,7 +237,7 @@ function StreamingMessageLoadingIndicator({ className }: { className?: string })
 }
 
 function useIsStreamingMessage(): boolean {
-  return useAssistantState((s) =>
+  return useAuiState((s) =>
     Boolean(
       (s.message?.metadata as { custom?: { isStreamingMessage?: boolean } } | undefined)?.custom
         ?.isStreamingMessage,
@@ -246,7 +246,7 @@ function useIsStreamingMessage(): boolean {
 }
 
 function useMessageArtifacts(): ArtifactSummary[] {
-  return useAssistantState((s) => selectMessageArtifactsFromMessage(s.message))
+  return useAuiState((s) => selectMessageArtifactsFromMessage(s.message))
 }
 
 function AssistantArtifactCards() {
@@ -324,8 +324,8 @@ function CopyButton() {
   const [isCopying, setIsCopying] = useState(false)
   const t = useTranslations('chat.message')
   const label = copied ? t('copied') : t('copy')
-  const copyText = useAssistantState((s) => getMessageCopyText(s.message?.content))
-  const isAssistantRunning = useAssistantState(
+  const copyText = useAuiState((s) => getMessageCopyText(s.message?.content))
+  const isAssistantRunning = useAuiState(
     (s) => s.message?.role === 'assistant' && s.message.status?.type === 'running',
   )
   const disabled = !copyText || isCopying || isAssistantRunning
@@ -441,7 +441,7 @@ function BranchPicker() {
   const conversationId = useChatConversationId()
   const queryClient = useQueryClient()
   const [pendingCheckpointId, setPendingCheckpointId] = useState<string | null>(null)
-  const meta = useAssistantState(
+  const meta = useAuiState(
     (s) =>
       ((s.message?.metadata as { custom?: BranchMeta } | undefined)?.custom ?? {}) as BranchMeta,
   )
@@ -516,7 +516,7 @@ function BranchPicker() {
  * (and assistant-ui keeps in sync after each ``adapter.feedback.submit``). */
 function FeedbackButtons() {
   const t = useTranslations('chat.message')
-  const submitted = useAssistantState(
+  const submitted = useAuiState(
     (s) =>
       (s.message?.metadata as { submittedFeedback?: { type: 'positive' | 'negative' } } | undefined)
         ?.submittedFeedback?.type,
@@ -760,7 +760,16 @@ export function AssistantThread({
               isBuilder ? 'max-w-[880px] space-y-6' : 'max-w-3xl space-y-4',
             )}
           >
-            <ThreadPrimitive.Messages components={messageComponents} />
+            <ThreadPrimitive.Messages>
+              {({ message }) => {
+                const Component = message.composer.isEditing
+                  ? messageComponents.UserEditComposer
+                  : message.role === 'user'
+                    ? messageComponents.UserMessage
+                    : messageComponents.AssistantMessage
+                return <Component />
+              }}
+            </ThreadPrimitive.Messages>
           </div>
 
           <ThreadPrimitive.ViewportFooter className="pointer-events-none sticky bottom-0 z-10 flex justify-center pb-2">
@@ -851,11 +860,9 @@ function ThreadComposer({
       {/* Attachment preview row (P1-7) — only renders when at least one
           attachment is staged; hidden otherwise so the composer stays compact. */}
       {enableAttachments && (
-        <ComposerPrimitive.Attachments
-          components={{
-            Attachment: AttachmentChip,
-          }}
-        />
+        <ComposerPrimitive.Attachments>
+          {() => <AttachmentChip />}
+        </ComposerPrimitive.Attachments>
       )}
 
       {/* Textarea */}
@@ -941,10 +948,10 @@ function StopButton() {
 
 /** P1-7 — preview chip for one staged attachment. Renders inside the
  * ``ComposerPrimitive.Attachments`` slot which already provides per-attachment
- * context, so we just read from ``useAssistantState(s.attachment)``. */
+ * context, so we just read from ``useAuiState(s.attachment)``. */
 function AttachmentChip() {
   const tMsg = useTranslations('chat.message')
-  const attachment = useAssistantState(
+  const attachment = useAuiState(
     (s) =>
       (s as { attachment?: { name: string; contentType?: string; status?: { type: string } } })
         .attachment,

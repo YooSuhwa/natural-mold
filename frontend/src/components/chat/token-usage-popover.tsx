@@ -1,7 +1,7 @@
 'use client'
 
 import { InfoIcon } from 'lucide-react'
-import { useAssistantState } from '@assistant-ui/react'
+import { useAuiState } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
 import { cn } from '@/lib/utils'
 import { formatCostUsd } from '@/components/usage/format'
@@ -26,7 +26,7 @@ function formatNumber(n: number): string {
  */
 export function TokenUsagePopover() {
   const t = useTranslations('chat.tokenUsage')
-  const usage = useAssistantState(
+  const usage = useAuiState(
     (s) => (s.message?.metadata?.custom as AssistantMetadataCustom | undefined)?.usage,
   )
 

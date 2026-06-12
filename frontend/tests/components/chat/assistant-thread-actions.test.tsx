@@ -39,16 +39,15 @@ vi.mock('@assistant-ui/react', () => {
       Viewport: passthrough,
       Empty: () => null,
       Messages: ({
-        components,
+        children,
       }: {
-        components: {
-          UserMessage: () => ReactNode
-          AssistantMessage: () => ReactNode
-        }
+        children: (props: {
+          message: { role: string; composer: { isEditing: boolean } }
+        }) => ReactNode
       }) => (
         <>
-          {components.UserMessage()}
-          {components.AssistantMessage()}
+          {children({ message: { role: 'user', composer: { isEditing: false } } })}
+          {children({ message: { role: 'assistant', composer: { isEditing: false } } })}
         </>
       ),
       ViewportFooter: passthrough,
