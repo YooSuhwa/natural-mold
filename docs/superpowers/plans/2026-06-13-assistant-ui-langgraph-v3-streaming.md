@@ -2154,6 +2154,15 @@ git commit -m "feat(chat): add LangGraph stream client state"
 - Test: `frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
 - Test: `frontend/src/lib/chat/langgraph-runtime/__tests__/assistant-ui-bridge.test.tsx`
 
+Implementation status:
+
+- [x] `use-moldy-langgraph-stream.ts` now creates the single Moldy-owned `@langchain/react` `useStream` instance with `createMoldyAgentTransport`.
+- [x] The hook exposes the raw `stream` object for future DeepAgents selectors and bridges root coordinator messages into assistant-ui with `useExternalStoreRuntime`.
+- [x] The bridge reuses `convertLangChainBaseMessage` from `@assistant-ui/react-langchain`, while still keeping the underlying stream accessible to Moldy.
+- [x] The hook forwards assistant-ui feedback/attachment adapters and routes new user messages/cancel actions through `stream.submit` / `stream.stop`.
+- [x] Hook tests verify one stream is created, assistant-ui runtime options are wired, and new messages submit through the same stream.
+- [ ] HITL resume, activity side effects, artifact/memory reducers, subagent scoped selectors, edit/regenerate, draft conversation start, and visible page selection are still pending.
+
 - [ ] **Step 1: Implement the Moldy-owned `@langchain/react` stream path**
 
 Start with direct `@langchain/react`, not either assistant-ui package's full runtime hook:
