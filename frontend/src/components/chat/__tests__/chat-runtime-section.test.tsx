@@ -26,8 +26,18 @@ vi.mock('@assistant-ui/react', () => ({
 }))
 
 vi.mock('../assistant-thread', () => ({
-  AssistantThread: ({ conversationId }: { conversationId?: string }) => (
-    <div data-conversation-id={conversationId ?? 'draft'} data-testid="assistant-thread" />
+  AssistantThread: ({
+    activities,
+    conversationId,
+  }: {
+    activities?: readonly unknown[]
+    conversationId?: string
+  }) => (
+    <div
+      data-activity-count={activities?.length ?? 0}
+      data-conversation-id={conversationId ?? 'draft'}
+      data-testid="assistant-thread"
+    />
   ),
 }))
 
@@ -77,6 +87,7 @@ describe('ChatRuntimeSection', () => {
     })
     mocks.useMoldyLangGraphStream.mockReturnValue({
       assistantRuntime: 'langgraph-runtime',
+      activities: [],
       stream: { isLoading: false },
       onResumeDecisions: vi.fn(),
       registerDecision: vi.fn(),
@@ -104,6 +115,29 @@ describe('ChatRuntimeSection', () => {
     expect(document.querySelector('[data-runtime="langgraph-runtime"]')).toBeInTheDocument()
   })
 
+  it('passes LangGraph activities through to the assistant thread', () => {
+    mocks.useMoldyLangGraphStream.mockReturnValue({
+      assistantRuntime: 'langgraph-runtime',
+      activities: [
+        {
+          id: 'activity-1',
+          runId: 'run-1',
+          kind: 'tool',
+          status: 'running',
+          title: 'web_search',
+          namespace: [],
+        },
+      ],
+      stream: { isLoading: false },
+      onResumeDecisions: vi.fn(),
+      registerDecision: vi.fn(),
+    })
+
+    renderSection({ useLangGraphRuntime: true })
+
+    expect(document.querySelector('[data-activity-count="1"]')).toBeInTheDocument()
+  })
+
   it('falls back to legacy runtime for a draft conversation', () => {
     renderSection({ activeConversationId: null, useLangGraphRuntime: true })
 
@@ -120,6 +154,7 @@ describe('ChatRuntimeSection', () => {
     const onStreamEnd = vi.fn()
     mocks.useMoldyLangGraphStream.mockReturnValue({
       assistantRuntime: 'langgraph-runtime',
+      activities: [],
       stream: { isLoading: true },
       onResumeDecisions: vi.fn(),
       registerDecision: vi.fn(),
@@ -134,6 +169,7 @@ describe('ChatRuntimeSection', () => {
     expect(onRuntimeStatusChange).toHaveBeenLastCalledWith('running')
     mocks.useMoldyLangGraphStream.mockReturnValue({
       assistantRuntime: 'langgraph-runtime',
+      activities: [],
       stream: { isLoading: false },
       onResumeDecisions: vi.fn(),
       registerDecision: vi.fn(),

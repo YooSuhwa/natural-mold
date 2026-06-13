@@ -172,14 +172,13 @@ function LangGraphRuntimeSection({
   onStreamEnd,
   threadProps,
 }: LangGraphRuntimeSectionProps) {
-  const { assistantRuntime, stream, onResumeDecisions, registerDecision } = useMoldyLangGraphStream(
-    {
+  const { assistantRuntime, activities, stream, onResumeDecisions, registerDecision } =
+    useMoldyLangGraphStream({
       agentId,
       conversationId,
       feedbackAdapter,
       attachmentAdapter,
-    },
-  )
+    })
   const wasRunningRef = useRef(false)
   const hitlValue = useMemo(
     () => ({ onResumeDecisions, registerDecision }),
@@ -198,21 +197,30 @@ function LangGraphRuntimeSection({
     onStreamEnd(false)
   }, [onRuntimeStatusChange, onStreamEnd, stream.isLoading])
 
-  return <RuntimeFrame hitlValue={hitlValue} runtime={assistantRuntime} threadProps={threadProps} />
+  return (
+    <RuntimeFrame
+      activities={activities}
+      hitlValue={hitlValue}
+      runtime={assistantRuntime}
+      threadProps={threadProps}
+    />
+  )
 }
 
 interface RuntimeFrameProps {
+  readonly activities?: AssistantThreadProps['activities']
   readonly hitlValue: HiTLContextValue
   readonly runtime: AssistantRuntime
   readonly threadProps: ThreadRenderProps
 }
 
-function RuntimeFrame({ hitlValue, runtime, threadProps }: RuntimeFrameProps) {
+function RuntimeFrame({ activities, hitlValue, runtime, threadProps }: RuntimeFrameProps) {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <HiTLContext.Provider value={hitlValue}>
         <AssistantThread
           {...threadProps}
+          activities={activities}
           showTokenBar
           showMessageTimestamp
           enableAttachments

@@ -7,9 +7,10 @@ import {
   type AttachmentAdapter,
   type FeedbackAdapter,
 } from '@assistant-ui/react'
-import { useStream } from '@langchain/react'
+import { useChannel, useStream, type Channel } from '@langchain/react'
 import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
 import { convertLangChainBaseMessage } from '@assistant-ui/react-langchain'
+import { reduceProtocolActivity } from './activity-protocol'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import type { RunActivity } from './activity-model'
 
@@ -26,6 +27,17 @@ interface UseMoldyLangGraphStreamOptions {
   feedbackAdapter?: FeedbackAdapter
   attachmentAdapter?: AttachmentAdapter
 }
+
+const ACTIVITY_CHANNELS = [
+  'messages',
+  'tools',
+  'values',
+  'updates',
+  'lifecycle',
+  'tasks',
+  'checkpoints',
+  'custom',
+] as const satisfies readonly Channel[]
 
 function appendMessageText(message: {
   content: readonly unknown[]
@@ -65,6 +77,15 @@ export function useMoldyLangGraphStream({
     transport,
     threadId: conversationId,
   })
+  const activityEvents = useChannel(stream, ACTIVITY_CHANNELS, undefined, { bufferSize: 300 })
+  const activities = useMemo(
+    () =>
+      activityEvents.reduce<RunActivity[]>(
+        (current, event) => reduceProtocolActivity(current, event),
+        [],
+      ),
+    [activityEvents],
+  )
   const messages = useExternalMessageConverter({
     callback: convertMoldyLangChainMessage,
     messages: stream.messages,
@@ -114,7 +135,7 @@ export function useMoldyLangGraphStream({
   return {
     stream,
     assistantRuntime,
-    activities: [] as readonly RunActivity[],
+    activities,
     sendMessage,
     onResumeDecisions,
     registerDecision,

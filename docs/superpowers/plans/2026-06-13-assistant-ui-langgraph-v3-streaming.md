@@ -2347,16 +2347,20 @@ git commit -m "feat(chat): add LangGraph stream runtime bridge"
 **Files:**
 
 - Create: `frontend/src/components/chat/run-activity-strip.tsx`
+- Create: `frontend/src/components/chat/assistant-message-loading.tsx`
+- Create: `frontend/src/lib/chat/langgraph-runtime/activity-protocol.ts`
 - Create: `frontend/src/components/chat/subagent-card.tsx`
 - Create: `frontend/src/components/chat/subagent-progress.tsx`
 - Create: `frontend/src/components/chat/tool-ui/reasoning-ui.tsx`
 - Modify: `frontend/src/components/chat/assistant-thread.tsx`
-- Modify: `frontend/src/components/chat/witty-loading.tsx`
+- Modify: `frontend/src/components/chat/chat-runtime-section.tsx`
+- Modify: `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts`
 - Modify: `frontend/messages/ko.json`
 - Modify: `frontend/messages/en.json`
 - Test: `frontend/src/components/chat/__tests__/run-activity-strip.test.tsx`
+- Test: `frontend/src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts`
 
-- [ ] **Step 1: Add i18n labels**
+- [x] **Step 1: Add i18n labels**
 
 Add keys under `chat.activity`:
 
@@ -2379,7 +2383,12 @@ Add keys under `chat.activity`:
 
 Add matching English strings.
 
-- [ ] **Step 2: Implement `RunActivityStrip`**
+Implemented in:
+
+- `frontend/messages/ko.json`
+- `frontend/messages/en.json`
+
+- [x] **Step 2: Implement `RunActivityStrip`**
 
 UI requirements:
 
@@ -2389,6 +2398,28 @@ UI requirements:
 - shows at most three active/recent rows collapsed by default,
 - supports nested subagent indentation without nested cards,
 - uses `BrainIcon`, `ListChecksIcon`, `WrenchIcon`, `NetworkIcon`, `FileTextIcon`, `CircleAlertIcon` from lucide-react.
+
+Implemented in `frontend/src/components/chat/run-activity-strip.tsx`.
+
+- Uses compact `CollapsiblePill` rows.
+- Shows at most three active/recent activities.
+- Supports namespace indentation without nested cards.
+- Covers thinking, planning, tool, subagent/background subagent, artifact, memory, interrupt, checkpoint, responding, reconnecting, done, and error kinds.
+
+- [x] **Step 2c: Connect v3 channel events to `RunActivity`**
+
+Implemented in:
+
+- `frontend/src/lib/chat/langgraph-runtime/activity-protocol.ts`
+- `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts`
+
+The hook now subscribes through `@langchain/react` `useChannel` for:
+
+```typescript
+["messages", "tools", "values", "updates", "lifecycle", "tasks", "checkpoints", "custom"]
+```
+
+The adapter normalizes v3 `content-block-*`, `tool-started`, `tool-finished`, `tool-error`, `updates.values`, and lifecycle namespace events into the existing Moldy `RunActivity` model.
 
 - [ ] **Step 2a: Implement DeepAgents state panel for todos/files**
 
@@ -2421,7 +2452,7 @@ Use the official Deep Agents frontend pattern while keeping assistant-ui as the 
 
 Async/background subagents from `AsyncSubAgentMiddleware` should not reuse the inline subagent transcript card. Render them as background task cards/status rows keyed by `task_id`, showing agent name, run status, created/updated timestamps, and latest check result. They are launched/checked/updated/cancelled through tools and state updates, not through the inline v3 `stream.subagents` projection.
 
-- [ ] **Step 3: Connect to `AssistantThread`**
+- [x] **Step 3: Connect to `AssistantThread`**
 
 Add optional prop:
 
@@ -2430,6 +2461,14 @@ activities?: readonly RunActivity[]
 ```
 
 Render above `StreamingMessageLoadingIndicator` for the active assistant message. If `activities.length > 0`, hide random witty loading copy. If no activity exists and message status is running, keep current `WittyLoadingMessage`.
+
+Implemented in:
+
+- `frontend/src/components/chat/assistant-message-loading.tsx`
+- `frontend/src/components/chat/assistant-thread.tsx`
+- `frontend/src/components/chat/chat-runtime-section.tsx`
+
+The legacy SSE runtime still passes no activities. The LangGraph runtime passes `activities` from `useMoldyLangGraphStream`.
 
 - [ ] **Step 4: Add reasoning UI**
 
@@ -2442,35 +2481,48 @@ Before importing `makeAssistantDataUI`, verify the installed `@assistant-ui/reac
 
 Test:
 
-- thinking activity renders Korean label,
-- tool activity shows tool name,
+- [x] thinking/planning activity renders Korean label,
+- [x] tool activity shows tool name,
 - todos render grouped task state with pending/in-progress/completed labels,
 - collapsed DeepAgents state panel shows active task summary and file count,
 - file panel renders files from Moldy artifacts and optionally reconciles `values.files`,
 - file viewer supports Markdown preview, code/plain-text preview, copy, and download,
 - file edit action is disabled while loading or interrupted,
-- subagent activity shows nested namespace,
+- [x] subagent activity shows nested namespace,
 - subagent card attaches below the coordinator tool call that spawned it,
 - collapsed subagent card does not render scoped transcript rows,
 - expanded subagent card renders scoped messages and tool calls,
 - subagent progress shows completed/total counts,
 - subagent error stays inside the subagent card unless the parent run fails,
-- error activity shows error styling,
-- witty loading is hidden when semantic activity exists.
+- [ ] error activity shows error styling,
+- [ ] witty loading is hidden when semantic activity exists.
+- [x] v3 content-block tool activity maps through tool completion.
+- [x] v3 `updates.values.todos` maps to planning activity.
+- [x] LangGraph runtime passes activities to `AssistantThread`.
 
-- [ ] **Step 6: Verify**
+- [x] **Step 6: Verify**
 
 ```bash
 cd frontend
-pnpm test src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/deepagents-state-panel.test.tsx
+pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+pnpm exec tsc --noEmit
+pnpm exec eslint src/lib/chat/langgraph-runtime/activity-protocol.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/components/chat/run-activity-strip.tsx src/components/chat/assistant-message-loading.tsx src/components/chat/assistant-thread.tsx src/components/chat/chat-runtime-section.tsx src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
 pnpm lint:i18n
 pnpm lint:design-system
 ```
 
+Verified for this slice:
+
+- `pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
+- `pnpm exec tsc --noEmit`
+- `pnpm exec eslint src/lib/chat/langgraph-runtime/activity-protocol.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/components/chat/run-activity-strip.tsx src/components/chat/assistant-message-loading.tsx src/components/chat/assistant-thread.tsx src/components/chat/chat-runtime-section.tsx src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
+- `pnpm lint:i18n`
+- `pnpm lint:design-system`
+
 - [ ] **Step 7: Commit**
 
 ```bash
-git add frontend/src/components/chat/run-activity-strip.tsx frontend/src/components/chat/tool-ui/reasoning-ui.tsx frontend/src/components/chat/assistant-thread.tsx frontend/src/components/chat/witty-loading.tsx frontend/messages/ko.json frontend/messages/en.json frontend/src/components/chat/__tests__/run-activity-strip.test.tsx
+git add frontend/src/components/chat/run-activity-strip.tsx frontend/src/components/chat/assistant-message-loading.tsx frontend/src/components/chat/assistant-thread.tsx frontend/src/components/chat/chat-runtime-section.tsx frontend/src/lib/chat/langgraph-runtime/activity-protocol.ts frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts frontend/messages/ko.json frontend/messages/en.json frontend/src/components/chat/__tests__/run-activity-strip.test.tsx frontend/src/components/chat/__tests__/chat-runtime-section.test.tsx frontend/src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
 git commit -m "feat(chat): render semantic agent activity"
 ```
 

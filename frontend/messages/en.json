@@ -1583,6 +1583,20 @@
       "stale": "Stale",
       "credentialRequiredAction": "Credential required: {message}"
     },
+    "activity": {
+      "thinking": "Thinking through it",
+      "planning": "Planning",
+      "tool": "Running {name}",
+      "subagent": "{name} is working",
+      "artifact": "Preparing files",
+      "memory": "Updating memory",
+      "interrupt": "Waiting for approval",
+      "checkpoint": "Saving checkpoint",
+      "responding": "Writing response",
+      "reconnecting": "Reconnecting stream",
+      "done": "Done",
+      "error": "Something went wrong"
+    },
     "loading": {
       "witty": {
         "0": "One moment, booting up my brain...",

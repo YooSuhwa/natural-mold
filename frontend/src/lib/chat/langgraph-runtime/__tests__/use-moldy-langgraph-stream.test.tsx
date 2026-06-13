@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => {
       conversationId,
     })),
     useStream: vi.fn(() => stream),
+    useChannel: vi.fn(() => []),
     useExternalMessageConverter: vi.fn(() => [{ id: 'converted' }]),
     useExternalStoreRuntime: vi.fn((options: unknown) => ({ kind: 'runtime', options })),
     convertLangChainBaseMessage: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('../moldy-agent-transport', () => ({
 }))
 
 vi.mock('@langchain/react', () => ({
+  useChannel: mocks.useChannel,
   useStream: mocks.useStream,
 }))
 
@@ -89,6 +91,7 @@ describe('useMoldyLangGraphStream', () => {
       }),
     )
     expect(result.current.stream).toBe(mocks.stream)
+    expect(result.current.activities).toEqual([])
     expect(result.current.assistantRuntime).toEqual(expect.objectContaining({ kind: 'runtime' }))
   })
 

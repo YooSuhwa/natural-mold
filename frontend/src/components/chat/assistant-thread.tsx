@@ -53,7 +53,10 @@ import {
   type TokenUsage,
 } from '@/lib/stores/chat-store'
 import { GenericToolFallback, ToolFallbackPanel } from '@/components/chat/tool-ui/generic-tool-ui'
-import { WittyLoadingMessage } from '@/components/chat/witty-loading'
+import {
+  isStreamingMessageMetadata,
+  StreamingMessageLoadingIndicator,
+} from '@/components/chat/assistant-message-loading'
 import { TokenUsagePopover } from '@/components/chat/token-usage-popover'
 import { ReconnectIndicator } from '@/components/chat/reconnect-indicator'
 import { formatRelativeShort } from '@/lib/utils/format-relative-time'
@@ -78,6 +81,7 @@ import {
   toggleArtifactPreviewRailState,
 } from '@/lib/stores/chat-right-rail'
 import type { ArtifactSummary } from '@/lib/types'
+import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
 
 export { GenericToolFallback }
 
@@ -118,9 +122,7 @@ function BuilderComposerFallback() {
 /** 메시지 메타에서 createdAt을 읽어 한국어 상대 시간을 표시 */
 function MessageTimestamp() {
   const tCommon = useTranslations('common')
-  const createdAt = useAuiState(
-    (s) => (s.message as { createdAt?: Date } | undefined)?.createdAt,
-  )
+  const createdAt = useAuiState((s) => (s.message as { createdAt?: Date } | undefined)?.createdAt)
   if (!createdAt) return null
   return (
     <span className="moldy-ui-micro text-muted-foreground">
@@ -227,23 +229,8 @@ function AssistantMessageParts() {
   )
 }
 
-function StreamingMessageLoadingIndicator({ className }: { className?: string }) {
-  const isStreamingMessage = useIsStreamingMessage()
-  if (!isStreamingMessage) return null
-  return (
-    <AuiIf condition={(s) => s.thread.isRunning}>
-      <WittyLoadingMessage className={cn('pointer-events-none mb-1 px-1', className)} />
-    </AuiIf>
-  )
-}
-
 function useIsStreamingMessage(): boolean {
-  return useAuiState((s) =>
-    Boolean(
-      (s.message?.metadata as { custom?: { isStreamingMessage?: boolean } } | undefined)?.custom
-        ?.isStreamingMessage,
-    ),
-  )
+  return useAuiState((s) => isStreamingMessageMetadata(s.message?.metadata))
 }
 
 function useMessageArtifacts(): ArtifactSummary[] {
@@ -593,6 +580,7 @@ export interface AssistantThreadProps {
   emptyContent?: React.ReactNode
   /** 추가 도구 UI */
   toolUI?: readonly AssistantToolUI[]
+  activities?: readonly RunActivity[]
   /** P1-7 — true이면 composer에 첨부 파일 버튼/미리보기 표시.
    * AttachmentAdapter는 useChatRuntime에 별도로 전달되어야 한다. */
   enableAttachments?: boolean
@@ -621,6 +609,7 @@ export function AssistantThread({
   showMessageTimestamp = false,
   emptyContent,
   toolUI,
+  activities = [],
   enableAttachments = false,
   conversationId,
   variant = 'default',
@@ -699,7 +688,7 @@ export function AssistantThread({
           return (
             <Suspense fallback={<BuilderMessageFallback />}>
               <BuilderAssistantMessage metaRow={metaRow} agentSubtitle={builderAgentSubtitle}>
-                <StreamingMessageLoadingIndicator />
+                <StreamingMessageLoadingIndicator activities={activities} />
                 <BuilderAssistantMessageParts />
               </BuilderAssistantMessage>
             </Suspense>
@@ -712,7 +701,10 @@ export function AssistantThread({
               !isStreamingMessage && '[contain-intrinsic-size:0_180px] [content-visibility:auto]',
             )}
           >
-            <StreamingMessageLoadingIndicator className="absolute -top-5 left-11 mb-0" />
+            <StreamingMessageLoadingIndicator
+              activities={activities}
+              className="absolute -top-5 left-11 mb-0"
+            />
             <AgentAvatar
               imageUrl={agentImageUrl ?? null}
               name={agentName ?? tChat('defaultAgentName')}
@@ -732,6 +724,7 @@ export function AssistantThread({
       agentImagePublicAsset,
       agentImageUrl,
       agentName,
+      activities,
       builderAgentSubtitle,
       isBuilder,
       showMessageTimestamp,
@@ -861,9 +854,7 @@ function ThreadComposer({
       {/* Attachment preview row (P1-7) — only renders when at least one
           attachment is staged; hidden otherwise so the composer stays compact. */}
       {enableAttachments && (
-        <ComposerPrimitive.Attachments>
-          {() => <AttachmentChip />}
-        </ComposerPrimitive.Attachments>
+        <ComposerPrimitive.Attachments>{() => <AttachmentChip />}</ComposerPrimitive.Attachments>
       )}
 
       {/* Textarea */}
