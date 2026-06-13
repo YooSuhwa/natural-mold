@@ -47,6 +47,9 @@ describe('createMoldyAgentTransport', () => {
       method: 'run.start',
       params: { assistant_id: 'agent-1' },
     })
+    expect(Reflect.get(globalThis, Symbol.for('langgraph_api:url'))).toBe('http://api.test')
+    expect(Reflect.get(globalThis, Symbol.for('langgraph_api:fetch'))).toEqual(expect.any(Function))
+    expect('apiUrl' in transport).toBe(false)
   })
 
   it('uses the state path for SDK hydration without adding CSRF to GET requests', async () => {

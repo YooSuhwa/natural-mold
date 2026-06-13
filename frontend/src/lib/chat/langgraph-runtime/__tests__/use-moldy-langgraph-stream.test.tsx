@@ -75,7 +75,6 @@ const mocks = vi.hoisted(() => {
       return [{ id: 'converted' }]
     }),
     useExternalStoreRuntime: vi.fn((options: unknown) => ({ kind: 'runtime', options })),
-    conversationRunsCancel: vi.fn(),
     convertLangChainBaseMessage: vi.fn(),
   }
 })
@@ -98,12 +97,6 @@ vi.mock('@assistant-ui/react', () => ({
 
 vi.mock('@assistant-ui/react-langchain', () => ({
   convertLangChainBaseMessage: mocks.convertLangChainBaseMessage,
-}))
-
-vi.mock('@/lib/api/conversation-runs', () => ({
-  conversationRunsApi: {
-    cancel: mocks.conversationRunsCancel,
-  },
 }))
 
 vi.mock('next-intl', () => ({
@@ -137,7 +130,6 @@ describe('useMoldyLangGraphStream', () => {
     mocks.stream.disconnect.mockClear()
     mocks.stream.getThread.mockClear()
     mocks.stream.getThread.mockReturnValue(mocks.thread)
-    mocks.conversationRunsCancel.mockClear()
     mocks.thread.subscribe.mockClear()
     mocks.thread.subscribe.mockResolvedValue(mocks.lifecycleSubscription)
     mocks.lifecycleSubscription.unsubscribe.mockClear()
@@ -186,8 +178,6 @@ describe('useMoldyLangGraphStream', () => {
       expect.objectContaining({
         transport: { kind: 'transport', conversationId: 'conversation-1' },
         threadId: 'conversation-1',
-        onCreated: expect.any(Function),
-        onCompleted: expect.any(Function),
       }),
     )
     expect(mocks.useExternalStoreRuntime).toHaveBeenCalledWith(
@@ -226,10 +216,10 @@ describe('useMoldyLangGraphStream', () => {
     expect(mocks.stream.submit).toHaveBeenCalledWith({
       messages: [expect.objectContaining({ content: 'hello' })],
     })
-    expect(mocks.stream.disconnect).toHaveBeenCalled()
+    expect(mocks.stream.stop).toHaveBeenCalled()
   })
 
-  it('routes assistant-ui cancel through the Moldy run cancel API before disconnecting', async () => {
+  it('routes assistant-ui cancel through the LangGraph stream stop contract', async () => {
     renderHook(
       () =>
         useMoldyLangGraphStream({
@@ -239,18 +229,14 @@ describe('useMoldyLangGraphStream', () => {
       { wrapper: createQueryWrapper() },
     )
 
-    const streamOptions = mocks.useStream.mock.calls.at(-1)?.[0]
-    if (!streamOptions) throw new Error('useStream was not called')
-    streamOptions.onCreated?.({ runId: 'run-cancel-1' })
     const runtimeOptions = mocks.useExternalStoreRuntime.mock.calls.at(-1)?.[0] as {
       onCancel: () => Promise<void>
     }
 
     await runtimeOptions.onCancel()
 
-    expect(mocks.conversationRunsCancel).toHaveBeenCalledWith('conversation-cancel', 'run-cancel-1')
-    expect(mocks.stream.disconnect).toHaveBeenCalled()
-    expect(mocks.stream.stop).not.toHaveBeenCalled()
+    expect(mocks.stream.stop).toHaveBeenCalled()
+    expect(mocks.stream.disconnect).not.toHaveBeenCalled()
   })
 
   it('projects LangGraph HITL interrupts into assistant-ui tool call messages', () => {

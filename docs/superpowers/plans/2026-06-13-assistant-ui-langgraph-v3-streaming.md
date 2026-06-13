@@ -520,9 +520,10 @@ type StreamEndpoint = 'POST /api/conversations/{conversationId}/langgraph/thread
 type GetStateEndpoint = 'GET /api/conversations/{conversationId}/langgraph/threads/{threadId}/state'
 type UpdateStateEndpoint = 'POST /api/conversations/{conversationId}/langgraph/threads/{threadId}/state'
 type HistoryEndpoint = 'POST /api/conversations/{conversationId}/langgraph/threads/{threadId}/history'
+type SdkCancelEndpoint = 'POST /threads/{threadId}/runs/{runId}/cancel?wait=0&action=interrupt'
 ```
 
-The commands endpoint accepts the official Agent Protocol `Command` envelope. Moldy must support at least `run.start`; cancellation may be implemented as an adapter-supported command or as the SDK transport's abort/stop behavior, but it must not be modeled as a Moldy-only stream event.
+The commands endpoint accepts the official Agent Protocol `Command` envelope. Moldy must support at least `run.start` and `input.respond` there. Cancellation is not a `/commands` command in the current official LangGraph JS SDK path: `StreamController.stop()` calls `client.runs.cancel(threadId, runId)`, which posts to `/threads/{threadId}/runs/{runId}/cancel?wait=0&action=interrupt`. Moldy therefore exposes that SDK-compatible endpoint and maps it to the existing durable conversation-run cancel semantics. It must not be modeled as a Moldy-only stream event.
 
 ```typescript
 type AgentProtocolCommand = {
@@ -1293,7 +1294,7 @@ Implementation status:
 - [x] `/stream/events` now attaches to the live `EventBroker` for an active protocol run and applies the same protocol channel/namespace filters used by replay.
 - [x] Tool lifecycle synthesis from Python `values.messages`, lifecycle event emission, and pending interrupt extraction are split into focused helpers so the protocol adapter does not own runtime side effects.
 - [x] Artifact `custom:file_event`, memory custom events, and UI usage projection are wired for the LangGraph runtime path.
-- [ ] Remaining Moldy-specific side effects beyond artifacts, memory invalidation, and UI usage still need explicit reducers; cancel and richer non-`run.start` command forwarding are still follow-up work.
+- [ ] Remaining Moldy-specific side effects beyond artifacts, memory invalidation, and UI usage still need explicit reducers; richer non-`run.start` command forwarding remains follow-up work. Official SDK cancellation is implemented through `/threads/{thread_id}/runs/{run_id}/cancel` and reuses the durable conversation-run cancel path.
 
 - [x] **Step 1: Implement `langgraph_streaming.py`**
 
@@ -1877,7 +1878,8 @@ Implementation status:
 - [x] `GET state`, compatibility state, and `history` now read the active LangGraph checkpoint branch when the checkpointer is initialized and return SDK-coercible `values.messages` wire objects (`type: "human" | "ai" | "tool" | ...`). `POST history` returns checkpoint-specific snapshots instead of copies of the current state. They retain the previous empty fallback shape when no checkpoint exists.
 - [x] `input.respond` is implemented for single-interrupt and batched interrupt decisions. The BFF maps it to a resume `ConversationRun` and calls LangGraph with `Command(resume=...)`.
 - [x] Pending `input.requested` interrupts hydrate from `GET state` as SDK-compatible `tasks[].interrupts`, and compatibility state exposes the same `interrupts` list for Moldy bridge code.
-- [ ] Protocol command-level cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
+- [x] Official LangGraph SDK cancellation is implemented through `POST /threads/{thread_id}/runs/{run_id}/cancel`, which maps `stream.stop()` / `client.runs.cancel(threadId, runId)` onto Moldy's existing durable run cancel path. The route returns `202` by default and `204` with `wait=true`.
+- [ ] Rollback/interrupt/enqueue multitask strategies, rollback-specific cancel semantics, and richer command forwarding are not implemented yet. The cancel endpoint accepts SDK `action=interrupt|rollback` for compatibility, but both currently use Moldy's interrupt-style cancel semantics rather than checkpoint rollback.
 - [x] `POST state` now applies updates through the compiled LangGraph runtime/checkpointer API (`aget_state -> aupdate_state -> aget_state`) and returns the resulting SDK-compatible state shape.
 - [x] Active run without broker returns `409 RUN_ATTACH_RETRY` while fresh. If the heartbeat is stale, the protocol route transitions the run to `stale`, finalizes run outputs, replays stored protocol events, and appends a `custom:stale` protocol event.
 - [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed. Artifact product side effects now run from `custom:file_event`, and memory custom events now invalidate memory state plus toast through the LangGraph runtime. Usage and other custom projections still need explicit reducers.
@@ -1893,6 +1895,7 @@ Add Agent Streaming Protocol style endpoints that `HttpAgentServerAdapter` can c
 | `GET` | `/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/state` | Load LangGraph thread state for SDK hydration, refresh, edit/regenerate, and debug views |
 | `POST` | `/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/state` | Update/bootstrap LangGraph thread state, including initial empty `messages` when needed |
 | `POST` | `/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/history` | Return checkpoint/state history with `limit` and `before` support |
+| `POST` | `/threads/{thread_id}/runs/{run_id}/cancel` | Official SDK `runs.cancel` endpoint used by `stream.stop()`; maps to Moldy's durable run cancel path |
 | `POST` | `/api/agents/{agent_id}/conversations/start` | Create a draft-backed conversation first, then bind the returned conversation id as the LangGraph thread id |
 | `GET` | `/api/conversations/{conversation_id}/langgraph/state` | Temporary compatibility state load for assistant-ui bridge and debug UI, derived from the canonical thread state route |
 
@@ -2236,7 +2239,7 @@ Implementation status:
 - [x] `use-moldy-langgraph-stream.ts` now creates the single Moldy-owned `@langchain/react` `useStream` instance with `createMoldyAgentTransport`.
 - [x] The hook exposes the raw `stream` object for future DeepAgents selectors and bridges root coordinator messages into assistant-ui with `useExternalStoreRuntime`.
 - [x] The bridge reuses `convertLangChainBaseMessage` from `@assistant-ui/react-langchain`, while still keeping the underlying stream accessible to Moldy.
-- [x] The hook forwards assistant-ui feedback/attachment adapters, routes new user messages through `stream.submit` with `HumanMessage`, and routes explicit cancel through Moldy's authenticated run-cancel API before `stream.disconnect()`.
+- [x] The hook forwards assistant-ui feedback/attachment adapters, routes new user messages through `stream.submit` with `HumanMessage`, and routes explicit cancel through official `stream.stop()`. The Moldy transport hides `apiUrl` from the adapter branch and registers LangGraph global API URL/fetch defaults so the SDK-created client calls the authenticated `/threads/{thread_id}/runs/{run_id}/cancel` endpoint with Moldy's CSRF/cookie behavior.
 - [x] `ChatRuntimeSection` splits legacy and LangGraph runtime providers so only one side-effecting stream hook mounts at a time.
 - [x] The conversation page reads `NEXT_PUBLIC_CHAT_RUNTIME` through `getChatRuntimeMode()` and mounts the LangGraph provider only for existing conversations when `langgraph_v3` is selected. Draft `new` conversations remain on legacy SSE until draft creation is ported.
 - [x] Hook and section tests verify one stream is created, assistant-ui runtime options are wired, new messages submit through the same stream, legacy mode still calls `useChatRuntime`, `langgraph_v3` mode calls `useMoldyLangGraphStream`, draft conversations fall back to legacy, and LangGraph loading transitions update navigator status/invalidate on settle.

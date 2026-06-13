@@ -129,13 +129,22 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
         /\/api\/conversations\/[^/]+\/(messages|messages\/resume|runs\/[^/]+\/stream(?:\?.*)?|langgraph\/threads\/[^/]+\/stream\/events)$/.test(
           url,
         )
+      const expectedSdkCancelAbort =
+        errorText.includes('net::ERR_ABORTED') &&
+        req.method() === 'POST' &&
+        /\/threads\/[^/]+\/runs\/[^/]+\/cancel(?:\?.*)?$/.test(url)
       const expectedRouteTransitionAbort =
         errorText.includes('net::ERR_ABORTED') &&
         req.method() === 'GET' &&
         (/\/api\/auth\/me$/.test(url) ||
           /\/api\/conversations\/[^/?]+(?:\?.*)?$/.test(url) ||
           /\/api\/agents\/[^/]+(?:$|\/conversations(?:\/page)?(?:\?.*)?$)/.test(url))
-      if (!url.includes('favicon') && !expectedStreamDetach && !expectedRouteTransitionAbort) {
+      if (
+        !url.includes('favicon') &&
+        !expectedStreamDetach &&
+        !expectedSdkCancelAbort &&
+        !expectedRouteTransitionAbort
+      ) {
         errors.network.push(`${req.method()} ${url} ${errorText}`)
       }
     })

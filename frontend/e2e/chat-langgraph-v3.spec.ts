@@ -160,4 +160,42 @@ test.describe('LangGraph v3 chat runtime', () => {
       await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
     }
   })
+
+  test('stops an active run through the official SDK cancel endpoint', async ({
+    page,
+    request,
+    errors,
+  }) => {
+    test.setTimeout(90_000)
+    const setup = await setupLangGraphV3Agent(request)
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      await sendMessage(page, 'E2E_SLOW_STREAM')
+
+      const runId = await waitForActiveRun(request, setup.conversationId)
+      const cancelResponsePromise = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'POST' &&
+          response
+            .url()
+            .includes(`/threads/${setup.conversationId}/runs/${runId}/cancel`),
+      )
+
+      await page.locator('[data-moldy-stop-button="true"]').click()
+      const cancelResponse = await cancelResponsePromise
+      expect(cancelResponse.ok()).toBeTruthy()
+
+      await waitForRunStatus(request, setup.conversationId, runId, 'canceled')
+      await expect(page.locator(`[data-moldy-run-spinner="${setup.conversationId}"]`)).toBeHidden({
+        timeout: 10_000,
+      })
+
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
 })
