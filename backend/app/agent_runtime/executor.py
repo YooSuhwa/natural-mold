@@ -19,7 +19,10 @@ from app.agent_runtime.agent_stream_runner import (
     execute_agent_stream,
     resume_agent_stream,
 )
-from app.agent_runtime.langgraph_agent_stream_runner import execute_agent_stream_langgraph
+from app.agent_runtime.langgraph_agent_stream_runner import (
+    execute_agent_stream_langgraph,
+    resume_agent_stream_langgraph,
+)
 from app.agent_runtime.mcp_tool_loader import _build_mcp_tools, _create_mcp_error_stub
 from app.agent_runtime.runtime_component_builder import (
     EmptyContentRetryMiddleware,
@@ -70,6 +73,7 @@ __all__ = [
     "_run_agent_stream",
     "execute_agent_stream",
     "execute_agent_stream_langgraph",
+    "resume_agent_stream_langgraph",
     "resume_agent_stream",
     "execute_agent_invoke",
 ]

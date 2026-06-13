@@ -184,12 +184,17 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const resumeDecision = useCallback(
       async (standardDecision: StandardDecision, displayText?: string) => {
         if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
-          await hitl.registerDecision(args.hitl_action_index, standardDecision, displayText)
+          await hitl.registerDecision(
+            args.hitl_action_index,
+            standardDecision,
+            displayText,
+            args.hitl_interrupt_id,
+          )
           return
         }
         await hitl?.onResumeDecisions([standardDecision], displayText)
       },
-      [args?.hitl_action_index, hitl],
+      [args?.hitl_action_index, args?.hitl_interrupt_id, hitl],
     )
 
     const handleDecision = useCallback(

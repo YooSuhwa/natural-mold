@@ -1,0 +1,167 @@
+import { AIMessage, type BaseMessage } from '@langchain/core/messages'
+import type {
+  ActionRequest,
+  DecisionType,
+  ReviewConfig,
+  StandardInterruptPayload,
+} from '@/lib/types'
+import { standardInterruptToToolCalls } from '@/lib/chat/standard-interrupt'
+
+export interface LangGraphInterruptLike {
+  readonly id?: string
+  readonly value?: unknown
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function textValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function arrayValue(value: unknown): readonly unknown[] | undefined {
+  return Array.isArray(value) ? value : undefined
+}
+
+function recordValue(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined
+}
+
+function isString(value: string | undefined): value is string {
+  return typeof value === 'string'
+}
+
+function decisionType(value: unknown): DecisionType | null {
+  switch (value) {
+    case 'approve':
+    case 'edit':
+    case 'reject':
+    case 'respond':
+      return value
+    default:
+      return null
+  }
+}
+
+function parseActionRequest(value: unknown): ActionRequest | null {
+  if (!isRecord(value)) return null
+  const name = textValue(value.name)
+  if (!name) return null
+  const args = recordValue(value.args) ?? {}
+  const description = textValue(value.description)
+  return description ? { name, args, description } : { name, args }
+}
+
+function parseReviewConfig(value: unknown): ReviewConfig | null {
+  if (!isRecord(value)) return null
+  const actionName = textValue(value.action_name) ?? textValue(value.actionName)
+  if (!actionName) return null
+  const rawAllowed = arrayValue(value.allowed_decisions) ?? arrayValue(value.allowedDecisions) ?? []
+  const allowed = rawAllowed
+    .map((item) => decisionType(item))
+    .filter((item): item is DecisionType => item !== null)
+  if (allowed.length === 0) return null
+  return { action_name: actionName, allowed_decisions: allowed }
+}
+
+function actionRequests(value: Record<string, unknown>): ActionRequest[] | null {
+  const raw = arrayValue(value.action_requests) ?? arrayValue(value.actionRequests)
+  if (!raw) return null
+  const parsed = raw
+    .map((item) => parseActionRequest(item))
+    .filter((item): item is ActionRequest => item !== null)
+  return parsed.length > 0 ? parsed : null
+}
+
+function reviewConfigs(value: Record<string, unknown>): ReviewConfig[] | null {
+  const raw = arrayValue(value.review_configs) ?? arrayValue(value.reviewConfigs)
+  if (!raw) return null
+  const parsed = raw
+    .map((item) => parseReviewConfig(item))
+    .filter((item): item is ReviewConfig => item !== null)
+  return parsed.length > 0 ? parsed : null
+}
+
+function nativeAskUserPayload(
+  interruptId: string,
+  value: Record<string, unknown>,
+): StandardInterruptPayload | null {
+  if (value.type !== 'ask_user') return null
+  const args = Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'type'))
+  const normalizedArgs =
+    'mode' in args
+      ? args
+      : {
+          question: textValue(args.question) ?? '',
+          options: arrayValue(args.options) ?? [],
+        }
+  return {
+    interrupt_id: interruptId,
+    action_requests: [{ name: 'ask_user', args: normalizedArgs }],
+    review_configs: [{ action_name: 'ask_user', allowed_decisions: ['respond'] }],
+  }
+}
+
+export function standardPayloadFromInterrupt(
+  interrupt: LangGraphInterruptLike,
+  index = 0,
+): StandardInterruptPayload | null {
+  const value = recordValue(interrupt.value)
+  if (!value) return null
+  const interruptId =
+    textValue(interrupt.id) ??
+    textValue(value.interrupt_id) ??
+    textValue(value.interruptId) ??
+    `interrupt-${index + 1}`
+  const nativeAskUser = nativeAskUserPayload(interruptId, value)
+  if (nativeAskUser) return nativeAskUser
+  const actions = actionRequests(value)
+  const reviews = reviewConfigs(value)
+  if (!actions || !reviews) return null
+  return {
+    interrupt_id: interruptId,
+    action_requests: actions,
+    review_configs: reviews,
+  }
+}
+
+export function standardPayloadsFromInterrupts(
+  interrupts: readonly LangGraphInterruptLike[],
+): StandardInterruptPayload[] {
+  return interrupts
+    .map((interrupt, index) => standardPayloadFromInterrupt(interrupt, index))
+    .filter((payload): payload is StandardInterruptPayload => payload !== null)
+}
+
+function hasToolCallId(message: BaseMessage, ids: ReadonlySet<string>): boolean {
+  if (!AIMessage.isInstance(message)) return false
+  return (
+    message.tool_calls?.some((toolCall) => isString(toolCall.id) && ids.has(toolCall.id)) ?? false
+  )
+}
+
+export function appendInterruptToolCallMessages(
+  messages: readonly BaseMessage[],
+  payloads: readonly StandardInterruptPayload[],
+): BaseMessage[] {
+  if (payloads.length === 0) return [...messages]
+  const projected: BaseMessage[] = [...messages]
+  for (const payload of payloads) {
+    const toolCalls = standardInterruptToToolCalls(payload)
+    const ids = new Set(toolCalls.map((toolCall) => toolCall.id).filter(isString))
+    if (ids.size === 0 || projected.some((message) => hasToolCallId(message, ids))) continue
+    projected.push(
+      new AIMessage({
+        id: `moldy-hitl:${payload.interrupt_id}`,
+        content: '',
+        tool_calls: toolCalls.map((toolCall, index) => ({
+          id: toolCall.id ?? `${payload.interrupt_id}:${index}`,
+          name: toolCall.name,
+          args: toolCall.args,
+        })),
+      }),
+    )
+  }
+  return projected
+}

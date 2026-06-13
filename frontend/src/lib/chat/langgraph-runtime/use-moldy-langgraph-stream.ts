@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   useExternalMessageConverter,
   useExternalStoreRuntime,
@@ -12,8 +12,11 @@ import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
 import { convertLangChainBaseMessage } from '@assistant-ui/react-langchain'
 import { reduceProtocolActivity } from './activity-protocol'
 import { selectDeepAgentsState } from './deepagents-state'
+import { appendInterruptToolCallMessages, standardPayloadsFromInterrupts } from './hitl-interrupts'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import type { RunActivity } from './activity-model'
+import { createHiTLDecisionCoordinator, type HiTLDecisionCoordinator } from '../standard-interrupt'
+import type { Decision } from '@/lib/types'
 
 interface MoldyGraphState {
   messages: BaseMessage[]
@@ -88,11 +91,30 @@ export function useMoldyLangGraphStream({
     [activityEvents],
   )
   const deepAgentsState = useMemo(() => selectDeepAgentsState(stream.values ?? {}), [stream.values])
+  const interruptPayloads = useMemo(
+    () => standardPayloadsFromInterrupts(stream.interrupts),
+    [stream.interrupts],
+  )
+  const interruptPayloadsById = useMemo(
+    () => new Map(interruptPayloads.map((payload) => [payload.interrupt_id, payload])),
+    [interruptPayloads],
+  )
+  const messagesWithInterrupts = useMemo(
+    () => appendInterruptToolCallMessages(stream.messages, interruptPayloads),
+    [stream.messages, interruptPayloads],
+  )
   const messages = useExternalMessageConverter({
     callback: convertMoldyLangChainMessage,
-    messages: stream.messages,
+    messages: messagesWithInterrupts,
     isRunning: stream.isLoading,
   })
+  const coordinatorsRef = useRef(new Map<string, HiTLDecisionCoordinator>())
+  useEffect(() => {
+    const active = new Set(interruptPayloads.map((payload) => payload.interrupt_id))
+    for (const key of coordinatorsRef.current.keys()) {
+      if (!active.has(key)) coordinatorsRef.current.delete(key)
+    }
+  }, [interruptPayloads])
   const adapters = useMemo(() => {
     if (!feedbackAdapter && !attachmentAdapter) return undefined
     return {
@@ -131,8 +153,45 @@ export function useMoldyLangGraphStream({
     },
     [stream],
   )
-  const onResumeDecisions = useCallback(async () => {}, [])
-  const registerDecision = useCallback(async () => {}, [])
+  const firstInterruptId = interruptPayloads[0]?.interrupt_id ?? null
+  const onResumeDecisions = useCallback(
+    async (decisions: Decision[], _displayText?: string, interruptId?: string | null) => {
+      const targetId = interruptId ?? firstInterruptId
+      const response = { decisions }
+      if (targetId) {
+        await stream.respond(response, { interruptId: targetId })
+        return
+      }
+      await stream.respond(response)
+    },
+    [firstInterruptId, stream],
+  )
+  const registerDecision = useCallback(
+    async (
+      actionIndex: number,
+      decision: Decision,
+      displayText?: string,
+      interruptId?: string | null,
+    ) => {
+      const targetId = interruptId ?? firstInterruptId
+      const payload = targetId ? interruptPayloadsById.get(targetId) : interruptPayloads[0]
+      if (!targetId || !payload || payload.action_requests.length <= 1) {
+        await onResumeDecisions([decision], displayText, targetId)
+        return
+      }
+      const existing = coordinatorsRef.current.get(targetId)
+      const coordinator =
+        existing ??
+        createHiTLDecisionCoordinator({
+          totalActions: payload.action_requests.length,
+          interruptId: targetId,
+          resume: onResumeDecisions,
+        })
+      coordinatorsRef.current.set(targetId, coordinator)
+      await coordinator.registerDecision(actionIndex, decision, displayText)
+    },
+    [firstInterruptId, interruptPayloads, interruptPayloadsById, onResumeDecisions],
+  )
 
   return {
     stream,

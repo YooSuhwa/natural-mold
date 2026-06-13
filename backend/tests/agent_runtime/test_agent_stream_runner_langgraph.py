@@ -90,3 +90,37 @@ async def test_execute_agent_stream_langgraph_passes_state_dict_inputs(monkeypat
     assert chunks == ["protocol-chunk"]
     assert captured["messages_history"] == []
     assert captured["input"] == {"messages": []}
+
+
+@pytest.mark.asyncio
+async def test_resume_agent_stream_langgraph_passes_command_resume(monkeypatch) -> None:
+    from app.agent_runtime import langgraph_agent_stream_runner
+
+    captured = {}
+
+    async def fake_prepare_agent(_cfg: AgentConfig, *, messages_history, is_trigger_mode=False):
+        captured["messages_history"] = messages_history
+        return "agent", [], {"configurable": {"thread_id": "thread-runner"}}
+
+    async def fake_stream(_agent, input_, _config, **_kwargs):
+        captured["input"] = input_
+        yield "protocol-chunk"
+
+    monkeypatch.setattr(langgraph_agent_stream_runner, "_prepare_agent", fake_prepare_agent)
+    monkeypatch.setattr(
+        langgraph_agent_stream_runner,
+        "stream_agent_response_langgraph",
+        fake_stream,
+    )
+
+    chunks = [
+        chunk
+        async for chunk in langgraph_agent_stream_runner.resume_agent_stream_langgraph(
+            _cfg(),
+            {"decisions": [{"type": "approve"}]},
+        )
+    ]
+
+    assert chunks == ["protocol-chunk"]
+    assert captured["messages_history"] == []
+    assert captured["input"].resume == {"decisions": [{"type": "approve"}]}

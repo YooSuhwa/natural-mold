@@ -513,7 +513,7 @@ type ThreadCheckpoint = {
 }
 ```
 
-For new messages, `params.input` contains graph input such as `{ messages: [...] }`. For interrupt resume, the frontend should use the installed `@langchain/react` submit/respond command APIs so the SDK-provided resume command is carried inside the `run.start` input/config shape. The BFF should pass that through to LangGraph rather than inventing a separate Moldy resume payload.
+For new messages, `params.input` contains graph input such as `{ messages: [...] }`. For interrupt resume, the frontend should use the installed `@langchain/react` `stream.respond` / `stream.respondAll` APIs. Those APIs emit an Agent Streaming Protocol `input.respond` command, not a second `run.start` envelope. Moldy's BFF accepts `input.respond`, creates a resume `ConversationRun`, and resumes LangGraph with `Command(resume=...)`; it should not invent a Moldy-only resume payload.
 
 The stream endpoint receives `SubscribeParams` and returns filtered SSE protocol events:
 
@@ -1828,7 +1828,9 @@ Implementation status:
 - [x] `/stream/events` attaches live to the active run's `EventBroker`, emits `event: message` protocol SSE frames, preserves upstream event ids, and applies channel/namespace/depth filters to live and replay paths.
 - [x] Stored canonical protocol events replay from `message_events` and support `Last-Event-ID` / `last_event_id` cursors.
 - [x] `GET state`, compatibility state, and `history` now read the active LangGraph checkpoint branch when the checkpointer is initialized and return SDK-coercible `values.messages` wire objects (`type: "human" | "ai" | "tool" | ...`). They retain the previous empty fallback shape when no checkpoint exists.
-- [ ] `input.respond`, cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
+- [x] `input.respond` is implemented for single-interrupt and batched interrupt decisions. The BFF maps it to a resume `ConversationRun` and calls LangGraph with `Command(resume=...)`.
+- [ ] Cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
+- [ ] Pending interrupt hydration from `GET state` / compatibility state is still incomplete; live-stream interrupts render and resume, but refresh while a run is paused needs a follow-up state task projection.
 - [ ] `POST state` still returns the submitted SDK-compatible shape and does not yet apply updates through the LangGraph checkpointer/runtime API.
 - [ ] Active run without broker currently returns `409 RUN_ATTACH_RETRY`; stale-run detection/finalization is still follow-up.
 - [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed, but product side effects such as memory/artifact projections from those protocol payloads still need explicit reducers.
@@ -2184,7 +2186,8 @@ Implementation status:
 - [x] `ChatRuntimeSection` splits legacy and LangGraph runtime providers so only one side-effecting stream hook mounts at a time.
 - [x] The conversation page reads `NEXT_PUBLIC_CHAT_RUNTIME` through `getChatRuntimeMode()` and mounts the LangGraph provider only for existing conversations when `langgraph_v3` is selected. Draft `new` conversations remain on legacy SSE until draft creation is ported.
 - [x] Hook and section tests verify one stream is created, assistant-ui runtime options are wired, new messages submit through the same stream, legacy mode still calls `useChatRuntime`, `langgraph_v3` mode calls `useMoldyLangGraphStream`, draft conversations fall back to legacy, and LangGraph loading transitions update navigator status/invalidate on settle.
-- [ ] HITL resume, activity side effects, artifact/memory reducers, subagent scoped selectors, edit/regenerate, and draft conversation start are still pending.
+- [x] Live HITL resume is wired through the single `@langchain/react` stream: `stream.interrupts` is projected into Moldy's existing approval/input tool UI, and decisions resume via `stream.respond` / backend `input.respond`.
+- [ ] Pending interrupt state hydration, activity side effects, artifact/memory reducers, subagent scoped selectors, edit/regenerate, and draft conversation start are still pending.
 
 - [ ] **Step 1: Implement the Moldy-owned `@langchain/react` stream path**
 
@@ -2320,7 +2323,7 @@ Test:
 - draft conversation ids keep the legacy runtime until the draft-create path is implemented,
 - LangGraph run loading transitions call navigator status updates and `onStreamEnd(false)` when the run settles,
 - `stream.values` / `useValues(stream)` reads `todos` and `files` from runtime state,
-- HITL resume uses installed `@langchain/react` submit/respond command APIs without a Moldy-only resume payload,
+- HITL resume uses installed `@langchain/react` `stream.respond` / `input.respond` command APIs without a Moldy-only resume payload,
 - namespaced subagent messages do not appear in the root assistant transcript,
 - draft conversation receives `onConversationCreated`,
 - `onStreamEnd` invalidates message and trace queries.
@@ -2580,9 +2583,9 @@ git commit -m "feat(chat): render semantic agent activity"
 - Modify: `backend/app/agent_runtime/langgraph_streaming.py`
 - Test: existing HITL, artifact, memory tests plus new runtime tests
 
-- [ ] **Step 1: HITL**
+- [x] **Step 1: HITL live interrupt projection and resume**
 
-Map `updates.__interrupt__` and loaded interrupt state to the existing `StandardInterruptPayload` shape:
+Map live `@langchain/react` interrupt state to the existing `StandardInterruptPayload` shape:
 
 - keep `interrupt_id`,
 - keep `action_requests`,
@@ -2590,11 +2593,25 @@ Map `updates.__interrupt__` and loaded interrupt state to the existing `Standard
 - reuse `createHiTLDecisionCoordinator`,
 - reuse `standardInterruptToToolCalls` only if the selected assistant-ui runtime still expects tool-call based approval UI.
 
-Target behavior:
+Target behavior status:
 
-- active assistant message status becomes `requires-action`,
-- existing approval cards still render,
-- `onResumeDecisions` resumes through the new BFF endpoint.
+- [ ] active assistant message status becomes `requires-action` after browser/E2E verification,
+- [x] existing approval cards render from projected tool-call messages,
+- [x] `onResumeDecisions` resumes through the new BFF endpoint.
+
+Implemented in this slice:
+
+- `frontend/src/lib/chat/langgraph-runtime/hitl-interrupts.ts` normalizes snake_case DeepAgents HITL payloads, camelCase payloads, and native `ask_user` interrupts into `StandardInterruptPayload`.
+- `use-moldy-langgraph-stream.ts` appends synthetic assistant tool-call messages from `stream.interrupts`, keeps one shared LangGraph stream, batches multi-action decisions with `createHiTLDecisionCoordinator`, and calls `stream.respond({ decisions }, { interruptId })`.
+- `approval-card.tsx` and `user-input-ui.tsx` pass the HITL interrupt id through `registerDecision`, avoiding accidental resume against the wrong pending interrupt.
+- `backend/app/routers/conversation_agent_protocol_commands.py` handles Agent Streaming Protocol `input.respond` and starts `resume_agent_stream_langgraph`.
+- `backend/app/agent_runtime/langgraph_agent_stream_runner.py` resumes LangGraph with `Command(resume=...)`.
+
+Still open after this slice:
+
+- browser/E2E verification with a real paused HITL agent,
+- refresh/hydration support for pending interrupts from `GET state` / compatibility state,
+- nested or namespaced interrupt behavior beyond the root stream path.
 
 - [ ] **Step 2: Artifacts**
 
@@ -2646,11 +2663,27 @@ pnpm test src/components/chat/artifacts
 pnpm test src/lib/chat/langgraph-runtime
 ```
 
+Focused HITL verification added in this slice:
+
+```bash
+cd frontend
+pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/hitl-interrupts.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx src/components/chat/tool-ui/__tests__/approval-card.test.tsx
+pnpm exec tsc --noEmit
+pnpm exec eslint src/lib/chat/langgraph-runtime/hitl-interrupts.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/hitl-interrupts.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx src/lib/chat/hitl-context.ts src/components/chat/tool-ui/approval-card.tsx src/components/chat/tool-ui/user-input-ui.tsx
+```
+
 Backend:
 
 ```bash
 cd backend
 uv run pytest tests/agent_runtime tests/routers/test_conversation_agent_protocol_stream.py
+```
+
+Focused backend HITL resume verification added in this slice:
+
+```bash
+cd backend
+.venv/bin/pytest tests/test_conversation_agent_protocol_router.py tests/test_conversation_agent_protocol_commands.py tests/agent_runtime/test_agent_stream_runner_langgraph.py
 ```
 
 Add or extend backend tests around `backend/app/agent_runtime/agent_stream_runner.py`, `backend/app/agent_runtime/langgraph_streaming.py`, and `backend/app/hooks/builtin/spend_hook.py` so the new stream path proves it still emits hook usage on success.

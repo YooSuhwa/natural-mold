@@ -1,14 +1,33 @@
 import { renderHook } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMoldyLangGraphStream } from '../use-moldy-langgraph-stream'
 import type { AttachmentAdapter, CompleteAttachment, PendingAttachment } from '@assistant-ui/react'
 
+interface MockInterrupt {
+  id: string
+  value: unknown
+}
+
+interface MockStream {
+  messages: unknown[]
+  values: { messages: unknown[] }
+  interrupts: MockInterrupt[]
+  isLoading: boolean
+  submit: ReturnType<typeof vi.fn>
+  respond: ReturnType<typeof vi.fn>
+  respondAll: ReturnType<typeof vi.fn>
+  stop: ReturnType<typeof vi.fn>
+}
+
 const mocks = vi.hoisted(() => {
-  const stream = {
+  const stream: MockStream = {
     messages: [],
     values: { messages: [] },
+    interrupts: [],
     isLoading: false,
     submit: vi.fn(),
+    respond: vi.fn(),
+    respondAll: vi.fn(),
     stop: vi.fn(),
   }
   return {
@@ -19,7 +38,10 @@ const mocks = vi.hoisted(() => {
     })),
     useStream: vi.fn(() => stream),
     useChannel: vi.fn(() => []),
-    useExternalMessageConverter: vi.fn(() => [{ id: 'converted' }]),
+    useExternalMessageConverter: vi.fn((options: { messages: readonly unknown[] }) => {
+      void options
+      return [{ id: 'converted' }]
+    }),
     useExternalStoreRuntime: vi.fn((options: unknown) => ({ kind: 'runtime', options })),
     convertLangChainBaseMessage: vi.fn(),
   }
@@ -44,6 +66,18 @@ vi.mock('@assistant-ui/react-langchain', () => ({
 }))
 
 describe('useMoldyLangGraphStream', () => {
+  beforeEach(() => {
+    mocks.stream.messages = []
+    mocks.stream.values = { messages: [] }
+    mocks.stream.interrupts = []
+    mocks.stream.submit.mockClear()
+    mocks.stream.respond.mockClear()
+    mocks.stream.respondAll.mockClear()
+    mocks.stream.stop.mockClear()
+    mocks.useExternalMessageConverter.mockClear()
+    mocks.useExternalStoreRuntime.mockClear()
+  })
+
   it('creates one LangChain stream and bridges it into assistant-ui', () => {
     const feedbackAdapter = { submit: vi.fn() }
     const attachmentAdapter: AttachmentAdapter = {
@@ -116,5 +150,100 @@ describe('useMoldyLangGraphStream', () => {
       messages: [expect.objectContaining({ content: 'hello' })],
     })
     expect(mocks.stream.stop).toHaveBeenCalled()
+  })
+
+  it('projects LangGraph HITL interrupts into assistant-ui tool call messages', () => {
+    mocks.stream.interrupts = [
+      {
+        id: 'intr-1',
+        value: {
+          action_requests: [{ name: 'send_email', args: { to: 'team@example.com' } }],
+          review_configs: [{ action_name: 'send_email', allowed_decisions: ['approve', 'reject'] }],
+        },
+      },
+    ]
+
+    renderHook(() =>
+      useMoldyLangGraphStream({
+        agentId: 'agent-hitl',
+        conversationId: 'conversation-hitl',
+      }),
+    )
+
+    const calls = mocks.useExternalMessageConverter.mock.calls
+    const converterOptions = calls[calls.length - 1]?.[0]
+
+    expect(converterOptions).toBeDefined()
+    expect(converterOptions.messages).toHaveLength(1)
+    expect(converterOptions.messages[0]).toEqual(
+      expect.objectContaining({
+        tool_calls: [
+          expect.objectContaining({
+            id: 'intr-1:0',
+            name: 'request_approval',
+          }),
+        ],
+      }),
+    )
+  })
+
+  it('resumes a targeted LangGraph interrupt with standard decisions', async () => {
+    const { result } = renderHook(() =>
+      useMoldyLangGraphStream({
+        agentId: 'agent-hitl',
+        conversationId: 'conversation-hitl',
+      }),
+    )
+
+    await result.current.onResumeDecisions([{ type: 'approve' }], '승인', 'intr-1')
+
+    expect(mocks.stream.respond).toHaveBeenCalledWith(
+      { decisions: [{ type: 'approve' }] },
+      { interruptId: 'intr-1' },
+    )
+  })
+
+  it('batches multi-action decisions for the same interrupt before resume', async () => {
+    mocks.stream.interrupts = [
+      {
+        id: 'intr-multi',
+        value: {
+          action_requests: [
+            { name: 'ask_user', args: { question: '계속할까요?' } },
+            { name: 'send_email', args: { to: 'team@example.com' } },
+          ],
+          review_configs: [
+            { action_name: 'ask_user', allowed_decisions: ['respond'] },
+            { action_name: 'send_email', allowed_decisions: ['approve', 'reject'] },
+          ],
+        },
+      },
+    ]
+    const { result } = renderHook(() =>
+      useMoldyLangGraphStream({
+        agentId: 'agent-hitl',
+        conversationId: 'conversation-hitl',
+      }),
+    )
+
+    await result.current.registerDecision(
+      1,
+      { type: 'reject', message: '아니요' },
+      '거부',
+      'intr-multi',
+    )
+    expect(mocks.stream.respond).not.toHaveBeenCalled()
+
+    await result.current.registerDecision(0, { type: 'respond', message: '네' }, '네', 'intr-multi')
+
+    expect(mocks.stream.respond).toHaveBeenCalledWith(
+      {
+        decisions: [
+          { type: 'respond', message: '네' },
+          { type: 'reject', message: '아니요' },
+        ],
+      },
+      { interruptId: 'intr-multi' },
+    )
   })
 })

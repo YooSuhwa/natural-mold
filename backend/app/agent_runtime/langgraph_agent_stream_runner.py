@@ -6,6 +6,8 @@ from collections.abc import AsyncGenerator
 from contextlib import nullcontext
 from typing import Any
 
+from langgraph.types import Command
+
 from app.agent_runtime.agent_stream_runner import _hook_ctx_for_agent, _hook_result_from_usage
 from app.agent_runtime.langgraph_streaming import stream_agent_response_langgraph
 from app.agent_runtime.runtime_component_builder import _prepare_agent
@@ -125,6 +127,33 @@ async def execute_agent_stream_langgraph(
         cfg,
         messages_history=messages_history,
         stream_input=_USE_PREPPED_LC_MESSAGES,
+        trace_sink=trace_sink,
+        error_sink=error_sink,
+        broker=broker,
+        persist_callback=persist_callback,
+        run_id=run_id,
+        moldy_source=moldy_source,
+        langfuse_sink=langfuse_sink,
+    ):
+        yield chunk
+
+
+async def resume_agent_stream_langgraph(
+    cfg: AgentConfig,
+    resume_value: Any,
+    *,
+    trace_sink: list[dict[str, Any]] | None = None,
+    error_sink: list[StreamErrorRecord] | None = None,
+    broker: Any | None = None,
+    persist_callback: Any | None = None,
+    run_id: str | None = None,
+    moldy_source: str = "resume",
+    langfuse_sink: list[LangfuseTraceRecord] | None = None,
+) -> AsyncGenerator[str, None]:
+    async for chunk in _run_langgraph_agent_stream(
+        cfg,
+        messages_history=[],
+        stream_input=Command(resume=resume_value),
         trace_sink=trace_sink,
         error_sink=error_sink,
         broker=broker,

@@ -234,12 +234,17 @@ export const UserInputUI = makeAssistantToolUI<AskUserArgs, unknown>({
     const submitDecision = useCallback(
       async (decision: ReturnType<typeof toRespond>, displayText?: string) => {
         if (typeof args?.hitl_action_index === 'number' && hitl?.registerDecision) {
-          await hitl.registerDecision(args.hitl_action_index, decision, displayText)
+          await hitl.registerDecision(
+            args.hitl_action_index,
+            decision,
+            displayText,
+            args.hitl_interrupt_id,
+          )
           return
         }
         await hitl?.onResumeDecisions([decision], displayText)
       },
-      [args?.hitl_action_index, hitl],
+      [args?.hitl_action_index, args?.hitl_interrupt_id, hitl],
     )
 
     const submitResponse = useCallback(

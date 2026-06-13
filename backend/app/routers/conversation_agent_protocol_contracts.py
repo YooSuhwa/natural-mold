@@ -9,7 +9,7 @@ from app.agent_runtime.protocol_events import SubscribeParams
 from app.models.conversation import Conversation
 
 LANGGRAPH_PROTOCOL_HEADER = "langgraph_v3"
-SUPPORTED_COMMAND_METHODS = {"run.start"}
+SUPPORTED_COMMAND_METHODS = {"run.start", "input.respond"}
 
 
 class ThreadCheckpoint(BaseModel):
@@ -17,6 +17,14 @@ class ThreadCheckpoint(BaseModel):
 
     thread_id: str | None = None
     checkpoint_id: str | None = None
+
+
+class InputRespondEntry(BaseModel):
+    model_config = ConfigDict(extra="allow", frozen=True)
+
+    namespace: list[str] = Field(default_factory=list)
+    interrupt_id: str
+    response: Any
 
 
 class AgentCommandParams(BaseModel):
@@ -28,6 +36,10 @@ class AgentCommandParams(BaseModel):
     metadata: dict[str, Any] | None = None
     checkpoint: ThreadCheckpoint | None = None
     multitask_strategy: str | None = None
+    namespace: list[str] | None = None
+    interrupt_id: str | None = None
+    response: Any = None
+    responses: list[InputRespondEntry] | None = Field(default=None, min_length=1)
 
 
 class AgentCommandRequest(BaseModel):
