@@ -933,6 +933,8 @@ If the local Moldy wrapper imports converters from `@assistant-ui/react-langchai
 
 ### Task 0.5: Measure Moldy's actual v3 runtime state
 
+Status: completed in `backend/tests/agent_runtime/test_moldy_v3_runtime_state.py`.
+
 Before implementing BFF endpoints or UI acceptance tests, run a narrow backend spike against the real Moldy runtime component builder:
 
 - create a deterministic local agent using the same `FilesystemBackend(root_dir=_DATA_DIR, virtual_mode=True)`, TodoList middleware, HITL settings, and subagent configuration Moldy uses in production paths;
@@ -943,9 +945,21 @@ Before implementing BFF endpoints or UI acceptance tests, run a narrow backend s
 
 Acceptance for this spike:
 
-- there is a checked-in test or script fixture that can be rerun without external model API keys;
-- file UI criteria are artifact-first unless the spike proves `values.files` is populated in the real Moldy configuration;
-- checkpoint resolution uses observed checkpoint metadata or an explicit persisted mapping, not a nonexistent message column.
+- [x] there is a checked-in test fixture that can be rerun without external model API keys;
+- [x] file UI criteria remain artifact-first, but the real configured DeepAgents runtime does emit `values.files` as an empty dict in the observed runs, so `values.files` can be used as a reconciliation source when populated;
+- [x] checkpoint resolution must use live message metadata / persisted protocol metadata because observed `messages` tuple metadata includes `checkpoint_ns`; there is still no Moldy DB message column that can be treated as the canonical checkpoint source.
+
+Observed result on 2026-06-13:
+
+- The real Moldy runtime component builder path opens `agent.astream_events(..., version="v3")` with `deepagents==0.6.9`, `langchain==1.3.9`, `langgraph==1.2.5`, a fake tool-binding chat model, `MemorySaver`, and the production `FilesystemBackend(root_dir=_DATA_DIR, virtual_mode=True)` path.
+- The v3 input must be graph-shaped: `{"messages": lc_messages}`. Passing the legacy list-shaped `lc_messages` directly raises LangGraph `InvalidUpdateError` because `__start__` receives a list update.
+- A subagent/task run emits `values`, `messages`, `tools`, and `lifecycle`. It did not emit `updates`, `checkpoints`, `tasks`, `input`, or `custom` in the deterministic fixture.
+- Root `values` payloads include `messages` and `files`; `files` is `{}` in the fixture. Subagent-scoped `values` payloads use a `params.namespace` like `["tools:<uuid>"]` and also include `messages` and `files`.
+- When the fake model calls `write_todos`, later `values` payloads include `todos: [{"content": "Plan work", "status": "in_progress"}]`. Planning UI should therefore read `values.todos`, not reconstruct todos from tool text.
+- Subagent lifecycle starts at root namespace with payload `{"event": "started", "namespace": ["tools:<uuid>"], "graph_name": "researcher", "trigger_call_id": "<uuid>", "cause": {"type": "toolCall", "tool_call_id": "tc-task-1"}}`; the product-facing spawning id is in `cause.tool_call_id`.
+- Tool events use root `tools` payloads such as `tool-started` / `tool-finished`. The `task` tool result may carry a LangGraph `Command(update={...})`, so backend protocol normalization must serialize `Command` values before persistence/SSE.
+- `messages` data arrives as `(message, metadata)` tuples. Metadata includes `checkpoint_ns`, `thread_id`, `langgraph_step`, `langgraph_node`, `langgraph_path`, and package versions. Backend normalization must unwrap tuple payloads while preserving metadata.
+- Python v3 events include `params.timestamp` in this fixture, but timestamp must stay optional because the protocol contract should not depend on every runtime/source producing it.
 
 ### Task 1: Add dependency and runtime feature flag
 
