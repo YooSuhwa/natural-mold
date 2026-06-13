@@ -16,6 +16,7 @@ import { selectDeepAgentsState } from './deepagents-state'
 import { appendInterruptToolCallMessages, standardPayloadsFromInterrupts } from './hitl-interrupts'
 import { useLangGraphMemoryEffects } from './memory-events'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
+import { useCheckpointForkHandlers } from './use-checkpoint-fork-handlers'
 import { useLangGraphUsageEffects } from './usage-events'
 import type { RunActivity } from './activity-model'
 import { createHiTLDecisionCoordinator, type HiTLDecisionCoordinator } from '../standard-interrupt'
@@ -45,31 +46,6 @@ const ACTIVITY_CHANNELS = [
   'checkpoints',
   'custom',
 ] as const satisfies readonly Channel[]
-
-function appendMessageText(message: {
-  content: readonly unknown[]
-  attachments?: readonly { content?: readonly unknown[] }[]
-}): string {
-  const content = [
-    ...message.content,
-    ...(message.attachments?.flatMap((attachment) => attachment.content) ?? []),
-  ]
-  return content
-    .map((part) => {
-      if (typeof part === 'string') return part
-      if (typeof part !== 'object' || part === null) return ''
-      return 'text' in part && typeof part.text === 'string' ? part.text : ''
-    })
-    .join('')
-}
-
-function attachmentRefs(message: { attachments?: readonly { id?: unknown }[] }): { id: string }[] {
-  return (
-    message.attachments
-      ?.map((attachment) => (typeof attachment.id === 'string' ? { id: attachment.id } : null))
-      .filter((attachment): attachment is { id: string } => attachment !== null) ?? []
-  )
-}
 
 function convertMoldyLangChainMessage(
   message: BaseMessage,
@@ -129,6 +105,11 @@ export function useMoldyLangGraphStream({
     messages: messagesWithUsage,
     isRunning: stream.isLoading,
   })
+  const { onNew, onEdit, onReload } = useCheckpointForkHandlers({
+    stream,
+    visibleMessages: messages,
+    langChainMessages: messagesWithUsage,
+  })
   const coordinatorsRef = useRef(new Map<string, HiTLDecisionCoordinator>())
   useEffect(() => {
     const active = new Set(interruptPayloads.map((payload) => payload.interrupt_id))
@@ -143,21 +124,6 @@ export function useMoldyLangGraphStream({
       ...(attachmentAdapter ? { attachments: attachmentAdapter } : {}),
     }
   }, [feedbackAdapter, attachmentAdapter])
-  const onNew = useCallback(
-    async (message: {
-      content: readonly unknown[]
-      attachments?: readonly { id?: unknown; content?: readonly unknown[] }[]
-    }) => {
-      const content = appendMessageText(message).trim()
-      const attachments = attachmentRefs(message)
-      if (!content && attachments.length === 0) return
-      await stream.submit({
-        messages: [new HumanMessage(content)],
-        ...(attachments.length > 0 ? { attachments } : {}),
-      })
-    },
-    [stream],
-  )
   const onCancel = useCallback(async () => {
     await stream.stop()
   }, [stream])
@@ -167,6 +133,8 @@ export function useMoldyLangGraphStream({
     isRunning: stream.isLoading,
     adapters,
     onNew,
+    onEdit,
+    onReload,
     onCancel,
   })
 

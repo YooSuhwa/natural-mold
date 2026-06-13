@@ -22,7 +22,12 @@ interface MockStream {
 }
 
 const mocks = vi.hoisted(() => {
-  const stream: MockStream = {
+  const STREAM_CONTROLLER = Symbol('STREAM_CONTROLLER')
+  const metadataStore = {
+    subscribe: vi.fn(() => () => {}),
+    getSnapshot: vi.fn(() => new Map()),
+  }
+  const stream = {
     messages: [],
     values: { messages: [] },
     interrupts: [],
@@ -31,8 +36,13 @@ const mocks = vi.hoisted(() => {
     respond: vi.fn(),
     respondAll: vi.fn(),
     stop: vi.fn(),
+    [STREAM_CONTROLLER]: { messageMetadataStore: metadataStore },
+  } as MockStream & {
+    [STREAM_CONTROLLER]: { messageMetadataStore: typeof metadataStore }
   }
   return {
+    STREAM_CONTROLLER,
+    metadataStore,
     stream,
     createMoldyAgentTransport: vi.fn((conversationId: string) => ({
       kind: 'transport',
@@ -55,6 +65,7 @@ vi.mock('../moldy-agent-transport', () => ({
 }))
 
 vi.mock('@langchain/react', () => ({
+  STREAM_CONTROLLER: mocks.STREAM_CONTROLLER,
   useChannel: mocks.useChannel,
   useChannelEffect: mocks.useChannelEffect,
   useStream: mocks.useStream,
@@ -97,6 +108,7 @@ describe('useMoldyLangGraphStream', () => {
     mocks.stream.respond.mockClear()
     mocks.stream.respondAll.mockClear()
     mocks.stream.stop.mockClear()
+    mocks.metadataStore.getSnapshot.mockReturnValue(new Map())
     mocks.useChannelEffect.mockClear()
     mocks.useExternalMessageConverter.mockClear()
     mocks.useExternalStoreRuntime.mockClear()

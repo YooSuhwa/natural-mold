@@ -2818,7 +2818,7 @@ PATH=/Users/chester/.hermes/bin:$PATH uv run --directory backend ruff check app/
 git diff --check
 ```
 
-- [ ] **Step 2: Implement checkpoint resolver**
+- [x] **Step 2: Implement checkpoint resolver**
 
 In `useMoldyLangGraphStream`, provide checkpoint lookup for edit/regenerate using Moldy's existing message metadata and `@langchain/react` message metadata where available:
 
@@ -2832,17 +2832,40 @@ In `useMoldyLangGraphStream`, provide checkpoint lookup for edit/regenerate usin
 
 This preserves assistant-ui edit/regenerate correctness.
 
-- [ ] **Step 3: Map edit and regenerate**
+Implemented in this slice:
 
-Use existing backend routes if possible:
+- `frontend/src/lib/chat/langgraph-runtime/checkpoint-fork.ts` reads the shared stream's `messageMetadataStore` through the exported `STREAM_CONTROLLER`, equivalent to `useMessageMetadata(stream, id)` but usable for dynamic edit/reload targets without violating hook ordering.
+- `frontend/src/lib/chat/langgraph-runtime/use-checkpoint-fork-handlers.ts` keeps assistant-ui `onNew` / `onEdit` / `onReload` submission logic outside the main runtime hook so the shared stream wiring stays small.
+- Edit resolves the original `sourceId` first. It prefers that message's live `parentCheckpointId`; when that is absent, it finds the previous visible message and uses its hydrated `additional_kwargs.metadata.checkpoint_id`.
+- Reload resolves the assistant target immediately after `parentId`. It prefers that target's live `parentCheckpointId`; when that is absent, it uses the hydrated checkpoint for `parentId`.
+- Client-only ids such as `opt-*` and `stream-*` are treated as unstable. If no safe checkpoint is available, edit/reload skips submission instead of forking from the wrong state.
+- The active branch checkpoint is not used as a broad fallback for edit/reload because it represents the current tip, which can be after the assistant message being regenerated.
 
-- edit: current `streamEdit`
-- regenerate: current `streamRegenerate`
+- [x] **Step 3: Map edit and regenerate**
 
-If those routes remain Moldy SSE only, add LangGraph stream variants:
+The LangGraph path uses the shared `@langchain/react` stream instead of legacy Moldy SSE routes:
 
-- `POST /api/conversations/{conversation_id}/messages/{message_id}/edit/langgraph-stream`
-- `POST /api/conversations/{conversation_id}/messages/{message_id}/regenerate/langgraph-stream`
+- edit: `stream.submit({ messages: [new HumanMessage(content)] }, { forkFrom: checkpointId })`
+- regenerate: `stream.submit(null, { forkFrom: checkpointId })`
+
+`@langchain/react` / `@langchain/langgraph-sdk` folds `forkFrom` into `config.configurable.checkpoint_id` before sending `run.start`. `backend/app/routers/conversation_agent_protocol_runtime.py` now reads both forms:
+
+- legacy/explicit `params.checkpoint.checkpoint_id`
+- SDK-standard `params.config.configurable.checkpoint_id`
+
+No separate `edit/langgraph-stream` or `regenerate/langgraph-stream` route is required for this path.
+
+Focused verification added in this slice:
+
+```bash
+cd frontend
+pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-edit-reload.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-usage.test.tsx src/lib/chat/langgraph-runtime/__tests__/attachments-submit.test.tsx
+pnpm exec tsc --noEmit --pretty false
+
+cd ..
+PATH=/Users/chester/.hermes/bin:$PATH uv run --directory backend pytest tests/test_conversation_agent_protocol_checkpoint.py tests/test_conversation_agent_protocol_router.py::test_run_start_command_defaults_multitask_strategy_to_reject
+PATH=/Users/chester/.hermes/bin:$PATH uv run --directory backend ruff check app/routers/conversation_agent_protocol_runtime.py tests/test_conversation_agent_protocol_checkpoint.py
+```
 
 - [ ] **Step 4: Replay tests**
 

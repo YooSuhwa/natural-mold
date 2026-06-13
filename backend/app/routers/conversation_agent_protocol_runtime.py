@@ -184,9 +184,17 @@ def input_preview(input_payload: dict[str, Any] | None) -> str | None:
 
 def checkpoint_id(command: AgentCommandRequest) -> str | None:
     checkpoint = command.params.checkpoint
-    if checkpoint is None:
+    if checkpoint is not None and checkpoint.checkpoint_id:
+        return checkpoint.checkpoint_id
+
+    config = command.params.config
+    if not isinstance(config, Mapping):
         return None
-    return checkpoint.checkpoint_id
+    configurable = config.get("configurable")
+    if not isinstance(configurable, Mapping):
+        return None
+    value = configurable.get("checkpoint_id")
+    return value if isinstance(value, str) and value else None
 
 
 def _int_value(value: Any) -> int | None:
