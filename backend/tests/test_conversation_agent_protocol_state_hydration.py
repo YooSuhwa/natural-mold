@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
+from langchain_core.messages import AIMessage, HumanMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.protocol_events import stored_protocol_event
@@ -13,7 +16,29 @@ from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
+from app.services.thread_branch_service import _CheckpointSlim
 from tests.conftest import TEST_USER_ID
+
+
+class _FakeCheckpointer:
+    def __init__(self, checkpoints: list[_CheckpointSlim]) -> None:
+        self._checkpoints = checkpoints
+
+    async def alist(self, _config: Any) -> AsyncIterator[Any]:
+        for checkpoint in self._checkpoints:
+            yield type(
+                "CheckpointTuple",
+                (),
+                {
+                    "config": {"configurable": {"checkpoint_id": checkpoint.checkpoint_id}},
+                    "parent_config": (
+                        {"configurable": {"checkpoint_id": checkpoint.parent_checkpoint_id}}
+                        if checkpoint.parent_checkpoint_id
+                        else None
+                    ),
+                    "checkpoint": {"channel_values": {"messages": checkpoint.messages}},
+                },
+            )()
 
 
 async def _seed_protocol_conversation(db: AsyncSession) -> Conversation:
@@ -163,3 +188,50 @@ async def test_thread_state_omits_interrupt_after_resume_child_exists(
     assert state_response.json()["tasks"] == []
     assert compat_response.status_code == 200
     assert compat_response.json()["interrupts"] == []
+
+
+@pytest.mark.asyncio
+async def test_thread_state_exposes_checkpoint_mapping_for_messages(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    parent = _CheckpointSlim(
+        checkpoint_id="ck-user",
+        parent_checkpoint_id=None,
+        messages=[HumanMessage(id="user-raw-1", content="hello")],
+    )
+    leaf = _CheckpointSlim(
+        checkpoint_id="ck-assistant",
+        parent_checkpoint_id="ck-user",
+        messages=[
+            HumanMessage(id="user-raw-1", content="hello"),
+            AIMessage(id="assistant-raw-1", content="hi"),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol_runtime.get_checkpointer",
+        lambda: _FakeCheckpointer([leaf, parent]),
+    )
+
+    state_response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+    compat_response = await client.get(f"/api/conversations/{conversation.id}/langgraph/state")
+
+    assert state_response.status_code == 200
+    state = state_response.json()
+    assert state["metadata"]["checkpoint_by_message_id"] == {
+        "user-raw-1": "ck-user",
+        "assistant-raw-1": "ck-assistant",
+    }
+    messages = state["values"]["messages"]
+    assert messages[0]["additional_kwargs"]["metadata"]["checkpoint_id"] == "ck-user"
+    assert messages[1]["additional_kwargs"]["metadata"]["checkpoint_id"] == "ck-assistant"
+
+    assert compat_response.status_code == 200
+    assert compat_response.json()["checkpoint_by_message_id"] == {
+        "user-raw-1": "ck-user",
+        "assistant-raw-1": "ck-assistant",
+    }

@@ -2786,7 +2786,7 @@ git commit -m "feat(chat): port HITL artifacts and memory to LangGraph runtime"
 - Modify: `backend/app/services/chat_service.py`
 - Test: regenerate/edit tests
 
-- [ ] **Step 1: Load state for assistant-ui**
+- [x] **Step 1: Load state for assistant-ui**
 
 `GET /api/conversations/{conversation_id}/langgraph/threads/{thread_id}/state` returns the SDK-compatible `ThreadState` described in the backend stream contract. If a temporary compatibility loader is still needed for assistant-ui bridge code, `GET /api/conversations/{conversation_id}/langgraph/state` must derive from the canonical thread state route and may return:
 
@@ -2801,6 +2801,22 @@ git commit -m "feat(chat): port HITL artifacts and memory to LangGraph runtime"
 ```
 
 Messages must be LangChain-like messages compatible with `convertLangChainMessages`, and the compatibility loader must include checkpoint metadata produced from the canonical `ThreadState`/checkpointer snapshot, not from display messages alone.
+
+Implemented in this slice:
+
+- `backend/app/routers/conversation_agent_protocol_runtime.py` now builds a `ThreadStateSnapshot` for protocol state hydration. The snapshot serializes active-branch LangChain messages with `additional_kwargs.metadata.checkpoint_id`.
+- The snapshot exposes `checkpoint_by_message_id` by raw LangChain message id, derived from materialized checkpoints by choosing the shortest checkpoint state that already contains each stable message id. This gives the checkpoint representing state through that message, which edit/regenerate can use.
+- `GET /api/conversations/{conversation_id}/langgraph/threads/{thread_id}/state`, `POST .../history`, and `GET /api/conversations/{conversation_id}/langgraph/state` now share the same snapshot metadata. The compatibility route no longer returns an always-empty `checkpoint_by_message_id`.
+
+Focused verification added in this slice:
+
+```bash
+cd backend
+./.venv/bin/pytest tests/test_conversation_agent_protocol_state_hydration.py tests/test_conversation_agent_protocol_router.py::test_thread_state_and_history_use_sdk_compatible_shapes tests/test_conversation_agent_protocol_router.py::test_thread_state_reads_checkpointer_messages tests/agent_runtime/test_langgraph_protocol_adapter.py tests/agent_runtime/test_protocol_events.py
+PATH=/Users/chester/.hermes/bin:$PATH uv run --directory backend ruff check app/routers/conversation_agent_protocol.py app/routers/conversation_agent_protocol_runtime.py app/routers/conversation_agent_protocol_contracts.py tests/test_conversation_agent_protocol_state_hydration.py
+./.venv/bin/python -m py_compile app/routers/conversation_agent_protocol.py app/routers/conversation_agent_protocol_runtime.py app/routers/conversation_agent_protocol_contracts.py tests/test_conversation_agent_protocol_state_hydration.py
+git diff --check
+```
 
 - [ ] **Step 2: Implement checkpoint resolver**
 

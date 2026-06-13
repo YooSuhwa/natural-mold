@@ -27,7 +27,7 @@ from app.routers.conversation_agent_protocol_replay import (
 )
 from app.routers.conversation_agent_protocol_runtime import (
     get_owned_thread,
-    load_thread_state_values,
+    load_thread_state_snapshot,
     protocol_broker_generator,
 )
 from app.services import conversation_run_service
@@ -77,10 +77,12 @@ async def get_thread_state(
         user_id=user.id,
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
+    snapshot = await load_thread_state_snapshot(conversation)
     return state_response(
         conversation,
-        values=await load_thread_state_values(conversation),
+        values=snapshot.values,
         tasks=tasks,
+        checkpoint_by_message_id=snapshot.checkpoint_by_message_id,
     )
 
 
@@ -117,8 +119,15 @@ async def get_thread_history(
         thread_id=thread_id,
         user_id=user.id,
     )
-    values = await load_thread_state_values(conversation)
-    return [state_response(conversation, values=values) for _ in range(min(request.limit, 1))]
+    snapshot = await load_thread_state_snapshot(conversation)
+    return [
+        state_response(
+            conversation,
+            values=snapshot.values,
+            checkpoint_by_message_id=snapshot.checkpoint_by_message_id,
+        )
+        for _ in range(min(request.limit, 1))
+    ]
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/stream/events")
@@ -188,17 +197,19 @@ async def get_compat_thread_state(
         user_id=user.id,
     )
     tasks = await load_pending_interrupt_tasks(db, conversation, user_id=user.id)
+    snapshot = await load_thread_state_snapshot(conversation)
     state = state_response(
         conversation,
-        values=await load_thread_state_values(conversation),
+        values=snapshot.values,
         tasks=tasks,
+        checkpoint_by_message_id=snapshot.checkpoint_by_message_id,
     )
     return {
         "thread_id": str(conversation.id),
         "values": state["values"],
         "messages": state["values"]["messages"],
         "interrupts": interrupts_from_tasks(tasks),
-        "checkpoint_by_message_id": {},
+        "checkpoint_by_message_id": snapshot.checkpoint_by_message_id,
         "active_run": None,
         "latest_run": None,
     }

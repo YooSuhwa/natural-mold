@@ -101,6 +101,7 @@ def state_response(
     *,
     values: dict[str, Any] | None = None,
     tasks: list[dict[str, Any]] | None = None,
+    checkpoint_by_message_id: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     state_values = dict(values or {})
     state_values.setdefault("messages", [])
@@ -112,16 +113,18 @@ def state_response(
         if conversation.active_branch_checkpoint_id
         else None
     )
+    metadata: dict[str, Any] = {
+        "conversation_id": str(conversation.id),
+        "agent_id": str(conversation.agent_id),
+        "source": "moldy_bff_fallback",
+        "checkpoint_by_message_id": dict(checkpoint_by_message_id or {}),
+    }
     return {
         "values": state_values,
         "next": [],
         "tasks": tasks or [],
         "checkpoint": checkpoint,
-        "metadata": {
-            "conversation_id": str(conversation.id),
-            "agent_id": str(conversation.agent_id),
-            "source": "moldy_bff_fallback",
-        },
+        "metadata": metadata,
         "created_at": conversation.updated_at.isoformat(),
         "parent_checkpoint": None,
     }
