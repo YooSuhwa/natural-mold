@@ -12,6 +12,7 @@ from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_contracts import (
     HistoryRequest,
     ThreadCheckpoint,
+    ThreadHistoryCursor,
     UpdateStateRequest,
     state_response,
 )
@@ -94,10 +95,10 @@ async def update_thread_state_response(
 def _page_checkpoints(
     checkpoints: Sequence[_CheckpointSlim],
     *,
-    before: ThreadCheckpoint | None,
+    before: ThreadHistoryCursor | None,
     limit: int,
 ) -> list[_CheckpointSlim]:
-    before_id = before.checkpoint_id if before else None
+    before_id = _history_cursor_checkpoint_id(before)
     page: list[_CheckpointSlim] = []
     past_before = before_id is None
     for checkpoint in checkpoints:
@@ -109,6 +110,15 @@ def _page_checkpoints(
         if len(page) >= limit:
             break
     return page
+
+
+def _history_cursor_checkpoint_id(before: ThreadHistoryCursor | None) -> str | None:
+    if before is None:
+        return None
+    if before.checkpoint_id:
+        return before.checkpoint_id
+    configurable = before.configurable
+    return configurable.checkpoint_id if configurable is not None else None
 
 
 def _checkpoint_by_message_id_from_checkpoints(

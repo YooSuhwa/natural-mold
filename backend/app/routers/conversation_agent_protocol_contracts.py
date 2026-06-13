@@ -20,6 +20,14 @@ class ThreadCheckpoint(BaseModel):
     checkpoint_ns: str | None = None
 
 
+class ThreadHistoryCursor(BaseModel):
+    model_config = ConfigDict(extra="allow", frozen=True)
+
+    checkpoint_id: str | None = None
+    checkpoint_ns: str | None = None
+    configurable: ThreadCheckpoint | None = None
+
+
 class InputRespondEntry(BaseModel):
     model_config = ConfigDict(extra="allow", frozen=True)
 
@@ -85,7 +93,9 @@ class HistoryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     limit: int = Field(default=10, ge=1, le=100)
-    before: ThreadCheckpoint | None = None
+    before: ThreadHistoryCursor | None = None
+    metadata: dict[str, Any] | None = None
+    checkpoint: ThreadCheckpoint | None = None
 
 
 def protocol_headers(*, mode: str | None = None, run_id: str | None = None) -> dict[str, str]:

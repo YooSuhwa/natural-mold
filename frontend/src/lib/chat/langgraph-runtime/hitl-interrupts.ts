@@ -157,6 +157,64 @@ function hasToolCallId(message: BaseMessage, ids: ReadonlySet<string>): boolean 
   )
 }
 
+function sameArgs(left: Record<string, unknown>, right: Record<string, unknown>): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function completedToolCallIds(messages: readonly BaseMessage[]): Set<string> {
+  const ids = new Set<string>()
+  for (const message of messages) {
+    if (ToolMessage.isInstance(message) && isString(message.tool_call_id)) {
+      ids.add(message.tool_call_id)
+    }
+  }
+  return ids
+}
+
+function actionHasCompletedToolResult(
+  action: ActionRequest,
+  messages: readonly BaseMessage[],
+  completedIds: ReadonlySet<string>,
+): boolean {
+  for (const message of messages) {
+    if (!AIMessage.isInstance(message)) continue
+    for (const toolCall of message.tool_calls ?? []) {
+      if (!isString(toolCall.id) || !completedIds.has(toolCall.id)) continue
+      if (toolCall.name === action.name && sameArgs(toolCall.args, action.args)) return true
+    }
+  }
+  return false
+}
+
+export function interruptPayloadResolvedByMessages(
+  payload: StandardInterruptPayload,
+  messages: readonly BaseMessage[],
+): boolean {
+  const completedIds = completedToolCallIds(messages)
+  if (completedIds.size === 0) return false
+  return payload.action_requests.every((action) =>
+    actionHasCompletedToolResult(action, messages, completedIds),
+  )
+}
+
+function resolvedInterruptId(item: ResolvedInterruptToolCall): string {
+  return String(item.toolCall.args.hitl_interrupt_id ?? '')
+}
+
+export function activeInterruptPayloads(
+  payloads: readonly StandardInterruptPayload[],
+  messages: readonly BaseMessage[],
+  resolved: readonly ResolvedInterruptToolCall[],
+): StandardInterruptPayload[] {
+  const resolvedIds = new Set([
+    ...payloads
+      .filter((payload) => interruptPayloadResolvedByMessages(payload, messages))
+      .map((payload) => payload.interrupt_id),
+    ...resolved.map(resolvedInterruptId),
+  ])
+  return payloads.filter((payload) => !resolvedIds.has(payload.interrupt_id))
+}
+
 function resultFromDecision(decision: Decision): ApprovalResult {
   switch (decision.type) {
     case 'approve':

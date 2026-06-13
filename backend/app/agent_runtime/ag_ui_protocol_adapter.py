@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
 from app.agent_runtime import event_names
@@ -192,7 +192,21 @@ def _is_reasoning_event(data: Mapping[str, Any]) -> bool:
 
 
 def _as_dict(value: object) -> dict[str, Any]:
-    return dict(value) if isinstance(value, Mapping) else {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    if _is_payload_metadata_pair(value):
+        payload = value[0]
+        return dict(payload) if isinstance(payload, Mapping) else {}
+    return {}
+
+
+def _is_payload_metadata_pair(value: object) -> bool:
+    return (
+        isinstance(value, Sequence)
+        and not isinstance(value, str | bytes | bytearray)
+        and len(value) == 2
+        and isinstance(value[1], Mapping)
+    )
 
 
 def _int_value(value: object) -> int:

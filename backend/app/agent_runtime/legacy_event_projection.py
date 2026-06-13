@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, TypedDict
 
 from app.agent_runtime import event_names
@@ -198,7 +199,21 @@ def _legacy(
 
 
 def _as_mapping(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
+    if isinstance(value, Mapping):
+        return dict(value)
+    if _is_payload_metadata_pair(value):
+        payload = value[0]
+        return dict(payload) if isinstance(payload, Mapping) else {}
+    return {}
+
+
+def _is_payload_metadata_pair(value: Any) -> bool:
+    return (
+        isinstance(value, Sequence)
+        and not isinstance(value, str | bytes | bytearray)
+        and len(value) == 2
+        and isinstance(value[1], Mapping)
+    )
 
 
 def _as_str(value: Any) -> str:

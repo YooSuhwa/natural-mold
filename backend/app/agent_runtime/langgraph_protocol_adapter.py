@@ -132,13 +132,9 @@ def extract_subagent_discovery(event: StoredProtocolEvent) -> dict[str, Any] | N
 
 
 def _normalize_protocol_data(method: str, data: Any) -> Any:
-    if method in {"messages", "tools"} and _is_payload_metadata_tuple(data):
+    if method == "messages" and _is_payload_metadata_tuple(data):
         payload, metadata = data
-        normalized_payload = _serialize_value(payload)
-        normalized_metadata = _serialize_value(metadata)
-        if isinstance(normalized_payload, dict):
-            return {**normalized_payload, "metadata": normalized_metadata}
-        return {"payload": normalized_payload, "metadata": normalized_metadata}
+        return [_serialize_value(payload), _serialize_value(metadata)]
     return _serialize_value(data)
 
 

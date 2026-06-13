@@ -154,9 +154,11 @@ the live backend (scripted model for keyless chat, LiteLLM for builder).
 - Added `chat-langgraph-v3` spec: creates scripted parent/child agents, drives
   the `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3` path through live todos, HITL
   approve, delegated subagent output, generated artifacts, token usage tooltip,
-  reload/replay, thread history, and public share rendering. Also hardened the
-  E2E error fixture to ignore only the known SDK direct `/threads/{id}/history`
-  404 while recording unexpected non-OK responses by URL.
+  reload/replay, thread history, SDK cancel, and public share rendering. The
+  top-level SDK `POST /threads/{id}/history` route is now expected to exist; E2E
+  no longer masks 404s from that endpoint. The spec also catches React duplicate
+  key warnings from repeated LangGraph/subagent message ids, and fails if
+  post-approval final assistant text is lost by flattening SDK `messages` tuples.
 - Added `agent-api` spec: deploy a fixed-identity agent (only fixed identity is
   eligible — `AGENT_API_FIXED_IDENTITY_REQUIRED`), issue a server key through the
   create dialog (one-time secret revealed), then revoke it — each step verified

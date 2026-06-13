@@ -183,12 +183,14 @@ export function messageStartEvent(messageId = 'assistant-usage-4') {
     seq: 20,
     params: {
       namespace: [],
-      data: {
-        event: 'message-start',
-        role: 'ai',
-        id: messageId,
-        metadata: { run_id: 'run-message-usage' },
-      },
+      data: [
+        {
+          event: 'message-start',
+          role: 'ai',
+          id: messageId,
+        },
+        { run_id: 'run-message-usage' },
+      ],
     },
   }
 }
@@ -201,11 +203,13 @@ export function messageFinishEvent() {
     seq: 21,
     params: {
       namespace: [],
-      data: {
-        event: 'message-finish',
-        usage: { input_tokens: 18, output_tokens: 7, total_tokens: 25 },
-        metadata: { run_id: 'run-message-usage' },
-      },
+      data: [
+        {
+          event: 'message-finish',
+          usage: { input_tokens: 18, output_tokens: 7, total_tokens: 25 },
+        },
+        { run_id: 'run-message-usage' },
+      ],
     },
   }
 }

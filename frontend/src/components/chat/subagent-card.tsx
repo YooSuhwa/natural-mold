@@ -73,6 +73,14 @@ function formatMessage(message: BaseMessage): string {
   return ''
 }
 
+function scopedMessageKey(
+  message: BaseMessage,
+  subagentId: string,
+  index: number,
+): string {
+  return `${message.id ?? `${subagentId}-message`}:${index}`
+}
+
 function SubagentHeaderMeta({
   input,
   namespace,
@@ -119,7 +127,7 @@ function SubagentDetails({
         <div className="space-y-1">
           {messages.map((message, index) => (
             <p
-              key={message.id ?? `${subagent.id}-message-${index}`}
+              key={scopedMessageKey(message, subagent.id, index)}
               className="rounded-md bg-muted/45 px-2 py-1.5 text-xs leading-relaxed text-foreground/85"
             >
               {formatMessage(message)}

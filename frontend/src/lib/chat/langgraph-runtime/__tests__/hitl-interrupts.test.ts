@@ -1,6 +1,12 @@
-import { AIMessage, HumanMessage } from '@langchain/core/messages'
+import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages'
 import { describe, expect, it } from 'vitest'
-import { appendInterruptToolCallMessages, standardPayloadFromInterrupt } from '../hitl-interrupts'
+import {
+  activeInterruptPayloads,
+  appendInterruptToolCallMessages,
+  interruptPayloadResolvedByMessages,
+  standardPayloadFromInterrupt,
+} from '../hitl-interrupts'
+import type { StandardInterruptPayload } from '@/lib/types'
 
 describe('standardPayloadFromInterrupt', () => {
   it('normalizes snake_case HITL interrupt values', () => {
@@ -115,5 +121,85 @@ describe('appendInterruptToolCallMessages', () => {
     )
 
     expect(projected).toEqual([existing])
+  })
+})
+
+describe('interruptPayloadResolvedByMessages', () => {
+  const payload: StandardInterruptPayload = {
+    interrupt_id: 'intr-docx',
+    action_requests: [
+      {
+        name: 'execute_in_skill',
+        args: {
+          skill_directory: '/skills/docx-document',
+          command: 'node scripts/create_langgraph_v3_artifacts.cjs',
+        },
+      },
+    ],
+    review_configs: [{ action_name: 'execute_in_skill', allowed_decisions: ['approve'] }],
+  }
+
+  it('treats a replayed interrupt as resolved when its real tool result is present', () => {
+    const messages = [
+      new AIMessage({
+        id: 'assistant-tool',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-docx',
+            name: 'execute_in_skill',
+            args: payload.action_requests[0].args,
+          },
+        ],
+      }),
+      new ToolMessage({
+        id: 'tool-docx',
+        content: 'done',
+        tool_call_id: 'call-docx',
+      }),
+    ]
+
+    expect(interruptPayloadResolvedByMessages(payload, messages)).toBe(true)
+  })
+
+  it('keeps an interrupt active before the requested tool result exists', () => {
+    const messages = [
+      new AIMessage({
+        id: 'assistant-tool',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-docx',
+            name: 'execute_in_skill',
+            args: payload.action_requests[0].args,
+          },
+        ],
+      }),
+    ]
+
+    expect(interruptPayloadResolvedByMessages(payload, messages)).toBe(false)
+  })
+
+  it('filters replayed interrupts whose real tool result is already in messages', () => {
+    const messages = [
+      new AIMessage({
+        id: 'assistant-tool',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-docx',
+            name: 'execute_in_skill',
+            args: payload.action_requests[0].args,
+          },
+        ],
+      }),
+      new ToolMessage({
+        id: 'tool-docx',
+        content: 'done',
+        tool_call_id: 'call-docx',
+      }),
+    ]
+
+    expect(activeInterruptPayloads([payload], messages, [])).toEqual([])
   })
 })

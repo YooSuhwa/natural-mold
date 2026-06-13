@@ -120,11 +120,26 @@ This slice makes the `langgraph_v3` runtime path executable and covered by a det
 - Existing Moldy HITL approval cards now render from LangGraph interrupt state, resume through `input.respond`, and keep resolved approval/rejection tool results visible.
 - A deterministic E2E fixture creates parent/child scripted agents, exercises live todos, approval, subagent output, generated artifacts, token usage, reload/replay, thread history, and public share rendering in `frontend/e2e/chat-langgraph-v3.spec.ts`.
 
+### SDK hydration hardening result: 2026-06-14
+
+This follow-up closed the first real `@langchain/react` hydration gaps found by the full v3 browser spec:
+
+- Added the official top-level SDK history route, `POST /threads/{thread_id}/history`, as a wrapper over Moldy's conversation ownership/state loader. The conversation-scoped history route remains available, but the SDK route is required because `HttpAgentServerAdapter`/LangGraph SDK callers do not prefix history with Moldy's `/api/conversations/...` path.
+- Broadened `HistoryRequest` parsing to accept SDK request fields such as `metadata`, `checkpoint`, and `before.configurable.checkpoint_id`, while keeping checkpoint pagination backed by the LangGraph checkpointer.
+- Removed the E2E fixture's temporary masking of 404s from `/threads/{id}/history`; a missing SDK history route is now treated as a real failure.
+- Preserved LangGraph v3 `messages` events in the SDK wire shape `[payload, metadata]`. Flattening that tuple into `{ ...payload, metadata }` made the SDK miss post-HITL final assistant messages, so only legacy SSE/AG-UI projections unwrap tuples at their own boundary.
+- Added assistant-ui bridge guards for repeated LangGraph message ids. DeepAgents/HITL replay can surface the same `AIMessage.id` and `tool_call.id` twice around approved tool execution, so Moldy dedupes LangChain source messages and assistant-ui `ThreadMessage` outputs by id before they enter `useExternalStoreRuntime`.
+- Added a stale-interrupt guard: if a replayed interrupt's requested action already has a real `ToolMessage` result in the stream messages, Moldy does not project another synthetic approval card.
+- Updated DeepAgents subagent detail lists to key scoped messages by `id:index`, because scoped subagent selectors can legitimately expose repeated `lc_run--...` message ids. This keeps React keys stable without flattening subagent transcripts into the root assistant-ui message list.
+
 Verification from this slice:
 
 - `backend/tests/test_conversation_agent_protocol_router.py::test_protocol_lifecycle_stream_survives_broker_rotation`
 - `backend/tests/test_conversation_agent_protocol_router.py::test_protocol_lifecycle_stream_throttles_idle_replay_polling`
+- `backend/tests/test_conversation_agent_protocol_sdk_history.py`
 - `frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
+- `frontend/src/lib/chat/langgraph-runtime/__tests__/message-list.test.ts`
+- `frontend/src/lib/chat/langgraph-runtime/__tests__/hitl-interrupts.test.ts`
 - `pnpm exec tsc --noEmit --pretty false`
 - `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 pnpm exec playwright test e2e/chat-langgraph-v3.spec.ts --project=chromium --workers=1`
 
@@ -520,10 +535,13 @@ type StreamEndpoint = 'POST /api/conversations/{conversationId}/langgraph/thread
 type GetStateEndpoint = 'GET /api/conversations/{conversationId}/langgraph/threads/{threadId}/state'
 type UpdateStateEndpoint = 'POST /api/conversations/{conversationId}/langgraph/threads/{threadId}/state'
 type HistoryEndpoint = 'POST /api/conversations/{conversationId}/langgraph/threads/{threadId}/history'
+type SdkHistoryEndpoint = 'POST /threads/{threadId}/history'
 type SdkCancelEndpoint = 'POST /threads/{threadId}/runs/{runId}/cancel?wait=0&action=interrupt'
 ```
 
 The commands endpoint accepts the official Agent Protocol `Command` envelope. Moldy must support at least `run.start` and `input.respond` there. Cancellation is not a `/commands` command in the current official LangGraph JS SDK path: `StreamController.stop()` calls `client.runs.cancel(threadId, runId)`, which posts to `/threads/{threadId}/runs/{runId}/cancel?wait=0&action=interrupt`. Moldy therefore exposes that SDK-compatible endpoint and maps it to the existing durable conversation-run cancel semantics. It must not be modeled as a Moldy-only stream event.
+
+The official LangGraph JS SDK also calls the top-level `POST /threads/{threadId}/history` route during hydration/replay. Moldy should keep the conversation-scoped history route for ownership-oriented API use, but must also expose the top-level SDK route with the same ownership/auth/CSRF checks. E2E must not mask 404s from this SDK route; a missing top-level history endpoint breaks `@langchain/react` hydration.
 
 ```typescript
 type AgentProtocolCommand = {
@@ -612,7 +630,9 @@ type UpdateStateRequest = {
 
 type HistoryRequest = {
   limit?: number
-  before?: string | ThreadCheckpoint
+  before?: string | ThreadCheckpoint | { checkpoint_id?: string; configurable?: ThreadCheckpoint }
+  metadata?: Record<string, unknown> | null
+  checkpoint?: ThreadCheckpoint | null
 }
 
 type HistoryResponse = ThreadState[]
@@ -776,12 +796,16 @@ The legacy adapter must be one-way: LangGraph event stream -> Moldy SSE. Do not 
   - Convert canonical protocol events to existing Moldy SSE events where feasible.
 - `backend/app/routers/conversation_agent_protocol.py`
   - New BFF endpoints for Agent Streaming Protocol commands, stream subscriptions, attach/replay, and state load.
+- `backend/app/routers/conversation_agent_protocol_sdk.py`
+  - SDK top-level compatibility routes such as `POST /threads/{thread_id}/history`, with Moldy ownership/auth checks.
 - `backend/tests/agent_runtime/test_langgraph_protocol_adapter.py`
   - Unit tests for event mapping.
 - `backend/tests/routers/test_conversation_agent_protocol_stream.py`
   - API tests for auth, ownership, replay, stale, event ids.
 - `backend/tests/routers/test_conversation_agent_protocol_state.py`
   - API tests for SDK-compatible thread state, history, bootstrap, and checkpoint-aware update routes.
+- `backend/tests/test_conversation_agent_protocol_sdk_history.py`
+  - API tests for the top-level SDK history route and `before.configurable.checkpoint_id` pagination.
 - `backend/tests/agent_runtime/fixtures/langgraph_v3_events.py`
   - Deterministic protocol event fixtures for messages, tools, todos, files, subagents, interrupts, reasoning, and stale/replay cases.
 
@@ -806,6 +830,10 @@ The legacy adapter must be one-way: LangGraph event stream -> Moldy SSE. Do not 
 
 - `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts`
   - Moldy-owned `@langchain/react useStream` wrapper that exposes one stream to assistant-ui and DeepAgents panels.
+- `frontend/src/lib/chat/langgraph-runtime/message-list.ts`
+  - Stable LangChain/source-message and assistant-ui `ThreadMessage` dedupe/fingerprinting helpers.
+- `frontend/src/lib/chat/langgraph-runtime/lifecycle-subscription.ts`
+  - Minimal lifecycle refresh subscription helper used after `stream.respond`.
 - `frontend/src/lib/chat/langgraph-runtime/moldy-agent-transport.ts`
   - `HttpAgentServerAdapter` factory and path/header wiring for the Moldy BFF.
 - `frontend/src/lib/chat/langgraph-runtime/assistant-ui-bridge.ts`

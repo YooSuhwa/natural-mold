@@ -145,6 +145,11 @@ active run broker or replay stored protocol events. Lifecycle/input subscription
 use a thread-level stream that survives HITL resume and broker replacement,
 replays persisted events, and throttles idle DB replay polling.
 
+SDK compatibility routes also exist at the top level where the LangGraph JS SDK
+expects them, including `POST /threads/{thread_id}/history` and
+`POST /threads/{thread_id}/runs/{run_id}/cancel`. These routes still resolve
+Moldy conversation ownership before touching LangGraph state.
+
 Runtime details:
 
 - model fallback chain is resolved before the runtime, then applied through
@@ -155,7 +160,10 @@ Runtime details:
 - memory tools are added only when the effective memory write policy allows it;
 - trigger mode uses non-streaming invoke and disables `ask_user`/HiTL interrupts;
 - chat and Agent API sources carry identity metadata for credential resolution
-  and audit/hooks.
+  and audit/hooks;
+- LangGraph v3 `messages` events keep the SDK wire shape `[payload, metadata]`
+  instead of flattening metadata into the payload. Legacy SSE/AG-UI projections
+  unwrap that shape at their own boundary.
 
 ### Skills and Filesystem
 
@@ -266,6 +274,7 @@ See `docs/agent-api.md` for request examples.
 
 | Date | Commit | Change reflected in docs |
 |------|--------|--------------------------|
+| 2026-06-14 | pending | Add SDK top-level history hydration and harden LangGraph v3 assistant-ui/subagent message projection |
 | 2026-06-13 | pending | Add LangGraph v3 Agent Streaming Protocol BFF path, assistant-ui bridge, and deterministic v3 E2E |
 | 2026-06-07 | `e2178d6` | Split executor into facade + runtime component builder + stream runner + MCP/skill modules |
 | 2026-06-07 | `243b5db` | Split conversation router responsibilities into CRUD/messages/branches/files/traces |

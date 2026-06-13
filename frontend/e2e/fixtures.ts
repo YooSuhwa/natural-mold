@@ -89,7 +89,7 @@ function isKnownBenignConsoleError(text: string): boolean {
 }
 
 function isExpectedNonOkResponse(url: string, status: number): boolean {
-  return url.includes('favicon') || (status === 404 && /\/threads\/[^/]+\/history$/.test(url))
+  return url.includes('favicon')
 }
 
 export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({

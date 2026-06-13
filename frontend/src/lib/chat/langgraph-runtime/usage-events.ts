@@ -152,15 +152,20 @@ function messagesWithUsageFingerprint(
   })
 }
 
-function eventData(event: unknown): Record<string, unknown> | null {
-  if (!isRecord(event)) return null
-  const params = isRecord(event.params) ? event.params : null
-  const data = isRecord(params?.data) ? params.data : null
-  return data
-}
-
-function messageMetadata(data: Record<string, unknown>): Record<string, unknown> {
-  return isRecord(data.metadata) ? data.metadata : {}
+function messagePayloadAndMetadata(
+  data: unknown,
+): { payload: Record<string, unknown>; metadata: Record<string, unknown> } | null {
+  if (Array.isArray(data) && data.length === 2 && isRecord(data[0])) {
+    return {
+      payload: data[0],
+      metadata: isRecord(data[1]) ? data[1] : {},
+    }
+  }
+  if (!isRecord(data)) return null
+  return {
+    payload: data,
+    metadata: isRecord(data.metadata) ? data.metadata : {},
+  }
 }
 
 function usageFromMessageEvent(
@@ -168,10 +173,11 @@ function usageFromMessageEvent(
   runMessageIds: Map<string, string>,
 ): UsagePayload | null {
   if (!isRecord(event) || event.method !== 'messages') return null
-  const data = eventData(event)
-  if (!data) return null
+  const params = isRecord(event.params) ? event.params : null
+  const messageEvent = messagePayloadAndMetadata(params?.data)
+  if (!messageEvent) return null
+  const { payload: data, metadata } = messageEvent
 
-  const metadata = messageMetadata(data)
   const runId = textValue(metadata.run_id)
   const messageId = textValue(data.id)
   if (data.event === 'message-start' && runId && messageId) {

@@ -25,7 +25,7 @@ class FakeChunk:
     tool_call_chunks: list[dict[str, object]] | None = None
 
 
-def test_v3_message_tuple_unwraps_payload_and_preserves_metadata() -> None:
+def test_v3_message_tuple_preserves_sdk_payload_metadata_pair() -> None:
     event = adapt_v3_protocol_event(
         {
             "type": "event",
@@ -54,8 +54,14 @@ def test_v3_message_tuple_unwraps_payload_and_preserves_metadata() -> None:
     assert event["seq"] == 4
     assert event["upstream_event_id"] == "evt-4"
     assert event["timestamp"] == "1781294167426"
-    assert event["data"]["event"] == "content-block-delta"
-    assert event["data"]["metadata"] == {"langgraph_node": "model", "run_id": "lc-run-1"}
+    assert event["data"] == [
+        {
+            "event": "content-block-delta",
+            "index": 0,
+            "delta": {"type": "text-delta", "text": "hello"},
+        },
+        {"langgraph_node": "model", "run_id": "lc-run-1"},
+    ]
     assert to_assistant_ui_projection(event)["event"] == "messages|tools%3Atc-1"
 
 
@@ -229,11 +235,15 @@ def test_non_json_message_object_serializes_stable_fields() -> None:
         thread_id="thread-1",
     )
 
-    assert event["data"]["id"] == "msg-1"
-    assert event["data"]["type"] == "AIMessageChunk"
-    assert event["data"]["content"] == "hi"
-    assert event["data"]["tool_call_chunks"] == [{"id": "call-1", "name": "search"}]
-    assert event["data"]["metadata"] == {"langgraph_node": "model"}
+    assert event["data"] == [
+        {
+            "id": "msg-1",
+            "type": "AIMessageChunk",
+            "content": "hi",
+            "tool_call_chunks": [{"id": "call-1", "name": "search"}],
+        },
+        {"langgraph_node": "model"},
+    ]
 
 
 def test_subagent_discovery_normalizes_status_and_trigger() -> None:

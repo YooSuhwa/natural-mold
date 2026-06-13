@@ -14,6 +14,7 @@ import { reduceProtocolActivity } from './activity-protocol'
 import { useLangGraphArtifactEffects } from './artifact-events'
 import { selectDeepAgentsState } from './deepagents-state'
 import {
+  activeInterruptPayloads,
   appendInterruptToolCallMessages,
   appendResolvedInterruptToolCallMessages,
   resolvedInterruptToolCallsFromDecisions,
@@ -21,7 +22,9 @@ import {
   type ResolvedInterruptToolCall,
 } from './hitl-interrupts'
 import { useLangGraphMemoryEffects } from './memory-events'
+import { dedupeLangChainMessagesById, useStableConvertedMessages } from './message-list'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
+import { refreshThreadLifecycleStream } from './lifecycle-subscription'
 import { useCheckpointForkHandlers } from './use-checkpoint-fork-handlers'
 import { useLangGraphUsageEffects } from './usage-events'
 import { convertMoldyLangChainMessage } from './langchain-message-conversion'
@@ -44,21 +47,6 @@ interface UseMoldyLangGraphStreamOptions {
   attachmentAdapter?: AttachmentAdapter
 }
 
-interface LifecycleSubscription {
-  unsubscribe(): Promise<void>
-}
-
-interface ThreadLifecycleSubscriber {
-  subscribe(
-    channel: 'lifecycle',
-    options: { namespaces: string[][]; depth: number },
-  ): Promise<LifecycleSubscription>
-}
-
-interface ThreadLifecycleStream {
-  getThread(): ThreadLifecycleSubscriber | undefined
-}
-
 const ACTIVITY_CHANNELS = [
   'messages',
   'tools',
@@ -69,75 +57,6 @@ const ACTIVITY_CHANNELS = [
   'checkpoints',
   'custom',
 ] as const satisfies readonly Channel[]
-
-function stableString(value: unknown): string {
-  if (value === undefined) return ''
-  try {
-    const seen = new WeakSet<object>()
-    return JSON.stringify(value, (key, nestedValue: unknown) => {
-      if (key === 'createdAt') return undefined
-      if (typeof nestedValue === 'object' && nestedValue !== null) {
-        if (seen.has(nestedValue)) return undefined
-        seen.add(nestedValue)
-      }
-      return nestedValue
-    })
-  } catch {
-    return String(value)
-  }
-}
-
-function langChainMessageFingerprint(message: BaseMessage): string {
-  const source = message as BaseMessage & {
-    readonly additional_kwargs?: unknown
-    readonly invalid_tool_calls?: unknown
-    readonly response_metadata?: unknown
-    readonly tool_call_id?: unknown
-    readonly tool_calls?: unknown
-    readonly usage_metadata?: unknown
-  }
-  return stableString({
-    id: source.id,
-    type: typeof source._getType === 'function' ? source._getType() : undefined,
-    name: source.name,
-    content: source.content,
-    additional_kwargs: source.additional_kwargs,
-    response_metadata: source.response_metadata,
-    tool_calls: source.tool_calls,
-    invalid_tool_calls: source.invalid_tool_calls,
-    tool_call_id: source.tool_call_id,
-    usage_metadata: source.usage_metadata,
-  })
-}
-
-async function refreshThreadLifecycleStream(stream: ThreadLifecycleStream): Promise<void> {
-  const thread = stream.getThread()
-  if (!thread) return
-  const subscription = await thread.subscribe('lifecycle', {
-    namespaces: [[]],
-    depth: 0,
-  })
-  await subscription.unsubscribe()
-}
-
-function useStableConvertedMessages<T extends object>(
-  messages: readonly T[],
-  sourceMessages: readonly BaseMessage[],
-  isRunning: boolean,
-): readonly T[] {
-  const fingerprint = useMemo(
-    () =>
-      stableString({
-        status: isRunning ? 'running' : 'idle',
-        length: messages.length,
-        source: sourceMessages.map(langChainMessageFingerprint),
-      }),
-    [isRunning, messages.length, sourceMessages],
-  )
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  return useMemo(() => messages, [fingerprint])
-}
 
 export function useMoldyLangGraphStream({
   agentId,
@@ -169,14 +88,9 @@ export function useMoldyLangGraphStream({
     () => standardPayloadsFromInterrupts(stream.interrupts),
     [stream.interrupts],
   )
-  const resolvedInterruptIds = useMemo(
-    () =>
-      new Set(resolvedInterrupts.map((item) => String(item.toolCall.args.hitl_interrupt_id ?? ''))),
-    [resolvedInterrupts],
-  )
   const interruptPayloads = useMemo(
-    () => allInterruptPayloads.filter((payload) => !resolvedInterruptIds.has(payload.interrupt_id)),
-    [allInterruptPayloads, resolvedInterruptIds],
+    () => activeInterruptPayloads(allInterruptPayloads, stream.messages, resolvedInterrupts),
+    [allInterruptPayloads, resolvedInterrupts, stream.messages],
   )
   const interruptPayloadsById = useMemo(
     () => new Map(interruptPayloads.map((payload) => [payload.interrupt_id, payload])),
@@ -188,9 +102,11 @@ export function useMoldyLangGraphStream({
   )
   const messagesWithInterrupts = useMemo(
     () =>
-      appendResolvedInterruptToolCallMessages(
-        appendInterruptToolCallMessages(stream.messages, interruptPayloads),
-        resolvedInterrupts,
+      dedupeLangChainMessagesById(
+        appendResolvedInterruptToolCallMessages(
+          appendInterruptToolCallMessages(stream.messages, interruptPayloads),
+          resolvedInterrupts,
+        ),
       ),
     [stream.messages, interruptPayloads, resolvedInterrupts],
   )

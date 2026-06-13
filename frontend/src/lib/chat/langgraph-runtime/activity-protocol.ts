@@ -39,6 +39,13 @@ function eventData(event: ActivityProtocolEvent): unknown {
   return event.params?.data
 }
 
+function messageEventPayload(data: unknown): unknown {
+  if (Array.isArray(data) && data.length === 2 && isRecord(data[0])) {
+    return data[0]
+  }
+  return data
+}
+
 function eventNamespace(event: ActivityProtocolEvent): string[] {
   return Array.isArray(event.params?.namespace)
     ? event.params.namespace.filter((item): item is string => typeof item === 'string')
@@ -154,7 +161,7 @@ function reduceMessagesEvent(
   current: readonly RunActivity[],
   event: ActivityProtocolEvent,
 ): RunActivity[] {
-  const data = eventData(event)
+  const data = messageEventPayload(eventData(event))
   if (!isRecord(data)) return reduceActivity(current, toActivityEvent(event, 'messages', data))
   const eventName = textValue(data.event)
   if (eventName === 'content-block-start' || eventName === 'content-block-finish') {
