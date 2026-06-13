@@ -51,8 +51,8 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         # NEXT_PUBLIC_* is inlined into the browser bundle at build time, so the
         # API URL must be set HERE — a runtime env var alone never reaches the
