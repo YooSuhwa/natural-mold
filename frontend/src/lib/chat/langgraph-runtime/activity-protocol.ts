@@ -1,4 +1,5 @@
 import { reduceActivity, type ProtocolEvent, type RunActivity } from './activity-model'
+import { statusFromValue } from './activity-state'
 
 export type ActivityProtocolMethod =
   | 'messages'
@@ -216,13 +217,15 @@ function reduceLifecycleEvent(
     isRecord(cause) && textValue(cause.type) === 'toolCall'
       ? textValue(cause.tool_call_id)
       : undefined
-  if (namespace.length === 0 && !causeToolCallId) return [...current]
+  const status = statusFromValue(data.status ?? data.event ?? data.state)
+  const isTerminal = status === 'complete' || status === 'error' || status === 'cancelled'
+  if (namespace.length === 0 && !causeToolCallId && !isTerminal) return [...current]
   return reduceActivity(
     current,
     toActivityEvent(event, 'lifecycle', {
       ...data,
       name: textValue(data.graph_name) ?? textValue(data.name),
-      status: data.event,
+      status: data.status ?? data.event ?? data.state,
       trigger_call_id: causeToolCallId ?? data.trigger_call_id,
     }),
   )

@@ -71,4 +71,23 @@ describe('reduceProtocolActivity', () => {
       }),
     ])
   })
+
+  it('marks root running activities complete when a terminal lifecycle event is replayed', () => {
+    const activities = reduce([
+      event(
+        'messages',
+        {
+          event: 'content-block-delta',
+          delta: { type: 'text-delta', text: 'hello' },
+        },
+        { event_id: 'message-1', seq: 1 },
+      ),
+      event('lifecycle', { event: 'done' }, { event_id: 'done-1', seq: 2 }),
+    ])
+
+    expect(activities.find((item) => item.kind === 'responding')).toMatchObject({
+      status: 'complete',
+    })
+    expect(activities.filter((item) => item.status === 'running')).toEqual([])
+  })
 })

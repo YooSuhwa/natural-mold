@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -79,15 +79,37 @@ def _event_matches_cursor(event: StoredProtocolEvent, cursor: str) -> bool:
 
 
 def _events_after_cursor(
-    events: list[StoredProtocolEvent],
+    events: Sequence[StoredProtocolEvent],
     after_id: str | None,
-) -> list[StoredProtocolEvent]:
+) -> Sequence[StoredProtocolEvent]:
     if not after_id:
         return events
     for index, event in enumerate(events):
         if _event_matches_cursor(event, after_id):
             return events[index + 1 :]
     return events
+
+
+def protocol_stale_event(
+    *,
+    run_id: str,
+    thread_id: str,
+    seq: int,
+    last_event_id: str | None,
+) -> StoredProtocolEvent:
+    return stored_protocol_event(
+        run_id=run_id,
+        thread_id=thread_id,
+        seq=seq,
+        method="custom:stale",
+        data={
+            "name": "stale",
+            "reason": "run_worker_lost",
+            "run_id": run_id,
+            "last_event_id": last_event_id,
+        },
+        event_id=f"{run_id}:stale",
+    )
 
 
 async def load_protocol_events(
@@ -107,11 +129,15 @@ async def load_protocol_events(
 
 
 async def protocol_replay_generator(
-    events: list[StoredProtocolEvent],
+    events: Sequence[StoredProtocolEvent],
     params: SubscribeParams,
     *,
     after_id: str | None,
+    final_events: Sequence[StoredProtocolEvent] | None = None,
 ) -> AsyncGenerator[str, None]:
     for event in _events_after_cursor(events, after_id):
+        if matches_subscription(event, params):
+            yield format_protocol_sse(event)
+    for event in final_events or []:
         if matches_subscription(event, params):
             yield format_protocol_sse(event)

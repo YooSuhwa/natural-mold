@@ -1832,7 +1832,7 @@ Implementation status:
 - [x] Pending `input.requested` interrupts hydrate from `GET state` as SDK-compatible `tasks[].interrupts`, and compatibility state exposes the same `interrupts` list for Moldy bridge code.
 - [ ] Cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
 - [ ] `POST state` still returns the submitted SDK-compatible shape and does not yet apply updates through the LangGraph checkpointer/runtime API.
-- [ ] Active run without broker currently returns `409 RUN_ATTACH_RETRY`; stale-run detection/finalization is still follow-up.
+- [x] Active run without broker returns `409 RUN_ATTACH_RETRY` while fresh. If the heartbeat is stale, the protocol route transitions the run to `stale`, finalizes run outputs, replays stored protocol events, and appends a `custom:stale` protocol event.
 - [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed. Artifact product side effects now run from `custom:file_event`, and memory custom events now invalidate memory state plus toast through the LangGraph runtime. Usage and other custom projections still need explicit reducers.
 
 - [ ] **Step 1: Add endpoints**
@@ -2782,9 +2782,13 @@ git commit -m "feat(chat): port HITL artifacts and memory to LangGraph runtime"
 **Files:**
 
 - Modify: `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts`
+- Modify: `frontend/src/lib/chat/langgraph-runtime/activity-model.ts`
+- Create: `frontend/src/lib/chat/langgraph-runtime/activity-state.ts`
+- Create: `frontend/src/lib/chat/langgraph-runtime/activity-types.ts`
 - Modify: `backend/app/routers/conversation_agent_protocol.py`
+- Create: `backend/app/routers/conversation_agent_protocol_stale.py`
 - Modify: `backend/app/services/chat_service.py`
-- Test: regenerate/edit tests
+- Test: regenerate/edit/replay tests
 
 - [x] **Step 1: Load state for assistant-ui**
 
@@ -2867,7 +2871,7 @@ PATH=/Users/chester/.hermes/bin:$PATH uv run --directory backend pytest tests/te
 PATH=/Users/chester/.hermes/bin:$PATH uv run --directory backend ruff check app/routers/conversation_agent_protocol_runtime.py tests/test_conversation_agent_protocol_checkpoint.py
 ```
 
-- [ ] **Step 4: Replay tests**
+- [x] **Step 4: Replay tests**
 
 Test:
 
@@ -2876,21 +2880,29 @@ Test:
 - terminal replay does not show running activities,
 - stale run shows reconnect/stale activity and allows user retry.
 
-- [ ] **Step 5: Verify**
+Implemented in this slice:
+
+- `backend/tests/test_conversation_agent_protocol_replay.py` covers `Last-Event-ID` replay without duplicate content and stale active-run recovery through the v3 protocol endpoint.
+- `backend/app/routers/conversation_agent_protocol_stale.py` keeps fresh workerless active runs on `409 RUN_ATTACH_RETRY`, but marks old workerless active runs as `stale`, finalizes outputs, records audit, and returns replay mode `stale`.
+- `backend/app/routers/conversation_agent_protocol_replay.py` can append terminal replay events; stale recovery appends `custom:stale` so the frontend receives a first-class protocol activity event instead of legacy Moldy SSE.
+- `frontend/src/lib/chat/langgraph-runtime/activity-model.ts` was split into `activity-types.ts` and `activity-state.ts` before adding terminal replay behavior, keeping each file under the 250 pure-LOC ceiling.
+- `frontend/src/lib/chat/langgraph-runtime/activity-protocol.ts` now forwards root terminal lifecycle events instead of dropping them, so replayed completed runs do not leave the activity strip stuck in "running".
+
+- [x] **Step 5: Verify**
 
 ```bash
-cd frontend
-pnpm test src/lib/chat/__tests__/use-chat-runtime-regenerate.test.tsx
-pnpm test src/lib/chat/langgraph-runtime
-cd ../backend
-uv run pytest tests/routers/test_conversation_agent_protocol_stream.py tests/routers/test_conversation_agent_protocol_state.py
+cd frontend && pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__
+cd frontend && pnpm exec tsc --noEmit --pretty false
+
+cd backend && /Users/chester/.hermes/bin/uv run pytest tests/test_conversation_agent_protocol_router.py tests/test_conversation_agent_protocol_replay.py tests/test_conversation_agent_protocol_checkpoint.py -q
+cd backend && /Users/chester/.hermes/bin/uv run ruff check app/routers/conversation_agent_protocol.py app/routers/conversation_agent_protocol_replay.py app/routers/conversation_agent_protocol_stale.py tests/test_conversation_agent_protocol_replay.py
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
-git add frontend/src/lib/chat/langgraph-runtime backend/app/routers/conversation_agent_protocol.py backend/app/services/chat_service.py
-git commit -m "feat(chat): support checkpoints in LangGraph runtime"
+git add frontend/src/lib/chat/langgraph-runtime backend/app/routers/conversation_agent_protocol*.py backend/tests/test_conversation_agent_protocol_replay.py docs/superpowers/plans/2026-06-13-assistant-ui-langgraph-v3-streaming.md
+git commit -m "feat(chat): add LangGraph replay parity"
 ```
 
 ### Task 11: Remove lossy AG-UI bridge from primary chat path
@@ -3225,7 +3237,7 @@ Guardrail:
 
 Guardrail:
 
-- Activity reducer must fold terminal `run.finished`, `run.cancelled`, `run.error`, and `stale` events.
+- Activity reducer must fold root terminal lifecycle events (`done`, `completed`, `cancelled`, `error`) and `custom:stale` events.
 - Replayed terminal run should render completed activity history only if product design wants it; default active strip should be hidden.
 
 ### Risk: double execution on reconnect

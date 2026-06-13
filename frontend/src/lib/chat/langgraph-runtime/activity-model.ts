@@ -1,129 +1,26 @@
-export type RunActivityKind =
-  | 'thinking'
-  | 'planning'
-  | 'tool'
-  | 'subagent'
-  | 'background_subagent'
-  | 'artifact'
-  | 'memory'
-  | 'interrupt'
-  | 'checkpoint'
-  | 'responding'
-  | 'reconnecting'
-  | 'done'
-  | 'error'
+import {
+  activityBase,
+  asRecords,
+  dataRecord,
+  eventData,
+  eventNamespace,
+  eventRunId,
+  isRecord,
+  isTerminalStatus,
+  markRunningAsStatus,
+  namespaceKey,
+  statusFromValue,
+  textValue,
+  upsertActivity,
+} from './activity-state'
+import type { ProtocolEvent, RunActivity } from './activity-types'
 
-export type RunActivityStatus =
-  | 'pending'
-  | 'running'
-  | 'requires_action'
-  | 'complete'
-  | 'error'
-  | 'cancelled'
-
-export interface RunActivity {
-  id: string
-  runId: string
-  kind: RunActivityKind
-  status: RunActivityStatus
-  title: string
-  subtitle?: string
-  namespace: string[]
-  startedAt?: string
-  endedAt?: string
-  toolCallId?: string
-  parentId?: string
-  data?: Record<string, unknown>
-}
-
-export interface ProtocolEvent {
-  type?: string
-  method: string
-  params?: {
-    namespace?: string[]
-    data?: unknown
-    timestamp?: string
-  }
-  seq?: number
-  event_id?: string
-  run_id?: string
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function asRecords(value: unknown): Record<string, unknown>[] {
-  return Array.isArray(value) ? value.filter(isRecord) : []
-}
-
-function textValue(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value : undefined
-}
-
-function namespaceKey(namespace: readonly string[]): string {
-  return namespace.length > 0 ? namespace.join('/') : 'root'
-}
-
-function eventRunId(event: ProtocolEvent): string {
-  return event.run_id ?? event.event_id ?? 'active'
-}
-
-function eventData(event: ProtocolEvent): unknown {
-  return event.params?.data
-}
-
-function dataRecord(value: unknown): Record<string, unknown> {
-  return isRecord(value) ? value : { payload: value }
-}
-
-function eventNamespace(event: ProtocolEvent): string[] {
-  return event.params?.namespace ?? []
-}
-
-function statusFromValue(value: unknown): RunActivityStatus {
-  const raw = textValue(value)?.toLowerCase()
-  if (raw === 'success' || raw === 'succeeded' || raw === 'complete' || raw === 'completed') {
-    return 'complete'
-  }
-  if (raw === 'failed' || raw === 'error') return 'error'
-  if (raw === 'cancelled' || raw === 'canceled') return 'cancelled'
-  if (raw === 'interrupted' || raw === 'requires_action') return 'requires_action'
-  return raw === 'pending' ? 'pending' : 'running'
-}
-
-function upsertActivity(current: readonly RunActivity[], next: RunActivity): RunActivity[] {
-  const index = current.findIndex((item) => item.id === next.id)
-  if (index < 0) return [...current, next]
-  const copy = [...current]
-  copy[index] = { ...copy[index], ...next, data: { ...copy[index].data, ...next.data } }
-  return copy
-}
-
-function markRunningAsError(current: readonly RunActivity[], event: ProtocolEvent): RunActivity[] {
-  const endedAt = event.params?.timestamp
-  return current.map((item) =>
-    item.status === 'running' || item.status === 'pending'
-      ? { ...item, status: 'error', endedAt: item.endedAt ?? endedAt }
-      : item,
-  )
-}
-
-function activityBase(
-  event: ProtocolEvent,
-  kind: RunActivityKind,
-  key: string,
-): Pick<RunActivity, 'id' | 'runId' | 'kind' | 'namespace' | 'startedAt'> {
-  const namespace = eventNamespace(event)
-  const runId = eventRunId(event)
-  return {
-    id: `${runId}:${kind}:${key}`,
-    runId,
-    kind,
-    namespace,
-    startedAt: event.params?.timestamp,
-  }
-}
+export type {
+  ProtocolEvent,
+  RunActivity,
+  RunActivityKind,
+  RunActivityStatus,
+} from './activity-types'
 
 function reduceMessages(current: readonly RunActivity[], event: ProtocolEvent): RunActivity[] {
   const data = eventData(event)
@@ -239,6 +136,16 @@ function reduceLifecycle(current: readonly RunActivity[], event: ProtocolEvent):
   const namespace = eventNamespace(event)
   const id = textValue(data.trigger_call_id) ?? textValue(data.id) ?? namespaceKey(namespace)
   const status = statusFromValue(data.status ?? data.event)
+  if (namespace.length === 0 && isTerminalStatus(status)) {
+    const closed = markRunningAsStatus(current, event, status)
+    if (status !== 'complete') return closed
+    return upsertActivity(closed, {
+      ...activityBase(event, 'done', 'run'),
+      status,
+      title: 'Done',
+      data,
+    })
+  }
   return upsertActivity(current, {
     ...activityBase(event, 'subagent', id),
     status,
@@ -288,7 +195,7 @@ export function reduceActivity(
 ): RunActivity[] {
   if (event.method === 'error') {
     const data = eventData(event)
-    return upsertActivity(markRunningAsError(current, event), {
+    return upsertActivity(markRunningAsStatus(current, event, 'error'), {
       ...activityBase(event, 'error', 'stream'),
       status: 'error',
       title: 'Error',

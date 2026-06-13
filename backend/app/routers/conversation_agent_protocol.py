@@ -30,6 +30,7 @@ from app.routers.conversation_agent_protocol_runtime import (
     load_thread_state_snapshot,
     protocol_broker_generator,
 )
+from app.routers.conversation_agent_protocol_stale import maybe_mark_stale_active_run
 from app.services import conversation_run_service
 from app.services.conversation_run_worker import start_conversation_run
 from app.services.conversation_stream_service import sse_response
@@ -135,6 +136,7 @@ async def subscribe_thread_events(
     conversation_id: uuid.UUID,
     thread_id: str,
     request: SubscribeRequest,
+    http_request: Request,
     last_event_id: str | None = Query(None),
     last_event_id_header: str | None = Header(None, alias="Last-Event-ID"),
     db: AsyncSession = Depends(get_db),
@@ -162,6 +164,23 @@ async def subscribe_thread_events(
                     after_id=after_id,
                 ),
                 extra_headers=protocol_headers(mode="live", run_id=str(current_run.id)),
+            )
+        stale = await maybe_mark_stale_active_run(
+            db,
+            run_id=current_run.id,
+            conversation=conversation,
+            user=user,
+            request=http_request,
+        )
+        if stale is not None:
+            return sse_response(
+                protocol_replay_generator(
+                    stale.events,
+                    request.as_params(),
+                    after_id=after_id,
+                    final_events=[stale.stale_event],
+                ),
+                extra_headers=protocol_headers(mode="stale", run_id=str(stale.run.id)),
             )
         return JSONResponse(
             {
