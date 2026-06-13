@@ -2569,6 +2569,7 @@ Implemented so far:
 - Current assistant-turn scoped progress is derived from inline subagent tool-call ids instead of all discovered stream subagents.
 - Completed cards default collapsed when a turn has five or more subagents, and live expanded inline detail subscriptions are capped so overflow cards route users to the right rail instead of mounting extra scoped selectors.
 - Async/background subagent activities render as separate status rows and are not counted as inline transcript subagent cards.
+- `frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-activity.test.tsx` now feeds a canonical `values.async_tasks` protocol event through `useMoldyLangGraphStream` and proves it becomes a `background_subagent` activity instead of an inline `subagent`.
 - Scoped subagent message rendering filters private/raw reasoning and thinking content, rendering only safe visible text or summary/status fields.
 
 - [x] **Step 3: Connect to `AssistantThread`**
@@ -3499,7 +3500,7 @@ Precondition: merge, rebase onto, or explicitly compare against the separate E2E
 - [ ] Current SDK `subgraphs` alias, raw `tasks`, and raw `tools` channels are covered in backend and frontend tests.
 - [ ] Shared conversation traces and `extract-chips.ts` support both historical Moldy SSE events and new canonical protocol events.
 - [ ] State/history route tests verify the installed SDK's actual request paths and do not assume a path shape without evidence.
-- [ ] Async/background subagents render as task status activities distinct from inline v3 subagent cards.
+- [x] Async/background subagents render as task status activities distinct from inline v3 subagent cards.
 - [ ] Raw v3 `event_id`, sequence/order, and namespace metadata are preserved through live stream, storage, replay, and debugging views.
 - [ ] Hidden chain-of-thought is not exposed.
 - [ ] Existing builder `phase_timeline` behavior is protected.
