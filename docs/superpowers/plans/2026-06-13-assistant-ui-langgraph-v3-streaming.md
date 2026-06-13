@@ -1246,7 +1246,9 @@ Implementation status:
 - [x] `langgraph_streaming.py` emits canonical `StoredProtocolEvent` SSE, dual-writes to `EventBroker`, persists the same canonical events, and falls back to multi-mode `astream` when direct v3 cannot be opened.
 - [x] The parallel runner entrypoint is implemented in `langgraph_agent_stream_runner.py` and exported through `executor.py`. It intentionally does not grow the already-large legacy `agent_stream_runner.py`.
 - [x] The legacy projection helper exists in `legacy_event_projection.py`.
-- [ ] Moldy side effects for artifacts, memory, usage, audit, stale/live route attachment, and full run lifecycle still need to be wired into the BFF command/run path.
+- [x] `run.start` in the BFF command path now creates a durable `ConversationRun`, starts the existing background run worker with `execute_agent_stream_langgraph`, returns the protocol `run_id`, and lets the existing worker own heartbeat, terminal run status, run audit, trace finalization, and artifact finalization.
+- [x] `/stream/events` now attaches to the live `EventBroker` for an active protocol run and applies the same protocol channel/namespace filters used by replay.
+- [ ] Moldy-specific side effects that depend on interpreting protocol `custom`, `updates`, and final `values` payloads, plus stale active-run recovery and non-`run.start` commands, still need dedicated follow-up wiring.
 
 - [x] **Step 1: Implement `langgraph_streaming.py`**
 
@@ -1817,6 +1819,18 @@ git commit -m "feat(runtime): add DeepAgents v3 stream runner"
 - Modify: `backend/app/routers/conversations.py`
 - Test: `backend/tests/routers/test_conversation_agent_protocol_stream.py`
 - Test: `backend/tests/routers/test_conversation_agent_protocol_state.py`
+
+Implementation status:
+
+- [x] The route surface is registered under the conversation-scoped BFF prefix and returns `X-Stream-Protocol: langgraph_v3`.
+- [x] `run.start` accepts numeric or string command ids, defaults missing `multitask_strategy` to `"reject"`, rejects unsupported command methods with a protocol error, rejects active-run conflicts as `MULTITASK_REJECTED`, creates a `ConversationRun`, and starts `execute_agent_stream_langgraph` through the existing `conversation_run_worker`.
+- [x] `run.start` records the normal Moldy conversation message audit, updates conversation title/activity from the latest user message preview, and stores protocol metadata on the run.
+- [x] `/stream/events` attaches live to the active run's `EventBroker`, emits `event: message` protocol SSE frames, preserves upstream event ids, and applies channel/namespace/depth filters to live and replay paths.
+- [x] Stored canonical protocol events replay from `message_events` and support `Last-Event-ID` / `last_event_id` cursors.
+- [ ] `input.respond`, cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
+- [ ] `GET/POST state` and `history` currently return SDK-compatible fallback shapes but do not yet read/write canonical LangGraph checkpointer snapshots.
+- [ ] Active run without broker currently returns `409 RUN_ATTACH_RETRY`; stale-run detection/finalization is still follow-up.
+- [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed, but product side effects such as memory/artifact projections from those protocol payloads still need explicit reducers.
 
 - [ ] **Step 1: Add endpoints**
 

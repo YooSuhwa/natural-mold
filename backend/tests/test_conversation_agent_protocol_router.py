@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.event_broker import registry as broker_registry
 from app.agent_runtime.protocol_events import stored_protocol_event
 from app.main import create_app
 from app.models.agent import Agent
 from app.models.conversation import Conversation
+from app.models.conversation_run import ConversationRun
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
@@ -99,13 +103,23 @@ async def test_thread_state_hides_conversations_owned_by_another_user(
 async def test_run_start_command_defaults_multitask_strategy_to_reject(
     client: AsyncClient,
     db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     conversation = await _seed_conversation(db)
+    started: dict[str, Any] = {}
+
+    async def fake_start_conversation_run(**kwargs: Any) -> None:
+        started.update(kwargs)
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fake_start_conversation_run,
+    )
 
     response = await client.post(
         f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
         json={
-            "id": "cmd-1",
+            "id": 1,
             "method": "run.start",
             "params": {"input": {"messages": [{"role": "user", "content": "hi"}]}},
         },
@@ -115,9 +129,62 @@ async def test_run_start_command_defaults_multitask_strategy_to_reject(
     assert response.headers["x-stream-protocol"] == "langgraph_v3"
     payload = response.json()
     assert payload["type"] == "success"
-    assert payload["id"] == "cmd-1"
+    assert payload["id"] == 1
     assert payload["result"]["multitask_strategy"] == "reject"
     assert payload["result"]["thread_id"] == str(conversation.id)
+    assert uuid.UUID(payload["result"]["run_id"])
+    assert response.headers["x-run-id"] == payload["result"]["run_id"]
+    assert started["run_id"] == uuid.UUID(payload["result"]["run_id"])
+    assert started["conversation_id"] == conversation.id
+    assert started["input_payload"] == {"messages": [{"role": "user", "content": "hi"}]}
+    assert started["executor_fn"].__name__ == "execute_agent_stream_langgraph"
+
+
+@pytest.mark.asyncio
+async def test_run_start_command_rejects_active_run(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    conversation = await _seed_conversation(db)
+    db.add(
+        ConversationRun(
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            status="running",
+            is_active=True,
+        )
+    )
+    await db.commit()
+
+    async def fail_start_conversation_run(**_kwargs: Any) -> None:
+        raise AssertionError("active run rejection must happen before worker start")
+
+    monkeypatch.setattr(
+        "app.routers.conversation_agent_protocol.start_conversation_run",
+        fail_start_conversation_run,
+    )
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/commands",
+        json={
+            "id": 2,
+            "method": "run.start",
+            "params": {"input": {"messages": [{"role": "user", "content": "hi"}]}},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "type": "error",
+        "id": 2,
+        "error": {
+            "code": "MULTITASK_REJECTED",
+            "message": "Conversation already has an active run",
+        },
+    }
 
 
 @pytest.mark.asyncio
@@ -228,6 +295,79 @@ async def test_protocol_stream_replays_stored_canonical_events_with_filters(
     assert '"method":"messages"' in response.text
     assert "hello" in response.text
     assert "tool-started" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_protocol_stream_attaches_live_broker_with_filters(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    conversation = await _seed_conversation(db)
+    run_id = uuid.uuid4()
+    db.add(
+        ConversationRun(
+            id=run_id,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            status="running",
+            is_active=True,
+        )
+    )
+    await db.commit()
+    broker = broker_registry.get_or_create(str(run_id), conversation_id=str(conversation.id))
+    broker.publish_nowait(
+        {
+            "id": "upstream-live-1",
+            "event": "message",
+            "data": {
+                "type": "event",
+                "method": "messages",
+                "params": {"namespace": [], "data": {"chunk": "hello"}},
+                "seq": 1,
+                "event_id": "upstream-live-1",
+            },
+        }
+    )
+    broker.publish_nowait(
+        {
+            "id": "upstream-live-2",
+            "event": "message",
+            "data": {
+                "type": "event",
+                "method": "tools",
+                "params": {"namespace": [], "data": {"event": "tool-started"}},
+                "seq": 2,
+                "event_id": "upstream-live-2",
+            },
+        }
+    )
+
+    async def close_broker() -> None:
+        await asyncio.sleep(0.01)
+        broker.close()
+
+    closer = asyncio.create_task(close_broker())
+    try:
+        async with client.stream(
+            "POST",
+            f"/api/conversations/{conversation.id}/langgraph/threads/"
+            f"{conversation.id}/stream/events",
+            json={"channels": ["messages"]},
+        ) as response:
+            assert response.status_code == 200
+            assert response.headers["x-stream-protocol"] == "langgraph_v3"
+            assert response.headers["x-resume-mode"] == "live"
+            assert response.headers["x-run-id"] == str(run_id)
+            body = (await response.aread()).decode()
+    finally:
+        await closer
+
+    assert "event: message" in body
+    assert '"method":"messages"' in body
+    assert "hello" in body
+    assert "tool-started" not in body
 
 
 @pytest.mark.asyncio

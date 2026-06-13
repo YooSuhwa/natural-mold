@@ -22,7 +22,10 @@ class ThreadCheckpoint(BaseModel):
 class AgentCommandParams(BaseModel):
     model_config = ConfigDict(extra="allow", frozen=True)
 
+    assistant_id: str | None = None
     input: dict[str, Any] | None = None
+    config: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
     checkpoint: ThreadCheckpoint | None = None
     multitask_strategy: str | None = None
 
@@ -30,7 +33,7 @@ class AgentCommandParams(BaseModel):
 class AgentCommandRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    id: str | None = None
+    id: int | str | None = None
     method: str
     params: AgentCommandParams = Field(default_factory=AgentCommandParams)
 
@@ -127,18 +130,23 @@ def command_success(
     *,
     conversation: Conversation,
     thread_id: str,
+    run_id: str | None = None,
 ) -> JSONResponse:
     strategy = command.params.multitask_strategy or "reject"
+    result = {
+        "status": "accepted",
+        "conversation_id": str(conversation.id),
+        "thread_id": thread_id,
+        "multitask_strategy": strategy,
+    }
+    if run_id is not None:
+        result["run_id"] = run_id
     return JSONResponse(
         {
             "type": "success",
             "id": command.id,
-            "result": {
-                "status": "accepted_pending_runner",
-                "conversation_id": str(conversation.id),
-                "thread_id": thread_id,
-                "multitask_strategy": strategy,
-            },
+            "result": result,
+            "meta": {"thread_id": thread_id},
         },
-        headers=protocol_headers(),
+        headers=protocol_headers(run_id=run_id),
     )
