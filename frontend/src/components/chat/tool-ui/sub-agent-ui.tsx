@@ -2,8 +2,12 @@
 
 import { makeAssistantToolUI, useMessage } from '@assistant-ui/react'
 import { useTranslations } from 'next-intl'
+import { useMemo } from 'react'
 import { SubagentCard } from '@/components/chat/subagent-card'
 import { pillStatusFromAssistantUi } from './collapsible-pill'
+
+const TASK_TOOL_CALL_ID_SEPARATOR = '\n'
+const EMPTY_TASK_TOOL_CALL_IDS: readonly string[] = []
 
 interface SubagentArgs {
   agent_name?: string
@@ -39,14 +43,19 @@ function isToolCallPartLike(part: { readonly type: string }): part is ToolCallPa
   )
 }
 
-function currentTurnTaskToolCallIds(
+function currentTurnTaskToolCallIdKey(
   content: readonly { readonly type: string }[],
-): readonly string[] {
+): string {
   const ids: string[] = []
   for (const part of content) {
     if (isToolCallPartLike(part) && part.toolName === 'task') ids.push(part.toolCallId)
   }
-  return ids
+  return ids.join(TASK_TOOL_CALL_ID_SEPARATOR)
+}
+
+function taskToolCallIdsFromKey(key: string): readonly string[] {
+  if (!key) return EMPTY_TASK_TOOL_CALL_IDS
+  return key.split(TASK_TOOL_CALL_ID_SEPARATOR)
 }
 
 interface SubAgentToolCardProps {
@@ -57,7 +66,11 @@ interface SubAgentToolCardProps {
 
 export function SubAgentToolCard({ toolCallId, args, statusType }: SubAgentToolCardProps) {
   const t = useTranslations('chat.toolUi.subAgent')
-  const turnToolCallIds = useMessage((message) => currentTurnTaskToolCallIds(message.content))
+  const turnToolCallIdKey = useMessage((message) => currentTurnTaskToolCallIdKey(message.content))
+  const turnToolCallIds = useMemo(
+    () => taskToolCallIdsFromKey(turnToolCallIdKey),
+    [turnToolCallIdKey],
+  )
   const agentName = resolveAgentName(args, t('fallbackName'))
   const input = resolveInput(args)
 

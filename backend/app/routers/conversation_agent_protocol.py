@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runtime.event_broker import registry as broker_registry
 from app.dependencies import CurrentUser, get_current_user, get_db, verify_csrf
+from app.routers.conversation_agent_protocol_attach import wait_for_live_broker_or_terminal
 from app.routers.conversation_agent_protocol_commands import handle_thread_command
 from app.routers.conversation_agent_protocol_contracts import (
     AgentCommandRequest,
@@ -31,6 +32,10 @@ from app.routers.conversation_agent_protocol_runtime import (
     protocol_broker_generator,
 )
 from app.routers.conversation_agent_protocol_stale import maybe_mark_stale_active_run
+from app.routers.conversation_agent_protocol_thread_stream import (
+    needs_thread_stream,
+    protocol_thread_stream_generator,
+)
 from app.services import conversation_run_service
 from app.services.conversation_run_worker import start_conversation_run
 from app.services.conversation_stream_service import sse_response
@@ -149,18 +154,48 @@ async def subscribe_thread_events(
         user_id=user.id,
     )
     after_id = last_event_id or last_event_id_header
+    params = request.as_params()
+    if needs_thread_stream(params):
+        return sse_response(
+            protocol_thread_stream_generator(
+                conversation_id=conversation.id,
+                thread_id=str(conversation.id),
+                params=params,
+                after_id=after_id,
+                is_disconnected=http_request.is_disconnected,
+            ),
+            extra_headers=protocol_headers(mode="thread"),
+        )
+
     current_run = await conversation_run_service.current_run_for_conversation(
         db,
         conversation_id=conversation.id,
     )
     if current_run is not None and current_run.is_active:
         broker = broker_registry.get(str(current_run.id))
+        if broker is None or broker.is_closed:
+            current_run = await wait_for_live_broker_or_terminal(db, current_run.id)
+            broker = (
+                broker_registry.get(str(current_run.id))
+                if current_run is not None and current_run.is_active
+                else None
+            )
+        if current_run is None or not current_run.is_active:
+            events = await load_protocol_events(db, conversation.id)
+            return sse_response(
+                protocol_replay_generator(
+                    events,
+                    params,
+                    after_id=after_id,
+                ),
+                extra_headers=protocol_headers(mode="replay"),
+            )
         if broker is not None and not broker.is_closed:
             return sse_response(
                 protocol_broker_generator(
                     broker,
                     thread_id=str(conversation.id),
-                    params=request.as_params(),
+                    params=params,
                     after_id=after_id,
                 ),
                 extra_headers=protocol_headers(mode="live", run_id=str(current_run.id)),
@@ -176,7 +211,7 @@ async def subscribe_thread_events(
             return sse_response(
                 protocol_replay_generator(
                     stale.events,
-                    request.as_params(),
+                    params,
                     after_id=after_id,
                     final_events=[stale.stale_event],
                 ),
@@ -196,7 +231,7 @@ async def subscribe_thread_events(
     return sse_response(
         protocol_replay_generator(
             events,
-            request.as_params(),
+            params,
             after_id=after_id,
         ),
         extra_headers=protocol_headers(mode="replay"),

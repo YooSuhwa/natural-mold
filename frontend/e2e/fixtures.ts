@@ -1,4 +1,4 @@
-import { test as base, expect } from '@playwright/test'
+import { test as base, expect, type APIRequestContext, type APIResponse } from '@playwright/test'
 
 type ErrorCollector = {
   console: string[]
@@ -14,6 +14,82 @@ const E2E_USER = {
   is_active: true,
   created_at: '2026-01-01T00:00:00.000Z',
   last_login_at: null,
+}
+
+export const BACKEND_PORT = process.env.E2E_BACKEND_PORT ?? '8001'
+export const API_BASE = process.env.E2E_API_BASE_URL ?? `http://localhost:${BACKEND_PORT}`
+export const E2E_EMAIL =
+  process.env.E2E_USER_EMAIL ?? process.env.E2E_EMAIL ?? 'playwright-e2e@moldy.dev'
+export const E2E_PASSWORD =
+  process.env.E2E_USER_PASSWORD ?? process.env.E2E_PASSWORD ?? 'correct horse battery staple 42'
+
+export type CsrfHeaders = Record<string, string>
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+export async function failWithBody(label: string, response: APIResponse): Promise<never> {
+  const body = await response.text().catch(() => '')
+  throw new Error(`${label} failed (${response.status()}): ${body.slice(0, 800)}`)
+}
+
+export async function apiJson(response: APIResponse, label: string): Promise<unknown> {
+  if (!response.ok()) {
+    await failWithBody(label, response)
+  }
+  const body: unknown = await response.json()
+  return body
+}
+
+export async function apiGetJson(request: APIRequestContext, url: string): Promise<unknown> {
+  return apiJson(await request.get(url), `GET ${url}`)
+}
+
+export async function apiPostJson(
+  request: APIRequestContext,
+  url: string,
+  csrfHeaders: CsrfHeaders,
+  data?: Record<string, unknown>,
+): Promise<unknown> {
+  return apiJson(await request.post(url, { headers: csrfHeaders, data }), `POST ${url}`)
+}
+
+export async function apiDeleteOk(
+  request: APIRequestContext,
+  url: string,
+  csrfHeaders: CsrfHeaders,
+): Promise<void> {
+  const response = await request.delete(url, { headers: csrfHeaders })
+  if (!response.ok() && response.status() !== 404) {
+    await failWithBody(`DELETE ${url}`, response)
+  }
+}
+
+export async function loginApi(request: APIRequestContext): Promise<CsrfHeaders> {
+  const body = await apiJson(
+    await request.post(`${API_BASE}/api/auth/login`, {
+      data: { email: E2E_EMAIL, password: E2E_PASSWORD },
+    }),
+    'E2E API login',
+  )
+  if (!isRecord(body) || typeof body.csrf_token !== 'string') {
+    throw new Error('E2E API login did not return a CSRF token')
+  }
+  return { 'X-CSRF-Token': body.csrf_token }
+}
+
+function isKnownBenignConsoleError(text: string): boolean {
+  return (
+    text.includes('favicon') ||
+    text.includes('Download the React DevTools') ||
+    text.includes('React DevTools') ||
+    text.includes('Failed to load resource: the server responded with a status of 404')
+  )
+}
+
+function isExpectedNonOkResponse(url: string, status: number): boolean {
+  return url.includes('favicon') || (status === 404 && /\/threads\/[^/]+\/history$/.test(url))
 }
 
 export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
@@ -32,23 +108,27 @@ export const test = base.extend<{ authMock: void; errors: ErrorCollector }>({
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
         const text = msg.text()
-        // Ignore known benign errors
-        if (
-          !text.includes('favicon') &&
-          !text.includes('Download the React DevTools') &&
-          !text.includes('React DevTools')
-        ) {
+        if (!isKnownBenignConsoleError(text)) {
           errors.console.push(text)
         }
       }
     })
     page.on('pageerror', (err) => errors.page.push(err.message))
+    page.on('response', (response) => {
+      const status = response.status()
+      const url = response.url()
+      if (status >= 400 && !isExpectedNonOkResponse(url, status)) {
+        errors.network.push(`${response.request().method()} ${url} ${status}`)
+      }
+    })
     page.on('requestfailed', (req) => {
       const url = req.url()
       const errorText = req.failure()?.errorText ?? 'unknown'
       const expectedStreamDetach =
         errorText.includes('net::ERR_ABORTED') &&
-        /\/api\/conversations\/[^/]+\/(messages|messages\/resume|runs\/[^/]+\/stream)$/.test(url)
+        /\/api\/conversations\/[^/]+\/(messages|messages\/resume|runs\/[^/]+\/stream|langgraph\/threads\/[^/]+\/stream\/events)$/.test(
+          url,
+        )
       const expectedRouteTransitionAbort =
         errorText.includes('net::ERR_ABORTED') &&
         req.method() === 'GET' &&

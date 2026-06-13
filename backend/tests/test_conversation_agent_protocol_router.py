@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from contextlib import suppress
 from typing import Any
 from unittest.mock import patch
 
@@ -414,6 +415,185 @@ async def test_protocol_stream_attaches_live_broker_with_filters(
     assert '"method":"messages"' in body
     assert "hello" in body
     assert "tool-started" not in body
+
+
+def _protocol_broker_event(
+    *,
+    run_id: str,
+    method: str,
+    seq: int,
+    data: dict[str, Any],
+) -> dict[str, Any]:
+    event_id = f"{run_id}-{seq}"
+    return {
+        "id": event_id,
+        "event": "message",
+        "data": {
+            "type": "event",
+            "method": method,
+            "params": {"namespace": [], "data": data},
+            "seq": seq,
+            "event_id": event_id,
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_protocol_lifecycle_stream_survives_broker_rotation(
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import conversation_agent_protocol_thread_stream as thread_stream
+
+    conversation = await _seed_conversation(db)
+    first_run_id = uuid.uuid4().hex
+    second_run_id = uuid.uuid4().hex
+    first_broker = broker_registry.get_or_create(
+        first_run_id,
+        conversation_id=str(conversation.id),
+    )
+    first_broker.publish_nowait(
+        _protocol_broker_event(
+            run_id=first_run_id,
+            method="lifecycle",
+            seq=1,
+            data={"event": "interrupted", "marker": "first-run"},
+        )
+    )
+
+    async def is_disconnected() -> bool:
+        return False
+
+    async def no_replay_events(_conversation_id: uuid.UUID) -> list[dict[str, Any]]:
+        return []
+
+    monkeypatch.setattr(thread_stream, "_load_replay_events", no_replay_events)
+
+    stream = thread_stream.protocol_thread_stream_generator(
+        conversation_id=conversation.id,
+        thread_id=str(conversation.id),
+        params={"channels": ["lifecycle", "messages"]},
+        after_id=None,
+        is_disconnected=is_disconnected,
+    )
+    try:
+        assert "first-run" in await asyncio.wait_for(anext(stream), timeout=1.0)
+        first_broker.close()
+
+        second_broker = broker_registry.get_or_create(
+            second_run_id,
+            conversation_id=str(conversation.id),
+        )
+        second_broker.publish_nowait(
+            _protocol_broker_event(
+                run_id=second_run_id,
+                method="lifecycle",
+                seq=1,
+                data={"event": "completed", "marker": "second-run"},
+            )
+        )
+
+        assert "second-run" in await asyncio.wait_for(anext(stream), timeout=1.0)
+        second_broker.close()
+    finally:
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
+async def test_protocol_lifecycle_stream_throttles_idle_replay_polling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import conversation_agent_protocol_thread_stream as thread_stream
+
+    load_count = 0
+
+    async def fake_load_replay_events(_conversation_id: uuid.UUID) -> list[dict[str, Any]]:
+        nonlocal load_count
+        load_count += 1
+        return []
+
+    async def is_disconnected() -> bool:
+        return False
+
+    monkeypatch.setattr(thread_stream, "_load_replay_events", fake_load_replay_events)
+
+    stream = thread_stream.protocol_thread_stream_generator(
+        conversation_id=uuid.uuid4(),
+        thread_id=str(uuid.uuid4()),
+        params={"channels": ["lifecycle"]},
+        after_id=None,
+        is_disconnected=is_disconnected,
+    )
+    task = asyncio.create_task(anext(stream))
+    try:
+        await asyncio.sleep(0.16)
+        assert load_count == 1
+    finally:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+        await stream.aclose()
+
+
+@pytest.mark.asyncio
+async def test_protocol_stream_replays_when_active_run_finishes_before_broker_attach(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    conversation = await _seed_conversation(db)
+    run_id = uuid.uuid4()
+    run = ConversationRun(
+        id=run_id,
+        conversation_id=conversation.id,
+        agent_id=conversation.agent_id,
+        user_id=TEST_USER_ID,
+        source="resume",
+        status="running",
+        is_active=True,
+    )
+    db.add(run)
+    db.add(
+        MessageEvent(
+            conversation_id=conversation.id,
+            assistant_msg_id=str(run_id),
+            events=[
+                stored_protocol_event(
+                    run_id=str(run_id),
+                    thread_id=str(conversation.id),
+                    seq=1,
+                    method="messages",
+                    namespace=[],
+                    data={"chunk": "done"},
+                    event_id="resume-done-1",
+                )
+            ],
+            last_event_id="resume-done-1",
+            status="completed",
+        )
+    )
+    await db.commit()
+
+    async def finish_run() -> None:
+        await asyncio.sleep(0.05)
+        run.status = "completed"
+        run.is_active = False
+        await db.commit()
+
+    finisher = asyncio.create_task(finish_run())
+    try:
+        response = await client.post(
+            f"/api/conversations/{conversation.id}/langgraph/threads/"
+            f"{conversation.id}/stream/events",
+            json={"channels": ["messages"]},
+        )
+    finally:
+        await finisher
+
+    assert response.status_code == 200
+    assert response.headers["x-stream-protocol"] == "langgraph_v3"
+    assert response.headers["x-resume-mode"] == "replay"
+    assert "resume-done-1" in response.text
+    assert "done" in response.text
 
 
 @pytest.mark.asyncio

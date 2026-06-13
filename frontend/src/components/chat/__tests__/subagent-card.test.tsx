@@ -149,4 +149,20 @@ describe('SubagentCard', () => {
     expect(mocks.useMessages).not.toHaveBeenCalled()
     expect(mocks.useToolCalls).not.toHaveBeenCalled()
   })
+
+  it('keeps rail action buttons outside clickable subagent pill buttons', () => {
+    mocks.useSubagentSnapshot.mockReturnValue(null)
+    mocks.useSubagentStream.mockReturnValue(null)
+    mocks.useSubagentInlinePolicy.mockReturnValue({
+      defaultExpanded: false,
+      canRenderInlineDetails: false,
+      overflowedLiveDetails: false,
+    })
+
+    renderCard()
+
+    for (const button of screen.getAllByRole('button')) {
+      expect(button.querySelector('button')).toBeNull()
+    }
+  })
 })

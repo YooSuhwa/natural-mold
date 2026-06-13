@@ -1,0 +1,133 @@
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import {
+  API_BASE,
+  apiDeleteOk,
+  apiPostJson,
+  expect,
+  isRecord,
+  test,
+} from './fixtures'
+import {
+  FINAL_TEXT,
+  NOTES_FILE,
+  REPORT_FILE,
+  approveExecuteInSkill,
+  commandMethod,
+  records,
+  sendMessage,
+  setupLangGraphV3Agent,
+  stringField,
+  waitForActiveRun,
+  waitForArtifact,
+  waitForRunStatus,
+} from './langgraph-v3-helpers'
+
+const FRONTEND =
+  process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`
+const CAPTURE_DIR = path.join('..', 'output', 'e2e-captures', '20260613-langgraph-v3-streaming')
+
+test.describe('LangGraph v3 chat runtime', () => {
+  test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
+  test.skip(
+    process.env.NEXT_PUBLIC_CHAT_RUNTIME !== 'langgraph_v3',
+    'Requires NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3',
+  )
+
+  test('streams DeepAgents state, subagents, artifacts, usage, replay, and share chips', async ({
+    page,
+    request,
+    browser,
+    errors,
+  }) => {
+    test.setTimeout(180_000)
+    await fs.mkdir(CAPTURE_DIR, { recursive: true })
+    const setup = await setupLangGraphV3Agent(request)
+    const runStartCommands: string[] = []
+    page.on('request', (req) => {
+      if (commandMethod(req) === 'run.start') runStartCommands.push(req.url())
+    })
+
+    try {
+      await page.goto(`/agents/${setup.parentAgentId}/conversations/${setup.conversationId}`)
+      await sendMessage(page, `E2E_LANGGRAPH_V3 subagent=${setup.childRuntimeName}`)
+      const originalRunId = await waitForActiveRun(request, setup.conversationId)
+      await waitForRunStatus(request, setup.conversationId, originalRunId, 'interrupted')
+      await expect(page.getByText('Collect LangGraph v3 runtime evidence')).toBeVisible({
+        timeout: 30_000,
+      })
+      await expect(page.getByText(/승인이 필요합니다|Approval Required/).last()).toBeVisible()
+      await page.screenshot({ path: path.join(CAPTURE_DIR, '01-live-state.png'), fullPage: true })
+
+      await page.reload()
+      await expect(page.getByText('Render delegated subagent progress')).toBeVisible({
+        timeout: 30_000,
+      })
+      expect(runStartCommands).toHaveLength(1)
+
+      await approveExecuteInSkill(page)
+      await expect(page.getByText(FINAL_TEXT)).toBeVisible({ timeout: 60_000 })
+      await waitForArtifact(request, setup.conversationId, REPORT_FILE)
+      await waitForArtifact(request, setup.conversationId, NOTES_FILE)
+      await expect(page.getByText(setup.childRuntimeName).first()).toBeVisible()
+      await expect(page.getByText('E2E subagent scoped result ready.').first()).toBeVisible()
+
+      await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
+      await expect(page.getByRole('button', { name: new RegExp(REPORT_FILE) })).toBeVisible()
+      await expect(page.getByRole('button', { name: new RegExp(NOTES_FILE) })).toBeVisible()
+      await page.getByRole('button', { name: new RegExp(REPORT_FILE) }).click()
+      await expect(
+        page.getByRole('complementary').getByText('LangGraph v3 E2E Report'),
+      ).toBeVisible({ timeout: 20_000 })
+      await page.screenshot({ path: path.join(CAPTURE_DIR, '02-artifact-rail.png'), fullPage: true })
+
+      const tokenButton = page.getByRole('button', { name: /토큰 사용량 보기|Toggle Aria/ }).last()
+      await expect(tokenButton).toBeVisible({ timeout: 20_000 })
+      await expect(tokenButton).toContainText('165')
+      await tokenButton.hover()
+      const tokenTooltip = page.getByRole('tooltip').filter({ hasText: /토큰 사용량|Token Usage/ })
+      await expect(tokenTooltip).toBeVisible()
+      await expect(tokenTooltip).toContainText('120')
+      await expect(tokenTooltip).toContainText('45')
+
+      await page.reload()
+      await expect(page.getByText(FINAL_TEXT)).toBeVisible({ timeout: 30_000 })
+      const reloadedReportButton = page.getByRole('button', { name: new RegExp(REPORT_FILE) })
+      if (!(await reloadedReportButton.isVisible())) {
+        await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
+      }
+      await expect(reloadedReportButton).toBeVisible({ timeout: 20_000 })
+      expect(runStartCommands).toHaveLength(1)
+
+      const history = await apiPostJson(
+        request,
+        `${API_BASE}/api/conversations/${setup.conversationId}/langgraph/threads/${setup.conversationId}/history`,
+        setup.csrfHeaders,
+        { limit: 1 },
+      )
+      expect(records(history, 'thread history').length).toBe(1)
+
+      const share = await apiPostJson(
+        request,
+        `${API_BASE}/api/conversations/${setup.conversationId}/share`,
+        setup.csrfHeaders,
+      )
+      if (!isRecord(share)) throw new Error('share create did not return an object')
+      const anonymous = await browser.newContext({ storageState: { cookies: [], origins: [] } })
+      try {
+        const publicPage = await anonymous.newPage()
+        await publicPage.goto(`${FRONTEND}/shared/${stringField(share, 'share_token', 'share')}`)
+        await expect(publicPage.getByText(FINAL_TEXT)).toBeVisible({ timeout: 20_000 })
+        await expect(publicPage.getByText(setup.childRuntimeName).first()).toBeVisible()
+      } finally {
+        await anonymous.close()
+      }
+
+      expect(errors.console).toEqual([])
+      expect(errors.network).toEqual([])
+    } finally {
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.parentAgentId}`, setup.csrfHeaders)
+      await apiDeleteOk(request, `${API_BASE}/api/agents/${setup.childAgentId}`, setup.csrfHeaders)
+    }
+  })
+})

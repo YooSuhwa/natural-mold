@@ -310,4 +310,4 @@ def test_synthesizes_tool_lifecycle_from_values_messages_without_duplicates() ->
         "name": "search",
         "args": {"q": "deep agents"},
     }
-    assert seen == {"call-1", "call-2"}
+    assert seen == {"start:call-1", "call-2"}

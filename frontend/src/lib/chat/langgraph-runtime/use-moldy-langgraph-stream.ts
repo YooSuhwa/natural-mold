@@ -9,7 +9,6 @@ import {
 } from '@assistant-ui/react'
 import { useChannel, useStream, type Channel } from '@langchain/react'
 import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
-import { convertLangChainBaseMessage } from '@assistant-ui/react-langchain'
 import { reduceProtocolActivity } from './activity-protocol'
 import { useLangGraphArtifactEffects } from './artifact-events'
 import { selectDeepAgentsState } from './deepagents-state'
@@ -24,6 +23,7 @@ import { useLangGraphMemoryEffects } from './memory-events'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import { useCheckpointForkHandlers } from './use-checkpoint-fork-handlers'
 import { useLangGraphUsageEffects } from './usage-events'
+import { convertMoldyLangChainMessage } from './langchain-message-conversion'
 import type { RunActivity } from './activity-model'
 import { createHiTLDecisionCoordinator, type HiTLDecisionCoordinator } from '../standard-interrupt'
 import type { Decision } from '@/lib/types'
@@ -42,6 +42,21 @@ interface UseMoldyLangGraphStreamOptions {
   attachmentAdapter?: AttachmentAdapter
 }
 
+interface LifecycleSubscription {
+  unsubscribe(): Promise<void>
+}
+
+interface ThreadLifecycleSubscriber {
+  subscribe(
+    channel: 'lifecycle',
+    options: { namespaces: string[][]; depth: number },
+  ): Promise<LifecycleSubscription>
+}
+
+interface ThreadLifecycleStream {
+  getThread(): ThreadLifecycleSubscriber | undefined
+}
+
 const ACTIVITY_CHANNELS = [
   'messages',
   'tools',
@@ -53,11 +68,73 @@ const ACTIVITY_CHANNELS = [
   'custom',
 ] as const satisfies readonly Channel[]
 
-function convertMoldyLangChainMessage(
-  message: BaseMessage,
-  metadata: Parameters<typeof convertLangChainBaseMessage>[1],
-) {
-  return convertLangChainBaseMessage(message, metadata)
+function stableString(value: unknown): string {
+  if (value === undefined) return ''
+  try {
+    const seen = new WeakSet<object>()
+    return JSON.stringify(value, (key, nestedValue: unknown) => {
+      if (key === 'createdAt') return undefined
+      if (typeof nestedValue === 'object' && nestedValue !== null) {
+        if (seen.has(nestedValue)) return undefined
+        seen.add(nestedValue)
+      }
+      return nestedValue
+    })
+  } catch {
+    return String(value)
+  }
+}
+
+function langChainMessageFingerprint(message: BaseMessage): string {
+  const source = message as BaseMessage & {
+    readonly additional_kwargs?: unknown
+    readonly invalid_tool_calls?: unknown
+    readonly response_metadata?: unknown
+    readonly tool_call_id?: unknown
+    readonly tool_calls?: unknown
+    readonly usage_metadata?: unknown
+  }
+  return stableString({
+    id: source.id,
+    type: typeof source._getType === 'function' ? source._getType() : undefined,
+    name: source.name,
+    content: source.content,
+    additional_kwargs: source.additional_kwargs,
+    response_metadata: source.response_metadata,
+    tool_calls: source.tool_calls,
+    invalid_tool_calls: source.invalid_tool_calls,
+    tool_call_id: source.tool_call_id,
+    usage_metadata: source.usage_metadata,
+  })
+}
+
+async function refreshThreadLifecycleStream(stream: ThreadLifecycleStream): Promise<void> {
+  const thread = stream.getThread()
+  if (!thread) return
+  const subscription = await thread.subscribe('lifecycle', {
+    namespaces: [[]],
+    depth: 0,
+  })
+  await subscription.unsubscribe()
+}
+
+function useStableConvertedMessages<T extends object>(
+  messages: readonly T[],
+  sourceMessages: readonly BaseMessage[],
+  isRunning: boolean,
+): readonly T[] {
+  const fingerprint = useMemo(
+    () =>
+      stableString({
+        status: isRunning ? 'running' : 'idle',
+        length: messages.length,
+        source: sourceMessages.map(langChainMessageFingerprint),
+      }),
+    [isRunning, messages.length, sourceMessages],
+  )
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  return useMemo(() => messages, [fingerprint])
 }
 
 export function useMoldyLangGraphStream({
@@ -122,14 +199,16 @@ export function useMoldyLangGraphStream({
   const messagesWithUsage = useLangGraphUsageEffects({
     stream,
     messages: messagesWithArtifacts,
+    stateMessages: stream.values?.messages ?? [],
   })
   useLangGraphMemoryEffects({ stream })
   const isRunning = stream.isLoading && interruptPayloads.length === 0
-  const messages = useExternalMessageConverter({
+  const convertedMessages = useExternalMessageConverter({
     callback: convertMoldyLangChainMessage,
     messages: messagesWithUsage,
     isRunning,
   })
+  const messages = useStableConvertedMessages(convertedMessages, messagesWithUsage, isRunning)
   const { onNew, onEdit, onReload } = useCheckpointForkHandlers({
     stream,
     visibleMessages: messages,
@@ -194,10 +273,12 @@ export function useMoldyLangGraphStream({
       const response = { decisions }
       if (targetId) {
         await stream.respond(response, { interruptId: targetId })
+        await refreshThreadLifecycleStream(stream)
         rememberResolvedInterrupt(targetId, decisions)
         return
       }
       await stream.respond(response)
+      await refreshThreadLifecycleStream(stream)
       rememberResolvedInterrupt(null, decisions)
     },
     [firstInterruptId, rememberResolvedInterrupt, stream],

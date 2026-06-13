@@ -19,6 +19,7 @@ interface MockStream {
   respond: ReturnType<typeof vi.fn>
   respondAll: ReturnType<typeof vi.fn>
   stop: ReturnType<typeof vi.fn>
+  getThread: ReturnType<typeof vi.fn>
 }
 
 const mocks = vi.hoisted(() => {
@@ -36,14 +37,20 @@ const mocks = vi.hoisted(() => {
     respond: vi.fn(),
     respondAll: vi.fn(),
     stop: vi.fn(),
+    getThread: vi.fn(),
     [STREAM_CONTROLLER]: { messageMetadataStore: metadataStore },
   } as MockStream & {
     [STREAM_CONTROLLER]: { messageMetadataStore: typeof metadataStore }
   }
+  const lifecycleSubscription = { unsubscribe: vi.fn() }
+  const thread = { subscribe: vi.fn(async () => lifecycleSubscription) }
+  stream.getThread.mockReturnValue(thread)
   return {
     STREAM_CONTROLLER,
+    lifecycleSubscription,
     metadataStore,
     stream,
+    thread,
     createMoldyAgentTransport: vi.fn((conversationId: string) => ({
       kind: 'transport',
       conversationId,
@@ -108,6 +115,11 @@ describe('useMoldyLangGraphStream', () => {
     mocks.stream.respond.mockClear()
     mocks.stream.respondAll.mockClear()
     mocks.stream.stop.mockClear()
+    mocks.stream.getThread.mockClear()
+    mocks.stream.getThread.mockReturnValue(mocks.thread)
+    mocks.thread.subscribe.mockClear()
+    mocks.thread.subscribe.mockResolvedValue(mocks.lifecycleSubscription)
+    mocks.lifecycleSubscription.unsubscribe.mockClear()
     mocks.metadataStore.getSnapshot.mockReturnValue(new Map())
     mocks.useChannelEffect.mockClear()
     mocks.useExternalMessageConverter.mockClear()
@@ -245,6 +257,11 @@ describe('useMoldyLangGraphStream', () => {
       { decisions: [{ type: 'approve' }] },
       { interruptId: 'intr-1' },
     )
+    expect(mocks.thread.subscribe).toHaveBeenCalledWith('lifecycle', {
+      namespaces: [[]],
+      depth: 0,
+    })
+    expect(mocks.lifecycleSubscription.unsubscribe).toHaveBeenCalled()
   })
 
   it('keeps resolved HITL approval results visible after resume', async () => {

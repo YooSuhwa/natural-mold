@@ -109,6 +109,25 @@ Key impact on this plan:
 - Final frontend adapter decision: use direct `@langchain/react` as the stream owner, build a local single-stream Moldy wrapper for assistant-ui, reuse `react-langchain` for lightweight conversion/submission patterns, and reuse `react-langgraph` as a reference or utility source for message accumulation, metadata, UI messages, and checkpoint behavior. Do not fork either assistant-ui package at the start.
 - `@assistant-ui/react` helper exports must be verified against the installed version before use. In particular, do not assume `makeAssistantDataUI` is exported; if it is absent, implement reasoning rendering through the installed message part/data renderer extension point and record the fallback in this plan.
 
+### Implementation slice result: 2026-06-13
+
+This slice makes the `langgraph_v3` runtime path executable and covered by a deterministic browser E2E:
+
+- Backend now exposes conversation-scoped Agent Streaming Protocol command, state, history, and stream routes. `run.start` creates a durable Moldy `ConversationRun`; `input.respond` starts a resume run with LangGraph `Command(resume=...)`.
+- `langgraph_streaming.py` emits canonical protocol events from direct LangGraph v3, including lifecycle, input interrupts, tools, tasks, values, custom events, usage, and terminal status. Python tuple payloads and missing tool side effects are normalized through focused helper modules.
+- `/stream/events` has two attach modes: run-scoped live/replay for content channels, and thread-scoped lifecycle/input subscriptions for SDK lifecycle watchers. The thread stream replays stored events, follows the latest live broker across run rotations, survives approval/resume broker replacement, and throttles idle DB replay polling so long-lived subscriptions do not pressure the pool.
+- Frontend `useMoldyLangGraphStream` owns one `@langchain/react` stream, bridges converted LangChain messages into assistant-ui, keeps the raw stream available for DeepAgents selectors, propagates usage metadata, and refreshes the SDK lifecycle subscription immediately after `stream.respond`.
+- Existing Moldy HITL approval cards now render from LangGraph interrupt state, resume through `input.respond`, and keep resolved approval/rejection tool results visible.
+- A deterministic E2E fixture creates parent/child scripted agents, exercises live todos, approval, subagent output, generated artifacts, token usage, reload/replay, thread history, and public share rendering in `frontend/e2e/chat-langgraph-v3.spec.ts`.
+
+Verification from this slice:
+
+- `backend/tests/test_conversation_agent_protocol_router.py::test_protocol_lifecycle_stream_survives_broker_rotation`
+- `backend/tests/test_conversation_agent_protocol_router.py::test_protocol_lifecycle_stream_throttles_idle_replay_polling`
+- `frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
+- `pnpm exec tsc --noEmit --pretty false`
+- `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 pnpm exec playwright test e2e/chat-langgraph-v3.spec.ts --project=chromium --workers=1`
+
 ### BFF position: production boundary, not semantic translation layer
 
 Moldy should keep a backend boundary between the browser and the agent runtime. This is not an accidental preference caused by prior discussion of "BFF"; it follows from Moldy's product architecture:
@@ -1248,7 +1267,9 @@ Implementation status:
 - [x] The legacy projection helper exists in `legacy_event_projection.py`.
 - [x] `run.start` in the BFF command path now creates a durable `ConversationRun`, starts the existing background run worker with `execute_agent_stream_langgraph`, returns the protocol `run_id`, and lets the existing worker own heartbeat, terminal run status, run audit, trace finalization, and artifact finalization.
 - [x] `/stream/events` now attaches to the live `EventBroker` for an active protocol run and applies the same protocol channel/namespace filters used by replay.
-- [ ] Moldy-specific side effects that depend on interpreting protocol `custom`, `updates`, and final `values` payloads, plus stale active-run recovery and non-`run.start` commands, still need dedicated follow-up wiring.
+- [x] Tool lifecycle synthesis from Python `values.messages`, lifecycle event emission, and pending interrupt extraction are split into focused helpers so the protocol adapter does not own runtime side effects.
+- [x] Artifact `custom:file_event`, memory custom events, and UI usage projection are wired for the LangGraph runtime path.
+- [ ] Remaining Moldy-specific side effects beyond artifacts, memory invalidation, and UI usage still need explicit reducers; cancel and richer non-`run.start` command forwarding are still follow-up work.
 
 - [x] **Step 1: Implement `langgraph_streaming.py`**
 
@@ -1827,6 +1848,8 @@ Implementation status:
 - [x] `run.start` records the normal Moldy conversation message audit, updates conversation title/activity from the latest user message preview, and stores protocol metadata on the run.
 - [x] `/stream/events` attaches live to the active run's `EventBroker`, emits `event: message` protocol SSE frames, preserves upstream event ids, and applies channel/namespace/depth filters to live and replay paths.
 - [x] Stored canonical protocol events replay from `message_events` and support `Last-Event-ID` / `last_event_id` cursors.
+- [x] Lifecycle/input subscriptions use a thread-level stream that replays persisted events, follows the latest live broker across run rotations, and keeps the same SDK subscription alive through HITL resume.
+- [x] Idle thread-level replay polling is throttled so long-lived lifecycle subscriptions do not query the DB every 50ms while no broker is active.
 - [x] `GET state`, compatibility state, and `history` now read the active LangGraph checkpoint branch when the checkpointer is initialized and return SDK-coercible `values.messages` wire objects (`type: "human" | "ai" | "tool" | ...`). They retain the previous empty fallback shape when no checkpoint exists.
 - [x] `input.respond` is implemented for single-interrupt and batched interrupt decisions. The BFF maps it to a resume `ConversationRun` and calls LangGraph with `Command(resume=...)`.
 - [x] Pending `input.requested` interrupts hydrate from `GET state` as SDK-compatible `tasks[].interrupts`, and compatibility state exposes the same `interrupts` list for Moldy bridge code.
@@ -2018,7 +2041,7 @@ Implementation status:
 - [x] Transport tests verify command and state URLs, cookie credentials, CSRF behavior, and `run.start.params.assistant_id` injection against the installed SDK adapter.
 - [x] `activity-model.ts` reduces canonical protocol events into typed run activities for responding, thinking, tools, planning, subagents, background subagents, artifacts, memory, checkpoints, reconnecting, interrupts, and errors.
 - [x] Reducer tests cover tool lifecycle, namespaced subagents, lifecycle/task events, `async_tasks`, todos, custom artifact/memory events, and error propagation.
-- [ ] The transport does not yet implement draft conversation creation or `X-Run-Id` / `X-Conversation-Id` response capture; the current backend command response still exposes `run_id` in the protocol body.
+- [ ] The transport does not yet implement draft conversation creation or explicit `X-Run-Id` / `X-Conversation-Id` response capture; the current backend command response still exposes `run_id` in the protocol body and stream responses expose `X-Resume-Mode` for diagnostics.
 - [ ] The reducer is not yet wired into visible assistant-ui activity components.
 
 - [ ] **Step 1: Implement `HttpAgentServerAdapter` factory**
@@ -2188,7 +2211,9 @@ Implementation status:
 - [x] Hook and section tests verify one stream is created, assistant-ui runtime options are wired, new messages submit through the same stream, legacy mode still calls `useChatRuntime`, `langgraph_v3` mode calls `useMoldyLangGraphStream`, draft conversations fall back to legacy, and LangGraph loading transitions update navigator status/invalidate on settle.
 - [x] Live HITL resume is wired through the single `@langchain/react` stream: `stream.interrupts` is projected into Moldy's existing approval/input tool UI, and decisions resume via `stream.respond` / backend `input.respond`.
 - [x] Pending interrupt state hydration now feeds the same `stream.interrupts` projection path after refresh.
-- [ ] Activity side effects, subagent scoped selectors, edit/regenerate, and draft conversation start are still pending. Artifact and memory reducers are wired for the LangGraph runtime.
+- [x] The assistant-ui bridge refreshes the SDK lifecycle subscription after `stream.respond`, which keeps the shared thread stream attached to the resumed run instead of waiting on a stale terminal subscription.
+- [x] LangChain message conversion now preserves token usage metadata for assistant-ui's token usage button/tooltip.
+- [ ] Activity side effects, richer subagent scoped selector UI, edit/regenerate, and draft conversation start are still pending. Artifact, memory, usage, and HITL reducers are wired for the LangGraph runtime.
 
 - [ ] **Step 1: Implement the Moldy-owned `@langchain/react` stream path**
 
@@ -2620,7 +2645,9 @@ Implemented in this slice:
 - `backend/app/agent_runtime/protocol_events.py` canonicalizes raw interrupts into DB-safe `input.requested` protocol events, keeping `last_event_id` under the `message_events` length limit.
 - `backend/app/agent_runtime/langgraph_streaming.py` emits canonical `input.requested` events through the same live broker, trace sink, and persistence callback as raw v3 events. If the Python v3 stream does not surface the interrupt before the graph pauses, it reads pending interrupts from LangGraph state before `persist_callback` and broker close, then emits the same canonical event shape instead of a late, non-durable side path.
 - `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts` treats active interrupts as user-action-required rather than still-running, and keeps resolved approval/rejection tool results visible after `stream.respond`.
+- The same hook refreshes the SDK thread lifecycle subscription after `stream.respond`, using the public `getThread().subscribe('lifecycle', ...)` API so the shared `@langchain/react` stream follows the resumed run.
 - `frontend/src/components/chat/tool-ui/approval-card.tsx` parses persisted JSON tool results so resolved approval cards render the correct final badge.
+- `backend/app/routers/conversation_agent_protocol_thread_stream.py` keeps lifecycle/input subscriptions alive across broker rotation and throttles idle replay DB reads.
 
 Residual scope outside this slice:
 

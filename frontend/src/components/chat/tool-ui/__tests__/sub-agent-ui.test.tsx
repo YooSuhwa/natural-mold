@@ -92,6 +92,25 @@ describe('SubAgentToolCard', () => {
     expect(mocks.useToolCalls).not.toHaveBeenCalled()
   })
 
+  it('selects a stable task tool id key from the assistant-ui message snapshot', () => {
+    let selected: unknown
+    mocks.useMessage.mockImplementationOnce(
+      (selector: (message: { content: readonly unknown[] }) => unknown) => {
+        selected = selector({
+          content: [
+            { type: 'tool-call', toolName: 'task', toolCallId: 'tc-task-1' },
+            { type: 'tool-call', toolName: 'task', toolCallId: 'tc-task-2' },
+          ],
+        })
+        return selected
+      },
+    )
+
+    renderCard()
+
+    expect(selected).toBe('tc-task-1\ntc-task-2')
+  })
+
   it('subscribes to scoped messages and tools only after expansion', async () => {
     mocks.useMessages.mockReturnValue([new AIMessage('조사를 시작했어요')])
     mocks.useToolCalls.mockReturnValue([

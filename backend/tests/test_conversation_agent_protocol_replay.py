@@ -13,6 +13,7 @@ from app.models.conversation_run import ConversationRun, utc_now_naive
 from app.models.message_event import MessageEvent
 from app.models.model import Model
 from app.models.user import User
+from app.services import trace_storage
 from tests.conftest import TEST_USER_ID
 
 
@@ -86,6 +87,47 @@ async def test_protocol_replay_resumes_after_last_event_id_without_duplicates(
     assert response.headers["x-resume-mode"] == "replay"
     assert "next-token" in response.text
     assert "already-seen" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_protocol_replay_loads_append_only_chunks(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    conversation = await _seed_conversation(db)
+    run_id = uuid.uuid4().hex
+    usage_event = stored_protocol_event(
+        run_id=run_id,
+        thread_id=str(conversation.id),
+        seq=12,
+        method="custom:usage",
+        data={
+            "run_id": run_id,
+            "prompt_tokens": 120,
+            "completion_tokens": 45,
+            "cache_creation_tokens": 0,
+            "cache_read_tokens": 0,
+        },
+        event_id="usage-1",
+    )
+    await trace_storage.append_events(
+        db,
+        conversation_id=conversation.id,
+        assistant_msg_id=run_id,
+        events_chunk=[usage_event],
+        status="completed",
+    )
+    await db.commit()
+
+    response = await client.post(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/stream/events",
+        json={"channels": ["custom:usage"]},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["x-resume-mode"] == "replay"
+    assert '"method":"custom:usage"' in response.text
+    assert '"prompt_tokens":120' in response.text
 
 
 @pytest.mark.asyncio

@@ -376,6 +376,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
               <button
                 type="button"
                 onClick={() => handleDecision('approved')}
+                data-testid="approval-approve-button"
                 data-variant="solid"
                 className="moldy-action-pill moldy-status-success"
               >

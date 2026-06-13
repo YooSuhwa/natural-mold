@@ -28,11 +28,13 @@ function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
-function customName(event: ProtocolUsageEvent): string | undefined {
+function customName(event: Record<string, unknown>): string | undefined {
   const method = textValue(event.method)
   if (method?.startsWith('custom:')) return method.slice(7)
-  if (method !== 'custom' || !isRecord(event.params?.data)) return undefined
-  return textValue(event.params.data.name) ?? textValue(event.params.data.channel)
+  const params = isRecord(event.params) ? event.params : null
+  const data = isRecord(params?.data) ? params.data : null
+  if (method !== 'custom' || !data) return undefined
+  return textValue(data.name) ?? textValue(data.channel)
 }
 
 function normalizeCustomName(name: string | undefined): string | undefined {
@@ -45,20 +47,19 @@ function payloadCandidate(data: unknown): unknown {
   return data
 }
 
+function rawPayloadCandidate(event: Record<string, unknown>): unknown {
+  const params = isRecord(event.params) ? event.params : null
+  return params && 'data' in params ? payloadCandidate(params.data) : payloadCandidate(event)
+}
+
 function usageFromRecord(payload: Record<string, unknown>): TokenUsageBreakdown | null {
   const promptTokens = numberValue(payload.prompt_tokens ?? payload.input_tokens)
   const completionTokens = numberValue(payload.completion_tokens ?? payload.output_tokens)
   const inputDetails = isRecord(payload.input_token_details) ? payload.input_token_details : {}
-  const cacheCreationTokens = numberValue(
-    payload.cache_creation_tokens ?? inputDetails.cache_creation,
-  )
-  const cacheReadTokens = numberValue(payload.cache_read_tokens ?? inputDetails.cache_read)
-  if (
-    promptTokens === undefined ||
-    completionTokens === undefined ||
-    cacheCreationTokens === undefined ||
-    cacheReadTokens === undefined
-  ) {
+  const cacheCreationTokens =
+    numberValue(payload.cache_creation_tokens ?? inputDetails.cache_creation) ?? 0
+  const cacheReadTokens = numberValue(payload.cache_read_tokens ?? inputDetails.cache_read) ?? 0
+  if (promptTokens === undefined || completionTokens === undefined) {
     return null
   }
 
@@ -75,10 +76,16 @@ function usageFromRecord(payload: Record<string, unknown>): TokenUsageBreakdown 
   return usage
 }
 
-export function protocolUsagePayload(event: ProtocolUsageEvent): UsagePayload | null {
-  if (normalizeCustomName(customName(event)) !== 'usage') return null
+export function protocolUsagePayload(event: unknown): UsagePayload | null {
+  if (!isRecord(event)) return null
 
-  const payload = payloadCandidate(event.params?.data)
+  const method = textValue(event.method)
+  const eventName = normalizeCustomName(customName(event))
+  const isDedicatedPayload = method === undefined
+  if (!isDedicatedPayload && eventName !== 'usage') return null
+
+  const params = isRecord(event.params) ? event.params : null
+  const payload = isDedicatedPayload ? rawPayloadCandidate(event) : payloadCandidate(params?.data)
   if (!isRecord(payload)) return null
 
   const usage = usageFromRecord(payload)

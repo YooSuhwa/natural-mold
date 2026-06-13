@@ -9,15 +9,20 @@ from typing import Any, cast
 from langgraph.types import Command
 
 from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
+from app.agent_runtime.langgraph_lifecycle_events import (
+    lifecycle_protocol_event,
+    terminal_lifecycle_event,
+)
+from app.agent_runtime.langgraph_pending_inputs import pending_input_requested_events
 from app.agent_runtime.langgraph_protocol_adapter import (
     adapt_stream_mode_chunk,
     adapt_v3_protocol_event,
 )
+from app.agent_runtime.langgraph_tool_event_synthesis import synthesize_tool_events_from_values
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
     canonical_input_requested_events,
     format_protocol_sse,
-    protocol_interrupts_from_event,
     stored_protocol_event,
     to_protocol_wire_event,
 )
@@ -30,7 +35,6 @@ from app.agent_runtime.streaming import (
     ArtifactEventRecorder,
     PersistCallback,
     StreamErrorRecord,
-    _interrupt_to_standard_chunk,
 )
 
 logger = logging.getLogger(__name__)
@@ -110,71 +114,6 @@ def _error_event(
     )
 
 
-def _next_protocol_seq(events: list[dict[str, Any]]) -> int:
-    seq_values = [event.get("seq") for event in events if isinstance(event.get("seq"), int)]
-    return max(seq_values, default=0) + 1
-
-
-def _seen_interrupt_ids(events: list[dict[str, Any]]) -> set[str]:
-    seen: set[str] = set()
-    for event in events:
-        for interrupt in protocol_interrupts_from_event(event):
-            seen.add(interrupt["id"])
-    return seen
-
-
-def _interrupt_payloads_from_state(state: Any) -> list[dict[str, Any]]:
-    payloads: list[dict[str, Any]] = []
-    interrupts = list(getattr(state, "interrupts", ()) or ())
-    if not interrupts:
-        for task in getattr(state, "tasks", ()) or ():
-            interrupts.extend(getattr(task, "interrupts", ()) or ())
-    for index, interrupt in enumerate(interrupts):
-        intr_id = str(getattr(interrupt, "id", "") or f"interrupt-{index + 1}")
-        intr_value = getattr(interrupt, "value", None)
-        standard = _interrupt_to_standard_chunk(
-            intr_id,
-            intr_value if isinstance(intr_value, dict) else None,
-        )
-        if standard is not None:
-            payloads.append(standard)
-    return payloads
-
-
-async def _pending_input_requested_events(
-    agent: Any,
-    config: dict[str, Any],
-    *,
-    run_id: str,
-    thread_id: str,
-    emitted: list[dict[str, Any]],
-) -> list[StoredProtocolEvent]:
-    try:
-        state = await agent.aget_state(config)
-    except Exception:
-        return []
-
-    seen_interrupt_ids = _seen_interrupt_ids(emitted)
-    raw_interrupts: list[dict[str, Any]] = []
-    for payload in _interrupt_payloads_from_state(state):
-        interrupt_id = str(payload.get("interrupt_id") or "")
-        if not interrupt_id or interrupt_id in seen_interrupt_ids:
-            continue
-        raw_interrupts.append({"id": interrupt_id, "value": payload})
-
-    if not raw_interrupts:
-        return []
-
-    source_event = stored_protocol_event(
-        run_id=run_id,
-        thread_id=thread_id,
-        seq=_next_protocol_seq(emitted),
-        method="values",
-        data={"__interrupt__": raw_interrupts},
-    )
-    return canonical_input_requested_events(source_event)
-
-
 async def stream_agent_response_langgraph(
     agent: Any,
     input_: list[Any] | Command | dict[str, Any] | None,
@@ -195,10 +134,18 @@ async def stream_agent_response_langgraph(
     actual_input = _actual_input(input_)
     fallback_seq = 0
     side_effect_seq = 0
+    max_emitted_seq = -1
+    input_requested_emitted = False
     emitted: list[dict[str, Any]] = []
     seen_usage_keys: set[tuple[str | None, int, int, int, int, float | None]] = set()
+    seen_synthesized_tool_call_ids: set[str] = set()
 
     def emit(event: StoredProtocolEvent) -> str:
+        nonlocal input_requested_emitted, max_emitted_seq
+
+        max_emitted_seq = max(max_emitted_seq, event["seq"])
+        if event["method"] == "input.requested":
+            input_requested_emitted = True
         event_dict = dict(event)
         emitted.append(event_dict)
         if trace_sink is not None:
@@ -213,6 +160,14 @@ async def stream_agent_response_langgraph(
     artifact_recorder = await prepare_artifact_recorder(artifact_recorder, run_id=msg_id)
 
     try:
+        yield emit(
+            lifecycle_protocol_event(
+                run_id=msg_id,
+                thread_id=thread_id,
+                seq=0,
+                event="running",
+            )
+        )
         try:
             stream = await _open_v3_stream(agent, actual_input, config)
             async for raw_event in stream:
@@ -253,6 +208,18 @@ async def stream_agent_response_langgraph(
                 )
                 for side_effect_event in side_effect_events:
                     yield emit(side_effect_event)
+                for tool_event in synthesize_tool_events_from_values(
+                    event,
+                    seen_tool_call_ids=seen_synthesized_tool_call_ids,
+                ):
+                    yield emit(tool_event)
+                    side_effect_events, side_effect_seq = await collect_protocol_side_effect_events(
+                        tool_event,
+                        artifact_recorder=artifact_recorder,
+                        next_seq=side_effect_seq,
+                    )
+                    for side_effect_event in side_effect_events:
+                        yield emit(side_effect_event)
         except (AttributeError, NotImplementedError):
             fallback_seq = 0
             stream = await _open_stream_mode_fallback(agent, actual_input, config)
@@ -287,7 +254,7 @@ async def stream_agent_response_langgraph(
                 for side_effect_event in side_effect_events:
                     yield emit(side_effect_event)
 
-        pending_input_events = await _pending_input_requested_events(
+        pending_input_events = await pending_input_requested_events(
             agent,
             config,
             run_id=msg_id,
@@ -296,12 +263,32 @@ async def stream_agent_response_langgraph(
         )
         for pending_event in pending_input_events:
             yield emit(pending_event)
+        yield emit(
+            lifecycle_protocol_event(
+                run_id=msg_id,
+                thread_id=thread_id,
+                seq=max_emitted_seq + 1,
+                event=terminal_lifecycle_event(
+                    has_pending_input=input_requested_emitted or bool(pending_input_events)
+                ),
+            )
+        )
     except Exception as exc:
         record = StreamErrorRecord(error=exc, message=str(exc))
         if error_sink is not None:
             error_sink.append(record)
-        fallback_seq += 1
-        yield emit(_error_event(run_id=msg_id, thread_id=thread_id, seq=fallback_seq, exc=exc))
+        yield emit(
+            lifecycle_protocol_event(
+                run_id=msg_id,
+                thread_id=thread_id,
+                seq=max_emitted_seq + 1,
+                event="failed",
+                error_message=str(exc),
+            )
+        )
+        yield emit(
+            _error_event(run_id=msg_id, thread_id=thread_id, seq=max_emitted_seq + 1, exc=exc)
+        )
     finally:
         if persist_callback is not None and emitted:
             try:

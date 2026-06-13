@@ -17,6 +17,15 @@ from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResu
 from langchain_core.tools import BaseTool
 from pydantic import PrivateAttr
 
+from app.agent_runtime.e2e_langgraph_v3_script import (
+    LANGGRAPH_V3_MARKER,
+    LANGGRAPH_V3_SUBAGENT_PARTS,
+    is_langgraph_v3_prompt,
+    is_langgraph_v3_subagent_prompt,
+    langgraph_v3_message,
+    langgraph_v3_subagent_response,
+)
+
 SCRIPTED_DOCUMENT_COMMANDS: dict[str, dict[str, str]] = {
     "E2E_DOCX": {
         "skill_directory": "/skills/docx-document",
@@ -46,6 +55,10 @@ SCRIPTED_DOCUMENT_COMMANDS: dict[str, dict[str, str]] = {
             "--output moldy-patent-demo.hwpx"
         ),
     },
+}
+LANGGRAPH_V3_ARTIFACT_COMMAND = {
+    "skill_directory": "/skills/docx-document",
+    "command": "node scripts/create_langgraph_v3_artifacts.cjs --prefix moldy-langgraph-v3",
 }
 
 SLOW_STREAM_MARKER = "E2E_SLOW_STREAM"
@@ -126,6 +139,18 @@ class E2EScriptedChatModel(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         human_text = self._latest_human_text(messages)
+        if is_langgraph_v3_subagent_prompt(human_text):
+            return ChatResult(generations=[ChatGeneration(message=langgraph_v3_subagent_response())])
+
+        if is_langgraph_v3_prompt(human_text):
+            message = langgraph_v3_message(
+                messages,
+                human_text,
+                bound_tool_names=self._bound_tool_names,
+                docx_tool_args=LANGGRAPH_V3_ARTIFACT_COMMAND,
+            )
+            return ChatResult(generations=[ChatGeneration(message=message)])
+
         if messages and isinstance(messages[-1], ToolMessage):
             if ARTIFACT_SLOW_FINAL_MARKER in human_text:
                 message = AIMessage(content="".join(ARTIFACT_SLOW_FINAL_PARTS))
@@ -164,6 +189,13 @@ class E2EScriptedChatModel(BaseChatModel):
         **kwargs: Any,
     ):
         human_text = self._latest_human_text(messages)
+        if is_langgraph_v3_subagent_prompt(human_text):
+            for part in LANGGRAPH_V3_SUBAGENT_PARTS:
+                if self.slow_stream_delay_seconds > 0:
+                    time.sleep(self.slow_stream_delay_seconds)
+                yield ChatGenerationChunk(message=AIMessageChunk(content=part))
+            return
+
         if (
             messages
             and isinstance(messages[-1], ToolMessage)
@@ -183,10 +215,12 @@ class E2EScriptedChatModel(BaseChatModel):
 
         result = self._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
         message = result.generations[0].message
+        usage_metadata = getattr(message, "usage_metadata", None)
         yield ChatGenerationChunk(
             message=AIMessageChunk(
                 content=message.content,
                 tool_calls=list(getattr(message, "tool_calls", []) or []),
+                usage_metadata=usage_metadata,
             )
         )
 
@@ -201,6 +235,7 @@ class E2EScriptedChatModel(BaseChatModel):
 __all__ = [
     "E2EScriptedChatModel",
     "ARTIFACT_SLOW_FINAL_MARKER",
+    "LANGGRAPH_V3_MARKER",
     "SCRIPTED_DOCUMENT_COMMANDS",
     "SLOW_STREAM_MARKER",
 ]

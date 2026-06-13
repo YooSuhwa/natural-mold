@@ -1,9 +1,9 @@
 # Moldy Architecture Map
 
-> Last updated: 2026-06-07
-> Source basis: current working tree at `078250c` merge head, recent commits
-> `e2178d6`, `243b5db`, `83bf67d`, `def260b`, `05e6ea6`, and the files under
-> `backend/app/` and `frontend/src/`.
+> Last updated: 2026-06-13
+> Source basis: current working tree on `codex/fix-frontend-docker-lock-docs`,
+> recent runtime commits, and the files under `backend/app/`,
+> `frontend/src/`, and `frontend/e2e/`.
 
 Moldy is a multi-user no-code AI agent builder. The current codebase is no
 longer an M1/M2 migration plan: it runs on `deepagents.create_deep_agent`, uses
@@ -17,7 +17,7 @@ schedule productization.
 |------|----------------------|
 | Backend | FastAPI app factory in `backend/app/main.py`, async SQLAlchemy services, 49 ORM tables |
 | Frontend | Next.js 16.2.2 + React 19.2.4 App Router, `next-intl`, TanStack Query, Jotai |
-| Runtime | LangChain 1.x + LangGraph 1.x + `deepagents>=0.6.1,<0.7.0` |
+| Runtime | LangChain 1.x + LangGraph 1.x + `deepagents>=0.6.8,<0.7.0` |
 | Database | PostgreSQL 16, Alembic head `m59_conversation_artifacts` |
 | Auth | ADR-016 JWT HS256, HttpOnly cookies, CSRF double-submit, refresh rotation, `super_user` |
 | Credentials | Cipher V2, system/user split, 22 credential definitions registered |
@@ -39,6 +39,7 @@ Backend (FastAPI)
        +-> agent_runtime
              runtime_config -> runtime_component_builder -> create_deep_agent
              agent_stream_runner -> streaming -> SSE + message_events
+             langgraph_agent_stream_runner -> Agent Streaming Protocol BFF
              checkpointer -> LangGraph AsyncPostgresSaver
 ```
 
@@ -101,15 +102,19 @@ The backend keeps the Router -> Service -> Model direction:
 | `runtime_config.py` | `AgentConfig`, `RuntimeComponents`, data root |
 | `runtime_component_builder.py` | model candidates, fallback/retry middleware, tools, skills, memory, permissions, subagents |
 | `agent_stream_runner.py` | streaming/invoke execution, hooks, Langfuse context |
+| `langgraph_agent_stream_runner.py` | LangGraph v3 protocol execution and resume runs |
 | `mcp_tool_loader.py` | MCP runtime tool loading and error stubs |
 | `skill_executor.py` | `execute_in_skill`, shell var expansion, subprocess timeout |
 | `streaming.py` | LangGraph events -> internal SSE events, usage, traces, artifacts |
+| `langgraph_streaming.py` | LangGraph v3 events -> Agent Streaming Protocol events, broker, trace persistence, side effects |
 | `checkpointer.py` | global `AsyncPostgresSaver` lifecycle |
 | `model_factory.py` | provider-specific chat model construction and quirks |
 | `middleware_registry.py` | 22 middleware catalog and explicit/provider middleware split |
 | `subagents.py` | parent/child agent delegation config |
 
 ### Chat Flow
+
+Legacy SSE path:
 
 ```
 POST /api/conversations/{id}/messages
@@ -121,6 +126,24 @@ POST /api/conversations/{id}/messages
   -> streaming.stream_agent_response()
   -> SSE to frontend + message_events/message_event_chunks persistence
 ```
+
+Feature-flagged LangGraph v3 path:
+
+```
+Frontend @langchain/react useStream
+  -> POST /api/conversations/{cid}/langgraph/threads/{tid}/commands
+  -> conversation_agent_protocol validates auth/ownership + CSRF
+  -> run.start or input.respond creates ConversationRun
+  -> conversation_run_worker executes langgraph_agent_stream_runner
+  -> langgraph_streaming emits Agent Streaming Protocol events
+  -> EventBroker live stream + message_events protocol trace persistence
+  -> /stream/events returns SDK-compatible SSE subscriptions
+```
+
+The v3 stream routes have two attach modes. Content channels attach to the
+active run broker or replay stored protocol events. Lifecycle/input subscriptions
+use a thread-level stream that survives HITL resume and broker replacement,
+replays persisted events, and throttles idle DB replay polling.
 
 Runtime details:
 
@@ -209,8 +232,15 @@ State flow:
 ```
 lib/api/* -> lib/hooks/* (TanStack Query) -> components/app routes
 lib/stores/* (Jotai) for chat rail, artifacts, sidebar, local UI state
-lib/sse/* and lib/chat/use-chat-runtime.ts for streaming and resume
+lib/sse/* and lib/chat/use-chat-runtime.ts for legacy streaming and resume
+lib/chat/langgraph-runtime/* for the feature-flagged LangGraph v3 runtime
 ```
+
+The LangGraph v3 frontend path is selected with
+`NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3`. `useMoldyLangGraphStream` owns a single
+`@langchain/react` stream per conversation/thread, bridges root messages into
+assistant-ui with `useExternalStoreRuntime`, keeps the raw stream available for
+DeepAgents selectors, and routes HITL resume through `stream.respond`.
 
 Recent frontend refactors:
 
@@ -236,6 +266,7 @@ See `docs/agent-api.md` for request examples.
 
 | Date | Commit | Change reflected in docs |
 |------|--------|--------------------------|
+| 2026-06-13 | pending | Add LangGraph v3 Agent Streaming Protocol BFF path, assistant-ui bridge, and deterministic v3 E2E |
 | 2026-06-07 | `e2178d6` | Split executor into facade + runtime component builder + stream runner + MCP/skill modules |
 | 2026-06-07 | `243b5db` | Split conversation router responsibilities into CRUD/messages/branches/files/traces |
 | 2026-06-07 | `6770ba7` | Extract frontend agent settings draft hook/lib |

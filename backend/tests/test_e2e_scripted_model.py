@@ -130,6 +130,142 @@ def test_e2e_scripted_model_stream_preserves_document_tool_call() -> None:
     ]
 
 
+def test_e2e_scripted_model_langgraph_v3_starts_with_todos() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "write_todos"}, {"name": "task"}, {"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke([HumanMessage(content="E2E_LANGGRAPH_V3 subagent=agent_1234abcd")])
+
+    assert result.tool_calls == [
+        {
+            "name": "write_todos",
+            "args": {
+                "todos": [
+                    {
+                        "content": "Collect LangGraph v3 runtime evidence",
+                        "status": "completed",
+                    },
+                    {
+                        "content": "Render delegated subagent progress",
+                        "status": "in_progress",
+                    },
+                    {
+                        "content": "Preview generated artifact and replay state",
+                        "status": "pending",
+                    },
+                ]
+            },
+            "id": "call_e2e_langgraph_v3_todos",
+            "type": "tool_call",
+        }
+    ]
+
+
+def test_e2e_scripted_model_langgraph_v3_delegates_after_todos() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "write_todos"}, {"name": "task"}, {"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content="E2E_LANGGRAPH_V3 subagent=agent_1234abcd"),
+            ToolMessage(content="todos saved", tool_call_id="call_e2e_langgraph_v3_todos"),
+        ]
+    )
+
+    assert result.tool_calls == [
+        {
+            "name": "task",
+            "args": {
+                "subagent_type": "agent_1234abcd",
+                "description": "E2E_SUBAGENT summarize scoped LangGraph v3 work.",
+            },
+            "id": "call_e2e_langgraph_v3_subagent",
+            "type": "tool_call",
+        }
+    ]
+
+
+def test_e2e_scripted_model_langgraph_v3_generates_artifact_after_subagent() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "write_todos"}, {"name": "task"}, {"name": "execute_in_skill"}]
+    )
+
+    result = model.invoke(
+        [
+            HumanMessage(content="E2E_LANGGRAPH_V3 subagent=agent_1234abcd"),
+            ToolMessage(content="todos saved", tool_call_id="call_e2e_langgraph_v3_todos"),
+            ToolMessage(
+                content="E2E subagent scoped result ready.",
+                tool_call_id="call_e2e_langgraph_v3_subagent",
+            ),
+        ]
+    )
+
+    assert result.tool_calls == [
+        {
+            "name": "execute_in_skill",
+            "args": {
+                "skill_directory": "/skills/docx-document",
+                "command": "node scripts/create_langgraph_v3_artifacts.cjs --prefix moldy-langgraph-v3",
+            },
+            "id": "call_e2e_langgraph_v3_docx",
+            "type": "tool_call",
+        }
+    ]
+
+
+def test_e2e_scripted_model_langgraph_v3_returns_usage_after_artifact() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted").bind_tools(
+        [{"name": "write_todos"}, {"name": "task"}, {"name": "execute_in_skill"}]
+    )
+    messages = [
+        HumanMessage(content="E2E_LANGGRAPH_V3 subagent=agent_1234abcd"),
+        ToolMessage(content="todos saved", tool_call_id="call_e2e_langgraph_v3_todos"),
+        ToolMessage(
+            content="E2E subagent scoped result ready.",
+            tool_call_id="call_e2e_langgraph_v3_subagent",
+        ),
+        ToolMessage(
+            content="OUTPUT_FILES: moldy-langgraph-v3-report.md, moldy-langgraph-v3-notes.txt",
+            tool_call_id="call_e2e_langgraph_v3_docx",
+        ),
+    ]
+
+    result = model.invoke(messages)
+    chunks = list(model.stream(messages))
+
+    assert "E2E LangGraph v3 validation complete" in str(result.content)
+    assert result.usage_metadata == {
+        "input_tokens": 120,
+        "output_tokens": 45,
+        "total_tokens": 165,
+    }
+    assert any(chunk.usage_metadata == result.usage_metadata for chunk in chunks)
+
+
+def test_e2e_scripted_model_langgraph_v3_subagent_marker_returns_scoped_result() -> None:
+    model = E2EScriptedChatModel(model="document-artifact-scripted")
+
+    result = model.invoke([HumanMessage(content="E2E_SUBAGENT summarize scoped work")])
+
+    assert result.content == "E2E subagent scoped result ready."
+
+
+def test_e2e_scripted_model_streams_langgraph_v3_subagent_marker_in_chunks() -> None:
+    model = E2EScriptedChatModel(
+        model="document-artifact-scripted",
+        slow_stream_delay_seconds=0,
+    )
+
+    chunks = list(model.stream([HumanMessage(content="E2E_SUBAGENT summarize scoped work")]))
+    content = "".join(str(chunk.content) for chunk in chunks)
+
+    assert len([chunk for chunk in chunks if chunk.content]) >= 3
+    assert content == "E2E subagent scoped result ready."
+
+
 @pytest.mark.asyncio
 async def test_seed_e2e_scripted_model_skips_by_default(
     db: AsyncSession, monkeypatch: pytest.MonkeyPatch

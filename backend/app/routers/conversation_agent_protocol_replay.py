@@ -119,7 +119,7 @@ async def load_protocol_events(
     records = await trace_storage.get_traces_for_conversation(db, conversation_id)
     events: list[StoredProtocolEvent] = []
     for record in records:
-        for raw in record.events or []:
+        for raw in await trace_storage.load_events(db, record):
             if not isinstance(raw, Mapping):
                 continue
             event = _stored_event_from_raw(raw, record=record)

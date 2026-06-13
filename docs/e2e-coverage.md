@@ -63,11 +63,11 @@ cd frontend && E2E_FRONTEND_PORT=3100 E2E_BACKEND_PORT=8101 \
 | Attach skill | `/agents/[id]/settings` | `agent_skills` | `agent-settings` | ✅ |
 | Attach tool | `/agents/[id]/settings` | `agent_tools` | `agent-settings` | ✅ |
 | Attach MCP tool | `/agents/[id]/settings` | `agent_mcp_tools` | — | ❌ (needs an MCP server) |
-| **Subagent delegation run** | chat | `agents`, agent-runtime | — | ❌ |
+| **Subagent delegation run** | chat | `agents`, agent-runtime | `chat-langgraph-v3` | ✅ |
 | Chat run lifecycle | `/agents/[id]/conversations/[cid]` | `conversation_runs` | `chat-run-lifecycle` | ✅ |
 | Chat navigator + sort/view | sidebar | `conversations` | `chat-navigator`, `chat-navigator-live`, `smoke` | ✅ |
 | Draft conversation | `/conversations/new` | `conversations` | `draft-conversation` | ✅ |
-| Token usage hover | chat | `conversation_messages` | `chat-token-usage` | 🟨 |
+| Token usage hover | chat | `conversation_messages` | `chat-token-usage`, `chat-langgraph-v3` | ✅/🟨 |
 | Document artifacts | chat | `artifacts` | `document-artifact-viewers` | ✅ |
 | Branching (regenerate/edit) + feedback + multi-turn | chat | `conversation_branches`, `feedback` | `chat-interactions` | ✅ |
 | Message attachments (upload on send) | chat | `uploads` | `message-attachments` | ✅ |
@@ -98,14 +98,13 @@ agent-triggers (interval) · share-link (publish + logged-out read-only + revoke
 surfaces)** · **operator-screens (System LLM render + system-credential
 create/delete, super_user)** · **message-attachments (composer attach → upload
 on send)** · **hitl-approval (reject an execute_in_skill interrupt)** · the 4
-stale fixes.
+stale fixes · **chat-langgraph-v3 (DeepAgents v3 runtime: state, HITL approve,
+subagent delegation, artifacts, usage, replay, history, share)**.
 
 **Next up (remaining ❌, rough priority):**
 1. MCP tool attach — needs a running MCP server (first-party `localhost:18001-4`);
    most setup-heavy, defer unless an MCP server is available
-2. Sub-agent *delegation run* (parent calls child at runtime) — real-LLM and
-   inherently flaky; needs a strong delegation prompt + tolerant assertion
-3. Marketplace publish/moderation (`/marketplace/admin`) — super_user moderation
+2. Marketplace publish/moderation (`/marketplace/admin`) — super_user moderation
    queue (publish → approve listing)
 
 **Notes for the remaining HITL/attachment nuances:**
@@ -140,18 +139,24 @@ the live backend (scripted model for keyless chat, LiteLLM for builder).
 
 ## Constraints
 
-- **Builder & subagent delegation need a real LLM.** The conversational builder
-  and the Assistant use the `builder_*`/`assistant_*` model (default Anthropic),
-  NOT the keyless `e2e_scripted` model. To make those flows fully real, either
-  (a) provide a real key in the throwaway stack and point System LLM settings at
-  it, or (b) extend scripted-model support to builder/subagent flows. Until then
-  they stay ❌ / best-effort (page-load + session-start only).
+- **Builder still needs a real LLM for full semantic coverage.** The
+  conversational builder and the Assistant use the `builder_*`/`assistant_*`
+  model (default Anthropic), NOT the keyless `e2e_scripted` model. Subagent
+  delegation now has deterministic coverage through `chat-langgraph-v3`, but
+  builder/assistant judgment quality still needs either a real key or scripted
+  support before it can be fully deterministic.
 - Everything that does not require an LLM *decision* (CRUD, attach/detach,
   navigation, schedules, share, marketplace install) is fully real via the live
   throwaway backend.
 
 ## Changelog
 
+- Added `chat-langgraph-v3` spec: creates scripted parent/child agents, drives
+  the `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3` path through live todos, HITL
+  approve, delegated subagent output, generated artifacts, token usage tooltip,
+  reload/replay, thread history, and public share rendering. Also hardened the
+  E2E error fixture to ignore only the known SDK direct `/threads/{id}/history`
+  404 while recording unexpected non-OK responses by URL.
 - Added `agent-api` spec: deploy a fixed-identity agent (only fixed identity is
   eligible — `AGENT_API_FIXED_IDENTITY_REQUIRED`), issue a server key through the
   create dialog (one-time secret revealed), then revoke it — each step verified

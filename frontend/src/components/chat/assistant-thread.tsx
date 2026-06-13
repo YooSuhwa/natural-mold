@@ -1,6 +1,15 @@
 'use client'
 
-import { lazy, Suspense, useCallback, useMemo, useState, type UIEvent } from 'react'
+import {
+  createContext,
+  lazy,
+  Suspense,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type UIEvent,
+} from 'react'
 import {
   AuiIf,
   ThreadPrimitive,
@@ -602,6 +611,29 @@ export interface AssistantThreadProps {
   builderAgentSubtitle?: string
 }
 
+interface AssistantThreadDynamicContextValue {
+  readonly activities: readonly RunActivity[]
+  readonly agentImagePublicAsset: boolean
+  readonly agentImageUrl?: string | null
+  readonly agentName?: string
+  readonly builderAgentSubtitle?: string
+  readonly deepAgentsState?: DeepAgentsStateSnapshot
+  readonly isBuilder: boolean
+  readonly showMessageTimestamp: boolean
+  readonly user?: User | null
+}
+
+const AssistantThreadDynamicContext =
+  createContext<AssistantThreadDynamicContextValue | null>(null)
+
+function useAssistantThreadDynamicContext(): AssistantThreadDynamicContextValue {
+  const value = useContext(AssistantThreadDynamicContext)
+  if (!value) {
+    throw new Error('AssistantThreadDynamicContext is missing')
+  }
+  return value
+}
+
 export function AssistantThread({
   agentImageUrl,
   agentImagePublicAsset = false,
@@ -622,7 +654,6 @@ export function AssistantThread({
   builderModelLabel,
   builderAgentSubtitle,
 }: AssistantThreadProps) {
-  const tChat = useTranslations('chat')
   const tPage = useTranslations('chat.page')
   const isBuilder = variant === 'builder'
   const [isViewportAtBottom, setIsViewportAtBottom] = useState(true)
@@ -631,9 +662,35 @@ export function AssistantThread({
     setIsViewportAtBottom((current) => (current === nextIsAtBottom ? current : nextIsAtBottom))
   }, [])
 
+  const dynamicContextValue = useMemo(
+    () => ({
+      activities,
+      agentImagePublicAsset,
+      agentImageUrl,
+      agentName,
+      builderAgentSubtitle,
+      deepAgentsState,
+      isBuilder,
+      showMessageTimestamp,
+      user,
+    }),
+    [
+      activities,
+      agentImagePublicAsset,
+      agentImageUrl,
+      agentName,
+      builderAgentSubtitle,
+      deepAgentsState,
+      isBuilder,
+      showMessageTimestamp,
+      user,
+    ],
+  )
+
   const messageComponents = useMemo(
     () => ({
       UserMessage: function UserMsg() {
+        const { isBuilder, showMessageTimestamp, user } = useAssistantThreadDynamicContext()
         const metaRow = (
           <MessageMetaRow>
             <BranchPicker />
@@ -662,6 +719,7 @@ export function AssistantThread({
         )
       },
       UserEditComposer: function UserEdit() {
+        const { isBuilder, user } = useAssistantThreadDynamicContext()
         if (isBuilder) {
           return (
             <Suspense fallback={<BuilderMessageFallback />}>
@@ -679,6 +737,17 @@ export function AssistantThread({
         )
       },
       AssistantMessage: function AssistantMsg() {
+        const {
+          activities,
+          agentImagePublicAsset,
+          agentImageUrl,
+          agentName,
+          builderAgentSubtitle,
+          deepAgentsState,
+          isBuilder,
+          showMessageTimestamp,
+        } = useAssistantThreadDynamicContext()
+        const tChat = useTranslations('chat')
         const isStreamingMessage = useIsStreamingMessage()
         const metaRow = (
           <MessageMetaRow>
@@ -730,23 +799,13 @@ export function AssistantThread({
         )
       },
     }),
-    [
-      agentImagePublicAsset,
-      agentImageUrl,
-      agentName,
-      activities,
-      builderAgentSubtitle,
-      deepAgentsState,
-      isBuilder,
-      showMessageTimestamp,
-      tChat,
-      user,
-    ],
+    [],
   )
 
   return (
-    <ChatConversationContext.Provider value={conversationId ?? null}>
-      <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
+    <AssistantThreadDynamicContext.Provider value={dynamicContextValue}>
+      <ChatConversationContext.Provider value={conversationId ?? null}>
+        <ThreadPrimitive.Root className="flex h-full min-h-0 flex-col">
         <ThreadPrimitive.Viewport
           className="min-h-0 flex-1 overflow-y-auto"
           onScroll={handleViewportScroll}
@@ -807,8 +866,9 @@ export function AssistantThread({
             />
           </div>
         )}
-      </ThreadPrimitive.Root>
-    </ChatConversationContext.Provider>
+        </ThreadPrimitive.Root>
+      </ChatConversationContext.Provider>
+    </AssistantThreadDynamicContext.Provider>
   )
 }
 
