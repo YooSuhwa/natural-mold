@@ -3489,22 +3489,40 @@ Precondition: merge, rebase onto, or explicitly compare against the separate E2E
 
 ## 11. Self-Review Checklist
 
-- [ ] Every current stream feature has a LangGraph runtime mapping: text, tools, files, memory, HITL, usage, stale, cancel.
-- [ ] Usage is verified separately for UI message metadata and backend `SpendHook` / `spend_queue` aggregation.
-- [ ] `@langchain/react` is used as the canonical stream runtime for the new path, with assistant-ui used deliberately as the chat surface.
-- [ ] AG-UI is not used as an internal lossy bridge.
-- [ ] Backend stores canonical protocol events, not only legacy text/tool events.
-- [ ] Direct DeepAgents `stream_events(version="v3")` is either fixed and tested or explicitly documented as deferred.
-- [ ] Frontend activity UI is semantic and compact.
-- [ ] Subagent UI follows the official pattern: root coordinator transcript, `stream.subagents` discovery, cards under spawning tool calls, lazy scoped detail rendering.
-- [ ] Current SDK `subgraphs` alias, raw `tasks`, and raw `tools` channels are covered in backend and frontend tests.
-- [ ] Shared conversation traces and `extract-chips.ts` support both historical Moldy SSE events and new canonical protocol events.
-- [ ] State/history route tests verify the installed SDK's actual request paths and do not assume a path shape without evidence.
+- [x] Every current stream feature has a LangGraph runtime mapping: text, tools, files, memory, HITL, usage, stale, cancel.
+- [x] Usage is verified separately for UI message metadata and backend `SpendHook` / `spend_queue` aggregation.
+- [x] `@langchain/react` is used as the canonical stream runtime for the new path, with assistant-ui used deliberately as the chat surface.
+- [x] AG-UI is not used as an internal lossy bridge.
+- [x] Backend stores canonical protocol events, not only legacy text/tool events.
+- [x] Direct DeepAgents `stream_events(version="v3")` is either fixed and tested or explicitly documented as deferred.
+- [x] Frontend activity UI is semantic and compact.
+- [x] Subagent UI follows the official pattern: root coordinator transcript, `stream.subagents` discovery, cards under spawning tool calls, lazy scoped detail rendering.
+- [x] Current SDK `subgraphs` alias, raw `tasks`, and raw `tools` channels are covered in backend and frontend tests.
+- [x] Shared conversation traces and `extract-chips.ts` support both historical Moldy SSE events and new canonical protocol events.
+- [x] State/history route tests verify the installed SDK's actual request paths and do not assume a path shape without evidence.
 - [x] Async/background subagents render as task status activities distinct from inline v3 subagent cards.
-- [ ] Raw v3 `event_id`, sequence/order, and namespace metadata are preserved through live stream, storage, replay, and debugging views.
-- [ ] Hidden chain-of-thought is not exposed.
-- [ ] Existing builder `phase_timeline` behavior is protected.
-- [ ] Existing replay and resume guarantees are preserved.
-- [ ] Local worktree, E2E seed, port/CORS/API-base, i18n, design-system, and capture-output rules from `AGENTS.md` are satisfied.
-- [ ] The plan includes tests before implementation for each major subsystem.
-- [ ] The plan can be implemented task-by-task with commits after each task.
+- [x] Raw v3 `event_id`, sequence/order, and namespace metadata are preserved through live stream, storage, replay, and debugging views.
+- [x] Hidden chain-of-thought is not exposed.
+- [x] Existing builder `phase_timeline` behavior is protected.
+- [x] Existing replay and resume guarantees are preserved.
+- [x] Local worktree, E2E seed, port/CORS/API-base, i18n, design-system, and capture-output rules from `AGENTS.md` are satisfied.
+- [x] The plan includes tests before implementation for each major subsystem.
+- [x] The plan can be implemented task-by-task with commits after each task.
+
+### Self-review evidence refresh: 2026-06-14
+
+- The explicit gap found during review was the raw `subgraphs` alias path. It is now covered by `backend/tests/agent_runtime/test_langgraph_protocol_adapter_subgraphs.py`, and public share chip projection covers the same alias in `frontend/src/lib/share/extract-chips-protocol.test.ts`.
+- The share path supports both historical Moldy SSE chips and canonical protocol chips through `frontend/src/lib/share/extract-chips.ts`; canonical protocol chip coverage includes messages/tools, lifecycle/subagent events, `subgraphs`, file events, and memory events.
+- Hidden reasoning is protected by `frontend/src/components/chat/__tests__/subagent-card.test.tsx` and `frontend/src/components/chat/tool-ui/__tests__/reasoning-ui.test.tsx`.
+- Builder `phase_timeline` compatibility with assistant-ui `useAuiState` is protected by `frontend/src/components/chat/tool-ui/__tests__/phase-timeline-ui.test.tsx`, which verifies that replayed older `phase_timeline` tool calls are hidden when a newer call exists in thread state.
+- Focused verification for this refresh:
+  - `cd backend && .venv/bin/python -m pytest tests/agent_runtime/test_langgraph_protocol_adapter_subgraphs.py tests/agent_runtime/test_langgraph_protocol_adapter.py tests/agent_runtime/test_protocol_events.py -q`
+  - `cd frontend && pnpm vitest run src/components/chat/tool-ui/__tests__/phase-timeline-ui.test.tsx src/lib/share/extract-chips-protocol.test.ts src/lib/share/extract-chips.test.ts src/components/chat/__tests__/subagent-card.test.tsx src/components/chat/tool-ui/__tests__/reasoning-ui.test.tsx`
+  - `cd frontend && pnpm exec tsc --noEmit --pretty false`
+  - `cd frontend && pnpm exec eslint src/lib/share/protocol-chips.ts src/lib/share/extract-chips-protocol.test.ts src/components/chat/tool-ui/phase-timeline-ui.tsx src/components/chat/tool-ui/__tests__/phase-timeline-ui.test.tsx`
+  - `cd backend && .venv/bin/ruff check app/agent_runtime/langgraph_protocol_adapter.py tests/agent_runtime/test_langgraph_protocol_adapter_subgraphs.py`
+  - `cd frontend && pnpm lint`
+  - `cd backend && .venv/bin/python -m pytest -q` (`1961 passed, 2 deselected`)
+  - `cd frontend && pnpm vitest run` (`152 files passed, 698 tests passed`)
+  - `E2E_FRONTEND_PORT=3105 E2E_BACKEND_PORT=8105 E2E_BASE_URL=http://localhost:3105 E2E_API_BASE_URL=http://localhost:8105 E2E_TEST_HELPERS_ENABLED=true E2E_WORKERS=1 E2E_TEST_TIMEOUT_MS=240000 pnpm exec playwright test --project=chromium --workers=1` (`75 passed, 5 skipped`; `chat-langgraph-v3` intentionally skipped in default-runtime run)
+  - `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 E2E_FRONTEND_PORT=3104 E2E_BACKEND_PORT=8104 E2E_BASE_URL=http://localhost:3104 E2E_API_BASE_URL=http://localhost:8104 E2E_TEST_HELPERS_ENABLED=true E2E_WORKERS=1 E2E_TEST_TIMEOUT_MS=240000 pnpm exec playwright test e2e/chat-langgraph-v3.spec.ts --project=chromium --workers=1`

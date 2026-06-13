@@ -123,7 +123,7 @@ function _addToolsEvent(
 }
 
 function _subagentFromProtocol(evt: ProtocolTraceEvent, order: number): OrderedChip | null {
-  if (!['lifecycle', 'tasks', 'subagents'].includes(evt.method)) return null
+  if (!['lifecycle', 'tasks', 'subagents', 'subgraphs'].includes(evt.method)) return null
   const data = asRecord(_protocolData(evt))
   const namespace = _protocolNamespace(evt)
   const title =

@@ -59,6 +59,20 @@ describe('extractChips canonical protocol events', () => {
     ])
   })
 
+  it('renders a subagent chip from subgraphs alias events', () => {
+    const events = [
+      protocolEvent(
+        'subgraphs',
+        { status: 'completed', graph_name: 'analyst' },
+        { params: { namespace: ['supervisor', 'analyst'] }, event_id: 'evt-subgraphs-1' },
+      ),
+    ]
+
+    expect(extractChips(turn(events))).toEqual([
+      { kind: 'subagent', status: 'success', title: 'analyst' },
+    ])
+  })
+
   it('renders an artifact chip from custom file events', () => {
     const events = [
       protocolEvent('custom:file_event', {
