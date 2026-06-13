@@ -2494,8 +2494,8 @@ Test:
 - expanded subagent card renders scoped messages and tool calls,
 - subagent progress shows completed/total counts,
 - subagent error stays inside the subagent card unless the parent run fails,
-- [ ] error activity shows error styling,
-- [ ] witty loading is hidden when semantic activity exists.
+- [x] error activity shows error styling,
+- [x] witty loading is hidden when semantic activity exists.
 - [x] v3 content-block tool activity maps through tool completion.
 - [x] v3 `updates.values.todos` maps to planning activity.
 - [x] LangGraph runtime passes activities to `AssistantThread`.
@@ -2504,7 +2504,7 @@ Test:
 
 ```bash
 cd frontend
-pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/assistant-message-loading.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
 pnpm exec tsc --noEmit
 pnpm exec eslint src/lib/chat/langgraph-runtime/activity-protocol.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/components/chat/run-activity-strip.tsx src/components/chat/assistant-message-loading.tsx src/components/chat/assistant-thread.tsx src/components/chat/chat-runtime-section.tsx src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
 pnpm lint:i18n
@@ -2513,7 +2513,7 @@ pnpm lint:design-system
 
 Verified for this slice:
 
-- `pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
+- `pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/assistant-message-loading.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
 - `pnpm exec tsc --noEmit`
 - `pnpm exec eslint src/lib/chat/langgraph-runtime/activity-protocol.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/components/chat/run-activity-strip.tsx src/components/chat/assistant-message-loading.tsx src/components/chat/assistant-thread.tsx src/components/chat/chat-runtime-section.tsx src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
 - `pnpm lint:i18n`
@@ -2522,7 +2522,7 @@ Verified for this slice:
 - [ ] **Step 7: Commit**
 
 ```bash
-git add frontend/src/components/chat/run-activity-strip.tsx frontend/src/components/chat/assistant-message-loading.tsx frontend/src/components/chat/assistant-thread.tsx frontend/src/components/chat/chat-runtime-section.tsx frontend/src/lib/chat/langgraph-runtime/activity-protocol.ts frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts frontend/messages/ko.json frontend/messages/en.json frontend/src/components/chat/__tests__/run-activity-strip.test.tsx frontend/src/components/chat/__tests__/chat-runtime-section.test.tsx frontend/src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+git add frontend/src/components/chat/run-activity-strip.tsx frontend/src/components/chat/assistant-message-loading.tsx frontend/src/components/chat/assistant-thread.tsx frontend/src/components/chat/chat-runtime-section.tsx frontend/src/lib/chat/langgraph-runtime/activity-protocol.ts frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts frontend/messages/ko.json frontend/messages/en.json frontend/src/components/chat/__tests__/run-activity-strip.test.tsx frontend/src/components/chat/__tests__/assistant-message-loading.test.tsx frontend/src/components/chat/__tests__/chat-runtime-section.test.tsx frontend/src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
 git commit -m "feat(chat): render semantic agent activity"
 ```
 

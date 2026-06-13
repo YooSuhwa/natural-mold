@@ -44,4 +44,14 @@ describe('RunActivityStrip', () => {
     expect(screen.getByText('researcher 작업 중')).toBeInTheDocument()
     expect(screen.queryByText('파일을 준비하는 중')).not.toBeInTheDocument()
   })
+
+  it('marks error activity rows with error status', () => {
+    render(
+      <RunActivityStrip
+        activities={[activity({ id: 'error', kind: 'error', status: 'error', title: 'Error' })]}
+      />,
+    )
+
+    expect(screen.getByText('문제가 발생했습니다').closest('[data-status="error"]')).not.toBeNull()
+  })
 })
