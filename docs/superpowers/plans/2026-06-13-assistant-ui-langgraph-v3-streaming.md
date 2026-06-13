@@ -2916,22 +2916,27 @@ git commit -m "feat(chat): add LangGraph replay parity"
 - Modify: `frontend/src/lib/types/share.ts`
 - Modify: `backend/app/routers/conversation_ag_ui.py`
 - Modify: `backend/app/agent_runtime/ag_ui_adapter.py`
+- Create: `backend/app/agent_runtime/ag_ui_protocol_adapter.py`
+- Create: `backend/app/agent_runtime/ag_ui_streaming.py`
+- Create: `frontend/src/lib/share/chip-values.ts`
+- Create: `frontend/src/lib/share/protocol-chips.ts`
 - Test: AG-UI compatibility tests
 - Test: `frontend/src/lib/share/extract-chips.test.ts`
+- Test: `frontend/src/lib/share/extract-chips-protocol.test.ts`
 
-- [ ] **Step 1: Keep AG-UI as external compatibility**
+- [x] **Step 1: Keep AG-UI as external compatibility**
 
 Do not delete AG-UI endpoints immediately. Mark them as external compatibility in comments and docs.
 
-- [ ] **Step 2: Stop using AG-UI as internal chat fallback**
+- [x] **Step 2: Stop using AG-UI as internal chat fallback**
 
 Remove or ignore `NEXT_PUBLIC_CHAT_STREAM_PROTOCOL=ag_ui` from the main chat runtime path. The new runtime selector is `NEXT_PUBLIC_CHAT_RUNTIME`.
 
-- [ ] **Step 3: Upgrade AG-UI adapter source**
+- [x] **Step 3: Upgrade AG-UI adapter source**
 
 Change AG-UI backend adapter to derive from stored canonical protocol events when they are present. Keep support for old Moldy SSE rows for existing stored traces.
 
-- [ ] **Step 3a: Preserve public share trace chips**
+- [x] **Step 3a: Preserve public share trace chips**
 
 The public share page groups stored assistant-turn events through `TurnTrace.events` and `extractChips(turn)`. When new turns persist canonical protocol events:
 
@@ -2939,7 +2944,7 @@ The public share page groups stored assistant-turn events through `TurnTrace.eve
 - keep `frontend/src/app/shared/[shareId]/page.tsx` able to show tool chips, subagent chips, and artifact/memory chips for both historical Moldy SSE traces and new LangGraph protocol traces;
 - preserve the public share DTO if possible. If `TurnTrace.events` must accept both shapes, use discriminated TypeScript unions and type guards, not `any`.
 
-- [ ] **Step 4: Tests**
+- [x] **Step 4: Tests**
 
 AG-UI tests should assert:
 
@@ -2954,10 +2959,35 @@ Share tests should assert:
 - historical Moldy SSE trace events still render chips,
 - the shared page shows chips next to the correct assistant turn after a protocol-backed conversation is shared.
 
-- [ ] **Step 5: Commit**
+Implemented in this slice:
+
+- `backend/app/agent_runtime/ag_ui_adapter.py` remains the external compatibility facade. `backend/app/agent_runtime/ag_ui_protocol_adapter.py` detects canonical stored/wire protocol events and projects them to AG-UI before falling back to historical Moldy SSE mapping.
+- `backend/app/agent_runtime/ag_ui_streaming.py` owns AG-UI SSE id slicing/formatting helpers so the facade stays below the source size ceiling.
+- `frontend/src/lib/types/share.ts` now models share trace events as a legacy SSE / canonical protocol union.
+- `frontend/src/lib/share/extract-chips.ts` keeps the public `extractChips` / `findTurnForMessage` API, while canonical protocol chip extraction lives in `frontend/src/lib/share/protocol-chips.ts` and shared chip helpers live in `frontend/src/lib/share/chip-values.ts`.
+- `NEXT_PUBLIC_CHAT_RUNTIME` remains the primary runtime selector. Existing `NEXT_PUBLIC_CHAT_STREAM_PROTOCOL=ag_ui` behavior is confined to legacy active-run resume attach; `runtime-mode.test.ts` proves `ag_ui` does not select the primary LangGraph runtime.
+
+Focused verification:
 
 ```bash
-git add frontend/src/lib/sse/stream-resume-attach.ts frontend/src/lib/ag-ui/chat-run-consumer.ts backend/app/routers/conversation_ag_ui.py backend/app/agent_runtime/ag_ui_adapter.py
+cd backend && /Users/chester/.hermes/bin/uv run pytest tests/test_ag_ui_adapter.py tests/agent_runtime/test_ag_ui_protocol_adapter.py tests/test_conversation_runs_router.py::test_ag_ui_run_stream_endpoint_attaches_live_broker_with_split_event_resume tests/test_conversation_runs_router.py::test_ag_ui_run_stream_emits_stale_gap_marker_when_source_evicted tests/test_conversation_runs_router.py::test_ag_ui_run_stream_endpoint_replays_terminal_run_with_split_event_resume -q
+cd backend && /Users/chester/.hermes/bin/uv run ruff check app/agent_runtime/ag_ui_adapter.py app/agent_runtime/ag_ui_protocol_adapter.py app/agent_runtime/ag_ui_streaming.py tests/test_ag_ui_adapter.py tests/agent_runtime/test_ag_ui_protocol_adapter.py
+
+cd frontend && pnpm exec vitest run src/lib/ag-ui/__tests__/chat-run-consumer.test.ts src/lib/sse/__tests__/stream-resume-attach.test.ts src/lib/chat/__tests__/runtime-mode.test.ts src/lib/share/extract-chips.test.ts src/lib/share/extract-chips-protocol.test.ts
+cd frontend && pnpm exec tsc --noEmit --pretty false
+cd frontend && pnpm exec eslint src/lib/share/extract-chips.ts src/lib/share/protocol-chips.ts src/lib/share/chip-values.ts src/lib/share/extract-chips.test.ts src/lib/share/extract-chips-protocol.test.ts src/lib/types/share.ts 'src/app/shared/[shareId]/page.tsx'
+git diff --check
+```
+
+Manual data-surface proof:
+
+- Backend canonical protocol events through `slice_ag_ui_events_after` produce `['TEXT_MESSAGE_CONTENT', 'TOOL_CALL_START', 'TOOL_CALL_ARGS', 'TOOL_CALL_END', 'CUSTOM']`.
+- Frontend `extractChips` over canonical protocol trace events produces tool/subagent/artifact/memory chip titles: `web_search`, `researcher`, `report.md`, `memory_saved`.
+
+- [x] **Step 5: Commit**
+
+```bash
+git add backend/app/agent_runtime/ag_ui_adapter.py backend/app/agent_runtime/ag_ui_protocol_adapter.py backend/app/agent_runtime/ag_ui_streaming.py backend/tests/test_ag_ui_adapter.py backend/tests/agent_runtime/test_ag_ui_protocol_adapter.py frontend/src/lib/share frontend/src/lib/types/share.ts docs/superpowers/plans/2026-06-13-assistant-ui-langgraph-v3-streaming.md
 git commit -m "refactor(chat): keep AG-UI as compatibility stream"
 ```
 

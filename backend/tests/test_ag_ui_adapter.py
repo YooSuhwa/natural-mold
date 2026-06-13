@@ -161,6 +161,22 @@ def test_custom_events_preserve_moldy_payload() -> None:
     assert events[0]["data"]["value"]["payload"]["interrupt_id"] == "hitl-1"
 
 
+def test_historical_moldy_content_delta_still_maps_to_ag_ui_text_content() -> None:
+    events = brokered_moldy_event_to_ag_ui_events(
+        {
+            "id": "old-1",
+            "event": event_names.CONTENT_DELTA,
+            "data": {"delta": "legacy text"},
+        },
+        thread_id="thread-1",
+        run_id="run-1",
+    )
+
+    assert events[0]["event"] == "TEXT_MESSAGE_CONTENT"
+    assert events[0]["data"]["delta"] == "legacy text"
+    assert events[0]["data"]["rawEvent"] == {"delta": "legacy text"}
+
+
 def test_slice_ag_ui_events_after_resumes_within_split_source_event() -> None:
     source_events = [
         {
