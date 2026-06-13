@@ -81,6 +81,7 @@ import {
   toggleArtifactPreviewRailState,
 } from '@/lib/stores/chat-right-rail'
 import type { ArtifactSummary } from '@/lib/types'
+import type { DeepAgentsStateSnapshot } from '@/lib/chat/langgraph-runtime/deepagents-state'
 import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
 
 export { GenericToolFallback }
@@ -581,6 +582,7 @@ export interface AssistantThreadProps {
   /** 추가 도구 UI */
   toolUI?: readonly AssistantToolUI[]
   activities?: readonly RunActivity[]
+  deepAgentsState?: DeepAgentsStateSnapshot
   /** P1-7 — true이면 composer에 첨부 파일 버튼/미리보기 표시.
    * AttachmentAdapter는 useChatRuntime에 별도로 전달되어야 한다. */
   enableAttachments?: boolean
@@ -610,6 +612,7 @@ export function AssistantThread({
   emptyContent,
   toolUI,
   activities = [],
+  deepAgentsState,
   enableAttachments = false,
   conversationId,
   variant = 'default',
@@ -688,7 +691,10 @@ export function AssistantThread({
           return (
             <Suspense fallback={<BuilderMessageFallback />}>
               <BuilderAssistantMessage metaRow={metaRow} agentSubtitle={builderAgentSubtitle}>
-                <StreamingMessageLoadingIndicator activities={activities} />
+                <StreamingMessageLoadingIndicator
+                  activities={activities}
+                  deepAgentsState={deepAgentsState}
+                />
                 <BuilderAssistantMessageParts />
               </BuilderAssistantMessage>
             </Suspense>
@@ -703,6 +709,7 @@ export function AssistantThread({
           >
             <StreamingMessageLoadingIndicator
               activities={activities}
+              deepAgentsState={deepAgentsState}
               className="absolute -top-5 left-11 mb-0"
             />
             <AgentAvatar
@@ -726,6 +733,7 @@ export function AssistantThread({
       agentName,
       activities,
       builderAgentSubtitle,
+      deepAgentsState,
       isBuilder,
       showMessageTimestamp,
       tChat,

@@ -11,6 +11,7 @@ import { useChannel, useStream, type Channel } from '@langchain/react'
 import { HumanMessage, type BaseMessage } from '@langchain/core/messages'
 import { convertLangChainBaseMessage } from '@assistant-ui/react-langchain'
 import { reduceProtocolActivity } from './activity-protocol'
+import { selectDeepAgentsState } from './deepagents-state'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import type { RunActivity } from './activity-model'
 
@@ -86,6 +87,7 @@ export function useMoldyLangGraphStream({
       ),
     [activityEvents],
   )
+  const deepAgentsState = useMemo(() => selectDeepAgentsState(stream.values ?? {}), [stream.values])
   const messages = useExternalMessageConverter({
     callback: convertMoldyLangChainMessage,
     messages: stream.messages,
@@ -136,6 +138,7 @@ export function useMoldyLangGraphStream({
     stream,
     assistantRuntime,
     activities,
+    deepAgentsState,
     sendMessage,
     onResumeDecisions,
     registerDecision,

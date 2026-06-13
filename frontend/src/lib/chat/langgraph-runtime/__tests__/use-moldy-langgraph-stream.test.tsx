@@ -6,6 +6,7 @@ import type { AttachmentAdapter, CompleteAttachment, PendingAttachment } from '@
 const mocks = vi.hoisted(() => {
   const stream = {
     messages: [],
+    values: { messages: [] },
     isLoading: false,
     submit: vi.fn(),
     stop: vi.fn(),
@@ -92,6 +93,7 @@ describe('useMoldyLangGraphStream', () => {
     )
     expect(result.current.stream).toBe(mocks.stream)
     expect(result.current.activities).toEqual([])
+    expect(result.current.deepAgentsState).toEqual({ todos: [], files: [] })
     expect(result.current.assistantRuntime).toEqual(expect.objectContaining({ kind: 'runtime' }))
   })
 

@@ -58,6 +58,21 @@ describe('StreamingMessageLoadingIndicator', () => {
     expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
   })
 
+  it('hides witty loading when DeepAgents state exists', () => {
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[]}
+        deepAgentsState={{
+          todos: [{ id: 'todo-1', content: 'Plan work', status: 'in_progress' }],
+          files: [],
+        }}
+      />,
+    )
+
+    expect(screen.getByText('작업 목록')).toBeInTheDocument()
+    expect(screen.queryByTestId('witty-loading')).not.toBeInTheDocument()
+  })
+
   it('renders nothing outside the active streaming message', () => {
     mocks.state.message.metadata = { custom: { isStreamingMessage: false } }
 

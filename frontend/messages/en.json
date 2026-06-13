@@ -1597,6 +1597,21 @@
       "done": "Done",
       "error": "Something went wrong"
     },
+    "deepAgentsState": {
+      "tasks": {
+        "title": "Tasks",
+        "progress": "{done}/{total} done"
+      },
+      "files": {
+        "title": "Files",
+        "count": "{count} files"
+      },
+      "status": {
+        "completed": "Done",
+        "in_progress": "In progress",
+        "pending": "Pending"
+      }
+    },
     "loading": {
       "witty": {
         "0": "One moment, booting up my brain...",

@@ -2348,7 +2348,9 @@ git commit -m "feat(chat): add LangGraph stream runtime bridge"
 
 - Create: `frontend/src/components/chat/run-activity-strip.tsx`
 - Create: `frontend/src/components/chat/assistant-message-loading.tsx`
+- Create: `frontend/src/components/chat/deepagents-state-panel.tsx`
 - Create: `frontend/src/lib/chat/langgraph-runtime/activity-protocol.ts`
+- Create: `frontend/src/lib/chat/langgraph-runtime/deepagents-state.ts`
 - Create: `frontend/src/components/chat/subagent-card.tsx`
 - Create: `frontend/src/components/chat/subagent-progress.tsx`
 - Create: `frontend/src/components/chat/tool-ui/reasoning-ui.tsx`
@@ -2358,7 +2360,9 @@ git commit -m "feat(chat): add LangGraph stream runtime bridge"
 - Modify: `frontend/messages/ko.json`
 - Modify: `frontend/messages/en.json`
 - Test: `frontend/src/components/chat/__tests__/run-activity-strip.test.tsx`
+- Test: `frontend/src/components/chat/__tests__/deepagents-state-panel.test.tsx`
 - Test: `frontend/src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts`
+- Test: `frontend/src/lib/chat/langgraph-runtime/__tests__/deepagents-state.test.ts`
 
 - [x] **Step 1: Add i18n labels**
 
@@ -2435,6 +2439,19 @@ Use `/Users/chester/dev/deep-agents-ui` as a UI pattern reference, not as a runt
 - file edits must go through a Moldy artifact version route by default; only use a LangGraph state update route when the runtime explicitly stores files in state, then reconcile back into artifact state;
 - avoid mixing task rows or file contents into the root assistant transcript.
 
+Implemented so far:
+
+- `frontend/src/lib/chat/langgraph-runtime/deepagents-state.ts` normalizes loose `values.todos` and `values.files` shapes.
+- `frontend/src/components/chat/deepagents-state-panel.tsx` renders compact task/file pills in the active streaming assistant turn.
+- `frontend/src/components/chat/assistant-message-loading.tsx` hides witty loading when DeepAgents state exists.
+
+Still pending:
+
+- reconcile persisted `conversation_artifacts` / `artifact_versions` with `values.files`;
+- collapsed/expand persistence that auto-opens only on first appearance;
+- Markdown/code/plain-text file preview, copy, download, and edit/save actions;
+- disabling edit actions while loading or interrupted.
+
 - [ ] **Step 2b: Implement subagent cards**
 
 Use the official Deep Agents frontend pattern while keeping assistant-ui as the thread runtime:
@@ -2483,7 +2500,7 @@ Test:
 
 - [x] thinking/planning activity renders Korean label,
 - [x] tool activity shows tool name,
-- todos render grouped task state with pending/in-progress/completed labels,
+- [x] todos render grouped task state with pending/in-progress/completed labels,
 - collapsed DeepAgents state panel shows active task summary and file count,
 - file panel renders files from Moldy artifacts and optionally reconciles `values.files`,
 - file viewer supports Markdown preview, code/plain-text preview, copy, and download,
@@ -2498,31 +2515,32 @@ Test:
 - [x] witty loading is hidden when semantic activity exists.
 - [x] v3 content-block tool activity maps through tool completion.
 - [x] v3 `updates.values.todos` maps to planning activity.
+- [x] `values.todos` and `values.files` normalize into DeepAgents state panel rows.
 - [x] LangGraph runtime passes activities to `AssistantThread`.
 
 - [x] **Step 6: Verify**
 
 ```bash
 cd frontend
-pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/assistant-message-loading.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/lib/chat/langgraph-runtime/__tests__/deepagents-state.test.ts src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/assistant-message-loading.test.tsx src/components/chat/__tests__/deepagents-state-panel.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
 pnpm exec tsc --noEmit
-pnpm exec eslint src/lib/chat/langgraph-runtime/activity-protocol.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/components/chat/run-activity-strip.tsx src/components/chat/assistant-message-loading.tsx src/components/chat/assistant-thread.tsx src/components/chat/chat-runtime-section.tsx src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+pnpm exec eslint src/lib/chat/langgraph-runtime/activity-protocol.ts src/lib/chat/langgraph-runtime/deepagents-state.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/components/chat/run-activity-strip.tsx src/components/chat/assistant-message-loading.tsx src/components/chat/deepagents-state-panel.tsx src/components/chat/assistant-thread.tsx src/components/chat/chat-runtime-section.tsx src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/assistant-message-loading.test.tsx src/components/chat/__tests__/deepagents-state-panel.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/lib/chat/langgraph-runtime/__tests__/deepagents-state.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
 pnpm lint:i18n
 pnpm lint:design-system
 ```
 
 Verified for this slice:
 
-- `pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/assistant-message-loading.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
+- `pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/lib/chat/langgraph-runtime/__tests__/deepagents-state.test.ts src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/assistant-message-loading.test.tsx src/components/chat/__tests__/deepagents-state-panel.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
 - `pnpm exec tsc --noEmit`
-- `pnpm exec eslint src/lib/chat/langgraph-runtime/activity-protocol.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/components/chat/run-activity-strip.tsx src/components/chat/assistant-message-loading.tsx src/components/chat/assistant-thread.tsx src/components/chat/chat-runtime-section.tsx src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
+- `pnpm exec eslint src/lib/chat/langgraph-runtime/activity-protocol.ts src/lib/chat/langgraph-runtime/deepagents-state.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/components/chat/run-activity-strip.tsx src/components/chat/assistant-message-loading.tsx src/components/chat/deepagents-state-panel.tsx src/components/chat/assistant-thread.tsx src/components/chat/chat-runtime-section.tsx src/components/chat/__tests__/run-activity-strip.test.tsx src/components/chat/__tests__/assistant-message-loading.test.tsx src/components/chat/__tests__/deepagents-state-panel.test.tsx src/components/chat/__tests__/chat-runtime-section.test.tsx src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts src/lib/chat/langgraph-runtime/__tests__/deepagents-state.test.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx`
 - `pnpm lint:i18n`
 - `pnpm lint:design-system`
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add frontend/src/components/chat/run-activity-strip.tsx frontend/src/components/chat/assistant-message-loading.tsx frontend/src/components/chat/assistant-thread.tsx frontend/src/components/chat/chat-runtime-section.tsx frontend/src/lib/chat/langgraph-runtime/activity-protocol.ts frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts frontend/messages/ko.json frontend/messages/en.json frontend/src/components/chat/__tests__/run-activity-strip.test.tsx frontend/src/components/chat/__tests__/assistant-message-loading.test.tsx frontend/src/components/chat/__tests__/chat-runtime-section.test.tsx frontend/src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+git add frontend/src/components/chat/run-activity-strip.tsx frontend/src/components/chat/assistant-message-loading.tsx frontend/src/components/chat/deepagents-state-panel.tsx frontend/src/components/chat/assistant-thread.tsx frontend/src/components/chat/chat-runtime-section.tsx frontend/src/lib/chat/langgraph-runtime/activity-protocol.ts frontend/src/lib/chat/langgraph-runtime/deepagents-state.ts frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts frontend/messages/ko.json frontend/messages/en.json frontend/src/components/chat/__tests__/run-activity-strip.test.tsx frontend/src/components/chat/__tests__/assistant-message-loading.test.tsx frontend/src/components/chat/__tests__/deepagents-state-panel.test.tsx frontend/src/components/chat/__tests__/chat-runtime-section.test.tsx frontend/src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts frontend/src/lib/chat/langgraph-runtime/__tests__/deepagents-state.test.ts frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
 git commit -m "feat(chat): render semantic agent activity"
 ```
 
