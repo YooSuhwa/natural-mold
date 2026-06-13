@@ -662,6 +662,37 @@ async def test_run_stream_endpoint_marks_old_active_run_stale_without_broker(
 
 
 @pytest.mark.asyncio
+async def test_run_stream_endpoint_replays_terminal_stale_run_without_trace(
+    client: AsyncClient,
+    db: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.routers import conversation_runs
+
+    monkeypatch.setattr(conversation_runs.settings, "chat_run_stale_after_seconds", 1)
+    agent, conversation = await _seed_agent_conversation(db)
+    run = await conversation_run_service.create_run(
+        db,
+        conversation_id=conversation.id,
+        agent_id=agent.id,
+        user_id=agent.user_id,
+        source="chat",
+        input_preview="stale",
+    )
+    await conversation_run_service.transition_run(db, run, "running", worker_instance_id="test")
+    run.heartbeat_at = run.created_at = utc_now_naive().replace(year=2000)
+    await db.commit()
+
+    first = await client.get(f"/api/conversations/{conversation.id}/runs/{run.id}/stream")
+    second = await client.get(f"/api/conversations/{conversation.id}/runs/{run.id}/stream")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.headers["x-resume-mode"] == "stale"
+    assert "run_worker_lost" in second.text
+
+
+@pytest.mark.asyncio
 async def test_cancel_endpoint_returns_existing_canceling_status_without_second_path(
     client: AsyncClient,
     db: AsyncSession,

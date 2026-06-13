@@ -17,8 +17,8 @@ services:
 
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     # Run migrations before serving so a fresh database has its tables before
     # the lifespan seed queries them (there is no create_all — Alembic owns the
     # schema). `alembic upgrade head` is idempotent, so this is safe on restart.

@@ -435,7 +435,7 @@ test.describe('Chat run lifecycle API contract', () => {
       expect(heartbeatRes.ok()).toBeTruthy()
 
       await page.goto(`/agents/${agentId}/conversations/${conversationId}`)
-      await expect(page.getByText(/응답이 끊어져 일부가 누락/)).toBeVisible({
+      await expect(page.locator('p').filter({ hasText: /응답이 끊어져 일부가 누락/ })).toBeVisible({
         timeout: 15_000,
       })
       await waitForRunStatus(request, conversationId, seededRun.id, 'stale')

@@ -1,4 +1,4 @@
-import { StreamHttpError } from './parse-sse'
+import { StreamApiError, StreamHttpError } from './parse-sse'
 
 /** withAutoResume 가 lastEventId 추적에 사용하는 최소 인터페이스. parse-sse 의
  *  ``SSEEvent<TEvent>`` 와 lib/types 의 discriminated-union ``SSEEvent`` 양쪽이
@@ -48,6 +48,9 @@ const DEFAULT_MAX_ATTEMPTS = 3
 function isRetryableError(err: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return false
   if (err instanceof DOMException && err.name === 'AbortError') return false
+  if (err instanceof StreamApiError && err.status >= 400 && err.status < 500) {
+    return err.status === 409 && err.code === 'RUN_ATTACH_RETRY'
+  }
   if (err instanceof StreamHttpError && err.status >= 400 && err.status < 500) {
     return false
   }

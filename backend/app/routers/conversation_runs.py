@@ -174,6 +174,11 @@ async def stream_conversation_run(
         )
 
     record = await trace_storage.get_trace_by_msg_id(db, run_id_str)
+    if record is None and run.status == "stale":
+        return sse_response(
+            _stale_only_generator(run),
+            extra_headers={"X-Run-Id": run_id_str, "X-Resume-Mode": "stale"},
+        )
     if record is None or record.conversation_id != conversation_id:
         raise resume_not_found()
     return sse_response(

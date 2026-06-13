@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const authFile = path.join(dirname, '.auth', 'user.json')
+const repoRoot = path.resolve(dirname, '..', '..')
+const skillNodeModules = path.join(repoRoot, 'backend', 'skill-node', 'node_modules')
+const requiredSkillNodePackages = ['docx', 'xlsx', 'pptxgenjs']
 
 const backendPort = process.env.E2E_BACKEND_PORT ?? '8001'
 const apiBase = process.env.E2E_API_BASE_URL ?? `http://localhost:${backendPort}`
@@ -53,6 +56,26 @@ async function writeSkipBackendState() {
   )
 }
 
+async function assertSkillNodeDependencies() {
+  const missing = []
+  for (const packageName of requiredSkillNodePackages) {
+    try {
+      await fs.access(path.join(skillNodeModules, packageName))
+    } catch {
+      missing.push(packageName)
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      [
+        `Missing backend skill-node dependencies: ${missing.join(', ')}`,
+        'Run `pnpm install --frozen-lockfile` from the repository root before full E2E.',
+        'These packages are required by execute_in_skill document artifact tests.',
+      ].join('\n'),
+    )
+  }
+}
+
 export default async function globalSetup() {
   await fs.mkdir(path.dirname(authFile), { recursive: true })
 
@@ -60,6 +83,8 @@ export default async function globalSetup() {
     await writeSkipBackendState()
     return
   }
+
+  await assertSkillNodeDependencies()
 
   const auth = { email, password }
   const api = await request.newContext({ baseURL: apiBase })

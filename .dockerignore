@@ -46,6 +46,7 @@ coverage/
 docs/
 *.md
 !README.md
+!backend/README.md
 .env
 .env.*
 *.log

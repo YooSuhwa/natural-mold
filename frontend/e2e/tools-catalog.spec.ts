@@ -66,7 +66,7 @@ test.describe('Tools catalog', () => {
     // Dialog opened
     await expect(page.getByRole('heading', { name: '새 HTTP Request' })).toBeVisible()
     await page.getByLabel(/이름/).fill('Webhook')
-    await page.getByLabel('URL').fill('https://example.com/hook')
+    await page.getByRole('textbox', { name: 'URL *' }).fill('https://example.com/hook')
 
     await page.getByRole('button', { name: '도구 생성' }).click()
     await expect(page.getByText('도구가 생성되었습니다')).toBeVisible()

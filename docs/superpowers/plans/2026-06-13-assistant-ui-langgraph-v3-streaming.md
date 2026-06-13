@@ -128,6 +128,30 @@ Verification from this slice:
 - `pnpm exec tsc --noEmit --pretty false`
 - `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 pnpm exec playwright test e2e/chat-langgraph-v3.spec.ts --project=chromium --workers=1`
 
+### Post-slice hardening result
+
+The follow-up verification pass found and closed several stability gaps that are required before continuing the v3 migration:
+
+- Existing SSE active-run attach now treats refresh/navigation disconnects as detach-only, keeps one active attach stream alive across React callback identity changes, and surfaces stale/replay-missing runs inline instead of leaving a spinner or logging a noisy 404.
+- `/api/conversations/{conversation_id}/runs/{run_id}/stream` can replay a terminal `stale` run even when no trace row exists. This preserves the run lifecycle contract for seeded/lost-worker stale rows.
+- `withAutoResume` now retries explicit `RUN_ATTACH_RETRY` 409 responses, but does not retry terminal `RESUME_NOT_FOUND` 404 responses.
+- E2E fixtures now treat browser route-transition `net::ERR_ABORTED` requests for `/api/auth/me`, conversation detail, and conversation list/page fetches as benign aborts, while still recording real non-OK responses.
+- E2E selectors for generic `URL` fields now target the textbox role (`URL *`) instead of broad label matching, so unrelated agent names containing "url" cannot break mocked catalog/wizard tests.
+- Full E2E requires the workspace-level Node skill runtime dependencies. Run `pnpm install --frozen-lockfile` from the repository root before full E2E; `cd frontend && pnpm install` alone is insufficient for document artifact specs because `execute_in_skill` needs `backend/skill-node/node_modules`.
+- `frontend/e2e/global-setup.mjs` now fails fast with a clear message if `docx`, `xlsx`, or `pptxgenjs` is missing from `backend/skill-node/node_modules`.
+- Backend Docker builds now use the repository root context, install `backend/skill-node` from the root `pnpm-lock.yaml`, copy Node 22 into the backend image, and set `SKILL_NODE_MODULES_DIR=/app/backend/skill-node/node_modules`. This makes compose backend behavior match local `execute_in_skill` document-generation behavior.
+
+Additional verification from the hardening pass:
+
+- `pnpm install --frozen-lockfile --filter @moldy/skill-node-runtime...`
+- `pnpm exec vitest run src/lib/chat/__tests__/use-chat-runtime-active-run.test.tsx src/lib/sse/__tests__/with-auto-resume.test.ts --reporter=dot`
+- `uv run pytest tests/test_conversation_runs_router.py -q`
+- `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 pnpm exec playwright test e2e/chat-langgraph-v3.spec.ts --project=chromium --workers=1`
+- `pnpm exec playwright test e2e/document-artifact-viewers.spec.ts --project=chromium --workers=1`
+- `pnpm exec playwright test e2e/mcp-server-wizard.spec.ts e2e/tools-catalog.spec.ts e2e/draft-conversation.spec.ts --project=chromium --workers=1`
+- `docker build -f backend/Dockerfile -t moldy-backend-skill-node-check .`
+- `docker run --rm moldy-backend-skill-node-check sh -c 'NODE_PATH="$SKILL_NODE_MODULES_DIR" node -e "require(\"docx\"); require(\"xlsx\"); require(\"pptxgenjs\"); console.log(\"skill-node-ok\")"'`
+
 ### BFF position: production boundary, not semantic translation layer
 
 Moldy should keep a backend boundary between the browser and the agent runtime. This is not an accidental preference caused by prior discussion of "BFF"; it follows from Moldy's product architecture:
@@ -3091,9 +3115,9 @@ Validation evidence captured on 2026-06-13:
 
 - `frontend/e2e/chat-langgraph-v3.spec.ts` exists and passes against a real local backend/frontend stack with `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3`, isolated ports `3200/8201`, and the deterministic `e2e_scripted` model.
 - The E2E covers run start, interrupt approval, reconnect without duplicate `run.start`, `values.todos`, delegated subagent scoped output, artifacts/file rail, usage metadata, history endpoint access, refresh replay, and public share rendering.
-- Captures were written to `output/e2e-captures/20260613-langgraph-v3-streaming/01-live-state.png` and `output/e2e-captures/20260613-langgraph-v3-streaming/02-artifact-rail.png`; both were verified as valid 1280x720 PNGs and visually inspected.
+- Captures were written to `output/e2e-captures/20260613-langgraph-v3-streaming/01-live-state.png`, `02-artifact-rail.png`, `03-mobile-thread-state.png`, and `04-mobile-artifact-rail.png`; all four were verified as valid PNGs and visually inspected.
 - Full backend and frontend command evidence in this implementation pass: backend `pytest` 1956 passed / 2 deselected, backend `ruff check .` passed, frontend `vitest --run` 149 files / 681 tests passed, frontend `lint` passed with one non-fatal TanStack Table compiler warning, `lint:i18n` passed, `lint:design-system` passed, `tsc --noEmit` passed, and `pnpm build` passed.
-- Remaining visual QA gap: separate mobile viewport capture/review is still pending.
+- Follow-up mobile E2E evidence added on 2026-06-13: `frontend/e2e/chat-langgraph-v3.spec.ts` now captures mobile thread/artifact states at 390x844 and asserts the document has no horizontal overflow in both states. The rerun passed against a real local backend/frontend stack on ports `3200/8201`. The screenshots show compact mobile thread and artifact views with no overlapping app text; the only visible non-product overlay is Next's dev indicator in the lower-left corner.
 
 - [x] **Step 1: E2E scenario**
 
@@ -3129,7 +3153,7 @@ Add an E2E test that:
 
 The test must fail if refresh submits a second `run.start` for the same prompt. Track this by asserting the backend helper/run list shows one run id for the original run after reconnect.
 
-- [ ] **Step 2: Manual visual QA**
+- [x] **Step 2: Manual visual QA**
 
 Before starting servers, verify:
 
@@ -3167,6 +3191,15 @@ Verify:
 - files hydrated from Moldy artifacts and optional `values.files` reconcile without duplicate file cards,
 - reconnect indicator does not conflict with activity strip,
 - thinking/reasoning label does not expose hidden chain-of-thought.
+
+Evidence captured:
+
+- `bash scripts/worktree-setup.sh` confirmed `backend/.env` and `backend/data` point at the main checkout.
+- E2E seed variables were present in `backend/.env`.
+- Ports `3200/8201` were free and used with `NEXT_PUBLIC_API_BASE_URL=http://localhost:8201` via Playwright's webServer configuration.
+- `NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 E2E_FRONTEND_PORT=3200 E2E_BACKEND_PORT=8201 E2E_WORKERS=1 E2E_TEST_TIMEOUT_MS=180000 pnpm exec playwright test e2e/chat-langgraph-v3.spec.ts --project=chromium --workers=1` passed after adding mobile captures and overflow assertions.
+- `file output/e2e-captures/20260613-langgraph-v3-streaming/*.png` confirmed desktop captures are 1280x720 and mobile captures are 390x844 valid PNGs.
+- Mobile screenshots `03-mobile-thread-state.png` and `04-mobile-artifact-rail.png` were opened and inspected.
 
 - [x] **Step 3: Full verification commands**
 

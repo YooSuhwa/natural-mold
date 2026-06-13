@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import type { Page } from '@playwright/test'
 import {
   API_BASE,
   apiDeleteOk,
@@ -26,6 +27,20 @@ import {
 const FRONTEND =
   process.env.E2E_BASE_URL ?? `http://localhost:${process.env.E2E_FRONTEND_PORT ?? '3000'}`
 const CAPTURE_DIR = path.join('..', 'output', 'e2e-captures', '20260613-langgraph-v3-streaming')
+const DESKTOP_VIEWPORT = { width: 1280, height: 720 } as const
+const MOBILE_VIEWPORT = { width: 390, height: 844 } as const
+
+async function expectNoHorizontalOverflow(page: Page): Promise<void> {
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+        ),
+      { timeout: 5_000, intervals: [250, 500] },
+    )
+    .toBe(true)
+}
 
 test.describe('LangGraph v3 chat runtime', () => {
   test.skip(process.env.PW_SKIP_BACKEND === '1', 'Requires the FastAPI backend')
@@ -72,6 +87,14 @@ test.describe('LangGraph v3 chat runtime', () => {
       await expect(page.getByText(setup.childRuntimeName).first()).toBeVisible()
       await expect(page.getByText('E2E subagent scoped result ready.').first()).toBeVisible()
 
+      await page.setViewportSize(MOBILE_VIEWPORT)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({
+        path: path.join(CAPTURE_DIR, '03-mobile-thread-state.png'),
+        fullPage: true,
+      })
+      await page.setViewportSize(DESKTOP_VIEWPORT)
+
       await page.getByRole('button', { name: /파일 패널|Artifacts/ }).click()
       await expect(page.getByRole('button', { name: new RegExp(REPORT_FILE) })).toBeVisible()
       await expect(page.getByRole('button', { name: new RegExp(NOTES_FILE) })).toBeVisible()
@@ -80,6 +103,13 @@ test.describe('LangGraph v3 chat runtime', () => {
         page.getByRole('complementary').getByText('LangGraph v3 E2E Report'),
       ).toBeVisible({ timeout: 20_000 })
       await page.screenshot({ path: path.join(CAPTURE_DIR, '02-artifact-rail.png'), fullPage: true })
+      await page.setViewportSize(MOBILE_VIEWPORT)
+      await expectNoHorizontalOverflow(page)
+      await page.screenshot({
+        path: path.join(CAPTURE_DIR, '04-mobile-artifact-rail.png'),
+        fullPage: true,
+      })
+      await page.setViewportSize(DESKTOP_VIEWPORT)
 
       const tokenButton = page.getByRole('button', { name: /토큰 사용량 보기|Toggle Aria/ }).last()
       await expect(tokenButton).toBeVisible({ timeout: 20_000 })
