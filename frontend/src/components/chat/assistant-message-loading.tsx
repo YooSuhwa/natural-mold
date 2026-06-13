@@ -3,11 +3,13 @@
 import { AuiIf, useAuiState } from '@assistant-ui/react'
 import { DeepAgentsStatePanel } from '@/components/chat/deepagents-state-panel'
 import { RunActivityStrip } from '@/components/chat/run-activity-strip'
+import { SubagentProgress } from '@/components/chat/subagent-progress'
 import { WittyLoadingMessage } from '@/components/chat/witty-loading'
 import { cn } from '@/lib/utils'
 import type { RunActivity } from '@/lib/chat/langgraph-runtime/activity-model'
 import type { DeepAgentsStateSnapshot } from '@/lib/chat/langgraph-runtime/deepagents-state'
 import { hasDeepAgentsState } from '@/lib/chat/langgraph-runtime/deepagents-state'
+import { useSubagentProgressSummary } from '@/lib/chat/langgraph-runtime/subagent-runtime'
 
 interface StreamingMessageLoadingIndicatorProps {
   readonly activities?: readonly RunActivity[]
@@ -34,15 +36,18 @@ export function StreamingMessageLoadingIndicator({
   className,
 }: StreamingMessageLoadingIndicatorProps) {
   const isStreamingMessage = useIsStreamingMessage()
+  const subagentProgress = useSubagentProgressSummary()
   if (!isStreamingMessage) return null
   const hasActivities = activities.length > 0
   const hasState = hasDeepAgentsState(deepAgentsState)
+  const hasSubagentProgress = subagentProgress.total > 0
 
   return (
     <AuiIf condition={(s) => s.thread.isRunning}>
-      {hasActivities || hasState ? (
+      {hasActivities || hasState || hasSubagentProgress ? (
         <div className={cn('mb-1 flex flex-col gap-1.5', className)}>
           {hasState ? <DeepAgentsStatePanel state={deepAgentsState} /> : null}
+          {hasSubagentProgress ? <SubagentProgress summary={subagentProgress} /> : null}
           {hasActivities ? <RunActivityStrip activities={activities} /> : null}
         </div>
       ) : (

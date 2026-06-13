@@ -1373,8 +1373,12 @@
     },
     "toolUi": {
       "subAgent": {
-        "fallbackName": "Fallback Name",
-        "invocation": "Invocation"
+        "fallbackName": "Sub-agent",
+        "invocation": "Sub-agent call",
+        "openDetails": "Open sub-agent details",
+        "messageCount": "{count} messages",
+        "toolCount": "{count} tools",
+        "waiting": "Sub-agent output will appear here as it streams."
       }
     },
     "builderApproval": {
@@ -1596,6 +1600,12 @@
       "reconnecting": "Reconnecting stream",
       "done": "Done",
       "error": "Something went wrong"
+    },
+    "subagents": {
+      "progress": "{completed}/{total} sub-agents done",
+      "progressLabel": "Sub-agent progress",
+      "running": "{count} running",
+      "failed": "{count} failed"
     },
     "deepAgentsState": {
       "tasks": {

@@ -1,11 +1,9 @@
 'use client'
 
 import { makeAssistantToolUI } from '@assistant-ui/react'
-import { useSetAtom } from 'jotai'
 import { useTranslations } from 'next-intl'
-import { CollapsiblePill, pillStatusFromAssistantUi } from './collapsible-pill'
-import { useChatConversationId } from '@/components/chat/conversation-context'
-import { chatRightRailAtom } from '@/lib/stores/chat-right-rail'
+import { SubagentCard } from '@/components/chat/subagent-card'
+import { pillStatusFromAssistantUi } from './collapsible-pill'
 
 interface SubagentArgs {
   agent_name?: string
@@ -25,31 +23,25 @@ function resolveInput(args: SubagentArgs | undefined): string {
   return args.input || args.prompt || args.description || ''
 }
 
-interface SubAgentCardProps {
+interface SubAgentToolCardProps {
   toolCallId: string
   args: SubagentArgs | undefined
   statusType: string | undefined
 }
 
-function SubAgentCard({ toolCallId, args, statusType }: SubAgentCardProps) {
+export function SubAgentToolCard({ toolCallId, args, statusType }: SubAgentToolCardProps) {
   const t = useTranslations('chat.toolUi.subAgent')
-  const setRail = useSetAtom(chatRightRailAtom)
-  const conversationId = useChatConversationId()
   const agentName = resolveAgentName(args, t('fallbackName'))
   const input = resolveInput(args)
 
   return (
-    <CollapsiblePill
-      kind="subagent"
-      status={pillStatusFromAssistantUi(statusType)}
-      title={agentName}
-      meta={input || t('invocation')}
-      onClick={() =>
-        setRail({
-          mode: 'subagent',
-          subagent: { conversationId, toolCallId, agentName, input },
-        })
-      }
+    <SubagentCard
+      fallback={{
+        agentName,
+        input,
+        status: pillStatusFromAssistantUi(statusType),
+      }}
+      toolCallId={toolCallId}
     />
   )
 }
@@ -61,6 +53,6 @@ function SubAgentCard({ toolCallId, args, statusType }: SubAgentCardProps) {
 export const SubAgentToolUI = makeAssistantToolUI<SubagentArgs, unknown>({
   toolName: 'task',
   render: ({ args, status, toolCallId }) => (
-    <SubAgentCard toolCallId={toolCallId} args={args} statusType={status?.type} />
+    <SubAgentToolCard toolCallId={toolCallId} args={args} statusType={status?.type} />
   ),
 })

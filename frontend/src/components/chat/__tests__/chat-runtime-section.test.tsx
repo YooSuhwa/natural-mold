@@ -54,6 +54,13 @@ async function* emptyStream(): AsyncGenerator<SSEEvent> {
   return
 }
 
+function langGraphStream(isLoading: boolean) {
+  return {
+    isLoading,
+    subagents: new Map(),
+  }
+}
+
 function renderSection(overrides: Partial<Parameters<typeof ChatRuntimeSection>[0]> = {}) {
   return render(
     <ChatRuntimeSection
@@ -90,7 +97,7 @@ describe('ChatRuntimeSection', () => {
     mocks.useMoldyLangGraphStream.mockReturnValue({
       assistantRuntime: 'langgraph-runtime',
       activities: [],
-      stream: { isLoading: false },
+      stream: langGraphStream(false),
       onResumeDecisions: vi.fn(),
       registerDecision: vi.fn(),
     })
@@ -130,7 +137,7 @@ describe('ChatRuntimeSection', () => {
           namespace: [],
         },
       ],
-      stream: { isLoading: false },
+      stream: langGraphStream(false),
       onResumeDecisions: vi.fn(),
       registerDecision: vi.fn(),
     })
@@ -157,7 +164,7 @@ describe('ChatRuntimeSection', () => {
     mocks.useMoldyLangGraphStream.mockReturnValue({
       assistantRuntime: 'langgraph-runtime',
       activities: [],
-      stream: { isLoading: true },
+      stream: langGraphStream(true),
       onResumeDecisions: vi.fn(),
       registerDecision: vi.fn(),
     })
@@ -172,7 +179,7 @@ describe('ChatRuntimeSection', () => {
     mocks.useMoldyLangGraphStream.mockReturnValue({
       assistantRuntime: 'langgraph-runtime',
       activities: [],
-      stream: { isLoading: false },
+      stream: langGraphStream(false),
       onResumeDecisions: vi.fn(),
       registerDecision: vi.fn(),
     })

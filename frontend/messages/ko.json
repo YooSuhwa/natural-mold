@@ -1353,7 +1353,11 @@
     "toolUi": {
       "subAgent": {
         "fallbackName": "서브 에이전트",
-        "invocation": "서브 에이전트 호출"
+        "invocation": "서브 에이전트 호출",
+        "openDetails": "서브 에이전트 세부 정보 열기",
+        "messageCount": "메시지 {count}개",
+        "toolCount": "도구 {count}개",
+        "waiting": "서브 에이전트 출력이 도착하면 여기에 표시됩니다."
       }
     },
     "builderApproval": {
@@ -1575,6 +1579,12 @@
       "reconnecting": "스트림을 다시 연결하는 중",
       "done": "완료됨",
       "error": "문제가 발생했습니다"
+    },
+    "subagents": {
+      "progress": "서브 에이전트 {completed}/{total} 완료",
+      "progressLabel": "서브 에이전트 진행률",
+      "running": "{count}개 진행 중",
+      "failed": "{count}개 실패"
     },
     "deepAgentsState": {
       "tasks": {

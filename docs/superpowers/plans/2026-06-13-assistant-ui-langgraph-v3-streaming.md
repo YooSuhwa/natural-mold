@@ -2471,6 +2471,22 @@ Use the official Deep Agents frontend pattern while keeping assistant-ui as the 
 
 Async/background subagents from `AsyncSubAgentMiddleware` should not reuse the inline subagent transcript card. Render them as background task cards/status rows keyed by `task_id`, showing agent name, run status, created/updated timestamps, and latest check result. They are launched/checked/updated/cancelled through tools and state updates, not through the inline v3 `stream.subagents` projection.
 
+Implemented so far:
+
+- `frontend/src/lib/chat/langgraph-runtime/subagent-runtime.tsx` shares the single `@langchain/react` stream with chat tool UI via context and indexes `stream.subagents` snapshots by spawning task tool-call id.
+- `frontend/src/components/chat/subagent-card.tsx` upgrades the existing assistant-ui `task` tool surface into a DeepAgents subagent card when a LangGraph discovery snapshot exists, while preserving the legacy fallback before discovery arrives.
+- Expanded cards mount `useMessages(stream, subagent)` and `useToolCalls(stream, subagent)` only inside the detail body, so collapsed cards do not open scoped selector subscriptions.
+- The card shows subagent name, status, task input, namespace/path, scoped message/tool counts, output preview, and per-subagent error text without marking the parent assistant message as failed.
+- `frontend/src/components/chat/subagent-progress.tsx` renders compact discovered-subagent progress from the shared stream and is shown in the active streaming assistant turn.
+
+Still pending:
+
+- make `SubagentProgress` strictly current-assistant-turn scoped instead of whole-thread discovered-subagent scoped;
+- auto-collapse completed cards when a turn has five or more subagents;
+- cap simultaneously expanded live subagent detail cards and move bulk inspection to the right rail;
+- make the right rail subagent panel mount scoped `useMessages` / `useToolCalls` details from the same shared stream;
+- render async/background subagent task cards from `async_tasks` state and async-subagent tools separately from inline v3 subagent transcript cards.
+
 - [x] **Step 3: Connect to `AssistantThread`**
 
 Add optional prop:
@@ -2516,11 +2532,11 @@ Test:
 - file viewer supports Markdown preview, code/plain-text preview, copy, and download,
 - file edit action is disabled while loading or interrupted,
 - [x] subagent activity shows nested namespace,
-- subagent card attaches below the coordinator tool call that spawned it,
-- collapsed subagent card does not render scoped transcript rows,
-- expanded subagent card renders scoped messages and tool calls,
-- subagent progress shows completed/total counts,
-- subagent error stays inside the subagent card unless the parent run fails,
+- [x] subagent card attaches below the coordinator tool call that spawned it,
+- [x] collapsed subagent card does not render scoped transcript rows,
+- [x] expanded subagent card renders scoped messages and tool calls,
+- [x] subagent progress shows completed/total counts,
+- [x] subagent error stays inside the subagent card unless the parent run fails,
 - [x] error activity shows error styling,
 - [x] witty loading is hidden when semantic activity exists.
 - [x] v3 content-block tool activity maps through tool completion.

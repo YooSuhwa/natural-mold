@@ -7,9 +7,11 @@ import {
   type AttachmentAdapter,
   type FeedbackAdapter,
 } from '@assistant-ui/react'
+import type { AnyStream } from '@langchain/react'
 import { AssistantThread, type AssistantThreadProps } from '@/components/chat/assistant-thread'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useMoldyLangGraphStream } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
+import { SubagentRuntimeProvider } from '@/lib/chat/langgraph-runtime/subagent-runtime'
 import { HiTLContext, type HiTLContextValue } from '@/lib/chat/hitl-context'
 import { ALL_DATA_UI } from '@/lib/chat/data-ui-registry'
 import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
@@ -210,6 +212,7 @@ function LangGraphRuntimeSection({
       deepAgentsState={deepAgentsState}
       hitlValue={hitlValue}
       runtime={assistantRuntime}
+      subagentStream={stream}
       threadProps={threadProps}
     />
   )
@@ -220,6 +223,7 @@ interface RuntimeFrameProps {
   readonly deepAgentsState?: AssistantThreadProps['deepAgentsState']
   readonly hitlValue: HiTLContextValue
   readonly runtime: AssistantRuntime
+  readonly subagentStream?: AnyStream | null
   readonly threadProps: ThreadRenderProps
 }
 
@@ -228,21 +232,24 @@ function RuntimeFrame({
   deepAgentsState,
   hitlValue,
   runtime,
+  subagentStream,
   threadProps,
 }: RuntimeFrameProps) {
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <HiTLContext.Provider value={hitlValue}>
-        <AssistantThread
-          {...threadProps}
-          activities={activities}
-          dataUI={ALL_DATA_UI}
-          deepAgentsState={deepAgentsState}
-          showTokenBar
-          showMessageTimestamp
-          enableAttachments
-          toolUI={ALL_TOOL_UI}
-        />
+        <SubagentRuntimeProvider stream={subagentStream}>
+          <AssistantThread
+            {...threadProps}
+            activities={activities}
+            dataUI={ALL_DATA_UI}
+            deepAgentsState={deepAgentsState}
+            showTokenBar
+            showMessageTimestamp
+            enableAttachments
+            toolUI={ALL_TOOL_UI}
+          />
+        </SubagentRuntimeProvider>
       </HiTLContext.Provider>
     </AssistantRuntimeProvider>
   )

@@ -136,7 +136,7 @@ export function CollapsiblePill({
         <HeaderIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
       ) : null}
       <span className="truncate font-medium">{title}</span>
-      {meta ? <span className="shrink-0 text-muted-foreground">{meta}</span> : null}
+      {meta ? <span className="min-w-0 truncate text-muted-foreground">{meta}</span> : null}
     </>
   )
 
