@@ -47,7 +47,7 @@ const ACTIVITY_CHANNELS = [
 
 function appendMessageText(message: {
   content: readonly unknown[]
-  attachments?: readonly { content: readonly unknown[] }[]
+  attachments?: readonly { content?: readonly unknown[] }[]
 }): string {
   const content = [
     ...message.content,
@@ -60,6 +60,16 @@ function appendMessageText(message: {
       return 'text' in part && typeof part.text === 'string' ? part.text : ''
     })
     .join('')
+}
+
+function attachmentRefs(message: {
+  attachments?: readonly { id?: unknown }[]
+}): { id: string }[] {
+  return (
+    message.attachments
+      ?.map((attachment) => (typeof attachment.id === 'string' ? { id: attachment.id } : null))
+      .filter((attachment): attachment is { id: string } => attachment !== null) ?? []
+  )
 }
 
 function convertMoldyLangChainMessage(
@@ -133,11 +143,15 @@ export function useMoldyLangGraphStream({
   const onNew = useCallback(
     async (message: {
       content: readonly unknown[]
-      attachments?: readonly { content: readonly unknown[] }[]
+      attachments?: readonly { id?: unknown; content?: readonly unknown[] }[]
     }) => {
       const content = appendMessageText(message).trim()
-      if (!content) return
-      await stream.submit({ messages: [new HumanMessage(content)] })
+      const attachments = attachmentRefs(message)
+      if (!content && attachments.length === 0) return
+      await stream.submit({
+        messages: [new HumanMessage(content)],
+        ...(attachments.length > 0 ? { attachments } : {}),
+      })
     },
     [stream],
   )

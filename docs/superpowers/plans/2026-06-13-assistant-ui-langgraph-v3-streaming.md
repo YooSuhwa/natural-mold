@@ -2650,7 +2650,7 @@ Implemented in this slice:
 - `frontend/src/lib/chat/langgraph-runtime/memory-events.ts` consumes `custom:memory_*` / named custom memory events through `useChannelEffect(replay: false)`, deduplicates by protocol event id, invalidates `memoryKeys.all`, and preserves the legacy Sonner toast semantics.
 - `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts` attaches the memory effect to the same shared `@langchain/react` stream used by assistant-ui and the DeepAgents panels.
 
-- [ ] **Step 4: Feedback and attachments**
+- [x] **Step 4: Feedback and attachments**
 
 Pass assistant-ui adapters:
 
@@ -2658,6 +2658,14 @@ Pass assistant-ui adapters:
 - `attachments: moldyAttachmentAdapter`
 
 Confirm uploaded attachment ids are included in POST stream body for both existing and draft conversations.
+
+Implemented in this slice:
+
+- `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts` now extracts completed assistant-ui attachment ids from `onNew` messages and submits them through the same shared LangGraph stream input as protocol `attachments`.
+- `backend/app/routers/conversation_agent_protocol_attachments.py` parses protocol attachment refs and strips them from the graph input before the worker starts, so Moldy's BFF owns upload linking without sending unknown attachment state into LangGraph.
+- `backend/app/routers/conversation_agent_protocol_commands.py` links owned upload rows to the conversation for `run.start` commands and records the attachment count in the existing audit metadata.
+- Feedback adapters were already passed through the LangGraph runtime section; this slice adds regression coverage that attachments now travel through the same runtime path.
+- Draft conversations still intentionally use the legacy runtime until LangGraph draft creation is ported; the existing `streamStartConversation` path already includes uploaded attachment ids in the legacy POST body.
 
 - [ ] **Step 4a: Usage and spend parity**
 
@@ -2708,6 +2716,19 @@ backend/.venv/bin/python -m py_compile backend/app/agent_runtime/langgraph_strea
 pnpm --dir frontend exec vitest run src/lib/chat/langgraph-runtime
 pnpm --dir frontend exec tsc --noEmit
 pnpm --dir frontend exec eslint src/lib/chat/langgraph-runtime/memory-events.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/memory-events.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+
+git diff --check
+```
+
+Focused feedback/attachment verification added in this slice:
+
+```bash
+backend/.venv/bin/python -m pytest backend/tests/test_conversation_agent_protocol_attachments.py backend/tests/test_conversation_agent_protocol_router.py::test_run_start_command_defaults_multitask_strategy_to_reject backend/tests/test_conversation_agent_protocol_router.py::test_run_start_command_rejects_active_run backend/tests/test_conversation_agent_protocol_commands.py
+backend/.venv/bin/python -m py_compile backend/app/routers/conversation_agent_protocol_commands.py backend/app/routers/conversation_agent_protocol_attachments.py backend/tests/test_conversation_agent_protocol_attachments.py
+
+pnpm --dir frontend exec vitest run src/lib/chat/langgraph-runtime src/components/chat/__tests__/chat-runtime-section.test.tsx
+pnpm --dir frontend exec tsc --noEmit
+pnpm --dir frontend exec eslint src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/attachments-submit.test.tsx src/components/chat/chat-runtime-section.tsx
 
 git diff --check
 ```

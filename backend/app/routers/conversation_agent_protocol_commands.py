@@ -11,6 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agent_runtime.executor import execute_agent_stream_langgraph, resume_agent_stream_langgraph
 from app.dependencies import CurrentUser
 from app.models.conversation import Conversation
+from app.routers.conversation_agent_protocol_attachments import (
+    attachment_ids_from_protocol_input,
+    input_without_protocol_attachments,
+)
 from app.routers.conversation_agent_protocol_contracts import (
     AgentCommandParams,
     AgentCommandRequest,
@@ -59,6 +63,8 @@ async def _handle_run_start_command(
         )
 
     input_payload = command.params.input or {}
+    attachment_ids = attachment_ids_from_protocol_input(input_payload)
+    runtime_input_payload = input_without_protocol_attachments(input_payload)
     preview = input_preview(input_payload)
     cfg = await resolve_agent_context(
         db,
@@ -78,7 +84,7 @@ async def _handle_run_start_command(
         agent_id=cfg_agent_uuid(conversation),
         metadata={
             "content_length": len(preview or ""),
-            "attachment_count": 0,
+            "attachment_count": len(attachment_ids),
             "source": "langgraph_protocol",
         },
     )
@@ -105,6 +111,13 @@ async def _handle_run_start_command(
             )
         raise
     run_id = run.id
+    if attachment_ids:
+        await chat_service.link_attachments_to_conversation(
+            db,
+            conversation_id=conversation.id,
+            user_id=user.id,
+            attachment_ids=attachment_ids,
+        )
     await db.commit()
 
     await start_run(
@@ -112,7 +125,7 @@ async def _handle_run_start_command(
         conversation_id=conversation.id,
         cfg=cfg,
         user=user,
-        input_payload=input_payload,
+        input_payload=runtime_input_payload,
         moldy_source="chat",
         executor_fn=executor_fn,
     )
