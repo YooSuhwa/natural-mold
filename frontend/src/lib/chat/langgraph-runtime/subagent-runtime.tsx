@@ -1,7 +1,8 @@
 'use client'
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from 'react'
 import type { AnyStream, SubagentDiscoverySnapshot } from '@langchain/react'
+import { atom, useAtomValue, useSetAtom } from 'jotai'
 
 const EMPTY_SUBAGENTS: ReadonlyMap<string, SubagentDiscoverySnapshot> = new Map()
 
@@ -16,6 +17,13 @@ const EMPTY_VALUE = {
 } satisfies SubagentRuntimeValue
 
 const SubagentRuntimeContext = createContext<SubagentRuntimeValue>(EMPTY_VALUE)
+const sharedSubagentRuntimeAtom = atom<SharedSubagentRuntime | null>(null)
+
+export interface SharedSubagentRuntime {
+  readonly conversationId: string
+  readonly stream: AnyStream
+  readonly subagentsByToolCallId: ReadonlyMap<string, SubagentDiscoverySnapshot>
+}
 
 interface SubagentRuntimeProviderProps {
   readonly children: ReactNode
@@ -91,4 +99,41 @@ export function useSubagentProgressSummary(): SubagentProgressSummary {
       failed,
     }
   }, [snapshots])
+}
+
+export function usePublishSubagentRuntime(
+  conversationId: string,
+  stream: AnyStream | null | undefined,
+): void {
+  const setRuntime = useSetAtom(sharedSubagentRuntimeAtom)
+  const subagentsByToolCallId = useMemo(() => indexSubagents(stream), [stream])
+
+  useEffect(() => {
+    if (!stream) {
+      setRuntime(null)
+      return
+    }
+
+    setRuntime({
+      conversationId,
+      stream,
+      subagentsByToolCallId,
+    })
+
+    return () => {
+      setRuntime((current) => {
+        if (current?.conversationId === conversationId && current.stream === stream) return null
+        return current
+      })
+    }
+  }, [conversationId, setRuntime, stream, subagentsByToolCallId])
+}
+
+export function useSharedSubagentRuntime(
+  conversationId?: string | null,
+): SharedSubagentRuntime | null {
+  const runtime = useAtomValue(sharedSubagentRuntimeAtom)
+  if (!runtime) return null
+  if (conversationId && runtime.conversationId !== conversationId) return null
+  return runtime
 }

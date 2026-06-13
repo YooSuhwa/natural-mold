@@ -2478,13 +2478,13 @@ Implemented so far:
 - Expanded cards mount `useMessages(stream, subagent)` and `useToolCalls(stream, subagent)` only inside the detail body, so collapsed cards do not open scoped selector subscriptions.
 - The card shows subagent name, status, task input, namespace/path, scoped message/tool counts, output preview, and per-subagent error text without marking the parent assistant message as failed.
 - `frontend/src/components/chat/subagent-progress.tsx` renders compact discovered-subagent progress from the shared stream and is shown in the active streaming assistant turn.
+- `frontend/src/components/chat/right-rail/subagent-panel-content.tsx` reads the same active LangGraph stream through `useSharedSubagentRuntime()` and mounts scoped `useMessages(stream, subagent)` / `useToolCalls(stream, subagent)` details in the right rail when the selected subagent belongs to the active conversation.
 
 Still pending:
 
 - make `SubagentProgress` strictly current-assistant-turn scoped instead of whole-thread discovered-subagent scoped;
 - auto-collapse completed cards when a turn has five or more subagents;
 - cap simultaneously expanded live subagent detail cards and move bulk inspection to the right rail;
-- make the right rail subagent panel mount scoped `useMessages` / `useToolCalls` details from the same shared stream;
 - render async/background subagent task cards from `async_tasks` state and async-subagent tools separately from inline v3 subagent transcript cards.
 
 - [x] **Step 3: Connect to `AssistantThread`**

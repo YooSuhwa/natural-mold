@@ -11,7 +11,10 @@ import type { AnyStream } from '@langchain/react'
 import { AssistantThread, type AssistantThreadProps } from '@/components/chat/assistant-thread'
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useMoldyLangGraphStream } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
-import { SubagentRuntimeProvider } from '@/lib/chat/langgraph-runtime/subagent-runtime'
+import {
+  SubagentRuntimeProvider,
+  usePublishSubagentRuntime,
+} from '@/lib/chat/langgraph-runtime/subagent-runtime'
 import { HiTLContext, type HiTLContextValue } from '@/lib/chat/hitl-context'
 import { ALL_DATA_UI } from '@/lib/chat/data-ui-registry'
 import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
@@ -193,6 +196,7 @@ function LangGraphRuntimeSection({
     () => ({ onResumeDecisions, registerDecision }),
     [onResumeDecisions, registerDecision],
   )
+  usePublishSubagentRuntime(conversationId, stream)
 
   useEffect(() => {
     if (stream.isLoading) {
