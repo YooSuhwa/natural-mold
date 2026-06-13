@@ -5,8 +5,10 @@ import json
 import pytest
 
 from app.agent_runtime.protocol_events import (
+    canonical_input_requested_events,
     format_protocol_sse,
     matches_subscription,
+    protocol_interrupts_from_event,
     stored_protocol_event,
     to_assistant_ui_projection,
     to_protocol_wire_event,
@@ -132,6 +134,85 @@ def test_matches_input_requested_when_subscribed_to_input_channel() -> None:
     )
 
     assert matches_subscription(event, {"channels": ["input"]})
+
+
+def test_canonicalizes_values_interrupt_to_input_requested() -> None:
+    event = stored_protocol_event(
+        run_id="run-1",
+        thread_id="thread-1",
+        seq=6,
+        event_id="evt-values-6",
+        method="values",
+        namespace=["tools:call-1"],
+        data={
+            "__interrupt__": [
+                {
+                    "id": "intr-1",
+                    "value": {"question": "approve execute_in_skill?"},
+                }
+            ]
+        },
+    )
+
+    [canonical] = canonical_input_requested_events(event)
+
+    assert canonical["method"] == "input.requested"
+    assert canonical["upstream_event_id"] == "run-1:input:00000006:0"
+    assert canonical["namespace"] == ["tools:call-1"]
+    assert canonical["data"] == {
+        "interrupt_id": "intr-1",
+        "payload": {"question": "approve execute_in_skill?"},
+        "namespace": ["tools:call-1"],
+    }
+
+
+def test_canonical_input_requested_event_ids_are_db_safe_and_unique() -> None:
+    event = stored_protocol_event(
+        run_id="123e4567-e89b-12d3-a456-426614174000",
+        thread_id="thread-1",
+        seq=10,
+        event_id=(
+            "123e4567-e89b-12d3-a456-426614174000:protocol:00000010:"
+            "input-requested:very-long-interrupt-id-that-would-overflow"
+        ),
+        method="values",
+        data={
+            "__interrupt__": [
+                {"id": "intr-1", "value": {"question": "first?"}},
+                {"id": "intr-2", "value": {"question": "second?"}},
+            ]
+        },
+    )
+
+    canonicals = canonical_input_requested_events(event)
+
+    event_ids = [canonical["upstream_event_id"] for canonical in canonicals]
+    assert event_ids == [
+        "123e4567-e89b-12d3-a456-426614174000:input:00000010:0",
+        "123e4567-e89b-12d3-a456-426614174000:input:00000010:1",
+    ]
+    assert all(event_id is not None and len(event_id) <= 80 for event_id in event_ids)
+
+
+def test_extracts_tasks_interrupts() -> None:
+    event = stored_protocol_event(
+        run_id="run-1",
+        thread_id="thread-1",
+        seq=8,
+        method="tasks",
+        namespace=["agent"],
+        data={
+            "id": "task-1",
+            "name": "tools",
+            "interrupts": [
+                {"id": "intr-2", "value": {"action_requests": []}, "ns": ["tools:call-2"]}
+            ],
+        },
+    )
+
+    assert protocol_interrupts_from_event(event) == [
+        {"id": "intr-2", "value": {"action_requests": []}, "ns": ["tools:call-2"]}
+    ]
 
 
 def test_rejects_non_json_data() -> None:

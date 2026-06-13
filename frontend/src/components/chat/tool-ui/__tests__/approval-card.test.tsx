@@ -65,4 +65,76 @@ describe('ApprovalCard', () => {
     })
     expect(unsupportedAddResult).toHaveBeenCalledTimes(1)
   })
+
+  it('passes the LangGraph interrupt id when registering an approval decision', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'interrupt-approval:0',
+          tool_name: 'write_file',
+          tool_args: { path: 'report.md' },
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+          hitl_interrupt_id: 'interrupt-approval',
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('approve'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        { type: 'approve' },
+        'approved',
+        'interrupt-approval',
+      )
+    })
+  })
+
+  it('keeps a rejected result visible after LangGraph resume accepts the decision', async () => {
+    const registerDecision = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
+    const toolUi = ApprovalCard as unknown as ToolUiRender
+    function ApprovalUnderTest() {
+      return toolUi.render({
+        args: {
+          approval_id: 'interrupt-approval:0',
+          tool_name: 'execute_in_skill',
+          tool_args: { command: 'node scripts/create_docx.cjs' },
+          hitl_action_index: 0,
+          hitl_total_actions: 1,
+          hitl_interrupt_id: 'interrupt-approval',
+        },
+        status: { type: 'requires-action' },
+      })
+    }
+
+    render(
+      <HiTLContext.Provider value={{ onResumeDecisions: vi.fn(), registerDecision }}>
+        <ApprovalUnderTest />
+      </HiTLContext.Provider>,
+    )
+
+    fireEvent.click(screen.getByText('reject'))
+    fireEvent.click(screen.getByText('rejectConfirm'))
+
+    await waitFor(() => {
+      expect(registerDecision).toHaveBeenCalledWith(
+        0,
+        { type: 'reject', message: undefined },
+        'rejected',
+        'interrupt-approval',
+      )
+    })
+    expect(await screen.findByText('rejected')).toBeVisible()
+  })
 })

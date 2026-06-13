@@ -132,6 +132,65 @@ async def test_thread_state_hydrates_pending_input_requested_interrupt(
 
 
 @pytest.mark.asyncio
+async def test_thread_state_hydrates_pending_tasks_interrupts(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    conversation = await _seed_protocol_conversation(db)
+    run_id = uuid.uuid4()
+    payload = _approval_payload()
+    db.add(
+        ConversationRun(
+            id=run_id,
+            conversation_id=conversation.id,
+            agent_id=conversation.agent_id,
+            user_id=TEST_USER_ID,
+            source="chat",
+            status="interrupted",
+            is_active=False,
+            interrupt_id="intr-task",
+        )
+    )
+    db.add(
+        MessageEvent(
+            conversation_id=conversation.id,
+            assistant_msg_id=str(run_id),
+            events=[
+                stored_protocol_event(
+                    run_id=str(run_id),
+                    thread_id=str(conversation.id),
+                    seq=5,
+                    method="tasks",
+                    namespace=["agent"],
+                    data={
+                        "id": "task-1",
+                        "name": "tools",
+                        "interrupts": [
+                            {"id": "intr-task", "value": payload, "ns": ["tools:call-1"]}
+                        ],
+                    },
+                )
+            ],
+            status="completed",
+        )
+    )
+    await db.commit()
+
+    response = await client.get(
+        f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["tasks"] == [
+        {
+            "id": str(run_id),
+            "name": "interrupted",
+            "interrupts": [{"id": "intr-task", "value": payload, "ns": ["tools:call-1"]}],
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_thread_state_omits_interrupt_after_resume_child_exists(
     client: AsyncClient,
     db: AsyncSession,

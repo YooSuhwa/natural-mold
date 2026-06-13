@@ -2603,7 +2603,7 @@ Map live and hydrated `@langchain/react` interrupt state to the existing `Standa
 
 Target behavior status:
 
-- [ ] active assistant message status becomes `requires-action` after browser/E2E verification,
+- [x] active assistant message status becomes `requires-action` after browser/E2E verification,
 - [x] existing approval cards render from projected tool-call messages,
 - [x] `onResumeDecisions` resumes through the new BFF endpoint.
 
@@ -2616,10 +2616,14 @@ Implemented in this slice:
 - `backend/app/agent_runtime/langgraph_agent_stream_runner.py` resumes LangGraph with `Command(resume=...)`.
 - `backend/app/routers/conversation_agent_protocol_interrupts.py` projects unresolved `input.requested` events from the latest interrupted run into SDK-compatible `tasks[].interrupts` for refresh hydration.
 - `backend/app/services/conversation_run_worker.py` treats v3 `input.requested` events as interrupted terminal runs, so the pending interrupt can be discovered durably.
+- `backend/app/agent_runtime/langgraph_protocol_adapter.py` preserves real LangGraph v3 `params.interrupts` payloads by normalizing them into `data.__interrupt__`, including real `langgraph.types.Interrupt` objects.
+- `backend/app/agent_runtime/protocol_events.py` canonicalizes raw interrupts into DB-safe `input.requested` protocol events, keeping `last_event_id` under the `message_events` length limit.
+- `backend/app/agent_runtime/langgraph_streaming.py` emits canonical `input.requested` events through the same live broker, trace sink, and persistence callback as raw v3 events. If the Python v3 stream does not surface the interrupt before the graph pauses, it reads pending interrupts from LangGraph state before `persist_callback` and broker close, then emits the same canonical event shape instead of a late, non-durable side path.
+- `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts` treats active interrupts as user-action-required rather than still-running, and keeps resolved approval/rejection tool results visible after `stream.respond`.
+- `frontend/src/components/chat/tool-ui/approval-card.tsx` parses persisted JSON tool results so resolved approval cards render the correct final badge.
 
-Still open after this slice:
+Residual scope outside this slice:
 
-- browser/E2E verification with a real paused HITL agent,
 - nested or namespaced interrupt behavior beyond the root stream path.
 
 - [x] **Step 2: Artifacts**
@@ -2703,7 +2707,7 @@ pnpm exec tsc --noEmit
 pnpm exec eslint src/lib/chat/langgraph-runtime/usage-events.ts src/lib/chat/langgraph-runtime/usage-normalization.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-usage.test.tsx
 ```
 
-- [ ] **Step 5: Tests**
+- [x] **Step 5: Tests**
 
 Run and extend:
 
@@ -2775,9 +2779,51 @@ cd backend
 .venv/bin/pytest tests/test_conversation_agent_protocol_state_hydration.py tests/test_conversation_run_worker_interrupt_detection.py tests/agent_runtime/test_langgraph_protocol_adapter.py tests/agent_runtime/test_protocol_events.py
 ```
 
+Additional final HITL verification added after browser debugging:
+
+```bash
+cd backend
+.venv/bin/python -m pytest tests/agent_runtime/test_langgraph_hitl_interrupts.py tests/agent_runtime/test_langgraph_streaming.py tests/agent_runtime/test_langgraph_protocol_adapter.py tests/agent_runtime/test_protocol_events.py tests/test_conversation_run_worker_interrupt_detection.py tests/test_conversation_agent_protocol_state_hydration.py -q
+# 34 passed
+
+cd frontend
+pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/interrupt-requires-action.test.tsx src/lib/chat/langgraph-runtime/__tests__/hitl-interrupts.test.ts src/components/chat/tool-ui/__tests__/approval-card.test.tsx src/components/chat/tool-ui/__tests__/user-input-ui.test.tsx
+# 11 passed
+pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx src/components/chat/tool-ui/__tests__/approval-card.test.tsx src/lib/chat/langgraph-runtime/__tests__/hitl-interrupts.test.ts
+# 15 passed
+pnpm exec tsc --noEmit
+pnpm exec eslint src/lib/chat/langgraph-runtime/hitl-interrupts.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx src/components/chat/tool-ui/approval-card.tsx src/components/chat/tool-ui/__tests__/approval-card.test.tsx
+
+cd frontend
+PATH=/Users/chester/.hermes/bin:$PATH NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 E2E_FRONTEND_PORT=3137 E2E_BACKEND_PORT=8137 pnpm exec playwright test e2e/hitl-approval.spec.ts --project=chromium
+# 1 passed: HITL tool approval reject flow pauses, renders approval UI, rejects, resumes, and skips artifact creation.
+```
+
+Final verification after moving the pending-state interrupt fallback into the durable stream path:
+
+```bash
+cd backend
+.venv/bin/python -m pytest tests/agent_runtime tests/test_conversation_run_worker_interrupt_detection.py tests/test_conversation_agent_protocol_state_hydration.py -q
+# 118 passed
+.venv/bin/python -m ruff check app/agent_runtime/langgraph_agent_stream_runner.py app/agent_runtime/langgraph_protocol_adapter.py app/agent_runtime/langgraph_streaming.py app/agent_runtime/protocol_events.py app/routers/conversation_agent_protocol_interrupts.py app/services/conversation_run_worker.py tests/agent_runtime/test_agent_stream_runner_langgraph.py tests/agent_runtime/test_langgraph_protocol_adapter.py tests/agent_runtime/test_langgraph_streaming.py tests/agent_runtime/test_protocol_events.py tests/agent_runtime/test_langgraph_hitl_interrupts.py tests/test_conversation_agent_protocol_state_hydration.py tests/test_conversation_run_worker_interrupt_detection.py
+# All checks passed
+
+cd frontend
+pnpm exec vitest run src/lib/chat/langgraph-runtime src/components/chat/tool-ui/__tests__/approval-card.test.tsx src/components/chat/tool-ui/__tests__/user-input-ui.test.tsx
+# 15 files, 47 tests passed
+pnpm exec tsc --noEmit
+pnpm lint:i18n
+pnpm lint:design-system
+pnpm exec eslint src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/hitl-interrupts.ts src/components/chat/tool-ui/approval-card.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx src/lib/chat/langgraph-runtime/__tests__/interrupt-requires-action.test.tsx src/components/chat/tool-ui/__tests__/approval-card.test.tsx src/components/chat/tool-ui/__tests__/user-input-ui.test.tsx
+PATH=/Users/chester/.hermes/bin:$PATH NEXT_PUBLIC_CHAT_RUNTIME=langgraph_v3 E2E_FRONTEND_PORT=3137 E2E_BACKEND_PORT=8137 pnpm exec playwright test e2e/hitl-approval.spec.ts --project=chromium
+# 1 passed
+
+git diff --check
+```
+
 Add or extend backend tests around `backend/app/agent_runtime/agent_stream_runner.py`, `backend/app/agent_runtime/langgraph_streaming.py`, and `backend/app/hooks/builtin/spend_hook.py` so the new stream path proves it still emits hook usage on success.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/src/lib/chat/langgraph-runtime backend/app/agent_runtime/langgraph_streaming.py frontend/src/components/chat frontend/src/lib/stores

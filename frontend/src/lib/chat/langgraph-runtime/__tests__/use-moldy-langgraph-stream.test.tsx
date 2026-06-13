@@ -1,4 +1,4 @@
-import { renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -245,6 +245,58 @@ describe('useMoldyLangGraphStream', () => {
       { decisions: [{ type: 'approve' }] },
       { interruptId: 'intr-1' },
     )
+  })
+
+  it('keeps resolved HITL approval results visible after resume', async () => {
+    mocks.stream.interrupts = [
+      {
+        id: 'intr-1',
+        value: {
+          action_requests: [{ name: 'execute_in_skill', args: { command: 'make-docx' } }],
+          review_configs: [
+            { action_name: 'execute_in_skill', allowed_decisions: ['approve', 'reject'] },
+          ],
+        },
+      },
+    ]
+    const { result } = renderHook(
+      () =>
+        useMoldyLangGraphStream({
+          agentId: 'agent-hitl',
+          conversationId: 'conversation-hitl',
+        }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    await act(async () => {
+      await result.current.registerDecision(0, { type: 'reject' }, 'rejected', 'intr-1')
+    })
+
+    expect(mocks.stream.respond).toHaveBeenCalledWith(
+      { decisions: [{ type: 'reject' }] },
+      { interruptId: 'intr-1' },
+    )
+
+    await waitFor(() => {
+      const calls = mocks.useExternalMessageConverter.mock.calls
+      const converterOptions = calls[calls.length - 1]?.[0] as
+        | { messages: readonly unknown[] }
+        | undefined
+      expect(converterOptions?.messages).toEqual([
+        expect.objectContaining({
+          tool_calls: [
+            expect.objectContaining({
+              id: 'intr-1:0',
+              name: 'request_approval',
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          tool_call_id: 'intr-1:0',
+          content: '{"decision":"rejected"}',
+        }),
+      ])
+    })
   })
 
   it('batches multi-action decisions for the same interrupt before resume', async () => {

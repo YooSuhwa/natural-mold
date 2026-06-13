@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   useExternalMessageConverter,
   useExternalStoreRuntime,
@@ -13,7 +13,13 @@ import { convertLangChainBaseMessage } from '@assistant-ui/react-langchain'
 import { reduceProtocolActivity } from './activity-protocol'
 import { useLangGraphArtifactEffects } from './artifact-events'
 import { selectDeepAgentsState } from './deepagents-state'
-import { appendInterruptToolCallMessages, standardPayloadsFromInterrupts } from './hitl-interrupts'
+import {
+  appendInterruptToolCallMessages,
+  appendResolvedInterruptToolCallMessages,
+  resolvedInterruptToolCallsFromDecisions,
+  standardPayloadsFromInterrupts,
+  type ResolvedInterruptToolCall,
+} from './hitl-interrupts'
 import { useLangGraphMemoryEffects } from './memory-events'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import { useCheckpointForkHandlers } from './use-checkpoint-fork-handlers'
@@ -78,17 +84,35 @@ export function useMoldyLangGraphStream({
     [activityEvents],
   )
   const deepAgentsState = useMemo(() => selectDeepAgentsState(stream.values ?? {}), [stream.values])
-  const interruptPayloads = useMemo(
+  const [resolvedInterrupts, setResolvedInterrupts] = useState<ResolvedInterruptToolCall[]>([])
+  const allInterruptPayloads = useMemo(
     () => standardPayloadsFromInterrupts(stream.interrupts),
     [stream.interrupts],
+  )
+  const resolvedInterruptIds = useMemo(
+    () =>
+      new Set(resolvedInterrupts.map((item) => String(item.toolCall.args.hitl_interrupt_id ?? ''))),
+    [resolvedInterrupts],
+  )
+  const interruptPayloads = useMemo(
+    () => allInterruptPayloads.filter((payload) => !resolvedInterruptIds.has(payload.interrupt_id)),
+    [allInterruptPayloads, resolvedInterruptIds],
   )
   const interruptPayloadsById = useMemo(
     () => new Map(interruptPayloads.map((payload) => [payload.interrupt_id, payload])),
     [interruptPayloads],
   )
+  const allInterruptPayloadsById = useMemo(
+    () => new Map(allInterruptPayloads.map((payload) => [payload.interrupt_id, payload])),
+    [allInterruptPayloads],
+  )
   const messagesWithInterrupts = useMemo(
-    () => appendInterruptToolCallMessages(stream.messages, interruptPayloads),
-    [stream.messages, interruptPayloads],
+    () =>
+      appendResolvedInterruptToolCallMessages(
+        appendInterruptToolCallMessages(stream.messages, interruptPayloads),
+        resolvedInterrupts,
+      ),
+    [stream.messages, interruptPayloads, resolvedInterrupts],
   )
   const messagesWithArtifacts = useLangGraphArtifactEffects({
     stream,
@@ -100,10 +124,11 @@ export function useMoldyLangGraphStream({
     messages: messagesWithArtifacts,
   })
   useLangGraphMemoryEffects({ stream })
+  const isRunning = stream.isLoading && interruptPayloads.length === 0
   const messages = useExternalMessageConverter({
     callback: convertMoldyLangChainMessage,
     messages: messagesWithUsage,
-    isRunning: stream.isLoading,
+    isRunning,
   })
   const { onNew, onEdit, onReload } = useCheckpointForkHandlers({
     stream,
@@ -128,9 +153,25 @@ export function useMoldyLangGraphStream({
     await stream.stop()
   }, [stream])
 
+  const rememberResolvedInterrupt = useCallback(
+    (interruptId: string | null, decisions: readonly Decision[]) => {
+      if (!interruptId) return
+      const payload = allInterruptPayloadsById.get(interruptId)
+      if (!payload) return
+      const resolved = resolvedInterruptToolCallsFromDecisions(payload, decisions)
+      if (resolved.length === 0) return
+      const resolvedIds = new Set(resolved.map((item) => item.toolCall.id).filter(Boolean))
+      setResolvedInterrupts((current) => [
+        ...current.filter((item) => !item.toolCall.id || !resolvedIds.has(item.toolCall.id)),
+        ...resolved,
+      ])
+    },
+    [allInterruptPayloadsById],
+  )
+
   const assistantRuntime = useExternalStoreRuntime({
     messages,
-    isRunning: stream.isLoading,
+    isRunning,
     adapters,
     onNew,
     onEdit,
@@ -153,11 +194,13 @@ export function useMoldyLangGraphStream({
       const response = { decisions }
       if (targetId) {
         await stream.respond(response, { interruptId: targetId })
+        rememberResolvedInterrupt(targetId, decisions)
         return
       }
       await stream.respond(response)
+      rememberResolvedInterrupt(null, decisions)
     },
-    [firstInterruptId, stream],
+    [firstInterruptId, rememberResolvedInterrupt, stream],
   )
   const registerDecision = useCallback(
     async (

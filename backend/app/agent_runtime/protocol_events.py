@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
-from typing import Any, NotRequired, TypedDict
+from collections.abc import Mapping, Sequence
+from typing import Any, Final, NotRequired, TypedDict
 from urllib.parse import quote
+
+MAX_MESSAGE_EVENT_ID_LENGTH: Final = 80
 
 
 class StoredProtocolEvent(TypedDict):
@@ -37,6 +41,12 @@ class SubscribeParams(TypedDict, total=False):
     since: int | str | None
 
 
+class ProtocolInterrupt(TypedDict):
+    id: str
+    value: Any
+    ns: list[str]
+
+
 def _jsonable(value: Any) -> Any:
     try:
         json.dumps(value, ensure_ascii=False)
@@ -47,6 +57,15 @@ def _jsonable(value: Any) -> Any:
 
 def _event_id(run_id: str, seq: int) -> str:
     return f"{run_id}:protocol:{seq:08d}"
+
+
+def _canonical_input_requested_event_id(run_id: str, seq: int, index: int) -> str:
+    event_id = f"{run_id}:input:{seq:08d}:{index}"
+    if len(event_id) <= MAX_MESSAGE_EVENT_ID_LENGTH:
+        return event_id
+
+    run_fingerprint = hashlib.blake2s(run_id.encode("utf-8"), digest_size=8).hexdigest()
+    return f"{run_fingerprint}:input:{seq:08d}:{index}"
 
 
 def stored_protocol_event(
@@ -117,6 +136,43 @@ def format_protocol_sse(event: StoredProtocolEvent) -> str:
     return f"id: {cursor}\nevent: message\ndata: {payload}\n\n"
 
 
+def protocol_interrupts_from_event(event: StoredProtocolEvent) -> list[ProtocolInterrupt]:
+    data = event["data"]
+    if not isinstance(data, Mapping):
+        return []
+    if event["method"] == "input.requested":
+        interrupt = _input_requested_interrupt(data, fallback_namespace=event["namespace"])
+        return [interrupt] if interrupt is not None else []
+    raw_interrupts = _raw_interrupts_for_method(event["method"], data)
+    return _interrupts_from_raw(raw_interrupts, fallback_namespace=event["namespace"])
+
+
+def canonical_input_requested_events(event: StoredProtocolEvent) -> list[StoredProtocolEvent]:
+    if event["method"] == "input.requested":
+        return []
+
+    events: list[StoredProtocolEvent] = []
+    for index, interrupt in enumerate(protocol_interrupts_from_event(event)):
+        event_id = _canonical_input_requested_event_id(event["run_id"], event["seq"], index)
+        events.append(
+            stored_protocol_event(
+                run_id=event["run_id"],
+                thread_id=event["thread_id"],
+                seq=event["seq"],
+                event_id=event_id,
+                method="input.requested",
+                namespace=interrupt["ns"],
+                data={
+                    "interrupt_id": interrupt["id"],
+                    "payload": interrupt["value"],
+                    "namespace": interrupt["ns"],
+                },
+                timestamp=event["timestamp"],
+            )
+        )
+    return events
+
+
 def matches_subscription(event: StoredProtocolEvent, params: SubscribeParams | None) -> bool:
     if not params:
         return True
@@ -166,6 +222,66 @@ def _matches_channels(event: StoredProtocolEvent, channels: list[str] | None) ->
         if custom is not None and channel == custom:
             return True
     return False
+
+
+def _input_requested_interrupt(
+    data: Mapping[str, Any],
+    *,
+    fallback_namespace: list[str],
+) -> ProtocolInterrupt | None:
+    interrupt_id = _string_value(data.get("interrupt_id")) or _string_value(data.get("id"))
+    if interrupt_id is None:
+        return None
+    value = data.get("payload") if "payload" in data else data.get("value")
+    return {
+        "id": interrupt_id,
+        "value": value,
+        "ns": _namespace(data.get("namespace") or data.get("ns"), fallback_namespace),
+    }
+
+
+def _raw_interrupts_for_method(method: str, data: Mapping[str, Any]) -> Any:
+    if method in {"values", "updates"}:
+        return data.get("__interrupt__")
+    if method == "tasks":
+        return data.get("interrupts")
+    return None
+
+
+def _interrupts_from_raw(
+    raw_interrupts: Any,
+    *,
+    fallback_namespace: list[str],
+) -> list[ProtocolInterrupt]:
+    if not isinstance(raw_interrupts, Sequence) or isinstance(raw_interrupts, str | bytes):
+        return []
+
+    interrupts: list[ProtocolInterrupt] = []
+    for raw in raw_interrupts:
+        if not isinstance(raw, Mapping):
+            continue
+        interrupt_id = _string_value(raw.get("id")) or _string_value(raw.get("interrupt_id"))
+        if interrupt_id is None:
+            continue
+        value = raw.get("value") if "value" in raw else raw.get("payload")
+        interrupts.append(
+            {
+                "id": interrupt_id,
+                "value": value,
+                "ns": _namespace(raw.get("ns") or raw.get("namespace"), fallback_namespace),
+            }
+        )
+    return interrupts
+
+
+def _string_value(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _namespace(value: Any, fallback: list[str]) -> list[str]:
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes):
+        return [segment for segment in value if isinstance(segment, str)]
+    return list(fallback)
 
 
 def _matches_namespaces(

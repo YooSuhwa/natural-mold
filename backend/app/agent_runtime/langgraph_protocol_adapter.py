@@ -37,7 +37,13 @@ def adapt_v3_protocol_event(
         params = {}
 
     namespace = _coerce_namespace(params.get("namespace"))
-    data = _normalize_protocol_data(method, params.get("data"))
+    data = _normalize_protocol_data(
+        method,
+        _merge_params_interrupts(
+            data=params.get("data"),
+            interrupts=params.get("interrupts"),
+        ),
+    )
     method, data = _normalize_method(method, data)
 
     return stored_protocol_event(
@@ -231,6 +237,18 @@ def _normalize_protocol_data(method: str, data: Any) -> Any:
     return _serialize_value(data)
 
 
+def _merge_params_interrupts(*, data: Any, interrupts: Any) -> Any:
+    if interrupts is None:
+        return data
+    if isinstance(data, Mapping):
+        if "__interrupt__" in data:
+            return data
+        return {**data, "__interrupt__": interrupts}
+    if data is None:
+        return {"__interrupt__": interrupts}
+    return {"payload": data, "__interrupt__": interrupts}
+
+
 def _normalize_method(method: str, data: Any) -> tuple[str, Any]:
     if method in RAW_PROTOCOL_METHODS or method.startswith("custom:"):
         return method, data
@@ -251,11 +269,24 @@ def _serialize_value(value: Any) -> Any:
     if hasattr(value, "dict"):
         return _serialize_value(value.dict())
 
+    interrupt = _serialize_interrupt_like(value)
+    if interrupt is not None:
+        return interrupt
+
     message = _serialize_message_like(value)
     if message is not None:
         return message
 
     return repr(value)
+
+
+def _serialize_interrupt_like(value: Any) -> dict[str, Any] | None:
+    if value.__class__.__name__ != "Interrupt":
+        return None
+    interrupt_id = getattr(value, "id", None)
+    if not isinstance(interrupt_id, str) or not interrupt_id:
+        return None
+    return {"value": _serialize_value(getattr(value, "value", None)), "id": interrupt_id}
 
 
 def _serialize_message_like(value: Any) -> dict[str, Any] | None:

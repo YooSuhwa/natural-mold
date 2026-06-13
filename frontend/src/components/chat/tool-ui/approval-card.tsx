@@ -47,6 +47,34 @@ interface ApprovalResult {
   reason?: string
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function parseApprovalResult(result: unknown): ApprovalResult | null {
+  const value =
+    typeof result === 'string'
+      ? (() => {
+          try {
+            const parsed: unknown = JSON.parse(result)
+            return parsed
+          } catch {
+            return null
+          }
+        })()
+      : result
+  if (!isRecord(value)) return null
+  const decision = value.decision
+  if (decision !== 'approved' && decision !== 'modified' && decision !== 'rejected') return null
+  const modifiedArgs = isRecord(value.modified_args) ? value.modified_args : undefined
+  const reason = typeof value.reason === 'string' ? value.reason : undefined
+  return {
+    decision,
+    ...(modifiedArgs ? { modified_args: modifiedArgs } : {}),
+    ...(reason ? { reason } : {}),
+  }
+}
+
 function addApprovalResultIfSupported(
   addResult: (result: unknown) => void,
   result: ApprovalResult,
@@ -105,7 +133,7 @@ function useDecisionStyles() {
 
 function ApprovalBadge({ result }: { result: unknown }) {
   const styles = useDecisionStyles()
-  const parsed = result as ApprovalResult | null
+  const parsed = parseApprovalResult(result)
   const decision = parsed?.decision ?? 'approved'
   const style = styles[decision] ?? styles.approved
   const Icon = style.icon
@@ -172,6 +200,7 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const [showEdit, setShowEdit] = useState(false)
     const [submitting, setSubmitting] = useState(false)
     const [jsonError, setJsonError] = useState<string | null>(null)
+    const [localResult, setLocalResult] = useState<ApprovalResult | null>(null)
 
     // 카드 인스턴스별 안정 키 — args.approval_id 우선, 없으면 마운트 시 생성
     const fallbackIdRef = useRef<string>(`approval-${Math.random().toString(36).slice(2)}`)
@@ -234,6 +263,8 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
           return
         }
         await resumeDecision(standardDecision, styles[d].label)
+        setLocalResult(response)
+        setSubmitting(false)
       },
       [addResult, rejectReason, editedArgs, t, styles, args, resumeDecision],
     )
@@ -255,8 +286,9 @@ export const ApprovalCard = makeAssistantToolUI<ApprovalArgs, unknown>({
     const onInteract = useMemo(() => extend, [extend])
 
     // ── 완료 상태 ──
-    if (status.type === 'complete' || result !== undefined) {
-      return <ApprovalBadge result={result} />
+    const visibleResult = result ?? localResult
+    if (status.type === 'complete' || visibleResult !== null) {
+      return <ApprovalBadge result={visibleResult} />
     }
 
     // ── 로딩 상태 ──

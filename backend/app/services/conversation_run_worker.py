@@ -15,12 +15,12 @@ from app.config import settings
 from app.dependencies import CurrentUser
 from app.models.conversation_run import ConversationRun
 from app.services import conversation_run_service
+from app.services import conversation_stream_service as stream_service
+from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_run_interrupts import (
     has_interrupt_events,
     interrupt_id_from_events,
 )
-from app.services import conversation_stream_service as stream_service
-from app.services.conversation_audit_service import record_conversation_run_audit
 from app.services.conversation_stream_service import StreamCtx
 
 logger = logging.getLogger(__name__)

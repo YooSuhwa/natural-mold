@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -23,6 +24,15 @@ class ProtocolAgent:
                 yield event
 
         return _stream()
+
+
+class StateBackedProtocolAgent(ProtocolAgent):
+    def __init__(self, events: list[dict[str, Any]], state: Any) -> None:
+        super().__init__(events)
+        self.state = state
+
+    async def aget_state(self, _config: dict[str, Any]) -> Any:
+        return self.state
 
 
 class FallbackAgent:
@@ -140,9 +150,20 @@ async def test_langgraph_streaming_emits_protocol_sse_and_dual_writes() -> None:
         "seq": 1,
         "event_id": "upstream-1",
     }
-    agent = ProtocolAgent([raw_event])
+    raw_interrupt_event = {
+        "type": "event",
+        "method": "values",
+        "params": {
+            "namespace": ["tools:call-1"],
+            "data": {"__interrupt__": [{"id": "intr-1", "value": {"question": "approve?"}}]},
+        },
+        "seq": 2,
+        "event_id": "upstream-2",
+    }
+    agent = ProtocolAgent([raw_event, raw_interrupt_event])
     broker = EventBroker("run-1")
     persisted: list[list[dict[str, Any]]] = []
+    trace_sink: list[dict[str, Any]] = []
 
     async def persist(events: list[dict[str, Any]]) -> None:
         persisted.append(events)
@@ -156,20 +177,93 @@ async def test_langgraph_streaming_emits_protocol_sse_and_dual_writes() -> None:
             broker=broker,
             persist_callback=persist,
             run_id="run-1",
+            trace_sink=trace_sink,
         )
     ]
 
     assert agent.inputs == [{"messages": [{"role": "user", "content": "hello"}]}]
-    assert len(chunks) == 1
+    assert len(chunks) == 3
     assert chunks[0].startswith("id: upstream-1\nevent: message\n")
     assert _sse_payload(chunks[0])["method"] == "messages"
+    assert _sse_payload(chunks[2])["method"] == "input.requested"
     assert persisted[0][0]["method"] == "messages"
     assert persisted[0][0]["upstream_event_id"] == "upstream-1"
+    assert persisted[0][2]["method"] == "input.requested"
+    assert persisted[0][2]["data"]["interrupt_id"] == "intr-1"
+    assert trace_sink[2]["method"] == "input.requested"
 
     replayed = [event async for event in broker.subscribe()]
     assert replayed[0]["id"] == "upstream-1"
     assert replayed[0]["event"] == "message"
     assert replayed[0]["data"]["method"] == "messages"
+    assert replayed[2]["data"]["method"] == "input.requested"
+
+
+@pytest.mark.asyncio
+async def test_langgraph_streaming_emits_state_pending_interrupt_before_persist_and_close() -> None:
+    raw_event = {
+        "type": "event",
+        "method": "messages",
+        "params": {"namespace": [], "data": {"chunk": "waiting"}},
+        "seq": 1,
+        "event_id": "upstream-waiting",
+    }
+    long_interrupt_id = "intr-" + ("x" * 120)
+    state = SimpleNamespace(
+        interrupts=[
+            SimpleNamespace(
+                id=long_interrupt_id,
+                value={
+                    "action_requests": [
+                        {"name": "execute_in_skill", "args": {"command": "make-docx"}}
+                    ],
+                    "review_configs": [
+                        {
+                            "action_name": "execute_in_skill",
+                            "allowed_decisions": ["approve", "reject"],
+                        }
+                    ],
+                },
+            )
+        ]
+    )
+    agent = StateBackedProtocolAgent([raw_event], state)
+    broker = EventBroker("123e4567-e89b-12d3-a456-426614174000")
+    persisted: list[list[dict[str, Any]]] = []
+    trace_sink: list[dict[str, Any]] = []
+
+    async def persist(events: list[dict[str, Any]]) -> None:
+        persisted.append(events)
+
+    chunks = [
+        chunk
+        async for chunk in stream_agent_response_langgraph(
+            agent,
+            {"messages": []},
+            {"configurable": {"thread_id": "thread-state-hitl"}},
+            broker=broker,
+            persist_callback=persist,
+            run_id="123e4567-e89b-12d3-a456-426614174000",
+            trace_sink=trace_sink,
+        )
+    ]
+
+    payloads = [_sse_payload(chunk) for chunk in chunks]
+    input_requested = [payload for payload in payloads if payload["method"] == "input.requested"]
+    assert len(input_requested) == 1
+    event_id = input_requested[0]["event_id"]
+    assert event_id == "123e4567-e89b-12d3-a456-426614174000:input:00000002:0"
+    assert len(event_id) <= 80
+    assert input_requested[0]["params"]["data"]["interrupt_id"] == long_interrupt_id
+
+    assert persisted[0][-1]["method"] == "input.requested"
+    assert persisted[0][-1]["upstream_event_id"] == event_id
+    assert trace_sink[-1]["method"] == "input.requested"
+
+    replayed = [event async for event in broker.subscribe()]
+    assert replayed[-1]["id"] == event_id
+    assert replayed[-1]["data"]["method"] == "input.requested"
+    assert broker.last_event_id == event_id
 
 
 @pytest.mark.asyncio

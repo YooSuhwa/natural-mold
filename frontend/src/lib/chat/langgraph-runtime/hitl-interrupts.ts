@@ -1,9 +1,11 @@
-import { AIMessage, type BaseMessage } from '@langchain/core/messages'
+import { AIMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages'
 import type {
   ActionRequest,
+  Decision,
   DecisionType,
   ReviewConfig,
   StandardInterruptPayload,
+  ToolCallInfo,
 } from '@/lib/types'
 import { standardInterruptToToolCalls } from '@/lib/chat/standard-interrupt'
 
@@ -12,6 +14,17 @@ export interface LangGraphInterruptLike {
   readonly value?: unknown
   readonly interruptId?: string
   readonly payload?: unknown
+}
+
+export interface ApprovalResult {
+  decision: 'approved' | 'modified' | 'rejected'
+  modified_args?: Record<string, unknown>
+  reason?: string
+}
+
+export interface ResolvedInterruptToolCall {
+  readonly toolCall: ToolCallInfo
+  readonly result: ApprovalResult
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -144,6 +157,56 @@ function hasToolCallId(message: BaseMessage, ids: ReadonlySet<string>): boolean 
   )
 }
 
+function resultFromDecision(decision: Decision): ApprovalResult {
+  switch (decision.type) {
+    case 'approve':
+      return { decision: 'approved' }
+    case 'edit':
+      return decision.edited_action
+        ? { decision: 'modified', modified_args: decision.edited_action.args }
+        : { decision: 'modified' }
+    case 'reject':
+      return decision.message
+        ? { decision: 'rejected', reason: decision.message }
+        : { decision: 'rejected' }
+    case 'respond':
+      return { decision: 'approved' }
+  }
+}
+
+export function resolvedInterruptToolCallsFromDecisions(
+  payload: StandardInterruptPayload,
+  decisions: readonly Decision[],
+): ResolvedInterruptToolCall[] {
+  const toolCalls = standardInterruptToToolCalls(payload)
+  return decisions.flatMap((decision, index) => {
+    const toolCall = toolCalls[index]
+    if (!toolCall) return []
+    return [{ toolCall, result: resultFromDecision(decision) }]
+  })
+}
+
+function interruptedAssistantMessage(payload: StandardInterruptPayload): BaseMessage {
+  const toolCalls = standardInterruptToToolCalls(payload)
+  return Object.assign(
+    new AIMessage({
+      id: `moldy-hitl:${payload.interrupt_id}`,
+      content: '',
+      tool_calls: toolCalls.map((toolCall, index) => ({
+        id: toolCall.id ?? `${payload.interrupt_id}:${index}`,
+        name: toolCall.name,
+        args: toolCall.args,
+      })),
+    }),
+    {
+      status: {
+        type: 'requires-action' as const,
+        reason: 'tool-calls' as const,
+      },
+    },
+  )
+}
+
 export function appendInterruptToolCallMessages(
   messages: readonly BaseMessage[],
   payloads: readonly StandardInterruptPayload[],
@@ -154,15 +217,44 @@ export function appendInterruptToolCallMessages(
     const toolCalls = standardInterruptToToolCalls(payload)
     const ids = new Set(toolCalls.map((toolCall) => toolCall.id).filter(isString))
     if (ids.size === 0 || projected.some((message) => hasToolCallId(message, ids))) continue
+    projected.push(interruptedAssistantMessage(payload))
+  }
+  return projected
+}
+
+export function appendResolvedInterruptToolCallMessages(
+  messages: readonly BaseMessage[],
+  resolved: readonly ResolvedInterruptToolCall[],
+): BaseMessage[] {
+  if (resolved.length === 0) return [...messages]
+  const projected: BaseMessage[] = [...messages]
+  for (const item of resolved) {
+    const toolCallId = item.toolCall.id
+    if (!toolCallId) continue
+    if (!projected.some((message) => hasToolCallId(message, new Set([toolCallId])))) {
+      projected.push(
+        Object.assign(
+          new AIMessage({
+            id: `moldy-hitl-resolved:${toolCallId}`,
+            content: '',
+            tool_calls: [
+              {
+                id: toolCallId,
+                name: item.toolCall.name,
+                args: item.toolCall.args,
+              },
+            ],
+          }),
+          { status: { type: 'complete' as const } },
+        ),
+      )
+    }
     projected.push(
-      new AIMessage({
-        id: `moldy-hitl:${payload.interrupt_id}`,
-        content: '',
-        tool_calls: toolCalls.map((toolCall, index) => ({
-          id: toolCall.id ?? `${payload.interrupt_id}:${index}`,
-          name: toolCall.name,
-          args: toolCall.args,
-        })),
+      new ToolMessage({
+        id: `moldy-hitl-result:${toolCallId}`,
+        content: JSON.stringify(item.result),
+        name: item.toolCall.name,
+        tool_call_id: toolCallId,
       }),
     )
   }

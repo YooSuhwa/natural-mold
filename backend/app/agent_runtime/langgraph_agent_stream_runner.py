@@ -23,6 +23,7 @@ async def _run_langgraph_agent_stream(
     messages_history: list[dict[str, str]],
     stream_input: Any,
     trace_sink: list[dict[str, Any]] | None = None,
+    msg_id_sink: list[str] | None = None,
     error_sink: list[StreamErrorRecord] | None = None,
     broker: Any | None = None,
     persist_callback: Any | None = None,
@@ -39,6 +40,8 @@ async def _run_langgraph_agent_stream(
     if actual_input == []:
         actual_input = None
 
+    _append_run_message_id(msg_id_sink, run_id)
+
     langfuse_ctx = build_langfuse_run_context(
         cfg,
         run_id=run_id,
@@ -54,6 +57,7 @@ async def _run_langgraph_agent_stream(
     started = time.monotonic()
     usage_sink: dict[str, Any] = {}
     stream_errors = error_sink if error_sink is not None else []
+    protocol_trace = trace_sink if trace_sink is not None else []
 
     activate = getattr(langfuse_ctx, "activate", None)
     activation: Any = (
@@ -67,7 +71,7 @@ async def _run_langgraph_agent_stream(
                 agent,
                 actual_input,
                 config,
-                trace_sink=trace_sink,
+                trace_sink=protocol_trace,
                 cost_per_input_token=cfg.cost_per_input_token,
                 cost_per_output_token=cfg.cost_per_output_token,
                 usage_sink=usage_sink,
@@ -109,11 +113,18 @@ async def _run_langgraph_agent_stream(
 _USE_PREPPED_LC_MESSAGES: Any = object()
 
 
+def _append_run_message_id(msg_id_sink: list[str] | None, run_id: str | None) -> None:
+    if msg_id_sink is None or not run_id or run_id in msg_id_sink:
+        return
+    msg_id_sink.append(run_id)
+
+
 async def execute_agent_stream_langgraph(
     cfg: AgentConfig,
     messages_history: list[dict[str, str]] | dict[str, Any],
     *,
     trace_sink: list[dict[str, Any]] | None = None,
+    msg_id_sink: list[str] | None = None,
     error_sink: list[StreamErrorRecord] | None = None,
     broker: Any | None = None,
     persist_callback: Any | None = None,
@@ -128,6 +139,7 @@ async def execute_agent_stream_langgraph(
             messages_history=[],
             stream_input=messages_history,
             trace_sink=trace_sink,
+            msg_id_sink=msg_id_sink,
             error_sink=error_sink,
             broker=broker,
             persist_callback=persist_callback,
@@ -144,6 +156,7 @@ async def execute_agent_stream_langgraph(
         messages_history=messages_history,
         stream_input=_USE_PREPPED_LC_MESSAGES,
         trace_sink=trace_sink,
+        msg_id_sink=msg_id_sink,
         error_sink=error_sink,
         broker=broker,
         persist_callback=persist_callback,
@@ -160,6 +173,7 @@ async def resume_agent_stream_langgraph(
     resume_value: Any,
     *,
     trace_sink: list[dict[str, Any]] | None = None,
+    msg_id_sink: list[str] | None = None,
     error_sink: list[StreamErrorRecord] | None = None,
     broker: Any | None = None,
     persist_callback: Any | None = None,
@@ -173,6 +187,7 @@ async def resume_agent_stream_langgraph(
         messages_history=[],
         stream_input=Command(resume=resume_value),
         trace_sink=trace_sink,
+        msg_id_sink=msg_id_sink,
         error_sink=error_sink,
         broker=broker,
         persist_callback=persist_callback,

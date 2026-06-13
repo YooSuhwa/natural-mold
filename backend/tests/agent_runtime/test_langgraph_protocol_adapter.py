@@ -2,13 +2,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from langgraph.types import Interrupt
+
 from app.agent_runtime.langgraph_protocol_adapter import (
     adapt_stream_mode_chunk,
     adapt_v3_protocol_event,
     extract_subagent_discovery,
     synthesize_tool_events_from_values,
 )
-from app.agent_runtime.protocol_events import to_assistant_ui_projection
+from app.agent_runtime.protocol_events import (
+    canonical_input_requested_events,
+    protocol_interrupts_from_event,
+    to_assistant_ui_projection,
+)
 
 
 @dataclass
@@ -106,6 +112,101 @@ def test_v3_input_requested_preserves_protocol_interrupt_method() -> None:
     assert event["namespace"] == ["tools:call-1"]
     assert event["data"]["interrupt_id"] == "intr-1"
     assert event["data"]["payload"] == {"action_requests": [], "review_configs": []}
+
+
+def test_v3_values_preserves_langgraph_interrupt_value_and_id() -> None:
+    event = adapt_v3_protocol_event(
+        {
+            "type": "event",
+            "method": "values",
+            "params": {
+                "namespace": ["tools:call-1"],
+                "data": {
+                    "__interrupt__": (
+                        Interrupt(
+                            value={"question": "approve execute_in_skill?"},
+                            id="intr-1",
+                        ),
+                    )
+                },
+            },
+            "seq": 6,
+            "event_id": "evt-values-interrupt",
+        },
+        run_id="run-1",
+        thread_id="thread-1",
+    )
+
+    assert event["method"] == "values"
+    assert event["data"]["__interrupt__"] == [
+        {"value": {"question": "approve execute_in_skill?"}, "id": "intr-1"}
+    ]
+
+
+def test_v3_values_merges_params_interrupts_into_protocol_data() -> None:
+    event = adapt_v3_protocol_event(
+        {
+            "type": "event",
+            "method": "values",
+            "params": {
+                "namespace": ["tools:call-1"],
+                "data": {"messages": [{"content": "waiting"}]},
+                "interrupts": [
+                    Interrupt(
+                        value={"question": "approve web_search?"},
+                        id="intr-params-1",
+                    )
+                ],
+            },
+            "seq": 7,
+            "event_id": "evt-values-params-interrupt",
+        },
+        run_id="run-1",
+        thread_id="thread-1",
+    )
+
+    assert event["data"]["messages"] == [{"content": "waiting"}]
+    assert event["data"]["__interrupt__"] == [
+        {"value": {"question": "approve web_search?"}, "id": "intr-params-1"}
+    ]
+    assert protocol_interrupts_from_event(event)[0]["id"] == "intr-params-1"
+    assert canonical_input_requested_events(event)[0]["method"] == "input.requested"
+
+
+def test_v3_values_does_not_duplicate_params_interrupts_when_data_has_interrupts() -> None:
+    event = adapt_v3_protocol_event(
+        {
+            "type": "event",
+            "method": "values",
+            "params": {
+                "data": {
+                    "__interrupt__": [
+                        Interrupt(
+                            value={"question": "approve existing?"},
+                            id="intr-existing",
+                        )
+                    ]
+                },
+                "interrupts": [
+                    Interrupt(
+                        value={"question": "approve duplicate?"},
+                        id="intr-params",
+                    )
+                ],
+            },
+            "seq": 8,
+            "event_id": "evt-values-duplicate-interrupt",
+        },
+        run_id="run-1",
+        thread_id="thread-1",
+    )
+
+    assert event["data"]["__interrupt__"] == [
+        {"value": {"question": "approve existing?"}, "id": "intr-existing"}
+    ]
+    assert [interrupt["id"] for interrupt in protocol_interrupts_from_event(event)] == [
+        "intr-existing"
+    ]
 
 
 def test_non_json_message_object_serializes_stable_fields() -> None:
