@@ -11,6 +11,7 @@ import {
   useThreadViewport,
   useAuiState,
   useAui,
+  type AssistantDataUI,
   type AssistantToolUI,
 } from '@assistant-ui/react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -581,6 +582,7 @@ export interface AssistantThreadProps {
   emptyContent?: React.ReactNode
   /** 추가 도구 UI */
   toolUI?: readonly AssistantToolUI[]
+  dataUI?: readonly AssistantDataUI[]
   activities?: readonly RunActivity[]
   deepAgentsState?: DeepAgentsStateSnapshot
   /** P1-7 — true이면 composer에 첨부 파일 버튼/미리보기 표시.
@@ -611,6 +613,7 @@ export function AssistantThread({
   showMessageTimestamp = false,
   emptyContent,
   toolUI,
+  dataUI,
   activities = [],
   deepAgentsState,
   enableAttachments = false,
@@ -779,9 +782,11 @@ export function AssistantThread({
           </ThreadPrimitive.ViewportFooter>
         </ThreadPrimitive.Viewport>
 
-        {/* 도구 UI 등록 */}
         {toolUI?.map((ToolComponent, i) => (
-          <ToolComponent key={i} />
+          <ToolComponent key={`tool-${i}`} />
+        ))}
+        {dataUI?.map((DataComponent, i) => (
+          <DataComponent key={`data-${i}`} />
         ))}
 
         <ReconnectIndicator />

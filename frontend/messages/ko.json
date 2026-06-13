@@ -1591,6 +1591,11 @@
         "pending": "대기"
       }
     },
+    "reasoning": {
+      "title": "추론 요약",
+      "running": "정리 중",
+      "ready": "준비됨"
+    },
     "loading": {
       "witty": {
         "0": "잠시만요, 뇌를 부팅하는 중...",

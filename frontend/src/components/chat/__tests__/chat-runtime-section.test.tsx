@@ -23,6 +23,8 @@ vi.mock('@assistant-ui/react', () => ({
       {children}
     </div>
   ),
+  makeAssistantDataUI: (config: { name: string; render: unknown }) =>
+    Object.assign(() => null, { unstable_data: config }),
 }))
 
 vi.mock('../assistant-thread', () => ({

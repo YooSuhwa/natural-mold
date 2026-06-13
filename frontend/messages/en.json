@@ -1612,6 +1612,11 @@
         "pending": "Pending"
       }
     },
+    "reasoning": {
+      "title": "Reasoning summary",
+      "running": "Summarizing",
+      "ready": "Ready"
+    },
     "loading": {
       "witty": {
         "0": "One moment, booting up my brain...",

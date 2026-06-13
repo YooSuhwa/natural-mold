@@ -11,6 +11,7 @@ import { AssistantThread, type AssistantThreadProps } from '@/components/chat/as
 import { useChatRuntime } from '@/lib/chat/use-chat-runtime'
 import { useMoldyLangGraphStream } from '@/lib/chat/langgraph-runtime/use-moldy-langgraph-stream'
 import { HiTLContext, type HiTLContextValue } from '@/lib/chat/hitl-context'
+import { ALL_DATA_UI } from '@/lib/chat/data-ui-registry'
 import { ALL_TOOL_UI } from '@/lib/chat/tool-ui-registry'
 import type { ConversationRun, Message, SSEEvent } from '@/lib/types'
 import type { User } from '@/lib/types/user'
@@ -235,6 +236,7 @@ function RuntimeFrame({
         <AssistantThread
           {...threadProps}
           activities={activities}
+          dataUI={ALL_DATA_UI}
           deepAgentsState={deepAgentsState}
           showTokenBar
           showMessageTimestamp
