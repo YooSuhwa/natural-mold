@@ -1593,7 +1593,22 @@
       },
       "files": {
         "title": "파일",
-        "count": "{count}개"
+        "count": "{count}개",
+        "editDisabledRunning": "실행 중에는 편집할 수 없습니다",
+        "editDisabledUnsupported": "이 파일은 아직 패널에서 직접 편집할 수 없습니다",
+        "kinds": {
+          "markdown": "마크다운",
+          "code": "코드",
+          "plainText": "텍스트",
+          "file": "파일"
+        },
+        "actions": {
+          "openPreview": "{name} 미리보기 열기",
+          "copy": "{name} 복사",
+          "download": "{name} 다운로드",
+          "edit": "{name} 편집",
+          "save": "{name} 저장"
+        }
       },
       "status": {
         "completed": "완료",

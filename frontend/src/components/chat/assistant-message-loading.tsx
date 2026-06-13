@@ -1,6 +1,7 @@
 'use client'
 
 import { AuiIf, useAuiState } from '@assistant-ui/react'
+import { useMemo } from 'react'
 import { DeepAgentsStatePanel } from '@/components/chat/deepagents-state-panel'
 import { RunActivityStrip } from '@/components/chat/run-activity-strip'
 import { SubagentProgress } from '@/components/chat/subagent-progress'
@@ -30,13 +31,25 @@ function useIsStreamingMessage(): boolean {
   return useAuiState((s) => isStreamingMessageMetadata(s.message?.metadata))
 }
 
+function currentTurnSubagentToolCallIds(activities: readonly RunActivity[]): readonly string[] {
+  const ids = new Set<string>()
+  for (const activity of activities) {
+    if (activity.kind === 'subagent' && activity.toolCallId) ids.add(activity.toolCallId)
+  }
+  return Array.from(ids)
+}
+
 export function StreamingMessageLoadingIndicator({
   activities = [],
   deepAgentsState,
   className,
 }: StreamingMessageLoadingIndicatorProps) {
   const isStreamingMessage = useIsStreamingMessage()
-  const subagentProgress = useSubagentProgressSummary()
+  const subagentToolCallIds = useMemo(
+    () => currentTurnSubagentToolCallIds(activities),
+    [activities],
+  )
+  const subagentProgress = useSubagentProgressSummary(subagentToolCallIds)
   if (!isStreamingMessage) return null
   const hasActivities = activities.length > 0
   const hasState = hasDeepAgentsState(deepAgentsState)

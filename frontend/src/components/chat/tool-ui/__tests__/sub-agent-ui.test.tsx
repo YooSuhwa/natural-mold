@@ -5,14 +5,17 @@ import { SubAgentToolCard } from '../sub-agent-ui'
 
 const mocks = vi.hoisted(() => ({
   makeAssistantToolUI: vi.fn((config: { render: unknown; toolName: string }) => config),
+  useMessage: vi.fn(),
   useMessages: vi.fn(),
   useToolCalls: vi.fn(),
+  useSubagentInlinePolicy: vi.fn(),
   useSubagentSnapshot: vi.fn(),
   useSubagentStream: vi.fn(),
 }))
 
 vi.mock('@assistant-ui/react', () => ({
   makeAssistantToolUI: mocks.makeAssistantToolUI,
+  useMessage: mocks.useMessage,
 }))
 
 vi.mock('@langchain/react', () => ({
@@ -25,6 +28,7 @@ vi.mock('@/components/chat/conversation-context', () => ({
 }))
 
 vi.mock('@/lib/chat/langgraph-runtime/subagent-runtime', () => ({
+  useSubagentInlinePolicy: mocks.useSubagentInlinePolicy,
   useSubagentSnapshot: mocks.useSubagentSnapshot,
   useSubagentStream: mocks.useSubagentStream,
 }))
@@ -58,8 +62,22 @@ function renderCard(statusType = 'running') {
 describe('SubAgentToolCard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.useMessage.mockImplementation(
+      (selector: (message: { content: readonly unknown[] }) => unknown) =>
+        selector({
+          content: [
+            { type: 'tool-call', toolName: 'task', toolCallId: 'tc-task-1' },
+            { type: 'tool-call', toolName: 'web_search', toolCallId: 'tc-search-1' },
+          ],
+        }),
+    )
     mocks.useSubagentSnapshot.mockReturnValue(researcherSnapshot)
     mocks.useSubagentStream.mockReturnValue(streamToken)
+    mocks.useSubagentInlinePolicy.mockReturnValue({
+      defaultExpanded: false,
+      canRenderInlineDetails: true,
+      overflowedLiveDetails: false,
+    })
     mocks.useMessages.mockReturnValue([])
     mocks.useToolCalls.mockReturnValue([])
   })

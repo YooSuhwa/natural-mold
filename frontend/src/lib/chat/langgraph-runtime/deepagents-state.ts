@@ -1,3 +1,5 @@
+import type { ArtifactKind } from '@/lib/types'
+
 export type DeepAgentTodoStatus = 'pending' | 'in_progress' | 'completed'
 
 export interface DeepAgentTodo {
@@ -12,6 +14,10 @@ export interface DeepAgentFile {
   readonly path: string
   readonly mimeType?: string
   readonly sizeBytes?: number
+  readonly artifactKind?: ArtifactKind
+  readonly previewUrl?: string
+  readonly downloadUrl?: string
+  readonly content?: string
 }
 
 export interface DeepAgentsStateSnapshot {
@@ -22,6 +28,7 @@ export interface DeepAgentsStateSnapshot {
 interface DeepAgentsStateInput {
   readonly todos?: unknown
   readonly files?: unknown
+  readonly artifacts?: unknown
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -34,6 +41,26 @@ function textValue(value: unknown): string | undefined {
 
 function numberValue(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function artifactKindValue(value: unknown): ArtifactKind | undefined {
+  const raw = textValue(value)
+  switch (raw) {
+    case 'image':
+    case 'video':
+    case 'audio':
+    case 'pdf':
+    case 'markdown':
+    case 'html':
+    case 'code':
+    case 'document':
+    case 'data':
+    case 'cad':
+    case 'other':
+      return raw
+    default:
+      return undefined
+  }
 }
 
 function basename(path: string): string {
@@ -87,11 +114,19 @@ function normalizeTodos(value: unknown): DeepAgentTodo[] {
 function fileFromPath(path: string, metadata: unknown): DeepAgentFile {
   const record = isRecord(metadata) ? metadata : {}
   return {
-    id: textValue(record.id) ?? `state-file:${path}`,
-    name: textValue(record.display_name) ?? textValue(record.name) ?? basename(path),
+    id: textValue(record.id) ?? textValue(record.artifact_id) ?? `state-file:${path}`,
+    name:
+      textValue(record.display_name) ??
+      textValue(record.displayName) ??
+      textValue(record.name) ??
+      basename(path),
     path,
     mimeType: textValue(record.mime_type) ?? textValue(record.mimeType),
     sizeBytes: numberValue(record.size_bytes) ?? numberValue(record.sizeBytes),
+    artifactKind: artifactKindValue(record.artifact_kind) ?? artifactKindValue(record.artifactKind),
+    previewUrl: textValue(record.preview_url) ?? textValue(record.previewUrl),
+    downloadUrl: textValue(record.download_url) ?? textValue(record.downloadUrl),
+    content: textValue(record.content) ?? textValue(metadata),
   }
 }
 
@@ -117,10 +152,42 @@ function normalizeFiles(value: unknown): DeepAgentFile[] {
   return Object.entries(value).map(([path, metadata]) => fileFromPath(path, metadata))
 }
 
+function fileMatches(left: DeepAgentFile, right: DeepAgentFile): boolean {
+  return left.id === right.id || left.path === right.path
+}
+
+function mergeFile(left: DeepAgentFile, right: DeepAgentFile): DeepAgentFile {
+  return {
+    id: left.id,
+    name: left.name,
+    path: left.path,
+    mimeType: left.mimeType ?? right.mimeType,
+    sizeBytes: left.sizeBytes ?? right.sizeBytes,
+    artifactKind: left.artifactKind ?? right.artifactKind,
+    previewUrl: left.previewUrl ?? right.previewUrl,
+    downloadUrl: left.downloadUrl ?? right.downloadUrl,
+    content: left.content ?? right.content,
+  }
+}
+
+function dedupeFiles(files: readonly DeepAgentFile[]): DeepAgentFile[] {
+  const merged: DeepAgentFile[] = []
+  for (const file of files) {
+    const existingIndex = merged.findIndex((item) => fileMatches(item, file))
+    if (existingIndex === -1) {
+      merged.push(file)
+      continue
+    }
+    const existing = merged[existingIndex]
+    if (existing) merged[existingIndex] = mergeFile(existing, file)
+  }
+  return merged
+}
+
 export function selectDeepAgentsState(state: DeepAgentsStateInput): DeepAgentsStateSnapshot {
   return {
     todos: normalizeTodos(state.todos),
-    files: normalizeFiles(state.files),
+    files: dedupeFiles([...normalizeFiles(state.artifacts), ...normalizeFiles(state.files)]),
   }
 }
 

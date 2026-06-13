@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     thread: { isRunning: true },
     message: { metadata: { custom: { isStreamingMessage: true } } },
   },
+  useSubagentProgressSummary: vi.fn(),
 }))
 
 vi.mock('@assistant-ui/react', () => ({
@@ -26,6 +27,10 @@ vi.mock('@/components/chat/witty-loading', () => ({
   WittyLoadingMessage: () => <div data-testid="witty-loading">witty</div>,
 }))
 
+vi.mock('@/lib/chat/langgraph-runtime/subagent-runtime', () => ({
+  useSubagentProgressSummary: mocks.useSubagentProgressSummary,
+}))
+
 function activity(overrides: Partial<RunActivity> = {}): RunActivity {
   return {
     id: overrides.id ?? 'activity-1',
@@ -40,8 +45,15 @@ function activity(overrides: Partial<RunActivity> = {}): RunActivity {
 
 describe('StreamingMessageLoadingIndicator', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     mocks.state.thread.isRunning = true
     mocks.state.message.metadata = { custom: { isStreamingMessage: true } }
+    mocks.useSubagentProgressSummary.mockReturnValue({
+      total: 0,
+      running: 0,
+      completed: 0,
+      failed: 0,
+    })
   })
 
   it('shows witty loading when no semantic activity exists', () => {
@@ -79,5 +91,63 @@ describe('StreamingMessageLoadingIndicator', () => {
     const { container } = render(<StreamingMessageLoadingIndicator activities={[activity()]} />)
 
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('scopes subagent progress to inline subagents in the current assistant turn', () => {
+    mocks.useSubagentProgressSummary.mockImplementation((toolCallIds: readonly string[]) => {
+      if (toolCallIds.includes('tc-current')) {
+        return { total: 1, running: 0, completed: 1, failed: 0 }
+      }
+      return { total: 2, running: 0, completed: 2, failed: 0 }
+    })
+
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:subagent:tc-current',
+            kind: 'subagent',
+            toolCallId: 'tc-current',
+            status: 'complete',
+            title: 'Researcher',
+          }),
+          activity({
+            id: 'run-1:background_subagent:bg-1',
+            kind: 'background_subagent',
+            status: 'running',
+            title: 'Background writer',
+          }),
+        ]}
+      />,
+    )
+
+    expect(mocks.useSubagentProgressSummary).toHaveBeenCalledWith(['tc-current'])
+    expect(screen.getByText('서브 에이전트 1/1 완료')).toBeInTheDocument()
+    expect(screen.queryByText('서브 에이전트 2/2 완료')).not.toBeInTheDocument()
+  })
+
+  it('renders background subagent tasks as activity rows distinct from inline progress cards', () => {
+    render(
+      <StreamingMessageLoadingIndicator
+        activities={[
+          activity({
+            id: 'run-1:background_subagent:bg-1',
+            kind: 'background_subagent',
+            status: 'running',
+            title: 'Background writer',
+          }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByTestId('run-activity-strip')).toBeInTheDocument()
+    expect(screen.getByText('Background writer 작업 중')).toBeInTheDocument()
+    expect(screen.getByText('Background writer 작업 중').closest('[data-kind]')).toHaveAttribute(
+      'data-kind',
+      'background_subagent',
+    )
+    expect(
+      screen.queryByRole('progressbar', { name: '서브 에이전트 진행률' }),
+    ).not.toBeInTheDocument()
   })
 })

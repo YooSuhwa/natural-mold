@@ -5,6 +5,8 @@ import type { AnyStream, SubagentDiscoverySnapshot } from '@langchain/react'
 import { atom, useAtomValue, useSetAtom } from 'jotai'
 
 const EMPTY_SUBAGENTS: ReadonlyMap<string, SubagentDiscoverySnapshot> = new Map()
+const AUTO_COLLAPSE_COMPLETED_THRESHOLD = 5
+const DEFAULT_MAX_LIVE_INLINE_DETAILS = 2
 
 interface SubagentRuntimeValue {
   readonly stream: AnyStream | null
@@ -78,27 +80,104 @@ const EMPTY_PROGRESS = {
   failed: 0,
 } satisfies SubagentProgressSummary
 
-export function useSubagentProgressSummary(): SubagentProgressSummary {
-  const snapshots = useSubagentSnapshots()
-  return useMemo(() => {
-    if (snapshots.length === 0) return EMPTY_PROGRESS
+export interface SubagentInlinePolicy {
+  readonly defaultExpanded: boolean
+  readonly canRenderInlineDetails: boolean
+  readonly overflowedLiveDetails: boolean
+}
 
-    let running = 0
-    let completed = 0
-    let failed = 0
-    for (const snapshot of snapshots) {
-      if (snapshot.status === 'running') running += 1
-      if (snapshot.status === 'complete') completed += 1
-      if (snapshot.status === 'error') failed += 1
-    }
+const COLLAPSED_INLINE_POLICY = {
+  defaultExpanded: false,
+  canRenderInlineDetails: false,
+  overflowedLiveDetails: false,
+} satisfies SubagentInlinePolicy
 
+function scopedSnapshots(
+  snapshots: readonly SubagentDiscoverySnapshot[],
+  toolCallIds?: readonly string[],
+): readonly SubagentDiscoverySnapshot[] {
+  if (toolCallIds === undefined) return snapshots
+  if (toolCallIds.length === 0) return []
+  const allowedIds = new Set(toolCallIds)
+  return snapshots.filter((snapshot) => allowedIds.has(snapshot.id))
+}
+
+export function summarizeSubagentProgress(
+  snapshots: readonly SubagentDiscoverySnapshot[],
+  toolCallIds?: readonly string[],
+): SubagentProgressSummary {
+  const scoped = scopedSnapshots(snapshots, toolCallIds)
+  if (scoped.length === 0) return EMPTY_PROGRESS
+
+  let running = 0
+  let completed = 0
+  let failed = 0
+  for (const snapshot of scoped) {
+    if (snapshot.status === 'running') running += 1
+    if (snapshot.status === 'complete') completed += 1
+    if (snapshot.status === 'error') failed += 1
+  }
+
+  return {
+    total: scoped.length,
+    running,
+    completed,
+    failed,
+  }
+}
+
+export function getSubagentInlinePolicy(
+  snapshots: readonly SubagentDiscoverySnapshot[],
+  toolCallId: string,
+  toolCallIds?: readonly string[],
+): SubagentInlinePolicy {
+  const scoped = scopedSnapshots(snapshots, toolCallIds)
+  const snapshot = scoped.find((item) => item.id === toolCallId)
+  if (!snapshot) return COLLAPSED_INLINE_POLICY
+
+  if (snapshot.status === 'running') {
+    const runningIndex = scoped
+      .filter((item) => item.status === 'running')
+      .findIndex((item) => item.id === toolCallId)
+    const hasLiveSlot = runningIndex >= 0 && runningIndex < DEFAULT_MAX_LIVE_INLINE_DETAILS
     return {
-      total: snapshots.length,
-      running,
-      completed,
-      failed,
+      defaultExpanded: hasLiveSlot,
+      canRenderInlineDetails: hasLiveSlot,
+      overflowedLiveDetails: !hasLiveSlot,
     }
-  }, [snapshots])
+  }
+
+  if (snapshot.status === 'error') {
+    return {
+      defaultExpanded: true,
+      canRenderInlineDetails: true,
+      overflowedLiveDetails: false,
+    }
+  }
+
+  return {
+    defaultExpanded: scoped.length < AUTO_COLLAPSE_COMPLETED_THRESHOLD,
+    canRenderInlineDetails: true,
+    overflowedLiveDetails: false,
+  }
+}
+
+export function useSubagentProgressSummary(
+  toolCallIds?: readonly string[],
+): SubagentProgressSummary {
+  const snapshots = useSubagentSnapshots()
+  return useMemo(() => summarizeSubagentProgress(snapshots, toolCallIds), [snapshots, toolCallIds])
+}
+
+export function useSubagentInlinePolicy(
+  toolCallId: string,
+  toolCallIds?: readonly string[],
+): SubagentInlinePolicy {
+  const snapshots = useSubagentSnapshots()
+  return useMemo(
+    () => getSubagentInlinePolicy(snapshots, toolCallId, toolCallIds),
+    [snapshots, toolCallId, toolCallIds],
+  )
 }
 
 export function usePublishSubagentRuntime(

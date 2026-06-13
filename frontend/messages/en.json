@@ -1614,7 +1614,22 @@
       },
       "files": {
         "title": "Files",
-        "count": "{count} files"
+        "count": "{count} files",
+        "editDisabledRunning": "Files cannot be edited while the run is active",
+        "editDisabledUnsupported": "This file cannot be edited directly in the panel yet",
+        "kinds": {
+          "markdown": "Markdown",
+          "code": "Code",
+          "plainText": "Text",
+          "file": "File"
+        },
+        "actions": {
+          "openPreview": "Open {name} preview",
+          "copy": "Copy {name}",
+          "download": "Download {name}",
+          "edit": "Edit {name}",
+          "save": "Save {name}"
+        }
       },
       "status": {
         "completed": "Done",

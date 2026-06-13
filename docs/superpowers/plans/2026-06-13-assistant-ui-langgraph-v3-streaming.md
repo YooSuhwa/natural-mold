@@ -2431,7 +2431,7 @@ The hook now subscribes through `@langchain/react` `useChannel` for:
 
 The adapter normalizes v3 `content-block-*`, `tool-started`, `tool-finished`, `tool-error`, `updates.values`, and lifecycle namespace events into the existing Moldy `RunActivity` model.
 
-- [ ] **Step 2a: Implement DeepAgents state panel for todos/files**
+- [x] **Step 2a: Implement DeepAgents state panel for todos/files**
 
 Use `/Users/chester/dev/deep-agents-ui` as a UI pattern reference, not as a runtime dependency:
 
@@ -2449,16 +2449,12 @@ Implemented so far:
 
 - `frontend/src/lib/chat/langgraph-runtime/deepagents-state.ts` normalizes loose `values.todos` and `values.files` shapes.
 - `frontend/src/components/chat/deepagents-state-panel.tsx` renders compact task/file pills in the active streaming assistant turn.
+- `frontend/src/components/chat/deepagents-state-file-list.tsx` renders artifact-backed file rows with Markdown/code/plain-text preview labels, preview/copy/download affordances, and disabled edit/save controls while the run is loading or interrupted.
 - `frontend/src/components/chat/assistant-message-loading.tsx` hides witty loading when DeepAgents state exists.
+- `selectDeepAgentsState` now accepts artifact-shaped records plus optional `values.files`, preserves artifact display/preview/download metadata, and deduplicates by file id/path.
+- Full artifact editing remains intentionally disabled until the backend exposes a supported artifact version update route for this runtime path.
 
-Still pending:
-
-- reconcile persisted `conversation_artifacts` / `artifact_versions` with `values.files`;
-- collapsed/expand persistence that auto-opens only on first appearance;
-- Markdown/code/plain-text file preview, copy, download, and edit/save actions;
-- disabling edit actions while loading or interrupted.
-
-- [ ] **Step 2b: Implement subagent cards**
+- [x] **Step 2b: Implement subagent cards**
 
 Use the official Deep Agents frontend pattern while keeping assistant-ui as the thread runtime:
 
@@ -2483,13 +2479,10 @@ Implemented so far:
 - The card shows subagent name, status, task input, namespace/path, scoped message/tool counts, output preview, and per-subagent error text without marking the parent assistant message as failed.
 - `frontend/src/components/chat/subagent-progress.tsx` renders compact discovered-subagent progress from the shared stream and is shown in the active streaming assistant turn.
 - `frontend/src/components/chat/right-rail/subagent-panel-content.tsx` reads the same active LangGraph stream through `useSharedSubagentRuntime()` and mounts scoped `useMessages(stream, subagent)` / `useToolCalls(stream, subagent)` details in the right rail when the selected subagent belongs to the active conversation.
-
-Still pending:
-
-- make `SubagentProgress` strictly current-assistant-turn scoped instead of whole-thread discovered-subagent scoped;
-- auto-collapse completed cards when a turn has five or more subagents;
-- cap simultaneously expanded live subagent detail cards and move bulk inspection to the right rail;
-- render async/background subagent task cards from `async_tasks` state and async-subagent tools separately from inline v3 subagent transcript cards.
+- Current assistant-turn scoped progress is derived from inline subagent tool-call ids instead of all discovered stream subagents.
+- Completed cards default collapsed when a turn has five or more subagents, and live expanded inline detail subscriptions are capped so overflow cards route users to the right rail instead of mounting extra scoped selectors.
+- Async/background subagent activities render as separate status rows and are not counted as inline transcript subagent cards.
+- Scoped subagent message rendering filters private/raw reasoning and thinking content, rendering only safe visible text or summary/status fields.
 
 - [x] **Step 3: Connect to `AssistantThread`**
 
@@ -2524,17 +2517,17 @@ Implemented in:
 
 Verified installed `@assistant-ui/react@0.14.18` exports `makeAssistantDataUI`. The renderer only displays summary/status fields (`summary`, `text`, `message`, `status`) and intentionally does not render a raw `reasoning` field.
 
-- [ ] **Step 5: Tests**
+- [x] **Step 5: Tests**
 
 Test:
 
 - [x] thinking/planning activity renders Korean label,
 - [x] tool activity shows tool name,
 - [x] todos render grouped task state with pending/in-progress/completed labels,
-- collapsed DeepAgents state panel shows active task summary and file count,
-- file panel renders files from Moldy artifacts and optionally reconciles `values.files`,
-- file viewer supports Markdown preview, code/plain-text preview, copy, and download,
-- file edit action is disabled while loading or interrupted,
+- [x] collapsed DeepAgents state panel shows active task summary and file count,
+- [x] file panel renders files from Moldy artifacts and optionally reconciles `values.files`,
+- [x] file viewer supports Markdown preview, code/plain-text preview, copy, and download,
+- [x] file edit action is disabled while loading or interrupted,
 - [x] subagent activity shows nested namespace,
 - [x] subagent card attaches below the coordinator tool call that spawned it,
 - [x] collapsed subagent card does not render scoped transcript rows,
@@ -2548,6 +2541,7 @@ Test:
 - [x] `values.todos` and `values.files` normalize into DeepAgents state panel rows.
 - [x] LangGraph runtime passes activities to `AssistantThread`.
 - [x] reasoning data UI registers through `makeAssistantDataUI` and does not expose raw reasoning fields.
+- [x] scoped subagent detail rendering suppresses raw/private reasoning and thinking blocks.
 
 - [x] **Step 6: Verify**
 
@@ -2568,7 +2562,20 @@ Verified for this slice:
 - `pnpm lint:i18n`
 - `pnpm lint:design-system`
 
-- [ ] **Step 7: Commit**
+Verified follow-up completion for Step 2a/2b:
+
+```bash
+cd frontend && pnpm exec vitest run src/lib/chat/langgraph-runtime/__tests__/deepagents-state.test.ts src/components/chat/__tests__/deepagents-state-panel.test.tsx src/components/chat/__tests__/subagent-progress.test.tsx src/components/chat/__tests__/assistant-message-loading.test.tsx src/components/chat/__tests__/subagent-card.test.tsx src/lib/chat/langgraph-runtime/__tests__/subagent-runtime.test.tsx src/components/chat/tool-ui/__tests__/sub-agent-ui.test.tsx
+cd frontend && pnpm exec tsc --noEmit --pretty false
+cd frontend && pnpm exec eslint src/lib/chat/langgraph-runtime/deepagents-state.ts src/components/chat/deepagents-state-panel.tsx src/components/chat/deepagents-state-file-list.tsx src/lib/chat/langgraph-runtime/subagent-runtime.tsx src/components/chat/subagent-card.tsx src/components/chat/subagent-progress.tsx src/components/chat/assistant-message-loading.tsx src/components/chat/tool-ui/sub-agent-ui.tsx src/lib/chat/langgraph-runtime/__tests__/deepagents-state.test.ts src/components/chat/__tests__/deepagents-state-panel.test.tsx src/components/chat/__tests__/subagent-progress.test.tsx src/components/chat/__tests__/assistant-message-loading.test.tsx src/components/chat/__tests__/subagent-card.test.tsx src/lib/chat/langgraph-runtime/__tests__/subagent-runtime.test.tsx src/components/chat/tool-ui/__tests__/sub-agent-ui.test.tsx
+cd frontend && pnpm lint:i18n
+cd frontend && pnpm lint:design-system
+git diff --check
+```
+
+Independent adversarial review verdict: confirmed. The reviewer first rejected a scoped-subagent raw reasoning leak, then confirmed the fix and the regression test covering `type: "reasoning"`, `type: "thinking"`, and raw `reasoning` fields.
+
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/src/components/chat/run-activity-strip.tsx frontend/src/components/chat/assistant-message-loading.tsx frontend/src/components/chat/deepagents-state-panel.tsx frontend/src/components/chat/tool-ui/reasoning-ui.tsx frontend/src/components/chat/assistant-thread.tsx frontend/src/components/chat/chat-runtime-section.tsx frontend/src/lib/chat/data-ui-registry.ts frontend/src/lib/chat/langgraph-runtime/activity-protocol.ts frontend/src/lib/chat/langgraph-runtime/deepagents-state.ts frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts frontend/messages/ko.json frontend/messages/en.json frontend/src/components/chat/__tests__/run-activity-strip.test.tsx frontend/src/components/chat/__tests__/assistant-message-loading.test.tsx frontend/src/components/chat/__tests__/deepagents-state-panel.test.tsx frontend/src/components/chat/__tests__/chat-runtime-section.test.tsx frontend/src/components/chat/tool-ui/__tests__/reasoning-ui.test.tsx frontend/src/lib/chat/langgraph-runtime/__tests__/activity-protocol.test.ts frontend/src/lib/chat/langgraph-runtime/__tests__/deepagents-state.test.ts frontend/src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx

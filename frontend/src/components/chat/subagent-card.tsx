@@ -13,6 +13,7 @@ import { useTranslations } from 'next-intl'
 import { CollapsiblePill, type PillStatus } from '@/components/chat/tool-ui/collapsible-pill'
 import { useChatConversationId } from '@/components/chat/conversation-context'
 import {
+  useSubagentInlinePolicy,
   useSubagentSnapshot,
   useSubagentStream,
 } from '@/lib/chat/langgraph-runtime/subagent-runtime'
@@ -27,6 +28,7 @@ export interface SubagentCardFallback {
 interface SubagentCardProps {
   readonly fallback: SubagentCardFallback
   readonly toolCallId: string
+  readonly turnToolCallIds?: readonly string[]
 }
 
 const SNAPSHOT_STATUS: Record<SubagentDiscoverySnapshot['status'], PillStatus> = {
@@ -44,19 +46,31 @@ function formatUnknown(value: unknown): string {
   return JSON.stringify(value)
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function safeDisplaySummary(part: Record<string, unknown>): string {
+  if (typeof part.summary === 'string') return part.summary
+  if (typeof part.status === 'string') return part.status
+  return ''
+}
+
 function textFromPart(part: unknown): string {
   if (typeof part === 'string') return part
-  if (typeof part !== 'object' || part === null || Array.isArray(part)) return formatUnknown(part)
-  if ('text' in part && typeof part.text === 'string') return part.text
-  if ('content' in part) return formatUnknown(part.content)
-  return formatUnknown(part)
+  if (!isRecord(part)) return ''
+
+  const type = typeof part.type === 'string' ? part.type : undefined
+  if (type === 'reasoning' || type === 'thinking') return safeDisplaySummary(part)
+  if (type === 'text' && typeof part.text === 'string') return part.text
+  return safeDisplaySummary(part)
 }
 
 function formatMessage(message: BaseMessage): string {
   const content = message.content
   if (typeof content === 'string') return content
   if (Array.isArray(content)) return content.map(textFromPart).filter(Boolean).join('')
-  return formatUnknown(content)
+  return ''
 }
 
 function SubagentHeaderMeta({
@@ -139,16 +153,18 @@ function SubagentDetails({
   )
 }
 
-export function SubagentCard({ fallback, toolCallId }: SubagentCardProps) {
+export function SubagentCard({ fallback, toolCallId, turnToolCallIds }: SubagentCardProps) {
   const t = useTranslations('chat.toolUi.subAgent')
   const setRail = useSetAtom(chatRightRailAtom)
   const conversationId = useChatConversationId()
   const subagent = useSubagentSnapshot(toolCallId)
+  const inlinePolicy = useSubagentInlinePolicy(toolCallId, turnToolCallIds)
   const stream = useSubagentStream()
   const agentName = subagent?.name ?? fallback.agentName
   const input = subagent?.taskInput ?? fallback.input
   const status = subagent ? SNAPSHOT_STATUS[subagent.status] : fallback.status
-  const canRenderScopedDetails = subagent !== null && stream !== null
+  const canRenderScopedDetails =
+    subagent !== null && stream !== null && inlinePolicy.canRenderInlineDetails
   const openRail = () =>
     setRail({
       mode: 'subagent',
@@ -161,6 +177,7 @@ export function SubagentCard({ fallback, toolCallId }: SubagentCardProps) {
       status={status}
       title={agentName}
       meta={<SubagentHeaderMeta input={input || t('invocation')} namespace={subagent?.namespace} />}
+      defaultExpanded={canRenderScopedDetails ? inlinePolicy.defaultExpanded : false}
       onClick={canRenderScopedDetails ? undefined : openRail}
       renderBody={
         canRenderScopedDetails

@@ -9,19 +9,24 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import {
+  DeepAgentsStateFileList,
+  type DeepAgentsStateFileActions,
+} from '@/components/chat/deepagents-state-file-list'
 import { CollapsiblePill } from '@/components/chat/tool-ui/collapsible-pill'
 import { cn } from '@/lib/utils'
 import type {
-  DeepAgentFile,
   DeepAgentsStateSnapshot,
   DeepAgentTodo,
   DeepAgentTodoStatus,
 } from '@/lib/chat/langgraph-runtime/deepagents-state'
 import { hasDeepAgentsState } from '@/lib/chat/langgraph-runtime/deepagents-state'
 
-interface DeepAgentsStatePanelProps {
+interface DeepAgentsStatePanelProps extends DeepAgentsStateFileActions {
   readonly state: DeepAgentsStateSnapshot
   readonly className?: string
+  readonly isLoading?: boolean
+  readonly isInterrupted?: boolean
 }
 
 const STATUS_META: Record<
@@ -77,32 +82,22 @@ function TodosBody({ todos }: { readonly todos: readonly DeepAgentTodo[] }) {
   )
 }
 
-function FileRow({ file }: { readonly file: DeepAgentFile }) {
-  return (
-    <li className="flex min-w-0 items-center gap-2 py-1">
-      <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-        {file.name}
-      </span>
-      <span className="min-w-0 truncate text-xs text-muted-foreground">{file.path}</span>
-    </li>
-  )
-}
-
-function FilesBody({ files }: { readonly files: readonly DeepAgentFile[] }) {
-  return (
-    <ol className="space-y-0.5">
-      {files.map((file) => (
-        <FileRow key={file.id} file={file} />
-      ))}
-    </ol>
-  )
-}
-
-export function DeepAgentsStatePanel({ state, className }: DeepAgentsStatePanelProps) {
+export function DeepAgentsStatePanel({
+  state,
+  className,
+  isLoading = false,
+  isInterrupted = false,
+  onCopyFile,
+  onDownloadFile,
+  onOpenPreview,
+  onEditFile,
+  onSaveFile,
+}: DeepAgentsStatePanelProps) {
   const t = useTranslations('chat.deepAgentsState')
   if (!hasDeepAgentsState(state)) return null
   const done = completedCount(state.todos)
+  const editDisabledReason =
+    isLoading || isInterrupted ? t('files.editDisabledRunning') : t('files.editDisabledUnsupported')
 
   return (
     <div className={cn('flex w-full flex-col gap-1.5', className)}>
@@ -125,9 +120,19 @@ export function DeepAgentsStatePanel({ state, className }: DeepAgentsStatePanelP
           title={t('files.title')}
           meta={t('files.count', { count: state.files.length })}
           leadingIcon={FileTextIcon}
-          defaultExpanded
+          defaultExpanded={state.todos.length === 0}
         >
-          <FilesBody files={state.files} />
+          <div className="space-y-2">
+            <DeepAgentsStateFileList
+              files={state.files}
+              onCopyFile={onCopyFile}
+              onDownloadFile={onDownloadFile}
+              onOpenPreview={onOpenPreview}
+              onEditFile={onEditFile}
+              onSaveFile={onSaveFile}
+            />
+            <p className="text-xs text-muted-foreground">{editDisabledReason}</p>
+          </div>
         </CollapsiblePill>
       ) : null}
     </div>

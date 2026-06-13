@@ -8,12 +8,12 @@ import {
 
 interface SubagentProgressProps {
   readonly summary?: SubagentProgressSummary
+  readonly toolCallIds?: readonly string[]
 }
 
-export function SubagentProgress({ summary }: SubagentProgressProps) {
+function SubagentProgressContent({ summary }: { readonly summary: SubagentProgressSummary }) {
   const t = useTranslations('chat.subagents')
-  const runtimeSummary = useSubagentProgressSummary()
-  const resolved = summary ?? runtimeSummary
+  const resolved = summary
   if (resolved.total === 0) return null
 
   const settled = resolved.completed + resolved.failed
@@ -41,4 +41,14 @@ export function SubagentProgress({ summary }: SubagentProgressProps) {
       />
     </div>
   )
+}
+
+function RuntimeSubagentProgress({ toolCallIds }: { readonly toolCallIds?: readonly string[] }) {
+  const runtimeSummary = useSubagentProgressSummary(toolCallIds)
+  return <SubagentProgressContent summary={runtimeSummary} />
+}
+
+export function SubagentProgress({ summary, toolCallIds }: SubagentProgressProps) {
+  if (summary) return <SubagentProgressContent summary={summary} />
+  return <RuntimeSubagentProgress toolCallIds={toolCallIds} />
 }
