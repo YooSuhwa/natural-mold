@@ -2008,6 +2008,16 @@ git commit -m "feat(chat): expose LangGraph protocol endpoints"
 - Test: `frontend/src/lib/chat/langgraph-runtime/__tests__/moldy-agent-transport.test.ts`
 - Test: `frontend/src/lib/chat/langgraph-runtime/__tests__/activity-model.test.ts`
 
+Implementation status:
+
+- [x] `@assistant-ui/react-langchain` is installed so the frontend can reuse the official assistant-ui wrapper around `@langchain/react`.
+- [x] `moldy-agent-transport.ts` creates the stock `HttpAgentServerAdapter` against Moldy's conversation-scoped BFF protocol endpoints, includes cookies, adds CSRF for mutating protocol requests, and exposes command/stream/state path overrides.
+- [x] Transport tests verify command and state URLs, cookie credentials, and CSRF behavior against the installed SDK adapter.
+- [x] `activity-model.ts` reduces canonical protocol events into typed run activities for responding, thinking, tools, planning, subagents, background subagents, artifacts, memory, checkpoints, reconnecting, interrupts, and errors.
+- [x] Reducer tests cover tool lifecycle, namespaced subagents, lifecycle/task events, `async_tasks`, todos, custom artifact/memory events, and error propagation.
+- [ ] The transport does not yet implement draft conversation creation or `X-Run-Id` / `X-Conversation-Id` response capture; the current backend command response still exposes `run_id` in the protocol body.
+- [ ] The reducer is not yet wired into visible assistant-ui activity components.
+
 - [ ] **Step 1: Implement `HttpAgentServerAdapter` factory**
 
 `moldy-agent-transport.ts` should create a stock `HttpAgentServerAdapter` for Moldy's BFF protocol endpoints:
