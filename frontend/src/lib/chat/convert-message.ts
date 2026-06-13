@@ -61,7 +61,7 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
       )
     }
     // M-CHAT1b — surface branch info via metadata.custom so the inline
-    // BranchPicker UI can read it from useAssistantState.
+    // BranchPicker UI can read it from useAuiState.
     const userBranchMeta = buildBranchMeta(message)
     if (userBranchMeta) {
       ;(userMsg as unknown as { metadata: unknown }).metadata = {
@@ -100,7 +100,7 @@ export const convertMessage: useExternalMessageConverter.Callback<Message> = (
   }
   // M-CHAT1b — branch info on assistant messages (sibling regenerations).
   // ``message.usage`` (W7)도 같은 metadata.custom 슬롯에 함께 hoist하여 ActionBar
-  // 옆 TokenUsagePopover가 ``useAssistantState``로 직접 읽는다.
+  // 옆 TokenUsagePopover가 ``useAuiState``로 직접 읽는다.
   const assistantBranchMeta = buildBranchMeta(message)
 
   const isStreamingMessage = message.id.startsWith('stream-')

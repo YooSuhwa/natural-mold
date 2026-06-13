@@ -5,11 +5,11 @@ import Image from 'next/image'
 import Markdown from 'react-markdown'
 import { useTranslations } from 'next-intl'
 import {
+  AuiIf,
   MessagePrimitive,
   ComposerPrimitive,
-  ThreadPrimitive,
   useAui,
-  useAssistantState,
+  useAuiState,
   useMessagePartText,
 } from '@assistant-ui/react'
 import { LayoutGridIcon, PaperclipIcon, SendIcon } from 'lucide-react'
@@ -98,7 +98,7 @@ const MARKDOWN_COMPONENTS_FINAL = buildMarkdownComponents({ isStreaming: false }
 function BuilderAssistantTextPart() {
   const tPhase = useTranslations('chat.phaseTimeline')
   const part = useMessagePartText()
-  const isRunning = useAssistantState(
+  const isRunning = useAuiState(
     (s) => (s.message?.status as { type?: string } | undefined)?.type === 'running',
   )
   const text = part?.text ?? ''
@@ -294,12 +294,12 @@ export function BuilderComposer({ modelLabel }: { modelLabel?: string }) {
               <span aria-hidden className="moldy-builder-composer-divider" />
               {modelLabel && <span className="moldy-builder-model-label">{modelLabel}</span>}
             </div>
-            <ThreadPrimitive.If running={false}>
+            <AuiIf condition={(s) => !s.thread.isRunning}>
               <BuilderSendButton />
-            </ThreadPrimitive.If>
-            <ThreadPrimitive.If running={true}>
+            </AuiIf>
+            <AuiIf condition={(s) => s.thread.isRunning}>
               <BuilderStopButton />
-            </ThreadPrimitive.If>
+            </AuiIf>
           </div>
         </ComposerPrimitive.Root>
       </div>

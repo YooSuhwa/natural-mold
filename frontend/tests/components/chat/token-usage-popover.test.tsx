@@ -2,11 +2,11 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '../../test-utils'
 import userEvent from '@testing-library/user-event'
 
-// useAssistantState mock — 테스트별로 mockReturnValue로 교체.
+// useAuiState mock — 테스트별로 mockReturnValue로 교체.
 const mockUseAssistantState = vi.fn()
 
 vi.mock('@assistant-ui/react', () => ({
-  useAssistantState: (selector: (state: unknown) => unknown) =>
+  useAuiState: (selector: (state: unknown) => unknown) =>
     selector({
       message: {
         metadata: {

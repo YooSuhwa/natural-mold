@@ -1,7 +1,7 @@
 'use client'
 
 import type { CSSProperties } from 'react'
-import { makeAssistantToolUI, useAssistantState } from '@assistant-ui/react'
+import { makeAssistantToolUI, useAuiState } from '@assistant-ui/react'
 import { CheckIcon, SparklesIcon } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { BuilderHeaderIcon, BuilderMuted, BuilderTitle } from './builder-primitives'
@@ -148,7 +148,7 @@ function PhaseTimelineRender({ toolCallId, args }: { toolCallId: string; args: T
   // 이전 봇 메시지에 박힌 동일 tool은 더 이상 렌더하지 않아 진행 카드가 최신 메시지에만 보이게.
   // assistant-ui 0.12+ 의 `useAuiState((s) => s.thread.messages)` 패턴 — ThreadContext.d.ts 의
   // 마이그레이션 가이드에 공식 노출된 selector.
-  const latestId = useAssistantState((s) => {
+  const latestId = useAuiState((s) => {
     const thread = (s as { thread?: { messages?: readonly ThreadMessageLite[] } }).thread
     return selectLatestPhaseTimelineId(thread?.messages ?? [])
   })
