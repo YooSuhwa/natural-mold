@@ -69,6 +69,18 @@ vi.mock('@assistant-ui/react-langchain', () => ({
   convertLangChainBaseMessage: mocks.convertLangChainBaseMessage,
 }))
 
+vi.mock('next-intl', () => ({
+  useTranslations: () => (key: string) => key,
+}))
+
+vi.mock('sonner', () => ({
+  toast: {
+    info: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
+}))
+
 function createQueryWrapper() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return function QueryWrapper({ children }: { children: ReactNode }) {

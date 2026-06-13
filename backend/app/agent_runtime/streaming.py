@@ -15,6 +15,10 @@ from langgraph.types import Command
 
 from app.agent_runtime import event_names
 from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
+from app.agent_runtime.memory_event_projection import (
+    MEMORY_TOOL_NAMES,
+    memory_event_from_tool_result,
+)
 from app.agent_runtime.message_utils import content_to_text, extract_usage_breakdown
 from app.marketplace.redaction import redact_keys
 
@@ -114,23 +118,12 @@ def _debug_input_for_message_start(actual_input: Any) -> Any:
 
 # Middleware-internal schema names (LLMToolSelectorMiddleware 등) — UI 노출 X.
 _INTERNAL_TOOL_NAMES: frozenset[str] = frozenset({"ToolSelectionResponse"})
-_MEMORY_TOOL_NAMES: frozenset[str] = frozenset(
-    {"propose_memory", "save_user_memory", "save_agent_memory"}
-)
-_MEMORY_EVENT_NAMES: frozenset[str] = frozenset(
-    {
-        event_names.MEMORY_PROPOSED,
-        event_names.MEMORY_SAVED,
-        event_names.MEMORY_REJECTED,
-        event_names.MEMORY_DELETED,
-    }
-)
 _REDACTED_MEMORY_FIELD = "<redacted>"
 
 
 def sanitize_tool_call_parameters(tool_name: str, args: Any) -> Any:
     parameters = redact_keys(args)
-    if tool_name not in _MEMORY_TOOL_NAMES or not isinstance(parameters, dict):
+    if tool_name not in MEMORY_TOOL_NAMES or not isinstance(parameters, dict):
         return parameters
     safe = dict(parameters)
     if "content" in safe:
@@ -178,25 +171,6 @@ def _is_tool_selector_json(text: str) -> bool:
         )
     except (json.JSONDecodeError, ValueError):
         return False
-
-
-def _memory_event_from_tool_result(
-    tool_name: str,
-    result: str,
-) -> tuple[str, dict[str, Any]] | None:
-    if tool_name not in _MEMORY_TOOL_NAMES:
-        return None
-    try:
-        parsed = json.loads(result)
-    except (json.JSONDecodeError, TypeError, ValueError):
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    event = parsed.get("memory_event")
-    if not isinstance(event, str) or event not in _MEMORY_EVENT_NAMES:
-        return None
-    payload = {key: value for key, value in parsed.items() if key != "memory_event"}
-    return event, payload
 
 
 def _interrupt_to_standard_chunk(
@@ -553,7 +527,7 @@ async def stream_agent_response(
                                 artifact_events = []
                             for payload in artifact_events:
                                 yield emit(event_names.FILE_EVENT, payload)
-                        memory_event = _memory_event_from_tool_result(
+                        memory_event = memory_event_from_tool_result(
                             tool_name,
                             result,
                         )

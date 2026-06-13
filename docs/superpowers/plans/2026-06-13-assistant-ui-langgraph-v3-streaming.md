@@ -1833,7 +1833,7 @@ Implementation status:
 - [ ] Cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
 - [ ] `POST state` still returns the submitted SDK-compatible shape and does not yet apply updates through the LangGraph checkpointer/runtime API.
 - [ ] Active run without broker currently returns `409 RUN_ATTACH_RETRY`; stale-run detection/finalization is still follow-up.
-- [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed. Artifact product side effects now run from `custom:file_event`; memory, usage, and other custom projections still need explicit reducers.
+- [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed. Artifact product side effects now run from `custom:file_event`, and memory custom events now invalidate memory state plus toast through the LangGraph runtime. Usage and other custom projections still need explicit reducers.
 
 - [ ] **Step 1: Add endpoints**
 
@@ -2188,7 +2188,7 @@ Implementation status:
 - [x] Hook and section tests verify one stream is created, assistant-ui runtime options are wired, new messages submit through the same stream, legacy mode still calls `useChatRuntime`, `langgraph_v3` mode calls `useMoldyLangGraphStream`, draft conversations fall back to legacy, and LangGraph loading transitions update navigator status/invalidate on settle.
 - [x] Live HITL resume is wired through the single `@langchain/react` stream: `stream.interrupts` is projected into Moldy's existing approval/input tool UI, and decisions resume via `stream.respond` / backend `input.respond`.
 - [x] Pending interrupt state hydration now feeds the same `stream.interrupts` projection path after refresh.
-- [ ] Activity side effects, memory reducers, subagent scoped selectors, edit/regenerate, and draft conversation start are still pending. Artifact reducers are wired for the LangGraph runtime.
+- [ ] Activity side effects, subagent scoped selectors, edit/regenerate, and draft conversation start are still pending. Artifact and memory reducers are wired for the LangGraph runtime.
 
 - [ ] **Step 1: Implement the Moldy-owned `@langchain/react` stream path**
 
@@ -2633,7 +2633,7 @@ Implemented in this slice:
 - `frontend/src/lib/chat/langgraph-runtime/artifact-events.ts` consumes `custom:file_event` / named custom artifact events through `useChannelEffect(replay: true)`, deduplicates by protocol event id, updates `upsertChatArtifactAtom`, updates live assistant message artifact cards via `upsertArtifactList`, opens the artifact preview right rail, and invalidates `artifactKeys.all`.
 - `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts` routes LangGraph messages through the artifact effect before handing them to assistant-ui.
 
-- [ ] **Step 3: Memory**
+- [x] **Step 3: Memory**
 
 Map memory custom events to:
 
@@ -2642,6 +2642,13 @@ Map memory custom events to:
 - no duplicate toasts on replay.
 
 Use event id dedup in the handler.
+
+Implemented in this slice:
+
+- `backend/app/agent_runtime/memory_event_projection.py` centralizes legacy memory tool result parsing so legacy SSE and LangGraph v3 projection share one interpretation of `propose_memory`, `save_user_memory`, and `save_agent_memory` results.
+- `backend/app/agent_runtime/protocol_side_effects.py` extracts protocol side effects out of `langgraph_streaming.py`, keeps artifact side effects intact, and emits `custom:memory_*` protocol events after memory tool completion payloads are observed.
+- `frontend/src/lib/chat/langgraph-runtime/memory-events.ts` consumes `custom:memory_*` / named custom memory events through `useChannelEffect(replay: false)`, deduplicates by protocol event id, invalidates `memoryKeys.all`, and preserves the legacy Sonner toast semantics.
+- `frontend/src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts` attaches the memory effect to the same shared `@langchain/react` stream used by assistant-ui and the DeepAgents panels.
 
 - [ ] **Step 4: Feedback and attachments**
 
@@ -2690,6 +2697,19 @@ backend/.venv/bin/python -m py_compile backend/app/agent_runtime/langgraph_strea
 pnpm --dir frontend exec vitest run src/lib/chat/langgraph-runtime/__tests__/artifact-events.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
 pnpm --dir frontend exec tsc --noEmit
 pnpm --dir frontend exec eslint src/lib/chat/langgraph-runtime/artifact-events.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/artifact-events.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+```
+
+Focused memory verification added in this slice:
+
+```bash
+backend/.venv/bin/python -m pytest backend/tests/agent_runtime/test_langgraph_streaming.py backend/tests/agent_runtime/test_agent_stream_runner_langgraph.py backend/tests/agent_runtime/test_langgraph_protocol_adapter.py backend/tests/agent_runtime/test_protocol_events.py backend/tests/test_streaming.py::test_stream_execute_in_skill_result_emits_file_event backend/tests/test_streaming.py::test_stream_memory_tool_result_emits_memory_event
+backend/.venv/bin/python -m py_compile backend/app/agent_runtime/langgraph_streaming.py backend/app/agent_runtime/protocol_side_effects.py backend/app/agent_runtime/memory_event_projection.py backend/app/agent_runtime/streaming.py backend/tests/agent_runtime/test_langgraph_streaming.py
+
+pnpm --dir frontend exec vitest run src/lib/chat/langgraph-runtime
+pnpm --dir frontend exec tsc --noEmit
+pnpm --dir frontend exec eslint src/lib/chat/langgraph-runtime/memory-events.ts src/lib/chat/langgraph-runtime/use-moldy-langgraph-stream.ts src/lib/chat/langgraph-runtime/__tests__/memory-events.test.tsx src/lib/chat/langgraph-runtime/__tests__/use-moldy-langgraph-stream.test.tsx
+
+git diff --check
 ```
 
 Backend:

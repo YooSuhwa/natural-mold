@@ -14,6 +14,7 @@ import { reduceProtocolActivity } from './activity-protocol'
 import { useLangGraphArtifactEffects } from './artifact-events'
 import { selectDeepAgentsState } from './deepagents-state'
 import { appendInterruptToolCallMessages, standardPayloadsFromInterrupts } from './hitl-interrupts'
+import { useLangGraphMemoryEffects } from './memory-events'
 import { createMoldyAgentTransport } from './moldy-agent-transport'
 import type { RunActivity } from './activity-model'
 import { createHiTLDecisionCoordinator, type HiTLDecisionCoordinator } from '../standard-interrupt'
@@ -109,6 +110,7 @@ export function useMoldyLangGraphStream({
     conversationId,
     messages: messagesWithInterrupts,
   })
+  useLangGraphMemoryEffects({ stream })
   const messages = useExternalMessageConverter({
     callback: convertMoldyLangChainMessage,
     messages: messagesWithArtifacts,
