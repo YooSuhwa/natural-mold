@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -32,6 +31,7 @@ from app.routers.conversation_agent_protocol_runtime import (
     command_multitask_strategy,
     get_owned_thread,
     input_preview,
+    load_thread_state_values,
     protocol_broker_generator,
 )
 from app.services import chat_service, conversation_run_service
@@ -144,14 +144,14 @@ async def get_thread_state(
     thread_id: str,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
-) -> dict[str, Any]:
+) -> dict[str, object]:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
         thread_id=thread_id,
         user_id=user.id,
     )
-    return state_response(conversation)
+    return state_response(conversation, values=await load_thread_state_values(conversation))
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/state")
@@ -162,7 +162,7 @@ async def update_thread_state(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
-) -> dict[str, Any]:
+) -> dict[str, object]:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
@@ -180,14 +180,15 @@ async def get_thread_history(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf),
-) -> list[dict[str, Any]]:
+) -> list[dict[str, object]]:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
         thread_id=thread_id,
         user_id=user.id,
     )
-    return [state_response(conversation) for _ in range(min(request.limit, 1))]
+    values = await load_thread_state_values(conversation)
+    return [state_response(conversation, values=values) for _ in range(min(request.limit, 1))]
 
 
 @router.post("/api/conversations/{conversation_id}/langgraph/threads/{thread_id}/stream/events")
@@ -249,14 +250,14 @@ async def get_compat_thread_state(
     conversation_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
-) -> dict[str, Any]:
+) -> dict[str, object]:
     conversation = await get_owned_thread(
         db,
         conversation_id=conversation_id,
         thread_id=str(conversation_id),
         user_id=user.id,
     )
-    state = state_response(conversation)
+    state = state_response(conversation, values=await load_thread_state_values(conversation))
     return {
         "thread_id": str(conversation.id),
         "values": state["values"],

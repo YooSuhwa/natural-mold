@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
@@ -244,6 +245,51 @@ async def test_thread_state_and_history_use_sdk_compatible_shapes(
     history = history_response.json()
     assert len(history) == 1
     assert history[0]["values"] == {"messages": []}
+
+
+@pytest.mark.asyncio
+async def test_thread_state_reads_checkpointer_messages(
+    client: AsyncClient,
+    db: AsyncSession,
+) -> None:
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    conversation = await _seed_conversation(db)
+    messages = [
+        HumanMessage(content="Hello", id=str(uuid.uuid4())),
+        AIMessage(content="Hi", id=str(uuid.uuid4())),
+    ]
+
+    async def alist(_config: Any) -> Any:
+        yield type(
+            "CheckpointTuple",
+            (),
+            {
+                "config": {"configurable": {"checkpoint_id": "ck1"}},
+                "parent_config": None,
+                "checkpoint": {"channel_values": {"messages": messages}},
+            },
+        )()
+
+    with patch("app.routers.conversation_agent_protocol_runtime.get_checkpointer") as get_cp:
+        get_cp.return_value.alist = alist
+        state_response = await client.get(
+            f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/state"
+        )
+        history_response = await client.post(
+            f"/api/conversations/{conversation.id}/langgraph/threads/{conversation.id}/history",
+            json={"limit": 1},
+        )
+
+    assert state_response.status_code == 200
+    values = state_response.json()["values"]
+    assert values["messages"][0]["type"] == "human"
+    assert values["messages"][0]["content"] == "Hello"
+    assert values["messages"][1]["type"] == "ai"
+    assert values["messages"][1]["content"] == "Hi"
+
+    assert history_response.status_code == 200
+    assert history_response.json()[0]["values"] == values
 
 
 @pytest.mark.asyncio

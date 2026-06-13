@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_runtime.checkpointer import get_checkpointer
 from app.agent_runtime.event_broker import BrokeredEvent, EventBroker
 from app.agent_runtime.protocol_events import (
     StoredProtocolEvent,
@@ -17,6 +18,7 @@ from app.error_codes import conversation_not_found
 from app.models.conversation import Conversation
 from app.routers.conversation_agent_protocol_contracts import AgentCommandRequest
 from app.services import chat_service
+from app.services.thread_branch_service import build_message_tree
 
 SUPPORTED_MULTITASK_STRATEGIES = {"reject"}
 
@@ -39,6 +41,33 @@ async def get_owned_thread(
 
 def cfg_agent_uuid(conversation: Conversation) -> uuid.UUID:
     return conversation.agent_id
+
+
+def serialize_langchain_message(message: Any) -> dict[str, Any]:
+    if hasattr(message, "model_dump"):
+        dumped = message.model_dump(mode="json")
+        return dumped if isinstance(dumped, dict) else {"type": "unknown", "content": dumped}
+    get_type = getattr(message, "_getType", lambda: "unknown")
+    return {
+        "type": str(getattr(message, "type", None) or get_type()),
+        "content": getattr(message, "content", ""),
+        "id": getattr(message, "id", None),
+    }
+
+
+async def load_thread_state_values(conversation: Conversation) -> dict[str, Any]:
+    try:
+        checkpointer = get_checkpointer()
+        tree = await build_message_tree(
+            checkpointer,
+            str(conversation.id),
+            active_checkpoint_id=conversation.active_branch_checkpoint_id,
+        )
+    except RuntimeError:
+        return {}
+    if not tree.nodes:
+        return {}
+    return {"messages": [serialize_langchain_message(node.message) for node in tree.nodes]}
 
 
 def command_multitask_strategy(command: AgentCommandRequest) -> str:

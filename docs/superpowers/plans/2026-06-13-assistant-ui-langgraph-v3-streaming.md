@@ -1827,8 +1827,9 @@ Implementation status:
 - [x] `run.start` records the normal Moldy conversation message audit, updates conversation title/activity from the latest user message preview, and stores protocol metadata on the run.
 - [x] `/stream/events` attaches live to the active run's `EventBroker`, emits `event: message` protocol SSE frames, preserves upstream event ids, and applies channel/namespace/depth filters to live and replay paths.
 - [x] Stored canonical protocol events replay from `message_events` and support `Last-Event-ID` / `last_event_id` cursors.
+- [x] `GET state`, compatibility state, and `history` now read the active LangGraph checkpoint branch when the checkpointer is initialized and return SDK-coercible `values.messages` wire objects (`type: "human" | "ai" | "tool" | ...`). They retain the previous empty fallback shape when no checkpoint exists.
 - [ ] `input.respond`, cancel, rollback/interrupt/enqueue multitask strategies, and richer command forwarding are not implemented yet.
-- [ ] `GET/POST state` and `history` currently return SDK-compatible fallback shapes but do not yet read/write canonical LangGraph checkpointer snapshots.
+- [ ] `POST state` still returns the submitted SDK-compatible shape and does not yet apply updates through the LangGraph checkpointer/runtime API.
 - [ ] Active run without broker currently returns `409 RUN_ATTACH_RETRY`; stale-run detection/finalization is still follow-up.
 - [ ] Protocol `custom`, `updates`, and final `values` events are stored and streamed, but product side effects such as memory/artifact projections from those protocol payloads still need explicit reducers.
 
